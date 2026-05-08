@@ -1,0 +1,81 @@
+"""Worker entry point.
+
+Boots:
+- Postgres checkpointer (``AsyncPostgresSaver`` with ``setup()``).
+- AgentLoader + promote-channel subscriber.
+- LiteLLM router.
+- Redis Stream consumer.
+
+Production runs this; tests build the same components piece-by-piece in
+fixtures so they can substitute the in-memory provider, the in-memory
+checkpointer and a fake Redis.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import signal
+
+import structlog
+from nexus_api.core.redis_client import get_redis
+
+from nexus_worker.config import get_api_settings, get_worker_settings
+from nexus_worker.runtime.agent_loader import AgentLoader
+from nexus_worker.runtime.checkpointer import postgres_checkpointer
+from nexus_worker.runtime.llm import build_default_router
+from nexus_worker.runtime.pipeline import build_pipeline
+from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
+from nexus_worker.streams.consumer import run_inbound_consumer
+
+log = structlog.get_logger(__name__)
+
+
+async def _amain() -> None:
+    api_settings = get_api_settings()
+    worker_settings = get_worker_settings()
+
+    loader = AgentLoader(max_size=worker_settings.agent_cache_size)
+    router = build_default_router(
+        classify_model=worker_settings.llm_classify_model,
+        respond_model=worker_settings.llm_respond_model,
+        fallback_model=worker_settings.llm_fallback_model,
+        use_inmemory=worker_settings.llm_use_inmemory,
+    )
+    redis = get_redis()
+    stop = asyncio.Event()
+
+    def _request_stop() -> None:
+        log.info("worker.signal_received_stopping")
+        stop.set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        with contextlib.suppress(NotImplementedError):
+            loop.add_signal_handler(sig, _request_stop)
+
+    async with postgres_checkpointer(api_settings.database_url) as saver:
+        pipeline = build_pipeline(agent_loader=loader, llm_router=router, checkpointer=saver)
+        promote_task = asyncio.create_task(
+            run_promote_subscriber(redis, loader, stop=stop), name="promote-subscriber"
+        )
+        consumer_task = asyncio.create_task(
+            run_inbound_consumer(
+                redis,
+                pipeline,
+                stream=worker_settings.inbound_stream,
+                group=worker_settings.inbound_consumer_group,
+                consumer_name=worker_settings.inbound_consumer_name,
+                stop=stop,
+            ),
+            name="inbound-consumer",
+        )
+        await asyncio.gather(consumer_task, promote_task)
+
+
+def run() -> None:
+    asyncio.run(_amain())
+
+
+if __name__ == "__main__":
+    run()

@@ -1,0 +1,121 @@
+"""Redis Stream consumer — reads ``nexus:inbound`` and dispatches to the pipeline.
+
+A consumer group lets multiple worker replicas share the work without dropping
+messages (each entry is delivered exactly once across the group). The group is
+created idempotently on first read.
+
+Failures: on exception during dispatch we LOG and DO NOT ack, so the entry
+becomes pending and a retry kicks in via ``XCLAIM`` later. Block H wires the
+DLQ + alerting; for block C we just log loudly so failures show up in dev.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import uuid
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+import structlog
+from redis.asyncio import Redis
+from redis.exceptions import ResponseError
+
+from nexus_worker.runtime.dispatcher import InboundEvent, process_inbound
+
+log = structlog.get_logger(__name__)
+
+
+async def _ensure_group(redis: Redis, stream: str, group: str) -> None:
+    try:
+        await redis.xgroup_create(stream, group, id="$", mkstream=True)
+    except ResponseError as exc:
+        # BUSYGROUP — already exists, nothing to do.
+        if "BUSYGROUP" not in str(exc):
+            raise
+
+
+def _decode_fields(raw: dict[bytes | str, bytes | str]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        ks = k.decode() if isinstance(k, bytes) else k
+        vs = v.decode() if isinstance(v, bytes) else v
+        out[ks] = vs
+    return out
+
+
+def _to_event(fields: dict[str, str]) -> InboundEvent:
+    return InboundEvent(
+        tenant_id=uuid.UUID(fields["tenant_id"]),
+        channel_id=uuid.UUID(fields["channel_id"]),
+        user_id=fields["user_id"],
+        content=fields["content"],
+        customer_name=fields.get("customer_name"),
+        provider=fields.get("provider", "ycloud"),
+    )
+
+
+async def run_inbound_consumer(
+    redis: Redis,
+    pipeline: Any,
+    *,
+    stream: str,
+    group: str,
+    consumer_name: str,
+    block_ms: int = 5_000,
+    stop: asyncio.Event | None = None,
+    on_processed: Callable[[InboundEvent], Awaitable[None]] | None = None,
+) -> None:
+    await _ensure_group(redis, stream, group)
+    log.info("consumer.start", stream=stream, group=group, consumer=consumer_name)
+
+    while stop is None or not stop.is_set():
+        try:
+            response = await redis.xreadgroup(
+                groupname=group,
+                consumername=consumer_name,
+                streams={stream: ">"},
+                count=10,
+                block=block_ms,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.error("consumer.xreadgroup_failed", error=str(exc))
+            await asyncio.sleep(1.0)
+            continue
+
+        if not response:
+            continue
+
+        for _stream_name, entries in response:
+            for entry_id, raw_fields in entries:
+                entry_id_str = entry_id.decode() if isinstance(entry_id, bytes) else entry_id
+                fields = _decode_fields(raw_fields)
+                try:
+                    event = _to_event(fields)
+                except KeyError as exc:
+                    log.warning(
+                        "consumer.malformed_entry",
+                        entry_id=entry_id_str,
+                        missing=str(exc),
+                    )
+                    await redis.xack(stream, group, entry_id_str)
+                    continue
+                try:
+                    await process_inbound(event, pipeline=pipeline)
+                except Exception as exc:
+                    log.error(
+                        "consumer.dispatch_failed",
+                        entry_id=entry_id_str,
+                        tenant_id=str(event.tenant_id),
+                        error=str(exc),
+                    )
+                    # Don't ack — leave it pending for retry.
+                    continue
+                await redis.xack(stream, group, entry_id_str)
+                if on_processed is not None:
+                    with contextlib.suppress(Exception):
+                        await on_processed(event)
+
+    log.info("consumer.stopped", stream=stream, group=group)

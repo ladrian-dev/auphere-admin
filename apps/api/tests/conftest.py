@@ -156,6 +156,25 @@ async def fake_redis(
     await fake.aclose()
 
 
+# ── per-test engine reset ──────────────────────────────────────────────────────
+# ``nexus_api.db.base.get_engine`` is LRU-cached. The block-C runtime tests
+# drive code that opens NEW sessions inside the LangGraph pipeline (the
+# checkpoint node, the AgentLoader). Without resetting the cache between
+# tests, those sessions reuse asyncpg connections bound to the previous
+# test's event loop and trip ``Event loop is closed`` / cross-loop futures.
+# Cheap to recreate; cleaner than monkey-patching every internal import site.
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _reset_db_engine_cache() -> AsyncIterator[None]:
+    db_base.reset_engine_cache()
+    try:
+        yield
+    finally:
+        await db_base.dispose_engine()
+        db_base.reset_engine_cache()
+
+
 # ── per-test transaction with rollback ──────────────────────────────────────────
 
 

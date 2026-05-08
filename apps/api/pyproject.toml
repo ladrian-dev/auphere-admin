@@ -35,7 +35,12 @@ dev = [
     "mypy>=1.13.0",
     "fakeredis>=2.26.0",
     "asgi-lifespan>=2.1.0",
+    # Block C: the runtime isolation tests import from the worker package.
+    "nexus-worker",
 ]
+
+[tool.uv.sources]
+nexus-worker = { path = "../worker", editable = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -23,3 +23,12 @@ class ChannelRepository:
     async def get(self, channel_id: uuid.UUID) -> Channel | None:
         require_current_tenant()
         return await self._session.get(Channel, channel_id)
+
+    async def get_by_provider_identifier(self, provider: str, identifier: str) -> Channel | None:
+        require_current_tenant()
+        stmt = select(Channel).where(
+            Channel.provider == provider,
+            Channel.provider_identifier == identifier,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
