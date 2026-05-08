@@ -11,14 +11,30 @@ dependencies = [
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
     "structlog>=24.4.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "redis>=5.2.0",
+    "cryptography>=43.0.0",
+    "sse-starlette>=2.1.3",
+    "opentelemetry-api>=1.28.0",
+    "opentelemetry-sdk>=1.28.0",
+    "opentelemetry-instrumentation-fastapi>=0.49b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.49b0",
+    "opentelemetry-instrumentation-redis>=0.49b0",
+    "opentelemetry-instrumentation-asyncpg>=0.49b0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
     "httpx>=0.27.0",
     "ruff>=0.7.0",
+    "mypy>=1.13.0",
+    "fakeredis>=2.26.0",
+    "asgi-lifespan>=2.1.0",
 ]
 
 [build-system]
@@ -34,9 +50,38 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
-ignore = ["E501"]
+# UP042: str+Enum is intentional — keeps `.value` for Postgres ENUM round-trip while
+#        allowing `MyEnum.X == "x"` comparisons in tests/business code.
+# N818:  domain errors keep semantic names (TenantNotFound, IsolationViolation, …);
+#        the "Error" suffix would add no information.
+# B008:  FastAPI's Depends/Query/Path are call expressions in defaults by design.
+ignore = ["E501", "B008", "UP042", "N818"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+"alembic/**" = ["E402", "F401"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "unit: fast unit tests, no IO",
+    "integration: requires Postgres/Redis containers",
+    "isolation: blocking suite — verifies the 7 isolation guarantees",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:passlib.*",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = []
+ignore_missing_imports = true
+disallow_untyped_decorators = false
+files = ["src/nexus_api"]
+
+[[tool.mypy.overrides]]
+module = ["alembic.*", "tests.*"]
+ignore_errors = true

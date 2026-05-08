@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import enum
+import uuid
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from nexus_api.db.base import Base
+from nexus_api.db.models._enum import pg_enum
+from nexus_api.db.models._mixins import TenantScopedMixin, TimestampMixin, UUIDPrimaryKey
+
+
+class AgentConfigStatus(str, enum.Enum):
+    STAGED = "staged"
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
+    """Versioned configuration for a tenant's agent.
+
+    Each PUT creates a new row with status=staged. Promote flips one row to active
+    and the previous active to archived. Rollback re-promotes a previously archived
+    version. UNIQUE(tenant_id, version) enforces strict monotonic versioning.
+    """
+
+    __tablename__ = "agent_configs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "version", name="uq_agent_configs_tenant_version"),
+    )
+
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[AgentConfigStatus] = mapped_column(
+        pg_enum(AgentConfigStatus, name="agent_config_status"),
+        nullable=False,
+        default=AgentConfigStatus.STAGED,
+        index=True,
+    )
+
+    system_prompt_rendered: Mapped[str] = mapped_column(Text, nullable=False)
+    channels: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    tools: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    policies: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    seed_template_ref: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+    kg_schema_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("kg_schemas.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    promoted_by: Mapped[str | None] = mapped_column(String(255), nullable=True)

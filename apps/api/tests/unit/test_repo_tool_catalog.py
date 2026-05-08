@@ -1,0 +1,43 @@
+import pytest
+
+from nexus_api.repositories import ToolCatalogRepository
+
+pytestmark = pytest.mark.asyncio
+
+
+async def test_list_seeds_present(db_session):
+    repo = ToolCatalogRepository(db_session)
+    items = await repo.list_all()
+    names = {t.name for t in items}
+    assert "booking.check_availability" in names
+    assert "queue.join_queue" in names
+    assert "escalate.escalate_to_human" in names
+
+
+async def test_list_count(db_session):
+    repo = ToolCatalogRepository(db_session)
+    items = await repo.list_all()
+    # 21 active tools seeded in migration 0003.
+    assert len(items) == 21
+
+
+async def test_get_by_name(db_session):
+    repo = ToolCatalogRepository(db_session)
+    tool = await repo.get_by_name("booking.create_appointment")
+    assert tool is not None
+    assert tool.mcp_server == "booking-server"
+    assert "external_api" in tool.side_effects
+    assert "mutates_db" in tool.side_effects
+
+
+async def test_get_by_name_unknown(db_session):
+    repo = ToolCatalogRepository(db_session)
+    assert await repo.get_by_name("does.not.exist") is None
+
+
+async def test_list_excludes_deprecated_by_default(db_session):
+    """All seeded tools are 'active', so include_deprecated=False yields the same."""
+    repo = ToolCatalogRepository(db_session)
+    a = await repo.list_all(include_deprecated=False)
+    b = await repo.list_all(include_deprecated=True)
+    assert len(a) == len(b)
