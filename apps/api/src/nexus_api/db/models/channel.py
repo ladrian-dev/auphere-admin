@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import enum
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -59,3 +60,11 @@ class TenantCredentials(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base)
 
     integration: Mapped[str] = mapped_column(String(64), nullable=False)
     encrypted_payload: Mapped[bytes] = mapped_column(FernetEncrypted, nullable=False)
+    # Bloque E: si el health check del context Browserbase falla y el
+    # re-login automático tampoco logra recuperarlo, se setea a true y se
+    # escala al operador. ``booking.create_appointment`` chequea esto antes
+    # de delegar a ``agendapro.*`` — si está true, cae al camino local.
+    needs_reauth: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_health_check_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

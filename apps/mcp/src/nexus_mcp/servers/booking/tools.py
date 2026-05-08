@@ -1,16 +1,36 @@
-"""booking.* — relational facade over the appointments table."""
+"""booking.* — relational facade over the appointments table.
+
+Cuando el tenant tiene integration AgendaPro activa
+(``tenant_credentials WHERE integration='agendapro' AND
+needs_reauth=false``), las tools mutativas delegan a ``agendapro.*``
+ANTES de persistir local. La fila local pasa a ser shadow cache con
+``external_ref`` poblado. Si AgendaPro retorna error o needs_reauth, la
+transacción local rollbackea — no creamos filas huérfanas sin ref.
+
+Ver ``agendapro_delegate.py`` para los helpers; ver
+``architecture/mcp-registry.md`` para el contrato.
+"""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
+import structlog
 from nexus_api.core.tenant_context import require_current_tenant
-from nexus_api.db.models import Appointment, AppointmentStatus
+from nexus_api.db.models import Appointment, AppointmentStatus, Customer, KGNode
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 
 from nexus_mcp._db import tool_session
 from nexus_mcp.base import InputModel, OutputModel, ToolBase, ToolError
+from nexus_mcp.servers.booking.agendapro_delegate import (
+    delegate_cancel,
+    delegate_create,
+    delegate_modify,
+    get_active_credentials,
+    write_audit_with_screenshot,
+)
 from nexus_mcp.servers.booking.availability import find_free_slots
 from nexus_mcp.servers.booking.schemas import (
     AppointmentBrief,
@@ -26,6 +46,35 @@ from nexus_mcp.servers.booking.schemas import (
     ModifyAppointmentInput,
     ModifyAppointmentOutput,
 )
+
+log = structlog.get_logger(__name__)
+
+
+async def _resolve_barber_external_id(session: Any, barber_id: Any) -> str | None:
+    """Resuelve ``kg_nodes.properties.agendapro_id`` para el barber dado.
+    Retorna None si no existe el mapping (caller lo trata como "any
+    barber" del lado AgendaPro)."""
+    if barber_id is None:
+        return None
+    node = await session.get(KGNode, barber_id)
+    if node is None:
+        return None
+    props = node.properties or {}
+    val = props.get("agendapro_id")
+    return str(val) if val else None
+
+
+async def _resolve_customer_contact(session: Any, customer_id: Any) -> tuple[str, str, str | None]:
+    """(name, phone, email). El ``identifier`` del Customer típicamente
+    es el phone (canal whatsapp); ``preferences.email`` puede traer el
+    email."""
+    cust = await session.get(Customer, customer_id)
+    if cust is None:
+        raise ToolError(f"customer {customer_id} not found")
+    name = cust.name or (cust.preferences or {}).get("name") or "Cliente"
+    phone = cust.identifier
+    email = (cust.preferences or {}).get("email")
+    return str(name), str(phone), (str(email) if email else None)
 
 
 def _to_brief(a: Appointment) -> AppointmentBrief:
@@ -104,6 +153,51 @@ class CreateAppointment(ToolBase):
                     appointment=_to_brief(existing), idempotent_replay=True
                 )
 
+            # Bloque E branch: si el tenant tiene integration AgendaPro
+            # activa, delegamos primero, capturamos external_ref y
+            # screenshot, después persistimos local. Si AgendaPro falla,
+            # la transacción local entera rollbackea (no rows huérfanas).
+            external_ref: str | None = None
+            creds = await get_active_credentials(session)
+            if creds is not None:
+                barber_external_id = await _resolve_barber_external_id(session, payload.barber_id)
+                cust_name, cust_phone, cust_email = await _resolve_customer_contact(
+                    session, payload.customer_id
+                )
+                ap_result = await delegate_create(
+                    session,
+                    creds=creds,
+                    tenant_id=tenant_id,
+                    starts_at=payload.starts_at,
+                    duration_min=payload.duration_min,
+                    service_name=payload.service_name,
+                    barber_external_id=barber_external_id,
+                    customer_name=cust_name,
+                    customer_phone=cust_phone,
+                    customer_email=cust_email,
+                    notes=payload.notes,
+                    idempotency_key=payload.idempotency_key,
+                )
+                external_ref = (ap_result.get("appointment") or {}).get("external_ref")
+                if not external_ref:
+                    raise ToolError("agendapro create_appointment returned no external_ref")
+                await write_audit_with_screenshot(
+                    session,
+                    tenant_id=tenant_id,
+                    action="booking.create_appointment",
+                    target=f"agendapro:{external_ref}",
+                    screenshot=ap_result.get("screenshot"),
+                    extra={
+                        "service_name": payload.service_name,
+                        "starts_at": payload.starts_at.isoformat(),
+                    },
+                )
+                log.info(
+                    "booking.create.delegated_to_agendapro",
+                    tenant_id=str(tenant_id),
+                    external_ref=external_ref,
+                )
+
             row = Appointment(
                 tenant_id=tenant_id,
                 customer_id=payload.customer_id,
@@ -116,6 +210,7 @@ class CreateAppointment(ToolBase):
                 currency=payload.currency,
                 status=AppointmentStatus.BOOKED,
                 idempotency_key=payload.idempotency_key,
+                external_ref=external_ref,
                 notes=payload.notes,
             )
             session.add(row)
@@ -163,12 +258,39 @@ class ModifyAppointment(ToolBase):
 
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, ModifyAppointmentInput)
+        tenant_id = require_current_tenant()
         async with tool_session() as session:
             appt = await session.get(Appointment, payload.appointment_id)
             if appt is None:
                 raise ToolError(f"appointment {payload.appointment_id} not found for this tenant")
             if appt.status in (AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED):
                 raise ToolError(f"appointment is {appt.status.value}; cannot be modified")
+
+            # AgendaPro branch: si la cita tiene external_ref, delegamos
+            # primero. Si AgendaPro falla, transacción local rollback.
+            if appt.external_ref is not None:
+                creds = await get_active_credentials(session)
+                if creds is not None:
+                    new_barber_external_id = await _resolve_barber_external_id(
+                        session, payload.new_barber_id
+                    )
+                    ap_result = await delegate_modify(
+                        session,
+                        creds=creds,
+                        tenant_id=tenant_id,
+                        external_ref=appt.external_ref,
+                        new_starts_at=payload.new_starts_at,
+                        new_duration_min=payload.new_duration_min,
+                        new_barber_external_id=new_barber_external_id,
+                        new_service_name=payload.new_service_name,
+                    )
+                    await write_audit_with_screenshot(
+                        session,
+                        tenant_id=tenant_id,
+                        action="booking.modify_appointment",
+                        target=f"agendapro:{appt.external_ref}",
+                        screenshot=ap_result.get("screenshot"),
+                    )
 
             changed = False
             if payload.new_starts_at is not None:
@@ -213,6 +335,7 @@ class CancelAppointment(ToolBase):
 
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, CancelAppointmentInput)
+        tenant_id = require_current_tenant()
         async with tool_session() as session:
             appt = await session.get(Appointment, payload.appointment_id)
             if appt is None:
@@ -224,6 +347,28 @@ class CancelAppointment(ToolBase):
             # The real policy will be read from agent_config.policies in
             # Block F (it's per-tenant). The schema is stable.
             fee_pct = 0 if hours_to >= 24 else 50
+
+            # AgendaPro branch: si la cita tiene external_ref, delegamos.
+            # Idempotente — si la cita ya fue cancelada en AgendaPro,
+            # el server Node hace no-op.
+            if appt.external_ref is not None and appt.status != AppointmentStatus.CANCELLED:
+                creds = await get_active_credentials(session)
+                if creds is not None:
+                    ap_result = await delegate_cancel(
+                        session,
+                        creds=creds,
+                        tenant_id=tenant_id,
+                        external_ref=appt.external_ref,
+                        reason=payload.reason,
+                    )
+                    await write_audit_with_screenshot(
+                        session,
+                        tenant_id=tenant_id,
+                        action="booking.cancel_appointment",
+                        target=f"agendapro:{appt.external_ref}",
+                        screenshot=ap_result.get("screenshot"),
+                        extra={"fee_pct": fee_pct},
+                    )
 
             if appt.status != AppointmentStatus.CANCELLED:
                 appt.status = AppointmentStatus.CANCELLED

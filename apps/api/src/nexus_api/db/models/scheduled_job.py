@@ -16,6 +16,8 @@ from nexus_api.db.models._mixins import TenantScopedMixin, TimestampMixin, UUIDP
 
 class ScheduledJobKind(str, enum.Enum):
     REMINDER = "reminder"
+    HEALTH_CHECK = "health_check"
+    NO_SHOW_SCRAPE = "no_show_scrape"
 
 
 class ScheduledJobStatus(str, enum.Enum):

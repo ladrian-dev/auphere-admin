@@ -24,6 +24,7 @@ block-C stubs.
 
 from __future__ import annotations
 
+import secrets
 import time
 from collections.abc import Iterable
 from typing import Any
@@ -45,25 +46,99 @@ from nexus_mcp.metrics import record_error, record_invocation, record_latency
 log = structlog.get_logger(__name__)
 
 
+# ── internal caller token ───────────────────────────────────────────────────
+#
+# Bloque E introduce ``MCPRegistry.dispatch_internal`` para que los servers
+# Bloque D (en particular booking-server) puedan invocar tools internas
+# (``agendapro.*``) sin que el LLM tenga forma de alcanzarlas. Tres capas
+# defensivas, cualquiera de las cuales sería suficiente:
+#
+#   1. ESTRUCTURAL — las internal tools viven en ``_internal_tools``,
+#      separado del ``_tools`` público. ``dispatch(name, ...)`` consulta solo
+#      ``_tools``; aunque el LLM alucine ``agendapro.create_appointment``,
+#      ``_tools.get(name)`` devuelve None.
+#
+#   2. CATÁLOGO — la migración 0008 + seed marca las 6 ``agendapro.*`` con
+#      ``tool_status='internal'``. El endpoint admin que edita
+#      ``agent_config.tools`` rechaza nombres con ese status.
+#
+#   3. SIGNING (cinturón y tirante) — ``dispatch_internal`` requiere
+#      ``caller_token`` que es un secret in-memory generado al startup del
+#      proceso. Lo conoce solo el código del paquete que se compila junto
+#      con booking-server. El LLM nunca lo ve, así que aunque (hipotético)
+#      lograra invocar la función Python, no puede pasar el token.
+#
+# El token rota por proceso (no se persiste). Si alguien lo loggea por
+# accidente, queda en disco pero no es reutilizable a través de restarts.
+
+_INTERNAL_CALLER_TOKEN: str = secrets.token_urlsafe(32)
+
+
+def get_internal_caller_token() -> str:
+    """Token in-memory que ``dispatch_internal`` exige.
+
+    Lo importan los servers Bloque D que necesitan delegar a tools
+    internas (booking → agendapro). Tests pueden importarlo igual.
+    """
+    return _INTERNAL_CALLER_TOKEN
+
+
+class InternalCallerTokenInvalid(ToolError):
+    """``dispatch_internal`` rechazó el caller_token."""
+
+
 class MCPRegistry:
-    def __init__(self, tools: Iterable[ToolBase] | None = None) -> None:
+    def __init__(
+        self,
+        tools: Iterable[ToolBase] | None = None,
+        internal_tools: Iterable[ToolBase] | None = None,
+    ) -> None:
         self._tools: dict[str, ToolBase] = {}
+        self._internal_tools: dict[str, ToolBase] = {}
         if tools is not None:
             for t in tools:
                 self.register(t)
+        if internal_tools is not None:
+            for t in internal_tools:
+                self.register_internal(t)
 
     # ── registration ─────────────────────────────────────────────────────
 
     def register(self, tool: ToolBase) -> None:
         if tool.name in self._tools:
             raise RuntimeError(f"tool {tool.name!r} is already registered")
+        if tool.name in self._internal_tools:
+            raise RuntimeError(
+                f"tool {tool.name!r} already registered as internal — cannot also be public"
+            )
         self._tools[tool.name] = tool
+
+    def register_internal(self, tool: ToolBase) -> None:
+        """Registra una tool en el espacio interno (no LLM-facing).
+
+        Solo invocable vía ``dispatch_internal`` con caller_token. NO
+        aparece en ``names()``, ``get_tool_definitions()``, ni
+        ``dispatch()``.
+        """
+        if tool.name in self._internal_tools:
+            raise RuntimeError(f"internal tool {tool.name!r} is already registered")
+        if tool.name in self._tools:
+            raise RuntimeError(
+                f"tool {tool.name!r} already registered as public — cannot also be internal"
+            )
+        self._internal_tools[tool.name] = tool
 
     def has(self, name: str) -> bool:
         return name in self._tools
 
+    def has_internal(self, name: str) -> bool:
+        return name in self._internal_tools
+
     def names(self) -> tuple[str, ...]:
         return tuple(self._tools.keys())
+
+    def internal_names(self) -> tuple[str, ...]:
+        return tuple(self._internal_tools.keys())
 
     # ── LLM-facing definitions ───────────────────────────────────────────
 
@@ -134,6 +209,47 @@ class MCPRegistry:
             record_latency(name, elapsed_ms)
         return envelope
 
+    async def dispatch_internal(
+        self,
+        name: str,
+        args: dict[str, Any],
+        *,
+        caller_token: str,
+    ) -> ToolResult:
+        """Invoca una tool del espacio interno. NO chequea whitelist
+        (las internal tools están fuera de cualquier whitelist por
+        construcción), pero exige ``caller_token`` válido.
+
+        Bloque E uso primario: ``booking.create_appointment.run`` detecta
+        que el tenant tiene integration='agendapro' activa y llama
+        ``dispatch_internal('agendapro.create_appointment', ...)`` para
+        delegar al server subprocess. El external_ref devuelto se persiste
+        en la fila local de ``appointments``.
+        """
+        if not secrets.compare_digest(caller_token, _INTERNAL_CALLER_TOKEN):
+            log.warning("dispatch_internal.invalid_caller_token", tool=name)
+            raise InternalCallerTokenInvalid(f"caller_token rejected for internal tool {name!r}")
+        tenant_id = require_current_tenant()
+        tool = self._internal_tools.get(name)
+        if tool is None:
+            raise ToolError(f"internal tool {name!r} is not registered")
+
+        record_invocation(name)
+        started = time.perf_counter()
+        try:
+            envelope = await tool.invoke(args)
+        except ToolError:
+            record_error(name, "ToolError")
+            raise
+        except Exception as exc:
+            record_error(name, type(exc).__name__)
+            log.exception("internal_tool.run_failed", tool=name, tenant_id=str(tenant_id))
+            raise ToolError(f"internal tool {name!r} failed: {exc}") from exc
+        finally:
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            record_latency(name, elapsed_ms)
+        return envelope
+
     async def safe_dispatch(
         self,
         name: str,
@@ -167,15 +283,25 @@ _default_registry: MCPRegistry | None = None
 
 
 def build_default_registry() -> MCPRegistry:
-    """Construct the registry with all 6 Block-D servers loaded. Imported
-    by the worker on startup. Tests typically build their own registry
-    with a subset for fast targeted runs."""
+    """Construct the registry with all 6 Block-D public servers + the
+    Block-E agendapro internal tools loaded. Imported by the worker on
+    startup. Tests typically build their own registry with a subset for
+    fast targeted runs.
+
+    The agendapro.* internal tools resolve their transport lazily — at
+    dispatch time, not registration time — so importing this function
+    does NOT require the Node subprocess to be available. Tests that
+    actually invoke them must call
+    ``nexus_mcp.servers.agendapro_browser.transport.set_default_transport``
+    first (typically with a ``FakeAgendaProTransport``).
+    """
     global _default_registry
     if _default_registry is not None:
         return _default_registry
 
     # Local imports to avoid circular deps (each server's tools.py can
     # import from nexus_mcp.base safely).
+    from nexus_mcp.servers.agendapro_browser.tools import build_agendapro_tools
     from nexus_mcp.servers.booking.tools import BOOKING_TOOLS
     from nexus_mcp.servers.client.tools import CLIENT_TOOLS
     from nexus_mcp.servers.commission.tools import COMMISSION_TOOLS
@@ -193,6 +319,8 @@ def build_default_registry() -> MCPRegistry:
         *NOTIFICATION_TOOLS,
     ):
         registry.register(tool_cls())
+    for internal_tool in build_agendapro_tools():
+        registry.register_internal(internal_tool)
     _default_registry = registry
     return registry
 

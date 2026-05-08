@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.errors import AgentConfigConflict
-from nexus_api.db.models import AgentConfig
+from nexus_api.db.models import AgentConfig, ToolStatus
 from nexus_api.repositories import (
     AgentConfigRepository,
     AuditRepository,
@@ -90,7 +90,20 @@ class AgentConfigService:
     async def _validate_tools(self, tools: list[str]) -> None:
         if not tools:
             return
-        catalog = {t.name for t in await self.tools.list_all(include_deprecated=True)}
+        catalog_rows = await self.tools.list_all(
+            include_deprecated=True, include_internal=True
+        )
+        catalog = {t.name: t for t in catalog_rows}
         unknown = [t for t in tools if t not in catalog]
         if unknown:
             raise AgentConfigConflict("Tools not in catalog: " + ", ".join(unknown))
+        # Bloque E: las tools internas (ej. ``agendapro.*``) NO pueden
+        # entrar en la whitelist de un agent_config — solo se invocan vía
+        # ``MCPRegistry.dispatch_internal`` desde otros servers. Defense
+        # in depth: aunque el operator panel no las ofrezca, este check
+        # captura un intento manual.
+        internal = [t for t in tools if catalog[t].status == ToolStatus.INTERNAL]
+        if internal:
+            raise AgentConfigConflict(
+                "Internal tools cannot be whitelisted for an agent: " + ", ".join(internal)
+            )

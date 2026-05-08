@@ -16,6 +16,10 @@ class ToolStatus(str, enum.Enum):
     ACTIVE = "active"
     DEPRECATED = "deprecated"
     EXPERIMENTAL = "experimental"
+    # ``internal`` tools no aparecen en MCPRegistry.dispatch (LLM-facing) ni
+    # se whitelistean en agent_config.tools. Solo invocables vía
+    # MCPRegistry.dispatch_internal desde otros servers (ver Bloque E).
+    INTERNAL = "internal"
 
 
 class ToolCatalog(UUIDPrimaryKey, TimestampMixin, Base):

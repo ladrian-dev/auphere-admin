@@ -1,0 +1,1221 @@
+[
+  {
+    "name": "agendapro.check_availability",
+    "description": "List available slots in AgendaPro for the given date and service. Result is cached server-side for 5 minutes per (barber, date, service).",
+    "mcp_server": "agendapro_browser_mcp",
+    "side_effects": [
+      "external_api",
+      "browser_automation"
+    ],
+    "capability_tags": [
+      "booking",
+      "barbershop",
+      "agendapro"
+    ],
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Browserbase context_id del tenant. El adapter Python lo lee de ``tenant_credentials.encrypted_payload`` y lo pasa en cada call. Si el server ya tiene una sesi\u00f3n attach'd al mismo context_id, la reusa; si difiere, re-attach.",
+          "title": "Context Id"
+        },
+        "on_date": {
+          "format": "date",
+          "title": "On Date",
+          "type": "string"
+        },
+        "service_name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Service Name",
+          "type": "string"
+        },
+        "barber_external_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID del profesional en AgendaPro. El adapter Python lo resuelve desde ``kg_nodes.properties.agendapro_id`` antes de invocar.",
+          "title": "Barber External Id"
+        },
+        "duration_min": {
+          "default": 30,
+          "maximum": 480,
+          "minimum": 5,
+          "title": "Duration Min",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "on_date",
+        "service_name"
+      ],
+      "title": "CheckAvailabilityInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AgendaProSlot": {
+          "additionalProperties": false,
+          "properties": {
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "ends_at": {
+              "format": "date-time",
+              "title": "Ends At",
+              "type": "string"
+            },
+            "barber_external_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "ID del profesional en AgendaPro (no nuestro barber_id local).",
+              "title": "Barber External Id"
+            }
+          },
+          "required": [
+            "starts_at",
+            "ends_at"
+          ],
+          "title": "AgendaProSlot",
+          "type": "object"
+        },
+        "SessionStatus": {
+          "additionalProperties": false,
+          "description": "Devuelta por TODA tool: indica si el server detect\u00f3 que el context\nest\u00e1 expirado. El adapter Python, si ve ``needs_reauth=True``, dispara\nun ``_health_check`` y reintenta una vez antes de propagar.",
+          "properties": {
+            "needs_reauth": {
+              "default": false,
+              "description": "True si el server intent\u00f3 usar el context_id pero AgendaPro respondi\u00f3 con la pantalla de login (sesi\u00f3n expirada). El adapter Python flippea ``tenant_credentials.needs_reauth`` y dispara escalate.escalate_to_human si re-login auto tambi\u00e9n falla.",
+              "title": "Needs Reauth",
+              "type": "boolean"
+            }
+          },
+          "title": "SessionStatus",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "on_date": {
+          "format": "date",
+          "title": "On Date",
+          "type": "string"
+        },
+        "service_name": {
+          "title": "Service Name",
+          "type": "string"
+        },
+        "slots": {
+          "items": {
+            "$ref": "#/$defs/AgendaProSlot"
+          },
+          "title": "Slots",
+          "type": "array"
+        },
+        "cached": {
+          "default": false,
+          "description": "True si el resultado vino del cache Redis 5min del lado Node.",
+          "title": "Cached",
+          "type": "boolean"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionStatus"
+        }
+      },
+      "required": [
+        "on_date",
+        "service_name",
+        "slots"
+      ],
+      "title": "CheckAvailabilityOutput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "agendapro.create_appointment",
+    "description": "Create an appointment in AgendaPro. Idempotent via a stable key derived inside the server from tenant_id + intent_hash. Captures a screenshot of the confirmation page; URL written to audit_log.",
+    "mcp_server": "agendapro_browser_mcp",
+    "side_effects": [
+      "external_api",
+      "browser_automation",
+      "mutates_external"
+    ],
+    "capability_tags": [
+      "booking",
+      "barbershop",
+      "agendapro"
+    ],
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Sin idempotency_key \u2014 la compone el server Node internamente.",
+      "properties": {
+        "context_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Browserbase context_id del tenant. El adapter Python lo lee de ``tenant_credentials.encrypted_payload`` y lo pasa en cada call. Si el server ya tiene una sesi\u00f3n attach'd al mismo context_id, la reusa; si difiere, re-attach.",
+          "title": "Context Id"
+        },
+        "intent_hash": {
+          "description": "Hash determin\u00edstico del turn (conv id + user message). El server Node compone ``auphere_<tenant_id>_<intent_hash>`` y lo usa como idempotency key contra AgendaPro. Sirve para que retries del webhook YCloud no doble-booken.",
+          "maxLength": 64,
+          "minLength": 8,
+          "title": "Intent Hash",
+          "type": "string"
+        },
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "duration_min": {
+          "default": 30,
+          "maximum": 480,
+          "minimum": 5,
+          "title": "Duration Min",
+          "type": "integer"
+        },
+        "service_name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Service Name",
+          "type": "string"
+        },
+        "barber_external_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Barber External Id"
+        },
+        "customer_name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Customer Name",
+          "type": "string"
+        },
+        "customer_phone": {
+          "maxLength": 40,
+          "minLength": 4,
+          "title": "Customer Phone",
+          "type": "string"
+        },
+        "customer_email": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Email"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "intent_hash",
+        "starts_at",
+        "service_name",
+        "customer_name",
+        "customer_phone"
+      ],
+      "title": "CreateAppointmentInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AgendaProAppointment": {
+          "additionalProperties": false,
+          "description": "Vista can\u00f3nica de una cita en AgendaPro.\n\n``external_ref`` es el id de AgendaPro \u2014 se persiste en\n``appointments.external_ref`` desde la fachada booking.create_appointment.",
+          "properties": {
+            "external_ref": {
+              "title": "External Ref",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "ends_at": {
+              "format": "date-time",
+              "title": "Ends At",
+              "type": "string"
+            },
+            "service_name": {
+              "title": "Service Name",
+              "type": "string"
+            },
+            "barber_external_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barber External Id"
+            },
+            "customer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Name"
+            },
+            "customer_phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Phone"
+            },
+            "status": {
+              "enum": [
+                "booked",
+                "confirmed",
+                "cancelled",
+                "completed",
+                "no_show"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "management_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "URL de gesti\u00f3n que AgendaPro env\u00eda al cliente final, si est\u00e1 disponible. Bloque E lo captura para futura modificaci\u00f3n/cancelaci\u00f3n sin re-login.",
+              "title": "Management Url"
+            }
+          },
+          "required": [
+            "external_ref",
+            "starts_at",
+            "ends_at",
+            "service_name",
+            "barber_external_id",
+            "customer_name",
+            "customer_phone",
+            "status"
+          ],
+          "title": "AgendaProAppointment",
+          "type": "object"
+        },
+        "ScreenshotMeta": {
+          "additionalProperties": false,
+          "description": "Devuelta por toda acci\u00f3n mutativa para que el adapter Python\npersista la URL en ``audit_log.after_json``.",
+          "properties": {
+            "screenshot_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "URI del screenshot capturado. Phase 1: ``file://...`` cuando el ScreenshotStore es LocalDisk. Bloque G/H lo migra a R2 sin cambiar este shape.",
+              "title": "Screenshot Url"
+            },
+            "screenshot_failed": {
+              "default": false,
+              "title": "Screenshot Failed",
+              "type": "boolean"
+            },
+            "screenshot_error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Screenshot Error"
+            }
+          },
+          "title": "ScreenshotMeta",
+          "type": "object"
+        },
+        "SessionStatus": {
+          "additionalProperties": false,
+          "description": "Devuelta por TODA tool: indica si el server detect\u00f3 que el context\nest\u00e1 expirado. El adapter Python, si ve ``needs_reauth=True``, dispara\nun ``_health_check`` y reintenta una vez antes de propagar.",
+          "properties": {
+            "needs_reauth": {
+              "default": false,
+              "description": "True si el server intent\u00f3 usar el context_id pero AgendaPro respondi\u00f3 con la pantalla de login (sesi\u00f3n expirada). El adapter Python flippea ``tenant_credentials.needs_reauth`` y dispara escalate.escalate_to_human si re-login auto tambi\u00e9n falla.",
+              "title": "Needs Reauth",
+              "type": "boolean"
+            }
+          },
+          "title": "SessionStatus",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "appointment": {
+          "$ref": "#/$defs/AgendaProAppointment"
+        },
+        "idempotent_replay": {
+          "title": "Idempotent Replay",
+          "type": "boolean"
+        },
+        "screenshot": {
+          "$ref": "#/$defs/ScreenshotMeta"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionStatus"
+        }
+      },
+      "required": [
+        "appointment",
+        "idempotent_replay",
+        "screenshot"
+      ],
+      "title": "CreateAppointmentOutput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "agendapro.modify_appointment",
+    "description": "Modify an existing AgendaPro appointment by external_ref. Captures a screenshot of the modified detail page.",
+    "mcp_server": "agendapro_browser_mcp",
+    "side_effects": [
+      "external_api",
+      "browser_automation",
+      "mutates_external"
+    ],
+    "capability_tags": [
+      "booking",
+      "barbershop",
+      "agendapro"
+    ],
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Browserbase context_id del tenant. El adapter Python lo lee de ``tenant_credentials.encrypted_payload`` y lo pasa en cada call. Si el server ya tiene una sesi\u00f3n attach'd al mismo context_id, la reusa; si difiere, re-attach.",
+          "title": "Context Id"
+        },
+        "external_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "External Ref",
+          "type": "string"
+        },
+        "new_starts_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "New Starts At"
+        },
+        "new_duration_min": {
+          "anyOf": [
+            {
+              "maximum": 480,
+              "minimum": 5,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "New Duration Min"
+        },
+        "new_barber_external_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "New Barber External Id"
+        },
+        "new_service_name": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "New Service Name"
+        }
+      },
+      "required": [
+        "external_ref"
+      ],
+      "title": "ModifyAppointmentInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AgendaProAppointment": {
+          "additionalProperties": false,
+          "description": "Vista can\u00f3nica de una cita en AgendaPro.\n\n``external_ref`` es el id de AgendaPro \u2014 se persiste en\n``appointments.external_ref`` desde la fachada booking.create_appointment.",
+          "properties": {
+            "external_ref": {
+              "title": "External Ref",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "ends_at": {
+              "format": "date-time",
+              "title": "Ends At",
+              "type": "string"
+            },
+            "service_name": {
+              "title": "Service Name",
+              "type": "string"
+            },
+            "barber_external_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barber External Id"
+            },
+            "customer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Name"
+            },
+            "customer_phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Phone"
+            },
+            "status": {
+              "enum": [
+                "booked",
+                "confirmed",
+                "cancelled",
+                "completed",
+                "no_show"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "management_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "URL de gesti\u00f3n que AgendaPro env\u00eda al cliente final, si est\u00e1 disponible. Bloque E lo captura para futura modificaci\u00f3n/cancelaci\u00f3n sin re-login.",
+              "title": "Management Url"
+            }
+          },
+          "required": [
+            "external_ref",
+            "starts_at",
+            "ends_at",
+            "service_name",
+            "barber_external_id",
+            "customer_name",
+            "customer_phone",
+            "status"
+          ],
+          "title": "AgendaProAppointment",
+          "type": "object"
+        },
+        "ScreenshotMeta": {
+          "additionalProperties": false,
+          "description": "Devuelta por toda acci\u00f3n mutativa para que el adapter Python\npersista la URL en ``audit_log.after_json``.",
+          "properties": {
+            "screenshot_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "URI del screenshot capturado. Phase 1: ``file://...`` cuando el ScreenshotStore es LocalDisk. Bloque G/H lo migra a R2 sin cambiar este shape.",
+              "title": "Screenshot Url"
+            },
+            "screenshot_failed": {
+              "default": false,
+              "title": "Screenshot Failed",
+              "type": "boolean"
+            },
+            "screenshot_error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Screenshot Error"
+            }
+          },
+          "title": "ScreenshotMeta",
+          "type": "object"
+        },
+        "SessionStatus": {
+          "additionalProperties": false,
+          "description": "Devuelta por TODA tool: indica si el server detect\u00f3 que el context\nest\u00e1 expirado. El adapter Python, si ve ``needs_reauth=True``, dispara\nun ``_health_check`` y reintenta una vez antes de propagar.",
+          "properties": {
+            "needs_reauth": {
+              "default": false,
+              "description": "True si el server intent\u00f3 usar el context_id pero AgendaPro respondi\u00f3 con la pantalla de login (sesi\u00f3n expirada). El adapter Python flippea ``tenant_credentials.needs_reauth`` y dispara escalate.escalate_to_human si re-login auto tambi\u00e9n falla.",
+              "title": "Needs Reauth",
+              "type": "boolean"
+            }
+          },
+          "title": "SessionStatus",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "appointment": {
+          "$ref": "#/$defs/AgendaProAppointment"
+        },
+        "status": {
+          "enum": [
+            "modified",
+            "no_changes"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "screenshot": {
+          "$ref": "#/$defs/ScreenshotMeta"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionStatus"
+        }
+      },
+      "required": [
+        "appointment",
+        "status",
+        "screenshot"
+      ],
+      "title": "ModifyAppointmentOutput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "agendapro.cancel_appointment",
+    "description": "Cancel an AgendaPro appointment by external_ref. Idempotent: cancelling an already-cancelled appointment is a no-op.",
+    "mcp_server": "agendapro_browser_mcp",
+    "side_effects": [
+      "external_api",
+      "browser_automation",
+      "mutates_external"
+    ],
+    "capability_tags": [
+      "booking",
+      "barbershop",
+      "agendapro"
+    ],
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Browserbase context_id del tenant. El adapter Python lo lee de ``tenant_credentials.encrypted_payload`` y lo pasa en cada call. Si el server ya tiene una sesi\u00f3n attach'd al mismo context_id, la reusa; si difiere, re-attach.",
+          "title": "Context Id"
+        },
+        "external_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "External Ref",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "external_ref"
+      ],
+      "title": "CancelAppointmentInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "ScreenshotMeta": {
+          "additionalProperties": false,
+          "description": "Devuelta por toda acci\u00f3n mutativa para que el adapter Python\npersista la URL en ``audit_log.after_json``.",
+          "properties": {
+            "screenshot_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "URI del screenshot capturado. Phase 1: ``file://...`` cuando el ScreenshotStore es LocalDisk. Bloque G/H lo migra a R2 sin cambiar este shape.",
+              "title": "Screenshot Url"
+            },
+            "screenshot_failed": {
+              "default": false,
+              "title": "Screenshot Failed",
+              "type": "boolean"
+            },
+            "screenshot_error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Screenshot Error"
+            }
+          },
+          "title": "ScreenshotMeta",
+          "type": "object"
+        },
+        "SessionStatus": {
+          "additionalProperties": false,
+          "description": "Devuelta por TODA tool: indica si el server detect\u00f3 que el context\nest\u00e1 expirado. El adapter Python, si ve ``needs_reauth=True``, dispara\nun ``_health_check`` y reintenta una vez antes de propagar.",
+          "properties": {
+            "needs_reauth": {
+              "default": false,
+              "description": "True si el server intent\u00f3 usar el context_id pero AgendaPro respondi\u00f3 con la pantalla de login (sesi\u00f3n expirada). El adapter Python flippea ``tenant_credentials.needs_reauth`` y dispara escalate.escalate_to_human si re-login auto tambi\u00e9n falla.",
+              "title": "Needs Reauth",
+              "type": "boolean"
+            }
+          },
+          "title": "SessionStatus",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "external_ref": {
+          "title": "External Ref",
+          "type": "string"
+        },
+        "status": {
+          "const": "cancelled",
+          "title": "Status",
+          "type": "string"
+        },
+        "screenshot": {
+          "$ref": "#/$defs/ScreenshotMeta"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionStatus"
+        }
+      },
+      "required": [
+        "external_ref",
+        "status",
+        "screenshot"
+      ],
+      "title": "CancelAppointmentOutput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "agendapro.get_today_appointments",
+    "description": "Read-only list of today's appointments for the tenant from AgendaPro's calendar view. Used by no-show detection and operator dashboards.",
+    "mcp_server": "agendapro_browser_mcp",
+    "side_effects": [
+      "external_api",
+      "browser_automation"
+    ],
+    "capability_tags": [
+      "booking",
+      "barbershop",
+      "agendapro"
+    ],
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Browserbase context_id del tenant. El adapter Python lo lee de ``tenant_credentials.encrypted_payload`` y lo pasa en cada call. Si el server ya tiene una sesi\u00f3n attach'd al mismo context_id, la reusa; si difiere, re-attach.",
+          "title": "Context Id"
+        }
+      },
+      "title": "GetTodayAppointmentsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AgendaProAppointment": {
+          "additionalProperties": false,
+          "description": "Vista can\u00f3nica de una cita en AgendaPro.\n\n``external_ref`` es el id de AgendaPro \u2014 se persiste en\n``appointments.external_ref`` desde la fachada booking.create_appointment.",
+          "properties": {
+            "external_ref": {
+              "title": "External Ref",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "ends_at": {
+              "format": "date-time",
+              "title": "Ends At",
+              "type": "string"
+            },
+            "service_name": {
+              "title": "Service Name",
+              "type": "string"
+            },
+            "barber_external_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barber External Id"
+            },
+            "customer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Name"
+            },
+            "customer_phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Phone"
+            },
+            "status": {
+              "enum": [
+                "booked",
+                "confirmed",
+                "cancelled",
+                "completed",
+                "no_show"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "management_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "URL de gesti\u00f3n que AgendaPro env\u00eda al cliente final, si est\u00e1 disponible. Bloque E lo captura para futura modificaci\u00f3n/cancelaci\u00f3n sin re-login.",
+              "title": "Management Url"
+            }
+          },
+          "required": [
+            "external_ref",
+            "starts_at",
+            "ends_at",
+            "service_name",
+            "barber_external_id",
+            "customer_name",
+            "customer_phone",
+            "status"
+          ],
+          "title": "AgendaProAppointment",
+          "type": "object"
+        },
+        "SessionStatus": {
+          "additionalProperties": false,
+          "description": "Devuelta por TODA tool: indica si el server detect\u00f3 que el context\nest\u00e1 expirado. El adapter Python, si ve ``needs_reauth=True``, dispara\nun ``_health_check`` y reintenta una vez antes de propagar.",
+          "properties": {
+            "needs_reauth": {
+              "default": false,
+              "description": "True si el server intent\u00f3 usar el context_id pero AgendaPro respondi\u00f3 con la pantalla de login (sesi\u00f3n expirada). El adapter Python flippea ``tenant_credentials.needs_reauth`` y dispara escalate.escalate_to_human si re-login auto tambi\u00e9n falla.",
+              "title": "Needs Reauth",
+              "type": "boolean"
+            }
+          },
+          "title": "SessionStatus",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "appointments": {
+          "items": {
+            "$ref": "#/$defs/AgendaProAppointment"
+          },
+          "title": "Appointments",
+          "type": "array"
+        },
+        "fetched_at": {
+          "format": "date-time",
+          "title": "Fetched At",
+          "type": "string"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionStatus"
+        }
+      },
+      "required": [
+        "appointments",
+        "fetched_at"
+      ],
+      "title": "GetTodayAppointmentsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "agendapro.scrape_no_shows",
+    "description": "Detect no-show appointments for the given date (default: today). Cron invokes 22:00 tenant TZ. Captures a screenshot of the report view.",
+    "mcp_server": "agendapro_browser_mcp",
+    "side_effects": [
+      "external_api",
+      "browser_automation"
+    ],
+    "capability_tags": [
+      "booking",
+      "barbershop",
+      "agendapro"
+    ],
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Browserbase context_id del tenant. El adapter Python lo lee de ``tenant_credentials.encrypted_payload`` y lo pasa en cada call. Si el server ya tiene una sesi\u00f3n attach'd al mismo context_id, la reusa; si difiere, re-attach.",
+          "title": "Context Id"
+        },
+        "on_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Si se omite, scrape de la fecha actual del tenant. El cron Bloque H corre 22:00 tenant TZ y omite el campo.",
+          "title": "On Date"
+        }
+      },
+      "title": "ScrapeNoShowsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "NoShowEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "external_ref": {
+              "title": "External Ref",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "service_name": {
+              "title": "Service Name",
+              "type": "string"
+            },
+            "customer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Name"
+            },
+            "customer_phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Phone"
+            },
+            "barber_external_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barber External Id"
+            }
+          },
+          "required": [
+            "external_ref",
+            "starts_at",
+            "service_name",
+            "customer_name",
+            "customer_phone",
+            "barber_external_id"
+          ],
+          "title": "NoShowEntry",
+          "type": "object"
+        },
+        "ScreenshotMeta": {
+          "additionalProperties": false,
+          "description": "Devuelta por toda acci\u00f3n mutativa para que el adapter Python\npersista la URL en ``audit_log.after_json``.",
+          "properties": {
+            "screenshot_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "URI del screenshot capturado. Phase 1: ``file://...`` cuando el ScreenshotStore es LocalDisk. Bloque G/H lo migra a R2 sin cambiar este shape.",
+              "title": "Screenshot Url"
+            },
+            "screenshot_failed": {
+              "default": false,
+              "title": "Screenshot Failed",
+              "type": "boolean"
+            },
+            "screenshot_error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Screenshot Error"
+            }
+          },
+          "title": "ScreenshotMeta",
+          "type": "object"
+        },
+        "SessionStatus": {
+          "additionalProperties": false,
+          "description": "Devuelta por TODA tool: indica si el server detect\u00f3 que el context\nest\u00e1 expirado. El adapter Python, si ve ``needs_reauth=True``, dispara\nun ``_health_check`` y reintenta una vez antes de propagar.",
+          "properties": {
+            "needs_reauth": {
+              "default": false,
+              "description": "True si el server intent\u00f3 usar el context_id pero AgendaPro respondi\u00f3 con la pantalla de login (sesi\u00f3n expirada). El adapter Python flippea ``tenant_credentials.needs_reauth`` y dispara escalate.escalate_to_human si re-login auto tambi\u00e9n falla.",
+              "title": "Needs Reauth",
+              "type": "boolean"
+            }
+          },
+          "title": "SessionStatus",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "on_date": {
+          "format": "date",
+          "title": "On Date",
+          "type": "string"
+        },
+        "no_shows": {
+          "items": {
+            "$ref": "#/$defs/NoShowEntry"
+          },
+          "title": "No Shows",
+          "type": "array"
+        },
+        "screenshot": {
+          "$ref": "#/$defs/ScreenshotMeta"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionStatus"
+        }
+      },
+      "required": [
+        "on_date",
+        "no_shows",
+        "screenshot"
+      ],
+      "title": "ScrapeNoShowsOutput",
+      "type": "object"
+    }
+  }
+]

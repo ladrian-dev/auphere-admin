@@ -1,0 +1,40 @@
+{
+  "name": "@nexus/agendapro-browser-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Subprocess MCP server (stdio JSON-RPC) backing the 6 agendapro.* internal tools. Stagehand v3 + Browserbase Contexts.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts",
+    "lint": "eslint 'src/**/*.ts' 'tests/**/*.ts'",
+    "lint:fix": "eslint --fix 'src/**/*.ts' 'tests/**/*.ts'",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@browserbasehq/sdk": "^2.0.0",
+    "@browserbasehq/stagehand": "^3.0.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "ioredis": "^5.4.0",
+    "pino": "^9.0.0",
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
