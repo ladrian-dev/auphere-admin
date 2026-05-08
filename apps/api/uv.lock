@@ -1760,6 +1760,7 @@ dev = [
     { name = "fakeredis" },
     { name = "httpx" },
     { name = "mypy" },
+    { name = "nexus-mcp" },
     { name = "nexus-worker" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1777,6 +1778,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
+    { name = "nexus-mcp", marker = "extra == 'dev'", editable = "../mcp" },
     { name = "nexus-worker", marker = "extra == 'dev'", editable = "../worker" },
     { name = "opentelemetry-api", specifier = ">=1.28.0" },
     { name = "opentelemetry-instrumentation-asyncpg", specifier = ">=0.49b0" },
@@ -1799,6 +1801,33 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [[package]]
+name = "nexus-mcp"
+version = "0.1.0"
+source = { editable = "../mcp" }
+dependencies = [
+    { name = "nexus-api" },
+    { name = "pydantic" },
+    { name = "redis" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "structlog" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fakeredis", marker = "extra == 'dev'", specifier = ">=2.26.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
+    { name = "nexus-api", editable = "." },
+    { name = "pydantic", specifier = ">=2.9.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
+    { name = "redis", specifier = ">=5.2.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
+    { name = "structlog", specifier = ">=24.4.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "nexus-worker"
 version = "0.1.0"
 source = { editable = "../worker" }
@@ -1808,6 +1837,7 @@ dependencies = [
     { name = "langgraph-checkpoint-postgres" },
     { name = "litellm" },
     { name = "nexus-api" },
+    { name = "nexus-mcp" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -1825,6 +1855,7 @@ requires-dist = [
     { name = "litellm", specifier = ">=1.52.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
     { name = "nexus-api", editable = "." },
+    { name = "nexus-mcp", editable = "../mcp" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2.0" },
     { name = "pydantic", specifier = ">=2.9.0" },
     { name = "pydantic-settings", specifier = ">=2.6.0" },

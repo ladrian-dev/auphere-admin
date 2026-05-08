@@ -1,0 +1,1613 @@
+{
+  "booking.cancel_appointment": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "appointment_id": {
+          "format": "uuid",
+          "title": "Appointment Id",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "appointment_id"
+      ],
+      "title": "CancelAppointmentInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "appointment_id": {
+          "format": "uuid",
+          "title": "Appointment Id",
+          "type": "string"
+        },
+        "status": {
+          "const": "cancelled",
+          "title": "Status",
+          "type": "string"
+        },
+        "fee_pct": {
+          "description": "Cancellation fee percentage applied per tenant policy.",
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Fee Pct",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "appointment_id",
+        "status",
+        "fee_pct"
+      ],
+      "title": "CancelAppointmentOutput",
+      "type": "object"
+    }
+  },
+  "booking.check_availability": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "on_date": {
+          "description": "Date to check (ISO YYYY-MM-DD), interpreted in the tenant's timezone.",
+          "format": "date",
+          "title": "On Date",
+          "type": "string"
+        },
+        "service_name": {
+          "description": "Service the customer wants \u2014 must match a service known to the tenant.",
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Service Name",
+          "type": "string"
+        },
+        "barber_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional preferred barber. Omit to consider any barber.",
+          "title": "Barber Id"
+        },
+        "duration_min": {
+          "default": 30,
+          "description": "Service duration in minutes. Default 30.",
+          "maximum": 480,
+          "minimum": 5,
+          "title": "Duration Min",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "on_date",
+        "service_name"
+      ],
+      "title": "CheckAvailabilityInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AvailableSlot": {
+          "additionalProperties": false,
+          "properties": {
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "ends_at": {
+              "format": "date-time",
+              "title": "Ends At",
+              "type": "string"
+            },
+            "barber_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barber Id"
+            }
+          },
+          "required": [
+            "starts_at",
+            "ends_at",
+            "barber_id"
+          ],
+          "title": "AvailableSlot",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "on_date": {
+          "format": "date",
+          "title": "On Date",
+          "type": "string"
+        },
+        "service_name": {
+          "title": "Service Name",
+          "type": "string"
+        },
+        "slots": {
+          "items": {
+            "$ref": "#/$defs/AvailableSlot"
+          },
+          "title": "Slots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "on_date",
+        "service_name",
+        "slots"
+      ],
+      "title": "CheckAvailabilityOutput",
+      "type": "object"
+    }
+  },
+  "booking.create_appointment": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "service_name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Service Name",
+          "type": "string"
+        },
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "duration_min": {
+          "default": 30,
+          "maximum": 480,
+          "minimum": 5,
+          "title": "Duration Min",
+          "type": "integer"
+        },
+        "barber_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Barber Id"
+        },
+        "price_cents": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Price Cents",
+          "type": "integer"
+        },
+        "currency": {
+          "default": "CLP",
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Currency",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "description": "Caller-supplied idempotency token. Two ``create_appointment`` calls with the same key for the same tenant return the SAME row, never two separate appointments. Required to avoid double-booking on webhook retries.",
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "customer_id",
+        "service_name",
+        "starts_at",
+        "idempotency_key"
+      ],
+      "title": "CreateAppointmentInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AppointmentBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "appointment_id": {
+              "format": "uuid",
+              "title": "Appointment Id",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "ends_at": {
+              "format": "date-time",
+              "title": "Ends At",
+              "type": "string"
+            },
+            "service_name": {
+              "title": "Service Name",
+              "type": "string"
+            },
+            "barber_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barber Id"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "price_cents": {
+              "title": "Price Cents",
+              "type": "integer"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            }
+          },
+          "required": [
+            "appointment_id",
+            "starts_at",
+            "ends_at",
+            "service_name",
+            "barber_id",
+            "status",
+            "price_cents",
+            "currency"
+          ],
+          "title": "AppointmentBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "appointment": {
+          "$ref": "#/$defs/AppointmentBrief"
+        },
+        "idempotent_replay": {
+          "description": "True if a prior call with the same idempotency_key already created this row.",
+          "title": "Idempotent Replay",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "appointment",
+        "idempotent_replay"
+      ],
+      "title": "CreateAppointmentOutput",
+      "type": "object"
+    }
+  },
+  "booking.get_appointments": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "If provided, restrict to this customer's appointments.",
+          "title": "Customer Id"
+        },
+        "from_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Inclusive lower bound (date, tenant TZ).",
+          "title": "From Date"
+        },
+        "to_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Inclusive upper bound (date, tenant TZ).",
+          "title": "To Date"
+        },
+        "only_upcoming": {
+          "default": false,
+          "description": "If true, ignore from_date and return only appointments at-or-after now().",
+          "title": "Only Upcoming",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "title": "GetAppointmentsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AppointmentBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "appointment_id": {
+              "format": "uuid",
+              "title": "Appointment Id",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "ends_at": {
+              "format": "date-time",
+              "title": "Ends At",
+              "type": "string"
+            },
+            "service_name": {
+              "title": "Service Name",
+              "type": "string"
+            },
+            "barber_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barber Id"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "price_cents": {
+              "title": "Price Cents",
+              "type": "integer"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            }
+          },
+          "required": [
+            "appointment_id",
+            "starts_at",
+            "ends_at",
+            "service_name",
+            "barber_id",
+            "status",
+            "price_cents",
+            "currency"
+          ],
+          "title": "AppointmentBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "appointments": {
+          "items": {
+            "$ref": "#/$defs/AppointmentBrief"
+          },
+          "title": "Appointments",
+          "type": "array"
+        }
+      },
+      "required": [
+        "appointments"
+      ],
+      "title": "GetAppointmentsOutput",
+      "type": "object"
+    }
+  },
+  "booking.modify_appointment": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "appointment_id": {
+          "format": "uuid",
+          "title": "Appointment Id",
+          "type": "string"
+        },
+        "new_starts_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "New Starts At"
+        },
+        "new_duration_min": {
+          "anyOf": [
+            {
+              "maximum": 480,
+              "minimum": 5,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "New Duration Min"
+        },
+        "new_barber_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "New Barber Id"
+        },
+        "new_service_name": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "New Service Name"
+        }
+      },
+      "required": [
+        "appointment_id"
+      ],
+      "title": "ModifyAppointmentInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AppointmentBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "appointment_id": {
+              "format": "uuid",
+              "title": "Appointment Id",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "ends_at": {
+              "format": "date-time",
+              "title": "Ends At",
+              "type": "string"
+            },
+            "service_name": {
+              "title": "Service Name",
+              "type": "string"
+            },
+            "barber_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barber Id"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "price_cents": {
+              "title": "Price Cents",
+              "type": "integer"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            }
+          },
+          "required": [
+            "appointment_id",
+            "starts_at",
+            "ends_at",
+            "service_name",
+            "barber_id",
+            "status",
+            "price_cents",
+            "currency"
+          ],
+          "title": "AppointmentBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "appointment": {
+          "$ref": "#/$defs/AppointmentBrief"
+        },
+        "status": {
+          "enum": [
+            "modified",
+            "no_changes"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "appointment",
+        "status"
+      ],
+      "title": "ModifyAppointmentOutput",
+      "type": "object"
+    }
+  },
+  "client.get_history": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Max number of past appointments to return (most recent first).",
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "title": "GetHistoryInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "HistoryAppointment": {
+          "additionalProperties": false,
+          "properties": {
+            "appointment_id": {
+              "format": "uuid",
+              "title": "Appointment Id",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "service_name": {
+              "title": "Service Name",
+              "type": "string"
+            },
+            "barber_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barber Id"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "price_cents": {
+              "title": "Price Cents",
+              "type": "integer"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            }
+          },
+          "required": [
+            "appointment_id",
+            "starts_at",
+            "service_name",
+            "barber_id",
+            "status",
+            "price_cents",
+            "currency"
+          ],
+          "title": "HistoryAppointment",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "appointments": {
+          "items": {
+            "$ref": "#/$defs/HistoryAppointment"
+          },
+          "title": "Appointments",
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "appointments"
+      ],
+      "title": "GetHistoryOutput",
+      "type": "object"
+    }
+  },
+  "client.get_preferences": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "description": "UUID of the customer (in the local Nexus DB).",
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "title": "GetPreferencesInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "preferences": {
+          "additionalProperties": true,
+          "title": "Preferences",
+          "type": "object"
+        }
+      },
+      "required": [
+        "customer_id",
+        "preferences"
+      ],
+      "title": "GetPreferencesOutput",
+      "type": "object"
+    }
+  },
+  "client.update_preferences": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "preferences": {
+          "additionalProperties": true,
+          "description": "Partial dict to merge into the customer's preferences. Keys are preserved; existing keys are overwritten by new values. Pass {} to reset (no-op for missing keys).",
+          "title": "Preferences",
+          "type": "object"
+        }
+      },
+      "required": [
+        "customer_id",
+        "preferences"
+      ],
+      "title": "UpdatePreferencesInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "preferences": {
+          "additionalProperties": true,
+          "title": "Preferences",
+          "type": "object"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "preferences",
+        "status"
+      ],
+      "title": "UpdatePreferencesOutput",
+      "type": "object"
+    }
+  },
+  "commission.calculate_commission": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "barber_id": {
+          "format": "uuid",
+          "title": "Barber Id",
+          "type": "string"
+        },
+        "service_amount_cents": {
+          "minimum": 0,
+          "title": "Service Amount Cents",
+          "type": "integer"
+        },
+        "tip_amount_cents": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tip Amount Cents",
+          "type": "integer"
+        },
+        "currency": {
+          "default": "CLP",
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Currency",
+          "type": "string"
+        }
+      },
+      "required": [
+        "barber_id",
+        "service_amount_cents"
+      ],
+      "title": "CalculateCommissionInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "barber_id": {
+          "format": "uuid",
+          "title": "Barber Id",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "commission_cents": {
+          "title": "Commission Cents",
+          "type": "integer"
+        },
+        "tip_cents": {
+          "title": "Tip Cents",
+          "type": "integer"
+        },
+        "total_cents": {
+          "title": "Total Cents",
+          "type": "integer"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        }
+      },
+      "required": [
+        "barber_id",
+        "model",
+        "commission_cents",
+        "tip_cents",
+        "total_cents",
+        "currency"
+      ],
+      "title": "CalculateCommissionOutput",
+      "type": "object"
+    }
+  },
+  "commission.get_barber_earnings": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "barber_id": {
+          "format": "uuid",
+          "title": "Barber Id",
+          "type": "string"
+        },
+        "from_date": {
+          "format": "date",
+          "title": "From Date",
+          "type": "string"
+        },
+        "to_date": {
+          "format": "date",
+          "title": "To Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "barber_id",
+        "from_date",
+        "to_date"
+      ],
+      "title": "GetBarberEarningsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "barber_id": {
+          "format": "uuid",
+          "title": "Barber Id",
+          "type": "string"
+        },
+        "appointments_count": {
+          "title": "Appointments Count",
+          "type": "integer"
+        },
+        "gross_revenue_cents": {
+          "title": "Gross Revenue Cents",
+          "type": "integer"
+        },
+        "commission_cents": {
+          "title": "Commission Cents",
+          "type": "integer"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        }
+      },
+      "required": [
+        "barber_id",
+        "appointments_count",
+        "gross_revenue_cents",
+        "commission_cents",
+        "currency"
+      ],
+      "title": "GetBarberEarningsOutput",
+      "type": "object"
+    }
+  },
+  "commission.get_daily_report": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "on_date": {
+          "format": "date",
+          "title": "On Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "on_date"
+      ],
+      "title": "GetDailyReportInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "BarberDailyTotal": {
+          "additionalProperties": false,
+          "properties": {
+            "barber_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barber Id"
+            },
+            "appointments_count": {
+              "title": "Appointments Count",
+              "type": "integer"
+            },
+            "gross_revenue_cents": {
+              "title": "Gross Revenue Cents",
+              "type": "integer"
+            },
+            "commission_cents": {
+              "title": "Commission Cents",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "barber_id",
+            "appointments_count",
+            "gross_revenue_cents",
+            "commission_cents"
+          ],
+          "title": "BarberDailyTotal",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "on_date": {
+          "format": "date",
+          "title": "On Date",
+          "type": "string"
+        },
+        "appointments_count": {
+          "title": "Appointments Count",
+          "type": "integer"
+        },
+        "gross_revenue_cents": {
+          "title": "Gross Revenue Cents",
+          "type": "integer"
+        },
+        "total_commission_cents": {
+          "title": "Total Commission Cents",
+          "type": "integer"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "by_barber": {
+          "items": {
+            "$ref": "#/$defs/BarberDailyTotal"
+          },
+          "title": "By Barber",
+          "type": "array"
+        }
+      },
+      "required": [
+        "on_date",
+        "appointments_count",
+        "gross_revenue_cents",
+        "total_commission_cents",
+        "currency",
+        "by_barber"
+      ],
+      "title": "GetDailyReportOutput",
+      "type": "object"
+    }
+  },
+  "escalate.escalate_to_human": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "description": "UUID of the live conversation to escalate.",
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Short justification for the operator (why the agent gave up).",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "customer_summary": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional brief summary of the conversation so far.",
+          "title": "Customer Summary"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "reason"
+      ],
+      "title": "EscalateToHumanInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "audit_log_id": {
+          "format": "uuid",
+          "title": "Audit Log Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "audit_log_id",
+        "status"
+      ],
+      "title": "EscalateToHumanOutput",
+      "type": "object"
+    }
+  },
+  "notification.cancel_scheduled": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "reminder_id": {
+          "format": "uuid",
+          "title": "Reminder Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reminder_id"
+      ],
+      "title": "CancelScheduledInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "reminder_id": {
+          "format": "uuid",
+          "title": "Reminder Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reminder_id",
+        "status"
+      ],
+      "title": "CancelScheduledOutput",
+      "type": "object"
+    }
+  },
+  "notification.schedule_reminder": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "appointment_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Appointment Id"
+        },
+        "run_at": {
+          "description": "When to fire the reminder. Tenant-TZ aware on the caller side; stored as UTC.",
+          "format": "date-time",
+          "title": "Run At",
+          "type": "string"
+        },
+        "template_name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Template Name",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "run_at",
+        "template_name"
+      ],
+      "title": "ScheduleReminderInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "reminder_id": {
+          "format": "uuid",
+          "title": "Reminder Id",
+          "type": "string"
+        },
+        "run_at": {
+          "format": "date-time",
+          "title": "Run At",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reminder_id",
+        "run_at",
+        "status"
+      ],
+      "title": "ScheduleReminderOutput",
+      "type": "object"
+    }
+  },
+  "notification.send_template": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "template_name": {
+          "description": "Meta-approved WhatsApp template name (e.g. 'reminder_24h').",
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Template Name",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "description": "Template parameter map.",
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "template_name"
+      ],
+      "title": "SendTemplateInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "message_id": {
+          "format": "uuid",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message_id",
+        "status"
+      ],
+      "title": "SendTemplateOutput",
+      "type": "object"
+    }
+  },
+  "notification.send_text": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "body": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "body"
+      ],
+      "title": "SendTextInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "message_id": {
+          "format": "uuid",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message_id",
+        "status"
+      ],
+      "title": "SendTextOutput",
+      "type": "object"
+    }
+  },
+  "queue.check_in": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "title": "CheckInInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "queue_entry_id": {
+          "format": "uuid",
+          "title": "Queue Entry Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "queue_entry_id",
+        "status"
+      ],
+      "title": "CheckInOutput",
+      "type": "object"
+    }
+  },
+  "queue.get_estimated_wait": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "barber_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Barber Id"
+        }
+      },
+      "title": "GetEstimatedWaitInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "queue_length": {
+          "title": "Queue Length",
+          "type": "integer"
+        },
+        "average_service_minutes": {
+          "title": "Average Service Minutes",
+          "type": "integer"
+        },
+        "estimated_wait_minutes": {
+          "title": "Estimated Wait Minutes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "queue_length",
+        "average_service_minutes",
+        "estimated_wait_minutes"
+      ],
+      "title": "GetEstimatedWaitOutput",
+      "type": "object"
+    }
+  },
+  "queue.get_position": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "title": "GetPositionInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "1-based position. Null if the customer is not currently in the queue.",
+          "title": "Position"
+        },
+        "estimated_wait_minutes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Wait Minutes"
+        }
+      },
+      "required": [
+        "customer_id",
+        "position",
+        "estimated_wait_minutes"
+      ],
+      "title": "GetPositionOutput",
+      "type": "object"
+    }
+  },
+  "queue.join_queue": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "service_name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Service Name",
+          "type": "string"
+        },
+        "barber_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional preferred barber. Omit for any-barber walk-in.",
+          "title": "Barber Id"
+        }
+      },
+      "required": [
+        "customer_id",
+        "service_name"
+      ],
+      "title": "JoinQueueInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "queue_entry_id": {
+          "format": "uuid",
+          "title": "Queue Entry Id",
+          "type": "string"
+        },
+        "position": {
+          "title": "Position",
+          "type": "integer"
+        },
+        "estimated_wait_minutes": {
+          "title": "Estimated Wait Minutes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "queue_entry_id",
+        "position",
+        "estimated_wait_minutes"
+      ],
+      "title": "JoinQueueOutput",
+      "type": "object"
+    }
+  },
+  "queue.remove_from_queue": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "title": "RemoveFromQueueInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "format": "uuid",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "queue_entry_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Queue Entry Id"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "queue_entry_id",
+        "status"
+      ],
+      "title": "RemoveFromQueueOutput",
+      "type": "object"
+    }
+  }
+}

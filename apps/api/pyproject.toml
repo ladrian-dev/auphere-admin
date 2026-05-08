@@ -37,10 +37,13 @@ dev = [
     "asgi-lifespan>=2.1.0",
     # Block C: the runtime isolation tests import from the worker package.
     "nexus-worker",
+    # Block D: integration tests exercise the MCP servers directly.
+    "nexus-mcp",
 ]
 
 [tool.uv.sources]
 nexus-worker = { path = "../worker", editable = true }
+nexus-mcp = { path = "../mcp", editable = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -31,6 +31,12 @@ class MessageDirection(str, enum.Enum):
     OUTBOUND = "outbound"
 
 
+class MessageStatus(str, enum.Enum):
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+
+
 class Customer(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     __tablename__ = "customers"
     __table_args__ = (
@@ -82,6 +88,11 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     direction: Mapped[MessageDirection] = mapped_column(
         pg_enum(MessageDirection, name="message_direction"),
         nullable=False,
+    )
+    status: Mapped[MessageStatus] = mapped_column(
+        pg_enum(MessageStatus, name="message_status"),
+        nullable=False,
+        default=MessageStatus.SENT,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     intent: Mapped[str | None] = mapped_column(String(80), nullable=True)

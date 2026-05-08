@@ -112,14 +112,16 @@ async def test_concurrent_tenants_produce_independent_provider_calls(
     # Drive A and B concurrently — pipeline-internal sessions are independent.
     await asyncio.gather(run_for("u-a"), run_for("u-b"))
 
-    # Each run produces exactly one classify + one respond call.
+    # Block D: each turn produces classify + a handler-intent tool_loop
+    # call (role='info' here, since the responder routes to the info
+    # intent) + respond. Three calls per tenant.
     a_calls = [c for c in in_memory_provider.calls if str(c.tenant_id) == str(a)]
     b_calls = [c for c in in_memory_provider.calls if str(c.tenant_id) == str(b)]
 
-    assert {c.role for c in a_calls} == {"classify", "respond"}
-    assert {c.role for c in b_calls} == {"classify", "respond"}
-    assert len(a_calls) == 2
-    assert len(b_calls) == 2
+    assert {c.role for c in a_calls} == {"classify", "info", "respond"}
+    assert {c.role for c in b_calls} == {"classify", "info", "respond"}
+    assert len(a_calls) == 3
+    assert len(b_calls) == 3
 
     # No call ever carries the wrong tenant.
     assert all(str(c.tenant_id) in {str(a), str(b)} for c in in_memory_provider.calls)

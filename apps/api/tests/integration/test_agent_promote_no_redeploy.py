@@ -23,7 +23,7 @@ import uuid
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 from nexus_worker.runtime.agent_loader import AgentLoader
-from nexus_worker.runtime.llm import InMemoryProvider, LLMRouter
+from nexus_worker.runtime.llm import InMemoryProvider, LLMRouter, ToolCall
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.state import new_state
 from nexus_worker.runtime.thread_id import make_thread_id
@@ -58,12 +58,15 @@ async def test_promote_swaps_active_config_without_restart(db_session):
     )
     await db_session.commit()
 
-    # v1 active.
+    # v1 active. The whitelist deliberately includes a tool in the ``info``
+    # category (so the handler tool_loop actually invokes the LLM) but
+    # NOT ``client.get_history`` — so when the scripted model emits a
+    # ``client.get_history`` call, dispatch refuses with skipped.
     await seed_active_agent_config(
         db_session,
         tenant_id=tenant_id,
         system_prompt="prompt v1",
-        tools=["booking.check_availability"],
+        tools=["booking.check_availability", "client.get_preferences"],
     )
     channel = await seed_channel(db_session, tenant_id=tenant_id, provider_identifier="prom-1")
 
@@ -94,6 +97,22 @@ async def test_promote_swaps_active_config_without_restart(db_session):
     db_session.add(conv)
     await db_session.commit()
     await db_session.refresh(conv)
+
+    # Block D: scripted tool_caller emits client.get_history. With v1's
+    # whitelist (booking.* only) the dispatch refuses; with v2's whitelist
+    # (client.get_history) it executes.
+    customer_id = cust.id
+    provider.tool_caller = lambda c: (
+        [
+            ToolCall(
+                id="t",
+                name="client.get_history",
+                arguments={"customer_id": str(customer_id), "limit": 5},
+            )
+        ]
+        if c.role == "info"
+        else []
+    )
 
     async def run_turn(text: str) -> dict:
         inbound = Message(
