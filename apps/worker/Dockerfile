@@ -27,7 +27,7 @@ FROM node:22-bookworm-slim AS node-build
 ENV PNPM_HOME=/usr/local/pnpm \
     PATH=/usr/local/pnpm:$PATH
 
-RUN corepack enable && corepack prepare pnpm@11.0.9 --activate
+RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 
 WORKDIR /node-build
 
