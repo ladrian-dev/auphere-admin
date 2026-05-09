@@ -40,8 +40,10 @@ services:
 
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      # Project root context — block F's API depends on apps/channels so
+      # the image needs both packages.
+      context: .
+      dockerfile: apps/api/Dockerfile
     container_name: nexus-api
     environment:
       NEXUS_ENVIRONMENT: dev
@@ -56,8 +58,18 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./apps/api/src:/app/src:ro
-    command: ["uvicorn", "nexus_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+      # Live-reload mounts; both packages so uvicorn sees source edits.
+      - ./apps/api/src:/app/apps/api/src:ro
+      - ./apps/channels/src:/app/apps/channels/src:ro
+    command:
+      [
+        "uvicorn", "nexus_api.main:app",
+        "--host", "0.0.0.0",
+        "--port", "8000",
+        "--reload",
+        "--reload-dir", "/app/apps/api/src",
+        "--reload-dir", "/app/apps/channels/src"
+      ]
 
 volumes:
   pgdata:

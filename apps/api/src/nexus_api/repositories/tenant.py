@@ -34,3 +34,6 @@ class TenantRepository:
         self._session.add(tenant)
         await self._session.flush()
         return tenant
+
+    async def slug_taken(self, slug: str) -> bool:
+        return await self.get_by_slug(slug) is not None

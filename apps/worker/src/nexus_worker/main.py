@@ -4,7 +4,11 @@ Boots:
 - Postgres checkpointer (``AsyncPostgresSaver`` with ``setup()``).
 - AgentLoader + promote-channel subscriber.
 - LiteLLM router.
-- Redis Stream consumer.
+- Redis Stream consumer (inbound).
+- Block E: AgendaPro ``SubprocessPool`` (per-tenant Node processes).
+- Block F: outbound dispatcher (drains ``messages.status='pending'`` to YCloud),
+  operator alerter (audit_log → WhatsApp template to operator), reminder
+  cron (drains ``scheduled_jobs`` of kind=reminder).
 
 Production runs this; tests build the same components piece-by-piece in
 fixtures so they can substitute the in-memory provider, the in-memory
@@ -18,15 +22,35 @@ import contextlib
 import signal
 
 import structlog
+from nexus_api.config import get_settings
+from nexus_api.core.metrics import isolation_event_drainer
 from nexus_api.core.redis_client import get_redis
+from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
+from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudClient
+from nexus_mcp.servers.agendapro_browser.transport import (
+    build_default_pool_from_env,
+    set_default_transport,
+)
 
 from nexus_worker.config import get_api_settings, get_worker_settings
+from nexus_worker.logging import configure_logging
+from nexus_worker.observability import init_langfuse
+from nexus_worker.observability import shutdown as langfuse_shutdown
 from nexus_worker.runtime.agent_loader import AgentLoader
 from nexus_worker.runtime.checkpointer import postgres_checkpointer
 from nexus_worker.runtime.llm import build_default_router
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.consumer import run_inbound_consumer
+from nexus_worker.streams.cost_rollup_cron import run_cost_rollup_cron
+from nexus_worker.streams.health_check_cron import run_health_check_cron
+from nexus_worker.streams.isolation_watcher import run_isolation_watcher
+from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
+from nexus_worker.streams.operator_alerts import run_operator_alerter
+from nexus_worker.streams.outbound import run_outbound_dispatcher
+from nexus_worker.streams.reminder_cron import run_reminder_cron
+
+configure_logging()
 
 log = structlog.get_logger(__name__)
 
@@ -34,6 +58,12 @@ log = structlog.get_logger(__name__)
 async def _amain() -> None:
     api_settings = get_api_settings()
     worker_settings = get_worker_settings()
+    nexus_settings = get_settings()
+
+    # Block H: Langfuse must initialise BEFORE LiteLLM picks up the
+    # ``litellm.success_callback`` hook. Noop client when keys are
+    # absent (dev/test).
+    init_langfuse(worker_settings)
 
     loader = AgentLoader(max_size=worker_settings.agent_cache_size)
     router = build_default_router(
@@ -44,6 +74,21 @@ async def _amain() -> None:
     )
     redis = get_redis()
     stop = asyncio.Event()
+
+    # Block E: register the AgendaPro subprocess pool so internal tools
+    # ``agendapro.*`` resolve to the real Node server. Block F leaves this
+    # in place — the booking facade reaches the pool via the registry.
+    agendapro_pool = build_default_pool_from_env()
+    set_default_transport(agendapro_pool)
+
+    # Block F: a single YCloud client + adapter shared across the outbound
+    # dispatcher and the operator alerter. Per-tenant API keys are a Phase
+    # 4+ white-label concern; the BSP-level key here is Auphere's.
+    ycloud_client = YCloudClient(
+        api_key=nexus_settings.ycloud_api_key,
+        base_url=nexus_settings.ycloud_api_base_url,
+    )
+    whatsapp_adapter = WhatsAppYCloudAdapter(ycloud_client)
 
     def _request_stop() -> None:
         log.info("worker.signal_received_stopping")
@@ -70,7 +115,63 @@ async def _amain() -> None:
             ),
             name="inbound-consumer",
         )
-        await asyncio.gather(consumer_task, promote_task)
+        outbound_task = asyncio.create_task(
+            run_outbound_dispatcher(adapter=whatsapp_adapter, stop=stop),
+            name="outbound-dispatcher",
+        )
+        alerter_task = asyncio.create_task(
+            run_operator_alerter(adapter=whatsapp_adapter, stop=stop),
+            name="operator-alerter",
+        )
+        reminder_task = asyncio.create_task(
+            run_reminder_cron(stop=stop),
+            name="reminder-cron",
+        )
+        # Block H: persistent isolation events drainer + 4 new task
+        # streams (health_check, no_show_scrape, cost_rollup,
+        # isolation_watcher).
+        drainer_task = asyncio.create_task(
+            isolation_event_drainer(stop), name="isolation-event-drainer"
+        )
+        health_check_task = asyncio.create_task(
+            run_health_check_cron(
+                stop=stop, tick_seconds=worker_settings.health_check_tick_seconds
+            ),
+            name="health-check-cron",
+        )
+        no_show_task = asyncio.create_task(
+            run_no_show_scrape_cron(
+                stop=stop, tick_seconds=worker_settings.no_show_scrape_tick_seconds
+            ),
+            name="no-show-scrape-cron",
+        )
+        cost_rollup_task = asyncio.create_task(
+            run_cost_rollup_cron(stop=stop, tick_seconds=worker_settings.cost_rollup_tick_seconds),
+            name="cost-rollup-cron",
+        )
+        isolation_watcher_task = asyncio.create_task(
+            run_isolation_watcher(
+                stop=stop, tick_seconds=worker_settings.isolation_watcher_tick_seconds
+            ),
+            name="isolation-watcher",
+        )
+        try:
+            await asyncio.gather(
+                consumer_task,
+                promote_task,
+                outbound_task,
+                alerter_task,
+                reminder_task,
+                drainer_task,
+                health_check_task,
+                no_show_task,
+                cost_rollup_task,
+                isolation_watcher_task,
+            )
+        finally:
+            await ycloud_client.close()
+            await agendapro_pool.shutdown()
+            langfuse_shutdown()
 
 
 def run() -> None:

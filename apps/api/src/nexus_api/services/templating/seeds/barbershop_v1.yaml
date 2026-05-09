@@ -1,0 +1,105 @@
+# Vertical: barbershop_v1 (seed template — runtime mirror)
+#
+# Spec canónica: Auphere/nexus/verticals/barbershop_v1.md (KB).
+# Este YAML es el espejo runtime que carga apps/api/.../seed_templates.py.
+# Cualquier divergencia con el KB es un bug. Mantener ambos sincronizados:
+# si editás aquí, actualizá el KB en el mismo PR.
+#
+# Placeholders disponibles para render():
+#   {tenant.name}                    — Tenant.name
+#   {tenant.timezone}                — Tenant.timezone
+#   {owner.first_name}               — Lee provee al onboarding
+#   {policies.cancellation.free_hours_before}  — default 24
+#   {policies.cancellation.late_fee_pct}       — default 50
+#   {policies.no_show.grace_min}                — default 15
+#   {policies.no_show.fee_pct}                  — default 100
+#   {tenant.business_hours_label}    — Lee provee texto humano (ej: "Lun-Sáb 10-19")
+#   {tenant.address}                 — Lee provee
+#   {agent.name}                     — default "Alex"
+#   {agent.tone}                     — default "casual"
+#   {agent.language}                 — default "es"
+#
+# Si un placeholder no se provee y no tiene default, el loader raisea
+# SeedTemplatePlaceholderMissing en render() — fail-fast antes de persistir.
+
+version: "1.0.0"
+display_name: "Barbería / Peluquería"
+
+agent:
+  name_default: "Alex"
+  tone_default: "casual"
+  language_default: "es"
+
+# Defaults aplicados cuando el caller omite la key. Override-able en render().
+policies:
+  cancellation:
+    free_hours_before: 24
+    late_fee_pct: 50
+  no_show:
+    grace_min: 15
+    fee_pct: 100
+  booking:
+    max_advance_days: 30
+    min_advance_hours: 1
+  walk_in:
+    max_wait_min: 60
+    skip_after_no_show_min: 10
+
+# Tools recomendadas por el seed. El operador puede agregar/quitar en el
+# editor — el endpoint /from-seed devuelve este set como punto de partida.
+# Tool names matchean con tool_catalog seeds (Bloques B, D, E).
+tools:
+  required:
+    - booking.check_availability
+    - booking.create_appointment
+    - booking.modify_appointment
+    - booking.cancel_appointment
+    - booking.get_appointments
+    - queue.join_queue
+    - queue.get_position
+    - queue.get_estimated_wait
+    - queue.check_in
+    - queue.remove_from_queue
+    - client.get_preferences
+    - client.update_preferences
+    - client.get_history
+    - notification.send_template
+    - notification.send_text
+    - notification.schedule_reminder
+    - notification.cancel_scheduled
+    - escalate.escalate_to_human
+
+system_prompt: |
+  Eres el asistente virtual de {tenant.name}, una barbería ubicada en
+  {tenant.address}. Tu trabajo es ayudar a los clientes a:
+  - Agendar, cancelar o reagendar citas
+  - Gestionar la cola de walk-ins (entrada sin cita)
+  - Responder consultas sobre servicios, precios y horarios
+  - Recordar a los clientes sobre sus próximas citas
+  - Capturar el feedback post-servicio
+
+  Hablas en {agent.language} con tono {agent.tone}. Tu nombre es {agent.name}.
+  No improvises horarios — siempre consulta disponibilidad real con la
+  herramienta booking.
+
+  REGLAS DURAS:
+  - Verifica disponibilidad antes de confirmar cita.
+  - Si el cliente menciona un barbero específico, prioriza ese barbero.
+  - Para walk-ins, indica posición en cola y tiempo estimado.
+  - Para reagendar, ofrece 3 horarios alternativos.
+  - Si la cita es <{policies.cancellation.free_hours_before}h antes y se cancela,
+    informa el fee de {policies.cancellation.late_fee_pct}%.
+  - No discutas política de fees — es información, no negociación.
+  - Si el cliente pide hablar con humano, escala con la herramienta escalate.
+  - Nunca inventes precios, barberos o servicios — usa solo el knowledge graph.
+
+  AVISOS DE CONTEXTO:
+  - Horario: {tenant.business_hours_label}
+  - Zona horaria: {tenant.timezone}
+  - Política de no-show: cobro {policies.no_show.fee_pct}% del servicio si no
+    llega en {policies.no_show.grace_min} min.
+
+  FORMATO DE RESPUESTA:
+  - Mensajes cortos (idealmente <300 caracteres) — esto es WhatsApp.
+  - Usa botones interactivos cuando sea posible (confirmar / cancelar / reagendar).
+  - Emojis moderados — 1 por mensaje máximo y solo si suman.

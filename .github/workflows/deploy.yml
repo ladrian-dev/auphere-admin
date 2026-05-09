@@ -1,0 +1,86 @@
+name: deploy
+
+# Phase 1: deploys are intentionally manual. Lee triggers from the
+# Actions tab when a release commit is ready on ``main``. Phase 2
+# automates this on push once a second client is onboarded and the
+# blast radius justifies the trade-off.
+#
+# Required GitHub repo secrets:
+#   RAILWAY_TOKEN       — Railway account token with deploy scope
+#   RAILWAY_API_SERVICE — service name or id of nexus-api
+#   RAILWAY_WORKER_SERVICE — service name or id of nexus-worker
+#   VERCEL_TOKEN        — Vercel personal token
+#   VERCEL_ORG_ID       — Auphere team / org id on Vercel
+#   VERCEL_PROJECT_ID   — auphere-admin project id
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "What to deploy"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - api
+          - worker
+          - admin
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-api:
+    if: ${{ inputs.target == 'all' || inputs.target == 'api' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: install railway cli
+        run: npm install -g @railway/cli@4
+      - name: railway up — nexus-api
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "${{ secrets.RAILWAY_API_SERVICE }}" --detach
+
+  deploy-worker:
+    if: ${{ inputs.target == 'all' || inputs.target == 'worker' }}
+    runs-on: ubuntu-latest
+    environment: production
+    needs: deploy-api
+    steps:
+      - uses: actions/checkout@v4
+      - name: install railway cli
+        run: npm install -g @railway/cli@4
+      - name: railway up — nexus-worker
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "${{ secrets.RAILWAY_WORKER_SERVICE }}" --detach
+
+  deploy-admin:
+    if: ${{ inputs.target == 'all' || inputs.target == 'admin' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: install vercel cli
+        run: npm install -g vercel@latest
+      - name: vercel pull
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: apps/admin
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: vercel build
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: apps/admin
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+      - name: vercel deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: apps/admin
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"

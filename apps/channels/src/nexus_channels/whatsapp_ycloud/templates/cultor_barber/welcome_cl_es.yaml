@@ -1,0 +1,9 @@
+# Mensaje de bienvenida fuera de ventana de 24h. UTILITY si responde a un
+# alta del cliente; MARKETING si Auphere abre conversación.
+name: welcome_cl_es
+language: es_CL
+category: UTILITY
+body: |
+  Hola {{1}}, soy Alex, el asistente de Cultor Barber. Puedo ayudarte a reservar tu cita, consultar disponibilidad o responder dudas. Escríbeme cuando quieras.
+params:
+  - customer_name

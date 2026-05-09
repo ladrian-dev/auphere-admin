@@ -1,0 +1,335 @@
+/* ============================================================
+   Nexus Operator Panel — Design Tokens
+   ============================================================
+   Hereda paleta + tipografía + spacing del Sistema Visual de Auphere
+   (Work/Auphere/website/styles/tokens.css), con dos divergencias
+   intencionales para el contexto de ops:
+
+   1. ``--primary`` se remapea a ``mountain-meadow`` (#2CC295) en vez
+      de ``caribbean-green`` (#00DF81). Mountain Meadow es más sereno
+      y editorial — apropiado para un instrumento de operación;
+      Caribbean queda como ``--primary-bright``, reservado para
+      highlights raros (alertas P1, escalation flash).
+
+   2. shadcn/ui token map: las CSS variables que shadcn espera
+      (``--background``, ``--card``, ``--primary-foreground``, etc.)
+      se proyectan sobre los tokens de marca para que cualquier
+      componente shadcn instalado from-source use el sistema sin
+      modificación local.
+
+   Tailwind 4: ``@theme`` registra los tokens como utilidades
+   (``bg-bone``, ``text-ink``, etc.). Los tokens shadcn viven en
+   ``:root`` para que ``cn()``-style className composition pueda
+   referirlos como ``bg-card`` / ``text-card-foreground``.
+
+   WCAG 2.2 AA: pares aprobados en
+   /Users/lmatos/Work/Auphere/brand/brand-system.md. Mountain Meadow
+   con texto rich-black es AAA — combo CTA hover validado.
+   ============================================================ */
+
+@import "tailwindcss";
+
+@theme {
+  /* Color · Primarios (escala verde) */
+  --color-rich-black:       #0D0F01;
+  --color-dark-green:       #032221;
+  --color-bangladesh-green: #03624C;
+  --color-mountain-meadow:  #2CC295;
+  --color-caribbean-green:  #00DF81;
+  --color-anti-flash:       #F1F7F6;
+
+  /* Color · Secundarios */
+  --color-pine:      #0B453A;
+  --color-basil:     #116958;
+  --color-forest:    #095544;
+  --color-frog:      #17876D;
+  --color-mint:      #2FA98C;
+  --color-pistachio: #AACBC4;
+  --color-sand:      #E4ECEA;
+
+  /* Color · Roles semánticos (panel-tuned) */
+  --color-primary:        var(--color-mountain-meadow);
+  --color-primary-mid:    var(--color-mint);
+  --color-primary-deep:   var(--color-bangladesh-green);
+  --color-primary-bright: var(--color-caribbean-green);
+  --color-ink:            var(--color-rich-black);
+  --color-bone:           var(--color-anti-flash);
+
+  --color-bg:           var(--color-bone);
+  --color-bg-elevated:  #FFFFFF;
+  --color-bg-sunken:    var(--color-sand);
+  --color-bg-inverse:   var(--color-ink);
+
+  --color-fg:           var(--color-ink);
+  --color-fg-muted:     rgba(13, 15, 1, 0.70);
+  --color-fg-subtle:    rgba(13, 15, 1, 0.50);
+  --color-fg-on-dark:   var(--color-bone);
+
+  /*
+    Brand "accent" tokens are split into named variants so they don't
+    collide with shadcn's single ``--accent`` semantic (which is the
+    hover-highlight surface, NOT a brand-deep colour). Brand callers
+    use ``--color-accent-deep|soft|mid|bright``; shadcn callers use
+    ``--accent`` from :root, which we mirror into Tailwind via the
+    ``@theme inline`` block below.
+  */
+  --color-accent-deep:   var(--color-primary-deep);
+  --color-accent-soft:   var(--color-pistachio);
+  --color-accent-mid:    var(--color-mint);
+  --color-accent-bright: var(--color-primary-bright);
+
+  --color-border:        rgba(13, 15, 1, 0.12);
+  --color-border-soft:   rgba(13, 15, 1, 0.06);
+  --color-border-strong: var(--color-primary-deep);
+
+  /* Color · Estados */
+  --color-status-positive: var(--color-primary);
+  --color-status-warning:  #B5874A;
+  --color-status-danger:   #A8443A;
+  --color-status-info:     var(--color-mint);
+
+  /* Tipografía */
+  --font-display: "Inter Tight", "Helvena", system-ui, -apple-system, sans-serif;
+  --font-body:    "Inter Tight", "Helvena", system-ui, -apple-system, sans-serif;
+  --font-mono:    "JetBrains Mono", "SF Mono", Menlo, monospace;
+
+  /* Escala tipográfica */
+  --text-xs:   12px;
+  --text-sm:   14px;
+  --text-base: 16px;
+  --text-md:   18px;
+  --text-lg:   20px;
+  --text-xl:   24px;
+  --text-2xl:  32px;
+  --text-3xl:  44px;
+
+  /* Tracking */
+  --tracking-tightest: -0.04em;
+  --tracking-tighter:  -0.03em;
+  --tracking-tight:    -0.02em;
+  --tracking-normal:    0;
+  --tracking-wide:      0.04em;
+  --tracking-eyebrow:   0.12em;
+
+  /* Leading */
+  --leading-tight:   1.05;
+  --leading-snug:    1.2;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.65;
+
+  /* Spacing · base 4px */
+  --spacing-1:  4px;
+  --spacing-2:  8px;
+  --spacing-3:  12px;
+  --spacing-4:  16px;
+  --spacing-5:  24px;
+  --spacing-6:  32px;
+  --spacing-7:  48px;
+  --spacing-8:  64px;
+  --spacing-9:  96px;
+
+  /* Radii · sistema único 0/4/8/999 */
+  --radius-0:    0px;
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-pill: 9999px;
+
+  /* Shadows · editoriales */
+  --shadow-1: 0 1px 2px rgba(10, 15, 14, 0.04);
+  --shadow-2: 0 4px 16px rgba(10, 15, 14, 0.06);
+  --shadow-3: 0 16px 48px rgba(10, 15, 14, 0.10);
+
+  /* Motion */
+  --ease-out:    cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-instant: 80ms;
+  --duration-fast:    200ms;
+  --duration-base:    400ms;
+}
+
+/* ============================================================
+   shadcn/ui token bridge
+   ============================================================
+   Two layers:
+
+   1. Plain ``:root`` vars (``--card``, ``--popover``, etc.) so
+      shadcn components written against the canonical variable
+      names work unchanged.
+   2. ``@theme inline`` mirror so Tailwind 4 emits utility classes
+      ``bg-card`` / ``text-popover-foreground`` / ``bg-sidebar``.
+      WITHOUT this mirror, those utilities silently fall back to
+      transparent — that was the dialog rendering as see-through.
+   ============================================================ */
+
+:root {
+  --background: var(--color-bg);
+  --foreground: var(--color-fg);
+
+  --card: var(--color-bg-elevated);
+  --card-foreground: var(--color-fg);
+
+  --popover: var(--color-bg-elevated);
+  --popover-foreground: var(--color-fg);
+
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-rich-black);
+
+  --secondary: var(--color-bg-sunken);
+  --secondary-foreground: var(--color-fg);
+
+  --muted: var(--color-bg-sunken);
+  --muted-foreground: var(--color-fg-muted);
+
+  --accent: var(--color-pistachio);
+  --accent-foreground: var(--color-bangladesh-green);
+
+  --destructive: var(--color-status-danger);
+  --destructive-foreground: var(--color-bone);
+
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-primary);
+
+  --radius: 8px;
+
+  /* Sidebar tokens (shadcn sidebar block) */
+  --sidebar: var(--color-bone);
+  --sidebar-foreground: var(--color-fg);
+  --sidebar-primary: var(--color-primary-deep);
+  --sidebar-primary-foreground: var(--color-bone);
+  --sidebar-accent: var(--color-pistachio);
+  --sidebar-accent-foreground: var(--color-bangladesh-green);
+  --sidebar-border: var(--color-border);
+  --sidebar-ring: var(--color-primary);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /*
+    Do NOT mirror ``--color-primary`` or ``--color-border`` here. The
+    brand-side ``@theme`` block above already declares them (mountain
+    meadow / hairline-on-bone respectively), and pointing them at the
+    ``:root`` aliases creates a circular reference — ``--primary``
+    expands to ``var(--color-primary)`` which would expand back to
+    ``var(--primary)``. CSS treats that as invalid → ``bg-primary``
+    renders transparent and ``ring-ring`` (which chains through
+    ``--ring → --color-primary``) loses its highlight. ``--accent`` is
+    safe because we renamed the brand-side variant to
+    ``--color-accent-deep`` so the slot is uncontested.
+  */
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /*
+    Brand-system rule: radii ∈ {0, 4, 8, 999}. "No 12, no 16. Restricción
+    es identidad." Lock the Tailwind utility scale so any shadcn component
+    using rounded-{md,lg,xl,2xl,3xl} renders within the brand grid.
+  */
+  --radius-xs: 4px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+  --radius-3xl: 8px;
+}
+
+[data-theme="dark"] {
+  --background: var(--color-dark-green);
+  --foreground: var(--color-bone);
+
+  --card: var(--color-bangladesh-green);
+  --card-foreground: var(--color-bone);
+
+  --popover: var(--color-bangladesh-green);
+  --popover-foreground: var(--color-bone);
+
+  --primary: var(--color-mountain-meadow);
+  --primary-foreground: var(--color-rich-black);
+
+  --secondary: var(--color-pine);
+  --secondary-foreground: var(--color-bone);
+
+  --muted: var(--color-pine);
+  --muted-foreground: rgba(241, 247, 246, 0.65);
+
+  --accent: var(--color-mint);
+  --accent-foreground: var(--color-rich-black);
+
+  --border: rgba(241, 247, 246, 0.12);
+  --input: rgba(241, 247, 246, 0.12);
+
+  --sidebar: var(--color-dark-green);
+  --sidebar-foreground: var(--color-bone);
+  --sidebar-primary: var(--color-mountain-meadow);
+  --sidebar-primary-foreground: var(--color-rich-black);
+  --sidebar-accent: var(--color-pine);
+  --sidebar-accent-foreground: var(--color-bone);
+  --sidebar-border: rgba(241, 247, 246, 0.12);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--color-pistachio);
+  color: var(--color-bangladesh-green);
+}
+
+/* Reduced motion — NO NEGOCIABLE */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

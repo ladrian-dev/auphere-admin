@@ -8,6 +8,7 @@ authors = [{ name = "Auphere" }]
 dependencies = [
     "nexus-api",
     "nexus-mcp",
+    "nexus-channels",
     "langgraph>=1.0.0",
     "langgraph-checkpoint-postgres>=2.0.0",
     "litellm>=1.52.0",
@@ -18,6 +19,10 @@ dependencies = [
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
     "psycopg[binary,pool]>=3.2.0",
+    # Block H: observability. Langfuse SDK falls back to a noop client
+    # when NEXUS_LANGFUSE_PUBLIC_KEY is unset, so dev/test runs do not
+    # require live credentials.
+    "langfuse>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +40,7 @@ nexus-worker = "nexus_worker.main:run"
 [tool.uv.sources]
 nexus-api = { path = "../api", editable = true }
 nexus-mcp = { path = "../mcp", editable = true }
+nexus-channels = { path = "../channels", editable = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import enum
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import String
+from sqlalchemy import Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,6 +46,12 @@ class Tenant(UUIDPrimaryKey, TimestampMixin, Base):
     business_hours: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     owner_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     owner_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cost_alert_threshold_usd_per_day: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        nullable=False,
+        default=Decimal("40.00"),
+        server_default="40.00",
+    )
 
     def __repr__(self) -> str:
         return f"<Tenant {self.slug}>"

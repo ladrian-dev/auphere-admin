@@ -1,0 +1,21 @@
+# Railway service config — nexus-api
+#
+# Project: auphere-nexus. Service: nexus-api. Root directory: repo root.
+# Set this file as the "Config Path" in the Railway service settings:
+#   infra/railway/api.toml
+#
+# The pre-deploy command runs Alembic + Drizzle inside the new revision
+# before traffic is shifted. A non-zero exit aborts the cutover so a
+# migration failure cannot brick production.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/api/Dockerfile"
+
+[deploy]
+preDeployCommand = "/app/apps/api/scripts/release.sh"
+startCommand = "uvicorn nexus_api.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"
+healthcheckPath = "/health/live"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

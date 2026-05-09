@@ -21,6 +21,7 @@ from nexus_api.db.models import (
     Customer,
     Message,
     MessageDirection,
+    MessageStatus,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -116,12 +117,22 @@ async def persist_outbound_message(
     trace_id: str | None = None,
     cost_usd: float | None = None,
     latency_ms: int | None = None,
+    status: MessageStatus = MessageStatus.PENDING,
 ) -> Message:
+    """Persist the assistant's reply.
+
+    Block C relied on the column default ``status='sent'`` because nothing
+    drained outbound. Block F flips the default at the call site to
+    ``PENDING`` so the new outbound dispatcher actually has work to do —
+    the WhatsApp send happens *after* persistence. Callers (tests) can
+    still pass ``status=MessageStatus.SENT`` to bypass the dispatcher.
+    """
     require_current_tenant()
     msg = Message(
         tenant_id=require_current_tenant(),
         conversation_id=conversation_id,
         direction=MessageDirection.OUTBOUND,
+        status=status,
         content=content,
         intent=intent,
         model=model,

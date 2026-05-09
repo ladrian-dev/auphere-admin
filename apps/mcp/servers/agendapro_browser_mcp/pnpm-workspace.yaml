@@ -1,0 +1,13 @@
+# pnpm 11 asks for explicit approval before running post-install
+# scripts. Stagehand pulls esbuild + protobufjs (which ship native
+# binaries via post-install), bufferutil (ws native), and Google's
+# genai SDK. We allow all four so production installs in the worker
+# Dockerfile materialise the binaries.
+#
+# This file lives next to the MCP server only — there is no repo-wide
+# pnpm workspace; ``apps/admin`` has its own.
+allowBuilds:
+  '@google/genai': true
+  bufferutil: true
+  esbuild: true
+  protobufjs: true

@@ -90,9 +90,7 @@ class AgentConfigService:
     async def _validate_tools(self, tools: list[str]) -> None:
         if not tools:
             return
-        catalog_rows = await self.tools.list_all(
-            include_deprecated=True, include_internal=True
-        )
+        catalog_rows = await self.tools.list_all(include_deprecated=True, include_internal=True)
         catalog = {t.name: t for t in catalog_rows}
         unknown = [t for t in tools if t not in catalog]
         if unknown:

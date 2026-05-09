@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,13 +16,42 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     database_url: str = "postgresql+asyncpg://nexus:nexus@localhost:5433/nexus"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _coerce_async_driver(cls, v: object) -> object:
+        # Railway's Postgres add-on exposes ``postgresql://...`` while the
+        # SQLAlchemy + asyncpg stack expects ``postgresql+asyncpg://...``.
+        # Normalise on read so operators can paste the platform URL
+        # verbatim without learning the dialect tag.
+        if isinstance(v, str) and v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if isinstance(v, str) and v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
+        return v
+
     redis_url: str = "redis://localhost:6379/0"
 
     # Auth for admin endpoints. Better Auth replaces this in block G.
     admin_token: str = "dev-admin-token-change-me"
 
-    # HMAC secret for inbound webhooks (e.g. YCloud). Block F wires the real value.
+    # Generic HMAC secret kept for any future webhook with a simple HMAC scheme
+    # (NOT YCloud — YCloud has its own ``t={ts},s={sig}`` shape, see below).
     webhook_hmac_secret: str = "dev-hmac-secret-change-me"
+
+    # YCloud — Phase 1 BSP for WhatsApp.
+    # Auphere is the YCloud customer; each tenant is a WABA migrated to that
+    # BSP. Per-tenant API keys are a Phase 4+ white-label concern.
+    ycloud_api_key: str = "dev-ycloud-key-change-me"
+    ycloud_webhook_secret: str = "dev-ycloud-webhook-secret-change-me"
+    ycloud_api_base_url: str = "https://api.ycloud.com/v2"
+    # YCloud webhook signature timestamp tolerance (replay protection).
+    ycloud_signature_tolerance_seconds: int = 300
+
+    # Operator phone (E.164) used as recipient for ``alert_*`` templates when
+    # the tenant has not configured ``tenants.owner_phone``. In Phase 1 this
+    # is Lee. Templates for the tenant owner override this when present.
+    operator_fallback_phone: str | None = None
 
     # Fernet key for tenant_credentials.encrypted_payload. Must be a urlsafe-base64
     # 32-byte key. Generate one with `python -c 'from cryptography.fernet import Fernet;

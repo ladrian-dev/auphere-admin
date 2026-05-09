@@ -18,6 +18,7 @@ import {
   HealthCheckInputSchema,
 } from '../schemas.js';
 import { defaultLoginRunner, type LoginRunner } from '../stagehand/login.js';
+import { pageOf } from '../stagehand/page.js';
 import type { BrowserSession } from '../stagehand/session.js';
 
 export async function healthCheck(
@@ -36,9 +37,10 @@ export async function healthCheck(
   try {
     await ctx.session.ensureAttached(args.context_id);
     const sh = ctx.session.stagehand();
-    await sh.page.goto(
+    const page = await pageOf(sh);
+    await page.goto(
       `${ctx.config.agendaproBaseUrl}/cl/dashboard`,
-      { waitUntil: 'networkidle', timeout: 30_000 },
+      { waitUntil: 'networkidle', timeoutMs: 30_000 },
     );
     healthy = !(await ctx.session.detectExpired());
   } catch (err) {

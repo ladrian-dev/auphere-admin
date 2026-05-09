@@ -21,6 +21,7 @@ import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 
+from nexus_worker.observability.tracing import trace_turn, update_trace
 from nexus_worker.persistence.messages import (
     persist_inbound_message,
     upsert_conversation_for_customer,
@@ -83,7 +84,24 @@ async def process_inbound(
         user_id=event.user_id,
         thread_id=thread_id,
     )
-    final = await pipeline.ainvoke(state, config=config)
+    with trace_turn(
+        tenant_id=event.tenant_id,
+        channel_id=event.channel_id,
+        user_id_inside_channel=event.user_id,
+        name="agent.turn",
+        metadata={"thread_id": thread_id, "provider": event.provider},
+    ):
+        final = await pipeline.ainvoke(state, config=config)
+        update_trace(
+            output={
+                "intent": final.get("intent"),
+                "response_present": bool(final.get("response")),
+                "tool_calls": [
+                    {"tool": c.get("tool"), "status": c.get("status")}
+                    for c in (final.get("tool_calls") or [])
+                ],
+            }
+        )
     log.info(
         "pipeline.run.done",
         tenant_id=str(event.tenant_id),
