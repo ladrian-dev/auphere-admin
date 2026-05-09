@@ -65,7 +65,15 @@
   --color-fg-subtle:    rgba(13, 15, 1, 0.50);
   --color-fg-on-dark:   var(--color-bone);
 
-  --color-accent:        var(--color-primary-deep);
+  /*
+    Brand "accent" tokens are split into named variants so they don't
+    collide with shadcn's single ``--accent`` semantic (which is the
+    hover-highlight surface, NOT a brand-deep colour). Brand callers
+    use ``--color-accent-deep|soft|mid|bright``; shadcn callers use
+    ``--accent`` from :root, which we mirror into Tailwind via the
+    ``@theme inline`` block below.
+  */
+  --color-accent-deep:   var(--color-primary-deep);
   --color-accent-soft:   var(--color-pistachio);
   --color-accent-mid:    var(--color-mint);
   --color-accent-bright: var(--color-primary-bright);
@@ -213,7 +221,12 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
 
+  --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+
+  --color-primary: var(--primary);
+
+  --color-border: var(--border);
 
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
