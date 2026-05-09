@@ -33,6 +33,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { signOut } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 
 type Item = { href: string; label: string; icon: LucideIcon };
 
@@ -138,9 +139,14 @@ function BrandHeader() {
 }
 
 /**
- * Footer user menu. Uses ``SidebarMenuButton`` so the row collapses to
- * the avatar in icon mode automatically; the dropdown keeps signOut
- * one click away in either state.
+ * Footer user menu.
+ *
+ * Originally I tried wrapping ``SidebarMenuButton`` inside
+ * ``DropdownMenuTrigger`` via the ``render`` prop. Both components use
+ * Base UI's ``useRender`` and the nested composition crashes on click.
+ * Inlining the sidebar-button styles on the trigger directly is the
+ * documented Base UI escape hatch, and lets us flip to icon-only
+ * layout via ``useSidebar`` without losing the dropdown affordance.
  */
 function UserMenu({
   user,
@@ -148,24 +154,31 @@ function UserMenu({
   user: { name?: string | null; email: string };
 }) {
   const router = useRouter();
+  const { state, isMobile } = useSidebar();
+  const collapsed = state === "collapsed" && !isMobile;
   const initials = (user.name ?? user.email).slice(0, 2).toUpperCase();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={
-          <SidebarMenuButton
-            size="lg"
-            tooltip={user.email}
-            className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-          >
-            <span
-              aria-hidden="true"
-              className="grid size-7 shrink-0 place-items-center rounded-md bg-[color:var(--color-pistachio)] text-[color:var(--color-bangladesh-green)] text-xs font-semibold"
-            >
-              {initials}
-            </span>
-            <span className="grid flex-1 text-left leading-tight">
+        aria-label={user.email}
+        className={cn(
+          "group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-sm text-left text-sm outline-none ring-sidebar-ring",
+          "transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          "focus-visible:ring-2 active:bg-sidebar-accent",
+          "data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground",
+          collapsed ? "size-8 justify-center p-0" : "h-10 px-2 py-1.5",
+        )}
+      >
+        <span
+          aria-hidden="true"
+          className="grid size-6 shrink-0 place-items-center rounded-sm bg-[color:var(--color-pistachio)] text-[color:var(--color-bangladesh-green)] text-[11px] font-semibold"
+        >
+          {initials}
+        </span>
+        {!collapsed ? (
+          <>
+            <span className="grid flex-1 text-left leading-tight overflow-hidden">
               <span className="truncate text-sm font-medium">
                 {user.name ?? "Operador"}
               </span>
@@ -173,10 +186,13 @@ function UserMenu({
                 {user.email}
               </span>
             </span>
-            <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
-          </SidebarMenuButton>
-        }
-      />
+            <ChevronsUpDown
+              className="ml-auto size-4 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+          </>
+        ) : null}
+      </DropdownMenuTrigger>
       <DropdownMenuContent
         side="right"
         align="end"
