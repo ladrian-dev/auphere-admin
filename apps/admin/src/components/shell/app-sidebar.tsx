@@ -14,6 +14,7 @@ import { Wordmark } from "@/components/brand/wordmark";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -199,33 +200,41 @@ function UserMenu({
         sideOffset={8}
         className="min-w-56"
       >
-        <DropdownMenuLabel
-          className="text-xs font-mono uppercase text-muted-foreground"
-          style={{ letterSpacing: "var(--tracking-eyebrow)" }}
-        >
-          Operador
-        </DropdownMenuLabel>
-        <DropdownMenuItem disabled>
-          <span className="grid leading-tight">
-            <span className="text-sm font-medium">
-              {user.name ?? "Operador"}
+        {/*
+          Base UI requires GroupLabel + every Item that shares its label
+          to live inside a single Menu.Group. We wrap the whole menu in
+          one ``DropdownMenuGroup`` to satisfy the contract — the group
+          here is the entire user menu.
+        */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel
+            className="text-xs font-mono uppercase text-muted-foreground"
+            style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+          >
+            Operador
+          </DropdownMenuLabel>
+          <DropdownMenuItem disabled>
+            <span className="grid leading-tight">
+              <span className="text-sm font-medium">
+                {user.name ?? "Operador"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {user.email}
+              </span>
             </span>
-            <span className="text-xs text-muted-foreground">
-              {user.email}
-            </span>
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={async () => {
-            await signOut();
-            router.replace("/login");
-            router.refresh();
-          }}
-        >
-          <LogOut className="size-4" />
-          Cerrar sesión
-        </DropdownMenuItem>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={async () => {
+              await signOut();
+              router.replace("/login");
+              router.refresh();
+            }}
+          >
+            <LogOut className="size-4" />
+            Cerrar sesión
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
