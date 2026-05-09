@@ -224,9 +224,18 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
 
-  --color-primary: var(--primary);
-
-  --color-border: var(--border);
+  /*
+    Do NOT mirror ``--color-primary`` or ``--color-border`` here. The
+    brand-side ``@theme`` block above already declares them (mountain
+    meadow / hairline-on-bone respectively), and pointing them at the
+    ``:root`` aliases creates a circular reference — ``--primary``
+    expands to ``var(--color-primary)`` which would expand back to
+    ``var(--primary)``. CSS treats that as invalid → ``bg-primary``
+    renders transparent and ``ring-ring`` (which chains through
+    ``--ring → --color-primary``) loses its highlight. ``--accent`` is
+    safe because we renamed the brand-side variant to
+    ``--color-accent-deep`` so the slot is uncontested.
+  */
 
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
