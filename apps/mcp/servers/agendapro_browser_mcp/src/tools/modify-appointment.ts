@@ -9,6 +9,7 @@ import {
   ModifyAppointmentInputSchema,
 } from '../schemas.js';
 import type { ScreenshotStore } from '../screenshot-store.js';
+import { pageOf } from '../stagehand/page.js';
 import type { BrowserSession } from '../stagehand/session.js';
 import { _internalCaptureScreenshot } from './create-appointment.js';
 
@@ -26,8 +27,9 @@ export async function modifyAppointment(
   }
   await ctx.session.ensureAttached(args.context_id);
   const sh = ctx.session.stagehand();
+  const page = await pageOf(sh);
 
-  await sh.page.goto(
+  await page.goto(
     `${ctx.config.agendaproBaseUrl}/cl/dashboard/agenda/appointments/${args.external_ref}/edit`,
     { waitUntil: 'networkidle' },
   );
@@ -53,26 +55,26 @@ export async function modifyAppointment(
   let touched = false;
   if (args.new_starts_at) {
     const time = args.new_starts_at.slice(11, 16);
-    await sh.page.act(`Change the appointment time to ${time}`);
+    await sh.act(`Change the appointment time to ${time}`);
     touched = true;
   }
   if (args.new_duration_min) {
-    await sh.page.act(`Change the duration to ${args.new_duration_min} minutes`);
+    await sh.act(`Change the duration to ${args.new_duration_min} minutes`);
     touched = true;
   }
   if (args.new_barber_external_id) {
-    await sh.page.act(
+    await sh.act(
       `Change the assigned professional to id ${args.new_barber_external_id}`,
     );
     touched = true;
   }
   if (args.new_service_name) {
-    await sh.page.act(`Change the service to "${args.new_service_name}"`);
+    await sh.act(`Change the service to "${args.new_service_name}"`);
     touched = true;
   }
   if (touched) {
-    await sh.page.act('Click the Save / Update button');
-    await sh.page.waitForLoadState('networkidle', { timeout: 30_000 });
+    await sh.act('Click the Save / Update button');
+    await page.waitForLoadState('networkidle', 30_000);
   }
 
   const screenshot = await _internalCaptureScreenshot(ctx, args.context_id);

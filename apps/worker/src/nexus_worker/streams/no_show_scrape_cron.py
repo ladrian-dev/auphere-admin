@@ -71,9 +71,7 @@ async def run_no_show_scrape_cron(
 async def _process_pending(sm: sa.orm.sessionmaker) -> None:  # type: ignore[type-arg]
     async with sm() as session:
         tenant_rows = await session.execute(
-            sa.select(Tenant.id, Tenant.timezone).where(
-                Tenant.status == TenantStatus.ACTIVE
-            )
+            sa.select(Tenant.id, Tenant.timezone).where(Tenant.status == TenantStatus.ACTIVE)
         )
         tenants = [(r[0], r[1] or "UTC") for r in tenant_rows]
 
@@ -102,9 +100,7 @@ def _local_today(tz_name: str) -> date:
     return datetime.now(tz).date()
 
 
-async def _process_tenant(
-    session: AsyncSession, tenant_id: uuid.UUID, tz_name: str
-) -> None:
+async def _process_tenant(session: AsyncSession, tenant_id: uuid.UUID, tz_name: str) -> None:
     has_creds = await _tenant_has_agendapro(session)
     if not has_creds:
         return
@@ -175,9 +171,7 @@ async def _already_ran_today(session: AsyncSession, today: date) -> bool:
     rows = await session.execute(
         sa.select(ScheduledJob.payload).where(
             ScheduledJob.kind == ScheduledJobKind.NO_SHOW_SCRAPE,
-            ScheduledJob.status.in_(
-                (ScheduledJobStatus.SENT, ScheduledJobStatus.FAILED)
-            ),
+            ScheduledJob.status.in_((ScheduledJobStatus.SENT, ScheduledJobStatus.FAILED)),
             ScheduledJob.run_at >= datetime.now(UTC) - timedelta(hours=36),
         )
     )

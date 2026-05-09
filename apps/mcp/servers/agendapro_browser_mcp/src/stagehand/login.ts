@@ -21,6 +21,7 @@ import { Stagehand } from '@browserbasehq/stagehand';
 
 import type { ServerConfig } from '../config.js';
 import { log } from '../logging.js';
+import { pageOf } from './page.js';
 
 export interface LoginResult {
   contextId: string;
@@ -77,20 +78,22 @@ export const defaultLoginRunner: LoginRunner = async (config, input) => {
     await sh.init();
     const loginUrl =
       input.businessUrl ?? `${config.agendaproBaseUrl}/cl/users/sign_in`;
-    await sh.page.goto(loginUrl, { waitUntil: 'networkidle' });
+    const page = await pageOf(sh);
+    await page.goto(loginUrl, { waitUntil: 'networkidle' });
 
     // Stagehand act-based form fill — robust to label drift.
-    await sh.page.act(
+    await sh.act(
       `Type the email "${input.login}" into the email or username field`,
     );
-    await sh.page.act(
+    await sh.act(
       `Type the password "${input.password}" into the password field`,
     );
-    await sh.page.act('Click the sign in / login button');
+    await sh.act('Click the sign in / login button');
 
-    // Wait for redirect away from login.
-    await sh.page.waitForLoadState('networkidle', { timeout: 30_000 });
-    const finalUrl = sh.page.url();
+    // Wait for redirect away from login. v3 ``waitForLoadState`` takes
+    // the timeout as a positional number (was an options object in v2).
+    await page.waitForLoadState('networkidle', 30_000);
+    const finalUrl = page.url();
     if (/\/(login|sign_in|sessions\/new)\b/i.test(finalUrl)) {
       throw new Error(`login failed — still on login page: ${finalUrl}`);
     }

@@ -17,6 +17,7 @@ import {
   ScrapeNoShowsInputSchema,
 } from '../schemas.js';
 import type { ScreenshotStore } from '../screenshot-store.js';
+import { pageOf } from '../stagehand/page.js';
 import type { BrowserSession } from '../stagehand/session.js';
 import { _internalCaptureScreenshot } from './create-appointment.js';
 
@@ -39,7 +40,8 @@ export async function scrapeNoShows(
   }
   await ctx.session.ensureAttached(args.context_id);
   const sh = ctx.session.stagehand();
-  await sh.page.goto(
+  const page = await pageOf(sh);
+  await page.goto(
     `${ctx.config.agendaproBaseUrl}/cl/dashboard/agenda?date=${onDate}`,
     { waitUntil: 'networkidle' },
   );
@@ -52,10 +54,10 @@ export async function scrapeNoShows(
     };
   }
 
-  const extracted = await sh.page.extract({
-    instruction: `On the calendar for ${onDate}, list every appointment whose starts_at has already passed AND whose status is "no_show", "no llegó", or appears as a missed appointment. Return external_ref, starts_at (ISO), service_name, customer_name, customer_phone, barber_external_id. Use null for missing fields.`,
-    schema: NO_SHOWS_SCHEMA,
-  });
+  const extracted = await sh.extract(
+    `On the calendar for ${onDate}, list every appointment whose starts_at has already passed AND whose status is "no_show", "no llegó", or appears as a missed appointment. Return external_ref, starts_at (ISO), service_name, customer_name, customer_phone, barber_external_id. Use null for missing fields.`,
+    NO_SHOWS_SCHEMA,
+  );
   const screenshot = await _internalCaptureScreenshot(ctx, args.context_id);
   return {
     on_date: onDate,

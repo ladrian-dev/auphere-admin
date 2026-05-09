@@ -1,0 +1,165 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+  PNPM_VERSION: "11.0.9"
+
+jobs:
+  test-api:
+    name: test-api
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus
+          POSTGRES_DB: nexus
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexus -d nexus"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      NEXUS_ENVIRONMENT: ci
+      NEXUS_DATABASE_URL: postgresql+asyncpg://nexus:nexus@localhost:5432/nexus
+      NEXUS_REDIS_URL: redis://localhost:6379/0
+      NEXUS_LANGFUSE_PUBLIC_KEY: ""
+      NEXUS_LANGFUSE_SECRET_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: install uv
+        run: pip install uv
+      - name: install api + worker deps
+        working-directory: apps/api
+        run: uv pip install --system ".[dev]"
+      - name: alembic upgrade head (CI database)
+        working-directory: apps/api
+        run: alembic upgrade head
+      - name: pytest — apps/api (unit + isolation + integration)
+        working-directory: apps/api
+        run: pytest -x --tb=short
+      - name: pytest — apps/channels
+        working-directory: apps/channels
+        run: pytest -x --tb=short
+      - name: pytest — apps/mcp
+        working-directory: apps/mcp
+        run: pytest -x --tb=short
+
+  test-admin:
+    name: test-admin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: apps/admin/pnpm-lock.yaml
+      - name: install
+        working-directory: apps/admin
+        run: pnpm install --frozen-lockfile
+      - name: typecheck
+        working-directory: apps/admin
+        run: pnpm typecheck
+      - name: lint
+        working-directory: apps/admin
+        run: pnpm lint
+      - name: vitest
+        working-directory: apps/admin
+        run: pnpm test
+      - name: next build
+        working-directory: apps/admin
+        env:
+          NEXUS_BACKEND_URL: http://localhost:8000
+          NEXUS_ADMIN_TOKEN: ci-token
+          BETTER_AUTH_SECRET: ci-secret-32-chars-padding-padding-padding
+          BETTER_AUTH_URL: http://localhost:3000
+          DATABASE_URL: postgresql://nexus:nexus@localhost:5432/nexus
+          NEXUS_ADMIN_DATABASE_URL: postgresql://nexus:nexus@localhost:5432/nexus
+        run: pnpm build
+
+  test-mcp-node:
+    name: test-mcp-node (agendapro)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: apps/mcp/servers/agendapro_browser_mcp/pnpm-lock.yaml
+      - name: install
+        working-directory: apps/mcp/servers/agendapro_browser_mcp
+        run: pnpm install --frozen-lockfile
+      - name: tsc build
+        working-directory: apps/mcp/servers/agendapro_browser_mcp
+        run: ./node_modules/.bin/tsc
+      - name: vitest
+        working-directory: apps/mcp/servers/agendapro_browser_mcp
+        run: ./node_modules/.bin/vitest run
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: install uv
+        run: pip install uv
+      - name: install api + worker + mcp + channels (for mypy/ruff)
+        run: |
+          uv pip install --system "./apps/api[dev]"
+          uv pip install --system "./apps/worker[dev]"
+          uv pip install --system "./apps/mcp[dev]"
+          uv pip install --system "./apps/channels[dev]"
+      - name: ruff check
+        run: |
+          ruff check apps/api/src apps/api/tests
+          ruff check apps/worker/src apps/worker/tests
+          ruff check apps/channels/src apps/channels/tests
+          ruff check apps/mcp/src apps/mcp/tests
+      - name: ruff format --check
+        run: |
+          ruff format --check apps/api/src apps/api/tests
+          ruff format --check apps/worker/src apps/worker/tests
+          ruff format --check apps/channels/src apps/channels/tests
+          ruff format --check apps/mcp/src apps/mcp/tests
+      - name: mypy --strict
+        run: |
+          mypy --strict apps/api/src/nexus_api
+          mypy --strict apps/worker/src/nexus_worker
+          mypy --strict apps/channels/src/nexus_channels
+          mypy --strict apps/mcp/src/nexus_mcp

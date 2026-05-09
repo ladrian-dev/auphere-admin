@@ -18,6 +18,7 @@ import {
   type ScreenshotMeta,
 } from '../schemas.js';
 import type { ScreenshotStore } from '../screenshot-store.js';
+import { pageOf } from '../stagehand/page.js';
 import type { BrowserSession } from '../stagehand/session.js';
 
 const CREATE_RESULT_SCHEMA = z.object({
@@ -45,11 +46,12 @@ export async function createAppointment(
 
   await ctx.session.ensureAttached(args.context_id);
   const sh = ctx.session.stagehand();
+  const page = await pageOf(sh);
 
   // Navigate to "new appointment" form for the date+barber combo.
   const dateOnly = args.starts_at.slice(0, 10);
   const newApptUrl = `${ctx.config.agendaproBaseUrl}/cl/dashboard/agenda?date=${dateOnly}&new=1`;
-  await sh.page.goto(newApptUrl, { waitUntil: 'networkidle' });
+  await page.goto(newApptUrl, { waitUntil: 'networkidle' });
 
   if (await ctx.session.detectExpired()) {
     // Defensive: returning a "needs_reauth" output instead of completing
@@ -76,34 +78,33 @@ export async function createAppointment(
   // varies by tenant config. The instructions are deliberately verbose
   // so the LLM-fallback recovers most label drift.
   const startTime = args.starts_at.slice(11, 16); // HH:MM
-  await sh.page.act(`Select the service "${args.service_name}" in the service field`);
+  await sh.act(`Select the service "${args.service_name}" in the service field`);
   if (args.barber_external_id) {
-    await sh.page.act(
+    await sh.act(
       `Select the professional with id ${args.barber_external_id} in the professional field`,
     );
   }
-  await sh.page.act(`Set the appointment time to ${startTime}`);
-  await sh.page.act(`Type the customer name "${args.customer_name}" into the client name field`);
-  await sh.page.act(`Type the phone "${args.customer_phone}" into the phone field`);
+  await sh.act(`Set the appointment time to ${startTime}`);
+  await sh.act(`Type the customer name "${args.customer_name}" into the client name field`);
+  await sh.act(`Type the phone "${args.customer_phone}" into the phone field`);
   if (args.customer_email) {
-    await sh.page.act(`Type the email "${args.customer_email}" into the email field`);
+    await sh.act(`Type the email "${args.customer_email}" into the email field`);
   }
   if (args.notes) {
-    await sh.page.act(`Type "${args.notes}" into the notes/observations field`);
+    await sh.act(`Type "${args.notes}" into the notes/observations field`);
   }
   // Some AgendaPro forms expose an idempotency / external reference field
   // as part of the booking metadata. If not, the key is still useful for
   // our local appointments.idempotency_key — booking-server enforces it.
   log.debug({ idempotencyKey }, 'create.idempotency_composed');
 
-  await sh.page.act('Click the "Save" or "Confirm" button to create the appointment');
-  await sh.page.waitForLoadState('networkidle', { timeout: 30_000 });
+  await sh.act('Click the "Save" or "Confirm" button to create the appointment');
+  await page.waitForLoadState('networkidle', 30_000);
 
-  const result = await sh.page.extract({
-    instruction:
-      'Extract the newly-created appointment id (external_ref), status, and customer-facing management URL if visible.',
-    schema: CREATE_RESULT_SCHEMA,
-  });
+  const result = await sh.extract(
+    'Extract the newly-created appointment id (external_ref), status, and customer-facing management URL if visible.',
+    CREATE_RESULT_SCHEMA,
+  );
 
   const screenshot = await captureScreenshot(ctx, args.context_id);
   const endsAtMs =

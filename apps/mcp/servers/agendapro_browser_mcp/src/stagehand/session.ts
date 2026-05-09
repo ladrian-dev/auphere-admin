@@ -23,6 +23,7 @@ import { Stagehand } from '@browserbasehq/stagehand';
 
 import type { ServerConfig } from '../config.js';
 import { log } from '../logging.js';
+import { pageOf } from './page.js';
 
 export interface BrowserSession {
   /** Asegura que la sesión está attach'd al contextId dado. Re-attach si difiere. */
@@ -97,18 +98,20 @@ class BrowserbaseStagehandSession implements BrowserSession {
 
   async screenshot(): Promise<Buffer> {
     const sh = this.stagehand();
-    const buf = await sh.page.screenshot({ fullPage: false, type: 'png' });
+    const page = await pageOf(sh);
+    const buf = await page.screenshot({ fullPage: false });
     return Buffer.from(buf);
   }
 
   async detectExpired(): Promise<boolean> {
     if (!this.sh) return false;
     try {
-      const url = this.sh.page.url();
+      const page = await pageOf(this.sh);
+      const url = page.url();
       // AgendaPro login URLs típicas: /login, /sign_in, /sessions/new.
       if (/\/(login|sign_in|sessions\/new)\b/i.test(url)) return true;
       // Fallback: look for a password input on the current page.
-      const hasPassword = await this.sh.page
+      const hasPassword = await page
         .locator('input[type="password"]')
         .count();
       return hasPassword > 0;

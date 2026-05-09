@@ -23,6 +23,7 @@ import {
   type CheckAvailabilityOutput,
   CheckAvailabilityInputSchema,
 } from '../schemas.js';
+import { pageOf } from '../stagehand/page.js';
 import type { BrowserSession } from '../stagehand/session.js';
 
 const SLOT_EXTRACT_SCHEMA = z.object({
@@ -63,10 +64,11 @@ export async function checkAvailability(
   }
   await ctx.session.ensureAttached(args.context_id);
   const sh = ctx.session.stagehand();
+  const page = await pageOf(sh);
 
   // Navigate to the booking calendar.
   const calendarUrl = `${ctx.agendaproBaseUrl}/cl/dashboard/agenda?date=${args.on_date}`;
-  await sh.page.goto(calendarUrl, { waitUntil: 'networkidle' });
+  await page.goto(calendarUrl, { waitUntil: 'networkidle' });
 
   if (await ctx.session.detectExpired()) {
     return {
@@ -80,15 +82,15 @@ export async function checkAvailability(
 
   // If a specific barber requested, filter the view.
   if (args.barber_external_id) {
-    await sh.page.act(
+    await sh.act(
       `Filter the calendar to show only the professional with id ${args.barber_external_id}`,
     );
   }
 
-  const extracted = await sh.page.extract({
-    instruction: `List all available time slots on ${args.on_date} for service "${args.service_name}" with duration ${args.duration_min} minutes. Return ISO datetimes for starts_at and ends_at.`,
-    schema: SLOT_EXTRACT_SCHEMA,
-  });
+  const extracted = await sh.extract(
+    `List all available time slots on ${args.on_date} for service "${args.service_name}" with duration ${args.duration_min} minutes. Return ISO datetimes for starts_at and ends_at.`,
+    SLOT_EXTRACT_SCHEMA,
+  );
 
   const slots: AgendaProSlot[] = (extracted.slots ?? []).map((s) => ({
     starts_at: s.starts_at,

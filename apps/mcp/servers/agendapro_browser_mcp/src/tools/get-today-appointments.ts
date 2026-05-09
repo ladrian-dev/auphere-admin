@@ -12,6 +12,7 @@ import {
   type GetTodayAppointmentsOutput,
   GetTodayAppointmentsInputSchema,
 } from '../schemas.js';
+import { pageOf } from '../stagehand/page.js';
 import type { BrowserSession } from '../stagehand/session.js';
 
 const TODAY_SCHEMA = z.object({
@@ -28,8 +29,9 @@ export async function getTodayAppointments(
   }
   await ctx.session.ensureAttached(args.context_id);
   const sh = ctx.session.stagehand();
+  const page = await pageOf(sh);
   const today = new Date().toISOString().slice(0, 10);
-  await sh.page.goto(
+  await page.goto(
     `${ctx.config.agendaproBaseUrl}/cl/dashboard/agenda?date=${today}`,
     { waitUntil: 'networkidle' },
   );
@@ -40,10 +42,10 @@ export async function getTodayAppointments(
       session: { needs_reauth: true },
     };
   }
-  const result = await sh.page.extract({
-    instruction: `List ALL appointments on ${today}. For each: external_ref (the appointment id), starts_at + ends_at as ISO datetimes, service_name, barber_external_id, customer_name, customer_phone, status. Use null for missing fields.`,
-    schema: TODAY_SCHEMA,
-  });
+  const result = await sh.extract(
+    `List ALL appointments on ${today}. For each: external_ref (the appointment id), starts_at + ends_at as ISO datetimes, service_name, barber_external_id, customer_name, customer_phone, status. Use null for missing fields.`,
+    TODAY_SCHEMA,
+  );
   return {
     appointments: result.appointments ?? [],
     fetched_at: new Date().toISOString(),

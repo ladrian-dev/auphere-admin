@@ -141,5 +141,3 @@ def reset_default_tracker() -> None:
     global _default_tracker
     with _tracker_lock:
         _default_tracker = None
-
-

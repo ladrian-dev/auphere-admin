@@ -1,0 +1,22 @@
+# Railway service config — nexus-worker
+#
+# Project: auphere-nexus. Service: nexus-worker. Root directory: repo
+# root. Set this file as the "Config Path" in the Railway service
+# settings: ``infra/railway/worker.toml``.
+#
+# No pre-deploy command on the worker — migrations belong to the API
+# service so they run exactly once per release. The worker waits for
+# whatever schema is on the database. If a migration is in flight it
+# tolerates the transient errors and Railway's restart policy retries.
+#
+# No HTTP healthcheck either — the worker is a daemon. Railway uses
+# boot stability instead (configurable in the service UI).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/worker/Dockerfile"
+
+[deploy]
+startCommand = "nexus-worker"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

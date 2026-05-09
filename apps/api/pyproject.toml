@@ -80,6 +80,7 @@ markers = [
     "unit: fast unit tests, no IO",
     "integration: requires Postgres/Redis containers",
     "isolation: blocking suite — verifies the 7 isolation guarantees",
+    "manual_only: release smoke / Browserbase / YCloud — opt-in via env vars",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:passlib.*",

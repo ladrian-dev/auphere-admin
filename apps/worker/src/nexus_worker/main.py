@@ -146,9 +146,7 @@ async def _amain() -> None:
             name="no-show-scrape-cron",
         )
         cost_rollup_task = asyncio.create_task(
-            run_cost_rollup_cron(
-                stop=stop, tick_seconds=worker_settings.cost_rollup_tick_seconds
-            ),
+            run_cost_rollup_cron(stop=stop, tick_seconds=worker_settings.cost_rollup_tick_seconds),
             name="cost-rollup-cron",
         )
         isolation_watcher_task = asyncio.create_task(

@@ -101,7 +101,7 @@ def init_langfuse(settings: WorkerSettings | None = None) -> LangfuseClientLike:
             _client = real  # type: ignore[assignment]
             assert _client is not None
             return _client
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("langfuse.init_failed", error=str(exc), falling_back_to="noop")
             _client = _NoopClient()
             return _client

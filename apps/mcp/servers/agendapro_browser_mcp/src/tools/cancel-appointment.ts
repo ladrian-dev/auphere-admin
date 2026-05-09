@@ -12,6 +12,7 @@ import {
   CancelAppointmentInputSchema,
 } from '../schemas.js';
 import type { ScreenshotStore } from '../screenshot-store.js';
+import { pageOf } from '../stagehand/page.js';
 import type { BrowserSession } from '../stagehand/session.js';
 import { _internalCaptureScreenshot } from './create-appointment.js';
 
@@ -29,8 +30,9 @@ export async function cancelAppointment(
   }
   await ctx.session.ensureAttached(args.context_id);
   const sh = ctx.session.stagehand();
+  const page = await pageOf(sh);
 
-  await sh.page.goto(
+  await page.goto(
     `${ctx.config.agendaproBaseUrl}/cl/dashboard/agenda/appointments/${args.external_ref}`,
     { waitUntil: 'networkidle' },
   );
@@ -43,12 +45,12 @@ export async function cancelAppointment(
     };
   }
 
-  await sh.page.act('Click the Cancel appointment button');
+  await sh.act('Click the Cancel appointment button');
   if (args.reason) {
-    await sh.page.act(`Type the cancellation reason "${args.reason}"`);
+    await sh.act(`Type the cancellation reason "${args.reason}"`);
   }
-  await sh.page.act('Confirm the cancellation in the dialog');
-  await sh.page.waitForLoadState('networkidle', { timeout: 30_000 });
+  await sh.act('Confirm the cancellation in the dialog');
+  await page.waitForLoadState('networkidle', 30_000);
 
   const screenshot = await _internalCaptureScreenshot(ctx, args.context_id);
   log.info({ external_ref: args.external_ref }, 'cancel.done');
