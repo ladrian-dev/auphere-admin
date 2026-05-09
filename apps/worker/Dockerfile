@@ -17,9 +17,12 @@
 # ──────────────────────────────────────────────────────────────────────
 # Stage 1 — node-build
 #   Compiles the AgendaPro MCP server (TS → dist) and installs production
-#   node_modules. Built off node:20 so we get the right pnpm + Node ABI.
+#   node_modules. Built off node:22 because pnpm 11.0.9 requires Node
+#   v22.13+ when activated via corepack (pnpm/action-setup@v4 in CI is
+#   more lenient, but corepack here is strict — see Railway deploy log
+#   "ERR_UNKNOWN_BUILTIN_MODULE node:sqlite" before the bump).
 # ──────────────────────────────────────────────────────────────────────
-FROM node:20-bookworm-slim AS node-build
+FROM node:22-bookworm-slim AS node-build
 
 ENV PNPM_HOME=/usr/local/pnpm \
     PATH=/usr/local/pnpm:$PATH
@@ -94,7 +97,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Pull just the Node binary from the official slim image — keeps us off
 # Debian's old Node and avoids pulling npm/yarn/etc. into the runtime.
-COPY --from=node:20-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
