@@ -20,8 +20,8 @@ import { Input } from "@/components/ui/input";
 import { signIn } from "@/lib/auth-client";
 
 const schema = z.object({
-  email: z.string().email("Ingresá un email válido"),
-  password: z.string().min(1, "Ingresá tu contraseña"),
+  email: z.string().email("Ingresa un email válido"),
+  password: z.string().min(1, "Ingresa tu contraseña"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -47,7 +47,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
       if (error) {
         toast.error("No se pudo iniciar sesión", {
           description:
-            error.message ?? "Revisá tu email y contraseña e intentá de nuevo.",
+            error.message ?? "Revisa tu email y contraseña e intenta de nuevo.",
         });
         return;
       }

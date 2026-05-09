@@ -23,15 +23,15 @@ export default async function LoginPage({
         <header className="flex flex-col gap-4">
           <Wordmark variant="compact" />
           <div className="flex flex-col gap-2">
-            <Eyebrow index="01">Operador interno</Eyebrow>
+            <Eyebrow>Operador interno</Eyebrow>
             <h1
               className="text-3xl font-semibold leading-tight"
               style={{ letterSpacing: "var(--tracking-tight)" }}
             >
-              Iniciá sesión.
+              Inicia sesión.
             </h1>
             <p className="text-muted-foreground text-base max-w-prose">
-              Acceso restringido al equipo de Auphere. Si tu cuenta no funciona, contactá a Lee.
+              Acceso restringido al equipo de Auphere. Si tu cuenta no funciona, contacta a Lee.
             </p>
           </div>
         </header>

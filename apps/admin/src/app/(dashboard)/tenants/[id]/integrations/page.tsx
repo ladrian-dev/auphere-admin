@@ -47,7 +47,7 @@ export default async function IntegrationsPage({
     <div className="grid gap-6">
       <Card>
         <CardHeader className="flex flex-col gap-1">
-          <Eyebrow index="01">Integración</Eyebrow>
+          <Eyebrow>Integración</Eyebrow>
           <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
             <div>
               <CardTitle>AgendaPro</CardTitle>
@@ -89,7 +89,7 @@ export default async function IntegrationsPage({
 
       <Card>
         <CardHeader>
-          <Eyebrow index="02">Actividad reciente</Eyebrow>
+          <Eyebrow>Actividad reciente</Eyebrow>
           <CardTitle>Acciones AgendaPro</CardTitle>
           <CardDescription>
             Últimos 20 eventos del audit log con screenshot. Click en una fila abre la captura.

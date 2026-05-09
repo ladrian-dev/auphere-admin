@@ -141,6 +141,16 @@
 
 /* ============================================================
    shadcn/ui token bridge
+   ============================================================
+   Two layers:
+
+   1. Plain ``:root`` vars (``--card``, ``--popover``, etc.) so
+      shadcn components written against the canonical variable
+      names work unchanged.
+   2. ``@theme inline`` mirror so Tailwind 4 emits utility classes
+      ``bg-card`` / ``text-popover-foreground`` / ``bg-sidebar``.
+      WITHOUT this mirror, those utilities silently fall back to
+      transparent — that was the dialog rendering as see-through.
    ============================================================ */
 
 :root {
@@ -183,6 +193,55 @@
   --sidebar-accent-foreground: var(--color-bangladesh-green);
   --sidebar-border: var(--color-border);
   --sidebar-ring: var(--color-primary);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /*
+    Brand-system rule: radii ∈ {0, 4, 8, 999}. "No 12, no 16. Restricción
+    es identidad." Lock the Tailwind utility scale so any shadcn component
+    using rounded-{md,lg,xl,2xl,3xl} renders within the brand grid.
+  */
+  --radius-xs: 4px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+  --radius-3xl: 8px;
 }
 
 [data-theme="dark"] {

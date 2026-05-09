@@ -34,7 +34,6 @@ export default async function TenantsPage() {
     <>
       <PageHeader
         eyebrow="Tenants"
-        eyebrowIndex="01"
         title="Portafolio de agentes"
         description="Cada tenant es un cliente con su propio agente WhatsApp. Click en una fila para abrir el detalle."
       />
@@ -74,7 +73,7 @@ export default async function TenantsPage() {
                   colSpan={5}
                   className="py-12 text-center text-muted-foreground"
                 >
-                  Sin tenants todavía. Cuando seedees el primero (ej. Cultor Barber) aparecerá acá.
+                  Sin tenants todavía. Cuando crees el primero (ej. Cultor Barber) aparecerá aquí.
                 </TableCell>
               </TableRow>
             ) : (

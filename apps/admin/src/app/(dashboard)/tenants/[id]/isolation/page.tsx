@@ -109,7 +109,7 @@ export default async function IsolationPage({
               }
             >
               <CardHeader>
-                <Eyebrow index={g.index}>Garantía</Eyebrow>
+                <Eyebrow>Garantía</Eyebrow>
                 <CardTitle className="text-lg">{g.title}</CardTitle>
                 <CardDescription className="font-mono text-[11px]">
                   {g.metric}

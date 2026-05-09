@@ -8,21 +8,19 @@ import { Eyebrow } from "./eyebrow";
  *  - Title is display weight, ``--text-2xl`` mobile and ``--text-3xl``
  *    on tablet+. Tracking ``--tracking-tight``. Never larger; this is
  *    ops UI, not a hero.
- *  - Eyebrow lives above the title with the section index. It carries
- *    the brand's mono uppercase voice without needing illustrations.
+ *  - Eyebrow lives above the title — short uppercase mono label that
+ *    carries the brand voice without illustrations.
  *  - Right-aligned actions slot stays vertically centred to the title;
  *    keep it to 1–2 buttons max.
  */
 export function PageHeader({
   eyebrow,
-  eyebrowIndex,
   title,
   description,
   actions,
   className,
 }: {
   eyebrow?: string;
-  eyebrowIndex?: string;
   title: React.ReactNode;
   description?: React.ReactNode;
   actions?: React.ReactNode;
@@ -36,9 +34,7 @@ export function PageHeader({
       )}
     >
       <div className="flex flex-col gap-2">
-        {eyebrow ? (
-          <Eyebrow index={eyebrowIndex}>{eyebrow}</Eyebrow>
-        ) : null}
+        {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
         <h1
           className="text-2xl md:text-3xl font-semibold leading-tight"
           style={{ letterSpacing: "var(--tracking-tight)" }}

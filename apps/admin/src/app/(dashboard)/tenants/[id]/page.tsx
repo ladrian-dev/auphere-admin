@@ -33,7 +33,7 @@ export default async function TenantOverview({
       {/* Identity */}
       <Card className="lg:col-span-1">
         <CardHeader>
-          <Eyebrow index="01">Identidad</Eyebrow>
+          <Eyebrow>Identidad</Eyebrow>
           <CardTitle>{tenant.name}</CardTitle>
           <CardDescription className="font-mono">{tenant.slug}</CardDescription>
         </CardHeader>
@@ -50,7 +50,7 @@ export default async function TenantOverview({
       {/* Agent state */}
       <Card className="lg:col-span-1">
         <CardHeader>
-          <Eyebrow index="02">Agente</Eyebrow>
+          <Eyebrow>Agente</Eyebrow>
           <CardTitle>
             {activeVersion
               ? `Versión ${activeVersion} activa`
@@ -59,7 +59,7 @@ export default async function TenantOverview({
           <CardDescription>
             {activeVersion
               ? `${totalVersions} versión${totalVersions === 1 ? "" : "es"} en historial · ${whitelistSize} tools en whitelist`
-              : "Agendá una primera versión desde la pestaña Agente."}
+              : "Crea una primera versión desde la pestaña Agente."}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
@@ -87,7 +87,7 @@ export default async function TenantOverview({
       {/* Quick actions / signals */}
       <Card className="lg:col-span-1">
         <CardHeader>
-          <Eyebrow index="03">Salud operativa</Eyebrow>
+          <Eyebrow>Salud operativa</Eyebrow>
           <CardTitle>Signals</CardTitle>
           <CardDescription>
             Resumen rápido. Para detalle entrá a la pestaña de aislamiento o

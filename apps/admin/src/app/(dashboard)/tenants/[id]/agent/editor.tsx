@@ -110,7 +110,7 @@ export function AgentEditor({
         return;
       }
       toast.success("Versión staged", {
-        description: `v${result.data.version} guardada — promovela cuando quieras activarla.`,
+        description: `v${result.data.version} guardada — promuévela cuando quieras activarla.`,
       });
       router.refresh();
     });

@@ -65,7 +65,7 @@ export function AgendaProActions({
         });
       } else {
         toast.info("Health check completado", {
-          description: notes ?? "Revisá el detalle en el log.",
+          description: notes ?? "Revisa el detalle en el log.",
         });
       }
     });

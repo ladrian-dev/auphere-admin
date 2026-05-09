@@ -47,7 +47,6 @@ export default async function ToolCatalogPage({
     <>
       <PageHeader
         eyebrow="Catálogo"
-        eyebrowIndex="02"
         title="Tools del agente"
         description="Catálogo global. Cada tool atómica define schema Pydantic estricto y se filtra por whitelist. Las tools internas (status='internal') jamás aparecen en el editor de whitelist por diseño."
       />

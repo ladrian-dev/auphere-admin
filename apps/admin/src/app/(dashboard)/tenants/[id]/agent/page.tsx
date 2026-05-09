@@ -47,14 +47,14 @@ export default async function AgentPage({
     <div className="grid gap-6">
       <Card>
         <CardHeader>
-          <Eyebrow index="01">Configuración del agente</Eyebrow>
+          <Eyebrow>Configuración del agente</Eyebrow>
           <CardTitle>
             {bundle.active
               ? `Versión ${bundle.active.version} activa`
               : "Crear primera versión"}
           </CardTitle>
           <CardDescription>
-            Cualquier cambio guardado crea una versión <strong>staged</strong>; promovela
+            Cualquier cambio guardado crea una versión <strong>staged</strong>; promuévela
             explícitamente para que el agente la use en el siguiente turno.
           </CardDescription>
         </CardHeader>
@@ -70,7 +70,7 @@ export default async function AgentPage({
 
       <Card>
         <CardHeader>
-          <Eyebrow index="02">Versiones</Eyebrow>
+          <Eyebrow>Versiones</Eyebrow>
           <CardTitle>Historial</CardTitle>
           <CardDescription>
             Cada promoción dispara la invalidación de la cache del runtime — el siguiente turno

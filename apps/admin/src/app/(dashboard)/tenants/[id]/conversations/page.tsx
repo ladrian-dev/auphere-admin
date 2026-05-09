@@ -47,7 +47,7 @@ export default async function ConversationsPage({
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <Eyebrow index="01">Conversaciones</Eyebrow>
+              <Eyebrow>Conversaciones</Eyebrow>
               <CardTitle className="flex items-center gap-3">
                 Historial reciente
                 <LiveIndicator tenantId={tenant.id} />
