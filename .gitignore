@@ -44,3 +44,10 @@ logs/
 # Local artifacts
 tmp/
 .local/
+
+# Claude Code workspace (agents, skills, rules, instructions)
+.claude/
+CLAUDE.md
+**/CLAUDE.md
+.claude.json
+.claude.local.json
