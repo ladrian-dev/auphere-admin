@@ -127,3 +127,68 @@ async def test_versions_listed_in_descending_order(client, admin_headers, seed_t
     r = await client.get(f"/admin/tenants/{tid}/agent-config", headers=admin_headers)
     versions = [v["version"] for v in r.json()["versions"]]
     assert versions == [3, 2, 1]
+
+
+# ── Block J: seed-template bootstrap ───────────────────────────────────────
+
+
+async def test_list_seed_templates_includes_barbershop(client, admin_headers):
+    r = await client.get("/admin/seed-templates", headers=admin_headers)
+    assert r.status_code == 200
+    payload = r.json()
+    names = [t["name"] for t in payload]
+    assert "barbershop_v1" in names
+    bs = next(t for t in payload if t["name"] == "barbershop_v1")
+    assert bs["version"] == "1.0.0"
+    assert "booking.check_availability" in bs["tools_required"]
+
+
+async def test_from_seed_renders_and_stages_v1(client, admin_headers, seed_tenants):
+    tid = seed_tenants["a"]
+    body = {
+        "seed_template_ref": "barbershop_v1",
+        "placeholders": {
+            "tenant.name": "Cultor Barber",
+            "tenant.address": "Av. Apoquindo 1234",
+            "tenant.timezone": "America/Santiago",
+            "tenant.business_hours_label": "Lun-Sáb 10-19",
+        },
+    }
+    r = await client.post(
+        f"/admin/tenants/{tid}/agent-config/from-seed",
+        headers=admin_headers,
+        json=body,
+    )
+    assert r.status_code == 201, r.text
+    config = r.json()
+    assert config["status"] == "staged"
+    assert config["version"] == 1
+    assert config["seed_template_ref"] == "barbershop_v1"
+    assert "Cultor Barber" in config["system_prompt_rendered"]
+    assert "Av. Apoquindo 1234" in config["system_prompt_rendered"]
+    assert "booking.create_appointment" in config["tools"]
+    assert config["policies"]["cancellation"]["free_hours_before"] == 24
+
+
+async def test_from_seed_unknown_template_404(client, admin_headers, seed_tenants):
+    tid = seed_tenants["a"]
+    r = await client.post(
+        f"/admin/tenants/{tid}/agent-config/from-seed",
+        headers=admin_headers,
+        json={"seed_template_ref": "ghost_v9", "placeholders": {}},
+    )
+    assert r.status_code == 404
+
+
+async def test_from_seed_missing_placeholder_400(client, admin_headers, seed_tenants):
+    tid = seed_tenants["a"]
+    r = await client.post(
+        f"/admin/tenants/{tid}/agent-config/from-seed",
+        headers=admin_headers,
+        json={
+            "seed_template_ref": "barbershop_v1",
+            "placeholders": {"tenant.name": "Cultor Barber"},
+        },
+    )
+    assert r.status_code == 400
+    assert "placeholder" in r.json()["detail"]

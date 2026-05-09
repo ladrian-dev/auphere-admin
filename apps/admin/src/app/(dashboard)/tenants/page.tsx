@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/brand/page-header";
 import { StatusDot } from "@/components/brand/status-dot";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -36,6 +37,7 @@ export default async function TenantsPage() {
         eyebrow="Tenants"
         title="Portafolio de agentes"
         description="Cada tenant es un cliente con su propio agente WhatsApp. Click en una fila para abrir el detalle."
+        actions={<Button render={<Link href="/tenants/new" />}>Nuevo cliente</Button>}
       />
 
       <div className="flex items-center gap-6 text-sm text-muted-foreground">

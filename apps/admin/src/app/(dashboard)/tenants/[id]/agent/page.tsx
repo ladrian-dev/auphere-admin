@@ -24,6 +24,7 @@ import {
   rollbackAgentConfigAction,
   stageAgentConfigAction,
 } from "./actions";
+import { ApplySeedTemplateButton } from "./apply-seed";
 
 export default async function AgentPage({
   params,
@@ -31,10 +32,11 @@ export default async function AgentPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [tenant, bundle, catalog] = await Promise.all([
+  const [tenant, bundle, catalog, seedTemplates] = await Promise.all([
     backend.getTenant(id),
     backend.getAgentConfig(id),
     backend.listToolCatalog(false),
+    backend.listSeedTemplates(),
   ]);
   if (!tenant) return null;
 
@@ -46,17 +48,28 @@ export default async function AgentPage({
   return (
     <div className="grid gap-6">
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-col gap-1">
           <Eyebrow>Configuración del agente</Eyebrow>
-          <CardTitle>
-            {bundle.active
-              ? `Versión ${bundle.active.version} activa`
-              : "Crear primera versión"}
-          </CardTitle>
-          <CardDescription>
-            Cualquier cambio guardado crea una versión <strong>staged</strong>; promuévela
-            explícitamente para que el agente la use en el siguiente turno.
-          </CardDescription>
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <CardTitle>
+                {bundle.active
+                  ? `Versión ${bundle.active.version} activa`
+                  : "Crear primera versión"}
+              </CardTitle>
+              <CardDescription>
+                Cualquier cambio guardado crea una versión <strong>staged</strong>;
+                promuévela explícitamente para que el agente la use en el siguiente turno.
+              </CardDescription>
+            </div>
+            <ApplySeedTemplateButton
+              tenantId={tenant.id}
+              tenantName={tenant.name}
+              tenantTimezone={tenant.timezone}
+              templates={seedTemplates}
+              hasActiveConfig={bundle.active !== null}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           <AgentEditor

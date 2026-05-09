@@ -25,6 +25,10 @@ dependencies = [
     "opentelemetry-instrumentation-asyncpg>=0.49b0",
     # Block F: webhook layer parses YCloud payloads via the channel adapter.
     "nexus-channels",
+    # Block J: seed_templates loads vertical YAMLs (apps/api/.../seeds/*.yaml).
+    "pyyaml>=6.0.2",
+    # Block J: TenantCreateIn validates owner_email via Pydantic EmailStr.
+    "email-validator>=2.2.0",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +39,7 @@ dev = [
     "httpx>=0.27.0",
     "ruff>=0.7.0",
     "mypy>=1.13.0",
+    "types-pyyaml>=6.0.12.20240917",
     "fakeredis>=2.26.0",
     "asgi-lifespan>=2.1.0",
     # Block C: the runtime isolation tests import from the worker package.

@@ -93,6 +93,70 @@ export type Tenant = {
   business_hours: Record<string, unknown> | null;
   owner_phone: string | null;
   owner_email: string | null;
+  cost_alert_threshold_usd_per_day: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TenantCreateInput = {
+  slug: string;
+  name: string;
+  plan: TenantPlan;
+  market?: string | null;
+  timezone?: string;
+  owner_email?: string | null;
+  owner_phone?: string | null;
+  business_hours?: Record<string, unknown> | null;
+  cost_alert_threshold_usd_per_day?: number;
+};
+
+export type TenantUpdateInput = Partial<{
+  name: string;
+  plan: TenantPlan;
+  status: TenantStatus;
+  market: string | null;
+  timezone: string;
+  owner_email: string | null;
+  owner_phone: string | null;
+  business_hours: Record<string, unknown> | null;
+  cost_alert_threshold_usd_per_day: number;
+}>;
+
+export type SlugAvailability = {
+  slug: string;
+  available: boolean;
+};
+
+export type WhatsAppPreview = {
+  phone_number: string;
+  phone_number_id: string;
+  waba_id: string;
+  display_name: string | null;
+  verified_name: string | null;
+  quality_rating: string | null;
+};
+
+export type WhatsAppConnect = WhatsAppPreview & {
+  status: string;
+  channel_id: string;
+  audit_log_id: string;
+};
+
+export type SeedTemplate = {
+  name: string;
+  version: string;
+  display_name: string;
+  tools_required: string[];
+  policies_default: Record<string, unknown>;
+};
+
+export type ChannelOut = {
+  id: string;
+  type: "whatsapp" | "instagram" | "telegram" | "email" | "web";
+  provider: string;
+  provider_identifier: string;
+  config: Record<string, unknown>;
+  status: "active" | "paused" | "degraded" | "disconnected";
   created_at: string;
   updated_at: string;
 };
@@ -244,5 +308,51 @@ export const backend = {
   getIsolationMetrics: (tenantId: string) =>
     call<IsolationMetricsOut>(
       `/admin/tenants/${tenantId}/isolation/metrics`,
+    ),
+
+  // ── Block J: onboarding wizard ──────────────────────────────────────────
+
+  checkSlugAvailability: (slug: string) =>
+    call<SlugAvailability>(
+      `/admin/tenants/check-slug?slug=${encodeURIComponent(slug)}`,
+    ),
+
+  createTenant: (body: TenantCreateInput) =>
+    call<Tenant>("/admin/tenants", { method: "POST", body }),
+
+  updateTenant: (tenantId: string, body: TenantUpdateInput) =>
+    call<Tenant>(`/admin/tenants/${tenantId}`, { method: "PUT", body }),
+
+  verifyWhatsApp: (waba_id: string, phone_number_id: string) =>
+    call<WhatsAppPreview>(
+      `/admin/integrations/whatsapp/verify?waba_id=${encodeURIComponent(
+        waba_id,
+      )}&phone_number_id=${encodeURIComponent(phone_number_id)}`,
+    ),
+
+  connectWhatsAppManual: (
+    tenantId: string,
+    body: { waba_id: string; phone_number_id: string },
+  ) =>
+    call<WhatsAppConnect>(
+      `/admin/tenants/${tenantId}/integrations/whatsapp/connect-manual`,
+      { method: "POST", body },
+    ),
+
+  listSeedTemplates: () =>
+    call<SeedTemplate[]>("/admin/seed-templates").then((r) => r ?? []),
+
+  applyAgentConfigSeed: (
+    tenantId: string,
+    body: { seed_template_ref: string; placeholders: Record<string, unknown> },
+  ) =>
+    call<AgentConfig>(
+      `/admin/tenants/${tenantId}/agent-config/from-seed`,
+      { method: "POST", body },
+    ),
+
+  listChannels: (tenantId: string) =>
+    call<ChannelOut[]>(`/admin/tenants/${tenantId}/channels`).then(
+      (r) => r ?? [],
     ),
 };

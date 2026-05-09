@@ -69,3 +69,18 @@ export async function rollbackAgentConfigAction(
     return { ok: false, error: pluck(err) };
   }
 }
+
+export async function applySeedTemplateAction(
+  tenantId: string,
+  body: { seed_template_ref: string; placeholders: Record<string, unknown> },
+): Promise<Result<AgentConfig>> {
+  await requireSession();
+  try {
+    const result = await backend.applyAgentConfigSeed(tenantId, body);
+    revalidatePath(`/tenants/${tenantId}/agent`);
+    revalidatePath(`/tenants/${tenantId}`);
+    return { ok: true, data: result! };
+  } catch (err) {
+    return { ok: false, error: pluck(err) };
+  }
+}

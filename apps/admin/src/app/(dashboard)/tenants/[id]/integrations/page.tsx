@@ -17,6 +17,7 @@ import {
   healthCheckAgendaProAction,
 } from "./actions";
 import { AgendaProActions } from "./agendapro-actions";
+import { ConnectWhatsAppManualDialog } from "./whatsapp-actions";
 
 /**
  * Integrations tab — currently only AgendaPro (block E). Future
@@ -42,9 +43,75 @@ export default async function IntegrationsPage({
   const { id } = await params;
   const tenant = await backend.getTenant(id);
   if (!tenant) return null;
+  const channels = await backend.listChannels(id);
+  const whatsapp = channels.find((c) => c.type === "whatsapp") ?? null;
 
   return (
     <div className="grid gap-6">
+      <Card>
+        <CardHeader className="flex flex-col gap-1">
+          <Eyebrow>Canal</Eyebrow>
+          <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+            <div>
+              <CardTitle>WhatsApp YCloud</CardTitle>
+              <CardDescription>
+                Phase 1: setup manual. El owner crea la WABA en YCloud y pega los
+                IDs en el panel.
+              </CardDescription>
+            </div>
+            <ConnectWhatsAppManualDialog
+              tenantId={tenant.id}
+              alreadyConnected={whatsapp !== null}
+            />
+          </div>
+        </CardHeader>
+        <Separator />
+        <CardContent className="grid gap-4 pt-6 text-sm md:grid-cols-3">
+          <Stat
+            label="Estado"
+            value={
+              <span className="inline-flex items-center gap-2">
+                <StatusDot tone={whatsapp ? "positive" : "muted"} />
+                <span>{whatsapp ? "Conectado" : "Sin conectar"}</span>
+              </span>
+            }
+            hint={
+              whatsapp
+                ? "El webhook YCloud rutea inbound a este número."
+                : "Necesita un par (waba_id, phone_number_id) válido."
+            }
+          />
+          <Stat
+            label="Número"
+            value={
+              whatsapp ? (
+                <span className="font-mono">{whatsapp.provider_identifier}</span>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )
+            }
+            hint={
+              whatsapp
+                ? `${(whatsapp.config["display_name"] as string | null) ?? "Sin display name"}`
+                : "E.164 visible una vez verificado contra YCloud."
+            }
+          />
+          <Stat
+            label="Quality rating"
+            value={
+              whatsapp ? (
+                <Badge variant="outline">
+                  {(whatsapp.config["quality_rating"] as string | null) ?? "—"}
+                </Badge>
+              ) : (
+                <Badge variant="outline">—</Badge>
+              )
+            }
+            hint="Lo reporta Meta — si baja a YELLOW/RED hay que revisar templates."
+          />
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="flex flex-col gap-1">
           <Eyebrow>Integración</Eyebrow>

@@ -272,6 +272,135 @@ secret mal pegado. Revalidar `NEXUS_YCLOUD_WEBHOOK_SECRET` en Doppler.
 
 ---
 
+## Onboarding de un cliente nuevo (Block J)
+
+> Phase 1 Lee onboardea cada tenant manualmente desde el panel. El wizard
+> entrega el shape mínimo (identidad + costo); los pasos posteriores
+> (WhatsApp, AgendaPro, prompt) se hacen en `/tenants/[id]/integrations`
+> y `/tenants/[id]/agent`.
+
+### Pre-requisitos por cliente
+
+Antes de tocar el panel, asegurate de tener:
+
+1. **Datos del owner**: nombre comercial, slug deseado, plan, mercado (CL/AR/...),
+   timezone, email + WhatsApp E.164 del owner, horario de atención.
+2. **Templates Meta**: los 9 templates UTILITY de
+   `apps/channels/src/nexus_channels/whatsapp_ycloud/templates/cultor_barber/`
+   creados en YCloud dashboard como UTILITY. Lead Meta 24-72h — **arranca
+   día 1** para no bloquear el go-live. Los nombres exactos son:
+   `reminder_24h`, `reminder_1h`, `no_show_followup`, `welcome_cl_es`,
+   `alert_escalation_v1`, `alert_needs_reauth_v1`, `alert_cost_threshold_v1`,
+   `alert_isolation_v1`, `alert_ycloud_burst_v1`.
+3. **WABA del cliente**: si migrás un número existente, el owner debe ser
+   admin del Facebook Business antes (precondición ADR-008). Si arrancás
+   con número nuevo de prueba, YCloud Growth provee uno gratis.
+4. **Browserbase Startup tier** aprovisionado y `BROWSERBASE_API_KEY` +
+   `BROWSERBASE_PROJECT_ID` en Doppler `production` (necesario para el
+   bootstrap AgendaPro real; el panel devuelve 502 con mensaje claro si
+   las keys no están).
+
+### Paso 1 — Crear el tenant
+
+`/tenants` → botón **Nuevo cliente** → completar el form:
+
+- **Slug**: lowercase + guiones (ej. `cultor-barber`). El form valida
+  disponibilidad async — si ves "Ya existe", elegí otro.
+- **Plan**: pro para clientes Phase 1.
+- **Timezone**: typically `America/Santiago` para CL.
+- **Cost alert**: default $40/día (Pro tier). Override post-creación si
+  el cliente tiene volumen alto.
+
+Submit → redirige a `/tenants/[id]/integrations`.
+
+### Paso 2 — Conectar WhatsApp
+
+Card "WhatsApp YCloud" → botón **Conectar manualmente** → dialog:
+
+1. Pegar `waba_id` y `phone_number_id` (los obtenés del YCloud dashboard
+   → WABA → Phone numbers).
+2. Click **Verificar** → el panel llama a YCloud y muestra preview con
+   E.164, display name, verified name, quality rating.
+3. Confirmar visualmente que es la cuenta correcta.
+4. Click **Confirmar y conectar** → crea fila `Channel`, audit log.
+
+Errores YCloud típicos y qué significan:
+
+- **400 "no encontró el par"** → typo en los IDs. Re-copiar del dashboard.
+- **400 "401 / NEXUS_YCLOUD_API_KEY"** → la API key BSP fue rolled.
+  Doppler → `production` → `NEXUS_YCLOUD_API_KEY`.
+- **400 "403 / Tech Provider"** → el owner no agregó a Auphere como Tech
+  Provider en su Facebook Business, o YCloud no ha bindeado la WABA.
+- **409 "ya está conectado a otro tenant"** → el E.164 está usado por
+  otro tenant. Ver "Migrar un número entre tenants" abajo.
+
+### Paso 3 — Bootstrap AgendaPro
+
+Card "AgendaPro" → **Bootstrap** → dialog con login + password + business URL.
+
+- El backend invoca el subprocess Stagehand v3 + Browserbase Contexts
+  (Block E) y persiste el `context_id` encriptado en `tenant_credentials`.
+- Si Browserbase no está aprovisionado, devuelve 502 con mensaje claro.
+- Si falla por credenciales inválidas, el owner debe re-confirmar el
+  login con vos.
+
+### Paso 4 — Agent config v1 desde el seed
+
+`/tenants/[id]/agent` → botón **Aplicar plantilla inicial**:
+
+1. Seleccionar `barbershop_v1` (única vertical Phase 1).
+2. Completar dirección, horario textual, nombre del agente, tono.
+3. Submit → backend renderea el prompt + tools whitelist + policies y
+   crea `agent_config v1 staged`.
+4. Revisar el prompt rendered en el editor.
+5. Si pinta bien, **Promote** la versión 1 desde la tabla de versiones.
+
+El runtime invalida cache automáticamente; el siguiente turno usa la
+nueva versión sin redeploy (pub/sub Redis).
+
+### Paso 5 — Smoke conversación
+
+Mandar un mensaje de prueba al WhatsApp del tenant desde un teléfono
+propio. Esperado:
+
+1. El webhook YCloud llega a `https://api.auphere.com/webhook/ycloud`.
+2. El worker procesa el inbound (Redis stream).
+3. El agente responde con texto coherente al rol del seed.
+4. Trace visible en Langfuse Cloud filtrando por `user_id=<tenant_id>`.
+5. Conversación visible live en `/tenants/[id]/conversations` (SSE).
+
+Si el smoke falla: chequear los counters en `/tenants/[id]/aislamiento`.
+Si están todos en 0, el problema es de configuración (prompt, tools).
+Si hay counters en > 0, ver el playbook de `alert_isolation_v1` arriba.
+
+### Migrar un número entre tenants
+
+Si Cultor migra desde otro proyecto del usuario que ya tiene su número
+en una WABA distinta:
+
+1. Confirmar con el owner que quiere migrar (no perder histórico).
+2. **Quitar el número del tenant anterior**: actualmente requiere SQL
+   manual (Phase 2 expone botón "Desconectar"):
+   ```sql
+   DELETE FROM channels
+     WHERE type = 'whatsapp'
+       AND provider_identifier = '+56911112222';
+   ```
+3. Conectar manualmente desde el panel del tenant nuevo.
+4. Coordinar con YCloud support la migración del número entre WABAs si
+   también cambia de WABA (no es un flow del panel).
+
+### Decisión: número nuevo vs migración
+
+Si el cliente quiere mantener su número existente: coordinar migración con
+YCloud support. Lead típico 3-5 días hábiles.
+
+Si acepta un número nuevo de prueba: YCloud Growth provee uno gratis.
+Phase 1 más rápido y con menos riesgo de bloqueo. Es el path
+recomendado para cliente 1 (Cultor) si la migración demora.
+
+---
+
 ## Cosas que no debés hacer (sin pensarlo dos veces)
 
 - **`railway run alembic downgrade head` o `alembic downgrade base`**.
