@@ -1,0 +1,6 @@
+name: alert_needs_reauth_v1
+language: es_CL
+category: UTILITY
+body: |
+  Auphere — Cultor Barber: la sesión de AgendaPro expiró y el re-login automático falló. El agente sigue activo en modo local. Reconecta desde el panel.
+params: []

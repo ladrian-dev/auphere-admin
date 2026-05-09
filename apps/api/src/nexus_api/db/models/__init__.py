@@ -18,6 +18,10 @@ from nexus_api.db.models.conversation import (
     MessageStatus,
 )
 from nexus_api.db.models.kg import KGEdge, KGNode, KGSchema
+from nexus_api.db.models.operator_notification import (
+    OperatorNotification,
+    OperatorNotificationStatus,
+)
 from nexus_api.db.models.queue_entry import QueueEntry, QueueEntryStatus
 from nexus_api.db.models.scheduled_job import (
     ScheduledJob,
@@ -46,6 +50,8 @@ __all__ = [
     "Message",
     "MessageDirection",
     "MessageStatus",
+    "OperatorNotification",
+    "OperatorNotificationStatus",
     "QueueEntry",
     "QueueEntryStatus",
     "ScheduledJob",

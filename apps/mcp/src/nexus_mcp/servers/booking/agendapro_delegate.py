@@ -76,7 +76,7 @@ async def _dispatch_agendapro(
 
 
 async def _handle_session_status(
-    session: AsyncSession,  # noqa: ARG001 — kept for API symmetry; flag is persisted in a separate session
+    session: AsyncSession,
     *,
     result: dict[str, Any],
     tenant_id: uuid.UUID,
@@ -106,8 +106,7 @@ async def _handle_session_status(
         tenant_id=str(tenant_id),
     )
     raise ToolError(
-        "agendapro session expired and needs reauth — operator must "
-        "re-bootstrap the integration"
+        "agendapro session expired and needs reauth — operator must re-bootstrap the integration"
     )
 
 

@@ -23,6 +23,8 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy>=0.49b0",
     "opentelemetry-instrumentation-redis>=0.49b0",
     "opentelemetry-instrumentation-asyncpg>=0.49b0",
+    # Block F: webhook layer parses YCloud payloads via the channel adapter.
+    "nexus-channels",
 ]
 
 [project.optional-dependencies]
@@ -44,6 +46,7 @@ dev = [
 [tool.uv.sources]
 nexus-worker = { path = "../worker", editable = true }
 nexus-mcp = { path = "../mcp", editable = true }
+nexus-channels = { path = "../channels", editable = true }
 
 [build-system]
 requires = ["hatchling"]

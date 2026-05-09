@@ -1,49 +1,38 @@
 [project]
-name = "nexus-worker"
+name = "nexus-channels"
 version = "0.1.0"
-description = "Nexus runtime worker — LangGraph agent pipeline + Redis Stream consumer"
+description = "Nexus channel adapters — WhatsApp via YCloud (Phase 1) + future channels"
 requires-python = ">=3.11"
 license = { text = "Proprietary" }
 authors = [{ name = "Auphere" }]
 dependencies = [
     "nexus-api",
-    "nexus-mcp",
-    "nexus-channels",
-    "langgraph>=1.0.0",
-    "langgraph-checkpoint-postgres>=2.0.0",
-    "litellm>=1.52.0",
-    "structlog>=24.4.0",
-    "redis>=5.2.0",
-    "sqlalchemy[asyncio]>=2.0.36",
-    "asyncpg>=0.30.0",
     "pydantic>=2.9.0",
-    "pydantic-settings>=2.6.0",
-    "psycopg[binary,pool]>=3.2.0",
+    "structlog>=24.4.0",
+    "httpx>=0.28.0",
+    "tenacity>=9.0.0",
+    "pyyaml>=6.0.2",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
-    "fakeredis>=2.26.0",
+    "respx>=0.21.1",
     "ruff>=0.7.0",
     "mypy>=1.13.0",
+    "types-pyyaml>=6.0.12.20240917",
 ]
-
-[project.scripts]
-nexus-worker = "nexus_worker.main:run"
 
 [tool.uv.sources]
 nexus-api = { path = "../api", editable = true }
-nexus-mcp = { path = "../mcp", editable = true }
-nexus-channels = { path = "../channels", editable = true }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nexus_worker"]
+packages = ["src/nexus_channels"]
 
 [tool.ruff]
 line-length = 100
@@ -63,6 +52,7 @@ pythonpath = ["src"]
 markers = [
     "unit: fast unit tests, no IO",
     "integration: requires Postgres/Redis containers",
+    "requires_ycloud: hits the real YCloud API; manual smoke only, never in CI",
 ]
 
 [tool.mypy]
@@ -70,4 +60,4 @@ python_version = "3.11"
 strict = true
 ignore_missing_imports = true
 disallow_untyped_decorators = false
-files = ["src/nexus_worker"]
+files = ["src/nexus_channels"]

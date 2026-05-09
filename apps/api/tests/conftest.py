@@ -36,6 +36,8 @@ os.environ.setdefault("NEXUS_REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("NEXUS_ENVIRONMENT", "dev")
 os.environ.setdefault("NEXUS_ADMIN_TOKEN", "test-admin-token")
 os.environ.setdefault("NEXUS_WEBHOOK_HMAC_SECRET", "test-hmac-secret")
+os.environ.setdefault("NEXUS_YCLOUD_API_KEY", "test-ycloud-api-key")
+os.environ.setdefault("NEXUS_YCLOUD_WEBHOOK_SECRET", "test-ycloud-webhook-secret")
 os.environ.setdefault("NEXUS_FERNET_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("NEXUS_ISOLATION_ENFORCER_RAISE_IN_DEV", "false")
 
@@ -186,6 +188,7 @@ async def test_engine() -> AsyncIterator[Any]:
 
 
 _TRUNCATE_TABLES = (
+    "operator_notifications",
     "audit_log",
     "usage_events",
     "scheduled_jobs",

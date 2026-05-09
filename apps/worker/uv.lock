@@ -1623,6 +1623,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "cryptography" },
     { name = "fastapi" },
+    { name = "nexus-channels" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-instrumentation-asyncpg" },
     { name = "opentelemetry-instrumentation-fastapi" },
@@ -1648,6 +1649,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
+    { name = "nexus-channels", editable = "../channels" },
     { name = "nexus-mcp", marker = "extra == 'dev'", editable = "../mcp" },
     { name = "nexus-worker", marker = "extra == 'dev'", editable = "." },
     { name = "opentelemetry-api", specifier = ">=1.28.0" },
@@ -1667,6 +1669,36 @@ requires-dist = [
     { name = "sse-starlette", specifier = ">=2.1.3" },
     { name = "structlog", specifier = ">=24.4.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
+name = "nexus-channels"
+version = "0.1.0"
+source = { editable = "../channels" }
+dependencies = [
+    { name = "httpx" },
+    { name = "nexus-api" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "structlog" },
+    { name = "tenacity" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
+    { name = "nexus-api", editable = "../api" },
+    { name = "pydantic", specifier = ">=2.9.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21.1" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7.0" },
+    { name = "structlog", specifier = ">=24.4.0" },
+    { name = "tenacity", specifier = ">=9.0.0" },
+    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.12.20240917" },
 ]
 provides-extras = ["dev"]
 
@@ -1707,6 +1739,7 @@ dependencies = [
     { name = "langgraph-checkpoint-postgres" },
     { name = "litellm" },
     { name = "nexus-api" },
+    { name = "nexus-channels" },
     { name = "nexus-mcp" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic" },
@@ -1734,6 +1767,7 @@ requires-dist = [
     { name = "litellm", specifier = ">=1.52.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
     { name = "nexus-api", editable = "../api" },
+    { name = "nexus-channels", editable = "../channels" },
     { name = "nexus-mcp", editable = "../mcp" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2.0" },
     { name = "pydantic", specifier = ">=2.9.0" },

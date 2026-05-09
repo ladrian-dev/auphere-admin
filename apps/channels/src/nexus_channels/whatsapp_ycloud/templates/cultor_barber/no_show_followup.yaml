@@ -1,0 +1,9 @@
+name: no_show_followup
+language: es_CL
+category: UTILITY
+body: |
+  Hola {{1}}, notamos que no llegaste a tu cita de hoy con {{2}}. Aplica un cargo de {{3}}. ¿Quieres reagendar? Responde este mensaje y te ayudamos.
+params:
+  - customer_name
+  - barber_name
+  - fee_label

@@ -101,3 +101,7 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     model: Mapped[str | None] = mapped_column(String(80), nullable=True)
     trace_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     tool_calls: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    # Block F: outbound retry bookkeeping. Populated only by the outbound
+    # dispatcher; inbound rows leave them untouched.
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

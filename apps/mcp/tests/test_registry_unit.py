@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from nexus_mcp import build_default_registry
 from nexus_mcp.registry import reset_default_registry
 
