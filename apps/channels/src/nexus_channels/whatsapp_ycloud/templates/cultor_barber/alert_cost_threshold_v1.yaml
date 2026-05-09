@@ -1,0 +1,11 @@
+# Alerta al operador (Lee) cuando el costo diario del tenant cruza su umbral
+# (cost_alert_threshold_usd_per_day). Disparado por la cron de cost rollup
+# (block H) la primera vez que se cruza el umbral en el día.
+# UTILITY: respuesta a evento del sistema con datos transaccionales.
+name: alert_cost_threshold_v1
+language: es_CL
+category: UTILITY
+body: |
+  Auphere — Cultor Barber: el costo diario cruzó el umbral configurado. {{1}}. Revisa Langfuse y el panel.
+params:
+  - amount_usd_label

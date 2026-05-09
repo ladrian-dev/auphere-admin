@@ -145,6 +145,20 @@ export type ToolCatalog = {
   status: ToolStatus;
 };
 
+export type IsolationMetric = {
+  metric: string;
+  count_24h: number;
+  last_breach_at: string | null;
+  persisted: boolean;
+};
+
+export type IsolationMetricsOut = {
+  tenant_id: string;
+  window_hours: number;
+  generated_at: string;
+  metrics: IsolationMetric[];
+};
+
 // ── tenants ─────────────────────────────────────────────────────────────────
 
 export const backend = {
@@ -226,4 +240,9 @@ export const backend = {
     }>(`/admin/tenants/${tenantId}/integrations/agendapro/health-check`, {
       method: "POST",
     }),
+
+  getIsolationMetrics: (tenantId: string) =>
+    call<IsolationMetricsOut>(
+      `/admin/tenants/${tenantId}/isolation/metrics`,
+    ),
 };

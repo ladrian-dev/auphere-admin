@@ -23,6 +23,7 @@ import signal
 
 import structlog
 from nexus_api.config import get_settings
+from nexus_api.core.metrics import isolation_event_drainer
 from nexus_api.core.redis_client import get_redis
 from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
 from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudClient
@@ -32,15 +33,24 @@ from nexus_mcp.servers.agendapro_browser.transport import (
 )
 
 from nexus_worker.config import get_api_settings, get_worker_settings
+from nexus_worker.logging import configure_logging
+from nexus_worker.observability import init_langfuse
+from nexus_worker.observability import shutdown as langfuse_shutdown
 from nexus_worker.runtime.agent_loader import AgentLoader
 from nexus_worker.runtime.checkpointer import postgres_checkpointer
 from nexus_worker.runtime.llm import build_default_router
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.consumer import run_inbound_consumer
+from nexus_worker.streams.cost_rollup_cron import run_cost_rollup_cron
+from nexus_worker.streams.health_check_cron import run_health_check_cron
+from nexus_worker.streams.isolation_watcher import run_isolation_watcher
+from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
 from nexus_worker.streams.operator_alerts import run_operator_alerter
 from nexus_worker.streams.outbound import run_outbound_dispatcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
+
+configure_logging()
 
 log = structlog.get_logger(__name__)
 
@@ -49,6 +59,11 @@ async def _amain() -> None:
     api_settings = get_api_settings()
     worker_settings = get_worker_settings()
     nexus_settings = get_settings()
+
+    # Block H: Langfuse must initialise BEFORE LiteLLM picks up the
+    # ``litellm.success_callback`` hook. Noop client when keys are
+    # absent (dev/test).
+    init_langfuse(worker_settings)
 
     loader = AgentLoader(max_size=worker_settings.agent_cache_size)
     router = build_default_router(
@@ -112,6 +127,36 @@ async def _amain() -> None:
             run_reminder_cron(stop=stop),
             name="reminder-cron",
         )
+        # Block H: persistent isolation events drainer + 4 new task
+        # streams (health_check, no_show_scrape, cost_rollup,
+        # isolation_watcher).
+        drainer_task = asyncio.create_task(
+            isolation_event_drainer(stop), name="isolation-event-drainer"
+        )
+        health_check_task = asyncio.create_task(
+            run_health_check_cron(
+                stop=stop, tick_seconds=worker_settings.health_check_tick_seconds
+            ),
+            name="health-check-cron",
+        )
+        no_show_task = asyncio.create_task(
+            run_no_show_scrape_cron(
+                stop=stop, tick_seconds=worker_settings.no_show_scrape_tick_seconds
+            ),
+            name="no-show-scrape-cron",
+        )
+        cost_rollup_task = asyncio.create_task(
+            run_cost_rollup_cron(
+                stop=stop, tick_seconds=worker_settings.cost_rollup_tick_seconds
+            ),
+            name="cost-rollup-cron",
+        )
+        isolation_watcher_task = asyncio.create_task(
+            run_isolation_watcher(
+                stop=stop, tick_seconds=worker_settings.isolation_watcher_tick_seconds
+            ),
+            name="isolation-watcher",
+        )
         try:
             await asyncio.gather(
                 consumer_task,
@@ -119,10 +164,16 @@ async def _amain() -> None:
                 outbound_task,
                 alerter_task,
                 reminder_task,
+                drainer_task,
+                health_check_task,
+                no_show_task,
+                cost_rollup_task,
+                isolation_watcher_task,
             )
         finally:
             await ycloud_client.close()
             await agendapro_pool.shutdown()
+            langfuse_shutdown()
 
 
 def run() -> None:

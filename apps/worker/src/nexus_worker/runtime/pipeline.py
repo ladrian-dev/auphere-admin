@@ -51,7 +51,7 @@ import structlog
 from langgraph.graph import END, START, StateGraph
 from nexus_api.core.metrics import (
     ISOLATION_TOOL_WHITELIST_VIOLATION,
-    counters,
+    record_isolation_event,
 )
 from nexus_api.core.tenant_context import tenant_context, tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
@@ -249,7 +249,11 @@ def make_handler_node(
 # Sentinel used by tests when the LLM emits a name we WANT to leak through
 # in a hostile scenario. The pipeline still rejects via dispatch.
 def _record_pre_llm_violation(name: str, tenant_id: uuid.UUID) -> None:  # pragma: no cover
-    counters.incr(ISOLATION_TOOL_WHITELIST_VIOLATION)
+    record_isolation_event(
+        ISOLATION_TOOL_WHITELIST_VIOLATION,
+        tenant_id,
+        {"tool": name, "site": "pre_llm"},
+    )
     log.warning(
         "tool.whitelist_violation_pre_llm",
         tenant_id=str(tenant_id),

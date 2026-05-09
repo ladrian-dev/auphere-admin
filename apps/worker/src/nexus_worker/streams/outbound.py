@@ -166,6 +166,19 @@ async def _send_one(
     except Exception as exc:
         msg.attempts += 1
         msg.last_error = f"{type(exc).__name__}: {exc}"[:500]
+        # Block H: feed the burst tracker so a sustained YCloud 5xx
+        # storm escalates to the operator. Status code 0 = transport
+        # error; >=500 = upstream failure. Other codes (auth/contract
+        # bugs) don't qualify.
+        status_code = int(getattr(exc, "status_code", -1) or 0)
+        if status_code == 0 or 500 <= status_code <= 599:
+            from nexus_worker.streams.burst_tracker import get_default_tracker
+
+            await get_default_tracker().record_failure_and_maybe_audit(
+                tenant_id,
+                status_code,
+                error_message=msg.last_error or "",
+            )
         if msg.attempts >= MAX_ATTEMPTS:
             msg.status = MessageStatus.FAILED
             log.warning(

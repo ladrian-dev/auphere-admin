@@ -30,7 +30,10 @@ from collections.abc import Iterable
 from typing import Any
 
 import structlog
-from nexus_api.core.metrics import ISOLATION_TOOL_WHITELIST_VIOLATION, counters
+from nexus_api.core.metrics import (
+    ISOLATION_TOOL_WHITELIST_VIOLATION,
+    record_isolation_event,
+)
 from nexus_api.core.tenant_context import require_current_tenant
 
 from nexus_mcp.base import (
@@ -179,7 +182,11 @@ class MCPRegistry:
         tenant_id = require_current_tenant()
         wl = set(whitelist)
         if name not in wl:
-            counters.incr(ISOLATION_TOOL_WHITELIST_VIOLATION)
+            record_isolation_event(
+                ISOLATION_TOOL_WHITELIST_VIOLATION,
+                tenant_id,
+                {"tool": name, "whitelist": sorted(wl)},
+            )
             log.warning(
                 "tool.whitelist_violation",
                 tenant_id=str(tenant_id),

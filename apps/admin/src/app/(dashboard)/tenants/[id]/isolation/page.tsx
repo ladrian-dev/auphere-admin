@@ -10,15 +10,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { backend } from "@/lib/backend";
+import { relativeTime } from "@/lib/format";
 
-type Guarantee = {
+type GuaranteeMeta = {
   index: string;
   title: string;
   metric: string;
   blurb: string;
 };
 
-const GUARANTEES: Guarantee[] = [
+const GUARANTEES: GuaranteeMeta[] = [
   {
     index: "01",
     title: "Postgres RLS",
@@ -69,15 +70,15 @@ export default async function IsolationPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const tenant = await backend.getTenant(id);
+  const [tenant, snapshot] = await Promise.all([
+    backend.getTenant(id),
+    backend.getIsolationMetrics(id).catch(() => null),
+  ]);
   if (!tenant) return null;
 
-  // Phase 1: counters live in the runtime's in-memory store. The backend
-  // doesn't yet expose them per-tenant via /admin (that lands with block
-  // H + Langfuse). We render the structural status — every guarantee
-  // ships with a passing test in tests/isolation/ — and set violations to
-  // 0 by default. When block H lands, the dashboard reads real numbers.
-  const violations: Record<string, number> = {};
+  const byMetric = new Map(
+    (snapshot?.metrics ?? []).map((m) => [m.metric, m]),
+  );
 
   return (
     <div className="grid gap-6">
@@ -89,16 +90,22 @@ export default async function IsolationPage({
         <div className="text-sm">
           <p className="font-medium">7 garantías estructurales activas.</p>
           <p className="text-muted-foreground">
-            La suite ``tests/isolation/`` corre en CI y bloquea merges. Los contadores en vivo se
-            wirean en Bloque H (Langfuse). Por ahora se muestra la salud estructural.
+            La suite ``tests/isolation/`` corre en CI y bloquea merges. Los contadores reflejan los
+            últimos 24h leyendo ``isolation_events`` (RLS scoped); el indicador 01 vive en counter
+            in-memory porque la violación ocurre antes que se establezca tenant.
           </p>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {GUARANTEES.map((g) => {
-          const count = violations[g.metric] ?? 0;
+          const m = byMetric.get(g.metric);
+          const count = m?.count_24h ?? 0;
           const breached = count > 0;
+          const lastBreach = m?.last_breach_at
+            ? relativeTime(m.last_breach_at)
+            : null;
+          const persisted = m?.persisted ?? true;
           return (
             <Card
               key={g.metric}
@@ -129,7 +136,17 @@ export default async function IsolationPage({
                   <StatusDot tone={breached ? "danger" : "positive"} />
                   {breached ? "Violación detectada" : "Sin violaciones"}
                 </span>
+                {lastBreach && (
+                  <p className="text-[11px] font-mono text-muted-foreground">
+                    Última: {lastBreach}
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">{g.blurb}</p>
+                {!persisted && (
+                  <p className="text-[11px] text-muted-foreground italic">
+                    System-level — counter in-memory, sin ledger.
+                  </p>
+                )}
               </CardContent>
             </Card>
           );

@@ -17,6 +17,8 @@ from nexus_api.db.models.conversation import (
     MessageDirection,
     MessageStatus,
 )
+from nexus_api.db.models.daily_cost_snapshot import DailyCostSnapshot
+from nexus_api.db.models.isolation_event import IsolationEvent
 from nexus_api.db.models.kg import KGEdge, KGNode, KGSchema
 from nexus_api.db.models.operator_notification import (
     OperatorNotification,
@@ -44,6 +46,8 @@ __all__ = [
     "Conversation",
     "ConversationStatus",
     "Customer",
+    "DailyCostSnapshot",
+    "IsolationEvent",
     "KGEdge",
     "KGNode",
     "KGSchema",

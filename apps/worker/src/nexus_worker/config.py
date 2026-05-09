@@ -39,6 +39,21 @@ class WorkerSettings(BaseSettings):
     # AgentLoader cache size (entries == number of distinct (tenant, version) pairs).
     agent_cache_size: int = 64
 
+    # ── Langfuse (block H) ────────────────────────────────────────────────
+    # Empty / unset → noop client. Useful for tests and pre-prod. When
+    # the cloud workspace is provisioned set ``NEXUS_LANGFUSE_PUBLIC_KEY``
+    # + ``NEXUS_LANGFUSE_SECRET_KEY`` and the SDK kicks in.
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_environment: str = "dev"
+
+    # Cron tick overrides (test fixtures use these to drop seconds → ms).
+    health_check_tick_seconds: float = 3600.0
+    no_show_scrape_tick_seconds: float = 3600.0
+    cost_rollup_tick_seconds: float = 3600.0
+    isolation_watcher_tick_seconds: float = 60.0
+
 
 @lru_cache
 def get_worker_settings() -> WorkerSettings:

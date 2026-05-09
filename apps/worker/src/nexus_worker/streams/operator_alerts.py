@@ -1,14 +1,21 @@
 """Operator alerter — turns audit_log events into operator WhatsApp templates.
 
-Two events trigger an alert in Phase 1:
+Five events trigger an alert in Phase 1:
 
 - ``conversation.escalated`` — written by ``escalate.escalate_to_human``
-  (block D). Body in ``after_json`` carries ``customer_id`` + ``reason``.
-  Template: ``alert_escalation_v1``.
-- ``integration.agendapro.needs_reauth`` — written by
-  ``/admin/.../integrations/agendapro/health-check`` (block E) when both
-  the original AgendaPro context and the auto re-login fail. Template:
-  ``alert_needs_reauth_v1``.
+  (block D). Template: ``alert_escalation_v1``.
+- ``integration.agendapro.needs_reauth`` — written by the AgendaPro
+  health-check service when re-login fails (block E + H cron).
+  Template: ``alert_needs_reauth_v1``.
+- ``cost.daily_threshold_exceeded`` — written by the cost rollup cron
+  (block H) when ``messages.cost_usd`` for today crosses the tenant's
+  ``cost_alert_threshold_usd_per_day``. Template: ``alert_cost_threshold_v1``.
+- ``isolation.violation_detected`` — written by the isolation watcher
+  (block H) when an ``isolation_events`` row lands for any of the 7 P1
+  metrics. Template: ``alert_isolation_v1``.
+- ``channel.ycloud_5xx_burst`` — written by the outbound dispatcher's
+  burst tracker (block H) when YCloud 5xx errors >= 5 within 2min.
+  Template: ``alert_ycloud_burst_v1``.
 
 The :mod:`nexus_api.db.models.operator_notification` table is the
 deduplication ledger — we INSERT a row keyed on ``audit_log_id`` BEFORE
@@ -57,6 +64,9 @@ DEFAULT_TICK_SECONDS = 30.0
 _ACTION_TO_TEMPLATE: dict[str, str] = {
     "conversation.escalated": "alert_escalation_v1",
     "integration.agendapro.needs_reauth": "alert_needs_reauth_v1",
+    "cost.daily_threshold_exceeded": "alert_cost_threshold_v1",
+    "isolation.violation_detected": "alert_isolation_v1",
+    "channel.ycloud_5xx_burst": "alert_ycloud_burst_v1",
 }
 
 
@@ -269,4 +279,16 @@ async def _render_params(
         return [customer_label, reason]
     if template == "alert_needs_reauth_v1":
         return []
+    if template == "alert_cost_threshold_v1":
+        total = after.get("cost_usd_total") or "0"
+        threshold = after.get("threshold_usd") or "0"
+        amount_label = f"USD {total} / umbral USD {threshold}"
+        return [amount_label]
+    if template == "alert_isolation_v1":
+        metric = str(after.get("metric") or "isolation.unknown")
+        count = str(after.get("count") or after.get("count_24h") or "1")
+        return [metric, count]
+    if template == "alert_ycloud_burst_v1":
+        count = str(after.get("threshold") or "5")
+        return [count]
     return []

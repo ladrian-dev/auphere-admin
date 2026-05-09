@@ -32,10 +32,11 @@ from nexus_api.api.deps import scoped_session_from_path
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import AuditLog
 from nexus_api.services.agendapro_credentials import (
-    get_agendapro_credentials,
-    mark_agendapro_health_check,
-    update_agendapro_context_id,
     upsert_agendapro_credentials,
+)
+from nexus_api.services.agendapro_health import (
+    AgendaProNotConfigured,
+    run_agendapro_health_check,
 )
 
 router = APIRouter()
@@ -177,64 +178,23 @@ async def health_check_agendapro(
     actor: str = Depends(require_admin_token),
 ) -> AgendaProHealthCheckOut:
     """Verifica el context AgendaPro. Auto-relogin si expiró. Si
-    re-login falla → flippea ``needs_reauth=True`` + dispara escalate."""
-    creds = await get_agendapro_credentials(session)
-    if creds is None:
+    re-login falla → flippea ``needs_reauth=True`` + escribe audit_log
+    que el operator alerter convierte en notification al operador."""
+    try:
+        result = await run_agendapro_health_check(session, tenant_id, actor=f"admin:{actor[:8]}")
+    except AgendaProNotConfigured as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="tenant has no agendapro integration; bootstrap first",
-        )
-    envelope = await _dispatch_internal_for_admin(
-        name="agendapro._health_check",
-        args={
-            "context_id": creds.context_id,
-            "login_for_relogin": creds.login,
-            "password_for_relogin": creds.password,
-            "business_url": creds.business_url,
-        },
-    )
-    result = envelope["result"]
-    healthy: bool = bool(result["healthy"])
-    needs_reauth: bool = bool(result["needs_reauth"])
-    new_context_id: str | None = result.get("new_context_id")
-    checked_at = datetime.fromisoformat(result["checked_at"])
-    new_persisted = False
-
-    if new_context_id and new_context_id != creds.context_id:
-        await update_agendapro_context_id(session, new_context_id=new_context_id)
-        new_persisted = True
-
-    await mark_agendapro_health_check(session, needs_reauth=needs_reauth, checked_at=checked_at)
-
-    if needs_reauth:
-        # Disparar escalate.escalate_to_human via dispatch_internal NO es
-        # apropiado (escalate es público y necesita conversation_id). En
-        # vez, escribimos un audit_log especial — Bloque H lo lee y
-        # notifica al operador via el dispatcher de notification.
-        audit = AuditLog(
-            tenant_id=tenant_id,
-            actor=f"admin:{actor[:8]}",
-            action="integration.agendapro.needs_reauth",
-            target=f"tenant:{tenant_id}",
-            before_json=None,
-            after_json={
-                "checked_at": checked_at.isoformat(),
-                "notes": result.get("notes"),
-                "relogin_attempted": result.get("relogin_attempted"),
-            },
-        )
-        session.add(audit)
-        await session.flush()
-        log.warning("agendapro.needs_reauth", tenant_id=str(tenant_id), notes=result.get("notes"))
-
+        ) from exc
     return AgendaProHealthCheckOut(
-        healthy=healthy,
-        relogin_attempted=bool(result.get("relogin_attempted")),
-        relogin_succeeded=bool(result.get("relogin_succeeded")),
-        needs_reauth=needs_reauth,
-        checked_at=checked_at,
-        notes=result.get("notes"),
-        new_context_id_persisted=new_persisted,
+        healthy=result.healthy,
+        relogin_attempted=result.relogin_attempted,
+        relogin_succeeded=result.relogin_succeeded,
+        needs_reauth=result.needs_reauth,
+        checked_at=result.checked_at,
+        notes=result.notes,
+        new_context_id_persisted=result.new_context_id_persisted,
     )
 
 

@@ -188,6 +188,8 @@ async def test_engine() -> AsyncIterator[Any]:
 
 
 _TRUNCATE_TABLES = (
+    "isolation_events",
+    "daily_cost_snapshots",
     "operator_notifications",
     "audit_log",
     "usage_events",

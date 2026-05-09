@@ -28,7 +28,10 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import structlog
-from nexus_api.core.metrics import ISOLATION_LLM_BATCH_CROSS_TENANT, counters
+from nexus_api.core.metrics import (
+    ISOLATION_LLM_BATCH_CROSS_TENANT,
+    record_isolation_event,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -250,7 +253,11 @@ class LiteLLMProvider:
         # immediately rather than letting it ship.
         global_router = getattr(litellm, "default_router", None)
         if global_router is not None and getattr(global_router, "enable_batching", False):
-            counters.incr(ISOLATION_LLM_BATCH_CROSS_TENANT)
+            record_isolation_event(
+                ISOLATION_LLM_BATCH_CROSS_TENANT,
+                tenant_id,
+                {"role": role, "model": model},
+            )
             raise RuntimeError(
                 "litellm batching is enabled globally; refusing to invoke for "
                 f"tenant {tenant_id!s} — see architecture/agent-isolation.md garantía 7"
