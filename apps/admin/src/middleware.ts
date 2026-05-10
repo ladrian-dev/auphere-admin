@@ -17,9 +17,13 @@ export function middleware(request: NextRequest) {
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
+  // Better Auth prepends ``__Secure-`` to the cookie name when
+  // ``defaultCookieAttributes.secure`` is true (production HTTPS), so the
+  // actual cookie ends up as ``__Secure-nexus.session_token``. Match by
+  // suffix to handle both the dev (no prefix) and prod (prefix) shapes.
   const sessionCookie = request.cookies
     .getAll()
-    .find((c) => c.name.startsWith("nexus.session_token"));
+    .find((c) => c.name === "nexus.session_token" || c.name.endsWith(".nexus.session_token") || c.name.endsWith("-nexus.session_token"));
   if (!sessionCookie) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
