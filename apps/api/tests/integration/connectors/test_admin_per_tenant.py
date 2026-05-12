@@ -275,9 +275,7 @@ async def test_initiate_consent_lazy_upserts_composio_connector(
     fake_composio.register_tools("googlesheets", [])
 
     # Sanity: no row in DB yet.
-    pre = await db_session.scalar(
-        select(Connector).where(Connector.slug == "googlesheets")
-    )
+    pre = await db_session.scalar(select(Connector).where(Connector.slug == "googlesheets"))
     assert pre is None
 
     r = await client.post(
@@ -287,9 +285,7 @@ async def test_initiate_consent_lazy_upserts_composio_connector(
     assert r.status_code == 201, r.text
 
     # The connector row got materialized with the metadata from Composio.
-    post = await db_session.scalar(
-        select(Connector).where(Connector.slug == "googlesheets")
-    )
+    post = await db_session.scalar(select(Connector).where(Connector.slug == "googlesheets"))
     assert post is not None
     assert post.display_name == "Google Sheets"
     assert post.auth_kind == "oauth_composio"

@@ -51,9 +51,7 @@ async def test_list_catalog_filter_category(
     assert {c["slug"] for c in body} == {"googlecalendar"}
 
 
-async def test_get_catalog_entry(
-    client, admin_headers, seeded_catalog, fake_composio
-) -> None:
+async def test_get_catalog_entry(client, admin_headers, seeded_catalog, fake_composio) -> None:
     r = await client.get("/admin/connectors/googlecalendar", headers=admin_headers)
     assert r.status_code == 200
     body = r.json()
@@ -65,9 +63,7 @@ async def test_get_catalog_entry(
     assert body["id"] is None
 
 
-async def test_get_catalog_entry_seed(
-    client, admin_headers, seeded_catalog, fake_composio
-) -> None:
+async def test_get_catalog_entry_seed(client, admin_headers, seeded_catalog, fake_composio) -> None:
     """Custom seeds keep their persisted ``id`` since they're seeded at deploy."""
     r = await client.get("/admin/connectors/agendapro", headers=admin_headers)
     assert r.status_code == 200

@@ -75,11 +75,11 @@ def _admin(token: str) -> dict[str, str]:
 async def test_list_tenant_connectors_does_not_leak(
     client, admin_headers, db_session, two_tenants_with_catalog, composio_with_two_tenants
 ) -> None:
-    """Tenant A connects google_calendar; tenant B's list returns empty."""
+    """Tenant A connects googlecalendar; tenant B's list returns empty."""
     # Tenant A initiates consent.
     r = await client.post(
         f"/admin/tenants/{two_tenants_with_catalog['a']}/connectors/"
-        f"google_calendar/initiate-consent",
+        f"googlecalendar/initiate-consent",
         headers=admin_headers,
     )
     assert r.status_code == 201
@@ -108,7 +108,7 @@ async def test_composio_user_id_is_tenant_scoped(
     for key in ("a", "b"):
         r = await client.post(
             f"/admin/tenants/{two_tenants_with_catalog[key]}/connectors/"
-            f"google_calendar/initiate-consent",
+            f"googlecalendar/initiate-consent",
             headers=admin_headers,
         )
         assert r.status_code == 201, r.text
@@ -174,11 +174,17 @@ async def test_tenant_connector_rls_blocks_cross_tenant_select(
     db_session, two_tenants_with_catalog
 ) -> None:
     """Raw SQL check: with set_config(tenant_id=A), selecting tenant_connectors
-    must not return tenant B's rows. (Defense-in-depth on top of the API.)"""
+    must not return tenant B's rows. (Defense-in-depth on top of the API.)
+
+    Uses ``agendapro`` because it's a custom seed (already in DB after
+    ``apply_seeds``). OAuth toolkits like ``googlecalendar`` only land in
+    the ``connectors`` table after a lazy upsert at initiate-consent time;
+    this test exercises RLS directly without going through the endpoint.
+    """
     # Insert one row for each tenant directly with row_security off.
     from nexus_api.db.models import Connector
 
-    conn = await db_session.scalar(select(Connector).where(Connector.slug == "google_calendar"))
+    conn = await db_session.scalar(select(Connector).where(Connector.slug == "agendapro"))
     assert conn is not None
 
     await db_session.execute(text("SET LOCAL row_security = off"))
@@ -222,13 +228,13 @@ async def test_disconnect_one_tenant_does_not_affect_other(
     for key in ("a", "b"):
         await client.post(
             f"/admin/tenants/{two_tenants_with_catalog[key]}/connectors/"
-            f"google_calendar/initiate-consent",
+            f"googlecalendar/initiate-consent",
             headers=admin_headers,
         )
 
     # Tenant A disconnects.
     r_a = await client.post(
-        f"/admin/tenants/{two_tenants_with_catalog['a']}/connectors/google_calendar/disconnect",
+        f"/admin/tenants/{two_tenants_with_catalog['a']}/connectors/googlecalendar/disconnect",
         headers=admin_headers,
     )
     assert r_a.status_code == 200
