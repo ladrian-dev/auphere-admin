@@ -72,7 +72,12 @@ class YCloudBurstTracker:
             self._trim(dq, now)
             if len(dq) < self._threshold:
                 return False
-            last = self._last_audit_at.get(tenant_id, 0.0)
+            # Default to -inf so a never-alerted tenant always clears the
+            # cooldown check. Using 0.0 was a latent bug: ``time.monotonic()``
+            # references an arbitrary point (boot time on Linux/macOS), so on
+            # a CI VM with uptime < cooldown_seconds, ``now - 0.0`` could be
+            # smaller than the cooldown and falsely suppress the first audit.
+            last = self._last_audit_at.get(tenant_id, float("-inf"))
             if now - last < self._cooldown:
                 return False
             self._last_audit_at[tenant_id] = now
