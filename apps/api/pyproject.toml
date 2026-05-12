@@ -42,6 +42,10 @@ dev = [
     "types-pyyaml>=6.0.12.20240917",
     "fakeredis>=2.26.0",
     "asgi-lifespan>=2.1.0",
+    # Sync Postgres driver used by tests/conftest._ensure_test_db /
+    # _reset_test_db when running on CI (no docker exec available there).
+    # Binary wheel — no system libpq build required.
+    "psycopg2-binary>=2.9.10",
     # Block C: the runtime isolation tests import from the worker package.
     "nexus-worker",
     # Block D: integration tests exercise the MCP servers directly.

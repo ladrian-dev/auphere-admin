@@ -49,9 +49,75 @@ from nexus_api.db import base as db_base  # noqa: E402
 # ── helpers ─────────────────────────────────────────────────────────────────────
 
 
+def _parse_dsn(url: str) -> dict[str, Any]:
+    """Pull connection params out of NEXUS_DATABASE_URL.
+
+    Accepts the asyncpg form (``postgresql+asyncpg://...``) AND the bare
+    psycopg form (``postgresql://...``). Strips the asyncpg dialect tag
+    before parsing.
+    """
+    from urllib.parse import urlparse
+
+    cleaned = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    parsed = urlparse(cleaned)
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 5432,
+        "user": parsed.username or "nexus",
+        "password": parsed.password or "",
+        "database": (parsed.path or "/nexus_test").lstrip("/"),
+    }
+
+
+def _admin_dsn(test_dsn: dict[str, Any]) -> dict[str, Any]:
+    """The 'admin' connection — same host/port/user but talking to the
+    default ``nexus`` database (or ``postgres``) so we can CREATE/DROP
+    the test database from there."""
+    return {**test_dsn, "database": "nexus"}
+
+
+def _run_admin_sql(sql: str, params: dict[str, Any] | None = None) -> Any:
+    """Run a single SQL against the admin database via psycopg2 sync.
+
+    Why a sync driver: we run this BEFORE pytest-asyncio sets up an event
+    loop, in module-load time of the session-scoped ``_bootstrap_db``
+    fixture. Using asyncpg here would require nesting an asyncio.run()
+    call that conflicts with the test loop. psycopg2 is already a transitive
+    dep via SQLAlchemy's psycopg drivers — no new install.
+    """
+    import psycopg2
+
+    admin = _admin_dsn(_parse_dsn(TEST_DB_URL))
+    with psycopg2.connect(**admin, connect_timeout=5) as conn:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute(sql, params or {})
+            try:
+                return cur.fetchall()
+            except psycopg2.ProgrammingError:
+                return None
+
+
 def _ensure_test_db() -> None:
-    """Create the nexus_test database if it doesn't exist. Uses psql via the docker
-    container so we don't need a sync postgres driver in the test deps."""
+    """Create the ``nexus_test`` database if it doesn't exist.
+
+    Local development uses ``docker exec`` against the nexus-postgres
+    container; GitHub Actions exposes Postgres as a service container
+    reachable directly via the DSN. We detect the environment by checking
+    ``CI`` (set by GHA, GitLab, CircleCI, …).
+    """
+    test_db = _parse_dsn(TEST_DB_URL)["database"]
+    if os.environ.get("CI"):
+        rows = _run_admin_sql(
+            "SELECT 1 FROM pg_database WHERE datname = %(name)s",
+            {"name": test_db},
+        )
+        if not rows:
+            # CREATE DATABASE cannot be parameterised — quote_ident-equivalent
+            # done manually. test_db is internal (env-driven), no SQLi risk.
+            _run_admin_sql(f'CREATE DATABASE "{test_db}"')
+        return
+
     container = "nexus-postgres"
     cmd = [
         "docker",
@@ -64,7 +130,7 @@ def _ensure_test_db() -> None:
         "-d",
         "nexus",
         "-tAc",
-        "SELECT 1 FROM pg_database WHERE datname='nexus_test'",
+        f"SELECT 1 FROM pg_database WHERE datname='{test_db}'",
     ]
     out = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if "1" not in out.stdout:
@@ -80,7 +146,7 @@ def _ensure_test_db() -> None:
                 "-d",
                 "nexus",
                 "-c",
-                "CREATE DATABASE nexus_test",
+                f"CREATE DATABASE {test_db}",
             ],
             check=True,
             capture_output=True,
@@ -103,6 +169,23 @@ def _run_migrations() -> None:
 def _reset_test_db() -> None:
     """Drop & re-apply the schema before the session starts. Cheaper than dropping
     the database; idempotent with the migrations we have."""
+    test_db = _parse_dsn(TEST_DB_URL)["database"]
+    reset_sql = (
+        "DROP SCHEMA public CASCADE; CREATE SCHEMA public; "
+        "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
+        "CREATE EXTENSION IF NOT EXISTS vector;"
+    )
+    if os.environ.get("CI"):
+        import psycopg2
+
+        # Connect directly to the test DB to drop/recreate its public schema.
+        test_conn = {**_parse_dsn(TEST_DB_URL), "database": test_db}
+        with psycopg2.connect(**test_conn, connect_timeout=5) as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(reset_sql)
+        return
+
     container = "nexus-postgres"
     subprocess.run(
         [
@@ -114,11 +197,9 @@ def _reset_test_db() -> None:
             "-U",
             "nexus",
             "-d",
-            "nexus_test",
+            test_db,
             "-c",
-            "DROP SCHEMA public CASCADE; CREATE SCHEMA public; "
-            "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
-            "CREATE EXTENSION IF NOT EXISTS vector;",
+            reset_sql,
         ],
         check=True,
         capture_output=True,

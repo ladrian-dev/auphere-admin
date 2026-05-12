@@ -157,9 +157,21 @@ jobs:
           ruff format --check apps/worker/src apps/worker/tests
           ruff format --check apps/channels/src apps/channels/tests
           ruff format --check apps/mcp/src apps/mcp/tests
-      - name: mypy --strict
-        run: |
-          mypy --strict apps/api/src/nexus_api
-          mypy --strict apps/worker/src/nexus_worker
-          mypy --strict apps/channels/src/nexus_channels
-          mypy --strict apps/mcp/src/nexus_mcp
+      # Each mypy run uses ``working-directory`` so mypy discovers the
+      # ``[tool.mypy]`` config in that package's own pyproject.toml. Running
+      # ``mypy apps/api/src/nexus_api`` from the repo root walks up from the
+      # CWD (root) looking for a config and never finds one — losing the
+      # ``ignore_missing_imports = true`` setting and producing false-positive
+      # "Skipping analyzing nexus_channels" / "Cannot find composio" errors.
+      - name: mypy --strict (api)
+        working-directory: apps/api
+        run: mypy --strict src/nexus_api
+      - name: mypy --strict (worker)
+        working-directory: apps/worker
+        run: mypy --strict src/nexus_worker
+      - name: mypy --strict (channels)
+        working-directory: apps/channels
+        run: mypy --strict src/nexus_channels
+      - name: mypy --strict (mcp)
+        working-directory: apps/mcp
+        run: mypy --strict src/nexus_mcp
