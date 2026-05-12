@@ -10,6 +10,7 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.admin import connectors as admin_connectors
+from nexus_api.services.connectors import catalog as connector_catalog
 from nexus_api.services.connectors.composio_client import (
     ComposioTool,
     FakeComposioClient,
@@ -103,5 +104,9 @@ async def fake_composio() -> FakeComposioClient:
         category="Productivity",
     )
     admin_connectors.set_composio_client_for_tests(c)
+    # The catalog uses a module-level cache for ``toolkits.get(slug)``
+    # results. Reset it between tests so registrations don't leak.
+    connector_catalog._TOOLKIT_METADATA_CACHE.clear()
     yield c
     admin_connectors.set_composio_client_for_tests(None)
+    connector_catalog._TOOLKIT_METADATA_CACHE.clear()

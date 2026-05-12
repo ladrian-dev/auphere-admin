@@ -83,3 +83,55 @@ async def test_get_catalog_entry_unknown(
 async def test_catalog_requires_auth(client, seeded_catalog) -> None:
     r = await client.get("/admin/connectors")
     assert r.status_code in {401, 403}
+
+
+async def test_catalog_enriches_dynamic_with_toolkit_metadata(
+    client, admin_headers, seeded_catalog, fake_composio
+) -> None:
+    """When Composio publishes canonical toolkit metadata, the catalog
+    surfaces the human name + category instead of the auth_config alias
+    and 'otros' fallback.
+    """
+    fake_composio.register_toolkit_metadata(
+        "googlecalendar",
+        name="Google Calendar",
+        description="Schedule meetings, manage events.",
+        logo="https://images.composio.dev/v2/icons/googlecalendar.png",
+        category_slug="calendar",
+        category_name="Calendar",
+    )
+    r = await client.get("/admin/connectors", headers=admin_headers)
+    assert r.status_code == 200
+    by_slug = {c["slug"]: c for c in r.json()}
+    gcal = by_slug["googlecalendar"]
+    assert gcal["display_name"] == "Google Calendar"
+    assert gcal["vendor"] == "Google Calendar"
+    assert gcal["category"] == "calendar"
+    # Toolkit logo wins over the AuthConfigSummary icon as the source.
+    assert gcal["provider_meta"]["icon_url"] == (
+        "https://images.composio.dev/v2/icons/googlecalendar.png"
+    )
+
+
+async def test_catalog_falls_back_to_slug_title_when_no_metadata(
+    client, admin_headers, seeded_catalog, fake_composio
+) -> None:
+    """If toolkit.get returns None and the auth_config alias looks like
+    the SDK default ``<slug>-<random>``, we title-case the slug instead
+    of exposing the alias verbatim.
+    """
+    # The fake doesn't have metadata for googlecalendar in this test;
+    # the alias the auth_configs fixture registered is ``googlecalendar``
+    # (no random suffix). Hit a slug whose alias DOES look default to
+    # confirm the cleanup path.
+    fake_composio.register_auth_config(
+        "linear",
+        "ac_linear",
+        display_name="linear-abc123",
+        category="Project Management",
+    )
+    r = await client.get("/admin/connectors", headers=admin_headers)
+    assert r.status_code == 200
+    by_slug = {c["slug"]: c for c in r.json()}
+    assert "linear" in by_slug
+    assert by_slug["linear"]["display_name"] == "Linear"

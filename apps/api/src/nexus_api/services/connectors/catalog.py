@@ -21,6 +21,7 @@ require Composio.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
@@ -35,9 +36,38 @@ from .composio_client import (
     AuthConfigSummary,
     ComposioClientProtocol,
     ComposioUnavailable,
+    ToolkitMetadata,
 )
 
 log = logging.getLogger(__name__)
+
+# In-process cache for ``toolkits.get(slug)`` results. Lives as long as the
+# worker process — for Phase 1 (1 worker, low traffic) that's enough to
+# avoid hitting Composio on every catalog load. Redis-backed TTL cache is
+# the obvious next step but tracked as follow-up. ``None`` values are
+# cached too so we don't re-query slugs that returned 404.
+_TOOLKIT_METADATA_CACHE: dict[str, ToolkitMetadata | None] = {}
+_TOOLKIT_METADATA_LOCK = asyncio.Lock()
+
+
+async def _get_toolkit_metadata_cached(
+    composio: ComposioClientProtocol, slug: str
+) -> ToolkitMetadata | None:
+    slug = slug.lower()
+    if slug in _TOOLKIT_METADATA_CACHE:
+        return _TOOLKIT_METADATA_CACHE[slug]
+    async with _TOOLKIT_METADATA_LOCK:
+        # Re-check after acquiring the lock — another coroutine may have
+        # populated the cache while we waited.
+        if slug in _TOOLKIT_METADATA_CACHE:
+            return _TOOLKIT_METADATA_CACHE[slug]
+        try:
+            md = await composio.get_toolkit_metadata(slug)
+        except Exception as exc:
+            log.warning("toolkits.get(%s) failed: %s", slug, exc)
+            md = None
+        _TOOLKIT_METADATA_CACHE[slug] = md
+        return md
 
 
 @dataclass(frozen=True)
@@ -92,24 +122,47 @@ _CATEGORY_MAP: dict[str, str] = {
 _DEFAULT_CONSENT_TEMPLATE = "connector_consent_request_v1"
 
 
-def _project_dynamic(ac: AuthConfigSummary) -> CatalogConnector:
-    """Project a Composio AuthConfigSummary into the catalog shape."""
+def _project_dynamic(ac: AuthConfigSummary, md: ToolkitMetadata | None = None) -> CatalogConnector:
+    """Project a Composio AuthConfigSummary into the catalog shape.
+
+    Optional ``md`` (from ``toolkits.get(slug)``) supplies the canonical
+    name + category that Composio publishes for the toolkit, overriding
+    the auth_config alias (which defaults to ``<slug>-<random>``).
+    """
     slug = ac.toolkit_slug.lower()
-    composio_category = (ac.category or "").lower().replace(" ", "-").replace("_", "-")
+    # Display name: prefer toolkit canonical name → auth_config alias →
+    # title-cased slug. Drop the auth_config alias when it looks like the
+    # SDK default ``<slug>-<6chars>`` because that's not user-facing copy.
+    canonical_name = md.name if md and md.name else None
+    alias_looks_default = (
+        ac.display_name
+        and ac.display_name.lower().startswith(slug + "-")
+        and len(ac.display_name) - len(slug) - 1 <= 8
+    )
+    display_name = canonical_name or (
+        slug.title() if alias_looks_default else (ac.display_name or slug.title())
+    )
+
+    # Category: prefer toolkit metadata → AuthConfigSummary fallback → otros.
+    raw_category = (md.category_slug if md and md.category_slug else ac.category) or ""
+    composio_category = raw_category.lower().replace(" ", "-").replace("_", "-")
     category = _CATEGORY_MAP.get(composio_category, "otros")
+
     provider_meta: dict[str, Any] = {
         "composio_toolkit_slug": slug.upper(),
         "composio_auth_config_id": ac.auth_config_id,
     }
-    if ac.icon_url:
-        provider_meta["icon_url"] = ac.icon_url
+    icon = (md.logo if md and md.logo else None) or ac.icon_url
+    if icon:
+        provider_meta["icon_url"] = icon
     if ac.docs_url:
         provider_meta["docs_url"] = ac.docs_url
+    vendor = canonical_name or display_name
     return CatalogConnector(
         id=None,
         slug=slug,
-        display_name=ac.display_name,
-        vendor=ac.vendor or ac.display_name,
+        display_name=display_name,
+        vendor=vendor,
         category=category,
         # Conservative defaults — the real capabilities materialize once the
         # operator connects and we sync tools.list. Phase 1 treats every
@@ -162,8 +215,16 @@ async def list_catalog(
     dynamic: list[CatalogConnector] = []
     try:
         configs = await composio.list_auth_configs()
-        for ac in configs:
-            dynamic.append(_project_dynamic(ac))
+        # Enrich each auth_config with its toolkit metadata in parallel.
+        # ``asyncio.gather`` with the cache means we hit Composio at most
+        # once per slug per worker process. Errors degrade silently — the
+        # auth_config alias is still good enough for the panel.
+        metadata_list = await asyncio.gather(
+            *[_get_toolkit_metadata_cached(composio, ac.toolkit_slug) for ac in configs],
+            return_exceptions=False,
+        )
+        for ac, md in zip(configs, metadata_list, strict=True):
+            dynamic.append(_project_dynamic(ac, md))
     except ComposioUnavailable as exc:
         log.warning("composio unavailable in catalog: %s", exc)
     except Exception as exc:
@@ -212,7 +273,8 @@ async def get_catalog_entry(
         return _project_persisted(row) if row else None
     for ac in configs:
         if ac.toolkit_slug.lower() == slug:
-            return _project_dynamic(ac)
+            md = await _get_toolkit_metadata_cached(composio, slug)
+            return _project_dynamic(ac, md)
     return _project_persisted(row) if row else None
 
 
@@ -237,7 +299,8 @@ async def ensure_composio_connector_persisted(
     configs = await composio.list_auth_configs()
     for ac in configs:
         if ac.toolkit_slug.lower() == slug:
-            view = _project_dynamic(ac)
+            md = await _get_toolkit_metadata_cached(composio, slug)
+            view = _project_dynamic(ac, md)
             row = Connector(
                 slug=view.slug,
                 display_name=view.display_name,

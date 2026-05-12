@@ -59,6 +59,24 @@ class ComposioAuthConfigAmbiguous(ComposioError):
 
 
 @dataclass(frozen=True)
+class ToolkitMetadata:
+    """Canonical metadata for a Composio toolkit (resource ``toolkits.get``).
+
+    Used by the catalog endpoint to enrich auth_config entries with the
+    human-readable name and category Composio publishes for each toolkit
+    — the auth_config row only carries the operator-assigned alias
+    (``<slug>-<random>`` by default) which is not user-facing material.
+    """
+
+    slug: str
+    name: str
+    description: str
+    logo: str | None
+    category_slug: str | None
+    category_name: str | None
+
+
+@dataclass(frozen=True)
 class AuthConfigSummary:
     """One auth_config row from ``composio.auth_configs.list()``.
 
@@ -152,6 +170,15 @@ class ComposioClientProtocol(abc.ABC):
         Returns an empty list if Composio has no auth_configs yet. Raises
         ``ComposioUnavailable`` for transport / 5xx errors so the caller
         can degrade to "show only the custom seeds".
+        """
+
+    @abc.abstractmethod
+    async def get_toolkit_metadata(self, slug: str) -> ToolkitMetadata | None:
+        """Retrieve canonical metadata for a toolkit (name, category, logo).
+
+        Returns ``None`` when Composio doesn't know the slug. Raises
+        ``ComposioUnavailable`` for transport / 5xx errors so the caller
+        can degrade to whatever fallbacks it has.
         """
 
     @abc.abstractmethod
@@ -262,6 +289,32 @@ class LiveComposioClient(ComposioClientProtocol):
                 )
             )
         return out
+
+    async def get_toolkit_metadata(self, slug: str) -> ToolkitMetadata | None:
+        try:
+            response = await _maybe_async(self._client.toolkits.get, slug)
+        except Exception as exc:
+            err = _translate_composio_error(exc)
+            if isinstance(err, ComposioNotFound):
+                return None
+            raise err from exc
+        if response is None:
+            return None
+        meta = getattr(response, "meta", None)
+        categories = list(getattr(meta, "categories", []) or []) if meta else []
+        first_cat = categories[0] if categories else None
+        return ToolkitMetadata(
+            slug=str(getattr(response, "slug", slug) or slug).lower(),
+            name=str(getattr(response, "name", "") or slug.title()),
+            description=str(getattr(meta, "description", "") if meta else ""),
+            logo=getattr(meta, "logo", None) if meta else None,
+            category_slug=(
+                str(getattr(first_cat, "slug", "") or "").lower() or None if first_cat else None
+            ),
+            category_name=(
+                str(getattr(first_cat, "name", "") or "") or None if first_cat else None
+            ),
+        )
 
     async def find_auth_config_id(self, toolkit: str) -> str:
         # SDK v3 names the filter ``toolkit_slug`` (not ``toolkit``). Earlier
@@ -494,6 +547,7 @@ class FakeComposioClient(ComposioClientProtocol):
         self._tools_by_toolkit: dict[str, list[ComposioTool]] = {}
         self._auth_configs_by_toolkit: dict[str, list[str]] = {}
         self._auth_config_metadata: dict[str, AuthConfigSummary] = {}
+        self._toolkit_metadata: dict[str, ToolkitMetadata] = {}
         self._execute_log: list[dict[str, Any]] = []
         self._next_id = 1
         self.simulate_unavailable: bool = False
@@ -583,6 +637,35 @@ class FakeComposioClient(ComposioClientProtocol):
                         )
                     )
         return out
+
+    def register_toolkit_metadata(
+        self,
+        slug: str,
+        *,
+        name: str,
+        description: str = "",
+        logo: str | None = None,
+        category_slug: str | None = None,
+        category_name: str | None = None,
+    ) -> None:
+        """Pretend a toolkit has canonical metadata in Composio. Tests that
+        exercise the enriched catalog path must register this — otherwise
+        ``get_toolkit_metadata`` returns None and the catalog falls back
+        to the auth_config alias."""
+        slug_l = slug.lower()
+        self._toolkit_metadata[slug_l] = ToolkitMetadata(
+            slug=slug_l,
+            name=name,
+            description=description,
+            logo=logo,
+            category_slug=category_slug,
+            category_name=category_name,
+        )
+
+    async def get_toolkit_metadata(self, slug: str) -> ToolkitMetadata | None:
+        if self.simulate_unavailable:
+            raise ComposioUnavailable("fake: composio down")
+        return self._toolkit_metadata.get(slug.lower())
 
     async def find_auth_config_id(self, toolkit: str) -> str:
         if self.simulate_unavailable:
@@ -705,5 +788,6 @@ __all__ = [
     "FakeComposioClient",
     "LiveComposioClient",
     "ToolExecution",
+    "ToolkitMetadata",
     "verify_composio_webhook",
 ]
