@@ -54,9 +54,16 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: install uv
         run: pip install uv
-      - name: install api + worker deps
-        working-directory: apps/api
-        run: uv pip install --system ".[dev]"
+      - name: install api + worker + channels + mcp deps
+        # ``apps/api[dev]`` pulls in nexus-worker / nexus-mcp / nexus-channels
+        # as runtime path deps, but NOT their ``[dev]`` extras. The pytest
+        # steps below run inside each package and need their own test-only
+        # deps (e.g. respx in channels, fakeredis in mcp). Install all four.
+        run: |
+          uv pip install --system "./apps/api[dev]"
+          uv pip install --system "./apps/worker[dev]"
+          uv pip install --system "./apps/channels[dev]"
+          uv pip install --system "./apps/mcp[dev]"
       - name: alembic upgrade head (CI database)
         working-directory: apps/api
         run: alembic upgrade head
