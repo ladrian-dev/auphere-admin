@@ -211,56 +211,52 @@ class LiveComposioClient(ComposioClientProtocol):
             response = await _maybe_async(self._client.auth_configs.list)
         except Exception as exc:
             raise _translate_composio_error(exc) from exc
+        # SDK v3 (``composio_client.types.auth_config_list_response``):
+        # ``AuthConfigListResponse`` has ``items: List[Item]`` plus pagination.
+        # Each ``Item`` carries ``id``, ``name``, ``auth_scheme``, ``status``,
+        # and a nested ``toolkit: ItemToolkit`` with ``slug``, ``logo``,
+        # ``auth_guide_url`` and ``auth_hint_url``. Vendor and category are
+        # NOT surfaced at the auth_config level — they would require a
+        # second call to ``toolkits.get(slug)`` which we skip in the catalog
+        # path to keep the endpoint cheap. ``vendor`` falls back to the
+        # display name and ``category`` to None (catalog.py maps that to
+        # ``"otros"``).
         items = getattr(response, "items", None) or getattr(response, "data", None) or []
         out: list[AuthConfigSummary] = []
         for it in items:
             toolkit_obj = getattr(it, "toolkit", None)
-            toolkit_slug = (
-                str(getattr(toolkit_obj, "slug", "") or getattr(it, "toolkit_slug", ""))
-                .strip()
-                .lower()
-            )
+            toolkit_slug = str(getattr(toolkit_obj, "slug", "") or "").strip().lower()
             if not toolkit_slug:
                 # auth_config without a toolkit binding is an SDK
                 # anomaly — skip rather than crash the entire catalog.
                 continue
-            display_name = str(
-                getattr(toolkit_obj, "name", "") or getattr(it, "name", "") or toolkit_slug.title()
+            display_name = str(getattr(it, "name", "") or toolkit_slug.title())
+            scheme = str(getattr(it, "auth_scheme", None) or "OAUTH2")
+            icon_url = getattr(toolkit_obj, "logo", None)
+            docs_url = getattr(toolkit_obj, "auth_guide_url", None) or getattr(
+                toolkit_obj, "auth_hint_url", None
             )
-            scheme = str(getattr(it, "auth_scheme", None) or getattr(it, "scheme", "OAUTH2"))
-            vendor = (
-                getattr(toolkit_obj, "vendor", None)
-                or getattr(toolkit_obj, "provider_name", None)
-                or None
-            )
-            category_obj = getattr(toolkit_obj, "category", None) or getattr(
-                toolkit_obj, "categories", None
-            )
-            category: str | None
-            if isinstance(category_obj, list) and category_obj:
-                category = str(category_obj[0])
-            elif category_obj:
-                category = str(category_obj)
-            else:
-                category = None
             out.append(
                 AuthConfigSummary(
                     auth_config_id=str(it.id),
                     toolkit_slug=toolkit_slug,
                     display_name=display_name,
                     auth_scheme=scheme.upper(),
-                    vendor=str(vendor) if vendor else None,
-                    category=category,
-                    icon_url=getattr(toolkit_obj, "logo_url", None)
-                    or getattr(toolkit_obj, "icon_url", None),
-                    docs_url=getattr(toolkit_obj, "docs_url", None),
+                    vendor=None,
+                    category=None,
+                    icon_url=icon_url,
+                    docs_url=docs_url,
                 )
             )
         return out
 
     async def find_auth_config_id(self, toolkit: str) -> str:
+        # SDK v3 names the filter ``toolkit_slug`` (not ``toolkit``). Earlier
+        # SDK revs accepted ``toolkit`` and the rename happened silently in a
+        # minor release; using the wrong kwarg raises a TypedDict typing
+        # error or a 422 from the Composio API depending on version.
         try:
-            response = await _maybe_async(self._client.auth_configs.list, toolkit=toolkit)
+            response = await _maybe_async(self._client.auth_configs.list, toolkit_slug=toolkit)
         except Exception as exc:
             raise _translate_composio_error(exc) from exc
         # Composio v3 returns a paginated response with ``items`` (or ``data``

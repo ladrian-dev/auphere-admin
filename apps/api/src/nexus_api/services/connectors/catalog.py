@@ -166,6 +166,12 @@ async def list_catalog(
             dynamic.append(_project_dynamic(ac))
     except ComposioUnavailable as exc:
         log.warning("composio unavailable in catalog: %s", exc)
+    except Exception as exc:
+        # Defensive: any other failure (SDK shape change, auth error,
+        # malformed item) must not 500 the catalog endpoint. The seed
+        # rows alone keep the panel usable while we triage the upstream
+        # error from the logs.
+        log.exception("composio list_auth_configs failed unexpectedly: %s", exc)
 
     # Merge by slug. Dynamic entries win over any stale persisted row with
     # the same slug — Composio is authoritative for OAuth.
@@ -200,6 +206,9 @@ async def get_catalog_entry(
     try:
         configs = await composio.list_auth_configs()
     except ComposioUnavailable:
+        return _project_persisted(row) if row else None
+    except Exception as exc:
+        log.exception("composio list_auth_configs failed in get_entry: %s", exc)
         return _project_persisted(row) if row else None
     for ac in configs:
         if ac.toolkit_slug.lower() == slug:
