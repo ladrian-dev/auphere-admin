@@ -195,6 +195,19 @@ class LiveComposioClient(ComposioClientProtocol):
         if not api_key:
             msg = "Composio API key is empty — set NEXUS_COMPOSIO_API_KEY"
             raise ValueError(msg)
+        # The SDK touches a cache directory at import time
+        # (``composio.core.models._files``). The default path is
+        # ``$HOME/.composio`` and falls back to ``$CWD/.composio`` when
+        # ``HOME`` is unset — the Docker image runs as non-root
+        # ``nexus:10001`` with no ``HOME``, so the fallback hits
+        # ``/app/.composio`` which is owned by root and not writable. The
+        # crash is a 500 on the first call to /admin/connectors in
+        # production. Steer the cache to ``/tmp`` (always writable) unless
+        # the operator explicitly pinned a path via the documented
+        # ``COMPOSIO_CACHE_DIR`` env var.
+        import os
+
+        os.environ.setdefault("COMPOSIO_CACHE_DIR", "/tmp/composio")
         try:
             # Lazy import so tests without the package still load this module.
             from composio import Composio
