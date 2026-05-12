@@ -35,12 +35,12 @@ export function InitiateConsentButton({
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
   const [link, setLink] = useState<string | null>(null);
-  const disabled = pending || !ownerPhone;
+  const sentByWhatsApp = ownerPhone !== null;
   return (
     <>
       <Button
         size="sm"
-        disabled={disabled}
+        disabled={pending}
         onClick={() => {
           start(async () => {
             const res = await initiateConsentAction(tenantId, slug);
@@ -50,14 +50,15 @@ export function InitiateConsentButton({
             }
             setLink(res.data.signed_consent_url);
             setOpen(true);
-            toast.success(`Link enviado al owner por WhatsApp`);
+            if (sentByWhatsApp) {
+              toast.success("Link enviado al owner por WhatsApp");
+            } else {
+              toast.info("Link generado", {
+                description: "Copialo del dialog y compartilo con el owner.",
+              });
+            }
           });
         }}
-        title={
-          !ownerPhone
-            ? "Configurar owner_phone antes de mandar consent"
-            : undefined
-        }
       >
         {pending ? "Iniciando…" : "Conectar"}
       </Button>
@@ -66,10 +67,9 @@ export function InitiateConsentButton({
           <DialogHeader>
             <DialogTitle>Link de consent — {displayName}</DialogTitle>
             <DialogDescription>
-              El template ya se envió al WhatsApp del owner. Si necesitás
-              compartirlo manualmente (p.ej. WhatsApp falló o el cliente
-              prefiere correo), usá el link de abajo. El token expira en 7
-              días.
+              {sentByWhatsApp
+                ? "El link ya se envió al WhatsApp del owner. Si necesitás compartirlo por otro canal (email, copia manual, fallo de WhatsApp), usá el link de abajo. Expira en 7 días."
+                : "Este tenant no tiene WhatsApp del owner configurado, así que el link no se envió automáticamente. Copialo y compartilo por el canal que prefieras. Expira en 7 días."}
             </DialogDescription>
           </DialogHeader>
           <textarea

@@ -65,15 +65,20 @@ async def test_initiate_consent_happy(
     assert rows[0].credentials_ref["composio_connection_id"].startswith("conn_fake_")
 
 
-async def test_initiate_consent_no_owner_phone(
+async def test_initiate_consent_without_owner_phone_still_succeeds(
     client, admin_headers, seed_tenants, seeded_catalog, fake_composio
 ) -> None:
+    """The panel can ship the consent URL by email/copy-paste, so the
+    endpoint no longer requires owner_phone. WhatsApp dispatch via the
+    template is best-effort and not enforced here."""
     r = await client.post(
         f"/admin/tenants/{seed_tenants['a']}/connectors/google_calendar/initiate-consent",
         headers=admin_headers,
     )
-    assert r.status_code == 400
-    assert "owner_phone" in r.json()["detail"]
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["signed_consent_url"].startswith("http")
+    assert body["tenant_connector_id"]
 
 
 async def test_initiate_consent_unknown_slug(

@@ -25,7 +25,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  BusinessHoursPicker,
+  type BusinessHoursValue,
+} from "@/components/forms/business-hours-picker";
 
 import { checkSlugAction, createTenantAction } from "./actions";
 
@@ -63,21 +66,6 @@ const schema = z.object({
     .number()
     .positive("Debe ser positivo")
     .max(10000, "Cap es 10000"),
-  business_hours_json: z
-    .string()
-    .optional()
-    .refine(
-      (v) => {
-        if (!v || v.trim() === "") return true;
-        try {
-          JSON.parse(v);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      { message: "JSON inválido" },
-    ),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -105,11 +93,41 @@ type SlugStatus =
   | { kind: "available" }
   | { kind: "taken" };
 
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="grid gap-4 border-t border-border pt-6 first:border-t-0 first:pt-0">
+      <div className="grid gap-1">
+        <h2
+          className="text-[10px] font-mono uppercase text-muted-foreground"
+          style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+        >
+          {title}
+        </h2>
+        {description ? (
+          <p className="text-xs text-muted-foreground">{description}</p>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function NewTenantWizard() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [, startTransition] = useTransition();
   const [slugStatus, setSlugStatus] = useState<SlugStatus>({ kind: "idle" });
+  const [businessHours, setBusinessHours] = useState<BusinessHoursValue | null>(
+    null,
+  );
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -122,20 +140,12 @@ export function NewTenantWizard() {
       owner_email: "",
       owner_phone: "",
       cost_alert_threshold_usd_per_day: 40,
-      business_hours_json: "",
     },
   });
 
-  // Debounced async slug check. The POST has a backstop, but giving the
-  // form fast green/red feedback saves Lee from re-typing 6 fields after
-  // a 409. ``useWatch`` (vs ``form.watch()``) plays nice with the React
-  // Compiler — ``watch()`` returns a non-memoizable function.
+  // Debounced async slug check.
   const slugValue = useWatch({ control: form.control, name: "slug" });
   useEffect(() => {
-    // The slug status is genuinely derived from a network probe, so the
-    // effect's setState calls are intentional. The default lint rule
-    // suggests deriving state, but that doesn't apply when the source is
-    // an external system (the backend uniqueness check).
     /* eslint-disable react-hooks/set-state-in-effect */
     if (!slugValue || !SLUG_RE.test(slugValue)) {
       setSlugStatus({ kind: "idle" });
@@ -157,9 +167,6 @@ export function NewTenantWizard() {
     }
     setSubmitting(true);
     try {
-      const businessHours = values.business_hours_json
-        ? (JSON.parse(values.business_hours_json) as Record<string, unknown>)
-        : null;
       const result = await createTenantAction({
         slug: values.slug,
         name: values.name,
@@ -169,10 +176,13 @@ export function NewTenantWizard() {
         owner_email: values.owner_email || null,
         owner_phone: values.owner_phone || null,
         business_hours: businessHours,
-        cost_alert_threshold_usd_per_day: values.cost_alert_threshold_usd_per_day,
+        cost_alert_threshold_usd_per_day:
+          values.cost_alert_threshold_usd_per_day,
       });
       if (result.kind === "error") {
-        toast.error("No se pudo crear el tenant", { description: result.message });
+        toast.error("No se pudo crear el tenant", {
+          description: result.message,
+        });
         return;
       }
       toast.success(`Tenant ${values.name} creado`, {
@@ -193,191 +203,234 @@ export function NewTenantWizard() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <FormField
-            control={form.control}
-            name="slug"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Slug</FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    autoComplete="off"
-                    placeholder="mi-empresa"
-                    className="font-mono"
-                  />
-                </FormControl>
-                <FormDescription className="flex items-center gap-2">
-                  Identificador URL-safe del cliente. {slugStatus.kind === "checking" && "Verificando…"}
-                  {slugStatus.kind === "available" && (
-                    <span className="text-green-700">Disponible.</span>
-                  )}
-                  {slugStatus.kind === "taken" && (
-                    <span className="text-destructive">Ya existe.</span>
-                  )}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Nombre comercial</FormLabel>
-                <FormControl>
-                  <Input {...field} autoComplete="off" placeholder="Mi Empresa S.A." />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <FormField
-            control={form.control}
-            name="plan"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Plan</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="flex flex-col gap-6"
+        noValidate
+      >
+        <Section title="Identidad">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="slug"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Slug</FormLabel>
                   <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Plan" />
-                    </SelectTrigger>
+                    <Input
+                      {...field}
+                      autoComplete="off"
+                      placeholder="mi-empresa"
+                      className="font-mono"
+                    />
                   </FormControl>
-                  <SelectContent>
-                    {PLAN_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="market"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Mercado</FormLabel>
-                <FormControl>
-                  <Input {...field} maxLength={2} placeholder="CL" className="font-mono" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="timezone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Zona horaria</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormDescription className="flex items-center gap-2">
+                    Identificador URL-safe del cliente.{" "}
+                    {slugStatus.kind === "checking" && "Verificando…"}
+                    {slugStatus.kind === "available" && (
+                      <span className="text-green-700">Disponible.</span>
+                    )}
+                    {slugStatus.kind === "taken" && (
+                      <span className="text-destructive">Ya existe.</span>
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nombre comercial</FormLabel>
                   <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Timezone" />
-                    </SelectTrigger>
+                    <Input
+                      {...field}
+                      autoComplete="off"
+                      placeholder="Mi Empresa S.A."
+                    />
                   </FormControl>
-                  <SelectContent>
-                    {TIMEZONE_OPTIONS.map((tz) => (
-                      <SelectItem key={tz} value={tz}>
-                        {tz}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </Section>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <FormField
-            control={form.control}
-            name="owner_email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email del owner (opcional)</FormLabel>
-                <FormControl>
-                  <Input {...field} type="email" placeholder="owner@empresa.com" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="owner_phone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>WhatsApp del owner (opcional)</FormLabel>
-                <FormControl>
-                  <Input {...field} placeholder="+56912345678" className="font-mono" />
-                </FormControl>
-                <FormDescription>
-                  Formato E.164 internacional — usado para alertas operativas
-                  y para el flow de consent de OAuth.
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+        <Section
+          title="Plan y localización"
+          description="El plan determina el tier de costo. Mercado y zona horaria se usan para reportes y para el agente."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <FormField
+              control={form.control}
+              name="plan"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Plan</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Plan" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {PLAN_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="market"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Mercado</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      maxLength={2}
+                      placeholder="CL"
+                      className="font-mono uppercase"
+                    />
+                  </FormControl>
+                  <FormDescription>Código ISO 3166 (2 letras).</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="timezone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Zona horaria</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Timezone" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {TIMEZONE_OPTIONS.map((tz) => (
+                        <SelectItem key={tz} value={tz}>
+                          {tz}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </Section>
 
-        <FormField
-          control={form.control}
-          name="cost_alert_threshold_usd_per_day"
-          render={({ field }) => (
-            <FormItem className="max-w-xs">
-              <FormLabel>Alerta de costo (USD/día)</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step={1}
-                  className="font-mono"
-                />
-              </FormControl>
-              <FormDescription>Default $40 (Pro tier).</FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <Section
+          title="Contacto del owner"
+          description="Opcionales. El email se usa para notificaciones; el WhatsApp para alertas y para mandar el link de consent OAuth."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="owner_email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email del owner</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="email"
+                      placeholder="owner@empresa.com"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="owner_phone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>WhatsApp del owner</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="+56912345678"
+                      className="font-mono"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Formato E.164 internacional, con código de país y sin
+                    espacios.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </Section>
 
-        <FormField
-          control={form.control}
-          name="business_hours_json"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Horario de atención (opcional, JSON)</FormLabel>
-              <FormControl>
-                <Textarea
-                  {...field}
-                  rows={5}
-                  className="font-mono text-xs"
-                  placeholder={`{\n  "monday": "09:00-18:00",\n  "saturday": "10:00-14:00",\n  "sunday": "closed"\n}`}
-                />
-              </FormControl>
-              <FormDescription>
-                Formato libre. El agente lo recibe interpolado en su prompt al
-                aplicar una plantilla.
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <Section
+          title="Operación"
+          description="Umbral diario de gasto que dispara una alerta operativa al equipo de Auphere."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="cost_alert_threshold_usd_per_day"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Alerta de costo</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <span
+                        className="pointer-events-none absolute inset-y-0 left-3 grid place-items-center text-xs text-muted-foreground"
+                        aria-hidden="true"
+                      >
+                        USD
+                      </span>
+                      <Input
+                        {...field}
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        step={1}
+                        className="font-mono pl-12"
+                      />
+                      <span
+                        className="pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-xs text-muted-foreground"
+                        aria-hidden="true"
+                      >
+                        /día
+                      </span>
+                    </div>
+                  </FormControl>
+                  <FormDescription>Por defecto $40 (Pro tier).</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </Section>
+
+        <Section
+          title="Horario de atención"
+          description="Opcional. El agente lo recibe interpolado en su prompt cuando aplicás una plantilla."
+        >
+          <BusinessHoursPicker
+            value={businessHours}
+            onChange={setBusinessHours}
+          />
+        </Section>
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <Button
@@ -388,7 +441,10 @@ export function NewTenantWizard() {
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={submitting || slugStatus.kind === "taken"}>
+          <Button
+            type="submit"
+            disabled={submitting || slugStatus.kind === "taken"}
+          >
             {submitting ? "Creando…" : "Crear tenant"}
           </Button>
         </div>

@@ -273,18 +273,6 @@ async def list_tenant_connectors(
     return await _list_tenant_installs(session, tenant_id)
 
 
-def _ensure_owner_phone(tenant: Tenant) -> str:
-    phone: str | None = getattr(tenant, "owner_phone", None)
-    if not phone:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "tenant has no owner_phone configured; add it before sending consent magic links"
-            ),
-        )
-    return phone
-
-
 @router.post(
     "/tenants/{tenant_id}/connectors/{slug}/initiate-consent",
     response_model=InitiateConsentOut,
@@ -297,6 +285,14 @@ async def initiate_consent(
     composio: ComposioClientProtocol = Depends(get_composio_client),
     actor: str = Depends(require_admin_token),
 ) -> InitiateConsentOut:
+    """Start an oauth_composio consent flow.
+
+    The endpoint returns the signed consent URL whether or not the tenant
+    has ``owner_phone`` configured — the panel surfaces the URL in a
+    dialog so the operator can ship it via WhatsApp, email, or copy
+    paste, depending on what the client prefers. WhatsApp dispatch via
+    the template is best-effort and not enforced here.
+    """
     settings = get_settings()
     tenant = await session.get(Tenant, tenant_id)
     if tenant is None:  # pragma: no cover — scoped_session_from_path raises 404 first
@@ -315,8 +311,6 @@ async def initiate_consent(
                 "/bootstrap-browser or /connect-manual instead"
             ),
         )
-    # Validate owner_phone is set BEFORE any upstream call.
-    _ensure_owner_phone(tenant)
     # Resolve auth_config_id from Composio itself (toolkit slug → auth_config).
     # No env vars: Composio dashboard is the single source of truth. Missing
     # auth_config in Composio surfaces as 503 with an actionable message.

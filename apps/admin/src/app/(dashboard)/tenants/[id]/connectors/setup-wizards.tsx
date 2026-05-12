@@ -374,10 +374,18 @@ function AgendaProBootstrapForm({
     <form onSubmit={onSubmit} className="grid gap-5">
       <DialogHeader>
         <DialogTitle>Conectar AgendaPro</DialogTitle>
-        <DialogDescription>
-          Una sola vez. Abrimos una sesión de browser automation con estas
-          credenciales y guardamos el contexto encriptado. Las credenciales
-          viajan cifradas y no quedan accesibles para el agente.
+        <DialogDescription className="space-y-2">
+          <span className="block">
+            AgendaPro no expone OAuth ni API key pública, así que el agente
+            opera con la sesión del owner. Pegamos sus credenciales una vez,
+            las ciframos con Fernet y el agente reutiliza el contexto del
+            navegador para crear, modificar y cancelar citas.
+          </span>
+          <span className="block text-xs">
+            Las credenciales no son visibles después de guardarlas y se
+            rotan al re-bootstrappear. El agente jamás las recibe en su
+            prompt.
+          </span>
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-2">
