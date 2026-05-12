@@ -140,6 +140,44 @@ async def test_revoke_removes_connection(composio: FakeComposioClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_find_auth_config_id_happy(composio: FakeComposioClient) -> None:
+    composio.register_auth_config("googlecalendar", "ac_abc123")
+    ac_id = await composio.find_auth_config_id("googlecalendar")
+    assert ac_id == "ac_abc123"
+
+
+@pytest.mark.asyncio
+async def test_find_auth_config_id_missing(composio: FakeComposioClient) -> None:
+    from nexus_api.services.connectors.composio_client import (
+        ComposioAuthConfigMissing,
+    )
+
+    with pytest.raises(ComposioAuthConfigMissing, match="no auth_config"):
+        await composio.find_auth_config_id("googlecalendar")
+
+
+@pytest.mark.asyncio
+async def test_find_auth_config_id_ambiguous(composio: FakeComposioClient) -> None:
+    from nexus_api.services.connectors.composio_client import (
+        ComposioAuthConfigAmbiguous,
+    )
+
+    composio.register_auth_config("googlecalendar", "ac_one")
+    composio.register_auth_config("googlecalendar", "ac_two")
+    with pytest.raises(ComposioAuthConfigAmbiguous, match="2 auth_configs"):
+        await composio.find_auth_config_id("googlecalendar")
+
+
+@pytest.mark.asyncio
+async def test_find_auth_config_id_case_insensitive(
+    composio: FakeComposioClient,
+) -> None:
+    composio.register_auth_config("GoogleCalendar", "ac_x")
+    ac_id = await composio.find_auth_config_id("googlecalendar")
+    assert ac_id == "ac_x"
+
+
+@pytest.mark.asyncio
 async def test_execute_log_records_calls(composio: FakeComposioClient) -> None:
     composio.force_connect(connection_id="c1", user_id="u1", toolkit="googlecalendar")
     await composio.execute_tool(

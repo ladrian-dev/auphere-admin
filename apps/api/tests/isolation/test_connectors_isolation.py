@@ -59,6 +59,7 @@ def composio_with_two_tenants() -> FakeComposioClient:
             ),
         ],
     )
+    c.register_auth_config("googlecalendar", "ac_test_iso")
     admin_connectors.set_composio_client_for_tests(c)
     yield c
     admin_connectors.set_composio_client_for_tests(None)
@@ -75,11 +76,6 @@ async def test_list_tenant_connectors_does_not_leak(
     client, admin_headers, db_session, two_tenants_with_catalog, composio_with_two_tenants
 ) -> None:
     """Tenant A connects google_calendar; tenant B's list returns empty."""
-    from nexus_api.config import get_settings
-
-    s = get_settings()
-    s.composio_auth_config_google_calendar = "ac_test"
-
     # Tenant A initiates consent.
     r = await client.post(
         f"/admin/tenants/{two_tenants_with_catalog['a']}/connectors/"
@@ -108,10 +104,6 @@ async def test_composio_user_id_is_tenant_scoped(
     """Each tenant's initiate_consent sends its own user_id to Composio.
     Tenant A and tenant B end up with different user_id strings on the
     fake client; a tools.execute with mismatched user_id raises."""
-    from nexus_api.config import get_settings
-
-    s = get_settings()
-    s.composio_auth_config_google_calendar = "ac_test"
 
     for key in ("a", "b"):
         r = await client.post(
@@ -226,11 +218,6 @@ async def test_tenant_connector_rls_blocks_cross_tenant_select(
 async def test_disconnect_one_tenant_does_not_affect_other(
     client, admin_headers, db_session, two_tenants_with_catalog, composio_with_two_tenants
 ) -> None:
-    from nexus_api.config import get_settings
-
-    s = get_settings()
-    s.composio_auth_config_google_calendar = "ac_test"
-
     # Both connect.
     for key in ("a", "b"):
         await client.post(

@@ -40,6 +40,24 @@ class ComposioNotFound(ComposioError):
     """connection_id or toolkit unknown to Composio."""
 
 
+class ComposioAuthConfigMissing(ComposioError):
+    """No auth_config registered in Composio for the requested toolkit.
+
+    Raised when the operator forgot to create the auth_config in the Composio
+    dashboard before initiating consent. The error message tells them exactly
+    which toolkit to register.
+    """
+
+
+class ComposioAuthConfigAmbiguous(ComposioError):
+    """Multiple auth_configs exist for the same toolkit in this project.
+
+    Phase 1 expects exactly one auth_config per toolkit. If we hit this, the
+    operator must label one as "default" (Phase 4+ feature) or remove the
+    duplicates from the dashboard.
+    """
+
+
 @dataclass(frozen=True)
 class ConnectionRequest:
     """Result of ``composio.connected_accounts.link()``."""
@@ -92,6 +110,16 @@ class ComposioClientProtocol(abc.ABC):
     """
 
     @abc.abstractmethod
+    async def find_auth_config_id(self, toolkit: str) -> str:
+        """Resolve the auth_config_id for a toolkit from Composio itself.
+
+        Replaces the prior pattern of pegando auth_config_ids in Doppler.
+        Composio is the source of truth — the operator creates auth_configs
+        in the dashboard and they become discoverable here. Raises
+        ``ConfigNotFound`` if the toolkit has no auth_config in this project.
+        """
+
+    @abc.abstractmethod
     async def link_account(
         self,
         *,
@@ -142,6 +170,32 @@ class LiveComposioClient(ComposioClientProtocol):
             )
             raise RuntimeError(msg) from exc
         self._client = Composio(api_key=api_key)
+
+    async def find_auth_config_id(self, toolkit: str) -> str:
+        try:
+            response = await _maybe_async(self._client.auth_configs.list, toolkit=toolkit)
+        except Exception as exc:
+            raise _translate_composio_error(exc) from exc
+        # Composio v3 returns a paginated response with ``items`` (or ``data``
+        # depending on SDK minor version). Be tolerant of either.
+        items = getattr(response, "items", None) or getattr(response, "data", None) or []
+        if not items:
+            msg = (
+                f"no auth_config registered in Composio for toolkit "
+                f"{toolkit!r}; create one in the dashboard "
+                "(Auth Configs → + Add → select toolkit)"
+            )
+            raise ComposioAuthConfigMissing(msg)
+        if len(items) > 1:
+            ids = [str(getattr(i, "id", "?")) for i in items]
+            msg = (
+                f"multiple auth_configs ({len(items)}) for toolkit {toolkit!r}: "
+                f"{ids}. Phase 1 expects exactly one. Remove duplicates from "
+                "the Composio dashboard or label one as default (Phase 4+)."
+            )
+            raise ComposioAuthConfigAmbiguous(msg)
+        ac_id: str = str(items[0].id)
+        return ac_id
 
     async def link_account(
         self,
@@ -342,6 +396,7 @@ class FakeComposioClient(ComposioClientProtocol):
     def __init__(self) -> None:
         self._connections: dict[str, _FakeConnection] = {}
         self._tools_by_toolkit: dict[str, list[ComposioTool]] = {}
+        self._auth_configs_by_toolkit: dict[str, list[str]] = {}
         self._execute_log: list[dict[str, Any]] = []
         self._next_id = 1
         self.simulate_unavailable: bool = False
@@ -351,6 +406,15 @@ class FakeComposioClient(ComposioClientProtocol):
 
     def register_tools(self, toolkit: str, tools: list[ComposioTool]) -> None:
         self._tools_by_toolkit[toolkit.lower()] = list(tools)
+
+    def register_auth_config(self, toolkit: str, auth_config_id: str) -> None:
+        """Pretend the operator created an auth_config in the Composio dashboard
+        for this toolkit. Tests that exercise the consent flow need to call
+        this — otherwise ``find_auth_config_id`` raises ComposioAuthConfigMissing
+        (which mirrors real-world behaviour: forgetting to register the
+        auth_config = consent flow fails fast).
+        """
+        self._auth_configs_by_toolkit.setdefault(toolkit.lower(), []).append(auth_config_id)
 
     def force_connect(
         self,
@@ -379,6 +443,20 @@ class FakeComposioClient(ComposioClientProtocol):
         return list(self._execute_log)
 
     # ComposioClientProtocol --------------------------------------------------
+
+    async def find_auth_config_id(self, toolkit: str) -> str:
+        if self.simulate_unavailable:
+            raise ComposioUnavailable("fake: composio down")
+        configs = self._auth_configs_by_toolkit.get(toolkit.lower(), [])
+        if not configs:
+            raise ComposioAuthConfigMissing(
+                f"fake: no auth_config registered for toolkit {toolkit!r}"
+            )
+        if len(configs) > 1:
+            raise ComposioAuthConfigAmbiguous(
+                f"fake: {len(configs)} auth_configs for toolkit {toolkit!r}: {configs}"
+            )
+        return configs[0]
 
     async def link_account(
         self,
@@ -473,6 +551,8 @@ class FakeComposioClient(ComposioClientProtocol):
 
 
 __all__ = [
+    "ComposioAuthConfigAmbiguous",
+    "ComposioAuthConfigMissing",
     "ComposioAuthExpired",
     "ComposioClientProtocol",
     "ComposioError",

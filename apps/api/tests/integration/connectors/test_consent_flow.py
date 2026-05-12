@@ -21,11 +21,14 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture(autouse=True)
-def _composio_auth_config(monkeypatch: pytest.MonkeyPatch) -> None:
+def _composio_webhook_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin a deterministic webhook secret for HMAC build in this file.
+
+    The auth_config_id is resolved via the fake adapter (no settings).
+    """
     from nexus_api.config import get_settings
 
     s = get_settings()
-    monkeypatch.setattr(s, "composio_auth_config_google_calendar", "ac_test_gc")
     monkeypatch.setattr(s, "composio_webhook_secret", "test_whsec_001")
 
 

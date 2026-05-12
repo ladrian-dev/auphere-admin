@@ -19,20 +19,10 @@ from nexus_api.db.models import Tenant, TenantConnector
 pytestmark = pytest.mark.asyncio
 
 
-@pytest.fixture(autouse=True)
-def _composio_auth_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The endpoint needs an auth_config_id from settings.
-
-    The Settings object is lru_cached, so we patch the attribute on the
-    cached instance directly (mirrors how the rest of the codebase does
-    it for tests).
-    """
-    from nexus_api.config import get_settings
-
-    s = get_settings()
-    monkeypatch.setattr(s, "composio_auth_config_google_calendar", "ac_test_gc")
-    monkeypatch.setattr(s, "composio_auth_config_calendly", "ac_test_cl")
-    monkeypatch.setattr(s, "composio_auth_config_notion", "ac_test_n")
+# The auth_config_id is now resolved at runtime via ``find_auth_config_id``
+# against the Composio adapter. The ``fake_composio`` fixture pre-registers
+# the auth_configs for googlecalendar/calendly/notion, so no settings
+# patching is needed here.
 
 
 async def _set_owner_phone(db_session, tenant_id: uuid.UUID, phone: str = "+56911112222") -> None:
@@ -116,19 +106,45 @@ async def test_initiate_consent_missing_auth_config(
     seed_tenants,
     seeded_catalog,
     fake_composio,
-    monkeypatch,
 ) -> None:
-    """If the Doppler auth_config env var is empty → 503."""
-    await _set_owner_phone(db_session, seed_tenants["a"])
-    from nexus_api.config import get_settings
+    """If no auth_config is registered in Composio for this toolkit → 503.
 
-    s = get_settings()
-    monkeypatch.setattr(s, "composio_auth_config_google_calendar", "")
+    Simulates the operator forgetting to create the auth_config in the
+    Composio dashboard before initiating consent.
+    """
+    await _set_owner_phone(db_session, seed_tenants["a"])
+    # Remove the pre-registered auth_config for googlecalendar so the lookup
+    # raises ComposioAuthConfigMissing.
+    fake_composio._auth_configs_by_toolkit.pop("googlecalendar", None)
     r = await client.post(
         f"/admin/tenants/{seed_tenants['a']}/connectors/google_calendar/initiate-consent",
         headers=admin_headers,
     )
     assert r.status_code == 503
+    assert "no auth_config" in r.json()["detail"].lower()
+
+
+async def test_initiate_consent_ambiguous_auth_config(
+    client,
+    admin_headers,
+    db_session,
+    seed_tenants,
+    seeded_catalog,
+    fake_composio,
+) -> None:
+    """If Composio has multiple auth_configs for the toolkit → 409.
+
+    Phase 1 expects exactly one auth_config per toolkit per Composio project.
+    """
+    await _set_owner_phone(db_session, seed_tenants["a"])
+    # Register a second auth_config for googlecalendar.
+    fake_composio.register_auth_config("googlecalendar", "ac_duplicate")
+    r = await client.post(
+        f"/admin/tenants/{seed_tenants['a']}/connectors/google_calendar/initiate-consent",
+        headers=admin_headers,
+    )
+    assert r.status_code == 409
+    assert "auth_config" in r.json()["detail"].lower()
 
 
 async def test_disconnect_happy(

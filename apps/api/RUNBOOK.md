@@ -409,16 +409,24 @@ Decisión: ADR-011 + `architecture/connectors.md`.
 
 ### Conectar un OAuth connector (Calendar, Calendly, Notion)
 
-1. **Pre-requisito (una sola vez por connector + entorno)**: en el
-   dashboard Composio de la org `auphere`, crear el auth_config para
-   el toolkit (`google_calendar`, `calendly`, `notion`). Anotar el
-   `auth_config_id` y agregarlo en Doppler:
-   - `NEXUS_COMPOSIO_AUTH_CONFIG_GOOGLE_CALENDAR`
-   - `NEXUS_COMPOSIO_AUTH_CONFIG_CALENDLY`
-   - `NEXUS_COMPOSIO_AUTH_CONFIG_NOTION`
-   Asegurarse de tener también `NEXUS_COMPOSIO_API_KEY` +
-   `NEXUS_COMPOSIO_WEBHOOK_SECRET` en Doppler. Phase 1 = free tier
-   (composio.dev, $0/mo, 20K calls/mo).
+1. **Pre-requisito (una sola vez por connector)**: en el dashboard
+   Composio de la org `auphere`, crear el auth_config para el toolkit
+   (`googlecalendar`, `calendly`, `notion`). El adapter Nexus resuelve
+   automáticamente el `auth_config_id` via `composio.auth_configs.list()`
+   por el toolkit slug — **no hay que pegar IDs en Doppler**. Composio
+   dashboard es la única fuente de verdad.
+
+   Doppler solo necesita estos dos Composio secrets:
+   - `NEXUS_COMPOSIO_API_KEY`
+   - `NEXUS_COMPOSIO_WEBHOOK_SECRET`
+
+   Phase 1 = free tier (composio.dev, $0/mo, 20K calls/mo).
+
+   Errores comunes del setup, qué dicen y qué hacer:
+   - HTTP 503 "no auth_config registered in Composio for toolkit X" →
+     crear el auth_config en el dashboard Composio antes de retry.
+   - HTTP 409 "multiple auth_configs for toolkit X" → eliminar duplicados
+     del dashboard Composio. Phase 1 espera exactamente uno por toolkit.
 
 2. **Pre-requisito por tenant**: `owner_phone` debe estar
    configurado en `tenants` (el endpoint rechaza con 400 si no).
@@ -468,13 +476,20 @@ auth_config registrado + 1-2 tests).
 
 ### Test coverage
 
-Bloque L entrega 79 tests nuevos (55 unit + 19 integration + 5
+Bloque L entrega 84 tests nuevos (59 unit + 20 integration + 5
 isolation) más allá de la suite ~309 de J. La isolation suite
 extendida cubre: no leak de connections cross-tenant, user_id binding
 en Composio, overrides RLS, disconnect aislamiento. **El plan de
 tests del bloque (`architecture/connectors-testing.md`) listaba ~128
-como target aspiracional; se entregaron 79 reales focused — la
+como target aspiracional; se entregaron 84 reales focused — la
 delta se cubre en un follow-up cuando entren clientes 2-3.**
+
+Refactor 2026-05-12 (post-implementación): los 3 settings
+`NEXUS_COMPOSIO_AUTH_CONFIG_*` fueron eliminados a favor de un lookup
+runtime via `composio.auth_configs.list(toolkit=...)`. Composio
+dashboard es ahora la única fuente de verdad para auth_configs. +5
+tests cubren los caminos: lookup happy, missing (503), ambiguous (409),
+case-insensitive matching.
 
 ## Cosas que no debés hacer (sin pensarlo dos veces)
 

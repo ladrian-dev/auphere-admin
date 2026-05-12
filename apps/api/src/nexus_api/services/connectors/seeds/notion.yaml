@@ -14,7 +14,6 @@ provider_meta:
   docs_url: https://developers.notion.com
   brand_color: "#000000"
   composio_toolkit_slug: NOTION
-  composio_auth_config_env: NEXUS_COMPOSIO_AUTH_CONFIG_NOTION
 auto_enable_on_connect: true
 auto_enable_destructive: false
 consent_link_template_name: connector_consent_request_v1

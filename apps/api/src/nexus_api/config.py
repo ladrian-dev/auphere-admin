@@ -67,14 +67,11 @@ class Settings(BaseSettings):
     # Composio (Block L / ADR-011) — OAuth proxy for non-channel connectors.
     # API key from composio.dev dashboard. Empty in dev means the live client
     # is not built; the API falls back to FakeComposioClient automatically.
+    # auth_config_ids are NOT stored here — Composio dashboard is the single
+    # source of truth, resolved via ``composio.auth_configs.list(toolkit=...)``
+    # at consent-initiation time.
     composio_api_key: str = ""
     composio_webhook_secret: str = "dev-composio-webhook-secret-change-me"
-    # Per-connector OAuth auth_config IDs from the Composio dashboard.
-    # These are connector-slug → auth_config_id mappings; YAML seed declares
-    # which env var holds the ID under provider_meta.composio_auth_config_env.
-    composio_auth_config_google_calendar: str = ""
-    composio_auth_config_calendly: str = ""
-    composio_auth_config_notion: str = ""
     # Public base URL of the API — used to build the OAuth callback the user
     # is redirected to after consenting on the provider. Local dev keeps it
     # blank and uses http://localhost:8000 via the frontend BFF.

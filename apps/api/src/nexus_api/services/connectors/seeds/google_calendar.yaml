@@ -30,7 +30,6 @@ provider_meta:
   docs_url: https://developers.google.com/calendar
   brand_color: "#4285F4"
   composio_toolkit_slug: GOOGLECALENDAR
-  composio_auth_config_env: NEXUS_COMPOSIO_AUTH_CONFIG_GOOGLE_CALENDAR
 auto_enable_on_connect: true
 auto_enable_destructive: false
 consent_link_template_name: connector_consent_request_v1

@@ -46,6 +46,8 @@ from nexus_api.db.models import (
 )
 from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.connectors.composio_client import (
+    ComposioAuthConfigAmbiguous,
+    ComposioAuthConfigMissing,
     ComposioAuthExpired,
     ComposioClientProtocol,
     ComposioError,
@@ -95,21 +97,6 @@ def set_composio_client_for_tests(client: ComposioClientProtocol | None) -> None
     """Test hook — override the singleton (call with None to reset)."""
     global _composio_singleton
     _composio_singleton = client
-
-
-# ── auth_config_id resolution ───────────────────────────────────────────────
-
-
-def _resolve_auth_config_id(connector: Connector) -> str:
-    """Read the auth_config_id from settings using the env var name declared in
-    the connector's provider_meta. Returns "" if the setting is empty.
-    """
-    env_name = (connector.provider_meta or {}).get("composio_auth_config_env")
-    if not env_name:
-        return ""
-    settings = get_settings()
-    attr = env_name.removeprefix("NEXUS_").lower()
-    return getattr(settings, attr, "") or ""
 
 
 # ── shape ───────────────────────────────────────────────────────────────────
@@ -328,18 +315,26 @@ async def initiate_consent(
                 "/bootstrap-browser or /connect-manual instead"
             ),
         )
-    auth_config_id = _resolve_auth_config_id(connector)
-    if not auth_config_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                f"connector {slug} has no auth_config_id configured "
-                f"(missing env "
-                f"{(connector.provider_meta or {}).get('composio_auth_config_env')})"
-            ),
-        )
     # Validate owner_phone is set BEFORE any upstream call.
     _ensure_owner_phone(tenant)
+    # Resolve auth_config_id from Composio itself (toolkit slug → auth_config).
+    # No env vars: Composio dashboard is the single source of truth. Missing
+    # auth_config in Composio surfaces as 503 with an actionable message.
+    toolkit = connector.mcp_server_ref.split(":", 1)[1]
+    try:
+        auth_config_id = await composio.find_auth_config_id(toolkit)
+    except ComposioAuthConfigMissing as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except ComposioAuthConfigAmbiguous as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ComposioUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"composio unavailable: {exc}",
+        ) from exc
+
     callback_url = f"{settings.public_api_base_url.rstrip('/')}/connectors/oauth-callback"
     try:
         result = await connector_service.initiate_consent(

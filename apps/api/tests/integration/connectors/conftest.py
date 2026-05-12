@@ -29,9 +29,14 @@ async def seeded_catalog(db_session: AsyncSession) -> None:
 async def fake_composio() -> FakeComposioClient:
     """Fake Composio client wired into the admin DI singleton.
 
-    Pre-registers GOOGLECALENDAR / CALENDLY / NOTION sample tools so tests
-    that drive ``initiate_consent → webhook → sync`` see a non-empty
-    tools/list response. Test cleanup resets the singleton.
+    Pre-registers:
+    - Sample tools for googlecalendar / calendly / notion (so tools.list
+      after consent returns non-empty).
+    - Stub auth_config_ids per toolkit (so ``find_auth_config_id`` succeeds
+      — mirrors the production setup where the operator pre-creates the
+      auth_config in Composio dashboard).
+
+    Test cleanup resets the singleton.
     """
     c = FakeComposioClient()
     c.register_tools(
@@ -69,6 +74,9 @@ async def fake_composio() -> FakeComposioClient:
             ),
         ],
     )
+    c.register_auth_config("googlecalendar", "ac_test_gc")
+    c.register_auth_config("calendly", "ac_test_cl")
+    c.register_auth_config("notion", "ac_test_n")
     admin_connectors.set_composio_client_for_tests(c)
     yield c
     admin_connectors.set_composio_client_for_tests(None)
