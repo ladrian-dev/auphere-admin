@@ -188,6 +188,9 @@ async def test_engine() -> AsyncIterator[Any]:
 
 
 _TRUNCATE_TABLES = (
+    # Block L — connectors module (tenant-scoped FK to tenants must clear first).
+    "tenant_connector_tool_overrides",
+    "tenant_connectors",
     "isolation_events",
     "daily_cost_snapshots",
     "operator_notifications",
@@ -228,6 +231,22 @@ async def db_session(test_engine: Any) -> AsyncIterator[AsyncSession]:
             await conn.execute(
                 text("TRUNCATE TABLE " + ", ".join(_TRUNCATE_TABLES) + " RESTART IDENTITY CASCADE")
             )
+            # Block L — clean test-inserted tool_catalog rows. The baseline
+            # rows are seeded by migrations 0003 (21 LLM-facing) + 0009 (6
+            # agendapro internal) and must survive. Connector-derived rows
+            # use mcp_server starting with "composio:" (see seed YAMLs) or
+            # have a non-null connector_id (set by tools.sync). The
+            # ``SHARED_TOOL_FOR_ISOLATION`` row from
+            # test_overrides_are_tenant_scoped also uses ``composio:`` so
+            # one rule cleans both.
+            await conn.execute(
+                text(
+                    "DELETE FROM tool_catalog "
+                    "WHERE connector_id IS NOT NULL "
+                    "OR mcp_server LIKE 'composio:%'"
+                )
+            )
+            await conn.execute(text("DELETE FROM connectors"))
 
 
 # ── seed helpers ────────────────────────────────────────────────────────────────

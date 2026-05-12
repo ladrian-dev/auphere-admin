@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from nexus_api import __version__
 from nexus_api.api import admin, webhooks
+from nexus_api.api import connectors as connectors_public
 from nexus_api.config import settings
 from nexus_api.core import isolation_enforcer, otel
 from nexus_api.core.logging_context import LoggingContextMiddleware
@@ -63,3 +64,4 @@ app.add_middleware(LoggingContextMiddleware)
 app.include_router(health_router)
 app.include_router(admin.router)
 app.include_router(webhooks.router)
+app.include_router(connectors_public.router)

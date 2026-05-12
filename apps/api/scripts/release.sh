@@ -64,4 +64,8 @@ for sql in "$DRIZZLE_DIR"/*.sql; do
     "INSERT INTO auth.__drizzle_applied (version) VALUES ('${version}');"
 done
 
+echo "release: seeding connectors catalog"
+# Block L — apply Connector seed YAMLs. Idempotent. Reads NEXUS_DATABASE_URL.
+python /app/apps/api/scripts/seed_connectors.py
+
 echo "release: done"

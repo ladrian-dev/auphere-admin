@@ -64,6 +64,26 @@ class Settings(BaseSettings):
     # Isolation enforcer behavior in dev: raise vs. warn. In prod we always raise.
     isolation_enforcer_raise_in_dev: bool = False
 
+    # Composio (Block L / ADR-011) — OAuth proxy for non-channel connectors.
+    # API key from composio.dev dashboard. Empty in dev means the live client
+    # is not built; the API falls back to FakeComposioClient automatically.
+    composio_api_key: str = ""
+    composio_webhook_secret: str = "dev-composio-webhook-secret-change-me"
+    # Per-connector OAuth auth_config IDs from the Composio dashboard.
+    # These are connector-slug → auth_config_id mappings; YAML seed declares
+    # which env var holds the ID under provider_meta.composio_auth_config_env.
+    composio_auth_config_google_calendar: str = ""
+    composio_auth_config_calendly: str = ""
+    composio_auth_config_notion: str = ""
+    # Public base URL of the API — used to build the OAuth callback the user
+    # is redirected to after consenting on the provider. Local dev keeps it
+    # blank and uses http://localhost:8000 via the frontend BFF.
+    public_api_base_url: str = "http://localhost:8000"
+
+    # HMAC secret for consent_token signing (see services/connectors/consent_token.py).
+    # Used to mint the magic-link tokens we ship to tenant owners via WhatsApp.
+    connector_consent_secret: str = "dev-consent-secret-change-me-min-32-chars"
+
     @property
     def is_prod(self) -> bool:
         return self.environment.lower() in {"prod", "production"}

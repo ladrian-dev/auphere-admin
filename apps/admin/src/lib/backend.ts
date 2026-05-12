@@ -223,6 +223,78 @@ export type IsolationMetricsOut = {
   metrics: IsolationMetric[];
 };
 
+// ── connectors (Block L) ────────────────────────────────────────────────────
+
+export type ConnectorAuthKind =
+  | "oauth_composio"
+  | "browser_credentials"
+  | "webhook_manual"
+  | "api_key";
+
+export type ConnectorCatalogStatus = "available" | "beta" | "deprecated";
+
+export type Connector = {
+  id: string;
+  slug: string;
+  display_name: string;
+  vendor: string;
+  category: string;
+  capabilities: string[];
+  auth_kind: ConnectorAuthKind;
+  mcp_server_ref: string;
+  provider_meta: Record<string, unknown>;
+  auto_enable_on_connect: boolean;
+  auto_enable_destructive: boolean;
+  consent_link_template_name: string | null;
+  status: ConnectorCatalogStatus;
+};
+
+export type TenantConnectorStatus =
+  | "pending"
+  | "connected"
+  | "partial"
+  | "needs_reauth"
+  | "disconnected"
+  | "error";
+
+export type TenantConnector = {
+  id: string;
+  tenant_id: string;
+  connector_id: string;
+  connector_slug: string;
+  connector_display_name: string;
+  connector_auth_kind: ConnectorAuthKind;
+  connector_category: string;
+  status: TenantConnectorStatus;
+  credentials_ref: Record<string, unknown>;
+  scopes_granted: string[];
+  config: Record<string, unknown>;
+  last_health_check_at: string | null;
+  last_synced_at: string | null;
+  connected_at: string | null;
+  disconnected_at: string | null;
+  consent_token_expires_at: string | null;
+};
+
+export type InitiateConsentOut = {
+  tenant_connector_id: string;
+  redirect_url: string;
+  consent_link_template_name: string;
+  expires_at: string;
+  signed_consent_url: string;
+};
+
+export type ConnectorToolMode = "always" | "blocked" | "needs_approval";
+
+export type ConnectorToolOverride = {
+  tenant_id: string;
+  tool_name: string;
+  mode: ConnectorToolMode;
+  reason: string | null;
+  set_by_actor: string;
+  updated_at: string;
+};
+
 // ── tenants ─────────────────────────────────────────────────────────────────
 
 export const backend = {
@@ -354,5 +426,92 @@ export const backend = {
   listChannels: (tenantId: string) =>
     call<ChannelOut[]>(`/admin/tenants/${tenantId}/channels`).then(
       (r) => r ?? [],
+    ),
+
+  // ── Connectors (Block L / ADR-011) ─────────────────────────────────────
+
+  listConnectors: (params: { category?: string; status?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.category) q.set("category", params.category);
+    if (params.status) q.set("status_filter", params.status);
+    const qs = q.toString();
+    return call<Connector[]>(
+      `/admin/connectors${qs ? "?" + qs : ""}`,
+    ).then((r) => r ?? []);
+  },
+
+  getConnector: (slug: string) =>
+    call<Connector>(`/admin/connectors/${encodeURIComponent(slug)}`, {
+      optional: true,
+    }),
+
+  listTenantConnectors: (tenantId: string) =>
+    call<TenantConnector[]>(
+      `/admin/tenants/${tenantId}/connectors`,
+    ).then((r) => r ?? []),
+
+  initiateConnectorConsent: (tenantId: string, slug: string) =>
+    call<InitiateConsentOut>(
+      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/initiate-consent`,
+      { method: "POST", body: {} },
+    ),
+
+  bootstrapBrowserConnector: (
+    tenantId: string,
+    slug: string,
+    body: { tenant_credentials_id: string; context_id?: string | null },
+  ) =>
+    call<TenantConnector>(
+      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/bootstrap-browser`,
+      { method: "POST", body },
+    ),
+
+  connectManualConnector: (
+    tenantId: string,
+    slug: string,
+    body: { channel_id: string },
+  ) =>
+    call<TenantConnector>(
+      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/connect-manual`,
+      { method: "POST", body },
+    ),
+
+  syncConnector: (tenantId: string, slug: string) =>
+    call<{ added: string[]; deprecated: string[]; unchanged_count: number }>(
+      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/sync`,
+      { method: "POST", body: {} },
+    ),
+
+  disconnectConnector: (tenantId: string, slug: string) =>
+    call<TenantConnector>(
+      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/disconnect`,
+      { method: "POST", body: {} },
+    ),
+
+  reissueConnectorConsent: (tenantId: string, slug: string) =>
+    call<InitiateConsentOut>(
+      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/reissue-consent`,
+      { method: "POST", body: {} },
+    ),
+
+  listConnectorToolOverrides: (tenantId: string) =>
+    call<ConnectorToolOverride[]>(
+      `/admin/tenants/${tenantId}/connector-tool-overrides`,
+    ).then((r) => r ?? []),
+
+  putConnectorToolOverride: (
+    tenantId: string,
+    toolName: string,
+    body: { mode: ConnectorToolMode; reason?: string | null },
+  ) =>
+    call<ConnectorToolOverride>(
+      `/admin/tenants/${tenantId}/connector-tool-overrides/${encodeURIComponent(toolName)}`,
+      { method: "PUT", body },
+    ),
+
+  deleteConnectorToolOverride: (tenantId: string, toolName: string) =>
+    call<null>(
+      `/admin/tenants/${tenantId}/connector-tool-overrides/${encodeURIComponent(toolName)}`,
+      { method: "DELETE" },
     ),
 };

@@ -1,0 +1,39 @@
+# Connector seed — AgendaPro via browser automation (ADR-010 + Block E).
+#
+# auth_kind=browser_credentials → operator pastes login + password + business_url
+# in the panel during bootstrap. Credentials are Fernet-encrypted in
+# tenant_credentials. tenant_connectors.credentials_ref =
+#   {"tenant_credentials_id": "<uuid>", "context_id": "<browserbase>"}.
+#
+# The agendapro_browser_mcp Node subprocess (Stagehand v3) is the runtime
+# MCP server. tools.list returns the 6 LLM-facing tools:
+#   - check_availability, get_today_appointments, scrape_no_shows  (read_only)
+#   - create_appointment, modify_appointment, cancel_appointment   (destructive)
+#
+# AgendaPro has no OAuth, so the consent flow is operator-only. No client-side
+# WhatsApp template — the operator types creds straight in the panel.
+slug: agendapro
+display_name: AgendaPro
+vendor: AgendaPro
+category: booking
+capabilities:
+  - read
+  - write
+auth_kind: browser_credentials
+mcp_server_ref: internal:agendapro_browser_mcp
+provider_meta:
+  icon_url: https://agendapro.com/favicon.ico
+  vendor_url: https://agendapro.com
+  docs_url: https://agendapro.com/ayuda
+  brand_color: "#0066FF"
+  supports_regions:
+    - CL
+    - MX
+    - CO
+auto_enable_on_connect: true
+# AgendaPro IS the booking system. If the tenant connected it, they want the
+# agent to create/modify/cancel bookings. The protective layer is the agent's
+# system prompt + the operator's audit feed — not blocking destructive tools.
+auto_enable_destructive: true
+consent_link_template_name: null
+status: available

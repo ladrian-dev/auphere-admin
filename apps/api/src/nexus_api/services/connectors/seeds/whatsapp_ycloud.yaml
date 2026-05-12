@@ -1,0 +1,32 @@
+# Connector seed — WhatsApp via YCloud BSP (ADR-008).
+#
+# In the runtime architecture, WhatsApp is a *channel*, not a tool the agent
+# invokes. The connector row exists so the operator panel can show
+# "this tenant has WhatsApp connected" in the same uniform view as the
+# OAuth-based connectors. It does NOT export tools to the LLM.
+#
+# auth_kind=webhook_manual → the operator pastes waba_id + phone_number_id in
+# the panel (Block J wizard). The actual channel row lives in `channels`.
+# tenant_connectors.credentials_ref = {"channel_id": "<uuid>"}.
+#
+# No consent_link_template_name — there is no client-side consent step. The
+# operator fully drives setup.
+slug: whatsapp_ycloud
+display_name: WhatsApp (YCloud)
+vendor: YCloud
+category: messaging
+capabilities:
+  - inbound
+  - outbound
+auth_kind: webhook_manual
+mcp_server_ref: internal:whatsapp_ycloud
+provider_meta:
+  icon_url: https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg
+  vendor_url: https://ycloud.com
+  docs_url: https://www.ycloud.com/docs
+  brand_color: "#25D366"
+  channel_only: true  # signals UI to render channel-style card, not tools list
+auto_enable_on_connect: true
+auto_enable_destructive: false
+consent_link_template_name: null
+status: available

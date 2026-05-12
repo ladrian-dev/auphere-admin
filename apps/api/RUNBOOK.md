@@ -401,6 +401,81 @@ recomendado para cliente 1 (Cultor) si la migración demora.
 
 ---
 
+## Connectors (Bloque L)
+
+Connectors unifica integraciones en una sola tabla: WhatsApp (canal),
+AgendaPro (browser_credentials), Calendar/Calendly/Notion (oauth_composio).
+Decisión: ADR-011 + `architecture/connectors.md`.
+
+### Conectar un OAuth connector (Calendar, Calendly, Notion)
+
+1. **Pre-requisito (una sola vez por connector + entorno)**: en el
+   dashboard Composio de la org `auphere`, crear el auth_config para
+   el toolkit (`google_calendar`, `calendly`, `notion`). Anotar el
+   `auth_config_id` y agregarlo en Doppler:
+   - `NEXUS_COMPOSIO_AUTH_CONFIG_GOOGLE_CALENDAR`
+   - `NEXUS_COMPOSIO_AUTH_CONFIG_CALENDLY`
+   - `NEXUS_COMPOSIO_AUTH_CONFIG_NOTION`
+   Asegurarse de tener también `NEXUS_COMPOSIO_API_KEY` +
+   `NEXUS_COMPOSIO_WEBHOOK_SECRET` en Doppler. Phase 1 = free tier
+   (composio.dev, $0/mo, 20K calls/mo).
+
+2. **Pre-requisito por tenant**: `owner_phone` debe estar
+   configurado en `tenants` (el endpoint rechaza con 400 si no).
+
+3. **Operación**:
+   - Panel → tenant → tab "Connectors" → click "Conectar Google
+     Calendar" en la card "Disponibles".
+   - Backend pide a Composio un magic-link, manda WhatsApp template
+     `connector_consent_request_v1` al owner del tenant.
+   - El operador puede copiar el link manual del Dialog si el WhatsApp
+     no llegó (fallback).
+   - El cliente clickea el link, autoriza en Google.
+   - Composio webhookea → connector status = `connected`.
+   - Tools sync corre automáticamente. Read-only tools quedan
+     `mode=always` (usables); destructive tools quedan `mode=blocked`
+     hasta override (`google_calendar` tiene `auto_enable_destructive=false`).
+
+4. **Promover tools destructivas**: panel → tab "Connectors" →
+   ver tabla de overrides → cambiar mode `blocked` → `always` para
+   tools que se quieren habilitar. El cambio es per-tenant.
+
+### Desconectar un connector
+
+Panel → tenant → Connectors → "Desconectar". Tokens upstream se
+revocan (best-effort), `tenant_connectors.status = disconnected`,
+tools del connector dejan de ser invocables en el próximo turn.
+
+### Composio caído
+
+- ≤ 15 min: degradación silenciosa, agente cae al mensaje canónico.
+- 15 min – 48 h: alerta P2 al operador. Browser_credentials +
+  webhook_manual no se afectan. Aceptable según ADR-011 (basado en
+  incidente Apr 28-30 2026 de 36h).
+- > 48 h: escalation P1, decisión humana sobre comunicar a clientes.
+
+### Re-emitir consent link
+
+Si el link expiró (TTL 7d) o el WhatsApp del owner falló: panel →
+Connectors → "Reenviar consent" en la card del connector pendiente.
+Rate-limited a 3/hora por (tenant, connector).
+
+### Agregar un connector nuevo al catálogo
+
+Ver [architecture/connectors.md → "Cómo agregar un connector nuevo"](../../../Work/Auphere/nexus/architecture/connectors.md).
+Tiempo target: ~2h para un OAuth connector vía Composio (seed YAML +
+auth_config registrado + 1-2 tests).
+
+### Test coverage
+
+Bloque L entrega 79 tests nuevos (55 unit + 19 integration + 5
+isolation) más allá de la suite ~309 de J. La isolation suite
+extendida cubre: no leak de connections cross-tenant, user_id binding
+en Composio, overrides RLS, disconnect aislamiento. **El plan de
+tests del bloque (`architecture/connectors-testing.md`) listaba ~128
+como target aspiracional; se entregaron 79 reales focused — la
+delta se cubre en un follow-up cuando entren clientes 2-3.**
+
 ## Cosas que no debés hacer (sin pensarlo dos veces)
 
 - **`railway run alembic downgrade head` o `alembic downgrade base`**.

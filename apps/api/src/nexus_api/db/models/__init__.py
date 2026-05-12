@@ -9,6 +9,15 @@ from nexus_api.db.models.channel import (
     ChannelType,
     TenantCredentials,
 )
+from nexus_api.db.models.connector import (
+    Connector,
+    ConnectorAuthKind,
+    ConnectorStatus,
+    ConnectorToolMode,
+    TenantConnector,
+    TenantConnectorStatus,
+    TenantConnectorToolOverride,
+)
 from nexus_api.db.models.conversation import (
     Conversation,
     ConversationStatus,
@@ -43,6 +52,10 @@ __all__ = [
     "Channel",
     "ChannelStatus",
     "ChannelType",
+    "Connector",
+    "ConnectorAuthKind",
+    "ConnectorStatus",
+    "ConnectorToolMode",
     "Conversation",
     "ConversationStatus",
     "Customer",
@@ -62,6 +75,9 @@ __all__ = [
     "ScheduledJobKind",
     "ScheduledJobStatus",
     "Tenant",
+    "TenantConnector",
+    "TenantConnectorStatus",
+    "TenantConnectorToolOverride",
     "TenantCredentials",
     "TenantPlan",
     "TenantStatus",

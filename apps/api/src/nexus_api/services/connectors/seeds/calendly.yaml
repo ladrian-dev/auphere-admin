@@ -1,0 +1,21 @@
+# Connector seed — Calendly via Composio (ADR-011).
+slug: calendly
+display_name: Calendly
+vendor: Calendly Inc.
+category: booking
+capabilities:
+  - read
+  - write
+auth_kind: oauth_composio
+mcp_server_ref: composio:calendly
+provider_meta:
+  icon_url: https://assets.calendly.com/assets/frontend/media/favicon-32x32.png
+  vendor_url: https://calendly.com
+  docs_url: https://developer.calendly.com
+  brand_color: "#006BFF"
+  composio_toolkit_slug: CALENDLY
+  composio_auth_config_env: NEXUS_COMPOSIO_AUTH_CONFIG_CALENDLY
+auto_enable_on_connect: true
+auto_enable_destructive: false
+consent_link_template_name: connector_consent_request_v1
+status: available

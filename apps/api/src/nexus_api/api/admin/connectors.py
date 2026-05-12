@@ -1,0 +1,685 @@
+"""Admin endpoints for the Connectors module (Block L / ADR-011).
+
+Catalog (global):
+    GET    /admin/connectors                          list catalog
+    GET    /admin/connectors/{slug}                   detail
+
+Per-tenant (RLS-scoped):
+    GET    /admin/tenants/{id}/connectors             list tenant installs
+    POST   /admin/tenants/{id}/connectors/{slug}/initiate-consent
+    POST   /admin/tenants/{id}/connectors/{slug}/bootstrap-browser
+    POST   /admin/tenants/{id}/connectors/{slug}/connect-manual
+    POST   /admin/tenants/{id}/connectors/{slug}/sync
+    POST   /admin/tenants/{id}/connectors/{slug}/disconnect
+    POST   /admin/tenants/{id}/connectors/{slug}/reissue-consent
+    GET    /admin/tenants/{id}/connector-tool-overrides
+    PUT    /admin/tenants/{id}/connector-tool-overrides/{tool_name}
+    DELETE /admin/tenants/{id}/connector-tool-overrides/{tool_name}
+
+All admin paths require Bearer admin token. Composio client and consent
+secret are wired through Depends so tests can swap in FakeComposioClient.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Annotated, Any
+
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, Path, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from nexus_api.api.deps import get_db_session, scoped_session_from_path
+from nexus_api.config import get_settings
+from nexus_api.core.security import require_admin_token
+from nexus_api.db.models import (
+    Channel,
+    Connector,
+    ConnectorToolMode,
+    Tenant,
+    TenantConnector,
+    TenantConnectorToolOverride,
+    TenantCredentials,
+)
+from nexus_api.services.connectors import service as connector_service
+from nexus_api.services.connectors.composio_client import (
+    ComposioAuthExpired,
+    ComposioClientProtocol,
+    ComposioError,
+    ComposioUnavailable,
+    FakeComposioClient,
+    LiveComposioClient,
+)
+from nexus_api.services.connectors.service import (
+    ConnectorAlreadyConnected,
+    ConnectorNotConfigured,
+    ConnectorNotFound,
+    IncompatibleAuthKind,
+)
+
+log = structlog.get_logger(__name__)
+router = APIRouter()
+
+
+# ── Composio client provider (DI) ───────────────────────────────────────────
+
+_composio_singleton: ComposioClientProtocol | None = None
+
+
+def get_composio_client() -> ComposioClientProtocol:
+    """Resolve the Composio client used by admin endpoints.
+
+    Production: ``LiveComposioClient`` if ``NEXUS_COMPOSIO_API_KEY`` is set.
+    Dev / tests: ``FakeComposioClient`` (the same instance across requests so
+    tests can wire it up once and assert on its call log).
+    """
+    global _composio_singleton
+    if _composio_singleton is not None:
+        return _composio_singleton
+    settings = get_settings()
+    if settings.composio_api_key:
+        _composio_singleton = LiveComposioClient(api_key=settings.composio_api_key)
+    else:
+        log.warning(
+            "composio.using_fake_client",
+            reason="NEXUS_COMPOSIO_API_KEY empty",
+        )
+        _composio_singleton = FakeComposioClient()
+    return _composio_singleton
+
+
+def set_composio_client_for_tests(client: ComposioClientProtocol | None) -> None:
+    """Test hook — override the singleton (call with None to reset)."""
+    global _composio_singleton
+    _composio_singleton = client
+
+
+# ── auth_config_id resolution ───────────────────────────────────────────────
+
+
+def _resolve_auth_config_id(connector: Connector) -> str:
+    """Read the auth_config_id from settings using the env var name declared in
+    the connector's provider_meta. Returns "" if the setting is empty.
+    """
+    env_name = (connector.provider_meta or {}).get("composio_auth_config_env")
+    if not env_name:
+        return ""
+    settings = get_settings()
+    attr = env_name.removeprefix("NEXUS_").lower()
+    return getattr(settings, attr, "") or ""
+
+
+# ── shape ───────────────────────────────────────────────────────────────────
+
+
+class ConnectorOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    slug: str
+    display_name: str
+    vendor: str
+    category: str
+    capabilities: list[str]
+    auth_kind: str
+    mcp_server_ref: str
+    provider_meta: dict[str, Any]
+    auto_enable_on_connect: bool
+    auto_enable_destructive: bool
+    consent_link_template_name: str | None
+    status: str
+
+
+class TenantConnectorOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    connector_id: uuid.UUID
+    connector_slug: str
+    connector_display_name: str
+    connector_auth_kind: str
+    connector_category: str
+    status: str
+    credentials_ref: dict[str, Any]
+    scopes_granted: list[str]
+    config: dict[str, Any]
+    last_health_check_at: datetime | None
+    last_synced_at: datetime | None
+    connected_at: datetime | None
+    disconnected_at: datetime | None
+    consent_token_expires_at: datetime | None
+
+
+class InitiateConsentOut(BaseModel):
+    tenant_connector_id: uuid.UUID
+    redirect_url: str
+    consent_link_template_name: str
+    expires_at: datetime
+    # The plain magic-link URL the operator can paste/share manually if the
+    # WhatsApp template fails. Includes a signed consent token in the query
+    # so the OAuth callback can verify origin.
+    signed_consent_url: str
+
+
+class BootstrapBrowserIn(BaseModel):
+    """Bootstrap a browser_credentials connector by linking an existing
+    tenant_credentials row (created via the AgendaPro bootstrap flow).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    tenant_credentials_id: uuid.UUID
+    context_id: str | None = None
+
+
+class ConnectManualIn(BaseModel):
+    """Bootstrap a webhook_manual connector by linking an existing channel row."""
+
+    model_config = ConfigDict(extra="forbid")
+    channel_id: uuid.UUID
+
+
+class OverrideIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: str = Field(pattern=r"^(always|blocked|needs_approval)$")
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class OverrideOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    tenant_id: uuid.UUID
+    tool_name: str
+    mode: str
+    reason: str | None
+    set_by_actor: str
+    updated_at: datetime
+
+
+class SyncOut(BaseModel):
+    added: list[str]
+    deprecated: list[str]
+    unchanged_count: int
+
+
+# ── catalog endpoints ───────────────────────────────────────────────────────
+
+
+@router.get("/connectors", response_model=list[ConnectorOut])
+async def list_catalog(
+    category: str | None = None,
+    status_filter: str | None = None,
+    session: AsyncSession = Depends(get_db_session),
+    actor: str = Depends(require_admin_token),
+) -> list[ConnectorOut]:
+    stmt = select(Connector).order_by(Connector.category, Connector.display_name)
+    if category:
+        stmt = stmt.where(Connector.category == category)
+    if status_filter:
+        stmt = stmt.where(Connector.status == status_filter)
+    rows = (await session.scalars(stmt)).all()
+    return [ConnectorOut.model_validate(r) for r in rows]
+
+
+@router.get("/connectors/{slug}", response_model=ConnectorOut)
+async def get_catalog_entry(
+    slug: str,
+    session: AsyncSession = Depends(get_db_session),
+    actor: str = Depends(require_admin_token),
+) -> ConnectorOut:
+    row = await session.scalar(select(Connector).where(Connector.slug == slug))
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"connector slug not found: {slug!r}",
+        )
+    return ConnectorOut.model_validate(row)
+
+
+# ── per-tenant endpoints ────────────────────────────────────────────────────
+
+
+async def _list_tenant_installs(
+    session: AsyncSession, tenant_id: uuid.UUID
+) -> list[TenantConnectorOut]:
+    stmt = (
+        select(TenantConnector, Connector)
+        .join(Connector, TenantConnector.connector_id == Connector.id)
+        .where(TenantConnector.tenant_id == tenant_id)
+        .order_by(Connector.category, Connector.display_name)
+    )
+    rows = (await session.execute(stmt)).all()
+    out: list[TenantConnectorOut] = []
+    for tc, c in rows:
+        out.append(
+            TenantConnectorOut(
+                id=tc.id,
+                tenant_id=tc.tenant_id,
+                connector_id=tc.connector_id,
+                connector_slug=c.slug,
+                connector_display_name=c.display_name,
+                connector_auth_kind=c.auth_kind,
+                connector_category=c.category,
+                status=tc.status,
+                credentials_ref=tc.credentials_ref or {},
+                scopes_granted=list(tc.scopes_granted or []),
+                config=tc.config or {},
+                last_health_check_at=tc.last_health_check_at,
+                last_synced_at=tc.last_synced_at,
+                connected_at=tc.connected_at,
+                disconnected_at=tc.disconnected_at,
+                consent_token_expires_at=tc.consent_token_expires_at,
+            )
+        )
+    return out
+
+
+@router.get(
+    "/tenants/{tenant_id}/connectors",
+    response_model=list[TenantConnectorOut],
+)
+async def list_tenant_connectors(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> list[TenantConnectorOut]:
+    return await _list_tenant_installs(session, tenant_id)
+
+
+def _ensure_owner_phone(tenant: Tenant) -> str:
+    phone: str | None = getattr(tenant, "owner_phone", None)
+    if not phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "tenant has no owner_phone configured; add it before sending consent magic links"
+            ),
+        )
+    return phone
+
+
+@router.post(
+    "/tenants/{tenant_id}/connectors/{slug}/initiate-consent",
+    response_model=InitiateConsentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def initiate_consent(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    slug: str,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    composio: ComposioClientProtocol = Depends(get_composio_client),
+    actor: str = Depends(require_admin_token),
+) -> InitiateConsentOut:
+    settings = get_settings()
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None:  # pragma: no cover — scoped_session_from_path raises 404 first
+        raise HTTPException(status_code=404, detail="tenant not found")
+    connector = await session.scalar(select(Connector).where(Connector.slug == slug))
+    if connector is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"connector slug not found: {slug!r}",
+        )
+    if connector.auth_kind != "oauth_composio":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"connector {slug} is auth_kind={connector.auth_kind!r}; use "
+                "/bootstrap-browser or /connect-manual instead"
+            ),
+        )
+    auth_config_id = _resolve_auth_config_id(connector)
+    if not auth_config_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"connector {slug} has no auth_config_id configured "
+                f"(missing env "
+                f"{(connector.provider_meta or {}).get('composio_auth_config_env')})"
+            ),
+        )
+    # Validate owner_phone is set BEFORE any upstream call.
+    _ensure_owner_phone(tenant)
+    callback_url = f"{settings.public_api_base_url.rstrip('/')}/connectors/oauth-callback"
+    try:
+        result = await connector_service.initiate_consent(
+            session,
+            tenant=tenant,
+            connector_slug=slug,
+            composio=composio,
+            callback_url=callback_url,
+            auth_config_id=auth_config_id,
+            consent_secret=settings.connector_consent_secret,
+            actor=f"admin:{actor[:8]}",
+        )
+    except ConnectorAlreadyConnected as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ConnectorNotConfigured as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except IncompatibleAuthKind as exc:  # pragma: no cover — gated above
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ComposioUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"composio unavailable: {exc}",
+        ) from exc
+    except ComposioError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"composio error: {exc}",
+        ) from exc
+
+    # The redirect_url from Composio embeds our callback. We append our own
+    # consent_token so the OAuth callback can verify provenance.
+    sep = "&" if "?" in result.redirect_url else "?"
+    signed = f"{result.redirect_url}{sep}consent_token={result.consent_token}"
+    return InitiateConsentOut(
+        tenant_connector_id=result.tenant_connector_id,
+        redirect_url=result.redirect_url,
+        consent_link_template_name=result.consent_link_template_name,
+        expires_at=result.expires_at,
+        signed_consent_url=signed,
+    )
+
+
+@router.post(
+    "/tenants/{tenant_id}/connectors/{slug}/bootstrap-browser",
+    response_model=TenantConnectorOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def bootstrap_browser(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    slug: str,
+    body: BootstrapBrowserIn,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> TenantConnectorOut:
+    tenant = await session.get(Tenant, tenant_id)
+    assert tenant is not None  # scoped_session_from_path guards this
+    # Validate the tenant_credentials row exists for this tenant.
+    creds = await session.scalar(
+        select(TenantCredentials).where(TenantCredentials.id == body.tenant_credentials_id)
+    )
+    if creds is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"tenant_credentials {body.tenant_credentials_id} not found",
+        )
+    try:
+        await connector_service.bootstrap_browser_credentials(
+            session,
+            tenant=tenant,
+            connector_slug=slug,
+            tenant_credentials_id=body.tenant_credentials_id,
+            context_id=body.context_id,
+            actor=f"admin:{actor[:8]}",
+        )
+    except ConnectorNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except IncompatibleAuthKind as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    installs = await _list_tenant_installs(session, tenant_id)
+    out = next((i for i in installs if i.connector_slug == slug), None)
+    if out is None:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="post-bootstrap lookup failed")
+    return out
+
+
+@router.post(
+    "/tenants/{tenant_id}/connectors/{slug}/connect-manual",
+    response_model=TenantConnectorOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def connect_manual(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    slug: str,
+    body: ConnectManualIn,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> TenantConnectorOut:
+    tenant = await session.get(Tenant, tenant_id)
+    assert tenant is not None
+    channel = await session.scalar(select(Channel).where(Channel.id == body.channel_id))
+    if channel is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"channel {body.channel_id} not found in this tenant",
+        )
+    try:
+        await connector_service.bootstrap_webhook_manual(
+            session,
+            tenant=tenant,
+            connector_slug=slug,
+            channel_id=body.channel_id,
+            actor=f"admin:{actor[:8]}",
+        )
+    except ConnectorNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except IncompatibleAuthKind as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    installs = await _list_tenant_installs(session, tenant_id)
+    out = next((i for i in installs if i.connector_slug == slug), None)
+    if out is None:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="post-connect lookup failed")
+    return out
+
+
+@router.post(
+    "/tenants/{tenant_id}/connectors/{slug}/sync",
+    response_model=SyncOut,
+)
+async def sync_connector(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    slug: str,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    composio: ComposioClientProtocol = Depends(get_composio_client),
+    actor: str = Depends(require_admin_token),
+) -> SyncOut:
+    connector = await session.scalar(select(Connector).where(Connector.slug == slug))
+    if connector is None:
+        raise HTTPException(status_code=404, detail=f"connector slug not found: {slug!r}")
+    tc = await session.scalar(
+        select(TenantConnector).where(
+            TenantConnector.tenant_id == tenant_id,
+            TenantConnector.connector_id == connector.id,
+        )
+    )
+    if tc is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"tenant has no install of {slug}; initiate-consent first",
+        )
+    try:
+        result = await connector_service.sync_tools_for(
+            session,
+            tenant_connector=tc,
+            connector=connector,
+            composio=composio,
+            actor=f"admin:{actor[:8]}",
+        )
+    except ComposioUnavailable as exc:
+        raise HTTPException(status_code=503, detail=f"composio unavailable: {exc}") from exc
+    except ComposioAuthExpired as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"connector needs re-auth: {exc}",
+        ) from exc
+    return SyncOut(
+        added=result.added,
+        deprecated=result.deprecated,
+        unchanged_count=len(result.unchanged),
+    )
+
+
+@router.post(
+    "/tenants/{tenant_id}/connectors/{slug}/disconnect",
+    response_model=TenantConnectorOut,
+)
+async def disconnect(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    slug: str,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    composio: ComposioClientProtocol = Depends(get_composio_client),
+    actor: str = Depends(require_admin_token),
+) -> TenantConnectorOut:
+    tenant = await session.get(Tenant, tenant_id)
+    assert tenant is not None
+    try:
+        await connector_service.disconnect_connector(
+            session,
+            tenant=tenant,
+            connector_slug=slug,
+            composio=composio,
+            actor=f"admin:{actor[:8]}",
+        )
+    except ConnectorNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    installs = await _list_tenant_installs(session, tenant_id)
+    out = next((i for i in installs if i.connector_slug == slug), None)
+    if out is None:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="post-disconnect lookup failed")
+    return out
+
+
+@router.post(
+    "/tenants/{tenant_id}/connectors/{slug}/reissue-consent",
+    response_model=InitiateConsentOut,
+)
+async def reissue_consent(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    slug: str,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> InitiateConsentOut:
+    settings = get_settings()
+    tenant = await session.get(Tenant, tenant_id)
+    assert tenant is not None
+    try:
+        new_token = await connector_service.reissue_consent(
+            session,
+            tenant=tenant,
+            connector_slug=slug,
+            consent_secret=settings.connector_consent_secret,
+            actor=f"admin:{actor[:8]}",
+        )
+    except ConnectorNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConnectorAlreadyConnected as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # Build response from the refreshed row.
+    tc = await session.scalar(
+        select(TenantConnector)
+        .join(Connector, TenantConnector.connector_id == Connector.id)
+        .where(
+            TenantConnector.tenant_id == tenant_id,
+            Connector.slug == slug,
+        )
+    )
+    assert tc is not None and tc.consent_token_expires_at is not None
+    connector = await session.get(Connector, tc.connector_id)
+    assert connector is not None
+    template = connector.consent_link_template_name or ""
+    return InitiateConsentOut(
+        tenant_connector_id=tc.id,
+        redirect_url=tc.credentials_ref.get("redirect_url", ""),
+        consent_link_template_name=template,
+        expires_at=tc.consent_token_expires_at,
+        signed_consent_url=f"?consent_token={new_token}",
+    )
+
+
+# ── tool overrides ──────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/tenants/{tenant_id}/connector-tool-overrides",
+    response_model=list[OverrideOut],
+)
+async def list_overrides(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> list[OverrideOut]:
+    rows = (
+        await session.scalars(
+            select(TenantConnectorToolOverride).order_by(TenantConnectorToolOverride.tool_name)
+        )
+    ).all()
+    return [
+        OverrideOut(
+            tenant_id=r.tenant_id,
+            tool_name=r.tool_name,
+            mode=r.mode,
+            reason=r.reason,
+            set_by_actor=r.set_by_actor,
+            updated_at=r.updated_at,
+        )
+        for r in rows
+    ]
+
+
+@router.put(
+    "/tenants/{tenant_id}/connector-tool-overrides/{tool_name}",
+    response_model=OverrideOut,
+)
+async def put_override(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    tool_name: str,
+    body: OverrideIn,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> OverrideOut:
+    tenant = await session.get(Tenant, tenant_id)
+    assert tenant is not None
+    from nexus_api.services.connectors.gating import ToolNotInCatalog
+
+    try:
+        row = await connector_service.upsert_override(
+            session,
+            tenant=tenant,
+            tool_name=tool_name,
+            mode=ConnectorToolMode(body.mode),
+            reason=body.reason,
+            actor=f"admin:{actor[:8]}",
+        )
+    except ToolNotInCatalog as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await session.refresh(row)
+    return OverrideOut(
+        tenant_id=row.tenant_id,
+        tool_name=row.tool_name,
+        mode=row.mode,
+        reason=row.reason,
+        set_by_actor=row.set_by_actor,
+        updated_at=row.updated_at,
+    )
+
+
+@router.delete(
+    "/tenants/{tenant_id}/connector-tool-overrides/{tool_name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_override(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    tool_name: str,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> None:
+    tenant = await session.get(Tenant, tenant_id)
+    assert tenant is not None
+    deleted = await connector_service.delete_override(
+        session,
+        tenant=tenant,
+        tool_name=tool_name,
+        actor=f"admin:{actor[:8]}",
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"no override for tool {tool_name!r}",
+        )
+
+
+__all__ = ["get_composio_client", "router", "set_composio_client_for_tests"]

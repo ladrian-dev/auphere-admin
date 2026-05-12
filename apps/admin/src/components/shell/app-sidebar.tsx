@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Library,
   LogOut,
+  Plug,
   type LucideIcon,
 } from "lucide-react";
 
@@ -40,6 +41,7 @@ type Item = { href: string; label: string; icon: LucideIcon };
 
 const NAV: Item[] = [
   { href: "/tenants", label: "Tenants", icon: LayoutDashboard },
+  { href: "/connectors", label: "Connectors", icon: Plug },
   { href: "/tool-catalog", label: "Catálogo de tools", icon: Library },
 ];
 

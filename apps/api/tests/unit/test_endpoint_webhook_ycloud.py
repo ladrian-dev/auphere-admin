@@ -131,7 +131,6 @@ async def test_webhook_accepts_known_business_phone(client, db_session, seed_ten
                 provider_identifier=business_phone,
             )
         )
-
     body = json.dumps(_inbound_envelope(business_phone=business_phone)).encode()
     r = await client.post(
         "/webhook/ycloud",

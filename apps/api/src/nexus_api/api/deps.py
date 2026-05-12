@@ -9,8 +9,8 @@ from fastapi import Depends, HTTPException, Path, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.core import redis_client
 from nexus_api.core.logging_context import bind_tenant
-from nexus_api.core.redis_client import get_redis as _get_redis
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.repositories import TenantRepository
 
@@ -22,7 +22,11 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
 
 
 def get_redis() -> Redis:
-    return _get_redis()
+    # Dereference dynamically so test fixtures that
+    # ``monkeypatch.setattr(redis_client, "get_redis", ...)`` take effect.
+    # An ``import X as Y`` here would bind to the function object at import
+    # time and bypass the monkey-patch (latent bug fixed in Block L).
+    return redis_client.get_redis()
 
 
 async def scoped_session_from_path(

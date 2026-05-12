@@ -1,0 +1,12 @@
+name: connector_consent_request_v1
+language: es_CL
+category: UTILITY
+body: |
+  Auphere: para que tu agente pueda usar {{1}}, autorizá el acceso una sola vez en este link: {{2}}
+
+  El link expira en 7 días. Si tenés dudas, contestá este mensaje.
+params:
+  - name: connector_display_name
+    example: Google Calendar
+  - name: signed_consent_url
+    example: https://api.auphere.com/connectors/oauth-callback?consent_token=...

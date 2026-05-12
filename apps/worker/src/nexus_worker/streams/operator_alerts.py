@@ -67,6 +67,11 @@ _ACTION_TO_TEMPLATE: dict[str, str] = {
     "cost.daily_threshold_exceeded": "alert_cost_threshold_v1",
     "isolation.violation_detected": "alert_isolation_v1",
     "channel.ycloud_5xx_burst": "alert_ycloud_burst_v1",
+    # Block L — Connectors module. Both map to the existing needs_reauth
+    # template (same operational signal: "go to the panel and reconnect"),
+    # avoiding a new Meta template approval round-trip.
+    "connector.needs_reauth": "alert_needs_reauth_v1",
+    "connector.error": "alert_needs_reauth_v1",
 }
 
 

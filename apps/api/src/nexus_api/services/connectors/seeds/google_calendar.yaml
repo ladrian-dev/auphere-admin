@@ -1,0 +1,37 @@
+# Connector seed — Google Calendar via Composio (ADR-011).
+#
+# auth_kind=oauth_composio → operator clicks Connect, backend requests a magic
+# link from Composio (connected_accounts.link with user_id=tenant_<slug>),
+# Auphere sends the link to the owner via WhatsApp template, owner consents
+# on accounts.google.com, Composio webhooks back ACTIVE.
+# tenant_connectors.credentials_ref =
+#   {"composio_connection_id": "<id>", "user_id": "tenant_<slug>"}.
+#
+# Tools auto-discovered from Composio tools.list. Common slugs are
+# GOOGLECALENDAR_LIST_EVENTS, GOOGLECALENDAR_CREATE_EVENT, etc. The annotation
+# spike (see BUILD-PLAN-v2 Bloque L) decides whether destructive=true is set
+# from upstream hints or hard-coded per slug in this YAML's overrides.
+#
+# auto_enable_destructive=false → CREATE/UPDATE/DELETE events stay
+# mode=blocked until the operator promotes them per-tenant. Read tools
+# (list/get) become mode=always automatically.
+slug: google_calendar
+display_name: Google Calendar
+vendor: Google
+category: calendar
+capabilities:
+  - read
+  - write
+auth_kind: oauth_composio
+mcp_server_ref: composio:googlecalendar
+provider_meta:
+  icon_url: https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg
+  vendor_url: https://calendar.google.com
+  docs_url: https://developers.google.com/calendar
+  brand_color: "#4285F4"
+  composio_toolkit_slug: GOOGLECALENDAR
+  composio_auth_config_env: NEXUS_COMPOSIO_AUTH_CONFIG_GOOGLE_CALENDAR
+auto_enable_on_connect: true
+auto_enable_destructive: false
+consent_link_template_name: connector_consent_request_v1
+status: available
