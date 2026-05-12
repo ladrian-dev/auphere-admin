@@ -53,8 +53,8 @@ export default async function ConversationsPage({
                 <LiveIndicator tenantId={tenant.id} />
               </CardTitle>
               <CardDescription>
-                Las últimas {page.items.length} conversaciones del tenant. La señal en vivo se
-                conecta al stream del backend; si falla, hay polling como fallback (Phase 2).
+                Las últimas {page.items.length} conversaciones del tenant. El
+                indicador en vivo escucha el stream del backend.
               </CardDescription>
             </div>
             <div className="flex items-center gap-4 text-sm">

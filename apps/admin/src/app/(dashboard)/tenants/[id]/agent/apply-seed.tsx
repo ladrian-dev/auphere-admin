@@ -69,13 +69,14 @@ export function ApplySeedTemplateButton({
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      seed_template_ref: templates[0]?.name ?? "barbershop_v1",
+      seed_template_ref: templates[0]?.name ?? "",
       tenant_address: "",
       business_hours_label: "",
       agent_name: "",
       agent_tone: "casual",
     },
   });
+  const onlyOneTemplate = templates.length === 1;
 
   if (templates.length === 0) {
     return (
@@ -108,8 +109,8 @@ export function ApplySeedTemplateButton({
         toast.error("No se pudo aplicar la plantilla", { description: result.error });
         return;
       }
-      toast.success(`Versión ${result.data.version} creada (staged)`, {
-        description: "Revisá el prompt y promové cuando esté ok.",
+      toast.success(`Borrador v${result.data.version} creado`, {
+        description: "Revisá el prompt y promovelo cuando esté listo.",
       });
       startTransition(() => {
         setOpen(false);
@@ -132,11 +133,11 @@ export function ApplySeedTemplateButton({
       />
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Aplicar seed template</DialogTitle>
+          <DialogTitle>Aplicar plantilla</DialogTitle>
           <DialogDescription>
-            Renderea el prompt + tools whitelist + policies de la plantilla con los
-            datos del tenant. La nueva versión queda <strong>staged</strong> — revisá
-            antes de promover.
+            Renderiza el prompt, las tools y las policies de la plantilla con
+            los datos del tenant. La versión nueva queda como{" "}
+            <strong>borrador</strong> — revisala antes de promover.
           </DialogDescription>
         </DialogHeader>
 
@@ -152,20 +153,33 @@ export function ApplySeedTemplateButton({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Plantilla</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  {onlyOneTemplate ? (
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                      <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+                        <span className="font-medium">
+                          {templates[0].display_name}
+                        </span>
+                        <span className="ml-2 text-xs font-mono text-muted-foreground">
+                          {templates[0].name} · {templates[0].version}
+                        </span>
+                      </div>
                     </FormControl>
-                    <SelectContent>
-                      {templates.map((t) => (
-                        <SelectItem key={t.name} value={t.name}>
-                          {t.display_name} ({t.name} · {t.version})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  ) : (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {templates.map((t) => (
+                          <SelectItem key={t.name} value={t.name}>
+                            {t.display_name} ({t.name} · {t.version})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -175,11 +189,11 @@ export function ApplySeedTemplateButton({
               name="tenant_address"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Dirección del local</FormLabel>
+                  <FormLabel>Dirección del negocio</FormLabel>
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder="Av. Apoquindo 1234, Las Condes"
+                      placeholder="Av. Principal 1234, Ciudad"
                       autoComplete="off"
                     />
                   </FormControl>
@@ -199,12 +213,12 @@ export function ApplySeedTemplateButton({
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder="Lun-Sáb 10-19, Domingo cerrado"
+                      placeholder="Lun-Vie 9-18, Sábado 10-14"
                       autoComplete="off"
                     />
                   </FormControl>
                   <FormDescription>
-                    Cómo el agente debe describir el horario por chat.
+                    Como el agente le describe el horario a los clientes.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -220,7 +234,7 @@ export function ApplySeedTemplateButton({
                     <FormControl>
                       <Input
                         {...field}
-                        placeholder="Alex"
+                        placeholder="Aria"
                         autoComplete="off"
                       />
                     </FormControl>
@@ -246,7 +260,7 @@ export function ApplySeedTemplateButton({
                       <SelectContent>
                         <SelectItem value="casual">Casual</SelectItem>
                         <SelectItem value="formal">Formal</SelectItem>
-                        <SelectItem value="playful">Playful</SelectItem>
+                        <SelectItem value="playful">Cercano</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -264,7 +278,7 @@ export function ApplySeedTemplateButton({
                 Cancelar
               </Button>
               <Button type="submit" disabled={submitting}>
-                {submitting ? "Aplicando…" : "Crear versión staged"}
+                {submitting ? "Aplicando…" : "Crear borrador"}
               </Button>
             </DialogFooter>
           </form>

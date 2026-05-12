@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -15,6 +16,18 @@ const STATUS_TONE = {
   paused: "warning",
   archived: "muted",
 } as const;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const tenant = await backend.getTenant(id).catch(() => null);
+  return {
+    title: tenant ? `${tenant.name} · Nexus` : "Tenant · Nexus",
+  };
+}
 
 export default async function TenantLayout({
   children,

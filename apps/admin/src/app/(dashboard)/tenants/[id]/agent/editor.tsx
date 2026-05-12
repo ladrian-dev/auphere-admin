@@ -51,11 +51,13 @@ export function AgentEditor({
   tenantId,
   active,
   catalog,
+  seedTemplateName,
   stageAction,
 }: {
   tenantId: string;
   active: AgentConfig | null;
   catalog: ToolCatalog[];
+  seedTemplateName: string | null;
   stageAction: StageAction;
 }) {
   const router = useRouter();
@@ -109,38 +111,60 @@ export function AgentEditor({
         toast.error("No se pudo guardar", { description: result.error });
         return;
       }
-      toast.success("Versión staged", {
-        description: `v${result.data.version} guardada — promuévela cuando quieras activarla.`,
+      toast.success("Borrador guardado", {
+        description: `v${result.data.version} guardada — promovela cuando quieras que el agente la use.`,
       });
       router.refresh();
     });
   }
 
+  const hasSeedTemplate = seedTemplateName !== null;
+  const noToolsAvailable = catalog.length === 0;
+
   return (
     <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
       <div className="grid gap-2">
-        <Label htmlFor="prompt">System prompt (rendered)</Label>
+        <Label htmlFor="prompt">Prompt del agente</Label>
         <Textarea
           id="prompt"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={20}
-          className="font-mono text-sm leading-relaxed"
+          className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words"
           placeholder="Eres el asistente virtual de…"
         />
         <p className="text-xs text-muted-foreground">
-          Pre-renderizado. Sin Jinja2 en runtime — guardá la versión final con datos del tenant ya
-          interpolados.
+          Guardá la versión final con los datos del cliente ya interpolados —
+          el agente la consume tal cual.
         </p>
       </div>
 
       <div className="grid gap-4">
         <div className="flex items-center justify-between">
-          <Label>Tools whitelist</Label>
+          <div className="flex flex-col">
+            <Label>Tools del agente</Label>
+            {hasSeedTemplate ? (
+              <span className="text-[11px] text-muted-foreground">
+                Catálogo filtrado por plantilla {seedTemplateName}.
+              </span>
+            ) : null}
+          </div>
           <span className="text-xs font-mono text-muted-foreground tabular-nums">
             {selected.size} / {catalog.length}
           </span>
         </div>
+        {noToolsAvailable ? (
+          <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
+            {hasSeedTemplate ? (
+              <span>La plantilla {seedTemplateName} no declara tools.</span>
+            ) : (
+              <span>
+                Aplicá una plantilla con el botón de arriba para ver las tools
+                disponibles para este cliente.
+              </span>
+            )}
+          </div>
+        ) : null}
         <TooltipProvider>
           <div className="grid gap-4 max-h-[480px] overflow-y-auto pr-2">
             {grouped.map(([server, tools]) => (
@@ -205,7 +229,7 @@ export function AgentEditor({
           Descartar cambios
         </Button>
         <Button onClick={onSave} disabled={pending}>
-          {pending ? "Guardando…" : "Guardar como staged"}
+          {pending ? "Guardando…" : "Guardar borrador"}
         </Button>
       </div>
     </div>

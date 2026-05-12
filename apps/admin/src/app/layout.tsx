@@ -18,8 +18,11 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nexus — Auphere Operator Panel",
-  description: "Internal operations panel for the Auphere agent factory.",
+  title: {
+    default: "Nexus · Auphere",
+    template: "%s · Nexus",
+  },
+  description: "Panel interno de operaciones de la agent factory de Auphere.",
   robots: { index: false, follow: false },
 };
 

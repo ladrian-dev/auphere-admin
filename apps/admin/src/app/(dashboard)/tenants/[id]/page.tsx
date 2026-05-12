@@ -88,10 +88,10 @@ export default async function TenantOverview({
       <Card className="lg:col-span-1">
         <CardHeader>
           <Eyebrow>Salud operativa</Eyebrow>
-          <CardTitle>Signals</CardTitle>
+          <CardTitle>Indicadores</CardTitle>
           <CardDescription>
-            Resumen rápido. Para detalle entrá a la pestaña de aislamiento o
-            integraciones.
+            Resumen rápido. Entrá a las pestañas de aislamiento o connectors
+            para el detalle completo.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
@@ -102,10 +102,10 @@ export default async function TenantOverview({
             Ver conversaciones en vivo →
           </Link>
           <Link
-            href={`/tenants/${tenant.id}/integrations`}
+            href={`/tenants/${tenant.id}/connectors`}
             className="text-sm text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1"
           >
-            Estado de integraciones →
+            Estado de connectors →
           </Link>
           <Link
             href={`/tenants/${tenant.id}/isolation`}

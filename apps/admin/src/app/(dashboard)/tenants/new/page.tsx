@@ -10,7 +10,7 @@ export default function NewTenantPage() {
       <PageHeader
         eyebrow="Onboarding"
         title="Nuevo tenant"
-        description="Phase 1: identidad básica + alerta de costo. WhatsApp y AgendaPro se conectan en el siguiente paso."
+        description="Identidad básica del cliente y alerta de costo. Los connectors se conectan en el siguiente paso."
       />
       <div className="rounded-md border border-border bg-card p-6 max-w-3xl">
         <NewTenantWizard />

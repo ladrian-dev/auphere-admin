@@ -356,6 +356,7 @@ export const backend = {
     call<{
       integration: string;
       context_id: string;
+      tenant_credentials_id: string;
       bootstrap_at: string;
       screenshot_url: string | null;
       audit_log_id: string;

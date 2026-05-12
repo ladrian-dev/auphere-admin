@@ -40,9 +40,21 @@ export default async function AgentPage({
   ]);
   if (!tenant) return null;
 
-  // Hide internal tools from the whitelist editor entirely.
+  // Filter the whitelist by the seed template applied to this tenant.
+  // Without a template we can't know which vertical-specific tools are
+  // relevant, so the editor surfaces an empty state with a CTA instead
+  // of dumping the full registry on the operator.
+  const seedRef = bundle.active?.seed_template_ref ?? null;
+  const seedTemplate = seedRef
+    ? (seedTemplates.find((t) => t.name === seedRef) ?? null)
+    : null;
+  const allowedTools = seedTemplate
+    ? new Set(seedTemplate.tools_required)
+    : null;
   const publicCatalog: ToolCatalog[] = catalog.filter(
-    (t) => t.status !== "internal",
+    (t) =>
+      t.status !== "internal" &&
+      (allowedTools === null || allowedTools.has(t.name)),
   );
 
   return (
@@ -58,8 +70,8 @@ export default async function AgentPage({
                   : "Crear primera versión"}
               </CardTitle>
               <CardDescription>
-                Cualquier cambio guardado crea una versión <strong>staged</strong>;
-                promuévela explícitamente para que el agente la use en el siguiente turno.
+                Cada cambio que guardás queda como borrador. Promovelo cuando
+                quieras que el agente lo use en el siguiente turno.
               </CardDescription>
             </div>
             <ApplySeedTemplateButton
@@ -76,6 +88,7 @@ export default async function AgentPage({
             tenantId={tenant.id}
             active={bundle.active}
             catalog={publicCatalog}
+            seedTemplateName={seedTemplate?.display_name ?? null}
             stageAction={stageAgentConfigAction}
           />
         </CardContent>
@@ -86,8 +99,8 @@ export default async function AgentPage({
           <Eyebrow>Versiones</Eyebrow>
           <CardTitle>Historial</CardTitle>
           <CardDescription>
-            Cada promoción dispara la invalidación de la cache del runtime — el siguiente turno
-            usa la nueva versión sin redeploy.
+            Cada promoción se aplica en el siguiente turno del agente, sin
+            necesidad de redeploy.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -155,7 +168,13 @@ function VersionTable({
               </TableCell>
               <TableCell>
                 <Badge variant={isActive ? "default" : "outline"}>
-                  {isActive ? "Activa" : v.status}
+                  {isActive
+                    ? "Activa"
+                    : v.status === "staged"
+                      ? "Borrador"
+                      : v.status === "archived"
+                        ? "Archivada"
+                        : v.status}
                 </Badge>
               </TableCell>
               <TableCell className="text-muted-foreground">

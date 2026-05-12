@@ -64,6 +64,7 @@ class AgendaProBootstrapIn(BaseModel):
 class AgendaProBootstrapOut(BaseModel):
     integration: str
     context_id: str
+    tenant_credentials_id: uuid.UUID
     bootstrap_at: datetime
     screenshot_url: str | None
     audit_log_id: uuid.UUID
@@ -146,7 +147,7 @@ async def bootstrap_agendapro(
     screenshot = result.get("screenshot") or {}
     bootstrap_at = datetime.fromisoformat(result["bootstrap_at"])
 
-    await upsert_agendapro_credentials(
+    tenant_credentials_id = await upsert_agendapro_credentials(
         session,
         login=body.login,
         password=body.password,
@@ -171,6 +172,7 @@ async def bootstrap_agendapro(
     return AgendaProBootstrapOut(
         integration="agendapro",
         context_id=context_id,
+        tenant_credentials_id=tenant_credentials_id,
         bootstrap_at=bootstrap_at,
         screenshot_url=screenshot.get("screenshot_url"),
         audit_log_id=audit.id,

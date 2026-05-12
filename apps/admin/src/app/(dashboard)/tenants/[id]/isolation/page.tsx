@@ -48,7 +48,7 @@ const GUARANTEES: GuaranteeMeta[] = [
     index: "05",
     title: "Prompt rendering",
     metric: "isolation.prompt_render_leaked_token",
-    blurb: "Prompt pre-rendered al promote. Cero Jinja2 en runtime.",
+    blurb: "Prompt pre-renderizado al promover. Sin templating dinámico en runtime.",
   },
   {
     index: "06",
@@ -90,9 +90,10 @@ export default async function IsolationPage({
         <div className="text-sm">
           <p className="font-medium">7 garantías estructurales activas.</p>
           <p className="text-muted-foreground">
-            La suite ``tests/isolation/`` corre en CI y bloquea merges. Los contadores reflejan los
-            últimos 24h leyendo ``isolation_events`` (RLS scoped); el indicador 01 vive en counter
-            in-memory porque la violación ocurre antes que se establezca tenant.
+            Cada garantía tiene tests bloqueantes en CI y un contador en
+            tiempo real de violaciones de las últimas 24 horas. El primer
+            indicador se mantiene en memoria porque la violación ocurriría
+            antes de poder atribuirla a un tenant.
           </p>
         </div>
       </div>

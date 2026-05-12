@@ -29,7 +29,113 @@ auto via Let's Encrypt (Railway) y Vercel.
 
 ---
 
-## Deploy manual (CI down o cutover urgente)
+## Deploy (Phase 1: CLI manual desde local)
+
+**Política Phase 1 (2026-05-12)**: deploys via Railway/Vercel CLI desde la
+laptop de Lee, **no via GitHub Actions** (`deploy.yml` queda dormido como
+fallback hasta Phase 2). Railway repo desconectado; Vercel admin debe
+estar con auto-deploy DESACTIVADO antes de operar (verificar
+**Settings → Git → "Deploy production builds on push to main" = OFF** o
+equivalente según UI version).
+
+Cuando entre Cultor en producción (Bloque K), revisitar política:
+- Habilitar **branch protection en `main`** (CI verde requerido para merge).
+- Reactivar `deploy.yml` (workflow_dispatch) → audit log + sync atómico
+  API+Worker+Admin.
+
+### Pre-requisitos una sola vez
+
+```bash
+railway login                  # auth Railway, queda en ~/.config/railway
+vercel login                   # auth Vercel
+
+# Link de proyecto Railway (selecciona auphere-nexus o lo que se llame)
+cd /Users/lmatos/Workspace/nexus
+railway link
+
+# Link Vercel desde apps/admin
+cd apps/admin
+vercel link
+cd ../..
+```
+
+### Deploy completo (los 3 servicios)
+
+```bash
+cd /Users/lmatos/Workspace/nexus
+
+# 1. API primero (corre alembic + seed_connectors en preDeployCommand)
+railway up --service nexus-api          # ~3 min
+
+# 2. Worker después (sin migrations; el API ya las aplicó)
+railway up --service nexus-worker       # ~3 min
+
+# 3. Admin — deploy directo SIN build local
+(cd apps/admin && vercel deploy --prod --yes)   # ~1 min Vercel buildea remoto
+```
+
+**IMPORTANTE Vercel + Sensitive env vars**: las env vars del proyecto
+Vercel están marcadas como **Sensitive Environment Variables**
+(Encrypted), lo que significa que ``vercel pull`` las baja como ``""``
+por design — solo se inyectan en builds dentro de la infraestructura
+Vercel. **NO usar el flow ``vercel build --prod`` + ``vercel deploy
+--prebuilt``** porque el build local fallaría con ``DATABASE_URL must
+be set``. El flow correcto es ``vercel deploy --prod`` directo:
+Vercel pulls el código fuente, buildea en sus servers (donde tiene
+acceso a las Sensitive vars), y deploya atomic. ~1 min wall clock
+vs los 2-3 min del path build-local-y-prebuilt.
+
+Ref: https://vercel.com/docs/projects/environment-variables#sensitive-environment-variables
+
+Total: ~8 min wall clock. Verificación post-deploy:
+
+```bash
+curl -s https://api.auphere.com/health
+# {"status":"ok"}
+
+ADMIN_TOKEN=$(doppler secrets get NEXUS_ADMIN_TOKEN --plain --config=production)
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
+  https://api.auphere.com/admin/connectors | python3 -m json.tool
+# 5 connectors: agendapro, calendly, google_calendar, notion, whatsapp_ycloud
+
+curl -s -o /dev/null -w "%{http_code}\n" https://admin.auphere.com/connectors
+# 307 (redirect a login)
+```
+
+Atajos según cambio:
+
+| Cambio | Comando |
+|---|---|
+| Solo frontend | `(cd apps/admin && vercel deploy --prod --yes)` |
+| Solo API (sin cambios en código compartido) | `railway up --service nexus-api` |
+| Solo worker | `railway up --service nexus-worker` |
+| Touch a `nexus_api.db.models` / `nexus_channels` / `nexus_mcp` | **Ambos services** (API + worker comparten esos paquetes) |
+
+### Deploy de un commit específico
+
+```bash
+git checkout <sha>
+railway up --service nexus-api    # toma el HEAD del working tree
+git checkout main                  # volver
+```
+
+### Logs en vivo
+
+```bash
+railway logs --service nexus-api
+railway logs --service nexus-worker
+# Admin: Vercel dashboard → Deployments → click en el deploy → Build/Runtime logs
+```
+
+### Disciplina operacional
+
+- **No deployar con CI rojo** en main. Chequear `gh run list --branch main --limit 1`
+  antes de `railway up`. CI no bloquea el deploy CLI, depende de tu memoria.
+- **API antes que worker** siempre. Worker que arranca contra DB sin migrar = crash.
+- **Verificación post-deploy es parte del deploy**, no es opcional. Si los curls
+  no devuelven lo esperado, rollback inmediato (próxima sección).
+
+## Deploy via GitHub Actions (Phase 2+ fallback)
 
 Trigger normal: GitHub Actions → workflow `deploy` → `Run workflow` →
 elegir `target=all`. Si Actions no responde:

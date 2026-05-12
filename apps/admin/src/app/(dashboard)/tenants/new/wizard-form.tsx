@@ -40,7 +40,7 @@ const schema = z.object({
     .string()
     .min(2)
     .max(80)
-    .regex(SLUG_RE, "Solo minúsculas, números y guiones (ej. cultor-barber)"),
+    .regex(SLUG_RE, "Solo minúsculas, números y guiones (ej. mi-empresa)"),
   name: z.string().min(1).max(255),
   plan: z.enum(["essential", "pro", "business", "internal"]),
   market: z
@@ -56,7 +56,7 @@ const schema = z.object({
     .or(z.literal("")),
   owner_phone: z
     .string()
-    .regex(E164_RE, "Formato E.164 (ej. +56911112222)")
+    .regex(E164_RE, "Formato E.164 internacional (ej. +56912345678)")
     .optional()
     .or(z.literal("")),
   cost_alert_threshold_usd_per_day: z.coerce
@@ -176,10 +176,10 @@ export function NewTenantWizard() {
         return;
       }
       toast.success(`Tenant ${values.name} creado`, {
-        description: "Próximo paso: conectar WhatsApp.",
+        description: "Próximo paso: conectar el canal de mensajería.",
       });
       startTransition(() => {
-        router.replace(`/tenants/${result.tenantId}/integrations`);
+        router.replace(`/tenants/${result.tenantId}/connectors`);
         router.refresh();
       });
     } catch (err) {
@@ -205,12 +205,12 @@ export function NewTenantWizard() {
                   <Input
                     {...field}
                     autoComplete="off"
-                    placeholder="cultor-barber"
+                    placeholder="mi-empresa"
                     className="font-mono"
                   />
                 </FormControl>
                 <FormDescription className="flex items-center gap-2">
-                  Identificador URL-safe. {slugStatus.kind === "checking" && "Verificando…"}
+                  Identificador URL-safe del cliente. {slugStatus.kind === "checking" && "Verificando…"}
                   {slugStatus.kind === "available" && (
                     <span className="text-green-700">Disponible.</span>
                   )}
@@ -229,7 +229,7 @@ export function NewTenantWizard() {
               <FormItem>
                 <FormLabel>Nombre comercial</FormLabel>
                 <FormControl>
-                  <Input {...field} autoComplete="off" placeholder="Cultor Barber" />
+                  <Input {...field} autoComplete="off" placeholder="Mi Empresa S.A." />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -309,7 +309,7 @@ export function NewTenantWizard() {
               <FormItem>
                 <FormLabel>Email del owner (opcional)</FormLabel>
                 <FormControl>
-                  <Input {...field} type="email" placeholder="diego@cultorbarber.cl" />
+                  <Input {...field} type="email" placeholder="owner@empresa.com" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -322,9 +322,12 @@ export function NewTenantWizard() {
               <FormItem>
                 <FormLabel>WhatsApp del owner (opcional)</FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="+56911112222" className="font-mono" />
+                  <Input {...field} placeholder="+56912345678" className="font-mono" />
                 </FormControl>
-                <FormDescription>Formato E.164 — usado para alertas operativas.</FormDescription>
+                <FormDescription>
+                  Formato E.164 internacional — usado para alertas operativas
+                  y para el flow de consent de OAuth.
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -364,11 +367,12 @@ export function NewTenantWizard() {
                   {...field}
                   rows={5}
                   className="font-mono text-xs"
-                  placeholder={`{\n  "monday": "10:00-19:00",\n  "saturday": "10:00-18:00",\n  "sunday": "closed"\n}`}
+                  placeholder={`{\n  "monday": "09:00-18:00",\n  "saturday": "10:00-14:00",\n  "sunday": "closed"\n}`}
                 />
               </FormControl>
               <FormDescription>
-                Formato libre. El agente lo recibe como string render del template.
+                Formato libre. El agente lo recibe interpolado en su prompt al
+                aplicar una plantilla.
               </FormDescription>
               <FormMessage />
             </FormItem>

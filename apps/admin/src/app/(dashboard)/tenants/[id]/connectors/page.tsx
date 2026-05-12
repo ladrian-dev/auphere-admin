@@ -1,5 +1,8 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ConnectorAuthBadge } from "@/components/brand/connector-auth-badge";
+import { ConnectorLogo } from "@/components/brand/connector-logo";
 import { Eyebrow } from "@/components/brand/eyebrow";
 import { StatusDot } from "@/components/brand/status-dot";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +29,7 @@ import {
   ReissueConsentButton,
   SyncButton,
 } from "./connector-actions";
+import { AgendaProSetupDialog, WhatsAppSetupDialog } from "./setup-wizards";
 
 const STATUS_TONE: Record<
   TenantConnectorStatus,
@@ -64,6 +68,7 @@ export default async function TenantConnectorsPage({
   ]);
 
   const installedBySlug = new Map(installed.map((c) => [c.connector_slug, c]));
+  const catalogBySlug = new Map(catalog.map((c) => [c.slug, c]));
   const overridesByTool = new Map(overrides.map((o) => [o.tool_name, o]));
   const notInstalled = catalog.filter(
     (c) => !installedBySlug.has(c.slug),
@@ -76,8 +81,9 @@ export default async function TenantConnectorsPage({
         {installed.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              Este tenant todavía no tiene conectores. Conectá WhatsApp + AgendaPro como base,
-              y después agregá Calendar/Notion según necesites.
+              Este tenant todavía no tiene connectors. Empezá conectando el
+              canal de mensajería que va a usar el agente y después sumá los
+              que habiliten las tools que vas a activar.
             </CardContent>
           </Card>
         ) : (
@@ -87,6 +93,7 @@ export default async function TenantConnectorsPage({
                 key={tc.id}
                 tenantId={id}
                 tc={tc}
+                catalogEntry={catalogBySlug.get(tc.connector_slug) ?? null}
                 ownerPhone={tenant.owner_phone}
                 overrides={overridesByTool}
               />
@@ -99,8 +106,9 @@ export default async function TenantConnectorsPage({
         <section className="flex flex-col gap-3">
           <Eyebrow>Disponibles</Eyebrow>
           <p className="text-sm text-muted-foreground -mt-2">
-            Connectors del catálogo que este tenant todavía no instaló. Click
-            en &quot;Conectar&quot; para iniciar el flow de consent.
+            Connectors del catálogo que este tenant todavía no instaló. Para
+            los OAuth, &quot;Conectar&quot; manda un link de consent al owner;
+            para los manuales abre un wizard.
           </p>
           <div className="grid gap-3">
             {notInstalled.map((c) => (
@@ -121,11 +129,13 @@ export default async function TenantConnectorsPage({
 function InstalledConnectorCard({
   tenantId,
   tc,
+  catalogEntry,
   ownerPhone,
   overrides,
 }: {
   tenantId: string;
   tc: TenantConnector;
+  catalogEntry: Connector | null;
   ownerPhone: string | null;
   overrides: Map<string, ConnectorToolOverride>;
 }) {
@@ -137,12 +147,12 @@ function InstalledConnectorCard({
       <CardHeader className="flex flex-col gap-1">
         <Eyebrow>{tc.connector_category}</Eyebrow>
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-row items-center gap-3 min-w-0">
+            {catalogEntry ? <ConnectorLogo connector={catalogEntry} /> : null}
+            <div className="flex flex-col gap-1 min-w-0">
             <CardTitle className="flex items-center gap-2 flex-wrap">
               {tc.connector_display_name}
-              <Badge variant="outline" className="text-[10px]">
-                {tc.connector_auth_kind}
-              </Badge>
+              <ConnectorAuthBadge kind={tc.connector_auth_kind} />
             </CardTitle>
             <CardDescription className="flex items-center gap-2">
               <StatusDot tone={STATUS_TONE[tc.status]} />
@@ -153,6 +163,7 @@ function InstalledConnectorCard({
                 </span>
               ) : null}
             </CardDescription>
+            </div>
           </div>
           <div className="flex gap-2 flex-wrap">
             {isPending || isNeedsReauth ? (
@@ -258,36 +269,60 @@ function AvailableConnectorCard({
       <CardHeader className="flex flex-col gap-1">
         <Eyebrow>{connector.category}</Eyebrow>
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-row items-center gap-3 min-w-0">
+            <ConnectorLogo connector={connector} />
+            <div className="flex flex-col gap-1 min-w-0">
             <CardTitle className="flex items-center gap-2 flex-wrap">
               {connector.display_name}
-              <Badge variant="outline" className="text-[10px]">
-                {connector.auth_kind}
-              </Badge>
+              <ConnectorAuthBadge kind={connector.auth_kind} />
             </CardTitle>
             <CardDescription>
               {connector.auth_kind === "oauth_composio"
-                ? "OAuth multi-tenant vía Composio."
+                ? "OAuth multi-tenant. El owner aprueba en su navegador."
                 : connector.auth_kind === "browser_credentials"
-                  ? "Credenciales de owner manejadas por el operador (browser automation)."
+                  ? "Credenciales del owner que el operador automatiza por browser."
                   : connector.auth_kind === "webhook_manual"
-                    ? "El operador pega IDs en el wizard."
+                    ? "El operador pega los IDs del proveedor en el wizard."
                     : "API key configurada en secrets."}
             </CardDescription>
+            </div>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {isComposio ? (
-              <InitiateConsentButton
-                tenantId={tenantId}
-                slug={connector.slug}
-                displayName={connector.display_name}
-                ownerPhone={ownerPhone}
-              />
-            ) : (
-              <Badge variant="outline" className="text-xs">
-                Setup desde wizard
-              </Badge>
-            )}
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex gap-2 flex-wrap">
+              {isComposio ? (
+                <InitiateConsentButton
+                  tenantId={tenantId}
+                  slug={connector.slug}
+                  displayName={connector.display_name}
+                  ownerPhone={ownerPhone}
+                />
+              ) : connector.slug === "whatsapp_ycloud" ? (
+                <WhatsAppSetupDialog
+                  tenantId={tenantId}
+                  alreadyConnected={false}
+                />
+              ) : connector.slug === "agendapro" ? (
+                <AgendaProSetupDialog
+                  tenantId={tenantId}
+                  alreadyConnected={false}
+                />
+              ) : (
+                <Badge variant="outline" className="text-xs">
+                  Setup manual
+                </Badge>
+              )}
+            </div>
+            {isComposio && !ownerPhone ? (
+              <p className="text-[11px] text-muted-foreground">
+                Necesita owner_phone.{" "}
+                <Link
+                  href={`/tenants/${tenantId}`}
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  Configurar →
+                </Link>
+              </p>
+            ) : null}
           </div>
         </div>
       </CardHeader>

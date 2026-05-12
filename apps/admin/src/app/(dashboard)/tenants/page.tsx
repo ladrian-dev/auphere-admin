@@ -36,7 +36,7 @@ export default async function TenantsPage() {
       <PageHeader
         eyebrow="Tenants"
         title="Portafolio de agentes"
-        description="Cada tenant es un cliente con su propio agente WhatsApp. Click en una fila para abrir el detalle."
+        description="Cada tenant es un cliente con su propio agente bespoke. Click en una fila para abrir el detalle."
         actions={<Button render={<Link href="/tenants/new" />}>Nuevo cliente</Button>}
       />
 
@@ -57,15 +57,17 @@ export default async function TenantsPage() {
         ) : null}
       </div>
 
-      <div className="rounded-md border border-border bg-card overflow-hidden">
+      <div className="rounded-md border border-border bg-card overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Tenant</TableHead>
-              <TableHead>Plan</TableHead>
-              <TableHead>Mercado</TableHead>
+              <TableHead className="hidden sm:table-cell">Plan</TableHead>
+              <TableHead className="hidden md:table-cell">Mercado</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead className="text-right">Última actualización</TableHead>
+              <TableHead className="hidden md:table-cell text-right">
+                Última actualización
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -75,7 +77,8 @@ export default async function TenantsPage() {
                   colSpan={5}
                   className="py-12 text-center text-muted-foreground"
                 >
-                  Sin tenants todavía. Cuando crees el primero (ej. Cultor Barber) aparecerá aquí.
+                  Sin tenants todavía. Crea el primero con &quot;Nuevo
+                  cliente&quot; arriba a la derecha.
                 </TableCell>
               </TableRow>
             ) : (
@@ -95,10 +98,10 @@ export default async function TenantsPage() {
                       </span>
                     </Link>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     <Badge variant="outline">{planLabel(tenant.plan)}</Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="hidden md:table-cell text-muted-foreground">
                     {tenant.market ?? "—"}
                     <span className="text-xs ml-1">({tenant.timezone})</span>
                   </TableCell>
@@ -110,7 +113,7 @@ export default async function TenantsPage() {
                       <span>{statusLabel(tenant.status)}</span>
                     </span>
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground tabular-nums">
+                  <TableCell className="hidden md:table-cell text-right text-muted-foreground tabular-nums">
                     {relativeTime(tenant.updated_at)}
                   </TableCell>
                 </TableRow>
