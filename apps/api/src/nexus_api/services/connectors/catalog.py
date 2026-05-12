@@ -115,6 +115,57 @@ _CATEGORY_MAP: dict[str, str] = {
     "email": "messaging",
 }
 
+# Substring keywords for tolerant matching when Composio publishes a
+# category slug we haven't seen verbatim (e.g. ``office-and-productivity``,
+# ``developer-tools``, ``marketing-automation``). First keyword that
+# appears in the slug wins; falls back to ``"otros"`` if nothing matches.
+_CATEGORY_KEYWORDS: list[tuple[str, str]] = [
+    ("calendar", "calendar"),
+    ("schedul", "booking"),
+    ("appointm", "booking"),
+    ("book", "booking"),
+    ("sheet", "docs"),
+    ("doc", "docs"),
+    ("note", "docs"),
+    ("knowledge", "docs"),
+    ("file", "docs"),
+    ("drive", "docs"),
+    ("storage", "docs"),
+    ("project", "docs"),
+    ("productiv", "docs"),
+    ("office", "docs"),
+    ("crm", "crm"),
+    ("sales", "crm"),
+    ("support", "crm"),
+    ("customer", "crm"),
+    ("messag", "messaging"),
+    ("chat", "messaging"),
+    ("communicat", "messaging"),
+    ("email", "messaging"),
+    ("mail", "messaging"),
+    ("collaborat", "messaging"),
+]
+
+
+def _resolve_category(raw: str | None) -> str:
+    """Map a Composio category string onto a Nexus category bucket.
+
+    Tries exact match in ``_CATEGORY_MAP`` first (cheap, deterministic),
+    then substring keyword scan so newly-introduced Composio categories
+    still land in a sensible bucket without a code change. Unmatched
+    slugs log at DEBUG so we can grow ``_CATEGORY_KEYWORDS`` over time.
+    """
+    if not raw:
+        return "otros"
+    normalized = raw.lower().replace(" ", "-").replace("_", "-")
+    if normalized in _CATEGORY_MAP:
+        return _CATEGORY_MAP[normalized]
+    for keyword, bucket in _CATEGORY_KEYWORDS:
+        if keyword in normalized:
+            return bucket
+    log.info("composio category %r did not match any bucket; using 'otros'", normalized)
+    return "otros"
+
 
 # Convention for the consent magic-link WhatsApp template. All
 # oauth_composio connectors reuse the same Meta-approved template name —
@@ -145,8 +196,7 @@ def _project_dynamic(ac: AuthConfigSummary, md: ToolkitMetadata | None = None) -
 
     # Category: prefer toolkit metadata → AuthConfigSummary fallback → otros.
     raw_category = (md.category_slug if md and md.category_slug else ac.category) or ""
-    composio_category = raw_category.lower().replace(" ", "-").replace("_", "-")
-    category = _CATEGORY_MAP.get(composio_category, "otros")
+    category = _resolve_category(raw_category)
 
     provider_meta: dict[str, Any] = {
         "composio_toolkit_slug": slug.upper(),
