@@ -29,6 +29,12 @@ dependencies = [
     "pyyaml>=6.0.2",
     # Block J: TenantCreateIn validates owner_email via Pydantic EmailStr.
     "email-validator>=2.2.0",
+    # Block L: Composio v3 SDK is used by ``LiveComposioClient`` for OAuth
+    # consent flows and the dynamic catalog. The lazy import in the adapter
+    # protects test envs that don't need it, but production needs the
+    # package available so ``settings.composio_api_key`` actually picks the
+    # Live client instead of silently falling back to the Fake.
+    "composio>=0.8.6",
 ]
 
 [project.optional-dependencies]

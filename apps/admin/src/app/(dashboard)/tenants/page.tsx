@@ -15,7 +15,7 @@ import {
 import { backend } from "@/lib/backend";
 import { planLabel, relativeTime, statusLabel } from "@/lib/format";
 
-export const metadata = { title: "Tenants · Nexus" };
+export const metadata = { title: "Tenants" };
 
 const STATUS_TONE: Record<string, "positive" | "warning" | "muted"> = {
   active: "positive",

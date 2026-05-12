@@ -25,7 +25,7 @@ export async function generateMetadata({
   const { id } = await params;
   const tenant = await backend.getTenant(id).catch(() => null);
   return {
-    title: tenant ? `${tenant.name} · Nexus` : "Tenant · Nexus",
+    title: tenant ? tenant.name : "Tenant",
   };
 }
 

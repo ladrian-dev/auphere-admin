@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/brand/page-header";
 
 import { NewTenantWizard } from "./wizard-form";
 
-export const metadata = { title: "Nuevo tenant · Nexus" };
+export const metadata = { title: "Nuevo tenant" };
 
 export default function NewTenantPage() {
   return (

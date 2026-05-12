@@ -6,7 +6,7 @@ import { getSession } from "@/lib/session";
 
 import { LoginForm } from "./login-form";
 
-export const metadata = { title: "Iniciar sesión · Nexus" };
+export const metadata = { title: "Iniciar sesión" };
 
 export default async function LoginPage({
   searchParams,

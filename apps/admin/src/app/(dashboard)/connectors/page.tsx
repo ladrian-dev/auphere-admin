@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { backend, type Connector } from "@/lib/backend";
 
-export const metadata = { title: "Connectors · Nexus" };
+export const metadata = { title: "Connectors" };
 
 const CATEGORY_LABEL: Record<string, string> = {
   messaging: "Mensajería",
