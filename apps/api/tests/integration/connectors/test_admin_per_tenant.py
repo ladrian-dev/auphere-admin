@@ -43,7 +43,7 @@ async def test_initiate_consent_happy(
 ) -> None:
     await _set_owner_phone(db_session, seed_tenants["a"])
     r = await client.post(
-        f"/admin/tenants/{seed_tenants['a']}/connectors/google_calendar/initiate-consent",
+        f"/admin/tenants/{seed_tenants['a']}/connectors/googlecalendar/initiate-consent",
         headers=admin_headers,
     )
     assert r.status_code == 201, r.text
@@ -72,7 +72,7 @@ async def test_initiate_consent_without_owner_phone_still_succeeds(
     endpoint no longer requires owner_phone. WhatsApp dispatch via the
     template is best-effort and not enforced here."""
     r = await client.post(
-        f"/admin/tenants/{seed_tenants['a']}/connectors/google_calendar/initiate-consent",
+        f"/admin/tenants/{seed_tenants['a']}/connectors/googlecalendar/initiate-consent",
         headers=admin_headers,
     )
     assert r.status_code == 201, r.text
@@ -104,7 +104,7 @@ async def test_initiate_consent_wrong_auth_kind(
     assert r.status_code == 400
 
 
-async def test_initiate_consent_missing_auth_config(
+async def test_initiate_consent_slug_not_in_catalog(
     client,
     admin_headers,
     db_session,
@@ -112,21 +112,22 @@ async def test_initiate_consent_missing_auth_config(
     seeded_catalog,
     fake_composio,
 ) -> None:
-    """If no auth_config is registered in Composio for this toolkit → 503.
+    """If the slug isn't registered in Composio (and isn't a custom seed),
+    the lazy upsert can't materialize the connector → 404.
 
-    Simulates the operator forgetting to create the auth_config in the
-    Composio dashboard before initiating consent.
+    Simulates the operator giving a slug that doesn't exist anywhere.
     """
     await _set_owner_phone(db_session, seed_tenants["a"])
-    # Remove the pre-registered auth_config for googlecalendar so the lookup
-    # raises ComposioAuthConfigMissing.
+    # Remove the pre-registered auth_config for googlecalendar so neither
+    # the catalog ensure-persisted lookup nor find_auth_config_id can
+    # resolve the slug.
     fake_composio._auth_configs_by_toolkit.pop("googlecalendar", None)
     r = await client.post(
-        f"/admin/tenants/{seed_tenants['a']}/connectors/google_calendar/initiate-consent",
+        f"/admin/tenants/{seed_tenants['a']}/connectors/googlecalendar/initiate-consent",
         headers=admin_headers,
     )
-    assert r.status_code == 503
-    assert "no auth_config" in r.json()["detail"].lower()
+    assert r.status_code == 404
+    assert "not registered" in r.json()["detail"].lower()
 
 
 async def test_initiate_consent_ambiguous_auth_config(
@@ -145,7 +146,7 @@ async def test_initiate_consent_ambiguous_auth_config(
     # Register a second auth_config for googlecalendar.
     fake_composio.register_auth_config("googlecalendar", "ac_duplicate")
     r = await client.post(
-        f"/admin/tenants/{seed_tenants['a']}/connectors/google_calendar/initiate-consent",
+        f"/admin/tenants/{seed_tenants['a']}/connectors/googlecalendar/initiate-consent",
         headers=admin_headers,
     )
     assert r.status_code == 409
@@ -158,13 +159,13 @@ async def test_disconnect_happy(
     await _set_owner_phone(db_session, seed_tenants["a"])
     # initiate first
     r1 = await client.post(
-        f"/admin/tenants/{seed_tenants['a']}/connectors/google_calendar/initiate-consent",
+        f"/admin/tenants/{seed_tenants['a']}/connectors/googlecalendar/initiate-consent",
         headers=admin_headers,
     )
     assert r1.status_code == 201
     # disconnect
     r2 = await client.post(
-        f"/admin/tenants/{seed_tenants['a']}/connectors/google_calendar/disconnect",
+        f"/admin/tenants/{seed_tenants['a']}/connectors/googlecalendar/disconnect",
         headers=admin_headers,
     )
     assert r2.status_code == 200
@@ -248,3 +249,50 @@ async def test_override_unknown_tool_404(
         json={"mode": "blocked", "reason": None},
     )
     assert r.status_code == 404
+
+
+async def test_initiate_consent_lazy_upserts_composio_connector(
+    client, admin_headers, db_session, seed_tenants, seeded_catalog, fake_composio
+) -> None:
+    """A toolkit added in Composio post-deploy doesn't need a seed.
+
+    Simulates the operator going to the Composio dashboard, adding
+    ``googlesheets`` as a new auth_config, and then connecting it from
+    the panel — the connector row is materialized on the fly by the
+    lazy upsert in initiate-consent.
+    """
+    from sqlalchemy import select
+
+    from nexus_api.db.models import Connector
+
+    fake_composio.register_auth_config(
+        "googlesheets",
+        "ac_gs_dynamic",
+        display_name="Google Sheets",
+        vendor="Google",
+        category="Productivity",
+    )
+    fake_composio.register_tools("googlesheets", [])
+
+    # Sanity: no row in DB yet.
+    pre = await db_session.scalar(
+        select(Connector).where(Connector.slug == "googlesheets")
+    )
+    assert pre is None
+
+    r = await client.post(
+        f"/admin/tenants/{seed_tenants['a']}/connectors/googlesheets/initiate-consent",
+        headers=admin_headers,
+    )
+    assert r.status_code == 201, r.text
+
+    # The connector row got materialized with the metadata from Composio.
+    post = await db_session.scalar(
+        select(Connector).where(Connector.slug == "googlesheets")
+    )
+    assert post is not None
+    assert post.display_name == "Google Sheets"
+    assert post.auth_kind == "oauth_composio"
+    assert post.mcp_server_ref == "composio:googlesheets"
+    assert post.category == "docs"  # Productivity → docs in _CATEGORY_MAP
+    assert post.consent_link_template_name == "connector_consent_request_v1"

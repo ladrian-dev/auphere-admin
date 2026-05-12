@@ -59,6 +59,28 @@ class ComposioAuthConfigAmbiguous(ComposioError):
 
 
 @dataclass(frozen=True)
+class AuthConfigSummary:
+    """One auth_config row from ``composio.auth_configs.list()``.
+
+    Composio's dashboard surfaces these as cards (see operator screenshot).
+    The platform uses them to build the dynamic part of the connector
+    catalog — every auth_config the operator registered becomes a
+    connectable toolkit in Nexus without a deploy. Fields are tolerant
+    to v3 SDK shape differences across minor versions; the dashboard
+    metadata (icon, vendor, category) is best-effort and may be empty.
+    """
+
+    auth_config_id: str
+    toolkit_slug: str
+    display_name: str
+    auth_scheme: str  # "OAUTH2", "API_KEY", etc.
+    vendor: str | None = None
+    category: str | None = None
+    icon_url: str | None = None
+    docs_url: str | None = None
+
+
+@dataclass(frozen=True)
 class ConnectionRequest:
     """Result of ``composio.connected_accounts.link()``."""
 
@@ -120,6 +142,19 @@ class ComposioClientProtocol(abc.ABC):
         """
 
     @abc.abstractmethod
+    async def list_auth_configs(self) -> list[AuthConfigSummary]:
+        """Enumerate every auth_config registered in this Composio project.
+
+        Used by the catalog endpoint to derive the dynamic part of the
+        connector list — toolkits that became available the moment the
+        operator added them in the dashboard, no redeploy required.
+
+        Returns an empty list if Composio has no auth_configs yet. Raises
+        ``ComposioUnavailable`` for transport / 5xx errors so the caller
+        can degrade to "show only the custom seeds".
+        """
+
+    @abc.abstractmethod
     async def link_account(
         self,
         *,
@@ -170,6 +205,58 @@ class LiveComposioClient(ComposioClientProtocol):
             )
             raise RuntimeError(msg) from exc
         self._client = Composio(api_key=api_key)
+
+    async def list_auth_configs(self) -> list[AuthConfigSummary]:
+        try:
+            response = await _maybe_async(self._client.auth_configs.list)
+        except Exception as exc:
+            raise _translate_composio_error(exc) from exc
+        items = getattr(response, "items", None) or getattr(response, "data", None) or []
+        out: list[AuthConfigSummary] = []
+        for it in items:
+            toolkit_obj = getattr(it, "toolkit", None)
+            toolkit_slug = (
+                str(getattr(toolkit_obj, "slug", "") or getattr(it, "toolkit_slug", ""))
+                .strip()
+                .lower()
+            )
+            if not toolkit_slug:
+                # auth_config without a toolkit binding is an SDK
+                # anomaly — skip rather than crash the entire catalog.
+                continue
+            display_name = str(
+                getattr(toolkit_obj, "name", "") or getattr(it, "name", "") or toolkit_slug.title()
+            )
+            scheme = str(getattr(it, "auth_scheme", None) or getattr(it, "scheme", "OAUTH2"))
+            vendor = (
+                getattr(toolkit_obj, "vendor", None)
+                or getattr(toolkit_obj, "provider_name", None)
+                or None
+            )
+            category_obj = getattr(toolkit_obj, "category", None) or getattr(
+                toolkit_obj, "categories", None
+            )
+            category: str | None
+            if isinstance(category_obj, list) and category_obj:
+                category = str(category_obj[0])
+            elif category_obj:
+                category = str(category_obj)
+            else:
+                category = None
+            out.append(
+                AuthConfigSummary(
+                    auth_config_id=str(it.id),
+                    toolkit_slug=toolkit_slug,
+                    display_name=display_name,
+                    auth_scheme=scheme.upper(),
+                    vendor=str(vendor) if vendor else None,
+                    category=category,
+                    icon_url=getattr(toolkit_obj, "logo_url", None)
+                    or getattr(toolkit_obj, "icon_url", None),
+                    docs_url=getattr(toolkit_obj, "docs_url", None),
+                )
+            )
+        return out
 
     async def find_auth_config_id(self, toolkit: str) -> str:
         try:
@@ -397,6 +484,7 @@ class FakeComposioClient(ComposioClientProtocol):
         self._connections: dict[str, _FakeConnection] = {}
         self._tools_by_toolkit: dict[str, list[ComposioTool]] = {}
         self._auth_configs_by_toolkit: dict[str, list[str]] = {}
+        self._auth_config_metadata: dict[str, AuthConfigSummary] = {}
         self._execute_log: list[dict[str, Any]] = []
         self._next_id = 1
         self.simulate_unavailable: bool = False
@@ -407,14 +495,37 @@ class FakeComposioClient(ComposioClientProtocol):
     def register_tools(self, toolkit: str, tools: list[ComposioTool]) -> None:
         self._tools_by_toolkit[toolkit.lower()] = list(tools)
 
-    def register_auth_config(self, toolkit: str, auth_config_id: str) -> None:
+    def register_auth_config(
+        self,
+        toolkit: str,
+        auth_config_id: str,
+        *,
+        display_name: str | None = None,
+        auth_scheme: str = "OAUTH2",
+        vendor: str | None = None,
+        category: str | None = None,
+        icon_url: str | None = None,
+    ) -> None:
         """Pretend the operator created an auth_config in the Composio dashboard
         for this toolkit. Tests that exercise the consent flow need to call
         this — otherwise ``find_auth_config_id`` raises ComposioAuthConfigMissing
         (which mirrors real-world behaviour: forgetting to register the
         auth_config = consent flow fails fast).
+
+        Optional metadata flows into ``list_auth_configs()`` so tests that
+        cover the dynamic catalog can assert on the projected fields.
         """
-        self._auth_configs_by_toolkit.setdefault(toolkit.lower(), []).append(auth_config_id)
+        slug = toolkit.lower()
+        self._auth_configs_by_toolkit.setdefault(slug, []).append(auth_config_id)
+        self._auth_config_metadata[auth_config_id] = AuthConfigSummary(
+            auth_config_id=auth_config_id,
+            toolkit_slug=slug,
+            display_name=display_name or slug.title(),
+            auth_scheme=auth_scheme.upper(),
+            vendor=vendor,
+            category=category,
+            icon_url=icon_url,
+        )
 
     def force_connect(
         self,
@@ -443,6 +554,26 @@ class FakeComposioClient(ComposioClientProtocol):
         return list(self._execute_log)
 
     # ComposioClientProtocol --------------------------------------------------
+
+    async def list_auth_configs(self) -> list[AuthConfigSummary]:
+        if self.simulate_unavailable:
+            raise ComposioUnavailable("fake: composio down")
+        out: list[AuthConfigSummary] = []
+        for slug, ids in self._auth_configs_by_toolkit.items():
+            for ac_id in ids:
+                cached = self._auth_config_metadata.get(ac_id)
+                if cached is not None:
+                    out.append(cached)
+                else:
+                    out.append(
+                        AuthConfigSummary(
+                            auth_config_id=ac_id,
+                            toolkit_slug=slug,
+                            display_name=slug.title(),
+                            auth_scheme="OAUTH2",
+                        )
+                    )
+        return out
 
     async def find_auth_config_id(self, toolkit: str) -> str:
         if self.simulate_unavailable:
@@ -551,6 +682,7 @@ class FakeComposioClient(ComposioClientProtocol):
 
 
 __all__ = [
+    "AuthConfigSummary",
     "ComposioAuthConfigAmbiguous",
     "ComposioAuthConfigMissing",
     "ComposioAuthExpired",

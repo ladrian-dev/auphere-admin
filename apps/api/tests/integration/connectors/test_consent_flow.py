@@ -63,7 +63,7 @@ async def test_full_consent_flow(
 
     # Step 1: operator initiates consent.
     r1 = await client.post(
-        f"/admin/tenants/{tenant_a}/connectors/google_calendar/initiate-consent",
+        f"/admin/tenants/{tenant_a}/connectors/googlecalendar/initiate-consent",
         headers=admin_headers,
     )
     assert r1.status_code == 201, r1.text
@@ -119,7 +119,7 @@ async def test_full_consent_flow(
     by_name = {t.name: t for t in tools}
     assert by_name["GOOGLECALENDAR_LIST_EVENTS"].read_only is True
     assert by_name["GOOGLECALENDAR_LIST_EVENTS"].default_mode == "always"
-    # google_calendar has auto_enable_destructive=False → CREATE is blocked.
+    # googlecalendar has auto_enable_destructive=False → CREATE is blocked.
     assert by_name["GOOGLECALENDAR_CREATE_EVENT"].destructive is True
     assert by_name["GOOGLECALENDAR_CREATE_EVENT"].default_mode == "blocked"
 

@@ -17,16 +17,11 @@ from nexus_api.services.connectors.seed_loader import (
 
 
 def test_all_seeds_parse() -> None:
-    """All 5 Phase-1 seeds load without errors."""
+    """Local seeds cover only the custom (non-OAuth) integrations now —
+    Composio owns the catalog for OAuth toolkits."""
     seeds = load_all_seeds()
     slugs = {s.slug for s in seeds}
-    assert slugs == {
-        "agendapro",
-        "calendly",
-        "google_calendar",
-        "notion",
-        "whatsapp_ycloud",
-    }
+    assert slugs == {"agendapro", "whatsapp_ycloud"}
 
 
 def test_list_seed_slugs_sorted() -> None:

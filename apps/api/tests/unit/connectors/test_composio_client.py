@@ -287,3 +287,43 @@ def test_webhook_non_int_timestamp() -> None:
             signature_header="x",
             secret="s",
         )
+
+
+# ── list_auth_configs (Composio as catalog source of truth) ────────────────
+
+
+async def test_list_auth_configs_empty(composio: FakeComposioClient) -> None:
+    """A fresh Composio project has no auth_configs."""
+    configs = await composio.list_auth_configs()
+    assert configs == []
+
+
+async def test_list_auth_configs_returns_registered(
+    composio: FakeComposioClient,
+) -> None:
+    composio.register_auth_config(
+        "googlecalendar",
+        "ac_gc_1",
+        display_name="Google Calendar",
+        vendor="Google",
+        category="Calendar",
+        icon_url="https://example/gc.png",
+    )
+    composio.register_auth_config("notion", "ac_n_1", display_name="Notion")
+    configs = await composio.list_auth_configs()
+    by_slug = {ac.toolkit_slug: ac for ac in configs}
+    assert set(by_slug.keys()) == {"googlecalendar", "notion"}
+    assert by_slug["googlecalendar"].display_name == "Google Calendar"
+    assert by_slug["googlecalendar"].vendor == "Google"
+    assert by_slug["googlecalendar"].category == "Calendar"
+    assert by_slug["googlecalendar"].icon_url == "https://example/gc.png"
+    assert by_slug["googlecalendar"].auth_scheme == "OAUTH2"
+
+
+async def test_list_auth_configs_unavailable_simulation(
+    composio: FakeComposioClient,
+) -> None:
+    composio.simulate_unavailable = True
+    composio.register_auth_config("googlecalendar", "ac_gc_1")
+    with pytest.raises(Exception, match="composio down"):
+        await composio.list_auth_configs()

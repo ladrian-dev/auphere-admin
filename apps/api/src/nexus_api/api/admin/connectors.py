@@ -44,6 +44,7 @@ from nexus_api.db.models import (
     TenantConnectorToolOverride,
     TenantCredentials,
 )
+from nexus_api.services.connectors import catalog as connector_catalog
 from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.connectors.composio_client import (
     ComposioAuthConfigAmbiguous,
@@ -104,7 +105,10 @@ def set_composio_client_for_tests(client: ComposioClientProtocol | None) -> None
 
 class ConnectorOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    id: uuid.UUID
+    # ``id`` is null for dynamic Composio entries that haven't been
+    # persisted yet. The panel uses ``slug`` as the stable identifier;
+    # ``id`` is only used by callers that need a DB row reference.
+    id: uuid.UUID | None = None
     slug: str
     display_name: str
     vendor: str
@@ -197,30 +201,33 @@ async def list_catalog(
     category: str | None = None,
     status_filter: str | None = None,
     session: AsyncSession = Depends(get_db_session),
+    composio: ComposioClientProtocol = Depends(get_composio_client),
     actor: str = Depends(require_admin_token),
 ) -> list[ConnectorOut]:
-    stmt = select(Connector).order_by(Connector.category, Connector.display_name)
-    if category:
-        stmt = stmt.where(Connector.category == category)
-    if status_filter:
-        stmt = stmt.where(Connector.status == status_filter)
-    rows = (await session.scalars(stmt)).all()
-    return [ConnectorOut.model_validate(r) for r in rows]
+    """Catalog merge: custom seeds (non-OAuth) + Composio auth_configs."""
+    items = await connector_catalog.list_catalog(
+        session,
+        composio,
+        category=category,
+        status_filter=status_filter,
+    )
+    return [ConnectorOut.model_validate(c.__dict__) for c in items]
 
 
 @router.get("/connectors/{slug}", response_model=ConnectorOut)
 async def get_catalog_entry(
     slug: str,
     session: AsyncSession = Depends(get_db_session),
+    composio: ComposioClientProtocol = Depends(get_composio_client),
     actor: str = Depends(require_admin_token),
 ) -> ConnectorOut:
-    row = await session.scalar(select(Connector).where(Connector.slug == slug))
-    if row is None:
+    entry = await connector_catalog.get_catalog_entry(session, composio, slug)
+    if entry is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"connector slug not found: {slug!r}",
         )
-    return ConnectorOut.model_validate(row)
+    return ConnectorOut.model_validate(entry.__dict__)
 
 
 # ── per-tenant endpoints ────────────────────────────────────────────────────
@@ -297,12 +304,23 @@ async def initiate_consent(
     tenant = await session.get(Tenant, tenant_id)
     if tenant is None:  # pragma: no cover — scoped_session_from_path raises 404 first
         raise HTTPException(status_code=404, detail="tenant not found")
-    connector = await session.scalar(select(Connector).where(Connector.slug == slug))
-    if connector is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"connector slug not found: {slug!r}",
+    # Lazy upsert: if the slug is registered in Composio but doesn't have
+    # a row in ``connectors`` yet (true for any OAuth toolkit the operator
+    # added in the dashboard since the last deploy), create one from the
+    # Composio metadata. Custom seeds (whatsapp_ycloud, agendapro) already
+    # have rows from the seed runner.
+    slug_lower = slug.lower()
+    try:
+        connector = await connector_catalog.ensure_composio_connector_persisted(
+            session, composio, slug_lower
         )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ComposioUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"composio unavailable: {exc}",
+        ) from exc
     if connector.auth_kind != "oauth_composio":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

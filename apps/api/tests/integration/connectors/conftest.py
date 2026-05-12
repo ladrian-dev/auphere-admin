@@ -20,7 +20,13 @@ from nexus_api.services.connectors.seed_runner import apply_seeds
 
 @pytest_asyncio.fixture
 async def seeded_catalog(db_session: AsyncSession) -> None:
-    """Apply the 5 connector seed YAMLs to the test DB."""
+    """Apply the custom (non-OAuth) connector seeds to the test DB.
+
+    OAuth connectors live in Composio dashboards now — the ``fake_composio``
+    fixture pre-registers them so the catalog endpoint surfaces them
+    dynamically. Only ``whatsapp_ycloud`` and ``agendapro`` are seeded
+    from local YAMLs.
+    """
     seeds = load_all_seeds()
     await apply_seeds(db_session, seeds)
 
@@ -74,9 +80,28 @@ async def fake_composio() -> FakeComposioClient:
             ),
         ],
     )
-    c.register_auth_config("googlecalendar", "ac_test_gc")
-    c.register_auth_config("calendly", "ac_test_cl")
-    c.register_auth_config("notion", "ac_test_n")
+    c.register_auth_config(
+        "googlecalendar",
+        "ac_test_gc",
+        display_name="Google Calendar",
+        vendor="Google",
+        category="Calendar",
+        icon_url="https://images.composio.dev/v2/icons/googlecalendar.png",
+    )
+    c.register_auth_config(
+        "calendly",
+        "ac_test_cl",
+        display_name="Calendly",
+        vendor="Calendly Inc.",
+        category="Scheduling",
+    )
+    c.register_auth_config(
+        "notion",
+        "ac_test_n",
+        display_name="Notion",
+        vendor="Notion Labs",
+        category="Productivity",
+    )
     admin_connectors.set_composio_client_for_tests(c)
     yield c
     admin_connectors.set_composio_client_for_tests(None)
