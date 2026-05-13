@@ -18,9 +18,10 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
+import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, scoped_session_from_path
@@ -29,7 +30,15 @@ from nexus_api.core.tenant_context import (
     _current_tenant,
     apply_tenant_to_session,
 )
-from nexus_api.db.models import AuditLog, Channel, Tenant, TenantPlan, TenantStatus
+from nexus_api.db.models import (
+    AuditLog,
+    Channel,
+    Tenant,
+    TenantConnector,
+    TenantConnectorToolOverride,
+    TenantPlan,
+    TenantStatus,
+)
 from nexus_api.repositories import AuditRepository, ChannelRepository, TenantRepository
 from nexus_api.schemas.tenant import (
     ChannelOut,
@@ -266,14 +275,23 @@ async def delete_tenant(
     """Hard-delete a tenant. Guard: tenant must be ARCHIVED first.
 
     The two-step (archive → delete) is intentional. Archive is reversible
-    via PUT status='active'. Delete cascades through every tenant-scoped
-    table (FK ondelete=CASCADE on conversations, messages, customers,
-    channels, agent_configs, tenant_connectors, audit_log, etc.) and is
-    NOT reversible. The audit row is written BEFORE the cascade so the
-    audit trail survives the row removal — it's stored under
-    ``tenant_id`` so RLS pins it under the same tenant; once the tenant
-    row is gone, the audit row is orphaned by FK CASCADE and removed too.
-    For long-term provenance we rely on Langfuse + the structlog event.
+    via PUT status='active'. Delete is NOT reversible. The audit row is
+    written BEFORE the cascade so the audit trail survives the row
+    removal — it's stored under ``tenant_id`` so RLS pins it under the
+    same tenant; once the tenant row is gone, the audit row is orphaned
+    by FK CASCADE and removed too. For long-term provenance we rely on
+    Langfuse + the structlog event.
+
+    Cleanup order (the 2026-05-13 review caught HTTP 500 here):
+    ``tenant_connectors`` and ``tenant_connector_tool_overrides`` carry
+    ``ON DELETE RESTRICT`` FKs to ``tenants.id`` (block L deliberately
+    chose RESTRICT so an operator can't accidentally wipe live OAuth
+    grants by deleting the wrong tenant). The two-step archive→delete
+    workflow is the explicit confirmation, so once we get here we
+    detach those rows ourselves before the tenant goes — otherwise
+    Postgres raises a ForeignKeyViolation that surfaced as a bare
+    HTTP 500 to the operator. A migration to flip the FKs to CASCADE
+    is the durable fix; this endpoint cleanup is the resilient one.
     """
     repo = TenantRepository(session)
     tenant = await repo.get(tenant_id)
@@ -305,8 +323,48 @@ async def delete_tenant(
         )
     )
     await session.flush()
-    await session.delete(tenant)
-    await session.commit()
+
+    # Detach the two RESTRICT-FK children before the tenant goes. RLS is
+    # already scoped to this tenant via ``scoped_session_from_path``, so
+    # the bulk deletes are bounded — the explicit WHERE is belt-and-
+    # suspenders for clarity and for the eventual day RLS gets relaxed
+    # for an admin-bypass role.
+    overrides_result = await session.execute(
+        sa.delete(TenantConnectorToolOverride).where(
+            TenantConnectorToolOverride.tenant_id == tenant_id
+        )
+    )
+    connectors_result = await session.execute(
+        sa.delete(TenantConnector).where(TenantConnector.tenant_id == tenant_id)
+    )
+    log.info(
+        "tenant.delete.cleanup",
+        tenant_id=str(tenant_id),
+        tenant_connectors=connectors_result.rowcount,  # type: ignore[attr-defined]
+        tool_overrides=overrides_result.rowcount,  # type: ignore[attr-defined]
+    )
+
+    try:
+        await session.delete(tenant)
+        await session.flush()
+    except SQLAlchemyError as exc:
+        # Any remaining FK violation, RLS-blocked cascade or similar
+        # surfaces here. The 500 -> 502 conversion mirrors what we did
+        # for the sandbox endpoint (P0-1 review fix): give the operator
+        # something they can read in the toast instead of "HTTP 500".
+        log.exception(
+            "tenant.delete.failed",
+            tenant_id=str(tenant_id),
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(f"no se pudo eliminar el tenant: {type(exc).__name__} — {exc}"),
+        ) from exc
+    # The outer dependency commits when the response leaves the handler;
+    # an explicit commit here used to clash with that block (it tried to
+    # close a transaction the ``async with session.begin():`` in
+    # ``scoped_session_from_path`` was still managing).
 
 
 @router.get(
