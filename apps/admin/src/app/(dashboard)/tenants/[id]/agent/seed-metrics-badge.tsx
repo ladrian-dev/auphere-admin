@@ -13,7 +13,9 @@
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { backend, type SeedTemplateMetrics } from "@/lib/backend";
+import type { SeedTemplateMetrics } from "@/lib/backend";
+
+import { getSeedMetricsAction } from "./actions";
 
 type State =
   | { kind: "loading"; key: string }
@@ -33,11 +35,14 @@ export function SeedMetricsBadge({ templateName }: { templateName: string }) {
   useEffect(() => {
     let cancelled = false;
     const key = templateName;
-    backend
-      .getSeedTemplateMetrics(key)
-      .then((data) => {
-        if (cancelled || !data) return;
-        setState({ kind: "ok", key, metrics: data });
+    getSeedMetricsAction(key)
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.ok || !res.data) {
+          setState({ kind: "error", key });
+          return;
+        }
+        setState({ kind: "ok", key, metrics: res.data });
       })
       .catch(() => {
         if (!cancelled) setState({ kind: "error", key });

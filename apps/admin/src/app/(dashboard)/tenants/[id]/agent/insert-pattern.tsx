@@ -29,7 +29,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { backend, type PromptSnippet, type PromptSnippetCategory } from "@/lib/backend";
+import type { PromptSnippet, PromptSnippetCategory } from "@/lib/backend";
+
+import { listPromptLibraryAction } from "./actions";
 
 const CATEGORIES: Array<{ value: PromptSnippetCategory; label: string }> = [
   { value: "tone", label: "Tono" },
@@ -60,17 +62,15 @@ export function InsertPatternButton({
     setOpen(next);
     if (next && snippets === null) {
       start(async () => {
-        try {
-          const data = await backend.listPromptLibrary({
-            vertical: vertical ?? undefined,
-          });
-          setSnippets(data);
-        } catch (err) {
-          toast.error(
-            `No se pudieron cargar patrones: ${err instanceof Error ? err.message : String(err)}`,
-          );
+        const res = await listPromptLibraryAction({
+          vertical: vertical ?? undefined,
+        });
+        if (!res.ok) {
+          toast.error(`No se pudieron cargar patrones: ${res.error}`);
           setSnippets([]);
+          return;
         }
+        setSnippets(res.data);
       });
     }
     if (!next) {

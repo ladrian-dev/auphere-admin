@@ -8,6 +8,8 @@ import {
   type AgentConfig,
   type ImprovePromptMode,
   type ImprovePromptOut,
+  type PromptSnippet,
+  type SeedTemplateMetrics,
   type TestAgentHistoryMessage,
   type TestTurnOut,
 } from "@/lib/backend";
@@ -129,6 +131,39 @@ export async function applySeedTemplateAction(
     revalidatePath(`/tenants/${tenantId}/agent`);
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: result! };
+  } catch (err) {
+    return { ok: false, error: pluck(err) };
+  }
+}
+
+
+// ── Block Q — Prompt library + seed metrics (client-side reads) ──────────
+//
+// Client components can't reach ``@/lib/backend`` directly because that
+// module declares ``import "server-only"`` to keep the admin token out
+// of the browser bundle. These thin server actions proxy the reads so
+// the SeedMetricsBadge and InsertPatternButton dialogs work from the
+// client without leaking credentials.
+
+export async function getSeedMetricsAction(
+  templateName: string,
+): Promise<Result<SeedTemplateMetrics | null>> {
+  await requireSession();
+  try {
+    const result = await backend.getSeedTemplateMetrics(templateName);
+    return { ok: true, data: result };
+  } catch (err) {
+    return { ok: false, error: pluck(err) };
+  }
+}
+
+export async function listPromptLibraryAction(
+  opts: { vertical?: string; category?: string } = {},
+): Promise<Result<PromptSnippet[]>> {
+  await requireSession();
+  try {
+    const result = await backend.listPromptLibrary(opts);
+    return { ok: true, data: result };
   } catch (err) {
     return { ok: false, error: pluck(err) };
   }
