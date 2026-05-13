@@ -47,26 +47,15 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # 1. Add the new enum value. PG 12+ allows this inside a transaction
-    # as long as the statement is isolated.
+    # but the value CANNOT be referenced in the same transaction it was
+    # added — the partial index that uses ``kind = 'async_booking'`` is
+    # split out to migration 0023 so the enum is durably committed
+    # before any DDL references it.
     op.execute("ALTER TYPE scheduled_job_kind ADD VALUE IF NOT EXISTS 'async_booking'")
 
-    # 2. Partial index that the cron uses to scan pending async_booking
-    # rows quickly. Filtering on the literal enum value works because
-    # ``scheduled_jobs.kind`` is a typed enum, not a string.
-    op.create_index(
-        "ix_scheduled_jobs_async_booking_pending",
-        "scheduled_jobs",
-        ["run_at"],
-        postgresql_where=sa.text(
-            "kind = 'async_booking' AND status = 'pending'"
-        ),
-    )
-
-    # 3. Optional: a free-form ``correlation_id`` column on appointments
-    # so the cron can match the wizard's confirmation back to the row
-    # without relying on idempotency_key (which we want to keep stable
-    # for replay safety). The column is added once here and reused by
-    # the async cron + the customer-facing confirmation template.
+    # 2. ``appointments.public_booking_status`` + CHECK constraint +
+    # partial index. These don't reference the new enum value (only the
+    # new string column we just added), so they're safe in this tx.
     op.add_column(
         "appointments",
         sa.Column("public_booking_status", sa.String(20), nullable=True),
@@ -93,7 +82,4 @@ def downgrade() -> None:
         "ck_appointments_public_booking_status", "appointments", type_="check"
     )
     op.drop_column("appointments", "public_booking_status")
-    op.drop_index(
-        "ix_scheduled_jobs_async_booking_pending", table_name="scheduled_jobs"
-    )
     # Enum value is intentionally left in place — PG doesn't allow removing values.
