@@ -72,9 +72,7 @@ async def test_generate_correlation_id_is_short_and_distinct() -> None:
     assert all(len(i) == 8 for i in ids)
 
 
-async def test_consultation_create_persists_with_tenant_from_context(
-    db_session, seed_tenants
-):
+async def test_consultation_create_persists_with_tenant_from_context(db_session, seed_tenants):
     tid = seed_tenants["a"]
     with tenant_context(tid):
         async with db_session.begin():
@@ -96,9 +94,7 @@ async def test_consultation_create_persists_with_tenant_from_context(
             assert len(row.correlation_id) == 8
 
 
-async def test_consultation_count_in_window_filters_by_tenant(
-    db_session, seed_tenants
-):
+async def test_consultation_count_in_window_filters_by_tenant(db_session, seed_tenants):
     a, b = seed_tenants["a"], seed_tenants["b"]
     now = datetime.now(UTC)
     # Seed 3 rows on A and 5 on B in the last hour. Counter under A
@@ -153,9 +149,7 @@ async def test_consultation_count_in_window_filters_by_tenant(
             assert cnt == 3
 
 
-async def test_phone_index_get_phone_for_tenant_returns_active_only(
-    db_session, seed_tenants
-):
+async def test_phone_index_get_phone_for_tenant_returns_active_only(db_session, seed_tenants):
     a = seed_tenants["a"]
     now = datetime.now(UTC)
     async with db_session.begin():

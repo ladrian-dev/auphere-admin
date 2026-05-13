@@ -160,9 +160,7 @@ async def test_owner_inbound_routes_to_correct_tenant(db_session, tenants_ab):
     # should be visible.
     async with db_session.begin():
         await set_tenant(db_session, idx.tenant_id)
-        rows = (
-            await db_session.execute(select(OwnerConsultation))
-        ).scalars().all()
+        rows = (await db_session.execute(select(OwnerConsultation))).scalars().all()
         assert len(rows) == 1
         assert rows[0].correlation_id == "AAAAAAAA"
         assert rows[0].tenant_id == a
@@ -182,9 +180,7 @@ async def test_owner_orphan_message_does_not_leak(db_session, tenants_ab):
     # Open consultation only on tenant B.
     async with db_session.begin():
         await set_tenant(db_session, b)
-        worlds_b = (
-            await db_session.execute(select(Conversation))
-        ).scalars().all()
+        worlds_b = (await db_session.execute(select(Conversation))).scalars().all()
         conversation_b_id = worlds_b[0].id
         db_session.add(
             OwnerConsultation(
@@ -220,12 +216,16 @@ async def test_owner_orphan_message_does_not_leak(db_session, tenants_ab):
         assert idx is not None and idx.tenant_id == a
         await set_tenant(db_session, idx.tenant_id)
         rows = (
-            await db_session.execute(
-                select(OwnerConsultation).where(
-                    OwnerConsultation.status.in_(("pending", "sent"))
+            (
+                await db_session.execute(
+                    select(OwnerConsultation).where(
+                        OwnerConsultation.status.in_(("pending", "sent"))
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         # The orphan owner must see zero — B's consultation is filtered.
         assert rows == []
 
