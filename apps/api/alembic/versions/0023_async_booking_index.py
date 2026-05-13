@@ -1,25 +1,31 @@
-"""async booking — partial index that references the new enum value
+"""async booking — composite index on scheduled_jobs cron query
 
 Revision ID: 0023
 Revises: 0022
 Create Date: 2026-05-13
 
-Migration 0022 added ``'async_booking'`` to ``scheduled_job_kind`` but
-could NOT use the value in the same transaction (Postgres enum rule:
-"new enum values must be committed before they can be used"). The
-partial index lives here, on its own migration, so by the time it runs
-the enum value is durably committed.
+Originally this was a partial index ``WHERE kind = 'async_booking'``
+but Postgres rejects referencing a new enum value in the same DDL
+transaction it was added — and Alembic wraps the whole upgrade chain
+in a single tx (``env.py`` calls ``context.begin_transaction()``).
 
-The index is what keeps the async_booking cron's
-``SELECT ... FOR UPDATE SKIP LOCKED`` cheap as the ``scheduled_jobs``
-table grows.
+The async booking cron's hot query is:
+
+    SELECT ... FROM scheduled_jobs
+    WHERE kind = $1 AND status = $2 AND run_at <= $3
+    ORDER BY run_at ASC
+    LIMIT 5 FOR UPDATE SKIP LOCKED
+
+A composite (kind, status, run_at) index covers that exactly, no
+partial filter needed. Marginally larger on disk than the partial,
+but predicate-free → no enum reference → works in a single tx with
+the ALTER TYPE that introduced the new value. Net win: simpler +
+serves both async_booking and any future kind the cron pattern uses.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-
-import sqlalchemy as sa
 
 from alembic import op
 
@@ -31,16 +37,13 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.create_index(
-        "ix_scheduled_jobs_async_booking_pending",
+        "ix_scheduled_jobs_kind_status_run_at",
         "scheduled_jobs",
-        ["run_at"],
-        postgresql_where=sa.text(
-            "kind = 'async_booking' AND status = 'pending'"
-        ),
+        ["kind", "status", "run_at"],
     )
 
 
 def downgrade() -> None:
     op.drop_index(
-        "ix_scheduled_jobs_async_booking_pending", table_name="scheduled_jobs"
+        "ix_scheduled_jobs_kind_status_run_at", table_name="scheduled_jobs"
     )
