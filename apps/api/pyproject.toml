@@ -40,6 +40,17 @@ dependencies = [
     # runtime, kept synchronous on the API side because the operation is
     # operator-interactive (sub-3s perceived latency expected).
     "litellm>=1.52.0",
+    # Block N: WhatsApp media storage. ``boto3`` powers ``S3MediaStorage``
+    # (AWS, R2, MinIO) — the webhook downloads inbound media from YCloud
+    # and the outbound dispatcher presigns S3 URLs the Cloud API fetches.
+    # The adapter falls back to in-memory storage in dev/tests when keys
+    # are absent, but production always needs the package available.
+    "boto3>=1.34.0",
+    # Block N: optional document text extraction for inbound PDFs. The
+    # MediaProcessor falls back to vision-OCR when ``pypdf`` is missing or
+    # fails, so this is technically optional — but installing it keeps
+    # the cheap-path (text-PDFs) cheap.
+    "pypdf>=4.0.0",
 ]
 
 [project.optional-dependencies]

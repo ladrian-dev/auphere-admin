@@ -113,28 +113,10 @@ jobs:
           NEXUS_ADMIN_DATABASE_URL: postgresql://nexus:nexus@localhost:5432/nexus
         run: pnpm build
 
-  test-mcp-node:
-    name: test-mcp-node (agendapro)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: apps/mcp/servers/agendapro_browser_mcp/pnpm-lock.yaml
-      - name: install
-        working-directory: apps/mcp/servers/agendapro_browser_mcp
-        run: pnpm install --frozen-lockfile
-      - name: tsc build
-        working-directory: apps/mcp/servers/agendapro_browser_mcp
-        run: ./node_modules/.bin/tsc
-      - name: vitest
-        working-directory: apps/mcp/servers/agendapro_browser_mcp
-        run: ./node_modules/.bin/vitest run
+  # ADR-017 / migration 0021 — the AgendaPro admin browser MCP (Node
+  # subprocess) was removed. The ``test-mcp-node`` job that built +
+  # tested it is gone with it. When the new public-link MCP lands a
+  # replacement job will live here.
 
   lint:
     name: lint

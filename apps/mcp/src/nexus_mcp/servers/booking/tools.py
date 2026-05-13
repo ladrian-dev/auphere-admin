@@ -15,13 +15,23 @@ stays ``NULL`` — they exist only in our DB, not in AgendaPro.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
 from nexus_api.core.tenant_context import require_current_tenant
-from nexus_api.db.models import Appointment, AppointmentStatus
+from nexus_api.db.models import (
+    Appointment,
+    AppointmentStatus,
+    ScheduledJob,
+    ScheduledJobKind,
+    ScheduledJobStatus,
+    Tenant,
+)
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_mcp._db import tool_session
 from nexus_mcp.base import InputModel, OutputModel, ToolBase, ToolError
@@ -54,6 +64,71 @@ def _to_brief(a: Appointment) -> AppointmentBrief:
         status=a.status.value,
         price_cents=a.price_cents,
         currency=a.currency,
+    )
+
+
+# ── Block O helpers ──────────────────────────────────────────────────────────
+
+
+async def _tenant_uses_public_link(
+    session: AsyncSession, tenant_id: uuid.UUID
+) -> bool:
+    """True iff this tenant has an AgendaPro public booking URL configured.
+
+    The signal is the ``tenants.agendapro_public_url`` column populated
+    by the admin wizard (PATCH /tenants/{id}/integrations/agendapro/public-url).
+    Tenants without this set fall through to the local-only path —
+    useful for dev/QA tenants like ``auphere-canary`` that don't book
+    against a real AgendaPro account.
+    """
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None:
+        return False
+    url = getattr(tenant, "agendapro_public_url", None)
+    return bool(url and isinstance(url, str) and url.strip())
+
+
+async def _enqueue_async_booking_job(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    appointment: Appointment,
+    payload: CreateAppointmentInput,
+) -> None:
+    """Persist a ``scheduled_jobs`` row of kind=async_booking.
+
+    Payload carries everything the cron needs to drive the public
+    booking wizard end-to-end without re-loading conversational state:
+    appointment_id (for status updates), customer details, service
+    hint, slot starts_at, idempotency_key (mirrored from the
+    appointment row so the public MCP gets it directly).
+
+    The cron picks rows with ``run_at <= now()``; we stamp ``now()`` so
+    the first execution starts on the next tick (~5s).
+    """
+    job_payload: dict[str, Any] = {
+        "appointment_id": str(appointment.id),
+        "customer_id": str(payload.customer_id),
+        "service_name": payload.service_name,
+        "starts_at_iso": payload.starts_at.isoformat(),
+        "duration_min": payload.duration_min,
+        "preferred_barber_id": str(payload.barber_id) if payload.barber_id else None,
+        "idempotency_key": payload.idempotency_key,
+    }
+    job = ScheduledJob(
+        tenant_id=tenant_id,
+        kind=ScheduledJobKind.ASYNC_BOOKING,
+        run_at=datetime.now(UTC),
+        payload=job_payload,
+        status=ScheduledJobStatus.PENDING,
+    )
+    session.add(job)
+    await session.flush()
+    log.info(
+        "booking.async_job_enqueued",
+        tenant_id=str(tenant_id),
+        appointment_id=str(appointment.id),
+        job_id=str(job.id),
     )
 
 
@@ -116,13 +191,26 @@ class CreateAppointment(ToolBase):
             stmt = select(Appointment).where(Appointment.idempotency_key == payload.idempotency_key)
             existing = (await session.execute(stmt)).scalar_one_or_none()
             if existing is not None:
+                # Surface the existing row's async state so the agent
+                # doesn't lie. ``confirmed`` if the cron already completed,
+                # ``enqueued_async`` if it's still in flight.
+                replay_status = (
+                    "enqueued_async"
+                    if existing.public_booking_status
+                    in ("pending", "in_progress")
+                    else "confirmed"
+                )
                 return CreateAppointmentOutput(
-                    appointment=_to_brief(existing), idempotent_replay=True
+                    appointment=_to_brief(existing),
+                    idempotent_replay=True,
+                    booking_status=replay_status,
                 )
 
-            # Local-only Phase 1 — no AgendaPro delegate. The public
-            # browser MCP (future session) will populate ``external_ref``
-            # when it plugs in here; for now rows stay local-only.
+            # Block O: detect whether the tenant uses the public AgendaPro
+            # path. If yes, persist the row as provisional and enqueue an
+            # async job; if no, fall through to the local-only path.
+            tenant_uses_public = await _tenant_uses_public_link(session, tenant_id)
+
             row = Appointment(
                 tenant_id=tenant_id,
                 customer_id=payload.customer_id,
@@ -137,6 +225,7 @@ class CreateAppointment(ToolBase):
                 idempotency_key=payload.idempotency_key,
                 external_ref=None,
                 notes=payload.notes,
+                public_booking_status="pending" if tenant_uses_public else None,
             )
             session.add(row)
             try:
@@ -145,8 +234,6 @@ class CreateAppointment(ToolBase):
                 # Lost the race: a concurrent caller already inserted the
                 # idempotent row. Re-select and return that one.
                 await session.rollback()
-                # session is now closed by the context manager's rollback; we
-                # cannot re-use it. Open a new session in the same scope.
                 async with tool_session() as session2:
                     again = (
                         await session2.execute(
@@ -160,11 +247,33 @@ class CreateAppointment(ToolBase):
                             "idempotency_key collision with no replay row — "
                             "transactional anomaly, refusing to retry"
                         ) from None
+                    replay_status = (
+                        "enqueued_async"
+                        if again.public_booking_status in ("pending", "in_progress")
+                        else "confirmed"
+                    )
                     return CreateAppointmentOutput(
-                        appointment=_to_brief(again), idempotent_replay=True
+                        appointment=_to_brief(again),
+                        idempotent_replay=True,
+                        booking_status=replay_status,
                     )
             await session.refresh(row)
-            return CreateAppointmentOutput(appointment=_to_brief(row), idempotent_replay=False)
+
+            booking_status: str = "confirmed"
+            if tenant_uses_public:
+                await _enqueue_async_booking_job(
+                    session,
+                    tenant_id=tenant_id,
+                    appointment=row,
+                    payload=payload,
+                )
+                booking_status = "enqueued_async"
+
+            return CreateAppointmentOutput(
+                appointment=_to_brief(row),
+                idempotent_replay=False,
+                booking_status=booking_status,  # type: ignore[arg-type]
+            )
 
 
 # ── modify_appointment ───────────────────────────────────────────────────────

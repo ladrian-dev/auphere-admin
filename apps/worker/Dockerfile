@@ -4,48 +4,14 @@
 #
 # Build context MUST be the project root.
 #
-# The worker spawns the Stagehand-driven AgendaPro server as a Node
-# subprocess (per-tenant, lazy). The Node bundle therefore has to live
-# inside this image at
-#   /app/apps/mcp/servers/agendapro_browser_mcp/dist/server.js
-# with its runtime ``node_modules`` next to it (Stagehand + Browserbase
-# SDK + MCP SDK + ioredis + pino). The default spawn command in
-# ``nexus_mcp.servers.agendapro_browser.transport`` is
-#   ``node apps/mcp/servers/agendapro_browser_mcp/dist/server.js``
-# resolved from the worker's WORKDIR (``/app``).
+# ADR-017 / migration 0021 removed the AgendaPro admin browser MCP that
+# used to live as a Node subprocess inside this image. The worker is
+# now pure Python — no Node, no Stagehand bundle. When the new
+# public-link AgendaPro MCP lands, a node-build stage will be added
+# back; until then the image is one stage simpler and noticeably smaller.
 
 # ──────────────────────────────────────────────────────────────────────
-# Stage 1 — node-build
-#   Compiles the AgendaPro MCP server (TS → dist) and installs production
-#   node_modules. Built off node:22 because pnpm 11.0.9 requires Node
-#   v22.13+ when activated via corepack (pnpm/action-setup@v4 in CI is
-#   more lenient, but corepack here is strict — see Railway deploy log
-#   "ERR_UNKNOWN_BUILTIN_MODULE node:sqlite" before the bump).
-# ──────────────────────────────────────────────────────────────────────
-FROM node:22-bookworm-slim AS node-build
-
-ENV PNPM_HOME=/usr/local/pnpm \
-    PATH=/usr/local/pnpm:$PATH
-
-RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
-
-WORKDIR /node-build
-
-COPY apps/mcp/servers/agendapro_browser_mcp/package.json /node-build/package.json
-COPY apps/mcp/servers/agendapro_browser_mcp/pnpm-lock.yaml /node-build/pnpm-lock.yaml
-COPY apps/mcp/servers/agendapro_browser_mcp/tsconfig.json /node-build/tsconfig.json
-COPY apps/mcp/servers/agendapro_browser_mcp/src /node-build/src
-
-# Full install with build-script approval (Stagehand pulls esbuild +
-# protobufjs which require post-install scripts to materialise their
-# binaries). Block I locks the approved list in package.json under
-# ``pnpm.onlyBuiltDependencies``.
-RUN pnpm install --frozen-lockfile --config.confirmModulesPurge=false \
-    && ./node_modules/.bin/tsc \
-    && pnpm prune --prod
-
-# ──────────────────────────────────────────────────────────────────────
-# Stage 2 — python-build
+# Stage 1 — python-build
 #   Resolves the four Python packages (api → channels → mcp → worker)
 #   via uv path sources into the system site-packages.
 # ──────────────────────────────────────────────────────────────────────
@@ -85,8 +51,8 @@ WORKDIR /py-build/apps/worker
 RUN uv pip install --system --no-cache-dir .
 
 # ──────────────────────────────────────────────────────────────────────
-# Stage 3 — runtime
-#   Slim Python + Node runtime + non-root user. No build tooling.
+# Stage 2 — runtime
+#   Slim Python runtime + non-root user. No build tooling, no Node.
 # ──────────────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
@@ -94,10 +60,6 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     NEXUS_ENVIRONMENT=production
-
-# Pull just the Node binary from the official slim image — keeps us off
-# Debian's old Node and avoids pulling npm/yarn/etc. into the runtime.
-COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -113,15 +75,6 @@ COPY --from=python-build /usr/local/bin /usr/local/bin
 
 # Python source layout — Alembic + scripts read off ``apps/api`` paths.
 COPY --from=python-build /py-build/apps /app/apps
-
-# Node runtime artefacts: dist/ + production node_modules + package.json
-# under the path the SubprocessPool defaults expect.
-COPY --from=node-build /node-build/dist \
-     /app/apps/mcp/servers/agendapro_browser_mcp/dist
-COPY --from=node-build /node-build/node_modules \
-     /app/apps/mcp/servers/agendapro_browser_mcp/node_modules
-COPY --from=node-build /node-build/package.json \
-     /app/apps/mcp/servers/agendapro_browser_mcp/package.json
 
 WORKDIR /app
 

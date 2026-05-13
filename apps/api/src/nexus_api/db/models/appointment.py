@@ -53,3 +53,12 @@ class Appointment(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     external_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Block O / ADR-017: tracks the async booking pipeline state for
+    # public-link AgendaPro bookings. NULL means the row was created
+    # without going through the public flow (local-only or admin path).
+    #   pending           — enqueued, cron hasn't picked it up yet.
+    #   in_progress       — cron locked the job, wizard in flight.
+    #   confirmed         — wizard succeeded, external_ref populated.
+    #   failed            — wizard exhausted retries; manual followup.
+    #   manual_escalation — owner consulted via ADR-018; outcome TBD.
+    public_booking_status: Mapped[str | None] = mapped_column(String(20), nullable=True)

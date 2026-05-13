@@ -18,6 +18,12 @@ class ScheduledJobKind(str, enum.Enum):
     REMINDER = "reminder"
     HEALTH_CHECK = "health_check"
     NO_SHOW_SCRAPE = "no_show_scrape"
+    # Block O / ADR-017: per-tenant async booking against AgendaPro's
+    # public link. The cron drains these as fast as it can; ``run_at``
+    # is set to ``now()`` at enqueue time and only delayed if a retry
+    # is scheduled. Payload carries the wizard parameters (slot_token,
+    # service name, customer name/email, idempotency_key).
+    ASYNC_BOOKING = "async_booking"
 
 
 class ScheduledJobStatus(str, enum.Enum):

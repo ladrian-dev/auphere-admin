@@ -30,6 +30,10 @@ from nexus_api.core.metrics import isolation_event_drainer
 from nexus_api.core.redis_client import get_redis
 from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
 from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudClient
+from nexus_mcp.servers.agendapro_public.transport import (
+    build_default_pool_from_env as build_agendapro_public_pool_from_env,
+    set_default_transport as set_agendapro_public_transport,
+)
 
 from nexus_worker.config import get_api_settings, get_worker_settings
 from nexus_worker.logging import configure_logging
@@ -40,6 +44,7 @@ from nexus_worker.runtime.checkpointer import postgres_checkpointer
 from nexus_worker.runtime.llm import build_default_router
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
+from nexus_worker.streams.async_booking_cron import run_async_booking_cron
 from nexus_worker.streams.consumer import run_inbound_consumer
 from nexus_worker.streams.cost_rollup_cron import run_cost_rollup_cron
 from nexus_worker.streams.isolation_watcher import run_isolation_watcher
@@ -82,6 +87,13 @@ async def _amain() -> None:
         base_url=nexus_settings.ycloud_api_base_url,
     )
     whatsapp_adapter = WhatsAppYCloudAdapter(ycloud_client)
+
+    # Block O: AgendaPro public-link Node MCP subprocess pool. Configured
+    # lazily so the worker can boot in test/dev where the Node binary or
+    # Browserbase keys may be absent — the cron picks up the absence and
+    # parks jobs with a descriptive error instead of crashing the worker.
+    agendapro_public_pool = build_agendapro_public_pool_from_env()
+    set_agendapro_public_transport(agendapro_public_pool)
 
     def _request_stop() -> None:
         log.info("worker.signal_received_stopping")
@@ -148,6 +160,13 @@ async def _amain() -> None:
             run_whatsapp_health_cron(stop=stop),
             name="whatsapp-health-cron",
         )
+        # Block O: AgendaPro public-link async booking cron — drains
+        # ``scheduled_jobs(kind=async_booking)`` and drives the public
+        # wizard via the Node MCP subprocess pool.
+        async_booking_task = asyncio.create_task(
+            run_async_booking_cron(stop=stop),
+            name="async-booking-cron",
+        )
         try:
             await asyncio.gather(
                 consumer_task,
@@ -160,9 +179,12 @@ async def _amain() -> None:
                 cost_rollup_task,
                 isolation_watcher_task,
                 whatsapp_health_task,
+                async_booking_task,
             )
         finally:
             await ycloud_client.close()
+            with contextlib.suppress(Exception):
+                await agendapro_public_pool.shutdown()
             langfuse_shutdown()
 
 

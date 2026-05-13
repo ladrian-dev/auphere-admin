@@ -1,0 +1,32 @@
+{
+  "name": "agendapro-public-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nexus MCP server — books AgendaPro via the tenant's public booking link (ADR-017). Stdio JSON-RPC 2.0, no persisted state.",
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "agendapro-public-mcp": "dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@browserbasehq/sdk": "^2.7.0",
+    "@browserbasehq/stagehand": "^3.0.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "pino": "^9.5.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0",
+    "eslint": "^9.0.0"
+  }
+}

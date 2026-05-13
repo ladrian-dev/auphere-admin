@@ -85,6 +85,22 @@ class CreateAppointmentOutput(OutputModel):
     idempotent_replay: bool = Field(
         description="True if a prior call with the same idempotency_key already created this row.",
     )
+    # Block O: signals whether the booking is final (local-only tenants) or
+    # still pending an async confirmation against AgendaPro's public link.
+    #   "confirmed"     — local-only path, no upstream booking.
+    #   "enqueued_async" — public-link tenant; the async cron will fire
+    #                     the public wizard and notify the customer when
+    #                     done. The agent's reply MUST be an ACK ("te
+    #                     confirmo en 1-2 minutos") — see barbershop_v1
+    #                     seed system_prompt for the exact pattern.
+    booking_status: Literal["confirmed", "enqueued_async"] = Field(
+        default="confirmed",
+        description=(
+            "When 'enqueued_async', the booking is still pending upstream. "
+            "The agent must inform the customer that confirmation will arrive "
+            "in 1-2 minutes via a separate WhatsApp message."
+        ),
+    )
 
 
 # ── modify_appointment ───────────────────────────────────────────────────────
