@@ -763,6 +763,30 @@ async def test_agent_turn(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # The sandbox path touches LiteLLM, the model provider, and the
+        # database — any of these can throw something we didn't predict
+        # (timeouts, provider 5xx, key misconfig, etc). Surface a useful
+        # message to the operator instead of letting FastAPI emit a
+        # bare 500 with no detail (the 2026-05-13 review caught this
+        # exact failure mode on a freshly-templated tenant: toast said
+        # "error 500" with nothing actionable). 502 is closer in spirit
+        # since the failure is downstream of our handler.
+        log.exception(
+            "test_agent.unhandled_error",
+            tenant_id=str(tenant_id),
+            actor=actor[:8],
+            version=config.version,
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                f"sandbox falló al correr la versión {config.version}: {type(exc).__name__} — {exc}"
+            ),
+        ) from exc
 
     log.info(
         "test_agent.invoke",

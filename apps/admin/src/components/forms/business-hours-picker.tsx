@@ -91,10 +91,25 @@ export function BusinessHoursPicker({
   }
 
   function copyMondayToWeekdays() {
-    const monday = state.monday;
+    // If the operator hasn't marked any day open yet, the shortcut
+    // would copy the default ``open: false`` state across all weekdays
+    // and silently do nothing (the 2026-05-13 review caught this:
+    // operators clicked the button, the copy text under it changed,
+    // and not a single checkbox moved). When monday is closed we
+    // treat the click as "open Mon-Fri at the default range" — which
+    // is what the button label promises anyway.
+    const template: DayState = state.monday.open
+      ? state.monday
+      : { open: true, from: DEFAULT_FROM, to: DEFAULT_TO };
     const next = { ...state };
-    for (const key of ["tuesday", "wednesday", "thursday", "friday"] as DayKey[]) {
-      next[key] = { ...monday };
+    for (const key of [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+    ] as DayKey[]) {
+      next[key] = { ...template };
     }
     setState(next);
     setAllClosed(false);

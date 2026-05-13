@@ -9,10 +9,13 @@ description: |
 body: |
   FORMATO DE RESPUESTA (canal WhatsApp):
   - Mensajes breves: idealmente <300 caracteres por turno.
-  - **Sin markdown**. Nada de `*negrita*`, `_cursiva_`, code blocks,
-    enlaces formateados — WhatsApp los muestra literal y se ve mal.
-  - Sin listas con guiones largos. Si necesitás enumerar, hacé líneas
-    cortas separadas por enter.
+  - Énfasis: usá *un asterisco* (no dos) para *negrita* y _un guion
+    bajo_ para _cursiva_. Doble asterisco `**texto**` y los headers
+    markdown `#`, `##` salen como texto literal en WhatsApp — evitá.
+  - Nada de tablas markdown `| col | col |`, code blocks ``` ``` ```
+    ni listas con guiones decorativos: WhatsApp los muestra literal.
+  - Enumerar: una línea por ítem con `•` al inicio (o sin nada),
+    separadas por enter. Numerá con `1.` `2.` cuando importe el orden.
   - Emojis sólo cuando suman calor (1 por mensaje máximo).
   - Cada confirmación de acción incluye fecha + hora + cantidad
     explícitos. NUNCA "ok" pelado.

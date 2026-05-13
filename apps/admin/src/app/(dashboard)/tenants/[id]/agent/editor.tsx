@@ -54,25 +54,34 @@ type StageAction = (
  * revisions: per the isolation guarantee, prompts are NOT Jinja2-templated
  * at runtime; the operator pre-renders the values into the text and saves
  * the literal string.
+ *
+ * ``source`` is the config the editor prefills from — the active version
+ * if there is one, otherwise the most recent staged draft. Before the
+ * 2026-05-13 review fix the editor only knew about ``active``, so a
+ * tenant whose only version was a staged draft from ``applyTemplate``
+ * landed on an empty textarea + empty whitelist and the operator had
+ * nothing to review (P0-2).
  */
 export function AgentEditor({
   tenantId,
-  active,
+  source,
+  sourceIsStagedDraft,
   catalog,
   seedTemplateName,
   stageAction,
 }: {
   tenantId: string;
-  active: AgentConfig | null;
+  source: AgentConfig | null;
+  sourceIsStagedDraft: boolean;
   catalog: ToolWithInstallStatus[];
   seedTemplateName: string | null;
   stageAction: StageAction;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [prompt, setPrompt] = useState(active?.system_prompt_rendered ?? "");
+  const [prompt, setPrompt] = useState(source?.system_prompt_rendered ?? "");
   const [selected, setSelected] = useState<Set<string>>(
-    new Set(active?.tools ?? []),
+    new Set(source?.tools ?? []),
   );
 
   const groups = useMemo(() => buildGroups(catalog), [catalog]);
@@ -113,15 +122,15 @@ export function AgentEditor({
       });
     }
     startTransition(async () => {
-      const channels = active?.channels ?? [];
-      const policies = active?.policies ?? {};
+      const channels = source?.channels ?? [];
+      const policies = source?.policies ?? {};
       const result = await stageAction(tenantId, {
         system_prompt_rendered: prompt,
         channels,
         tools: Array.from(selected),
         policies,
-        seed_template_ref: active?.seed_template_ref ?? null,
-        kg_schema_id: active?.kg_schema_id ?? null,
+        seed_template_ref: source?.seed_template_ref ?? null,
+        kg_schema_id: source?.kg_schema_id ?? null,
       });
       if (!result.ok) {
         toast.error("No se pudo guardar", { description: result.error });
@@ -147,7 +156,7 @@ export function AgentEditor({
           <Label htmlFor="prompt">Prompt del agente</Label>
           <div className="flex items-center gap-2 flex-wrap">
             <InsertPatternButton
-              vertical={active?.seed_template_ref ?? null}
+              vertical={source?.seed_template_ref ?? null}
               onInsert={(body) =>
                 setPrompt((prev) => (prev ? `${prev}\n\n${body}` : body))
               }
@@ -222,20 +231,31 @@ export function AgentEditor({
         </TooltipProvider>
       </div>
 
-      <div className="lg:col-span-2 flex items-center justify-end gap-2 border-t border-border pt-4">
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setPrompt(active?.system_prompt_rendered ?? "");
-            setSelected(new Set(active?.tools ?? []));
-          }}
-          disabled={pending}
-        >
-          Descartar cambios
-        </Button>
-        <Button onClick={onSave} disabled={pending}>
-          {pending ? "Guardando…" : "Guardar borrador"}
-        </Button>
+      <div className="lg:col-span-2 flex items-center justify-between gap-2 border-t border-border pt-4">
+        {sourceIsStagedDraft && source ? (
+          <span className="text-xs text-muted-foreground">
+            Editando borrador v{source.version} — guardá para crear una
+            versión nueva o promovela desde el historial cuando estés
+            conforme.
+          </span>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setPrompt(source?.system_prompt_rendered ?? "");
+              setSelected(new Set(source?.tools ?? []));
+            }}
+            disabled={pending}
+          >
+            Descartar cambios
+          </Button>
+          <Button onClick={onSave} disabled={pending}>
+            {pending ? "Guardando…" : "Guardar borrador"}
+          </Button>
+        </div>
       </div>
     </div>
   );

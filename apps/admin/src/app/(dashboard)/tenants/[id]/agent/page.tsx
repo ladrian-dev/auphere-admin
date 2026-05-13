@@ -15,7 +15,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { backend, type ToolWithInstallStatus } from "@/lib/backend";
+import {
+  backend,
+  type AgentConfig,
+  type ToolWithInstallStatus,
+} from "@/lib/backend";
 import { fullDateTime, relativeTime } from "@/lib/format";
 
 import { AgentEditor } from "./editor";
@@ -57,13 +61,21 @@ export default async function AgentPage({
   // seed_template_ref — that covers the "Aplicar plantilla inicial → not
   // yet promoted" path which previously fell through and dumped the full
   // registry on the operator (the gap the audit 2026-05-13 caught).
+  //
+  // We also use the latest staged draft (if any) to *prefill* the editor.
+  // Without this the textarea + tool whitelist stay empty after
+  // applyTemplate because the editor only initialised from
+  // ``bundle.active`` and a first-time tenant has ``active === null``
+  // even when the draft v1 exists. Operators couldn't review the
+  // rendered prompt before promoting (the P0-2 bug from the
+  // 2026-05-13 review).
+  const sortedDesc = [...bundle.versions].sort((a, b) => b.version - a.version);
+  const latestStaged = sortedDesc.find((v) => v.status === "staged") ?? null;
+  const editorSource: AgentConfig | null = bundle.active ?? latestStaged;
   const versionWithSeed =
-    bundle.active?.seed_template_ref !== undefined &&
-    bundle.active?.seed_template_ref !== null
-      ? bundle.active
-      : [...bundle.versions]
-          .sort((a, b) => b.version - a.version)
-          .find((v) => v.seed_template_ref) ?? null;
+    editorSource?.seed_template_ref
+      ? editorSource
+      : sortedDesc.find((v) => v.seed_template_ref) ?? null;
   const seedRef = versionWithSeed?.seed_template_ref ?? null;
   const seedTemplate = seedRef
     ? (seedTemplates.find((t) => t.name === seedRef) ?? null)
@@ -81,6 +93,12 @@ export default async function AgentPage({
       )
     : [];
 
+  const headerTitle = bundle.active
+    ? `Versión ${bundle.active.version} activa`
+    : latestStaged
+      ? `Borrador v${latestStaged.version} sin promover`
+      : "Crear primera versión";
+
   return (
     <div className="grid gap-6">
       <Card>
@@ -88,11 +106,7 @@ export default async function AgentPage({
           <Eyebrow>Configuración del agente</Eyebrow>
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
-              <CardTitle>
-                {bundle.active
-                  ? `Versión ${bundle.active.version} activa`
-                  : "Crear primera versión"}
-              </CardTitle>
+              <CardTitle>{headerTitle}</CardTitle>
               <CardDescription>
                 Cada cambio que guardás queda como borrador. Promovelo cuando
                 quieras que el agente lo use en el siguiente turno.
@@ -110,7 +124,8 @@ export default async function AgentPage({
         <CardContent>
           <AgentEditor
             tenantId={tenant.id}
-            active={bundle.active}
+            source={editorSource}
+            sourceIsStagedDraft={editorSource?.status === "staged"}
             catalog={publicCatalog}
             seedTemplateName={seedTemplate?.display_name ?? null}
             stageAction={stageAgentConfigAction}
