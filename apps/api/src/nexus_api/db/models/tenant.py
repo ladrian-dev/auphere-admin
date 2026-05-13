@@ -4,7 +4,7 @@ import enum
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Numeric, String
+from sqlalchemy import Boolean, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -51,6 +51,16 @@ class Tenant(UUIDPrimaryKey, TimestampMixin, Base):
         nullable=False,
         default=Decimal("40.00"),
         server_default="40.00",
+    )
+    # Block P (migration 0017). When true, ``promote_agent_config``
+    # rejects unless there's a passing :class:`EvalRun` for the
+    # candidate version. False keeps the legacy "promote freely"
+    # behaviour so existing tenants are unaffected.
+    eval_required: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
     )
 
     def __repr__(self) -> str:

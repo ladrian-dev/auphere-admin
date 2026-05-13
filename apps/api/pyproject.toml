@@ -35,6 +35,11 @@ dependencies = [
     # package available so ``settings.composio_api_key`` actually picks the
     # Live client instead of silently falling back to the Fake.
     "composio>=0.8.6",
+    # Block N: the "Mejorar prompt" utility calls Claude Sonnet 4.6 via
+    # LiteLLM. Same provider abstraction the worker uses for the agent
+    # runtime, kept synchronous on the API side because the operation is
+    # operator-interactive (sub-3s perceived latency expected).
+    "litellm>=1.52.0",
 ]
 
 [project.optional-dependencies]

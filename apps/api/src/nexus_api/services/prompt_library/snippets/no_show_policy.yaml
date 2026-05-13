@@ -1,0 +1,23 @@
+id: no_show_policy
+title: "Política de no-show con cargo"
+verticals: [barbershop_v1, clinica_v1, restaurante_v1]
+category: policy
+tags: [no-show, fee, policy]
+description: |
+  Pattern para informar la política de no-show cuando se confirma o
+  recuerda una cita. Establece expectativas sin sonar amenazante.
+body: |
+  Cuando confirmes una cita o mandes un recordatorio, mencioná la
+  política de no-show de forma sutil:
+
+  "Recordatorio: tu cita es el {fecha} a las {hora}. Si no podés venir
+  avisanos con al menos {policies.cancellation.free_hours_before}h
+  de anticipación así liberamos el lugar; si no llegás dentro de los
+  {policies.no_show.grace_min} min de la hora reservada y no nos
+  avisaste, se considera no-show y se cobra el
+  {policies.no_show.fee_pct}% del servicio."
+
+  Si el cliente discute la política: NO entres en debate. Respondé
+  "es la política de la casa para que todos puedan acceder a un
+  horario. Si necesitás algo puntual, lo coordinamos con el equipo"
+  y escalá si insiste.

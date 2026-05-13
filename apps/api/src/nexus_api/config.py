@@ -81,6 +81,18 @@ class Settings(BaseSettings):
     # Used to mint the magic-link tokens we ship to tenant owners via WhatsApp.
     connector_consent_secret: str = "dev-consent-secret-change-me-min-32-chars"
 
+    # Block N: "Mejorar prompt" utility. Same provider abstraction the
+    # worker uses for the agent runtime — Claude Sonnet 4.6 via LiteLLM —
+    # but called inline from the API because the operation is
+    # operator-interactive.
+    llm_improve_model: str = "anthropic/claude-sonnet-4-6"
+    llm_improve_timeout_s: float = 30.0
+    # Token budget guardrails so a runaway prompt doesn't bill us 100k
+    # input tokens. ``max_input_chars`` is a cheap pre-LLM check; the
+    # actual token count is enforced by the provider.
+    improve_prompt_max_input_chars: int = 20_000
+    improve_prompt_max_output_tokens: int = 4_000
+
     @property
     def is_prod(self) -> bool:
         return self.environment.lower() in {"prod", "production"}

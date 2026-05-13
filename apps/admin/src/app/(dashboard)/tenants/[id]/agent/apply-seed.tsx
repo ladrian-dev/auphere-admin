@@ -37,6 +37,7 @@ import {
 import type { SeedTemplate } from "@/lib/backend";
 
 import { applySeedTemplateAction } from "./actions";
+import { SeedMetricsBadge } from "./seed-metrics-badge";
 
 const schema = z.object({
   seed_template_ref: z.string().min(1),
@@ -180,6 +181,9 @@ export function ApplySeedTemplateButton({
                       </SelectContent>
                     </Select>
                   )}
+                  {field.value ? (
+                    <SeedMetricsBadge templateName={field.value} />
+                  ) : null}
                   <FormMessage />
                 </FormItem>
               )}

@@ -4,8 +4,10 @@ from nexus_api.api.admin import (
     agent_configs,
     connectors,
     conversations,
+    evals,
     integrations,
     isolation,
+    prompt_library,
     screenshots,
     tenants,
     tool_catalog,
@@ -20,3 +22,5 @@ router.include_router(integrations.router)
 router.include_router(connectors.router)
 router.include_router(screenshots.router)
 router.include_router(isolation.router)
+router.include_router(evals.router)
+router.include_router(prompt_library.router)

@@ -25,6 +25,7 @@ import {
   stageAgentConfigAction,
 } from "./actions";
 import { ApplySeedTemplateButton } from "./apply-seed";
+import { EvalsSection } from "./evals/evals-section";
 
 export default async function AgentPage({
   params,
@@ -32,13 +33,23 @@ export default async function AgentPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [tenant, bundle, catalog, seedTemplates] = await Promise.all([
-    backend.getTenant(id),
-    backend.getAgentConfig(id),
-    backend.listTenantToolCatalog(id, false),
-    backend.listSeedTemplates(),
-  ]);
+  const [tenant, bundle, catalog, seedTemplates, datasets, recentRuns] =
+    await Promise.all([
+      backend.getTenant(id),
+      backend.getAgentConfig(id),
+      backend.listTenantToolCatalog(id, false),
+      backend.listSeedTemplates(),
+      backend.listEvalDatasets(id),
+      backend.listEvalRuns(id, { limit: 10 }),
+    ]);
   if (!tenant) return null;
+
+  // Block P — for v1 each tenant has at most one active dataset; pick
+  // the most recent non-archived one.
+  const primaryDatasetSummary = datasets[0] ?? null;
+  const primaryDataset = primaryDatasetSummary
+    ? await backend.getEvalDataset(id, primaryDatasetSummary.id)
+    : null;
 
   // Filter the whitelist by the seed template applied to this tenant.
   // Look at the active version first (steady state); if there isn't one,
@@ -126,6 +137,14 @@ export default async function AgentPage({
           />
         </CardContent>
       </Card>
+
+      <EvalsSection
+        tenantId={tenant.id}
+        datasets={datasets}
+        primaryDataset={primaryDataset}
+        recentRuns={recentRuns}
+        activeVersion={bundle.active?.version ?? null}
+      />
     </div>
   );
 }

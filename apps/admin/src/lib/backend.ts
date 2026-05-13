@@ -177,6 +177,165 @@ export type AgentConfig = {
   updated_at: string;
 };
 
+/** Block N — modes for the prompt improver. Keep in sync with
+ *  ``nexus_api.services.prompt_improver.SUPPORTED_MODES``. */
+export type ImprovePromptMode =
+  | "general"
+  | "specific"
+  | "structure"
+  | "examples"
+  | "shorter"
+  | "edge_cases"
+  | "english";
+
+export type ImprovePromptOut = {
+  improved_prompt: string;
+  summary_of_changes: string[];
+  mode: ImprovePromptMode;
+  meta_prompt_version: string;
+  model: string;
+  latency_ms: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cached_input_tokens: number | null;
+};
+
+/** Block Q — Prompt library + seed metrics. */
+export type PromptSnippetCategory =
+  | "tone"
+  | "edge_case"
+  | "escalation"
+  | "output_format"
+  | "tool_calling"
+  | "policy";
+
+export type PromptSnippet = {
+  id: string;
+  title: string;
+  category: PromptSnippetCategory;
+  description: string;
+  body: string;
+  verticals: string[];
+  tags: string[];
+};
+
+export type SeedTemplateMetrics = {
+  name: string;
+  tenant_count: number;
+  active_count: number;
+  eval_pass_rate_avg: string | null;
+  eval_pass_rate_count: number;
+  last_used_at: string | null;
+};
+
+/** Block P — Eval suite types. */
+export type EvalDataset = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  version: number;
+  pass_threshold: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EvalCaseAssertions = {
+  must_contain?: string[];
+  must_not_contain?: string[];
+  expected_tools_called?: string[];
+  tools_must_not_call?: string[];
+  must_emit_text?: boolean;
+  judge_questions?: string[];
+};
+
+export type EvalCase = {
+  id: string;
+  dataset_id: string;
+  idx: number;
+  name: string;
+  user_message: string;
+  history: Array<{ role: "user" | "assistant"; content: string }>;
+  assertions: EvalCaseAssertions;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EvalDatasetDetail = EvalDataset & {
+  cases: EvalCase[];
+};
+
+export type EvalRunStatus =
+  | "pending"
+  | "running"
+  | "passed"
+  | "failed"
+  | "error";
+
+export type EvalRunResultItem = {
+  id: string;
+  run_id: string;
+  case_id: string;
+  case_idx: number;
+  case_name: string;
+  status: "pass" | "fail" | "error";
+  transcript: Record<string, unknown>;
+  assertion_results: Array<Record<string, unknown>>;
+  latency_ms: number;
+  created_at: string;
+};
+
+export type EvalRun = {
+  id: string;
+  tenant_id: string;
+  dataset_id: string;
+  dataset_version: number;
+  agent_config_version: number;
+  agent_config_status: string;
+  status: EvalRunStatus;
+  case_count: number;
+  pass_count: number;
+  fail_count: number;
+  error_count: number;
+  pass_rate: string;
+  actor: string | null;
+  started_at: string;
+  finished_at: string | null;
+  error_message: string | null;
+};
+
+export type EvalRunDetail = EvalRun & {
+  results: EvalRunResultItem[];
+};
+
+/** Block O — Test Agent sandbox. */
+export type TestAgentHistoryMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type PlannedToolCall = {
+  name: string;
+  arguments: Record<string, unknown>;
+  tool_call_id: string;
+  dry_run_result: string;
+  iteration: number;
+};
+
+export type TestTurnOut = {
+  version_tested: number;
+  version_status: "staged" | "active" | "archived";
+  assistant_message: string;
+  planned_tool_calls: PlannedToolCall[];
+  model: string;
+  iterations: number;
+  latency_ms: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cached_input_tokens: number | null;
+};
+
 export type AgentConfigBundle = {
   active: AgentConfig | null;
   versions: AgentConfig[];
@@ -368,6 +527,131 @@ export const backend = {
       `/admin/tenants/${tenantId}/agent-config/${version}/rollback`,
       { method: "POST" },
     ),
+
+  /**
+   * Block N — "Mejorar prompt". Sends the operator's draft + chosen
+   * mode + optional feedback; receives the improved text + bullet
+   * summary of changes for the diff view.
+   */
+  improveAgentPrompt: (
+    tenantId: string,
+    body: {
+      prompt: string;
+      mode?: ImprovePromptMode;
+      feedback?: string | null;
+    },
+  ) =>
+    call<ImprovePromptOut>(
+      `/admin/tenants/${tenantId}/agent-config/improve-prompt`,
+      { method: "POST", body },
+    ),
+
+  /**
+   * Block O — "Probar agente" sandbox. Runs one turn against the latest
+   * staged (or active) version without persisting anything and without
+   * dispatching tools.
+   */
+  testAgentTurn: (
+    tenantId: string,
+    body: {
+      user_message: string;
+      history?: TestAgentHistoryMessage[];
+      version?: number;
+    },
+  ) =>
+    call<TestTurnOut>(`/admin/tenants/${tenantId}/agent-config/test`, {
+      method: "POST",
+      body,
+    }),
+
+  // ── Block P — Eval suite ─────────────────────────────────────────────────
+
+  listEvalDatasets: (tenantId: string) =>
+    call<EvalDataset[]>(`/admin/tenants/${tenantId}/eval-datasets`).then(
+      (r) => r ?? [],
+    ),
+
+  createEvalDataset: (
+    tenantId: string,
+    body: {
+      name: string;
+      description?: string | null;
+      pass_threshold?: number | null;
+    },
+  ) =>
+    call<EvalDataset>(`/admin/tenants/${tenantId}/eval-datasets`, {
+      method: "POST",
+      body,
+    }),
+
+  getEvalDataset: (tenantId: string, datasetId: string) =>
+    call<EvalDatasetDetail>(
+      `/admin/tenants/${tenantId}/eval-datasets/${datasetId}`,
+      { optional: true },
+    ),
+
+  createEvalCase: (
+    tenantId: string,
+    datasetId: string,
+    body: {
+      name: string;
+      user_message: string;
+      history?: Array<{ role: "user" | "assistant"; content: string }>;
+      assertions: EvalCaseAssertions;
+      idx?: number;
+    },
+  ) =>
+    call<EvalCase>(
+      `/admin/tenants/${tenantId}/eval-datasets/${datasetId}/cases`,
+      { method: "POST", body },
+    ),
+
+  deleteEvalCase: (tenantId: string, caseId: string) =>
+    call<null>(`/admin/tenants/${tenantId}/eval-cases/${caseId}`, {
+      method: "DELETE",
+    }),
+
+  triggerEvalRun: (
+    tenantId: string,
+    datasetId: string,
+    body: { agent_config_version?: number },
+  ) =>
+    call<EvalRunDetail>(
+      `/admin/tenants/${tenantId}/eval-datasets/${datasetId}/run`,
+      { method: "POST", body },
+    ),
+
+  listEvalRuns: (
+    tenantId: string,
+    opts: { agent_config_version?: number; limit?: number } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (opts.agent_config_version !== undefined) {
+      qs.set("agent_config_version", String(opts.agent_config_version));
+    }
+    if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return call<EvalRun[]>(`/admin/tenants/${tenantId}/eval-runs${suffix}`).then(
+      (r) => r ?? [],
+    );
+  },
+
+  // ── Block Q — Prompt library + seed metrics ──────────────────────────────
+
+  listPromptLibrary: (opts: { vertical?: string; category?: string } = {}) => {
+    const qs = new URLSearchParams();
+    if (opts.vertical) qs.set("vertical", opts.vertical);
+    if (opts.category) qs.set("category", opts.category);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return call<PromptSnippet[]>(`/admin/prompt-library${suffix}`).then(
+      (r) => r ?? [],
+    );
+  },
+
+  getSeedTemplateMetrics: (name: string) =>
+    call<SeedTemplateMetrics>(`/admin/seed-templates/${name}/metrics`, {
+      optional: true,
+    }),
 
   /**
    * Block M.3 — toggle per-conversation agent control. ``agent_active=false``

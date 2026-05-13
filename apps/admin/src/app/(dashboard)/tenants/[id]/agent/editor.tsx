@@ -22,6 +22,10 @@ import type {
   ToolWithInstallStatus,
 } from "@/lib/backend";
 
+import { ImprovePromptButton } from "./improve-prompt";
+import { InsertPatternButton } from "./insert-pattern";
+import { TestAgentButton } from "./test-agent";
+
 type StageResult =
   | { ok: true; data: AgentConfig }
   | { ok: false; error: string };
@@ -139,7 +143,23 @@ export function AgentEditor({
   return (
     <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
       <div className="grid gap-2">
-        <Label htmlFor="prompt">Prompt del agente</Label>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <Label htmlFor="prompt">Prompt del agente</Label>
+          <div className="flex items-center gap-2 flex-wrap">
+            <InsertPatternButton
+              vertical={active?.seed_template_ref ?? null}
+              onInsert={(body) =>
+                setPrompt((prev) => (prev ? `${prev}\n\n${body}` : body))
+              }
+            />
+            <TestAgentButton tenantId={tenantId} />
+            <ImprovePromptButton
+              tenantId={tenantId}
+              currentPrompt={prompt}
+              onApply={(improved) => setPrompt(improved)}
+            />
+          </div>
+        </div>
         <Textarea
           id="prompt"
           value={prompt}

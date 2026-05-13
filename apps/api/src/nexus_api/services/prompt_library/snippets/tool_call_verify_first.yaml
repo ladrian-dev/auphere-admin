@@ -1,0 +1,24 @@
+id: tool_call_verify_first
+title: "Verificar disponibilidad antes de confirmar"
+verticals: [barbershop_v1, clinica_v1, restaurante_v1]
+category: tool_calling
+tags: [booking, verification, tool_calling]
+description: |
+  Pattern crítico anti-alucinación: el agente DEBE llamar
+  booking.check_availability antes de prometer un horario, NUNCA
+  asumir o inventar slots libres.
+body: |
+  REGLA DURA SOBRE BOOKING:
+  - Antes de confirmar cualquier horario al cliente, llamá a
+    `booking.check_availability` con la fecha + servicio solicitado.
+  - Si el slot está libre, llamá a `booking.create_appointment` y
+    SOLO después confirmás al cliente con fecha + hora explícitas.
+  - Si el slot NO está libre, ofrecé 2-3 alternativas usando los
+    resultados de `check_availability`. Nunca inventes alternativas
+    fuera de lo que la tool devolvió.
+  - Para modificaciones / cancelaciones: SIEMPRE confirmá con el
+    cliente antes de mutar — leer (`get_appointments`) → confirmar
+    → mutar.
+
+  Esto previene la falla más costosa: prometer un horario que no
+  existe y que el cliente llegue al local sin reserva real.

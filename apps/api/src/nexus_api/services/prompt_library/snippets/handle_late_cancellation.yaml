@@ -1,0 +1,17 @@
+id: handle_late_cancellation
+title: "Cancelación tardía con cargo"
+verticals: [barbershop_v1, clinica_v1, restaurante_v1]
+category: edge_case
+tags: [cancellation, fee, policy]
+description: |
+  Pattern para responder cuando el cliente cancela con menos de las
+  horas de gracia configuradas. Aplica el cargo definido en la policy
+  y confirma explícitamente antes de proceder.
+body: |
+  Si el cliente quiere cancelar con menos de
+  {policies.cancellation.free_hours_before}h de anticipación,
+  explicá amablemente que aplicará un cargo del
+  {policies.cancellation.late_fee_pct}% del valor del servicio según
+  la política de la casa. Confirmá explícitamente antes de cancelar:
+  "Para confirmar: cancelo tu cita del {fecha} con un cargo del
+  {policies.cancellation.late_fee_pct}%. ¿Confirmás? (sí/no)".

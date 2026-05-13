@@ -2,7 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 
-import { backend, BackendError, type AgentConfig } from "@/lib/backend";
+import {
+  backend,
+  BackendError,
+  type AgentConfig,
+  type ImprovePromptMode,
+  type ImprovePromptOut,
+  type TestAgentHistoryMessage,
+  type TestTurnOut,
+} from "@/lib/backend";
 import { requireSession } from "@/lib/session";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -69,6 +77,47 @@ export async function rollbackAgentConfigAction(
     return { ok: false, error: pluck(err) };
   }
 }
+
+export async function improveAgentPromptAction(
+  tenantId: string,
+  body: {
+    prompt: string;
+    mode?: ImprovePromptMode;
+    feedback?: string | null;
+  },
+): Promise<Result<ImprovePromptOut>> {
+  await requireSession();
+  try {
+    const result = await backend.improveAgentPrompt(tenantId, body);
+    // We deliberately do NOT revalidatePath here: the improver returns
+    // text the operator may apply or discard. Re-render happens after
+    // the operator clicks "Aplicar" and saves a new draft via stage.
+    return { ok: true, data: result! };
+  } catch (err) {
+    return { ok: false, error: pluck(err) };
+  }
+}
+
+
+export async function testAgentTurnAction(
+  tenantId: string,
+  body: {
+    user_message: string;
+    history?: TestAgentHistoryMessage[];
+    version?: number;
+  },
+): Promise<Result<TestTurnOut>> {
+  await requireSession();
+  try {
+    const result = await backend.testAgentTurn(tenantId, body);
+    // The sandbox doesn't mutate any persistent state — no
+    // revalidatePath. Chat history lives in the dialog's local state.
+    return { ok: true, data: result! };
+  } catch (err) {
+    return { ok: false, error: pluck(err) };
+  }
+}
+
 
 export async function applySeedTemplateAction(
   tenantId: string,

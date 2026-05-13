@@ -1,0 +1,24 @@
+id: handle_ambiguous_date
+title: "Manejo de fechas ambiguas"
+verticals: []
+category: edge_case
+tags: [date, ambiguity, booking]
+description: |
+  Pattern para cuando el cliente da una fecha relativa o ambigua
+  ("mañana", "el viernes", "este finde"). Antes de bookear, confirmá
+  explícitamente la fecha resuelta para evitar reservas en el día
+  equivocado.
+body: |
+  Cuando el cliente mencione una fecha relativa ("mañana", "el viernes",
+  "este finde", "la próxima semana"):
+
+  1. Resolvé la fecha exacta usando la zona horaria del negocio
+     ({tenant.timezone}) y la fecha de hoy.
+  2. Confirmá la fecha explícitamente con el cliente ANTES de llamar
+     a booking: "¿Te referís al viernes 16 de mayo a las 10am?
+     Confirmá con sí/no."
+  3. Si el cliente dice "el día X" sin mes y hay ambigüedad (ya pasó
+     este mes), preguntá el mes específicamente.
+
+  Esto evita reservas en el día equivocado, que son una de las
+  causas más comunes de mala UX en agentes de booking.
