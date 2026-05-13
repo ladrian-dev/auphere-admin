@@ -108,6 +108,49 @@ class Settings(BaseSettings):
     improve_prompt_max_input_chars: int = 20_000
     improve_prompt_max_output_tokens: int = 4_000
 
+    # ── Block N: WhatsApp media + multimodal ────────────────────────────────
+    # S3 (or S3-compatible — Cloudflare R2, MinIO) for media storage. All
+    # inbound media (audio/image/document/video/sticker) goes into the bucket
+    # keyed by tenant + wamid + extension; outbound media is uploaded the
+    # same way before generating a presigned URL for YCloud to fetch.
+    media_s3_bucket: str = ""
+    media_s3_region: str = "us-east-1"
+    # When ``endpoint_url`` is set we hit a non-AWS endpoint (R2, MinIO).
+    media_s3_endpoint_url: str | None = None
+    media_s3_access_key_id: str = ""
+    media_s3_secret_access_key: str = ""
+    media_s3_presign_ttl_seconds: int = 300  # 5 min — enough for Meta to fetch
+    # If true, attempt server-side encryption (SSE-S3). Cloudflare R2 ignores
+    # this header; AWS S3 and MinIO honour it.
+    media_s3_sse_enabled: bool = True
+    # Inbound media size cap (MB). Anything larger we skip the download and
+    # park the message as ``failed:media_too_large`` so we never blow memory.
+    media_max_size_mb: int = 64
+
+    # Multimodal LLM providers — separate from the conversational LLM
+    # because Whisper (audio) and a vision-capable model (image / document)
+    # may bill differently. All run through the LiteLLM gateway so the
+    # interface is the same.
+    llm_transcribe_model: str = "openai/whisper-1"
+    llm_vision_model: str = "anthropic/claude-sonnet-4-6"
+    # Per-turn timeouts. The pipeline awaits these in parallel for a single
+    # multimodal turn so the worst case is the slowest leg.
+    llm_transcribe_timeout_s: float = 25.0
+    llm_vision_timeout_s: float = 25.0
+
+    @property
+    def media_s3_enabled(self) -> bool:
+        """True when enough creds are present to upload to S3. In dev with
+        no S3 configured the platform stores media inline as base64 in
+        ``messages.media_transcript`` for unit-test convenience."""
+        return bool(
+            self.media_s3_bucket
+            and (
+                self.media_s3_endpoint_url
+                or (self.media_s3_access_key_id and self.media_s3_secret_access_key)
+            )
+        )
+
     @property
     def is_prod(self) -> bool:
         return self.environment.lower() in {"prod", "production"}

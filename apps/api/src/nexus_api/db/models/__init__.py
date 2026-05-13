@@ -22,9 +22,12 @@ from nexus_api.db.models.conversation import (
     Conversation,
     ConversationStatus,
     Customer,
+    MediaKind,
     Message,
     MessageDirection,
     MessageStatus,
+    WhatsAppOptOut,
+    WhatsAppTemplateStatus,
 )
 from nexus_api.db.models.daily_cost_snapshot import DailyCostSnapshot
 from nexus_api.db.models.evals import (
@@ -90,6 +93,7 @@ __all__ = [
     "KGEdge",
     "KGNode",
     "KGSchema",
+    "MediaKind",
     "Message",
     "MessageDirection",
     "MessageStatus",
@@ -112,4 +116,6 @@ __all__ = [
     "ToolCatalog",
     "ToolStatus",
     "UsageEvent",
+    "WhatsAppOptOut",
+    "WhatsAppTemplateStatus",
 ]

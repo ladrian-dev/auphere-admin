@@ -89,7 +89,24 @@ async def persist_inbound_message(
     content: str,
     intent: str | None = None,
     trace_id: str | None = None,
+    provider_message_id: str | None = None,
+    media_kind: str | None = None,
+    media_s3_key: str | None = None,
+    media_mime: str | None = None,
+    media_size_bytes: int | None = None,
+    media_filename: str | None = None,
+    reaction_emoji: str | None = None,
+    reaction_target_wamid: str | None = None,
+    context_message_id: str | None = None,
 ) -> Message:
+    """Persist a customer-side message.
+
+    Block N: additionally captures the WhatsApp-native fields
+    propagated by the inbound webhook (wamid, media handle, reaction
+    target, quoted context). The wamid is the durable dedupe key — the
+    UNIQUE partial index on ``messages.provider_message_id`` protects
+    against accidental re-ingestion downstream of the consumer.
+    """
     require_current_tenant()
     msg = Message(
         tenant_id=require_current_tenant(),
@@ -99,6 +116,19 @@ async def persist_inbound_message(
         intent=intent,
         trace_id=trace_id,
         tool_calls=[],
+        provider_message_id=provider_message_id,
+        media_kind=media_kind,
+        media_s3_key=media_s3_key,
+        media_mime=media_mime,
+        media_size_bytes=media_size_bytes,
+        media_filename=media_filename,
+        reaction_emoji=reaction_emoji,
+        reaction_target_wamid=reaction_target_wamid,
+        context_message_id=context_message_id,
+        # Inbound messages don't carry a SENT/PENDING semantic — the
+        # historical default of ``SENT`` works because the operator panel
+        # only ever cares about "did the agent reply yet". Leave it.
+        status=MessageStatus.SENT,
     )
     session.add(msg)
     await session.flush()

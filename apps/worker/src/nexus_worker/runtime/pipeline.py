@@ -123,6 +123,24 @@ _INTENT_CATEGORIES: dict[str, tuple[str, ...]] = {
 }
 
 
+# Notification tools usable from any intent. Phase 1 lets the booking /
+# queue / info / escalate handlers send native WhatsApp output (image of
+# a price list, audio reply, location pin, reaction). The whitelist
+# filtering inside each handler still applies — these names only become
+# available when the operator explicitly whitelists them on the tenant's
+# agent_config.
+_NATIVE_OUTPUT_TOOLS: tuple[str, ...] = (
+    "notification.send_image",
+    "notification.send_audio",
+    "notification.send_video",
+    "notification.send_document",
+    "notification.send_location",
+    "notification.send_reaction",
+)
+for _intent in ("book", "queue", "info"):
+    _INTENT_CATEGORIES[_intent] = _INTENT_CATEGORIES[_intent] + _NATIVE_OUTPUT_TOOLS
+
+
 def _tenant_uuid(state: AgentState) -> uuid.UUID:
     return uuid.UUID(state["tenant_id"])
 
@@ -131,6 +149,102 @@ def _filter_tools_for_intent(bundle: AgentBundle, intent: str) -> tuple[str, ...
     category = _INTENT_CATEGORIES.get(intent, ())
     wl = bundle.tools
     return tuple(t for t in category if t in wl)
+
+
+def _filter_tools_for_intent_with_composio(
+    bundle: AgentBundle, intent: str
+) -> tuple[str, ...]:
+    """Like :func:`_filter_tools_for_intent` but additionally surfaces
+    Composio-backed tools from the whitelist that are not in the static
+    category map.
+
+    Composio tools are namespaced by toolkit (``googlecalendar.create_event``,
+    ``calendly.list_events``, ``notion.create_page``). We map them onto
+    intent buckets by toolkit slug:
+
+    - ``googlecalendar.*`` / ``calendly.*``  → ``book`` + ``info`` (scheduling)
+    - ``notion.*`` / ``googledrive.*`` / ``googlesheets.*`` → ``info``
+    - ``gmail.*``                            → ``escalate`` (operator email)
+
+    Tools whose slug doesn't match a known prefix default to ``info``
+    so the LLM can at least call them in a Q&A context.
+    """
+    base = _filter_tools_for_intent(bundle, intent)
+    base_set = set(base)
+    extras: list[str] = []
+    for t in bundle.tools:
+        if t in base_set:
+            continue
+        if "." not in t:
+            continue
+        toolkit, _action = t.split(".", 1)
+        if toolkit in {"googlecalendar", "calendly"} and intent in {"book", "info"}:
+            extras.append(t)
+        elif toolkit in {"notion", "googledrive", "googlesheets"} and intent == "info":
+            extras.append(t)
+        elif toolkit == "gmail" and intent == "escalate":
+            extras.append(t)
+        elif intent == "info":
+            # Permissive: any other Composio tool defaults to info so the
+            # operator can wire up new connectors without code changes.
+            if toolkit not in {
+                "booking",
+                "queue",
+                "client",
+                "commission",
+                "escalate",
+                "notification",
+                "operator",
+                "agendapro",
+            }:
+                extras.append(t)
+    return base + tuple(extras)
+
+
+async def _view_with_composio(
+    *,
+    registry: MCPRegistry,
+    tenant_id: uuid.UUID,
+    available_names: tuple[str, ...],
+) -> tuple[MCPRegistry, tuple[str, ...]]:
+    """Return a (registry view, allowed_names) pair that includes any
+    Composio-backed proxies for this tenant.
+
+    The returned MCPRegistry shares the global static tools but layers
+    per-turn proxies on top. ``available_names`` is unchanged when no
+    proxies exist — most turns hit zero Composio tools.
+    """
+    # Tools the static registry already knows; we only need to
+    # materialise proxies for the *missing* names.
+    static_names = set(registry.names())
+    candidates = tuple(n for n in available_names if n not in static_names)
+    if not candidates:
+        return registry, available_names
+
+    from nexus_mcp.servers.composio_proxy import (
+        build_composio_proxies_for_tenant,
+        load_blueprints_for_tenant,
+    )
+
+    blueprints = await load_blueprints_for_tenant(
+        tenant_id, whitelist=frozenset(candidates)
+    )
+    if not blueprints:
+        return registry, available_names
+
+    proxies = build_composio_proxies_for_tenant(blueprints)
+    # Materialise a fresh registry view: copy the static tools and add
+    # the per-turn proxies. Cheaper than a global registry mutation,
+    # which would race with concurrent turns of other tenants.
+    view = MCPRegistry()
+    for name in registry.names():
+        # Re-register the existing instance under the new view.
+        view._tools[name] = registry._tools[name]  # noqa: SLF001
+    for name in registry.internal_names():
+        view._internal_tools[name] = registry._internal_tools[name]  # noqa: SLF001
+    for proxy in proxies:
+        view._tools[proxy.name] = proxy  # noqa: SLF001
+    return view, available_names
 
 
 # ── Node factories ────────────────────────────────────────────────────────────
@@ -179,14 +293,27 @@ def make_handler_node(
     ``MCPRegistry.dispatch`` raises ``ToolNotInWhitelist`` and the node
     records a ``skipped:not_in_whitelist`` envelope without firing the
     side effects.
+
+    Block N: in addition to the static (in-process) tools we ask the
+    Composio runtime for any per-tenant proxies whose names are in the
+    whitelist ∩ category[intent]. The proxies are materialised once per
+    turn and merged into a tenant-scoped registry view via
+    :func:`_view_with_composio` so dispatch can find them.
     """
 
     async def handler(state: AgentState) -> dict[str, Any]:
         tenant_id = _tenant_uuid(state)
         with tenant_context(tenant_id):
             bundle: AgentBundle = await loader.load(tenant_id)
-            available_names = _filter_tools_for_intent(bundle, intent)
-            available_defs = registry.get_openai_tools(available_names)
+            available_names = _filter_tools_for_intent_with_composio(bundle, intent)
+            # The Composio proxies for the tools in ``available_names``.
+            # The view merges them with the global static registry.
+            scoped_registry, available_names = await _view_with_composio(
+                registry=registry,
+                tenant_id=tenant_id,
+                available_names=available_names,
+            )
+            available_defs = scoped_registry.get_openai_tools(available_names)
 
             # Empty intersection (e.g. fallback) → skip the LLM call and
             # leave tool_calls empty. The respond node will produce a
@@ -218,7 +345,7 @@ def make_handler_node(
             results: list[dict[str, Any]] = []
             for call in response.tool_calls:
                 try:
-                    envelope = await registry.dispatch(
+                    envelope = await scoped_registry.dispatch(
                         call.name,
                         dict(call.arguments),
                         whitelist=available_names,

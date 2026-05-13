@@ -20,6 +20,9 @@ class SendTemplateInput(InputModel):
         default_factory=dict,
         description="Template parameter map.",
     )
+    # Block N: optional language override for templates approved in
+    # multiple locales. Defaults to es (Auphere is LATAM).
+    language: str = Field(default="es", min_length=2, max_length=10)
 
 
 class SendTemplateOutput(OutputModel):
@@ -30,6 +33,10 @@ class SendTemplateOutput(OutputModel):
 class SendTextInput(InputModel):
     conversation_id: uuid.UUID
     body: str = Field(min_length=1, max_length=4096)
+    # Block N: optional wamid to quote. When set the recipient sees this
+    # text as a reply attached to the cited message bubble. Useful for
+    # booking confirmations that quote the original question.
+    context_message_id: str | None = Field(default=None, max_length=160)
 
 
 class SendTextOutput(OutputModel):
@@ -59,4 +66,97 @@ class CancelScheduledInput(InputModel):
 
 class CancelScheduledOutput(OutputModel):
     reminder_id: uuid.UUID
+    status: str
+
+
+# ── Block N: media + reaction + location schemas ────────────────────────────
+
+
+class SendImageInput(InputModel):
+    conversation_id: uuid.UUID
+    media_s3_key: str = Field(
+        min_length=1,
+        max_length=500,
+        description=(
+            "S3 key (within the platform's media bucket) of an image previously "
+            "uploaded via the operator's catalog or generated from a tool output. "
+            "The outbound dispatcher resolves this to a presigned URL the Cloud "
+            "API can fetch."
+        ),
+    )
+    caption: str | None = Field(default=None, max_length=1024)
+    context_message_id: str | None = Field(default=None, max_length=160)
+
+
+class SendImageOutput(OutputModel):
+    message_id: uuid.UUID
+    status: str
+
+
+class SendAudioInput(InputModel):
+    conversation_id: uuid.UUID
+    media_s3_key: str = Field(min_length=1, max_length=500)
+    context_message_id: str | None = Field(default=None, max_length=160)
+
+
+class SendAudioOutput(OutputModel):
+    message_id: uuid.UUID
+    status: str
+
+
+class SendVideoInput(InputModel):
+    conversation_id: uuid.UUID
+    media_s3_key: str = Field(min_length=1, max_length=500)
+    caption: str | None = Field(default=None, max_length=1024)
+    context_message_id: str | None = Field(default=None, max_length=160)
+
+
+class SendVideoOutput(OutputModel):
+    message_id: uuid.UUID
+    status: str
+
+
+class SendDocumentInput(InputModel):
+    conversation_id: uuid.UUID
+    media_s3_key: str = Field(min_length=1, max_length=500)
+    filename: str | None = Field(default=None, max_length=255)
+    caption: str | None = Field(default=None, max_length=1024)
+    context_message_id: str | None = Field(default=None, max_length=160)
+
+
+class SendDocumentOutput(OutputModel):
+    message_id: uuid.UUID
+    status: str
+
+
+class SendLocationInput(InputModel):
+    conversation_id: uuid.UUID
+    latitude: float
+    longitude: float
+    name: str | None = Field(default=None, max_length=255)
+    address: str | None = Field(default=None, max_length=500)
+    context_message_id: str | None = Field(default=None, max_length=160)
+
+
+class SendLocationOutput(OutputModel):
+    message_id: uuid.UUID
+    status: str
+
+
+class SendReactionInput(InputModel):
+    conversation_id: uuid.UUID
+    target_message_id: str = Field(
+        min_length=1,
+        max_length=160,
+        description="wamid of the message to react to. Required.",
+    )
+    emoji: str = Field(
+        default="",
+        max_length=20,
+        description="Single emoji. Empty string removes a previous reaction.",
+    )
+
+
+class SendReactionOutput(OutputModel):
+    message_id: uuid.UUID
     status: str

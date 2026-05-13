@@ -70,36 +70,16 @@ router = APIRouter()
 
 
 # ── Composio client provider (DI) ───────────────────────────────────────────
+#
+# The factory lives in ``services/connectors/runtime`` so the worker can
+# import it without pulling in the FastAPI admin module. Both code paths
+# share the same in-process singleton — flipping ``set_composio_client``
+# from a test affects every consumer.
 
-_composio_singleton: ComposioClientProtocol | None = None
-
-
-def get_composio_client() -> ComposioClientProtocol:
-    """Resolve the Composio client used by admin endpoints.
-
-    Production: ``LiveComposioClient`` if ``NEXUS_COMPOSIO_API_KEY`` is set.
-    Dev / tests: ``FakeComposioClient`` (the same instance across requests so
-    tests can wire it up once and assert on its call log).
-    """
-    global _composio_singleton
-    if _composio_singleton is not None:
-        return _composio_singleton
-    settings = get_settings()
-    if settings.composio_api_key:
-        _composio_singleton = LiveComposioClient(api_key=settings.composio_api_key)
-    else:
-        log.warning(
-            "composio.using_fake_client",
-            reason="NEXUS_COMPOSIO_API_KEY empty",
-        )
-        _composio_singleton = FakeComposioClient()
-    return _composio_singleton
-
-
-def set_composio_client_for_tests(client: ComposioClientProtocol | None) -> None:
-    """Test hook — override the singleton (call with None to reset)."""
-    global _composio_singleton
-    _composio_singleton = client
+from nexus_api.services.connectors.runtime import (  # noqa: E402
+    get_composio_client,
+    set_composio_client as set_composio_client_for_tests,
+)
 
 
 # ── shape ───────────────────────────────────────────────────────────────────

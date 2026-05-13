@@ -27,16 +27,24 @@ ChannelType = Literal["whatsapp", "instagram", "telegram", "email", "web"]
 
 
 class InboundMessageKind(str, enum.Enum):
-    """Normalised inbound shape. Phase 1 covers text + interactive replies.
+    """Normalised inbound shape.
 
-    Media (image/audio/video/document) is captured as ``UNSUPPORTED`` for now
-    — the adapter still parses ``from``/``to`` so the webhook can ack and the
-    pipeline can answer "puedo manejar texto pero no medios todavía". Phase 2
-    promotes media to first-class kinds when the use case shows up.
+    Migration 0019 promoted media types from ``UNSUPPORTED`` to first-class
+    kinds (the platform now downloads them to S3 and the multimodal pipeline
+    processes them). ``UNSUPPORTED`` is reserved for genuinely unknown
+    event types we can't or shouldn't translate.
     """
 
     TEXT = "text"
     INTERACTIVE = "interactive"
+    AUDIO = "audio"
+    IMAGE = "image"
+    DOCUMENT = "document"
+    VIDEO = "video"
+    STICKER = "sticker"
+    LOCATION = "location"
+    CONTACTS = "contacts"
+    REACTION = "reaction"
     UNSUPPORTED = "unsupported"
 
 
@@ -49,6 +57,46 @@ class InteractiveReply(BaseModel):
     payload_id: str
     title: str | None = None
     description: str | None = None
+
+
+class MediaReference(BaseModel):
+    """Reference to a media object on the upstream provider.
+
+    The webhook receives this from Cloud API as ``{id, mime_type, sha256,
+    caption?, filename?}``. The platform later resolves ``id`` to a
+    download URL (``YCloudClient.get_media_url``) and persists the bytes
+    to S3.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider_media_id: str = Field(min_length=1, max_length=255)
+    mime_type: str | None = None
+    sha256: str | None = None
+    caption: str | None = None
+    filename: str | None = None
+    voice: bool = False  # only meaningful for audio: distinguishes voice notes
+
+
+class LocationPayload(BaseModel):
+    """Inbound location pin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    latitude: float
+    longitude: float
+    name: str | None = None
+    address: str | None = None
+
+
+class ReactionPayload(BaseModel):
+    """Inbound reaction event. ``emoji`` may be empty when the user *removed*
+    a previously-set reaction (Cloud API behaviour)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_message_id: str
+    emoji: str = ""
 
 
 class InboundMessage(BaseModel):
@@ -78,6 +126,13 @@ class InboundMessage(BaseModel):
     sender_name: str | None = None
     text: str | None = None
     interactive: InteractiveReply | None = None
+    media: MediaReference | None = None
+    location: LocationPayload | None = None
+    reaction: ReactionPayload | None = None
+    # Quoted reply: when the customer cites a previous message, ``context_
+    # message_id`` is the wamid being cited. The pipeline can use it to
+    # ground the answer on the original turn.
+    context_message_id: str | None = None
     raw_event_type: str | None = None
     received_at: datetime
 
@@ -86,6 +141,7 @@ class SendStatus(str, enum.Enum):
     QUEUED = "queued"
     SENT = "sent"
     DELIVERED = "delivered"
+    READ = "read"
     FAILED = "failed"
 
 

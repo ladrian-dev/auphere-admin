@@ -26,6 +26,7 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Tenant, TenantStatus
 
+from nexus_worker.multimodal import ProcessedMedia, get_media_processor
 from nexus_worker.observability.tracing import trace_turn, update_trace
 from nexus_worker.persistence.messages import (
     persist_inbound_message,
@@ -53,6 +54,25 @@ class InboundEvent:
     content: str
     customer_name: str | None = None
     provider: str = "ycloud"
+    # Block N: native WhatsApp metadata propagated end-to-end so the
+    # persisted ``Message`` row carries the full picture (and the
+    # multimodal pipeline can pick the media handle without re-parsing
+    # the webhook payload).
+    kind: str = "text"
+    provider_message_id: str | None = None
+    media_kind: str | None = None
+    media_s3_key: str | None = None
+    media_mime: str | None = None
+    media_size_bytes: int | None = None
+    media_filename: str | None = None
+    media_sha256: str | None = None
+    reaction_emoji: str | None = None
+    reaction_target_wamid: str | None = None
+    context_message_id: str | None = None
+    location_latitude: float | None = None
+    location_longitude: float | None = None
+    location_name: str | None = None
+    location_address: str | None = None
 
 
 async def process_inbound(
@@ -61,6 +81,48 @@ async def process_inbound(
     pipeline: Any,
 ) -> dict[str, Any]:
     sm = get_sessionmaker()
+
+    # Block N: multimodal media processing. Run BEFORE persistence so
+    # the transcript / vision summary can be stored on the inbound
+    # message row alongside the S3 key. Failures are non-fatal — they
+    # populate ``processed.error`` and the pipeline still runs with
+    # the bare ``[media:...]`` prefix; the agent surfaces a "no pude
+    # leerlo" reply.
+    processed_media: ProcessedMedia | None = None
+    if event.media_kind and event.media_s3_key:
+        try:
+            processed_media = await get_media_processor().process(
+                s3_key=event.media_s3_key,
+                media_kind=event.media_kind,
+                mime_type=event.media_mime,
+                filename=event.media_filename,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "pipeline.media_processor.failed",
+                tenant_id=str(event.tenant_id),
+                media_kind=event.media_kind,
+                error=str(exc),
+            )
+
+    user_message = event.content
+    media_transcript: str | None = None
+    if processed_media is not None and processed_media.text:
+        media_transcript = processed_media.text
+        # Prepend a short header so the classifier can route on intent
+        # while preserving the prefix tag for the response node to log.
+        header = (
+            "[transcripción de audio]: "
+            if processed_media.kind in {"audio", "video"}
+            else "[descripción de imagen]: "
+            if processed_media.kind in {"image", "sticker"}
+            else "[texto del documento]: "
+        )
+        user_message = f"{event.content}\n{header}{processed_media.text}"
+    elif processed_media is not None and processed_media.error:
+        user_message = (
+            f"{event.content}\n[media-processing-error]: {processed_media.error}"
+        )
 
     # Phase 1: persist inbound side. Short transaction, then close.
     # The tenant.status lookup uses the same scoped session — Tenant is the
@@ -84,9 +146,32 @@ async def process_inbound(
         conversation = await upsert_conversation_for_customer(
             session, channel_id=event.channel_id, customer_id=customer.id
         )
+        # Touch ``conversations.last_inbound_at`` so the 24h window check
+        # in notification.send_text has a fresh reference. We update both
+        # the in-memory ORM attribute and persist.
+        from datetime import UTC as _UTC, datetime as _dt
+
+        conversation.last_inbound_at = _dt.now(_UTC)
         inbound_msg = await persist_inbound_message(
-            session, conversation_id=conversation.id, content=event.content
+            session,
+            conversation_id=conversation.id,
+            content=event.content,
+            provider_message_id=event.provider_message_id,
+            media_kind=event.media_kind,
+            media_s3_key=event.media_s3_key,
+            media_mime=event.media_mime,
+            media_size_bytes=event.media_size_bytes,
+            media_filename=event.media_filename,
+            reaction_emoji=event.reaction_emoji,
+            reaction_target_wamid=event.reaction_target_wamid,
+            context_message_id=event.context_message_id,
         )
+        # Persist the transcript / vision summary if we have one, so the
+        # operator panel and downstream analytics can see what the LLM
+        # actually read.
+        if media_transcript:
+            inbound_msg.media_transcript = media_transcript
+            await session.flush()
         customer_id = customer.id
         conversation_id = conversation.id
         inbound_id = inbound_msg.id
@@ -136,7 +221,12 @@ async def process_inbound(
         conversation_id=conversation_id,
         customer_id=customer_id,
         inbound_message_id=inbound_id,
-        user_message=event.content,
+        # Use the multimodal-enriched user_message so the classifier and
+        # the handler nodes see "[transcripción de audio]: hola quiero un
+        # turno" instead of just "[media:audio]". When the media is
+        # text-only or processing failed, ``user_message`` falls back to
+        # ``event.content`` upstream.
+        user_message=user_message,
     )
     thread_id = make_thread_id(event.tenant_id, event.channel_id, event.user_id)
     config = {"configurable": {"thread_id": thread_id}}

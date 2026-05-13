@@ -228,7 +228,15 @@ class WhatsAppVerifyOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     phone_number: str
-    phone_number_id: str
+    # ``phone_number_id`` may be empty when the operator paired only the
+    # WABA (YCloud's SMB onboarding doesn't always surface the phone_number_id
+    # in its UI; the platform falls back to the WABA-level listing endpoint
+    # and persists whatever id YCloud returns — empty if none). The webhook
+    # and outbound paths never use phone_number_id; tenant resolution is by
+    # ``provider_identifier`` (E.164). Keeping the field so the UI can show
+    # it when present and skip the field when not, without breaking older
+    # clients.
+    phone_number_id: str = ""
     waba_id: str
     display_name: str | None
     verified_name: str | None
@@ -239,14 +247,22 @@ class WhatsAppConnectManualIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     waba_id: str = Field(min_length=1, max_length=64)
-    phone_number_id: str = Field(min_length=1, max_length=64)
+    # Optional. Leave empty (or omit) when YCloud's UI doesn't expose the
+    # Meta phone_number_id under the SMB tier; the backend resolves the
+    # single phone registered under the WABA and stores whatever id YCloud
+    # surfaces (often empty). Outbound sends route by E.164 (the
+    # ``from`` field of ``sendDirectly`` is the business phone), so an
+    # empty phone_number_id is functional. Pattern mirrored from
+    # restaurant-ai's whatsapp-setup route.
+    phone_number_id: str = Field(default="", max_length=64)
 
 
 class WhatsAppConnectOut(BaseModel):
     status: str
     channel_id: uuid.UUID
     phone_number: str
-    phone_number_id: str
+    # Same rationale as WhatsAppVerifyOut.phone_number_id — may be empty.
+    phone_number_id: str = ""
     waba_id: str
     display_name: str | None
     verified_name: str | None
@@ -270,15 +286,23 @@ def _phone_info_to_summary(payload: dict[str, Any]) -> dict[str, Any]:
     YCloud's response shape mirrors Meta's GraphAPI; field names alternate
     between camelCase and snake_case across YCloud versions, so we accept
     both. The keys we surface to the wizard are: phone_number (E.164),
-    display_name, verified_name, quality_rating.
+    display_name, verified_name, quality_rating, and phone_number_id (when
+    YCloud chose to surface it — empty otherwise).
     """
     phone_number = (
         payload.get("phoneNumber")
         or payload.get("phone_number")
         or payload.get("display_phone_number")
     )
+    phone_number_id = (
+        payload.get("phoneNumberId")
+        or payload.get("phone_number_id")
+        or payload.get("id")
+        or ""
+    )
     return {
         "phone_number": phone_number,
+        "phone_number_id": str(phone_number_id) if phone_number_id else "",
         "display_name": payload.get("displayName") or payload.get("display_name"),
         "verified_name": payload.get("verifiedName") or payload.get("verified_name"),
         "quality_rating": payload.get("qualityRating") or payload.get("quality_rating"),
@@ -325,18 +349,25 @@ def _ycloud_error_to_http(exc: YCloudAPIError, *, context: str) -> HTTPException
 )
 async def verify_whatsapp(
     waba_id: str = Query(..., min_length=1, max_length=64),
-    phone_number_id: str = Query(..., min_length=1, max_length=64),
+    phone_number_id: str = Query(default="", max_length=64),
 ) -> WhatsAppVerifyOut:
-    """Dry-run probe of (waba_id, phone_number_id) against YCloud.
+    """Dry-run probe of the WABA against YCloud.
 
     The wizard calls this BEFORE the connect step so Lee sees a preview
     (E.164 + display_name + quality_rating) and can confirm. No DB writes.
+
+    When ``phone_number_id`` is omitted (empty string) the client falls
+    back to the WABA-level listing endpoint and resolves the single
+    registered phone — this matches the restaurant-ai project's pattern,
+    necessary because YCloud's SMB UI doesn't always expose the Meta
+    phone_number_id.
     """
     client = _build_ycloud_client()
     try:
         try:
             payload = await client.get_phone_number(
-                waba_id=waba_id, phone_number_id=phone_number_id
+                waba_id=waba_id,
+                phone_number_id=phone_number_id or None,
             )
         except YCloudAPIError as exc:
             raise _ycloud_error_to_http(exc, context="get_phone_number") from exc
@@ -348,9 +379,12 @@ async def verify_whatsapp(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="YCloud devolvió una respuesta sin phoneNumber — verificar IDs",
         )
+    # Prefer the id that came back from YCloud (canonical); fall back to
+    # whatever the operator typed, or empty.
+    resolved_phone_id = summary["phone_number_id"] or phone_number_id or ""
     return WhatsAppVerifyOut(
         phone_number=summary["phone_number"],
-        phone_number_id=phone_number_id,
+        phone_number_id=resolved_phone_id,
         waba_id=waba_id,
         display_name=summary["display_name"],
         verified_name=summary["verified_name"],
@@ -378,7 +412,8 @@ async def connect_whatsapp_manual(
     try:
         try:
             payload = await client.get_phone_number(
-                waba_id=body.waba_id, phone_number_id=body.phone_number_id
+                waba_id=body.waba_id,
+                phone_number_id=body.phone_number_id or None,
             )
         except YCloudAPIError as exc:
             raise _ycloud_error_to_http(exc, context="get_phone_number") from exc
@@ -392,6 +427,9 @@ async def connect_whatsapp_manual(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="YCloud devolvió una respuesta sin phoneNumber — verificar IDs",
         )
+    # Resolve the canonical phone_number_id: prefer what YCloud returned;
+    # otherwise persist whatever the operator pasted (may be empty).
+    resolved_phone_id = summary["phone_number_id"] or body.phone_number_id or ""
 
     # Look for an existing whatsapp Channel under THIS tenant. If present,
     # update in place (idempotent re-connect of the same number). If a
@@ -403,7 +441,7 @@ async def connect_whatsapp_manual(
 
     config_payload = {
         "waba_id": body.waba_id,
-        "phone_number_id": body.phone_number_id,
+        "phone_number_id": resolved_phone_id,
         "display_name": summary["display_name"],
         "verified_name": summary["verified_name"],
         "quality_rating": summary["quality_rating"],
@@ -465,7 +503,7 @@ async def connect_whatsapp_manual(
         status="connected",
         channel_id=channel.id,
         phone_number=phone_number,
-        phone_number_id=body.phone_number_id,
+        phone_number_id=resolved_phone_id,
         waba_id=body.waba_id,
         display_name=summary["display_name"],
         verified_name=summary["verified_name"],

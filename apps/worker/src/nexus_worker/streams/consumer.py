@@ -45,6 +45,14 @@ def _decode_fields(raw: dict[bytes | str, bytes | str]) -> dict[str, str]:
 
 
 def _to_event(fields: dict[str, str]) -> InboundEvent:
+    def _opt_int(name: str) -> int | None:
+        value = fields.get(name)
+        return int(value) if value is not None and value != "" else None
+
+    def _opt_float(name: str) -> float | None:
+        value = fields.get(name)
+        return float(value) if value is not None and value != "" else None
+
     return InboundEvent(
         tenant_id=uuid.UUID(fields["tenant_id"]),
         channel_id=uuid.UUID(fields["channel_id"]),
@@ -52,6 +60,21 @@ def _to_event(fields: dict[str, str]) -> InboundEvent:
         content=fields["content"],
         customer_name=fields.get("customer_name"),
         provider=fields.get("provider", "ycloud"),
+        kind=fields.get("kind", "text"),
+        provider_message_id=fields.get("provider_message_id"),
+        media_kind=fields.get("media_kind"),
+        media_s3_key=fields.get("media_s3_key"),
+        media_mime=fields.get("media_mime"),
+        media_size_bytes=_opt_int("media_size_bytes"),
+        media_filename=fields.get("media_filename"),
+        media_sha256=fields.get("media_sha256"),
+        reaction_emoji=fields.get("reaction_emoji"),
+        reaction_target_wamid=fields.get("reaction_target_wamid"),
+        context_message_id=fields.get("context_message_id"),
+        location_latitude=_opt_float("location_latitude"),
+        location_longitude=_opt_float("location_longitude"),
+        location_name=fields.get("location_name"),
+        location_address=fields.get("location_address"),
     )
 
 

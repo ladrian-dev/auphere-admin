@@ -14,6 +14,9 @@ from nexus_channels.base import (
     InboundMessage,
     InboundMessageKind,
     InteractiveReply,
+    LocationPayload,
+    MediaReference,
+    ReactionPayload,
     SendResult,
     SendStatus,
 )
@@ -23,6 +26,9 @@ __all__ = [
     "InboundMessage",
     "InboundMessageKind",
     "InteractiveReply",
+    "LocationPayload",
+    "MediaReference",
+    "ReactionPayload",
     "SendResult",
     "SendStatus",
 ]

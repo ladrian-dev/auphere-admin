@@ -49,6 +49,7 @@ from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
 from nexus_worker.streams.operator_alerts import run_operator_alerter
 from nexus_worker.streams.outbound import run_outbound_dispatcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
+from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
 
 configure_logging()
 
@@ -155,6 +156,11 @@ async def _amain() -> None:
             ),
             name="isolation-watcher",
         )
+        # Block N: WhatsApp WABA health (quality_rating + display_name).
+        whatsapp_health_task = asyncio.create_task(
+            run_whatsapp_health_cron(stop=stop),
+            name="whatsapp-health-cron",
+        )
         try:
             await asyncio.gather(
                 consumer_task,
@@ -167,6 +173,7 @@ async def _amain() -> None:
                 no_show_task,
                 cost_rollup_task,
                 isolation_watcher_task,
+                whatsapp_health_task,
             )
         finally:
             await ycloud_client.close()

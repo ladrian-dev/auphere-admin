@@ -122,21 +122,127 @@ def test_parse_list_reply():
     assert msg.interactive.description == "Luis"
 
 
-def test_unsupported_media_kind_marked_unsupported():
+def test_parse_audio_message_promoted_from_unsupported():
+    """Block N promoted media to first-class kinds. Audio now carries a
+    ``MediaReference`` and the kind is AUDIO (was UNSUPPORTED in Block F)."""
     payload = _envelope(
         {
             "to": "+5693",
             "from": "+5691",
             "wamid": "w1",
             "type": "audio",
-            "audio": {"id": "media_1", "link": "https://..."},
+            "audio": {
+                "id": "media_1",
+                "mime_type": "audio/ogg; codecs=opus",
+                "sha256": "abc",
+                "voice": True,
+            },
         }
     )
     msg = parse_inbound(payload)
     assert msg is not None
-    assert msg.kind is InboundMessageKind.UNSUPPORTED
-    assert msg.text is None
-    assert msg.interactive is None
+    assert msg.kind is InboundMessageKind.AUDIO
+    assert msg.media is not None
+    assert msg.media.provider_media_id == "media_1"
+    assert msg.media.mime_type and msg.media.mime_type.startswith("audio/ogg")
+    assert msg.media.voice is True
+
+
+def test_parse_image_with_caption_surfaces_text():
+    payload = _envelope(
+        {
+            "to": "+5693",
+            "from": "+5691",
+            "wamid": "w1",
+            "type": "image",
+            "image": {
+                "id": "img_1",
+                "mime_type": "image/jpeg",
+                "caption": "este corte por favor",
+            },
+        }
+    )
+    msg = parse_inbound(payload)
+    assert msg is not None
+    assert msg.kind is InboundMessageKind.IMAGE
+    assert msg.media is not None
+    assert msg.media.provider_media_id == "img_1"
+    # Caption is also surfaced in ``text`` so the classifier can route
+    # even if the multimodal pipeline can't process the image.
+    assert msg.text == "este corte por favor"
+
+
+def test_parse_reaction():
+    payload = _envelope(
+        {
+            "to": "+5693",
+            "from": "+5691",
+            "wamid": "w1",
+            "type": "reaction",
+            "reaction": {"message_id": "wamid.target", "emoji": "👍"},
+        }
+    )
+    msg = parse_inbound(payload)
+    assert msg is not None
+    assert msg.kind is InboundMessageKind.REACTION
+    assert msg.reaction is not None
+    assert msg.reaction.target_message_id == "wamid.target"
+    assert msg.reaction.emoji == "👍"
+
+
+def test_parse_reaction_removal_empty_emoji():
+    payload = _envelope(
+        {
+            "to": "+5693",
+            "from": "+5691",
+            "wamid": "w1",
+            "type": "reaction",
+            "reaction": {"message_id": "wamid.target", "emoji": ""},
+        }
+    )
+    msg = parse_inbound(payload)
+    assert msg is not None
+    assert msg.reaction is not None
+    assert msg.reaction.emoji == ""
+
+
+def test_parse_location():
+    payload = _envelope(
+        {
+            "to": "+5693",
+            "from": "+5691",
+            "wamid": "w1",
+            "type": "location",
+            "location": {
+                "latitude": -33.45,
+                "longitude": -70.66,
+                "name": "Cultor",
+                "address": "Av. Providencia 123",
+            },
+        }
+    )
+    msg = parse_inbound(payload)
+    assert msg is not None
+    assert msg.kind is InboundMessageKind.LOCATION
+    assert msg.location is not None
+    assert msg.location.latitude == -33.45
+    assert msg.location.address == "Av. Providencia 123"
+
+
+def test_parse_quoted_reply_context():
+    payload = _envelope(
+        {
+            "to": "+5693",
+            "from": "+5691",
+            "wamid": "w1",
+            "type": "text",
+            "text": {"body": "sí ese mismo"},
+            "context": {"id": "wamid.prev", "from": "+5693"},
+        }
+    )
+    msg = parse_inbound(payload)
+    assert msg is not None
+    assert msg.context_message_id == "wamid.prev"
 
 
 def test_status_callback_returns_none():
