@@ -62,6 +62,13 @@ DEFAULT_TICK_SECONDS = 5.0
 MAX_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = (15, 60, 180)  # per attempt index
 
+# When the cron detects that the ``scheduled_job_kind`` enum doesn't
+# yet carry the ``async_booking`` value (migration 0022 not applied on
+# this DB) we back off to this longer interval and log only once per
+# process. This keeps the worker logs readable during the window
+# between code-deploy and migration-apply.
+SCHEMA_DESYNC_BACKOFF_SECONDS = 60.0
+
 ACTOR = "system:async_booking_cron"
 
 # Template names used at the boundary of this cron. Both must exist as
@@ -77,19 +84,69 @@ async def run_async_booking_cron(
     stop: asyncio.Event,
     tick_seconds: float = DEFAULT_TICK_SECONDS,
 ) -> None:
-    """Background task. One pass per tick_seconds."""
+    """Background task. One pass per tick_seconds.
+
+    Tolerant of the ``async_booking`` enum value missing from the DB —
+    that means migration 0022 hasn't been applied yet. In that case
+    the cron logs a single warning, backs off to ``SCHEMA_DESYNC_BACKOFF_
+    SECONDS`` and stops polluting the log with stack traces until the
+    migration lands.
+    """
     log.info("async_booking_cron.start", tick_seconds=tick_seconds)
     sm = get_sessionmaker()
+    schema_warning_logged = False
     while not stop.is_set():
+        tick_for_this_iteration = tick_seconds
         try:
             await _process_pending(sm)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
-            log.error("async_booking_cron.tick_failed", error=str(exc))
+            if _is_async_booking_enum_missing(exc):
+                if not schema_warning_logged:
+                    log.warning(
+                        "async_booking_cron.schema_desync",
+                        hint=(
+                            "scheduled_job_kind enum is missing 'async_booking' "
+                            "— run `alembic upgrade head` on the DB. Cron will "
+                            "back off until the migration is applied."
+                        ),
+                    )
+                    schema_warning_logged = True
+                tick_for_this_iteration = SCHEMA_DESYNC_BACKOFF_SECONDS
+            else:
+                log.error("async_booking_cron.tick_failed", error=str(exc))
+        else:
+            # Successful pass — re-arm the warning so a *second* episode
+            # of desync (e.g. failover to an older replica) would log
+            # again instead of staying silent.
+            schema_warning_logged = False
         with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(stop.wait(), timeout=tick_seconds)
+            await asyncio.wait_for(stop.wait(), timeout=tick_for_this_iteration)
     log.info("async_booking_cron.stopped")
+
+
+def _is_async_booking_enum_missing(exc: BaseException) -> bool:
+    """True when the error chain carries the postgres
+    ``InvalidTextRepresentationError`` for the async_booking enum value.
+
+    SQLAlchemy wraps the asyncpg exception in a DBAPI error; we walk
+    the cause chain. Matching on the message keeps the check robust
+    across asyncpg / psycopg / psycopg2 drivers in case the worker
+    ever swaps.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        message = str(current).lower()
+        if (
+            "invalid input value for enum scheduled_job_kind" in message
+            and "async_booking" in message
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 async def _process_pending(sm: sa.orm.sessionmaker) -> None:  # type: ignore[type-arg]
