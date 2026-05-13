@@ -81,7 +81,7 @@ class WhatsAppYCloudAdapter:
         recipient: str,
         template_name: str,
         language: str,
-        body_params: list[str],
+        body_params: list[str] | dict[str, str],
         tenant_id: uuid.UUID,
         channel_id: uuid.UUID,
         header_params: list[str] | None = None,

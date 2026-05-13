@@ -95,10 +95,25 @@ class YCloudClient:
         to: str,
         template_name: str,
         language: str,
-        body_params: list[str],
+        body_params: list[str] | dict[str, str],
         header_params: list[str] | None = None,
         button_params: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
+        """Send a template message.
+
+        ``body_params`` accepts two shapes:
+
+        - ``list[str]`` — positional. Renders as ``[{"type": "text",
+          "text": v}, ...]`` and binds in template order ({{1}}, {{2}}, ...).
+          Used by the legacy ``alert_*`` and ``no_show_followup`` templates.
+        - ``dict[str, str]`` — named. Each entry renders as ``{"type":
+          "text", "parameter_name": k, "text": v}``. WhatsApp Cloud API
+          v18+ binds by name, which is the shape YCloud's template editor
+          generates by default. Used by the Auphere ↔ Owner backchannel
+          templates (ADR-018).
+
+        Mixing both is not supported — pass exactly one shape.
+        """
         components: list[dict[str, Any]] = []
         if header_params:
             components.append(
@@ -107,10 +122,17 @@ class YCloudClient:
                     "parameters": [{"type": "text", "text": p} for p in header_params],
                 }
             )
+        body_parameters: list[dict[str, Any]]
+        if isinstance(body_params, dict):
+            body_parameters = [
+                {"type": "text", "parameter_name": k, "text": v} for k, v in body_params.items()
+            ]
+        else:
+            body_parameters = [{"type": "text", "text": p} for p in body_params]
         components.append(
             {
                 "type": "body",
-                "parameters": [{"type": "text", "text": p} for p in body_params],
+                "parameters": body_parameters,
             }
         )
         if button_params:

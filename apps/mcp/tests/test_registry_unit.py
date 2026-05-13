@@ -10,11 +10,13 @@ from nexus_mcp.registry import reset_default_registry
 pytestmark = [pytest.mark.unit]
 
 
-def test_default_registry_has_all_21_block_d_tools():
+def test_default_registry_has_all_22_block_d_tools():
+    """21 Block-D tools + ``operator.consult_owner`` from ADR-018 = 22."""
     reset_default_registry()
     reg = build_default_registry()
     names = set(reg.names())
-    assert len(names) == 21
+    assert len(names) == 22
+    assert "operator.consult_owner" in names
 
     # Spot check namespaces.
     assert any(n.startswith("booking.") for n in names)
@@ -23,6 +25,7 @@ def test_default_registry_has_all_21_block_d_tools():
     assert any(n.startswith("notification.") for n in names)
     assert any(n.startswith("commission.") for n in names)
     assert any(n.startswith("escalate.") for n in names)
+    assert any(n.startswith("operator.") for n in names)
 
 
 def test_get_tool_definitions_filters_to_whitelist():

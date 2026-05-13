@@ -17,8 +17,9 @@ async def test_list_seeds_present(db_session):
 async def test_list_count(db_session):
     repo = ToolCatalogRepository(db_session)
     items = await repo.list_all()
-    # 21 active tools seeded in migration 0003.
-    assert len(items) == 21
+    # 21 active tools seeded in migration 0003 + operator.consult_owner
+    # seeded in migration 0018 (ADR-018).
+    assert len(items) == 22
 
 
 async def test_get_by_name(db_session):

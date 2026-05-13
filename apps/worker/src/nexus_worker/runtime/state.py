@@ -28,6 +28,13 @@ class AgentState(TypedDict, total=False):
     # Inbound payload
     user_message: str
 
+    # ADR-018 fanout — when the turn is triggered by an owner response
+    # (not a new customer message), the fanout passes a synthetic note
+    # describing what the owner said. The classify + handler + respond
+    # nodes prepend this to the system prompt so the agent can act on
+    # the new information. None / empty on normal customer turns.
+    system_addendum: str
+
     # Filled by classify
     intent: str
     route: str
@@ -52,6 +59,7 @@ def new_state(
     customer_id: uuid.UUID,
     inbound_message_id: uuid.UUID,
     user_message: str,
+    system_addendum: str | None = None,
 ) -> AgentState:
     return {
         "tenant_id": str(tenant_id),
@@ -61,6 +69,7 @@ def new_state(
         "customer_id": str(customer_id),
         "inbound_message_id": str(inbound_message_id),
         "user_message": user_message,
+        "system_addendum": system_addendum or "",
         "tool_calls": [],
         "meta": {},
     }

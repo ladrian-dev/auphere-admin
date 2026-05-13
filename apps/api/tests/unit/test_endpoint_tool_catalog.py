@@ -11,7 +11,10 @@ async def test_list_returns_seeded_catalog(client, admin_headers):
     names = {t["name"] for t in body}
     assert "booking.check_availability" in names
     assert "queue.join_queue" in names
-    assert len(body) == 21
+    # Migration 0018 added ``operator.consult_owner`` (ADR-018) bringing
+    # the seed catalog to 22 LLM-facing tools.
+    assert "operator.consult_owner" in names
+    assert len(body) == 22
 
 
 async def test_each_tool_has_mcp_server(client, admin_headers):

@@ -41,6 +41,14 @@ from nexus_api.db.models.operator_notification import (
     OperatorNotification,
     OperatorNotificationStatus,
 )
+from nexus_api.db.models.owner_backchannel import (
+    OWNER_COMMAND_KINDS,
+    OWNER_CONSULTATION_EXPECTED_REPLY_KINDS,
+    OWNER_CONSULTATION_STATUSES,
+    OWNER_CONSULTATION_URGENCIES,
+    OwnerConsultation,
+    OwnerPhoneIndex,
+)
 from nexus_api.db.models.queue_entry import QueueEntry, QueueEntryStatus
 from nexus_api.db.models.scheduled_job import (
     ScheduledJob,
@@ -52,6 +60,10 @@ from nexus_api.db.models.tool import ToolCatalog, ToolStatus
 from nexus_api.db.models.usage import UsageEvent
 
 __all__ = [
+    "OWNER_COMMAND_KINDS",
+    "OWNER_CONSULTATION_EXPECTED_REPLY_KINDS",
+    "OWNER_CONSULTATION_STATUSES",
+    "OWNER_CONSULTATION_URGENCIES",
     "AgentConfig",
     "AgentConfigStatus",
     "Appointment",
@@ -83,6 +95,8 @@ __all__ = [
     "MessageStatus",
     "OperatorNotification",
     "OperatorNotificationStatus",
+    "OwnerConsultation",
+    "OwnerPhoneIndex",
     "QueueEntry",
     "QueueEntryStatus",
     "ScheduledJob",

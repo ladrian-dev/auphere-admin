@@ -53,6 +53,21 @@ class Settings(BaseSettings):
     # is Lee. Templates for the tenant owner override this when present.
     operator_fallback_phone: str | None = None
 
+    # Owner backchannel (ADR-018 / architecture/owner-backchannel.md).
+    # ``auphere_owner_phone`` is the E.164 of the Auphere multi-tenant
+    # number used to talk to ALL owners. Inbound webhooks from this number
+    # route through ``/webhooks/ycloud/owner-channel``; outbound template
+    # sends use this as ``from_phone``. ``auphere_owner_number_id`` is the
+    # YCloud phone_number_id reserved for the same number — kept separate
+    # because some YCloud endpoints take the id rather than the E.164.
+    # ``auphere_owner_webhook_secret`` lets the owner-channel webhook have
+    # its own signing secret distinct from the tenant business numbers
+    # (operationally we may reuse ``ycloud_webhook_secret`` if the BSP
+    # signs all events with the same secret).
+    auphere_owner_phone: str | None = None
+    auphere_owner_number_id: str | None = None
+    auphere_owner_webhook_secret: str | None = None
+
     # Fernet key for tenant_credentials.encrypted_payload. Must be a urlsafe-base64
     # 32-byte key. Generate one with `python -c 'from cryptography.fernet import Fernet;
     # print(Fernet.generate_key().decode())'`. The default below is for tests/dev only.

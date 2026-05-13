@@ -85,6 +85,20 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         default=True,
         server_default="true",
     )
+    # Migration 0018 — owner backchannel. ``awaiting_owner_response`` is a
+    # persistent flag so that the pipeline knows a customer turn is paused
+    # on an owner reply even after a worker restart between the
+    # ``operator.consult_owner`` call and the owner's WhatsApp response.
+    awaiting_owner_response: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    awaiting_owner_correlation_id: Mapped[str | None] = mapped_column(
+        String(40),
+        nullable=True,
+    )
 
 
 class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):

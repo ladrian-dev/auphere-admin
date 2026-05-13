@@ -4,7 +4,7 @@ import enum
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Numeric, String
+from sqlalchemy import Boolean, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -61,6 +61,48 @@ class Tenant(UUIDPrimaryKey, TimestampMixin, Base):
         nullable=False,
         default=False,
         server_default="false",
+    )
+
+    # Migration 0018 — owner backchannel. When ``backchannel_enabled`` is
+    # false, ``operator.consult_owner`` refuses and the agent must fall
+    # back to ``escalate.escalate_to_human``. SLA minutes drive the
+    # timeout-sweep cron; offline_pause_after_timeouts is reserved for
+    # Phase 2 (auto-pause on N consecutive timeouts).
+    backchannel_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    backchannel_max_consultations_per_hour: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=5,
+        server_default="5",
+    )
+    backchannel_offline_pause_after_timeouts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=3,
+        server_default="3",
+    )
+    backchannel_sla_high_min: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=30,
+        server_default="30",
+    )
+    backchannel_sla_normal_min: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=240,
+        server_default="240",
+    )
+    backchannel_sla_low_min: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1440,
+        server_default="1440",
     )
 
     def __repr__(self) -> str:

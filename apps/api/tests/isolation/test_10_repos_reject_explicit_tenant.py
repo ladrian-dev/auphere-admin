@@ -20,10 +20,13 @@ from nexus_api import repositories
 pytestmark = [pytest.mark.isolation]
 
 
-# TenantRepository is the one repository that crosses tenants by design — the
-# admin endpoints list/get tenants. Every OTHER repository is tenant-scoped and
-# must derive tenant_id from the contextvar / SET LOCAL.
-GLOBAL_REPOS = {"TenantRepository"}
+# TenantRepository crosses tenants by design — the admin endpoints
+# list/get tenants. OwnerPhoneIndexRepository is the discovery layer the
+# inbound owner-channel webhook uses BEFORE the tenant is known
+# (architecture/owner-backchannel.md §3.2). Both legitimately take
+# tenant_id as input. Every OTHER repository is tenant-scoped and must
+# derive tenant_id from the contextvar / SET LOCAL.
+GLOBAL_REPOS = {"TenantRepository", "OwnerPhoneIndexRepository"}
 
 
 def test_no_scoped_repo_takes_tenant_id_argument():

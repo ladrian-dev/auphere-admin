@@ -275,6 +275,11 @@ _TRUNCATE_TABLES = (
     "isolation_events",
     "daily_cost_snapshots",
     "operator_notifications",
+    # Migration 0018 — owner backchannel. ``owner_consultations`` FKs
+    # ``conversations`` (CASCADE) so must clear before it; ``owner_phone_index``
+    # FKs ``tenants`` (CASCADE) so must clear before tenants.
+    "owner_consultations",
+    "owner_phone_index",
     "audit_log",
     "usage_events",
     "scheduled_jobs",

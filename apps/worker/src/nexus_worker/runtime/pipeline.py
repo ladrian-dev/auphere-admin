@@ -88,6 +88,11 @@ _INTENT_CATEGORIES: dict[str, tuple[str, ...]] = {
         "client.get_preferences",
         "client.update_preferences",
         "client.get_history",
+        # ADR-018 — the booking flow on connectors like agendapro_public
+        # can't act on cancel / modify without owner approval. The agent
+        # consults the owner from this category so the customer sees an
+        # immediate ack while the owner answers asynchronously.
+        "operator.consult_owner",
     ),
     "queue": (
         "queue.join_queue",
@@ -97,17 +102,22 @@ _INTENT_CATEGORIES: dict[str, tuple[str, ...]] = {
         "queue.remove_from_queue",
         "client.get_preferences",
         "client.get_history",
+        "operator.consult_owner",
     ),
     "info": (
         "client.get_preferences",
         "client.get_history",
         "booking.get_appointments",
         "commission.get_daily_report",
+        # Info questions outside the catalog (custom prices, off-menu
+        # services) ask the owner rather than hallucinating.
+        "operator.consult_owner",
     ),
     "escalate": (
         "escalate.escalate_to_human",
         "notification.send_template",
         "notification.send_text",
+        "operator.consult_owner",
     ),
     "fallback": (),
 }
@@ -184,7 +194,7 @@ def make_handler_node(
             if not available_defs:
                 return {"tool_calls": []}
 
-            messages = [
+            messages: list[dict[str, Any]] = [
                 {"role": "system", "content": bundle.system_prompt},
                 {
                     "role": "system",
@@ -193,8 +203,11 @@ def make_handler_node(
                         f"{intent}. Pick the tools needed to answer the user, then return."
                     ),
                 },
-                {"role": "user", "content": state["user_message"]},
             ]
+            addendum = state.get("system_addendum") or ""
+            if addendum:
+                messages.append({"role": "system", "content": addendum})
+            messages.append({"role": "user", "content": state["user_message"]})
             response = await llm.respond_with_tools(
                 tenant_id=tenant_id,
                 role=intent,
@@ -279,21 +292,25 @@ def make_respond_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
             bundle = await loader.load(tenant_id)
             tool_calls = state.get("tool_calls") or []
             intent = state.get("intent") or "fallback"
-            messages = [
+            messages: list[dict[str, Any]] = [
                 {"role": "system", "content": bundle.system_prompt},
-                {
-                    "role": "user",
-                    "content": state["user_message"],
-                },
-                {
-                    "role": "system",
-                    "content": (
-                        f"Intent: {intent}\nTool results:\n{_summarise_tool_calls(tool_calls)}\n"
-                        "If a tool reported `skipped:not_in_whitelist`, tell the user the "
-                        "capability is not available for this account; do not invent results."
-                    ),
-                },
             ]
+            addendum = state.get("system_addendum") or ""
+            if addendum:
+                messages.append({"role": "system", "content": addendum})
+            messages.extend(
+                [
+                    {"role": "user", "content": state["user_message"]},
+                    {
+                        "role": "system",
+                        "content": (
+                            f"Intent: {intent}\nTool results:\n{_summarise_tool_calls(tool_calls)}\n"
+                            "If a tool reported `skipped:not_in_whitelist`, tell the user the "
+                            "capability is not available for this account; do not invent results."
+                        ),
+                    },
+                ]
+            )
             text = await llm.respond(tenant_id=tenant_id, messages=messages)
             return {"response": text, "response_model": llm.respond_model}
 

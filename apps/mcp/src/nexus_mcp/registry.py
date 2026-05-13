@@ -314,6 +314,7 @@ def build_default_registry() -> MCPRegistry:
     from nexus_mcp.servers.commission.tools import COMMISSION_TOOLS
     from nexus_mcp.servers.escalate.tools import ESCALATE_TOOLS
     from nexus_mcp.servers.notification.tools import NOTIFICATION_TOOLS
+    from nexus_mcp.servers.operator.tools import OPERATOR_TOOLS
     from nexus_mcp.servers.queue.tools import QUEUE_TOOLS
 
     registry = MCPRegistry()
@@ -324,6 +325,7 @@ def build_default_registry() -> MCPRegistry:
         *QUEUE_TOOLS,
         *COMMISSION_TOOLS,
         *NOTIFICATION_TOOLS,
+        *OPERATOR_TOOLS,
     ):
         registry.register(tool_cls())
     for internal_tool in build_agendapro_tools():
