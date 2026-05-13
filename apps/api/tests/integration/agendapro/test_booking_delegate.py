@@ -327,8 +327,9 @@ async def test_agendapro_tools_not_in_public_registry(fake_agendapro):
     registry = build_default_registry()
     public_names = registry.names()
     internal_names = registry.internal_names()
-    # Las 21 tools públicas Bloque D.
-    assert len(public_names) == 21
+    # 21 tools públicas Bloque D + ``operator.consult_owner`` (ADR-018) = 22.
+    assert len(public_names) == 22
+    assert "operator.consult_owner" in public_names
     # Las 6 catalog + 2 operator agendapro tools en el espacio interno.
     assert len(internal_names) == 8
     for name in internal_names:

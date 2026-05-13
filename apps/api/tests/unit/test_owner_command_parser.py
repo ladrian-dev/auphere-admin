@@ -91,7 +91,9 @@ def test_slash_command_with_argument() -> None:
 
 
 def test_parsed_dataclass_is_immutable() -> None:
+    from dataclasses import FrozenInstanceError
+
     parsed = parse_owner_message("sí")
     assert isinstance(parsed, ParsedOwnerMessage)
-    with pytest.raises(Exception):  # frozen dataclass
+    with pytest.raises(FrozenInstanceError):
         parsed.kind = "no"  # type: ignore[misc]
