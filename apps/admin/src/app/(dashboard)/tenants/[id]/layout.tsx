@@ -9,6 +9,8 @@ import { Separator } from "@/components/ui/separator";
 import { backend } from "@/lib/backend";
 import { planLabel, statusLabel } from "@/lib/format";
 
+import { TenantActionsMenu } from "@/components/tenants/tenant-actions-menu";
+
 import { TenantTabs } from "./tabs";
 
 const STATUS_TONE = {
@@ -77,6 +79,14 @@ export default async function TenantLayout({
                 <span className="font-mono">{tenant.timezone}</span>
               </div>
             </div>
+            <TenantActionsMenu
+              tenantId={tenant.id}
+              slug={tenant.slug}
+              name={tenant.name}
+              status={tenant.status}
+              variant="labelled"
+              redirectAfterDeleteTo="/tenants"
+            />
           </div>
         </div>
         <TenantTabs tenantId={tenant.id} />

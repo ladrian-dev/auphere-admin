@@ -187,6 +187,7 @@ export type ConversationOut = {
   channel_id: string;
   customer_id: string;
   status: "open" | "closed" | "escalated";
+  agent_active: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -194,6 +195,20 @@ export type ConversationOut = {
 export type ConversationPage = {
   items: ConversationOut[];
   next_cursor: string | null;
+};
+
+export type MessageOut = {
+  id: string;
+  conversation_id: string;
+  direction: "inbound" | "outbound";
+  content: string;
+  intent: string | null;
+  cost_usd: number | null;
+  latency_ms: number | null;
+  model: string | null;
+  trace_id: string | null;
+  tool_calls: Array<Record<string, unknown>>;
+  created_at: string;
 };
 
 export type ToolStatus = "active" | "deprecated" | "experimental" | "internal";
@@ -207,6 +222,23 @@ export type ToolCatalog = {
   capability_tags: string[];
   cost_estimate: Record<string, unknown> | null;
   status: ToolStatus;
+  // Block L additions (migration 0013) — exposed on the API in M.2.
+  connector_id: string | null;
+  read_only: boolean;
+  destructive: boolean;
+  requires_consent: boolean;
+};
+
+/**
+ * Block M.2 — per-tenant tool catalog. Joins the global tool list with
+ * the tenant's connector installs so the editor can disable tools whose
+ * connector is not connected and surface a CTA inline.
+ */
+export type ToolWithInstallStatus = ToolCatalog & {
+  connector_slug: string | null;
+  connector_display_name: string | null;
+  connector_logo_url: string | null;
+  tenant_connector_status: TenantConnectorStatus | null;
 };
 
 export type IsolationMetric = {
@@ -254,6 +286,7 @@ export type TenantConnectorStatus =
   | "connected"
   | "partial"
   | "needs_reauth"
+  | "paused"
   | "disconnected"
   | "error";
 
@@ -336,6 +369,32 @@ export const backend = {
       { method: "POST" },
     ),
 
+  /**
+   * Block M.3 — toggle per-conversation agent control. ``agent_active=false``
+   * puts the operator in the loop: inbound messages are persisted but the
+   * pipeline is skipped until the operator flips it back to ``true``.
+   */
+  toggleConversationAgent: (
+    tenantId: string,
+    conversationId: string,
+    agentActive: boolean,
+  ) =>
+    call<ConversationOut>(
+      `/admin/tenants/${tenantId}/conversations/${conversationId}/agent`,
+      { method: "PATCH", body: { agent_active: agentActive } },
+    ),
+
+  getConversation: (tenantId: string, conversationId: string) =>
+    call<ConversationOut>(
+      `/admin/tenants/${tenantId}/conversations/${conversationId}`,
+      { optional: true },
+    ),
+
+  listConversationMessages: (tenantId: string, conversationId: string) =>
+    call<MessageOut[]>(
+      `/admin/tenants/${tenantId}/conversations/${conversationId}/messages`,
+    ).then((r) => r ?? []),
+
   listConversations: (tenantId: string, cursor?: string, limit = 50) => {
     const qs = new URLSearchParams({ limit: String(limit) });
     if (cursor) qs.set("cursor", cursor);
@@ -347,6 +406,15 @@ export const backend = {
   listToolCatalog: (includeDeprecated = false) =>
     call<ToolCatalog[]>(
       `/admin/tool-catalog?include_deprecated=${includeDeprecated}`,
+    ).then((r) => r ?? []),
+
+  /**
+   * Tenant-scoped variant — each tool comes annotated with the connector
+   * binding and the tenant's install status. Block M.2 endpoint.
+   */
+  listTenantToolCatalog: (tenantId: string, includeDeprecated = false) =>
+    call<ToolWithInstallStatus[]>(
+      `/admin/tenants/${tenantId}/tool-catalog?include_deprecated=${includeDeprecated}`,
     ).then((r) => r ?? []),
 
   bootstrapAgendaPro: (
@@ -395,6 +463,9 @@ export const backend = {
 
   updateTenant: (tenantId: string, body: TenantUpdateInput) =>
     call<Tenant>(`/admin/tenants/${tenantId}`, { method: "PUT", body }),
+
+  deleteTenant: (tenantId: string) =>
+    call<null>(`/admin/tenants/${tenantId}`, { method: "DELETE" }),
 
   verifyWhatsApp: (waba_id: string, phone_number_id: string) =>
     call<WhatsAppPreview>(
@@ -486,6 +557,18 @@ export const backend = {
   disconnectConnector: (tenantId: string, slug: string) =>
     call<TenantConnector>(
       `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/disconnect`,
+      { method: "POST", body: {} },
+    ),
+
+  pauseConnector: (tenantId: string, slug: string) =>
+    call<TenantConnector>(
+      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/pause`,
+      { method: "POST", body: {} },
+    ),
+
+  resumeConnector: (tenantId: string, slug: string) =>
+    call<TenantConnector>(
+      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/resume`,
       { method: "POST", body: {} },
     ),
 

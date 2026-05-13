@@ -292,3 +292,126 @@ async def test_initiate_consent_lazy_upserts_composio_connector(
     assert post.mcp_server_ref == "composio:googlesheets"
     assert post.category == "docs"  # Productivity → docs in _CATEGORY_MAP
     assert post.consent_link_template_name == "connector_consent_request_v1"
+
+
+# ── Block M.5 — pause / resume ─────────────────────────────────────────────
+
+
+async def _seed_installed_connector(db_session, tenant_id: uuid.UUID, slug: str) -> uuid.UUID:
+    """Insert a ``connected`` install row directly so the pause/resume
+    tests don't have to drive the full consent webhook flow. Returns the
+    connector row id."""
+    from nexus_api.db.models import Connector
+
+    conn = await db_session.scalar(select(Connector).where(Connector.slug == slug))
+    if conn is None:
+        # Pre-create the connector row (mirrors what initiate-consent does
+        # for Composio toolkits via lazy upsert).
+        conn = Connector(
+            slug=slug,
+            display_name=slug,
+            vendor="test",
+            category="other",
+            capabilities=[],
+            auth_kind="oauth_composio",
+            mcp_server_ref=f"composio:{slug}",
+            provider_meta={},
+            consent_link_template_name="connector_consent_request_v1",
+            status="available",
+        )
+        db_session.add(conn)
+        await db_session.commit()
+        await db_session.refresh(conn)
+    db_session.add(
+        TenantConnector(
+            tenant_id=tenant_id,
+            connector_id=conn.id,
+            status="connected",
+            credentials_ref={"composio_connection_id": "test-cn"},
+            scopes_granted=[],
+            config={},
+        )
+    )
+    await db_session.commit()
+    return conn.id
+
+
+async def test_pause_connector_happy(
+    client, admin_headers, db_session, seed_tenants, seeded_catalog
+) -> None:
+    tid = seed_tenants["a"]
+    await _seed_installed_connector(db_session, tid, "googlecalendar")
+    r = await client.post(
+        f"/admin/tenants/{tid}/connectors/googlecalendar/pause",
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "paused"
+    # Token + credentials persist (operator can resume without re-consent).
+    tc = (
+        await db_session.execute(select(TenantConnector).where(TenantConnector.tenant_id == tid))
+    ).scalar_one()
+    assert tc.credentials_ref == {"composio_connection_id": "test-cn"}
+
+
+async def test_resume_connector_happy(
+    client, admin_headers, db_session, seed_tenants, seeded_catalog
+) -> None:
+    tid = seed_tenants["a"]
+    await _seed_installed_connector(db_session, tid, "googlecalendar")
+    pause = await client.post(
+        f"/admin/tenants/{tid}/connectors/googlecalendar/pause",
+        headers=admin_headers,
+    )
+    assert pause.status_code == 200
+    resume = await client.post(
+        f"/admin/tenants/{tid}/connectors/googlecalendar/resume",
+        headers=admin_headers,
+    )
+    assert resume.status_code == 200, resume.text
+    assert resume.json()["status"] == "connected"
+
+
+async def test_pause_rejects_pending_install(
+    client, admin_headers, db_session, seed_tenants, seeded_catalog, fake_composio
+) -> None:
+    """Pause only makes sense from connected-ish states; a freshly
+    initiated install is ``pending`` and should be rejected (the operator
+    needs to either complete consent or disconnect)."""
+    tid = seed_tenants["a"]
+    await _set_owner_phone(db_session, tid)
+    initiate = await client.post(
+        f"/admin/tenants/{tid}/connectors/googlecalendar/initiate-consent",
+        headers=admin_headers,
+    )
+    assert initiate.status_code == 201
+    r = await client.post(
+        f"/admin/tenants/{tid}/connectors/googlecalendar/pause",
+        headers=admin_headers,
+    )
+    assert r.status_code == 409, r.text
+
+
+async def test_pause_unknown_install_404(
+    client, admin_headers, seed_tenants, seeded_catalog
+) -> None:
+    tid = seed_tenants["a"]
+    r = await client.post(
+        f"/admin/tenants/{tid}/connectors/googlecalendar/pause",
+        headers=admin_headers,
+    )
+    assert r.status_code == 404
+
+
+async def test_resume_only_from_paused(
+    client, admin_headers, db_session, seed_tenants, seeded_catalog
+) -> None:
+    """Resume requires status='paused'. A connected install can't be
+    resumed — it's already running."""
+    tid = seed_tenants["a"]
+    await _seed_installed_connector(db_session, tid, "googlecalendar")
+    r = await client.post(
+        f"/admin/tenants/{tid}/connectors/googlecalendar/resume",
+        headers=admin_headers,
+    )
+    assert r.status_code == 409, r.text

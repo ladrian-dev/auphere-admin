@@ -62,17 +62,23 @@ class TenantConnectorStatus(str, enum.Enum):
 
     Transitions allowed (validated in the status machine):
         pending     → connected | partial | error
-        connected   → needs_reauth | disconnected | partial
-        partial     → connected | needs_reauth | disconnected
-        needs_reauth → connected | disconnected
+        connected   → needs_reauth | disconnected | partial | paused
+        partial     → connected | needs_reauth | disconnected | paused
+        needs_reauth → connected | disconnected | paused
+        paused      → connected | disconnected
         disconnected → (terminal; new install requires a new row)
         error       → (terminal; manual operator intervention)
+
+    ``paused`` (M.6) keeps the upstream tokens + sync metadata intact but
+    the runtime skips the connector — used when the operator wants to
+    temporarily silence a connector without losing the grant. Reversible.
     """
 
     PENDING = "pending"
     CONNECTED = "connected"
     PARTIAL = "partial"
     NEEDS_REAUTH = "needs_reauth"
+    PAUSED = "paused"
     DISCONNECTED = "disconnected"
     ERROR = "error"
 
@@ -158,7 +164,7 @@ class TenantConnector(UUIDPrimaryKey, TimestampMixin, Base):
         UniqueConstraint("tenant_id", "connector_id", name="uq_tc_tenant_connector"),
         CheckConstraint(
             "status IN ('pending', 'connected', 'partial', 'needs_reauth', "
-            "'disconnected', 'error')",
+            "'paused', 'disconnected', 'error')",
             name="ck_tc_status",
         ),
     )

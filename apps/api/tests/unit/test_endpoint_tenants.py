@@ -187,3 +187,44 @@ async def test_update_tenant_unknown(client, admin_headers):
         json={"status": "paused"},
     )
     assert r.status_code == 404
+
+
+# ── Block M.1: hard delete (only-after-archive guard) ──────────────────────
+
+
+async def test_delete_tenant_requires_archived(client, admin_headers, seed_tenants):
+    """Active tenants cannot be hard-deleted. The operator must archive
+    first (PUT status='archived') — the two-step is the safety."""
+    tenant_id = seed_tenants["a"]
+    r = await client.delete(f"/admin/tenants/{tenant_id}", headers=admin_headers)
+    assert r.status_code == 409, r.text
+    assert "archived" in r.text.lower()
+
+
+async def test_delete_tenant_after_archive_succeeds(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+    archive = await client.put(
+        f"/admin/tenants/{tenant_id}",
+        headers=admin_headers,
+        json={"status": "archived"},
+    )
+    assert archive.status_code == 200, archive.text
+
+    r = await client.delete(f"/admin/tenants/{tenant_id}", headers=admin_headers)
+    assert r.status_code == 204, r.text
+
+    gone = await client.get(f"/admin/tenants/{tenant_id}", headers=admin_headers)
+    assert gone.status_code == 404
+
+
+async def test_delete_tenant_unknown_returns_404(client, admin_headers):
+    r = await client.delete(f"/admin/tenants/{uuid.uuid4()}", headers=admin_headers)
+    assert r.status_code == 404
+
+
+async def test_delete_tenant_requires_auth(client, seed_tenants):
+    tenant_id = seed_tenants["a"]
+    r = await client.delete(f"/admin/tenants/{tenant_id}")
+    assert r.status_code == 401

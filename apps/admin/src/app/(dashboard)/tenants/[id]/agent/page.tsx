@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { backend, type ToolCatalog } from "@/lib/backend";
+import { backend, type ToolWithInstallStatus } from "@/lib/backend";
 import { fullDateTime, relativeTime } from "@/lib/format";
 
 import { AgentEditor } from "./editor";
@@ -35,27 +35,40 @@ export default async function AgentPage({
   const [tenant, bundle, catalog, seedTemplates] = await Promise.all([
     backend.getTenant(id),
     backend.getAgentConfig(id),
-    backend.listToolCatalog(false),
+    backend.listTenantToolCatalog(id, false),
     backend.listSeedTemplates(),
   ]);
   if (!tenant) return null;
 
   // Filter the whitelist by the seed template applied to this tenant.
-  // Without a template we can't know which vertical-specific tools are
-  // relevant, so the editor surfaces an empty state with a CTA instead
-  // of dumping the full registry on the operator.
-  const seedRef = bundle.active?.seed_template_ref ?? null;
+  // Look at the active version first (steady state); if there isn't one,
+  // fall back to the most recent staged/archived version that carries a
+  // seed_template_ref — that covers the "Aplicar plantilla inicial → not
+  // yet promoted" path which previously fell through and dumped the full
+  // registry on the operator (the gap the audit 2026-05-13 caught).
+  const versionWithSeed =
+    bundle.active?.seed_template_ref !== undefined &&
+    bundle.active?.seed_template_ref !== null
+      ? bundle.active
+      : [...bundle.versions]
+          .sort((a, b) => b.version - a.version)
+          .find((v) => v.seed_template_ref) ?? null;
+  const seedRef = versionWithSeed?.seed_template_ref ?? null;
   const seedTemplate = seedRef
     ? (seedTemplates.find((t) => t.name === seedRef) ?? null)
     : null;
-  const allowedTools = seedTemplate
-    ? new Set(seedTemplate.tools_required)
-    : null;
-  const publicCatalog: ToolCatalog[] = catalog.filter(
-    (t) =>
-      t.status !== "internal" &&
-      (allowedTools === null || allowedTools.has(t.name)),
-  );
+  // Without a seed template we can't know which vertical-specific tools
+  // are relevant — render an empty catalog so the editor surfaces the
+  // "Aplicá una plantilla inicial primero" CTA instead of dumping the
+  // entire registry on the operator (the regression the 2026-05-13 audit
+  // caught: BUG-004 only fixed the post-promote path).
+  const publicCatalog: ToolWithInstallStatus[] = seedTemplate
+    ? catalog.filter(
+        (t) =>
+          t.status !== "internal" &&
+          seedTemplate.tools_required.includes(t.name),
+      )
+    : [];
 
   return (
     <div className="grid gap-6">

@@ -36,11 +36,13 @@ from nexus_api.api.deps import get_db_session, scoped_session_from_path
 from nexus_api.config import get_settings
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import (
+    AuditLog,
     Channel,
     Connector,
     ConnectorToolMode,
     Tenant,
     TenantConnector,
+    TenantConnectorStatus,
     TenantConnectorToolOverride,
     TenantCredentials,
 )
@@ -547,6 +549,125 @@ async def disconnect(
     out = next((i for i in installs if i.connector_slug == slug), None)
     if out is None:  # pragma: no cover
         raise HTTPException(status_code=500, detail="post-disconnect lookup failed")
+    return out
+
+
+_PAUSABLE_FROM = frozenset(
+    {
+        TenantConnectorStatus.CONNECTED.value,
+        TenantConnectorStatus.PARTIAL.value,
+        TenantConnectorStatus.NEEDS_REAUTH.value,
+    }
+)
+
+
+@router.post(
+    "/tenants/{tenant_id}/connectors/{slug}/pause",
+    response_model=TenantConnectorOut,
+)
+async def pause_connector(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    slug: str,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> TenantConnectorOut:
+    """Block M.5 — Pause a connector without revoking upstream tokens.
+
+    Pause keeps ``credentials_ref``, sync metadata, and Composio
+    connection intact. The agent runtime skips tools bound to a paused
+    connector (the editor allows whitelisting them but flags them with
+    a "Pausado" badge). Reversible via ``resume``.
+
+    409 if the install is not in a state where pausing makes sense
+    (already paused, disconnected, error, or pending consent).
+    """
+    return await _set_connector_status(
+        session,
+        tenant_id=tenant_id,
+        slug=slug,
+        from_statuses=_PAUSABLE_FROM,
+        to_status=TenantConnectorStatus.PAUSED.value,
+        action="connector.pause",
+        actor=actor,
+    )
+
+
+@router.post(
+    "/tenants/{tenant_id}/connectors/{slug}/resume",
+    response_model=TenantConnectorOut,
+)
+async def resume_connector(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    slug: str,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> TenantConnectorOut:
+    """Block M.5 — Resume a paused connector.
+
+    Flips ``paused → connected``. If the upstream tokens have expired
+    while paused the runtime will flag the install as ``needs_reauth``
+    on first use; we do NOT proactively verify here to keep the
+    operator action snappy and to avoid burning Composio API quota.
+    """
+    return await _set_connector_status(
+        session,
+        tenant_id=tenant_id,
+        slug=slug,
+        from_statuses=frozenset({TenantConnectorStatus.PAUSED.value}),
+        to_status=TenantConnectorStatus.CONNECTED.value,
+        action="connector.resume",
+        actor=actor,
+    )
+
+
+async def _set_connector_status(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    slug: str,
+    from_statuses: frozenset[str],
+    to_status: str,
+    action: str,
+    actor: str,
+) -> TenantConnectorOut:
+    tc = await session.scalar(
+        select(TenantConnector)
+        .join(Connector, TenantConnector.connector_id == Connector.id)
+        .where(
+            TenantConnector.tenant_id == tenant_id,
+            Connector.slug == slug,
+        )
+    )
+    if tc is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"tenant connector {slug!r} not installed",
+        )
+    if tc.status not in from_statuses:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"cannot {action.split('.')[1]} from status {tc.status!r}; "
+                f"expected one of {sorted(from_statuses)}"
+            ),
+        )
+    before = tc.status
+    tc.status = to_status
+    session.add(
+        AuditLog(
+            tenant_id=tenant_id,
+            actor=f"admin:{actor[:8]}",
+            action=action,
+            target=f"tenant_connector:{tc.id}",
+            before_json={"status": before},
+            after_json={"status": to_status},
+        )
+    )
+    await session.flush()
+    installs = await _list_tenant_installs(session, tenant_id)
+    out = next((i for i in installs if i.connector_slug == slug), None)
+    if out is None:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="post-status lookup failed")
     return out
 
 

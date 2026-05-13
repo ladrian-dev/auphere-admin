@@ -61,6 +61,34 @@ export async function disconnectAction(
   }
 }
 
+export async function pauseConnectorAction(
+  tenantId: string,
+  slug: string,
+): Promise<ActionResult<string>> {
+  try {
+    const r = await backend.pauseConnector(tenantId, slug);
+    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}/agent`);
+    return { ok: true, data: r?.status ?? "paused" };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function resumeConnectorAction(
+  tenantId: string,
+  slug: string,
+): Promise<ActionResult<string>> {
+  try {
+    const r = await backend.resumeConnector(tenantId, slug);
+    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}/agent`);
+    return { ok: true, data: r?.status ?? "connected" };
+  } catch (e) {
+    return err(e);
+  }
+}
+
 export async function syncAction(
   tenantId: string,
   slug: string,

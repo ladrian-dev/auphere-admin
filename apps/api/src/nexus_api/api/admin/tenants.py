@@ -254,6 +254,61 @@ async def update_tenant(
     return TenantOut.model_validate(tenant)
 
 
+@router.delete(
+    "/tenants/{tenant_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_tenant(
+    tenant_id: uuid.UUID,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> None:
+    """Hard-delete a tenant. Guard: tenant must be ARCHIVED first.
+
+    The two-step (archive → delete) is intentional. Archive is reversible
+    via PUT status='active'. Delete cascades through every tenant-scoped
+    table (FK ondelete=CASCADE on conversations, messages, customers,
+    channels, agent_configs, tenant_connectors, audit_log, etc.) and is
+    NOT reversible. The audit row is written BEFORE the cascade so the
+    audit trail survives the row removal — it's stored under
+    ``tenant_id`` so RLS pins it under the same tenant; once the tenant
+    row is gone, the audit row is orphaned by FK CASCADE and removed too.
+    For long-term provenance we rely on Langfuse + the structlog event.
+    """
+    repo = TenantRepository(session)
+    tenant = await repo.get(tenant_id)
+    if tenant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"tenant {tenant_id} not found",
+        )
+    if tenant.status is not TenantStatus.ARCHIVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=("tenant must be archived before delete; PATCH status='archived' first"),
+        )
+    snapshot = _tenant_to_dict(tenant)
+    log.warning(
+        "tenant.delete.cascade",
+        tenant_id=str(tenant_id),
+        slug=tenant.slug,
+        actor=actor[:8],
+    )
+    session.add(
+        AuditLog(
+            tenant_id=tenant_id,
+            actor=f"admin:{actor[:8]}",
+            action="tenant.delete",
+            target=f"tenant:{tenant_id}",
+            before_json=snapshot,
+            after_json=None,
+        )
+    )
+    await session.flush()
+    await session.delete(tenant)
+    await session.commit()
+
+
 @router.get(
     "/tenants/{tenant_id}/channels",
     response_model=list[ChannelOut],

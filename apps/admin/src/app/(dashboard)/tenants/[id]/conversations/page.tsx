@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Eyebrow } from "@/components/brand/eyebrow";
 import { StatusDot } from "@/components/brand/status-dot";
 import {
@@ -18,6 +20,7 @@ import {
 import { backend } from "@/lib/backend";
 import { fullDateTime, relativeTime, statusLabel } from "@/lib/format";
 
+import { AgentToggle } from "./agent-toggle";
 import { LiveIndicator } from "./live-indicator";
 
 const STATUS_TONE = {
@@ -40,6 +43,7 @@ export default async function ConversationsPage({
 
   const escalated = page.items.filter((c) => c.status === "escalated").length;
   const open = page.items.filter((c) => c.status === "open").length;
+  const takenOver = page.items.filter((c) => c.agent_active === false).length;
 
   return (
     <div className="grid gap-6">
@@ -72,6 +76,14 @@ export default async function ConversationsPage({
                   </span>
                 </span>
               ) : null}
+              {takenOver > 0 ? (
+                <span className="inline-flex items-center gap-2">
+                  <StatusDot tone="warning" />
+                  <span>
+                    <strong className="tabular-nums text-foreground">{takenOver}</strong> con operador
+                  </span>
+                </span>
+              ) : null}
             </div>
           </div>
         </CardHeader>
@@ -86,22 +98,26 @@ export default async function ConversationsPage({
                 <TableRow>
                   <TableHead>Conversación</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead>Abierta</TableHead>
+                  <TableHead>Agente</TableHead>
+                  <TableHead className="hidden md:table-cell">Abierta</TableHead>
                   <TableHead className="text-right">Última actividad</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {page.items.map((conv) => (
-                  <TableRow key={conv.id}>
+                  <TableRow key={conv.id} className="hover:bg-muted/40">
                     <TableCell>
-                      <div className="flex flex-col">
+                      <Link
+                        href={`/tenants/${tenant.id}/conversations/${conv.id}`}
+                        className="flex flex-col outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      >
                         <span className="font-mono text-sm">
                           {conv.id.slice(0, 8)}
                         </span>
                         <span className="text-xs text-muted-foreground font-mono">
                           customer {conv.customer_id.slice(0, 8)}
                         </span>
-                      </div>
+                      </Link>
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center gap-2">
@@ -109,7 +125,14 @@ export default async function ConversationsPage({
                         {statusLabel(conv.status)}
                       </span>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
+                      <AgentToggle
+                        tenantId={tenant.id}
+                        conversationId={conv.id}
+                        agentActive={conv.agent_active}
+                      />
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground">
                       {fullDateTime(conv.created_at)}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground tabular-nums">

@@ -16,7 +16,9 @@ import {
 import {
   disconnectAction,
   initiateConsentAction,
+  pauseConnectorAction,
   reissueConsentAction,
+  resumeConnectorAction,
   syncAction,
 } from "./actions";
 
@@ -177,6 +179,57 @@ export function SyncButton({ tenantId, slug, displayName }: CommonProps) {
       }}
     >
       {pending ? "Sincronizando…" : "Sincronizar tools"}
+    </Button>
+  );
+}
+
+export function PauseConnectorButton({ tenantId, slug, displayName }: CommonProps) {
+  const [pending, start] = useTransition();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={pending}
+      onClick={() => {
+        start(async () => {
+          const res = await pauseConnectorAction(tenantId, slug);
+          if (!res.ok) {
+            toast.error(`No se pudo pausar: ${res.error}`);
+            return;
+          }
+          toast.success(`${displayName} pausado`, {
+            description:
+              "El agente no usará sus tools hasta que lo reanudes. Los tokens upstream quedan intactos.",
+          });
+        });
+      }}
+    >
+      {pending ? "Pausando…" : "Pausar"}
+    </Button>
+  );
+}
+
+export function ResumeConnectorButton({ tenantId, slug, displayName }: CommonProps) {
+  const [pending, start] = useTransition();
+  return (
+    <Button
+      size="sm"
+      disabled={pending}
+      onClick={() => {
+        start(async () => {
+          const res = await resumeConnectorAction(tenantId, slug);
+          if (!res.ok) {
+            toast.error(`No se pudo reanudar: ${res.error}`);
+            return;
+          }
+          toast.success(`${displayName} reanudado`, {
+            description:
+              "El agente vuelve a usar sus tools en el próximo turn. Si los tokens expiraron, va a marcar needs_reauth en la primera llamada.",
+          });
+        });
+      }}
+    >
+      {pending ? "Reanudando…" : "Reanudar"}
     </Button>
   );
 }

@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     Float,
     ForeignKey,
     Integer,
@@ -73,6 +74,16 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         nullable=False,
         default=ConversationStatus.OPEN,
         index=True,
+    )
+    # Block M.3 — per-thread human takeover. When false, the dispatcher
+    # persists the inbound message but does NOT invoke the pipeline; the
+    # operator answers manually until they reactivate the agent. Defaults
+    # to true so existing flows are unchanged.
+    agent_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
     )
 
 

@@ -15,8 +15,17 @@ class ConversationOut(BaseModel):
     channel_id: uuid.UUID
     customer_id: uuid.UUID
     status: str
+    agent_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class ConversationAgentToggleIn(BaseModel):
+    """Block M.3 — body for PATCH .../conversations/:id/agent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_active: bool
 
 
 class ConversationPageOut(BaseModel):

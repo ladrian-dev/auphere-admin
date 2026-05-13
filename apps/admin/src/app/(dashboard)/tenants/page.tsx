@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TenantActionsMenu } from "@/components/tenants/tenant-actions-menu";
 import { backend } from "@/lib/backend";
 import { planLabel, relativeTime, statusLabel } from "@/lib/format";
 
@@ -68,13 +69,14 @@ export default async function TenantsPage() {
               <TableHead className="hidden md:table-cell text-right">
                 Última actualización
               </TableHead>
+              <TableHead className="w-12" aria-label="Acciones" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {tenants.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="py-12 text-center text-muted-foreground"
                 >
                   Sin tenants todavía. Crea el primero con &quot;Nuevo
@@ -85,7 +87,7 @@ export default async function TenantsPage() {
               tenants.map((tenant) => (
                 <TableRow
                   key={tenant.id}
-                  className="cursor-pointer transition-colors hover:bg-muted/40"
+                  className="transition-colors hover:bg-muted/40"
                 >
                   <TableCell>
                     <Link
@@ -115,6 +117,14 @@ export default async function TenantsPage() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-right text-muted-foreground tabular-nums">
                     {relativeTime(tenant.updated_at)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <TenantActionsMenu
+                      tenantId={tenant.id}
+                      slug={tenant.slug}
+                      name={tenant.name}
+                      status={tenant.status}
+                    />
                   </TableCell>
                 </TableRow>
               ))

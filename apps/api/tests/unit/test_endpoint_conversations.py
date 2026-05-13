@@ -89,3 +89,133 @@ async def test_list_conversations_requires_auth(client, seed_tenants):
     tid = seed_tenants["a"]
     r = await client.get(f"/admin/tenants/{tid}/conversations")
     assert r.status_code == 401
+
+
+# ── Block M.3 — per-conversation agent takeover ─────────────────────────────
+
+
+async def _seed_one_and_return_id(session, tid):
+    from nexus_api.db.models import Channel, ChannelType, Conversation, Customer
+
+    await session.execute(text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tid)})
+    await session.execute(text("SET LOCAL ROLE nexus_app"))
+    ch = Channel(
+        tenant_id=tid,
+        type=ChannelType.WHATSAPP,
+        provider="ycloud",
+        provider_identifier=str(uuid.uuid4()),
+    )
+    cu = Customer(tenant_id=tid, identifier=str(uuid.uuid4()))
+    session.add_all([ch, cu])
+    await session.flush()
+    conv = Conversation(tenant_id=tid, channel_id=ch.id, customer_id=cu.id)
+    session.add(conv)
+    await session.flush()
+    return conv.id
+
+
+async def test_list_conversations_exposes_agent_active(
+    client, admin_headers, seed_tenants, db_session
+):
+    """The list response includes the M.3 ``agent_active`` flag; new rows
+    default to ``true`` so existing flows behave unchanged."""
+    tid = seed_tenants["a"]
+    async with db_session.begin():
+        await _seed_one_and_return_id(db_session, tid)
+    r = await client.get(f"/admin/tenants/{tid}/conversations", headers=admin_headers)
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert len(items) == 1
+    assert items[0]["agent_active"] is True
+
+
+async def test_toggle_agent_takeover_round_trip(client, admin_headers, seed_tenants, db_session):
+    from sqlalchemy import select
+
+    from nexus_api.db.models import AuditLog
+
+    tid = seed_tenants["a"]
+    async with db_session.begin():
+        conv_id = await _seed_one_and_return_id(db_session, tid)
+
+    # Take over.
+    r = await client.patch(
+        f"/admin/tenants/{tid}/conversations/{conv_id}/agent",
+        headers=admin_headers,
+        json={"agent_active": False},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["agent_active"] is False
+
+    # Release.
+    r = await client.patch(
+        f"/admin/tenants/{tid}/conversations/{conv_id}/agent",
+        headers=admin_headers,
+        json={"agent_active": True},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["agent_active"] is True
+
+    audits = (
+        (
+            await db_session.execute(
+                select(AuditLog)
+                .where(AuditLog.tenant_id == tid)
+                .where(AuditLog.target == f"conversation:{conv_id}")
+                .order_by(AuditLog.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [a.action for a in audits] == [
+        "conversation.takeover",
+        "conversation.release",
+    ]
+
+
+async def test_toggle_agent_no_op_when_same_value(client, admin_headers, seed_tenants, db_session):
+    """Sending the same value twice is a no-op — no audit row written."""
+    from sqlalchemy import select
+
+    from nexus_api.db.models import AuditLog
+
+    tid = seed_tenants["a"]
+    async with db_session.begin():
+        conv_id = await _seed_one_and_return_id(db_session, tid)
+
+    r = await client.patch(
+        f"/admin/tenants/{tid}/conversations/{conv_id}/agent",
+        headers=admin_headers,
+        json={"agent_active": True},  # already true
+    )
+    assert r.status_code == 200
+    audits = (
+        (
+            await db_session.execute(
+                select(AuditLog).where(AuditLog.target == f"conversation:{conv_id}")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert audits == []
+
+
+async def test_toggle_agent_unknown_conversation_returns_404(client, admin_headers, seed_tenants):
+    tid = seed_tenants["a"]
+    r = await client.patch(
+        f"/admin/tenants/{tid}/conversations/{uuid.uuid4()}/agent",
+        headers=admin_headers,
+        json={"agent_active": False},
+    )
+    assert r.status_code == 404
+
+
+async def test_toggle_agent_requires_auth(client, seed_tenants):
+    tid = seed_tenants["a"]
+    r = await client.patch(
+        f"/admin/tenants/{tid}/conversations/{uuid.uuid4()}/agent",
+        json={"agent_active": False},
+    )
+    assert r.status_code == 401

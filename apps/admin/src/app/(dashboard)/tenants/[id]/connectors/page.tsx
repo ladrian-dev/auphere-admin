@@ -25,6 +25,8 @@ import { relativeTime } from "@/lib/format";
 
 import {
   DisconnectButton,
+  PauseConnectorButton,
+  ResumeConnectorButton,
   InitiateConsentButton,
   ReissueConsentButton,
   SyncButton,
@@ -39,6 +41,7 @@ const STATUS_TONE: Record<
   partial: "warning",
   needs_reauth: "danger",
   pending: "warning",
+  paused: "muted",
   disconnected: "muted",
   error: "danger",
 };
@@ -48,6 +51,7 @@ const STATUS_LABEL: Record<TenantConnectorStatus, string> = {
   partial: "Parcial",
   needs_reauth: "Requiere re-auth",
   pending: "Esperando consent",
+  paused: "Pausado",
   disconnected: "Desconectado",
   error: "Error",
 };
@@ -175,6 +179,22 @@ function InstalledConnectorCard({
             ) : null}
             {isComposio && tc.status === "connected" ? (
               <SyncButton
+                tenantId={tenantId}
+                slug={tc.connector_slug}
+                displayName={tc.connector_display_name}
+              />
+            ) : null}
+            {tc.status === "paused" ? (
+              <ResumeConnectorButton
+                tenantId={tenantId}
+                slug={tc.connector_slug}
+                displayName={tc.connector_display_name}
+              />
+            ) : null}
+            {tc.status === "connected" ||
+            tc.status === "partial" ||
+            tc.status === "needs_reauth" ? (
+              <PauseConnectorButton
                 tenantId={tenantId}
                 slug={tc.connector_slug}
                 displayName={tc.connector_display_name}

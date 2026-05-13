@@ -57,9 +57,12 @@ export function LiveIndicator({ tenantId }: { tenantId: string }) {
     }
 
     const fallback = setTimeout(() => {
-      // If the stream hasn't opened in 4s, drop to polling.
+      // If the stream hasn't opened in 8s, drop to polling. The backend
+      // now emits a ``ready`` event immediately on connect (M.4), so a
+      // warm path takes <500ms; the 8s margin covers cold proxy + DB
+      // pool initialisation in production.
       setState((prev) => (prev === "connecting" ? "polling" : prev));
-    }, 4000);
+    }, 8000);
 
     return () => {
       clearTimeout(fallback);
