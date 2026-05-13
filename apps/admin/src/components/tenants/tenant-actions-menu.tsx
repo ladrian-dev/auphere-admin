@@ -34,6 +34,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -165,49 +166,58 @@ export function TenantActionsMenu({
           }
         />
         <DropdownMenuContent align="end" className="min-w-48">
-          <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
-            Ciclo de vida
-          </DropdownMenuLabel>
+          {/*
+            Base UI requires Menu.GroupLabel + the Items it labels to live
+            inside the same Menu.Group, otherwise Menu.GroupLabel throws
+            ``MenuGroupRootContext is missing`` at open-time and the
+            global error boundary surfaces "This page couldn't load". The
+            app-sidebar uses the same wrapper for the same reason.
+          */}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+              Ciclo de vida
+            </DropdownMenuLabel>
 
-          {status === "active" ? (
-            <DropdownMenuItem disabled={pending} onClick={onPause}>
-              Pausar agente
-            </DropdownMenuItem>
-          ) : null}
-
-          {status === "paused" ? (
-            <DropdownMenuItem disabled={pending} onClick={onResume}>
-              Reanudar agente
-            </DropdownMenuItem>
-          ) : null}
-
-          {status === "archived" ? (
-            <DropdownMenuItem disabled={pending} onClick={onResume}>
-              Restaurar (volver a activo)
-            </DropdownMenuItem>
-          ) : null}
-
-          {(status === "active" || status === "paused") ? (
-            <DropdownMenuItem
-              disabled={pending}
-              onClick={() => setArchiveOpen(true)}
-            >
-              Archivar…
-            </DropdownMenuItem>
-          ) : null}
-
-          {status === "archived" ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                disabled={pending}
-                onClick={() => setDeleteOpen(true)}
-              >
-                Eliminar permanentemente…
+            {status === "active" ? (
+              <DropdownMenuItem disabled={pending} onClick={onPause}>
+                Pausar agente
               </DropdownMenuItem>
-            </>
-          ) : null}
+            ) : null}
+
+            {status === "paused" ? (
+              <DropdownMenuItem disabled={pending} onClick={onResume}>
+                Reanudar agente
+              </DropdownMenuItem>
+            ) : null}
+
+            {status === "archived" ? (
+              <DropdownMenuItem disabled={pending} onClick={onResume}>
+                Restaurar (volver a activo)
+              </DropdownMenuItem>
+            ) : null}
+
+            {(status === "active" || status === "paused") ? (
+              <DropdownMenuItem
+                disabled={pending}
+                onClick={() => setArchiveOpen(true)}
+              >
+                Archivar…
+              </DropdownMenuItem>
+            ) : null}
+
+            {status === "archived" ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={pending}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Eliminar permanentemente…
+                </DropdownMenuItem>
+              </>
+            ) : null}
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
 
