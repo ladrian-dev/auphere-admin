@@ -121,6 +121,7 @@ export default async function TenantConnectorsPage({
                 tenantId={id}
                 connector={c}
                 ownerPhone={tenant.owner_phone}
+                agendaProPublicUrl={tenant.agendapro_public_url}
               />
             ))}
           </div>
@@ -278,10 +279,14 @@ function AvailableConnectorCard({
   tenantId,
   connector,
   ownerPhone,
+  agendaProPublicUrl,
 }: {
   tenantId: string;
   connector: Connector;
   ownerPhone: string | null;
+  /** Current ``tenants.agendapro_public_url`` — passed down so the
+   *  AgendaPro setup dialog can pre-fill the editing form. */
+  agendaProPublicUrl: string | null;
 }) {
   const isComposio = connector.auth_kind === "oauth_composio";
   return (
@@ -324,7 +329,7 @@ function AvailableConnectorCard({
               ) : connector.slug === "agendapro" ? (
                 <AgendaProSetupDialog
                   tenantId={tenantId}
-                  alreadyConnected={false}
+                  currentUrl={agendaProPublicUrl}
                 />
               ) : (
                 <Badge variant="outline" className="text-xs">

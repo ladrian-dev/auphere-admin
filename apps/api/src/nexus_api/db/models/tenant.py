@@ -4,7 +4,7 @@ import enum
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Integer, Numeric, String
+from sqlalchemy import Boolean, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -104,6 +104,13 @@ class Tenant(UUIDPrimaryKey, TimestampMixin, Base):
         default=1440,
         server_default="1440",
     )
+
+    # Migration 0021 — public AgendaPro link (ADR-017). The new public
+    # browser MCP reads this URL to scrape availability and create
+    # appointments; modify / cancel / get_appointments are not supported
+    # via the public flow and escalate to the owner backchannel.
+    # Optional — only set on tenants whose booking provider is AgendaPro.
+    agendapro_public_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
         return f"<Tenant {self.slug}>"

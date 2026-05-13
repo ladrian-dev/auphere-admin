@@ -1,9 +1,11 @@
 """booking-server — facade over the local appointments table.
 
-Block D persists appointments locally. Block E will introduce
-``agendapro_browser_mcp``; ``booking.create_appointment`` will then delegate
-to AgendaPro for tenants on AgendaPro and keep the local row as a shadow
-cache. The five LLM-facing tool names remain stable.
+Local-only Phase 1: every mutation persists in our DB; ``external_ref``
+stays NULL. The new public-link AgendaPro MCP (future session) will
+plug into ``CheckAvailability`` + ``CreateAppointment`` only — the
+other three intents (modify / cancel / get_appointments) are escalated
+to the owner via the backchannel (ADR-018). The five LLM-facing tool
+names remain stable.
 """
 
 from nexus_mcp.servers.booking.tools import (

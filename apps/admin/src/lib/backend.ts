@@ -94,6 +94,8 @@ export type Tenant = {
   owner_phone: string | null;
   owner_email: string | null;
   cost_alert_threshold_usd_per_day: string;
+  /** ADR-017: public AgendaPro URL used by the new public browser MCP. */
+  agendapro_public_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -701,33 +703,18 @@ export const backend = {
       `/admin/tenants/${tenantId}/tool-catalog?include_deprecated=${includeDeprecated}`,
     ).then((r) => r ?? []),
 
-  bootstrapAgendaPro: (
-    tenantId: string,
-    body: { login: string; password: string; business_url?: string | null },
-  ) =>
+  // AgendaPro public link (ADR-017). The legacy bootstrap + health-check
+  // endpoints were removed in migration 0021 — the agent now consumes
+  // AgendaPro only via the tenant's public booking URL.
+  setAgendaProPublicUrl: (tenantId: string, publicUrl: string | null) =>
     call<{
       integration: string;
-      context_id: string;
-      tenant_credentials_id: string;
-      bootstrap_at: string;
-      screenshot_url: string | null;
+      public_url: string | null;
+      updated_at: string;
       audit_log_id: string;
-    }>(`/admin/tenants/${tenantId}/integrations/agendapro/bootstrap`, {
-      method: "POST",
-      body,
-    }),
-
-  healthCheckAgendaPro: (tenantId: string) =>
-    call<{
-      healthy: boolean;
-      relogin_attempted: boolean;
-      relogin_succeeded: boolean;
-      needs_reauth: boolean;
-      checked_at: string;
-      notes: string | null;
-      new_context_id_persisted: boolean;
-    }>(`/admin/tenants/${tenantId}/integrations/agendapro/health-check`, {
-      method: "POST",
+    }>(`/admin/tenants/${tenantId}/integrations/agendapro/public-url`, {
+      method: "PATCH",
+      body: { public_url: publicUrl },
     }),
 
   getIsolationMetrics: (tenantId: string) =>
@@ -810,16 +797,6 @@ export const backend = {
     call<InitiateConsentOut>(
       `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/initiate-consent`,
       { method: "POST", body: {} },
-    ),
-
-  bootstrapBrowserConnector: (
-    tenantId: string,
-    slug: string,
-    body: { tenant_credentials_id: string; context_id?: string | null },
-  ) =>
-    call<TenantConnector>(
-      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/bootstrap-browser`,
-      { method: "POST", body },
     ),
 
   connectManualConnector: (

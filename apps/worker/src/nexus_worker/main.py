@@ -5,10 +5,13 @@ Boots:
 - AgentLoader + promote-channel subscriber.
 - LiteLLM router.
 - Redis Stream consumer (inbound).
-- Block E: AgendaPro ``SubprocessPool`` (per-tenant Node processes).
-- Block F: outbound dispatcher (drains ``messages.status='pending'`` to YCloud),
+- Outbound dispatcher (drains ``messages.status='pending'`` to YCloud),
   operator alerter (audit_log → WhatsApp template to operator), reminder
   cron (drains ``scheduled_jobs`` of kind=reminder).
+
+ADR-017 / migration 0021 removed the AgendaPro admin browser MCP and
+the per-tenant subprocess pool that booted it. The new public-link
+MCP (future session) will register its transport here when it lands.
 
 Production runs this; tests build the same components piece-by-piece in
 fixtures so they can substitute the in-memory provider, the in-memory
@@ -27,10 +30,6 @@ from nexus_api.core.metrics import isolation_event_drainer
 from nexus_api.core.redis_client import get_redis
 from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
 from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudClient
-from nexus_mcp.servers.agendapro_browser.transport import (
-    build_default_pool_from_env,
-    set_default_transport,
-)
 
 from nexus_worker.config import get_api_settings, get_worker_settings
 from nexus_worker.logging import configure_logging
@@ -43,7 +42,6 @@ from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.consumer import run_inbound_consumer
 from nexus_worker.streams.cost_rollup_cron import run_cost_rollup_cron
-from nexus_worker.streams.health_check_cron import run_health_check_cron
 from nexus_worker.streams.isolation_watcher import run_isolation_watcher
 from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
 from nexus_worker.streams.operator_alerts import run_operator_alerter
@@ -75,12 +73,6 @@ async def _amain() -> None:
     )
     redis = get_redis()
     stop = asyncio.Event()
-
-    # Block E: register the AgendaPro subprocess pool so internal tools
-    # ``agendapro.*`` resolve to the real Node server. Block F leaves this
-    # in place — the booking facade reaches the pool via the registry.
-    agendapro_pool = build_default_pool_from_env()
-    set_default_transport(agendapro_pool)
 
     # Block F: a single YCloud client + adapter shared across the outbound
     # dispatcher and the operator alerter. Per-tenant API keys are a Phase
@@ -128,17 +120,12 @@ async def _amain() -> None:
             run_reminder_cron(stop=stop),
             name="reminder-cron",
         )
-        # Block H: persistent isolation events drainer + 4 new task
-        # streams (health_check, no_show_scrape, cost_rollup,
-        # isolation_watcher).
+        # Block H: persistent isolation events drainer + 3 cron streams
+        # (no_show_scrape, cost_rollup, isolation_watcher). The AgendaPro
+        # health-check cron was removed with the admin browser MCP
+        # (migration 0021).
         drainer_task = asyncio.create_task(
             isolation_event_drainer(stop), name="isolation-event-drainer"
-        )
-        health_check_task = asyncio.create_task(
-            run_health_check_cron(
-                stop=stop, tick_seconds=worker_settings.health_check_tick_seconds
-            ),
-            name="health-check-cron",
         )
         no_show_task = asyncio.create_task(
             run_no_show_scrape_cron(
@@ -169,7 +156,6 @@ async def _amain() -> None:
                 alerter_task,
                 reminder_task,
                 drainer_task,
-                health_check_task,
                 no_show_task,
                 cost_rollup_task,
                 isolation_watcher_task,
@@ -177,7 +163,6 @@ async def _amain() -> None:
             )
         finally:
             await ycloud_client.close()
-            await agendapro_pool.shutdown()
             langfuse_shutdown()
 
 

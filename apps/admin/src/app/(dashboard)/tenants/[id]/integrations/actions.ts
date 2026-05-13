@@ -20,50 +20,10 @@ function toError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export async function bootstrapAgendaProAction(
-  tenantId: string,
-  body: { login: string; password: string; business_url?: string | null },
-): Promise<ActionResult<{ context_id: string; audit_log_id: string }>> {
-  await requireSession();
-  try {
-    const result = await backend.bootstrapAgendaPro(tenantId, body);
-    revalidatePath(`/tenants/${tenantId}/integrations`);
-    revalidatePath(`/tenants/${tenantId}`);
-    return {
-      ok: true,
-      data: { context_id: result!.context_id, audit_log_id: result!.audit_log_id },
-    };
-  } catch (err) {
-    return { ok: false, error: toError(err) };
-  }
-}
-
-export async function healthCheckAgendaProAction(
-  tenantId: string,
-): Promise<
-  ActionResult<{
-    healthy: boolean;
-    needs_reauth: boolean;
-    notes: string | null;
-  }>
-> {
-  await requireSession();
-  try {
-    const result = await backend.healthCheckAgendaPro(tenantId);
-    revalidatePath(`/tenants/${tenantId}/integrations`);
-    revalidatePath(`/tenants/${tenantId}`);
-    return {
-      ok: true,
-      data: {
-        healthy: result!.healthy,
-        needs_reauth: result!.needs_reauth,
-        notes: result!.notes,
-      },
-    };
-  } catch (err) {
-    return { ok: false, error: toError(err) };
-  }
-}
+// AgendaPro legacy admin/credentials actions were removed in migration
+// 0021 (ADR-017). Use ``agendaProSetPublicUrlAction`` in
+// ``connectors/setup-actions.ts`` to configure the tenant's public
+// AgendaPro URL instead.
 
 // ── WhatsApp manual setup (Block J) ────────────────────────────────────────
 

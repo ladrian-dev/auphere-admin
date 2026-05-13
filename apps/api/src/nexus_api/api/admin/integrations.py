@@ -1,20 +1,19 @@
-"""Admin endpoints para integraciones externas (Bloque E: AgendaPro).
+"""Admin endpoints for external integrations.
 
-POST /admin/tenants/:id/integrations/agendapro/bootstrap
-    Body: { login, password, business_url? }
-    Acción: invoca agendapro._bootstrap_session via dispatch_internal,
-    persiste payload encriptado + context_id en tenant_credentials,
-    escribe row en audit_log.
+AgendaPro (ADR-017): public-link only. The agent uses the tenant's
+public AgendaPro URL (e.g. ``cultorbarber.site.agendapro.com``) to
+check availability and create appointments via the new public browser
+MCP. Modify / cancel / get_appointments are escalated to the owner via
+the backchannel (ADR-018) — the public flow doesn't support them.
 
-POST /admin/tenants/:id/integrations/agendapro/health-check
-    Sin body. Lee credenciales, invoca agendapro._health_check pasando
-    login/password para que el server intente re-login auto si el
-    context expiró. Persiste new_context_id si vino, flippea
-    needs_reauth si re-login también falló (y dispara
-    escalate.escalate_to_human).
+The legacy admin/credential-based flow (browser automation of the
+AgendaPro admin panel) was deprecated and removed in migration 0021.
+No production tenant was using it.
 
-Ambos endpoints exigen Bearer admin token. El service_caller_token para
-dispatch_internal sale de ``get_internal_caller_token()``.
+WhatsApp (Block J): manual wizard against YCloud — operator pastes
+waba_id + phone_number_id, backend verifies + upserts the Channel.
+
+Both flows require Bearer admin token.
 """
 
 from __future__ import annotations
@@ -39,173 +38,84 @@ from nexus_api.db.models import (
     Channel,
     ChannelStatus,
     ChannelType,
-)
-from nexus_api.services.agendapro_credentials import (
-    upsert_agendapro_credentials,
-)
-from nexus_api.services.agendapro_health import (
-    AgendaProNotConfigured,
-    run_agendapro_health_check,
+    Tenant,
 )
 
 router = APIRouter()
 log = structlog.get_logger()
 
 
-# ── request bodies ──────────────────────────────────────────────────────────
+# ── AgendaPro public-link setup ────────────────────────────────────────────
 
 
-class AgendaProBootstrapIn(BaseModel):
-    login: str = Field(min_length=1, max_length=200)
-    password: str = Field(min_length=1, max_length=200)
-    business_url: str | None = Field(default=None, max_length=500)
+class AgendaProPublicUrlIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Empty string clears the field; ``null`` does the same. Pydantic
+    # coerces both via the validator below.
+    public_url: str | None = Field(default=None, max_length=500)
 
 
-class AgendaProBootstrapOut(BaseModel):
+class AgendaProPublicUrlOut(BaseModel):
     integration: str
-    context_id: str
-    tenant_credentials_id: uuid.UUID
-    bootstrap_at: datetime
-    screenshot_url: str | None
+    public_url: str | None
+    updated_at: datetime
     audit_log_id: uuid.UUID
 
 
-class AgendaProHealthCheckOut(BaseModel):
-    healthy: bool
-    relogin_attempted: bool
-    relogin_succeeded: bool
-    needs_reauth: bool
-    checked_at: datetime
-    notes: str | None
-    new_context_id_persisted: bool
-
-
-# ── shared helpers ──────────────────────────────────────────────────────────
-
-
-async def _dispatch_internal_for_admin(
-    *,
-    name: str,
-    args: dict[str, Any],
-) -> dict[str, Any]:
-    """Wrapper que importa lazy y resuelve registry + caller_token.
-
-    Las imports lazy evitan que el módulo de admin importe en cascada el
-    registry MCP (que carga 21 tools y wirea Redis al import-time vía
-    el factory de transport).
-    """
-    from nexus_mcp import build_default_registry, get_internal_caller_token
-
-    registry = build_default_registry()
-    envelope: dict[str, Any] = await registry.dispatch_internal(
-        name,
-        args,
-        caller_token=get_internal_caller_token(),
-    )
-    return envelope
-
-
-# ── endpoints ───────────────────────────────────────────────────────────────
-
-
-@router.post(
-    "/tenants/{tenant_id}/integrations/agendapro/bootstrap",
-    response_model=AgendaProBootstrapOut,
-    status_code=status.HTTP_201_CREATED,
+@router.patch(
+    "/tenants/{tenant_id}/integrations/agendapro/public-url",
+    response_model=AgendaProPublicUrlOut,
 )
-async def bootstrap_agendapro(
+async def set_agendapro_public_url(
     tenant_id: uuid.UUID,
-    body: AgendaProBootstrapIn,
+    body: AgendaProPublicUrlIn,
     session: AsyncSession = Depends(scoped_session_from_path),
     actor: str = Depends(require_admin_token),
-) -> AgendaProBootstrapOut:
-    """Login a AgendaPro, captura context_id, persiste credenciales
-    encriptadas + context_id en tenant_credentials.
+) -> AgendaProPublicUrlOut:
+    """Set (or clear) the tenant's public AgendaPro URL.
+
+    The new public browser MCP reads this column when invoking
+    ``booking.check_availability`` and ``booking.create_appointment``.
+    Cancel / modify / get_appointments are out of scope for the public
+    flow and the agent escalates them to the owner via the backchannel.
     """
-    try:
-        envelope = await _dispatch_internal_for_admin(
-            name="agendapro._bootstrap_session",
-            args={
-                "login": body.login,
-                "password": body.password,
-                "business_url": body.business_url,
-            },
-        )
-    except Exception as exc:
-        log.exception(
-            "agendapro.bootstrap_failed",
-            tenant_id=str(tenant_id),
-            error=str(exc),
-        )
+    tenant = (
+        await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+    ).scalar_one_or_none()
+    if tenant is None:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"agendapro bootstrap failed: {exc}",
-        ) from exc
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"tenant {tenant_id} not found",
+        )
 
-    result = envelope["result"]
-    context_id = result["context_id"]
-    screenshot = result.get("screenshot") or {}
-    bootstrap_at = datetime.fromisoformat(result["bootstrap_at"])
+    raw = (body.public_url or "").strip() or None
+    # Minimal sanity check — the public browser MCP will probe the URL
+    # itself before scraping. Reject anything that doesn't look like an
+    # http(s) URL up front so the operator sees the typo here.
+    if raw is not None and not raw.startswith(("https://", "http://")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL pública debe arrancar con https:// o http://",
+        )
 
-    tenant_credentials_id = await upsert_agendapro_credentials(
-        session,
-        login=body.login,
-        password=body.password,
-        context_id=context_id,
-        business_url=body.business_url,
-    )
+    before = tenant.agendapro_public_url
+    tenant.agendapro_public_url = raw
     audit = AuditLog(
         tenant_id=tenant_id,
         actor=f"admin:{actor[:8]}",
-        action="integration.agendapro.bootstrap",
+        action="integration.agendapro.public_url",
         target=f"tenant:{tenant_id}",
-        before_json=None,
-        after_json={
-            "integration": "agendapro",
-            "context_id": context_id,
-            "screenshot_url": screenshot.get("screenshot_url"),
-            "screenshot_failed": screenshot.get("screenshot_failed", False),
-        },
+        before_json={"public_url": before},
+        after_json={"public_url": raw},
     )
     session.add(audit)
     await session.flush()
-    return AgendaProBootstrapOut(
+    return AgendaProPublicUrlOut(
         integration="agendapro",
-        context_id=context_id,
-        tenant_credentials_id=tenant_credentials_id,
-        bootstrap_at=bootstrap_at,
-        screenshot_url=screenshot.get("screenshot_url"),
+        public_url=raw,
+        updated_at=datetime.now(UTC),
         audit_log_id=audit.id,
-    )
-
-
-@router.post(
-    "/tenants/{tenant_id}/integrations/agendapro/health-check",
-    response_model=AgendaProHealthCheckOut,
-)
-async def health_check_agendapro(
-    tenant_id: uuid.UUID,
-    session: AsyncSession = Depends(scoped_session_from_path),
-    actor: str = Depends(require_admin_token),
-) -> AgendaProHealthCheckOut:
-    """Verifica el context AgendaPro. Auto-relogin si expiró. Si
-    re-login falla → flippea ``needs_reauth=True`` + escribe audit_log
-    que el operator alerter convierte en notification al operador."""
-    try:
-        result = await run_agendapro_health_check(session, tenant_id, actor=f"admin:{actor[:8]}")
-    except AgendaProNotConfigured as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="tenant has no agendapro integration; bootstrap first",
-        ) from exc
-    return AgendaProHealthCheckOut(
-        healthy=result.healthy,
-        relogin_attempted=result.relogin_attempted,
-        relogin_succeeded=result.relogin_succeeded,
-        needs_reauth=result.needs_reauth,
-        checked_at=result.checked_at,
-        notes=result.notes,
-        new_context_id_persisted=result.new_context_id_persisted,
     )
 
 
@@ -295,10 +205,7 @@ def _phone_info_to_summary(payload: dict[str, Any]) -> dict[str, Any]:
         or payload.get("display_phone_number")
     )
     phone_number_id = (
-        payload.get("phoneNumberId")
-        or payload.get("phone_number_id")
-        or payload.get("id")
-        or ""
+        payload.get("phoneNumberId") or payload.get("phone_number_id") or payload.get("id") or ""
     )
     return {
         "phone_number": phone_number,

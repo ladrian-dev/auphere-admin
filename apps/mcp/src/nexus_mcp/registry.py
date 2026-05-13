@@ -290,17 +290,12 @@ _default_registry: MCPRegistry | None = None
 
 
 def build_default_registry() -> MCPRegistry:
-    """Construct the registry with all 6 Block-D public servers + the
-    Block-E agendapro internal tools loaded. Imported by the worker on
-    startup. Tests typically build their own registry with a subset for
-    fast targeted runs.
+    """Construct the registry with the public Block-D servers.
 
-    The agendapro.* internal tools resolve their transport lazily — at
-    dispatch time, not registration time — so importing this function
-    does NOT require the Node subprocess to be available. Tests that
-    actually invoke them must call
-    ``nexus_mcp.servers.agendapro_browser.transport.set_default_transport``
-    first (typically with a ``FakeAgendaProTransport``).
+    ADR-017 / migration 0021: the AgendaPro admin browser MCP was
+    removed. The new public-link MCP (future session) plugs in here
+    when it lands. Until then ``_internal_tools`` is empty and
+    ``dispatch_internal`` has nothing to dispatch.
     """
     global _default_registry
     if _default_registry is not None:
@@ -308,7 +303,6 @@ def build_default_registry() -> MCPRegistry:
 
     # Local imports to avoid circular deps (each server's tools.py can
     # import from nexus_mcp.base safely).
-    from nexus_mcp.servers.agendapro_browser.tools import build_agendapro_tools
     from nexus_mcp.servers.booking.tools import BOOKING_TOOLS
     from nexus_mcp.servers.client.tools import CLIENT_TOOLS
     from nexus_mcp.servers.commission.tools import COMMISSION_TOOLS
@@ -328,8 +322,6 @@ def build_default_registry() -> MCPRegistry:
         *OPERATOR_TOOLS,
     ):
         registry.register(tool_cls())
-    for internal_tool in build_agendapro_tools():
-        registry.register_internal(internal_tool)
     _default_registry = registry
     return registry
 

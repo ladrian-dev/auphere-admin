@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Activity, KeyRound } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,8 +30,7 @@ import { Label } from "@/components/ui/label";
 import type { WhatsAppPreview } from "@/lib/backend";
 
 import {
-  agendaProHealthCheckAction,
-  agendaProSetupAction,
+  agendaProSetPublicUrlAction,
   connectWhatsAppSetupAction,
   verifyWhatsAppAction,
 } from "./setup-actions";
@@ -263,68 +262,34 @@ function PreviewRow({
   );
 }
 
-// ── AgendaPro browser_credentials wizard ───────────────────────────────────
+// ── AgendaPro public-link wizard (ADR-017) ─────────────────────────────────
 
 export function AgendaProSetupDialog({
   tenantId,
-  alreadyConnected,
+  currentUrl,
 }: {
   tenantId: string;
-  alreadyConnected: boolean;
+  /** Current ``tenants.agendapro_public_url`` — null when unset. */
+  currentUrl?: string | null;
 }) {
   const [open, setOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
-
-  function runHealthCheck() {
-    startTransition(async () => {
-      const result = await agendaProHealthCheckAction(tenantId);
-      if (!result.ok) {
-        toast.error("Health check falló", { description: result.error });
-        return;
-      }
-      const { healthy, needs_reauth, notes } = result.data;
-      if (healthy) {
-        toast.success("AgendaPro saludable", {
-          description: notes ?? "Sesión válida.",
-        });
-      } else if (needs_reauth) {
-        toast.warning("Re-auth requerida", {
-          description:
-            notes ?? "El re-login automático falló. Re-bootstrap manual.",
-        });
-      } else {
-        toast.info("Health check completado", {
-          description: notes ?? "Revisá el detalle en el log.",
-        });
-      }
-    });
-  }
+  const alreadyConfigured = Boolean(currentUrl);
 
   return (
     <div className="flex items-center gap-2">
-      {alreadyConnected ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={runHealthCheck}
-          disabled={pending}
-        >
-          <Activity className="size-4" />
-          {pending ? "Verificando…" : "Verificar"}
-        </Button>
-      ) : null}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger
           render={
-            <Button size="sm" variant={alreadyConnected ? "outline" : "default"}>
+            <Button size="sm" variant={alreadyConfigured ? "outline" : "default"}>
               <KeyRound className="size-4" />
-              {alreadyConnected ? "Reconectar" : "Conectar"}
+              {alreadyConfigured ? "Editar URL" : "Conectar"}
             </Button>
           }
         />
         <DialogContent>
-          <AgendaProBootstrapForm
+          <AgendaProPublicUrlForm
             tenantId={tenantId}
+            currentUrl={currentUrl ?? null}
             onClose={() => setOpen(false)}
           />
         </DialogContent>
@@ -333,38 +298,35 @@ export function AgendaProSetupDialog({
   );
 }
 
-function AgendaProBootstrapForm({
+function AgendaProPublicUrlForm({
   tenantId,
+  currentUrl,
   onClose,
 }: {
   tenantId: string;
+  currentUrl: string | null;
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
-  const [login, setLogin] = useState("");
-  const [password, setPassword] = useState("");
-  const [businessUrl, setBusinessUrl] = useState("");
+  const [publicUrl, setPublicUrl] = useState(currentUrl ?? "");
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!login || !password) {
-      toast.error("Faltan datos", {
-        description: "Email + contraseña requeridos.",
+    const trimmed = publicUrl.trim();
+    if (!trimmed) {
+      toast.error("Falta la URL", {
+        description: "Pegá el link público de AgendaPro de tu negocio.",
       });
       return;
     }
     startTransition(async () => {
-      const result = await agendaProSetupAction(tenantId, {
-        login,
-        password,
-        business_url: businessUrl || null,
-      });
+      const result = await agendaProSetPublicUrlAction(tenantId, trimmed);
       if (!result.ok) {
-        toast.error("Bootstrap falló", { description: result.error });
+        toast.error("No se pudo guardar la URL", { description: result.error });
         return;
       }
       toast.success("AgendaPro conectado", {
-        description: `context_id ${result.data.context_id.slice(0, 12)}…`,
+        description: result.data.public_url ?? "URL guardada.",
       });
       onClose();
     });
@@ -376,54 +338,33 @@ function AgendaProBootstrapForm({
         <DialogTitle>Conectar AgendaPro</DialogTitle>
         <DialogDescription className="space-y-2">
           <span className="block">
-            AgendaPro no expone OAuth ni API key pública, así que el agente
-            opera con la sesión del owner. Pegamos sus credenciales una vez,
-            las ciframos con Fernet y el agente reutiliza el contexto del
-            navegador para crear, modificar y cancelar citas.
+            El agente usa el <strong>link público</strong> de tu negocio en
+            AgendaPro para consultar disponibilidad y crear citas. No
+            necesitamos ni guardamos credenciales de admin.
           </span>
           <span className="block text-xs">
-            Las credenciales no son visibles después de guardarlas y se
-            rotan al re-bootstrappear. El agente jamás las recibe en su
-            prompt.
+            Modificar o cancelar citas todavía no se hace por el link
+            público: el agente le consulta al dueño por WhatsApp y avisa al
+            cliente cuando reciba respuesta.
           </span>
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-2">
-        <Label htmlFor="ap-login">Email</Label>
+        <Label htmlFor="ap-public-url">URL pública del negocio</Label>
         <Input
-          id="ap-login"
-          type="email"
-          autoComplete="off"
-          placeholder="owner@empresa.com"
-          value={login}
-          onChange={(e) => setLogin(e.target.value)}
-          required
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="ap-password">Contraseña</Label>
-        <Input
-          id="ap-password"
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="ap-url">
-          URL del negocio{" "}
-          <span className="text-muted-foreground text-xs">(opcional)</span>
-        </Label>
-        <Input
-          id="ap-url"
+          id="ap-public-url"
           type="url"
           inputMode="url"
-          placeholder="https://miempresa.agendapro.com"
-          value={businessUrl}
-          onChange={(e) => setBusinessUrl(e.target.value)}
+          placeholder="https://miempresa.site.agendapro.com"
+          value={publicUrl}
+          onChange={(e) => setPublicUrl(e.target.value)}
+          required
         />
+        <p className="text-[11px] text-muted-foreground">
+          Pegá la URL que un cliente final usaría para reservar — la que
+          empieza con <code>https://</code> y termina en{" "}
+          <code>.agendapro.com</code>.
+        </p>
       </div>
       <DialogFooter>
         <Button
@@ -435,7 +376,7 @@ function AgendaProBootstrapForm({
           Cancelar
         </Button>
         <Button type="submit" disabled={pending}>
-          {pending ? "Conectando…" : "Conectar"}
+          {pending ? "Guardando…" : "Guardar"}
         </Button>
       </DialogFooter>
     </form>

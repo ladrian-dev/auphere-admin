@@ -30,6 +30,10 @@ import {
 } from "./actions";
 import { ApplySeedTemplateButton } from "./apply-seed";
 import { EvalsSection } from "./evals/evals-section";
+import {
+  PromoteVersionButton,
+  RollbackVersionButton,
+} from "./version-actions";
 
 export default async function AgentPage({
   params,
@@ -165,8 +169,11 @@ export default async function AgentPage({
 }
 
 function VersionTable({
+  tenantId,
   versions,
   activeVersion,
+  promote,
+  rollback,
 }: {
   tenantId: string;
   versions: Array<{
@@ -202,12 +209,17 @@ function VersionTable({
           <TableHead>Estado</TableHead>
           <TableHead>Creada</TableHead>
           <TableHead>Promovida</TableHead>
-          <TableHead className="text-right">ID</TableHead>
+          <TableHead>ID</TableHead>
+          <TableHead className="text-right">Acción</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {sorted.map((v) => {
           const isActive = activeVersion === v.version;
+          // A version is promotable when it's a draft that's not already
+          // active. Archived versions can be re-applied via rollback.
+          const canPromote = !isActive && v.status === "staged";
+          const canRollback = !isActive && v.status === "archived";
           return (
             <TableRow key={v.id}>
               <TableCell className="font-mono tabular-nums">
@@ -230,8 +242,23 @@ function VersionTable({
               <TableCell className="text-muted-foreground">
                 {v.promoted_at ? relativeTime(v.promoted_at) : "—"}
               </TableCell>
-              <TableCell className="text-right text-xs font-mono text-muted-foreground">
+              <TableCell className="text-xs font-mono text-muted-foreground">
                 {v.id.slice(0, 8)}
+              </TableCell>
+              <TableCell className="text-right">
+                {canPromote ? (
+                  <PromoteVersionButton
+                    tenantId={tenantId}
+                    version={v.version}
+                    promote={promote}
+                  />
+                ) : canRollback ? (
+                  <RollbackVersionButton
+                    tenantId={tenantId}
+                    version={v.version}
+                    rollback={rollback}
+                  />
+                ) : null}
               </TableCell>
             </TableRow>
           );

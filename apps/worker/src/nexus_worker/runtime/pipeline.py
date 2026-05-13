@@ -151,9 +151,7 @@ def _filter_tools_for_intent(bundle: AgentBundle, intent: str) -> tuple[str, ...
     return tuple(t for t in category if t in wl)
 
 
-def _filter_tools_for_intent_with_composio(
-    bundle: AgentBundle, intent: str
-) -> tuple[str, ...]:
+def _filter_tools_for_intent_with_composio(bundle: AgentBundle, intent: str) -> tuple[str, ...]:
     """Like :func:`_filter_tools_for_intent` but additionally surfaces
     Composio-backed tools from the whitelist that are not in the static
     category map.
@@ -178,16 +176,14 @@ def _filter_tools_for_intent_with_composio(
         if "." not in t:
             continue
         toolkit, _action = t.split(".", 1)
-        if toolkit in {"googlecalendar", "calendly"} and intent in {"book", "info"}:
-            extras.append(t)
-        elif toolkit in {"notion", "googledrive", "googlesheets"} and intent == "info":
-            extras.append(t)
-        elif toolkit == "gmail" and intent == "escalate":
-            extras.append(t)
-        elif intent == "info":
-            # Permissive: any other Composio tool defaults to info so the
-            # operator can wire up new connectors without code changes.
-            if toolkit not in {
+        if (
+            (toolkit in {"googlecalendar", "calendly"} and intent in {"book", "info"})
+            or (toolkit in {"notion", "googledrive", "googlesheets"} and intent == "info")
+            or (toolkit == "gmail" and intent == "escalate")
+        ) or (
+            intent == "info"
+            and toolkit
+            not in {
                 "booking",
                 "queue",
                 "client",
@@ -196,8 +192,9 @@ def _filter_tools_for_intent_with_composio(
                 "notification",
                 "operator",
                 "agendapro",
-            }:
-                extras.append(t)
+            }
+        ):
+            extras.append(t)
     return base + tuple(extras)
 
 
@@ -226,9 +223,7 @@ async def _view_with_composio(
         load_blueprints_for_tenant,
     )
 
-    blueprints = await load_blueprints_for_tenant(
-        tenant_id, whitelist=frozenset(candidates)
-    )
+    blueprints = await load_blueprints_for_tenant(tenant_id, whitelist=frozenset(candidates))
     if not blueprints:
         return registry, available_names
 
@@ -239,11 +234,11 @@ async def _view_with_composio(
     view = MCPRegistry()
     for name in registry.names():
         # Re-register the existing instance under the new view.
-        view._tools[name] = registry._tools[name]  # noqa: SLF001
+        view._tools[name] = registry._tools[name]
     for name in registry.internal_names():
-        view._internal_tools[name] = registry._internal_tools[name]  # noqa: SLF001
+        view._internal_tools[name] = registry._internal_tools[name]
     for proxy in proxies:
-        view._tools[proxy.name] = proxy  # noqa: SLF001
+        view._tools[proxy.name] = proxy
     return view, available_names
 
 

@@ -11,10 +11,11 @@ async def test_list_returns_seeded_catalog(client, admin_headers):
     names = {t["name"] for t in body}
     assert "booking.check_availability" in names
     assert "queue.join_queue" in names
-    # Migration 0018 added ``operator.consult_owner`` (ADR-018) bringing
-    # the seed catalog to 22 LLM-facing tools.
+    # 21 Block-D + ``operator.consult_owner`` (0018) + 6 native-output
+    # notification tools (0020) = 28. The 6 ``agendapro.*`` internal
+    # tools were removed by migration 0021 (ADR-017).
     assert "operator.consult_owner" in names
-    assert len(body) == 22
+    assert len(body) == 28
 
 
 async def test_each_tool_has_mcp_server(client, admin_headers):

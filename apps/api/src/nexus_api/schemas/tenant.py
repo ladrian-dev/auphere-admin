@@ -33,6 +33,7 @@ class TenantOut(BaseModel):
     owner_phone: str | None
     owner_email: str | None
     cost_alert_threshold_usd_per_day: Decimal
+    agendapro_public_url: str | None = None
     created_at: datetime
     updated_at: datetime
 

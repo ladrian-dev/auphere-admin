@@ -67,54 +67,30 @@ export async function connectWhatsAppSetupAction(
   }
 }
 
-// ── AgendaPro browser_credentials ──────────────────────────────────────────
+// ── AgendaPro public link (ADR-017) ────────────────────────────────────────
 
-export async function agendaProSetupAction(
+/**
+ * Save the tenant's public AgendaPro URL. The new public browser MCP
+ * (future session) reads this column to scrape availability and create
+ * appointments via the public booking link. Cancel / modify / list
+ * appointments are out of scope for the public flow and the agent
+ * escalates them to the owner via the backchannel (ADR-018).
+ *
+ * Pass an empty string (or null) to clear the URL.
+ */
+export async function agendaProSetPublicUrlAction(
   tenantId: string,
-  body: { login: string; password: string; business_url?: string | null },
-): Promise<ActionResult<{ context_id: string }>> {
+  publicUrl: string | null,
+): Promise<ActionResult<{ public_url: string | null }>> {
   await requireSession();
   try {
-    const bootstrap = await backend.bootstrapAgendaPro(tenantId, body);
-    if (!bootstrap) {
-      return { ok: false, error: "Bootstrap no retornó datos." };
+    const result = await backend.setAgendaProPublicUrl(tenantId, publicUrl);
+    if (!result) {
+      return { ok: false, error: "El backend no retornó datos." };
     }
-    await backend.bootstrapBrowserConnector(tenantId, "agendapro", {
-      tenant_credentials_id: bootstrap.tenant_credentials_id,
-      context_id: bootstrap.context_id,
-    });
     revalidatePath(`/tenants/${tenantId}/connectors`);
     revalidatePath(`/tenants/${tenantId}`);
-    return { ok: true, data: { context_id: bootstrap.context_id } };
-  } catch (err) {
-    return { ok: false, error: toError(err) };
-  }
-}
-
-export async function agendaProHealthCheckAction(
-  tenantId: string,
-): Promise<
-  ActionResult<{
-    healthy: boolean;
-    needs_reauth: boolean;
-    notes: string | null;
-  }>
-> {
-  await requireSession();
-  try {
-    const result = await backend.healthCheckAgendaPro(tenantId);
-    revalidatePath(`/tenants/${tenantId}/connectors`);
-    if (!result) {
-      return { ok: false, error: "Health check no retornó datos." };
-    }
-    return {
-      ok: true,
-      data: {
-        healthy: result.healthy,
-        needs_reauth: result.needs_reauth,
-        notes: result.notes,
-      },
-    };
+    return { ok: true, data: { public_url: result.public_url } };
   } catch (err) {
     return { ok: false, error: toError(err) };
   }
