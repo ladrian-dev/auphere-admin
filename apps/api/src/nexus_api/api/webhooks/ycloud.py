@@ -37,6 +37,7 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from nexus_channels.base import InboundMessage
 from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
 from nexus_channels.whatsapp_ycloud.signature import (
     YCloudSignatureError,
@@ -379,7 +380,7 @@ async def _handle_inbound(
     return {"status": "queued"}
 
 
-def _render_content(inbound: Any) -> str:
+def _render_content(inbound: InboundMessage) -> str:
     """Render the inbound event into a single ``content`` string that the
     pipeline can consume. Keeps the interactive prefix from Block F + adds
     structured headers for media / reactions / location / context so the
@@ -390,7 +391,10 @@ def _render_content(inbound: Any) -> str:
     string is for the LLM's eyes only.
     """
     if inbound.text is not None and inbound.kind.value == "text":
-        return inbound.text
+        # ``text`` is declared ``str | None``; mypy strict needs the
+        # explicit ``str(...)`` widening through the Pydantic boundary
+        # because the runtime can't see the constraint inside the model.
+        return str(inbound.text)
     if inbound.interactive is not None:
         title = inbound.interactive.title or ""
         return f"[interactive:{inbound.interactive.kind}:{inbound.interactive.payload_id}]{title}"

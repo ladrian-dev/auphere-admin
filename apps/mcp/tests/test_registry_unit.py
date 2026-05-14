@@ -12,15 +12,24 @@ pytestmark = [pytest.mark.unit]
 
 def test_default_registry_has_all_block_d_tools():
     """21 Block-D + ``operator.consult_owner`` (ADR-018) + 6 native-output
-    notification tools (migration 0020) = 28. The ``agendapro.*`` internal
-    tools were dropped in migration 0021 (ADR-017)."""
+    notification tools (migration 0020) = 28 LLM-facing.
+
+    Block O (ADR-017) registers 2 INTERNAL tools (``agendapro_public.
+    check_availability`` and ``.create_appointment``) that the booking
+    facade and async cron reach via ``dispatch_internal``; the LLM
+    never sees them.
+    """
     reset_default_registry()
     reg = build_default_registry()
     names = set(reg.names())
     assert len(names) == 28
     assert "operator.consult_owner" in names
-    # The admin browser MCP is gone; no internal tools registered.
-    assert reg.internal_names() == ()
+    # Block O internal tools — not LLM-facing.
+    internal = set(reg.internal_names())
+    assert internal == {
+        "agendapro_public.check_availability",
+        "agendapro_public.create_appointment",
+    }
 
     # Spot check namespaces.
     assert any(n.startswith("booking.") for n in names)

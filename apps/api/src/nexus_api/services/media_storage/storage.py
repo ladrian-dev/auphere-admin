@@ -258,11 +258,17 @@ class S3MediaStorage(MediaStorage):
 
     def _presign_blocking(self, key: str, ttl: int) -> str:
         try:
-            return self._client.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": self._bucket, "Key": key},
-                ExpiresIn=ttl,
+            # boto3 has no stubs so the return type is ``Any``. The
+            # contract is a URL string; cast through ``str()`` to keep
+            # mypy --strict happy.
+            url: str = str(
+                self._client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self._bucket, "Key": key},
+                    ExpiresIn=ttl,
+                )
             )
+            return url
         except Exception as exc:
             raise MediaStorageError(f"s3 presign failed for {key}: {exc}") from exc
 
