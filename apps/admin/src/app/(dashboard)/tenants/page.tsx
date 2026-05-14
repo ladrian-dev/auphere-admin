@@ -38,21 +38,29 @@ export default async function TenantsPage() {
         eyebrow="Tenants"
         title="Portafolio de agentes"
         description="Cada tenant es un cliente con su propio agente bespoke. Click en una fila para abrir el detalle."
-        actions={<Button render={<Link href="/tenants/new" />}>Nuevo cliente</Button>}
+        actions={
+          <Button render={<Link href="/tenants/new" />}>Nuevo cliente</Button>
+        }
       />
 
       <div className="flex items-center gap-6 text-sm text-muted-foreground">
         <span>
-          <strong className="text-foreground tabular-nums">{counts.total}</strong>{" "}
+          <strong className="text-foreground tabular-nums">
+            {counts.total}
+          </strong>{" "}
           tenants
         </span>
         <span>
-          <strong className="text-foreground tabular-nums">{counts.active}</strong>{" "}
+          <strong className="text-foreground tabular-nums">
+            {counts.active}
+          </strong>{" "}
           activos
         </span>
         {counts.paused > 0 ? (
           <span>
-            <strong className="text-foreground tabular-nums">{counts.paused}</strong>{" "}
+            <strong className="text-foreground tabular-nums">
+              {counts.paused}
+            </strong>{" "}
             pausados
           </span>
         ) : null}
@@ -109,9 +117,7 @@ export default async function TenantsPage() {
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex items-center gap-2">
-                      <StatusDot
-                        tone={STATUS_TONE[tenant.status] ?? "muted"}
-                      />
+                      <StatusDot tone={STATUS_TONE[tenant.status] ?? "muted"} />
                       <span>{statusLabel(tenant.status)}</span>
                     </span>
                   </TableCell>

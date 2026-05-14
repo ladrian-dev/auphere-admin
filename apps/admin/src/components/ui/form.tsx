@@ -121,12 +121,17 @@ function FormDescription({
     <p
       data-slot="form-description"
       id={formDescriptionId}
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-muted-foreground text-xs leading-snug", className)}
       {...props}
     />
   );
 }
 
+/**
+ * Always-rendered slot. Even when there is no error, the `<p>` reserves a
+ * fixed-height line so the next row in a grid doesn't jump 16px when
+ * validation kicks in. The aria-live region keeps screen readers in sync.
+ */
 function FormMessage({
   className,
   children,
@@ -134,15 +139,18 @@ function FormMessage({
 }: React.ComponentProps<"p">) {
   const { error, formMessageId } = useFormField();
   const body = error ? String(error?.message ?? "") : children;
-  if (!body) return null;
   return (
     <p
       data-slot="form-message"
       id={formMessageId}
-      className={cn("text-destructive text-sm", className)}
+      aria-live="polite"
+      className={cn(
+        "min-h-4 text-destructive text-xs leading-snug",
+        className,
+      )}
       {...props}
     >
-      {body}
+      {body ?? " "}
     </p>
   );
 }

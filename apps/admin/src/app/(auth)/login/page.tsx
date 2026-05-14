@@ -21,7 +21,7 @@ export default async function LoginPage({
     <main className="min-h-screen grid place-items-center bg-[color:var(--color-bg)] px-6">
       <div className="w-full max-w-md flex flex-col gap-10">
         <header className="flex flex-col gap-4">
-          <Wordmark variant="compact" />
+          <Wordmark variant="horizontal" />
           <div className="flex flex-col gap-2">
             <Eyebrow>Operador interno</Eyebrow>
             <h1

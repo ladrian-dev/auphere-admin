@@ -10,7 +10,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { Wordmark } from "@/components/brand/wordmark";
+import { BrandMark, Wordmark } from "@/components/brand/wordmark";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -117,23 +117,29 @@ export function AppSidebar({
 }
 
 /**
- * Brand mark inside the sidebar header. In ``collapsed`` (icon-only)
- * mode we render the dot mark alone; in expanded mode the full
- * lowercase wordmark plus ``nexus`` suffix.
+ * Brand mark inside the sidebar header.
+ *
+ * Expanded: full horizontal lockup (mark + wordmark + nexus eyebrow) using
+ * the canonical Auphere SVGs.
+ *
+ * Collapsed: isotipo only, 28px square, centred on the 56px rail — mirrors
+ * Linear / Vercel and keeps the brand identity present at any sidebar
+ * state instead of degrading to a generic dot.
  */
 function BrandHeader() {
   const { state, isMobile } = useSidebar();
   const collapsed = state === "collapsed" && !isMobile;
   return (
-    <div className="flex h-10 items-center px-2">
+    <div
+      className={cn(
+        "flex h-10 items-center",
+        collapsed ? "justify-center px-0" : "px-2",
+      )}
+    >
       {collapsed ? (
-        <span
-          aria-hidden="true"
-          aria-label="auphere"
-          className="block size-2 rounded-[2px] bg-[color:var(--color-primary-deep)]"
-        />
+        <BrandMark className="size-7 text-[color:var(--color-primary-deep)]" />
       ) : (
-        <Wordmark variant="compact" />
+        <Wordmark variant="horizontal" />
       )}
     </div>
   );

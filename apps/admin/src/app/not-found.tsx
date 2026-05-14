@@ -15,7 +15,7 @@ export default function NotFound() {
   return (
     <main className="grid min-h-dvh place-items-center bg-background px-6">
       <div className="flex flex-col items-center gap-6 text-center max-w-md">
-        <Wordmark variant="compact" />
+        <Wordmark variant="horizontal" />
         <div className="flex flex-col gap-2">
           <h1
             className="text-3xl font-semibold leading-tight"

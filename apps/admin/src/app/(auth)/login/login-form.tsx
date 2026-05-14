@@ -110,9 +110,9 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         />
         <Button
           type="submit"
-          size="lg"
+          size="default"
           disabled={submitting || pending}
-          className="w-full"
+          className="w-full cursor-pointer"
         >
           {submitting || pending ? "Iniciando sesión…" : "Entrar"}
         </Button>
