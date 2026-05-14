@@ -123,9 +123,7 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # Migration 0019 — last inbound timestamp so notification.send_text can
     # enforce the 24h customer-service window server-side. Backfilled from
     # MAX(messages.created_at WHERE direction='inbound') by 0019.
-    last_inbound_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
@@ -168,9 +166,7 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # DELIVERED → READ on the receiver side; ``failed_at`` + ``failure_code``
     # capture a terminal failure from Meta (e.g. 131026 recipient unable,
     # 131047 outside 24h window, 132xxx template paused).
-    delivered_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failure_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -179,9 +175,7 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # callback, and ``conversation.id`` which uniquely identifies the
     # 24h-conversation window Meta opens for billing.
     pricing_category: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    conversation_provider_id: Mapped[str | None] = mapped_column(
-        String(120), nullable=True
-    )
+    conversation_provider_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     # Media (audio/image/document/video/sticker) stored in S3 + metadata.
     # ``media_transcript`` is filled by the LLM multimodal pipeline (Whisper
@@ -237,12 +231,8 @@ class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     reason: Mapped[str] = mapped_column(String(40), nullable=False)
     trigger_keyword: Mapped[str | None] = mapped_column(String(80), nullable=True)
     source_wamid: Mapped[str | None] = mapped_column(String(160), nullable=True)
-    opted_out_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    opted_in_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    opted_out_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    opted_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class WhatsAppTemplateStatus(UUIDPrimaryKey, TimestampMixin, Base):
@@ -278,9 +268,5 @@ class WhatsAppTemplateStatus(UUIDPrimaryKey, TimestampMixin, Base):
     category: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    last_event_payload: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict
-    )
-    last_event_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_event_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

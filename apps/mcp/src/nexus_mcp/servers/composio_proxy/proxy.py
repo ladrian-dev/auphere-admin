@@ -112,9 +112,7 @@ class ComposioProxyTool(ToolBase):
         # distinct ``name`` to LiteLLM. The ``input_model`` stays the
         # passthrough — Composio enforces the real shape upstream.
         self.name = blueprint.tool_name
-        self.description = blueprint.description or (
-            f"Composio-backed tool {blueprint.tool_name}"
-        )
+        self.description = blueprint.description or (f"Composio-backed tool {blueprint.tool_name}")
         self.input_model = _PassthroughInput  # type: ignore[misc]
         self.output_model = _PassthroughOutput  # type: ignore[misc]
         # Surface the schema Composio gave us so to_tool_def returns the
@@ -165,17 +163,12 @@ class ComposioProxyTool(ToolBase):
             )
         except ComposioAuthExpired as exc:
             raise ToolError(
-                f"connection for {bp.toolkit_slug} expired (401); "
-                "operator must re-consent"
+                f"connection for {bp.toolkit_slug} expired (401); operator must re-consent"
             ) from exc
         except ComposioNotFound as exc:
-            raise ToolError(
-                f"connection {bp.connection_id} not found by Composio: {exc}"
-            ) from exc
+            raise ToolError(f"connection {bp.connection_id} not found by Composio: {exc}") from exc
         except ComposioUnavailable as exc:
-            raise ToolError(
-                f"Composio temporarily unavailable: {exc}"
-            ) from exc
+            raise ToolError(f"Composio temporarily unavailable: {exc}") from exc
         except ComposioError as exc:
             raise ToolError(f"Composio error: {exc}") from exc
 

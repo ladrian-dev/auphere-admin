@@ -112,9 +112,7 @@ async def _assert_inside_window(session: Any, conversation: Conversation) -> Non
         )
 
 
-async def _resolve_waba_id_for_conversation(
-    session: Any, conversation: Conversation
-) -> str | None:
+async def _resolve_waba_id_for_conversation(session: Any, conversation: Conversation) -> str | None:
     """Best-effort lookup of the WABA id from the conversation's channel.
 
     Used by the template guard to scope template approval state.
@@ -459,10 +457,7 @@ class SendReaction(ToolBase):
             conv = await _load_conversation(session, payload.conversation_id)
             # Reactions are not subject to the 24h window check — Meta
             # allows reacting to any message in scope.
-            content = (
-                f"[reaction:{payload.emoji or '(removed)'}:"
-                f"on={payload.target_message_id}]"
-            )
+            content = f"[reaction:{payload.emoji or '(removed)'}:on={payload.target_message_id}]"
             msg_id = await _queue_outbound(
                 session,
                 conversation=conv,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import pytest_asyncio
 from nexus_mcp import MCPRegistry, build_default_registry
@@ -75,11 +76,18 @@ async def seed_channel_and_conversation(
     db_session.add(ch)
     await db_session.commit()
     await db_session.refresh(ch)
+    # ``last_inbound_at`` is set to ``now()`` so test conversations
+    # behave like a real one that just received a customer message —
+    # ``notification.send_text`` enforces the 24h customer-service
+    # window via this column (Block N). In real production every
+    # conversation row is created by the inbound dispatcher which
+    # touches this field; the integration fixture mirrors that.
     conv = Conversation(
         tenant_id=tenant_id,
         channel_id=ch.id,
         customer_id=customer_id,
         status=ConversationStatus.OPEN,
+        last_inbound_at=datetime.now(UTC),
     )
     db_session.add(conv)
     await db_session.commit()

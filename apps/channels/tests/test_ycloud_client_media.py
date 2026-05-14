@@ -33,9 +33,7 @@ async def test_send_text_with_context_message_id_includes_context():
 
 async def test_send_image_link_and_caption():
     async with respx.mock(base_url=YCLOUD_BASE_URL) as mock:
-        route = mock.post("/whatsapp/messages/sendDirectly").respond(
-            200, json={"id": "y1"}
-        )
+        route = mock.post("/whatsapp/messages/sendDirectly").respond(200, json={"id": "y1"})
         async with YCloudClient(api_key="k") as client:
             await client.send_image(
                 from_phone="+5693",
@@ -51,9 +49,7 @@ async def test_send_image_link_and_caption():
 
 async def test_send_document_filename_persisted():
     async with respx.mock(base_url=YCLOUD_BASE_URL) as mock:
-        route = mock.post("/whatsapp/messages/sendDirectly").respond(
-            200, json={"id": "y1"}
-        )
+        route = mock.post("/whatsapp/messages/sendDirectly").respond(200, json={"id": "y1"})
         async with YCloudClient(api_key="k") as client:
             await client.send_document(
                 from_phone="+5693",
@@ -67,9 +63,7 @@ async def test_send_document_filename_persisted():
 
 async def test_send_reaction_payload_shape():
     async with respx.mock(base_url=YCLOUD_BASE_URL) as mock:
-        route = mock.post("/whatsapp/messages/sendDirectly").respond(
-            200, json={"id": "y1"}
-        )
+        route = mock.post("/whatsapp/messages/sendDirectly").respond(200, json={"id": "y1"})
         async with YCloudClient(api_key="k") as client:
             await client.send_reaction(
                 from_phone="+5693",
@@ -85,9 +79,7 @@ async def test_send_reaction_payload_shape():
 
 async def test_send_location_serialisation():
     async with respx.mock(base_url=YCLOUD_BASE_URL) as mock:
-        route = mock.post("/whatsapp/messages/sendDirectly").respond(
-            200, json={"id": "y1"}
-        )
+        route = mock.post("/whatsapp/messages/sendDirectly").respond(200, json={"id": "y1"})
         async with YCloudClient(api_key="k") as client:
             await client.send_location(
                 from_phone="+5693",

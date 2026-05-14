@@ -206,9 +206,7 @@ async def _handle_inbound(
     # 2) Durable dedupe — UNIQUE partial index. If the row already exists
     # the Redis key probably expired; either way we ack without re-enqueueing.
     async with tenant_scoped_session(session, tenant_id):
-        prior = await session.scalar(
-            select(Message.id).where(Message.provider_message_id == wamid)
-        )
+        prior = await session.scalar(select(Message.id).where(Message.provider_message_id == wamid))
         if prior is not None:
             log.info(
                 "webhook.ycloud.dedupe_db_hit",
@@ -445,8 +443,7 @@ async def _download_inbound_media(
     size = len(content)
     if size > settings.media_max_size_mb * 1024 * 1024:
         raise MediaStorageError(
-            f"inbound media too large: {size} bytes > "
-            f"{settings.media_max_size_mb}MB limit"
+            f"inbound media too large: {size} bytes > {settings.media_max_size_mb}MB limit"
         )
 
     tenant_slug = await _tenant_slug_for(tenant_id)
@@ -577,9 +574,7 @@ async def _handle_status_callback(
         return {"status": "ignored"}
 
     async with tenant_scoped_session(session, tenant_id):
-        msg = await session.scalar(
-            select(Message).where(Message.provider_message_id == cb.wamid)
-        )
+        msg = await session.scalar(select(Message).where(Message.provider_message_id == cb.wamid))
         if msg is None:
             # Status arrived before we persisted the outbound row (race
             # window: dispatcher set trace_id but didn't flush yet). The
@@ -725,9 +720,7 @@ async def _handle_template_status(
     return {"status": "applied"}
 
 
-async def _upsert_template_status(
-    session: AsyncSession, event: TemplateStatusUpdate
-) -> None:
+async def _upsert_template_status(session: AsyncSession, event: TemplateStatusUpdate) -> None:
     """UPSERT on ``(waba_id, template_name, language)``."""
     stmt = pg_insert(WhatsAppTemplateStatus).values(
         waba_id=event.waba_id,

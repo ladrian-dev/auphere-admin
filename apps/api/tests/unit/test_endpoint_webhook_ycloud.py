@@ -215,9 +215,7 @@ async def test_webhook_passes_button_reply_through(client, db_session, seed_tena
     assert r.json()["status"] == "queued"
 
 
-async def test_webhook_audio_message_enqueued_for_multimodal(
-    client, db_session, seed_tenants
-):
+async def test_webhook_audio_message_enqueued_for_multimodal(client, db_session, seed_tenants):
     """Block N promoted audio inbound to a first-class kind.
 
     Pre-Block-N the webhook returned ``accepted_no_dispatch`` for media.

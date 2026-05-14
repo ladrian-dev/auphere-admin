@@ -390,8 +390,7 @@ async def _call_public_mcp(
             # observe() call. Fall back to a text-match slot_token; the
             # Node flow handles the fallback path.
             "barber_slot_token": (
-                payload.get("barber_slot_token")
-                or f"text:{_format_time(appointment.starts_at)}"
+                payload.get("barber_slot_token") or f"text:{_format_time(appointment.starts_at)}"
             ),
         },
         "customer": {
@@ -403,8 +402,7 @@ async def _call_public_mcp(
             "email": _customer_email(customer),
         },
         "service_hint": appointment.service_name,
-        "idempotency_key": appointment.idempotency_key
-        or f"appt:{appointment.id}",
+        "idempotency_key": appointment.idempotency_key or f"appt:{appointment.id}",
     }
     envelope = await registry.dispatch_internal(
         "agendapro_public.create_appointment",

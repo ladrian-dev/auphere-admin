@@ -120,9 +120,7 @@ async def process_inbound(
         )
         user_message = f"{event.content}\n{header}{processed_media.text}"
     elif processed_media is not None and processed_media.error:
-        user_message = (
-            f"{event.content}\n[media-processing-error]: {processed_media.error}"
-        )
+        user_message = f"{event.content}\n[media-processing-error]: {processed_media.error}"
 
     # Phase 1: persist inbound side. Short transaction, then close.
     # The tenant.status lookup uses the same scoped session — Tenant is the

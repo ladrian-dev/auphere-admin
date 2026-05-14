@@ -116,9 +116,7 @@ class LiveMediaProcessor(MediaProcessor):
                 transcript = await self._transcribe(content, effective_mime)
                 return ProcessedMedia(kind="video", transcript=transcript, summary=None)
         except MediaProcessorError as exc:
-            return ProcessedMedia(
-                kind=media_kind, transcript=None, summary=None, error=str(exc)
-            )
+            return ProcessedMedia(kind=media_kind, transcript=None, summary=None, error=str(exc))
         except Exception as exc:
             log.warning(
                 "media_processor.unexpected_error",
@@ -199,9 +197,7 @@ class LiveMediaProcessor(MediaProcessor):
                     {"type": "text", "text": prompt},
                     {
                         "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{effective_mime};base64,{encoded}"
-                        },
+                        "image_url": {"url": f"data:{effective_mime};base64,{encoded}"},
                     },
                 ],
             }
@@ -242,9 +238,7 @@ class LiveMediaProcessor(MediaProcessor):
                 raise MediaProcessorError(f"text decode failed: {exc}") from exc
 
         # PDF — pypdf if available, else vision fallback for the first page.
-        if (mime_type and "pdf" in mime_type) or (
-            filename and filename.lower().endswith(".pdf")
-        ):
+        if (mime_type and "pdf" in mime_type) or (filename and filename.lower().endswith(".pdf")):
             text = await asyncio.to_thread(_pdf_to_text, content)
             if text:
                 return text[:8_000]
@@ -257,8 +251,7 @@ class LiveMediaProcessor(MediaProcessor):
 
         # Last resort: announce we received it but can't read it.
         raise MediaProcessorError(
-            f"unsupported document type: {mime_type or 'unknown'} "
-            f"({filename or 'no filename'})"
+            f"unsupported document type: {mime_type or 'unknown'} ({filename or 'no filename'})"
         )
 
 

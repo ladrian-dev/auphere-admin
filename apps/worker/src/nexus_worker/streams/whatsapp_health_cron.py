@@ -127,9 +127,7 @@ async def _check_one(
             await client.close()
 
         prior_quality = cfg.get("quality_rating")
-        new_quality = (
-            payload.get("qualityRating") or payload.get("quality_rating")
-        )
+        new_quality = payload.get("qualityRating") or payload.get("quality_rating")
         new_display = payload.get("displayName") or payload.get("display_name")
         new_verified = payload.get("verifiedName") or payload.get("verified_name")
 

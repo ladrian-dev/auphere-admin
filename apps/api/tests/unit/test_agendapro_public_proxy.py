@@ -100,11 +100,7 @@ class FakeAgendaProPublicTransport:
         if self._next_response is None:
             raise AssertionError(f"FakeAgendaProPublicTransport: no response staged for {name}")
         # MCP wire shape (matches the Node server's reply format).
-        return {
-            "content": [
-                {"type": "text", "text": json.dumps(self._next_response)}
-            ]
-        }
+        return {"content": [{"type": "text", "text": json.dumps(self._next_response)}]}
 
 
 @pytest.fixture(autouse=True)

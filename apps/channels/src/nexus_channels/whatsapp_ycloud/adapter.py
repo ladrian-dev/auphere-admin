@@ -385,9 +385,7 @@ class WhatsAppYCloudAdapter:
 
     # ── media inbound helpers ─────────────────────────────────────────────────
 
-    async def fetch_media_bytes(
-        self, *, media_id: str
-    ) -> tuple[bytes, str | None, str | None]:
+    async def fetch_media_bytes(self, *, media_id: str) -> tuple[bytes, str | None, str | None]:
         """Two-step media fetch: resolve URL then download bytes.
 
         Returns ``(content, mime_type, sha256)``. ``mime_type`` from
@@ -404,7 +402,11 @@ class WhatsAppYCloudAdapter:
         content, response_ct = await self._client.download_media(url)
         mime = metadata.get("mime_type") or metadata.get("mimeType") or response_ct
         sha = metadata.get("sha256") or metadata.get("sha_256")
-        return content, mime if isinstance(mime, str) else None, sha if isinstance(sha, str) else None
+        return (
+            content,
+            mime if isinstance(mime, str) else None,
+            sha if isinstance(sha, str) else None,
+        )
 
 
 def _to_result(raw: dict[str, Any]) -> SendResult:

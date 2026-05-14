@@ -169,9 +169,7 @@ def parse_inbound(payload: dict[str, Any]) -> InboundMessage | None:
                 name = first.get("name") or {}
                 if isinstance(name, dict):
                     text_body = (
-                        name.get("formatted_name")
-                        or name.get("first_name")
-                        or "[contact shared]"
+                        name.get("formatted_name") or name.get("first_name") or "[contact shared]"
                     )
     elif raw_type == "reaction":
         reaction = _parse_reaction(msg.get("reaction"))

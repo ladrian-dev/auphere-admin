@@ -44,9 +44,7 @@ def test_status_callback_failed_with_error_code():
             "from": "+56933334444",
             "status": "failed",
             "timestamp": "1715567890",
-            "errors": [
-                {"code": 131026, "title": "Receiver unavailable", "detail": "blocked"}
-            ],
+            "errors": [{"code": 131026, "title": "Receiver unavailable", "detail": "blocked"}],
         },
     }
     cb = parse_status_callback(payload)

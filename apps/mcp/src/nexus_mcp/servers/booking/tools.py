@@ -70,9 +70,7 @@ def _to_brief(a: Appointment) -> AppointmentBrief:
 # ── Block O helpers ──────────────────────────────────────────────────────────
 
 
-async def _tenant_uses_public_link(
-    session: AsyncSession, tenant_id: uuid.UUID
-) -> bool:
+async def _tenant_uses_public_link(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
     """True iff this tenant has an AgendaPro public booking URL configured.
 
     The signal is the ``tenants.agendapro_public_url`` column populated
@@ -196,8 +194,7 @@ class CreateAppointment(ToolBase):
                 # ``enqueued_async`` if it's still in flight.
                 replay_status = (
                     "enqueued_async"
-                    if existing.public_booking_status
-                    in ("pending", "in_progress")
+                    if existing.public_booking_status in ("pending", "in_progress")
                     else "confirmed"
                 )
                 return CreateAppointmentOutput(

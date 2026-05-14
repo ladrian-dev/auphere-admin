@@ -138,10 +138,7 @@ def _key_for_outbound(*, tenant_slug: str, filename: str | None, extension: str)
                 f"outbound/{tenant_slug}/{now.year:04d}/{now.month:02d}/{now.day:02d}/"
                 f"{base}_{clean[:120]}"
             )
-    return (
-        f"outbound/{tenant_slug}/{now.year:04d}/{now.month:02d}/{now.day:02d}/"
-        f"{base}.{extension}"
-    )
+    return f"outbound/{tenant_slug}/{now.year:04d}/{now.month:02d}/{now.day:02d}/{base}.{extension}"
 
 
 # ── S3 impl ─────────────────────────────────────────────────────────────────
@@ -198,7 +195,9 @@ class S3MediaStorage(MediaStorage):
     ) -> StoredMedia:
         ext = _extension_for(content_type, suggested_extension)
         key = _key_for_inbound(tenant_slug=tenant_slug, wamid=wamid, extension=ext)
-        normalised_ct = content_type or mimetypes.guess_type(f"file.{ext}")[0] or "application/octet-stream"
+        normalised_ct = (
+            content_type or mimetypes.guess_type(f"file.{ext}")[0] or "application/octet-stream"
+        )
         digest = sha256 or hashlib.sha256(content).hexdigest()
         await self._put(key=key, body=content, content_type=normalised_ct)
         return StoredMedia(
