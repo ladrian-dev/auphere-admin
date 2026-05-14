@@ -111,8 +111,14 @@ class ComposioProxyTool(ToolBase):
         # Subclass-the-shape-at-runtime so each proxy advertises a
         # distinct ``name`` to LiteLLM. The ``input_model`` stays the
         # passthrough — Composio enforces the real shape upstream.
-        self.name = blueprint.tool_name
-        self.description = blueprint.description or (f"Composio-backed tool {blueprint.tool_name}")
+        # ``ToolBase`` declares these as ClassVar so mypy complains
+        # about instance assignment; the override is intentional (each
+        # proxy carries its own name/description) and matches the
+        # registry's lookup-by-instance contract.
+        self.name = blueprint.tool_name  # type: ignore[misc]
+        self.description = blueprint.description or (  # type: ignore[misc]
+            f"Composio-backed tool {blueprint.tool_name}"
+        )
         self.input_model = _PassthroughInput  # type: ignore[misc]
         self.output_model = _PassthroughOutput  # type: ignore[misc]
         # Surface the schema Composio gave us so to_tool_def returns the

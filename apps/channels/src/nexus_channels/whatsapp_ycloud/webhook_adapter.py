@@ -422,9 +422,13 @@ def _parse_media(raw: Any, *, raw_type: str) -> MediaReference | None:
 def _parse_location(raw: Any) -> LocationPayload | None:
     if not isinstance(raw, dict):
         return None
+    lat_raw = raw.get("latitude")
+    lon_raw = raw.get("longitude")
+    if lat_raw is None or lon_raw is None:
+        return None
     try:
-        lat = float(raw.get("latitude"))
-        lon = float(raw.get("longitude"))
+        lat = float(lat_raw)
+        lon = float(lon_raw)
     except (TypeError, ValueError):
         return None
     return LocationPayload(

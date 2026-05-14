@@ -156,7 +156,7 @@ class LiveMediaProcessor(MediaProcessor):
                 filename = "video.mp4"
         try:
             file_like = io.BytesIO(content)
-            file_like.name = filename  # type: ignore[attr-defined]
+            file_like.name = filename
             response = await asyncio.wait_for(
                 litellm.atranscription(
                     model=settings.llm_transcribe_model,

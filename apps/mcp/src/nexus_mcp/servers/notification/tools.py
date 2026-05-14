@@ -197,7 +197,10 @@ async def _queue_outbound(
     session.add(msg)
     await session.flush()
     await session.refresh(msg)
-    return msg.id
+    # SQLAlchemy Mapped[UUID] resolves to Any under mypy --strict;
+    # an explicit cast keeps the return type honest.
+    msg_id: uuid.UUID = msg.id
+    return msg_id
 
 
 # ── send_template ────────────────────────────────────────────────────────────

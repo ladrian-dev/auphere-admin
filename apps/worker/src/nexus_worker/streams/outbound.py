@@ -70,6 +70,7 @@ from nexus_api.services.media_storage import MediaStorageError, get_media_storag
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
+    from nexus_channels.base import SendResult
     from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
 
 log = structlog.get_logger(__name__)
@@ -294,7 +295,7 @@ async def _dispatch_message(
     recipient: str,
     tenant_id: uuid.UUID,
     channel_id: uuid.UUID,
-):
+) -> SendResult:
     """Route the pending row to the right adapter call."""
     context = msg.context_message_id
 

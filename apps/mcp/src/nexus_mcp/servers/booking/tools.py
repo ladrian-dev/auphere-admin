@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from nexus_api.core.tenant_context import require_current_tenant
@@ -192,7 +192,7 @@ class CreateAppointment(ToolBase):
                 # Surface the existing row's async state so the agent
                 # doesn't lie. ``confirmed`` if the cron already completed,
                 # ``enqueued_async`` if it's still in flight.
-                replay_status = (
+                replay_status: Literal["confirmed", "enqueued_async"] = (
                     "enqueued_async"
                     if existing.public_booking_status in ("pending", "in_progress")
                     else "confirmed"
@@ -244,7 +244,7 @@ class CreateAppointment(ToolBase):
                             "idempotency_key collision with no replay row — "
                             "transactional anomaly, refusing to retry"
                         ) from None
-                    replay_status = (
+                    replay_status_again: Literal["confirmed", "enqueued_async"] = (
                         "enqueued_async"
                         if again.public_booking_status in ("pending", "in_progress")
                         else "confirmed"
@@ -252,11 +252,11 @@ class CreateAppointment(ToolBase):
                     return CreateAppointmentOutput(
                         appointment=_to_brief(again),
                         idempotent_replay=True,
-                        booking_status=replay_status,
+                        booking_status=replay_status_again,
                     )
             await session.refresh(row)
 
-            booking_status: str = "confirmed"
+            booking_status: Literal["confirmed", "enqueued_async"] = "confirmed"
             if tenant_uses_public:
                 await _enqueue_async_booking_job(
                     session,
@@ -269,7 +269,7 @@ class CreateAppointment(ToolBase):
             return CreateAppointmentOutput(
                 appointment=_to_brief(row),
                 idempotent_replay=False,
-                booking_status=booking_status,  # type: ignore[arg-type]
+                booking_status=booking_status,
             )
 
 

@@ -35,11 +35,13 @@ DEFAULT_TICK_SECONDS = 60.0
 
 
 def _sla_minutes_for(tenant: Tenant, urgency: str) -> int:
+    # SQLAlchemy Mapped[int] reads as Any under mypy --strict;
+    # widen via int(...) so the function honours its return type.
     if urgency == "high":
-        return tenant.backchannel_sla_high_min
+        return int(tenant.backchannel_sla_high_min)
     if urgency == "low":
-        return tenant.backchannel_sla_low_min
-    return tenant.backchannel_sla_normal_min
+        return int(tenant.backchannel_sla_low_min)
+    return int(tenant.backchannel_sla_normal_min)
 
 
 async def run_owner_consultation_timeout_sweep(
