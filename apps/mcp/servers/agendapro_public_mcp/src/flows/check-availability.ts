@@ -11,14 +11,10 @@
  * No customer data needed; returns slot metadata only. Idempotent and
  * safe to call repeatedly — every call is a fresh Browserbase session.
  *
- * Selector strategy: Stagehand's ``act()`` / ``observe()`` are LLM-
- * driven, which lets the flow survive small DOM drift. We never rely
- * on hardcoded CSS selectors except for the final scrape. For the
- * scrape we use ``observe()`` which returns selectors + text so
- * Stagehand can re-find a node if the page re-renders.
- *
- * Expected runtime: ~8-15s end-to-end (session boot 3-5s + page
- * navigation + 2x observe).
+ * Stagehand v3 API: ``act()`` / ``observe()`` live directly on the
+ * Stagehand instance (top-level). Low-level browser ops (goto,
+ * screenshot, waitForLoadState) go through the active V3 Page exposed
+ * by ``stagehand.context.activePage()``.
  */
 
 import { z } from "zod";
@@ -65,37 +61,37 @@ export async function checkAvailability(
     );
 
     // 1. Navigate.
-    await stagehand.page.goto(input.public_url, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
+    const page = stagehand.context.activePage();
+    if (!page) {
+      throw new Error("stagehand.context.activePage() returned undefined");
+    }
+    await page.goto(input.public_url, { timeoutMs: 30_000 });
 
     // 2. Service.
     if (input.service_hint) {
-      await stagehand.page.act({
-        action: `Click on the service named "${input.service_hint}". If multiple match, pick the closest.`,
-      });
+      await stagehand.act(
+        `Click on the service named "${input.service_hint}". If multiple match, pick the closest.`,
+      );
     }
 
     // 3. Date picker.
-    await stagehand.page.act({
-      action: `Open the date picker and select ${input.on_date}.`,
-    });
+    await stagehand.act(
+      `Open the date picker and select ${input.on_date}.`,
+    );
 
     // 4. Wait for slot grid to render.
-    await stagehand.page.waitForLoadState("networkidle", { timeout: 15_000 });
+    await page.waitForLoadState("networkidle", 15_000);
 
     // 5. Observe slots.
-    const observations = await stagehand.page.observe({
-      instruction:
-        "List every visible time-slot button on the page. " +
+    const observations = await stagehand.observe(
+      "List every visible time-slot button on the page. " +
         "For each, include the time text (HH:MM) and any visible " +
         "barber name. Skip disabled/grayed-out buttons.",
-    });
+    );
 
     // 6. Parse observations into slot metadata.
-    const slots = parseSlots(observations, input);
-    const screenshot = await captureScreenshotSafe(stagehand);
+    const slots = parseSlots(observations as ObservedAction[], input);
+    const screenshot = await captureScreenshotSafe(page);
 
     logger.info(
       { slot_count: slots.length },
@@ -114,15 +110,17 @@ export async function checkAvailability(
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-// The shape of stagehand.observe() varies across versions; we duck-type.
-type Observation = {
+// Mirrors the shape Stagehand v3 returns from observe() — duck typed so
+// minor SDK shifts don't break the parser.
+interface ObservedAction {
   selector?: string;
   description?: string;
-  text?: string;
-};
+  method?: string;
+  arguments?: string[];
+}
 
 function parseSlots(
-  observations: unknown[],
+  observations: ObservedAction[],
   input: CheckAvailabilityInput,
 ): Array<{
   starts_at_iso: string;
@@ -137,9 +135,8 @@ function parseSlots(
     barber_slot_token: string;
   }> = [];
 
-  for (const o of observations) {
-    const obs = o as Observation;
-    const text = (obs.text ?? obs.description ?? "").trim();
+  for (const obs of observations) {
+    const text = (obs.description ?? "").trim();
     if (!text) continue;
 
     // Expected formats observed at cultorbarber.site.agendapro.com:
@@ -148,7 +145,7 @@ function parseSlots(
     //   "15:00 Moisés (Profesional)"
     const m = text.match(/(\d{1,2}):(\d{2})(?:\s+(?:con\s+)?([^()]+?))?(?:\s*\(|$)/i);
     if (!m) continue;
-    const [_, hh, mm, rawBarber] = m;
+    const [, hh, mm, rawBarber] = m;
     const hour = Number(hh);
     const minute = Number(mm);
     if (Number.isNaN(hour) || Number.isNaN(minute)) continue;
@@ -180,12 +177,12 @@ function parseSlots(
 }
 
 async function captureScreenshotSafe(
-  stagehand: { page: { screenshot: (opts?: object) => Promise<Buffer> } },
+  page: { screenshot: (opts?: object) => Promise<Buffer> },
 ): Promise<string | undefined> {
   try {
-    // Phase 1: data: URL inline. Phase 2: upload to S3 via Python side
-    // and return the s3 key instead.
-    const buffer = await stagehand.page.screenshot({ fullPage: false });
+    // Phase 1: data: URL truncated marker. Phase 2: upload to S3 via
+    // Python side and return the s3 key instead.
+    const buffer = await page.screenshot();
     return `data:image/png;base64,${buffer.toString("base64").slice(0, 24)}...truncated`;
   } catch (e) {
     logger.warn({ err: e }, "screenshot.failed");

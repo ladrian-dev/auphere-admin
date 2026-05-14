@@ -7,18 +7,18 @@
  *   3. Pick slot (using ``barber_slot_token`` from check_availability
  *      when available; falls back to "HH:MM con NombreBarbero" text).
  *   4. Fill customer name / phone / email.
- *   5. Submit → wait for confirmation → scrape external_ref.
+ *   5. Submit → wait for confirmation → scrape external_ref via
+ *      ``stagehand.extract`` with a typed schema.
  *
- * Idempotency: the caller (Python booking facade) holds an
- * ``idempotency_key``. This function does NOT dedupe on its own —
- * the Python side checks ``appointments.idempotency_key`` BEFORE
- * dispatching. The wizard itself doesn't expose a way to query
- * existing bookings.
+ * Stagehand v3 API: ``act()`` / ``observe()`` / ``extract()`` are
+ * top-level on the Stagehand instance. Low-level browser ops
+ * (goto, screenshot, waitForLoadState) go via the V3 Page from
+ * ``stagehand.context.activePage()``.
  *
  * Outcome shape (see design doc § 2.2):
  *   - status="confirmed" + external_ref → happy path.
  *   - status="ambiguous" + external_ref=null → submit went through but
- *     the confirmation DOM marker wasn't reliably scraped. The cron
+ *     the confirmation extraction didn't find a code. The cron
  *     escalates to the owner (ADR-018) to verify in the AgendaPro
  *     panel.
  *   - status="failed" + failure_reason → wizard never reached step 5.
@@ -61,7 +61,32 @@ export type CreateAppointmentOutput = z.infer<typeof CreateAppointmentOutput>;
 // ── flow ────────────────────────────────────────────────────────────────────
 
 const SUBMIT_TIMEOUT_MS = 60_000;
-const CONFIRMATION_PATTERN = /reserv|confirmad|listo/i;
+const CONFIRMATION_POLL_MS = 2_000;
+
+// Stagehand extract schema for the confirmation step. Lets the v3
+// extractor return structured data instead of us regex-parsing
+// arbitrary HTML.
+const ConfirmationSchema = z.object({
+  is_confirmed: z
+    .boolean()
+    .describe(
+      "True if the page is showing a successful booking confirmation, " +
+        "e.g. 'reserva confirmada', 'listo', a success banner, a check icon.",
+    ),
+  external_ref: z
+    .string()
+    .nullable()
+    .describe(
+      "The booking confirmation code AgendaPro displays (often labeled " +
+        "'Código', 'Reserva #', or similar). Null if not visible yet.",
+    ),
+  hint: z
+    .string()
+    .describe(
+      "A short note about what the page is currently showing — useful " +
+        "for debugging when is_confirmed is false.",
+    ),
+});
 
 export async function createAppointment(
   input: CreateAppointmentInput,
@@ -79,58 +104,58 @@ export async function createAppointment(
       "create_appointment.start",
     );
 
+    const page = stagehand.context.activePage();
+    if (!page) {
+      throw new Error("stagehand.context.activePage() returned undefined");
+    }
+
     // 1. Navigate.
-    await stagehand.page.goto(input.public_url, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
+    await page.goto(input.public_url, { timeoutMs: 30_000 });
 
     // 2. Service.
-    await stagehand.page.act({
-      action: `Click on the service named "${input.service_hint}". If multiple match, pick the closest match.`,
-    });
+    await stagehand.act(
+      `Click on the service named "${input.service_hint}". If multiple match, pick the closest match.`,
+    );
 
     // 3. Date.
     const datePart = input.slot.starts_at_iso.slice(0, 10);
-    await stagehand.page.act({
-      action: `Open the date picker and select ${datePart}.`,
-    });
-    await stagehand.page.waitForLoadState("networkidle", { timeout: 15_000 });
+    await stagehand.act(`Open the date picker and select ${datePart}.`);
+    await page.waitForLoadState("networkidle", 15_000);
 
     // 4. Slot.
     const timePart = input.slot.starts_at_iso.slice(11, 16); // HH:MM
     if (input.slot.barber_slot_token.startsWith("text:")) {
       // Fallback: text search.
       const text = input.slot.barber_slot_token.slice("text:".length);
-      await stagehand.page.act({ action: `Click the time slot that shows "${text}".` });
+      await stagehand.act(`Click the time slot that shows "${text}".`);
     } else {
       // Selector path: stagehand internal hint format.
-      await stagehand.page.act({
-        action: `Click the time slot at ${timePart}. The barber slot token is ${input.slot.barber_slot_token}.`,
-      });
+      await stagehand.act(
+        `Click the time slot at ${timePart}. The barber slot token is ${input.slot.barber_slot_token}.`,
+      );
     }
 
     // 5. Customer details.
-    await stagehand.page.act({
-      action: `Type the customer name "${input.customer.name}" into the Name input.`,
-    });
-    await stagehand.page.act({
-      action: `Type the phone "${input.customer.phone_e164}" into the Phone or Teléfono input.`,
-    });
-    await stagehand.page.act({
-      action: `Type the email "${input.customer.email}" into the Email input.`,
-    });
+    await stagehand.act(
+      `Type the customer name "${input.customer.name}" into the Name input.`,
+    );
+    await stagehand.act(
+      `Type the phone "${input.customer.phone_e164}" into the Phone or Teléfono input.`,
+    );
+    await stagehand.act(
+      `Type the email "${input.customer.email}" into the Email input.`,
+    );
 
     // 6. Submit.
-    await stagehand.page.act({
-      action: `Click the final "Confirmar" or "Reservar" button to submit the booking.`,
-    });
+    await stagehand.act(
+      `Click the final "Confirmar" or "Reservar" button to submit the booking.`,
+    );
 
-    // 7. Confirmation.
+    // 7. Confirmation via structured extract — polls until timeout.
     const confirmation = await waitForConfirmation(stagehand);
-    const screenshot = await captureScreenshotSafe(stagehand);
+    const screenshot = await captureScreenshotSafe(page);
 
-    if (confirmation.status === "confirmed") {
+    if (confirmation.is_confirmed && confirmation.external_ref) {
       logger.info(
         { external_ref: confirmation.external_ref },
         "create_appointment.confirmed",
@@ -143,7 +168,7 @@ export async function createAppointment(
         status: "confirmed",
       };
     }
-    if (confirmation.status === "ambiguous") {
+    if (confirmation.is_confirmed) {
       logger.warn(
         { hint: confirmation.hint },
         "create_appointment.ambiguous",
@@ -154,7 +179,8 @@ export async function createAppointment(
         recaptcha_score: null,
         screenshot_url: screenshot,
         status: "ambiguous",
-        failure_reason: confirmation.hint,
+        failure_reason:
+          confirmation.hint || "confirmation present, no external_ref scraped",
       };
     }
     return {
@@ -163,7 +189,8 @@ export async function createAppointment(
       recaptcha_score: null,
       screenshot_url: screenshot,
       status: "failed",
-      failure_reason: confirmation.hint,
+      failure_reason:
+        confirmation.hint || "confirmation marker not seen in time window",
     };
   } catch (e) {
     logger.error({ err: e }, "create_appointment.unhandled_error");
@@ -182,39 +209,50 @@ export async function createAppointment(
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 interface ConfirmationResult {
-  status: "confirmed" | "ambiguous" | "failed";
+  is_confirmed: boolean;
   external_ref: string | null;
   hint: string;
 }
 
 async function waitForConfirmation(
-  stagehand: { page: { content: () => Promise<string>; waitForFunction?: unknown } },
+  // Use a structural type that matches both the real Stagehand and any
+  // future test double. The real method is ``extract(instruction, schema)``.
+  stagehand: {
+    extract: (
+      instruction: string,
+      schema: typeof ConfirmationSchema,
+    ) => Promise<ConfirmationResult>;
+  },
 ): Promise<ConfirmationResult> {
   const start = Date.now();
+  let last: ConfirmationResult = {
+    is_confirmed: false,
+    external_ref: null,
+    hint: "no extract attempts yet",
+  };
   while (Date.now() - start < SUBMIT_TIMEOUT_MS) {
-    const html = await stagehand.page.content();
-    if (CONFIRMATION_PATTERN.test(html)) {
-      // Look for a confirmation code. AgendaPro typically renders
-      // ``Código: <XXXX>`` or ``Reserva #<id>``.
-      const m =
-        html.match(/(?:c[oó]digo|reserva)\s*[#:]?\s*([A-Z0-9-]{4,40})/i) ??
-        html.match(/\b([A-Z0-9]{6,12})\b/);
-      if (m) {
-        return { status: "confirmed", external_ref: m[1], hint: "" };
+    try {
+      last = await stagehand.extract(
+        "Read the current page and determine whether a booking " +
+          "confirmation is shown. If yes, also extract the confirmation " +
+          "code (often labelled 'Código' or 'Reserva #'). Provide a short " +
+          "hint describing what's visible.",
+        ConfirmationSchema,
+      );
+      if (last.is_confirmed) {
+        return last;
       }
-      return {
-        status: "ambiguous",
+    } catch (e) {
+      // Extract failed — keep polling. Vision/LLM hiccups happen.
+      last = {
+        is_confirmed: false,
         external_ref: null,
-        hint: "confirmation page present but external_ref pattern not found",
+        hint: `extract error: ${e instanceof Error ? e.message : String(e)}`,
       };
     }
-    await sleep(750);
+    await sleep(CONFIRMATION_POLL_MS);
   }
-  return {
-    status: "failed",
-    external_ref: null,
-    hint: `confirmation DOM marker not seen in ${SUBMIT_TIMEOUT_MS}ms`,
-  };
+  return last;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -222,10 +260,10 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function captureScreenshotSafe(
-  stagehand: { page: { screenshot: (opts?: object) => Promise<Buffer> } },
+  page: { screenshot: (opts?: object) => Promise<Buffer> },
 ): Promise<string | undefined> {
   try {
-    const buffer = await stagehand.page.screenshot({ fullPage: false });
+    const buffer = await page.screenshot();
     return `data:image/png;base64,${buffer.toString("base64").slice(0, 24)}...truncated`;
   } catch (e) {
     logger.warn({ err: e }, "screenshot.failed");

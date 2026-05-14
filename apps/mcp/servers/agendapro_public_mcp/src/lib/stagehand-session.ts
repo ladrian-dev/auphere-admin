@@ -26,16 +26,15 @@ export async function openSession(): Promise<SessionHandle> {
     );
   }
 
+  // V3Options: `model` is the canonical key in Stagehand v3 — `modelName`
+  // is only valid inside a ClientOptions object passed as part of the
+  // ModelConfiguration union. Plain string here uses the toolkit's
+  // default ClientOptions.
   const stagehand = new Stagehand({
     env: "BROWSERBASE",
     apiKey,
     projectId,
-    // Anti-bot defaults per ADR-017: Stealth Mode + residential proxies
-    // + reasonable defaults for selector observation. No fingerprint
-    // pinning yet — Browserbase's defaults rotate fingerprints per
-    // session which is what we want.
-    modelName: "gemini/gemini-2.0-flash",
-    enableCaching: false,
+    model: "gemini-2.0-flash",
     verbose: 1,
   });
 
