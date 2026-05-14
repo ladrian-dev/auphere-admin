@@ -55,8 +55,6 @@ from nexus_api.services.connectors.composio_client import (
     ComposioClientProtocol,
     ComposioError,
     ComposioUnavailable,
-    FakeComposioClient,
-    LiveComposioClient,
 )
 from nexus_api.services.connectors.service import (
     ConnectorAlreadyConnected,
@@ -76,11 +74,10 @@ router = APIRouter()
 # share the same in-process singleton — flipping ``set_composio_client``
 # from a test affects every consumer.
 
-from nexus_api.services.connectors.runtime import (  # noqa: E402
+from nexus_api.services.connectors.runtime import (  # noqa: E402, I001
     get_composio_client,
     set_composio_client as set_composio_client_for_tests,
 )
-
 
 # ── shape ───────────────────────────────────────────────────────────────────
 

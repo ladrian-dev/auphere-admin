@@ -14,13 +14,13 @@ from collections.abc import Mapping
 from typing import Any
 
 import pytest
-
-from nexus_api.core.tenant_context import tenant_context
 from nexus_mcp import build_default_registry, get_internal_caller_token, reset_default_registry
 from nexus_mcp.base import ToolError
 from nexus_mcp.servers.agendapro_public.transport import (
     set_default_transport,
 )
+
+from nexus_api.core.tenant_context import tenant_context
 
 pytestmark = pytest.mark.asyncio
 
@@ -181,16 +181,15 @@ async def test_transport_error_surfaces_as_tool_error(transport):
     transport.stage_raise(RuntimeError("browserbase down"))
     registry = build_default_registry()
     tenant_id = uuid.uuid4()
-    with tenant_context(tenant_id):
-        with pytest.raises(ToolError) as info:
-            await registry.dispatch_internal(
-                "agendapro_public.check_availability",
-                {
-                    "public_url": "https://x.site.agendapro.com",
-                    "on_date": "2026-05-14",
-                },
-                caller_token=get_internal_caller_token(),
-            )
+    with tenant_context(tenant_id), pytest.raises(ToolError) as info:
+        await registry.dispatch_internal(
+            "agendapro_public.check_availability",
+            {
+                "public_url": "https://x.site.agendapro.com",
+                "on_date": "2026-05-14",
+            },
+            caller_token=get_internal_caller_token(),
+        )
     assert "browserbase down" in str(info.value)
 
 
@@ -203,26 +202,23 @@ async def test_internal_tools_not_reachable_from_public_dispatch(transport):
     transport.stage_create_appointment_confirmed("AGPR-9999")
     registry = build_default_registry()
     tenant_id = uuid.uuid4()
-    with tenant_context(tenant_id):
-        from nexus_mcp.base import ToolError as _TE
-
-        with pytest.raises(_TE):
-            await registry.dispatch(
-                "agendapro_public.create_appointment",
-                {
-                    "public_url": "https://x.site.agendapro.com/cl/sucursal/1",
-                    "slot": {
-                        "starts_at_iso": "2026-05-14T15:00:00",
-                        "duration_min": 30,
-                        "barber_slot_token": "x",
-                    },
-                    "customer": {
-                        "name": "X",
-                        "phone_e164": "+5611",
-                        "email": "x@x.com",
-                    },
-                    "service_hint": "X",
-                    "idempotency_key": "y",
+    with tenant_context(tenant_id), pytest.raises(ToolError):
+        await registry.dispatch(
+            "agendapro_public.create_appointment",
+            {
+                "public_url": "https://x.site.agendapro.com/cl/sucursal/1",
+                "slot": {
+                    "starts_at_iso": "2026-05-14T15:00:00",
+                    "duration_min": 30,
+                    "barber_slot_token": "x",
                 },
-                whitelist=frozenset({"agendapro_public.create_appointment"}),
-            )
+                "customer": {
+                    "name": "X",
+                    "phone_e164": "+5611",
+                    "email": "x@x.com",
+                },
+                "service_hint": "X",
+                "idempotency_key": "y",
+            },
+            whitelist=frozenset({"agendapro_public.create_appointment"}),
+        )

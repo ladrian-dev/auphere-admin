@@ -10,17 +10,16 @@ from __future__ import annotations
 import uuid
 
 import pytest
-
-from nexus_api.core.tenant_context import tenant_context
-from nexus_api.services.connectors.composio_client import (
-    ComposioTool,
-    FakeComposioClient,
-)
-from nexus_api.services.connectors.runtime import set_composio_client
 from nexus_mcp.servers.composio_proxy.proxy import (
     ComposioProxyTool,
     ComposioToolBlueprint,
 )
+
+from nexus_api.core.tenant_context import tenant_context
+from nexus_api.services.connectors.composio_client import (
+    FakeComposioClient,
+)
+from nexus_api.services.connectors.runtime import set_composio_client
 
 pytestmark = pytest.mark.asyncio
 

@@ -9,8 +9,6 @@ the pure helper.
 
 from __future__ import annotations
 
-import pytest
-
 from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudAPIError
 from nexus_worker.streams.outbound import (
     _NO_RETRY_CODES,
@@ -20,7 +18,7 @@ from nexus_worker.streams.outbound import (
 
 
 def _err(code: int, http: int = 400) -> YCloudAPIError:
-    body = '{"error":{"code":%d,"title":"x","detail":"y"}}' % code
+    body = f'{{"error":{{"code":{code},"title":"x","detail":"y"}}}}'
     return YCloudAPIError(http, "bad request", body=body)
 
 
@@ -57,6 +55,6 @@ def test_template_family_prefix_no_retry():
     assert any(code.startswith(p) for p in _NO_RETRY_PREFIXES)
 
 
-def test_500_is_NOT_in_no_retry_codes():
+def test_500_is_not_in_no_retry_codes():
     # 500 is retryable — the burst tracker uses it for storms.
     assert "500" not in _NO_RETRY_CODES

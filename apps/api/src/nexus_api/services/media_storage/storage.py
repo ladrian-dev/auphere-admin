@@ -96,15 +96,25 @@ def _extension_for(content_type: str | None, suggested: str | None) -> str:
         if ext:
             return ext
     if content_type:
-        guess = mimetypes.guess_extension(content_type.split(";", 1)[0].strip())
+        bare = content_type.split(";", 1)[0].strip().lower()
+        # Hand-rolled overrides for WhatsApp media types whose ``mimetypes``
+        # fallback returns a less-recognisable extension than what users
+        # expect. Crucial cases:
+        #
+        # - ``audio/ogg`` (voice notes, Opus codec) — Python's ``mimetypes``
+        #   returns ``.oga`` on most platforms; we want ``.ogg`` because
+        #   WhatsApp/Whisper tooling assumes that file ending.
+        # - ``audio/mp4`` / ``audio/aac`` — same family, both use ``.m4a``
+        #   in practice and ``mimetypes`` is inconsistent across platforms.
+        if bare.startswith("audio/ogg"):
+            return "ogg"
+        if bare == "audio/mp4" or bare == "audio/aac":
+            return "m4a"
+        if bare.startswith("audio/mpeg"):
+            return "mp3"
+        guess = mimetypes.guess_extension(bare)
         if guess:
             return guess.lstrip(".")
-        # WhatsApp commonly serves audio as audio/ogg; codecs=opus — split
-        # the parameter and try again.
-        if content_type.startswith("audio/ogg"):
-            return "ogg"
-        if content_type.startswith("audio/mp4") or content_type == "audio/aac":
-            return "m4a"
     return "bin"
 
 
@@ -244,7 +254,7 @@ class S3MediaStorage(MediaStorage):
             await asyncio.to_thread(
                 self._put_blocking, key=key, body=body, content_type=content_type
             )
-        except Exception as exc:  # noqa: BLE001 — translate to typed error
+        except Exception as exc:
             raise MediaStorageError(f"s3 PUT failed for {key}: {exc}") from exc
 
     def _presign_blocking(self, key: str, ttl: int) -> str:
@@ -254,7 +264,7 @@ class S3MediaStorage(MediaStorage):
                 Params={"Bucket": self._bucket, "Key": key},
                 ExpiresIn=ttl,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise MediaStorageError(f"s3 presign failed for {key}: {exc}") from exc
 
     def _get_blocking(self, key: str) -> tuple[bytes, str]:
@@ -263,7 +273,7 @@ class S3MediaStorage(MediaStorage):
             body = response["Body"].read()
             ct = response.get("ContentType") or "application/octet-stream"
             return body, ct
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise MediaStorageError(f"s3 GET failed for {key}: {exc}") from exc
 
 

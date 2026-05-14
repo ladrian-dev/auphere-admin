@@ -37,7 +37,6 @@ from dataclasses import dataclass
 from typing import Any, ClassVar
 
 import structlog
-from nexus_api.config import get_settings
 from nexus_api.core.tenant_context import (
     require_current_tenant,
     tenant_scoped_session,
@@ -51,7 +50,7 @@ from nexus_api.db.models import (
     ToolCatalog,
     ToolStatus,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict, Field
 from sqlalchemy import select
 
 from nexus_mcp.base import InputModel, OutputModel, ToolBase, ToolError, make_envelope
@@ -84,7 +83,10 @@ class _PassthroughInput(InputModel):
 
 class _PassthroughOutput(OutputModel):
     model_config = ConfigDict(extra="allow")
-    data: dict[str, Any] = {}
+    # Pydantic accepts ``= {}`` as a default for dict fields (it copies on
+    # instantiation), but ruff RUF012 flags it. Use ``Field(default_factory)``
+    # to express the intent and silence the lint.
+    data: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
     log_id: str | None = None
 

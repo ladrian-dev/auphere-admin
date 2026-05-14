@@ -97,7 +97,7 @@ async def process_inbound(
                 mime_type=event.media_mime,
                 filename=event.media_filename,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning(
                 "pipeline.media_processor.failed",
                 tenant_id=str(event.tenant_id),
@@ -149,7 +149,8 @@ async def process_inbound(
         # Touch ``conversations.last_inbound_at`` so the 24h window check
         # in notification.send_text has a fresh reference. We update both
         # the in-memory ORM attribute and persist.
-        from datetime import UTC as _UTC, datetime as _dt
+        from datetime import UTC as _UTC
+        from datetime import datetime as _dt
 
         conversation.last_inbound_at = _dt.now(_UTC)
         inbound_msg = await persist_inbound_message(

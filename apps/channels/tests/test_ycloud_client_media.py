@@ -3,7 +3,6 @@ message id, mark_as_read, and the fallback path of get_phone_number."""
 
 from __future__ import annotations
 
-import httpx
 import pytest
 import respx
 

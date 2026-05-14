@@ -26,7 +26,6 @@ import asyncio
 import contextlib
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 
 import sqlalchemy as sa
 import structlog
@@ -42,7 +41,6 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudAPIError, YCloudClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 log = structlog.get_logger(__name__)
 
@@ -67,7 +65,7 @@ async def run_whatsapp_health_cron(
                 await _check_one(sm, tid)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.error("whatsapp_health.tick_failed", error=str(exc))
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=tick_seconds)

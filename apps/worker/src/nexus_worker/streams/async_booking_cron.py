@@ -101,7 +101,7 @@ async def run_async_booking_cron(
             await _process_pending(sm)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if _is_async_booking_enum_missing(exc):
                 if not schema_warning_logged:
                     log.warning(
@@ -263,7 +263,7 @@ async def _execute_one(
             payload=payload,
             public_url=public_url,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning(
             "async_booking_cron.transport_error",
             tenant_id=str(tenant_id),

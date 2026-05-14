@@ -12,7 +12,6 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from nexus_mcp.servers.booking.tools import _tenant_uses_public_link
 
 pytestmark = pytest.mark.asyncio

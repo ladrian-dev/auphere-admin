@@ -20,6 +20,7 @@ from nexus_mcp.registry import (
     MCPRegistry,
     build_default_registry,
     get_internal_caller_token,
+    reset_default_registry,
 )
 from nexus_mcp.subprocess_tool import (
     SubprocessTransport,
@@ -40,4 +41,5 @@ __all__ = [
     "build_default_registry",
     "get_internal_caller_token",
     "make_subprocess_tool_class",
+    "reset_default_registry",
 ]

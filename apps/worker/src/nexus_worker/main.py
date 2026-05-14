@@ -32,6 +32,8 @@ from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
 from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudClient
 from nexus_mcp.servers.agendapro_public.transport import (
     build_default_pool_from_env as build_agendapro_public_pool_from_env,
+)
+from nexus_mcp.servers.agendapro_public.transport import (
     set_default_transport as set_agendapro_public_transport,
 )
 

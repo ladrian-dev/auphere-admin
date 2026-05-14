@@ -14,7 +14,6 @@ from pydantic import EmailStr, Field
 
 from nexus_mcp.base import InputModel, OutputModel
 
-
 # ── check_availability ─────────────────────────────────────────────────────
 
 

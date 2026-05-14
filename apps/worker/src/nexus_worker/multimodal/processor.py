@@ -35,7 +35,6 @@ import contextlib
 import io
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 from nexus_api.config import get_settings
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
@@ -120,7 +119,7 @@ class LiveMediaProcessor(MediaProcessor):
             return ProcessedMedia(
                 kind=media_kind, transcript=None, summary=None, error=str(exc)
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning(
                 "media_processor.unexpected_error",
                 extra={"media_kind": media_kind, "s3_key": s3_key, "error": str(exc)},
@@ -143,7 +142,7 @@ class LiveMediaProcessor(MediaProcessor):
     async def _transcribe(self, content: bytes, mime_type: str | None) -> str:
         settings = get_settings()
         try:
-            import litellm  # noqa: PLC0415 — heavy dep
+            import litellm
         except ImportError as exc:
             raise MediaProcessorError("litellm not installed") from exc
         # Wrap bytes in a file-like with a hint filename so OpenAI's
@@ -169,7 +168,7 @@ class LiveMediaProcessor(MediaProcessor):
             )
         except TimeoutError as exc:
             raise MediaProcessorError("transcription timeout") from exc
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise MediaProcessorError(f"transcription error: {exc}") from exc
         text = getattr(response, "text", None)
         if not isinstance(text, str) or not text.strip():
@@ -181,7 +180,7 @@ class LiveMediaProcessor(MediaProcessor):
     async def _vision(self, content: bytes, mime_type: str | None) -> str:
         settings = get_settings()
         try:
-            import litellm  # noqa: PLC0415
+            import litellm
         except ImportError as exc:
             raise MediaProcessorError("litellm not installed") from exc
         encoded = base64.b64encode(content).decode("ascii")
@@ -217,7 +216,7 @@ class LiveMediaProcessor(MediaProcessor):
             )
         except TimeoutError as exc:
             raise MediaProcessorError("vision timeout") from exc
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise MediaProcessorError(f"vision error: {exc}") from exc
         try:
             text = response.choices[0].message.content
@@ -239,7 +238,7 @@ class LiveMediaProcessor(MediaProcessor):
         if mime_type and mime_type.startswith("text/"):
             try:
                 return content.decode("utf-8", errors="replace")[:8_000]
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise MediaProcessorError(f"text decode failed: {exc}") from exc
 
         # PDF — pypdf if available, else vision fallback for the first page.
@@ -267,12 +266,12 @@ def _pdf_to_text(content: bytes) -> str:
     """Best-effort PDF text extraction. Returns "" if pypdf is missing or
     if the PDF has no extractable text (scanned doc)."""
     try:
-        from pypdf import PdfReader  # noqa: PLC0415 — optional dep
+        from pypdf import PdfReader
     except ImportError:
         return ""
     try:
         reader = PdfReader(io.BytesIO(content))
-    except Exception:  # noqa: BLE001
+    except Exception:
         return ""
     parts: list[str] = []
     for page in reader.pages[:20]:  # cap at 20 pages — agent doesn't need a book

@@ -9,7 +9,6 @@ from nexus_channels.whatsapp_ycloud.webhook_adapter import (
     parse_template_status,
 )
 
-
 # ── status callback parser ──────────────────────────────────────────────────
 
 

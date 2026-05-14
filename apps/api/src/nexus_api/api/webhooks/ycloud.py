@@ -47,7 +47,6 @@ from nexus_channels.whatsapp_ycloud.webhook_adapter import (
     MESSAGE_UPDATED_EVENT,
     TEMPLATE_UPDATED_EVENT,
     TEMPLATE_UPDATED_EVENT_LEGACY,
-    StatusCallback,
     TemplateStatusUpdate,
     extract_business_phone,
     is_opt_out_text,
@@ -69,9 +68,7 @@ from nexus_api.core.metrics import CHANNEL_UNRESOLVED_EVENT, counters
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import resolve_tenant
 from nexus_api.db.models import (
-    Channel,
     Message,
-    MessageDirection,
     MessageStatus,
     Tenant,
     WhatsAppOptOut,
