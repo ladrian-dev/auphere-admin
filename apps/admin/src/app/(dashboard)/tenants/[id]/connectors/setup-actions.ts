@@ -67,6 +67,46 @@ export async function connectWhatsAppSetupAction(
   }
 }
 
+// ── WooCommerce (api_key, ADR-019) ─────────────────────────────────────────
+
+/**
+ * Connect a tenant's WooCommerce store. The operator pasted store URL
+ * + Consumer Key + Consumer Secret in the wizard; we POST them to the
+ * api_key bootstrap endpoint which Fernet-encrypts the credentials in
+ * tenant_credentials and creates the tenant_connectors install row.
+ */
+export async function connectWooCommerceSetupAction(
+  tenantId: string,
+  body: {
+    store_url: string;
+    consumer_key: string;
+    consumer_secret: string;
+  },
+): Promise<ActionResult<{ store_url: string }>> {
+  await requireSession();
+  try {
+    const storeUrl = body.store_url.trim().replace(/\/+$/, "");
+    if (!storeUrl.startsWith("https://")) {
+      return {
+        ok: false,
+        error: "La URL de la tienda debe empezar con https://",
+      };
+    }
+    await backend.connectApiKeyConnector(tenantId, "woocommerce", {
+      secrets: {
+        consumer_key: body.consumer_key.trim(),
+        consumer_secret: body.consumer_secret.trim(),
+      },
+      endpoint_meta: { store_url: storeUrl },
+    });
+    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`);
+    return { ok: true, data: { store_url: storeUrl } };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
 // ── AgendaPro public link (ADR-017) ────────────────────────────────────────
 
 /**

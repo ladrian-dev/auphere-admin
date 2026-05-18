@@ -35,7 +35,9 @@ capabilities:
 auth_kind: api_key
 mcp_server_ref: internal:woocommerce
 provider_meta:
-  icon_url: https://woocommerce.com/wp-content/themes/woo/images/logo-woocommerce@2x.png
+  # Rebrand 2024 — la "W" blanca sobre fondo púrpura. Servido por el
+  # WordPress.org Plugin Directory (estable, https, 256x256).
+  icon_url: https://ps.w.org/woocommerce/assets/icon-256x256.png
   vendor_url: https://woocommerce.com
   docs_url: https://woocommerce.github.io/woocommerce-rest-api-docs/
   brand_color: "#7F54B3"
@@ -62,4 +64,7 @@ auto_enable_on_connect: true
 # Operator must opt-in per tenant once the agent is trusted on read-only.
 auto_enable_destructive: false
 consent_link_template_name: null
-status: beta
+# Validated against migrations + isolation suite + first deploy on
+# 2026-05-18. Promoted from 'beta' so it appears in the operator
+# panel's catalog filter (which is `status='available'`).
+status: available

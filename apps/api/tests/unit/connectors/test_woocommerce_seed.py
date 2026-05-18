@@ -25,9 +25,9 @@ def test_woocommerce_seed_basic_metadata(woo_seed) -> None:
     assert woo_seed.vendor == "Automattic"
     assert woo_seed.category == "ecommerce"
     assert set(woo_seed.capabilities) == {"read", "write"}
-    # Beta until validated against a real client store. Bump to
-    # "available" in a follow-up release.
-    assert woo_seed.status == "beta"
+    # Promoted from 'beta' to 'available' on 2026-05-18 so it appears
+    # in the operator panel's catalog filter (which is status='available').
+    assert woo_seed.status == "available"
 
 
 def test_woocommerce_seed_uses_api_key_auth(woo_seed) -> None:

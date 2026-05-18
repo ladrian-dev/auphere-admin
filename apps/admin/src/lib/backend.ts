@@ -809,6 +809,16 @@ export const backend = {
       { method: "POST", body },
     ),
 
+  connectApiKeyConnector: (
+    tenantId: string,
+    slug: string,
+    body: { secrets: Record<string, string>; endpoint_meta: Record<string, unknown> },
+  ) =>
+    call<TenantConnector>(
+      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/connect-api-key`,
+      { method: "POST", body },
+    ),
+
   syncConnector: (tenantId: string, slug: string) =>
     call<{ added: string[]; deprecated: string[]; unchanged_count: number }>(
       `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/sync`,

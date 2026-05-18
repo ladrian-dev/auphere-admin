@@ -31,7 +31,11 @@ import {
   ReissueConsentButton,
   SyncButton,
 } from "./connector-actions";
-import { AgendaProSetupDialog, WhatsAppSetupDialog } from "./setup-wizards";
+import {
+  AgendaProSetupDialog,
+  WhatsAppSetupDialog,
+  WooCommerceSetupDialog,
+} from "./setup-wizards";
 
 const STATUS_TONE: Record<
   TenantConnectorStatus,
@@ -330,6 +334,11 @@ function AvailableConnectorCard({
                 <AgendaProSetupDialog
                   tenantId={tenantId}
                   currentUrl={agendaProPublicUrl}
+                />
+              ) : connector.slug === "woocommerce" ? (
+                <WooCommerceSetupDialog
+                  tenantId={tenantId}
+                  alreadyConnected={false}
                 />
               ) : (
                 <Badge variant="outline" className="text-xs">
