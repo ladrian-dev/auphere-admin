@@ -9,6 +9,7 @@ Per-tenant (RLS-scoped):
     POST   /admin/tenants/{id}/connectors/{slug}/initiate-consent
     POST   /admin/tenants/{id}/connectors/{slug}/bootstrap-browser
     POST   /admin/tenants/{id}/connectors/{slug}/connect-manual
+    POST   /admin/tenants/{id}/connectors/{slug}/connect-api-key
     POST   /admin/tenants/{id}/connectors/{slug}/sync
     POST   /admin/tenants/{id}/connectors/{slug}/disconnect
     POST   /admin/tenants/{id}/connectors/{slug}/reissue-consent
@@ -148,6 +149,30 @@ class ConnectManualIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     channel_id: uuid.UUID
+
+
+class ConnectApiKeyIn(BaseModel):
+    """Bootstrap an ``api_key`` connector with secret + routing fields.
+
+    The seed YAML's ``provider_meta.credentials_form`` describes which
+    fields the panel renders for the operator. The wizard sends them
+    back split into:
+
+    - ``secrets``: the secret bundle, JSON-serialised + Fernet-encrypted
+      into ``tenant_credentials.encrypted_payload``.
+    - ``endpoint_meta``: non-secret routing info (e.g. ``store_url``),
+      stored verbatim in ``tenant_connectors.credentials_ref``.
+
+    Each connector's tools know how to read the bundle (WooCommerce
+    expects ``{"consumer_key": ..., "consumer_secret": ...}``). The
+    endpoint validates only that both objects are non-empty; the per-
+    connector field schema is checked at the tool layer the first time
+    a call lands. That keeps the admin layer connector-agnostic.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    secrets: dict[str, str] = Field(min_length=1)
+    endpoint_meta: dict[str, Any] = Field(min_length=1)
 
 
 class OverrideIn(BaseModel):
@@ -444,6 +469,58 @@ async def connect_manual(
     except ConnectorNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except IncompatibleAuthKind as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    installs = await _list_tenant_installs(session, tenant_id)
+    out = next((i for i in installs if i.connector_slug == slug), None)
+    if out is None:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="post-connect lookup failed")
+    return out
+
+
+@router.post(
+    "/tenants/{tenant_id}/connectors/{slug}/connect-api-key",
+    response_model=TenantConnectorOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def connect_api_key(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    slug: str,
+    body: ConnectApiKeyIn,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> TenantConnectorOut:
+    """Bootstrap an ``api_key`` connector (e.g. WooCommerce).
+
+    Flow:
+    1. Operator pastes the secret fields + endpoint routing info in the
+       wizard form (rendered from ``provider_meta.credentials_form``).
+    2. This endpoint encrypts the secrets in ``tenant_credentials`` and
+       creates/updates the ``tenant_connectors`` install.
+    3. ``connector.connect_completed`` audit log row is written.
+
+    Note: connectivity to the upstream API is NOT validated here.
+    Validating would require an outbound HTTPS call from the API process
+    which is not currently part of the admin layer's contract. The first
+    tool invocation surfaces auth errors as ``tenant_connectors.status =
+    needs_reauth`` — that is the supported feedback loop until we add a
+    health-check endpoint in a follow-up.
+    """
+    tenant = await session.get(Tenant, tenant_id)
+    assert tenant is not None  # scoped_session_from_path guards this
+    try:
+        await connector_service.bootstrap_api_key(
+            session,
+            tenant=tenant,
+            connector_slug=slug,
+            secret_payload=body.secrets,
+            endpoint_meta=body.endpoint_meta,
+            actor=f"admin:{actor[:8]}",
+        )
+    except ConnectorNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except IncompatibleAuthKind as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     installs = await _list_tenant_installs(session, tenant_id)
     out = next((i for i in installs if i.connector_slug == slug), None)

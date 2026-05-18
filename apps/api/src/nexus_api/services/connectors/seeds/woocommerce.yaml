@@ -1,0 +1,65 @@
+# Connector seed — WooCommerce via REST API v3 (own client, api_key auth).
+#
+# Decision (2026-05-18): use auth_kind=api_key — WooCommerce auth model is
+# Consumer Key + Consumer Secret issued from WP-Admin, NOT OAuth. Composio
+# wraps the same REST API but adds latency and credit cost per call without
+# adding any consent UX benefit. We talk to the store's REST API directly.
+#
+# tenant_connectors.credentials_ref shape (per-tenant api_key variant):
+#   {
+#     "tenant_credentials_id": "<uuid>",                       # FK to tenant_credentials row
+#     "endpoint_meta": {"store_url": "https://shop.example.com"}
+#   }
+# tenant_credentials.encrypted_payload (Fernet) decrypts to JSON bytes:
+#   {"consumer_key": "ck_...", "consumer_secret": "cs_..."}
+# tenant_credentials.integration = "woocommerce"
+#
+# Setup flow: the operator pastes store_url + consumer_key + consumer_secret
+# in the admin panel wizard (Block J extension for api_key). No client-side
+# consent step — the WP store owner generates the keys themselves under
+# WooCommerce → Settings → Advanced → REST API.
+#
+# Destructive tools (create_order, update_order_status, update_order,
+# add_order_note) start `default_mode=blocked` per Bloque L policy. The
+# operator opts each tenant in via tenant_connector_tool_overrides once they
+# trust the agent to mutate orders. Read-only tools (list_products,
+# get_product, list_product_variations, list_categories, list_orders,
+# get_order, list_customers, get_customer) are enabled on connect.
+slug: woocommerce
+display_name: WooCommerce
+vendor: Automattic
+category: ecommerce
+capabilities:
+  - read
+  - write
+auth_kind: api_key
+mcp_server_ref: internal:woocommerce
+provider_meta:
+  icon_url: https://woocommerce.com/wp-content/themes/woo/images/logo-woocommerce@2x.png
+  vendor_url: https://woocommerce.com
+  docs_url: https://woocommerce.github.io/woocommerce-rest-api-docs/
+  brand_color: "#7F54B3"
+  # api_key shape advertised to the admin wizard. The wizard renders one form
+  # field per entry; secret=true masks the input and triggers Fernet on save.
+  credentials_form:
+    - field: store_url
+      label: Store URL
+      placeholder: https://shop.example.com
+      secret: false
+      required: true
+    - field: consumer_key
+      label: Consumer Key
+      placeholder: ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      secret: true
+      required: true
+    - field: consumer_secret
+      label: Consumer Secret
+      placeholder: cs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      secret: true
+      required: true
+auto_enable_on_connect: true
+# Conservative: WooCommerce destructive tools mutate real orders / inventory.
+# Operator must opt-in per tenant once the agent is trusted on read-only.
+auto_enable_destructive: false
+consent_link_template_name: null
+status: beta

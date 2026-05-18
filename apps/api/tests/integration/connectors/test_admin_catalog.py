@@ -25,6 +25,7 @@ async def test_list_catalog_merges_seeds_and_composio(
         "googlecalendar",
         "notion",
         "whatsapp_ycloud",
+        "woocommerce",
     }
 
 
@@ -37,7 +38,7 @@ async def test_list_catalog_without_composio_falls_back_to_seeds(
         r = await client.get("/admin/connectors", headers=admin_headers)
         assert r.status_code == 200
         slugs = {c["slug"] for c in r.json()}
-        assert slugs == {"agendapro", "whatsapp_ycloud"}
+        assert slugs == {"agendapro", "whatsapp_ycloud", "woocommerce"}
     finally:
         fake_composio.simulate_unavailable = False
 

@@ -313,6 +313,7 @@ def build_default_registry() -> MCPRegistry:
     from nexus_mcp.servers.notification.tools import NOTIFICATION_TOOLS
     from nexus_mcp.servers.operator.tools import OPERATOR_TOOLS
     from nexus_mcp.servers.queue.tools import QUEUE_TOOLS
+    from nexus_mcp.servers.woocommerce.tools import WOOCOMMERCE_TOOLS
 
     registry = MCPRegistry()
     for tool_cls in (
@@ -323,6 +324,7 @@ def build_default_registry() -> MCPRegistry:
         *COMMISSION_TOOLS,
         *NOTIFICATION_TOOLS,
         *OPERATOR_TOOLS,
+        *WOOCOMMERCE_TOOLS,
     ):
         registry.register(tool_cls())
     # Block O: agendapro_public.* are INTERNAL — the transport is

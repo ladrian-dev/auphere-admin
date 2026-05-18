@@ -152,7 +152,14 @@ class TenantConnector(UUIDPrimaryKey, TimestampMixin, Base):
       (Fernet vault, ADR-006). AgendaPro and similar.
     - ``webhook_manual`` → ``credentials_ref.channel_id`` points to a row
       in ``channels``. WhatsApp YCloud.
-    - ``api_key`` → ``credentials_ref.secret_ref`` is a Doppler path.
+    - ``api_key`` → two valid shapes:
+        - ``credentials_ref.secret_ref`` is a Doppler path (platform-wide
+          secrets, e.g. shared API key used by every tenant).
+        - ``credentials_ref.tenant_credentials_id`` points to a Fernet
+          row carrying the per-tenant secret as a JSON payload, plus
+          ``credentials_ref.endpoint_meta`` for any non-secret routing
+          info (store URL, region, etc.). WooCommerce uses this shape:
+          ``{"tenant_credentials_id": "<uuid>", "endpoint_meta": {"store_url": "https://shop.example.com"}}``.
 
     The tenant_id column is NOT declared via TenantScopedMixin because the
     column ordering ends up the same and we want the ForeignKey on

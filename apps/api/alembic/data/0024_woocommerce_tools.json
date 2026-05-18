@@ -1,0 +1,3848 @@
+{
+  "woocommerce.add_order_note": {
+    "description": "Add a note to an order. If customer_note=True the note is emailed to the customer; otherwise it stays internal (visible in WP-Admin only).",
+    "destructive": true,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Add a note to an order. If ``customer_note=True``, the note is\nemailed to the customer; otherwise it's internal-only (visible to\noperator/staff in WP-Admin).",
+      "properties": {
+        "customer_note": {
+          "default": false,
+          "description": "True = visible to customer (and emailed). False = internal note only.",
+          "title": "Customer Note",
+          "type": "boolean"
+        },
+        "note": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        },
+        "order_id": {
+          "minimum": 1,
+          "title": "Order Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "order_id",
+        "note"
+      ],
+      "title": "AddOrderNoteInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "OrderNote": {
+          "additionalProperties": false,
+          "properties": {
+            "author": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Author"
+            },
+            "customer_note": {
+              "title": "Customer Note",
+              "type": "boolean"
+            },
+            "date_created": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Created"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "note": {
+              "title": "Note",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "note",
+            "customer_note"
+          ],
+          "title": "OrderNote",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "$ref": "#/$defs/OrderNote"
+        }
+      },
+      "required": [
+        "note"
+      ],
+      "title": "AddOrderNoteOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "external_api",
+      "mutates_db"
+    ]
+  },
+  "woocommerce.create_order": {
+    "description": "Create a new order. Each line item must reference a product_id, a variation_id (for variable products), or both — the variation_id wins when both are supplied. Status defaults to 'pending' so the operator can review; call update_order_status to move it forward once payment is confirmed.",
+    "destructive": true,
+    "input_schema": {
+      "$defs": {
+        "AddressInput": {
+          "additionalProperties": false,
+          "description": "Billing / shipping address as the agent supplies it on order\ncreation. ``email`` and ``phone`` only make sense on billing;\nWooCommerce ignores them on shipping but accepts the same shape.",
+          "properties": {
+            "address_1": {
+              "anyOf": [
+                {
+                  "maxLength": 240,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Address 1"
+            },
+            "address_2": {
+              "anyOf": [
+                {
+                  "maxLength": 240,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Address 2"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "City"
+            },
+            "company": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Company"
+            },
+            "country": {
+              "anyOf": [
+                {
+                  "maxLength": 2,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "ISO 3166-1 alpha-2 country code, e.g. 'CL', 'MX'.",
+              "title": "Country"
+            },
+            "email": {
+              "anyOf": [
+                {
+                  "format": "email",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Email"
+            },
+            "first_name": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "First Name"
+            },
+            "last_name": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Name"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phone"
+            },
+            "postcode": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Postcode"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "State"
+            }
+          },
+          "title": "AddressInput",
+          "type": "object"
+        },
+        "LineItemInput": {
+          "additionalProperties": false,
+          "description": "Order line item on creation.\n\nEither ``product_id`` (for simple products) or ``variation_id`` (for\na specific variation of a variable product) must be supplied. When\nboth are supplied, WooCommerce uses the variation; we accept the\npair so the LLM can be explicit, but ``variation_id`` wins.",
+          "properties": {
+            "product_id": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Product Id"
+            },
+            "quantity": {
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "subtotal": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional manual line subtotal (string decimal). Leave unset to let WooCommerce compute from product price.",
+              "title": "Subtotal"
+            },
+            "variation_id": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Variation Id"
+            }
+          },
+          "required": [
+            "quantity"
+          ],
+          "title": "LineItemInput",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Create a new order. ``status`` defaults to 'pending' so the\noperator can review before the order ships; the agent flips it to\n'processing' / 'on-hold' via update_order_status once payment is\nconfirmed externally.",
+      "properties": {
+        "billing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AddressInput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "WooCommerce customer id. 0 or null = guest checkout.",
+          "title": "Customer Id"
+        },
+        "customer_note": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Note"
+        },
+        "line_items": {
+          "items": {
+            "$ref": "#/$defs/LineItemInput"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Line Items",
+          "type": "array"
+        },
+        "payment_method": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Slug, e.g. 'bacs', 'cod', 'stripe'.",
+          "title": "Payment Method"
+        },
+        "payment_method_title": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payment Method Title"
+        },
+        "shipping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AddressInput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "default": "pending",
+          "description": "Default 'pending' so the operator can review.",
+          "enum": [
+            "pending",
+            "processing",
+            "on-hold",
+            "completed",
+            "cancelled",
+            "refunded",
+            "failed",
+            "trash"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "line_items"
+      ],
+      "title": "CreateOrderInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AddressOutput": {
+          "additionalProperties": false,
+          "description": "Billing / shipping address as Woo returns it.\n\nAll fields optional because real stores rarely fill them all in\n(especially shipping when the order is digital).",
+          "properties": {
+            "address_1": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Address 1"
+            },
+            "address_2": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Address 2"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "City"
+            },
+            "company": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Company"
+            },
+            "country": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Country"
+            },
+            "email": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Email"
+            },
+            "first_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "First Name"
+            },
+            "last_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Name"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phone"
+            },
+            "postcode": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Postcode"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "State"
+            }
+          },
+          "title": "AddressOutput",
+          "type": "object"
+        },
+        "LineItemOutput": {
+          "additionalProperties": false,
+          "description": "Order line item as surfaced by Woo on order read.\n\nThe LLM needs enough to reason about the order: product, variation\n(for variable products), quantity, line totals, and the SKU. Tax\ndetail is summarised; refunds are not exposed at this layer (out of\nscope for the agent's job; the operator panel has them).",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "price": {
+              "title": "Price",
+              "type": "string"
+            },
+            "product_id": {
+              "title": "Product Id",
+              "type": "integer"
+            },
+            "quantity": {
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "sku": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sku"
+            },
+            "subtotal": {
+              "title": "Subtotal",
+              "type": "string"
+            },
+            "total": {
+              "title": "Total",
+              "type": "string"
+            },
+            "variation_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Variation Id"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "product_id",
+            "quantity",
+            "price",
+            "subtotal",
+            "total"
+          ],
+          "title": "LineItemOutput",
+          "type": "object"
+        },
+        "OrderDetail": {
+          "additionalProperties": false,
+          "description": "Full order for a single ``get_order`` call.",
+          "properties": {
+            "billing": {
+              "$ref": "#/$defs/AddressOutput"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "customer_id": {
+              "default": 0,
+              "title": "Customer Id",
+              "type": "integer"
+            },
+            "customer_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Customer Note"
+            },
+            "date_created": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Created"
+            },
+            "date_modified": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Modified"
+            },
+            "date_paid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Paid"
+            },
+            "discount_total": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Discount Total"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "line_items": {
+              "items": {
+                "$ref": "#/$defs/LineItemOutput"
+              },
+              "title": "Line Items",
+              "type": "array"
+            },
+            "number": {
+              "title": "Number",
+              "type": "string"
+            },
+            "payment_method": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Payment Method"
+            },
+            "payment_method_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Payment Method Title"
+            },
+            "shipping": {
+              "$ref": "#/$defs/AddressOutput"
+            },
+            "shipping_total": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Shipping Total"
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "processing",
+                "on-hold",
+                "completed",
+                "cancelled",
+                "refunded",
+                "failed",
+                "trash"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "subtotal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Subtotal"
+            },
+            "total": {
+              "title": "Total",
+              "type": "string"
+            },
+            "total_tax": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Total Tax"
+            },
+            "transaction_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Transaction Id"
+            }
+          },
+          "required": [
+            "id",
+            "number",
+            "status",
+            "currency",
+            "total",
+            "billing",
+            "shipping"
+          ],
+          "title": "OrderDetail",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "$ref": "#/$defs/OrderDetail"
+        }
+      },
+      "required": [
+        "order"
+      ],
+      "title": "CreateOrderOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "external_api",
+      "mutates_db"
+    ]
+  },
+  "woocommerce.get_customer": {
+    "description": "Fetch one customer by id OR by email. Exactly one is required.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Identify a customer by id OR email. Exactly one must be provided.",
+      "properties": {
+        "email": {
+          "anyOf": [
+            {
+              "format": "email",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Email"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        }
+      },
+      "title": "GetCustomerInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "Customer": {
+          "additionalProperties": false,
+          "properties": {
+            "billing_phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Billing Phone"
+            },
+            "date_created": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Created"
+            },
+            "email": {
+              "title": "Email",
+              "type": "string"
+            },
+            "first_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "First Name"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "last_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Name"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Role"
+            },
+            "username": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Username"
+            }
+          },
+          "required": [
+            "id",
+            "email"
+          ],
+          "title": "Customer",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "customer": {
+          "$ref": "#/$defs/Customer"
+        }
+      },
+      "required": [
+        "customer"
+      ],
+      "title": "GetCustomerOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": [
+      "external_api"
+    ]
+  },
+  "woocommerce.get_order": {
+    "description": "Fetch one order by id. Returns full details including every line item (with product_id, variation_id, sku, quantity, totals), the billing and shipping addresses, and payment metadata.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minimum": 1,
+          "title": "Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "GetOrderInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AddressOutput": {
+          "additionalProperties": false,
+          "description": "Billing / shipping address as Woo returns it.\n\nAll fields optional because real stores rarely fill them all in\n(especially shipping when the order is digital).",
+          "properties": {
+            "address_1": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Address 1"
+            },
+            "address_2": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Address 2"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "City"
+            },
+            "company": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Company"
+            },
+            "country": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Country"
+            },
+            "email": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Email"
+            },
+            "first_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "First Name"
+            },
+            "last_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Name"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phone"
+            },
+            "postcode": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Postcode"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "State"
+            }
+          },
+          "title": "AddressOutput",
+          "type": "object"
+        },
+        "LineItemOutput": {
+          "additionalProperties": false,
+          "description": "Order line item as surfaced by Woo on order read.\n\nThe LLM needs enough to reason about the order: product, variation\n(for variable products), quantity, line totals, and the SKU. Tax\ndetail is summarised; refunds are not exposed at this layer (out of\nscope for the agent's job; the operator panel has them).",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "price": {
+              "title": "Price",
+              "type": "string"
+            },
+            "product_id": {
+              "title": "Product Id",
+              "type": "integer"
+            },
+            "quantity": {
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "sku": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sku"
+            },
+            "subtotal": {
+              "title": "Subtotal",
+              "type": "string"
+            },
+            "total": {
+              "title": "Total",
+              "type": "string"
+            },
+            "variation_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Variation Id"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "product_id",
+            "quantity",
+            "price",
+            "subtotal",
+            "total"
+          ],
+          "title": "LineItemOutput",
+          "type": "object"
+        },
+        "OrderDetail": {
+          "additionalProperties": false,
+          "description": "Full order for a single ``get_order`` call.",
+          "properties": {
+            "billing": {
+              "$ref": "#/$defs/AddressOutput"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "customer_id": {
+              "default": 0,
+              "title": "Customer Id",
+              "type": "integer"
+            },
+            "customer_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Customer Note"
+            },
+            "date_created": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Created"
+            },
+            "date_modified": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Modified"
+            },
+            "date_paid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Paid"
+            },
+            "discount_total": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Discount Total"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "line_items": {
+              "items": {
+                "$ref": "#/$defs/LineItemOutput"
+              },
+              "title": "Line Items",
+              "type": "array"
+            },
+            "number": {
+              "title": "Number",
+              "type": "string"
+            },
+            "payment_method": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Payment Method"
+            },
+            "payment_method_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Payment Method Title"
+            },
+            "shipping": {
+              "$ref": "#/$defs/AddressOutput"
+            },
+            "shipping_total": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Shipping Total"
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "processing",
+                "on-hold",
+                "completed",
+                "cancelled",
+                "refunded",
+                "failed",
+                "trash"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "subtotal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Subtotal"
+            },
+            "total": {
+              "title": "Total",
+              "type": "string"
+            },
+            "total_tax": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Total Tax"
+            },
+            "transaction_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Transaction Id"
+            }
+          },
+          "required": [
+            "id",
+            "number",
+            "status",
+            "currency",
+            "total",
+            "billing",
+            "shipping"
+          ],
+          "title": "OrderDetail",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "$ref": "#/$defs/OrderDetail"
+        }
+      },
+      "required": [
+        "order"
+      ],
+      "title": "GetOrderOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": [
+      "external_api"
+    ]
+  },
+  "woocommerce.get_product": {
+    "description": "Fetch one product by id OR by sku. Returns the full product including attributes (with all available options) and the list of variation ids. Use woocommerce.list_product_variations to expand variations.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Identify a product by id OR sku. Exactly one must be provided.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "sku": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sku"
+        }
+      },
+      "title": "GetProductInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AttributeCompact": {
+          "additionalProperties": false,
+          "description": "Compact attribute representation for a product or variation.\n\nFor a *product* (variable type), ``options`` lists every available\nvalue across all variations. For a *variation*, ``option`` holds\nthe single selected value and ``options`` is empty.",
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Id"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "option": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Option"
+            },
+            "options": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Options",
+              "type": "array"
+            },
+            "slug": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Slug"
+            },
+            "variation": {
+              "default": false,
+              "title": "Variation",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "title": "AttributeCompact",
+          "type": "object"
+        },
+        "CategoryRef": {
+          "additionalProperties": false,
+          "description": "Minimal category reference embedded in product responses.",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "slug": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug"
+          ],
+          "title": "CategoryRef",
+          "type": "object"
+        },
+        "ImageRef": {
+          "additionalProperties": false,
+          "description": "First image of a product / variation. Only the URL — alt text and\nimage IDs are skipped to keep the LLM context small.",
+          "properties": {
+            "src": {
+              "title": "Src",
+              "type": "string"
+            }
+          },
+          "required": [
+            "src"
+          ],
+          "title": "ImageRef",
+          "type": "object"
+        },
+        "ProductDetail": {
+          "additionalProperties": false,
+          "description": "Full product for a single ``get_product`` call.",
+          "properties": {
+            "attributes": {
+              "items": {
+                "$ref": "#/$defs/AttributeCompact"
+              },
+              "title": "Attributes",
+              "type": "array"
+            },
+            "categories": {
+              "items": {
+                "$ref": "#/$defs/CategoryRef"
+              },
+              "title": "Categories",
+              "type": "array"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "HTML stripped + truncated to 500 chars by the tool layer.",
+              "title": "Description"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ImageRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "manage_stock": {
+              "default": false,
+              "title": "Manage Stock",
+              "type": "boolean"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "on_sale": {
+              "default": false,
+              "title": "On Sale",
+              "type": "boolean"
+            },
+            "permalink": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Permalink"
+            },
+            "price": {
+              "title": "Price",
+              "type": "string"
+            },
+            "regular_price": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Regular Price"
+            },
+            "sale_price": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sale Price"
+            },
+            "short_description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "HTML stripped + truncated to 500 chars by the tool layer.",
+              "title": "Short Description"
+            },
+            "sku": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sku"
+            },
+            "slug": {
+              "title": "Slug",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "pending",
+                "private",
+                "publish"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "stock_quantity": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Stock Quantity"
+            },
+            "stock_status": {
+              "enum": [
+                "instock",
+                "outofstock",
+                "onbackorder"
+              ],
+              "title": "Stock Status",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "simple",
+                "variable",
+                "grouped",
+                "external"
+              ],
+              "title": "Type",
+              "type": "string"
+            },
+            "variations": {
+              "description": "Variation IDs. Empty for non-variable products. Call woocommerce.list_product_variations to expand.",
+              "items": {
+                "type": "integer"
+              },
+              "title": "Variations",
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug",
+            "type",
+            "status",
+            "price",
+            "stock_status"
+          ],
+          "title": "ProductDetail",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "product": {
+          "$ref": "#/$defs/ProductDetail"
+        }
+      },
+      "required": [
+        "product"
+      ],
+      "title": "GetProductOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": [
+      "external_api"
+    ]
+  },
+  "woocommerce.list_categories": {
+    "description": "List product categories. Useful to discover the slug to pass back into list_products' category filter.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "default": 1,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent"
+        },
+        "per_page": {
+          "default": 50,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "search": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Search"
+        }
+      },
+      "title": "ListCategoriesInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "Category": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "default": 0,
+              "title": "Count",
+              "type": "integer"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Description"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "parent": {
+              "default": 0,
+              "title": "Parent",
+              "type": "integer"
+            },
+            "slug": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug"
+          ],
+          "title": "Category",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Category"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "page": {
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "total_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Count"
+        },
+        "total_pages": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Pages"
+        }
+      },
+      "required": [
+        "items",
+        "page",
+        "per_page",
+        "has_more"
+      ],
+      "title": "ListCategoriesOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": [
+      "external_api"
+    ]
+  },
+  "woocommerce.list_customers": {
+    "description": "Search customers by email or display name. Returns a compact view; call woocommerce.get_customer for the full record including billing phone.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "email": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Email"
+        },
+        "page": {
+          "default": 1,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "search": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "WooCommerce searches by email and display name.",
+          "title": "Search"
+        }
+      },
+      "title": "ListCustomersInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "Customer": {
+          "additionalProperties": false,
+          "properties": {
+            "billing_phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Billing Phone"
+            },
+            "date_created": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Created"
+            },
+            "email": {
+              "title": "Email",
+              "type": "string"
+            },
+            "first_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "First Name"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "last_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Name"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Role"
+            },
+            "username": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Username"
+            }
+          },
+          "required": [
+            "id",
+            "email"
+          ],
+          "title": "Customer",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Customer"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "page": {
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "total_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Count"
+        },
+        "total_pages": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Pages"
+        }
+      },
+      "required": [
+        "items",
+        "page",
+        "per_page",
+        "has_more"
+      ],
+      "title": "ListCustomersOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": [
+      "external_api"
+    ]
+  },
+  "woocommerce.list_orders": {
+    "description": "List orders. Filter by status, customer id, creation date range and free-text search (customer name / order number). Returns a compact view per order; call woocommerce.get_order for full details including line items, billing/shipping address and totals.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ISO 8601 — list orders created after this datetime.",
+          "title": "After"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ISO 8601 — list orders created before this datetime.",
+          "title": "Before"
+        },
+        "customer": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer"
+        },
+        "page": {
+          "default": 1,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "search": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Search"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "pending",
+                "processing",
+                "on-hold",
+                "completed",
+                "cancelled",
+                "refunded",
+                "failed",
+                "trash"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "title": "ListOrdersInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "OrderSummary": {
+          "additionalProperties": false,
+          "description": "Compact order for list endpoints.",
+          "properties": {
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "customer_id": {
+              "default": 0,
+              "title": "Customer Id",
+              "type": "integer"
+            },
+            "customer_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Customer Note"
+            },
+            "date_created": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Created"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "number": {
+              "title": "Number",
+              "type": "string"
+            },
+            "payment_method": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Payment Method"
+            },
+            "payment_method_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Payment Method Title"
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "processing",
+                "on-hold",
+                "completed",
+                "cancelled",
+                "refunded",
+                "failed",
+                "trash"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "total": {
+              "title": "Total",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "number",
+            "status",
+            "currency",
+            "total"
+          ],
+          "title": "OrderSummary",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/OrderSummary"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "page": {
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "total_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Count"
+        },
+        "total_pages": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Pages"
+        }
+      },
+      "required": [
+        "items",
+        "page",
+        "per_page",
+        "has_more"
+      ],
+      "title": "ListOrdersOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": [
+      "external_api"
+    ]
+  },
+  "woocommerce.list_product_variations": {
+    "description": "List variations of a variable product (e.g. all (size, colour) combinations of a duvet cover). Returns each variation's id, sku, price, stock status, image and resolved attribute values. The agent needs the variation id (not the parent product id) when creating an order for a specific variation.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Variations are scoped to one product — product_id is required.",
+      "properties": {
+        "page": {
+          "default": 1,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 50,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "product_id": {
+          "minimum": 1,
+          "title": "Product Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "product_id"
+      ],
+      "title": "ListProductVariationsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AttributeCompact": {
+          "additionalProperties": false,
+          "description": "Compact attribute representation for a product or variation.\n\nFor a *product* (variable type), ``options`` lists every available\nvalue across all variations. For a *variation*, ``option`` holds\nthe single selected value and ``options`` is empty.",
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Id"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "option": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Option"
+            },
+            "options": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Options",
+              "type": "array"
+            },
+            "slug": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Slug"
+            },
+            "variation": {
+              "default": false,
+              "title": "Variation",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "title": "AttributeCompact",
+          "type": "object"
+        },
+        "ImageRef": {
+          "additionalProperties": false,
+          "description": "First image of a product / variation. Only the URL — alt text and\nimage IDs are skipped to keep the LLM context small.",
+          "properties": {
+            "src": {
+              "title": "Src",
+              "type": "string"
+            }
+          },
+          "required": [
+            "src"
+          ],
+          "title": "ImageRef",
+          "type": "object"
+        },
+        "ProductVariation": {
+          "additionalProperties": false,
+          "description": "One variation of a variable product (e.g. 'funda, queen, azul').",
+          "properties": {
+            "attributes": {
+              "items": {
+                "$ref": "#/$defs/AttributeCompact"
+              },
+              "title": "Attributes",
+              "type": "array"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ImageRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "on_sale": {
+              "default": false,
+              "title": "On Sale",
+              "type": "boolean"
+            },
+            "price": {
+              "title": "Price",
+              "type": "string"
+            },
+            "regular_price": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Regular Price"
+            },
+            "sale_price": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sale Price"
+            },
+            "sku": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sku"
+            },
+            "stock_quantity": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Stock Quantity"
+            },
+            "stock_status": {
+              "enum": [
+                "instock",
+                "outofstock",
+                "onbackorder"
+              ],
+              "title": "Stock Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "price",
+            "stock_status"
+          ],
+          "title": "ProductVariation",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ProductVariation"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "page": {
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "total_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Count"
+        },
+        "total_pages": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Pages"
+        }
+      },
+      "required": [
+        "items",
+        "page",
+        "per_page",
+        "has_more"
+      ],
+      "title": "ListProductVariationsOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": [
+      "external_api"
+    ]
+  },
+  "woocommerce.list_products": {
+    "description": "List products in the connected WooCommerce store. Supports filtering by search term, category slug, product type (simple/variable), status, stock status and an attribute pair (e.g. attribute='pa_color' + attribute_term='azul' to list every product with the colour 'azul'). Paginated — inspect total_count and has_more to decide whether to request a follow-up page.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Filters mirror the WooCommerce ``GET /products`` endpoint, but\nonly the fields the agent actually uses. Adding more later is a\nschema bump — keep the surface small for now.",
+      "properties": {
+        "attribute": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Attribute slug, e.g. 'pa_color' or 'pa_size'. Must be combined with attribute_term.",
+          "title": "Attribute"
+        },
+        "attribute_term": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Attribute term slug, e.g. 'azul', 'queen'. Must be combined with attribute.",
+          "title": "Attribute Term"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Category slug or id (string).",
+          "title": "Category"
+        },
+        "page": {
+          "default": 1,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "search": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Search"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "draft",
+                "pending",
+                "private",
+                "publish"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "stock_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "instock",
+                "outofstock",
+                "onbackorder"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stock Status"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "enum": [
+                "simple",
+                "variable",
+                "grouped",
+                "external"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
+        }
+      },
+      "title": "ListProductsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "CategoryRef": {
+          "additionalProperties": false,
+          "description": "Minimal category reference embedded in product responses.",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "slug": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug"
+          ],
+          "title": "CategoryRef",
+          "type": "object"
+        },
+        "ImageRef": {
+          "additionalProperties": false,
+          "description": "First image of a product / variation. Only the URL — alt text and\nimage IDs are skipped to keep the LLM context small.",
+          "properties": {
+            "src": {
+              "title": "Src",
+              "type": "string"
+            }
+          },
+          "required": [
+            "src"
+          ],
+          "title": "ImageRef",
+          "type": "object"
+        },
+        "ProductSummary": {
+          "additionalProperties": false,
+          "description": "Compact product, returned by list endpoints. Just enough to let\nthe LLM decide which product to ``get_product`` for detail.",
+          "properties": {
+            "categories": {
+              "items": {
+                "$ref": "#/$defs/CategoryRef"
+              },
+              "title": "Categories",
+              "type": "array"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ImageRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "permalink": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Permalink"
+            },
+            "price": {
+              "title": "Price",
+              "type": "string"
+            },
+            "regular_price": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Regular Price"
+            },
+            "sale_price": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sale Price"
+            },
+            "sku": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sku"
+            },
+            "slug": {
+              "title": "Slug",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "pending",
+                "private",
+                "publish"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "stock_quantity": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Stock Quantity"
+            },
+            "stock_status": {
+              "enum": [
+                "instock",
+                "outofstock",
+                "onbackorder"
+              ],
+              "title": "Stock Status",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "simple",
+                "variable",
+                "grouped",
+                "external"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug",
+            "type",
+            "status",
+            "price",
+            "stock_status"
+          ],
+          "title": "ProductSummary",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ProductSummary"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "page": {
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "total_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Count"
+        },
+        "total_pages": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Pages"
+        }
+      },
+      "required": [
+        "items",
+        "page",
+        "per_page",
+        "has_more"
+      ],
+      "title": "ListProductsOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": [
+      "external_api"
+    ]
+  },
+  "woocommerce.update_order": {
+    "description": "Update a restricted set of fields on an existing order: billing / shipping address, customer note, payment method. Status changes go through update_order_status (separate tool for clearer audit).",
+    "destructive": true,
+    "input_schema": {
+      "$defs": {
+        "AddressInput": {
+          "additionalProperties": false,
+          "description": "Billing / shipping address as the agent supplies it on order\ncreation. ``email`` and ``phone`` only make sense on billing;\nWooCommerce ignores them on shipping but accepts the same shape.",
+          "properties": {
+            "address_1": {
+              "anyOf": [
+                {
+                  "maxLength": 240,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Address 1"
+            },
+            "address_2": {
+              "anyOf": [
+                {
+                  "maxLength": 240,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Address 2"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "City"
+            },
+            "company": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Company"
+            },
+            "country": {
+              "anyOf": [
+                {
+                  "maxLength": 2,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "ISO 3166-1 alpha-2 country code, e.g. 'CL', 'MX'.",
+              "title": "Country"
+            },
+            "email": {
+              "anyOf": [
+                {
+                  "format": "email",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Email"
+            },
+            "first_name": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "First Name"
+            },
+            "last_name": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Name"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phone"
+            },
+            "postcode": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Postcode"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "State"
+            }
+          },
+          "title": "AddressInput",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Restricted update. Only the fields the agent has a real use case\nfor — addresses, customer note, payment method. Status changes go\nthrough update_order_status (separate audit signal).",
+      "properties": {
+        "billing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AddressInput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_note": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Note"
+        },
+        "id": {
+          "minimum": 1,
+          "title": "Id",
+          "type": "integer"
+        },
+        "payment_method": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payment Method"
+        },
+        "payment_method_title": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payment Method Title"
+        },
+        "shipping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AddressInput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "UpdateOrderInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "AddressOutput": {
+          "additionalProperties": false,
+          "description": "Billing / shipping address as Woo returns it.\n\nAll fields optional because real stores rarely fill them all in\n(especially shipping when the order is digital).",
+          "properties": {
+            "address_1": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Address 1"
+            },
+            "address_2": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Address 2"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "City"
+            },
+            "company": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Company"
+            },
+            "country": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Country"
+            },
+            "email": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Email"
+            },
+            "first_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "First Name"
+            },
+            "last_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Name"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phone"
+            },
+            "postcode": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Postcode"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "State"
+            }
+          },
+          "title": "AddressOutput",
+          "type": "object"
+        },
+        "LineItemOutput": {
+          "additionalProperties": false,
+          "description": "Order line item as surfaced by Woo on order read.\n\nThe LLM needs enough to reason about the order: product, variation\n(for variable products), quantity, line totals, and the SKU. Tax\ndetail is summarised; refunds are not exposed at this layer (out of\nscope for the agent's job; the operator panel has them).",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "price": {
+              "title": "Price",
+              "type": "string"
+            },
+            "product_id": {
+              "title": "Product Id",
+              "type": "integer"
+            },
+            "quantity": {
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "sku": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sku"
+            },
+            "subtotal": {
+              "title": "Subtotal",
+              "type": "string"
+            },
+            "total": {
+              "title": "Total",
+              "type": "string"
+            },
+            "variation_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Variation Id"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "product_id",
+            "quantity",
+            "price",
+            "subtotal",
+            "total"
+          ],
+          "title": "LineItemOutput",
+          "type": "object"
+        },
+        "OrderDetail": {
+          "additionalProperties": false,
+          "description": "Full order for a single ``get_order`` call.",
+          "properties": {
+            "billing": {
+              "$ref": "#/$defs/AddressOutput"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "customer_id": {
+              "default": 0,
+              "title": "Customer Id",
+              "type": "integer"
+            },
+            "customer_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Customer Note"
+            },
+            "date_created": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Created"
+            },
+            "date_modified": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Modified"
+            },
+            "date_paid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Date Paid"
+            },
+            "discount_total": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Discount Total"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "line_items": {
+              "items": {
+                "$ref": "#/$defs/LineItemOutput"
+              },
+              "title": "Line Items",
+              "type": "array"
+            },
+            "number": {
+              "title": "Number",
+              "type": "string"
+            },
+            "payment_method": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Payment Method"
+            },
+            "payment_method_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Payment Method Title"
+            },
+            "shipping": {
+              "$ref": "#/$defs/AddressOutput"
+            },
+            "shipping_total": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Shipping Total"
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "processing",
+                "on-hold",
+                "completed",
+                "cancelled",
+                "refunded",
+                "failed",
+                "trash"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "subtotal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Subtotal"
+            },
+            "total": {
+              "title": "Total",
+              "type": "string"
+            },
+            "total_tax": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Total Tax"
+            },
+            "transaction_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Transaction Id"
+            }
+          },
+          "required": [
+            "id",
+            "number",
+            "status",
+            "currency",
+            "total",
+            "billing",
+            "shipping"
+          ],
+          "title": "OrderDetail",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "$ref": "#/$defs/OrderDetail"
+        }
+      },
+      "required": [
+        "order"
+      ],
+      "title": "UpdateOrderOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "external_api",
+      "mutates_db"
+    ]
+  },
+  "woocommerce.update_order_status": {
+    "description": "Move an existing order to a different status (pending, processing, on-hold, completed, cancelled, refunded, failed). Returns the previous and new status for audit.",
+    "destructive": true,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Move an order to a new status. The most common destructive call.",
+      "properties": {
+        "id": {
+          "minimum": 1,
+          "title": "Id",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "processing",
+            "on-hold",
+            "completed",
+            "cancelled",
+            "refunded",
+            "failed",
+            "trash"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status"
+      ],
+      "title": "UpdateOrderStatusInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "date_modified": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Date Modified"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "previous_status": {
+          "enum": [
+            "pending",
+            "processing",
+            "on-hold",
+            "completed",
+            "cancelled",
+            "refunded",
+            "failed",
+            "trash"
+          ],
+          "title": "Previous Status",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "processing",
+            "on-hold",
+            "completed",
+            "cancelled",
+            "refunded",
+            "failed",
+            "trash"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "previous_status",
+        "status"
+      ],
+      "title": "UpdateOrderStatusOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "external_api",
+      "mutates_db"
+    ]
+  }
+}

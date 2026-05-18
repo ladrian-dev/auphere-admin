@@ -29,6 +29,7 @@ audit row.
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -46,6 +47,7 @@ from nexus_api.db.models import (
     TenantConnector,
     TenantConnectorStatus,
     TenantConnectorToolOverride,
+    TenantCredentials,
     ToolCatalog,
 )
 
@@ -654,6 +656,103 @@ async def bootstrap_browser_credentials(
             "tenant_credentials_id": str(tenant_credentials_id),
             "context_id": context_id,
             "auth_kind": "browser_credentials",
+        },
+    )
+    return tc
+
+
+async def bootstrap_api_key(
+    session: AsyncSession,
+    *,
+    tenant: Tenant,
+    connector_slug: str,
+    secret_payload: dict[str, str],
+    endpoint_meta: dict[str, Any],
+    actor: str,
+) -> TenantConnector:
+    """Wire up an ``api_key`` connector by encrypting the secret in
+    ``tenant_credentials`` and pointing ``tenant_connectors.credentials_ref``
+    at it.
+
+    Used by the WooCommerce wizard (first ``api_key`` consumer). The
+    panel form collects the secret fields (e.g. consumer_key +
+    consumer_secret) plus non-secret routing info (store_url); the
+    secret bundle lands in ``encrypted_payload`` (Fernet) and the
+    routing info lands in ``credentials_ref.endpoint_meta``.
+
+    Idempotent on (tenant_id, connector.slug): if the install already
+    exists, rotate the underlying tenant_credentials row and reset the
+    install status to ``connected``. The previous tenant_credentials
+    row (if any) is left in place — historical credentials are an
+    audit signal, not garbage.
+    """
+    connector = await _load_connector_by_slug(session, connector_slug)
+    if connector.auth_kind != "api_key":
+        msg = (
+            f"connector {connector_slug} has auth_kind={connector.auth_kind!r}; "
+            "bootstrap_api_key requires api_key"
+        )
+        raise IncompatibleAuthKind(msg)
+    if not secret_payload:
+        msg = "secret_payload must contain at least one secret field"
+        raise ValueError(msg)
+    # ``tenant_credentials`` is uniqued on (tenant_id, integration). The
+    # connector slug doubles as the integration key for ``api_key``
+    # connectors so rotations replace the row in place.
+    existing_cred = await session.scalar(
+        select(TenantCredentials).where(
+            TenantCredentials.tenant_id == tenant.id,
+            TenantCredentials.integration == connector_slug,
+        )
+    )
+    encrypted_bytes = json.dumps(secret_payload, separators=(",", ":")).encode("utf-8")
+    if existing_cred is not None:
+        existing_cred.encrypted_payload = encrypted_bytes
+        existing_cred.needs_reauth = False
+        cred_row = existing_cred
+    else:
+        cred_row = TenantCredentials(
+            tenant_id=tenant.id,
+            integration=connector_slug,
+            encrypted_payload=encrypted_bytes,
+            needs_reauth=False,
+        )
+        session.add(cred_row)
+    await session.flush()
+
+    ref: dict[str, Any] = {
+        "tenant_credentials_id": str(cred_row.id),
+        "endpoint_meta": dict(endpoint_meta),
+    }
+    existing = await _load_tenant_connector(session, tenant.id, connector.id)
+    if existing:
+        existing.status = TenantConnectorStatus.CONNECTED.value
+        existing.credentials_ref = ref
+        existing.connected_at = existing.connected_at or datetime.now(UTC)
+        existing.disconnected_at = None
+        tc = existing
+    else:
+        tc = TenantConnector(
+            tenant_id=tenant.id,
+            connector_id=connector.id,
+            status=TenantConnectorStatus.CONNECTED.value,
+            credentials_ref=ref,
+            scopes_granted=[],
+            config={},
+            connected_at=datetime.now(UTC),
+        )
+        session.add(tc)
+    await session.flush()
+    await _write_audit(
+        session,
+        tenant_id=tenant.id,
+        actor=actor,
+        action="connector.connect_completed",
+        target=f"connector:{connector_slug}",
+        after={
+            "tenant_credentials_id": str(cred_row.id),
+            "endpoint_meta": dict(endpoint_meta),
+            "auth_kind": "api_key",
         },
     )
     return tc
