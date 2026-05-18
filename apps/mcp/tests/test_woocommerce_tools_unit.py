@@ -11,8 +11,8 @@ import uuid
 from typing import Any
 
 import pytest
-
 from nexus_api.core.tenant_context import tenant_context
+
 from nexus_mcp.http import PaginationMeta
 from nexus_mcp.servers.woocommerce.client import WooCommerceClient
 from nexus_mcp.servers.woocommerce.errors import (
@@ -20,6 +20,7 @@ from nexus_mcp.servers.woocommerce.errors import (
     WooCommerceNotFound,
 )
 from nexus_mcp.servers.woocommerce.tools import (
+    WOOCOMMERCE_TOOLS,
     AddOrderNote,
     CreateOrder,
     GetCustomer,
@@ -28,11 +29,10 @@ from nexus_mcp.servers.woocommerce.tools import (
     ListCategories,
     ListCustomers,
     ListOrders,
-    ListProductVariations,
     ListProducts,
+    ListProductVariations,
     UpdateOrder,
     UpdateOrderStatus,
-    WOOCOMMERCE_TOOLS,
     set_test_client,
 )
 
@@ -46,7 +46,7 @@ class FakeWooClient(WooCommerceClient):
     """Bypasses real HTTP. Records every call so tests can assert
     exact endpoint + params the tools build."""
 
-    def __init__(self) -> None:  # noqa: D401 — no real super setup needed
+    def __init__(self) -> None:
         # Skip the parent __init__ — we don't want it validating
         # store_url etc. We're a fake.
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -221,10 +221,20 @@ async def test_get_product_strips_html_and_returns_variations(fake_client, tenan
         "stock_status": "instock",
         "categories": [{"id": 5, "name": "Plumones", "slug": "plumones"}],
         "attributes": [
-            {"id": 1, "name": "Tamaño", "slug": "pa_size", "options": ["queen", "king"],
-             "variation": True},
-            {"id": 2, "name": "Color", "slug": "pa_color", "options": ["azul", "gris"],
-             "variation": True},
+            {
+                "id": 1,
+                "name": "Tamaño",
+                "slug": "pa_size",
+                "options": ["queen", "king"],
+                "variation": True,
+            },
+            {
+                "id": 2,
+                "name": "Color",
+                "slug": "pa_color",
+                "options": ["azul", "gris"],
+                "variation": True,
+            },
         ],
         "variations": [101, 102, 103, 104],
     }
@@ -334,8 +344,11 @@ async def test_create_order_with_variation_id(fake_client, tenant_ctx):
             "line_items": [{"variation_id": 101, "quantity": 2}],
             "customer_id": 9,
             "billing": {
-                "first_name": "Ana", "last_name": "Soto",
-                "email": "ana@example.com", "country": "CL", "city": "Santiago",
+                "first_name": "Ana",
+                "last_name": "Soto",
+                "email": "ana@example.com",
+                "country": "CL",
+                "city": "Santiago",
             },
             "payment_method": "bacs",
         }
@@ -356,7 +369,14 @@ async def test_create_order_with_variation_id(fake_client, tenant_ctx):
 
 
 async def test_create_order_rejects_line_item_without_product_or_variation(fake_client, tenant_ctx):
-    fake_client.next_post = {"id": 1, "number": "1", "status": "pending", "currency": "CLP", "total": "0", "line_items": []}
+    fake_client.next_post = {
+        "id": 1,
+        "number": "1",
+        "status": "pending",
+        "currency": "CLP",
+        "total": "0",
+        "line_items": [],
+    }
     with pytest.raises(Exception, match="product_id or variation_id"):
         await CreateOrder().invoke({"line_items": [{"quantity": 1}]})
 
@@ -391,9 +411,15 @@ async def test_update_order_requires_field(fake_client, tenant_ctx):
 
 async def test_update_order_sends_only_provided_fields(fake_client, tenant_ctx):
     fake_client.next_put = {
-        "id": 555, "number": "555", "status": "processing", "currency": "CLP",
-        "total": "598.00", "customer_id": 9,
-        "billing": {}, "shipping": {}, "line_items": [],
+        "id": 555,
+        "number": "555",
+        "status": "processing",
+        "currency": "CLP",
+        "total": "598.00",
+        "customer_id": 9,
+        "billing": {},
+        "shipping": {},
+        "line_items": [],
     }
     await UpdateOrder().invoke({"id": 555, "customer_note": "Despachado ya"})
     payload = fake_client.calls[0][1]["payload"]
@@ -451,8 +477,10 @@ async def test_list_customers_by_email(fake_client, tenant_ctx):
     fake_client.next_list = (
         [
             {
-                "id": 9, "email": "ana@example.com",
-                "first_name": "Ana", "last_name": "Soto",
+                "id": 9,
+                "email": "ana@example.com",
+                "first_name": "Ana",
+                "last_name": "Soto",
                 "billing": {"phone": "+56911111111"},
             }
         ],
@@ -495,14 +523,25 @@ async def test_auth_error_surfaces(fake_client, tenant_ctx):
 
 async def test_get_order_returns_line_items_with_variation_id(fake_client, tenant_ctx):
     fake_client.next_get = {
-        "id": 555, "number": "555", "status": "completed",
-        "currency": "CLP", "total": "598.00", "customer_id": 9,
-        "billing": {}, "shipping": {},
+        "id": 555,
+        "number": "555",
+        "status": "completed",
+        "currency": "CLP",
+        "total": "598.00",
+        "customer_id": 9,
+        "billing": {},
+        "shipping": {},
         "line_items": [
             {
-                "id": 1, "name": "Plumón Queen Azul",
-                "product_id": 42, "variation_id": 101, "sku": "PK-Q-AZ",
-                "quantity": 2, "price": "299", "subtotal": "598", "total": "598",
+                "id": 1,
+                "name": "Plumón Queen Azul",
+                "product_id": 42,
+                "variation_id": 101,
+                "sku": "PK-Q-AZ",
+                "quantity": 2,
+                "price": "299",
+                "subtotal": "598",
+                "total": "598",
             }
         ],
     }

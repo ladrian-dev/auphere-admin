@@ -116,8 +116,9 @@ class BaseHTTPConnectorClient:
     process-wide cache layer above this class — not inside it.
     """
 
-    # Subclasses MUST override.
-    base_url: ClassVar[str] = ""
+    # ``base_url`` is set per-instance in ``__init__`` (each tenant has
+    # a different store URL) — declared on ``self`` below, not here, so
+    # mypy --strict can see the assignment unambiguously.
 
     # Defaults — subclasses can override or pass through ctor.
     DEFAULT_TIMEOUT_S: ClassVar[float] = 20.0
@@ -139,9 +140,7 @@ class BaseHTTPConnectorClient:
             raise ValueError(msg)
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s if timeout_s is not None else self.DEFAULT_TIMEOUT_S
-        self.max_retries = (
-            max_retries if max_retries is not None else self.DEFAULT_MAX_RETRIES
-        )
+        self.max_retries = max_retries if max_retries is not None else self.DEFAULT_MAX_RETRIES
         self.user_agent = user_agent
 
     # ── extension hooks (subclasses override) ────────────────────────────
@@ -246,9 +245,7 @@ class BaseHTTPConnectorClient:
 
             # 429 — one shot at Retry-After, then re-raise.
             if response.status_code == 429 and attempt < self.max_retries:
-                retry_after = self._parse_retry_after(
-                    response.headers.get("Retry-After")
-                )
+                retry_after = self._parse_retry_after(response.headers.get("Retry-After"))
                 delay = retry_after or self._backoff_delay(attempt)
                 log.warning(
                     "http_connector.rate_limited",
@@ -319,7 +316,7 @@ class BaseHTTPConnectorClient:
 
     def _backoff_delay(self, attempt: int) -> float:
         # Exponential, no jitter (intentional: tests deterministic).
-        return self.DEFAULT_BACKOFF_BASE_S * (2**attempt)
+        return float(self.DEFAULT_BACKOFF_BASE_S * (2**attempt))
 
     @staticmethod
     def _parse_retry_after(raw: str | None) -> float | None:
@@ -344,9 +341,14 @@ class BaseHTTPConnectorClient:
         if not response.content:
             return None
         try:
-            return response.json()
+            parsed = response.json()
         except ValueError:
             return None
+        if isinstance(parsed, dict):
+            return parsed
+        if isinstance(parsed, list):
+            return parsed
+        return None
 
     def _raise_for_status(self, response: httpx.Response) -> None:
         status = response.status_code

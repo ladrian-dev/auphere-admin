@@ -208,8 +208,7 @@ class ListProductsInput(InputModel):
     attribute_term: str | None = Field(
         default=None,
         max_length=120,
-        description="Attribute term slug, e.g. 'azul', 'queen'. "
-        "Must be combined with attribute.",
+        description="Attribute term slug, e.g. 'azul', 'queen'. Must be combined with attribute.",
     )
     page: int = Field(default=1, ge=1, le=1000)
     per_page: int = Field(default=20, ge=1, le=100)
@@ -540,8 +539,7 @@ class AddOrderNoteInput(InputModel):
     note: str = Field(min_length=1, max_length=4000)
     customer_note: bool = Field(
         default=False,
-        description="True = visible to customer (and emailed). "
-        "False = internal note only.",
+        description="True = visible to customer (and emailed). False = internal note only.",
     )
 
 
@@ -557,18 +555,40 @@ class AddOrderNoteOutput(OutputModel):
     note: OrderNote
 
 
+# Sorted alphabetically (ruff RUF022). Sections (nested / read-only /
+# destructive) are visible by name prefix so the grouping is preserved
+# implicitly: AddOrderNote*, Address*, etc.
 __all__ = [
-    # nested + reusable
+    "AddOrderNoteInput",
+    "AddOrderNoteOutput",
     "AddressInput",
     "AddressOutput",
     "AttributeCompact",
     "Category",
     "CategoryRef",
+    "CreateOrderInput",
+    "CreateOrderOutput",
     "Customer",
+    "GetCustomerInput",
+    "GetCustomerOutput",
+    "GetOrderInput",
+    "GetOrderOutput",
+    "GetProductInput",
+    "GetProductOutput",
     "ImageRef",
     "LineItemInput",
     "LineItemOutput",
+    "ListCategoriesInput",
+    "ListCategoriesOutput",
+    "ListCustomersInput",
+    "ListCustomersOutput",
     "ListEnvelope",
+    "ListOrdersInput",
+    "ListOrdersOutput",
+    "ListProductVariationsInput",
+    "ListProductVariationsOutput",
+    "ListProductsInput",
+    "ListProductsOutput",
     "OrderDetail",
     "OrderNote",
     "OrderStatus",
@@ -579,28 +599,6 @@ __all__ = [
     "ProductType",
     "ProductVariation",
     "StockStatus",
-    # read-only tools
-    "GetCustomerInput",
-    "GetCustomerOutput",
-    "GetOrderInput",
-    "GetOrderOutput",
-    "GetProductInput",
-    "GetProductOutput",
-    "ListCategoriesInput",
-    "ListCategoriesOutput",
-    "ListCustomersInput",
-    "ListCustomersOutput",
-    "ListOrdersInput",
-    "ListOrdersOutput",
-    "ListProductsInput",
-    "ListProductsOutput",
-    "ListProductVariationsInput",
-    "ListProductVariationsOutput",
-    # destructive tools
-    "AddOrderNoteInput",
-    "AddOrderNoteOutput",
-    "CreateOrderInput",
-    "CreateOrderOutput",
     "UpdateOrderInput",
     "UpdateOrderOutput",
     "UpdateOrderStatusInput",

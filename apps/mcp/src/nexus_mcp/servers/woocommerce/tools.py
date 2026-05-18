@@ -27,7 +27,7 @@ import html
 import json
 import re
 import uuid
-from typing import Any
+from typing import Any, ClassVar
 
 import structlog
 from nexus_api.core.tenant_context import (
@@ -47,7 +47,6 @@ from nexus_mcp.base import ToolBase, ToolError
 from nexus_mcp.servers.woocommerce.client import WooCommerceClient
 from nexus_mcp.servers.woocommerce.errors import (
     WooCommerceAuthError,
-    WooCommerceError,
     WooCommerceNotFound,
 )
 from nexus_mcp.servers.woocommerce.schemas import (
@@ -132,9 +131,7 @@ async def _load_woocommerce_client(tenant_id: uuid.UUID) -> WooCommerceClient:
             )
         ).first()
         if row is None:
-            raise WooCommerceNotConfigured(
-                "WooCommerce connector is not connected for this tenant"
-            )
+            raise WooCommerceNotConfigured("WooCommerce connector is not connected for this tenant")
         tc: TenantConnector = row[0]
         cred_ref: dict[str, Any] = tc.credentials_ref or {}
         tenant_credentials_id_raw = cred_ref.get("tenant_credentials_id")
@@ -266,12 +263,8 @@ def _attributes(attributes_raw: Any) -> list[AttributeCompact]:
                     id=a.get("id") if isinstance(a.get("id"), int) else None,
                     name=str(a.get("name", "")),
                     slug=a.get("slug") if isinstance(a.get("slug"), str) else None,
-                    options=[
-                        str(o) for o in (a.get("options") or []) if isinstance(o, str)
-                    ],
-                    option=(
-                        str(a["option"]) if isinstance(a.get("option"), str) else None
-                    ),
+                    options=[str(o) for o in (a.get("options") or []) if isinstance(o, str)],
+                    option=(str(a["option"]) if isinstance(a.get("option"), str) else None),
                     variation=bool(a.get("variation", False)),
                 )
             )
@@ -459,10 +452,7 @@ def _address_to_payload(addr: AddressInput | None) -> dict[str, Any] | None:
     # WooCommerce expects an empty string rather than null for unset
     # address fields. Convert here so the LLM-supplied None doesn't
     # cause a 400 on patch semantics.
-    return {
-        k: ("" if v is None else v)
-        for k, v in addr.model_dump(mode="json").items()
-    }
+    return {k: ("" if v is None else v) for k, v in addr.model_dump(mode="json").items()}
 
 
 # ── base class ───────────────────────────────────────────────────────────
@@ -471,7 +461,7 @@ def _address_to_payload(addr: AddressInput | None) -> dict[str, Any] | None:
 class _WooTool(ToolBase):
     """Pulls the client resolution boilerplate out of every tool."""
 
-    side_effects: tuple[str, ...] = ("external_api",)
+    side_effects: ClassVar[tuple[str, ...]] = ("external_api",)
 
     async def _client(self) -> WooCommerceClient:
         return await _resolve_client(require_current_tenant())
@@ -546,9 +536,7 @@ class GetProduct(_WooTool):
                 "/products", page=1, per_page=1, extra_params={"sku": payload.sku}
             )
             if not items:
-                raise WooCommerceNotFound(
-                    f"no product with sku={payload.sku!r}", status_code=404
-                )
+                raise WooCommerceNotFound(f"no product with sku={payload.sku!r}", status_code=404)
             data = items[0]
         return GetProductOutput(product=_product_detail(data))
 
@@ -725,7 +713,9 @@ class GetCustomer(_WooTool):
             data = await client.get_resource(f"/customers/{payload.id}")
         else:
             items, _meta = await client.list_paginated(
-                "/customers", page=1, per_page=1,
+                "/customers",
+                page=1,
+                per_page=1,
                 extra_params={"email": payload.email},
             )
             if not items:
@@ -750,16 +740,14 @@ class CreateOrder(_WooTool):
     )
     input_model = CreateOrderInput
     output_model = CreateOrderOutput
-    side_effects = ("external_api", "mutates_db")
+    side_effects: ClassVar[tuple[str, ...]] = ("external_api", "mutates_db")
 
     async def run(self, payload: CreateOrderInput) -> CreateOrderOutput:  # type: ignore[override]
         client = await self._client()
         line_items_payload: list[dict[str, Any]] = []
         for li in payload.line_items:
             if li.product_id is None and li.variation_id is None:
-                raise ToolError(
-                    "every line_item must include product_id or variation_id"
-                )
+                raise ToolError("every line_item must include product_id or variation_id")
             item: dict[str, Any] = {"quantity": li.quantity}
             if li.product_id is not None:
                 item["product_id"] = li.product_id
@@ -807,7 +795,7 @@ class UpdateOrderStatus(_WooTool):
     )
     input_model = UpdateOrderStatusInput
     output_model = UpdateOrderStatusOutput
-    side_effects = ("external_api", "mutates_db")
+    side_effects: ClassVar[tuple[str, ...]] = ("external_api", "mutates_db")
 
     async def run(  # type: ignore[override]
         self, payload: UpdateOrderStatusInput
@@ -843,7 +831,7 @@ class UpdateOrder(_WooTool):
     )
     input_model = UpdateOrderInput
     output_model = UpdateOrderOutput
-    side_effects = ("external_api", "mutates_db")
+    side_effects: ClassVar[tuple[str, ...]] = ("external_api", "mutates_db")
 
     async def run(self, payload: UpdateOrderInput) -> UpdateOrderOutput:  # type: ignore[override]
         client = await self._client()
@@ -861,9 +849,7 @@ class UpdateOrder(_WooTool):
         if payload.payment_method_title is not None:
             body["payment_method_title"] = payload.payment_method_title
         if not body:
-            raise ToolError(
-                "update_order requires at least one field to change"
-            )
+            raise ToolError("update_order requires at least one field to change")
         data = await client.put_resource(f"/orders/{payload.id}", payload=body)
         log.info("woocommerce.order_updated", order_id=payload.id, fields=list(body.keys()))
         return UpdateOrderOutput(order=_order_detail(data))
@@ -878,7 +864,7 @@ class AddOrderNote(_WooTool):
     )
     input_model = AddOrderNoteInput
     output_model = AddOrderNoteOutput
-    side_effects = ("external_api", "mutates_db")
+    side_effects: ClassVar[tuple[str, ...]] = ("external_api", "mutates_db")
 
     async def run(self, payload: AddOrderNoteInput) -> AddOrderNoteOutput:  # type: ignore[override]
         client = await self._client()
@@ -936,6 +922,7 @@ def build_woocommerce_tools() -> list[ToolBase]:
 
 
 __all__ = [
+    "WOOCOMMERCE_TOOLS",
     "AddOrderNote",
     "CreateOrder",
     "GetCustomer",
@@ -948,7 +935,6 @@ __all__ = [
     "ListProducts",
     "UpdateOrder",
     "UpdateOrderStatus",
-    "WOOCOMMERCE_TOOLS",
     "WooCommerceNotConfigured",
     "build_woocommerce_tools",
     "set_test_client",

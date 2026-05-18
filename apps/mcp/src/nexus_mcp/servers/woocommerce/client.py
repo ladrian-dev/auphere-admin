@@ -156,9 +156,7 @@ class WooCommerceClient(BaseHTTPConnectorClient):
             items: list[dict[str, Any]] = []
         else:
             items = [item for item in body if isinstance(item, dict)]
-        meta = self._pagination_from_response(
-            response, page=page, per_page=per_page
-        )
+        meta = self._pagination_from_response(response, page=page, per_page=per_page)
         return items, meta
 
     async def get_resource(
