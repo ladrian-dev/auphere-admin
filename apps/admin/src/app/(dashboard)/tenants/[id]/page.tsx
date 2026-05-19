@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/card";
 import { backend } from "@/lib/backend";
 import { fullDateTime, relativeTime } from "@/lib/format";
+import { qaApi, type QAThread } from "@/lib/qa-api";
+import { requireSession } from "@/lib/session";
 
 export default async function TenantOverview({
   params,
@@ -17,9 +19,16 @@ export default async function TenantOverview({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [tenant, agentBundle] = await Promise.all([
+  const session = await requireSession();
+  const operatorId = session.user.id;
+
+  const [tenant, agentBundle, recentThreads] = await Promise.all([
     backend.getTenant(id),
     backend.getAgentConfig(id),
+    // Best-effort fetch — if /qa/* is misconfigured we still render the page.
+    qaApi
+      .listThreads({ operatorId, tenantId: id, limit: 5 })
+      .catch(() => [] as QAThread[]),
   ]);
   if (!tenant) return null;
 
@@ -113,6 +122,55 @@ export default async function TenantOverview({
           >
             Garantías de aislamiento →
           </Link>
+        </CardContent>
+      </Card>
+
+      {/* Probar agente — ADR-020 Phase 5 entry point */}
+      <Card className="lg:col-span-3">
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <Eyebrow>QA Playground</Eyebrow>
+            <CardTitle>Probar agente</CardTitle>
+            <CardDescription>
+              Conversá con el agente como si fueras el cliente, en sandbox
+              dry-run. Ningún side-effect real se ejecuta; los tool calls
+              quedan auditados.
+            </CardDescription>
+          </div>
+          <Link
+            href={`/qa/${tenant.id}/chat`}
+            className="inline-flex items-center justify-center rounded-md bg-[color:var(--color-primary)] px-4 py-2 text-sm font-medium text-[color:var(--color-on-primary,#fff)] hover:opacity-90"
+          >
+            Abrir Playground →
+          </Link>
+        </CardHeader>
+        <CardContent className="grid gap-2 text-sm">
+          {recentThreads.length === 0 ? (
+            <span className="text-muted-foreground">
+              Sin conversaciones QA todavía.
+            </span>
+          ) : (
+            <>
+              <span className="text-xs font-mono uppercase text-muted-foreground">
+                Conversaciones QA recientes
+              </span>
+              <ul className="grid gap-1">
+                {recentThreads.map((t) => (
+                  <li key={t.id} className="flex items-center justify-between">
+                    <Link
+                      href={`/qa/${tenant.id}/chat?thread=${t.id}`}
+                      className="hover:underline underline-offset-4 decoration-1"
+                    >
+                      {t.title}
+                    </Link>
+                    <span className="text-xs text-muted-foreground">
+                      {relativeTime(t.updated_at)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
