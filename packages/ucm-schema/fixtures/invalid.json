@@ -1,0 +1,55 @@
+{
+  "wrong_version": {
+    "ucm_version": "0.9.0",
+    "message_id": "x",
+    "type": "text",
+    "capabilities_required": ["text"],
+    "fallback_text": "x",
+    "metadata": {},
+    "content": { "body": "x", "format": "plain" }
+  },
+  "missing_fallback": {
+    "ucm_version": "1.0.0",
+    "message_id": "x",
+    "type": "text",
+    "capabilities_required": ["text"],
+    "metadata": {},
+    "content": { "body": "x", "format": "plain" }
+  },
+  "empty_buttons": {
+    "ucm_version": "1.0.0",
+    "message_id": "x",
+    "type": "quick_replies",
+    "capabilities_required": ["interactive.buttons"],
+    "fallback_text": "x",
+    "metadata": {},
+    "content": { "body": "x", "buttons": [] }
+  },
+  "bad_lat": {
+    "ucm_version": "1.0.0",
+    "message_id": "x",
+    "type": "location",
+    "capabilities_required": ["location"],
+    "fallback_text": "x",
+    "metadata": {},
+    "content": { "latitude": 200, "longitude": 0 }
+  },
+  "bad_url": {
+    "ucm_version": "1.0.0",
+    "message_id": "x",
+    "type": "cta_url",
+    "capabilities_required": ["interactive.cta_url"],
+    "fallback_text": "x",
+    "metadata": {},
+    "content": { "body": "x", "button_title": "Go", "url": "not-a-url" }
+  },
+  "unknown_type": {
+    "ucm_version": "1.0.0",
+    "message_id": "x",
+    "type": "carousel",
+    "capabilities_required": [],
+    "fallback_text": "x",
+    "metadata": {},
+    "content": {}
+  }
+}

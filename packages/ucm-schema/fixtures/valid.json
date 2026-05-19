@@ -1,0 +1,168 @@
+{
+  "text_plain": {
+    "ucm_version": "1.0.0",
+    "message_id": "msg_text_001",
+    "type": "text",
+    "capabilities_required": ["text"],
+    "fallback_text": "Hola, ¿cómo te puedo ayudar?",
+    "metadata": {},
+    "content": { "body": "Hola, ¿cómo te puedo ayudar?", "format": "plain" }
+  },
+  "text_markdown": {
+    "ucm_version": "1.0.0",
+    "message_id": "msg_text_002",
+    "type": "text",
+    "capabilities_required": ["text", "text.markdown"],
+    "fallback_text": "Mira nuestra oferta: precio especial.",
+    "metadata": {},
+    "content": {
+      "body": "**Oferta**: 20% en _todos los servicios_ esta semana.",
+      "format": "markdown"
+    }
+  },
+  "quick_replies_3": {
+    "ucm_version": "1.0.0",
+    "message_id": "msg_qr_001",
+    "type": "quick_replies",
+    "capabilities_required": ["interactive.buttons"],
+    "fallback_text": "Elige: Sí / No / Más info",
+    "metadata": {},
+    "content": {
+      "body": "¿Quieres reservar ahora?",
+      "buttons": [
+        { "id": "yes", "title": "Sí" },
+        { "id": "no", "title": "No" },
+        { "id": "more", "title": "Más info" }
+      ]
+    }
+  },
+  "quick_replies_5": {
+    "ucm_version": "1.0.0",
+    "message_id": "msg_qr_002",
+    "type": "quick_replies",
+    "capabilities_required": ["interactive.buttons"],
+    "fallback_text": "Servicios disponibles: corte, color, peinado, barba, manicure",
+    "metadata": {},
+    "content": {
+      "body": "Elige un servicio:",
+      "buttons": [
+        { "id": "svc_haircut", "title": "Corte" },
+        { "id": "svc_color", "title": "Color" },
+        { "id": "svc_style", "title": "Peinado" },
+        { "id": "svc_beard", "title": "Barba" },
+        { "id": "svc_mani", "title": "Manicure" }
+      ]
+    }
+  },
+  "list_small": {
+    "ucm_version": "1.0.0",
+    "message_id": "msg_list_001",
+    "type": "list",
+    "capabilities_required": ["interactive.list"],
+    "fallback_text": "Opciones: lunes, martes, miércoles",
+    "metadata": {},
+    "content": {
+      "body": "¿Qué día prefieres?",
+      "button_text": "Ver días",
+      "sections": [
+        {
+          "title": "Esta semana",
+          "rows": [
+            { "id": "mon", "title": "Lunes", "description": "Mañana 10:00" },
+            { "id": "tue", "title": "Martes", "description": "Tarde 16:00" },
+            { "id": "wed", "title": "Miércoles", "description": "Mañana 11:00" }
+          ]
+        }
+      ]
+    }
+  },
+  "cta_url": {
+    "ucm_version": "1.0.0",
+    "message_id": "msg_cta_001",
+    "type": "cta_url",
+    "capabilities_required": ["interactive.cta_url"],
+    "fallback_text": "Reserva en https://example.com/reserva",
+    "metadata": {},
+    "content": {
+      "body": "Reserva tu cita en nuestro sitio:",
+      "button_title": "Reservar",
+      "url": "https://example.com/reserva"
+    }
+  },
+  "media_image": {
+    "ucm_version": "1.0.0",
+    "message_id": "msg_media_001",
+    "type": "media",
+    "capabilities_required": ["media.image"],
+    "fallback_text": "Imagen del local: https://example.com/local.jpg",
+    "metadata": {},
+    "content": {
+      "kind": "image",
+      "url": "https://example.com/local.jpg",
+      "caption": "Nuestro local"
+    }
+  },
+  "location": {
+    "ucm_version": "1.0.0",
+    "message_id": "msg_loc_001",
+    "type": "location",
+    "capabilities_required": ["location"],
+    "fallback_text": "Estamos en Calle Falsa 123",
+    "metadata": {},
+    "content": {
+      "latitude": 4.6097,
+      "longitude": -74.0817,
+      "name": "Auphere HQ",
+      "address": "Calle Falsa 123, Bogotá"
+    }
+  },
+  "flow": {
+    "ucm_version": "1.0.0",
+    "message_id": "msg_flow_001",
+    "type": "flow",
+    "capabilities_required": ["flow"],
+    "fallback_text": "Completa el formulario en el siguiente enlace",
+    "metadata": {},
+    "content": {
+      "flow_id": "booking_v3",
+      "body": "Reserva paso a paso",
+      "button_text": "Iniciar"
+    }
+  },
+  "composite": {
+    "ucm_version": "1.0.0",
+    "message_id": "msg_comp_001",
+    "type": "composite",
+    "capabilities_required": [],
+    "fallback_text": "Hola, mira la imagen, elige una opción",
+    "metadata": {},
+    "content": {
+      "children": [
+        {
+          "ucm_version": "1.0.0",
+          "message_id": "msg_comp_001_a",
+          "type": "text",
+          "capabilities_required": ["text"],
+          "fallback_text": "Hola",
+          "metadata": {},
+          "content": { "body": "Hola", "format": "plain" }
+        },
+        {
+          "ucm_version": "1.0.0",
+          "message_id": "msg_comp_001_b",
+          "type": "quick_replies",
+          "capabilities_required": ["interactive.buttons"],
+          "fallback_text": "Elige: Sí / No",
+          "metadata": {},
+          "content": {
+            "body": "¿Continuamos?",
+            "buttons": [
+              { "id": "yes", "title": "Sí" },
+              { "id": "no", "title": "No" }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
