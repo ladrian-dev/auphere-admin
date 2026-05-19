@@ -35,6 +35,15 @@ _current_operator: ContextVar[uuid.UUID | None] = ContextVar(
     "current_operator", default=None
 )
 
+# Phase 3 (ADR-020): the QA thread the current request is editing.
+# Set by the LangGraph Server's auth handler (or any caller that wants
+# the dry_run audit writer to stamp rows). Independent from
+# ``_current_operator`` because some requests (creating a thread) don't
+# yet have a thread id, and some operator actions span no thread at all.
+_current_qa_thread: ContextVar[uuid.UUID | None] = ContextVar(
+    "current_qa_thread", default=None
+)
+
 
 def get_current_operator() -> uuid.UUID | None:
     return _current_operator.get()
@@ -50,6 +59,11 @@ def require_current_operator() -> uuid.UUID:
     return operator_id
 
 
+def get_current_qa_thread() -> uuid.UUID | None:
+    """The QA thread the current request is bound to, or ``None``."""
+    return _current_qa_thread.get()
+
+
 @contextmanager
 def operator_context(operator_id: uuid.UUID) -> Iterator[uuid.UUID]:
     token = _current_operator.set(operator_id)
@@ -57,6 +71,21 @@ def operator_context(operator_id: uuid.UUID) -> Iterator[uuid.UUID]:
         yield operator_id
     finally:
         _current_operator.reset(token)
+
+
+@contextmanager
+def qa_thread_context(thread_id: uuid.UUID) -> Iterator[uuid.UUID]:
+    """Bind the current QA thread for the duration of the block.
+
+    The LangGraph Server sets this per-run so the dry_run audit writer
+    can stamp rows with the correct ``thread_id``. Tests and ad-hoc
+    code can use the contextmanager directly.
+    """
+    token = _current_qa_thread.set(thread_id)
+    try:
+        yield thread_id
+    finally:
+        _current_qa_thread.reset(token)
 
 
 async def apply_operator_to_session(

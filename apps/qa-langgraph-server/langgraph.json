@@ -1,0 +1,10 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "qa_pilot": "./src/qa_langgraph_server/graph.py:qa_pilot"
+  },
+  "auth": {
+    "path": "./src/qa_langgraph_server/auth.py:auth"
+  },
+  "env": ".env"
+}
