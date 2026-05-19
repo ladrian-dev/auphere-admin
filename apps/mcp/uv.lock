@@ -1622,6 +1622,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
     { name = "nexus-channels", editable = "../channels" },
     { name = "nexus-mcp", marker = "extra == 'dev'", editable = "." },
+    { name = "nexus-ucm-schema", marker = "extra == 'dev'", editable = "../../packages/ucm-schema/py" },
     { name = "nexus-worker", marker = "extra == 'dev'", editable = "../worker" },
     { name = "opentelemetry-api", specifier = ">=1.28.0" },
     { name = "opentelemetry-instrumentation-asyncpg", specifier = ">=0.49b0" },

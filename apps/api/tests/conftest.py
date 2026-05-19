@@ -172,6 +172,10 @@ def _reset_test_db() -> None:
     test_db = _parse_dsn(TEST_DB_URL)["database"]
     reset_sql = (
         "DROP SCHEMA public CASCADE; CREATE SCHEMA public; "
+        # Phase 3 (ADR-020): qa.* lives in its own schema; drop it too
+        # so a previous test session's tables don't collide with the
+        # fresh ``alembic upgrade head`` below.
+        "DROP SCHEMA IF EXISTS qa CASCADE; "
         "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
         "CREATE EXTENSION IF NOT EXISTS vector;"
     )

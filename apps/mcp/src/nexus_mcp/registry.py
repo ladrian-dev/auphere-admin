@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import secrets
 import time
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
 import structlog
@@ -90,20 +90,50 @@ class InternalCallerTokenInvalid(ToolError):
     """``dispatch_internal`` rechazó el caller_token."""
 
 
+DryRunAuditCallback = Callable[[str, dict[str, Any], dict[str, Any]], Awaitable[None]]
+"""Signature for the side-effect audit hook used by ``dry_run`` mode.
+
+Arguments:
+    tool_name           the tool the LLM tried to invoke
+    args                the (already-validated) arguments
+    synthetic_result    the placeholder result the agent will see
+
+The callback is awaited inside dispatch, BEFORE the synthetic envelope is
+returned. It must be idempotent against partial failures (the registry
+does NOT retry on callback errors — see ``dispatch`` below).
+"""
+
+
 class MCPRegistry:
     def __init__(
         self,
         tools: Iterable[ToolBase] | None = None,
         internal_tools: Iterable[ToolBase] | None = None,
+        *,
+        dry_run: bool = False,
+        dry_run_audit: DryRunAuditCallback | None = None,
     ) -> None:
         self._tools: dict[str, ToolBase] = {}
         self._internal_tools: dict[str, ToolBase] = {}
+        self._dry_run = dry_run
+        self._dry_run_audit = dry_run_audit
         if tools is not None:
             for t in tools:
                 self.register(t)
         if internal_tools is not None:
             for t in internal_tools:
                 self.register_internal(t)
+
+    @property
+    def dry_run(self) -> bool:
+        """When True, dispatches of side-effecting tools are blocked.
+
+        The check uses ``ToolBase.side_effects`` — any non-empty tuple
+        marks the tool as side-effecting. Read-only tools (empty tuple)
+        run normally so the operator gets real data while the agent
+        explores. The audit callback records every blocked attempt.
+        """
+        return self._dry_run
 
     # ── registration ─────────────────────────────────────────────────────
 
@@ -200,6 +230,47 @@ class MCPRegistry:
         if tool is None:
             raise ToolError(f"tool {name!r} is not registered in the MCP runtime")
 
+        # ── dry_run gate (ADR-020 Phase 3) ───────────────────────────────
+        # When the registry is in dry_run mode (QA Playground) and the
+        # tool declares any side_effects, we MUST NOT actually invoke it.
+        # The agent receives a synthetic envelope that lets the
+        # conversation continue, and the operator-side audit table gets
+        # one row per blocked attempt so the QA UI can show what would
+        # have happened in a real run.
+        if self._dry_run and tool.side_effects:
+            synthetic = make_envelope(
+                tool=name,
+                tenant_id=tenant_id,
+                args=dict(args),
+                result={
+                    "ok": True,
+                    "blocked_by": "dry_run",
+                    "side_effects_declared": list(tool.side_effects),
+                    "note": (
+                        "QA Playground intercepted this tool call. No real "
+                        "side effect was performed."
+                    ),
+                },
+                status="skipped:dry_run",
+            )
+            if self._dry_run_audit is not None:
+                # Audit before returning so the operator sees the row even
+                # if the agent's run errors out later in the turn.
+                try:
+                    await self._dry_run_audit(name, dict(args), synthetic)
+                except Exception:
+                    # Audit MUST NOT take down the conversation — log
+                    # loudly and move on. The contract is best-effort
+                    # persistence; the gate itself (no real call) holds
+                    # regardless.
+                    log.exception(
+                        "dry_run_audit_callback_failed",
+                        tool=name,
+                        tenant_id=str(tenant_id),
+                    )
+            record_invocation(name)
+            return synthetic
+
         record_invocation(name)
         started = time.perf_counter()
         try:
@@ -240,6 +311,35 @@ class MCPRegistry:
         tool = self._internal_tools.get(name)
         if tool is None:
             raise ToolError(f"internal tool {name!r} is not registered")
+
+        # dry_run also gates internal dispatches — otherwise the public
+        # ``booking.create_appointment`` tool would be blocked but its
+        # subprocess delegate (``agendapro.create_appointment``) would
+        # still hit the real provider. Same audit hook fires.
+        if self._dry_run and tool.side_effects:
+            synthetic = make_envelope(
+                tool=name,
+                tenant_id=tenant_id,
+                args=dict(args),
+                result={
+                    "ok": True,
+                    "blocked_by": "dry_run",
+                    "side_effects_declared": list(tool.side_effects),
+                    "note": "QA Playground intercepted this internal tool call.",
+                },
+                status="skipped:dry_run",
+            )
+            if self._dry_run_audit is not None:
+                try:
+                    await self._dry_run_audit(name, dict(args), synthetic)
+                except Exception:
+                    log.exception(
+                        "dry_run_audit_callback_failed",
+                        tool=name,
+                        tenant_id=str(tenant_id),
+                    )
+            record_invocation(name)
+            return synthetic
 
         record_invocation(name)
         started = time.perf_counter()

@@ -52,6 +52,7 @@ from nexus_api.db.models.owner_backchannel import (
     OwnerConsultation,
     OwnerPhoneIndex,
 )
+from nexus_api.db.models.qa import QAAuditLog, QASideEffectAudit, QAThread
 from nexus_api.db.models.queue_entry import QueueEntry, QueueEntryStatus
 from nexus_api.db.models.scheduled_job import (
     ScheduledJob,
@@ -101,6 +102,9 @@ __all__ = [
     "OperatorNotificationStatus",
     "OwnerConsultation",
     "OwnerPhoneIndex",
+    "QAAuditLog",
+    "QASideEffectAudit",
+    "QAThread",
     "QueueEntry",
     "QueueEntryStatus",
     "ScheduledJob",

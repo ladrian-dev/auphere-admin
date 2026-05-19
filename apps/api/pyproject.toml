@@ -72,12 +72,17 @@ dev = [
     "nexus-worker",
     # Block D: integration tests exercise the MCP servers directly.
     "nexus-mcp",
+    # Phase 2 (ADR-020): the worker's ``ucm_formatter`` node imports
+    # ``ucm_schema``; isolation tests in this package import the worker
+    # package transitively and therefore need this dep available too.
+    "nexus-ucm-schema",
 ]
 
 [tool.uv.sources]
 nexus-worker = { path = "../worker", editable = true }
 nexus-mcp = { path = "../mcp", editable = true }
 nexus-channels = { path = "../channels", editable = true }
+nexus-ucm-schema = { path = "../../packages/ucm-schema/py", editable = true }
 
 [build-system]
 requires = ["hatchling"]
