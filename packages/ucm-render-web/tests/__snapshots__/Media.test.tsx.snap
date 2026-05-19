@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Media > snapshot: image 1`] = `"<div style="background: rgb(255, 255, 255); border: 1px solid rgb(227, 227, 227); border-radius: 12px; padding: 12px 14px; color: rgb(17, 17, 17); font-size: 14px; line-height: 1.45; max-width: 540px;" data-ucm-type="media" data-ucm-media-kind="image" data-ucm-message-id="msg_media_001"><img alt="Nuestro local" style="max-width: 100%; border-radius: 8px; display: block;" src="https://example.com/local.jpg"><div style="margin-top: 8px; color: rgb(102, 102, 102); font-size: 13px;">Nuestro local</div></div>"`;

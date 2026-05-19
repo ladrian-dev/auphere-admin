@@ -1,0 +1,5 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Text > snapshot: markdown body rendered as plain text 1`] = `"<div style="background: rgb(255, 255, 255); border: 1px solid rgb(227, 227, 227); border-radius: 12px; padding: 12px 14px; color: rgb(17, 17, 17); font-size: 14px; line-height: 1.45; max-width: 540px; white-space: pre-wrap;" role="article" aria-label="agent message" data-ucm-type="text" data-ucm-message-id="msg_text_002">**Oferta**: 20% en _todos los servicios_ esta semana.</div>"`;
+
+exports[`Text > snapshot: plain 1`] = `"<div style="background: rgb(255, 255, 255); border: 1px solid rgb(227, 227, 227); border-radius: 12px; padding: 12px 14px; color: rgb(17, 17, 17); font-size: 14px; line-height: 1.45; max-width: 540px; white-space: pre-wrap;" role="article" aria-label="agent message" data-ucm-type="text" data-ucm-message-id="msg_text_001">Hola, ¿cómo te puedo ayudar?</div>"`;

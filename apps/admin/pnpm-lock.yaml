@@ -14,6 +14,15 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.75.0(react@19.2.4))
+      '@nexus/ucm-preview-whatsapp':
+        specifier: file:../../packages/ucm-preview-whatsapp
+        version: file:../../packages/ucm-preview-whatsapp(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@nexus/ucm-render-web':
+        specifier: file:../../packages/ucm-render-web
+        version: file:../../packages/ucm-render-web(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@nexus/ucm-schema':
+        specifier: file:../../packages/ucm-schema/ts
+        version: file:../../packages/ucm-schema/ts
       '@radix-ui/react-slot':
         specifier: ^1.2.4
         version: 1.2.4(@types/react@19.2.14)(react@19.2.4)
@@ -1275,6 +1284,21 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
+
+  '@nexus/ucm-preview-whatsapp@file:../../packages/ucm-preview-whatsapp':
+    resolution: {directory: ../../packages/ucm-preview-whatsapp, type: directory}
+    peerDependencies:
+      react: '>=19.0.0'
+      react-dom: '>=19.0.0'
+
+  '@nexus/ucm-render-web@file:../../packages/ucm-render-web':
+    resolution: {directory: ../../packages/ucm-render-web, type: directory}
+    peerDependencies:
+      react: '>=19.0.0'
+      react-dom: '>=19.0.0'
+
+  '@nexus/ucm-schema@file:../../packages/ucm-schema/ts':
+    resolution: {directory: ../../packages/ucm-schema/ts, type: directory}
 
   '@noble/ciphers@1.3.0':
     resolution: {integrity: sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw==}
@@ -5288,6 +5312,22 @@ snapshots:
 
   '@next/swc-win32-x64-msvc@16.2.6':
     optional: true
+
+  '@nexus/ucm-preview-whatsapp@file:../../packages/ucm-preview-whatsapp(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+    dependencies:
+      '@nexus/ucm-schema': file:../../packages/ucm-schema/ts
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+
+  '@nexus/ucm-render-web@file:../../packages/ucm-render-web(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+    dependencies:
+      '@nexus/ucm-schema': file:../../packages/ucm-schema/ts
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+
+  '@nexus/ucm-schema@file:../../packages/ucm-schema/ts':
+    dependencies:
+      zod: 3.25.76
 
   '@noble/ciphers@1.3.0': {}
 

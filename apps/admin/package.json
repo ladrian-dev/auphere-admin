@@ -17,6 +17,9 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
+    "@nexus/ucm-schema": "file:../../packages/ucm-schema/ts",
+    "@nexus/ucm-render-web": "file:../../packages/ucm-render-web",
+    "@nexus/ucm-preview-whatsapp": "file:../../packages/ucm-preview-whatsapp",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-slot": "^1.2.4",
     "better-auth": "^1.6.9",

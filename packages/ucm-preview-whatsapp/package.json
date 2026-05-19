@@ -1,0 +1,48 @@
+{
+  "name": "@nexus/ucm-preview-whatsapp",
+  "version": "1.0.0",
+  "description": "WhatsApp Cloud API visual preview of a UCM v1.0.0 message. Used by the QA Playground's Preview-as-WhatsApp dropdown. ADR-020.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "react": ">=19.0.0",
+    "react-dom": ">=19.0.0"
+  },
+  "dependencies": {
+    "@nexus/ucm-schema": "file:../ucm-schema/ts"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "jsdom": "^25.0.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": ["esbuild"]
+  },
+  "private": true
+}
