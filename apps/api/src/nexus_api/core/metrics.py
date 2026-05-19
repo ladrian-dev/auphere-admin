@@ -76,6 +76,16 @@ ISOLATION_LOG_MISSING_TENANT_TAG = "isolation.log_missing_tenant_tag"
 ISOLATION_LLM_BATCH_CROSS_TENANT = "isolation.llm_batch_cross_tenant"
 CHANNEL_UNRESOLVED_EVENT = "channel.unresolved_event"
 
+# QA Playground (ADR-020 Fase 6). These are in-process counters today;
+# when a Prometheus exporter lands they're exposed under the same
+# names. ``qa.run.duration_ms`` is a summation counter (sum of all
+# durations) — p50/p95 must be derived once a histogram backend exists.
+QA_THREAD_CREATED = "qa.thread.created"
+QA_SIDE_EFFECT_BLOCKED = "qa.side_effect.blocked"
+QA_AUDIT_WRITE_FAILED = "qa.audit.write_failed"
+QA_RUN_DURATION_MS_SUM = "qa.run.duration_ms.sum"
+QA_RUN_DURATION_MS_COUNT = "qa.run.duration_ms.count"
+
 # Persisted metrics — every increment of these writes a row to
 # ``isolation_events``. ``isolation.unscoped_query`` is excluded because
 # the enforcer fires before any tenant context exists.

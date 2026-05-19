@@ -33,6 +33,7 @@ from nexus_api.core.operator_context import (
     _current_operator,
     apply_operator_to_session,
 )
+from nexus_api.core.metrics import QA_THREAD_CREATED, counters
 from nexus_api.core.qa_security import require_qa_operator
 from nexus_api.core.tenant_context import (
     _current_tenant,
@@ -215,6 +216,12 @@ async def create_thread(
             payload={"title": body.title},
         )
         await session.refresh(thread)
+        # Metrics: bump the global + per-tenant + per-operator counter so
+        # alerts/dashboards can spot a sudden surge (e.g. one operator
+        # spam-creating threads in a script).
+        counters.incr(QA_THREAD_CREATED)
+        counters.incr(f"{QA_THREAD_CREATED}:tenant={body.tenant_id}")
+        counters.incr(f"{QA_THREAD_CREATED}:operator={operator_id}")
         return _thread_out(thread)
     finally:
         _current_tenant.reset(tenant_token)

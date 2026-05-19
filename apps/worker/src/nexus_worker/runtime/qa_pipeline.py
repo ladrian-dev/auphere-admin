@@ -15,6 +15,7 @@ Reference: ADR-020 Phase 3.
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from nexus_mcp import build_default_registry
@@ -76,3 +77,30 @@ def build_qa_pipeline(
         mcp_registry=registry,
         use_ucm_formatter=True,
     )
+
+
+def qa_run_metadata(
+    *,
+    operator_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    qa_thread_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Metadata to attach to every QA graph invocation (Langfuse / OTEL).
+
+    The LangGraph Server's request handler MUST pass this dict as the
+    ``metadata`` field of the ``RunnableConfig`` it hands to
+    ``graph.astream`` / ``graph.ainvoke``. The keys land on every
+    Langfuse trace, so the QA dashboard filters cleanly with
+    ``qa = true`` and per-tenant/per-operator drill-down works.
+
+    Without this metadata, QA traffic mixes with production traces and
+    the alerts in ``docs/qa-playground/alerts.md`` cannot route.
+
+    Reference: ADR-020 Fase 6 (Bloque E.3).
+    """
+    return {
+        "qa": True,
+        "qa.operator_id": str(operator_id),
+        "qa.tenant_id": str(tenant_id),
+        "qa.thread_id": str(qa_thread_id),
+    }

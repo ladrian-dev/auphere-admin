@@ -117,6 +117,8 @@ markers = [
     "integration: requires Postgres/Redis containers",
     "isolation: blocking suite — verifies the 7 isolation guarantees",
     "manual_only: release smoke / Browserbase / YCloud — opt-in via env vars",
+    "slow: tests that take notable wall time; CI still runs them",
+    "contract: agent ↔ UCM schema contract tests (Fase 6)",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:passlib.*",

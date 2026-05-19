@@ -22,6 +22,11 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import structlog
+from nexus_api.core.metrics import (
+    QA_AUDIT_WRITE_FAILED,
+    QA_SIDE_EFFECT_BLOCKED,
+    counters,
+)
 from nexus_api.core.operator_context import (
     apply_operator_to_session,
     get_current_operator,
@@ -74,6 +79,12 @@ def make_qa_audit_writer(
         args: dict[str, Any],
         synthetic: dict[str, Any],
     ) -> None:
+        # Bump the blocked counter BEFORE any persistence work so the
+        # alert ``qa_side_effect_blocked_anomaly`` reflects ATTEMPTS,
+        # not "rows that landed in the audit table". The gate (no real
+        # call) already held inside MCPRegistry before we got here.
+        counters.incr(QA_SIDE_EFFECT_BLOCKED)
+        counters.incr(f"{QA_SIDE_EFFECT_BLOCKED}:tool={tool_name}")
         operator_id = get_current_operator()
         tenant_id = get_current_tenant()
         effective_thread = pinned_thread_id or get_current_qa_thread()
@@ -117,6 +128,8 @@ def make_qa_audit_writer(
                     )
                 )
         except Exception:
+            counters.incr(QA_AUDIT_WRITE_FAILED)
+            counters.incr(f"{QA_AUDIT_WRITE_FAILED}:tool={tool_name}")
             log.exception(
                 "qa_audit.write_failed",
                 tool=tool_name,
