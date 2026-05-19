@@ -1866,6 +1866,7 @@ name = "nexus-mcp"
 version = "0.1.0"
 source = { editable = "../mcp" }
 dependencies = [
+    { name = "httpx" },
     { name = "nexus-api" },
     { name = "pydantic" },
     { name = "redis" },
@@ -1876,17 +1877,35 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fakeredis", marker = "extra == 'dev'", specifier = ">=2.26.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
     { name = "nexus-api", editable = "../api" },
     { name = "pydantic", specifier = ">=2.9.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "redis", specifier = ">=5.2.0" },
+    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.22.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
     { name = "structlog", specifier = ">=24.4.0" },
 ]
 provides-extras = ["dev"]
+
+[[package]]
+name = "nexus-ucm-schema"
+version = "1.0.0"
+source = { editable = "../../packages/ucm-schema/py" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.5,<3" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=5.0" },
+]
+provides-extras = ["test"]
 
 [[package]]
 name = "nexus-worker"
@@ -1902,6 +1921,7 @@ dependencies = [
     { name = "nexus-api" },
     { name = "nexus-channels" },
     { name = "nexus-mcp" },
+    { name = "nexus-ucm-schema" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -1933,6 +1953,7 @@ requires-dist = [
     { name = "nexus-api", editable = "../api" },
     { name = "nexus-channels", editable = "../channels" },
     { name = "nexus-mcp", editable = "../mcp" },
+    { name = "nexus-ucm-schema", editable = "../../packages/ucm-schema/py" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2.0" },
     { name = "pydantic", specifier = ">=2.9.0" },
     { name = "pydantic-settings", specifier = ">=2.6.0" },

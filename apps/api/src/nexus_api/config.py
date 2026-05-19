@@ -138,6 +138,20 @@ class Settings(BaseSettings):
     llm_transcribe_timeout_s: float = 25.0
     llm_vision_timeout_s: float = 25.0
 
+    # ── Phase 2 (ADR-020): UCM formatter ────────────────────────────────────
+    # When True the ``ucm_formatter`` node between ``respond`` and
+    # ``checkpoint`` wraps the agent's text response into a UCM v1.0.0
+    # payload and writes shadow-diff telemetry. The node is wired into
+    # the graph topology unconditionally — this flag only toggles the
+    # node's behaviour (passthrough vs emit).
+    #
+    # Default ``True`` because Nexus has no real customers in production
+    # yet; we want the formatter exercising the path on every turn so the
+    # shadow-diff data is available the moment Phase 3 ships the Playground.
+    # If a production tenant lands before Phase 3, flip to ``False`` per
+    # environment via ``NEXUS_USE_UCM_FORMATTER=false`` for instant rollback.
+    use_ucm_formatter: bool = True
+
     @property
     def media_s3_enabled(self) -> bool:
         """True when enough creds are present to upload to S3. In dev with

@@ -9,6 +9,9 @@ dependencies = [
     "nexus-api",
     "nexus-mcp",
     "nexus-channels",
+    # Phase 2 (ADR-020): UCM v1.0.0 schema + validators + degradation engine.
+    # The worker imports it from the ucm_formatter node.
+    "nexus-ucm-schema",
     "langgraph>=1.0.0",
     "langgraph-checkpoint-postgres>=2.0.0",
     "litellm>=1.52.0",
@@ -53,6 +56,7 @@ nexus-worker = "nexus_worker.main:run"
 nexus-api = { path = "../api", editable = true }
 nexus-mcp = { path = "../mcp", editable = true }
 nexus-channels = { path = "../channels", editable = true }
+nexus-ucm-schema = { path = "../../packages/ucm-schema/py", editable = true }
 
 [build-system]
 requires = ["hatchling"]

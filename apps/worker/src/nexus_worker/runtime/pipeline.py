@@ -62,6 +62,10 @@ from nexus_worker.persistence.messages import persist_outbound_message
 from nexus_worker.runtime.agent_loader import AgentBundle, AgentLoader
 from nexus_worker.runtime.llm import LLMRouter
 from nexus_worker.runtime.state import AgentState
+from nexus_worker.runtime.ucm_formatter import (
+    format_response_as_ucm,
+    shadow_diff_against_legacy,
+)
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -439,6 +443,66 @@ def make_respond_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
     return respond
 
 
+def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
+    """Phase 2 (ADR-020): wrap the agent's text response in a UCM payload.
+
+    When the feature flag is off this is a no-op passthrough — that lets us
+    ship the node into the graph wiring without changing behaviour, and
+    flip the flag per environment when shadow validation is ready.
+
+    When enabled it produces:
+      - ``state["ucm"]`` — a validated UCM v1.0.0 dict (today always
+        ``type: "text"``; will grow per ADR-020 as the agent emits
+        structured replies).
+      - ``state["ucm_shadow_diff"]`` — a comparison record between the
+        channel-degraded UCM and the legacy ``state["response"]``, used
+        to gate promotion to source-of-truth (target: diff_ratio < 0.01
+        over 7 days, per the feature spec).
+    """
+
+    async def ucm_formatter(state: AgentState) -> dict[str, Any]:
+        if not enabled:
+            return {}
+
+        response_text = state.get("response", "") or ""
+        # Reuse the inbound_message_id as a stable correlation id for the
+        # UCM so traces / future shadow tables can join cleanly. If the
+        # state shape ever omits it (it shouldn't — ``new_state`` always
+        # sets it), the formatter still produces a fresh UUID.
+        seed_id = state.get("inbound_message_id") or None
+        ucm = format_response_as_ucm(
+            response_text=response_text,
+            message_id=seed_id,
+            metadata={
+                "tenant_id": state.get("tenant_id"),
+                "conversation_id": state.get("conversation_id"),
+                "intent": state.get("intent"),
+                "phase": "shadow",  # not source-of-truth yet
+            },
+        )
+        diff = shadow_diff_against_legacy(ucm, response_text, channel="whatsapp")
+
+        if not diff["equivalent"]:
+            # Loud structured log so we notice regressions immediately —
+            # the formatter is meant to be byte-equivalent to the legacy
+            # text path until the agent starts emitting structured content.
+            log.warning(
+                "ucm_shadow_diff_nonzero",
+                tenant_id=state.get("tenant_id"),
+                conversation_id=state.get("conversation_id"),
+                diff_ratio=diff["diff_ratio"],
+                degraded_type=diff["degraded_type"],
+                steps=diff["steps"],
+            )
+
+        return {
+            "ucm": ucm.model_dump(mode="json"),
+            "ucm_shadow_diff": diff,
+        }
+
+    return ucm_formatter
+
+
 def make_checkpoint_node() -> NodeFn:
     """Persist the outbound message in the ``messages`` table.
 
@@ -474,19 +538,35 @@ def build_pipeline(
     llm_router: LLMRouter,
     checkpointer: BaseCheckpointSaver[Any],
     mcp_registry: MCPRegistry | None = None,
+    use_ucm_formatter: bool | None = None,
 ) -> Any:
     """Compile the StateGraph and return a runnable.
 
     ``mcp_registry`` defaults to ``nexus_mcp.build_default_registry()``;
     tests can pass a stripped-down registry.
+
+    ``use_ucm_formatter`` controls Phase 2 of ADR-020. When ``None`` (the
+    default) the flag is read from ``settings.use_ucm_formatter`` so
+    deployment toggles work without code changes; tests pass an explicit
+    bool. When True a ``ucm_formatter`` node is inserted between
+    ``respond`` and ``checkpoint``.
     """
     registry = mcp_registry or build_default_registry()
+
+    if use_ucm_formatter is None:
+        # Read at compile time. Re-importing in the function keeps the
+        # config dependency local — pipeline.py stays callable from
+        # tests that stub out settings.
+        from nexus_api.config import get_settings
+
+        use_ucm_formatter = bool(get_settings().use_ucm_formatter)
 
     g: Any = StateGraph(AgentState)
     g.add_node("classify", make_classify_node(agent_loader, llm_router))
     for intent in VALID_INTENTS:
         g.add_node(intent, make_handler_node(intent, agent_loader, llm_router, registry))
     g.add_node("respond", make_respond_node(agent_loader, llm_router))
+    g.add_node("ucm_formatter", make_ucm_formatter_node(enabled=use_ucm_formatter))
     g.add_node("checkpoint", make_checkpoint_node())
 
     g.add_edge(START, "classify")
@@ -497,6 +577,7 @@ def build_pipeline(
     )
     for intent in VALID_INTENTS:
         g.add_edge(intent, "respond")
-    g.add_edge("respond", "checkpoint")
+    g.add_edge("respond", "ucm_formatter")
+    g.add_edge("ucm_formatter", "checkpoint")
     g.add_edge("checkpoint", END)
     return g.compile(checkpointer=checkpointer)

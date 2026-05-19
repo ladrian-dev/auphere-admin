@@ -46,6 +46,15 @@ class AgentState(TypedDict, total=False):
     response: str
     response_model: str
 
+    # Phase 2 (ADR-020): filled by ``ucm_formatter`` when
+    # ``settings.use_ucm_formatter`` is True. ``ucm`` is the UCM v1.0.0
+    # payload as a plain dict (already validated through the schema), and
+    # ``ucm_shadow_diff`` is the comparison record between the channel-
+    # degraded UCM and the legacy ``response`` text. Both stay ``None`` /
+    # unset while the flag is off so existing code paths see no change.
+    ucm: dict[str, Any]
+    ucm_shadow_diff: dict[str, Any]
+
     # Free-form trace metadata (replaced by the last writer)
     meta: dict[str, Any]
 
