@@ -90,16 +90,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: apps/admin/pnpm-lock.yaml
-      - name: install
-        working-directory: apps/admin
-        run: pnpm install --frozen-lockfile
       # The admin app consumes @nexus/ucm-schema, @nexus/ucm-render-web and
-      # @nexus/ucm-preview-whatsapp as ``file:../../packages/...`` deps. Each
-      # package ships from its ``dist/`` (``main``/``types`` in package.json).
-      # ``dist/`` is gitignored, so we have to build the three of them BEFORE
-      # tsc runs — otherwise typecheck fails with TS2307 on the @nexus/* imports.
+      # @nexus/ucm-preview-whatsapp as ``file:../../packages/...`` deps. With
+      # pnpm's ``file:`` protocol the packages are COPIED into apps/admin's
+      # node_modules at install time, so their ``dist/`` (``main``/``types``)
+      # must already exist when ``pnpm install`` runs in admin — otherwise
+      # tsc fails with TS2307 on the @nexus/* imports. ``dist/`` is gitignored,
+      # so we build the three packages BEFORE the admin install.
       # See ADR-021 and features/qa-playground-streaming-implementation Fase 0.
-      - name: "build local @nexus/ucm-* packages (file: deps need dist/)"
+      - name: "build local @nexus/ucm-* packages (file: deps need dist/ pre-install)"
         # Each package gets its own subshell so the cwd resets — chained
         # ``cd`` would compound relative paths and the third hop lands
         # outside packages/. Paths are absolute from $GITHUB_WORKSPACE.
@@ -108,6 +107,9 @@ jobs:
           (cd "$GITHUB_WORKSPACE/packages/ucm-schema/ts" && pnpm install --frozen-lockfile --ignore-scripts && pnpm build)
           (cd "$GITHUB_WORKSPACE/packages/ucm-render-web" && pnpm install --frozen-lockfile --ignore-scripts && pnpm build)
           (cd "$GITHUB_WORKSPACE/packages/ucm-preview-whatsapp" && pnpm install --frozen-lockfile --ignore-scripts && pnpm build)
+      - name: install
+        working-directory: apps/admin
+        run: pnpm install --frozen-lockfile
       - name: typecheck
         working-directory: apps/admin
         run: pnpm typecheck
