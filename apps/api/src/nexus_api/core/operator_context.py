@@ -36,18 +36,14 @@ from nexus_api.core.errors import IsolationViolation
 # stores whatever the BFF forwards as ``X-Operator-Id``. The RLS policies
 # compare text to text; security comes from the Bearer + the WITH CHECK
 # symmetry, not from the id's shape.
-_current_operator: ContextVar[str | None] = ContextVar(
-    "current_operator", default=None
-)
+_current_operator: ContextVar[str | None] = ContextVar("current_operator", default=None)
 
 # Phase 3 (ADR-020): the QA thread the current request is editing.
 # Set by the LangGraph Server's auth handler (or any caller that wants
 # the dry_run audit writer to stamp rows). Independent from
 # ``_current_operator`` because some requests (creating a thread) don't
 # yet have a thread id, and some operator actions span no thread at all.
-_current_qa_thread: ContextVar[uuid.UUID | None] = ContextVar(
-    "current_qa_thread", default=None
-)
+_current_qa_thread: ContextVar[uuid.UUID | None] = ContextVar("current_qa_thread", default=None)
 
 
 def get_current_operator() -> str | None:
@@ -58,8 +54,7 @@ def require_current_operator() -> str:
     operator_id = _current_operator.get()
     if operator_id is None:
         raise IsolationViolation(
-            "No operator_id in context — qa.* repository was invoked outside a "
-            "QA-scoped request."
+            "No operator_id in context — qa.* repository was invoked outside a QA-scoped request."
         )
     return operator_id
 
@@ -93,9 +88,7 @@ def qa_thread_context(thread_id: uuid.UUID) -> Iterator[uuid.UUID]:
         _current_qa_thread.reset(token)
 
 
-async def apply_operator_to_session(
-    session: AsyncSession, operator_id: str
-) -> None:
+async def apply_operator_to_session(session: AsyncSession, operator_id: str) -> None:
     """Set ``app.operator_id`` for the current transaction.
 
     Like ``apply_tenant_to_session`` this uses ``set_config(..., is_local=true)``

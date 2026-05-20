@@ -110,8 +110,16 @@ function AuditTab({
   const [rows, setRows] = useState<QASideEffectAudit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // The ``setRows([])`` reset for the ``no thread`` branch is the
+  // documented pattern for "clear stale data when prop disappears".
+  // React 19's ``react-hooks/set-state-in-effect`` flags it, but the
+  // alternative (deriving from props) doesn't fit the async fetch
+  // path that follows. This component gets rewritten in Fase 3 of
+  // qa-playground-streaming-implementation (assistant-ui drives the
+  // audit feed via the SSE stream), at which point the disable goes.
   useEffect(() => {
     if (!thread) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRows([]);
       return;
     }

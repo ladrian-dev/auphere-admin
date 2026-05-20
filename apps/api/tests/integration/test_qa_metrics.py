@@ -17,6 +17,9 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from nexus_mcp.base import InputModel, OutputModel, ToolBase
+from nexus_mcp.registry import MCPRegistry
+from nexus_worker.runtime.qa_audit import make_qa_audit_writer
 
 from nexus_api.core.metrics import (
     QA_AUDIT_WRITE_FAILED,
@@ -26,9 +29,6 @@ from nexus_api.core.metrics import (
 )
 from nexus_api.core.operator_context import operator_context
 from nexus_api.core.tenant_context import tenant_context
-from nexus_mcp.base import InputModel, OutputModel, ToolBase
-from nexus_mcp.registry import MCPRegistry
-from nexus_worker.runtime.qa_audit import make_qa_audit_writer
 
 pytestmark = pytest.mark.asyncio
 
@@ -67,9 +67,7 @@ async def tenant_id(db_session) -> uuid.UUID:
 # ── tests ───────────────────────────────────────────────────────────────────
 
 
-async def test_qa_thread_created_counter_bumps_per_post(
-    client, admin_headers, tenant_id
-):
+async def test_qa_thread_created_counter_bumps_per_post(client, admin_headers, tenant_id):
     import secrets
 
     op = secrets.token_urlsafe(16)
@@ -122,42 +120,36 @@ async def test_qa_side_effect_blocked_counter_bumps_per_intercept(tenant_id, db_
     """Two consecutive dispatches of a side-effecting tool under dry_run
     must bump the counter by 2 (global + per-tool label).
     """
-    from nexus_api.db.models.qa import QAThread
+    import secrets
+
     from nexus_api.core.operator_context import (
         qa_scoped_session,
         qa_thread_context,
     )
-
-    import secrets
+    from nexus_api.db.models.qa import QAThread
 
     operator_id = secrets.token_urlsafe(16)
     thread_id = uuid.uuid4()
-    async with db_session.begin():
-        async with qa_scoped_session(
-            db_session, operator_id=operator_id, tenant_id=tenant_id
-        ):
-            db_session.add(
-                QAThread(
-                    id=thread_id,
-                    operator_id=operator_id,
-                    tenant_id=tenant_id,
-                    title="metrics-target",
-                )
+    async with (
+        db_session.begin(),
+        qa_scoped_session(db_session, operator_id=operator_id, tenant_id=tenant_id),
+    ):
+        db_session.add(
+            QAThread(
+                id=thread_id,
+                operator_id=operator_id,
+                tenant_id=tenant_id,
+                title="metrics-target",
             )
+        )
 
     audit_cb = make_qa_audit_writer(thread_id=thread_id, run_id="run-m")
-    reg = MCPRegistry(
-        tools=[_MutatingTool()], dry_run=True, dry_run_audit=audit_cb
-    )
+    reg = MCPRegistry(tools=[_MutatingTool()], dry_run=True, dry_run_audit=audit_cb)
 
     assert counters.get(QA_SIDE_EFFECT_BLOCKED) == 0
-    with tenant_context(tenant_id), operator_context(operator_id), qa_thread_context(
-        thread_id
-    ):
+    with tenant_context(tenant_id), operator_context(operator_id), qa_thread_context(thread_id):
         for _ in range(2):
-            r = await reg.dispatch(
-                "qa_metrics.write", {}, whitelist=["qa_metrics.write"]
-            )
+            r = await reg.dispatch("qa_metrics.write", {}, whitelist=["qa_metrics.write"])
             assert r["status"] == "skipped:dry_run"
 
     assert counters.get(QA_SIDE_EFFECT_BLOCKED) == 2

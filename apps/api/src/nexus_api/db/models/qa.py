@@ -32,18 +32,14 @@ class QAThread(UUIDPrimaryKey, Base):
     __tablename__ = "threads"
     __table_args__ = ({"schema": "qa"},)
 
-    operator_id: Mapped[str] = mapped_column(
-        String(120), nullable=False, index=True
-    )
+    operator_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    external_id: Mapped[str | None] = mapped_column(
-        String(120), nullable=True, unique=True
-    )
+    external_id: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True)
     # Migration 0027: the underlying ``conversations`` row that holds
     # the inbound/outbound ``messages`` for this QA thread. Filled
     # lazily on the first send by ``POST /qa/threads/{id}/send``;
@@ -58,15 +54,9 @@ class QAThread(UUIDPrimaryKey, Base):
     title: Mapped[str] = mapped_column(
         String(200), nullable=False, server_default=text("'Untitled'")
     )
-    archived_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    last_run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    message_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    message_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -93,9 +83,7 @@ class QASideEffectAudit(UUIDPrimaryKey, Base):
     __tablename__ = "side_effect_audit"
     __table_args__ = ({"schema": "qa"},)
 
-    operator_id: Mapped[str] = mapped_column(
-        String(120), nullable=False, index=True
-    )
+    operator_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
@@ -136,9 +124,7 @@ class QAAuditLog(UUIDPrimaryKey, Base):
     __tablename__ = "audit_log"
     __table_args__ = ({"schema": "qa"},)
 
-    operator_id: Mapped[str] = mapped_column(
-        String(120), nullable=False, index=True
-    )
+    operator_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),

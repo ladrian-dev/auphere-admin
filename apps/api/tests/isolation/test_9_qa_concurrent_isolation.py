@@ -1,6 +1,6 @@
 """Guarantee 9 — QA Playground concurrent isolation under load (ADR-020 Fase 6).
 
-The feature spec demands 100 runs × 5 operators × 5 tenants → 0 leaks RLS +
+The feature spec demands 100 runs x 5 operators x 5 tenants → 0 leaks RLS +
 0 side-effects ejecutados, hit through the **HTTP surface** that real
 operators see (not the DB directly). This file complements
 ``test_8_qa_thread_isolation_by_operator.py`` (DB-level) by exercising the
@@ -82,7 +82,7 @@ async def _seed_tenants(db_session, n: int) -> list[uuid.UUID]:
 
 
 async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_session):
-    """100 concurrent thread creations × 5 ops × 5 tenants, then verify
+    """100 concurrent thread creations x 5 ops x 5 tenants, then verify
     every operator's list/detail view is RLS-clean.
     """
     tenants = await _seed_tenants(db_session, NUM_TENANTS)
@@ -95,9 +95,7 @@ async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_sessi
 
     sem = asyncio.Semaphore(MAX_INFLIGHT)
 
-    async def create_one(op: str, tenant: uuid.UUID, i: int) -> tuple[
-        str, uuid.UUID, str
-    ]:
+    async def create_one(op: str, tenant: uuid.UUID, i: int) -> tuple[str, uuid.UUID, str]:
         async with sem:
             r = await client.post(
                 "/qa/threads",
@@ -141,9 +139,7 @@ async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_sessi
                 seen.add(t["id"])
         # Also exercise detail GET on a sample of own threads (round-trip).
         for tid in list(expected_ids[op])[:5]:
-            r = await client.get(
-                f"/qa/threads/{tid}", headers=_hdrs(op, admin_headers)
-            )
+            r = await client.get(f"/qa/threads/{tid}", headers=_hdrs(op, admin_headers))
             assert r.status_code == 200, f"own thread {tid} not visible to creator"
             assert r.json()["operator_id"] == op
         # Cross-operator detail GET: should 404 (RLS hides → not found).
@@ -154,9 +150,7 @@ async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_sessi
                 f"/qa/threads/{sample_other}",
                 headers=_hdrs(op, admin_headers),
             )
-            assert r.status_code == 404, (
-                f"LEAK via detail GET: op {op} read thread of {other}"
-            )
+            assert r.status_code == 404, f"LEAK via detail GET: op {op} read thread of {other}"
         return op, seen
 
     sweeps = await asyncio.gather(*(verify_one(op) for op in operators))
@@ -198,7 +192,7 @@ async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_sessi
 async def test_qa_concurrent_repeats_stable(client, admin_headers, db_session):
     """Smaller, faster variant focused on robustness across repeated bursts.
 
-    The spec asks for 3 consecutive green runs of the 100×5×5 case. CI runs
+    The spec asks for 3 consecutive green runs of the 100x5x5 case. CI runs
     that one via the test above; this lighter variant catches the common
     failure mode where the FIRST burst is clean but a SECOND burst (with
     leftover engine state, half-released connections) leaks. We run 3
@@ -222,19 +216,14 @@ async def test_qa_concurrent_repeats_stable(client, admin_headers, db_session):
     per_op: dict[str, set[str]] = defaultdict(set)
 
     for burst in range(3):
-        pairs = [
-            (rng.choice(operators), rng.choice(tenants), f"b{burst}-{i}")
-            for i in range(25)
-        ]
+        pairs = [(rng.choice(operators), rng.choice(tenants), f"b{burst}-{i}") for i in range(25)]
         ids = await asyncio.gather(*(create(op, t, lbl) for (op, t, lbl) in pairs))
-        for (op, _t, _lbl), tid in zip(pairs, ids):
+        for (op, _t, _lbl), tid in zip(pairs, ids, strict=True):
             per_op[op].add(tid)
 
         # After each burst, verify each operator sees the right cumulative set.
         for op in operators:
-            r = await client.get(
-                f"/qa/threads?limit=200", headers=_hdrs(op, admin_headers)
-            )
+            r = await client.get("/qa/threads?limit=200", headers=_hdrs(op, admin_headers))
             assert r.status_code == 200
             visible = {t["id"] for t in r.json()}
             assert per_op[op].issubset(visible), (

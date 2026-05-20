@@ -32,7 +32,6 @@ from nexus_api.api.deps import get_db_session
 from nexus_api.core.metrics import QA_THREAD_CREATED, counters
 from nexus_api.core.operator_context import (
     _current_operator,
-    _current_qa_thread,
     apply_operator_to_session,
 )
 from nexus_api.core.qa_security import require_qa_operator

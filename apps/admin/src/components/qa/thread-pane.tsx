@@ -20,7 +20,11 @@
  */
 import { FormEvent, useCallback, useMemo, useRef, useState } from "react";
 
-import { UCMRenderer, type UCMMessage } from "@nexus/ucm-render-web";
+import {
+  UCMRenderer,
+  type InteractiveResponse,
+  type UCMMessage,
+} from "@nexus/ucm-render-web";
 import { WhatsAppPreview } from "@nexus/ucm-preview-whatsapp";
 
 import type { QAThread } from "@/lib/qa-api";
@@ -150,7 +154,7 @@ export function ThreadPane({
                   <UCMRenderer
                     key={t.ts}
                     ucm={t.ucm}
-                    onInteractive={(event) => {
+                    onInteractive={(event: InteractiveResponse) => {
                       // Quick replies / lists send back an
                       // interactive_response payload. Until the
                       // streaming runtime is wired, log it — the

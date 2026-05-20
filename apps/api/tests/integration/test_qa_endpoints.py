@@ -99,6 +99,7 @@ async def test_create_then_list_thread(client, admin_headers, tenant_id, db_sess
 
     # Debug: confirm the row exists in the DB (superuser → bypasses RLS)
     from sqlalchemy import text
+
     res = await db_session.execute(
         text("SELECT id, operator_id::text FROM qa.threads WHERE id = :id"),
         {"id": thread_id},
@@ -239,8 +240,8 @@ async def test_audit_endpoint_returns_thread_side_effects(
     """Insert a side-effect audit row directly, then read it back through
     the HTTP endpoint. Confirms the RLS scoping + serialization both work.
     """
-    from nexus_api.db.models.qa import QASideEffectAudit
     from nexus_api.core.operator_context import qa_scoped_session
+    from nexus_api.db.models.qa import QASideEffectAudit
 
     op = _op_id()
     h = qa_headers(op, admin_headers)
@@ -252,20 +253,22 @@ async def test_audit_endpoint_returns_thread_side_effects(
     thread_id = uuid.UUID(create.json()["id"])
 
     # Insert a side-effect audit row scoped to this operator.
-    async with db_session.begin():
-        async with qa_scoped_session(db_session, operator_id=op, tenant_id=tenant_id):
-            db_session.add(
-                QASideEffectAudit(
-                    operator_id=op,
-                    tenant_id=tenant_id,
-                    thread_id=thread_id,
-                    tool_name="booking.create_appointment",
-                    tool_args={"when": "tomorrow 10am"},
-                    synthetic_result={"ok": True, "blocked_by": "dry_run"},
-                    blocked_reason="dry_run",
-                    run_id="run-001",
-                )
+    async with (
+        db_session.begin(),
+        qa_scoped_session(db_session, operator_id=op, tenant_id=tenant_id),
+    ):
+        db_session.add(
+            QASideEffectAudit(
+                operator_id=op,
+                tenant_id=tenant_id,
+                thread_id=thread_id,
+                tool_name="booking.create_appointment",
+                tool_args={"when": "tomorrow 10am"},
+                synthetic_result={"ok": True, "blocked_by": "dry_run"},
+                blocked_reason="dry_run",
+                run_id="run-001",
             )
+        )
 
     r = await client.get(f"/qa/threads/{thread_id}/audit", headers=h)
     assert r.status_code == 200

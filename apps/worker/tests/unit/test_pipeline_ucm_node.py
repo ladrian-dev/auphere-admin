@@ -61,7 +61,7 @@ class TestUcmFormatterNode:
         # the agent's run for that — the legacy text path keeps working
         # and we just skip the UCM emission for this turn.
         node = make_ucm_formatter_node(enabled=True)
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 — contract test, see comment below
             # Until we wire a graceful skip we want the test to document
             # the current contract: empty response is a programming error
             # surfaced loudly during shadow runs.

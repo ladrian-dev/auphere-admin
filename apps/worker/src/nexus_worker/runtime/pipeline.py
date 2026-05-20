@@ -427,9 +427,8 @@ async def _load_kg_snapshot_text(tenant_id: uuid.UUID) -> str:
     nodes we'll graduate to a real ``kg.lookup`` tool (filter by
     label + free-text). Cheap enough for the pilot.
     """
-    from sqlalchemy import select as _select
-
     from nexus_api.db.models import KGNode
+    from sqlalchemy import select as _select
 
     sm = get_sessionmaker()
     async with sm() as session, tenant_scoped_session(session, tenant_id):

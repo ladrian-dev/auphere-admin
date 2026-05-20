@@ -14,15 +14,15 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from nexus_mcp.base import InputModel, OutputModel, ToolBase
+from nexus_mcp.registry import MCPRegistry
+from nexus_worker.runtime.qa_audit import make_qa_audit_writer
 from sqlalchemy import select
 
 from nexus_api.core.operator_context import operator_context
 from nexus_api.core.tenant_context import tenant_context
 from nexus_api.db.models import Tenant, TenantPlan
 from nexus_api.db.models.qa import QASideEffectAudit, QAThread
-from nexus_mcp.base import InputModel, OutputModel, ToolBase
-from nexus_mcp.registry import MCPRegistry
-from nexus_worker.runtime.qa_audit import make_qa_audit_writer
 
 pytestmark = pytest.mark.asyncio
 
@@ -72,9 +72,7 @@ async def qa_seed(db_session):
         # Apply scope to satisfy RLS on qa.threads insert.
         from nexus_api.core.operator_context import qa_scoped_session
 
-        async with qa_scoped_session(
-            db_session, operator_id=operator_id, tenant_id=tenant_id
-        ):
+        async with qa_scoped_session(db_session, operator_id=operator_id, tenant_id=tenant_id):
             db_session.add(
                 QAThread(
                     id=thread_id,
@@ -111,21 +109,19 @@ async def test_dry_run_dispatch_persists_side_effect_audit(qa_seed, db_session):
     # qa.side_effect_audit lets only this operator see it.
     from nexus_api.core.operator_context import qa_scoped_session
 
-    async with db_session.begin():
-        async with qa_scoped_session(
-            db_session, operator_id=operator_id, tenant_id=tenant_id
-        ):
-            rows = (
-                (
-                    await db_session.execute(
-                        select(QASideEffectAudit).where(
-                            QASideEffectAudit.thread_id == thread_id
-                        )
-                    )
+    async with (
+        db_session.begin(),
+        qa_scoped_session(db_session, operator_id=operator_id, tenant_id=tenant_id),
+    ):
+        rows = (
+            (
+                await db_session.execute(
+                    select(QASideEffectAudit).where(QASideEffectAudit.thread_id == thread_id)
                 )
-                .scalars()
-                .all()
             )
+            .scalars()
+            .all()
+        )
 
     assert len(rows) == 1
     row = rows[0]
@@ -146,35 +142,29 @@ async def test_dry_run_dispatch_uses_qa_thread_context(qa_seed, db_session):
     # NOTE: no thread_id pinned at builder time.
     audit_cb = make_qa_audit_writer(run_id="run-002")
 
-    registry = MCPRegistry(
-        tools=[_MutatingTool()], dry_run=True, dry_run_audit=audit_cb
-    )
+    registry = MCPRegistry(tools=[_MutatingTool()], dry_run=True, dry_run_audit=audit_cb)
 
     from nexus_api.core.operator_context import qa_thread_context
 
     with tenant_context(tenant_id), operator_context(operator_id), qa_thread_context(thread_id):
-        envelope = await registry.dispatch(
-            "demo.book", {"date": "today"}, whitelist=["demo.book"]
-        )
+        envelope = await registry.dispatch("demo.book", {"date": "today"}, whitelist=["demo.book"])
     assert envelope["status"] == "skipped:dry_run"
 
     from nexus_api.core.operator_context import qa_scoped_session
 
-    async with db_session.begin():
-        async with qa_scoped_session(
-            db_session, operator_id=operator_id, tenant_id=tenant_id
-        ):
-            rows = (
-                (
-                    await db_session.execute(
-                        select(QASideEffectAudit).where(
-                            QASideEffectAudit.thread_id == thread_id
-                        )
-                    )
+    async with (
+        db_session.begin(),
+        qa_scoped_session(db_session, operator_id=operator_id, tenant_id=tenant_id),
+    ):
+        rows = (
+            (
+                await db_session.execute(
+                    select(QASideEffectAudit).where(QASideEffectAudit.thread_id == thread_id)
                 )
-                .scalars()
-                .all()
             )
+            .scalars()
+            .all()
+        )
 
     assert len(rows) == 1
     assert rows[0].run_id == "run-002"
@@ -201,22 +191,24 @@ async def test_audit_writer_skips_when_scope_missing(db_session):
     # And no row was persisted (we can't actually check via RLS without a
     # scope — confirm by counting rows from a fresh tenant-scoped session
     # that DOES see them).
-    from nexus_api.core.operator_context import qa_scoped_session
-
     import secrets
+
+    from nexus_api.core.operator_context import qa_scoped_session
 
     op = secrets.token_urlsafe(16)
     # Pick a tenant_id; even an unknown one is fine because we expect 0 rows.
     fake_tenant = uuid.uuid4()
-    async with db_session.begin():
-        async with qa_scoped_session(
-            db_session, operator_id=op, tenant_id=fake_tenant
-        ):
-            rows = (
+    async with (
+        db_session.begin(),
+        qa_scoped_session(db_session, operator_id=op, tenant_id=fake_tenant),
+    ):
+        rows = (
+            (
                 await db_session.execute(
-                    select(QASideEffectAudit).where(
-                        QASideEffectAudit.thread_id == thread_id
-                    )
+                    select(QASideEffectAudit).where(QASideEffectAudit.thread_id == thread_id)
                 )
-            ).scalars().all()
-            assert rows == []
+            )
+            .scalars()
+            .all()
+        )
+        assert rows == []

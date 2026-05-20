@@ -80,10 +80,10 @@ import uuid
 from typing import Any
 
 import pytest
+from nexus_mcp.base import ToolBase, make_envelope
+from nexus_mcp.registry import MCPRegistry, get_internal_caller_token
 
 from nexus_api.core.tenant_context import tenant_context
-from nexus_mcp.base import InputModel, OutputModel, ToolBase, make_envelope
-from nexus_mcp.registry import MCPRegistry, get_internal_caller_token
 
 # pytest-asyncio runs in ``mode=auto`` so async tests are auto-marked;
 # we leave non-async tests in this module unmarked.
@@ -113,9 +113,7 @@ def _block_invoke(tool: ToolBase) -> None:
     """
 
     async def _raise(_args: dict[str, Any]) -> dict[str, Any]:
-        raise _Sentinel(
-            f"tool {tool.name!r} invoke() was reached — dry_run gate FAILED"
-        )
+        raise _Sentinel(f"tool {tool.name!r} invoke() was reached — dry_run gate FAILED")
 
     tool.invoke = _raise  # type: ignore[method-assign]
 
@@ -223,7 +221,7 @@ def _composio_proxy() -> ToolBase:
 # ── parametrisation: side-effecting public ──────────────────────────────────
 
 
-_SIDE_EFFECTING_PUBLIC = _all_side_effecting_public_tools() + [_composio_proxy()]
+_SIDE_EFFECTING_PUBLIC = [*_all_side_effecting_public_tools(), _composio_proxy()]
 _READ_ONLY_PUBLIC = _all_read_only_public_tools()
 _SIDE_EFFECTING_INTERNAL = _all_internal_side_effecting_tools()
 
@@ -249,16 +247,12 @@ def audit_callback(audit_collector):
     _SIDE_EFFECTING_PUBLIC,
     ids=[t.name for t in _SIDE_EFFECTING_PUBLIC],
 )
-async def test_dry_run_blocks_side_effecting_public_tool(
-    tool, audit_callback, audit_collector
-):
+async def test_dry_run_blocks_side_effecting_public_tool(tool, audit_callback, audit_collector):
     """Every side-effecting public tool MUST be intercepted by the gate
     before ``tool.run`` executes. Audit row fires once per attempt.
     """
     _block_invoke(tool)
-    reg = MCPRegistry(
-        tools=[tool], dry_run=True, dry_run_audit=audit_callback
-    )
+    reg = MCPRegistry(tools=[tool], dry_run=True, dry_run_audit=audit_callback)
     with tenant_context(uuid.uuid4()):
         envelope = await reg.dispatch(tool.name, {}, whitelist=[tool.name])
 
@@ -266,9 +260,7 @@ async def test_dry_run_blocks_side_effecting_public_tool(
         f"{tool.name}: gate did not skip — envelope={envelope}"
     )
     assert envelope["result"]["blocked_by"] == "dry_run"
-    assert set(envelope["result"]["side_effects_declared"]) == set(
-        tool.side_effects
-    )
+    assert set(envelope["result"]["side_effects_declared"]) == set(tool.side_effects)
     assert len(audit_collector) == 1, (
         f"{tool.name}: audit callback fired {len(audit_collector)} times, expected 1"
     )
@@ -292,9 +284,7 @@ async def test_dry_run_lets_read_only_public_tool_pass(tool, audit_collector, au
     sandboxed. Audit MUST stay empty for these.
     """
     _stub_invoke(tool)
-    reg = MCPRegistry(
-        tools=[tool], dry_run=True, dry_run_audit=audit_callback
-    )
+    reg = MCPRegistry(tools=[tool], dry_run=True, dry_run_audit=audit_callback)
     with tenant_context(uuid.uuid4()):
         envelope = await reg.dispatch(tool.name, {}, whitelist=[tool.name])
 
@@ -314,18 +304,14 @@ async def test_dry_run_lets_read_only_public_tool_pass(tool, audit_collector, au
     _SIDE_EFFECTING_INTERNAL,
     ids=[t.name for t in _SIDE_EFFECTING_INTERNAL],
 )
-async def test_dry_run_blocks_internal_side_effecting_tool(
-    tool, audit_callback, audit_collector
-):
+async def test_dry_run_blocks_internal_side_effecting_tool(tool, audit_callback, audit_collector):
     """The internal namespace (``agendapro_public.*``) reaches dispatch
     via ``dispatch_internal``. The gate applies there too, otherwise
     public ``booking.create_appointment`` would be blocked while its
     subprocess delegate would still run.
     """
     _block_invoke(tool)
-    reg = MCPRegistry(
-        internal_tools=[tool], dry_run=True, dry_run_audit=audit_callback
-    )
+    reg = MCPRegistry(internal_tools=[tool], dry_run=True, dry_run_audit=audit_callback)
     with tenant_context(uuid.uuid4()):
         envelope = await reg.dispatch_internal(
             tool.name, {}, caller_token=get_internal_caller_token()
@@ -389,9 +375,7 @@ def test_coverage_floor_ninety_five_percent():
     }
     missing = expected - covered
     extra = covered - expected
-    assert not missing, (
-        f"side-effect dry_run coverage gap: {sorted(missing)} not exercised"
-    )
+    assert not missing, f"side-effect dry_run coverage gap: {sorted(missing)} not exercised"
     # ``extra`` is non-fatal — it means someone added a tool and updated
     # the loader but forgot to refresh this list. Fail loud so the
     # docstring catalog above stays accurate.

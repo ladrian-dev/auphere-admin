@@ -68,10 +68,7 @@ async def test_qa_threads_isolated_per_operator(db_session, tenants_ab):
     async with db_session.begin():
         await set_tenant(db_session, tenant)
         await _set_operator(db_session, op_a)
-        titles_a = {
-            t.title
-            for t in (await db_session.execute(select(QAThread))).scalars().all()
-        }
+        titles_a = {t.title for t in (await db_session.execute(select(QAThread))).scalars().all()}
         assert titles_a == {"A1", "A2"}
         assert "B1" not in titles_a
 
@@ -79,10 +76,7 @@ async def test_qa_threads_isolated_per_operator(db_session, tenants_ab):
     async with db_session.begin():
         await set_tenant(db_session, tenant)
         await _set_operator(db_session, op_b)
-        titles_b = {
-            t.title
-            for t in (await db_session.execute(select(QAThread))).scalars().all()
-        }
+        titles_b = {t.title for t in (await db_session.execute(select(QAThread))).scalars().all()}
         assert titles_b == {"B1"}
 
 
@@ -129,9 +123,7 @@ async def test_qa_side_effect_audit_isolated(db_session, tenants_ab):
     async with db_session.begin():
         await set_tenant(db_session, tenant)
         await _set_operator(db_session, op_b)
-        rows = (
-            (await db_session.execute(select(QASideEffectAudit))).scalars().all()
-        )
+        rows = (await db_session.execute(select(QASideEffectAudit))).scalars().all()
         assert rows == []
 
 
@@ -172,15 +164,13 @@ async def test_qa_cross_operator_insert_rejected(db_session, tenants_ab):
     async with db_session.begin():
         await set_tenant(db_session, tenant)
         await _set_operator(db_session, op_a)
-        db_session.add(
-            QAThread(operator_id=op_b, tenant_id=tenant, title="forged")
-        )
+        db_session.add(QAThread(operator_id=op_b, tenant_id=tenant, title="forged"))
         with pytest.raises((IntegrityError, ProgrammingError)):
             await db_session.flush()
 
 
 async def test_qa_isolation_holds_across_five_operators(db_session, tenants_ab):
-    """Lighter version of the 5×5 concurrency spec: insert 5 threads per
+    """Lighter version of the 5x5 concurrency spec: insert 5 threads per
     operator across 5 distinct operators and verify each one only sees
     their own — 25 inserts, 5 select sweeps, 0 leaks.
     """
@@ -205,9 +195,7 @@ async def test_qa_isolation_holds_across_five_operators(db_session, tenants_ab):
         async with db_session.begin():
             await set_tenant(db_session, tenant)
             await _set_operator(db_session, op)
-            rows = (
-                (await db_session.execute(select(QAThread))).scalars().all()
-            )
+            rows = (await db_session.execute(select(QAThread))).scalars().all()
             seen_counts.append(len(rows))
             # All visible rows must belong to this operator.
             assert all(t.operator_id == op for t in rows)

@@ -33,7 +33,6 @@ from __future__ import annotations
 import uuid
 
 import pytest
-
 from nexus_worker.runtime.qa_pipeline import build_qa_pipeline
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.contract]
@@ -205,15 +204,16 @@ async def test_canonical_user_message_produces_valid_ucm(
     memory_saver,
 ):
     """Every canonical message must produce a UCM that:
-      - parses with parse_ucm (survives v1.0.0 schema),
-      - validates clean against the WhatsApp channel (the most
-        constrained one).
+    - parses with parse_ucm (survives v1.0.0 schema),
+    - validates clean against the WhatsApp channel (the most
+      constrained one).
     """
-    from nexus_api.core.tenant_context import tenant_context
-    from nexus_api.db.models import Message, MessageDirection
     from nexus_worker.runtime.state import new_state
     from nexus_worker.runtime.thread_id import make_thread_id
     from ucm_schema import parse_ucm, validate
+
+    from nexus_api.core.tenant_context import tenant_context
+    from nexus_api.db.models import Message, MessageDirection
 
     tenant_id = qa_tenant_setup["tenant_id"]
     channel_id = qa_tenant_setup["channel_id"]
@@ -250,9 +250,7 @@ async def test_canonical_user_message_produces_valid_ucm(
     )
     thread_id = make_thread_id(tenant_id, channel_id, "+56-ucm-c")
     with tenant_context(tenant_id):
-        out = await pipeline.ainvoke(
-            state, config={"configurable": {"thread_id": thread_id}}
-        )
+        out = await pipeline.ainvoke(state, config={"configurable": {"thread_id": thread_id}})
 
     # Assert the formatter emitted a UCM.
     ucm_payload = out.get("ucm")
@@ -260,13 +258,9 @@ async def test_canonical_user_message_produces_valid_ucm(
 
     # 1) parse_ucm survives.
     ucm = parse_ucm(ucm_payload)
-    assert ucm.type == "text", (
-        f"[{label}] expected text-only formatter, got {ucm.type!r}"
-    )
+    assert ucm.type == "text", f"[{label}] expected text-only formatter, got {ucm.type!r}"
     assert ucm.ucm_version == "1.0.0"
-    assert ucm.fallback_text, (
-        f"[{label}] fallback_text is required by v1.0.0 — empty is invalid"
-    )
+    assert ucm.fallback_text, f"[{label}] fallback_text is required by v1.0.0 — empty is invalid"
 
     # 2) validate against the WhatsApp channel returns ok.
     result = validate(ucm_payload, "whatsapp")

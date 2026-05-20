@@ -12,10 +12,10 @@ from __future__ import annotations
 import uuid
 
 import pytest
-
-from nexus_api.core.tenant_context import tenant_context
 from nexus_mcp.base import InputModel, OutputModel, ToolBase
 from nexus_mcp.registry import MCPRegistry, get_internal_caller_token
+
+from nexus_api.core.tenant_context import tenant_context
 
 pytestmark = pytest.mark.asyncio
 
@@ -86,13 +86,9 @@ async def test_dry_run_blocks_side_effect_tool_and_runs_callback():
     async def audit(name, args, synthetic):
         audit_calls.append((name, args, synthetic))
 
-    reg = MCPRegistry(
-        tools=[WritingTool()], dry_run=True, dry_run_audit=audit
-    )
+    reg = MCPRegistry(tools=[WritingTool()], dry_run=True, dry_run_audit=audit)
     with tenant_context(uuid.uuid4()):
-        envelope = await reg.dispatch(
-            "demo.write", {}, whitelist=["demo.write"]
-        )
+        envelope = await reg.dispatch("demo.write", {}, whitelist=["demo.write"])
     assert envelope["status"] == "skipped:dry_run"
     assert envelope["result"]["blocked_by"] == "dry_run"
     assert envelope["result"]["side_effects_declared"] == [
@@ -151,13 +147,9 @@ async def test_dry_run_audit_failure_does_not_break_conversation():
     async def bad_audit(name, args, synthetic):
         raise RuntimeError("audit table is down")
 
-    reg = MCPRegistry(
-        tools=[WritingTool()], dry_run=True, dry_run_audit=bad_audit
-    )
+    reg = MCPRegistry(tools=[WritingTool()], dry_run=True, dry_run_audit=bad_audit)
     with tenant_context(uuid.uuid4()):
-        envelope = await reg.dispatch(
-            "demo.write", {}, whitelist=["demo.write"]
-        )
+        envelope = await reg.dispatch("demo.write", {}, whitelist=["demo.write"])
     assert envelope["status"] == "skipped:dry_run"
 
 
