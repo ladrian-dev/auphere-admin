@@ -99,7 +99,7 @@ jobs:
       # ``dist/`` is gitignored, so we have to build the three of them BEFORE
       # tsc runs — otherwise typecheck fails with TS2307 on the @nexus/* imports.
       # See ADR-021 and features/qa-playground-streaming-implementation Fase 0.
-      - name: build local @nexus/ucm-* packages (file: deps need dist/)
+      - name: "build local @nexus/ucm-* packages (file: deps need dist/)"
         run: |
           cd packages/ucm-schema/ts && pnpm install --frozen-lockfile --ignore-scripts && pnpm build
           cd ../../ucm-render-web && pnpm install --frozen-lockfile --ignore-scripts && pnpm build
