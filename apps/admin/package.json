@@ -16,6 +16,7 @@
     "seed:admin": "tsx --env-file-if-exists=.env.local scripts/seed-admin.ts"
   },
   "dependencies": {
+    "@assistant-ui/react": "0.14.5",
     "@base-ui/react": "^1.4.1",
     "@nexus/ucm-schema": "file:../../packages/ucm-schema/ts",
     "@nexus/ucm-render-web": "file:../../packages/ucm-render-web",

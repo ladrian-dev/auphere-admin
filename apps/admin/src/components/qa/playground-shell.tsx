@@ -31,6 +31,7 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import type { QAThread } from "@/lib/qa-api";
+import type { QARuntime } from "@/lib/qa-runtime";
 
 import { ChannelKindSelector, type ChannelKind } from "./channel-selector";
 import { InspectorDrawer } from "./inspector-drawer";
@@ -60,6 +61,7 @@ export function PlaygroundShell({
   const [channel, setChannel] = useState<ChannelKind>("web");
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [auditRefreshKey, setAuditRefreshKey] = useState(0);
+  const [qaRuntime, setQARuntime] = useState<QARuntime | null>(null);
   const [, startTransition] = useTransition();
 
   const selectThread = useCallback(
@@ -176,6 +178,7 @@ export function PlaygroundShell({
               selectThread(t);
             }}
             onTurnComplete={() => setAuditRefreshKey((n) => n + 1)}
+            onRuntimeReady={setQARuntime}
           />
         </main>
         {inspectorOpen && (
@@ -183,6 +186,7 @@ export function PlaygroundShell({
             tenantId={tenant.id}
             thread={activeThread}
             refreshKey={auditRefreshKey}
+            qaRuntime={qaRuntime}
           />
         )}
       </div>

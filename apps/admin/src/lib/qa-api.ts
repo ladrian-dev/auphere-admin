@@ -120,6 +120,27 @@ export type QASendOut = {
   run_id: string | null;
 };
 
+// ── ADR-021 streaming endpoints ───────────────────────────────────────────────
+
+export type QARunStartIn = { message: string };
+
+export type QARunStartOut = {
+  run_id: string;
+  thread_id: string;
+  conversation_id: string;
+  inbound_message_id: string;
+  status: "running";
+};
+
+export type QAHistoryMessage = {
+  id: string;
+  direction: "inbound" | "outbound";
+  content: string | null;
+  ucm: Record<string, unknown> | null;
+  tool_calls: Record<string, unknown>[];
+  created_at: string;
+};
+
 // ── client (one method per endpoint) ────────────────────────────────────────
 
 export const qaApi = {
@@ -209,6 +230,57 @@ export const qaApi = {
     const qs = params.toString();
     const path = `/qa/threads/${opts.threadId}/audit${qs ? `?${qs}` : ""}`;
     const r = await qaCall<QASideEffectAudit[]>(path, opts.operatorId, {
+      signal: opts.signal,
+    });
+    return r ?? [];
+  },
+
+  /**
+   * ADR-021 Fase 1: kick off a streaming turn. Backend persists the
+   * inbound + creates qa.runs row + spawns the in-process driver, then
+   * returns ``{run_id}`` quickly. The client opens the SSE stream
+   * separately against ``/qa/threads/{id}/stream?run_id=...``.
+   */
+  async startRun(opts: {
+    operatorId: string;
+    threadId: string;
+    input: QARunStartIn;
+    signal?: AbortSignal;
+  }): Promise<QARunStartOut> {
+    const r = await qaCall<QARunStartOut>(
+      `/qa/threads/${opts.threadId}/runs`,
+      opts.operatorId,
+      { method: "POST", body: opts.input, signal: opts.signal },
+    );
+    if (!r) throw new Error("qa-api returned null for startRun");
+    return r;
+  },
+
+  /** Cancel an in-flight run. 204 on success, 404 if foreign / unknown. */
+  async cancelRun(opts: {
+    operatorId: string;
+    runId: string;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    await qaCall<void>(
+      `/qa/runs/${opts.runId}`,
+      opts.operatorId,
+      { method: "DELETE", signal: opts.signal },
+    );
+  },
+
+  /** Hydrate a thread's persisted history (inbound + outbound rows). */
+  async getThreadMessages(opts: {
+    operatorId: string;
+    threadId: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<QAHistoryMessage[]> {
+    const params = new URLSearchParams();
+    if (opts.limit) params.set("limit", String(opts.limit));
+    const qs = params.toString();
+    const path = `/qa/threads/${opts.threadId}/messages${qs ? `?${qs}` : ""}`;
+    const r = await qaCall<QAHistoryMessage[]>(path, opts.operatorId, {
       signal: opts.signal,
     });
     return r ?? [];

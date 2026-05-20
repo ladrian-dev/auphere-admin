@@ -75,7 +75,10 @@ describe("InspectorDrawer", () => {
     );
   });
 
-  it("switching tabs shows the matching placeholder", async () => {
+  it("live tabs show empty-state copy when no runtime is bound", async () => {
+    // ADR-021 Fase 2: Tools / Reasoning / Cost / Trace are live tabs
+    // backed by the streaming runtime. Without a ``qaRuntime`` prop the
+    // empty state explains that no turn has run yet.
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => [],
@@ -83,9 +86,13 @@ describe("InspectorDrawer", () => {
     render(<InspectorDrawer tenantId="tn" thread={null} />);
     await userEvent.click(screen.getByRole("tab", { name: "Tools" }));
     expect(
-      screen.getByText(/Cada tool call del turno/),
+      screen.getByText(/Aún no se ha ejecutado ningún turno/),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "Cost" }));
-    expect(screen.getByText(/Tokens in\/out/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Aún no se ha ejecutado ningún turno/),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "Trace" }));
+    expect(screen.getByText(/Link al trace en Langfuse/)).toBeInTheDocument();
   });
 });
