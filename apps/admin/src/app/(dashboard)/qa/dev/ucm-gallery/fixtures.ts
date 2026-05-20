@@ -1,28 +1,17 @@
 /**
  * Gallery fixture loader.
  *
- * Reads ``packages/ucm-schema/fixtures/valid.json`` at module load time
- * via Node's fs (this file is only imported from a server component, so
- * fs access is safe). Each entry is parsed through Zod so a malformed
- * fixture fails the build, not the runtime render.
+ * Imports the vendored JSON inside ``@nexus/ucm-schema`` via Next.js's
+ * native JSON import (``resolveJsonModule: true``). The bundler embeds
+ * the JSON in the build output, so this works in dev, in production,
+ * and in Vercel's container — no runtime fs.readFileSync needed.
+ *
+ * Each entry is parsed through Zod so a malformed fixture fails the
+ * build, not the runtime render.
  */
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import rawFixtures from "@/../packages/ucm-schema/__fixtures__/valid.json";
 
 import { UCMMessageSchema, type UCMMessage } from "@nexus/ucm-schema";
-
-const here = dirname(fileURLToPath(import.meta.url));
-// admin/src/app/(dashboard)/qa/_dev/ucm-gallery → repo/packages/ucm-schema/fixtures
-const FIXTURES_PATH = resolve(
-  here,
-  "../../../../../../../../packages/ucm-schema/fixtures/valid.json",
-);
-
-const rawFixtures = JSON.parse(readFileSync(FIXTURES_PATH, "utf-8")) as Record<
-  string,
-  unknown
->;
 
 const LABELS: Record<string, string> = {
   text_plain: "Plain text",
