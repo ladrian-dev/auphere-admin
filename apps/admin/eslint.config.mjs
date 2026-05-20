@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Workspace packages have their own lint setup (or none). The
+    // admin's eslint config doesn't apply to them — keep concerns
+    // separate. CI builds them via ``pnpm build:packages`` before
+    // typecheck, so any TS errors still surface there.
+    "packages/**",
   ]),
 ]);
 
