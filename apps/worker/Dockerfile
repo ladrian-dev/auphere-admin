@@ -44,11 +44,23 @@ COPY apps/channels/src /py-build/apps/channels/src
 COPY apps/mcp/pyproject.toml /py-build/apps/mcp/pyproject.toml
 COPY apps/mcp/src /py-build/apps/mcp/src
 
+# ADR-020 Fase 2 introduced ``nexus-ucm-schema`` as a path dep of
+# nexus-worker (the ``ucm_formatter`` node lives in the worker pipeline).
+# The package source lives OUTSIDE apps/, so it needs an explicit COPY —
+# missing it manifests as ``Distribution not found at:
+# file:///py-build/packages/ucm-schema/py`` at uv pip install time.
+COPY packages/ucm-schema/py /py-build/packages/ucm-schema/py
+
 COPY apps/worker/pyproject.toml /py-build/apps/worker/pyproject.toml
 COPY apps/worker/src /py-build/apps/worker/src
 
 WORKDIR /py-build/apps/worker
-RUN uv pip install --system --no-cache-dir .
+# ``--no-editable`` forces path-source deps (nexus-api, nexus-mcp,
+# nexus-channels, nexus-ucm-schema) to install as regular wheels in
+# site-packages instead of ``.pth`` pointers back to /py-build/...
+# Otherwise the runtime stage can't find them after we strip /py-build.
+# Same pattern as ``apps/api/Dockerfile``.
+RUN uv pip install --system --no-cache-dir --no-editable .
 
 # ──────────────────────────────────────────────────────────────────────
 # Stage 2 — node-build
@@ -122,6 +134,10 @@ COPY --from=python-build /usr/local/bin /usr/local/bin
 
 # Python source layout — Alembic + scripts read off ``apps/api`` paths.
 COPY --from=python-build /py-build/apps /app/apps
+# ucm-schema lives outside /apps; the editable install was forced to
+# wheel via --no-editable above, but mirror /packages here as a
+# safety net so any direct path import still resolves at runtime.
+COPY --from=python-build /py-build/packages /app/packages
 
 # Compiled MCP server + production node_modules at the path the
 # Python transport defaults to: ``node apps/mcp/servers/agendapro_public_mcp/dist/server.js``.
@@ -135,7 +151,7 @@ RUN chown -R nexus:nexus /app/apps/mcp/servers/agendapro_public_mcp
 
 WORKDIR /app
 
-ENV PYTHONPATH=/app/apps/api/src:/app/apps/channels/src:/app/apps/mcp/src:/app/apps/worker/src
+ENV PYTHONPATH=/app/apps/api/src:/app/apps/channels/src:/app/apps/mcp/src:/app/apps/worker/src:/app/packages/ucm-schema/py/src
 # The Python transport spawns ``node /app/apps/mcp/servers/agendapro_public_mcp/dist/server.js``
 # — keep cwd consistent so relative ``import`` paths resolve.
 ENV NEXUS_AGENDAPRO_PUBLIC_NODE_CMD="node /app/apps/mcp/servers/agendapro_public_mcp/dist/server.js"
