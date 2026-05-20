@@ -55,58 +55,99 @@ Los tests 1-6 están todos verdes al cierre de Fase 6. El 7 depende
 del agente piloto cuando exista; mientras el grafo emita UCM tipo
 `text` simple los asserts pasan trivialmente.
 
-## 4. Cómo levantar el LangGraph Server
+## 4. Arquitectura del runtime del Playground
 
-> El LangGraph Server (`apps/qa-langgraph-server/`) es un servicio
-> separado que aún no está deployado en producción. Esta sección
-> describe el procedimiento; los detalles de infra (Dockerfile,
-> Railway service def) se cierran en una sesión separada.
+**Decisión 2026-05-20**: el QA Playground invoca el agent graph
+**in-process** desde el `nexus-api`, NO a través de un LangGraph Server
+separado. El servidor opcional sigue en el repo bajo
+`apps/qa-langgraph-server/` como **utility de desarrollo** (LangGraph
+Studio inspection), pero **no se deploya** en producción.
 
-### Local
+### Por qué in-process
+
+El grafo es el mismo código (`build_qa_pipeline` en
+`apps/worker/.../runtime/qa_pipeline.py`) sea quien lo invoque. Pinearlo
+dentro del API gana:
+
+- Cero servicio adicional a deployar.
+- Cero licensing issue (custom auth del LangGraph Server requiere
+  LangSmith Enterprise — feature paga).
+- Cero retry-on-404 / persistence sync entre 2 procesos.
+- Tests directos contra el grafo, no parsing de SSE manual.
+- Un solo Bearer secret a rotar.
+
+### Cuándo SÍ vamos a necesitar un servidor de streaming separado
+
+Cuando aterrice **un canal web público para clientes finales** (widget
+embebido en sitios de clientes, no este Playground interno). Ese canal
+sí necesitará streaming visible token-por-token. Se diseñará como un
+**channel adapter** más (igual que YCloud WhatsApp hoy), con su propio
+endpoint público y su decisión arquitectónica entre SSE custom vs
+LangGraph Server enterprise vs WebSocket. NO se va a retrofittear el
+Playground interno.
+
+### Cómo correrlo local
+
+El qa-api ya importa el grafo del worker como dep core (path
+`../worker`). Local con Docker basta:
+
+```bash
+docker compose up -d            # postgres + redis + nexus-api
+export ANTHROPIC_API_KEY=sk-ant-...
+docker compose up -d api        # picks up the env var from the shell
+```
+
+El composer del Playground (`/qa/[tenantId]/chat`) llama al endpoint
+`POST /qa/threads/{id}/send` del nexus-api. Ese endpoint:
+
+1. Auto-seedea customer + conversation + inbound message (primer turn,
+   idempotente).
+2. Setea contextvars (operator_id, tenant_id, qa_thread_id) y los
+   pone disponibles al runtime.
+3. Invoca `qa_pipeline.ainvoke(state, config={"configurable":
+   {"thread_id": qa_thread_id}})` IN-PROCESS.
+4. El grafo corre los nodos classify → handler → respond →
+   ucm_formatter → checkpoint, con `dry_run=True` forzado.
+5. Devuelve el UCM final + intent + tool_calls al frontend.
+
+### Producción (Railway)
+
+UN solo servicio (`nexus-api`) con persistencia Postgres ya existente.
+
+1. **Service Railway**: `nexus-api` (build desde `apps/api/Dockerfile`,
+   build context = repo root). Ya existe.
+2. **Variables nuevas para el grafo in-process**:
+   - `ANTHROPIC_API_KEY` (secret).
+   - `OPENAI_API_KEY` (secret, fallback opcional).
+   - `LITELLM_LOCAL_MODEL_COST_MAP=True`.
+3. **Persistencia del checkpointer**: el grafo usa `MemorySaver`
+   in-process. Un restart de container pierde los checkpoints
+   in-memory PERO la conversación se reconstruye desde `messages` en
+   Postgres en el siguiente turn — no hay impacto visible.
+4. **Vercel admin**: el BFF `apps/admin/src/app/api/qa/*` apunta al
+   nexus-api (env var `NEXUS_BACKEND_URL`, ya existente). NO necesita
+   ninguna URL nueva.
+5. **Bearer secret rotation**: `NEXUS_ADMIN_TOKEN` vive en 2 servicios
+   (nexus-api + admin Vercel). Rotación = redeploy ambos sincronizados.
+
+> El qa-api Dockerfile fue actualizado para incluir las path-deps del
+> monorepo en el image final (worker, mcp, ucm-schema, channels). La
+> sesión de deploy a Railway sigue pendiente pero el image build local
+> ya valida que `nexus-api:latest` puede ejecutar el grafo end-to-end.
+
+### Servidor opcional para developers
+
+`apps/qa-langgraph-server/` queda en el repo para developers que
+quieran inspeccionar el grafo con [LangGraph Studio](https://smith.langchain.com/studio/):
 
 ```bash
 cd apps/qa-langgraph-server
-uv sync
-# Variables mínimas:
-export NEXUS_DATABASE_URL=postgresql+asyncpg://nexus:nexus@localhost:5433/nexus
-export NEXUS_REDIS_URL=redis://localhost:6379/0
-export NEXUS_ADMIN_TOKEN=<dev-admin-token>          # mismo Bearer que el FastAPI
-export OPENAI_API_KEY=...                            # o LITELLM_* equivalente
-export NEXUS_USE_UCM_FORMATTER=true                  # asegura UCM en cada turn
-uv run langgraph dev --port 2024
+.venv/bin/langgraph dev --port 2024 --no-browser
+# Abrir Studio: https://smith.langchain.com/studio/?baseUrl=http://localhost:2024
 ```
 
-Healthcheck rápido:
-
-```bash
-curl -s http://localhost:2024/health | jq .
-# {"status":"ok"}
-```
-
-### Producción (Railway — pendiente)
-
-Pasos cerrados que ya se sabe son necesarios:
-
-1. **Dockerfile** en `apps/qa-langgraph-server/Dockerfile` empaquetando:
-   - Python 3.11 slim.
-   - `uv sync --frozen` con el `pyproject.toml` que mantiene path-deps
-     al monorepo (`nexus-api`, `nexus-worker`, `nexus-mcp`,
-     `nexus-ucm-schema`).
-   - `CMD ["uv", "run", "langgraph", "up", "--port", "2024"]`.
-2. **Railway service** independiente del API:
-   - Variables: mismo `NEXUS_DATABASE_URL` (Postgres compartido),
-     `NEXUS_REDIS_URL`, `NEXUS_ADMIN_TOKEN`, `OPENAI_API_KEY` /
-     `LITELLM_*`.
-   - Healthcheck path: `/health` (LangGraph Server expone por defecto).
-   - Internal networking sólo — no debe exponerse a la web pública.
-3. **Vercel BFF** del admin (`apps/admin/src/app/api/qa/*`) apunta a la
-   URL interna del servicio. Variable `LANGGRAPH_SERVER_URL`.
-4. **Bearer secreto** — `NEXUS_ADMIN_TOKEN` debe ser el MISMO en API,
-   admin y langgraph-server. Rotación = redeploy de los 3 a la vez.
-
-> Lo que falta empaquetar real está documentado en la session log
-> de Fase 3 ("Pendiente operativo"). NO improvisar deployment;
-> agendar la sesión.
+NO está en el path del Playground — el frontend habla con el nexus-api,
+NO con este servidor. Si lo prendés, no afecta nada.
 
 ## 5. Troubleshooting
 

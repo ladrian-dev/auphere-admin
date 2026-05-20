@@ -24,7 +24,6 @@ session-derived identity; the handler signature stays the same.
 from __future__ import annotations
 
 import hmac
-import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -79,29 +78,38 @@ async def authenticate(headers: dict[str, bytes | str]) -> QAOperatorUser:
         raise Auth.exceptions.HTTPException(status_code=401, detail="Invalid admin token")
 
     op_raw = _h(headers, "x-operator-id")
-    if not op_raw:
+    if not op_raw or not op_raw.strip():
         raise Auth.exceptions.HTTPException(
-            status_code=400, detail="Missing X-Operator-Id header"
+            status_code=400, detail="Missing or blank X-Operator-Id header"
         )
-    try:
-        operator_id = uuid.UUID(op_raw)
-    except ValueError as exc:
+    operator_id = op_raw.strip()
+    # Migration 0026 widened ``qa.*.operator_id`` from UUID to TEXT to
+    # accept Better Auth's cuid-style ids verbatim. Length cap mirrors
+    # ``core/qa_security.py::_MAX_OPERATOR_ID_LEN`` so the server and
+    # the qa-api agree on what's acceptable.
+    if len(operator_id) > 120:
         raise Auth.exceptions.HTTPException(
-            status_code=400, detail="X-Operator-Id must be a UUID"
-        ) from exc
+            status_code=400, detail="X-Operator-Id must be ≤ 120 characters"
+        )
 
     # Identity object that LangGraph stores per request. Whatever we put
     # in ``identity`` is available to the graph through
-    # ``runtime.server_info.user``; we expose just the operator UUID
+    # ``runtime.server_info.user``; we expose just the operator id
     # because the rest is in contextvars set below.
-    return QAOperatorUser(operator_id=str(operator_id))
+    return QAOperatorUser(operator_id=operator_id)
 
 
-def _h(headers: dict[str, bytes | str], name: str) -> str | None:
-    """Case-insensitive header lookup that tolerates bytes values."""
+def _h(headers: dict[bytes, bytes] | dict[str, bytes | str], name: str) -> str | None:
+    """Case-insensitive header lookup that tolerates bytes keys + values.
+
+    LangGraph API (langgraph_api.auth.custom) passes ``dict[bytes, bytes]``
+    coming straight from the ASGI scope. Tests sometimes pass
+    ``dict[str, str]`` for readability. Handle both — comparing keys as
+    bytes-normalised lowercase.
+    """
+    name_b = name.lower().encode("ascii")
     for k, v in headers.items():
-        if k.lower() == name:
-            if isinstance(v, bytes):
-                return v.decode("utf-8", errors="ignore")
-            return str(v)
+        kb = k.encode("ascii") if isinstance(k, str) else k
+        if kb.lower() == name_b:
+            return v.decode("utf-8", errors="ignore") if isinstance(v, bytes) else str(v)
     return None

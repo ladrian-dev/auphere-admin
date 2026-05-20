@@ -12,9 +12,16 @@ pytestmark = pytest.mark.asyncio
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def qa_headers(operator_id: uuid.UUID, admin_headers: dict[str, str]) -> dict[str, str]:
+def qa_headers(operator_id: str, admin_headers: dict[str, str]) -> dict[str, str]:
     """Compose admin Bearer + X-Operator-Id for a QA request."""
-    return {**admin_headers, "X-Operator-Id": str(operator_id)}
+    return {**admin_headers, "X-Operator-Id": operator_id}
+
+
+def _op_id() -> str:
+    """Opaque operator id (post-migration 0026 — TEXT, not UUID)."""
+    import secrets
+
+    return secrets.token_urlsafe(16)
 
 
 @pytest.fixture
@@ -50,21 +57,31 @@ async def test_create_thread_requires_operator_header(client, admin_headers, ten
     assert "X-Operator-Id" in r.json()["detail"]
 
 
-async def test_create_thread_rejects_bad_operator_uuid(client, admin_headers, tenant_id):
+async def test_create_thread_rejects_blank_operator(client, admin_headers, tenant_id):
     r = await client.post(
         "/qa/threads",
         json={"tenant_id": str(tenant_id)},
-        headers={**admin_headers, "X-Operator-Id": "not-a-uuid"},
+        headers={**admin_headers, "X-Operator-Id": "   "},
     )
     assert r.status_code == 400
-    assert "UUID" in r.json()["detail"]
+    assert "blank" in r.json()["detail"]
+
+
+async def test_create_thread_rejects_too_long_operator(client, admin_headers, tenant_id):
+    r = await client.post(
+        "/qa/threads",
+        json={"tenant_id": str(tenant_id)},
+        headers={**admin_headers, "X-Operator-Id": "x" * 200},
+    )
+    assert r.status_code == 400
+    assert "120" in r.json()["detail"]
 
 
 # ── happy path ───────────────────────────────────────────────────────────────
 
 
 async def test_create_then_list_thread(client, admin_headers, tenant_id, db_session):
-    op = uuid.uuid4()
+    op = _op_id()
     h = qa_headers(op, admin_headers)
 
     create = await client.post(
@@ -76,7 +93,7 @@ async def test_create_then_list_thread(client, admin_headers, tenant_id, db_sess
     payload = create.json()
     assert payload["title"] == "First"
     assert payload["tenant_id"] == str(tenant_id)
-    assert payload["operator_id"] == str(op)
+    assert payload["operator_id"] == op
     assert payload["archived_at"] is None
     thread_id = payload["id"]
 
@@ -99,7 +116,7 @@ async def test_create_then_list_thread(client, admin_headers, tenant_id, db_sess
 
 
 async def test_create_thread_404_on_unknown_tenant(client, admin_headers):
-    op = uuid.uuid4()
+    op = _op_id()
     r = await client.post(
         "/qa/threads",
         json={"tenant_id": str(uuid.uuid4()), "title": "x"},
@@ -109,7 +126,7 @@ async def test_create_thread_404_on_unknown_tenant(client, admin_headers):
 
 
 async def test_get_thread_detail(client, admin_headers, tenant_id):
-    op = uuid.uuid4()
+    op = _op_id()
     h = qa_headers(op, admin_headers)
     create = await client.post(
         "/qa/threads",
@@ -124,7 +141,7 @@ async def test_get_thread_detail(client, admin_headers, tenant_id):
 
 
 async def test_patch_thread_renames_and_archives(client, admin_headers, tenant_id):
-    op = uuid.uuid4()
+    op = _op_id()
     h = qa_headers(op, admin_headers)
     create = await client.post(
         "/qa/threads",
@@ -173,7 +190,7 @@ async def test_patch_thread_renames_and_archives(client, admin_headers, tenant_i
 
 
 async def test_patch_thread_rejects_empty_body(client, admin_headers, tenant_id):
-    op = uuid.uuid4()
+    op = _op_id()
     h = qa_headers(op, admin_headers)
     create = await client.post(
         "/qa/threads",
@@ -190,8 +207,8 @@ async def test_patch_thread_rejects_empty_body(client, admin_headers, tenant_id)
 
 
 async def test_operator_b_cannot_see_operator_a_thread(client, admin_headers, tenant_id):
-    op_a = uuid.uuid4()
-    op_b = uuid.uuid4()
+    op_a = _op_id()
+    op_b = _op_id()
 
     created = await client.post(
         "/qa/threads",
@@ -225,7 +242,7 @@ async def test_audit_endpoint_returns_thread_side_effects(
     from nexus_api.db.models.qa import QASideEffectAudit
     from nexus_api.core.operator_context import qa_scoped_session
 
-    op = uuid.uuid4()
+    op = _op_id()
     h = qa_headers(op, admin_headers)
     create = await client.post(
         "/qa/threads",

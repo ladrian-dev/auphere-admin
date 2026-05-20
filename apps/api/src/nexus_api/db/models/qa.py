@@ -32,8 +32,8 @@ class QAThread(UUIDPrimaryKey, Base):
     __tablename__ = "threads"
     __table_args__ = ({"schema": "qa"},)
 
-    operator_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
+    operator_id: Mapped[str] = mapped_column(
+        String(120), nullable=False, index=True
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -43,6 +43,17 @@ class QAThread(UUIDPrimaryKey, Base):
     )
     external_id: Mapped[str | None] = mapped_column(
         String(120), nullable=True, unique=True
+    )
+    # Migration 0027: the underlying ``conversations`` row that holds
+    # the inbound/outbound ``messages`` for this QA thread. Filled
+    # lazily on the first send by ``POST /qa/threads/{id}/send``;
+    # ``ON DELETE SET NULL`` so archiving a tenant's conversation
+    # doesn't orphan the thread row.
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     title: Mapped[str] = mapped_column(
         String(200), nullable=False, server_default=text("'Untitled'")
@@ -82,8 +93,8 @@ class QASideEffectAudit(UUIDPrimaryKey, Base):
     __tablename__ = "side_effect_audit"
     __table_args__ = ({"schema": "qa"},)
 
-    operator_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
+    operator_id: Mapped[str] = mapped_column(
+        String(120), nullable=False, index=True
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -125,8 +136,8 @@ class QAAuditLog(UUIDPrimaryKey, Base):
     __tablename__ = "audit_log"
     __table_args__ = ({"schema": "qa"},)
 
-    operator_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
+    operator_id: Mapped[str] = mapped_column(
+        String(120), nullable=False, index=True
     )
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

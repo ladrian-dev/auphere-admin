@@ -70,8 +70,10 @@ async def tenant_id(db_session) -> uuid.UUID:
 async def test_qa_thread_created_counter_bumps_per_post(
     client, admin_headers, tenant_id
 ):
-    op = uuid.uuid4()
-    h = {**admin_headers, "X-Operator-Id": str(op)}
+    import secrets
+
+    op = secrets.token_urlsafe(16)
+    h = {**admin_headers, "X-Operator-Id": op}
 
     assert counters.get(QA_THREAD_CREATED) == 0
 
@@ -126,7 +128,9 @@ async def test_qa_side_effect_blocked_counter_bumps_per_intercept(tenant_id, db_
         qa_thread_context,
     )
 
-    operator_id = uuid.uuid4()
+    import secrets
+
+    operator_id = secrets.token_urlsafe(16)
     thread_id = uuid.uuid4()
     async with db_session.begin():
         async with qa_scoped_session(
@@ -177,7 +181,9 @@ async def test_qa_audit_write_failed_counter_bumps_on_persist_error(monkeypatch)
 
     audit_cb = make_qa_audit_writer(thread_id=uuid.uuid4(), run_id="run-m")
     # Provide scope so the writer reaches the persistence step.
-    with tenant_context(uuid.uuid4()), operator_context(uuid.uuid4()):
+    import secrets
+
+    with tenant_context(uuid.uuid4()), operator_context(secrets.token_urlsafe(16)):
         await audit_cb(
             "qa_metrics.write",
             {},

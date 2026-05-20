@@ -32,9 +32,21 @@ RUN apt-get update \
     && pip install --no-cache-dir uv
 
 # Copy each package's pyproject + src so uv can resolve the editable
-# path sources. Dependency order: nexus-channels first, then nexus-api.
+# path sources. Dependency order:
+#  - leaf packages first (nexus-channels, nexus-ucm-schema, nexus-mcp,
+#    nexus-worker — these have no inter-deps on nexus-api),
+#  - then nexus-api itself which path-depends on the four above.
 COPY apps/channels/pyproject.toml /build/apps/channels/pyproject.toml
 COPY apps/channels/src /build/apps/channels/src
+
+# ADR-020 Fase 5 closure: the QA Playground runs the agent graph
+# in-process from nexus-api, so the worker / mcp / ucm-schema packages
+# need to land in the production image too (they were dev-only before).
+COPY packages/ucm-schema/py /build/packages/ucm-schema/py
+COPY apps/mcp/pyproject.toml /build/apps/mcp/pyproject.toml
+COPY apps/mcp/src /build/apps/mcp/src
+COPY apps/worker/pyproject.toml /build/apps/worker/pyproject.toml
+COPY apps/worker/src /build/apps/worker/src
 
 COPY apps/api/pyproject.toml /build/apps/api/pyproject.toml
 COPY apps/api/src /build/apps/api/src
@@ -48,7 +60,11 @@ COPY apps/api/scripts /build/apps/api/scripts
 COPY apps/admin/drizzle /build/apps/admin/drizzle
 
 WORKDIR /build/apps/api
-RUN uv pip install --system --no-cache-dir .
+# ``--no-editable`` forces the path-source deps (nexus-worker, nexus-mcp,
+# nexus-ucm-schema, nexus-channels) to be installed as regular wheels
+# into ``site-packages``, NOT as ``.pth`` pointers back to /build/...
+# Otherwise the runtime stage can't find them after stripping /build.
+RUN uv pip install --system --no-cache-dir --no-editable .
 
 # ──────────────────────────────────────────────────────────────────────
 # Stage 2 — runtime
@@ -76,11 +92,15 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Application source — the package is installed via ``uv pip install``
 # above, but Alembic + scripts read paths off ``apps/api`` directly.
+# ucm-schema lives outside /apps; the editable install in the builder
+# stage points at /build/packages, so we must mirror that path in the
+# runtime stage or the import fails at first use.
 COPY --from=builder /build/apps /app/apps
+COPY --from=builder /build/packages /app/packages
 
 WORKDIR /app/apps/api
 
-ENV PYTHONPATH=/app/apps/api/src:/app/apps/channels/src
+ENV PYTHONPATH=/app/apps/api/src:/app/apps/channels/src:/app/apps/worker/src:/app/apps/mcp/src:/app/packages/ucm-schema/py/src
 ENV PATH=/usr/local/bin:$PATH
 
 USER nexus

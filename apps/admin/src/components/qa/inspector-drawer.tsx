@@ -31,9 +31,16 @@ type TabKey = (typeof TABS)[number]["key"];
 export function InspectorDrawer({
   tenantId,
   thread,
+  refreshKey,
 }: {
   tenantId: string;
   thread: QAThread | null;
+  /**
+   * Bumped by the shell after each composer turn lands so the Audit
+   * tab re-fetches without needing the operator to click anything.
+   * Optional — tests omit it.
+   */
+  refreshKey?: number;
 }) {
   const [active, setActive] = useState<TabKey>("audit");
 
@@ -65,7 +72,7 @@ export function InspectorDrawer({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {active === "audit" ? (
-          <AuditTab thread={thread} />
+          <AuditTab thread={thread} refreshKey={refreshKey} />
         ) : active === "tools" ? (
           <Placeholder
             title="Tools"
@@ -93,7 +100,13 @@ export function InspectorDrawer({
   );
 }
 
-function AuditTab({ thread }: { thread: QAThread | null }) {
+function AuditTab({
+  thread,
+  refreshKey,
+}: {
+  thread: QAThread | null;
+  refreshKey?: number;
+}) {
   const [rows, setRows] = useState<QASideEffectAudit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,7 +129,7 @@ function AuditTab({ thread }: { thread: QAThread | null }) {
         setError(String(err));
       });
     return () => abort.abort();
-  }, [thread?.id]);
+  }, [thread?.id, refreshKey]);
 
   if (!thread) {
     return (

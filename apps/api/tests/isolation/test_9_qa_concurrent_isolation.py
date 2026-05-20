@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import secrets
 import uuid
 from collections import defaultdict
 
@@ -51,8 +52,13 @@ MAX_INFLIGHT = 24
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 
-def _hdrs(operator_id: uuid.UUID, admin_headers: dict[str, str]) -> dict[str, str]:
-    return {**admin_headers, "X-Operator-Id": str(operator_id)}
+def _op_id() -> str:
+    """Opaque operator id (post-migration 0026 — TEXT, not UUID)."""
+    return secrets.token_urlsafe(16)
+
+
+def _hdrs(operator_id: str, admin_headers: dict[str, str]) -> dict[str, str]:
+    return {**admin_headers, "X-Operator-Id": operator_id}
 
 
 async def _seed_tenants(db_session, n: int) -> list[uuid.UUID]:
@@ -80,17 +86,17 @@ async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_sessi
     every operator's list/detail view is RLS-clean.
     """
     tenants = await _seed_tenants(db_session, NUM_TENANTS)
-    operators = [uuid.uuid4() for _ in range(NUM_OPERATORS)]
+    operators = [_op_id() for _ in range(NUM_OPERATORS)]
 
     rng = random.Random(20260519)
-    pairs: list[tuple[uuid.UUID, uuid.UUID, int]] = [
+    pairs: list[tuple[str, uuid.UUID, int]] = [
         (rng.choice(operators), rng.choice(tenants), i) for i in range(NUM_RUNS)
     ]
 
     sem = asyncio.Semaphore(MAX_INFLIGHT)
 
-    async def create_one(op: uuid.UUID, tenant: uuid.UUID, i: int) -> tuple[
-        uuid.UUID, uuid.UUID, str
+    async def create_one(op: str, tenant: uuid.UUID, i: int) -> tuple[
+        str, uuid.UUID, str
     ]:
         async with sem:
             r = await client.post(
@@ -103,13 +109,13 @@ async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_sessi
         )
         body = r.json()
         # The handler MUST stamp the verified operator id, not anything from the body.
-        assert body["operator_id"] == str(op)
+        assert body["operator_id"] == op
         assert body["tenant_id"] == str(tenant)
         return op, tenant, body["id"]
 
     created = await asyncio.gather(*(create_one(op, t, i) for (op, t, i) in pairs))
 
-    expected_ids: dict[uuid.UUID, set[str]] = defaultdict(set)
+    expected_ids: dict[str, set[str]] = defaultdict(set)
     for op, _t, tid in created:
         expected_ids[op].add(tid)
 
@@ -119,9 +125,9 @@ async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_sessi
         assert len(expected_ids[op]) > 0, f"operator {op} got zero runs — RNG drift?"
 
     # (a) + (b): each operator lists per tenant; only own threads visible.
-    leaks: list[tuple[uuid.UUID, dict]] = []
+    leaks: list[tuple[str, dict]] = []
 
-    async def verify_one(op: uuid.UUID) -> tuple[uuid.UUID, set[str]]:
+    async def verify_one(op: str) -> tuple[str, set[str]]:
         seen: set[str] = set()
         for tenant in tenants:
             r = await client.get(
@@ -130,7 +136,7 @@ async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_sessi
             )
             assert r.status_code == 200
             for t in r.json():
-                if t["operator_id"] != str(op):
+                if t["operator_id"] != op:
                     leaks.append((op, t))
                 seen.add(t["id"])
         # Also exercise detail GET on a sample of own threads (round-trip).
@@ -139,7 +145,7 @@ async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_sessi
                 f"/qa/threads/{tid}", headers=_hdrs(op, admin_headers)
             )
             assert r.status_code == 200, f"own thread {tid} not visible to creator"
-            assert r.json()["operator_id"] == str(op)
+            assert r.json()["operator_id"] == op
         # Cross-operator detail GET: should 404 (RLS hides → not found).
         other = next(o for o in operators if o != op)
         sample_other = next(iter(expected_ids[other]), None)
@@ -171,7 +177,7 @@ async def test_qa_concurrent_100_runs_zero_leaks(client, admin_headers, db_sessi
     async with db_session.begin():
         await db_session.execute(
             text("SELECT set_config('app.operator_id', :o, true)"),
-            {"o": str(forger)},
+            {"o": forger},
         )
         await db_session.execute(
             text("SELECT set_config('app.tenant_id', :t, true)"),
@@ -199,10 +205,10 @@ async def test_qa_concurrent_repeats_stable(client, admin_headers, db_session):
     bursts of 25 in the same test and assert each completes cleanly.
     """
     tenants = await _seed_tenants(db_session, 3)
-    operators = [uuid.uuid4() for _ in range(3)]
+    operators = [_op_id() for _ in range(3)]
     sem = asyncio.Semaphore(MAX_INFLIGHT)
 
-    async def create(op: uuid.UUID, tenant: uuid.UUID, label: str) -> str:
+    async def create(op: str, tenant: uuid.UUID, label: str) -> str:
         async with sem:
             r = await client.post(
                 "/qa/threads",
@@ -213,7 +219,7 @@ async def test_qa_concurrent_repeats_stable(client, admin_headers, db_session):
         return r.json()["id"]
 
     rng = random.Random(7)
-    per_op: dict[uuid.UUID, set[str]] = defaultdict(set)
+    per_op: dict[str, set[str]] = defaultdict(set)
 
     for burst in range(3):
         pairs = [
@@ -237,6 +243,6 @@ async def test_qa_concurrent_repeats_stable(client, admin_headers, db_session):
             )
             # No foreign rows.
             for t in r.json():
-                assert t["operator_id"] == str(op), (
+                assert t["operator_id"] == op, (
                     f"burst {burst}: LEAK op={op} saw thread of {t['operator_id']}"
                 )

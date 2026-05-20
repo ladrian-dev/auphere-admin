@@ -50,6 +50,16 @@ services:
       NEXUS_LOG_LEVEL: INFO
       NEXUS_DATABASE_URL: postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
       NEXUS_REDIS_URL: redis://redis:6379/0
+      # LiteLLM bundled cost map — avoids a sync GitHub fetch on the
+      # first LLM call.
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
+      # LLM provider keys forwarded from the host. The QA Playground
+      # invokes the agent graph in-process (ADR-020 Fase 5 closure)
+      # so the api container needs them. In Railway these come from
+      # the service env vars; the ``${...:-}`` default keeps the file
+      # valid when the var is unset locally.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
       - "8000:8000"
     depends_on:

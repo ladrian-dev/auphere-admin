@@ -31,7 +31,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.errors import IsolationViolation
 
-_current_operator: ContextVar[uuid.UUID | None] = ContextVar(
+# Migration 0026 (Fase 6 follow-up): ``operator_id`` is TEXT, not UUID.
+# Better Auth's ``session.user.id`` is a cuid-style short id, so the GUC
+# stores whatever the BFF forwards as ``X-Operator-Id``. The RLS policies
+# compare text to text; security comes from the Bearer + the WITH CHECK
+# symmetry, not from the id's shape.
+_current_operator: ContextVar[str | None] = ContextVar(
     "current_operator", default=None
 )
 
@@ -45,11 +50,11 @@ _current_qa_thread: ContextVar[uuid.UUID | None] = ContextVar(
 )
 
 
-def get_current_operator() -> uuid.UUID | None:
+def get_current_operator() -> str | None:
     return _current_operator.get()
 
 
-def require_current_operator() -> uuid.UUID:
+def require_current_operator() -> str:
     operator_id = _current_operator.get()
     if operator_id is None:
         raise IsolationViolation(
@@ -65,7 +70,7 @@ def get_current_qa_thread() -> uuid.UUID | None:
 
 
 @contextmanager
-def operator_context(operator_id: uuid.UUID) -> Iterator[uuid.UUID]:
+def operator_context(operator_id: str) -> Iterator[str]:
     token = _current_operator.set(operator_id)
     try:
         yield operator_id
@@ -89,7 +94,7 @@ def qa_thread_context(thread_id: uuid.UUID) -> Iterator[uuid.UUID]:
 
 
 async def apply_operator_to_session(
-    session: AsyncSession, operator_id: uuid.UUID
+    session: AsyncSession, operator_id: str
 ) -> None:
     """Set ``app.operator_id`` for the current transaction.
 
@@ -112,7 +117,7 @@ async def apply_operator_to_session(
 async def qa_scoped_session(
     session: AsyncSession,
     *,
-    operator_id: uuid.UUID,
+    operator_id: str,
     tenant_id: uuid.UUID | None = None,
 ) -> AsyncIterator[AsyncSession]:
     """Apply QA scope to ``session`` inside an existing transaction.

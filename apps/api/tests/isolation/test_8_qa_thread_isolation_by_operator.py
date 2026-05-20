@@ -15,7 +15,7 @@ test ensures we don't add a future table without RLS by accident.
 
 from __future__ import annotations
 
-import uuid
+import secrets
 
 import pytest
 from sqlalchemy import select, text
@@ -27,16 +27,24 @@ from .conftest import set_tenant
 pytestmark = [pytest.mark.asyncio, pytest.mark.isolation]
 
 
-async def _set_operator(session, operator_id: uuid.UUID) -> None:
+def _op_id() -> str:
+    """Opaque operator id, shape-compatible with Better Auth's
+    ``session.user.id`` (cuid-like short string). Migration 0026 widened
+    the column from UUID to TEXT; tests follow.
+    """
+    return secrets.token_urlsafe(16)
+
+
+async def _set_operator(session, operator_id: str) -> None:
     await session.execute(
         text("SELECT set_config('app.operator_id', :o, true)"),
-        {"o": str(operator_id)},
+        {"o": operator_id},
     )
 
 
 async def test_qa_threads_isolated_per_operator(db_session, tenants_ab):
-    op_a = uuid.uuid4()
-    op_b = uuid.uuid4()
+    op_a = _op_id()
+    op_b = _op_id()
     tenant = tenants_ab["a"]
 
     # Operator A inserts two threads on tenant A.
@@ -79,7 +87,7 @@ async def test_qa_threads_isolated_per_operator(db_session, tenants_ab):
 
 
 async def test_qa_threads_invisible_without_operator_setting(db_session, tenants_ab):
-    op = uuid.uuid4()
+    op = _op_id()
     tenant = tenants_ab["a"]
 
     async with db_session.begin():
@@ -96,8 +104,8 @@ async def test_qa_threads_invisible_without_operator_setting(db_session, tenants
 
 
 async def test_qa_side_effect_audit_isolated(db_session, tenants_ab):
-    op_a = uuid.uuid4()
-    op_b = uuid.uuid4()
+    op_a = _op_id()
+    op_b = _op_id()
     tenant = tenants_ab["a"]
 
     async with db_session.begin():
@@ -128,8 +136,8 @@ async def test_qa_side_effect_audit_isolated(db_session, tenants_ab):
 
 
 async def test_qa_audit_log_isolated(db_session, tenants_ab):
-    op_a = uuid.uuid4()
-    op_b = uuid.uuid4()
+    op_a = _op_id()
+    op_b = _op_id()
     tenant = tenants_ab["a"]
 
     async with db_session.begin():
@@ -157,8 +165,8 @@ async def test_qa_cross_operator_insert_rejected(db_session, tenants_ab):
     """
     from sqlalchemy.exc import IntegrityError, ProgrammingError
 
-    op_a = uuid.uuid4()
-    op_b = uuid.uuid4()
+    op_a = _op_id()
+    op_b = _op_id()
     tenant = tenants_ab["a"]
 
     async with db_session.begin():
@@ -177,7 +185,7 @@ async def test_qa_isolation_holds_across_five_operators(db_session, tenants_ab):
     their own — 25 inserts, 5 select sweeps, 0 leaks.
     """
     tenant = tenants_ab["a"]
-    operators = [uuid.uuid4() for _ in range(5)]
+    operators = [_op_id() for _ in range(5)]
 
     for op in operators:
         async with db_session.begin():
@@ -188,7 +196,7 @@ async def test_qa_isolation_holds_across_five_operators(db_session, tenants_ab):
                     QAThread(
                         operator_id=op,
                         tenant_id=tenant,
-                        title=f"op-{op.hex[:6]}-thread-{i}",
+                        title=f"op-{op[:8]}-thread-{i}",
                     )
                 )
 
@@ -204,6 +212,6 @@ async def test_qa_isolation_holds_across_five_operators(db_session, tenants_ab):
             # All visible rows must belong to this operator.
             assert all(t.operator_id == op for t in rows)
             # And carry this operator's signature in the title.
-            assert all(t.title.startswith(f"op-{op.hex[:6]}-") for t in rows)
+            assert all(t.title.startswith(f"op-{op[:8]}-") for t in rows)
 
     assert seen_counts == [5, 5, 5, 5, 5]

@@ -11,13 +11,21 @@
  */
 import { NextResponse } from "next/server";
 
+import { QAForbidden, requireQAOperator } from "@/lib/qa-access";
 import { qaApi, type QAThreadCreateInput } from "@/lib/qa-api";
-import { getSession } from "@/lib/session";
 
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ detail: "unauthenticated" }, { status: 401 });
+  let access;
+  try {
+    access = await requireQAOperator();
+  } catch (err) {
+    if (err instanceof QAForbidden) {
+      return NextResponse.json(
+        { detail: err.reason, role: err.role },
+        { status: err.status },
+      );
+    }
+    throw err;
   }
   const body = (await req.json().catch(() => null)) as QAThreadCreateInput | null;
   if (!body?.tenant_id) {
@@ -28,7 +36,7 @@ export async function POST(req: Request) {
   }
   try {
     const thread = await qaApi.createThread({
-      operatorId: session.user.id,
+      operatorId: access.operatorId,
       input: body,
     });
     return NextResponse.json(thread, { status: 201 });

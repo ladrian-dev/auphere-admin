@@ -51,6 +51,17 @@ dependencies = [
     # fails, so this is technically optional — but installing it keeps
     # the cheap-path (text-PDFs) cheap.
     "pypdf>=4.0.0",
+    # ADR-020 Fase 5 closure (2026-05-20): the QA Playground invokes the
+    # agent graph IN-PROCESS instead of going through a separate
+    # qa-langgraph-server. These three were dev-only before; now they
+    # are part of the production runtime of nexus-api.
+    "nexus-worker",
+    "nexus-mcp",
+    "nexus-ucm-schema",
+    # langgraph itself is a transitive dep of nexus-worker, but we pin
+    # it here so the image build can resolve the version without first
+    # resolving the editable worker.
+    "langgraph>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -68,14 +79,6 @@ dev = [
     # _reset_test_db when running on CI (no docker exec available there).
     # Binary wheel — no system libpq build required.
     "psycopg2-binary>=2.9.10",
-    # Block C: the runtime isolation tests import from the worker package.
-    "nexus-worker",
-    # Block D: integration tests exercise the MCP servers directly.
-    "nexus-mcp",
-    # Phase 2 (ADR-020): the worker's ``ucm_formatter`` node imports
-    # ``ucm_schema``; isolation tests in this package import the worker
-    # package transitively and therefore need this dep available too.
-    "nexus-ucm-schema",
 ]
 
 [tool.uv.sources]

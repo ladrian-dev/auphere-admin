@@ -33,7 +33,7 @@ def build_qa_pipeline(
     *,
     agent_loader: AgentLoader,
     llm_router: LLMRouter,
-    checkpointer: BaseCheckpointSaver[Any],
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
 ) -> Any:
     """Compile the agent graph in QA mode.
 
@@ -81,7 +81,7 @@ def build_qa_pipeline(
 
 def qa_run_metadata(
     *,
-    operator_id: uuid.UUID,
+    operator_id: str,
     tenant_id: uuid.UUID,
     qa_thread_id: uuid.UUID,
 ) -> dict[str, Any]:

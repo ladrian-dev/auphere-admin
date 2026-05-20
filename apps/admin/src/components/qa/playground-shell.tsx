@@ -25,6 +25,9 @@
  * spike).
  */
 import { useCallback, useMemo, useState, useTransition } from "react";
+// `auditRefreshKey` bumps after each successful turn so the inspector's
+// Audit tab re-fetches and shows freshly-blocked side-effects without
+// the operator having to switch tabs.
 import { useRouter } from "next/navigation";
 
 import type { QAThread } from "@/lib/qa-api";
@@ -56,6 +59,7 @@ export function PlaygroundShell({
   );
   const [channel, setChannel] = useState<ChannelKind>("web");
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [auditRefreshKey, setAuditRefreshKey] = useState(0);
   const [, startTransition] = useTransition();
 
   const selectThread = useCallback(
@@ -171,12 +175,14 @@ export function PlaygroundShell({
               onAddOptimisticThread(t);
               selectThread(t);
             }}
+            onTurnComplete={() => setAuditRefreshKey((n) => n + 1)}
           />
         </main>
         {inspectorOpen && (
           <InspectorDrawer
             tenantId={tenant.id}
             thread={activeThread}
+            refreshKey={auditRefreshKey}
           />
         )}
       </div>

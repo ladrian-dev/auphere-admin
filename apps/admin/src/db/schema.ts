@@ -30,6 +30,12 @@ export const user = authSchema.table("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
+  // ADR-020 Block G mínimo: every Auphere staff member has a role.
+  // ``admin`` can do everything (Lee). ``qa_operator`` can only use
+  // the QA Playground. ``viewer`` (future) reads but doesn't write.
+  // Default ``qa_operator`` so a new seeded user is sandboxed by
+  // construction — admin promotion is explicit.
+  role: text("role").notNull().default("qa_operator"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -37,6 +43,10 @@ export const user = authSchema.table("user", {
     .notNull()
     .defaultNow(),
 });
+
+/** Roles that can access the QA Playground. */
+export const QA_ROLES = ["admin", "qa_operator"] as const;
+export type Role = (typeof QA_ROLES)[number] | "viewer";
 
 export const session = authSchema.table("session", {
   id: text("id").primaryKey(),

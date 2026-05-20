@@ -13,10 +13,7 @@ from contextvars.
 
 from __future__ import annotations
 
-from typing import Any
-
 import structlog
-from langgraph.checkpoint.memory import MemorySaver
 from nexus_worker.runtime.agent_loader import AgentLoader
 from nexus_worker.runtime.llm import LLMRouter
 from nexus_worker.runtime.qa_pipeline import build_qa_pipeline
@@ -38,20 +35,13 @@ def _build_llm_router() -> LLMRouter:
     )
 
 
-def _build_checkpointer() -> Any:
-    """In-memory checkpointer for the QA Server.
-
-    QA threads are short-lived (an operator session) and the
-    ``qa.threads`` row is what survives across restarts — the LangGraph
-    state itself can stay in process memory. If a Railway instance
-    restarts mid-thread the operator picks the conversation up from the
-    audit + the persisted message history, not from the checkpointer.
-    """
-    return MemorySaver()
-
-
+# NOTE: no custom checkpointer is passed. langgraph-api 0.8.x rejects
+# custom checkpointers at startup ("persistence is handled automatically
+# by the platform"). The LangGraph Server runs the graph against its
+# managed persistence; ``qa.threads`` (in the API's Postgres) is the
+# operator-visible source of truth across restarts. Tests still inject
+# ``MemorySaver`` via ``build_qa_pipeline(checkpointer=...)``.
 qa_pilot = build_qa_pipeline(
     agent_loader=AgentLoader(),
     llm_router=_build_llm_router(),
-    checkpointer=_build_checkpointer(),
 )

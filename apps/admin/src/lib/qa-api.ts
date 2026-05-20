@@ -108,6 +108,18 @@ export type QASideEffectAudit = {
   created_at: string;
 };
 
+export type QASendIn = { message: string };
+
+export type QASendOut = {
+  response: string;
+  ucm: Record<string, unknown> | null;
+  intent: string | null;
+  tool_calls: Record<string, unknown>[];
+  conversation_id: string;
+  inbound_message_id: string;
+  run_id: string | null;
+};
+
 // ── client (one method per endpoint) ────────────────────────────────────────
 
 export const qaApi = {
@@ -168,6 +180,21 @@ export const qaApi = {
       { method: "PATCH", body: opts.input, signal: opts.signal },
     );
     if (!r) throw new Error("qa-api returned null for patchThread");
+    return r;
+  },
+
+  async sendMessage(opts: {
+    operatorId: string;
+    threadId: string;
+    input: QASendIn;
+    signal?: AbortSignal;
+  }): Promise<QASendOut> {
+    const r = await qaCall<QASendOut>(
+      `/qa/threads/${opts.threadId}/send`,
+      opts.operatorId,
+      { method: "POST", body: opts.input, signal: opts.signal },
+    );
+    if (!r) throw new Error("qa-api returned null for sendMessage");
     return r;
   },
 

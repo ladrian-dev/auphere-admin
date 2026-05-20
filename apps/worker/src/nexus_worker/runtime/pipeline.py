@@ -411,6 +411,69 @@ def _summarise_tool_calls(tool_calls: list[dict[str, Any]]) -> str:
     return "\n".join(parts)
 
 
+async def _load_kg_snapshot_text(tenant_id: uuid.UUID) -> str:
+    """Render a compact, LLM-friendly snapshot of the tenant's KG.
+
+    The agent's system_prompt repeatedly says "use the knowledge graph"
+    and "never invent prices / barbers / services". Without the snapshot
+    in context the model has no choice — it hallucinates. We load
+    ``kg_nodes`` once per turn (cheap, tenant-scoped, ≤ a few hundred
+    rows) and serialise as a Markdown-ish block grouped by label.
+
+    Returns an empty string when the KG is empty so the respond node
+    can skip the system message entirely.
+
+    Tradeoff: this scales linearly with the KG. For tenants with >>200
+    nodes we'll graduate to a real ``kg.lookup`` tool (filter by
+    label + free-text). Cheap enough for the pilot.
+    """
+    from sqlalchemy import select as _select
+
+    from nexus_api.db.models import KGNode
+
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        rows = (
+            (
+                await session.execute(
+                    _select(KGNode).order_by(KGNode.label.asc(), KGNode.created_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+    if not rows:
+        return ""
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        grouped.setdefault(r.label, []).append(r.properties or {})
+
+    parts: list[str] = ["Knowledge graph (current facts — never contradict these):"]
+    for label, items in sorted(grouped.items()):
+        parts.append(f"\n[{label}]")
+        for it in items:
+            # Each node = its properties as `key: value` pairs. Skip
+            # null / empty / private-looking keys.
+            keys = [
+                f"{k}={_format_kg_value(v)}"
+                for k, v in it.items()
+                if v not in (None, "", [], {}) and not str(k).startswith("_")
+            ]
+            if keys:
+                parts.append("- " + " · ".join(keys))
+    return "\n".join(parts)
+
+
+def _format_kg_value(v: Any) -> str:
+    """Compact value formatter — keeps the snapshot under control."""
+    if isinstance(v, list):
+        return ",".join(str(x) for x in v)
+    if isinstance(v, dict):
+        return "{" + ", ".join(f"{k}:{vv}" for k, vv in v.items()) + "}"
+    return str(v)
+
+
 def make_respond_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
     async def respond(state: AgentState) -> dict[str, Any]:
         tenant_id = _tenant_uuid(state)
@@ -421,6 +484,9 @@ def make_respond_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": bundle.system_prompt},
             ]
+            kg_snapshot = await _load_kg_snapshot_text(tenant_id)
+            if kg_snapshot:
+                messages.append({"role": "system", "content": kg_snapshot})
             addendum = state.get("system_addendum") or ""
             if addendum:
                 messages.append({"role": "system", "content": addendum})
@@ -536,11 +602,17 @@ def build_pipeline(
     *,
     agent_loader: AgentLoader,
     llm_router: LLMRouter,
-    checkpointer: BaseCheckpointSaver[Any],
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
     mcp_registry: MCPRegistry | None = None,
     use_ucm_formatter: bool | None = None,
 ) -> Any:
     """Compile the StateGraph and return a runnable.
+
+    ``checkpointer`` is optional: when ``None`` the compiled graph leaves
+    persistence to whichever host runs it. Tests pass ``MemorySaver`` for
+    deterministic state. The LangGraph Server (apps/qa-langgraph-server/)
+    must pass ``None`` because the platform manages persistence and
+    rejects custom checkpointers at startup since langgraph-api 0.8.x.
 
     ``mcp_registry`` defaults to ``nexus_mcp.build_default_registry()``;
     tests can pass a stripped-down registry.
@@ -580,4 +652,6 @@ def build_pipeline(
     g.add_edge("respond", "ucm_formatter")
     g.add_edge("ucm_formatter", "checkpoint")
     g.add_edge("checkpoint", END)
+    if checkpointer is None:
+        return g.compile()
     return g.compile(checkpointer=checkpointer)

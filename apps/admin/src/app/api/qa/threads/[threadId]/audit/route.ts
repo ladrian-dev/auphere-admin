@@ -8,16 +8,24 @@
  */
 import { NextResponse } from "next/server";
 
+import { QAForbidden, requireQAOperator } from "@/lib/qa-access";
 import { qaApi } from "@/lib/qa-api";
-import { getSession } from "@/lib/session";
 
 export async function GET(
   req: Request,
   context: { params: Promise<{ threadId: string }> },
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ detail: "unauthenticated" }, { status: 401 });
+  let access;
+  try {
+    access = await requireQAOperator();
+  } catch (err) {
+    if (err instanceof QAForbidden) {
+      return NextResponse.json(
+        { detail: err.reason, role: err.role },
+        { status: err.status },
+      );
+    }
+    throw err;
   }
   const { threadId } = await context.params;
   const url = new URL(req.url);
@@ -25,7 +33,7 @@ export async function GET(
   const limit = limitRaw ? Number(limitRaw) : undefined;
   try {
     const rows = await qaApi.getThreadAudit({
-      operatorId: session.user.id,
+      operatorId: access.operatorId,
       threadId,
       limit,
     });

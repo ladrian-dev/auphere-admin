@@ -167,9 +167,21 @@ class InMemoryProvider:
 
 @dataclass
 class LiteLLMProvider:
-    """Real provider. Imports LiteLLM lazily so tests don't pay the import."""
+    """Real provider. Imports LiteLLM eagerly in ``__post_init__`` so the
+    sync ``sys.path.append(os.getcwd())`` LiteLLM does on first import
+    happens at construction (server startup, off the event loop) — not
+    inside the first ASGI request, where blockbuster (LangGraph dev)
+    rejects it. Tests use ``InMemoryProvider`` and never instantiate
+    this class, so the heavy import stays out of the unit-test path.
+    """
 
     timeout_s: float = 30.0
+
+    def __post_init__(self) -> None:
+        # Pre-import litellm so the first acomplete() doesn't pay the
+        # synchronous ``sys.path.append(os.getcwd())`` at import time
+        # during a request. Cached in module-level state thereafter.
+        import litellm  # noqa: F401
 
     async def acomplete(
         self,

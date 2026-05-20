@@ -52,7 +52,9 @@ class _MutatingTool(ToolBase):
 @pytest.fixture
 async def qa_seed(db_session):
     """Insert a tenant + a QA thread we can audit against."""
-    operator_id = uuid.uuid4()
+    import secrets
+
+    operator_id = secrets.token_urlsafe(16)  # opaque string (post-0026)
     tenant_id = uuid.uuid4()
     thread_id = uuid.uuid4()
 
@@ -201,7 +203,9 @@ async def test_audit_writer_skips_when_scope_missing(db_session):
     # that DOES see them).
     from nexus_api.core.operator_context import qa_scoped_session
 
-    op = uuid.uuid4()
+    import secrets
+
+    op = secrets.token_urlsafe(16)
     # Pick a tenant_id; even an unknown one is fine because we expect 0 rows.
     fake_tenant = uuid.uuid4()
     async with db_session.begin():
