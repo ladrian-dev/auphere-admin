@@ -11,14 +11,30 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from nexus_api.db.base import Base
 from nexus_api.db.models._mixins import UUIDPrimaryKey
+
+# Canonical status strings for ``qa.runs.status``. Mirror the DB-level
+# CHECK constraint from migration 0028. The handler / streaming code
+# uses these constants instead of string literals so a typo surfaces at
+# import time, not at insert.
+QA_RUN_STATUS_RUNNING = "running"
+QA_RUN_STATUS_COMPLETED = "completed"
+QA_RUN_STATUS_CANCELLED = "cancelled"
+QA_RUN_STATUS_ERROR = "error"
+QA_RUN_STATUSES = (
+    QA_RUN_STATUS_RUNNING,
+    QA_RUN_STATUS_COMPLETED,
+    QA_RUN_STATUS_CANCELLED,
+    QA_RUN_STATUS_ERROR,
+)
 
 
 class QAThread(UUIDPrimaryKey, Base):
@@ -111,6 +127,52 @@ class QASideEffectAudit(UUIDPrimaryKey, Base):
         nullable=False,
         server_default=text("now()"),
     )
+
+
+class QARun(UUIDPrimaryKey, Base):
+    """One operator → agent turn dispatched on a QA thread (ADR-021, Fase 1).
+
+    The send endpoint creates a row with ``status='running'`` and
+    returns ``id`` immediately. The streaming endpoint reads/writes
+    here as ``astream_events`` drives the graph; on completion the row
+    is closed with usage + cost numbers. Cancel flips the status to
+    ``cancelled`` and ends the row early.
+
+    RLS by ``operator_id`` keeps two operators' runs invisible to each
+    other even when they happen to share a thread (RLS on qa.threads
+    already prevents that, but the runs policy is the defence-in-depth
+    layer for any future endpoint that joins runs across threads).
+    """
+
+    __tablename__ = "runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running','completed','cancelled','error')",
+            name="ck_qa_runs_status",
+        ),
+        {"schema": "qa"},
+    )
+
+    thread_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("qa.threads.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    operator_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'running'")
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    langfuse_trace_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class QAAuditLog(UUIDPrimaryKey, Base):

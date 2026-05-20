@@ -14,6 +14,7 @@ from nexus_api.config import settings
 from nexus_api.core import isolation_enforcer, otel
 from nexus_api.core.logging_context import LoggingContextMiddleware
 from nexus_api.core.metrics import isolation_event_drainer
+from nexus_api.core.qa_checkpointer import close_qa_checkpointer, init_qa_checkpointer
 from nexus_api.core.redis_client import close_redis
 from nexus_api.db.base import dispose_engine, get_engine
 from nexus_api.health import router as health_router
@@ -37,6 +38,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         isolation_event_drainer(drainer_stop), name="isolation-event-drainer"
     )
 
+    # ADR-021 Fase 1: open the QA Playground's LangGraph checkpointer
+    # pool and run setup() once. The checkpointer is shared across all
+    # qa.* turns and persists state in the ``langgraph`` schema
+    # (migration 0029). If setup() fails we log and continue so the
+    # rest of the API stays up — qa endpoints will surface the error
+    # on the first call instead of crashing the whole API.
+    try:
+        await init_qa_checkpointer()
+    except Exception:
+        log.exception("qa.checkpointer.init_failed")
+
     log.info("api.startup", env=settings.environment, version=__version__)
     try:
         yield
@@ -47,6 +59,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await asyncio.wait_for(drainer_task, timeout=3.0)
         except (TimeoutError, asyncio.CancelledError):
             drainer_task.cancel()
+        await close_qa_checkpointer()
         await close_redis()
         await dispose_engine()
 

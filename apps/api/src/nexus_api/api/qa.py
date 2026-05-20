@@ -24,6 +24,7 @@ from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,7 +49,14 @@ from nexus_api.db.models import (
     Message,
     MessageDirection,
 )
-from nexus_api.db.models.qa import QAAuditLog, QASideEffectAudit, QAThread
+from nexus_api.db.models.qa import (
+    QA_RUN_STATUS_ERROR,
+    QA_RUN_STATUS_RUNNING,
+    QAAuditLog,
+    QARun,
+    QASideEffectAudit,
+    QAThread,
+)
 from nexus_api.db.models.tenant import Tenant
 
 log = structlog.get_logger(__name__)
@@ -477,12 +485,16 @@ _qa_pipeline_cache: Any | None = None
 def _get_qa_pipeline() -> Any:
     """Build the QA pipeline once per process and reuse it.
 
-    The compiled graph is stateless — every ``ainvoke`` brings its own
-    state. The only mutable surface is the ``MemorySaver`` checkpointer,
+    The compiled graph is stateless — every ``ainvoke`` / ``astream_events``
+    brings its own state. The only mutable surface is the checkpointer,
     which keys by ``thread_id`` so concurrent runs on different QA
-    threads don't collide. A process restart loses checkpoint state,
-    but ``messages`` rows in Postgres + ``qa.threads`` survive — the
-    next turn rebuilds context from the inbound message anyway.
+    threads don't collide.
+
+    Since ADR-021 Fase 1 the checkpointer is the process-wide
+    ``AsyncPostgresSaver`` initialised by ``main.lifespan`` (see
+    ``core.qa_checkpointer``). That makes resumability + HITL durable
+    across server restarts. Tests bypass this path by patching the
+    cache directly with a ``MemorySaver``-backed pipeline.
 
     Imports live inside this function so the qa-api module load doesn't
     pay the heavy LiteLLM / langgraph cost at startup.
@@ -491,10 +503,11 @@ def _get_qa_pipeline() -> Any:
     if _qa_pipeline_cache is not None:
         return _qa_pipeline_cache
 
-    from langgraph.checkpoint.memory import MemorySaver
     from nexus_worker.runtime.agent_loader import AgentLoader
     from nexus_worker.runtime.llm import LiteLLMProvider, LLMRouter
     from nexus_worker.runtime.qa_pipeline import build_qa_pipeline
+
+    from nexus_api.core.qa_checkpointer import get_qa_checkpointer
 
     provider = LiteLLMProvider()
     llm_router = LLMRouter(
@@ -506,9 +519,9 @@ def _get_qa_pipeline() -> Any:
     _qa_pipeline_cache = build_qa_pipeline(
         agent_loader=AgentLoader(),
         llm_router=llm_router,
-        checkpointer=MemorySaver(),
+        checkpointer=get_qa_checkpointer(),
     )
-    log.info("qa.pipeline.compiled")
+    log.info("qa.pipeline.compiled", checkpointer="async_postgres")
     return _qa_pipeline_cache
 
 
@@ -683,3 +696,374 @@ async def send_message(
         inbound_message_id=inbound_id,
         run_id=None,  # in-process runs don't carry the LG server run id
     )
+
+
+# ── streaming endpoints (ADR-021, Fase 1) ────────────────────────────────────
+#
+# These endpoints expose the SSE runtime defined in
+# ``nexus_api.api.qa_streaming``. The contract:
+#
+#   1. ``POST /qa/threads/{id}/runs`` — persist inbound + qa.runs row,
+#      spawn the streaming driver, return ``{run_id, ...}`` fast.
+#   2. ``GET  /qa/threads/{id}/stream?run_id=&since_seq=`` — SSE.
+#   3. ``DELETE /qa/runs/{run_id}`` — cancel an in-flight run.
+#   4. ``GET  /qa/threads/{id}/messages?limit=`` — hydrate history.
+#
+# The existing synchronous ``POST /qa/threads/{id}/send`` is kept intact
+# for backwards compatibility (the legacy thread-pane.tsx uses it). The
+# Fase 2 frontend rewrite on top of assistant-ui will switch to the
+# ``/runs`` + ``/stream`` flow above.
+
+
+class RunStartIn(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
+class RunStartOut(BaseModel):
+    run_id: uuid.UUID
+    thread_id: uuid.UUID
+    conversation_id: uuid.UUID
+    inbound_message_id: uuid.UUID
+    status: str
+
+
+class HistoryMessageOut(BaseModel):
+    id: uuid.UUID
+    direction: str
+    content: str | None
+    ucm: dict[str, Any] | None
+    tool_calls: list[dict[str, Any]]
+    created_at: datetime
+
+
+async def _finalise_run_row(
+    operator_id: str,
+    tenant_id: uuid.UUID,
+    run_id: uuid.UUID,
+    final_status: str,
+    final_error: str | None,
+    input_tokens: int,
+    output_tokens: int,
+) -> None:
+    """Update the ``qa.runs`` row when the streaming run finishes.
+
+    Runs OUTSIDE any request transaction (the request already returned
+    to the client). Opens its own session, applies the operator + tenant
+    scopes so RLS lets the UPDATE through.
+    """
+    from sqlalchemy import text as _sql_text
+
+    from nexus_api.db.base import get_sessionmaker
+
+    sm = get_sessionmaker()
+    async with sm() as session, session.begin():
+        await apply_operator_to_session(session, operator_id)
+        await apply_tenant_to_session(session, tenant_id)
+        await session.execute(_sql_text("SET LOCAL ROLE nexus_app"))
+        run = await session.get(QARun, run_id)
+        if run is None:
+            log.warning(
+                "qa.run.finalise_missing",
+                run_id=str(run_id),
+                operator_id=operator_id,
+            )
+            return
+        run.status = final_status
+        run.ended_at = datetime.now(tz=run.started_at.tzinfo)
+        run.error = final_error
+        run.input_tokens = input_tokens or None
+        run.output_tokens = output_tokens or None
+
+
+@router.post(
+    "/threads/{thread_id}/runs",
+    response_model=RunStartOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_thread_run(
+    thread_id: Annotated[uuid.UUID, Path(...)],
+    body: RunStartIn,
+    operator_id: Annotated[str, Depends(require_qa_operator)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> RunStartOut:
+    """Start a streaming agent turn on a QA thread.
+
+    Sequence:
+      1. Inside a tx: auto-seed conversation (first turn), persist
+         inbound ``messages`` row, insert ``qa.runs`` row with
+         ``status='running'``.
+      2. Commit.
+      3. Spawn the background task via ``qa_streaming.start_run`` —
+         the task drives ``pipeline.astream_events`` and feeds the
+         per-run buffer + live queues.
+      4. Return ``{run_id}`` so the client can open the SSE stream
+         immediately.
+    """
+    from nexus_api.api import qa_streaming
+    from nexus_api.core.operator_context import qa_thread_context
+    from nexus_api.core.tenant_context import tenant_context
+
+    operator_token = _current_operator.set(operator_id)
+    tenant_token = None
+    try:
+        async with session.begin():
+            from sqlalchemy import text as _sql_text
+
+            await apply_operator_to_session(session, operator_id)
+            await session.execute(_sql_text("SET LOCAL ROLE nexus_app"))
+            thread = await _load_thread(session, thread_id)
+            if thread.archived_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"thread {thread_id} is archived",
+                )
+
+            tenant_token = _current_tenant.set(thread.tenant_id)
+            await apply_tenant_to_session(session, thread.tenant_id)
+
+            conversation, customer, channel = await _ensure_qa_conversation(
+                session, thread=thread, operator_id=operator_id
+            )
+            inbound = Message(
+                tenant_id=thread.tenant_id,
+                conversation_id=conversation.id,
+                direction=MessageDirection.INBOUND,
+                content=body.message,
+                tool_calls=[],
+            )
+            session.add(inbound)
+            await session.flush()
+            await session.refresh(inbound)
+
+            qa_run = QARun(
+                thread_id=thread.id,
+                operator_id=operator_id,
+                status=QA_RUN_STATUS_RUNNING,
+            )
+            session.add(qa_run)
+            await session.flush()
+            await session.refresh(qa_run)
+
+            run_id = qa_run.id
+            conv_id = conversation.id
+            inbound_id = inbound.id
+            tenant_id_local = thread.tenant_id
+            cust_id = customer.id
+            chan_id = channel.id
+            cust_identifier = customer.identifier
+    finally:
+        if tenant_token is not None:
+            _current_tenant.reset(tenant_token)
+        _current_operator.reset(operator_token)
+
+    # Build the driver — it captures the cached pipeline + the
+    # graph state. Contextvars must be set INSIDE the driver task
+    # (asyncio creates a fresh context for each Task), so the driver
+    # wraps the astream_events loop in the three context managers.
+    pipeline = _get_qa_pipeline()
+    graph_state = {
+        "tenant_id": str(tenant_id_local),
+        "channel_id": str(chan_id),
+        "user_id": cust_identifier,
+        "conversation_id": str(conv_id),
+        "customer_id": str(cust_id),
+        "inbound_message_id": str(inbound_id),
+        "user_message": body.message,
+    }
+    graph_config = {"configurable": {"thread_id": str(thread_id)}}
+
+    async def _driver(handle: qa_streaming.RunHandle) -> None:
+        from nexus_api.core.operator_context import operator_context
+
+        with (
+            operator_context(operator_id),
+            tenant_context(tenant_id_local),
+            qa_thread_context(thread_id),
+        ):
+            translator_state = qa_streaming._TranslatorState()
+            async for event in pipeline.astream_events(
+                graph_state, config=graph_config, version="v2"
+            ):
+                pending = qa_streaming.translate_event(event, translator_state)
+                for name, data in pending:
+                    if name == "cost.updated":
+                        handle.total_input_tokens += int(data.get("input_tokens") or 0)
+                        handle.total_output_tokens += int(data.get("output_tokens") or 0)
+                    qa_streaming._push_event(
+                        handle,
+                        qa_streaming.SSEEvent(
+                            seq=qa_streaming._next_seq(handle),
+                            event=name,
+                            data=data,
+                        ),
+                    )
+
+    async def _on_complete(handle: qa_streaming.RunHandle) -> None:
+        await _finalise_run_row(
+            operator_id=operator_id,
+            tenant_id=tenant_id_local,
+            run_id=handle.run_id,
+            final_status=handle.final_status or QA_RUN_STATUS_ERROR,
+            final_error=handle.final_error,
+            input_tokens=handle.total_input_tokens,
+            output_tokens=handle.total_output_tokens,
+        )
+
+    await qa_streaming.start_run(
+        run_id=run_id,
+        thread_id=thread_id,
+        operator_id=operator_id,
+        driver=_driver,
+        on_complete=_on_complete,
+    )
+
+    return RunStartOut(
+        run_id=run_id,
+        thread_id=thread_id,
+        conversation_id=conv_id,
+        inbound_message_id=inbound_id,
+        status=QA_RUN_STATUS_RUNNING,
+    )
+
+
+@router.get("/threads/{thread_id}/stream")
+async def stream_thread_run(
+    thread_id: Annotated[uuid.UUID, Path(...)],
+    operator_id: Annotated[str, Depends(require_qa_operator)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    run_id: uuid.UUID = Query(...),
+    since_seq: int = Query(default=0, ge=0),
+) -> StreamingResponse:
+    """SSE endpoint that streams the events of an in-flight ``qa.runs`` row.
+
+    Ownership is verified via RLS: the SELECT against ``qa.runs`` only
+    returns the row if ``operator_id`` matches the session's GUC. A
+    foreign operator gets 404, identical to the pattern other QA
+    endpoints follow.
+
+    After the ownership check, the SSE stream is fed from the in-memory
+    buffer + live queue maintained by ``qa_streaming``. The HTTP
+    transaction does NOT stay open across the stream — the verification
+    tx commits before the StreamingResponse starts emitting.
+    """
+    from fastapi.responses import StreamingResponse
+
+    from nexus_api.api import qa_streaming
+
+    # Verify ownership (RLS).
+    operator_token = _current_operator.set(operator_id)
+    try:
+        async with session.begin():
+            from sqlalchemy import text as _sql_text
+
+            await apply_operator_to_session(session, operator_id)
+            await session.execute(_sql_text("SET LOCAL ROLE nexus_app"))
+            run = await session.get(QARun, run_id)
+            if run is None or run.thread_id != thread_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"run {run_id} not found",
+                )
+    finally:
+        _current_operator.reset(operator_token)
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",  # disable proxy buffering (Nginx)
+        "Connection": "keep-alive",
+    }
+    return StreamingResponse(
+        qa_streaming.subscribe(run_id, since_seq=since_seq),
+        media_type="text/event-stream",
+        headers=headers,
+    )
+
+
+@router.delete("/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_run(
+    run_id: Annotated[uuid.UUID, Path(...)],
+    operator_id: Annotated[str, Depends(require_qa_operator)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> None:
+    """Request cancellation of an in-flight QA run.
+
+    Ownership verified via RLS. The actual cancel signal goes through
+    the in-memory ``qa_streaming.cancel`` (which calls ``Task.cancel``).
+    The ``on_complete`` hook closes the ``qa.runs`` row with
+    ``status='cancelled'``.
+    """
+    from nexus_api.api import qa_streaming
+
+    operator_token = _current_operator.set(operator_id)
+    try:
+        async with session.begin():
+            from sqlalchemy import text as _sql_text
+
+            await apply_operator_to_session(session, operator_id)
+            await session.execute(_sql_text("SET LOCAL ROLE nexus_app"))
+            run = await session.get(QARun, run_id)
+            if run is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"run {run_id} not found",
+                )
+    finally:
+        _current_operator.reset(operator_token)
+
+    await qa_streaming.cancel(run_id)
+
+
+@router.get(
+    "/threads/{thread_id}/messages",
+    response_model=list[HistoryMessageOut],
+)
+async def get_thread_messages(
+    thread_id: Annotated[uuid.UUID, Path(...)],
+    scope: Annotated[tuple[AsyncSession, str], Depends(qa_session)],
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[HistoryMessageOut]:
+    """Hydrate the operator-visible history of a QA thread.
+
+    Reads the ``messages`` table joined via ``qa.threads.conversation_id``.
+    Inbound rows surface their ``content`` (plain text from the
+    composer). Outbound rows surface ``ucm`` when the agent produced
+    one (the ``ucm_formatter`` node now persists the UCM into the
+    ``meta`` JSON column via the existing checkpoint node).
+    """
+    session, _ = scope
+    thread = await _load_thread(session, thread_id)
+    if thread.conversation_id is None:
+        return []
+    # Tenant scope required to read messages (RLS by tenant_id).
+    tenant_token = _current_tenant.set(thread.tenant_id)
+    try:
+        await apply_tenant_to_session(session, thread.tenant_id)
+        stmt = (
+            select(Message)
+            .where(Message.conversation_id == thread.conversation_id)
+            .order_by(Message.created_at.asc())
+            .limit(limit)
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+        out: list[HistoryMessageOut] = []
+        for m in rows:
+            # UCM is not yet persisted by the checkpoint node — outbound
+            # rows carry the plain text in ``content``. When UCM
+            # persistence lands (separate change), this field surfaces
+            # the canonical message. For now: None on outbound, the
+            # client just renders ``content`` as plain text on reload.
+            out.append(
+                HistoryMessageOut(
+                    id=m.id,
+                    direction=(
+                        m.direction.value if hasattr(m.direction, "value") else str(m.direction)
+                    ),
+                    content=m.content,
+                    ucm=None,
+                    tool_calls=list(m.tool_calls or []),
+                    created_at=m.created_at,
+                )
+            )
+        return out
+    finally:
+        _current_tenant.reset(tenant_token)

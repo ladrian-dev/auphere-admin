@@ -103,6 +103,7 @@ def make_qa_audit_writer(
             return
 
         sm = get_sessionmaker()
+        blocked_reason = str(synthetic.get("result", {}).get("blocked_by", "dry_run"))
         try:
             async with sm() as session, session.begin():
                 # Apply both scopes inside this tx. ``apply_tenant_to_session``
@@ -121,9 +122,7 @@ def make_qa_audit_writer(
                         tool_name=tool_name,
                         tool_args=dict(args),
                         synthetic_result=dict(synthetic),
-                        blocked_reason=str(
-                            synthetic.get("result", {}).get("blocked_by", "dry_run")
-                        ),
+                        blocked_reason=blocked_reason,
                         run_id=run_id,
                     )
                 )
@@ -136,5 +135,32 @@ def make_qa_audit_writer(
                 thread_id=str(effective_thread),
                 operator_id=str(operator_id),
             )
+            return
+
+        # ADR-021 Fase 1: surface the blocked side-effect as a custom
+        # LangGraph event so the streaming endpoint can deliver an
+        # ``audit.blocked`` SSE message to the Inspector tab without
+        # the operator having to refetch ``/qa/threads/{id}/audit``.
+        # ``adispatch_custom_event`` only works when called from inside
+        # a node executing under ``astream_events`` — outside (eg unit
+        # tests that directly call the audit writer), it raises
+        # RuntimeError. We swallow that: persistence already succeeded.
+        try:
+            from langchain_core.callbacks.manager import adispatch_custom_event
+
+            await adispatch_custom_event(
+                "audit.blocked",
+                {
+                    "tool_name": tool_name,
+                    "tool_args": dict(args),
+                    "blocked_reason": blocked_reason,
+                    "run_id": run_id,
+                    "thread_id": str(effective_thread),
+                },
+            )
+        except Exception:
+            # No active stream writer — fine, the row persisted and the
+            # Inspector tab will pick it up on its next refresh.
+            pass
 
     return write_audit
