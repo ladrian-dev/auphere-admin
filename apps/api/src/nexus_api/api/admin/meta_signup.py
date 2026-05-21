@@ -33,6 +33,7 @@ from nexus_channels.whatsapp_meta import (
     MetaClient,
     SignupIngressPayload,
 )
+from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
 from nexus_channels.whatsapp_meta.exceptions import (
     RegisterPhoneError,
     SubscribeWebhookError,
@@ -259,6 +260,153 @@ async def meta_signup(
         ),
         audit_log_id=audit.id,
     )
+
+
+# ── test-send ──────────────────────────────────────────────────────────────
+
+
+class MetaTestSendIn(BaseModel):
+    """Operator-driven test send. Designed for two narrow use cases:
+
+    1. **App Review smoke test** — exercise the
+       ``whatsapp_business_messaging`` permission with a single click so
+       the Meta review counter increments and the screencast can show
+       the full flow in one tab.
+    2. **Post-onboarding sanity check** — verify the freshly-issued
+       BISUAT can actually reach Meta before the operator hands the
+       channel over to a customer.
+
+    ``kind="template"`` is the safe default: outside the 24h service
+    window (almost always for a fresh tenant) Meta rejects raw text
+    messages. The default ``hello_world`` template is pre-approved on
+    every WABA so it works without authoring anything new.
+
+    ``kind="text"`` is allowed for operators who confirm a customer
+    just messaged them and want to reply within the window.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    to: str = Field(min_length=5, max_length=20, description="E.164 recipient phone number.")
+    kind: str = Field(default="template", pattern="^(template|text)$")
+    template_name: str = Field(default="hello_world", max_length=512)
+    language: str = Field(default="en_US", max_length=16)
+    text_body: str | None = Field(default=None, max_length=4096)
+
+
+class MetaTestSendOut(BaseModel):
+    status: str
+    wamid: str
+    to: str
+    kind: str
+
+
+@router.post(
+    "/tenants/{tenant_id}/integrations/meta/test-send",
+    response_model=MetaTestSendOut,
+    status_code=status.HTTP_200_OK,
+)
+async def meta_test_send(
+    body: MetaTestSendIn,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> MetaTestSendOut:
+    """Send a one-off message from the tenant's Meta WhatsApp channel.
+
+    Uses the BISUAT persisted at Embedded Signup time — no operator
+    token, no client secret in transit. The audit log captures who
+    triggered it (the admin actor) and the wamid returned by Meta.
+    """
+    if body.kind == "text" and not body.text_body:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="text_body es obligatorio cuando kind='text'.",
+        )
+
+    creds = await MetaCredentialsRepository(session).get()
+    if creds is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Este tenant no tiene credenciales Meta. Completa Embedded Signup primero.",
+        )
+
+    client = _build_meta_client()
+    try:
+        if body.kind == "template":
+            result = await client.send_template(
+                phone_number_id=creds.phone_number_id,
+                access_token=creds.bisuat,
+                to=body.to,
+                template_name=body.template_name,
+                language=body.language,
+            )
+        else:
+            assert body.text_body is not None  # validated above
+            result = await client.send_text(
+                phone_number_id=creds.phone_number_id,
+                access_token=creds.bisuat,
+                to=body.to,
+                body=body.text_body,
+            )
+    except MetaAPIError as exc:
+        log.warning(
+            "meta.test_send.api_error",
+            status=exc.status_code,
+            code=exc.code,
+            reason=exc.message,
+        )
+        http_status = (
+            status.HTTP_502_BAD_GATEWAY
+            if exc.status_code and exc.status_code >= 500
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(
+            status_code=http_status,
+            detail=f"Meta rechazó el envío: {exc.message}",
+        ) from exc
+    finally:
+        await client.close()
+
+    messages = result.get("messages") or []
+    wamid = (
+        messages[0].get("id")
+        if messages and isinstance(messages[0], dict)
+        else None
+    )
+    if not isinstance(wamid, str):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Meta no devolvió wamid en la respuesta.",
+        )
+
+    from nexus_api.core.tenant_context import require_current_tenant
+
+    tenant_id = require_current_tenant()
+    audit = AuditLog(
+        tenant_id=tenant_id,
+        actor=f"admin:{actor[:8]}",
+        action="channel.whatsapp.meta_test_send",
+        target=f"channel:meta:{creds.phone_number_id}",
+        before_json=None,
+        after_json={
+            "to": body.to,
+            "kind": body.kind,
+            "template_name": body.template_name if body.kind == "template" else None,
+            "wamid": wamid,
+        },
+    )
+    session.add(audit)
+    await session.flush()
+
+    log.info(
+        "meta.test_send.ok",
+        tenant_id=str(tenant_id),
+        wamid=wamid,
+        to=body.to,
+        kind=body.kind,
+    )
+
+    return MetaTestSendOut(status="sent", wamid=wamid, to=body.to, kind=body.kind)
 
 
 __all__ = ["router"]

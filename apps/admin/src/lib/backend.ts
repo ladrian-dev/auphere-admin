@@ -170,6 +170,21 @@ export type MetaSignupInput = {
   mode: "cloud_api" | "coexistence";
 };
 
+export type MetaTestSendInput = {
+  to: string;
+  kind?: "template" | "text";
+  template_name?: string;
+  language?: string;
+  text_body?: string;
+};
+
+export type MetaTestSendResult = {
+  status: string;
+  wamid: string;
+  to: string;
+  kind: "template" | "text";
+};
+
 export type SeedTemplate = {
   name: string;
   version: string;
@@ -787,6 +802,17 @@ export const backend = {
   metaSignup: (tenantId: string, body: MetaSignupInput) =>
     call<MetaSignupResult>(
       `/admin/tenants/${tenantId}/integrations/meta/signup`,
+      { method: "POST", body },
+    ),
+
+  /** Send a one-off test message from the tenant's connected Meta
+   *  WhatsApp channel — defaults to the always-approved hello_world
+   *  template so it works outside the 24h service window. Used by the
+   *  "Enviar prueba" button in the connector card to smoke-test the
+   *  BISUAT and to exercise whatsapp_business_messaging for App Review. */
+  metaTestSend: (tenantId: string, body: MetaTestSendInput) =>
+    call<MetaTestSendResult>(
+      `/admin/tenants/${tenantId}/integrations/meta/test-send`,
       { method: "POST", body },
     ),
 

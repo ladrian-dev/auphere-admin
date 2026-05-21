@@ -15,6 +15,8 @@ import { BackendError, backend } from "@/lib/backend";
 import type {
   MetaSignupInput,
   MetaSignupResult,
+  MetaTestSendInput,
+  MetaTestSendResult,
   WhatsAppPreview,
 } from "@/lib/backend";
 import { requireSession } from "@/lib/session";
@@ -105,6 +107,27 @@ export async function connectMetaWhatsAppSetupAction(
     });
     revalidatePath(`/tenants/${tenantId}/connectors`);
     revalidatePath(`/tenants/${tenantId}`);
+    return { ok: true, data: result };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+/**
+ * Send a one-off test message from the tenant's connected Meta WhatsApp
+ * channel. Used by the "Enviar prueba" button to smoke-test the BISUAT
+ * and to exercise whatsapp_business_messaging for App Review evidence.
+ */
+export async function metaTestSendAction(
+  tenantId: string,
+  body: MetaTestSendInput,
+): Promise<ActionResult<MetaTestSendResult>> {
+  await requireSession();
+  try {
+    const result = await backend.metaTestSend(tenantId, body);
+    if (!result) {
+      return { ok: false, error: "El backend no devolvió wamid." };
+    }
     return { ok: true, data: result };
   } catch (err) {
     return { ok: false, error: toError(err) };

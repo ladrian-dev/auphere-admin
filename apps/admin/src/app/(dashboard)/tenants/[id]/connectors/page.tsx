@@ -31,6 +31,7 @@ import {
   ReissueConsentButton,
   SyncButton,
 } from "./connector-actions";
+import { MetaTestSendDialog } from "./meta-test-send-dialog";
 import { MetaWhatsAppSetupDialog } from "./meta-signup-dialog";
 import {
   AgendaProSetupDialog,
@@ -196,6 +197,10 @@ function InstalledConnectorCard({
                 slug={tc.connector_slug}
                 displayName={tc.connector_display_name}
               />
+            ) : null}
+            {tc.connector_slug === "whatsapp_meta" &&
+            tc.status === "connected" ? (
+              <MetaTestSendDialog tenantId={tenantId} />
             ) : null}
             {tc.status === "connected" ||
             tc.status === "partial" ||

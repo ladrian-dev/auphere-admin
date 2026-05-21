@@ -16,6 +16,7 @@ Test matrix:
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -333,3 +334,157 @@ async def test_meta_signup_unknown_tenant_returns_404(client, admin_headers):
         headers=admin_headers,
     )
     assert r.status_code == 404
+
+
+# ── test-send ──────────────────────────────────────────────────────────────
+
+
+async def _seed_meta_credentials(db_session, tenant_id) -> None:
+    """Helper to put a tenant_credentials row in place so test-send has a
+    BISUAT to read."""
+    from nexus_channels.whatsapp_meta.credentials import MetaCredentials
+    from nexus_api.db.models import TenantCredentials
+    from sqlalchemy import text as sql_text
+
+    creds = MetaCredentials(
+        bisuat="EAA-fake-bisuat",
+        waba_id="WABA_TEST",
+        phone_number_id="PN_TEST",
+        business_id="BIZ_TEST",
+        display_phone_number="+56933334444",
+        verify_token="dev-meta-verify-token-change-me",
+        mode="cloud_api",
+    )
+    async with db_session.begin():
+        await db_session.execute(
+            sql_text("SELECT set_config('app.tenant_id', :t, true)"),
+            {"t": str(tenant_id)},
+        )
+        await db_session.execute(sql_text("SET LOCAL ROLE nexus_app"))
+        db_session.add(
+            TenantCredentials(
+                tenant_id=tenant_id,
+                integration="meta_whatsapp",
+                encrypted_payload=creds.to_payload(),
+                needs_reauth=False,
+            )
+        )
+
+
+async def test_meta_test_send_template_returns_wamid(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+    await _seed_meta_credentials(db_session, tenant_id)
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        sent = mock.post("/PN_TEST/messages").respond(
+            200,
+            json={
+                "messaging_product": "whatsapp",
+                "contacts": [{"input": "+56911112222", "wa_id": "56911112222"}],
+                "messages": [{"id": "wamid.HBg-TEST-1", "message_status": "accepted"}],
+            },
+        )
+        r = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/test-send",
+            json={"to": "+56911112222"},  # defaults: kind=template, hello_world, en_US
+            headers=admin_headers,
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["wamid"] == "wamid.HBg-TEST-1"
+    assert body["kind"] == "template"
+    # Verify the body Meta received carried the template, not text.
+    assert sent.called
+    payload = json.loads(sent.calls.last.request.content)
+    assert payload["type"] == "template"
+    assert payload["template"]["name"] == "hello_world"
+    assert payload["template"]["language"]["code"] == "en_US"
+    assert payload["to"] == "+56911112222"
+
+
+async def test_meta_test_send_text_requires_text_body(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+    await _seed_meta_credentials(db_session, tenant_id)
+    r = await client.post(
+        f"/admin/tenants/{tenant_id}/integrations/meta/test-send",
+        json={"to": "+56911112222", "kind": "text"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 400
+    assert "text_body" in r.json()["detail"]
+
+
+async def test_meta_test_send_text_sends_payload(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+    await _seed_meta_credentials(db_session, tenant_id)
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        sent = mock.post("/PN_TEST/messages").respond(
+            200,
+            json={
+                "messages": [{"id": "wamid.HBg-TEXT", "message_status": "accepted"}],
+            },
+        )
+        r = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/test-send",
+            json={"to": "+56911112222", "kind": "text", "text_body": "Hola mundo"},
+            headers=admin_headers,
+        )
+    assert r.status_code == 200, r.text
+    assert r.json()["wamid"] == "wamid.HBg-TEXT"
+    payload = json.loads(sent.calls.last.request.content)
+    assert payload["type"] == "text"
+    assert payload["text"]["body"] == "Hola mundo"
+
+
+async def test_meta_test_send_returns_404_when_no_credentials(
+    client, admin_headers, seed_tenants
+):
+    """No Embedded Signup completed yet → no credentials row → 404."""
+    tenant_id = seed_tenants["a"]
+    r = await client.post(
+        f"/admin/tenants/{tenant_id}/integrations/meta/test-send",
+        json={"to": "+56911112222"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 404
+
+
+async def test_meta_test_send_surfaces_meta_400(
+    client, admin_headers, seed_tenants, db_session
+):
+    """If Meta rejects the send (eg recipient outside service window for
+    a text), the endpoint returns 400 with Meta's message."""
+    tenant_id = seed_tenants["a"]
+    await _seed_meta_credentials(db_session, tenant_id)
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.post("/PN_TEST/messages").respond(
+            400,
+            json={
+                "error": {
+                    "message": "Re-engagement message",
+                    "code": 131047,
+                    "type": "OAuthException",
+                }
+            },
+        )
+        r = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/test-send",
+            json={"to": "+56911112222", "kind": "text", "text_body": "ping"},
+            headers=admin_headers,
+        )
+    assert r.status_code == 400
+    assert "Re-engagement" in r.json()["detail"]
+
+
+async def test_meta_test_send_requires_admin_token(client, seed_tenants):
+    tenant_id = seed_tenants["a"]
+    r = await client.post(
+        f"/admin/tenants/{tenant_id}/integrations/meta/test-send",
+        json={"to": "+56911112222"},
+    )
+    assert r.status_code == 401
