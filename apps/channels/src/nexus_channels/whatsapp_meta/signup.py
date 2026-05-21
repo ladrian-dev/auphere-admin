@@ -1,0 +1,315 @@
+"""Embedded Signup v4 orchestration.
+
+The frontend (Auphere admin panel) opens Facebook Login for Business with
+one of the two configuration IDs registered for the app:
+
+- ``meta_config_id_wa_cloud_api`` — Cloud-only flow.
+- ``meta_config_id_wa_coexistence`` — preserves the tenant's WA Business
+  mobile app alongside the Cloud API.
+
+On success Meta returns an OAuth ``code`` and a ``data`` envelope carrying
+``waba_id`` / ``phone_number_id`` / ``business_id``. The backend ingests
+this via :meth:`EmbeddedSignupOrchestrator.complete` and performs the
+post-signup dance:
+
+1. Exchange ``code`` → BISUAT via the Graph OAuth endpoint.
+2. ``POST /{phone_number_id}/register`` with a generated PIN.
+3. ``POST /{waba_id}/subscribed_apps`` with ``override_callback_uri`` and a
+   per-tenant ``verify_token``.
+4. ``GET /{phone_number_id}`` to capture ``display_phone_number`` and
+   ``quality_rating`` for the ``channels`` row.
+5. Persist :class:`MetaCredentials` under the active tenant.
+6. Upsert / activate the ``channels`` row with ``provider="meta"``.
+7. Invalidate the tenant-resolver Redis cache for the business phone so the
+   next webhook routes correctly.
+
+If any step fails after the BISUAT exists, the orchestrator does NOT roll
+back the BISUAT — it persists ``needs_reauth=True`` so the operator panel
+shows what happened and the owner can retry from the panel.
+"""
+
+from __future__ import annotations
+
+import secrets
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any, Literal, cast
+
+import structlog
+from nexus_api.core.tenant_context import require_current_tenant
+from nexus_api.core.tenant_resolver import invalidate_tenant_cache
+from nexus_api.db.models import Channel
+from redis.asyncio import Redis
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from nexus_channels.whatsapp_meta.credentials import (
+    MetaCredentials,
+    MetaCredentialsRepository,
+)
+from nexus_channels.whatsapp_meta.exceptions import (
+    RegisterPhoneError,
+    SubscribeWebhookError,
+    TokenExchangeError,
+)
+from nexus_channels.whatsapp_meta.meta_client import MetaClient
+
+log = structlog.get_logger(__name__)
+
+
+@dataclass(slots=True, frozen=True)
+class SignupIngressPayload:
+    """What the Embedded Signup frontend sends to the backend.
+
+    ``code`` is single-use. ``waba_id`` / ``phone_number_id`` / ``business_id``
+    come from the ``data`` envelope Meta returns alongside the OAuth code.
+    ``mode`` is ``cloud_api`` for the Cloud-only config ID and
+    ``coexistence`` for the Coexistence config ID — the frontend picks which.
+    """
+
+    code: str
+    waba_id: str
+    phone_number_id: str
+    business_id: str
+    mode: Literal["cloud_api", "coexistence"] = "cloud_api"
+
+
+@dataclass(slots=True)
+class SignupResult:
+    """Returned to the API layer for the panel UI."""
+
+    channel_id: uuid.UUID
+    waba_id: str
+    phone_number_id: str
+    display_phone_number: str
+    mode: str
+    bisuat_expires_at: datetime | None
+
+
+class EmbeddedSignupOrchestrator:
+    """Runs the post-signup steps end-to-end.
+
+    Construct one per request — it holds the active SQLAlchemy session and
+    the tenant-scoped credentials repository.
+    """
+
+    def __init__(
+        self,
+        *,
+        session: AsyncSession,
+        redis: Redis,
+        client: MetaClient,
+        app_id: str,
+        webhook_callback_url: str,
+    ) -> None:
+        self._session = session
+        self._redis = redis
+        self._client = client
+        self._app_id = app_id
+        self._webhook_callback_url = webhook_callback_url
+        self._credentials = MetaCredentialsRepository(session)
+
+    async def complete(self, payload: SignupIngressPayload) -> SignupResult:
+        tenant_id = require_current_tenant()
+
+        # 1) Exchange OAuth code → BISUAT
+        token_envelope = await self._client.exchange_code(
+            app_id=self._app_id,
+            code=payload.code,
+        )
+        bisuat = token_envelope.get("access_token")
+        expires_in = token_envelope.get("expires_in")
+        if not isinstance(bisuat, str) or not bisuat:
+            raise TokenExchangeError("missing access_token in OAuth response")
+        expires_at: datetime | None = None
+        if isinstance(expires_in, int) and expires_in > 0:
+            expires_at = datetime.now(tz=UTC) + timedelta(seconds=expires_in)
+
+        # 2) Register the phone number under our app
+        pin = _generate_pin()
+        try:
+            await self._client.register_phone(
+                phone_number_id=payload.phone_number_id,
+                access_token=bisuat,
+                pin=pin,
+            )
+        except Exception as exc:
+            raise RegisterPhoneError(
+                f"register_phone failed for pn={payload.phone_number_id}: {exc}"
+            ) from exc
+
+        # 3) Subscribe the WABA with a per-tenant verify token + override URL
+        verify_token = _generate_verify_token()
+        try:
+            await self._client.subscribe_app(
+                waba_id=payload.waba_id,
+                access_token=bisuat,
+                override_callback_uri=self._webhook_callback_url,
+                verify_token=verify_token,
+            )
+        except Exception as exc:
+            raise SubscribeWebhookError(
+                f"subscribed_apps failed for waba={payload.waba_id}: {exc}"
+            ) from exc
+
+        # 4) Read phone metadata for display / quality fields
+        phone_info = await self._client.get_phone_number(
+            phone_number_id=payload.phone_number_id,
+            access_token=bisuat,
+        )
+        display_phone = _normalise_e164(phone_info.get("display_phone_number"))
+        if not display_phone:
+            # No display phone means we cannot route webhooks; surface
+            # explicitly rather than letting Step 7 fail later.
+            raise RegisterPhoneError(
+                f"phone_number_id {payload.phone_number_id} has no display_phone_number"
+            )
+
+        # 5) Persist credentials
+        credentials = MetaCredentials(
+            bisuat=bisuat,
+            bisuat_expires_at=expires_at,
+            waba_id=payload.waba_id,
+            phone_number_id=payload.phone_number_id,
+            business_id=payload.business_id,
+            display_phone_number=display_phone,
+            verify_token=verify_token,
+            mode=payload.mode,
+            external_user_id_enrolled=False,
+        )
+        await self._credentials.upsert(credentials)
+
+        # 6) Upsert channels row (provider="meta")
+        channel_id = await self._upsert_channel(
+            display_phone=display_phone,
+            waba_id=payload.waba_id,
+            phone_number_id=payload.phone_number_id,
+            business_id=payload.business_id,
+            mode=payload.mode,
+            quality_rating=phone_info.get("quality_rating"),
+            verified_name=phone_info.get("verified_name"),
+            messaging_tier=phone_info.get("messaging_limit_tier"),
+        )
+
+        # 7) Invalidate the tenant-resolver cache so the next webhook hits
+        # the freshly-written channels row instead of any prior YCloud
+        # mapping that might exist from a migration window.
+        await invalidate_tenant_cache(self._redis, "meta", display_phone)
+        await invalidate_tenant_cache(self._redis, "ycloud", display_phone)
+
+        log.info(
+            "meta.signup.complete",
+            tenant_id=str(tenant_id),
+            channel_id=str(channel_id),
+            waba_id=payload.waba_id,
+            phone_number_id=payload.phone_number_id,
+            display_phone=display_phone,
+            mode=payload.mode,
+        )
+
+        return SignupResult(
+            channel_id=channel_id,
+            waba_id=payload.waba_id,
+            phone_number_id=payload.phone_number_id,
+            display_phone_number=display_phone,
+            mode=payload.mode,
+            bisuat_expires_at=expires_at,
+        )
+
+    async def _upsert_channel(
+        self,
+        *,
+        display_phone: str,
+        waba_id: str,
+        phone_number_id: str,
+        business_id: str,
+        mode: str,
+        quality_rating: Any,
+        verified_name: Any,
+        messaging_tier: Any,
+    ) -> uuid.UUID:
+        """Insert/update the ``channels`` row for this WABA.
+
+        ``provider_identifier`` is the E.164 business phone — same shape as
+        the YCloud row. ``config`` JSONB holds the Meta-specific IDs so the
+        webhook layer can read them without a join.
+        """
+        tenant_id = require_current_tenant()
+        from nexus_api.db.models import ChannelStatus, ChannelType
+
+        existing = await self._session.execute(
+            select(Channel).where(
+                Channel.provider == "meta",
+                Channel.provider_identifier == display_phone,
+            )
+        )
+        row = existing.scalar_one_or_none()
+        config: dict[str, Any] = {
+            "waba_id": waba_id,
+            "phone_number_id": phone_number_id,
+            "business_id": business_id,
+            "mode": mode,
+            "verified_name": verified_name if isinstance(verified_name, str) else None,
+            "quality_rating": (
+                quality_rating if isinstance(quality_rating, str) else None
+            ),
+            "messaging_tier": (
+                messaging_tier if isinstance(messaging_tier, str) else None
+            ),
+        }
+        now = datetime.now(tz=UTC)
+        if row is None:
+            row = Channel(
+                tenant_id=tenant_id,
+                type=ChannelType.WHATSAPP,
+                provider="meta",
+                provider_identifier=display_phone,
+                config=config,
+                status=ChannelStatus.ACTIVE,
+                last_provider_synced_at=now,
+            )
+            self._session.add(row)
+            await self._session.flush()
+        else:
+            row.config = config
+            row.status = ChannelStatus.ACTIVE
+            row.last_provider_synced_at = now
+            await self._session.flush()
+        # ``row.id`` is typed as ``Mapped[UUID]`` — cast for mypy strict.
+        return cast(uuid.UUID, row.id)
+
+
+# ── helpers ────────────────────────────────────────────────────────────────
+
+
+def _generate_pin() -> str:
+    """6-digit PIN used to re-register a phone number under our app.
+
+    The PIN is stored implicitly inside Meta — it isn't echoed back to us.
+    If the same number is re-registered later (operator-driven), the same
+    PIN must be supplied; we therefore persist it inside
+    :class:`MetaCredentials` as part of the encrypted payload.
+
+    Generating cryptographically random PINs (not zero-padded predictable
+    sequences) makes a re-register from a different actor impossible
+    without our DB row.
+    """
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _generate_verify_token() -> str:
+    """Per-tenant verify token for the webhook GET handshake.
+
+    Meta echoes this on the initial ``hub.verify_token`` check after
+    ``subscribed_apps``. We persist it alongside the BISUAT and look it up
+    on the webhook GET. Length: 32 hex chars (128 bits) — generous against
+    brute force without exceeding Meta's 100-char input limit.
+    """
+    return secrets.token_hex(16)
+
+
+def _normalise_e164(phone: Any) -> str | None:
+    if not isinstance(phone, str) or not phone:
+        return None
+    return phone if phone.startswith("+") else f"+{phone}"

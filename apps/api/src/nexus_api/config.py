@@ -48,6 +48,41 @@ class Settings(BaseSettings):
     # YCloud webhook signature timestamp tolerance (replay protection).
     ycloud_signature_tolerance_seconds: int = 300
 
+    # Meta WhatsApp Cloud API — direct Tech Provider integration.
+    # Auphere replaces YCloud progressively per-tenant; YCloud and Meta
+    # coexist in the database (``channels.provider`` discriminates) until
+    # the cutover finishes.
+    #
+    # App ID and Configuration IDs are PUBLIC values from the Meta App
+    # dashboard (https://developers.facebook.com/apps/957213733862330/).
+    # The App Secret and Webhook Verify Token live in Doppler — change
+    # them via env vars only, never inline.
+    meta_app_id: str = "957213733862330"
+    meta_app_secret: str = "dev-meta-app-secret-change-me"
+    # The webhook verify token used for the *app-level* callback (Meta's
+    # GET ``hub.verify_token`` handshake when the URL is registered in the
+    # app dashboard). Per-tenant verify tokens used by ``subscribed_apps``
+    # overrides live in ``tenant_credentials.encrypted_payload``.
+    meta_webhook_verify_token: str = "dev-meta-verify-token-change-me"
+    # Configuration IDs for Embedded Signup v4 — frontend passes one of
+    # these to ``FB.login({config_id})``.
+    meta_config_id_wa_cloud_api: str = "1976547999669619"
+    meta_config_id_wa_coexistence: str = "27787800820807899"
+    # Business Manager hosting the Meta App (Facelad SpA — Tech Provider).
+    meta_business_manager_id: str = "342042661294231"
+    # Graph API version pinned at the client level. Bump as Meta rolls
+    # new majors — keep the pin so the deprecation surface is explicit.
+    meta_graph_api_version: str = "v22.0"
+    # Webhook callback URL passed to ``subscribed_apps`` per tenant.
+    # Defaults to the production webhooks subdomain; override in dev via
+    # ``NEXUS_META_WEBHOOK_CALLBACK_URL`` (an ngrok tunnel pointing to
+    # ``/webhook/meta`` on the local API).
+    meta_webhook_callback_url: str = "https://webhooks.auphere.com/webhook/meta"
+    # Toggle ``appsecret_proof`` on outbound Graph API calls. Auphere has
+    # ``Require App Secret Proof`` ON in the Meta App since 2026-05-21, so
+    # this stays True in every environment that talks to the real API.
+    meta_require_appsecret_proof: bool = True
+
     # Operator phone (E.164) used as recipient for ``alert_*`` templates when
     # the tenant has not configured ``tenants.owner_phone``. In Phase 1 this
     # is Lee. Templates for the tenant owner override this when present.
