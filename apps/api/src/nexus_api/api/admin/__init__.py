@@ -7,6 +7,7 @@ from nexus_api.api.admin import (
     evals,
     integrations,
     isolation,
+    meta_signup,
     prompt_library,
     screenshots,
     tenants,
@@ -24,3 +25,4 @@ router.include_router(screenshots.router)
 router.include_router(isolation.router)
 router.include_router(evals.router)
 router.include_router(prompt_library.router)
+router.include_router(meta_signup.router)
