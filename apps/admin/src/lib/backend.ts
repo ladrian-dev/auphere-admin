@@ -161,8 +161,12 @@ export type MetaSignupResult = {
 export type MetaSignupInput = {
   code: string;
   waba_id: string;
-  phone_number_id: string;
-  business_id: string;
+  // phone_number_id and business_id are present in the Cloud API
+  // postMessage payload but absent in Coexistence (Meta only sends
+  // waba_id in FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING). The backend
+  // derives them from GET /{waba_id}/phone_numbers when missing.
+  phone_number_id?: string;
+  business_id?: string;
   mode: "cloud_api" | "coexistence";
 };
 

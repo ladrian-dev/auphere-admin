@@ -284,3 +284,151 @@ def test_parse_template_status_event() -> None:
     assert update.language == "es_CL"
     assert update.new_status == "APPROVED"
     assert update.waba_id == "WABA_1"
+
+
+# ── Coexistence-only events ────────────────────────────────────────────────
+
+
+from nexus_channels.whatsapp_meta.webhook_adapter import (  # noqa: E402
+    parse_app_state_sync,
+    parse_history_sync,
+    parse_message_echo,
+)
+
+
+def test_parse_message_echo_extracts_outbound_from_app():
+    payload = {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "WABA_COEX",
+                "changes": [
+                    {
+                        "field": "smb_message_echoes",
+                        "value": {
+                            "messaging_product": "whatsapp",
+                            "metadata": {
+                                "display_phone_number": "56999998888",
+                                "phone_number_id": "PN_COEX",
+                            },
+                            "messages": [
+                                {
+                                    "id": "wamid.echo-1",
+                                    "from": "56999998888",
+                                    "to": "56911112222",
+                                    "timestamp": "1716300000",
+                                    "type": "text",
+                                    "text": {"body": "respondido desde el movil"},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    echo = parse_message_echo(payload)
+    assert echo is not None
+    assert echo.waba_id == "WABA_COEX"
+    assert echo.phone_number_id == "PN_COEX"
+    assert echo.provider_message_id == "wamid.echo-1"
+    assert echo.sender_identifier == "56999998888"
+    assert echo.recipient_identifier == "56911112222"
+    assert echo.text == "respondido desde el movil"
+
+
+def test_parse_message_echo_returns_none_when_field_missing():
+    # Plain inbound payload — wrong field, parser must not synthesize an echo.
+    payload = {
+        "object": "whatsapp_business_account",
+        "entry": [{"id": "W", "changes": [{"field": "messages", "value": {}}]}],
+    }
+    assert parse_message_echo(payload) is None
+
+
+def test_parse_app_state_sync_counts_contacts_and_has_more():
+    payload = {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "WABA_COEX",
+                "changes": [
+                    {
+                        "field": "smb_app_state_sync",
+                        "value": {
+                            "metadata": {"phone_number_id": "PN_COEX"},
+                            "contacts": [
+                                {"wa_id": "56911110001", "name": "A"},
+                                {"wa_id": "56911110002", "name": "B"},
+                                {"wa_id": "56911110003", "name": "C"},
+                            ],
+                            "has_more": True,
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    sync = parse_app_state_sync(payload)
+    assert sync is not None
+    assert sync.contact_count == 3
+    assert sync.has_more is True
+    assert sync.phone_number_id == "PN_COEX"
+
+
+def test_parse_history_sync_counts_messages_across_threads():
+    payload = {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "WABA_COEX",
+                "changes": [
+                    {
+                        "field": "history",
+                        "value": {
+                            "metadata": {"phone_number_id": "PN_COEX"},
+                            "history": [
+                                {
+                                    "messages": [
+                                        {"id": "h1"},
+                                        {"id": "h2"},
+                                    ]
+                                },
+                                {"messages": [{"id": "h3"}]},
+                            ],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    hist = parse_history_sync(payload)
+    assert hist is not None
+    assert hist.message_count == 3
+    assert hist.error_code is None
+
+
+def test_parse_history_sync_surfaces_opt_out_error_code():
+    """error_code 2593109 = business opted out of sharing history."""
+    payload = {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "WABA_COEX",
+                "changes": [
+                    {
+                        "field": "history",
+                        "value": {
+                            "metadata": {"phone_number_id": "PN_COEX"},
+                            "error_code": 2593109,
+                            "history": [],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    hist = parse_history_sync(payload)
+    assert hist is not None
+    assert hist.message_count == 0
+    assert hist.error_code == 2593109

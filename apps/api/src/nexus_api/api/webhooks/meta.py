@@ -36,7 +36,10 @@ from nexus_channels.base import InboundMessage
 from nexus_channels.whatsapp_meta import (
     MetaSignatureError,
     extract_business_phone,
+    parse_app_state_sync,
+    parse_history_sync,
     parse_inbound,
+    parse_message_echo,
     parse_status_callback,
     parse_template_status,
     verify_meta_signature,
@@ -153,6 +156,15 @@ async def meta_webhook(
                 handled = True
             elif field == "message_template_status_update":
                 await _handle_template_status(payload, session=session)
+                handled = True
+            elif field == "smb_message_echoes":
+                await _handle_message_echo(payload)
+                handled = True
+            elif field == "smb_app_state_sync":
+                await _handle_app_state_sync(payload)
+                handled = True
+            elif field == "history":
+                await _handle_history_sync(payload)
                 handled = True
             else:
                 log.info("webhook.meta.unhandled_field", field=field)
@@ -391,6 +403,62 @@ async def _handle_template_status(
         new_status=update.new_status,
     )
     return {"status": "ok"}
+
+
+# ── Coexistence-only events ────────────────────────────────────────────────
+#
+# The three handlers below accept-and-log only. Persisting message echoes,
+# contact snapshots, and historical messages requires a background worker
+# (history alone can dump tens of thousands of messages over several
+# hours); doing it inline on the webhook hot path would block Meta's
+# retry budget. The dataclasses are surfaced in structured logs so the
+# operator panel and observability stack can see the volume even before
+# the workers land. When the workers exist they'll consume the same
+# parsers — no schema change needed here.
+
+
+async def _handle_message_echo(payload: dict[str, Any]) -> dict[str, Any]:
+    echo = parse_message_echo(payload)
+    if echo is None:
+        return {"status": "ignored"}
+    log.info(
+        "webhook.meta.smb_message_echo",
+        waba_id=echo.waba_id,
+        phone_number_id=echo.phone_number_id,
+        wamid=echo.provider_message_id,
+        from_=echo.sender_identifier,
+        to=echo.recipient_identifier,
+        has_text=echo.text is not None,
+    )
+    return {"status": "acknowledged"}
+
+
+async def _handle_app_state_sync(payload: dict[str, Any]) -> dict[str, Any]:
+    sync = parse_app_state_sync(payload)
+    if sync is None:
+        return {"status": "ignored"}
+    log.info(
+        "webhook.meta.smb_app_state_sync",
+        waba_id=sync.waba_id,
+        phone_number_id=sync.phone_number_id,
+        contact_count=sync.contact_count,
+        has_more=sync.has_more,
+    )
+    return {"status": "acknowledged"}
+
+
+async def _handle_history_sync(payload: dict[str, Any]) -> dict[str, Any]:
+    hist = parse_history_sync(payload)
+    if hist is None:
+        return {"status": "ignored"}
+    log.info(
+        "webhook.meta.history_sync",
+        waba_id=hist.waba_id,
+        phone_number_id=hist.phone_number_id,
+        message_count=hist.message_count,
+        error_code=hist.error_code,
+    )
+    return {"status": "acknowledged"}
 
 
 # ── helpers ────────────────────────────────────────────────────────────────

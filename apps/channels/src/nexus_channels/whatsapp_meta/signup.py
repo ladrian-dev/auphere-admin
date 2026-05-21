@@ -62,16 +62,21 @@ log = structlog.get_logger(__name__)
 class SignupIngressPayload:
     """What the Embedded Signup frontend sends to the backend.
 
-    ``code`` is single-use. ``waba_id`` / ``phone_number_id`` / ``business_id``
-    come from the ``data`` envelope Meta returns alongside the OAuth code.
-    ``mode`` is ``cloud_api`` for the Cloud-only config ID and
-    ``coexistence`` for the Coexistence config ID — the frontend picks which.
+    ``code`` is single-use. ``waba_id`` always present.
+    ``phone_number_id`` / ``business_id`` come from the ``data`` envelope
+    Meta returns alongside the OAuth code — but ONLY for the Cloud API
+    flow. The Coexistence ``FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING``
+    event only carries ``waba_id`` (the orchestrator derives the rest from
+    ``GET /{waba_id}/phone_numbers``). ``mode`` is ``cloud_api`` for the
+    Cloud-only config ID and ``coexistence`` for the Coexistence config ID
+    — the frontend picks which based on which configuration ID drove
+    FB.login.
     """
 
     code: str
     waba_id: str
-    phone_number_id: str
-    business_id: str
+    phone_number_id: str | None = None
+    business_id: str | None = None
     mode: Literal["cloud_api", "coexistence"] = "cloud_api"
 
 
@@ -112,6 +117,7 @@ class EmbeddedSignupOrchestrator:
 
     async def complete(self, payload: SignupIngressPayload) -> SignupResult:
         tenant_id = require_current_tenant()
+        is_coex = payload.mode == "coexistence"
 
         # 1) Exchange OAuth code → BISUAT
         token_envelope = await self._client.exchange_code(
@@ -126,18 +132,46 @@ class EmbeddedSignupOrchestrator:
         if isinstance(expires_in, int) and expires_in > 0:
             expires_at = datetime.now(tz=UTC) + timedelta(seconds=expires_in)
 
-        # 2) Register the phone number under our app
-        pin = _generate_pin()
-        try:
-            await self._client.register_phone(
-                phone_number_id=payload.phone_number_id,
+        # 1b) Coexistence: the FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING event
+        # only carries waba_id. Derive phone_number_id from the WABA before
+        # the steps that need it. The doc guarantees a Coexistence WABA
+        # binds exactly one phone number (the one already in the mobile
+        # app), so taking ``data[0]`` is safe — guard anyway in case Meta
+        # ever returns an empty list mid-onboarding.
+        phone_number_id = payload.phone_number_id
+        business_id = payload.business_id or ""
+        if not phone_number_id:
+            phones = await self._client.list_phone_numbers(
+                waba_id=payload.waba_id,
                 access_token=bisuat,
-                pin=pin,
             )
-        except Exception as exc:
-            raise RegisterPhoneError(
-                f"register_phone failed for pn={payload.phone_number_id}: {exc}"
-            ) from exc
+            phones_data = phones.get("data") if isinstance(phones, dict) else None
+            first = phones_data[0] if isinstance(phones_data, list) and phones_data else None
+            if not isinstance(first, dict) or not isinstance(first.get("id"), str):
+                raise RegisterPhoneError(
+                    f"waba {payload.waba_id} returned no phone numbers — "
+                    f"cannot complete signup"
+                )
+            phone_number_id = first["id"]
+
+        # 2) Register the phone number under our app — Cloud API ONLY.
+        # The Coexistence doc explicitly says to skip this step: the
+        # number is already registered as part of the QR-binding flow.
+        # Calling /register against a Coexistence number returns
+        # CallingNotAllowed and breaks the WABA, so the branch is hard.
+        if not is_coex:
+            assert phone_number_id is not None  # ensured for Cloud API by frontend
+            pin = _generate_pin()
+            try:
+                await self._client.register_phone(
+                    phone_number_id=phone_number_id,
+                    access_token=bisuat,
+                    pin=pin,
+                )
+            except Exception as exc:
+                raise RegisterPhoneError(
+                    f"register_phone failed for pn={phone_number_id}: {exc}"
+                ) from exc
 
         # 3) Subscribe the WABA with a per-tenant verify token + override URL
         verify_token = _generate_verify_token()
@@ -155,7 +189,7 @@ class EmbeddedSignupOrchestrator:
 
         # 4) Read phone metadata for display / quality fields
         phone_info = await self._client.get_phone_number(
-            phone_number_id=payload.phone_number_id,
+            phone_number_id=phone_number_id,
             access_token=bisuat,
         )
         display_phone = _normalise_e164(phone_info.get("display_phone_number"))
@@ -163,7 +197,7 @@ class EmbeddedSignupOrchestrator:
             # No display phone means we cannot route webhooks; surface
             # explicitly rather than letting Step 7 fail later.
             raise RegisterPhoneError(
-                f"phone_number_id {payload.phone_number_id} has no display_phone_number"
+                f"phone_number_id {phone_number_id} has no display_phone_number"
             )
 
         # 5) Persist credentials
@@ -171,8 +205,8 @@ class EmbeddedSignupOrchestrator:
             bisuat=bisuat,
             bisuat_expires_at=expires_at,
             waba_id=payload.waba_id,
-            phone_number_id=payload.phone_number_id,
-            business_id=payload.business_id,
+            phone_number_id=phone_number_id,
+            business_id=business_id,
             display_phone_number=display_phone,
             verify_token=verify_token,
             mode=payload.mode,
@@ -184,8 +218,8 @@ class EmbeddedSignupOrchestrator:
         channel_id = await self._upsert_channel(
             display_phone=display_phone,
             waba_id=payload.waba_id,
-            phone_number_id=payload.phone_number_id,
-            business_id=payload.business_id,
+            phone_number_id=phone_number_id,
+            business_id=business_id,
             mode=payload.mode,
             quality_rating=phone_info.get("quality_rating"),
             verified_name=phone_info.get("verified_name"),
@@ -203,7 +237,7 @@ class EmbeddedSignupOrchestrator:
             tenant_id=str(tenant_id),
             channel_id=str(channel_id),
             waba_id=payload.waba_id,
-            phone_number_id=payload.phone_number_id,
+            phone_number_id=phone_number_id,
             display_phone=display_phone,
             mode=payload.mode,
         )
@@ -211,7 +245,7 @@ class EmbeddedSignupOrchestrator:
         return SignupResult(
             channel_id=channel_id,
             waba_id=payload.waba_id,
-            phone_number_id=payload.phone_number_id,
+            phone_number_id=phone_number_id,
             display_phone_number=display_phone,
             mode=payload.mode,
             bisuat_expires_at=expires_at,

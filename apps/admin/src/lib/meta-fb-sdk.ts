@@ -54,30 +54,44 @@ interface FbLoginResponse {
 
 /** What the Embedded Signup popup attaches to the parent window after the
  *  user finishes. Meta sends a ``message`` event with ``type`` =
- *  ``'WA_EMBEDDED_SIGNUP'`` and ``event`` = ``'FINISH'``; we capture the
- *  WABA / phone / business ids from there. The OAuth ``code`` comes
- *  *separately* via the ``FB.login`` callback. */
+ *  ``'WA_EMBEDDED_SIGNUP'`` and one of two events depending on the flow:
+ *
+ *   - Cloud API → ``event: 'FINISH'`` with ``data.waba_id``,
+ *     ``data.phone_number_id``, ``data.business_id``.
+ *   - Coexistence → ``event: 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'``
+ *     with ONLY ``data.waba_id``. The backend derives the rest from
+ *     ``GET /{waba_id}/phone_numbers``.
+ *
+ *  The OAuth ``code`` comes *separately* via the ``FB.login`` callback. */
 export interface MetaSignupEnvelope {
   code: string;
   waba_id: string;
-  phone_number_id: string;
-  business_id: string;
+  phone_number_id?: string;
+  business_id?: string;
 }
 
+/** Env-var reads use DOT notation (``process.env.NEXT_PUBLIC_*``) so
+ *  Next.js can statically inline the values into the client bundle at
+ *  build time. Bracket notation (``process.env[name]``) would NOT be
+ *  replaced — it returns ``undefined`` at runtime in the browser, even
+ *  when the variable exists in Vercel's environment. Learned the hard
+ *  way 2026-05-21. Keep this pattern.
+ */
+const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID;
 const META_GRAPH_VERSION =
   process.env.NEXT_PUBLIC_META_GRAPH_API_VERSION ?? "v22.0";
+export const META_CONFIG_ID_CLOUD_API =
+  process.env.NEXT_PUBLIC_META_CONFIG_ID_WA_CLOUD_API;
+export const META_CONFIG_ID_COEXISTENCE =
+  process.env.NEXT_PUBLIC_META_CONFIG_ID_WA_COEXISTENCE;
 
-/** Read-once env var with a friendly thrown error on misconfiguration —
- *  the SDK silently no-ops on bad ``appId``, so we'd rather fail loud at
- *  load time than wait for a black popup. */
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) {
+function requireAppId(): string {
+  if (!META_APP_ID) {
     throw new Error(
-      `Missing env var ${name}. Add it to Vercel + .env.local before using the Meta wizard.`,
+      "Missing env var NEXT_PUBLIC_META_APP_ID. Add it to Vercel + .env.local and rebuild.",
     );
   }
-  return v;
+  return META_APP_ID;
 }
 
 let sdkPromise: Promise<FbSdk> | null = null;
@@ -90,7 +104,7 @@ export function loadFbSdk(): Promise<FbSdk> {
   }
   if (sdkPromise) return sdkPromise;
   sdkPromise = new Promise<FbSdk>((resolve, reject) => {
-    const appId = requireEnv("NEXT_PUBLIC_META_APP_ID");
+    const appId = requireAppId();
     if (window.FB) {
       window.FB.init({ appId, version: META_GRAPH_VERSION });
       resolve(window.FB);
@@ -116,6 +130,14 @@ export function loadFbSdk(): Promise<FbSdk> {
   return sdkPromise;
 }
 
+/** Embedded Signup mode. Determines which ``featureType`` we pass to
+ *  ``FB.login`` — the configuration ID alone does NOT differentiate the
+ *  flow; Meta dispatches based on extras.featureType. Learned the hard
+ *  way 2026-05-21 when both modes were sending the user through the
+ *  same wizard.
+ */
+export type SignupMode = "cloud_api" | "coexistence";
+
 /**
  * Open the Embedded Signup popup with the chosen configuration and
  * resolve with the data the backend needs to complete signup.
@@ -128,7 +150,7 @@ export function loadFbSdk(): Promise<FbSdk> {
  */
 export async function loginWithMeta(
   configId: string,
-  extras?: Record<string, unknown>,
+  mode: SignupMode = "cloud_api",
 ): Promise<MetaSignupEnvelope> {
   const sdk = await loadFbSdk();
 
@@ -137,18 +159,30 @@ export async function loginWithMeta(
   // resolves).
   const dataPromise = new Promise<{
     waba_id: string;
-    phone_number_id: string;
-    business_id: string;
+    phone_number_id?: string;
+    business_id?: string;
   }>((resolve, reject) => {
     const onMessage = (event: MessageEvent) => {
       if (!isMetaSignupMessage(event)) return;
       const data = event.data as MetaSignupMessage;
-      if (data.event === "FINISH" && data.data) {
+      // Cloud API completes with "FINISH" carrying all three ids.
+      // Coexistence completes with "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
+      // carrying only waba_id — the backend derives phone_number_id from
+      // GET /{waba_id}/phone_numbers. Treat both as success.
+      const isFinish =
+        data.event === "FINISH" ||
+        data.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING";
+      if (isFinish && data.data) {
         window.removeEventListener("message", onMessage);
+        const waba = data.data.waba_id;
+        if (!waba) {
+          reject(new Error("Meta devolvió FINISH sin waba_id."));
+          return;
+        }
         resolve({
-          waba_id: data.data.waba_id ?? "",
-          phone_number_id: data.data.phone_number_id ?? "",
-          business_id: data.data.business_id ?? "",
+          waba_id: waba,
+          phone_number_id: data.data.phone_number_id || undefined,
+          business_id: data.data.business_id || undefined,
         });
       } else if (data.event === "CANCEL" || data.event === "ERROR") {
         window.removeEventListener("message", onMessage);
@@ -193,7 +227,25 @@ export async function loginWithMeta(
         config_id: configId,
         response_type: "code",
         override_default_response_type: true,
-        extras: { setup: {}, ...(extras ?? {}) },
+        // ``featureType`` is THE differentiator between Cloud API and
+        // Coexistence flows. The configuration ID alone routes the user to
+        // the same WhatsApp Cloud onboarding wizard; only this extras field
+        // makes Meta render the Coexistence path that preserves the
+        // tenant's WhatsApp Business mobile app.
+        //
+        //   Cloud API    → featureType: "" (or omitted)
+        //   Coexistence  → featureType: "whatsapp_business_app_onboarding"
+        //
+        // ``sessionInfoVersion: "3"`` matches the postMessage envelope
+        // schema we already parse (data.event, data.data.waba_id, etc.).
+        extras: {
+          setup: {},
+          featureType:
+            mode === "coexistence"
+              ? "whatsapp_business_app_onboarding"
+              : "",
+          sessionInfoVersion: "3",
+        },
       },
     );
   });
@@ -211,7 +263,12 @@ export async function loginWithMeta(
 
 interface MetaSignupMessage {
   type: "WA_EMBEDDED_SIGNUP";
-  event: "FINISH" | "CANCEL" | "ERROR";
+  // Cloud API → "FINISH". Coexistence → "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING".
+  event:
+    | "FINISH"
+    | "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
+    | "CANCEL"
+    | "ERROR";
   data?: {
     waba_id?: string;
     phone_number_id?: string;

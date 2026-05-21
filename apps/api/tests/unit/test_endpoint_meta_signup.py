@@ -119,6 +119,109 @@ async def test_meta_signup_creates_channel_credentials_and_audit(
     assert audit.after_json["channel_id"] == str(chan.id)
 
 
+# ── Coexistence happy path ─────────────────────────────────────────────────
+
+
+def _coex_body() -> dict:
+    """Coexistence FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING payload — the
+    backend gets only ``waba_id`` and must derive the rest."""
+    return {
+        "code": "OAUTH_CODE_COEX",
+        "waba_id": "WABA_COEX",
+        "mode": "coexistence",
+    }
+
+
+def _mock_coex_happy_path(mock: respx.MockRouter) -> None:
+    """Orchestrator under Coexistence skips ``/register`` and instead
+    discovers the phone via ``GET /{waba_id}/phone_numbers``."""
+    mock.get("/oauth/access_token").respond(
+        200, json={"access_token": "EAA-coex-bisuat", "expires_in": 5_184_000}
+    )
+    mock.get("/WABA_COEX/phone_numbers").respond(
+        200,
+        json={
+            "data": [
+                {
+                    "id": "PN_COEX",
+                    "display_phone_number": "56999998888",
+                    "verified_name": "Coex Test",
+                }
+            ]
+        },
+    )
+    mock.post("/WABA_COEX/subscribed_apps").respond(200, json={"success": True})
+    mock.get("/PN_COEX").respond(
+        200,
+        json={
+            "display_phone_number": "56999998888",
+            "verified_name": "Coex Test",
+            "quality_rating": "GREEN",
+            "messaging_limit_tier": "TIER_1K",
+        },
+    )
+
+
+async def test_meta_signup_coexistence_skips_register_and_derives_phone(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+    # ``assert_all_called=False`` so the canary /register route below
+    # doesn't fail the fixture — the whole point is to assert it was
+    # NOT touched, which is verified explicitly via ``register_route.called``.
+    async with respx.mock(
+        base_url=META_GRAPH_BASE_URL, assert_all_called=False
+    ) as mock:
+        _mock_coex_happy_path(mock)
+        register_route = mock.post("/PN_COEX/register").respond(
+            500, json={"error": {"message": "should_not_be_called"}}
+        )
+        r = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/signup",
+            json=_coex_body(),
+            headers=admin_headers,
+        )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["mode"] == "coexistence"
+    assert body["waba_id"] == "WABA_COEX"
+    assert body["phone_number_id"] == "PN_COEX"
+    assert body["display_phone_number"] == "+56999998888"
+    # /register must NOT have been called for Coexistence
+    assert register_route.called is False
+
+    chan = await db_session.scalar(
+        select(Channel).where(
+            Channel.tenant_id == tenant_id,
+            Channel.provider == "meta",
+        )
+    )
+    assert chan is not None
+    assert chan.config["mode"] == "coexistence"
+    assert chan.config["waba_id"] == "WABA_COEX"
+    assert chan.config["phone_number_id"] == "PN_COEX"
+
+
+async def test_meta_signup_coexistence_empty_phone_list_returns_400(
+    client, admin_headers, seed_tenants
+):
+    """If Meta returns no phones for the WABA mid-onboarding (rare race),
+    the orchestrator surfaces a 400 instead of writing a half-formed
+    channel row."""
+    tenant_id = seed_tenants["a"]
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.get("/oauth/access_token").respond(
+            200, json={"access_token": "EAA-x", "expires_in": 60}
+        )
+        mock.get("/WABA_COEX/phone_numbers").respond(200, json={"data": []})
+        r = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/signup",
+            json=_coex_body(),
+            headers=admin_headers,
+        )
+    assert r.status_code == 400
+
+
 # ── failure paths ──────────────────────────────────────────────────────────
 
 

@@ -93,6 +93,70 @@ class TemplateStatusUpdate:
     timestamp: datetime | None = None
 
 
+# ── Coexistence-only webhook fields ────────────────────────────────────────
+
+
+@dataclass(slots=True, frozen=True)
+class MessageEcho:
+    """Echo of a message sent from the tenant's WhatsApp Business mobile
+    app (Coexistence only).
+
+    Emitted by the ``smb_message_echoes`` webhook field. The runtime
+    deduplicates by ``provider_message_id`` and tags the message as
+    ``origin="mobile"`` so the operator UI can distinguish app-sent from
+    API-sent traffic. The shape mirrors :class:`InboundMessage` but
+    intentionally lives as its own type — echo handling is fundamentally
+    different from inbound routing (no agent invocation, no service-window
+    update).
+    """
+
+    waba_id: str
+    phone_number_id: str
+    provider_message_id: str
+    sender_identifier: str  # the business phone (the tenant)
+    recipient_identifier: str  # the customer who received the echo
+    text: str | None
+    received_at: datetime
+
+
+@dataclass(slots=True, frozen=True)
+class AppStateSync:
+    """Snapshot of contacts/state from the tenant's mobile app
+    (Coexistence only — ``smb_app_state_sync``).
+
+    Triggered after onboarding and after each ``POST /smb_app_data`` with
+    ``sync_type=smb_app_state_sync``. The payload carries a list of
+    contacts the runtime persists into the tenant's address book for
+    operator-side lookup. The first sync after onboarding can take up to
+    six hours (Meta's documented batch ceiling).
+    """
+
+    waba_id: str
+    phone_number_id: str
+    contact_count: int
+    has_more: bool
+
+
+@dataclass(slots=True, frozen=True)
+class HistorySync:
+    """Backfilled message history from the tenant's mobile app
+    (Coexistence only — ``history``).
+
+    Up to six months of 1:1 chats are synced after onboarding, segmented
+    across multiple ``history`` webhooks. Multimedia is NOT backfilled —
+    only message bodies, timestamps, and the customer phone. The runtime
+    persists these as ``InboundMessage`` rows with ``origin="history"`` so
+    the operator UI can show them in the conversation thread without
+    confusing them with live traffic. ``error_code`` 2593109 means the
+    business opted out of sharing history at the consent prompt.
+    """
+
+    waba_id: str
+    phone_number_id: str
+    message_count: int
+    error_code: int | None = None
+
+
 # ── extract_business_phone ──────────────────────────────────────────────────
 
 
@@ -228,6 +292,126 @@ def parse_status_callback(payload: dict[str, Any]) -> StatusUpdate | None:
                 if not isinstance(status, dict):
                     continue
                 return _build_status(status, waba_id=waba_id or "", pnid=pnid or "")
+    return None
+
+
+def parse_message_echo(payload: dict[str, Any]) -> MessageEcho | None:
+    """First ``smb_message_echoes`` event in the envelope, if any.
+
+    Coexistence-only. ``messages[0]`` carries the same shape as a normal
+    inbound (id, from, to, text) but ``from`` is the business itself and
+    ``to`` is the customer — the opposite direction of a regular inbound.
+    """
+    for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        waba_id = entry.get("id") or ""
+        for change in entry.get("changes") or []:
+            if not isinstance(change, dict):
+                continue
+            if change.get("field") != "smb_message_echoes":
+                continue
+            value = change.get("value") or {}
+            if not isinstance(value, dict):
+                continue
+            metadata = value.get("metadata") or {}
+            pnid = (
+                metadata.get("phone_number_id") if isinstance(metadata, dict) else None
+            )
+            for msg in value.get("messages") or []:
+                if not isinstance(msg, dict):
+                    continue
+                msg_id = msg.get("id")
+                sender = msg.get("from")
+                recipient = msg.get("to") or msg.get("recipient_id")
+                ts_raw = msg.get("timestamp")
+                if not (isinstance(msg_id, str) and isinstance(sender, str)):
+                    continue
+                try:
+                    ts = datetime.fromtimestamp(int(ts_raw or 0), tz=UTC)
+                except (TypeError, ValueError):
+                    ts = datetime.now(tz=UTC)
+                body = msg.get("text")
+                text = body.get("body") if isinstance(body, dict) else None
+                return MessageEcho(
+                    waba_id=str(waba_id),
+                    phone_number_id=str(pnid or ""),
+                    provider_message_id=msg_id,
+                    sender_identifier=sender,
+                    recipient_identifier=str(recipient or ""),
+                    text=text if isinstance(text, str) else None,
+                    received_at=ts,
+                )
+    return None
+
+
+def parse_app_state_sync(payload: dict[str, Any]) -> AppStateSync | None:
+    """First ``smb_app_state_sync`` event in the envelope, if any."""
+    for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        waba_id = entry.get("id") or ""
+        for change in entry.get("changes") or []:
+            if not isinstance(change, dict):
+                continue
+            if change.get("field") != "smb_app_state_sync":
+                continue
+            value = change.get("value") or {}
+            if not isinstance(value, dict):
+                continue
+            metadata = value.get("metadata") or {}
+            pnid = (
+                metadata.get("phone_number_id") if isinstance(metadata, dict) else None
+            )
+            contacts = value.get("contacts") or []
+            return AppStateSync(
+                waba_id=str(waba_id),
+                phone_number_id=str(pnid or ""),
+                contact_count=len(contacts) if isinstance(contacts, list) else 0,
+                has_more=bool(value.get("has_more", False)),
+            )
+    return None
+
+
+def parse_history_sync(payload: dict[str, Any]) -> HistorySync | None:
+    """First ``history`` event in the envelope, if any.
+
+    Meta batches multiple chat threads per webhook. The ``messages`` array
+    inside each thread is what we'd ultimately persist, but this parser
+    only reports the summary — the per-message extraction lives in the
+    history-import worker (not on the webhook hot path).
+    """
+    for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        waba_id = entry.get("id") or ""
+        for change in entry.get("changes") or []:
+            if not isinstance(change, dict):
+                continue
+            if change.get("field") != "history":
+                continue
+            value = change.get("value") or {}
+            if not isinstance(value, dict):
+                continue
+            metadata = value.get("metadata") or {}
+            pnid = (
+                metadata.get("phone_number_id") if isinstance(metadata, dict) else None
+            )
+            history_threads = value.get("history") or []
+            message_count = 0
+            if isinstance(history_threads, list):
+                for thread in history_threads:
+                    if isinstance(thread, dict):
+                        msgs = thread.get("messages") or []
+                        if isinstance(msgs, list):
+                            message_count += len(msgs)
+            err_code = value.get("error_code")
+            return HistorySync(
+                waba_id=str(waba_id),
+                phone_number_id=str(pnid or ""),
+                message_count=message_count,
+                error_code=err_code if isinstance(err_code, int) else None,
+            )
     return None
 
 

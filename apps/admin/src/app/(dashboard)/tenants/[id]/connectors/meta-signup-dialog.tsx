@@ -24,7 +24,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { loginWithMeta } from "@/lib/meta-fb-sdk";
+import {
+  META_CONFIG_ID_CLOUD_API,
+  META_CONFIG_ID_COEXISTENCE,
+  loginWithMeta,
+} from "@/lib/meta-fb-sdk";
 
 import { connectMetaWhatsAppSetupAction } from "./setup-actions";
 
@@ -45,8 +49,8 @@ export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected }: Props) {
     try {
       const configId =
         mode === "cloud_api"
-          ? process.env.NEXT_PUBLIC_META_CONFIG_ID_WA_CLOUD_API
-          : process.env.NEXT_PUBLIC_META_CONFIG_ID_WA_COEXISTENCE;
+          ? META_CONFIG_ID_CLOUD_API
+          : META_CONFIG_ID_COEXISTENCE;
       if (!configId) {
         toast.error("Configuración faltante", {
           description: `Falta NEXT_PUBLIC_META_CONFIG_ID_${
@@ -57,7 +61,7 @@ export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected }: Props) {
       }
       let envelope;
       try {
-        envelope = await loginWithMeta(configId);
+        envelope = await loginWithMeta(configId, mode);
       } catch (err) {
         toast.error("No se completó el flow de Meta", {
           description: err instanceof Error ? err.message : String(err),

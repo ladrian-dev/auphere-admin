@@ -368,6 +368,30 @@ class MetaClient:
             params={"fields": fields},
         )
 
+    async def list_phone_numbers(
+        self,
+        *,
+        waba_id: str,
+        access_token: str,
+        fields: str = (
+            "id,display_phone_number,verified_name,quality_rating,"
+            "messaging_limit_tier"
+        ),
+    ) -> dict[str, Any]:
+        """``GET /{waba_id}/phone_numbers``.
+
+        Returns ``{"data": [{"id": ..., "display_phone_number": ...}, ...]}``.
+        Used by the Coexistence branch of the signup orchestrator: the
+        ``FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`` postMessage event only
+        carries ``waba_id``, so the phone number id must be discovered
+        before the channel row can be written.
+        """
+        return await self._get(
+            f"/{waba_id}/phone_numbers",
+            access_token=access_token,
+            params={"fields": fields},
+        )
+
     # ── subscribed apps (webhook) ──────────────────────────────────────────
 
     async def subscribe_app(

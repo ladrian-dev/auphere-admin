@@ -58,17 +58,22 @@ class MetaSignupIn(BaseModel):
     """What the Embedded Signup frontend POSTs to the backend.
 
     ``code`` is the single-use OAuth code returned by Meta's
-    ``FB.login({response_type: 'code'})``. The remaining IDs come from the
-    ``data`` envelope of the same callback — the frontend should NOT try
-    to introspect the code itself.
+    ``FB.login({response_type: 'code'})``. ``waba_id`` is always present.
+
+    ``phone_number_id`` and ``business_id`` are populated for the Cloud API
+    flow (Meta sends them in the ``FINISH`` postMessage data envelope) but
+    are absent for Coexistence — the
+    ``FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`` event only carries
+    ``waba_id``. The orchestrator derives ``phone_number_id`` from
+    ``GET /{waba_id}/phone_numbers`` when missing.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     code: str = Field(min_length=1, max_length=512)
     waba_id: str = Field(min_length=1, max_length=64)
-    phone_number_id: str = Field(min_length=1, max_length=64)
-    business_id: str = Field(min_length=1, max_length=64)
+    phone_number_id: str | None = Field(default=None, max_length=64)
+    business_id: str | None = Field(default=None, max_length=64)
     mode: str = Field(
         default="cloud_api",
         pattern="^(cloud_api|coexistence)$",
@@ -84,7 +89,7 @@ class MetaSignupOut(BaseModel):
     status: str
     channel_id: uuid.UUID
     waba_id: str
-    phone_number_id: str
+    phone_number_id: str  # always present on output — orchestrator derives it for Coexistence
     display_phone_number: str
     mode: str
     bisuat_expires_at: str | None
