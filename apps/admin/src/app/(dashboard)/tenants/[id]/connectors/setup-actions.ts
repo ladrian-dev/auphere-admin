@@ -12,7 +12,11 @@
 import { revalidatePath } from "next/cache";
 
 import { BackendError, backend } from "@/lib/backend";
-import type { WhatsAppPreview } from "@/lib/backend";
+import type {
+  MetaSignupInput,
+  MetaSignupResult,
+  WhatsAppPreview,
+} from "@/lib/backend";
 import { requireSession } from "@/lib/session";
 
 export type ActionResult<T> =
@@ -62,6 +66,46 @@ export async function connectWhatsAppSetupAction(
     revalidatePath(`/tenants/${tenantId}/connectors`);
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: { phone_number: channel.phone_number } };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+// ── WhatsApp Meta (Embedded Signup v4) ─────────────────────────────────────
+
+/**
+ * Complete a Meta Embedded Signup flow.
+ *
+ * The browser dialog already ran ``FB.login`` with the appropriate
+ * ``config_id`` and captured the OAuth ``code`` plus the ``data`` envelope
+ * (``waba_id`` / ``phone_number_id`` / ``business_id``). This server action:
+ *
+ * 1. Hands everything to the backend orchestrator (exchange → register →
+ *    subscribe → persist credentials → upsert channels row).
+ * 2. Installs the ``whatsapp_meta`` connector row pointing at the freshly
+ *    created channel so the panel's "Conectados" section reflects it.
+ * 3. Revalidates the connectors + tenant pages so the UI updates without
+ *    a hard refresh.
+ *
+ * The action NEVER receives or surfaces the BISUAT — the orchestrator
+ * encrypts and persists it, and the response carries only public metadata.
+ */
+export async function connectMetaWhatsAppSetupAction(
+  tenantId: string,
+  body: MetaSignupInput,
+): Promise<ActionResult<MetaSignupResult>> {
+  await requireSession();
+  try {
+    const result = await backend.metaSignup(tenantId, body);
+    if (!result) {
+      return { ok: false, error: "El backend no devolvió datos del signup." };
+    }
+    await backend.connectManualConnector(tenantId, "whatsapp_meta", {
+      channel_id: result.channel_id,
+    });
+    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`);
+    return { ok: true, data: result };
   } catch (err) {
     return { ok: false, error: toError(err) };
   }

@@ -31,6 +31,7 @@ import {
   ReissueConsentButton,
   SyncButton,
 } from "./connector-actions";
+import { MetaWhatsAppSetupDialog } from "./meta-signup-dialog";
 import {
   AgendaProSetupDialog,
   WhatsAppSetupDialog,
@@ -324,6 +325,11 @@ function AvailableConnectorCard({
                   slug={connector.slug}
                   displayName={connector.display_name}
                   ownerPhone={ownerPhone}
+                />
+              ) : connector.slug === "whatsapp_meta" ? (
+                <MetaWhatsAppSetupDialog
+                  tenantId={tenantId}
+                  alreadyConnected={false}
                 />
               ) : connector.slug === "whatsapp_ycloud" ? (
                 <WhatsAppSetupDialog

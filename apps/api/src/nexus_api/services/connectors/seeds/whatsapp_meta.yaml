@@ -1,0 +1,37 @@
+# Connector seed — WhatsApp via Meta direct (Tech Provider, post-YCloud).
+#
+# Auphere operates a Meta App (957213733862330) under Business Manager
+# Facelad SpA as a Tech Provider. Onboarding goes through Embedded Signup
+# v4 — the tenant owner authorises via Facebook Login for Business and the
+# backend exchanges the OAuth code for a BISUAT.
+#
+# Coexists with ``whatsapp_ycloud`` during the cutover: each tenant lives
+# on exactly one provider at a time (``channels.provider`` discriminates).
+#
+# auth_kind=webhook_manual reuses the same pattern as YCloud — even though
+# the flow is OAuth-driven, the row in tenant_connectors only carries the
+# resulting channel_id. The real auth state (BISUAT + verify_token) lives
+# in tenant_credentials with integration="meta_whatsapp", encrypted by
+# FernetEncrypted. The connectors module never sees the token directly.
+#
+# tenant_connectors.credentials_ref = {"channel_id": "<uuid>"}.
+slug: whatsapp_meta
+display_name: WhatsApp (Meta)
+vendor: Meta Platforms
+category: messaging
+capabilities:
+  - inbound
+  - outbound
+auth_kind: webhook_manual
+mcp_server_ref: internal:whatsapp_meta
+provider_meta:
+  icon_url: https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg
+  vendor_url: https://developers.facebook.com/products/whatsapp
+  docs_url: https://developers.facebook.com/docs/whatsapp/cloud-api
+  brand_color: "#25D366"
+  channel_only: true  # signals UI to render channel-style card, not tools list
+  embedded_signup: true  # marks this connector as the FB.login flow (vs manual)
+auto_enable_on_connect: true
+auto_enable_destructive: false
+consent_link_template_name: null
+status: available

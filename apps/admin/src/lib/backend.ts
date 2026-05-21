@@ -144,6 +144,28 @@ export type WhatsAppConnect = WhatsAppPreview & {
   audit_log_id: string;
 };
 
+/** Mirror of ``MetaSignupOut`` from ``apps/api`` admin endpoint. The
+ *  frontend never sees the BISUAT — only post-signup metadata + the
+ *  channel row id needed to install the connector row. */
+export type MetaSignupResult = {
+  status: string;
+  channel_id: string;
+  waba_id: string;
+  phone_number_id: string;
+  display_phone_number: string;
+  mode: "cloud_api" | "coexistence";
+  bisuat_expires_at: string | null;
+  audit_log_id: string;
+};
+
+export type MetaSignupInput = {
+  code: string;
+  waba_id: string;
+  phone_number_id: string;
+  business_id: string;
+  mode: "cloud_api" | "coexistence";
+};
+
 export type SeedTemplate = {
   name: string;
   version: string;
@@ -751,6 +773,16 @@ export const backend = {
   ) =>
     call<WhatsAppConnect>(
       `/admin/tenants/${tenantId}/integrations/whatsapp/connect-manual`,
+      { method: "POST", body },
+    ),
+
+  /** Complete an Embedded Signup v4 flow for a tenant. The browser already
+   *  ran ``FB.login`` and captured ``code`` + ``data``; this call hands them
+   *  off to the orchestrator which does the exchange + register + subscribe
+   *  dance on the server. */
+  metaSignup: (tenantId: string, body: MetaSignupInput) =>
+    call<MetaSignupResult>(
+      `/admin/tenants/${tenantId}/integrations/meta/signup`,
       { method: "POST", body },
     ),
 
