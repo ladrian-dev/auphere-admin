@@ -72,6 +72,23 @@ log = structlog.get_logger()
 INBOUND_STREAM = "nexus:inbound"
 WAMID_DEDUPE_TTL = 600  # match the YCloud route
 
+# Coexistence-only buffer streams. The webhook ack must return 200 within
+# Meta's retry budget, so persistence (which may involve thousands of
+# history rows per WABA) lives in a consumer that runs out-of-band.
+#
+# Until the worker package (block D in CLAUDE.md) materialises, these
+# streams act as a durable buffer: events accumulate in Redis with a
+# bounded MAXLEN so we never run away on memory, and the consumer reads
+# them later. Each xadd payload includes the full parsed dataclass fields
+# plus the resolved ``tenant_id`` so the consumer can write under the
+# right RLS context without re-parsing the envelope.
+COEXISTENCE_ECHO_STREAM = "nexus:meta:echoes"
+COEXISTENCE_STATE_SYNC_STREAM = "nexus:meta:state_sync"
+COEXISTENCE_HISTORY_STREAM = "nexus:meta:history"
+# 10k events ≈ 24h of moderate Coexistence traffic. Cap is approximate
+# (Redis trims on insert when over by 50+) — fine for a buffer.
+COEXISTENCE_STREAM_MAXLEN = 10_000
+
 
 # ── GET handshake ──────────────────────────────────────────────────────────
 
@@ -158,13 +175,13 @@ async def meta_webhook(
                 await _handle_template_status(payload, session=session)
                 handled = True
             elif field == "smb_message_echoes":
-                await _handle_message_echo(payload)
+                await _handle_message_echo(payload, session=session, redis=redis)
                 handled = True
             elif field == "smb_app_state_sync":
-                await _handle_app_state_sync(payload)
+                await _handle_app_state_sync(payload, session=session, redis=redis)
                 handled = True
             elif field == "history":
-                await _handle_history_sync(payload)
+                await _handle_history_sync(payload, session=session, redis=redis)
                 handled = True
             else:
                 log.info("webhook.meta.unhandled_field", field=field)
@@ -407,58 +424,181 @@ async def _handle_template_status(
 
 # ── Coexistence-only events ────────────────────────────────────────────────
 #
-# The three handlers below accept-and-log only. Persisting message echoes,
-# contact snapshots, and historical messages requires a background worker
-# (history alone can dump tens of thousands of messages over several
-# hours); doing it inline on the webhook hot path would block Meta's
-# retry budget. The dataclasses are surfaced in structured logs so the
-# operator panel and observability stack can see the volume even before
-# the workers land. When the workers exist they'll consume the same
-# parsers — no schema change needed here.
+# Each handler:
+#  1. Parses the envelope into a dataclass (cheap).
+#  2. Resolves the tenant from ``display_phone_number`` so the consumer
+#     can write under RLS without re-resolving from raw payload.
+#  3. xadd's a flat field dict to the appropriate buffer stream with a
+#     bounded MAXLEN. Persistence (history may carry tens of thousands of
+#     rows over several hours per WABA) is the consumer's job — block D.
+#  4. Returns 200 fast so Meta doesn't retry.
+#
+# If the tenant cannot be resolved, the event is dropped with a counter
+# bump (same policy as :func:`_handle_inbound`). Coexistence onboarding
+# guarantees the channel row exists before any of these fire, so an
+# unresolved tenant means the WABA belongs to a different installation
+# of the app — not our traffic.
 
 
-async def _handle_message_echo(payload: dict[str, Any]) -> dict[str, Any]:
+async def _resolve_tenant_for_event(
+    payload: dict[str, Any],
+    *,
+    session: AsyncSession,
+    redis: Redis,
+) -> tuple[uuid.UUID | None, str | None]:
+    """Shared resolver for all three Coexistence handlers."""
+    business_phone = extract_business_phone(payload)
+    if not business_phone:
+        return None, None
+    try:
+        tenant_id = await resolve_tenant(session, redis, "meta", business_phone)
+    except TenantNotFound:
+        counters.incr(CHANNEL_UNRESOLVED_EVENT)
+        log.warning(
+            "channel.unresolved_event",
+            provider="meta",
+            identifier=business_phone,
+        )
+        return None, business_phone
+    if session.in_transaction():
+        await session.rollback()
+    bind_tenant(tenant_id)
+    return tenant_id, business_phone
+
+
+async def _handle_message_echo(
+    payload: dict[str, Any],
+    *,
+    session: AsyncSession,
+    redis: Redis,
+) -> dict[str, Any]:
     echo = parse_message_echo(payload)
     if echo is None:
         return {"status": "ignored"}
-    log.info(
-        "webhook.meta.smb_message_echo",
-        waba_id=echo.waba_id,
-        phone_number_id=echo.phone_number_id,
-        wamid=echo.provider_message_id,
-        from_=echo.sender_identifier,
-        to=echo.recipient_identifier,
-        has_text=echo.text is not None,
+    tenant_id, _ = await _resolve_tenant_for_event(payload, session=session, redis=redis)
+    if tenant_id is None:
+        return {"status": "ignored"}
+    fields: dict[str, str] = {
+        "tenant_id": str(tenant_id),
+        "waba_id": echo.waba_id,
+        "phone_number_id": echo.phone_number_id,
+        "provider_message_id": echo.provider_message_id,
+        "sender_identifier": echo.sender_identifier,
+        "recipient_identifier": echo.recipient_identifier,
+        "received_at": echo.received_at.isoformat(),
+    }
+    if echo.text is not None:
+        fields["text"] = echo.text
+    await redis.xadd(
+        COEXISTENCE_ECHO_STREAM,
+        fields,
+        maxlen=COEXISTENCE_STREAM_MAXLEN,
+        approximate=True,
     )
-    return {"status": "acknowledged"}
+    log.info(
+        "webhook.meta.smb_message_echo.enqueued",
+        tenant_id=str(tenant_id),
+        wamid=echo.provider_message_id,
+    )
+    return {"status": "enqueued"}
 
 
-async def _handle_app_state_sync(payload: dict[str, Any]) -> dict[str, Any]:
+async def _handle_app_state_sync(
+    payload: dict[str, Any],
+    *,
+    session: AsyncSession,
+    redis: Redis,
+) -> dict[str, Any]:
     sync = parse_app_state_sync(payload)
     if sync is None:
         return {"status": "ignored"}
+    tenant_id, _ = await _resolve_tenant_for_event(payload, session=session, redis=redis)
+    if tenant_id is None:
+        return {"status": "ignored"}
+    # State sync carries an in-payload contacts list whose size is bounded
+    # by Meta's batch ceiling; the consumer needs the raw value to do the
+    # actual contact upsert. Stash the JSON-encoded payload alongside the
+    # parsed summary so the consumer can do both passes (summary now,
+    # detailed persistence later) without re-fetching.
+    raw_value = _extract_change_value(payload, field="smb_app_state_sync")
+    fields: dict[str, str] = {
+        "tenant_id": str(tenant_id),
+        "waba_id": sync.waba_id,
+        "phone_number_id": sync.phone_number_id,
+        "contact_count": str(sync.contact_count),
+        "has_more": "1" if sync.has_more else "0",
+        "raw_value": json.dumps(raw_value, separators=(",", ":")) if raw_value else "",
+    }
+    await redis.xadd(
+        COEXISTENCE_STATE_SYNC_STREAM,
+        fields,
+        maxlen=COEXISTENCE_STREAM_MAXLEN,
+        approximate=True,
+    )
     log.info(
-        "webhook.meta.smb_app_state_sync",
-        waba_id=sync.waba_id,
-        phone_number_id=sync.phone_number_id,
+        "webhook.meta.smb_app_state_sync.enqueued",
+        tenant_id=str(tenant_id),
         contact_count=sync.contact_count,
         has_more=sync.has_more,
     )
-    return {"status": "acknowledged"}
+    return {"status": "enqueued"}
 
 
-async def _handle_history_sync(payload: dict[str, Any]) -> dict[str, Any]:
+async def _handle_history_sync(
+    payload: dict[str, Any],
+    *,
+    session: AsyncSession,
+    redis: Redis,
+) -> dict[str, Any]:
     hist = parse_history_sync(payload)
     if hist is None:
         return {"status": "ignored"}
+    tenant_id, _ = await _resolve_tenant_for_event(payload, session=session, redis=redis)
+    if tenant_id is None:
+        return {"status": "ignored"}
+    raw_value = _extract_change_value(payload, field="history")
+    fields: dict[str, str] = {
+        "tenant_id": str(tenant_id),
+        "waba_id": hist.waba_id,
+        "phone_number_id": hist.phone_number_id,
+        "message_count": str(hist.message_count),
+        "raw_value": json.dumps(raw_value, separators=(",", ":")) if raw_value else "",
+    }
+    if hist.error_code is not None:
+        fields["error_code"] = str(hist.error_code)
+    await redis.xadd(
+        COEXISTENCE_HISTORY_STREAM,
+        fields,
+        maxlen=COEXISTENCE_STREAM_MAXLEN,
+        approximate=True,
+    )
     log.info(
-        "webhook.meta.history_sync",
-        waba_id=hist.waba_id,
-        phone_number_id=hist.phone_number_id,
+        "webhook.meta.history_sync.enqueued",
+        tenant_id=str(tenant_id),
         message_count=hist.message_count,
         error_code=hist.error_code,
     )
-    return {"status": "acknowledged"}
+    return {"status": "enqueued"}
+
+
+def _extract_change_value(
+    payload: dict[str, Any], *, field: str
+) -> dict[str, Any] | None:
+    """Pull ``changes[].value`` for the first change matching ``field``.
+
+    Coexistence handlers stream the raw value alongside the parsed
+    summary so the future consumer can persist contacts / history rows
+    without re-walking the envelope.
+    """
+    for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes") or []:
+            if isinstance(change, dict) and change.get("field") == field:
+                value = change.get("value")
+                if isinstance(value, dict):
+                    return value
+    return None
 
 
 # ── helpers ────────────────────────────────────────────────────────────────

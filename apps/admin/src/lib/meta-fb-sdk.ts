@@ -163,8 +163,25 @@ export async function loginWithMeta(
     business_id?: string;
   }>((resolve, reject) => {
     const onMessage = (event: MessageEvent) => {
-      if (!isMetaSignupMessage(event)) return;
-      const data = event.data as MetaSignupMessage;
+      // Origin guard. Meta posts from facebook.com (the popup origin).
+      // Without this we'd parse messages from any iframe on the page.
+      if (
+        typeof event.origin !== "string" ||
+        !event.origin.endsWith("facebook.com")
+      ) {
+        return;
+      }
+      // Meta posts the envelope as a JSON STRING, not as an object. Older
+      // versions of this file checked `typeof event.data === "object"` and
+      // silently dropped every event — the dialog stayed in "Conectando…"
+      // forever even though the WABA was already attached server-side at
+      // Meta. Always JSON.parse first; tolerate the (rare) case where Meta
+      // sends an already-parsed object.
+      const data = parseMetaSignupMessage(event.data);
+      if (data === null) return;
+      if (typeof console !== "undefined") {
+        console.debug("[meta-fb-sdk] postMessage received", data);
+      }
       // Cloud API completes with "FINISH" carrying all three ids.
       // Coexistence completes with "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
       // carrying only waba_id — the backend derives phone_number_id from
@@ -277,8 +294,25 @@ interface MetaSignupMessage {
   };
 }
 
-function isMetaSignupMessage(event: MessageEvent): boolean {
-  if (typeof event.data !== "object" || event.data === null) return false;
-  const data = event.data as { type?: unknown };
-  return data.type === "WA_EMBEDDED_SIGNUP";
+/** Parse a postMessage payload into a :class:`MetaSignupMessage`, or
+ *  ``null`` if the message isn't a WhatsApp Embedded Signup event.
+ *
+ *  Meta posts the envelope as a JSON STRING. Tolerate the (rare) case
+ *  where a different SDK version posts an already-parsed object. Anything
+ *  else (other iframes, browser extensions, devtools messages, etc.) is
+ *  silently ignored.
+ */
+function parseMetaSignupMessage(raw: unknown): MetaSignupMessage | null {
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const candidate = parsed as { type?: unknown };
+  if (candidate.type !== "WA_EMBEDDED_SIGNUP") return null;
+  return parsed as MetaSignupMessage;
 }

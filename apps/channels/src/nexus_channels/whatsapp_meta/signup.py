@@ -107,12 +107,20 @@ class EmbeddedSignupOrchestrator:
         client: MetaClient,
         app_id: str,
         webhook_callback_url: str,
+        webhook_verify_token: str,
     ) -> None:
         self._session = session
         self._redis = redis
         self._client = client
         self._app_id = app_id
         self._webhook_callback_url = webhook_callback_url
+        # Single app-wide verify token. Meta calls our /webhook/meta with
+        # this string on subscribed_apps; the handshake handler validates
+        # it against ``settings.meta_webhook_verify_token``. Generating a
+        # per-tenant random token here used to break subscribed_apps with
+        # "(#2200) Callback verification failed HTTP 403" because the
+        # handshake handler only knows the global one. Keep them aligned.
+        self._webhook_verify_token = webhook_verify_token
         self._credentials = MetaCredentialsRepository(session)
 
     async def complete(self, payload: SignupIngressPayload) -> SignupResult:
@@ -173,8 +181,8 @@ class EmbeddedSignupOrchestrator:
                     f"register_phone failed for pn={phone_number_id}: {exc}"
                 ) from exc
 
-        # 3) Subscribe the WABA with a per-tenant verify token + override URL
-        verify_token = _generate_verify_token()
+        # 3) Subscribe the WABA with the app-wide verify token + override URL
+        verify_token = self._webhook_verify_token
         try:
             await self._client.subscribe_app(
                 waba_id=payload.waba_id,
@@ -330,17 +338,6 @@ def _generate_pin() -> str:
     without our DB row.
     """
     return f"{secrets.randbelow(1_000_000):06d}"
-
-
-def _generate_verify_token() -> str:
-    """Per-tenant verify token for the webhook GET handshake.
-
-    Meta echoes this on the initial ``hub.verify_token`` check after
-    ``subscribed_apps``. We persist it alongside the BISUAT and look it up
-    on the webhook GET. Length: 32 hex chars (128 bits) — generous against
-    brute force without exceeding Meta's 100-char input limit.
-    """
-    return secrets.token_hex(16)
 
 
 def _normalise_e164(phone: Any) -> str | None:

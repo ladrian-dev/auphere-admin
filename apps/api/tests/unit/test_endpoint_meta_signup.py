@@ -119,6 +119,53 @@ async def test_meta_signup_creates_channel_credentials_and_audit(
     assert audit.after_json["channel_id"] == str(chan.id)
 
 
+# ── verify_token contract ──────────────────────────────────────────────────
+
+
+async def test_meta_signup_subscribed_apps_uses_global_verify_token(
+    client, admin_headers, seed_tenants
+):
+    """``subscribed_apps`` MUST send the verify_token configured in
+    settings.meta_webhook_verify_token, NOT a per-tenant random value.
+
+    Otherwise Meta's GET handshake hits our /webhook/meta with a token
+    the handshake handler doesn't recognise, returns 403, and
+    subscribed_apps fails with "(#2200) Callback verification failed".
+    """
+    tenant_id = seed_tenants["a"]
+    captured: dict[str, object] = {}
+
+    def capture_body(request):
+        captured["body"] = request.read()
+        return respx.MockResponse(200, json={"success": True})
+
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.get("/oauth/access_token").respond(
+            200, json={"access_token": "EAA-x", "expires_in": 60}
+        )
+        mock.post("/PN_TEST/register").respond(200, json={"success": True})
+        mock.post("/WABA_TEST/subscribed_apps").mock(side_effect=capture_body)
+        mock.get("/PN_TEST").respond(200, json=_ok_phone_response())
+        r = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/signup",
+            json=_signup_body(),
+            headers=admin_headers,
+        )
+    assert r.status_code == 201, r.text
+    # The test settings fixture sets meta_webhook_verify_token; whatever
+    # the value is, the subscribed_apps POST must echo it back in the
+    # body, NOT a freshly-generated random hex string.
+    from nexus_api.config import get_settings
+
+    expected = get_settings().meta_webhook_verify_token
+    body_bytes = captured["body"]
+    assert isinstance(body_bytes, (bytes, bytearray))
+    assert expected.encode("utf-8") in bytes(body_bytes), (
+        f"expected verify_token {expected!r} in subscribed_apps body but got "
+        f"{body_bytes!r}"
+    )
+
+
 # ── Coexistence happy path ─────────────────────────────────────────────────
 
 

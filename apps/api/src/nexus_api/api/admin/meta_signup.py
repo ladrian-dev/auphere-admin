@@ -153,6 +153,7 @@ async def meta_signup(
         client=client,
         app_id=settings.meta_app_id,
         webhook_callback_url=settings.meta_webhook_callback_url,
+        webhook_verify_token=settings.meta_webhook_verify_token,
     )
     payload = SignupIngressPayload(
         code=body.code,
