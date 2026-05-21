@@ -249,9 +249,7 @@ async def meta_signup(
         display_phone_number=result.display_phone_number,
         mode=result.mode,
         bisuat_expires_at=(
-            result.bisuat_expires_at.isoformat()
-            if result.bisuat_expires_at is not None
-            else None
+            result.bisuat_expires_at.isoformat() if result.bisuat_expires_at is not None else None
         ),
         audit_log_id=audit.id,
     )

@@ -206,9 +206,7 @@ async def _handle_inbound(
 
     # Durable dedupe via UNIQUE partial index.
     async with tenant_scoped_session(session, tenant_id):
-        prior = await session.scalar(
-            select(Message.id).where(Message.provider_message_id == wamid)
-        )
+        prior = await session.scalar(select(Message.id).where(Message.provider_message_id == wamid))
         if prior is not None:
             log.info(
                 "webhook.meta.dedupe_db_hit",

@@ -21,7 +21,12 @@ def test_all_seeds_parse() -> None:
     Composio owns the catalog for OAuth toolkits."""
     seeds = load_all_seeds()
     slugs = {s.slug for s in seeds}
-    assert slugs == {"agendapro", "whatsapp_ycloud", "woocommerce"}
+    assert slugs == {
+        "agendapro",
+        "whatsapp_meta",
+        "whatsapp_ycloud",
+        "woocommerce",
+    }
 
 
 def test_list_seed_slugs_sorted() -> None:

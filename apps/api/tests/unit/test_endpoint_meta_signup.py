@@ -122,9 +122,7 @@ async def test_meta_signup_creates_channel_credentials_and_audit(
 # ── failure paths ──────────────────────────────────────────────────────────
 
 
-async def test_meta_signup_oauth_code_expired_returns_400(
-    client, admin_headers, seed_tenants
-):
+async def test_meta_signup_oauth_code_expired_returns_400(client, admin_headers, seed_tenants):
     tenant_id = seed_tenants["a"]
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
         mock.get("/oauth/access_token").respond(
@@ -146,9 +144,7 @@ async def test_meta_signup_oauth_code_expired_returns_400(
     assert "OAuth code" in r.json()["detail"]
 
 
-async def test_meta_signup_subscribe_failure_returns_400(
-    client, admin_headers, seed_tenants
-):
+async def test_meta_signup_subscribe_failure_returns_400(client, admin_headers, seed_tenants):
     tenant_id = seed_tenants["a"]
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
         mock.get("/oauth/access_token").respond(
