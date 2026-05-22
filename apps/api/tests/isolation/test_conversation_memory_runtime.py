@@ -2,8 +2,9 @@
 
 Before the fix, every graph node saw only the current ``user_message``:
 the agent re-greeted on every turn and lost context across turns.
-``_load_recent_history`` now loads prior ``messages`` rows into the LLM
-context for ``classify``, the handler and ``respond``.
+``_load_recent_history`` loads prior ``messages`` rows once per turn (in
+``classify``, ADR-023) and the result travels in ``state["history"]`` to
+the handler's ReAct loop.
 
 This runs two turns on the SAME conversation through the real pipeline and
 asserts turn 2's LLM calls carry turn 1's exchange (the user's question and
@@ -101,8 +102,12 @@ async def test_agent_sees_prior_turns_on_same_conversation(
     # ── Turn 1 — no history yet. ──────────────────────────────────────────
     await run_turn(_TURN1)
     turn1_count = len(in_memory_provider.calls)
-    turn1_respond = [c for c in in_memory_provider.calls if c.role == "respond"][-1]
-    flat1 = "\n".join(m["content"] for m in turn1_respond.messages)
+    # ADR-023: the handler's ReAct loop produces the final text. The
+    # handler call's role is the intent ('info' here).
+    turn1_handler = [c for c in in_memory_provider.calls if c.role == "info"][-1]
+    flat1 = "\n".join(
+        m["content"] for m in turn1_handler.messages if isinstance(m.get("content"), str)
+    )
     assert _TURN1 in flat1
     # First turn has no prior exchange — the reply text does not yet exist.
     assert _TURN1_REPLY not in flat1
@@ -112,8 +117,10 @@ async def test_agent_sees_prior_turns_on_same_conversation(
     await run_turn(_TURN2)
     turn2_calls = in_memory_provider.calls[turn1_count:]
 
-    turn2_respond = [c for c in turn2_calls if c.role == "respond"][-1]
-    flat2 = "\n".join(m["content"] for m in turn2_respond.messages)
+    turn2_handler = [c for c in turn2_calls if c.role == "info"][-1]
+    flat2 = "\n".join(
+        m["content"] for m in turn2_handler.messages if isinstance(m.get("content"), str)
+    )
     assert _TURN1 in flat2, "turn 1 user message missing from turn 2 context"
     assert _TURN1_REPLY in flat2, "turn 1 assistant reply missing from turn 2 context"
     assert _TURN2 in flat2

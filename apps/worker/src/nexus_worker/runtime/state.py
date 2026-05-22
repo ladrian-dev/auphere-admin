@@ -45,11 +45,19 @@ class AgentState(TypedDict, total=False):
     # Filled by classify
     intent: str
     route: str
+    # The recent conversation turns as LLM ``messages``, loaded ONCE per
+    # turn by ``classify`` and reused by the chosen handler. Before ADR-023
+    # every node re-queried the DB (3x per turn); now it travels in state.
+    history: list[dict[str, str]]
 
     # Filled by the chosen handler — replaces the previous turn's tool calls.
+    # After ADR-023 this is the list of tool envelopes accumulated across
+    # ALL iterations of the handler's ReAct loop, not a single round.
     tool_calls: list[dict[str, Any]]
 
-    # Filled by respond
+    # Filled by the chosen handler (ADR-023). The handler's ReAct loop now
+    # produces the final user-visible text directly — the old blind
+    # ``respond`` node is gone.
     response: str
     response_model: str
 

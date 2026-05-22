@@ -242,8 +242,8 @@ def test_ucm_final_skipped_when_no_ucm_in_state() -> None:
 
 
 def test_other_chain_end_events_ignored() -> None:
-    """The classify / respond / checkpoint node ends don't surface as SSE."""
-    for node in ("classify", "respond", "checkpoint", "fallback"):
+    """The classify / handler / checkpoint node ends don't surface as SSE."""
+    for node in ("classify", "book", "checkpoint", "fallback"):
         out = translate_event(
             {
                 "event": "on_chain_end",

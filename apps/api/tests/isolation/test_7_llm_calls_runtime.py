@@ -5,7 +5,7 @@ independent provider invocations. The recorded ``LLMCall`` list must contain:
 
 - distinct ``tenant_id`` values for each call;
 - the same ``tenant_id`` shared across all calls in a single run
-  (classify and respond both belong to that tenant);
+  (classify and every handler-loop call belong to that tenant);
 - no batched call lists (the InMemoryProvider records one entry per
   ``acomplete`` invocation by design).
 
@@ -112,16 +112,16 @@ async def test_concurrent_tenants_produce_independent_provider_calls(
     # Drive A and B concurrently — pipeline-internal sessions are independent.
     await asyncio.gather(run_for("u-a"), run_for("u-b"))
 
-    # Block D: each turn produces classify + a handler-intent tool_loop
-    # call (role='info' here, since the responder routes to the info
-    # intent) + respond. Three calls per tenant.
+    # ADR-023: each turn produces classify (the router) + the handler's
+    # ReAct loop. With no tool calls scripted the loop answers in a single
+    # iteration, so two LLM calls per tenant (role 'classify' + 'info').
     a_calls = [c for c in in_memory_provider.calls if str(c.tenant_id) == str(a)]
     b_calls = [c for c in in_memory_provider.calls if str(c.tenant_id) == str(b)]
 
-    assert {c.role for c in a_calls} == {"classify", "info", "respond"}
-    assert {c.role for c in b_calls} == {"classify", "info", "respond"}
-    assert len(a_calls) == 3
-    assert len(b_calls) == 3
+    assert {c.role for c in a_calls} == {"classify", "info"}
+    assert {c.role for c in b_calls} == {"classify", "info"}
+    assert len(a_calls) == 2
+    assert len(b_calls) == 2
 
     # No call ever carries the wrong tenant.
     assert all(str(c.tenant_id) in {str(a), str(b)} for c in in_memory_provider.calls)

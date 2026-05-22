@@ -123,16 +123,18 @@ async def test_pre_llm_filter_blocks_non_whitelisted_definitions(
                 "booking.create_appointment",
             }, f"non-whitelisted tool {name!r} leaked into LLM context"
 
-    # ── 2. tool_calls are empty (or all skipped) — no side effect fired.
+    # ── 2. tool_calls are empty — no side effect fired.
     statuses = {tc.get("status") for tc in final.get("tool_calls", [])}
     assert "ok" not in statuses, "no whitelisted tool should have actually run"
 
-    # ── 3. The intent was queue but the queue tools never made it into
-    # the respond-phase prompt either.
-    respond_calls = [c for c in in_memory_provider.calls if c.role == "respond"]
-    assert respond_calls, "expected respond to be invoked"
-    last_respond = respond_calls[-1]
-    flat_messages = "\n".join(m["content"] for m in last_respond.messages)
+    # ── 3. The queue handler ran (ADR-023: it produces the final text
+    # itself), but no queue tool definition leaked into its prompt —
+    # neither as a ``tools=`` entry nor anywhere in the message text.
+    assert queue_calls, "expected the queue handler to be invoked"
+    last_queue = queue_calls[-1]
+    flat_messages = "\n".join(
+        m["content"] for m in last_queue.messages if isinstance(m.get("content"), str)
+    )
     assert "queue.join_queue" not in flat_messages
     assert "queue.get_estimated_wait" not in flat_messages
 
@@ -160,8 +162,10 @@ async def test_hallucinated_tool_call_is_rejected_by_dispatch(
     counters.reset()
 
     in_memory_provider.responder = lambda c: "info" if c.role == "classify" else "resp"
-    # Hostile model: emits a queue.* call into the info handler. The
-    # info category does not include queue.* so dispatch must refuse.
+    # Hostile model: emits a queue.* call into the info handler on the
+    # first loop iteration. The info category does not include queue.* so
+    # dispatch must refuse. (The ``no tool message yet`` guard makes the
+    # script emit exactly once, not on every ReAct iteration.)
     in_memory_provider.tool_caller = lambda c: (
         [
             ToolCall(
@@ -170,7 +174,7 @@ async def test_hallucinated_tool_call_is_rejected_by_dispatch(
                 arguments={"customer_id": "00000000-0000-0000-0000-000000000000"},
             )
         ]
-        if c.role == "info"
+        if c.role == "info" and not any(m.get("role") == "tool" for m in c.messages)
         else []
     )
 
@@ -304,7 +308,8 @@ async def test_two_tenants_with_disjoint_whitelists_do_not_leak(
         db_session.add(inbound)
         await db_session.commit()
         await db_session.refresh(inbound)
-        # Scripted tool call references THIS tenant's customer_id.
+        # Scripted tool call references THIS tenant's customer_id. Emitted
+        # once (first ReAct iteration, before any tool message exists).
         in_memory_provider.tool_caller = lambda c, cid=cust.id: (
             [
                 ToolCall(
@@ -313,7 +318,7 @@ async def test_two_tenants_with_disjoint_whitelists_do_not_leak(
                     arguments={"customer_id": str(cid), "limit": 5},
                 )
             ]
-            if c.role == "info"
+            if c.role == "info" and not any(m.get("role") == "tool" for m in c.messages)
             else []
         )
         state = new_state(

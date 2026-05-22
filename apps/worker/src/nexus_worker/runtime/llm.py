@@ -25,7 +25,7 @@ import json
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 import structlog
 from nexus_api.core.metrics import (
@@ -43,6 +43,59 @@ def litellm_kwargs_contract() -> dict[str, Any]:
         "enable_batching": False,
         "group_by": None,
     }
+
+
+# ── resilience knobs ─────────────────────────────────────────────────────────
+
+# Attempts per model before moving on. 1 = first try, 2 = one retry.
+_MAX_ATTEMPTS_PER_MODEL = 2
+# Linear backoff base, in seconds (attempt 0 → 0.5s, attempt 1 → 1.0s …).
+_RETRY_BACKOFF_S = 0.5
+
+# Return type of a resilient call — preserved through ``_call_with_resilience``.
+_T = TypeVar("_T")
+
+
+def _with_prompt_caching(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mark the leading system prefix as an Anthropic cache breakpoint.
+
+    Anthropic prompt caching: a ``cache_control`` block caches the entire
+    prefix up to it (tools + every earlier system block). The agent's
+    system prefix — rendered system prompt + KG snapshot + channel/turn
+    notes — is stable across a conversation, so one breakpoint on the last
+    system block yields a ~90% input-token discount and a latency drop on
+    cache hits. Content below the model minimum (1024 tokens for Sonnet,
+    4096 for Haiku) is silently not cached — no error, no cost.
+
+    We merge the contiguous leading ``system`` messages into a single
+    system message with text blocks (Anthropic's canonical shape) and put
+    ``cache_control`` on the last block. Non-system messages (history, the
+    user turn, tool round-trips) stay after the breakpoint, uncached.
+    """
+    leading: list[dict[str, Any]] = []
+    rest_start = 0
+    for i, m in enumerate(messages):
+        if m.get("role") == "system":
+            leading.append(m)
+            rest_start = i + 1
+        else:
+            break
+    if not leading:
+        return messages
+
+    blocks: list[dict[str, Any]] = []
+    for m in leading:
+        content = m.get("content")
+        if isinstance(content, str):
+            blocks.append({"type": "text", "text": content})
+        elif isinstance(content, list):
+            blocks.extend(content)
+    if not blocks:
+        return messages
+
+    blocks[-1] = {**blocks[-1], "cache_control": {"type": "ephemeral"}}
+    merged = {"role": "system", "content": blocks}
+    return [merged, *messages[rest_start:]]
 
 
 # ── data shapes ──────────────────────────────────────────────────────────────
@@ -254,7 +307,9 @@ class LiteLLMProvider:
 
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": messages,
+            # Prompt caching: mark the stable system prefix as a cache
+            # breakpoint so repeated turns / loop iterations reuse it.
+            "messages": _with_prompt_caching(messages),
             "metadata": {"tenant_id": str(tenant_id), "role": role},
             "timeout": self.timeout_s,
         }
@@ -282,11 +337,18 @@ class LiteLLMProvider:
 
 @dataclass
 class LLMRouter:
-    """Picks a model per role and invokes the provider.
+    """Picks a model per role and invokes the provider — with retry and
+    cross-model fallback baked in (ADR-023 / agent-quality-roadmap E4).
 
-    ``classify``, ``respond`` and ``fallback`` are plain text completions.
+    Every call tries the primary model up to ``_MAX_ATTEMPTS_PER_MODEL``
+    times, then the ``fallback_model``. A transient provider error
+    (timeout, 5xx, quota) no longer kills the turn. The error only
+    propagates if EVERY model and retry is exhausted — the caller (the
+    pipeline node) then degrades gracefully.
+
+    ``classify`` and ``respond`` are plain text completions.
     ``respond_with_tools`` is the function-calling entry point used by the
-    Block-D handler tool_loop nodes.
+    handler ReAct loop.
     """
 
     provider: LLMProvider
@@ -294,17 +356,71 @@ class LLMRouter:
     respond_model: str
     fallback_model: str
 
+    async def _call_with_resilience(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        models: tuple[str, ...],
+        invoke: Callable[[str], Awaitable[_T]],
+    ) -> _T:
+        """Run ``invoke(model)`` across ``models`` with per-model retries.
+
+        ``invoke`` is the actual provider call, parametrised by model name.
+        Returns the first success; raises the last exception only when
+        every model and retry has failed.
+        """
+        last_exc: Exception | None = None
+        for model in models:
+            for attempt in range(_MAX_ATTEMPTS_PER_MODEL):
+                try:
+                    return await invoke(model)
+                except Exception as exc:
+                    last_exc = exc
+                    log.warning(
+                        "llm.attempt_failed",
+                        tenant_id=str(tenant_id),
+                        role=role,
+                        model=model,
+                        attempt=attempt,
+                        error=str(exc),
+                    )
+                    if attempt + 1 < _MAX_ATTEMPTS_PER_MODEL:
+                        await asyncio.sleep(_RETRY_BACKOFF_S * (attempt + 1))
+        assert last_exc is not None  # the loop ran at least once
+        log.error(
+            "llm.all_attempts_exhausted",
+            tenant_id=str(tenant_id),
+            role=role,
+            models=list(models),
+        )
+        raise last_exc
+
+    def _model_chain(self, primary: str) -> tuple[str, ...]:
+        """Primary model, then the fallback — de-duplicated if they match."""
+        if self.fallback_model and self.fallback_model != primary:
+            return (primary, self.fallback_model)
+        return (primary,)
+
     async def classify(
         self,
         *,
         tenant_id: uuid.UUID,
         messages: list[dict[str, str]],
     ) -> str:
-        return await self.provider.acomplete(
+        async def invoke(model: str) -> str:
+            return await self.provider.acomplete(
+                tenant_id=tenant_id,
+                role="classify",
+                model=model,
+                messages=messages,
+            )
+
+        return await self._call_with_resilience(
             tenant_id=tenant_id,
             role="classify",
-            model=self.classify_model,
-            messages=messages,
+            models=self._model_chain(self.classify_model),
+            invoke=invoke,
         )
 
     async def respond(
@@ -313,11 +429,19 @@ class LLMRouter:
         tenant_id: uuid.UUID,
         messages: list[dict[str, str]],
     ) -> str:
-        return await self.provider.acomplete(
+        async def invoke(model: str) -> str:
+            return await self.provider.acomplete(
+                tenant_id=tenant_id,
+                role="respond",
+                model=model,
+                messages=messages,
+            )
+
+        return await self._call_with_resilience(
             tenant_id=tenant_id,
             role="respond",
-            model=self.respond_model,
-            messages=messages,
+            models=self._model_chain(self.respond_model),
+            invoke=invoke,
         )
 
     async def respond_with_tools(
@@ -328,15 +452,24 @@ class LLMRouter:
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
     ) -> LLMResponse:
-        """Function-calling completion for the tool_loop nodes. ``role`` is
-        usually the intent (``book``, ``queue``, …) so traces can attribute
-        the tool selection."""
-        return await self.provider.acomplete_with_tools(
+        """Function-calling completion for the handler ReAct loop. ``role``
+        is the intent (``book``, ``queue``, …) so traces can attribute the
+        tool selection. Retries + falls back like every router call."""
+
+        async def invoke(model: str) -> LLMResponse:
+            return await self.provider.acomplete_with_tools(
+                tenant_id=tenant_id,
+                role=role,
+                model=model,
+                messages=messages,
+                tools=tools,
+            )
+
+        return await self._call_with_resilience(
             tenant_id=tenant_id,
             role=role,
-            model=self.respond_model,
-            messages=messages,
-            tools=tools,
+            models=self._model_chain(self.respond_model),
+            invoke=invoke,
         )
 
     async def call_with_fallback(

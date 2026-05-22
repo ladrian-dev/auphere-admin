@@ -1,37 +1,42 @@
-"""LangGraph 1.0 pipeline — 8 nodes.
+"""LangGraph 1.0 pipeline — the agent runtime.
 
 ::
 
     START → classify → route* → {book | queue | info | escalate | fallback}
-                                                                 ↓
-                                                              respond → checkpoint → END
+                                                         ↓
+                                              ucm_formatter → checkpoint → END
 
-(*) ``route`` is a conditional edge, not a node, so the node count is exactly
-the eight required by the block-C spec: classify, the five handlers, respond
-and checkpoint.
+(*) ``route`` is a conditional edge, not a node.
 
-Block-D evolution
------------------
+ADR-023 — the ReAct loop
+------------------------
 
-Each handler node became a **tool_loop** (1 iteration). It:
+Before ADR-023 the graph had a separate ``respond`` node that regenerated
+the final answer from a *text summary* of the tool calls — it never saw
+the actual tool results. That made every read tool decorative: the agent
+invoked it, the data came back, and the LLM that wrote to the customer
+never saw it.
 
-1. Loads the active ``AgentBundle`` and computes ``available =
-   whitelist ∩ category_tools[intent]`` — the binding pre-LLM filter for
-   garantía 2. The LLM never sees a tool definition outside this set.
-2. Calls the LLM with those tool definitions via
-   ``LLMRouter.respond_with_tools``. The LLM may emit zero, one or several
-   tool calls.
-3. Dispatches each emitted call through ``MCPRegistry.dispatch`` which
-   re-checks the whitelist (defense in depth — if the LLM hallucinates
-   a name out of the filtered set we still refuse and record a
-   whitelist violation).
-4. Writes the resulting list of envelopes to ``state.tool_calls`` —
-   replacing whatever the previous turn left, since the state reducer is
-   replace-on-write.
+Now each handler node is a **real ReAct loop**:
 
-The downstream ``respond`` node summarises the tool results and produces
-the final user-visible text. Tools are NOT passed to ``respond`` itself —
-the model has already chosen what to invoke.
+1. Load the active ``AgentBundle`` and compute ``available = whitelist ∩
+   category[intent]`` — the binding pre-LLM filter for garantía 2. The LLM
+   never sees a tool definition outside this set.
+2. Build the message thread (system prompt + channel note + KG snapshot +
+   conversation history + the user's message).
+3. Loop up to ``MAX_TOOL_ITERATIONS``:
+   - Call the LLM with the tool definitions.
+   - If it requests no tools → that text is the final answer; stop.
+   - Otherwise dispatch each call through ``MCPRegistry.dispatch`` (which
+     re-checks the whitelist — defense in depth), and append the **real
+     result** back into the thread as a ``role: "tool"`` message so the
+     next iteration can use it.
+   - The last iteration is forced tool-free so the model must produce text.
+4. Write the final text to ``state["response"]`` and the accumulated tool
+   envelopes to ``state["tool_calls"]``.
+
+There is no longer a blind ``respond`` node — the loop produces the final
+user-visible text itself, with every tool result in context.
 
 Tenant context
 --------------
@@ -43,16 +48,13 @@ set in the orchestrator is not guaranteed to leak in.
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 import structlog
 from langgraph.graph import END, START, StateGraph
-from nexus_api.core.metrics import (
-    ISOLATION_TOOL_WHITELIST_VIOLATION,
-    record_isolation_event,
-)
 from nexus_api.core.tenant_context import tenant_context, tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_mcp import MCPRegistry, build_default_registry
@@ -60,7 +62,7 @@ from nexus_mcp.base import ToolError, ToolNotInWhitelist
 
 from nexus_worker.persistence.messages import persist_outbound_message
 from nexus_worker.runtime.agent_loader import AgentBundle, AgentLoader
-from nexus_worker.runtime.llm import LLMRouter
+from nexus_worker.runtime.llm import LLMResponse, LLMRouter, ToolCall
 from nexus_worker.runtime.state import AgentState
 from nexus_worker.runtime.ucm_formatter import (
     format_response_as_ucm,
@@ -76,6 +78,26 @@ log = structlog.get_logger(__name__)
 
 
 VALID_INTENTS = ("book", "queue", "info", "escalate", "fallback")
+
+# Hard cap on the handler's ReAct loop. Without it a model that keeps
+# requesting tools would loop forever and burn cost (Anthropic, OpenAI and
+# Vercel all mandate an explicit iteration cap). The final iteration is
+# always forced tool-free so the model must produce a user-visible answer.
+MAX_TOOL_ITERATIONS = 6
+
+# Tool results are fed back into the LLM context verbatim. A pathological
+# result (e.g. a catalog dump of hundreds of products) would blow the
+# context window, so we truncate. Anthropic recommends bounding tool
+# output; this is the cheap version of that.
+_TOOL_RESULT_CHAR_CAP = 8_000
+
+# Safety net: the loop must always yield SOME text. If the model returns an
+# empty final answer we surface a neutral message instead of sending the
+# customer an empty WhatsApp.
+_EMPTY_RESPONSE_FALLBACK = (
+    "Disculpá, tuve un inconveniente para completar la respuesta. "
+    "¿Podés intentarlo de nuevo en un momento?"
+)
 
 
 # Per-intent tool category. The active whitelist is intersected with this
@@ -267,6 +289,14 @@ async def _view_with_composio(
 
 
 def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
+    """Cheap router: pick the intent and load the conversation history once.
+
+    ``classify`` is intentionally kept as a pre-step (ADR-023): it routes to
+    the right handler — and therefore the right tool sub-set, the runtime
+    plane of garantía 2 — and it loads ``history`` a single time so the
+    handler does not have to re-query the DB.
+    """
+
     async def classify(state: AgentState) -> dict[str, Any]:
         tenant_id = _tenant_uuid(state)
         with tenant_context(tenant_id):
@@ -289,12 +319,19 @@ def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
                 *history,
                 {"role": "user", "content": state["user_message"]},
             ]
-            raw = await llm.classify(tenant_id=tenant_id, messages=messages)
+            try:
+                raw = await llm.classify(tenant_id=tenant_id, messages=messages)
+            except Exception as exc:
+                # The router already retried + fell back. If it still
+                # failed, route to ``fallback`` so the turn completes with
+                # a graceful reply instead of leaving the message stuck.
+                log.error("classify.llm_failed", tenant_id=str(tenant_id), error=str(exc))
+                raw = ""
             intent = (raw or "").strip().lower()
             if intent not in VALID_INTENTS:
                 log.info("classify.unknown_label_using_fallback", raw=raw)
                 intent = "fallback"
-            return {"intent": intent, "route": intent}
+            return {"intent": intent, "route": intent, "history": history}
 
     return classify
 
@@ -303,25 +340,170 @@ def _route_decider(state: AgentState) -> str:
     return state.get("route") or "fallback"
 
 
+def _channel_format_note(channel: str) -> str:
+    """A system instruction telling the model how to format for the channel.
+
+    The agent's system_prompt should not hardcode channel-specific markup
+    (bug #12). The turn carries ``channel_type`` in state; this note is
+    appended so the same agent renders correctly on WhatsApp and on the web
+    QA chat without a prompt rewrite per channel.
+    """
+    if channel == "whatsapp":
+        return (
+            "Output channel: WhatsApp. Use WhatsApp formatting only — "
+            "*bold*, _italic_, ~strikethrough~. Never use Markdown headers, "
+            "tables, or **double-asterisk** bold."
+        )
+    return (
+        "Output channel: web chat. Use standard Markdown — **bold**, "
+        "_italic_, `-` bullet lists. Do NOT use WhatsApp-style single-"
+        "asterisk *bold*; it renders as literal asterisks here."
+    )
+
+
+def _build_handler_messages(
+    state: AgentState,
+    bundle: AgentBundle,
+    *,
+    intent: str,
+    kg_snapshot: str,
+) -> list[dict[str, Any]]:
+    """Assemble the base message thread for the handler's ReAct loop.
+
+    Order: system prompt → channel note → KG snapshot → owner addendum →
+    a turn directive → conversation history → the user's message. The loop
+    appends assistant/tool messages onto this list as it iterates.
+    """
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": bundle.system_prompt},
+        {
+            "role": "system",
+            "content": _channel_format_note(state.get("channel_type") or "whatsapp"),
+        },
+    ]
+    if kg_snapshot:
+        messages.append({"role": "system", "content": kg_snapshot})
+    addendum = state.get("system_addendum") or ""
+    if addendum:
+        messages.append({"role": "system", "content": addendum})
+    messages.append(
+        {
+            "role": "system",
+            "content": (
+                f"Intent of this turn: {intent}. Use the tools available this turn "
+                "to gather any real data you need — availability, prices, products, "
+                "the customer's history — BEFORE answering. Never invent data that a "
+                "tool can provide. If a tool result reports the capability is "
+                "unavailable or failed, tell the customer plainly; do not fabricate "
+                "a result."
+            ),
+        }
+    )
+    messages.extend(state.get("history") or [])
+    messages.append({"role": "user", "content": state["user_message"]})
+    return messages
+
+
+def _assistant_tool_message(response: LLMResponse) -> dict[str, Any]:
+    """The assistant message recording the tool calls the model just made,
+    in the OpenAI/LiteLLM shape, so the next request shows the model its own
+    previous output before the tool results."""
+    return {
+        "role": "assistant",
+        "content": response.text or "",
+        "tool_calls": [
+            {
+                "id": tc.id or tc.name,
+                "type": "function",
+                "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+            }
+            for tc in response.tool_calls
+        ],
+    }
+
+
+def _tool_result_content(envelope: dict[str, Any]) -> str:
+    """Render a tool envelope as the ``content`` of a ``role: "tool"``
+    message. The whole point of ADR-023: the real result reaches the LLM."""
+    status = envelope.get("status", "ok")
+    if status == "skipped:not_in_whitelist":
+        return (
+            "ERROR: this capability is not enabled for this account. Do NOT "
+            "invent a result — tell the customer the capability is unavailable."
+        )
+    if status == "error":
+        return (
+            f"ERROR: the tool failed ({envelope.get('error', 'unknown error')}). "
+            "Do NOT invent a result — tell the customer it could not be completed."
+        )
+    result = envelope.get("result", {})
+    try:
+        text = json.dumps(result, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        text = str(result)
+    if len(text) > _TOOL_RESULT_CHAR_CAP:
+        text = text[:_TOOL_RESULT_CHAR_CAP] + " …[truncated]"
+    return text
+
+
+async def _dispatch_tool(
+    registry: MCPRegistry,
+    call: ToolCall,
+    available_names: tuple[str, ...],
+    intent: str,
+) -> dict[str, Any]:
+    """Dispatch one tool call, returning an envelope no matter what.
+
+    The pre-LLM filter should have prevented a non-whitelisted name, but the
+    registry re-checks (defense in depth — garantía 2). A whitelist
+    violation or a tool error becomes an envelope with a non-``ok`` status
+    so the loop can feed the failure back to the model instead of crashing
+    the turn.
+    """
+    try:
+        envelope: dict[str, Any] = await registry.dispatch(
+            call.name, dict(call.arguments), whitelist=available_names
+        )
+        envelope["intent"] = intent
+        return envelope
+    except ToolNotInWhitelist:
+        # The registry already incremented ISOLATION_TOOL_WHITELIST_VIOLATION.
+        return {
+            "tool": call.name,
+            "intent": intent,
+            "status": "skipped:not_in_whitelist",
+            "result": {},
+        }
+    except ToolError as exc:
+        log.warning("tool.error", tool=call.name, intent=intent, error=str(exc))
+        return {
+            "tool": call.name,
+            "intent": intent,
+            "status": "error",
+            "error": str(exc),
+            "result": {},
+        }
+
+
 def make_handler_node(
     intent: str,
     loader: AgentLoader,
     llm: LLMRouter,
     registry: MCPRegistry,
 ) -> NodeFn:
-    """Build the tool_loop node for ``intent``.
+    """Build the ReAct-loop node for ``intent`` (ADR-023).
 
-    Pre-LLM filter: only tools in ``whitelist ∩ category[intent]`` are
-    passed to the LLM. If the LLM hallucinates a name outside that set,
-    ``MCPRegistry.dispatch`` raises ``ToolNotInWhitelist`` and the node
-    records a ``skipped:not_in_whitelist`` envelope without firing the
-    side effects.
+    The node loops: call the LLM with the whitelist-filtered tools, dispatch
+    whatever it requests, feed the real results back into the thread, and
+    repeat until the model answers without requesting a tool — or the
+    ``MAX_TOOL_ITERATIONS`` cap is hit. The final iteration is forced
+    tool-free so the model must produce text. The node writes the final
+    text to ``state["response"]`` directly; there is no separate respond
+    node anymore.
 
     Block N: in addition to the static (in-process) tools we ask the
     Composio runtime for any per-tenant proxies whose names are in the
-    whitelist ∩ category[intent]. The proxies are materialised once per
-    turn and merged into a tenant-scoped registry view via
-    :func:`_view_with_composio` so dispatch can find them.
+    whitelist ∩ category[intent], merged into a tenant-scoped registry view.
     """
 
     async def handler(state: AgentState) -> dict[str, Any]:
@@ -329,116 +511,87 @@ def make_handler_node(
         with tenant_context(tenant_id):
             bundle: AgentBundle = await loader.load(tenant_id)
             available_names = _filter_tools_for_intent_with_composio(bundle, intent)
-            # The Composio proxies for the tools in ``available_names``.
-            # The view merges them with the global static registry.
             scoped_registry, available_names = await _view_with_composio(
                 registry=registry,
                 tenant_id=tenant_id,
                 available_names=available_names,
             )
             available_defs = scoped_registry.get_openai_tools(available_names)
-
-            # Empty intersection (e.g. fallback) → skip the LLM call and
-            # leave tool_calls empty. The respond node will produce a
-            # "I can't help with that" answer.
-            if not available_defs:
-                return {"tool_calls": []}
-
-            history = await _load_recent_history(
-                tenant_id,
-                state.get("conversation_id"),
-                exclude_message_id=state.get("inbound_message_id"),
-            )
-            messages: list[dict[str, Any]] = [
-                {"role": "system", "content": bundle.system_prompt},
-                {
-                    "role": "system",
-                    "content": (
-                        f"You may invoke ONLY the tools listed in this turn. Intent: "
-                        f"{intent}. Pick the tools needed to answer the user, then return."
-                    ),
-                },
-            ]
-            addendum = state.get("system_addendum") or ""
-            if addendum:
-                messages.append({"role": "system", "content": addendum})
-            messages.extend(history)
-            messages.append({"role": "user", "content": state["user_message"]})
-            response = await llm.respond_with_tools(
-                tenant_id=tenant_id,
-                role=intent,
-                messages=messages,
-                tools=available_defs,
+            kg_snapshot = await _load_kg_snapshot_text(tenant_id)
+            messages = _build_handler_messages(
+                state, bundle, intent=intent, kg_snapshot=kg_snapshot
             )
 
-            results: list[dict[str, Any]] = []
-            for call in response.tool_calls:
+            envelopes: list[dict[str, Any]] = []
+            final_text = ""
+
+            for iteration in range(MAX_TOOL_ITERATIONS):
+                # The last iteration is tool-free: the model MUST answer.
+                last = iteration == MAX_TOOL_ITERATIONS - 1
+                tools_arg = [] if last else available_defs
+
                 try:
-                    envelope = await scoped_registry.dispatch(
-                        call.name,
-                        dict(call.arguments),
-                        whitelist=available_names,
+                    response = await llm.respond_with_tools(
+                        tenant_id=tenant_id,
+                        role=intent,
+                        messages=messages,
+                        tools=tools_arg,
                     )
-                    envelope["intent"] = intent
-                    results.append(envelope)
-                except ToolNotInWhitelist:
-                    # The pre-LLM filter should have prevented this; the
-                    # registry already incremented ISOLATION_TOOL_WHITELIST_VIOLATION.
-                    results.append(
-                        {
-                            "tool": call.name,
-                            "intent": intent,
-                            "status": "skipped:not_in_whitelist",
-                        }
-                    )
-                except ToolError as exc:
-                    log.warning(
-                        "tool.error",
-                        tool=call.name,
+                except Exception as exc:
+                    # The router exhausted retries + fallback. Rather than
+                    # let the exception kill the turn (the customer would
+                    # get nothing and the message would stick), answer with
+                    # a neutral message and stop the loop.
+                    log.error(
+                        "handler.llm_failed",
+                        tenant_id=str(tenant_id),
                         intent=intent,
+                        iteration=iteration,
                         error=str(exc),
                     )
-                    results.append(
+                    final_text = _EMPTY_RESPONSE_FALLBACK
+                    break
+
+                if response.text:
+                    final_text = response.text
+
+                # No tools offered, or the model chose not to call any →
+                # this text is the final answer.
+                if not tools_arg or not response.tool_calls:
+                    break
+
+                # Record the model's tool request, then dispatch each call
+                # and feed the REAL result back into the thread.
+                messages.append(_assistant_tool_message(response))
+                for call in response.tool_calls:
+                    envelope = await _dispatch_tool(
+                        scoped_registry, call, available_names, intent
+                    )
+                    envelopes.append(envelope)
+                    messages.append(
                         {
-                            "tool": call.name,
-                            "intent": intent,
-                            "status": "error",
-                            "error": str(exc),
+                            "role": "tool",
+                            "tool_call_id": call.id or call.name,
+                            "content": _tool_result_content(envelope),
                         }
                     )
 
-            # If the LLM emitted no tool_calls but the intent has a
-            # category, that's fine — sometimes the model just answers
-            # directly. ``respond`` picks up the empty list.
-            return {"tool_calls": results}
+            if not final_text.strip():
+                log.warning(
+                    "handler.empty_response",
+                    tenant_id=str(tenant_id),
+                    intent=intent,
+                    iterations=iteration + 1,
+                )
+                final_text = _EMPTY_RESPONSE_FALLBACK
+
+            return {
+                "tool_calls": envelopes,
+                "response": final_text,
+                "response_model": llm.respond_model,
+            }
 
     return handler
-
-
-# Sentinel used by tests when the LLM emits a name we WANT to leak through
-# in a hostile scenario. The pipeline still rejects via dispatch.
-def _record_pre_llm_violation(name: str, tenant_id: uuid.UUID) -> None:  # pragma: no cover
-    record_isolation_event(
-        ISOLATION_TOOL_WHITELIST_VIOLATION,
-        tenant_id,
-        {"tool": name, "site": "pre_llm"},
-    )
-    log.warning(
-        "tool.whitelist_violation_pre_llm",
-        tenant_id=str(tenant_id),
-        tool=name,
-    )
-
-
-def _summarise_tool_calls(tool_calls: list[dict[str, Any]]) -> str:
-    if not tool_calls:
-        return "(no tools invoked)"
-    parts = []
-    for call in tool_calls:
-        status = call.get("status", "ok")
-        tool = call.get("tool", "?")
-        parts.append(f"- {tool}: {status}")
-    return "\n".join(parts)
 
 
 async def _load_kg_snapshot_text(tenant_id: uuid.UUID) -> str:
@@ -450,12 +603,12 @@ async def _load_kg_snapshot_text(tenant_id: uuid.UUID) -> str:
     ``kg_nodes`` once per turn (cheap, tenant-scoped, ≤ a few hundred
     rows) and serialise as a Markdown-ish block grouped by label.
 
-    Returns an empty string when the KG is empty so the respond node
-    can skip the system message entirely.
+    Returns an empty string when the KG is empty so the handler can skip
+    the system message entirely.
 
     Tradeoff: this scales linearly with the KG. For tenants with >>200
     nodes we'll graduate to a real ``kg.lookup`` tool (filter by
-    label + free-text). Cheap enough for the pilot.
+    label + free-text) — see D1 in the agent-quality-roadmap.
     """
     from nexus_api.db.models import KGNode
     from sqlalchemy import select as _select
@@ -518,6 +671,9 @@ async def _load_recent_history(
     for the conversation (tenant-scoped, RLS-enforced), oldest-first,
     mapping inbound → ``user`` and outbound → ``assistant``.
 
+    Called ONCE per turn by ``classify`` (ADR-023); the result travels in
+    ``state["history"]`` so the handler does not re-query.
+
     ``exclude_message_id`` drops the current inbound row — it is persisted
     before the graph runs, and the caller appends the live ``user_message``
     itself. Returns ``[]`` when there is no conversation yet (first turn),
@@ -554,72 +710,6 @@ async def _load_recent_history(
         role = "user" if m.direction == MessageDirection.INBOUND else "assistant"
         history.append({"role": role, "content": content})
     return history[-limit:]
-
-
-def _channel_format_note(channel: str) -> str:
-    """A system instruction telling the model how to format for the channel.
-
-    The agent's system_prompt should not hardcode channel-specific markup
-    (bug #12). The turn carries ``channel_type`` in state; this note is
-    appended so the same agent renders correctly on WhatsApp and on the web
-    QA chat without a prompt rewrite per channel.
-    """
-    if channel == "whatsapp":
-        return (
-            "Output channel: WhatsApp. Use WhatsApp formatting only — "
-            "*bold*, _italic_, ~strikethrough~. Never use Markdown headers, "
-            "tables, or **double-asterisk** bold."
-        )
-    return (
-        "Output channel: web chat. Use standard Markdown — **bold**, "
-        "_italic_, `-` bullet lists. Do NOT use WhatsApp-style single-"
-        "asterisk *bold*; it renders as literal asterisks here."
-    )
-
-
-def make_respond_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
-    async def respond(state: AgentState) -> dict[str, Any]:
-        tenant_id = _tenant_uuid(state)
-        with tenant_context(tenant_id):
-            bundle = await loader.load(tenant_id)
-            tool_calls = state.get("tool_calls") or []
-            intent = state.get("intent") or "fallback"
-            messages: list[dict[str, Any]] = [
-                {"role": "system", "content": bundle.system_prompt},
-                {
-                    "role": "system",
-                    "content": _channel_format_note(state.get("channel_type") or "whatsapp"),
-                },
-            ]
-            kg_snapshot = await _load_kg_snapshot_text(tenant_id)
-            if kg_snapshot:
-                messages.append({"role": "system", "content": kg_snapshot})
-            addendum = state.get("system_addendum") or ""
-            if addendum:
-                messages.append({"role": "system", "content": addendum})
-            history = await _load_recent_history(
-                tenant_id,
-                state.get("conversation_id"),
-                exclude_message_id=state.get("inbound_message_id"),
-            )
-            messages.extend(history)
-            messages.extend(
-                [
-                    {"role": "user", "content": state["user_message"]},
-                    {
-                        "role": "system",
-                        "content": (
-                            f"Intent: {intent}\nTool results:\n{_summarise_tool_calls(tool_calls)}\n"
-                            "If a tool reported `skipped:not_in_whitelist`, tell the user the "
-                            "capability is not available for this account; do not invent results."
-                        ),
-                    },
-                ]
-            )
-            text = await llm.respond(tenant_id=tenant_id, messages=messages)
-            return {"response": text, "response_model": llm.respond_model}
-
-    return respond
 
 
 def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
@@ -728,18 +818,18 @@ def build_pipeline(
 
     ``checkpointer`` is optional: when ``None`` the compiled graph leaves
     persistence to whichever host runs it. Tests pass ``MemorySaver`` for
-    deterministic state. The LangGraph Server (apps/qa-langgraph-server/)
-    must pass ``None`` because the platform manages persistence and
-    rejects custom checkpointers at startup since langgraph-api 0.8.x.
+    deterministic state.
 
     ``mcp_registry`` defaults to ``nexus_mcp.build_default_registry()``;
     tests can pass a stripped-down registry.
 
     ``use_ucm_formatter`` controls Phase 2 of ADR-020. When ``None`` (the
-    default) the flag is read from ``settings.use_ucm_formatter`` so
-    deployment toggles work without code changes; tests pass an explicit
-    bool. When True a ``ucm_formatter`` node is inserted between
-    ``respond`` and ``checkpoint``.
+    default) the flag is read from ``settings.use_ucm_formatter``; tests
+    pass an explicit bool.
+
+    Graph (ADR-023): ``classify → {intent handler} → ucm_formatter →
+    checkpoint``. Each handler is a ReAct loop that produces the final
+    text itself — there is no separate ``respond`` node.
     """
     registry = mcp_registry or build_default_registry()
 
@@ -755,7 +845,6 @@ def build_pipeline(
     g.add_node("classify", make_classify_node(agent_loader, llm_router))
     for intent in VALID_INTENTS:
         g.add_node(intent, make_handler_node(intent, agent_loader, llm_router, registry))
-    g.add_node("respond", make_respond_node(agent_loader, llm_router))
     g.add_node("ucm_formatter", make_ucm_formatter_node(enabled=use_ucm_formatter))
     g.add_node("checkpoint", make_checkpoint_node())
 
@@ -766,8 +855,7 @@ def build_pipeline(
         {intent: intent for intent in VALID_INTENTS},
     )
     for intent in VALID_INTENTS:
-        g.add_edge(intent, "respond")
-    g.add_edge("respond", "ucm_formatter")
+        g.add_edge(intent, "ucm_formatter")
     g.add_edge("ucm_formatter", "checkpoint")
     g.add_edge("checkpoint", END)
     if checkpointer is None:
