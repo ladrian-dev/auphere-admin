@@ -76,26 +76,20 @@ export default async function AgentPage({
   const sortedDesc = [...bundle.versions].sort((a, b) => b.version - a.version);
   const latestStaged = sortedDesc.find((v) => v.status === "staged") ?? null;
   const editorSource: AgentConfig | null = bundle.active ?? latestStaged;
-  const versionWithSeed =
-    editorSource?.seed_template_ref
-      ? editorSource
-      : sortedDesc.find((v) => v.seed_template_ref) ?? null;
-  const seedRef = versionWithSeed?.seed_template_ref ?? null;
-  const seedTemplate = seedRef
-    ? (seedTemplates.find((t) => t.name === seedRef) ?? null)
-    : null;
-  // Without a seed template we can't know which vertical-specific tools
-  // are relevant — render an empty catalog so the editor surfaces the
-  // "Aplicá una plantilla inicial primero" CTA instead of dumping the
-  // entire registry on the operator (the regression the 2026-05-13 audit
-  // caught: BUG-004 only fixed the post-promote path).
-  const publicCatalog: ToolWithInstallStatus[] = seedTemplate
-    ? catalog.filter(
-        (t) =>
-          t.status !== "internal" &&
-          seedTemplate.tools_required.includes(t.name),
-      )
-    : [];
+  // Tool catalog for the editor = native capabilities (no connector
+  // binding — always available) + the tools of every connector INSTALLED
+  // on this tenant. Tools belong to connectors, not to verticals: we no
+  // longer filter by the seed template. A tenant that hasn't connected a
+  // given connector simply doesn't see its tools — connecting it from the
+  // Connectors tab unlocks them. The seed template only seeds the initial
+  // tool *selection* (applyTemplate writes tools_required into the staged
+  // config), never the visible universe. See
+  // architecture/connector-tools-binding-analysis.md.
+  const publicCatalog: ToolWithInstallStatus[] = catalog.filter(
+    (t) =>
+      t.status !== "internal" &&
+      (t.connector_slug === null || t.tenant_connector_status !== null),
+  );
 
   const headerTitle = bundle.active
     ? `Versión ${bundle.active.version} activa`
@@ -131,7 +125,6 @@ export default async function AgentPage({
             source={editorSource}
             sourceIsStagedDraft={editorSource?.status === "staged"}
             catalog={publicCatalog}
-            seedTemplateName={seedTemplate?.display_name ?? null}
             stageAction={stageAgentConfigAction}
           />
         </CardContent>

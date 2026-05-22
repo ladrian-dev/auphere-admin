@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.api.admin.connectors import get_composio_client
 from nexus_api.api.deps import get_db_session
 from nexus_api.config import get_settings
-from nexus_api.core.tenant_context import apply_tenant_to_session
+from nexus_api.core.tenant_context import apply_tenant_to_session, tenant_context
 from nexus_api.db.models import TenantConnector
 from nexus_api.services.connectors.composio_client import (
     ComposioClientProtocol,
@@ -118,13 +118,17 @@ async def composio_webhook(
     tenant_id = tc_row.tenant_id
     await session.execute(text("SET LOCAL row_security = on"))
     await apply_tenant_to_session(session, tenant_id)
-    result = await complete_consent_from_webhook(
-        session,
-        composio_connection_id=connection_id,
-        upstream_status=upstream_status,
-        granted_scopes=list(granted_scopes),
-        composio=composio,
-    )
+    # tenant_context sets the contextvar the repositories read — the SQL
+    # GUC from apply_tenant_to_session is not enough once complete_consent
+    # fans out to AgentConfigService (auto_enable_connector_tools).
+    with tenant_context(tenant_id):
+        result = await complete_consent_from_webhook(
+            session,
+            composio_connection_id=connection_id,
+            upstream_status=upstream_status,
+            granted_scopes=list(granted_scopes),
+            composio=composio,
+        )
     await session.commit()
     return {
         "status": "ok",

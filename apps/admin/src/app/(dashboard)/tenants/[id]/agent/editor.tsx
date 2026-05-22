@@ -67,14 +67,12 @@ export function AgentEditor({
   source,
   sourceIsStagedDraft,
   catalog,
-  seedTemplateName,
   stageAction,
 }: {
   tenantId: string;
   source: AgentConfig | null;
   sourceIsStagedDraft: boolean;
   catalog: ToolWithInstallStatus[];
-  seedTemplateName: string | null;
   stageAction: StageAction;
 }) {
   const router = useRouter();
@@ -143,7 +141,6 @@ export function AgentEditor({
     });
   }
 
-  const hasSeedTemplate = seedTemplateName !== null;
   const noToolsAvailable = catalog.length === 0;
   const selectableCount = catalog.filter((t) =>
     canSelect(t.tenant_connector_status, t.connector_slug),
@@ -187,11 +184,10 @@ export function AgentEditor({
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <Label>Tools del agente</Label>
-            {hasSeedTemplate ? (
-              <span className="text-[11px] text-muted-foreground">
-                Catálogo filtrado por plantilla {seedTemplateName}.
-              </span>
-            ) : null}
+            <span className="text-[11px] text-muted-foreground">
+              Capacidades base + tools de los connectors instalados en este
+              tenant.
+            </span>
           </div>
           <span className="text-xs font-mono text-muted-foreground tabular-nums">
             {selected.size} / {selectableCount}
@@ -206,14 +202,10 @@ export function AgentEditor({
         </div>
         {noToolsAvailable ? (
           <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-            {hasSeedTemplate ? (
-              <span>La plantilla {seedTemplateName} no declara tools.</span>
-            ) : (
-              <span>
-                Aplicá una plantilla con el botón de arriba para ver las tools
-                disponibles para este cliente.
-              </span>
-            )}
+            <span>
+              Sin tools disponibles. Conectá un connector desde la pestaña
+              Connectors para habilitar sus tools.
+            </span>
           </div>
         ) : null}
         <TooltipProvider>

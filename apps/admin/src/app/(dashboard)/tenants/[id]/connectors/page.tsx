@@ -217,6 +217,15 @@ function InstalledConnectorCard({
                 slug={tc.connector_slug}
                 displayName={tc.connector_display_name}
               />
+            ) : tc.connector_slug === "whatsapp_meta" ? (
+              // Meta is webhook_manual, not oauth_composio — the generic
+              // InitiateConsentButton calls /initiate-consent which the
+              // backend rejects ("use /bootstrap-browser or
+              // /connect-manual"). Reconnect must go through Embedded
+              // Signup, same dialog as a fresh connection.
+              <MetaWhatsAppSetupDialog tenantId={tenantId} alreadyConnected />
+            ) : tc.connector_slug === "whatsapp_ycloud" ? (
+              <WhatsAppSetupDialog tenantId={tenantId} alreadyConnected />
             ) : (
               <InitiateConsentButton
                 tenantId={tenantId}

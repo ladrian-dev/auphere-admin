@@ -49,7 +49,9 @@ from nexus_api.db.models import (
     TenantConnectorToolOverride,
     TenantCredentials,
     ToolCatalog,
+    ToolStatus,
 )
+from nexus_api.services.agent_config_service import AgentConfigService
 
 from .composio_client import (
     ComposioClientProtocol,
@@ -437,6 +439,9 @@ async def complete_consent_from_webhook(
             auto_enabled.append(slug)
         else:
             blocked.append(slug)
+    await auto_enable_connector_tools(
+        session, tenant_id=tc.tenant_id, connector=connector, actor=actor
+    )
     return CompleteConsentResult(
         tenant_connector_id=tc.id,
         tools_added=sync.added,
@@ -554,6 +559,93 @@ async def sync_tools_for(
     return SyncToolsResult(added=added, deprecated=deprecated, unchanged=unchanged)
 
 
+async def auto_enable_connector_tools(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    connector: Connector,
+    actor: str,
+) -> list[str]:
+    """Stage a new ``agent_config`` version that adds the connector's safe
+    tools to the agent whitelist — step 11 of ``architecture/connectors.md``.
+
+    Called right after a connector reaches ``connected`` (any auth_kind).
+    Tools whose ``tool_catalog.default_mode`` is ``always`` (read-only
+    tools, plus destructive tools when the connector is flagged
+    ``auto_enable_destructive``) are appended to the whitelist of a fresh
+    STAGED version cloned from the tenant's current config. Destructive
+    tools left at ``blocked`` are NOT auto-added — the operator opts them
+    in deliberately from the agent editor.
+
+    No-op (returns ``[]``) when:
+
+    - the connector has ``auto_enable_on_connect=false``;
+    - the connector contributes no ``always``-mode tools;
+    - the tenant has no ``agent_config`` yet (apply a seed template first —
+      the editor then surfaces these tools per the connector-aware catalog);
+    - every candidate tool is already whitelisted.
+
+    Idempotent: reconnecting a connector whose tools are already in the
+    whitelist stages nothing, so it never spams staged versions. Runs
+    inside the caller's RLS-scoped session.
+    """
+    if not connector.auto_enable_on_connect:
+        return []
+
+    tool_rows = (
+        await session.scalars(
+            select(ToolCatalog).where(
+                ToolCatalog.connector_id == connector.id,
+                ToolCatalog.status == ToolStatus.ACTIVE,
+            )
+        )
+    ).all()
+    candidates = sorted(
+        t.name for t in tool_rows if t.default_mode == ConnectorToolMode.ALWAYS.value
+    )
+    if not candidates:
+        return []
+
+    svc = AgentConfigService(session)
+    # Extend the LATEST version (highest version number, active or staged)
+    # — not necessarily the active one. Basing off the latest keeps the
+    # operator's in-progress draft intact and makes this idempotent: once
+    # the connector's tools are in the newest version, a re-connect adds
+    # nothing and stages nothing.
+    versions = await svc.list_versions()
+    base = max(versions, key=lambda v: v.version, default=None)
+    if base is None:
+        # No config to extend — the operator applies a seed template
+        # first; the connector-aware editor catalog then exposes these
+        # tools for explicit selection.
+        return []
+
+    current = set(base.tools)
+    added = [name for name in candidates if name not in current]
+    if not added:
+        return []
+
+    await svc.stage_new_version(
+        actor=actor,
+        system_prompt_rendered=base.system_prompt_rendered,
+        channels=list(base.channels),
+        tools=sorted(current | set(added)),
+        policies=dict(base.policies),
+        seed_template_ref=base.seed_template_ref,
+        kg_schema_id=base.kg_schema_id,
+    )
+    await _write_audit(
+        session,
+        tenant_id=tenant_id,
+        actor=actor,
+        action="connector.tools_auto_enabled",
+        target=f"connector:{connector.slug}",
+        after={"tools_added": added},
+    )
+    counters.incr(f"connector.tools_auto_enabled:{connector.slug}")
+    return added
+
+
 async def bootstrap_webhook_manual(
     session: AsyncSession,
     *,
@@ -658,6 +750,9 @@ async def bootstrap_browser_credentials(
             "auth_kind": "browser_credentials",
         },
     )
+    await auto_enable_connector_tools(
+        session, tenant_id=tenant.id, connector=connector, actor=actor
+    )
     return tc
 
 
@@ -754,6 +849,9 @@ async def bootstrap_api_key(
             "endpoint_meta": dict(endpoint_meta),
             "auth_kind": "api_key",
         },
+    )
+    await auto_enable_connector_tools(
+        session, tenant_id=tenant.id, connector=connector, actor=actor
     )
     return tc
 
