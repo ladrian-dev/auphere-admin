@@ -44,6 +44,7 @@ from nexus_api.core.tenant_context import (
 from nexus_api.db.models import (
     Channel,
     ChannelStatus,
+    ChannelType,
     Conversation,
     Customer,
     Message,
@@ -392,6 +393,62 @@ class SendOut(BaseModel):
     run_id: str | None
 
 
+# Identity of the QA Playground channel. The admin chat is a first-class
+# ``web`` channel — a real communication medium with the agent, parallel to
+# WhatsApp — not a borrowed one. ``provider`` keeps it distinct from a
+# future customer-facing web widget (which would also be ``type=web`` but
+# carry a different provider).
+_QA_CHANNEL_PROVIDER = "qa_playground"
+
+
+def _qa_channel_provider_identifier(tenant_id: uuid.UUID) -> str:
+    """Globally-unique ``provider_identifier`` for a tenant's QA web channel.
+
+    ``channels`` enforces ``UNIQUE(type, provider_identifier)``. Keying the
+    identifier by ``tenant_id`` gives each tenant exactly one QA web channel
+    with no collisions across tenants.
+    """
+    return f"qa_playground:{tenant_id}"
+
+
+async def _ensure_qa_channel(session: AsyncSession, tenant_id: uuid.UUID) -> Channel:
+    """Get-or-create the tenant's QA Playground ``web`` channel.
+
+    The QA Playground chat is a first-class ``web`` channel — the admin's
+    own communication medium with the agent, parallel to WhatsApp. Every
+    tenant gets exactly one, created lazily on the first QA send. It never
+    sends anything externally (QA runs are always ``dry_run``); it exists so
+    the QA conversation has a channel of its own instead of borrowing the
+    tenant's WhatsApp channel. That unblocks QA *before* a WhatsApp number
+    is connected and keeps QA traffic off the production channel's history.
+
+    The caller's tx must already have ``app.tenant_id`` set so RLS accepts
+    the SELECT / INSERT against the tenant-scoped ``channels`` table.
+    """
+    stmt = (
+        select(Channel)
+        .where(Channel.tenant_id == tenant_id)
+        .where(Channel.type == ChannelType.WEB)
+        .where(Channel.provider == _QA_CHANNEL_PROVIDER)
+        .limit(1)
+    )
+    channel = (await session.execute(stmt)).scalar_one_or_none()
+    if channel is not None:
+        return channel
+
+    channel = Channel(
+        tenant_id=tenant_id,
+        type=ChannelType.WEB,
+        provider=_QA_CHANNEL_PROVIDER,
+        provider_identifier=_qa_channel_provider_identifier(tenant_id),
+        config={"qa_playground": True},
+        status=ChannelStatus.ACTIVE,
+    )
+    session.add(channel)
+    await session.flush()
+    return channel
+
+
 async def _ensure_qa_conversation(
     session: AsyncSession,
     *,
@@ -400,10 +457,10 @@ async def _ensure_qa_conversation(
 ) -> tuple[Conversation, Customer, Channel]:
     """Lazily wire a thread to a (customer, conversation, channel) trio.
 
-    First send: pick the tenant's first ACTIVE channel, mint a dedicated
-    QA customer keyed to ``operator_id + thread.id`` so the same operator
-    re-using the same thread always lands on the same customer (history
-    tools can rely on that), then create one conversation.
+    First send: get-or-create the tenant's QA Playground ``web`` channel,
+    mint a dedicated QA customer keyed to ``operator_id + thread.id`` so the
+    same operator re-using the same thread always lands on the same customer
+    (history tools can rely on that), then create one conversation.
 
     Subsequent sends: load the existing conversation + customer + channel.
 
@@ -425,24 +482,12 @@ async def _ensure_qa_conversation(
             return conv, cust, ch
         # FK was SET NULL by a CASCADE; fall through to recreate.
 
-    # Pick the first ACTIVE channel of this tenant. WhatsApp preferred —
-    # if a tenant has only Instagram in the future, we still get one.
-    ch_stmt = (
-        select(Channel)
-        .where(Channel.tenant_id == thread.tenant_id)
-        .where(Channel.status == ChannelStatus.ACTIVE)
-        .order_by(Channel.created_at.asc())
-        .limit(1)
-    )
-    channel = (await session.execute(ch_stmt)).scalar_one_or_none()
-    if channel is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"tenant {thread.tenant_id} has no active channel; configure "
-                "one before sending QA messages"
-            ),
-        )
+    # The QA Playground chat is its own ``web`` channel — the admin's
+    # communication medium with the agent, parallel to WhatsApp. Get-or-
+    # create it instead of borrowing the tenant's real channel: that
+    # unblocks QA before any WhatsApp number is connected, and keeps QA
+    # traffic off the production channel's conversation history.
+    channel = await _ensure_qa_channel(session, thread.tenant_id)
 
     # Deterministic QA customer identifier — same operator+thread pair
     # always reuses the same customer row so the agent's history tools
@@ -554,6 +599,7 @@ async def _run_in_process(
     state = {
         "tenant_id": str(tenant_id),
         "channel_id": str(channel_id),
+        "channel_type": ChannelType.WEB.value,
         "user_id": user_id,
         "conversation_id": str(conversation_id),
         "customer_id": str(customer_id),
@@ -864,6 +910,7 @@ async def start_thread_run(
     graph_state = {
         "tenant_id": str(tenant_id_local),
         "channel_id": str(chan_id),
+        "channel_type": ChannelType.WEB.value,
         "user_id": cust_identifier,
         "conversation_id": str(conv_id),
         "customer_id": str(cust_id),

@@ -1,7 +1,14 @@
 "use client";
 
 /**
- * Channel preview selector — dropdown (list, NOT a switch).
+ * Channel render selector — dropdown (list, NOT a switch).
+ *
+ * The QA chat runs on the tenant's real ``web`` channel. This selector
+ * does NOT change the channel the turn runs on — it picks which
+ * channel's renderer is applied to the agent's UCM output. "Web" shows
+ * the native render; "WhatsApp" shows the same UCM degraded to the
+ * WhatsApp surface, so the operator can preview how it would land there
+ * before connecting the real number.
  *
  * Decision congelada en ADR-020 / Fase 0: lista, no switch. Lista
  * escala a Instagram, Messenger, voz sin tocar la UI; switch limitaría
@@ -13,8 +20,8 @@
 export type ChannelKind = "web" | "whatsapp";
 
 const OPTIONS: { value: ChannelKind; label: string; hint?: string }[] = [
-  { value: "web", label: "Web", hint: "Playground" },
-  { value: "whatsapp", label: "WhatsApp", hint: "Cloud API preview" },
+  { value: "web", label: "Web", hint: "canal real de este chat" },
+  { value: "whatsapp", label: "WhatsApp", hint: "vista degradada" },
   // Future channels live here. Add a renderer in `thread-pane.tsx` first.
 ];
 

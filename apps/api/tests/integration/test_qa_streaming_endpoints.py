@@ -79,7 +79,15 @@ async def tenant_id(db_session: Any) -> uuid.UUID:
 
 @pytest_asyncio.fixture
 async def channel(db_session: Any, tenant_id: uuid.UUID) -> uuid.UUID:
-    """Active channel so ``_ensure_qa_conversation`` can pick it up."""
+    """A pre-existing WhatsApp channel for the tenant.
+
+    QA no longer borrows the tenant's channel — it provisions its own
+    ``web`` / ``qa_playground`` channel (see ``_ensure_qa_channel``).
+    Tests that depend on this fixture therefore exercise the case where
+    a real channel already exists and QA still runs on its own web
+    channel without touching it. The bug #7 regression test below
+    deliberately omits this fixture to cover the no-channel case.
+    """
     from nexus_api.db.models import Channel, ChannelStatus, ChannelType
 
     ch_id = uuid.uuid4()
@@ -435,3 +443,75 @@ async def test_qa_runs_row_finalised_with_status_completed(
     # FakeFinalMsg reports input=50 / output=20.
     assert in_tokens == 50
     assert out_tokens == 20
+
+
+async def test_run_provisions_web_channel_when_tenant_has_none(
+    client: Any,
+    admin_headers: dict[str, str],
+    tenant_id: uuid.UUID,
+    db_session: Any,
+    patch_pipeline: _FakePipeline,
+) -> None:
+    """Bug #7 regression — a tenant with no channel can still be QA-ed.
+
+    The QA Playground chat is its own ``web`` channel, parallel to
+    WhatsApp. The first run get-or-creates a dedicated ``web`` /
+    ``qa_playground`` channel for the tenant instead of 409-ing on the
+    missing one. This test deliberately omits the ``channel`` fixture —
+    the whole point is that NO pre-existing channel exists.
+    """
+    from sqlalchemy import text
+
+    op = _op_id()
+    thread_id = await _create_thread(client, admin_headers, op, tenant_id)
+
+    # No channel configured for this tenant — the old code 409-ed here.
+    r = await client.post(
+        f"/qa/threads/{thread_id}/runs",
+        json={"message": "hola"},
+        headers=qa_headers(op, admin_headers),
+    )
+    assert r.status_code == 202, r.text
+
+    # A web/qa_playground channel was provisioned for the tenant.
+    res = await db_session.execute(
+        text(
+            "SELECT type, provider, provider_identifier, status "
+            "FROM channels WHERE tenant_id = :tid"
+        ),
+        {"tid": tenant_id},
+    )
+    rows = res.fetchall()
+    assert len(rows) == 1, "exactly one QA web channel expected"
+    ch_type, provider, provider_identifier, ch_status = rows[0]
+    assert ch_type == "web"
+    assert provider == "qa_playground"
+    assert provider_identifier == f"qa_playground:{tenant_id}"
+    assert ch_status == "active"
+
+    # The QA conversation FKs to that web channel.
+    res2 = await db_session.execute(
+        text(
+            "SELECT c.channel_id FROM conversations c "
+            "JOIN qa.threads t ON t.conversation_id = c.id "
+            "WHERE t.id = :tid"
+        ),
+        {"tid": thread_id},
+    )
+    conv_row = res2.fetchone()
+    assert conv_row is not None, "QA thread should be wired to a conversation"
+
+    # A second thread on the same tenant reuses the same web channel —
+    # get-or-create is idempotent, still exactly one channel row.
+    thread_b = await _create_thread(client, admin_headers, op, tenant_id)
+    r2 = await client.post(
+        f"/qa/threads/{thread_b}/runs",
+        json={"message": "otra vez"},
+        headers=qa_headers(op, admin_headers),
+    )
+    assert r2.status_code == 202, r2.text
+    res3 = await db_session.execute(
+        text("SELECT count(*) FROM channels WHERE tenant_id = :tid"),
+        {"tid": tenant_id},
+    )
+    assert res3.scalar_one() == 1

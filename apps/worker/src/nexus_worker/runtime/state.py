@@ -20,6 +20,13 @@ class AgentState(TypedDict, total=False):
     # Identity (set at entry, never mutated by nodes)
     tenant_id: str
     channel_id: str
+    # The channel medium this turn runs on — "whatsapp", "web", … (mirrors
+    # ``ChannelType``). Carried so the ``ucm_formatter`` node degrades the
+    # UCM for the right channel instead of assuming WhatsApp. The QA
+    # Playground runs on a tenant's "web" channel; the production
+    # dispatcher on "whatsapp". Optional (``total=False``): nodes fall
+    # back to "whatsapp" when a caller omits it.
+    channel_type: str
     user_id: str
     conversation_id: str
     customer_id: str
@@ -69,10 +76,12 @@ def new_state(
     inbound_message_id: uuid.UUID,
     user_message: str,
     system_addendum: str | None = None,
+    channel_type: str = "whatsapp",
 ) -> AgentState:
     return {
         "tenant_id": str(tenant_id),
         "channel_id": str(channel_id),
+        "channel_type": channel_type,
         "user_id": user_id,
         "conversation_id": str(conversation_id),
         "customer_id": str(customer_id),

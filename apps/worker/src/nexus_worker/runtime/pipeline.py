@@ -545,7 +545,11 @@ def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
                 "phase": "shadow",  # not source-of-truth yet
             },
         )
-        diff = shadow_diff_against_legacy(ucm, response_text, channel="whatsapp")
+        # Degrade for the channel this turn actually runs on. Production
+        # turns are WhatsApp; QA Playground turns run on a "web" channel.
+        # Falls back to "whatsapp" for callers that predate ``channel_type``.
+        channel = state.get("channel_type") or "whatsapp"
+        diff = shadow_diff_against_legacy(ucm, response_text, channel=channel)
 
         if not diff["equivalent"]:
             # Loud structured log so we notice regressions immediately —
@@ -555,6 +559,7 @@ def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
                 "ucm_shadow_diff_nonzero",
                 tenant_id=state.get("tenant_id"),
                 conversation_id=state.get("conversation_id"),
+                channel=channel,
                 diff_ratio=diff["diff_ratio"],
                 degraded_type=diff["degraded_type"],
                 steps=diff["steps"],

@@ -6,8 +6,9 @@ Inserted as a graph node between ``respond`` and ``checkpoint`` (see
 
 1. Reads ``state["response"]`` (the assistant's reply, today always plain
    text), wraps it in a ``type:"text"`` UCM and stamps a stable message id.
-2. Runs ``degrade(ucm, "whatsapp")`` so we can compare the channel-rendered
-   form against the legacy text — shadow validation.
+2. Runs ``degrade(ucm, channel)`` for the channel the turn runs on
+   (``state["channel_type"]``, default ``whatsapp``) so we can compare the
+   channel-rendered form against the legacy text — shadow validation.
 3. Writes both the UCM and the shadow-diff summary back into the state.
 
 The node is a pure-Python helper plus a tiny LangGraph wrapper; the heavy

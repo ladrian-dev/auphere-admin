@@ -47,7 +47,25 @@ class TestUcmFormatterNode:
         diff = out["ucm_shadow_diff"]
         assert diff["equivalent"] is True
         assert diff["diff_ratio"] == 0.0
+        # No channel_type in state → the formatter falls back to whatsapp.
         assert diff["channel"] == "whatsapp"
+
+    async def test_enabled_degrades_for_state_channel_type(self) -> None:
+        """The shadow diff degrades for the channel the turn runs on.
+
+        QA Playground turns carry ``channel_type="web"``; the formatter
+        must honour it instead of always assuming WhatsApp.
+        """
+        node = make_ucm_formatter_node(enabled=True)
+        out = await node(
+            {
+                "response": "Hola",
+                "inbound_message_id": "msg-web",
+                "tenant_id": "tnt_a",
+                "channel_type": "web",
+            }  # type: ignore[arg-type]
+        )
+        assert out["ucm_shadow_diff"]["channel"] == "web"
 
     async def test_enabled_falls_back_when_state_lacks_inbound_id(self) -> None:
         node = make_ucm_formatter_node(enabled=True)
