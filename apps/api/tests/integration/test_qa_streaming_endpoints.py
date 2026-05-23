@@ -170,14 +170,14 @@ class _FakePipeline:
 def patch_pipeline(monkeypatch: pytest.MonkeyPatch) -> _FakePipeline:
     """Swap the cached pipeline with a fake so tests don't hit real LLMs."""
     fake = _FakePipeline()
-    monkeypatch.setattr("nexus_api.api.qa._get_qa_pipeline", lambda: fake)
+    monkeypatch.setattr("nexus_api.api.qa._get_qa_pipeline", lambda *, live: fake)
     return fake
 
 
 @pytest.fixture
 def patch_pipeline_slow(monkeypatch: pytest.MonkeyPatch) -> _FakePipeline:
     fake = _FakePipeline(slow=True)
-    monkeypatch.setattr("nexus_api.api.qa._get_qa_pipeline", lambda: fake)
+    monkeypatch.setattr("nexus_api.api.qa._get_qa_pipeline", lambda *, live: fake)
     return fake
 
 

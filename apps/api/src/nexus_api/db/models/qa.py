@@ -70,6 +70,16 @@ class QAThread(UUIDPrimaryKey, Base):
     title: Mapped[str] = mapped_column(
         String(200), nullable=False, server_default=text("'Untitled'")
     )
+    # Migration 0031 (ADR-024): when True (the default) the QA Playground
+    # compiles the agent graph with a dry_run MCP registry — side-
+    # effecting tools return synthetic envelopes instead of hitting real
+    # providers. Flip to False on a thread to drive the agent through
+    # the live registry, end-to-end against the tenant's real
+    # connectors. Default keeps the safe behaviour for every existing
+    # row + every caller that doesn't know about the column.
+    dry_run: Mapped[bool] = mapped_column(
+        nullable=False, server_default=text("true"), default=True
+    )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     message_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

@@ -103,11 +103,19 @@ async def qa_session(
 class ThreadCreate(BaseModel):
     tenant_id: uuid.UUID
     title: str = Field(default="Untitled", max_length=200)
+    # ADR-024 — default to the safe (dry_run) mode. Operators that want
+    # an end-to-end run against the tenant's real connectors flip this
+    # explicitly per thread.
+    dry_run: bool = True
 
 
 class ThreadPatch(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     archived: bool | None = None
+    # ADR-024 — flip a thread between dry_run / live without recreating
+    # it. The send / runs endpoints re-read this on every turn so the
+    # next turn picks up the new mode.
+    dry_run: bool | None = None
 
 
 class ThreadOut(BaseModel):
@@ -116,6 +124,7 @@ class ThreadOut(BaseModel):
     operator_id: str
     external_id: str | None
     title: str
+    dry_run: bool
     archived_at: datetime | None
     last_run_at: datetime | None
     message_count: int
@@ -168,6 +177,7 @@ def _thread_out(t: QAThread) -> ThreadOut:
         operator_id=t.operator_id,
         external_id=t.external_id,
         title=t.title,
+        dry_run=t.dry_run,
         archived_at=t.archived_at,
         last_run_at=t.last_run_at,
         message_count=t.message_count,
@@ -220,6 +230,7 @@ async def create_thread(
             operator_id=operator_id,
             tenant_id=body.tenant_id,
             title=body.title,
+            dry_run=body.dry_run,
         )
         session.add(thread)
         await session.flush()
@@ -231,8 +242,18 @@ async def create_thread(
             action="thread.create",
             target_kind="qa.thread",
             target_id=str(thread.id),
-            payload={"title": body.title},
+            payload={"title": body.title, "dry_run": body.dry_run},
         )
+        if not body.dry_run:
+            # ADR-024 — surface a loud audit row when a thread is born
+            # live, so the operator panel can highlight it and an op
+            # reviewing the audit log later sees the deliberate choice.
+            log.warning(
+                "qa.thread.created_in_live_mode",
+                operator_id=operator_id,
+                tenant_id=str(body.tenant_id),
+                thread_id=str(thread.id),
+            )
         await session.refresh(thread)
         # Metrics: bump the global + per-tenant + per-operator counter so
         # alerts/dashboards can spot a sudden surge (e.g. one operator
@@ -289,10 +310,10 @@ async def patch_thread(
     Archive is soft (``archived_at = now()``) so audit + side-effect
     rows remain queryable. Un-archive: ``archived: false``.
     """
-    if body.title is None and body.archived is None:
+    if body.title is None and body.archived is None and body.dry_run is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one of title or archived must be set",
+            detail="At least one of title, archived or dry_run must be set",
         )
     session, operator_id = scope
     thread = await _load_thread(session, thread_id)
@@ -307,6 +328,20 @@ async def patch_thread(
         elif not body.archived and thread.archived_at is not None:
             thread.archived_at = None
             changes["archived"] = False
+    if body.dry_run is not None and body.dry_run != thread.dry_run:
+        thread.dry_run = body.dry_run
+        changes["dry_run"] = body.dry_run
+        # ADR-024 — flipping a thread to live is a deliberate, audited
+        # action: every subsequent turn will hit the tenant's real
+        # connectors. Log loudly so an op reviewing the audit log later
+        # can correlate side-effects with the moment the switch flipped.
+        if not body.dry_run:
+            log.warning(
+                "qa.thread.flipped_to_live",
+                operator_id=operator_id,
+                tenant_id=str(thread.tenant_id),
+                thread_id=str(thread_id),
+            )
     if changes:
         await _audit(
             session,
@@ -524,29 +559,34 @@ async def _ensure_qa_conversation(
 # ── in-process graph (lazy, process-cached) ──────────────────────────────────
 
 
-_qa_pipeline_cache: Any | None = None
+_qa_pipeline_dry: Any | None = None
+_qa_pipeline_live: Any | None = None
 
 
-def _get_qa_pipeline() -> Any:
-    """Build the QA pipeline once per process and reuse it.
+def _get_qa_pipeline(*, live: bool) -> Any:
+    """Build the QA pipeline once per process per mode and reuse it.
 
-    The compiled graph is stateless — every ``ainvoke`` / ``astream_events``
-    brings its own state. The only mutable surface is the checkpointer,
-    which keys by ``thread_id`` so concurrent runs on different QA
-    threads don't collide.
+    Two compiled graphs are cached side by side (ADR-024): the dry-run
+    pipeline (the safe default — every side-effecting tool is
+    intercepted and audited) and the live pipeline (tools run against
+    the tenant's real connectors). The per-thread ``dry_run`` flag on
+    ``qa.threads`` selects which one to invoke.
 
-    Since ADR-021 Fase 1 the checkpointer is the process-wide
-    ``AsyncPostgresSaver`` initialised by ``main.lifespan`` (see
-    ``core.qa_checkpointer``). That makes resumability + HITL durable
-    across server restarts. Tests bypass this path by patching the
-    cache directly with a ``MemorySaver``-backed pipeline.
+    Both share the AsyncPostgresSaver so resumability + HITL stay
+    durable across server restarts. The compiled graph is stateless —
+    every ``ainvoke`` / ``astream_events`` brings its own state.
+
+    Tests bypass this path by patching the cache slots with a
+    ``MemorySaver``-backed pipeline.
 
     Imports live inside this function so the qa-api module load doesn't
     pay the heavy LiteLLM / langgraph cost at startup.
     """
-    global _qa_pipeline_cache
-    if _qa_pipeline_cache is not None:
-        return _qa_pipeline_cache
+    global _qa_pipeline_dry, _qa_pipeline_live
+    if live and _qa_pipeline_live is not None:
+        return _qa_pipeline_live
+    if not live and _qa_pipeline_dry is not None:
+        return _qa_pipeline_dry
 
     from nexus_worker.runtime.agent_loader import AgentLoader
     from nexus_worker.runtime.llm import LiteLLMProvider, LLMRouter
@@ -561,13 +601,22 @@ def _get_qa_pipeline() -> Any:
         respond_model="anthropic/claude-sonnet-4-6",
         fallback_model="openai/gpt-4o",
     )
-    _qa_pipeline_cache = build_qa_pipeline(
+    pipeline = build_qa_pipeline(
         agent_loader=AgentLoader(),
         llm_router=llm_router,
         checkpointer=get_qa_checkpointer(),
+        dry_run=not live,
     )
-    log.info("qa.pipeline.compiled", checkpointer="async_postgres")
-    return _qa_pipeline_cache
+    if live:
+        _qa_pipeline_live = pipeline
+    else:
+        _qa_pipeline_dry = pipeline
+    log.info(
+        "qa.pipeline.compiled",
+        mode="live" if live else "dry_run",
+        checkpointer="async_postgres",
+    )
+    return pipeline
 
 
 async def _run_in_process(
@@ -581,13 +630,18 @@ async def _run_in_process(
     tenant_id: uuid.UUID,
     user_id: str,
     user_message: str,
+    live: bool,
 ) -> dict[str, Any]:
     """Invoke the QA pipeline in-process and return the final graph state.
+
+    ``live`` selects between the dry-run and live pipelines (ADR-024).
 
     The agent runtime depends on three contextvars (operator_id,
     tenant_id, qa_thread_id) for the dry_run audit writer to stamp the
     right scope on each blocked side-effect. We set them around the
-    ``ainvoke`` call so they propagate into the worker's graph nodes.
+    ``ainvoke`` call so they propagate into the worker's graph nodes
+    (the audit writer is a no-op in live mode but the contextvars are
+    still set — costs nothing and keeps the call shape uniform).
 
     LangGraph's ``thread_id`` (the configurable) is the same as
     ``qa_thread_id`` so the in-memory checkpointer keys conversations
@@ -595,7 +649,7 @@ async def _run_in_process(
     """
     from nexus_api.core.operator_context import qa_thread_context
 
-    pipeline = _get_qa_pipeline()
+    pipeline = _get_qa_pipeline(live=live)
     state = {
         "tenant_id": str(tenant_id),
         "channel_id": str(channel_id),
@@ -700,6 +754,7 @@ async def send_message(
             cust_id = customer.id
             chan_id = channel.id
             cust_identifier = customer.identifier
+            thread_live = not thread.dry_run
     finally:
         if tenant_token is not None:
             _current_tenant.reset(tenant_token)
@@ -709,7 +764,7 @@ async def send_message(
     # No DB transaction held here. The graph's ``checkpoint`` node opens
     # its own session per node to persist the outbound message. The
     # dry_run audit writer (registered when the pipeline was built) also
-    # opens its own session per blocked tool call.
+    # opens its own session per blocked tool call (dry mode only).
     try:
         final_state = await _run_in_process(
             operator_id=operator_id,
@@ -721,6 +776,7 @@ async def send_message(
             tenant_id=tenant_id_local,
             user_id=cust_identifier,
             user_message=body.message,
+            live=thread_live,
         )
     except Exception as exc:
         log.exception(
@@ -897,6 +953,7 @@ async def start_thread_run(
             cust_id = customer.id
             chan_id = channel.id
             cust_identifier = customer.identifier
+            thread_live = not thread.dry_run
     finally:
         if tenant_token is not None:
             _current_tenant.reset(tenant_token)
@@ -906,7 +963,8 @@ async def start_thread_run(
     # graph state. Contextvars must be set INSIDE the driver task
     # (asyncio creates a fresh context for each Task), so the driver
     # wraps the astream_events loop in the three context managers.
-    pipeline = _get_qa_pipeline()
+    # ADR-024: the dry/live cache slot is chosen by ``thread.dry_run``.
+    pipeline = _get_qa_pipeline(live=thread_live)
     graph_state = {
         "tenant_id": str(tenant_id_local),
         "channel_id": str(chan_id),

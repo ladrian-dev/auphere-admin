@@ -277,3 +277,143 @@ async def test_audit_endpoint_returns_thread_side_effects(
     assert rows[0]["tool_name"] == "booking.create_appointment"
     assert rows[0]["blocked_reason"] == "dry_run"
     assert rows[0]["tool_args"] == {"when": "tomorrow 10am"}
+
+
+# ── ADR-024 · per-thread dry_run / live toggle ──────────────────────────────
+
+
+async def test_create_thread_defaults_to_dry_run(client, admin_headers, tenant_id) -> None:
+    """The safe default must be preserved — a thread created without
+    specifying ``dry_run`` is born dry."""
+    h = qa_headers(_op_id(), admin_headers)
+    r = await client.post(
+        "/qa/threads",
+        json={"tenant_id": str(tenant_id), "title": "default-dry"},
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["dry_run"] is True
+
+
+async def test_create_thread_can_open_in_live_mode(client, admin_headers, tenant_id) -> None:
+    """An operator can explicitly create a live thread — the response
+    surfaces the flag so the UI can warn."""
+    h = qa_headers(_op_id(), admin_headers)
+    r = await client.post(
+        "/qa/threads",
+        json={"tenant_id": str(tenant_id), "title": "born-live", "dry_run": False},
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["dry_run"] is False
+
+
+async def test_patch_thread_flips_dry_run(client, admin_headers, tenant_id) -> None:
+    """PATCH ``dry_run=false`` flips an existing thread to live; the
+    response carries the new value and a subsequent GET sees it too."""
+    h = qa_headers(_op_id(), admin_headers)
+    created = await client.post(
+        "/qa/threads",
+        json={"tenant_id": str(tenant_id), "title": "flip"},
+        headers=h,
+    )
+    thread_id = created.json()["id"]
+    assert created.json()["dry_run"] is True
+
+    patched = await client.patch(
+        f"/qa/threads/{thread_id}",
+        json={"dry_run": False},
+        headers=h,
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["dry_run"] is False
+
+    fetched = await client.get(f"/qa/threads/{thread_id}", headers=h)
+    assert fetched.json()["dry_run"] is False
+
+
+async def test_patch_thread_accepts_only_dry_run(client, admin_headers, tenant_id) -> None:
+    """``dry_run`` alone is a valid PATCH body (no title/archived needed)."""
+    h = qa_headers(_op_id(), admin_headers)
+    created = await client.post(
+        "/qa/threads",
+        json={"tenant_id": str(tenant_id), "title": "lone-flag"},
+        headers=h,
+    )
+    thread_id = created.json()["id"]
+    r = await client.patch(
+        f"/qa/threads/{thread_id}",
+        json={"dry_run": False},
+        headers=h,
+    )
+    assert r.status_code == 200
+
+
+async def test_send_message_selects_pipeline_by_thread_dry_run(
+    client, admin_headers, tenant_id, monkeypatch
+) -> None:
+    """The core guarantee of ADR-024: ``send_message`` picks the dry vs
+    live pipeline based on ``thread.dry_run``. A dry thread routes to
+    the dry pipeline; a live thread routes to the live pipeline. The
+    selection happens per turn, so a PATCH-flip is honoured next send.
+    """
+
+    class _Fake:
+        def __init__(self, label: str) -> None:
+            self.label = label
+            self.called = 0
+
+        async def ainvoke(self, state, config):
+            self.called += 1
+            return {
+                "tenant_id": state["tenant_id"],
+                "response": f"reply-from-{self.label}",
+                "ucm": None,
+                "intent": "info",
+                "tool_calls": [],
+            }
+
+    fakes = {True: _Fake("live"), False: _Fake("dry")}
+
+    def _picker(*, live: bool):
+        return fakes[live]
+
+    monkeypatch.setattr("nexus_api.api.qa._get_qa_pipeline", _picker)
+
+    op = _op_id()
+    h = qa_headers(op, admin_headers)
+    dry_thread = (
+        await client.post(
+            "/qa/threads",
+            json={"tenant_id": str(tenant_id), "title": "dry"},
+            headers=h,
+        )
+    ).json()
+    live_thread = (
+        await client.post(
+            "/qa/threads",
+            json={"tenant_id": str(tenant_id), "title": "live", "dry_run": False},
+            headers=h,
+        )
+    ).json()
+
+    r_dry = await client.post(
+        f"/qa/threads/{dry_thread['id']}/send",
+        json={"message": "hola dry"},
+        headers=h,
+    )
+    assert r_dry.status_code == 200, r_dry.text
+    assert r_dry.json()["response"] == "reply-from-dry"
+
+    r_live = await client.post(
+        f"/qa/threads/{live_thread['id']}/send",
+        json={"message": "hola live"},
+        headers=h,
+    )
+    assert r_live.status_code == 200, r_live.text
+    assert r_live.json()["response"] == "reply-from-live"
+
+    # Each pipeline saw exactly one invocation — the selection by
+    # ``thread.dry_run`` was respected, not the global default.
+    assert fakes[False].called == 1
+    assert fakes[True].called == 1
