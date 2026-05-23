@@ -16,12 +16,20 @@ Batching:
 - Calls go through ``litellm.acompletion`` one-at-a-time. We never aggregate
   requests across tenants. The contract is published in ``litellm_kwargs_contract``
   so the isolation tests can assert it without reaching into LiteLLM internals.
+
+Context editing (Fase A — claude-platform-integration):
+- ``LiteLLMProvider`` accepts a ``context_management`` dict and passes it
+  through to ``litellm.acompletion`` *only* when tools are present (the
+  classify call carries no tools and would not benefit). LiteLLM's
+  Anthropic adapter auto-injects the ``context-management-2025-06-27``
+  beta header — we do NOT pass it via ``extra_headers``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -54,6 +62,49 @@ _RETRY_BACKOFF_S = 0.5
 
 # Return type of a resilient call — preserved through ``_call_with_resilience``.
 _T = TypeVar("_T")
+
+
+# ── context editing (Fase A — claude-platform-integration) ───────────────────
+
+# Default ``context_management`` payload sent to Anthropic alongside tools.
+# ``clear_tool_uses_20250919`` trims older tool_use/tool_result pairs out of
+# the messages once the prefix grows past ``trigger.value`` tokens, keeping the
+# last ``keep.value`` tool uses verbatim. The Anthropic server applies the
+# edit and reports what it cleared in ``response.context_management.applied_edits``.
+#
+# Numbers picked to match the docs' default and not impact short turns:
+# - trigger 30k input_tokens: only fires on long ReAct loops (booking with
+#   availability scans, ecommerce catalog searches) — typical chit-chat
+#   turns stay below the threshold and pay nothing.
+# - keep 3 most recent tool_uses: enough for the model to follow the
+#   immediate chain of evidence; older invocations are summarised away.
+# - clear_at_least 5k: avoid death by paper cuts (trim only when there is
+#   meaningful bloat to remove).
+DEFAULT_CONTEXT_MANAGEMENT: dict[str, Any] = {
+    "edits": [
+        {
+            "type": "clear_tool_uses_20250919",
+            "trigger": {"type": "input_tokens", "value": 30_000},
+            "keep": {"type": "tool_uses", "value": 3},
+            "clear_at_least": {"type": "input_tokens", "value": 5_000},
+            "exclude_tools": [],
+        }
+    ]
+}
+
+
+def default_context_management_from_env() -> dict[str, Any] | None:
+    """Return the default ``context_management`` payload, or ``None`` when
+    the feature is disabled via ``NEXUS_CONTEXT_EDITING_ENABLED=0``.
+
+    Read at provider-construction time so a deploy with the env var flipped
+    immediately stops emitting the field (rollback per §A.7 of the feature
+    spec). Tests pass an explicit ``context_management`` to override.
+    """
+    flag = os.getenv("NEXUS_CONTEXT_EDITING_ENABLED", "1")
+    if flag.strip().lower() in {"0", "false", "no", "off", ""}:
+        return None
+    return DEFAULT_CONTEXT_MANAGEMENT
 
 
 def _with_prompt_caching(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -226,9 +277,24 @@ class LiteLLMProvider:
     inside the first ASGI request, where blockbuster (LangGraph dev)
     rejects it. Tests use ``InMemoryProvider`` and never instantiate
     this class, so the heavy import stays out of the unit-test path.
+
+    ``context_management`` controls the Anthropic context-editing feature
+    (Fase A — claude-platform-integration). When set, the dict is forwarded
+    to ``litellm.acompletion`` on every call that carries tools (handler
+    ReAct loops). LiteLLM's Anthropic adapter takes care of adding the
+    ``context-management-2025-06-27`` beta header automatically — see
+    ``litellm/llms/anthropic/chat/transformation.py::_ensure_context_management_beta_header``.
+
+    Pass ``context_management=None`` (e.g. tests, or via
+    ``NEXUS_CONTEXT_EDITING_ENABLED=0``) to disable the feature without
+    code changes. The classify call never carries tools, so context
+    editing is a no-op for it regardless.
     """
 
     timeout_s: float = 30.0
+    context_management: dict[str, Any] | None = field(
+        default_factory=default_context_management_from_env
+    )
 
     def __post_init__(self) -> None:
         # Pre-import litellm so the first acomplete() doesn't pay the
@@ -315,6 +381,12 @@ class LiteLLMProvider:
         }
         if tools:
             kwargs["tools"] = tools
+            # Context editing only makes sense for calls that carry tools —
+            # ``clear_tool_uses_20250919`` operates on the tool_use /
+            # tool_result pairs in messages. classify() carries no tools so
+            # we skip the field there entirely (no beta header, no edits).
+            if self.context_management is not None:
+                kwargs["context_management"] = self.context_management
 
         # Sanity: if a future change ever turns batching on globally, surface it
         # immediately rather than letting it ship.
@@ -523,6 +595,7 @@ def build_default_router(
 
 
 __all__ = [
+    "DEFAULT_CONTEXT_MANAGEMENT",
     "InMemoryProvider",
     "LLMCall",
     "LLMProvider",
@@ -531,6 +604,7 @@ __all__ = [
     "LiteLLMProvider",
     "ToolCall",
     "build_default_router",
+    "default_context_management_from_env",
     "litellm_kwargs_contract",
 ]
 

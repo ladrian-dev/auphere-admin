@@ -20,7 +20,14 @@ from typing import Any
 
 import pytest
 
-from nexus_worker.runtime.llm import LLMResponse, LLMRouter, _with_prompt_caching
+from nexus_worker.runtime.llm import (
+    DEFAULT_CONTEXT_MANAGEMENT,
+    LiteLLMProvider,
+    LLMResponse,
+    LLMRouter,
+    _with_prompt_caching,
+    default_context_management_from_env,
+)
 
 # ── _with_prompt_caching ─────────────────────────────────────────────────────
 
@@ -166,3 +173,188 @@ class TestRouterResilience:
 
         # 2 primary attempts + 2 fallback attempts.
         assert len(provider.calls) == 4
+
+
+# ── context editing (Fase A — claude-platform-integration) ───────────────────
+
+
+class _RecordingAcompletion:
+    """Captures kwargs passed to ``litellm.acompletion`` and returns a stub.
+
+    Replaces ``litellm.acompletion`` via monkeypatch so the test never hits
+    the wire. The stub response shape mirrors the bits ``LiteLLMProvider``
+    actually reads — ``choices[0]["message"]`` for text + tool_calls.
+    """
+
+    def __init__(self, *, text: str = "ok", tool_calls: list[dict[str, Any]] | None = None) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._text = text
+        self._tool_calls = tool_calls or []
+
+    async def __call__(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        message: dict[str, Any] = {"content": self._text}
+        if self._tool_calls:
+            message["tool_calls"] = self._tool_calls
+        return {"choices": [{"message": message}]}
+
+
+@pytest.fixture
+def patched_litellm(monkeypatch: pytest.MonkeyPatch) -> _RecordingAcompletion:
+    """Patch ``litellm.acompletion`` with a recording stub for this test.
+
+    Imports happen inside ``LiteLLMProvider._raw_complete`` via
+    ``import litellm`` — a local import that re-binds to the module's
+    ``acompletion`` attribute on each call. Patching the attribute on the
+    module is therefore sufficient.
+    """
+    import litellm  # heavy dep but tests/conftest already loads it indirectly
+
+    stub = _RecordingAcompletion()
+    monkeypatch.setattr(litellm, "acompletion", stub)
+    return stub
+
+
+class TestContextEditing:
+    async def test_context_management_emitted_with_tools(
+        self, patched_litellm: _RecordingAcompletion
+    ) -> None:
+        """Provider attached to a default config emits ``context_management``
+        in the litellm payload whenever the call carries tools. LiteLLM then
+        auto-injects the ``context-management-2025-06-27`` beta header."""
+        provider = LiteLLMProvider(context_management=DEFAULT_CONTEXT_MANAGEMENT)
+        tools = [{"type": "function", "function": {"name": "noop", "parameters": {}}}]
+
+        await provider.acomplete_with_tools(
+            tenant_id=uuid.uuid4(),
+            role="book",
+            model="anthropic/claude-sonnet-4-6",
+            messages=[
+                {"role": "system", "content": "S"},
+                {"role": "user", "content": "u"},
+            ],
+            tools=tools,
+        )
+
+        assert len(patched_litellm.calls) == 1
+        kw = patched_litellm.calls[0]
+        assert "context_management" in kw, (
+            "tools call must carry context_management for clear_tool_uses_20250919"
+        )
+        assert kw["context_management"] == DEFAULT_CONTEXT_MANAGEMENT
+        edit = kw["context_management"]["edits"][0]
+        assert edit["type"] == "clear_tool_uses_20250919"
+
+    async def test_context_management_omitted_without_tools(
+        self, patched_litellm: _RecordingAcompletion
+    ) -> None:
+        """The classify call carries no tools — context editing operates on
+        tool_use/tool_result pairs and would be a no-op. Provider must NOT
+        emit ``context_management`` so the beta header is not added either."""
+        provider = LiteLLMProvider(context_management=DEFAULT_CONTEXT_MANAGEMENT)
+
+        await provider.acomplete(
+            tenant_id=uuid.uuid4(),
+            role="classify",
+            model="anthropic/claude-haiku-4-5",
+            messages=[
+                {"role": "system", "content": "S"},
+                {"role": "user", "content": "u"},
+            ],
+        )
+
+        assert len(patched_litellm.calls) == 1
+        assert "context_management" not in patched_litellm.calls[0]
+
+    async def test_context_management_disabled_per_provider(
+        self, patched_litellm: _RecordingAcompletion
+    ) -> None:
+        """``context_management=None`` (rollback path or explicit opt-out)
+        keeps the kwarg out of the payload even when tools are present."""
+        provider = LiteLLMProvider(context_management=None)
+        tools = [{"type": "function", "function": {"name": "noop", "parameters": {}}}]
+
+        await provider.acomplete_with_tools(
+            tenant_id=uuid.uuid4(),
+            role="book",
+            model="anthropic/claude-sonnet-4-6",
+            messages=[{"role": "user", "content": "u"}],
+            tools=tools,
+        )
+
+        assert len(patched_litellm.calls) == 1
+        assert "context_management" not in patched_litellm.calls[0]
+
+    async def test_context_management_persists_across_loop_iterations(
+        self, patched_litellm: _RecordingAcompletion
+    ) -> None:
+        """Simulate the handler's ReAct loop: the same provider is invoked
+        repeatedly with growing message history (assistant tool_call →
+        tool_result → next call). ``context_management`` must travel on every
+        tool-bearing iteration so the Anthropic server can apply the edit
+        once the prefix exceeds the trigger threshold."""
+        provider = LiteLLMProvider(context_management=DEFAULT_CONTEXT_MANAGEMENT)
+        tools = [{"type": "function", "function": {"name": "lookup", "parameters": {}}}]
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "find me a slot"},
+        ]
+
+        # Drive 4 loop iterations — the threshold for the doc's
+        # ``test_clear_tool_uses_in_long_loop`` acceptance. Each iteration
+        # appends an assistant message + a tool result to the thread; the
+        # context_management arg must travel every single time.
+        for i in range(4):
+            await provider.acomplete_with_tools(
+                tenant_id=uuid.uuid4(),
+                role="book",
+                model="anthropic/claude-sonnet-4-6",
+                messages=messages,
+                tools=tools,
+            )
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": f"call_{i}",
+                            "type": "function",
+                            "function": {"name": "lookup", "arguments": "{}"},
+                        }
+                    ],
+                }
+            )
+            messages.append(
+                {"role": "tool", "tool_call_id": f"call_{i}", "content": "{}"}
+            )
+
+        assert len(patched_litellm.calls) == 4
+        for idx, call in enumerate(patched_litellm.calls):
+            assert "context_management" in call, (
+                f"iteration {idx} dropped context_management"
+            )
+            assert (
+                call["context_management"]["edits"][0]["type"]
+                == "clear_tool_uses_20250919"
+            )
+
+
+class TestDefaultContextManagementFromEnv:
+    def test_returns_default_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("NEXUS_CONTEXT_EDITING_ENABLED", raising=False)
+        assert default_context_management_from_env() == DEFAULT_CONTEXT_MANAGEMENT
+
+    @pytest.mark.parametrize("flag", ["0", "false", "FALSE", "no", "off", ""])
+    def test_returns_none_when_disabled(
+        self, monkeypatch: pytest.MonkeyPatch, flag: str
+    ) -> None:
+        monkeypatch.setenv("NEXUS_CONTEXT_EDITING_ENABLED", flag)
+        assert default_context_management_from_env() is None
+
+    @pytest.mark.parametrize("flag", ["1", "true", "TRUE", "yes"])
+    def test_returns_default_when_enabled(
+        self, monkeypatch: pytest.MonkeyPatch, flag: str
+    ) -> None:
+        monkeypatch.setenv("NEXUS_CONTEXT_EDITING_ENABLED", flag)
+        assert default_context_management_from_env() == DEFAULT_CONTEXT_MANAGEMENT
