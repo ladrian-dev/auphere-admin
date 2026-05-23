@@ -48,6 +48,7 @@ from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.async_booking_cron import run_async_booking_cron
 from nexus_worker.streams.consumer import run_inbound_consumer
+from nexus_worker.streams.continuous_eval_cron import run_continuous_eval_cron
 from nexus_worker.streams.cost_rollup_cron import run_cost_rollup_cron
 from nexus_worker.streams.isolation_watcher import run_isolation_watcher
 from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
@@ -169,6 +170,16 @@ async def _amain() -> None:
             run_async_booking_cron(stop=stop),
             name="async-booking-cron",
         )
+        # Roadmap E2.3: continuous evals against each tenant's ACTIVE
+        # config. OFF unless ``NEXUS_CONTINUOUS_EVAL_ENABLED`` is set.
+        continuous_eval_task = asyncio.create_task(
+            run_continuous_eval_cron(
+                stop=stop,
+                enabled=worker_settings.continuous_eval_enabled,
+                tick_seconds=worker_settings.continuous_eval_tick_seconds,
+            ),
+            name="continuous-eval-cron",
+        )
         try:
             await asyncio.gather(
                 consumer_task,
@@ -182,6 +193,7 @@ async def _amain() -> None:
                 isolation_watcher_task,
                 whatsapp_health_task,
                 async_booking_task,
+                continuous_eval_task,
             )
         finally:
             await ycloud_client.close()

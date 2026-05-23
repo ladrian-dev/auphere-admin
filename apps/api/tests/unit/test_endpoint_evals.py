@@ -1,8 +1,10 @@
 """Block P — admin endpoint tests for evals.
 
-CRUD + run trigger + promotion gate. Uses FakeTestAgentProvider (from
-Bloque O) to script sandbox responses, and FakeJudgeProvider so we
-never hit Anthropic.
+CRUD + run trigger + promotion gate. Roadmap E2: the runner now drives
+the REAL compiled pipeline, so the run tests inject an
+``InMemoryProvider``-backed ``LLMRouter`` via ``set_eval_llm_router``
+(scripted: classify → ``info``, handler → a fixed text reply). The judge
+is still faked via ``set_judge_provider``. No call ever reaches LiteLLM.
 """
 
 from __future__ import annotations
@@ -14,22 +16,40 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 
-from nexus_api.api.admin.agent_configs import set_test_agent_provider
 from nexus_api.api.admin.evals import set_judge_provider
-from nexus_api.services.evals import FakeJudgeProvider
-from nexus_api.services.test_agent import FakeTestAgentProvider
+from nexus_api.services.evals import FakeJudgeProvider, set_eval_llm_router
 
 pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture
-async def fake_agent() -> AsyncIterator[FakeTestAgentProvider]:
-    provider = FakeTestAgentProvider()
-    set_test_agent_provider(provider)
+async def eval_router() -> AsyncIterator[object]:
+    """Inject an in-memory LLM router into the eval driver.
+
+    classify always returns the ``info`` intent; every handler reply is
+    a fixed courteous text. No tool calls are scripted, so the ReAct
+    loop terminates on the first iteration with that text."""
+    from nexus_worker.runtime.llm import InMemoryProvider, LLMRouter
+
+    provider = InMemoryProvider()
+
+    def responder(call: object) -> str:
+        if getattr(call, "role", "") == "classify":
+            return "info"
+        return "Hola, soy el asistente. ¿En qué te puedo ayudar?"
+
+    provider.responder = responder
+    router = LLMRouter(
+        provider=provider,
+        classify_model="t/classify",
+        respond_model="t/respond",
+        fallback_model="t/fallback",
+    )
+    set_eval_llm_router(router)
     try:
         yield provider
     finally:
-        set_test_agent_provider(None)
+        set_eval_llm_router(None)
 
 
 @pytest_asyncio.fixture
@@ -180,7 +200,7 @@ async def test_create_case_rejects_empty_assertions(client, admin_headers, seed_
 
 
 async def test_run_dataset_passing_path(
-    client, admin_headers, seed_tenants, db_session, fake_agent, fake_judge
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge
 ) -> None:
     tid = seed_tenants["a"]
     async with db_session.begin():
@@ -221,12 +241,16 @@ async def test_run_dataset_passing_path(
     assert len(body["results"]) == 1
     # Three assertion results: must_contain + must_emit_text + judge.
     assert len(body["results"][0]["assertion_results"]) == 3
+    # The transcript carries the real pipeline output.
+    transcript = body["results"][0]["transcript"]
+    assert transcript["intent"] == "info"
+    assert "asistente" in transcript["assistant_message"].lower()
 
 
 async def test_run_dataset_failing_path(
-    client, admin_headers, seed_tenants, db_session, fake_agent, fake_judge
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge
 ) -> None:
-    """A must_contain that the default Fake response doesn't satisfy → fail."""
+    """A must_contain the scripted reply doesn't satisfy → fail."""
     tid = seed_tenants["a"]
     async with db_session.begin():
         await _seed_active_config(db_session, tid)
@@ -244,7 +268,7 @@ async def test_run_dataset_failing_path(
         json={
             "name": "agenda",
             "user_message": "agendá",
-            "assertions": {"must_contain": ["confirmado"]},  # Fake never says this
+            "assertions": {"must_contain": ["confirmado"]},  # the reply never says this
         },
     )
 
@@ -261,7 +285,7 @@ async def test_run_dataset_failing_path(
 
 
 async def test_run_judge_error_marks_case_error(
-    client, admin_headers, seed_tenants, db_session, fake_agent, fake_judge
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge
 ) -> None:
     """If the judge raises, the assertion is recorded as ``judge_error`` and
     the case status becomes ``error`` (distinct from ``fail``)."""
@@ -300,8 +324,52 @@ async def test_run_judge_error_marks_case_error(
     assert body["status"] == "error"
 
 
+async def test_run_judge_unknown_marks_case_error(
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge
+) -> None:
+    """E2.2 — an ``unknown`` verdict is not a pass: the case lands on
+    ``error`` so the operator sees the eval was inconclusive."""
+    from nexus_api.services.evals.judge import JudgeReply
+
+    fake_judge.responder = lambda q, m, t: JudgeReply(
+        verdict="unknown", reason="sin evidencia", raw="{}"
+    )
+    tid = seed_tenants["a"]
+    async with db_session.begin():
+        await _seed_active_config(db_session, tid)
+
+    ds = (
+        await client.post(
+            f"/admin/tenants/{tid}/eval-datasets",
+            headers=admin_headers,
+            json={"name": "judge-unknown"},
+        )
+    ).json()
+    await client.post(
+        f"/admin/tenants/{tid}/eval-datasets/{ds['id']}/cases",
+        headers=admin_headers,
+        json={
+            "name": "ambiguo",
+            "user_message": "?",
+            "assertions": {"judge_questions": ["¿hizo X?"]},
+        },
+    )
+
+    r = await client.post(
+        f"/admin/tenants/{tid}/eval-datasets/{ds['id']}/run",
+        headers=admin_headers,
+        json={},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["error_count"] == 1
+    assert body["status"] == "error"
+    kinds = {a["kind"] for a in body["results"][0]["assertion_results"]}
+    assert "judge_unknown" in kinds
+
+
 async def test_run_empty_dataset_400(
-    client, admin_headers, seed_tenants, db_session, fake_agent, fake_judge
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge
 ) -> None:
     tid = seed_tenants["a"]
     async with db_session.begin():
@@ -322,7 +390,7 @@ async def test_run_empty_dataset_400(
 
 
 async def test_list_runs_filter_by_version(
-    client, admin_headers, seed_tenants, db_session, fake_agent, fake_judge
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge
 ) -> None:
     tid = seed_tenants["a"]
     async with db_session.begin():
@@ -363,7 +431,7 @@ async def test_list_runs_filter_by_version(
 
 
 async def test_promote_blocked_without_passing_run(
-    client, admin_headers, seed_tenants, db_session, fake_agent, fake_judge
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge
 ) -> None:
     """Tenant has ``eval_required=true`` but no eval_run for the candidate
     version → 409."""
@@ -372,7 +440,6 @@ async def test_promote_blocked_without_passing_run(
     tid = seed_tenants["a"]
     async with db_session.begin():
         await _set_eval_required(db_session, tid, True)
-        # Need a STAGED version to promote (not ACTIVE).
         await db_session.execute(
             text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tid)}
         )
@@ -399,7 +466,7 @@ async def test_promote_blocked_without_passing_run(
 
 
 async def test_promote_allowed_with_passing_run(
-    client, admin_headers, seed_tenants, db_session, fake_agent, fake_judge
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge
 ) -> None:
     """End-to-end: enable eval_required, stage v1, run evals that pass,
     promote works."""
@@ -458,7 +525,7 @@ async def test_promote_allowed_with_passing_run(
 
 
 async def test_promote_override_with_reason(
-    client, admin_headers, seed_tenants, db_session, fake_agent, fake_judge
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge
 ) -> None:
     from sqlalchemy import select
 
@@ -490,7 +557,6 @@ async def test_promote_override_with_reason(
         json={"override": True, "reason": "incidente en prod, rollback rápido"},
     )
     assert r.status_code == 200, r.text
-    # Audit row was written.
     rows = (
         (
             await db_session.execute(
@@ -504,7 +570,7 @@ async def test_promote_override_with_reason(
 
 
 async def test_promote_override_requires_reason(
-    client, admin_headers, seed_tenants, db_session, fake_agent, fake_judge
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge
 ) -> None:
     from nexus_api.db.models import AgentConfig, AgentConfigStatus
 

@@ -54,6 +54,13 @@ class WorkerSettings(BaseSettings):
     cost_rollup_tick_seconds: float = 3600.0
     isolation_watcher_tick_seconds: float = 60.0
 
+    # ── Continuous evals (roadmap E2.3) ───────────────────────────────────
+    # OFF by default: when on, the cron runs the eval suite against each
+    # tenant's ACTIVE config on a schedule, making real LLM calls per case.
+    # Enable per environment once API keys + datasets are in place.
+    continuous_eval_enabled: bool = False
+    continuous_eval_tick_seconds: float = 21_600.0  # 6 hours
+
 
 @lru_cache
 def get_worker_settings() -> WorkerSettings:

@@ -80,6 +80,22 @@ class AgentLoader:
                 self._cache.popitem(last=False)
         return bundle
 
+    def prime(self, bundle: AgentBundle) -> None:
+        """Seed the cache with a pre-built bundle, bypassing the DB fetch.
+
+        The eval runner uses this to pin the loader to a SPECIFIC
+        ``agent_config`` version — including a STAGED candidate that is
+        not the active row — so the real pipeline evaluates the exact
+        config under test rather than whatever ``get_active()`` returns.
+        ``load`` then returns this bundle for ``bundle.tenant_id`` until
+        it is invalidated.
+
+        Sync on purpose: callers prime the loader at setup time, before
+        any concurrent ``load`` is awaited, so the lock is unnecessary.
+        """
+        self._cache[bundle.tenant_id] = bundle
+        self._cache.move_to_end(bundle.tenant_id)
+
     async def invalidate(self, tenant_id: uuid.UUID) -> None:
         async with self._lock:
             self._cache.pop(tenant_id, None)

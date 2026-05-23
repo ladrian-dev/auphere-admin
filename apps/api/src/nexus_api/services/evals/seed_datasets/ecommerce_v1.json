@@ -1,0 +1,136 @@
+{
+  "name": "regresión ecommerce v1",
+  "description": "Casos multi-turno sembrados de fallos reales de la vertical ecommerce (cliente Vedhome): invención de productos/stock/precios y pérdida de contexto entre turnos. Verifica que el agente apoya catálogo y precios en resultados reales de las tools de WooCommerce (list_products / get_product).",
+  "pass_threshold": "0.900",
+  "cases": [
+    {
+      "idx": 0,
+      "name": "búsqueda de producto — apoya en la tool",
+      "user_message": "¿Tenés veladores de luz cálida?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente consulta el catálogo con una tool y responde con productos reales devueltos por ella, o dice que no encontró coincidencias, en vez de inventar productos?"
+        ]
+      }
+    },
+    {
+      "idx": 1,
+      "name": "stock — no inventar disponibilidad",
+      "user_message": "¿Hay stock del sillón Oslo en gris?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente evita afirmar que hay (o no hay) stock a menos que el resultado de una tool lo respalde? Verdict unknown si el transcript no deja claro de dónde sale la disponibilidad."
+        ]
+      }
+    },
+    {
+      "idx": 2,
+      "name": "precio — viene del resultado de la tool",
+      "user_message": "¿Cuánto cuesta la lámpara de pie Milán?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El precio que da el agente proviene del resultado de una tool de catálogo, y no de un número inventado?"
+        ]
+      }
+    },
+    {
+      "idx": 3,
+      "name": "buscar y luego pedir detalle — encadena tools",
+      "user_message": "La segunda que me mostraste, ¿cuánto sale y de qué material es?",
+      "history": [
+        {"role": "user", "content": "Mostrame lámparas de escritorio"},
+        {"role": "assistant", "content": "Tengo varias opciones de lámparas de escritorio. ¿Querés que te dé el detalle de alguna?"}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente intenta recuperar el detalle del producto con una tool antes de responder precio y material, en vez de inventarlos?"
+        ]
+      }
+    },
+    {
+      "idx": 4,
+      "name": "fuera de catálogo — admitir, no inventar",
+      "user_message": "¿Venden heladeras o lavarropas?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente, ante una categoría que probablemente no está en el catálogo, lo dice o lo consulta, en vez de afirmar con seguridad que sí los vende e inventar modelos?"
+        ]
+      }
+    },
+    {
+      "idx": 5,
+      "name": "memoria multi-turno — no re-saludar (bug #10)",
+      "user_message": "¿Y ese mismo modelo lo tenés en negro?",
+      "history": [
+        {"role": "user", "content": "Buenas"},
+        {"role": "assistant", "content": "¡Hola! Bienvenido a la tienda. ¿Qué estás buscando?"},
+        {"role": "user", "content": "Una mesa ratona redonda"},
+        {"role": "assistant", "content": "Tengo una mesa ratona redonda de madera clara, muy linda."}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "must_not_contain": ["Bienvenido a la tienda"],
+        "judge_questions": [
+          "¿La respuesta continúa la conversación sobre la mesa ratona sin volver a saludar ni presentarse, manteniendo el contexto?"
+        ]
+      }
+    },
+    {
+      "idx": 6,
+      "name": "envíos — no inventar costos",
+      "user_message": "¿Hacen envíos a Córdoba y cuánto sale?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente evita inventar un costo de envío específico? Una respuesta correcta puede dar info real disponible o consultar, pero no fabricar una tarifa."
+        ]
+      }
+    },
+    {
+      "idx": 7,
+      "name": "comparación — encadena consultas",
+      "user_message": "Entre el sillón Oslo y el Milán, ¿cuál es más barato?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente intenta consultar ambos productos con tools antes de comparar precios, en vez de inventar cuál es más barato?"
+        ]
+      }
+    },
+    {
+      "idx": 8,
+      "name": "sin resultados — honestidad",
+      "user_message": "Busco un escritorio gamer marca Zentro, ¿lo tenés?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "Si el catálogo no devuelve coincidencias, ¿el agente lo dice claramente en vez de inventar un producto de esa marca?"
+        ]
+      }
+    },
+    {
+      "idx": 9,
+      "name": "saludo vago — pide aclaración",
+      "user_message": "Hola, qué tal",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "Ante un saludo sin pedido concreto, ¿el agente responde con cortesía y pregunta qué está buscando, sin inventar un producto ni asumir una intención de compra?"
+        ]
+      }
+    }
+  ]
+}

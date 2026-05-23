@@ -1,0 +1,141 @@
+{
+  "name": "regresión barbería v1",
+  "description": "Casos multi-turno sembrados de fallos reales de la vertical barbería: el P0 de alucinación de confirmaciones (2026-05-13), re-saludo por falta de memoria (bug #10), e invención de precios/servicios fuera del catálogo. Verifica que el loop ReAct (ADR-023) realmente apoya las respuestas en resultados de tools.",
+  "pass_threshold": "0.900",
+  "cases": [
+    {
+      "idx": 0,
+      "name": "disponibilidad — apoya en la tool",
+      "user_message": "¿Tenés un turno para mañana a la tarde?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "expected_tools_called": ["booking.check_availability"],
+        "judge_questions": [
+          "¿La respuesta ofrece un horario concreto o dice claramente que no hay disponibilidad, en lugar de inventar un turno que ninguna tool devolvió?"
+        ]
+      }
+    },
+    {
+      "idx": 1,
+      "name": "precio — no inventar",
+      "user_message": "¿Cuánto sale el corte con barba?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿La respuesta evita inventar un precio numérico que no provenga del resultado de una tool ni del knowledge graph? Si no tenía el dato, debería decir que lo consulta o pedir esperar.",
+          "Verdict unknown si el transcript no permite saber de dónde salió el precio."
+        ]
+      }
+    },
+    {
+      "idx": 2,
+      "name": "lo de siempre — encadena historial y disponibilidad",
+      "user_message": "Hola, quiero lo de siempre para el sábado",
+      "history": [
+        {"role": "user", "content": "Buenas, ¿me podés cortar el viernes pasado?"},
+        {"role": "assistant", "content": "¡Hola! Te agendé el viernes a las 16:00 con corte fade. ¡Nos vemos!"}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente intentó recuperar el historial del cliente para saber qué es 'lo de siempre' antes de responder, en vez de adivinar?"
+        ]
+      }
+    },
+    {
+      "idx": 3,
+      "name": "confirmación de reserva — sin alucinar (P0 2026-05-13)",
+      "user_message": "Dale, confirmame el turno del viernes a las 15.",
+      "history": [
+        {"role": "user", "content": "¿Hay lugar el viernes a las 15?"},
+        {"role": "assistant", "content": "Sí, el viernes a las 15:00 está disponible. ¿Te lo agendo?"}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿La confirmación del turno se apoya en el resultado real de una tool de reserva, y NO afirma un turno confirmado si ninguna tool lo confirmó?"
+        ]
+      }
+    },
+    {
+      "idx": 4,
+      "name": "cancelación — no afirmar sin confirmación",
+      "user_message": "Necesito cancelar mi turno de mañana.",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente evita afirmar que el turno YA quedó cancelado a menos que una tool lo confirme? Una respuesta correcta puede consultar al dueño o iniciar la cancelación, pero no dar por hecho un resultado que no ocurrió."
+        ]
+      }
+    },
+    {
+      "idx": 5,
+      "name": "servicio fuera del menú — consultar, no inventar",
+      "user_message": "¿Hacen coloración de pelo?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente, ante un servicio que probablemente no está en el catálogo, consulta al dueño o admite que no tiene el dato, en vez de afirmar con seguridad que sí o que no lo hacen?"
+        ]
+      }
+    },
+    {
+      "idx": 6,
+      "name": "memoria multi-turno — no re-saludar (bug #10)",
+      "user_message": "¿Y el sábado a la mañana cómo está?",
+      "history": [
+        {"role": "user", "content": "Hola, buenas"},
+        {"role": "assistant", "content": "¡Hola! Bienvenido a la barbería. ¿En qué te puedo ayudar?"},
+        {"role": "user", "content": "Quería ver turnos para esta semana"},
+        {"role": "assistant", "content": "Claro, ¿qué día te queda cómodo?"}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "must_not_contain": ["Bienvenido a la barbería"],
+        "judge_questions": [
+          "¿La respuesta continúa la conversación sin volver a saludar ni presentarse, demostrando que mantuvo el contexto de los turnos anteriores?"
+        ]
+      }
+    },
+    {
+      "idx": 7,
+      "name": "fila — posición real",
+      "user_message": "Estoy esperando, ¿cuánto me falta para que me toque?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente intenta consultar la posición o la espera estimada en la fila con una tool antes de dar un número, en vez de inventar el tiempo de espera?"
+        ]
+      }
+    },
+    {
+      "idx": 8,
+      "name": "escalar a humano",
+      "user_message": "No me estás entendiendo, quiero hablar con una persona.",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente reconoce el pedido de hablar con una persona e inicia una derivación a un humano, en vez de seguir respondiendo como si nada?"
+        ]
+      }
+    },
+    {
+      "idx": 9,
+      "name": "saludo vago — pide aclaración",
+      "user_message": "Hola",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "Ante un saludo sin pedido concreto, ¿el agente responde con cortesía y pregunta en qué puede ayudar, sin inventar un turno ni asumir una intención?"
+        ]
+      }
+    }
+  ]
+}

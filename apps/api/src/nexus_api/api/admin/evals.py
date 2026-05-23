@@ -35,11 +35,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Reuse the Test Agent provider singleton for the runner so a test fixture
-# that swaps it via ``set_test_agent_provider`` also swaps the eval runner.
-from nexus_api.api.admin.agent_configs import get_test_agent_provider
 from nexus_api.api.deps import scoped_session_from_path
-from nexus_api.config import get_settings
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import (
     AgentConfig,
@@ -70,9 +66,6 @@ from nexus_api.services.evals import (
     LiteLLMJudgeProvider,
     run_eval,
     validate_assertions,
-)
-from nexus_api.services.test_agent import (
-    TestAgentProvider,
 )
 
 router = APIRouter()
@@ -429,11 +422,9 @@ async def trigger_run(
     dataset_id: Annotated[uuid.UUID, Path()],
     body: EvalRunStartIn,
     session: AsyncSession = Depends(scoped_session_from_path),
-    test_provider: TestAgentProvider = Depends(get_test_agent_provider),
     judge_provider: JudgeProvider = Depends(get_judge_provider),
     actor: str = Depends(require_admin_token),
 ) -> EvalRunDetailOut:
-    settings = get_settings()
     dataset = await _get_dataset(session, tenant_id=tenant_id, dataset_id=dataset_id)
 
     cases = (
@@ -477,11 +468,7 @@ async def trigger_run(
             dataset=dataset,
             cases=list(cases),
             agent_config=agent_config,
-            test_provider=test_provider,
             judge_provider=judge_provider,
-            test_model=settings.llm_improve_model,
-            test_timeout_s=settings.llm_improve_timeout_s,
-            test_max_output_tokens=settings.improve_prompt_max_output_tokens,
         )
     except Exception as exc:
         run.status = EvalRunStatus.ERROR.value
