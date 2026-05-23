@@ -61,6 +61,12 @@ class WorkerSettings(BaseSettings):
     continuous_eval_enabled: bool = False
     continuous_eval_tick_seconds: float = 21_600.0  # 6 hours
 
+    # ── Memory tool retention (Fase B) ────────────────────────────────────
+    # Daily sweep of agent_memory_versions older than 30 days. Tests
+    # override to a sub-second tick so the cron loop fires inside the
+    # test deadline.
+    memory_retention_tick_seconds: float = 86_400.0  # 1 day
+
 
 @lru_cache
 def get_worker_settings() -> WorkerSettings:

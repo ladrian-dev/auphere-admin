@@ -51,6 +51,9 @@ from nexus_worker.streams.consumer import run_inbound_consumer
 from nexus_worker.streams.continuous_eval_cron import run_continuous_eval_cron
 from nexus_worker.streams.cost_rollup_cron import run_cost_rollup_cron
 from nexus_worker.streams.isolation_watcher import run_isolation_watcher
+from nexus_worker.streams.memory_versions_retention import (
+    run_memory_versions_retention_cron,
+)
 from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
 from nexus_worker.streams.operator_alerts import run_operator_alerter
 from nexus_worker.streams.outbound import run_outbound_dispatcher
@@ -180,6 +183,15 @@ async def _amain() -> None:
             ),
             name="continuous-eval-cron",
         )
+        # Fase B: drain agent_memory_versions older than the retention
+        # window (default 30 days). One sweep per day is plenty.
+        memory_retention_task = asyncio.create_task(
+            run_memory_versions_retention_cron(
+                stop=stop,
+                tick_seconds=worker_settings.memory_retention_tick_seconds,
+            ),
+            name="memory-versions-retention-cron",
+        )
         try:
             await asyncio.gather(
                 consumer_task,
@@ -194,6 +206,7 @@ async def _amain() -> None:
                 whatsapp_health_task,
                 async_booking_task,
                 continuous_eval_task,
+                memory_retention_task,
             )
         finally:
             await ycloud_client.close()

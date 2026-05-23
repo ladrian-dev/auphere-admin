@@ -291,6 +291,13 @@ _TRUNCATE_TABLES = (
     "appointments",
     "messages",
     "conversations",
+    # Migration 0032 — Anthropic Memory tool backend. The versions
+    # table is fed by a trigger on agent_memories; truncate both so
+    # neither carries rows across tests. Both have FK CASCADE to tenants
+    # so order matters: clear the versions first (FK to memories' tenant),
+    # then the main table, then customers (FK target of memories).
+    "agent_memory_versions",
+    "agent_memories",
     "customers",
     "kg_edges",
     "kg_nodes",

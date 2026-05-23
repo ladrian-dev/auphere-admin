@@ -60,6 +60,11 @@ from nexus_api.db.base import get_sessionmaker
 from nexus_mcp import MCPRegistry, build_default_registry
 from nexus_mcp.base import ToolError, ToolNotInWhitelist
 
+from nexus_worker.memory import (
+    MEMORY_TOOL_SYSTEM_PROMPT,
+    NexusPostgresMemoryTool,
+    is_memory_tool_enabled_for,
+)
 from nexus_worker.persistence.messages import persist_outbound_message
 from nexus_worker.runtime.agent_loader import AgentBundle, AgentLoader
 from nexus_worker.runtime.llm import LLMResponse, LLMRouter, ToolCall
@@ -98,6 +103,15 @@ _EMPTY_RESPONSE_FALLBACK = (
     "Disculpá, tuve un inconveniente para completar la respuesta. "
     "¿Podés intentarlo de nuevo en un momento?"
 )
+
+
+# Anthropic Memory tool name. The model emits ``tool_call.name == "memory"``
+# (set by ``BetaAsyncAbstractMemoryTool.to_dict()``) and the handler routes
+# directly to the tool instance, bypassing the MCP registry — built-in
+# tools have their own scoping (the tool instance carries tenant_id +
+# customer_id) and the ``tool_result`` is a string, not the MCP envelope.
+# See architecture/builtin-tools-vs-mcp-tools.md.
+_MEMORY_TOOL_NAME = "memory"
 
 
 # Per-intent tool category. The active whitelist is intersected with this
@@ -446,6 +460,66 @@ def _tool_result_content(envelope: dict[str, Any]) -> str:
     return text
 
 
+async def _dispatch_memory_tool(
+    memory_tool: NexusPostgresMemoryTool,
+    call: ToolCall,
+    intent: str,
+) -> tuple[dict[str, Any], str]:
+    """Dispatch a ``memory`` tool_call to the built-in handler.
+
+    Returns ``(envelope, tool_message_content)``:
+
+    - ``envelope`` is the trace record we accumulate in
+      ``state["tool_calls"]`` so observability / shadow diff still see
+      the operation. The shape mirrors the MCP envelope so downstream
+      consumers don't need a special case.
+    - ``tool_message_content`` is the string the LLM expects as
+      ``tool_result`` content — Anthropic's documented format.
+
+    The tool's own error handling already returns a string in BOTH
+    success and recoverable-error cases (path traversal, "does not
+    exist", "memory full"); only an unexpected exception ends up here
+    as ``status="error"``.
+    """
+    try:
+        result_content = await memory_tool.call(call.arguments)
+    except Exception as exc:  # pragma: no cover — defence in depth
+        log.exception(
+            "memory.unhandled_exception",
+            intent=intent,
+            error=str(exc),
+        )
+        message = (
+            "Memory operation failed unexpectedly. Tell the customer the "
+            "operation could not be completed; do NOT invent a result."
+        )
+        envelope = {
+            "tool": _MEMORY_TOOL_NAME,
+            "intent": intent,
+            "status": "error",
+            "error": str(exc),
+            "result": {},
+        }
+        return envelope, message
+
+    # Memory tool result content is a string by contract (the SDK type is
+    # ``str | list[content blocks]``; our subclass always returns str).
+    text = result_content if isinstance(result_content, str) else str(result_content)
+    envelope = {
+        "tool": _MEMORY_TOOL_NAME,
+        "intent": intent,
+        "status": "ok",
+        # Persist the command for traceability — the operator panel and
+        # Langfuse traces can show what the agent did with memory.
+        "result": {
+            "command": call.arguments.get("command") if isinstance(call.arguments, dict) else None,
+            "path": call.arguments.get("path") if isinstance(call.arguments, dict) else None,
+            "summary": text[:200],  # avoid blowing up traces with long files
+        },
+    }
+    return envelope, text
+
+
 async def _dispatch_tool(
     registry: MCPRegistry,
     call: ToolCall,
@@ -522,13 +596,42 @@ def make_handler_node(
                 state, bundle, intent=intent, kg_snapshot=kg_snapshot
             )
 
+            # Built-in Anthropic Memory tool (Fase B). Opt-in per-tenant
+            # via NEXUS_MEMORY_TOOL_ENABLED_TENANTS. The instance carries
+            # this turn's (tenant_id, customer_id); the LLM sees a tool
+            # spec ``{"type": "memory_20250818", "name": "memory"}`` but
+            # never the customer_id itself (paths use the "me" alias).
+            memory_tool: NexusPostgresMemoryTool | None = None
+            if is_memory_tool_enabled_for(tenant_id):
+                customer_id_raw = state.get("customer_id")
+                memory_tool = NexusPostgresMemoryTool(
+                    tenant_id=tenant_id,
+                    customer_id=uuid.UUID(customer_id_raw) if customer_id_raw else None,
+                )
+                # Insert the system addendum BEFORE the conversation
+                # history so it stays inside the cached prefix (see
+                # llm.py::_with_prompt_caching).
+                messages.insert(
+                    -1 if not state.get("history") else -(len(state["history"]) + 1),
+                    {"role": "system", "content": MEMORY_TOOL_SYSTEM_PROMPT},
+                )
+
             envelopes: list[dict[str, Any]] = []
             final_text = ""
 
             for iteration in range(MAX_TOOL_ITERATIONS):
                 # The last iteration is tool-free: the model MUST answer.
                 last = iteration == MAX_TOOL_ITERATIONS - 1
-                tools_arg = [] if last else available_defs
+                if last:
+                    tools_arg: list[dict[str, Any]] = []
+                else:
+                    tools_arg = list(available_defs)
+                    if memory_tool is not None:
+                        # ``to_dict()`` is the Anthropic TypedDict
+                        # ``BetaMemoryTool20250818Param`` ({"type":
+                        # "memory_20250818", "name": "memory"}); LiteLLM
+                        # only cares about the dict shape so we widen.
+                        tools_arg.append(dict(memory_tool.to_dict()))
 
                 try:
                     response = await llm.respond_with_tools(
@@ -564,6 +667,23 @@ def make_handler_node(
                 # and feed the REAL result back into the thread.
                 messages.append(_assistant_tool_message(response))
                 for call in response.tool_calls:
+                    if call.name == _MEMORY_TOOL_NAME and memory_tool is not None:
+                        # Built-in dispatch: the memory tool result is a
+                        # string by Anthropic contract; we wrap it in an
+                        # MCP-shaped envelope for traces but feed the LLM
+                        # the raw string.
+                        envelope, tool_msg = await _dispatch_memory_tool(
+                            memory_tool, call, intent
+                        )
+                        envelopes.append(envelope)
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": call.id or call.name,
+                                "content": tool_msg,
+                            }
+                        )
+                        continue
                     envelope = await _dispatch_tool(
                         scoped_registry, call, available_names, intent
                     )

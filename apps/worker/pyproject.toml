@@ -38,6 +38,12 @@ dependencies = [
     # Block N: cheap-path PDF text extraction. Falls back to vision-OCR
     # when missing or when the PDF has no extractable text.
     "pypdf>=4.0.0",
+    # Fase B (claude-platform-integration): the Anthropic SDK supplies
+    # ``BetaAsyncAbstractMemoryTool`` — the canonical async base class
+    # for the Anthropic Memory tool (``memory_20250818``). LiteLLM stays
+    # the HTTP client for completions; this dep is used ONLY for the
+    # memory tool subclass + its built-in args validation.
+    "anthropic>=0.104.0",
 ]
 
 [project.optional-dependencies]

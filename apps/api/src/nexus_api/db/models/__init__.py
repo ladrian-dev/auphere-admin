@@ -1,6 +1,7 @@
 """Aggregate import for ORM models. Alembic autogenerate reads metadata from here."""
 
 from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
+from nexus_api.db.models.agent_memory import AgentMemory
 from nexus_api.db.models.appointment import Appointment, AppointmentStatus
 from nexus_api.db.models.audit import AuditLog
 from nexus_api.db.models.channel import (
@@ -70,6 +71,7 @@ __all__ = [
     "OWNER_CONSULTATION_URGENCIES",
     "AgentConfig",
     "AgentConfigStatus",
+    "AgentMemory",
     "Appointment",
     "AppointmentStatus",
     "AuditLog",
