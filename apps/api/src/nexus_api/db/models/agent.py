@@ -63,3 +63,11 @@ class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     runtime_skills: Mapped[list[dict[str, str]] | None] = mapped_column(
         JSONB, nullable=True
     )
+
+    # Fase E — Anthropic MCP connector servers attached to this config.
+    # Shape: list of ``{name, url, allowed_tools[], credential_key}``.
+    # NULL = "no MCP servers", the runtime skips ``mcp_servers`` +
+    # ``mcp-client-2025-11-20`` beta header entirely.
+    runtime_mcp_servers: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )

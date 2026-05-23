@@ -67,6 +67,10 @@ from nexus_worker.guardrails import (
     load_rubric_text,
 )
 from nexus_worker.guardrails.outcome_grader import MAX_GRADER_RETRIES
+from nexus_worker.mcp_connector import (
+    build_mcp_extra,
+    is_mcp_connector_enabled_for,
+)
 from nexus_worker.memory import (
     MEMORY_TOOL_SYSTEM_PROMPT,
     NexusPostgresMemoryTool,
@@ -141,6 +145,55 @@ _CODE_EXECUTION_TOOL: dict[str, Any] = {
 _SKILLS_BETA_HEADER_VALUE: str = (
     "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
 )
+
+
+async def _resolve_mcp_token(tenant_id: uuid.UUID, credential_key: str) -> str | None:
+    """Read ``tenant_credentials`` and return the decrypted OAuth token.
+
+    ``credential_key`` matches ``tenant_credentials.integration`` for
+    the row that holds the OAuth payload. Composio remains the SoT of
+    credentials; this resolver only reads the bearer token from the
+    table the rest of the worker already trusts.
+
+    Returns ``None`` when the row is missing or flagged
+    ``needs_reauth`` — the MCP connector module then skips this
+    server and the model continues with whatever else is available.
+    """
+    if not credential_key:
+        return None
+    from nexus_api.db.models import TenantCredentials
+    from sqlalchemy import select as _select
+
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        row = (
+            await session.execute(
+                _select(TenantCredentials).where(
+                    TenantCredentials.integration == credential_key
+                )
+            )
+        ).scalar_one_or_none()
+    if row is None or row.needs_reauth:
+        return None
+    # ``encrypted_payload`` is Fernet-decoded by the type decorator; the
+    # plaintext is either the raw bearer or a JSON envelope. We accept
+    # both: a JSON dict with ``access_token`` wins, otherwise we treat
+    # the bytes as the token verbatim.
+    try:
+        payload = row.encrypted_payload.decode("utf-8")
+    except Exception:
+        return None
+    payload = payload.strip()
+    if payload.startswith("{"):
+        try:
+            data = json.loads(payload)
+            token = data.get("access_token")
+            if isinstance(token, str) and token:
+                return token
+            return None
+        except json.JSONDecodeError:
+            return None
+    return payload or None
 
 
 # Map nexus' coarse classifier intent → the rubric-specific intent name.
@@ -701,6 +754,24 @@ def make_handler_node(
                     "extra_headers": {"anthropic-beta": _SKILLS_BETA_HEADER_VALUE},
                 }
 
+            # Fase E — Anthropic MCP connector. Stacks on top of the
+            # Skills extra so a tenant opted into BOTH gets the right
+            # beta header CSV without either feature clobbering the
+            # other. The MCP module merges beta headers when ``base_extra``
+            # already carries them. ``mcp_extra`` is the final ``extra``
+            # passed to the LLM each loop iteration.
+            mcp_extra: dict[str, Any] | None = skills_extra or None
+            if bundle.runtime_mcp_servers and is_mcp_connector_enabled_for(tenant_id):
+
+                async def _resolver(key: str) -> str | None:
+                    return await _resolve_mcp_token(tenant_id, key)
+
+                mcp_extra = await build_mcp_extra(
+                    servers=bundle.runtime_mcp_servers,
+                    token_resolver=_resolver,
+                    base_extra=skills_extra or None,
+                )
+
             for iteration in range(MAX_TOOL_ITERATIONS):
                 # The last iteration is tool-free: the model MUST answer.
                 last = iteration == MAX_TOOL_ITERATIONS - 1
@@ -726,7 +797,7 @@ def make_handler_node(
                         role=intent,
                         messages=messages,
                         tools=tools_arg,
-                        extra=skills_extra or None,
+                        extra=mcp_extra,
                     )
                 except Exception as exc:
                     # The router exhausted retries + fallback. Rather than

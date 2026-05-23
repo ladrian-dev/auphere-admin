@@ -54,6 +54,12 @@ class AgentBundle:
     # tuple = no skills, the handler skips Skills injection entirely.
     # Tuple (not list) for immutability of the frozen dataclass.
     runtime_skills: tuple[dict[str, str], ...] = ()
+    # Fase E — Anthropic MCP connector servers. Each element:
+    # ``{name, url, allowed_tools, credential_key}``. Empty tuple =
+    # MCP connector OFF for this config; the handler skips ``mcp_servers``
+    # + the mcp-client beta header entirely. The auth token is resolved
+    # per-turn from tenant_credentials by ``credential_key``.
+    runtime_mcp_servers: tuple[dict[str, Any], ...] = ()
 
 
 class AgentLoader:
@@ -145,6 +151,18 @@ class AgentLoader:
                     }
                     for s in (cfg.runtime_skills or ())
                     if isinstance(s, dict) and s.get("skill_id")
+                ),
+                runtime_mcp_servers=tuple(
+                    {
+                        "name": str(s.get("name", "")),
+                        "url": str(s.get("url", "")),
+                        "allowed_tools": tuple(
+                            str(t) for t in (s.get("allowed_tools") or ())
+                        ),
+                        "credential_key": str(s.get("credential_key", "")),
+                    }
+                    for s in (cfg.runtime_mcp_servers or ())
+                    if isinstance(s, dict) and s.get("name") and s.get("url")
                 ),
             )
 
