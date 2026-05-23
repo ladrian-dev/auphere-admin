@@ -7,47 +7,18 @@ Covers:
   server cleanly (rather than crashing the turn).
 - Beta header merging when stacked on top of a Fase D Skills extra dict
   (BOTH features active in the same turn).
-- Feature flag parsing (CSV of UUIDs + garbage tolerance).
-- ``mcp_connector_enabled_tenants`` cache semantics — re-read per call.
+- The per-config kill switch (``runtime_mcp_connector`` boolean) is
+  enforced by the handler, not here — see test_skills_pipeline /
+  pipeline integration tests for that gate.
 """
 
 from __future__ import annotations
 
-import uuid
-
-import pytest
-
 from nexus_worker.mcp_connector import (
     MCP_CONNECTOR_BETA_HEADER_VALUE,
     build_mcp_extra,
-    is_mcp_connector_enabled_for,
-    mcp_connector_enabled_tenants,
 )
 from nexus_worker.mcp_connector import _merge_beta_csv as merge_beta_csv
-
-# ── feature flag ────────────────────────────────────────────────────
-
-
-class TestFeatureFlag:
-    def test_empty_env_is_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("NEXUS_MCP_CONNECTOR_ENABLED_TENANTS", raising=False)
-        assert mcp_connector_enabled_tenants() == frozenset()
-        assert not is_mcp_connector_enabled_for(uuid.uuid4())
-
-    def test_csv_of_uuids_parses(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        a, b = uuid.uuid4(), uuid.uuid4()
-        monkeypatch.setenv("NEXUS_MCP_CONNECTOR_ENABLED_TENANTS", f"{a} , {b}")
-        assert mcp_connector_enabled_tenants() == frozenset({a, b})
-        assert is_mcp_connector_enabled_for(a)
-
-    def test_bad_uuid_dropped_silently(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        good = uuid.uuid4()
-        monkeypatch.setenv(
-            "NEXUS_MCP_CONNECTOR_ENABLED_TENANTS",
-            f"NOT-A-UUID,{good},also-bad",
-        )
-        assert mcp_connector_enabled_tenants() == frozenset({good})
-
 
 # ── beta header merge ──────────────────────────────────────────────
 

@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -70,4 +70,24 @@ class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # ``mcp-client-2025-11-20`` beta header entirely.
     runtime_mcp_servers: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSONB, nullable=True
+    )
+
+    # Runtime feature flags (migration 0035). These travel with the
+    # config through the STAGED → ACTIVE flow — activating a feature
+    # for a tenant is a config promotion, not an env var edit. Default
+    # ``false`` on every existing row keeps pre-Fase-B/C/E behaviour for
+    # any tenant whose active config predates the runtime features.
+    runtime_memory_tool: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    runtime_outcome_grader: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    # The mcp_connector boolean is the kill switch for the entire
+    # MCP-connector module. ``runtime_mcp_servers`` lists WHICH servers
+    # to attach; this flag toggles whether the module runs at all. Both
+    # have to be true (and the server list non-empty) for the runtime
+    # to actually call MCP — defence in depth.
+    runtime_mcp_connector: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )

@@ -10,16 +10,17 @@ real comparison (latency, error rate, ergonomics vs. Composio) needs
 a tenant with real OAuth credentials, which is operational work that
 sits outside this code.
 
+Activation is per ``agent_config`` via ``runtime_mcp_connector BOOLEAN``
+(migration 0035) AND a non-empty ``runtime_mcp_servers JSONB``. The
+handler enforces both: the boolean is the kill switch for the module,
+the JSONB lists which servers to attach when the kill switch is up.
+
 Public surface:
 
 - :func:`build_mcp_extra` — given a list of server configs + a token
   resolver, returns the ``extra`` dict to pass to
   ``LLMRouter.respond_with_tools``.
-- :func:`mcp_connector_enabled_tenants` — feature flag helper. Even
-  when ``runtime_mcp_servers`` is set on an agent_config, the runtime
-  refuses to activate it unless the tenant is opted in here. That
-  belt-and-suspenders gate avoids accidental traffic to an external
-  MCP server during the comparison phase.
+- :data:`MCP_CONNECTOR_BETA_HEADER_VALUE` — the beta header to emit.
 
 Architectural notes:
 
@@ -34,8 +35,6 @@ Architectural notes:
 
 from __future__ import annotations
 
-import os
-import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -47,33 +46,6 @@ log = structlog.get_logger(__name__)
 # The MCP connector beta header. Pulled into a constant so a future
 # bump (e.g. ``mcp-client-2026-XX``) is a single-file change.
 MCP_CONNECTOR_BETA_HEADER_VALUE: str = "mcp-client-2025-11-20"
-
-
-def mcp_connector_enabled_tenants() -> frozenset[uuid.UUID]:
-    """Parse ``NEXUS_MCP_CONNECTOR_ENABLED_TENANTS``.
-
-    Empty / unset = feature OFF for every tenant. Re-read per turn so
-    operations can flip without redeploy. Bad UUIDs are silently
-    dropped — operator typos must not break other tenants.
-    """
-    raw = os.getenv("NEXUS_MCP_CONNECTOR_ENABLED_TENANTS", "")
-    if not raw:
-        return frozenset()
-    out: set[uuid.UUID] = set()
-    for token in raw.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        try:
-            out.add(uuid.UUID(token))
-        except ValueError:
-            continue
-    return frozenset(out)
-
-
-def is_mcp_connector_enabled_for(tenant_id: uuid.UUID) -> bool:
-    """Whether the MCP connector is opted-in for this tenant."""
-    return tenant_id in mcp_connector_enabled_tenants()
 
 
 # Token resolver protocol — the pipeline passes an async callable that
@@ -183,6 +155,4 @@ def _merge_beta_csv(existing: str, *additions: str) -> str:
 __all__ = [
     "MCP_CONNECTOR_BETA_HEADER_VALUE",
     "build_mcp_extra",
-    "is_mcp_connector_enabled_for",
-    "mcp_connector_enabled_tenants",
 ]

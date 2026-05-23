@@ -28,9 +28,7 @@ from nexus_worker.guardrails import (
     GraderVerdict,
     OutcomeGrader,
     available_rubric_intents,
-    is_outcome_grader_enabled_for,
     load_rubric_text,
-    outcome_grader_enabled_tenants,
 )
 from nexus_worker.guardrails.outcome_grader import (
     DEFAULT_GRADER_MODEL,
@@ -276,36 +274,6 @@ class TestEnvelopeSummarisation:
         assert len(user_msg) < 4000
 
 
-# ── feature flag ─────────────────────────────────────────────────────
-
-
-class TestFeatureFlag:
-    def test_empty_env_means_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("NEXUS_OUTCOME_GRADER_ENABLED_TENANTS", raising=False)
-        assert outcome_grader_enabled_tenants() == frozenset()
-        assert not is_outcome_grader_enabled_for(uuid.uuid4())
-
-    def test_csv_of_uuids_parses(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        a = uuid.uuid4()
-        b = uuid.uuid4()
-        monkeypatch.setenv("NEXUS_OUTCOME_GRADER_ENABLED_TENANTS", f"{a}, {b}")
-        assert outcome_grader_enabled_tenants() == frozenset({a, b})
-        assert is_outcome_grader_enabled_for(a)
-        assert is_outcome_grader_enabled_for(b)
-
-    def test_garbage_token_is_silently_dropped(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        good = uuid.uuid4()
-        monkeypatch.setenv(
-            "NEXUS_OUTCOME_GRADER_ENABLED_TENANTS",
-            f"not-a-uuid,{good},another-bad-one",
-        )
-        # The garbage must NOT prevent the good tenant from being
-        # registered — operator typo isolation.
-        assert outcome_grader_enabled_tenants() == frozenset({good})
-
-
 # ── rubric loader ─────────────────────────────────────────────────
 
 
@@ -367,14 +335,11 @@ class TestRetryFlowNode:
     pass' coverage — and the 'max retries → fallback' coverage.
     """
 
-    async def test_fail_then_pass_replaces_response(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_fail_then_pass_replaces_response(self) -> None:
         from nexus_worker.runtime.llm import LLMRouter
         from nexus_worker.runtime.pipeline import make_grade_outcome_node
 
         tenant_id = uuid.uuid4()
-        monkeypatch.setenv("NEXUS_OUTCOME_GRADER_ENABLED_TENANTS", str(tenant_id))
 
         # Grader: first call fails, second call passes.
         grader_provider = _ScriptedProvider(
@@ -400,6 +365,7 @@ class TestRetryFlowNode:
             "intent": "book",
             "response": "Confirmed! See you tomorrow at 10am.",
             "tool_calls": [],
+            "agent_runtime_flags": {"outcome_grader": True},
         }
         out = await node(state)  # type: ignore[arg-type]
 
@@ -407,14 +373,11 @@ class TestRetryFlowNode:
         assert out["outcome_retries"] == 1
         assert out["response"] == "Let me check availability for you."
 
-    async def test_max_retries_falls_to_neutral_message(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_max_retries_falls_to_neutral_message(self) -> None:
         from nexus_worker.runtime.llm import LLMRouter
         from nexus_worker.runtime.pipeline import make_grade_outcome_node
 
         tenant_id = uuid.uuid4()
-        monkeypatch.setenv("NEXUS_OUTCOME_GRADER_ENABLED_TENANTS", str(tenant_id))
 
         # Grader fails ALL the time (initial + every retry).
         fail_json = json.dumps(
@@ -443,6 +406,7 @@ class TestRetryFlowNode:
             "intent": "book",
             "response": "Confirmed!",
             "tool_calls": [],
+            "agent_runtime_flags": {"outcome_grader": True},
         }
         out = await node(state)  # type: ignore[arg-type]
 
@@ -450,13 +414,14 @@ class TestRetryFlowNode:
         assert out["outcome_retries"] == MAX_GRADER_RETRIES
         assert out["response"] == GRADER_FALLBACK_RESPONSE
 
-    async def test_passthrough_when_tenant_not_enabled(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_passthrough_when_config_flag_is_false(self) -> None:
+        """The grader gates on ``agent_runtime_flags.outcome_grader``
+        coming from the handler-forwarded bundle. When the config has
+        the flag off (or the handler forgot to forward it), the grader
+        passes through with skipped."""
         from nexus_worker.runtime.llm import LLMRouter
         from nexus_worker.runtime.pipeline import make_grade_outcome_node
 
-        monkeypatch.delenv("NEXUS_OUTCOME_GRADER_ENABLED_TENANTS", raising=False)
         grader_provider = _ScriptedProvider(responses=[])  # should never be called
         grader = OutcomeGrader(provider=grader_provider)
         agent_provider = _ScriptedProvider(responses=[])
@@ -473,6 +438,7 @@ class TestRetryFlowNode:
             "intent": "book",
             "response": "ANY content",
             "tool_calls": [],
+            "agent_runtime_flags": {"outcome_grader": False},
         }
         out = await node(state)  # type: ignore[arg-type]
 

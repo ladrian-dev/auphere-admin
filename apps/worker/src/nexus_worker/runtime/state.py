@@ -76,11 +76,17 @@ class AgentState(TypedDict, total=False):
     # was re-prompted before the grader passed (or before the pipeline
     # gave up); ``outcome_feedback`` is the LAST feedback string from
     # the grader (empty if the original draft passed). ``skipped`` is
-    # used when the feature is off for this tenant — keeps Langfuse
+    # used when the feature is off for this config — keeps Langfuse
     # traces self-describing.
     outcome_overall: str
     outcome_retries: int
     outcome_feedback: str
+
+    # Per-config runtime flags forwarded by the handler so downstream
+    # nodes (grade_outcome, ucm_formatter, checkpoint) can act on them
+    # without re-querying the bundle. Populated from
+    # ``AgentBundle.runtime_*`` by ``make_handler_node``.
+    agent_runtime_flags: dict[str, bool]
 
     # Free-form trace metadata (replaced by the last writer)
     meta: dict[str, Any]

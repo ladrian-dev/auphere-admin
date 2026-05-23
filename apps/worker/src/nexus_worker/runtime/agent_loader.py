@@ -56,10 +56,17 @@ class AgentBundle:
     runtime_skills: tuple[dict[str, str], ...] = ()
     # Fase E — Anthropic MCP connector servers. Each element:
     # ``{name, url, allowed_tools, credential_key}``. Empty tuple =
-    # MCP connector OFF for this config; the handler skips ``mcp_servers``
+    # no servers configured; the handler skips ``mcp_servers``
     # + the mcp-client beta header entirely. The auth token is resolved
     # per-turn from tenant_credentials by ``credential_key``.
     runtime_mcp_servers: tuple[dict[str, Any], ...] = ()
+
+    # Per-config runtime feature flags (migration 0035). Travel with the
+    # config through STAGED → ACTIVE so activation is auditable and
+    # rollback is atomic with the rest of the config.
+    runtime_memory_tool: bool = False
+    runtime_outcome_grader: bool = False
+    runtime_mcp_connector: bool = False
 
 
 class AgentLoader:
@@ -164,6 +171,9 @@ class AgentLoader:
                     for s in (cfg.runtime_mcp_servers or ())
                     if isinstance(s, dict) and s.get("name") and s.get("url")
                 ),
+                runtime_memory_tool=bool(cfg.runtime_memory_tool),
+                runtime_outcome_grader=bool(cfg.runtime_outcome_grader),
+                runtime_mcp_connector=bool(cfg.runtime_mcp_connector),
             )
 
 

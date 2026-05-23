@@ -63,18 +63,13 @@ from nexus_mcp.base import ToolError, ToolNotInWhitelist
 from nexus_worker.guardrails import (
     GRADER_FALLBACK_RESPONSE,
     OutcomeGrader,
-    is_outcome_grader_enabled_for,
     load_rubric_text,
 )
 from nexus_worker.guardrails.outcome_grader import MAX_GRADER_RETRIES
-from nexus_worker.mcp_connector import (
-    build_mcp_extra,
-    is_mcp_connector_enabled_for,
-)
+from nexus_worker.mcp_connector import build_mcp_extra
 from nexus_worker.memory import (
     MEMORY_TOOL_SYSTEM_PROMPT,
     NexusPostgresMemoryTool,
-    is_memory_tool_enabled_for,
 )
 from nexus_worker.persistence.messages import persist_outbound_message
 from nexus_worker.runtime.agent_loader import AgentBundle, AgentLoader
@@ -710,13 +705,16 @@ def make_handler_node(
                 state, bundle, intent=intent, kg_snapshot=kg_snapshot
             )
 
-            # Built-in Anthropic Memory tool (Fase B). Opt-in per-tenant
-            # via NEXUS_MEMORY_TOOL_ENABLED_TENANTS. The instance carries
-            # this turn's (tenant_id, customer_id); the LLM sees a tool
-            # spec ``{"type": "memory_20250818", "name": "memory"}`` but
+            # Built-in Anthropic Memory tool (Fase B). Opt-in per
+            # agent_config via the ``runtime_memory_tool`` boolean —
+            # activation travels with the config through STAGED →
+            # ACTIVE, so turning it on is auditable and rollback is
+            # atomic. The instance carries this turn's (tenant_id,
+            # customer_id); the LLM sees a tool spec
+            # ``{"type": "memory_20250818", "name": "memory"}`` but
             # never the customer_id itself (paths use the "me" alias).
             memory_tool: NexusPostgresMemoryTool | None = None
-            if is_memory_tool_enabled_for(tenant_id):
+            if bundle.runtime_memory_tool:
                 customer_id_raw = state.get("customer_id")
                 memory_tool = NexusPostgresMemoryTool(
                     tenant_id=tenant_id,
@@ -755,13 +753,14 @@ def make_handler_node(
                 }
 
             # Fase E — Anthropic MCP connector. Stacks on top of the
-            # Skills extra so a tenant opted into BOTH gets the right
+            # Skills extra so a config opted into BOTH gets the right
             # beta header CSV without either feature clobbering the
-            # other. The MCP module merges beta headers when ``base_extra``
-            # already carries them. ``mcp_extra`` is the final ``extra``
-            # passed to the LLM each loop iteration.
+            # other. Both gates required: ``runtime_mcp_connector`` is
+            # the kill switch (defence in depth), ``runtime_mcp_servers``
+            # lists which servers to attach. ``mcp_extra`` is the final
+            # ``extra`` passed to the LLM each loop iteration.
             mcp_extra: dict[str, Any] | None = skills_extra or None
-            if bundle.runtime_mcp_servers and is_mcp_connector_enabled_for(tenant_id):
+            if bundle.runtime_mcp_connector and bundle.runtime_mcp_servers:
 
                 async def _resolver(key: str) -> str | None:
                     return await _resolve_mcp_token(tenant_id, key)
@@ -868,6 +867,14 @@ def make_handler_node(
                 "tool_calls": envelopes,
                 "response": final_text,
                 "response_model": llm.respond_model,
+                # Forward the per-config flags so downstream nodes
+                # (grade_outcome) gate on the bundle without re-loading
+                # it from DB.
+                "agent_runtime_flags": {
+                    "memory_tool": bundle.runtime_memory_tool,
+                    "outcome_grader": bundle.runtime_outcome_grader,
+                    "mcp_connector": bundle.runtime_mcp_connector,
+                },
             }
 
     return handler
@@ -1028,9 +1035,14 @@ def make_grade_outcome_node(
         if grader is None:
             return {"outcome_overall": "skipped", "outcome_retries": 0, "outcome_feedback": ""}
 
-        tenant_id = _tenant_uuid(state)
-        if not is_outcome_grader_enabled_for(tenant_id):
+        # The handler forwarded the per-config flags via state. Gate
+        # the grader on ``runtime_outcome_grader`` from the agent_config,
+        # NOT on an env var — activation rides STAGED → ACTIVE.
+        flags = state.get("agent_runtime_flags") or {}
+        if not flags.get("outcome_grader"):
             return {"outcome_overall": "skipped", "outcome_retries": 0, "outcome_feedback": ""}
+
+        tenant_id = _tenant_uuid(state)
 
         intent = state.get("intent") or "fallback"
         rubric_intent = _NEXUS_INTENT_TO_RUBRIC.get(intent, "default.general_response")
