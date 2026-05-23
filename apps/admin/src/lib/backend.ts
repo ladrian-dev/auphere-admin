@@ -204,6 +204,18 @@ export type ChannelOut = {
   updated_at: string;
 };
 
+export type SkillRef = {
+  skill_id: string;
+  version: string;
+};
+
+export type McpServerRef = {
+  name: string;
+  url: string;
+  allowed_tools: string[];
+  credential_key: string;
+};
+
 export type AgentConfig = {
   id: string;
   tenant_id: string;
@@ -218,6 +230,32 @@ export type AgentConfig = {
   promoted_at: string | null;
   created_at: string;
   updated_at: string;
+  // Runtime feature flags (migration 0035). Toggleable per agent_config
+  // from the admin agent editor; activation travels with STAGED →
+  // ACTIVE promote.
+  runtime_memory_tool: boolean;
+  runtime_outcome_grader: boolean;
+  runtime_mcp_connector: boolean;
+  runtime_skills: SkillRef[] | null;
+  runtime_mcp_servers: McpServerRef[] | null;
+};
+
+export type RuntimeCapabilitiesInput = {
+  runtime_memory_tool: boolean;
+  runtime_outcome_grader: boolean;
+  runtime_mcp_connector: boolean;
+  runtime_skills: SkillRef[];
+  runtime_mcp_servers: McpServerRef[];
+};
+
+export type AvailableSkill = {
+  name: string;
+  description: string;
+  local_version: string;
+  /** Null until the skill has been uploaded to the Anthropic workspace
+   *  via apps/worker/scripts/upload_skill.py. */
+  skill_id: string | null;
+  uploaded_version: string | null;
 };
 
 /** Block N — modes for the prompt improver. Keep in sync with
@@ -570,6 +608,26 @@ export const backend = {
       `/admin/tenants/${tenantId}/agent-config/${version}/rollback`,
       { method: "POST" },
     ),
+
+  /** Update the runtime feature flags + skills + MCP servers of a
+   *  STAGED agent_config. The backend refuses non-STAGED versions on
+   *  purpose: capability changes are versioned through STAGED →
+   *  ACTIVE so rollback stays atomic. */
+  updateRuntimeCapabilities: (
+    tenantId: string,
+    version: number,
+    body: RuntimeCapabilitiesInput,
+  ) =>
+    call<AgentConfig>(
+      `/admin/tenants/${tenantId}/agent-config/${version}/runtime`,
+      { method: "PATCH", body },
+    ),
+
+  /** List Anthropic Skills bundled with this deploy + their upload
+   *  status. Empty ``skill_id`` means the skill has not been uploaded
+   *  yet (apps/worker/scripts/upload_skill.py). */
+  listAvailableSkills: () =>
+    call<AvailableSkill[]>("/admin/skills/available").then((r) => r ?? []),
 
   /**
    * Block N — "Mejorar prompt". Sends the operator's draft + chosen

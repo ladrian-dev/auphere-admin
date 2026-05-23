@@ -9,6 +9,7 @@ import {
   type ImprovePromptMode,
   type ImprovePromptOut,
   type PromptSnippet,
+  type RuntimeCapabilitiesInput,
   type SeedTemplateMetrics,
   type TestAgentHistoryMessage,
   type TestTurnOut,
@@ -72,6 +73,30 @@ export async function rollbackAgentConfigAction(
   await requireSession();
   try {
     const result = await backend.rollbackAgentConfig(tenantId, version);
+    revalidatePath(`/tenants/${tenantId}/agent`);
+    revalidatePath(`/tenants/${tenantId}`);
+    return { ok: true, data: result! };
+  } catch (err) {
+    return { ok: false, error: pluck(err) };
+  }
+}
+
+/** Update the 5 runtime fields of a STAGED agent_config (memory tool,
+ *  outcome grader, mcp connector booleans + skills/mcp_servers lists).
+ *  The backend refuses non-STAGED versions — capability changes are
+ *  versioned through the STAGED → ACTIVE flow. */
+export async function updateRuntimeCapabilitiesAction(
+  tenantId: string,
+  version: number,
+  body: RuntimeCapabilitiesInput,
+): Promise<Result<AgentConfig>> {
+  await requireSession();
+  try {
+    const result = await backend.updateRuntimeCapabilities(
+      tenantId,
+      version,
+      body,
+    );
     revalidatePath(`/tenants/${tenantId}/agent`);
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: result! };

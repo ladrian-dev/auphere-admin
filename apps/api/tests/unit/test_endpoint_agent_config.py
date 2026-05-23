@@ -192,3 +192,147 @@ async def test_from_seed_missing_placeholder_400(client, admin_headers, seed_ten
     )
     assert r.status_code == 400
     assert "placeholder" in r.json()["detail"]
+
+
+# ── Runtime capabilities PATCH (refactor 0035) ───────────────────────
+
+
+async def _stage_v1(client, admin_headers, tenant_id) -> int:
+    response = await client.put(
+        f"/admin/tenants/{tenant_id}/agent-config",
+        json={"system_prompt_rendered": "v1 prompt", "tools": []},
+        headers=admin_headers,
+    )
+    assert response.status_code == 201
+    return int(response.json()["version"])
+
+
+async def test_patch_runtime_capabilities_updates_staged(
+    client, admin_headers, seed_tenants
+):
+    tid = seed_tenants["a"]
+    version = await _stage_v1(client, admin_headers, tid)
+    body = {
+        "runtime_memory_tool": True,
+        "runtime_outcome_grader": True,
+        "runtime_mcp_connector": False,
+        "runtime_skills": [
+            {"skill_id": "skill_abc", "version": "latest"},
+            {"skill_id": "skill_def", "version": "3"},
+        ],
+        "runtime_mcp_servers": [],
+    }
+    response = await client.patch(
+        f"/admin/tenants/{tid}/agent-config/{version}/runtime",
+        json=body,
+        headers=admin_headers,
+    )
+    assert response.status_code == 200, response.json()
+    data = response.json()
+    assert data["runtime_memory_tool"] is True
+    assert data["runtime_outcome_grader"] is True
+    assert data["runtime_mcp_connector"] is False
+    assert len(data["runtime_skills"]) == 2
+    assert data["runtime_skills"][0]["skill_id"] == "skill_abc"
+
+
+async def test_patch_runtime_refuses_active(client, admin_headers, seed_tenants):
+    """Capabilities must not be mutated on an ACTIVE version. The
+    operator stages a new version and patches that."""
+    tid = seed_tenants["a"]
+    version = await _stage_v1(client, admin_headers, tid)
+    promote = await client.post(
+        f"/admin/tenants/{tid}/agent-config/{version}/promote",
+        headers=admin_headers,
+    )
+    assert promote.status_code == 200
+    body = {
+        "runtime_memory_tool": True,
+        "runtime_outcome_grader": True,
+        "runtime_mcp_connector": False,
+        "runtime_skills": [],
+        "runtime_mcp_servers": [],
+    }
+    response = await client.patch(
+        f"/admin/tenants/{tid}/agent-config/{version}/runtime",
+        json=body,
+        headers=admin_headers,
+    )
+    assert response.status_code == 409
+    assert "STAGED" in response.json()["detail"]
+
+
+async def test_patch_runtime_returns_404_for_unknown_version(
+    client, admin_headers, seed_tenants
+):
+    tid = seed_tenants["a"]
+    body = {
+        "runtime_memory_tool": False,
+        "runtime_outcome_grader": False,
+        "runtime_mcp_connector": False,
+        "runtime_skills": [],
+        "runtime_mcp_servers": [],
+    }
+    response = await client.patch(
+        f"/admin/tenants/{tid}/agent-config/999/runtime",
+        json=body,
+        headers=admin_headers,
+    )
+    assert response.status_code == 404
+
+
+async def test_patch_runtime_writes_audit_log(
+    client, admin_headers, seed_tenants, db_session
+):
+    """Every runtime capability change must end up in the audit log so
+    operators can see who turned memory tool on for a tenant and when.
+    """
+    from nexus_api.db.models import AuditLog
+
+    tid = seed_tenants["a"]
+    version = await _stage_v1(client, admin_headers, tid)
+    body = {
+        "runtime_memory_tool": True,
+        "runtime_outcome_grader": False,
+        "runtime_mcp_connector": False,
+        "runtime_skills": [],
+        "runtime_mcp_servers": [],
+    }
+    response = await client.patch(
+        f"/admin/tenants/{tid}/agent-config/{version}/runtime",
+        json=body,
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+
+    # Bypass RLS to inspect the audit row across tenants.
+    from sqlalchemy import text as _text
+
+    await db_session.execute(_text("RESET ROLE"))
+    rows = (
+        await db_session.execute(
+            __import__("sqlalchemy").select(AuditLog).where(
+                AuditLog.tenant_id == tid,
+                AuditLog.action == "agent_config.runtime.update",
+            )
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].after_json["runtime_memory_tool"] is True
+
+
+async def test_get_available_skills_returns_bundled_list(client, admin_headers):
+    """The /admin/skills/available endpoint surfaces the 3 SKILL.md files
+    shipped with the worker. uploaded.json being empty (default in repo)
+    means skill_id is None for each entry."""
+    response = await client.get("/admin/skills/available", headers=admin_headers)
+    assert response.status_code == 200
+    skills = response.json()
+    names = [s["name"] for s in skills]
+    assert "anti-hallucination-booking" in names
+    assert "whatsapp-24h-window" in names
+    assert "escalation-policy" in names
+    # uploaded.json starts empty — skill_id None.
+    for s in skills:
+        assert s["description"]  # frontmatter parsed
+        assert s["local_version"]

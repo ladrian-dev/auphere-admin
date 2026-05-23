@@ -26,6 +26,7 @@ from nexus_api.schemas.agent_config import (
     AgentConfigBundle,
     AgentConfigOut,
     AgentConfigStageIn,
+    RuntimeCapabilitiesIn,
 )
 from nexus_api.schemas.evals import PromoteOverrideIn
 from nexus_api.services import AgentConfigService
@@ -215,6 +216,116 @@ async def rollback_agent_config(
     out = AgentConfigOut.model_validate(config)
     await _publish_promote(redis, tenant_id)
     return out
+
+
+@router.patch(
+    "/tenants/{tenant_id}/agent-config/{version}/runtime",
+    response_model=AgentConfigOut,
+)
+async def update_runtime_capabilities(
+    tenant_id: uuid.UUID,
+    version: int,
+    body: RuntimeCapabilitiesIn,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> AgentConfigOut:
+    """Update the runtime feature flags + skills + MCP servers of a
+    STAGED agent_config.
+
+    The endpoint refuses ACTIVE / ARCHIVED versions on purpose: runtime
+    capabilities are part of the config's identity and must travel
+    through STAGED → ACTIVE so the rollback story stays atomic and the
+    audit_log keeps a record of who/when each feature was turned on.
+
+    To change capabilities on a tenant whose only version is ACTIVE,
+    the operator first stages a new version (PUT
+    /tenants/:id/agent-config), then patches the runtime fields on the
+    new staged row.
+    """
+    # Look up by tenant + version (uq_agent_configs_tenant_version
+    # makes the pair unique).
+    config = (
+        await session.execute(
+            sa.select(AgentConfig).where(
+                AgentConfig.tenant_id == tenant_id,
+                AgentConfig.version == version,
+            )
+        )
+    ).scalar_one_or_none()
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"agent_config v{version} not found for tenant {tenant_id}",
+        )
+    if config.status != AgentConfigStatus.STAGED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"agent_config v{version} is {config.status.value!s}; runtime "
+                "capabilities can only be changed on a STAGED draft. Stage a "
+                "new version first."
+            ),
+        )
+
+    before = {
+        "runtime_memory_tool": config.runtime_memory_tool,
+        "runtime_outcome_grader": config.runtime_outcome_grader,
+        "runtime_mcp_connector": config.runtime_mcp_connector,
+        "runtime_skills": config.runtime_skills,
+        "runtime_mcp_servers": config.runtime_mcp_servers,
+    }
+    config.runtime_memory_tool = body.runtime_memory_tool
+    config.runtime_outcome_grader = body.runtime_outcome_grader
+    config.runtime_mcp_connector = body.runtime_mcp_connector
+    config.runtime_skills = (
+        [s.model_dump() for s in body.runtime_skills] if body.runtime_skills else None
+    )
+    config.runtime_mcp_servers = (
+        [s.model_dump() for s in body.runtime_mcp_servers] if body.runtime_mcp_servers else None
+    )
+
+    session.add(
+        AuditLog(
+            tenant_id=tenant_id,
+            actor=f"admin:{actor[:8]}",
+            action="agent_config.runtime.update",
+            target=f"agent_config:v{version}",
+            before_json=before,
+            after_json={
+                "runtime_memory_tool": body.runtime_memory_tool,
+                "runtime_outcome_grader": body.runtime_outcome_grader,
+                "runtime_mcp_connector": body.runtime_mcp_connector,
+                "runtime_skills": [s.model_dump() for s in body.runtime_skills],
+                "runtime_mcp_servers": [s.model_dump() for s in body.runtime_mcp_servers],
+            },
+        )
+    )
+    # Build the response payload from the body + the row's stable
+    # identity fields. We avoid ``model_validate(config)`` because
+    # SQLAlchemy may attempt lazy attribute loads on the not-yet-
+    # committed row, tripping the asyncpg greenlet check.
+    return AgentConfigOut(
+        id=config.id,
+        tenant_id=config.tenant_id,
+        version=config.version,
+        status=config.status.value if hasattr(config.status, "value") else str(config.status),
+        system_prompt_rendered=config.system_prompt_rendered,
+        channels=config.channels or [],
+        tools=config.tools or [],
+        policies=config.policies or {},
+        seed_template_ref=config.seed_template_ref,
+        kg_schema_id=config.kg_schema_id,
+        created_by=config.created_by,
+        promoted_at=config.promoted_at,
+        promoted_by=config.promoted_by,
+        created_at=config.created_at,
+        updated_at=config.updated_at,
+        runtime_memory_tool=body.runtime_memory_tool,
+        runtime_outcome_grader=body.runtime_outcome_grader,
+        runtime_mcp_connector=body.runtime_mcp_connector,
+        runtime_skills=list(body.runtime_skills) or None,
+        runtime_mcp_servers=list(body.runtime_mcp_servers) or None,
+    )
 
 
 # ── Seed-template bootstrap (Block J) ──────────────────────────────────────

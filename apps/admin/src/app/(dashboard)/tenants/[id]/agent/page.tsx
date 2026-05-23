@@ -27,9 +27,11 @@ import {
   promoteAgentConfigAction,
   rollbackAgentConfigAction,
   stageAgentConfigAction,
+  updateRuntimeCapabilitiesAction,
 } from "./actions";
 import { ApplySeedTemplateButton } from "./apply-seed";
 import { EvalsSection } from "./evals/evals-section";
+import { RuntimeCapabilities } from "./runtime-capabilities";
 import {
   PromoteVersionButton,
   RollbackVersionButton,
@@ -41,15 +43,23 @@ export default async function AgentPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [tenant, bundle, catalog, seedTemplates, datasets, recentRuns] =
-    await Promise.all([
-      backend.getTenant(id),
-      backend.getAgentConfig(id),
-      backend.listTenantToolCatalog(id, false),
-      backend.listSeedTemplates(),
-      backend.listEvalDatasets(id),
-      backend.listEvalRuns(id, { limit: 10 }),
-    ]);
+  const [
+    tenant,
+    bundle,
+    catalog,
+    seedTemplates,
+    datasets,
+    recentRuns,
+    availableSkills,
+  ] = await Promise.all([
+    backend.getTenant(id),
+    backend.getAgentConfig(id),
+    backend.listTenantToolCatalog(id, false),
+    backend.listSeedTemplates(),
+    backend.listEvalDatasets(id),
+    backend.listEvalRuns(id, { limit: 10 }),
+    backend.listAvailableSkills(),
+  ]);
   if (!tenant) return null;
 
   // Block P — for v1 each tenant has at most one active dataset; pick
@@ -129,6 +139,15 @@ export default async function AgentPage({
           />
         </CardContent>
       </Card>
+
+      {editorSource && (
+        <RuntimeCapabilities
+          tenantId={tenant.id}
+          config={editorSource}
+          availableSkills={availableSkills}
+          updateAction={updateRuntimeCapabilitiesAction}
+        />
+      )}
 
       <Card>
         <CardHeader>
