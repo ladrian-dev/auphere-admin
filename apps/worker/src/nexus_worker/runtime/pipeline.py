@@ -60,6 +60,13 @@ from nexus_api.db.base import get_sessionmaker
 from nexus_mcp import MCPRegistry, build_default_registry
 from nexus_mcp.base import ToolError, ToolNotInWhitelist
 
+from nexus_worker.guardrails import (
+    GRADER_FALLBACK_RESPONSE,
+    OutcomeGrader,
+    is_outcome_grader_enabled_for,
+    load_rubric_text,
+)
+from nexus_worker.guardrails.outcome_grader import MAX_GRADER_RETRIES
 from nexus_worker.memory import (
     MEMORY_TOOL_SYSTEM_PROMPT,
     NexusPostgresMemoryTool,
@@ -112,6 +119,38 @@ _EMPTY_RESPONSE_FALLBACK = (
 # customer_id) and the ``tool_result`` is a string, not the MCP envelope.
 # See architecture/builtin-tools-vs-mcp-tools.md.
 _MEMORY_TOOL_NAME = "memory"
+
+
+# Map nexus' coarse classifier intent → the rubric-specific intent name.
+# The Nexus classifier returns one of VALID_INTENTS (book/queue/info/
+# escalate/fallback); rubrics are written per business action
+# (booking.confirm, ecommerce.product_recommend, …). For Fase C we
+# pick the most likely match per coarse intent — the rubrics
+# themselves are forgiving (booking_confirm passes tentative language,
+# which is exactly what a "book" turn without a tool result should
+# emit). When the pilots reveal we need finer routing we either add a
+# secondary classifier OR extend the agent_config to carry a per-intent
+# override.
+_NEXUS_INTENT_TO_RUBRIC: dict[str, str] = {
+    "book": "booking.confirm",
+    "queue": "default.general_response",
+    "info": "default.general_response",
+    "escalate": "default.general_response",
+    "fallback": "default.general_response",
+}
+
+
+# Internal system message used to ask the agent for a corrected response
+# after the grader fails. Anthropic's pattern is to insert a ``user``
+# turn that frames the correction; we go one step further and surface
+# the grader feedback explicitly so the agent has actionable guidance.
+_RETRY_SYSTEM_TEMPLATE: str = (
+    "Your previous reply did not pass output validation. Reason: "
+    "{feedback}\n"
+    "Rewrite the reply addressing the reason ABOVE. Do not invent "
+    "data; if a tool result is missing, say so honestly. Reply with "
+    "only the corrected message — no preface, no apology to the QA."
+)
 
 
 # Per-intent tool category. The active whitelist is intersected with this
@@ -832,6 +871,170 @@ async def _load_recent_history(
     return history[-limit:]
 
 
+def make_grade_outcome_node(
+    *,
+    grader: OutcomeGrader | None,
+    llm_router: LLMRouter,
+) -> NodeFn:
+    """Build the outcome-grader node.
+
+    Sits between the intent handler and the UCM formatter. When the
+    tenant has the grader enabled, runs Claude Haiku 4.5 against the
+    handler's draft response (per [[architecture/outcome-grader]]):
+
+    1. Look up the rubric for the turn's intent. If none, mark as
+       skipped and pass through.
+    2. Grade. If pass, mark and pass through.
+    3. If fail and we have retries left, ask the AGENT'S model (the
+       respond_model from the router) to rewrite the response using the
+       grader feedback. Re-grade. Repeat up to ``MAX_GRADER_RETRIES``.
+    4. If we exhaust retries, replace the response with
+       :data:`GRADER_FALLBACK_RESPONSE` and emit a structured log so
+       operators see the degradation in their alerting pipe.
+
+    The whole retry loop is contained INSIDE the node — no LangGraph
+    conditional edge back to the handler. That keeps the graph simple
+    and avoids re-running the ReAct loop (which already executed its
+    tools); the grader only needs the LLM to rephrase, not to redo
+    the work.
+
+    ``grader`` is ``None`` when the worker boots without API keys
+    (tests, dev with ``NEXUS_LLM_USE_INMEMORY=1``); in that case the
+    node passes through with ``outcome_overall='skipped'`` so the
+    pipeline still composes correctly.
+    """
+
+    async def grade_outcome(state: AgentState) -> dict[str, Any]:
+        if grader is None:
+            return {"outcome_overall": "skipped", "outcome_retries": 0, "outcome_feedback": ""}
+
+        tenant_id = _tenant_uuid(state)
+        if not is_outcome_grader_enabled_for(tenant_id):
+            return {"outcome_overall": "skipped", "outcome_retries": 0, "outcome_feedback": ""}
+
+        intent = state.get("intent") or "fallback"
+        rubric_intent = _NEXUS_INTENT_TO_RUBRIC.get(intent, "default.general_response")
+        rubric_body = load_rubric_text(rubric_intent)
+        if rubric_body is None:
+            # No rubric on disk — operator opted in but we have nothing
+            # to grade against. Better to pass through (skipped) than
+            # to silently fail every turn.
+            log.warning(
+                "outcome_grader.rubric_missing",
+                tenant_id=str(tenant_id),
+                intent=intent,
+                rubric_intent=rubric_intent,
+            )
+            return {
+                "outcome_overall": "skipped",
+                "outcome_retries": 0,
+                "outcome_feedback": "",
+            }
+
+        draft = state.get("response", "") or ""
+        envelopes = state.get("tool_calls") or []
+
+        # First grading attempt against the original draft.
+        verdict = await grader.grade(
+            tenant_id=tenant_id,
+            intent=rubric_intent,
+            rubric_body=rubric_body,
+            draft_response=draft,
+            tool_envelopes=envelopes,
+        )
+
+        retries = 0
+        last_feedback = verdict.feedback
+
+        # Retry loop. On each fail, ask the AGENT's primary model to
+        # rewrite using the grader's feedback. Re-grade. Stop on pass
+        # or on MAX_GRADER_RETRIES.
+        while verdict.overall == "fail" and retries < MAX_GRADER_RETRIES:
+            retries += 1
+            new_draft = await _ask_agent_to_rewrite(
+                llm_router=llm_router,
+                tenant_id=tenant_id,
+                intent=intent,
+                original=draft,
+                feedback=verdict.feedback,
+            )
+            if not new_draft.strip():
+                # Model refused or produced empty — accept the last
+                # verdict as final fail and bail to the fallback path.
+                last_feedback = verdict.feedback
+                break
+            draft = new_draft
+            verdict = await grader.grade(
+                tenant_id=tenant_id,
+                intent=rubric_intent,
+                rubric_body=rubric_body,
+                draft_response=draft,
+                tool_envelopes=envelopes,
+            )
+            last_feedback = verdict.feedback
+
+        if verdict.overall == "pass":
+            return {
+                "response": draft,
+                "outcome_overall": "pass",
+                "outcome_retries": retries,
+                "outcome_feedback": "",
+            }
+
+        # All retries exhausted — degrade to the neutral fallback and
+        # alert. Operations picks the structured log up through the
+        # standard log shipper (block H tracing). The audit_log row
+        # that the operator alerter watches is written by the
+        # checkpoint node downstream; this node only needs to log.
+        log.error(
+            "outcome_grader.max_retries_exhausted",
+            tenant_id=str(tenant_id),
+            intent=intent,
+            rubric_intent=rubric_intent,
+            retries=retries,
+            feedback=last_feedback,
+        )
+        return {
+            "response": GRADER_FALLBACK_RESPONSE,
+            "outcome_overall": "fail",
+            "outcome_retries": retries,
+            "outcome_feedback": last_feedback,
+        }
+
+    return grade_outcome
+
+
+async def _ask_agent_to_rewrite(
+    *,
+    llm_router: LLMRouter,
+    tenant_id: uuid.UUID,
+    intent: str,
+    original: str,
+    feedback: str,
+) -> str:
+    """Ask the agent's primary model to rewrite ``original`` using
+    ``feedback``. Used by the outcome grader retry loop.
+
+    This is a one-shot call — no tools, no ReAct loop. The intent is
+    only used for tracing; the routing is via the router's normal
+    ``respond`` path so the same retry / fallback semantics apply.
+    """
+    messages = [
+        {"role": "system", "content": _RETRY_SYSTEM_TEMPLATE.format(feedback=feedback)},
+        {"role": "user", "content": original},
+    ]
+    try:
+        return await llm_router.respond(tenant_id=tenant_id, messages=messages)
+    except Exception as exc:
+        log.warning(
+            "outcome_grader.rewrite_failed",
+            tenant_id=str(tenant_id),
+            intent=intent,
+            error=str(exc),
+        )
+        return ""
+
+
 def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
     """Phase 2 (ADR-020): wrap the agent's text response in a UCM payload.
 
@@ -933,6 +1136,7 @@ def build_pipeline(
     checkpointer: BaseCheckpointSaver[Any] | None = None,
     mcp_registry: MCPRegistry | None = None,
     use_ucm_formatter: bool | None = None,
+    outcome_grader: OutcomeGrader | None = None,
 ) -> Any:
     """Compile the StateGraph and return a runnable.
 
@@ -947,9 +1151,16 @@ def build_pipeline(
     default) the flag is read from ``settings.use_ucm_formatter``; tests
     pass an explicit bool.
 
-    Graph (ADR-023): ``classify → {intent handler} → ucm_formatter →
-    checkpoint``. Each handler is a ReAct loop that produces the final
-    text itself — there is no separate ``respond`` node.
+    ``outcome_grader`` is the Fase C output guardrail. When ``None``
+    (tests, in-memory dev) the grader node passes through with
+    ``outcome_overall='skipped'``. Production builds construct one in
+    ``main.py`` from a ``LiteLLMProvider``.
+
+    Graph (ADR-023 + Fase C): ``classify → {intent handler} →
+    grade_outcome → ucm_formatter → checkpoint``. Each handler is a
+    ReAct loop that produces a draft response; ``grade_outcome``
+    validates it against the per-intent rubric and may rewrite it
+    before the formatter ships it.
     """
     registry = mcp_registry or build_default_registry()
 
@@ -965,6 +1176,10 @@ def build_pipeline(
     g.add_node("classify", make_classify_node(agent_loader, llm_router))
     for intent in VALID_INTENTS:
         g.add_node(intent, make_handler_node(intent, agent_loader, llm_router, registry))
+    g.add_node(
+        "grade_outcome",
+        make_grade_outcome_node(grader=outcome_grader, llm_router=llm_router),
+    )
     g.add_node("ucm_formatter", make_ucm_formatter_node(enabled=use_ucm_formatter))
     g.add_node("checkpoint", make_checkpoint_node())
 
@@ -975,7 +1190,8 @@ def build_pipeline(
         {intent: intent for intent in VALID_INTENTS},
     )
     for intent in VALID_INTENTS:
-        g.add_edge(intent, "ucm_formatter")
+        g.add_edge(intent, "grade_outcome")
+    g.add_edge("grade_outcome", "ucm_formatter")
     g.add_edge("ucm_formatter", "checkpoint")
     g.add_edge("checkpoint", END)
     if checkpointer is None:

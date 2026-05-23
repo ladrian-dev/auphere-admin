@@ -38,12 +38,13 @@ from nexus_mcp.servers.agendapro_public.transport import (
 )
 
 from nexus_worker.config import get_api_settings, get_worker_settings
+from nexus_worker.guardrails import OutcomeGrader
 from nexus_worker.logging import configure_logging
 from nexus_worker.observability import init_langfuse
 from nexus_worker.observability import shutdown as langfuse_shutdown
 from nexus_worker.runtime.agent_loader import AgentLoader
 from nexus_worker.runtime.checkpointer import postgres_checkpointer
-from nexus_worker.runtime.llm import build_default_router
+from nexus_worker.runtime.llm import LiteLLMProvider, build_default_router
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.async_booking_cron import run_async_booking_cron
@@ -110,8 +111,21 @@ async def _amain() -> None:
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, _request_stop)
 
+    # Fase C — outcome grader. Independent provider (no router) so the
+    # guardrail call doesn't ride the agent's retry chain. When
+    # ``llm_use_inmemory`` is on (dev/test) we skip construction so
+    # the pipeline doesn't try to call out without API keys.
+    outcome_grader: OutcomeGrader | None = None
+    if not worker_settings.llm_use_inmemory:
+        outcome_grader = OutcomeGrader(provider=LiteLLMProvider())
+
     async with postgres_checkpointer(api_settings.database_url) as saver:
-        pipeline = build_pipeline(agent_loader=loader, llm_router=router, checkpointer=saver)
+        pipeline = build_pipeline(
+            agent_loader=loader,
+            llm_router=router,
+            checkpointer=saver,
+            outcome_grader=outcome_grader,
+        )
         promote_task = asyncio.create_task(
             run_promote_subscriber(redis, loader, stop=stop), name="promote-subscriber"
         )

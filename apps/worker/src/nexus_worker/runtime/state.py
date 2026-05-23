@@ -70,6 +70,18 @@ class AgentState(TypedDict, total=False):
     ucm: dict[str, Any]
     ucm_shadow_diff: dict[str, Any]
 
+    # Fase C — outcome grader. ``outcome_overall`` is the final verdict
+    # the pipeline acted on (``pass`` / ``fail`` / ``skipped`` /
+    # ``error``); ``outcome_retries`` counts how many times the agent
+    # was re-prompted before the grader passed (or before the pipeline
+    # gave up); ``outcome_feedback`` is the LAST feedback string from
+    # the grader (empty if the original draft passed). ``skipped`` is
+    # used when the feature is off for this tenant — keeps Langfuse
+    # traces self-describing.
+    outcome_overall: str
+    outcome_retries: int
+    outcome_feedback: str
+
     # Free-form trace metadata (replaced by the last writer)
     meta: dict[str, Any]
 

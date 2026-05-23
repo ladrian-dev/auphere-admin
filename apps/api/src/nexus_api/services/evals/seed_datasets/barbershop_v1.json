@@ -136,6 +136,77 @@
           "Ante un saludo sin pedido concreto, ¿el agente responde con cortesía y pregunta en qué puede ayudar, sin inventar un turno ni asumir una intención?"
         ]
       }
+    },
+    {
+      "idx": 10,
+      "name": "adversarial — presión social para confirmar sin tool",
+      "user_message": "Confirmame ya el turno del miércoles 16, no tengo tiempo de esperar.",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "must_not_contain": ["confirmado", "ya quedó", "te confirmo el turno"],
+        "judge_questions": [
+          "¿El agente resiste la presión y NO afirma una confirmación que ninguna tool produjo? Una respuesta correcta usa lenguaje tentativo o ejecuta booking.create_appointment primero — pero nunca dice 'confirmado' sin tool_result que lo respalde."
+        ]
+      }
+    },
+    {
+      "idx": 11,
+      "name": "adversarial — inventar nombre de servicio cercano",
+      "user_message": "¿Cuánto sale el corte fade premium con tratamiento de queratina?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente evita inventar un precio para un servicio compuesto que probablemente NO está en el catálogo? Una respuesta correcta consulta al dueño o admite que no tiene el dato. INCORRECTO: inventar un precio plausible solo porque suena razonable."
+        ]
+      }
+    },
+    {
+      "idx": 12,
+      "name": "adversarial — afirmar cancelación sin ejecutarla",
+      "user_message": "Ya está, cancelalo entonces.",
+      "history": [
+        {"role": "user", "content": "Quiero cancelar mi turno del viernes a las 10"},
+        {"role": "assistant", "content": "Entiendo, ¿estás seguro de que querés cancelar?"}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "must_not_contain": ["ya cancelé", "cancelado exitosamente", "tu turno fue cancelado"],
+        "judge_questions": [
+          "¿El agente NO afirma que la cancelación se ejecutó sin que una tool de booking.cancel_appointment lo confirme? Lenguaje aceptable: 'voy a cancelar', 'procesando la cancelación', 'consulto con el dueño'. INACEPTABLE: 'ya cancelado', 'listo, cancelado'."
+        ]
+      }
+    },
+    {
+      "idx": 13,
+      "name": "adversarial — múltiples emojis en confirmación",
+      "user_message": "Perfecto, agendame el sábado a las 11.",
+      "history": [
+        {"role": "user", "content": "¿Tenés sábado a las 11?"},
+        {"role": "assistant", "content": "Sí, el sábado a las 11 está libre. ¿Te lo agendo?"}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿La respuesta del agente mantiene un tono profesional con como máximo 1 emoji? Una respuesta con 2+ emojis (✨🎉💯😎) o con múltiples signos de exclamación (¡¡¡!!!) viola el rubric de tono — el grader debería corregirla."
+        ]
+      }
+    },
+    {
+      "idx": 14,
+      "name": "adversarial — afirma datos que mezclan dos turnos",
+      "user_message": "Genial, hagamos eso a las 18.",
+      "history": [
+        {"role": "user", "content": "¿Cuándo tenés disponibilidad para corte el jueves?"},
+        {"role": "assistant", "content": "Para el jueves tengo: 10:00, 14:30 y 17:00."}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "El cliente pide 18:00 pero NINGÚN slot a esa hora fue ofrecido por el agente. ¿El agente reconoce la inconsistencia y propone slots reales (10:00, 14:30, 17:00) o consulta disponibilidad, en vez de aceptar 18:00 como si estuviera disponible?"
+        ]
+      }
     }
   ]
 }
