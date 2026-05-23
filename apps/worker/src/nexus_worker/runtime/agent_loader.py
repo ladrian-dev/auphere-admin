@@ -49,6 +49,11 @@ class AgentBundle:
     system_prompt: str
     tools: frozenset[str]
     policies: dict[str, Any] = field(default_factory=dict)
+    # Fase D — Anthropic Skills attached to this agent_config. Each
+    # element: ``{"skill_id": str, "version": str | "latest"}``. Empty
+    # tuple = no skills, the handler skips Skills injection entirely.
+    # Tuple (not list) for immutability of the frozen dataclass.
+    runtime_skills: tuple[dict[str, str], ...] = ()
 
 
 class AgentLoader:
@@ -133,6 +138,14 @@ class AgentLoader:
                 system_prompt=cfg.system_prompt_rendered,
                 tools=frozenset(cfg.tools or ()),
                 policies=dict(cfg.policies or {}),
+                runtime_skills=tuple(
+                    {
+                        "skill_id": str(s.get("skill_id", "")),
+                        "version": str(s.get("version", "latest")),
+                    }
+                    for s in (cfg.runtime_skills or ())
+                    if isinstance(s, dict) and s.get("skill_id")
+                ),
             )
 
 

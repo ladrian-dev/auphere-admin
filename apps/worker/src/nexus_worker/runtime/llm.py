@@ -178,6 +178,13 @@ class LLMCall:
     model: str
     messages: list[dict[str, str]]
     tools: tuple[dict[str, Any], ...] = ()
+    # ``extra`` captures any Anthropic-specific kwargs we pass through
+    # to LiteLLM that don't fit the OpenAI shape. Today populated by
+    # Fase D (Skills): ``container={"skills": [...]}`` +
+    # ``extra_headers={"anthropic-beta": "..."}``. Future betas
+    # (mcp_servers for Fase E, dreaming for Fase F) plug in the same way
+    # without changing the protocol.
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 # ── provider protocol ────────────────────────────────────────────────────────
@@ -201,6 +208,7 @@ class LLMProvider(Protocol):
         model: str,
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = ...,
     ) -> LLMResponse: ...
 
 
@@ -249,6 +257,7 @@ class InMemoryProvider:
         model: str,
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
     ) -> LLMResponse:
         call = LLMCall(
             tenant_id=tenant_id,
@@ -256,6 +265,7 @@ class InMemoryProvider:
             model=model,
             messages=list(messages),
             tools=tuple(tools),
+            extra=dict(extra) if extra else {},
         )
         async with self._lock:
             self.calls.append(call)
@@ -330,6 +340,7 @@ class LiteLLMProvider:
         model: str,
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
     ) -> LLMResponse:
         response = await self._raw_complete(
             tenant_id=tenant_id,
@@ -337,6 +348,7 @@ class LiteLLMProvider:
             model=model,
             messages=messages,
             tools=tools or None,
+            extra=extra,
         )
         choices = response["choices"]
         if not choices:
@@ -368,6 +380,7 @@ class LiteLLMProvider:
         model: str,
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]] | None,
+        extra: dict[str, Any] | None = None,
     ) -> Any:
         import litellm  # local import — heavy dep
 
@@ -387,6 +400,23 @@ class LiteLLMProvider:
             # we skip the field there entirely (no beta header, no edits).
             if self.context_management is not None:
                 kwargs["context_management"] = self.context_management
+        # Per-call passthrough for Anthropic-specific kwargs (Fase D
+        # Skills: ``container``, ``extra_headers``; future Fase E/F can
+        # plug ``mcp_servers`` here without touching the protocol). We
+        # MERGE rather than overwrite so cache_control / context_management
+        # set above survive; if the caller intentionally wants to replace
+        # them they pass the same key in ``extra`` and that wins.
+        if extra:
+            for key, value in extra.items():
+                if key == "extra_headers" and "extra_headers" in kwargs:
+                    # Anthropic headers — combine instead of clobber so a
+                    # caller that adds Skills betas doesn't drop the
+                    # context-management beta LiteLLM injected itself.
+                    merged = dict(kwargs.get("extra_headers") or {})
+                    merged.update(value or {})
+                    kwargs["extra_headers"] = merged
+                else:
+                    kwargs[key] = value
 
         # Sanity: if a future change ever turns batching on globally, surface it
         # immediately rather than letting it ship.
@@ -523,10 +553,16 @@ class LLMRouter:
         role: str,
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
     ) -> LLMResponse:
         """Function-calling completion for the handler ReAct loop. ``role``
         is the intent (``book``, ``queue``, …) so traces can attribute the
-        tool selection. Retries + falls back like every router call."""
+        tool selection. Retries + falls back like every router call.
+
+        ``extra`` carries Anthropic-specific kwargs (container, extra_headers,
+        mcp_servers) the caller wants the provider to passthrough — Fase D
+        Skills uses it, future Fase E (MCP connector) will too.
+        """
 
         async def invoke(model: str) -> LLMResponse:
             return await self.provider.acomplete_with_tools(
@@ -535,6 +571,7 @@ class LLMRouter:
                 model=model,
                 messages=messages,
                 tools=tools,
+                extra=extra,
             )
 
         return await self._call_with_resilience(

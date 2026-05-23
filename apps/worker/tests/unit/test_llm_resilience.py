@@ -118,6 +118,7 @@ class _FlakyProvider:
         model: str,
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
     ) -> LLMResponse:
         self._maybe_fail(role, model)
         return LLMResponse(text=f"ok:{model}", tool_calls=())

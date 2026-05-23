@@ -82,6 +82,7 @@ class _ScriptedProvider:
         model: str,
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
     ) -> LLMResponse:
         text = await self.acomplete(
             tenant_id=tenant_id, role=role, model=model, messages=messages
@@ -168,7 +169,16 @@ class TestGraderFailureModes:
             async def acomplete(self, **kwargs: Any) -> str:
                 raise RuntimeError("provider exploded")
 
-            async def acomplete_with_tools(self, **kwargs: Any) -> LLMResponse:
+            async def acomplete_with_tools(
+                self,
+                *,
+                tenant_id: uuid.UUID,
+                role: str,
+                model: str,
+                messages: list[dict[str, str]],
+                tools: list[dict[str, Any]],
+                extra: dict[str, Any] | None = None,
+            ) -> LLMResponse:
                 raise RuntimeError("provider exploded")
 
         grader = OutcomeGrader(provider=_BrokenProvider())  # type: ignore[arg-type]

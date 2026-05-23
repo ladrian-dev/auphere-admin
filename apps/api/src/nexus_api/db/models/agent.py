@@ -56,3 +56,10 @@ class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     promoted_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Fase D — Anthropic Skills attached to this config. Shape: list of
+    # ``{"skill_id": str, "version": str | "latest"}``. NULL = no skills,
+    # the runtime then skips the ``container`` arg + code_execution tool.
+    runtime_skills: Mapped[list[dict[str, str]] | None] = mapped_column(
+        JSONB, nullable=True
+    )

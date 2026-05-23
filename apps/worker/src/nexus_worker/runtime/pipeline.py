@@ -121,6 +121,28 @@ _EMPTY_RESPONSE_FALLBACK = (
 _MEMORY_TOOL_NAME = "memory"
 
 
+# Fase D — Anthropic custom Skills wiring.
+#
+# When ``agent_config.runtime_skills`` is non-empty for a turn, the handler:
+#   1. Appends the ``code_execution`` tool to ``tools[]`` — required
+#      because Skills are loaded into the code-execution container.
+#   2. Passes ``container={"skills": [{type, skill_id, version}, …]}``
+#      to the provider via the ``extra`` kwarg.
+#   3. Adds the three beta headers Anthropic requires for the
+#      Skills + code-execution + files-api stack.
+#
+# These names + versions are the contract Anthropic published; they
+# are NOT environment-configurable on purpose — bumping them would be
+# a deliberate review-gated change.
+_CODE_EXECUTION_TOOL: dict[str, Any] = {
+    "type": "code_execution_20250825",
+    "name": "code_execution",
+}
+_SKILLS_BETA_HEADER_VALUE: str = (
+    "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
+)
+
+
 # Map nexus' coarse classifier intent → the rubric-specific intent name.
 # The Nexus classifier returns one of VALID_INTENTS (book/queue/info/
 # escalate/fallback); rubrics are written per business action
@@ -658,6 +680,27 @@ def make_handler_node(
             envelopes: list[dict[str, Any]] = []
             final_text = ""
 
+            # Fase D — Anthropic Skills attached to this agent_config.
+            # Build the ``container`` payload + ``extra_headers`` once,
+            # outside the loop, so the same dict is passed on every
+            # iteration. ``extra`` stays empty when no skills are
+            # attached (the common case for tenants not opted in).
+            skills_extra: dict[str, Any] = {}
+            if bundle.runtime_skills:
+                skills_extra = {
+                    "container": {
+                        "skills": [
+                            {
+                                "type": "custom",
+                                "skill_id": s["skill_id"],
+                                "version": s["version"],
+                            }
+                            for s in bundle.runtime_skills
+                        ]
+                    },
+                    "extra_headers": {"anthropic-beta": _SKILLS_BETA_HEADER_VALUE},
+                }
+
             for iteration in range(MAX_TOOL_ITERATIONS):
                 # The last iteration is tool-free: the model MUST answer.
                 last = iteration == MAX_TOOL_ITERATIONS - 1
@@ -671,6 +714,11 @@ def make_handler_node(
                         # "memory_20250818", "name": "memory"}); LiteLLM
                         # only cares about the dict shape so we widen.
                         tools_arg.append(dict(memory_tool.to_dict()))
+                    if bundle.runtime_skills:
+                        # code_execution is the container the Skills run
+                        # inside. Anthropic requires it to be in tools[]
+                        # whenever ``container.skills`` is set.
+                        tools_arg.append(dict(_CODE_EXECUTION_TOOL))
 
                 try:
                     response = await llm.respond_with_tools(
@@ -678,6 +726,7 @@ def make_handler_node(
                         role=intent,
                         messages=messages,
                         tools=tools_arg,
+                        extra=skills_extra or None,
                     )
                 except Exception as exc:
                     # The router exhausted retries + fallback. Rather than
