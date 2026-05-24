@@ -197,9 +197,15 @@ export function NewTenantWizard() {
       toast.success(`Tenant ${values.name} creado`, {
         description: "Próximo paso: conectar el canal de mensajería.",
       });
+      // BUG-E2E-03: navigate to the new tenant's connectors page.
+      // Calling ``router.refresh()`` right after ``router.replace()``
+      // used to cancel the navigation — the refresh re-fetched the
+      // CURRENT URL (still /tenants/new while the navigation was
+      // in-flight) and overrode the route change. Replace alone fetches
+      // the new route's RSC payload, so refresh is redundant AND
+      // harmful. Drop the refresh and let Next.js handle it.
       startTransition(() => {
         router.replace(`/tenants/${result.tenantId}/connectors`);
-        router.refresh();
       });
     } catch (err) {
       toast.error("Error inesperado", {

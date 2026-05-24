@@ -19,8 +19,13 @@ from nexus_api.db.models import (
     AgentConfigStatus,
     AuditLog,
     Channel,
+    Connector,
+    ConnectorToolMode,
     Tenant,
+    TenantConnector,
+    TenantConnectorStatus,
     ToolCatalog,
+    ToolStatus,
 )
 from nexus_api.schemas.agent_config import (
     AgentConfigBundle,
@@ -416,19 +421,90 @@ async def stage_agent_config_from_seed(
             detail=str(exc),
         ) from exc
 
+    # Union the seed's required tools with the read-only ("always" mode)
+    # tools of every connector this tenant has installed — BUG-E2E-02.
+    # Without this, an operator who connects WooCommerce / Calendly /
+    # Google Calendar BEFORE applying a seed lands on an editor where
+    # the connector tools are visible but UNSELECTED, and the agent
+    # silently can't use the connector until they tick each one. The
+    # union mirrors the same "always-mode" filter that
+    # ``auto_enable_connector_tools`` uses when the order is reversed
+    # (seed first, then connect) — keeping both orderings symmetric.
+    connector_tools = await _safe_connector_tools_for_tenant(
+        session, tenant_id
+    )
+    merged_tools = sorted(set(rendered.tools) | connector_tools)
+
     svc = AgentConfigService(session)
     try:
         config = await svc.stage_new_version(
             actor=f"admin:{actor[:8]}",
             system_prompt_rendered=rendered.system_prompt,
             channels=[],
-            tools=rendered.tools,
+            tools=merged_tools,
             policies=rendered.policies,
             seed_template_ref=rendered.seed_template_ref,
         )
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return AgentConfigOut.model_validate(config)
+
+
+# Statuses where a tenant's installed connector should still contribute
+# tools to a freshly-seeded agent_config. ``paused`` and ``needs_reauth``
+# are included because the install is still "present" — the operator
+# expects to resume it; we don't want a seed-apply to silently strip the
+# tool list. Mirrors ``canSelect`` in the admin editor.
+_USABLE_CONNECTOR_STATUSES: tuple[str, ...] = (
+    TenantConnectorStatus.CONNECTED.value,
+    TenantConnectorStatus.PARTIAL.value,
+    TenantConnectorStatus.PAUSED.value,
+    TenantConnectorStatus.NEEDS_REAUTH.value,
+)
+
+
+async def _safe_connector_tools_for_tenant(
+    session: AsyncSession, tenant_id: uuid.UUID
+) -> set[str]:
+    """Return the names of read-only ("always"-mode) tools the tenant's
+    installed connectors contribute.
+
+    Used by ``stage_agent_config_from_seed`` to pre-tick connector tools
+    in a fresh seed apply (BUG-E2E-02). Filters mirror
+    ``auto_enable_connector_tools`` so seed-then-connect and
+    connect-then-seed produce equivalent whitelists:
+
+    - The connector must declare ``auto_enable_on_connect=true`` (a few
+      experimental connectors set this to false and require explicit
+      opt-in per tool).
+    - The install must be in a usable state (connected / partial /
+      paused / needs_reauth).
+    - The tool must be active and ``default_mode='always'`` —
+      destructive tools left at ``blocked`` stay unticked, the operator
+      enables them deliberately.
+
+    Returns an empty set when no installed connector contributes
+    tools — the union with ``rendered.tools`` then degrades to the
+    seed's required set, preserving the legacy behaviour.
+    """
+    rows = (
+        await session.scalars(
+            sa.select(ToolCatalog.name)
+            .join(Connector, Connector.id == ToolCatalog.connector_id)
+            .join(
+                TenantConnector,
+                TenantConnector.connector_id == Connector.id,
+            )
+            .where(
+                TenantConnector.tenant_id == tenant_id,
+                TenantConnector.status.in_(_USABLE_CONNECTOR_STATUSES),
+                Connector.auto_enable_on_connect.is_(True),
+                ToolCatalog.default_mode == ConnectorToolMode.ALWAYS.value,
+                ToolCatalog.status == ToolStatus.ACTIVE,
+            )
+        )
+    ).all()
+    return {str(name) for name in rows}
 
 
 # ── Block N: "Mejorar prompt" ──────────────────────────────────────────────

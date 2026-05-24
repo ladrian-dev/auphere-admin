@@ -130,7 +130,15 @@ export default async function AgentPage({
           </div>
         </CardHeader>
         <CardContent>
+          {/* The ``key`` forces ``AgentEditor`` to remount whenever the
+              underlying config row changes (id is unique per version).
+              Without it the client component's ``useState`` initialiser
+              captures the prompt + tools of the FIRST render and ignores
+              subsequent prop changes — so after a fresh ``applyTemplate``
+              the textarea + whitelist stay empty even though the server
+              already has the staged draft. BUG-E2E-01. */}
           <AgentEditor
+            key={editorSource?.id ?? "empty"}
             tenantId={tenant.id}
             source={editorSource}
             sourceIsStagedDraft={editorSource?.status === "staged"}

@@ -47,6 +47,13 @@ COPY apps/mcp/pyproject.toml /build/apps/mcp/pyproject.toml
 COPY apps/mcp/src /build/apps/mcp/src
 COPY apps/worker/pyproject.toml /build/apps/worker/pyproject.toml
 COPY apps/worker/src /build/apps/worker/src
+# The admin's ``/admin/skills/available`` endpoint reads SKILL.md
+# frontmatter from this directory at request time so the operator's
+# skill picker shows real metadata (name, description, version) for
+# each bundled skill. Without this layer the endpoint returns ``[]``
+# and the picker renders "No hay Anthropic Skills bundleadas en este
+# deploy" even though the skills exist in Anthropic's workspace.
+COPY apps/worker/skills /build/apps/worker/skills
 
 COPY apps/api/pyproject.toml /build/apps/api/pyproject.toml
 COPY apps/api/src /build/apps/api/src
