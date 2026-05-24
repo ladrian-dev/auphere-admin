@@ -199,6 +199,17 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # surface context that would otherwise be lost.
     context_message_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
 
+    # Interactive component payload — populated by the checkpoint node
+    # when the agent's turn included a ``response.send_interactive``
+    # tool call. Shape mirrors the UCM ``quick_replies`` / ``list`` /
+    # ``cta_url`` content schemas. The outbound dispatcher routes any
+    # row with non-NULL ``interactive_payload`` through
+    # ``adapter.send_interactive``; rows without it follow the
+    # historical text / media paths unchanged.
+    interactive_payload: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+
 
 class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     """Per-tenant per-recipient opt-out registry.

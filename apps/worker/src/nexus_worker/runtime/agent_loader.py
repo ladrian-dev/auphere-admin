@@ -50,10 +50,14 @@ class AgentBundle:
     tools: frozenset[str]
     policies: dict[str, Any] = field(default_factory=dict)
     # Fase D — Anthropic Skills attached to this agent_config. Each
-    # element: ``{"skill_id": str, "version": str | "latest"}``. Empty
-    # tuple = no skills, the handler skips Skills injection entirely.
-    # Tuple (not list) for immutability of the frozen dataclass.
-    runtime_skills: tuple[dict[str, str], ...] = ()
+    # element: ``{"skill_id": str, "version": str | "latest",
+    # "channels": tuple[str, ...]}``. Empty tuple = no skills, the
+    # handler skips Skills injection entirely. ``channels`` is the
+    # optional channel-gate: when non-empty, the skill is only injected
+    # if ``state.channel_type`` is in the tuple. Empty / missing =
+    # inject for every channel. Tuple (not list) for immutability of
+    # the frozen dataclass.
+    runtime_skills: tuple[dict[str, Any], ...] = ()
     # Fase E — Anthropic MCP connector servers. Each element:
     # ``{name, url, allowed_tools, credential_key}``. Empty tuple =
     # no servers configured; the handler skips ``mcp_servers``
@@ -155,6 +159,9 @@ class AgentLoader:
                     {
                         "skill_id": str(s.get("skill_id", "")),
                         "version": str(s.get("version", "latest")),
+                        "channels": tuple(
+                            str(c) for c in (s.get("channels") or ())
+                        ),
                     }
                     for s in (cfg.runtime_skills or ())
                     if isinstance(s, dict) and s.get("skill_id")

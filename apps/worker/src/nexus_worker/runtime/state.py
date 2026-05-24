@@ -88,6 +88,16 @@ class AgentState(TypedDict, total=False):
     # ``AgentBundle.runtime_*`` by ``make_handler_node``.
     agent_runtime_flags: dict[str, bool]
 
+    # Filled by the handler when the LLM calls ``response.send_interactive``.
+    # Holds the validated tool args — body, optional header/footer, and
+    # exactly one of buttons/list/cta_url. The ucm_formatter consumes it
+    # to build the interactive UCM (composite-wrapped with the text reply
+    # when ``response`` is also non-empty), and the checkpoint node
+    # persists it on a second Message row so the outbound dispatcher can
+    # route to ``adapter.send_interactive``. Empty / unset on turns that
+    # produce plain text only.
+    interactive_payload: dict[str, Any]
+
     # Free-form trace metadata (replaced by the last writer)
     meta: dict[str, Any]
 

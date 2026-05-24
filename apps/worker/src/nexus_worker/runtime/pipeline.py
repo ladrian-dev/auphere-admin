@@ -142,6 +142,25 @@ _SKILLS_BETA_HEADER_VALUE: str = (
 )
 
 
+def _filter_skills_for_channel(
+    skills: tuple[dict[str, Any], ...],
+    channel_type: str,
+) -> tuple[dict[str, Any], ...]:
+    """Drop skills whose ``channels`` gate excludes the active channel.
+
+    A skill without ``channels`` (or empty tuple) loads for every
+    channel — back-compat with skills uploaded before the gate existed.
+    A skill with non-empty ``channels`` only loads when ``channel_type``
+    is in the list, so e.g. ``whatsapp-24h-window`` never reaches the
+    LLM on the QA Playground ``web`` channel.
+    """
+    return tuple(
+        s
+        for s in skills
+        if not s.get("channels") or channel_type in s["channels"]
+    )
+
+
 async def _resolve_mcp_token(tenant_id: uuid.UUID, credential_key: str) -> str | None:
     """Read ``tenant_credentials`` and return the decrypted OAuth token.
 
@@ -278,6 +297,11 @@ _INTENT_CATEGORIES: dict[str, tuple[str, ...]] = {
 # filtering inside each handler still applies — these names only become
 # available when the operator explicitly whitelists them on the tenant's
 # agent_config.
+#
+# ``response.send_interactive`` joins the set as the terminal
+# component-emitter — it produces native reply buttons / list / CTA URL.
+# Surfacing on the same intents keeps the LLM's tool palette consistent:
+# wherever it could send media, it can also send a structured component.
 _NATIVE_OUTPUT_TOOLS: tuple[str, ...] = (
     "notification.send_image",
     "notification.send_audio",
@@ -285,9 +309,15 @@ _NATIVE_OUTPUT_TOOLS: tuple[str, ...] = (
     "notification.send_document",
     "notification.send_location",
     "notification.send_reaction",
+    "response.send_interactive",
 )
 for _intent in ("book", "queue", "info"):
     _INTENT_CATEGORIES[_intent] = _INTENT_CATEGORIES[_intent] + _NATIVE_OUTPUT_TOOLS
+
+
+# Name of the terminal interactive tool — kept as a module constant so
+# the handler loop and the tests can share the literal without drifting.
+_INTERACTIVE_TOOL_NAME = "response.send_interactive"
 
 
 # Every tool name the static (vertical) intent map routes — the union of all
@@ -730,14 +760,34 @@ def make_handler_node(
 
             envelopes: list[dict[str, Any]] = []
             final_text = ""
+            # Populated when the LLM calls ``response.send_interactive``.
+            # Holds the validated tool args (body, header/footer, exactly
+            # one of buttons/list/cta_url) minus the routing fields the
+            # ucm_formatter does not need. When non-None the handler
+            # breaks the ReAct loop after the current tool batch:
+            # send_interactive is a terminal action, asking the LLM for
+            # another iteration only burns tokens.
+            interactive_payload: dict[str, Any] | None = None
 
             # Fase D — Anthropic Skills attached to this agent_config.
             # Build the ``container`` payload + ``extra_headers`` once,
             # outside the loop, so the same dict is passed on every
             # iteration. ``extra`` stays empty when no skills are
             # attached (the common case for tenants not opted in).
+            #
+            # Channel gating: a skill can declare ``channels=[...]`` in
+            # its agent_config entry to limit injection to specific
+            # channels (whatsapp-only skills should NOT load on the
+            # web/QA channel). Filter once, then use the filtered list
+            # for both ``container.skills`` and the ``code_execution``
+            # tool append below — if every skill got filtered out, we
+            # skip Skills wiring entirely as if no skills existed.
+            applicable_skills = _filter_skills_for_channel(
+                bundle.runtime_skills,
+                state.get("channel_type") or "whatsapp",
+            )
             skills_extra: dict[str, Any] = {}
-            if bundle.runtime_skills:
+            if applicable_skills:
                 skills_extra = {
                     "container": {
                         "skills": [
@@ -746,7 +796,7 @@ def make_handler_node(
                                 "skill_id": s["skill_id"],
                                 "version": s["version"],
                             }
-                            for s in bundle.runtime_skills
+                            for s in applicable_skills
                         ]
                     },
                     "extra_headers": {"anthropic-beta": _SKILLS_BETA_HEADER_VALUE},
@@ -784,10 +834,14 @@ def make_handler_node(
                         # "memory_20250818", "name": "memory"}); LiteLLM
                         # only cares about the dict shape so we widen.
                         tools_arg.append(dict(memory_tool.to_dict()))
-                    if bundle.runtime_skills:
+                    if applicable_skills:
                         # code_execution is the container the Skills run
                         # inside. Anthropic requires it to be in tools[]
-                        # whenever ``container.skills`` is set.
+                        # whenever ``container.skills`` is set. Gated on
+                        # the channel-filtered list — when every skill
+                        # is excluded for the current channel, we must
+                        # NOT add code_execution either (Anthropic
+                        # rejects code_execution + empty container).
                         tools_arg.append(dict(_CODE_EXECUTION_TOOL))
 
                 try:
@@ -853,8 +907,39 @@ def make_handler_node(
                             "content": _tool_result_content(envelope),
                         }
                     )
+                    # ``response.send_interactive`` is terminal — capture
+                    # its validated args so the ucm_formatter + checkpoint
+                    # nodes can render the WhatsApp interactive component.
+                    # The 24h-window check + whitelist enforcement already
+                    # ran inside the regular dispatch above (the tool
+                    # behaves like any other notification.* tool); we just
+                    # additionally stash the payload here. A non-``ok``
+                    # status means the dispatcher rejected the call
+                    # (window expired, payload malformed, not in
+                    # whitelist) — in that case we leave the payload
+                    # unset so the agent falls back to plain text in the
+                    # next iteration.
+                    if (
+                        call.name == _INTERACTIVE_TOOL_NAME
+                        and envelope.get("status") == "ok"
+                    ):
+                        raw_args = dict(call.arguments or {})
+                        # Drop the routing fields the formatter doesn't
+                        # need. ``context_message_id`` IS still useful
+                        # downstream (quoted reply on the outbound), so
+                        # keep it.
+                        raw_args.pop("conversation_id", None)
+                        interactive_payload = raw_args
 
-            if not final_text.strip():
+                # Terminal-tool early exit: when ``response.send_interactive``
+                # landed cleanly there is no value in another LLM round
+                # — the response is already complete (text in
+                # ``final_text``, structured payload in
+                # ``interactive_payload``).
+                if interactive_payload is not None:
+                    break
+
+            if not final_text.strip() and interactive_payload is None:
                 log.warning(
                     "handler.empty_response",
                     tenant_id=str(tenant_id),
@@ -867,6 +952,11 @@ def make_handler_node(
                 "tool_calls": envelopes,
                 "response": final_text,
                 "response_model": llm.respond_model,
+                # Empty dict (not ``None``) for state-merge stability:
+                # LangGraph keeps the field present on every turn and
+                # downstream nodes ``if state.get("interactive_payload")``
+                # work uniformly.
+                "interactive_payload": interactive_payload or {},
                 # Forward the per-config flags so downstream nodes
                 # (grade_outcome) gate on the bundle without re-loading
                 # it from DB.
@@ -1189,6 +1279,7 @@ def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
             return {}
 
         response_text = state.get("response", "") or ""
+        interactive_payload = state.get("interactive_payload") or None
         # Reuse the inbound_message_id as a stable correlation id for the
         # UCM so traces / future shadow tables can join cleanly. If the
         # state shape ever omits it (it shouldn't — ``new_state`` always
@@ -1203,6 +1294,7 @@ def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
                 "intent": state.get("intent"),
                 "phase": "shadow",  # not source-of-truth yet
             },
+            interactive_payload=interactive_payload,
         )
         # Degrade for the channel this turn actually runs on. Production
         # turns are WhatsApp; QA Playground turns run on a "web" channel.
@@ -1210,7 +1302,12 @@ def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
         channel = state.get("channel_type") or "whatsapp"
         diff = shadow_diff_against_legacy(ucm, response_text, channel=channel)
 
-        if not diff["equivalent"]:
+        # The byte-equivalence shadow check only applies when the agent
+        # produced text alone. Once an interactive component is in play
+        # the UCM is intentionally richer than the legacy text path —
+        # logging a divergence as a regression would create false
+        # alerts. The diff record still travels for traces.
+        if not diff["equivalent"] and interactive_payload is None:
             # Loud structured log so we notice regressions immediately —
             # the formatter is meant to be byte-equivalent to the legacy
             # text path until the agent starts emitting structured content.
@@ -1233,26 +1330,74 @@ def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
 
 
 def make_checkpoint_node() -> NodeFn:
-    """Persist the outbound message in the ``messages`` table.
+    """Persist the outbound message(s) in the ``messages`` table.
 
     The LangGraph checkpointer already records pipeline state under
-    ``thread_id``. This node persists the *business* artifact — the assistant's
-    reply — that downstream features (operator panel, traces) read. The actual
-    WhatsApp send lives in block F.
+    ``thread_id``. This node persists the *business* artifact — the
+    assistant's reply — that downstream features (operator panel,
+    traces) read. The actual WhatsApp send lives in block F.
+
+    When the turn produced an ``interactive_payload`` (the LLM called
+    ``response.send_interactive``), two rows may be written in order:
+
+    1. The text answer the LLM produced alongside the tool call (when
+       non-empty). Sent first by the outbound dispatcher so the
+       customer sees the explanation before the buttons / list.
+    2. The interactive component row, with ``content`` set to the
+       component's ``body`` for fallback rendering on operator panels
+       and Langfuse, plus ``interactive_payload`` carrying the
+       structured shape the dispatcher routes through
+       ``adapter.send_interactive``.
+
+    Turns without an interactive payload keep the historical single-
+    row behaviour.
     """
 
     async def checkpoint(state: AgentState) -> dict[str, Any]:
         tenant_id = _tenant_uuid(state)
+        conv_id = uuid.UUID(state["conversation_id"])
+        response_text = state.get("response", "") or ""
+        interactive = state.get("interactive_payload") or None
+        tool_calls = state.get("tool_calls") or []
+        intent = state.get("intent")
+        model = state.get("response_model")
+
         sm = get_sessionmaker()
         async with sm() as session, tenant_scoped_session(session, tenant_id):
-            await persist_outbound_message(
-                session,
-                conversation_id=uuid.UUID(state["conversation_id"]),
-                content=state.get("response", ""),
-                intent=state.get("intent"),
-                model=state.get("response_model"),
-                tool_calls=state.get("tool_calls") or [],
-            )
+            # Row 1: plain-text answer. Always written when response is
+            # non-empty so the operator panel + ucm shadow diff stay
+            # aligned. The interactive row, when present, is written
+            # AFTER so the dispatcher (which orders by created_at /
+            # sequence) drains text first.
+            if response_text.strip():
+                await persist_outbound_message(
+                    session,
+                    conversation_id=conv_id,
+                    content=response_text,
+                    intent=intent,
+                    model=model,
+                    tool_calls=tool_calls,
+                )
+
+            # Row 2: interactive component, when the agent called
+            # ``response.send_interactive`` this turn. The dispatcher
+            # detects ``interactive_payload IS NOT NULL`` and routes
+            # through ``adapter.send_interactive``; ``content`` is the
+            # body so the operator panel renders a sensible preview.
+            if interactive:
+                body = str(interactive.get("body") or response_text or "[interactive]")
+                await persist_outbound_message(
+                    session,
+                    conversation_id=conv_id,
+                    content=body,
+                    intent=intent,
+                    model=model,
+                    # Tool envelopes already include the send_interactive
+                    # call; don't re-add. Empty list keeps the row
+                    # self-contained.
+                    tool_calls=[],
+                    interactive_payload=interactive,
+                )
         return {}
 
     return checkpoint

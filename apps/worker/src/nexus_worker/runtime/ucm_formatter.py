@@ -38,34 +38,229 @@ def format_response_as_ucm(
     response_text: str,
     message_id: str | None = None,
     metadata: dict[str, Any] | None = None,
+    interactive_payload: dict[str, Any] | None = None,
 ) -> UCMMessage:
-    """Convert a plain-text agent response into a UCM ``text`` message.
+    """Convert the agent's response into a UCM message.
 
-    This is the minimum-viable formatter for Phase 2 of ADR-020. Today the
-    agent emits only text, so the UCM is a 1:1 wrapper with the response as
-    both ``content.body`` and ``fallback_text``. When the agent starts
-    emitting richer content (quick replies, lists, …), this function grows
-    branches that recognise the structured shapes the LLM is asked to use;
-    until then a one-line wrap is correct.
+    Three cases:
+
+    1. ``interactive_payload`` is empty / unset → plain-text response.
+       The UCM is a 1:1 ``text`` wrapper, identical to Phase 2 of
+       ADR-020 (the formatter's original behaviour).
+
+    2. ``interactive_payload`` is set and ``response_text`` is empty →
+       the agent's reply IS the interactive component (no preceding
+       prose). The formatter builds a single ``quick_replies`` /
+       ``list`` / ``cta_url`` UCM and returns it directly.
+
+    3. Both are set → the agent produced a short context paragraph AND
+       a structured choice. The formatter returns a ``composite`` UCM
+       with two children — text first, interactive second — so the
+       channel adapter sends them in order (the dispatcher already
+       drains rows by created order; this just preserves the same
+       ordering in the UCM trace).
+
+    The structured payload shape matches the ``response.send_interactive``
+    tool args (see ``nexus_mcp.servers.notification.schemas``): a
+    ``body`` plus exactly one of ``buttons`` / ``list`` / ``cta_url``,
+    plus optional ``header`` / ``footer`` / ``context_message_id``.
 
     ``message_id`` defaults to a new UUIDv4 so each emission is uniquely
-    addressable across channels.
+    addressable across channels. Children of a composite UCM derive
+    their id from the parent's id (``<parent>::text``,
+    ``<parent>::interactive``) so the trace stays joinable.
     """
     body = response_text or ""
     mid = message_id or str(uuid.uuid4())
+    meta = metadata or {}
+
+    if not interactive_payload:
+        return _wrap_text(body, mid, meta)
+
+    interactive_ucm = _build_interactive_ucm(
+        interactive_payload, f"{mid}::interactive", meta
+    )
+
+    if not body.strip():
+        # Agent answered with the component alone. Return it directly.
+        return interactive_ucm
+
+    # Both present → composite with text first, interactive second.
+    text_child = _wrap_text(body, f"{mid}::text", meta)
+    composite: dict[str, Any] = {
+        "ucm_version": UCM_VERSION,
+        "message_id": mid,
+        "type": "composite",
+        "capabilities_required": list(
+            dict.fromkeys(
+                text_child.capabilities_required
+                + interactive_ucm.capabilities_required
+            )
+        ),
+        "fallback_text": body if not interactive_ucm.fallback_text
+        else f"{body}\n\n{interactive_ucm.fallback_text}",
+        "metadata": meta,
+        "content": {
+            "children": [
+                text_child.model_dump(mode="json"),
+                interactive_ucm.model_dump(mode="json"),
+            ]
+        },
+    }
+    return parse_ucm(composite)
+
+
+def _wrap_text(body: str, mid: str, metadata: dict[str, Any]) -> UCMMessage:
     payload: dict[str, Any] = {
         "ucm_version": UCM_VERSION,
         "message_id": mid,
         "type": "text",
         "capabilities_required": ["text"],
         "fallback_text": body,
-        "metadata": metadata or {},
+        "metadata": metadata,
         "content": {"body": body, "format": "plain"},
     }
-    # parse_ucm validates the payload — fail loud if our own emission breaks
-    # the schema. In practice this is unreachable for plain text but it
-    # forms the contract for future structured payloads.
     return parse_ucm(payload)
+
+
+def _build_interactive_ucm(
+    payload: dict[str, Any],
+    mid: str,
+    metadata: dict[str, Any],
+) -> UCMMessage:
+    """Turn a validated ``response.send_interactive`` tool payload into
+    a UCM message. Exactly one of ``buttons`` / ``list`` / ``cta_url``
+    is expected to be set (the tool's own validator enforces it). The
+    body / header / footer travel into the UCM unchanged; degrade() in
+    ucm_schema handles per-channel limits at render time.
+    """
+    body = str(payload.get("body") or "")
+    if payload.get("buttons"):
+        buttons = [
+            {"id": str(b["id"]), "title": str(b["title"])}
+            for b in payload["buttons"]
+        ]
+        # Composite captions / headers degrade per channel — keep them
+        # in metadata for now since QuickRepliesContent doesn't model
+        # header/footer (Meta supports them but the UCM schema scoped
+        # them out of v1.0.0 for simplicity).
+        return parse_ucm(
+            {
+                "ucm_version": UCM_VERSION,
+                "message_id": mid,
+                "type": "quick_replies",
+                "capabilities_required": ["interactive.buttons"],
+                "fallback_text": _fallback_buttons(body, buttons),
+                "metadata": _meta_with_chrome(metadata, payload),
+                "content": {"body": body, "buttons": buttons},
+            }
+        )
+    if payload.get("list"):
+        lst = payload["list"]
+        sections = [
+            {
+                "title": "Opciones",
+                "rows": [
+                    {
+                        "id": str(r["id"]),
+                        "title": str(r["title"]),
+                        **(
+                            {"description": str(r["description"])}
+                            if r.get("description")
+                            else {}
+                        ),
+                    }
+                    for r in lst["items"]
+                ],
+            }
+        ]
+        return parse_ucm(
+            {
+                "ucm_version": UCM_VERSION,
+                "message_id": mid,
+                "type": "list",
+                "capabilities_required": ["interactive.list"],
+                "fallback_text": _fallback_list(body, sections[0]["rows"]),
+                "metadata": _meta_with_chrome(metadata, payload),
+                "content": {
+                    "body": body,
+                    "button_text": str(lst["button"]),
+                    "sections": sections,
+                    **(
+                        {"header": str(payload["header"])}
+                        if payload.get("header")
+                        else {}
+                    ),
+                    **(
+                        {"footer": str(payload["footer"])}
+                        if payload.get("footer")
+                        else {}
+                    ),
+                },
+            }
+        )
+    if payload.get("cta_url"):
+        cta = payload["cta_url"]
+        return parse_ucm(
+            {
+                "ucm_version": UCM_VERSION,
+                "message_id": mid,
+                "type": "cta_url",
+                "capabilities_required": ["interactive.cta_url"],
+                "fallback_text": f"{body}\n{cta['text']}: {cta['url']}",
+                "metadata": _meta_with_chrome(metadata, payload),
+                "content": {
+                    "body": body,
+                    "button_title": str(cta["text"]),
+                    "url": str(cta["url"]),
+                },
+            }
+        )
+
+    # Unreachable if the tool's validator did its job, but stay loud
+    # rather than silently downgrading: a missing component means the
+    # agent emitted something malformed and the operator should see it
+    # in traces.
+    raise ValueError(
+        "interactive_payload has no buttons / list / cta_url; "
+        "tool validation should have caught this — refusing to "
+        "fabricate a UCM"
+    )
+
+
+def _meta_with_chrome(
+    base: dict[str, Any], payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Carry header / footer / context_message_id on metadata so the
+    outbound adapter can re-include them in the Meta interactive
+    block. UCM v1.0.0 doesn't model these uniformly across types, but
+    the adapter and ucm-schema's degrade() do not need them — only
+    Meta does."""
+    extras: dict[str, Any] = {}
+    if payload.get("header"):
+        extras["header"] = str(payload["header"])
+    if payload.get("footer"):
+        extras["footer"] = str(payload["footer"])
+    if payload.get("context_message_id"):
+        extras["context_message_id"] = str(payload["context_message_id"])
+    return {**base, **extras} if extras else base
+
+
+def _fallback_buttons(body: str, buttons: list[dict[str, str]]) -> str:
+    """Plain-text rendering of buttons for non-WhatsApp channels and
+    operator panels. WhatsApp degradation never uses this — the
+    ucm-schema ``degrade`` keeps quick_replies native when supported."""
+    enumerated = "\n".join(f"  {i + 1}) {b['title']}" for i, b in enumerate(buttons))
+    return f"{body}\n{enumerated}" if body else enumerated
+
+
+def _fallback_list(body: str, rows: list[dict[str, Any]]) -> str:
+    enumerated = "\n".join(
+        f"  {i + 1}) {r['title']}"
+        + (f" — {r['description']}" if r.get("description") else "")
+        for i, r in enumerate(rows)
+    )
+    return f"{body}\n{enumerated}" if body else enumerated
 
 
 def shadow_diff_against_legacy(

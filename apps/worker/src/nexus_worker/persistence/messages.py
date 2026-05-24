@@ -148,6 +148,7 @@ async def persist_outbound_message(
     cost_usd: float | None = None,
     latency_ms: int | None = None,
     status: MessageStatus = MessageStatus.PENDING,
+    interactive_payload: dict[str, Any] | None = None,
 ) -> Message:
     """Persist the assistant's reply.
 
@@ -156,6 +157,13 @@ async def persist_outbound_message(
     ``PENDING`` so the new outbound dispatcher actually has work to do —
     the WhatsApp send happens *after* persistence. Callers (tests) can
     still pass ``status=MessageStatus.SENT`` to bypass the dispatcher.
+
+    ``interactive_payload`` is set when this row represents a native
+    WhatsApp interactive component (reply buttons / list / cta_url).
+    The outbound dispatcher detects it and routes through
+    ``adapter.send_interactive``. ``content`` should still be set to a
+    sensible fallback text (typically the component's ``body``) so the
+    operator panel and Langfuse traces have something human-readable.
     """
     require_current_tenant()
     msg = Message(
@@ -170,6 +178,7 @@ async def persist_outbound_message(
         trace_id=trace_id,
         cost_usd=cost_usd,
         latency_ms=latency_ms,
+        interactive_payload=interactive_payload,
     )
     session.add(msg)
     await session.flush()

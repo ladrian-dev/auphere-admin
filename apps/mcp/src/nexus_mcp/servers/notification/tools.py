@@ -52,6 +52,8 @@ from nexus_mcp.servers.notification.schemas import (
     SendDocumentOutput,
     SendImageInput,
     SendImageOutput,
+    SendInteractiveInput,
+    SendInteractiveOutput,
     SendLocationInput,
     SendLocationOutput,
     SendReactionInput,
@@ -544,6 +546,50 @@ class CancelScheduled(ToolBase):
         return CancelScheduledOutput(reminder_id=payload.reminder_id, status=final)
 
 
+# ── response.send_interactive ─────────────────────────────────────────────
+
+
+class SendInteractive(ToolBase):
+    name = "response.send_interactive"
+    description = (
+        "Emit a native WhatsApp interactive component (reply buttons, "
+        "list, or CTA URL) as the response to the user. Exactly ONE of "
+        "``buttons`` (1–3 reply buttons), ``list`` (1–10 selectable "
+        "items), or ``cta_url`` (single URL-opening button) must be "
+        "set. This tool is the TERMINAL action of the turn — after "
+        "calling it the agent does not need to call any more tools. "
+        "If the agent ALSO produces a preceding text answer in the "
+        "same response, both are sent in order (text first, then the "
+        "interactive). The 24h customer-service window is enforced "
+        "server-side; outside the window use notification.send_template "
+        "instead. See the whatsapp-native-components skill for when to "
+        "use which component vs plain text."
+    )
+    input_model = SendInteractiveInput
+    output_model = SendInteractiveOutput
+    side_effects = ("sends_message",)
+
+    async def run(self, payload: InputModel) -> OutputModel:
+        assert isinstance(payload, SendInteractiveInput)
+        # We don't write a Message row here — the pipeline captures the
+        # validated args from ``call.arguments`` and the checkpoint node
+        # persists in the correct order (text first when both are
+        # present, then interactive). What we DO check is the 24h
+        # customer-service window so the LLM gets the same compliance
+        # signal it gets from notification.send_text — a busted window
+        # surfaces here, not at outbound dispatch time.
+        async with tool_session() as session:
+            conv = await _load_conversation(session, payload.conversation_id)
+            await _assert_inside_window(session, conv)
+        # ``message_id`` is a synthetic placeholder: the real row is
+        # written by the checkpoint node. The LLM only needs to know
+        # the call was accepted.
+        return SendInteractiveOutput(
+            message_id=uuid.uuid4(),
+            status="captured",
+        )
+
+
 NOTIFICATION_TOOLS: tuple[type[ToolBase], ...] = (
     SendTemplate,
     SendText,
@@ -553,6 +599,7 @@ NOTIFICATION_TOOLS: tuple[type[ToolBase], ...] = (
     SendDocument,
     SendLocation,
     SendReaction,
+    SendInteractive,
     ScheduleReminder,
     CancelScheduled,
 )

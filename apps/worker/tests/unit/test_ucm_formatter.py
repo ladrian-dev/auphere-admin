@@ -77,6 +77,119 @@ class TestShadowDiff:
         assert len(diff["degraded_text"]) == 600
 
 
+class TestInteractivePayload:
+    """The formatter recognises the ``response.send_interactive`` payload
+    shape: a body plus exactly one of buttons / list / cta_url, plus
+    optional header / footer / context_message_id metadata. When the
+    agent ALSO emits text in the same turn, the result is a composite
+    UCM with [text, interactive] children."""
+
+    def _buttons_payload(self) -> dict[str, object]:
+        return {
+            "body": "¿Confirmas la reserva?",
+            "buttons": [
+                {"id": "yes", "title": "Sí, confirmo"},
+                {"id": "no", "title": "Cancelar"},
+            ],
+        }
+
+    def _list_payload(self) -> dict[str, object]:
+        return {
+            "body": "Estos matchean tu búsqueda:",
+            "list": {
+                "button": "Ver opciones",
+                "items": [
+                    {"id": "p1", "title": "Sábana queen", "description": "$29.990"},
+                    {"id": "p2", "title": "Sábana king", "description": "$39.990"},
+                ],
+            },
+        }
+
+    def _cta_url_payload(self) -> dict[str, object]:
+        return {
+            "body": "Listo, pagas aquí:",
+            "cta_url": {"text": "Pagar pedido", "url": "https://vedhome.cl/c/abc"},
+        }
+
+    def test_buttons_only_no_text_produces_quick_replies_ucm(self) -> None:
+        ucm = format_response_as_ucm(
+            response_text="",
+            interactive_payload=self._buttons_payload(),
+        )
+        assert ucm.type == "quick_replies"
+        assert ucm.content.body == "¿Confirmas la reserva?"
+        assert [b.title for b in ucm.content.buttons] == [
+            "Sí, confirmo",
+            "Cancelar",
+        ]
+
+    def test_list_only_no_text_produces_list_ucm(self) -> None:
+        ucm = format_response_as_ucm(
+            response_text="",
+            interactive_payload=self._list_payload(),
+        )
+        assert ucm.type == "list"
+        assert ucm.content.body == "Estos matchean tu búsqueda:"
+        assert ucm.content.button_text == "Ver opciones"
+        assert len(ucm.content.sections) == 1
+        assert [r.title for r in ucm.content.sections[0].rows] == [
+            "Sábana queen",
+            "Sábana king",
+        ]
+
+    def test_cta_url_only_no_text_produces_cta_url_ucm(self) -> None:
+        ucm = format_response_as_ucm(
+            response_text="",
+            interactive_payload=self._cta_url_payload(),
+        )
+        assert ucm.type == "cta_url"
+        assert ucm.content.button_title == "Pagar pedido"
+        assert str(ucm.content.url) == "https://vedhome.cl/c/abc"
+
+    def test_text_plus_buttons_produces_composite(self) -> None:
+        ucm = format_response_as_ucm(
+            response_text="Encontré tu cita disponible.",
+            interactive_payload=self._buttons_payload(),
+            message_id="msg_42",
+        )
+        assert ucm.type == "composite"
+        assert len(ucm.content.children) == 2
+        # Text child first, interactive second (the dispatcher
+        # serialises them in this order so the customer reads the
+        # explanation before the choice).
+        assert ucm.content.children[0].type == "text"
+        assert ucm.content.children[0].content.body == (
+            "Encontré tu cita disponible."
+        )
+        assert ucm.content.children[1].type == "quick_replies"
+        assert ucm.content.children[1].content.body == "¿Confirmas la reserva?"
+        # Children inherit a stable id derived from the parent so
+        # traces stay joinable.
+        assert ucm.content.children[0].message_id == "msg_42::text"
+        assert ucm.content.children[1].message_id == "msg_42::interactive"
+
+    def test_header_and_footer_travel_in_list_content(self) -> None:
+        payload: dict[str, object] = {
+            **self._list_payload(),
+            "header": "Tu búsqueda",
+            "footer": "Precios CLP",
+        }
+        ucm = format_response_as_ucm(
+            response_text="", interactive_payload=payload
+        )
+        assert ucm.content.header == "Tu búsqueda"
+        assert ucm.content.footer == "Precios CLP"
+
+    def test_missing_component_raises(self) -> None:
+        """Defence in depth: even if the tool's validator was bypassed,
+        the formatter refuses to fabricate a UCM."""
+        with pytest.raises(ValueError, match="no buttons / list / cta_url"):
+            format_response_as_ucm(
+                response_text="hola",
+                interactive_payload={"body": "?", "header": "x"},
+            )
+
+
 class TestCrudeDiffRatio:
     @pytest.mark.parametrize(
         "a,b,expected",

@@ -13,7 +13,8 @@ pytestmark = [pytest.mark.unit]
 def test_default_registry_has_all_block_d_tools():
     """21 Block-D + ``operator.consult_owner`` (ADR-018) + 6 native-output
     notification tools (migration 0020) + 12 woocommerce.* tools
-    (migration 0024) = 40 LLM-facing.
+    (migration 0024) + ``response.send_interactive`` (migration 0036)
+    = 41 LLM-facing.
 
     Block O (ADR-017) registers 2 INTERNAL tools (``agendapro_public.
     check_availability`` and ``.create_appointment``) that the booking
@@ -23,8 +24,9 @@ def test_default_registry_has_all_block_d_tools():
     reset_default_registry()
     reg = build_default_registry()
     names = set(reg.names())
-    assert len(names) == 40
+    assert len(names) == 41
     assert "operator.consult_owner" in names
+    assert "response.send_interactive" in names
     # Block O internal tools — not LLM-facing.
     internal = set(reg.internal_names())
     assert internal == {

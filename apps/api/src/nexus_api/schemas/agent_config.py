@@ -4,14 +4,44 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Mirror of ``ChannelType`` enum values. Hardcoded here to keep this
+# schemas module free of db.models imports (the schemas layer is meant
+# to be importable from the admin frontend codegen).
+_KNOWN_CHANNELS: frozenset[str] = frozenset(
+    {"whatsapp", "instagram", "telegram", "email", "web"}
+)
 
 
 class SkillRef(BaseModel):
-    """One entry of ``agent_config.runtime_skills``."""
+    """One entry of ``agent_config.runtime_skills``.
+
+    ``channels`` (optional) gates skill injection to specific channels.
+    Empty / unset = the skill loads for every channel (back-compat).
+    When set, the runtime injects the skill ONLY when
+    ``state.channel_type`` is in the list. This matters because some
+    skills (e.g. ``whatsapp-24h-window``, ``whatsapp-native-components``)
+    are noise — or actively wrong — in canals like the QA Playground
+    web channel.
+    """
 
     skill_id: str = Field(min_length=1, max_length=128)
     version: str = Field(min_length=1, max_length=64, default="latest")
+    channels: list[str] | None = Field(default=None)
+
+    @field_validator("channels")
+    @classmethod
+    def _validate_channels(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        unknown = [c for c in value if c not in _KNOWN_CHANNELS]
+        if unknown:
+            raise ValueError(
+                f"unknown channel(s) {unknown}; allowed: "
+                f"{sorted(_KNOWN_CHANNELS)}"
+            )
+        return value
 
 
 class McpServerRef(BaseModel):

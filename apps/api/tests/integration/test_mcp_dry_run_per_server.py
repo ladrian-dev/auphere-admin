@@ -355,6 +355,7 @@ def test_coverage_floor_ninety_five_percent():
         "notification.send_reaction",
         "notification.schedule_reminder",
         "notification.cancel_scheduled",
+        "response.send_interactive",
         "operator.consult_owner",
         "queue.join_queue",
         "queue.check_in",

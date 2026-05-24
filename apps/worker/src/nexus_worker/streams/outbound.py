@@ -299,6 +299,31 @@ async def _dispatch_message(
     """Route the pending row to the right adapter call."""
     context = msg.context_message_id
 
+    # 0) Interactive components take priority over text but coexist
+    # with the rest. A row with ``interactive_payload`` set is the
+    # output of a ``response.send_interactive`` tool call; the field
+    # carries our tool-side shape and we convert to Meta's
+    # ``interactive`` block here. The row's ``content`` carries the
+    # body (for operator-panel previews) but the Cloud API only sees
+    # the structured block.
+    if msg.interactive_payload:
+        interactive_block = _to_meta_interactive(msg.interactive_payload)
+        # The tool's payload may carry an in-band ``context_message_id``
+        # for quoted replies; prefer it over the row-level ``context``
+        # (the row's column is populated by media / text paths, not by
+        # the interactive tool).
+        quote_wamid = (
+            msg.interactive_payload.get("context_message_id") or context
+        )
+        return await adapter.send_interactive(
+            from_phone=from_phone,
+            recipient=recipient,
+            interactive=interactive_block,
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            context_message_id=quote_wamid,
+        )
+
     # 1) Reactions take priority — same row can't carry media + a reaction.
     if msg.reaction_emoji is not None and msg.reaction_target_wamid:
         return await adapter.send_reaction(
@@ -476,3 +501,78 @@ def _ms_since(when: datetime) -> int | None:
     if delta is None:
         return None
     return int(delta.total_seconds() * 1000)
+
+
+def _to_meta_interactive(payload: dict[str, object]) -> dict[str, object]:
+    """Convert our ``response.send_interactive`` tool payload into a
+    Meta Cloud API ``interactive`` block.
+
+    Input shape (validated by ``SendInteractiveInput``):
+        {body, header?, footer?, buttons|list|cta_url, context_message_id?}
+
+    Output shape (Meta WhatsApp Cloud API):
+        {type: "button"|"list"|"cta_url",
+         body: {text}, header?: {type:"text", text}, footer?: {text},
+         action: {...}}
+
+    ``context_message_id`` is NOT included in the returned block — it
+    travels alongside as a sibling argument on ``adapter.send_interactive``
+    (or equivalently, on the ``context`` field of the outbound row).
+    """
+    body = str(payload.get("body") or "")
+    block: dict[str, object] = {"body": {"text": body}}
+
+    header = payload.get("header")
+    if header:
+        block["header"] = {"type": "text", "text": str(header)}
+    footer = payload.get("footer")
+    if footer:
+        block["footer"] = {"text": str(footer)}
+
+    if payload.get("buttons"):
+        block["type"] = "button"
+        block["action"] = {
+            "buttons": [
+                {
+                    "type": "reply",
+                    "reply": {"id": str(b["id"]), "title": str(b["title"])},
+                }
+                for b in payload["buttons"]  # type: ignore[union-attr]
+            ]
+        }
+        return block
+
+    if payload.get("list"):
+        lst = payload["list"]  # type: ignore[assignment]
+        rows = []
+        for r in lst["items"]:  # type: ignore[index]
+            row: dict[str, object] = {
+                "id": str(r["id"]),
+                "title": str(r["title"]),
+            }
+            if r.get("description"):
+                row["description"] = str(r["description"])
+            rows.append(row)
+        block["type"] = "list"
+        block["action"] = {
+            "button": str(lst["button"]),  # type: ignore[index]
+            "sections": [{"title": "Opciones", "rows": rows}],
+        }
+        return block
+
+    if payload.get("cta_url"):
+        cta = payload["cta_url"]  # type: ignore[assignment]
+        block["type"] = "cta_url"
+        block["action"] = {
+            "name": "cta_url",
+            "parameters": {
+                "display_text": str(cta["text"]),  # type: ignore[index]
+                "url": str(cta["url"]),  # type: ignore[index]
+            },
+        }
+        return block
+
+    raise ValueError(
+        "interactive_payload missing buttons / list / cta_url — "
+        "tool validation failed earlier; refusing to send a malformed block"
+    )

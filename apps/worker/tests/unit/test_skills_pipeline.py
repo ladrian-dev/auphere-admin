@@ -245,7 +245,8 @@ class TestHandlerSkillsInjection:
     async def _run_handler(
         self,
         *,
-        runtime_skills: tuple[dict[str, str], ...],
+        runtime_skills: tuple[dict[str, Any], ...],
+        channel_type: str = "whatsapp",
     ) -> _CapturingProvider:
         from nexus_mcp import MCPRegistry
 
@@ -299,7 +300,7 @@ class TestHandlerSkillsInjection:
                 {  # type: ignore[arg-type]
                     "tenant_id": str(tenant_id),
                     "customer_id": str(uuid.uuid4()),
-                    "channel_type": "whatsapp",
+                    "channel_type": channel_type,
                     "intent": "info",
                     "user_message": "hola",
                     "history": [],
@@ -349,6 +350,154 @@ class TestHandlerSkillsInjection:
         assert cap["extra"] is None
 
 
+# ── channel-gated skills ──────────────────────────────────────────────
+
+
+class TestChannelGatingHelper:
+    """Unit tests for ``_filter_skills_for_channel`` in isolation. The
+    helper is the single decision point — verify it before wiring it
+    into the handler-level tests below."""
+
+    def test_skill_without_channels_loads_anywhere(self) -> None:
+        from nexus_worker.runtime.pipeline import _filter_skills_for_channel
+
+        skill = {"skill_id": "skill_x", "version": "1", "channels": ()}
+        assert _filter_skills_for_channel((skill,), "whatsapp") == (skill,)
+        assert _filter_skills_for_channel((skill,), "web") == (skill,)
+
+    def test_skill_with_missing_channels_key_loads_anywhere(self) -> None:
+        from nexus_worker.runtime.pipeline import _filter_skills_for_channel
+
+        # An older row that pre-dates the channels gate has no key at
+        # all; the loader should still pass it through.
+        skill = {"skill_id": "skill_legacy", "version": "1"}
+        assert _filter_skills_for_channel((skill,), "whatsapp") == (skill,)
+        assert _filter_skills_for_channel((skill,), "web") == (skill,)
+
+    def test_whatsapp_only_skill_excluded_on_web(self) -> None:
+        from nexus_worker.runtime.pipeline import _filter_skills_for_channel
+
+        skill = {"skill_id": "skill_wa", "version": "1", "channels": ("whatsapp",)}
+        assert _filter_skills_for_channel((skill,), "whatsapp") == (skill,)
+        assert _filter_skills_for_channel((skill,), "web") == ()
+
+    def test_mixed_bundle_partitions_correctly(self) -> None:
+        from nexus_worker.runtime.pipeline import _filter_skills_for_channel
+
+        always = {"skill_id": "skill_always", "version": "1", "channels": ()}
+        wa_only = {
+            "skill_id": "skill_wa",
+            "version": "1",
+            "channels": ("whatsapp",),
+        }
+        web_only = {
+            "skill_id": "skill_web",
+            "version": "1",
+            "channels": ("web",),
+        }
+        bundle = (always, wa_only, web_only)
+
+        whatsapp = _filter_skills_for_channel(bundle, "whatsapp")
+        assert whatsapp == (always, wa_only)
+
+        web = _filter_skills_for_channel(bundle, "web")
+        assert web == (always, web_only)
+
+        instagram = _filter_skills_for_channel(bundle, "instagram")
+        assert instagram == (always,)
+
+
+class TestChannelGatingHandlerIntegration(TestHandlerSkillsInjection):
+    """End-to-end: bundle carries channels-gated skills, and the handler
+    inflates the LLM call accordingly. Reuses the parent's ``_run_handler``
+    helper so the only variable is what the bundle carries + which
+    channel the state declares."""
+
+    async def test_whatsapp_only_skill_injected_on_whatsapp(self) -> None:
+        provider = await self._run_handler(
+            runtime_skills=(
+                {
+                    "skill_id": "skill_wa",
+                    "version": "latest",
+                    "channels": ("whatsapp",),
+                },
+            ),
+            channel_type="whatsapp",
+        )
+        cap = provider.captures[0]
+        extra = cap["extra"]
+        assert extra is not None
+        assert extra["container"]["skills"] == [
+            {"type": "custom", "skill_id": "skill_wa", "version": "latest"},
+        ]
+        # code_execution tool MUST be present — Anthropic requires it
+        # whenever container.skills is set.
+        tool_types = [t.get("type") for t in cap["tools"]]
+        assert "code_execution_20250825" in tool_types
+
+    async def test_whatsapp_only_skill_excluded_on_web(self) -> None:
+        provider = await self._run_handler(
+            runtime_skills=(
+                {
+                    "skill_id": "skill_wa",
+                    "version": "latest",
+                    "channels": ("whatsapp",),
+                },
+            ),
+            channel_type="web",
+        )
+        cap = provider.captures[0]
+        # Bundle had a skill but it was filtered out — the call MUST
+        # behave exactly as if no skills were configured.
+        assert cap["extra"] is None
+        tool_types = [t.get("type") for t in cap["tools"]]
+        assert "code_execution_20250825" not in tool_types
+
+    async def test_mixed_bundle_on_web_keeps_only_always_skill(self) -> None:
+        provider = await self._run_handler(
+            runtime_skills=(
+                {
+                    "skill_id": "skill_always",
+                    "version": "latest",
+                    "channels": (),
+                },
+                {
+                    "skill_id": "skill_wa",
+                    "version": "latest",
+                    "channels": ("whatsapp",),
+                },
+            ),
+            channel_type="web",
+        )
+        cap = provider.captures[0]
+        extra = cap["extra"]
+        assert extra is not None
+        assert extra["container"]["skills"] == [
+            {"type": "custom", "skill_id": "skill_always", "version": "latest"},
+        ]
+
+    async def test_legacy_skill_without_channels_key_still_loads(self) -> None:
+        """An ``agent_config`` row from before the gate landed has no
+        ``channels`` key at all. The loader normalises it to an empty
+        tuple; the handler must treat that as 'no gate' and inject."""
+        provider = await self._run_handler(
+            runtime_skills=(
+                {"skill_id": "skill_legacy", "version": "latest"},
+            ),
+            channel_type="web",
+        )
+        cap = provider.captures[0]
+        extra = cap["extra"]
+        assert extra is not None
+        assert extra["container"]["skills"] == [
+            {
+                "type": "custom",
+                "skill_id": "skill_legacy",
+                "version": "latest",
+            },
+        ]
+
+
 # ── frontmatter parsing of bundled SKILL.md files ──────────────────────
 
 
@@ -358,7 +507,12 @@ class TestBundledSkills:
 
     @pytest.mark.parametrize(
         "skill_name",
-        ["anti-hallucination-booking", "whatsapp-24h-window", "escalation-policy"],
+        [
+            "anti-hallucination-booking",
+            "whatsapp-24h-window",
+            "escalation-policy",
+            "whatsapp-native-components",
+        ],
     )
     def test_skill_md_has_valid_frontmatter(self, skill_name: str) -> None:
         from pathlib import Path
@@ -375,7 +529,12 @@ class TestBundledSkills:
 
     @pytest.mark.parametrize(
         "skill_name",
-        ["anti-hallucination-booking", "whatsapp-24h-window", "escalation-policy"],
+        [
+            "anti-hallucination-booking",
+            "whatsapp-24h-window",
+            "escalation-policy",
+            "whatsapp-native-components",
+        ],
     )
     def test_skill_passes_network_import_lint(self, skill_name: str) -> None:
         from pathlib import Path
