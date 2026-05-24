@@ -40,7 +40,14 @@ _SCOPED_TABLES = frozenset(
         "conversations",
         "messages",
         "usage_events",
-        "audit_log",
+        # ``audit_log`` is intentionally NOT here as of migration 0039:
+        # the table now allows ``tenant_id IS NULL`` for platform-level
+        # audit (Auphere channel CRUD, global skill publish). The RLS
+        # policy on the DB still enforces tenant isolation per-row
+        # (tenant-scoped queries can't see platform rows AND vice
+        # versa), so removing the application enforcer here doesn't
+        # weaken the boundary — it just stops false positives on
+        # legitimate platform writes.
     }
 )
 

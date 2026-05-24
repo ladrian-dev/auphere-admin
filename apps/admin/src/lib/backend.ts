@@ -493,6 +493,67 @@ export type AuditLogPage = {
   next_cursor: string | null;
 };
 
+// ── auphere_owner_channels (Bloque D Fase 2) ──────────────────────────
+
+export type AuphereChannelProvider = "ycloud" | "meta";
+
+export type AuphereOwnerChannelOut = {
+  id: string;
+  phone_e164: string;
+  display_name: string;
+  country_code: string | null;
+  provider: AuphereChannelProvider;
+  provider_phone_id: string | null;
+  active: boolean;
+  is_default: boolean;
+  has_webhook_secret: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AuphereChannelCreateInput = {
+  phone_e164: string;
+  display_name: string;
+  country_code?: string | null;
+  provider?: AuphereChannelProvider;
+  provider_phone_id?: string | null;
+  is_default?: boolean;
+  webhook_secret?: string | null;
+};
+
+export type AuphereChannelUpdateInput = {
+  display_name?: string;
+  country_code?: string | null;
+  provider_phone_id?: string | null;
+  active?: boolean;
+  is_default?: boolean;
+  webhook_secret?: string | null;
+};
+
+// ── owner_phone_index (per tenant) ────────────────────────────────────
+
+export type OwnerPhoneIndexOut = {
+  phone_e164: string;
+  tenant_id: string;
+  user_label: string | null;
+  active: boolean;
+  added_at: string;
+  auphere_channel_id: string | null;
+};
+
+export type BackchannelOwnerCreateInput = {
+  phone_e164: string;
+  user_label?: string | null;
+  auphere_channel_id?: string | null;
+};
+
+export type BackchannelOwnerUpdateInput = {
+  user_label?: string | null;
+  active?: boolean;
+  auphere_channel_id?: string | null;
+  clear_channel_id?: boolean;
+};
+
 export type MessageOut = {
   // Identity + ordering
   id: string;
@@ -901,6 +962,69 @@ export const backend = {
     call<string[]>(
       `/admin/tenants/${tenantId}/audit-log/actions`,
     ).then((r) => r ?? []),
+
+  // ── Auphere channels (global registry) ─────────────────────────────
+
+  listAuphereChannels: (includeInactive = false) =>
+    call<AuphereOwnerChannelOut[]>(
+      `/admin/auphere/channels?include_inactive=${includeInactive}`,
+    ).then((r) => r ?? []),
+
+  getAuphereChannel: (id: string) =>
+    call<AuphereOwnerChannelOut>(
+      `/admin/auphere/channels/${id}`,
+      { optional: true },
+    ),
+
+  createAuphereChannel: (body: AuphereChannelCreateInput) =>
+    call<AuphereOwnerChannelOut>(
+      "/admin/auphere/channels",
+      { method: "POST", body },
+    ),
+
+  updateAuphereChannel: (id: string, body: AuphereChannelUpdateInput) =>
+    call<AuphereOwnerChannelOut>(
+      `/admin/auphere/channels/${id}`,
+      { method: "PATCH", body },
+    ),
+
+  deactivateAuphereChannel: (id: string) =>
+    call<AuphereOwnerChannelOut>(
+      `/admin/auphere/channels/${id}`,
+      { method: "DELETE" },
+    ),
+
+  // ── Backchannel owners (per tenant) ────────────────────────────────
+
+  listBackchannelOwners: (tenantId: string) =>
+    call<OwnerPhoneIndexOut[]>(
+      `/admin/tenants/${tenantId}/backchannel/owners`,
+    ).then((r) => r ?? []),
+
+  registerBackchannelOwner: (
+    tenantId: string,
+    body: BackchannelOwnerCreateInput,
+  ) =>
+    call<OwnerPhoneIndexOut>(
+      `/admin/tenants/${tenantId}/backchannel/owners`,
+      { method: "POST", body },
+    ),
+
+  updateBackchannelOwner: (
+    tenantId: string,
+    phoneE164: string,
+    body: BackchannelOwnerUpdateInput,
+  ) =>
+    call<OwnerPhoneIndexOut>(
+      `/admin/tenants/${tenantId}/backchannel/owners/${encodeURIComponent(phoneE164)}`,
+      { method: "PATCH", body },
+    ),
+
+  deregisterBackchannelOwner: (tenantId: string, phoneE164: string) =>
+    call<null>(
+      `/admin/tenants/${tenantId}/backchannel/owners/${encodeURIComponent(phoneE164)}`,
+      { method: "DELETE" },
+    ),
 
   listToolCatalog: (includeDeprecated = false) =>
     call<ToolCatalog[]>(

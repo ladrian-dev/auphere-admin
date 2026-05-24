@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_api.core.tenant_context import require_current_tenant
+from nexus_api.core.tenant_context import get_current_tenant, require_current_tenant
 from nexus_api.db.models import AuditLog
 
 
@@ -32,10 +32,32 @@ class AuditRepository:
         target: str,
         before: dict[str, Any] | None = None,
         after: dict[str, Any] | None = None,
+        platform: bool = False,
     ) -> AuditLog:
-        tenant_id = require_current_tenant()
+        """Write one ``audit_log`` row.
+
+        Tenant resolution:
+
+        - Normal case → reads the request-scoped tenant via
+          ``get_current_tenant()``; raises if none is set (isolation
+          rule: repos never accept tenant_id from the caller).
+        - ``platform=True`` → writes with ``tenant_id = NULL`` for
+          deliberate platform-level audit (Auphere channel CRUD,
+          global skill publish, feature flags). Callers in this mode
+          must NOT be inside a tenant_scoped_session.
+        """
+        if platform:
+            resolved = None
+        else:
+            resolved = get_current_tenant()
+            if resolved is None:
+                raise ValueError(
+                    "AuditRepository.record requires a tenant context; "
+                    "pass platform=True only for platform-level audit "
+                    "entries"
+                )
         entry = AuditLog(
-            tenant_id=tenant_id,
+            tenant_id=resolved,
             actor=actor,
             action=action,
             target=target,

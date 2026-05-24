@@ -32,7 +32,11 @@ def test_delete_from_scoped_detected():
 
 
 def test_quoted_table_names():
-    assert _statement_touches_scoped_table('SELECT * FROM "audit_log"')
+    # Use ``messages`` (RLS-enabled + always tenant-scoped) — ``audit_log``
+    # used to live here but migration 0039/0040 made it dual-mode
+    # (tenant rows + platform NULL-tenant rows) so the enforcer no
+    # longer flags every audit_log SQL as scope-mandatory.
+    assert _statement_touches_scoped_table('SELECT * FROM "messages"')
 
 
 def test_settings_query_not_flagged():
@@ -46,8 +50,18 @@ def test_alembic_version_not_in_scoped():
 
 
 def test_scoped_set_matches_migration_scope():
-    """The enforcer's table list must match the RLS migration's coverage."""
-    expected = {
+    """The enforcer's table list must match the RLS migration's coverage
+    MINUS tables that became dual-mode (tenant + platform) post-Phase 1.
+
+    As of migration 0039/0040, ``audit_log`` is RLS-enabled but
+    accepts ``tenant_id IS NULL`` rows for platform-level audit
+    (Auphere channel CRUD, global skill publish). The application
+    enforcer must NOT raise on those writes — the RLS policy itself
+    is the boundary now. ``audit_log`` is therefore intentionally
+    absent from ``_SCOPED_TABLES`` while still appearing in the
+    migration's ``SCOPED_TABLES``.
+    """
+    rls_enabled_in_migration = {
         "agent_configs",
         "channels",
         "tenant_credentials",
@@ -59,4 +73,6 @@ def test_scoped_set_matches_migration_scope():
         "usage_events",
         "audit_log",
     }
-    assert expected == _SCOPED_TABLES
+    # Enforcer set is the migration set MINUS dual-mode tables.
+    dual_mode = {"audit_log"}
+    assert _SCOPED_TABLES == rls_enabled_in_migration - dual_mode

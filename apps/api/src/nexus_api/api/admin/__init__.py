@@ -3,6 +3,8 @@ from fastapi import APIRouter
 from nexus_api.api.admin import (
     agent_configs,
     audit,
+    auphere_channels,
+    backchannel_owners,
     connectors,
     conversations,
     evals,
@@ -30,3 +32,5 @@ router.include_router(prompt_library.router)
 router.include_router(meta_signup.router)
 router.include_router(skills.router)
 router.include_router(audit.router)
+router.include_router(auphere_channels.router)
+router.include_router(backchannel_owners.router)
