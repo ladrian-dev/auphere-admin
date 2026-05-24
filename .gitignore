@@ -51,3 +51,4 @@ CLAUDE.md
 **/CLAUDE.md
 .claude.json
 .claude.local.json
+.vercel

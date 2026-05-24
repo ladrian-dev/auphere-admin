@@ -11,6 +11,10 @@
     "escalation-policy": {
       "skill_id": "skill_01LkcxJTkCYD4DwazMaMsGCU",
       "version": "1779570105878303"
+    },
+    "whatsapp-native-components": {
+      "skill_id": "skill_01AqU1ZcZ7WFePZDSv9xFoM9",
+      "version": "1779632739322930"
     }
   },
   "_doc": "Manifest of Anthropic Skills uploaded by this repo. Maps the local skill_name to the skill_id Anthropic returned and the latest pinned version. The upload_skill.py script writes here; pipeline reads it to know the skill_id for a given name. Empty initially — fill via `apps/worker/scripts/upload_skill.py` with a real ANTHROPIC_API_KEY."
