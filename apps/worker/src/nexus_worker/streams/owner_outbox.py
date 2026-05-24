@@ -32,10 +32,10 @@ from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 import structlog
-from nexus_api.config import get_settings
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import OwnerConsultation, OwnerPhoneIndex, Tenant
+from nexus_api.repositories import resolve_channel_for_owner
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -55,32 +55,28 @@ async def run_owner_outbox_dispatcher(
     tick_seconds: float = DEFAULT_TICK_SECONDS,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> None:
-    """Background task. Returns when ``stop`` is set."""
-    settings = get_settings()
-    from_phone = settings.auphere_owner_phone
-    if not from_phone:
-        log.warning("owner_outbox.disabled.no_auphere_owner_phone")
-        # Still loop — operator can set the env var without a restart in
-        # dev. We just no-op until it's present.
+    """Background task. Returns when ``stop`` is set.
+
+    Migration 0038: the dispatcher no longer reads
+    ``settings.auphere_owner_phone`` to compute ``from_phone`` once at
+    startup. Instead, each consultation resolves its own outbound
+    channel per-tenant via ``resolve_channel_for_owner`` — so a
+    multi-country setup can serve CL owners from +56 and AR owners
+    from +54 without any operator restart.
+    """
     log.info(
         "owner_outbox.dispatcher.start",
         tick_seconds=tick_seconds,
         batch=batch_size,
-        from_phone=from_phone,
     )
     sm = get_sessionmaker()
     while not stop.is_set():
-        from_phone = get_settings().auphere_owner_phone
-        if not from_phone:
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(stop.wait(), timeout=tick_seconds)
-            continue
         try:
             tenant_ids = await _list_tenants_with_pending(sm)
             for tid in tenant_ids:
                 if stop.is_set():
                     break
-                await _drain_tenant(sm, tid, adapter, from_phone, batch_size)
+                await _drain_tenant(sm, tid, adapter, batch_size)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -109,23 +105,34 @@ async def _drain_tenant(
     sm: sa.orm.sessionmaker,  # type: ignore[type-arg]
     tenant_id: uuid.UUID,
     adapter: WhatsAppYCloudAdapter,
-    from_phone: str,
     batch_size: int,
 ) -> None:
     async with sm() as session, tenant_scoped_session(session, tenant_id):
-        # Fetch owner phone first — same scope, RLS-free (lookup table).
-        phone_row = await session.execute(
-            sa.select(OwnerPhoneIndex.phone_e164)
+        # Fetch the active owner row (full record, not just the phone)
+        # so the resolver can read ``auphere_channel_id`` for outbound
+        # routing. RLS-free table — read inside the scoped session for
+        # convenience.
+        owner_row_q = await session.execute(
+            sa.select(OwnerPhoneIndex)
             .where(OwnerPhoneIndex.tenant_id == tenant_id)
             .where(OwnerPhoneIndex.active.is_(True))
             .order_by(OwnerPhoneIndex.added_at.asc())
             .limit(1)
         )
-        owner_phone = phone_row.scalar_one_or_none()
+        owner = owner_row_q.scalar_one_or_none()
 
         tenant_row = await session.get(Tenant, tenant_id)
         if tenant_row is None:  # pragma: no cover
             return
+
+        # Resolve the Auphere channel ONCE per tenant batch. Per-owner
+        # resolution happens via ``owner.auphere_channel_id``, with
+        # fallback to the provider default and finally to legacy
+        # settings.
+        channel = None
+        if owner is not None:
+            channel = await resolve_channel_for_owner(session, owner=owner)
+        from_phone = channel.phone_e164 if channel else None
 
         rows = await session.execute(
             sa.select(OwnerConsultation)
@@ -141,7 +148,8 @@ async def _drain_tenant(
             "owner_outbox.dispatcher.batch",
             tenant_id=str(tenant_id),
             count=len(pending),
-            has_owner_phone=bool(owner_phone),
+            has_owner_phone=owner is not None,
+            from_channel=channel.display_name if channel else None,
         )
         for row in pending:
             await _send_one(
@@ -149,7 +157,7 @@ async def _drain_tenant(
                 row=row,
                 adapter=adapter,
                 from_phone=from_phone,
-                recipient=owner_phone,
+                recipient=owner.phone_e164 if owner else None,
                 tenant_name=tenant_row.name,
             )
 
@@ -159,7 +167,7 @@ async def _send_one(
     session: AsyncSession,
     row: OwnerConsultation,
     adapter: WhatsAppYCloudAdapter,
-    from_phone: str,
+    from_phone: str | None,
     recipient: str | None,
     tenant_name: str,
 ) -> None:
@@ -169,6 +177,17 @@ async def _send_one(
         row.cancelled_reason = "no owner_phone_index for tenant"
         log.warning(
             "owner_outbox.cancelled.no_recipient",
+            tenant_id=str(row.tenant_id),
+            consultation_id=str(row.id),
+        )
+        return
+    if from_phone is None:
+        # No backchannel resolved — registry is empty AND
+        # settings.auphere_owner_phone is unset. Hold the row so a
+        # later config change picks it up (do NOT cancel — operator
+        # may be in the middle of setting up).
+        log.info(
+            "owner_outbox.held.no_channel",
             tenant_id=str(row.tenant_id),
             consultation_id=str(row.id),
         )

@@ -47,9 +47,11 @@ from nexus_api.db.models.operator_notification import (
 )
 from nexus_api.db.models.owner_backchannel import (
     OWNER_COMMAND_KINDS,
+    AUPHERE_CHANNEL_PROVIDERS,
     OWNER_CONSULTATION_EXPECTED_REPLY_KINDS,
     OWNER_CONSULTATION_STATUSES,
     OWNER_CONSULTATION_URGENCIES,
+    AuphereOwnerChannel,
     OwnerConsultation,
     OwnerPhoneIndex,
 )
@@ -102,6 +104,8 @@ __all__ = [
     "MessageStatus",
     "OperatorNotification",
     "OperatorNotificationStatus",
+    "AUPHERE_CHANNEL_PROVIDERS",
+    "AuphereOwnerChannel",
     "OwnerConsultation",
     "OwnerPhoneIndex",
     "QAAuditLog",

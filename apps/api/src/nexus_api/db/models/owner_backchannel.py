@@ -24,6 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from nexus_api.db.base import Base
 from nexus_api.db.models._mixins import TenantScopedMixin, TimestampMixin, UUIDPrimaryKey
+from nexus_api.db.types import FernetEncrypted as _FernetEncrypted
 
 # String literals (not enums) match the migration's CHECK constraints
 # verbatim. Importing from these constants in repos/services keeps the
@@ -117,3 +118,73 @@ class OwnerPhoneIndex(Base):
     user_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Migration 0038 — optionally pin this owner to a specific Auphere
+    # backchannel number. NULL = the resolver picks the default channel
+    # for the provider (with optional country_code matching). Useful for
+    # multi-country setups (CL owner → +56 Auphere; AR owner → +54).
+    auphere_channel_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("auphere_owner_channels.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+
+# Allowed provider values for ``AuphereOwnerChannel.provider`` — kept as
+# a tuple of literals (not a Postgres enum) to mirror the CHECK
+# constraint without paying for enum-migration ceremony. Add a value
+# here when a new BSP is plumbed.
+AUPHERE_CHANNEL_PROVIDERS: tuple[str, ...] = ("ycloud", "meta")
+
+
+class AuphereOwnerChannel(UUIDPrimaryKey, TimestampMixin, Base):
+    """Global registry of Auphere backchannel numbers (migration 0038).
+
+    Replaces the hardcoded ``settings.auphere_owner_phone`` /
+    ``auphere_owner_number_id`` / ``auphere_owner_webhook_secret``
+    trio. Each row represents one outbound number Auphere owns at a BSP
+    (YCloud today, Meta when we migrate). Resolver order at runtime:
+
+    1. If the ``OwnerPhoneIndex`` row carries an explicit
+       ``auphere_channel_id`` → use that channel (when ``active``).
+    2. Else use the row with ``is_default=true`` AND ``active=true``
+       for the relevant provider — the partial unique index guarantees
+       at most one default per provider.
+    3. Else fall back to ``settings.auphere_owner_phone`` (Phase 1
+       compatibility — empty registry behaves like the legacy
+       single-number setup).
+
+    ``webhook_secret_encrypted`` is optional: when NULL the webhook
+    falls back to ``settings.ycloud_webhook_secret`` (or the
+    provider-equivalent), which matches the operational reality where
+    YCloud uses ONE HMAC secret per WABA — many phone numbers share it.
+    Per-number secrets only kick in when an operator needs to rotate
+    one number's secret without disrupting the others.
+    """
+
+    __tablename__ = "auphere_owner_channels"
+
+    # ``id``, ``created_at`` and ``updated_at`` come from the mixins
+    # (server-default UUID + ``now()``) — same pattern the rest of the
+    # codebase uses, so tests + admin endpoints don't need to set them.
+    phone_e164: Mapped[str] = mapped_column(
+        String(20), nullable=False, unique=True
+    )
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    country_code: Mapped[str | None] = mapped_column(
+        String(2), nullable=True
+    )
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)
+    provider_phone_id: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
+    # Fernet-encrypted at rest; NULL = use shared provider secret from
+    # settings. See ``db.types.FernetEncrypted``.
+    webhook_secret_encrypted: Mapped[bytes | None] = mapped_column(
+        _FernetEncrypted(), nullable=True
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )

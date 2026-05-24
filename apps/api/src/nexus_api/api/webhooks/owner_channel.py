@@ -52,6 +52,7 @@ from nexus_api.config import get_settings
 from nexus_api.core.logging_context import bind_tenant
 from nexus_api.core.tenant_context import apply_tenant_to_session
 from nexus_api.db.models import OwnerConsultation, OwnerPhoneIndex
+from nexus_api.repositories.auphere_channels import resolve_channel_for_inbound
 from nexus_api.services.owner_command_parser import (
     parse_owner_message,
 )
@@ -90,31 +91,16 @@ async def auphere_owner_inbound(
     body = await request.body()
     settings = get_settings()
 
-    if not settings.auphere_owner_phone:
-        # Feature off in this environment — accept and ignore so the BSP
-        # webhook validation succeeds.
-        log.info("owner_channel.disabled.no_phone_configured")
-        return {"status": "ignored:disabled"}
-
-    secret = settings.auphere_owner_webhook_secret or settings.ycloud_webhook_secret
-    sig_header = ycloud_signature or x_ycloud_signature
-    try:
-        verify_ycloud_signature(
-            secret,
-            body,
-            sig_header or "",
-            tolerance_seconds=settings.ycloud_signature_tolerance_seconds,
-        )
-    except YCloudSignatureError as exc:
-        log.warning("owner_channel.signature_failed", reason=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid signature"
-        ) from exc
-
+    # Parse the payload BEFORE verifying the signature — we need the
+    # ``to`` field to pick the right channel (each channel may carry
+    # its own webhook secret). Signature verification still happens
+    # against the raw body bytes a few lines down.
     try:
         payload: dict[str, Any] = json.loads(body)
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid JSON") from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="invalid JSON"
+        ) from exc
 
     event_type = payload.get("type")
     if event_type != "whatsapp.inbound_message.received":
@@ -132,15 +118,47 @@ async def auphere_owner_inbound(
     if not isinstance(to_phone, str) or not isinstance(from_phone, str):
         return {"status": "ignored:missing_addresses"}
 
-    if to_phone != settings.auphere_owner_phone:
-        # Not for the backchannel — the BSP also delivers tenant business
-        # number events here when both share an endpoint config. Quietly
-        # ignore; the regular ``/webhooks/ycloud`` route handles them.
+    # Resolve which Auphere channel this message is FOR. Multi-number
+    # support (migration 0038): the operator can register CL/AR/MX/ES
+    # numbers in the DB; we look up the row that matches ``to_phone``.
+    # When the DB is empty AND ``settings.auphere_owner_phone`` matches,
+    # we fall back to the legacy single-number behaviour so Phase 1
+    # keeps working.
+    channel = await resolve_channel_for_inbound(session, to_phone=to_phone)
+    if channel is None:
+        # Either the registry is empty + settings doesn't match, or the
+        # ``to`` doesn't belong to any active channel. Quietly ignore so
+        # the BSP webhook validation still succeeds.
         log.info(
             "owner_channel.foreign_to_number",
             to=_mask_phone(to_phone),
         )
         return {"status": "ignored:wrong_destination"}
+
+    # Per-channel secret beats the shared one. NULL on the channel row
+    # OR a legacy-fallback resolution → use the shared YCloud secret.
+    secret = (
+        channel.webhook_secret
+        or settings.auphere_owner_webhook_secret
+        or settings.ycloud_webhook_secret
+    )
+    sig_header = ycloud_signature or x_ycloud_signature
+    try:
+        verify_ycloud_signature(
+            secret,
+            body,
+            sig_header or "",
+            tolerance_seconds=settings.ycloud_signature_tolerance_seconds,
+        )
+    except YCloudSignatureError as exc:
+        log.warning(
+            "owner_channel.signature_failed",
+            reason=str(exc),
+            channel=channel.display_name,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid signature"
+        ) from exc
 
     if not isinstance(text, str) or not text.strip():
         # Audio / image / sticker — Phase 1 doesn't transcribe. Log and

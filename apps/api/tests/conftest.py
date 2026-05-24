@@ -284,6 +284,10 @@ _TRUNCATE_TABLES = (
     # FKs ``tenants`` (CASCADE) so must clear before tenants.
     "owner_consultations",
     "owner_phone_index",
+    # Migration 0038 — Auphere multi-tenant backchannel channel
+    # registry. ``owner_phone_index.auphere_channel_id`` FK SET NULL,
+    # so we clear the channels table AFTER owner_phone_index.
+    "auphere_owner_channels",
     "audit_log",
     "usage_events",
     "scheduled_jobs",
