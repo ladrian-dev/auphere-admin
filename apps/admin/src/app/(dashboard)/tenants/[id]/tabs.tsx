@@ -11,6 +11,7 @@ const TABS = [
   { slug: "conversations", label: "Conversaciones" },
   { slug: "connectors", label: "Connectors" },
   { slug: "isolation", label: "Aislamiento" },
+  { slug: "audit", label: "Auditoría" },
 ] as const;
 
 /**

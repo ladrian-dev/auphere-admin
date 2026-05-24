@@ -149,6 +149,9 @@ async def persist_outbound_message(
     latency_ms: int | None = None,
     status: MessageStatus = MessageStatus.PENDING,
     interactive_payload: dict[str, Any] | None = None,
+    outcome_overall: str | None = None,
+    outcome_retries: int | None = None,
+    outcome_feedback: str | None = None,
 ) -> Message:
     """Persist the assistant's reply.
 
@@ -179,6 +182,9 @@ async def persist_outbound_message(
         cost_usd=cost_usd,
         latency_ms=latency_ms,
         interactive_payload=interactive_payload,
+        outcome_overall=outcome_overall,
+        outcome_retries=outcome_retries,
+        outcome_feedback=outcome_feedback,
     )
     session.add(msg)
     await session.flush()

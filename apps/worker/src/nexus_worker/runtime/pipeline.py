@@ -1361,6 +1361,16 @@ def make_checkpoint_node() -> NodeFn:
         tool_calls = state.get("tool_calls") or []
         intent = state.get("intent")
         model = state.get("response_model")
+        # Outcome grader verdict for this turn. ``skipped`` when the
+        # feature is off for this agent_config; ``pass`` / ``fail`` /
+        # ``error`` after grade_outcome ran. Both outbound rows (text +
+        # interactive) inherit the same verdict — it's a turn-level
+        # signal, not a per-row one. The columns are nullable so callers
+        # that bypass the grader (test fixtures, manual sends) skip the
+        # writes implicitly via the ``None`` defaults.
+        outcome_overall = state.get("outcome_overall")
+        outcome_retries = state.get("outcome_retries")
+        outcome_feedback = state.get("outcome_feedback") or None
 
         sm = get_sessionmaker()
         async with sm() as session, tenant_scoped_session(session, tenant_id):
@@ -1377,6 +1387,9 @@ def make_checkpoint_node() -> NodeFn:
                     intent=intent,
                     model=model,
                     tool_calls=tool_calls,
+                    outcome_overall=outcome_overall,
+                    outcome_retries=outcome_retries,
+                    outcome_feedback=outcome_feedback,
                 )
 
             # Row 2: interactive component, when the agent called
@@ -1397,6 +1410,9 @@ def make_checkpoint_node() -> NodeFn:
                     # self-contained.
                     tool_calls=[],
                     interactive_payload=interactive,
+                    outcome_overall=outcome_overall,
+                    outcome_retries=outcome_retries,
+                    outcome_feedback=outcome_feedback,
                 )
         return {}
 

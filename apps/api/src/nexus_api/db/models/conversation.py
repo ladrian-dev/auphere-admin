@@ -210,6 +210,20 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         JSONB, nullable=True
     )
 
+    # Outcome grader verdict per turn (migration 0037, ADR-023 Fase C).
+    # Populated by the checkpoint node from ``AgentState.outcome_*``;
+    # NULL on rows that pre-date the migration or were written via
+    # tools (e.g. ``notification.send_image``) that don't go through
+    # the grader. The operator panel renders these as a badge —
+    # ``pass`` green, ``fail`` red, ``skipped`` muted, ``error`` amber.
+    outcome_overall: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
+    outcome_retries: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    outcome_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     """Per-tenant per-recipient opt-out registry.

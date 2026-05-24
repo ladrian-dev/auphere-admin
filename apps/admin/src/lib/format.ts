@@ -58,6 +58,32 @@ export function planLabel(plan: string): string {
   }
 }
 
+/** Latency in ms → "423 ms" / "1.2 s" — small enough to live in the
+ *  message bubble footer next to cost. */
+export function formatLatency(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined) return "—";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+/** Cost in USD → "$0.0042" with up to 4 decimal places for small
+ *  numbers, 2 for ≥$1 so totals read naturally. */
+export function formatCostUsd(usd: number | null | undefined): string {
+  if (usd === null || usd === undefined) return "—";
+  if (usd >= 1) return `$${usd.toFixed(2)}`;
+  if (usd === 0) return "$0";
+  return `$${usd.toFixed(4)}`;
+}
+
+/** Byte count → "12 kB" / "3.4 MB". WhatsApp media is rarely >50 MB so
+ *  GB is intentionally absent. */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} kB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function statusLabel(status: string): string {
   switch (status) {
     case "active":

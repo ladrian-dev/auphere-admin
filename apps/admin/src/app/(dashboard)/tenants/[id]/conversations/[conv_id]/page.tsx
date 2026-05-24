@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { Eyebrow } from "@/components/brand/eyebrow";
 import { StatusDot } from "@/components/brand/status-dot";
+import { MessageBubble } from "@/components/conversation/message-bubble";
 import {
   Card,
   CardContent,
@@ -10,8 +11,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { backend, type MessageOut } from "@/lib/backend";
-import { fullDateTime, relativeTime, statusLabel } from "@/lib/format";
+import { backend } from "@/lib/backend";
+import { relativeTime, statusLabel } from "@/lib/format";
 
 import { AgentToggle } from "../agent-toggle";
 
@@ -111,43 +112,10 @@ export default async function ConversationDetailPage({
               Sin mensajes todavía.
             </p>
           ) : (
-            messages.map((m) => <MessageRow key={m.id} message={m} />)
+            messages.map((m) => <MessageBubble key={m.id} message={m} />)
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function MessageRow({ message }: { message: MessageOut }) {
-  const inbound = message.direction === "inbound";
-  return (
-    <div
-      className={
-        "flex flex-col gap-1 rounded-md px-3 py-2 border border-border " +
-        (inbound ? "bg-blue-50/50 dark:bg-blue-950/20" : "bg-muted/40")
-      }
-    >
-      <div className="flex items-center justify-between text-[10px] font-mono uppercase text-muted-foreground tabular-nums">
-        <span style={{ letterSpacing: "var(--tracking-eyebrow)" }}>
-          {inbound ? "← Cliente" : "→ Agente"}
-          {message.intent ? ` · ${message.intent}` : ""}
-          {message.model ? ` · ${message.model}` : ""}
-        </span>
-        <span>{fullDateTime(message.created_at)}</span>
-      </div>
-      <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-      {message.tool_calls.length > 0 ? (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">
-            {message.tool_calls.length} tool call
-            {message.tool_calls.length === 1 ? "" : "s"}
-          </summary>
-          <pre className="mt-1 overflow-x-auto rounded bg-muted/60 p-2 text-[11px]">
-            {JSON.stringify(message.tool_calls, null, 2)}
-          </pre>
-        </details>
-      ) : null}
     </div>
   );
 }

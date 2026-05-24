@@ -442,18 +442,98 @@ export type ConversationPage = {
   next_cursor: string | null;
 };
 
+export type MessageStatus =
+  | "pending"
+  | "sent"
+  | "delivered"
+  | "read"
+  | "failed";
+
+export type InteractiveButton = { id: string; title: string };
+export type InteractiveListItem = {
+  id: string;
+  title: string;
+  description?: string;
+};
+export type InteractiveList = {
+  button: string;
+  items: InteractiveListItem[];
+};
+export type InteractiveCtaUrl = { text: string; url: string };
+
+/** Mirror of ``response.send_interactive`` payload — the structured
+ *  shape the agent emits when calling the terminal interactive tool.
+ *  At most one of ``buttons`` / ``list`` / ``cta_url`` is set on a
+ *  given row (validated by the backend). */
+export type InteractivePayload = {
+  body: string;
+  header?: string | null;
+  footer?: string | null;
+  buttons?: InteractiveButton[] | null;
+  list?: InteractiveList | null;
+  cta_url?: InteractiveCtaUrl | null;
+  context_message_id?: string | null;
+};
+
+export type OutcomeVerdict = "pass" | "fail" | "skipped" | "error";
+
+export type AuditLogOut = {
+  id: string;
+  tenant_id: string;
+  actor: string;
+  action: string;
+  target: string;
+  before_json: Record<string, unknown> | null;
+  after_json: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type AuditLogPage = {
+  items: AuditLogOut[];
+  next_cursor: string | null;
+};
+
 export type MessageOut = {
+  // Identity + ordering
   id: string;
   conversation_id: string;
+  created_at: string;
+  // Core content
   direction: "inbound" | "outbound";
   content: string;
   intent: string | null;
+  // LLM telemetry
   cost_usd: number | null;
   latency_ms: number | null;
   model: string | null;
   trace_id: string | null;
   tool_calls: Array<Record<string, unknown>>;
-  created_at: string;
+  // Delivery lifecycle
+  status: MessageStatus;
+  delivered_at: string | null;
+  read_at: string | null;
+  failed_at: string | null;
+  failure_code: string | null;
+  last_error: string | null;
+  attempts: number;
+  provider_message_id: string | null;
+  pricing_category: string | null;
+  // Media
+  media_kind: string | null;
+  media_mime: string | null;
+  media_filename: string | null;
+  media_size_bytes: number | null;
+  media_transcript: string | null;
+  // Reactions + quoted reply
+  reaction_emoji: string | null;
+  reaction_target_wamid: string | null;
+  context_message_id: string | null;
+  // Interactive component
+  interactive_payload: InteractivePayload | null;
+  // Outcome grader
+  outcome_overall: OutcomeVerdict | null;
+  outcome_retries: number | null;
+  outcome_feedback: string | null;
 };
 
 export type ToolStatus = "active" | "deprecated" | "experimental" | "internal";
@@ -792,6 +872,35 @@ export const backend = {
       `/admin/tenants/${tenantId}/conversations?${qs.toString()}`,
     ).then((r) => r ?? { items: [], next_cursor: null });
   },
+
+  listAuditLog: (
+    tenantId: string,
+    filters: {
+      cursor?: string;
+      limit?: number;
+      actor?: string;
+      action?: string;
+      action_prefix?: string;
+      target?: string;
+      after?: string;
+      before?: string;
+    } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    qs.set("limit", String(filters.limit ?? 50));
+    for (const k of ["cursor", "actor", "action", "action_prefix", "target", "after", "before"] as const) {
+      const v = filters[k];
+      if (v !== undefined && v !== "") qs.set(k, v);
+    }
+    return call<AuditLogPage>(
+      `/admin/tenants/${tenantId}/audit-log?${qs.toString()}`,
+    ).then((r) => r ?? { items: [], next_cursor: null });
+  },
+
+  listAuditActions: (tenantId: string) =>
+    call<string[]>(
+      `/admin/tenants/${tenantId}/audit-log/actions`,
+    ).then((r) => r ?? []),
 
   listToolCatalog: (includeDeprecated = false) =>
     call<ToolCatalog[]>(
