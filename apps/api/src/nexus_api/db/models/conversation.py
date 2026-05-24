@@ -125,6 +125,27 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # MAX(messages.created_at WHERE direction='inbound') by 0019.
     last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Migration 0041 (Bloque C) — operator-takeover context. Populated by
+    # PATCH .../agent when an operator pauses the agent (reason, notes,
+    # started_at, operator_id). The dispatcher consumes it on the first
+    # turn after reactivation to brief the LLM about the human
+    # intervention, then sets it back to NULL.
+    takeover_context: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+
+    # Migration 0041 (Bloque C) — optimistic-locking counter for the
+    # ``agent_active`` toggle. Every PATCH .../agent that actually flips
+    # the bit increments this; clients send the previous value via
+    # ``If-Match`` so two operators racing on the same conversation
+    # don't silently clobber each other's intent.
+    agent_active_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
 
 class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     __tablename__ = "messages"
@@ -223,6 +244,23 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         Integer, nullable=True
     )
     outcome_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── Migration 0041 (Bloque C) — actor identity for outbound rows ───
+    # ``actor_kind`` is NULL on inbound rows (customer is implied) and on
+    # every row written before this migration. Outbound rows set it
+    # explicitly: ``agent`` for pipeline-generated, ``operator`` for the
+    # ``POST .../conversations/:id/send`` endpoint, ``owner`` for
+    # backchannel replies (Phase 2), ``system`` for templates and
+    # opt-out confirmations. A CHECK constraint at the DB level enforces
+    # the enum without locking us into a Postgres enum type (easier to
+    # extend later).
+    actor_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Admin user uuid for ``operator`` rows; NULL otherwise. No FK — the
+    # admin user table is owned upstream (auth provider) and we just
+    # store the resolved uuid for audit/UX.
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
 
 
 class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):

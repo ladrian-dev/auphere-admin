@@ -38,6 +38,8 @@ const _BASE_INBOUND: MessageOut = {
   outcome_overall: null,
   outcome_retries: null,
   outcome_feedback: null,
+  actor_kind: null,
+  actor_id: null,
 };
 
 function outbound(overrides: Partial<MessageOut> = {}): MessageOut {

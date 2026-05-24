@@ -46,6 +46,9 @@ type FetchOpts = {
   signal?: AbortSignal;
   /** When ``true``, a 404 returns ``null`` instead of throwing. */
   optional?: boolean;
+  /** Extra headers (e.g. ``If-Match`` for the optimistic-lock CAS on
+   *  PATCH .../conversations/:id/agent). */
+  headers?: Record<string, string>;
 };
 
 async function call<T>(path: string, opts: FetchOpts = {}): Promise<T | null> {
@@ -56,6 +59,7 @@ async function call<T>(path: string, opts: FetchOpts = {}): Promise<T | null> {
       Authorization: `Bearer ${ADMIN_TOKEN}`,
       Accept: "application/json",
       ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(opts.headers ?? {}),
     },
     cache: "no-store",
     signal: opts.signal,
@@ -427,12 +431,28 @@ export type AgentConfigBundle = {
   versions: AgentConfig[];
 };
 
+export type TakeoverContext = {
+  reason: string | null;
+  notes: string | null;
+  started_at: string | null;
+  operator_id: string | null;
+};
+
 export type ConversationOut = {
   id: string;
   channel_id: string;
   customer_id: string;
   status: "open" | "closed" | "escalated";
   agent_active: boolean;
+  /** Bloque C — optimistic-locking counter on ``agent_active``.
+   *  Sent back on PATCH via ``If-Match`` to detect two operators
+   *  racing on the same conversation. */
+  agent_active_version: number;
+  /** Bloque C — operator-authored briefing captured when the agent
+   *  is paused; consumed by the dispatcher on the first turn after
+   *  resume and cleared. Populated only while the conversation is
+   *  in a takeover window. */
+  takeover_context: TakeoverContext | null;
   created_at: string;
   updated_at: string;
 };
@@ -595,7 +615,14 @@ export type MessageOut = {
   outcome_overall: OutcomeVerdict | null;
   outcome_retries: number | null;
   outcome_feedback: string | null;
+  // Actor identity (Bloque C). NULL on inbound rows and on outbound
+  // rows written before migration 0041 (back-compat).
+  actor_kind: "agent" | "operator" | "owner" | "system" | null;
+  actor_id: string | null;
 };
+
+/** Bloque C — body for the operator-side send endpoint. */
+export type OperatorSendInput = { content: string };
 
 export type ToolStatus = "active" | "deprecated" | "experimental" | "internal";
 
@@ -901,18 +928,60 @@ export const backend = {
     }),
 
   /**
-   * Block M.3 — toggle per-conversation agent control. ``agent_active=false``
-   * puts the operator in the loop: inbound messages are persisted but the
-   * pipeline is skipped until the operator flips it back to ``true``.
+   * Block M.3 + Bloque C — toggle per-conversation agent control with
+   * optimistic locking and optional operator briefing.
+   *
+   * ``agentActive=false`` puts the operator in the loop: inbound messages
+   * are persisted but the pipeline is skipped until the operator flips
+   * back to ``true``. The ``reason`` and ``notes`` (used only on pause)
+   * land in ``conversations.takeover_context`` and the dispatcher uses
+   * them on the first turn after resume to brief the LLM about the
+   * intervention.
+   *
+   * ``expectedVersion`` (Bloque C) is the ``agent_active_version`` the
+   * client last saw. The backend rejects the PATCH with 412 when the
+   * counter has moved, preventing two operators from clobbering each
+   * other's intent. Omit on first call after a hard reload.
    */
   toggleConversationAgent: (
     tenantId: string,
     conversationId: string,
     agentActive: boolean,
+    opts?: {
+      reason?: string | null;
+      notes?: string | null;
+      expectedVersion?: number;
+    },
   ) =>
     call<ConversationOut>(
       `/admin/tenants/${tenantId}/conversations/${conversationId}/agent`,
-      { method: "PATCH", body: { agent_active: agentActive } },
+      {
+        method: "PATCH",
+        body: {
+          agent_active: agentActive,
+          reason: opts?.reason ?? null,
+          notes: opts?.notes ?? null,
+        },
+        headers:
+          opts?.expectedVersion !== undefined
+            ? { "If-Match": String(opts.expectedVersion) }
+            : undefined,
+      },
+    ),
+
+  /**
+   * Bloque C — operator sends a free-form text reply on a paused
+   * conversation. The endpoint refuses with 409 when ``agent_active``
+   * is still true; pause before calling.
+   */
+  operatorSendMessage: (
+    tenantId: string,
+    conversationId: string,
+    content: string,
+  ) =>
+    call<MessageOut>(
+      `/admin/tenants/${tenantId}/conversations/${conversationId}/send`,
+      { method: "POST", body: { content } },
     ),
 
   getConversation: (tenantId: string, conversationId: string) =>

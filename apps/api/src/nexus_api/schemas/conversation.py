@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ConversationOut(BaseModel):
@@ -16,21 +16,49 @@ class ConversationOut(BaseModel):
     customer_id: uuid.UUID
     status: str
     agent_active: bool
+    agent_active_version: int = 0
+    takeover_context: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class ConversationAgentToggleIn(BaseModel):
-    """Block M.3 — body for PATCH .../conversations/:id/agent."""
+    """Block M.3 / Bloque C — body for PATCH .../conversations/:id/agent.
+
+    ``reason`` and ``notes`` are populated when the operator pauses the
+    agent (``agent_active=false``); they survive into
+    ``conversations.takeover_context`` and the dispatcher consumes them
+    on the first turn after the agent is reactivated to brief the LLM
+    about what happened during the human-in-the-loop window. Both are
+    optional — a paused conversation with no reason still works.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     agent_active: bool
+    reason: str | None = None
+    notes: str | None = None
 
 
 class ConversationPageOut(BaseModel):
     items: list[ConversationOut]
     next_cursor: str | None
+
+
+class OperatorSendIn(BaseModel):
+    """Bloque C — body for ``POST .../conversations/:id/send``.
+
+    The operator sends free-form text on a paused conversation. The
+    endpoint persists an outbound ``Message`` with ``actor_kind='operator'``;
+    the existing outbound dispatcher picks it up on its next tick and
+    routes through the channel adapter exactly like an agent reply.
+    Interactive components (buttons / list / cta_url) are NOT in scope
+    for this initial cut — the operator types text.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, max_length=4096)
 
 
 class MessageOut(BaseModel):
@@ -94,3 +122,10 @@ class MessageOut(BaseModel):
     outcome_overall: str | None = None
     outcome_retries: int | None = None
     outcome_feedback: str | None = None
+
+    # Actor identity (Bloque C — migration 0041). NULL on inbound and on
+    # rows written before the migration. Outbound rows carry one of
+    # ``agent`` / ``operator`` / ``owner`` / ``system``; ``operator``
+    # rows additionally populate ``actor_id`` with the admin uuid.
+    actor_kind: str | None = None
+    actor_id: uuid.UUID | None = None

@@ -152,6 +152,8 @@ async def persist_outbound_message(
     outcome_overall: str | None = None,
     outcome_retries: int | None = None,
     outcome_feedback: str | None = None,
+    actor_kind: str = "agent",
+    actor_id: uuid.UUID | None = None,
 ) -> Message:
     """Persist the assistant's reply.
 
@@ -185,6 +187,8 @@ async def persist_outbound_message(
         outcome_overall=outcome_overall,
         outcome_retries=outcome_retries,
         outcome_feedback=outcome_feedback,
+        actor_kind=actor_kind,
+        actor_id=actor_id,
     )
     session.add(msg)
     await session.flush()

@@ -14,7 +14,7 @@ import {
 import { backend } from "@/lib/backend";
 import { relativeTime, statusLabel } from "@/lib/format";
 
-import { AgentToggle } from "../agent-toggle";
+import { TakeoverPanel } from "./takeover-panel";
 
 const STATUS_TONE = {
   open: "info",
@@ -68,32 +68,23 @@ export default async function ConversationDetailPage({
                 <span>· Última actividad {relativeTime(conversation.updated_at)}</span>
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <Link
-                href={`/tenants/${tenant.id}/conversations`}
-                className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline decoration-1"
-              >
-                ← Lista
-              </Link>
-              <AgentToggle
-                tenantId={tenant.id}
-                conversationId={conversation.id}
-                agentActive={conversation.agent_active}
-                variant="button"
-              />
-            </div>
+            <Link
+              href={`/tenants/${tenant.id}/conversations`}
+              className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline decoration-1"
+            >
+              ← Lista
+            </Link>
           </div>
         </CardHeader>
-        {!conversation.agent_active ? (
-          <CardContent className="border-t border-border pt-4">
-            <div className="rounded-md border border-amber-300/40 bg-amber-50/40 dark:bg-amber-950/20 px-4 py-3 text-sm">
-              <strong>Operador en control de este thread.</strong>{" "}
-              El agente no responde mensajes nuevos en esta conversación hasta
-              que clickees <em>Reactivar agente</em>. Los mensajes entrantes
-              siguen apareciendo abajo para que puedas atenderlos manualmente.
-            </div>
-          </CardContent>
-        ) : null}
+        <CardContent className="border-t border-border pt-4">
+          <TakeoverPanel
+            tenantId={tenant.id}
+            conversationId={conversation.id}
+            agentActive={conversation.agent_active}
+            agentActiveVersion={conversation.agent_active_version}
+            takeoverContext={conversation.takeover_context}
+          />
+        </CardContent>
       </Card>
 
       <Card>

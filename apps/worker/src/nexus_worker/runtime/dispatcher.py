@@ -24,7 +24,7 @@ import sqlalchemy as sa
 import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Tenant, TenantStatus
+from nexus_api.db.models import Conversation, Message, Tenant, TenantStatus
 
 from nexus_worker.multimodal import ProcessedMedia, get_media_processor
 from nexus_worker.observability.tracing import trace_turn, update_trace
@@ -44,6 +44,42 @@ log = structlog.get_logger(__name__)
 _INACTIVE_STATUSES: frozenset[TenantStatus] = frozenset(
     {TenantStatus.PAUSED, TenantStatus.ARCHIVED}
 )
+
+
+def _build_operator_briefing(
+    *,
+    reason: str | None,
+    notes: str | None,
+    started_at: str | None,
+    operator_id: str | None,
+    operator_messages: list[str],
+) -> str:
+    """Format the operator-intervention briefing for the LLM.
+
+    The briefing is prepended to ``user_message`` on the first turn after
+    the operator reactivates the agent. It's wrapped in a clearly-delimited
+    ``[Contexto interno]`` block so the model treats it as out-of-band
+    instructions rather than as customer-authored text — the prompt
+    library + system prompt instruct the LLM to never echo bracketed
+    internal context back to the customer.
+    """
+    lines: list[str] = ["[Contexto interno — intervención humana en esta conversación]"]
+    if started_at:
+        lines.append(f"Pausa iniciada: {started_at}")
+    if operator_id:
+        lines.append(f"Operador: {operator_id}")
+    if reason:
+        lines.append(f"Razón: {reason}")
+    if notes:
+        lines.append(f"Notas: {notes}")
+    if operator_messages:
+        lines.append("Mensajes que el operador envió durante la pausa:")
+        for idx, msg in enumerate(operator_messages, start=1):
+            lines.append(f"  {idx}. {msg}")
+    else:
+        lines.append("(El operador no envió mensajes durante la pausa.)")
+    lines.append("[Fin del contexto interno]")
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -175,6 +211,43 @@ async def process_inbound(
         conversation_id = conversation.id
         inbound_id = inbound_msg.id
         conversation_agent_active = conversation.agent_active
+        # Bloque C — Operator intervention. ``takeover_context`` is populated
+        # by ``PATCH .../agent`` when the operator pauses the agent. The
+        # first turn after the operator reactivates (i.e. ``agent_active``
+        # is true again) consumes it to build a briefing that lets the LLM
+        # pick up the conversation knowing what the human did.
+        takeover_context = conversation.takeover_context
+        operator_briefing: str | None = None
+        if takeover_context is not None and conversation_agent_active:
+            started_at_iso = takeover_context.get("started_at")
+            stmt = (
+                sa.select(Message.content, Message.created_at)
+                .where(Message.conversation_id == conversation_id)
+                .where(Message.actor_kind == "operator")
+                .order_by(Message.created_at.asc())
+            )
+            if started_at_iso:
+                from datetime import datetime as _dt2
+
+                try:
+                    started_at_dt = _dt2.fromisoformat(
+                        started_at_iso.replace("Z", "+00:00")
+                    )
+                    stmt = stmt.where(Message.created_at >= started_at_dt)
+                except ValueError:
+                    # Malformed timestamp — fall back to "all operator
+                    # messages on this conversation", which is still
+                    # bounded by takeover_context.started_at semantics
+                    # (this column is cleared on resume).
+                    pass
+            operator_rows = (await session.execute(stmt)).all()
+            operator_briefing = _build_operator_briefing(
+                reason=takeover_context.get("reason"),
+                notes=takeover_context.get("notes"),
+                started_at=started_at_iso,
+                operator_id=takeover_context.get("operator_id"),
+                operator_messages=[row[0] for row in operator_rows],
+            )
 
     tenant_status = TenantStatus(tenant_status_raw)
     if tenant_status in _INACTIVE_STATUSES:
@@ -212,6 +285,14 @@ async def process_inbound(
             "conversation_id": str(conversation_id),
             "inbound_message_id": str(inbound_id),
         }
+
+    # Bloque C — prepend the operator briefing (if any) so the LLM sees
+    # the "what the human did while you were paused" context before the
+    # customer's actual message. The briefing is delimited so the prompt
+    # library treats it as out-of-band instructions and never echoes it
+    # back to the customer.
+    if operator_briefing is not None:
+        user_message = f"{operator_briefing}\n\n[Mensaje del cliente]\n{user_message}"
 
     state = new_state(
         tenant_id=event.tenant_id,
@@ -261,4 +342,22 @@ async def process_inbound(
         intent=final.get("intent"),
         response_present=bool(final.get("response")),
     )
+
+    # Bloque C — pipeline ran successfully on a post-resume turn that
+    # carried the operator briefing. Clear ``takeover_context`` so the
+    # next turn doesn't replay the briefing. We keep the clear outside
+    # the pipeline transaction on purpose: a pipeline failure leaves
+    # ``takeover_context`` set so the next retry still receives the
+    # briefing.
+    if operator_briefing is not None:
+        async with sm() as cleanup_session, tenant_scoped_session(
+            cleanup_session, event.tenant_id
+        ):
+            await cleanup_session.execute(
+                sa.update(Conversation)
+                .where(Conversation.id == conversation_id)
+                .values(takeover_context=None)
+            )
+            await cleanup_session.commit()
+
     return dict(final)

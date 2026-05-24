@@ -273,3 +273,178 @@ async def test_conversation_with_agent_active_still_invokes_pipeline(
 
     assert len(pipeline.calls) == 1
     assert result.get("skipped") is None
+
+
+# ── Bloque C: resume-with-context briefing ──────────────────────────────────
+
+
+async def _seed_conversation_with_takeover(
+    db_session: Any,
+    *,
+    tenant_id: uuid.UUID,
+    channel_id: uuid.UUID,
+    user_id: str,
+    takeover_context: dict[str, Any],
+    operator_messages: list[str],
+) -> uuid.UUID:
+    """Seed a conversation that the operator paused, sent N messages on,
+    then resumed — the state the dispatcher should encounter on the
+    first inbound after resume. ``agent_active=True`` to simulate the
+    post-resume state; ``takeover_context`` is still set because the
+    PATCH .../agent endpoint leaves it for the dispatcher to consume."""
+    customer = Customer(tenant_id=tenant_id, identifier=user_id, preferences={})
+    db_session.add(customer)
+    await db_session.commit()
+    await db_session.refresh(customer)
+    conv = Conversation(
+        tenant_id=tenant_id,
+        channel_id=channel_id,
+        customer_id=customer.id,
+        status=ConversationStatus.OPEN,
+        agent_active=True,
+        takeover_context=takeover_context,
+    )
+    db_session.add(conv)
+    await db_session.commit()
+    await db_session.refresh(conv)
+    from nexus_api.db.models import MessageStatus
+
+    for content in operator_messages:
+        db_session.add(
+            Message(
+                tenant_id=tenant_id,
+                conversation_id=conv.id,
+                direction=MessageDirection.OUTBOUND,
+                status=MessageStatus.SENT,
+                content=content,
+                tool_calls=[],
+                actor_kind="operator",
+            )
+        )
+    await db_session.commit()
+    return conv.id
+
+
+async def test_takeover_context_prepended_to_user_message_on_resume(
+    db_session: Any,
+) -> None:
+    """First turn after operator resumes: the briefing block lives at the
+    top of ``user_message`` and the customer's text lives below it."""
+    tenant_id, channel_id = await _make_tenant_with_channel(db_session, TenantStatus.ACTIVE)
+    from datetime import UTC, datetime, timedelta
+
+    past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    await _seed_conversation_with_takeover(
+        db_session,
+        tenant_id=tenant_id,
+        channel_id=channel_id,
+        user_id="+5699910100",
+        takeover_context={
+            "reason": "queja del cliente",
+            "notes": "estaba enojado por la demora",
+            "started_at": past,
+            "operator_id": "luis1234",
+        },
+        operator_messages=[
+            "Lamento la demora, ya estoy revisando",
+            "Tu pedido sale hoy a las 18hs",
+        ],
+    )
+    pipeline = _RecordingPipeline()
+
+    result = await process_inbound(
+        InboundEvent(
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            user_id="+5699910100",
+            content="ok, gracias",
+        ),
+        pipeline=pipeline,
+    )
+
+    assert result.get("skipped") is None
+    assert len(pipeline.calls) == 1
+    state, _config = pipeline.calls[0]
+    msg = state["user_message"]
+    assert "[Contexto interno" in msg
+    assert "queja del cliente" in msg
+    assert "estaba enojado por la demora" in msg
+    assert "Lamento la demora, ya estoy revisando" in msg
+    assert "Tu pedido sale hoy a las 18hs" in msg
+    assert "[Mensaje del cliente]" in msg
+    assert "ok, gracias" in msg
+    # Briefing must come BEFORE the customer's message.
+    assert msg.index("[Contexto interno") < msg.index("[Mensaje del cliente]")
+
+
+async def test_takeover_context_cleared_after_successful_pipeline_run(
+    db_session: Any,
+) -> None:
+    """After the briefing has been delivered once, ``takeover_context``
+    is set to NULL so the next turn doesn't replay it."""
+    tenant_id, channel_id = await _make_tenant_with_channel(db_session, TenantStatus.ACTIVE)
+    from datetime import UTC, datetime, timedelta
+
+    past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    conv_id = await _seed_conversation_with_takeover(
+        db_session,
+        tenant_id=tenant_id,
+        channel_id=channel_id,
+        user_id="+5699910101",
+        takeover_context={
+            "reason": "x",
+            "started_at": past,
+        },
+        operator_messages=["hola"],
+    )
+    pipeline = _RecordingPipeline()
+
+    await process_inbound(
+        InboundEvent(
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            user_id="+5699910101",
+            content="continuá",
+        ),
+        pipeline=pipeline,
+    )
+
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        ctx = (
+            await session.execute(
+                sa.select(Conversation.takeover_context).where(Conversation.id == conv_id)
+            )
+        ).scalar_one()
+    assert ctx is None
+
+
+async def test_no_takeover_context_passes_user_message_untouched(
+    db_session: Any,
+) -> None:
+    """Control case — when there is no takeover context, the user_message
+    passed to the pipeline is exactly what the customer wrote (no
+    briefing prepended)."""
+    tenant_id, channel_id = await _make_tenant_with_channel(db_session, TenantStatus.ACTIVE)
+    await _seed_conversation(
+        db_session,
+        tenant_id=tenant_id,
+        channel_id=channel_id,
+        user_id="+5699910102",
+        agent_active=True,
+    )
+    pipeline = _RecordingPipeline()
+
+    await process_inbound(
+        InboundEvent(
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            user_id="+5699910102",
+            content="hola normal",
+        ),
+        pipeline=pipeline,
+    )
+
+    state, _config = pipeline.calls[0]
+    assert state["user_message"] == "hola normal"
+    assert "[Contexto interno" not in state["user_message"]
