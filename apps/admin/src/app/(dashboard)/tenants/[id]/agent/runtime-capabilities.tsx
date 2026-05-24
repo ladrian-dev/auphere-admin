@@ -16,6 +16,38 @@ import type {
   SkillRef,
 } from "@/lib/backend";
 
+// Mirror of ``ChannelType`` (apps/api/.../db/models/channel.py). Kept
+// hard-coded here because the admin app doesn't currently codegen the
+// enum; if a new channel lands, update both sides together.
+const KNOWN_CHANNELS: ReadonlyArray<{ id: string; label: string }> = [
+  { id: "whatsapp", label: "WhatsApp" },
+  { id: "instagram", label: "Instagram" },
+  { id: "telegram", label: "Telegram" },
+  { id: "email", label: "Email" },
+  { id: "web", label: "Web (QA / Admin)" },
+];
+
+/**
+ * Default channel-gate for a skill when the operator first ticks it.
+ * Heuristic: a skill named ``whatsapp-…`` is only meaningful inside the
+ * WhatsApp channel, so we pre-select WhatsApp to avoid the operator
+ * having to think about it. Every other skill defaults to "all channels"
+ * (empty list) — the safer back-compat choice.
+ */
+function defaultChannelsFor(skillName: string): string[] {
+  if (skillName.startsWith("whatsapp-")) return ["whatsapp"];
+  return [];
+}
+
+/** Channel arrays are order-insensitive — two arrays with the same
+ *  members count as equal. Used by ``dirty()`` to detect changes. */
+function sameChannels(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  for (const x of b) if (!set.has(x)) return false;
+  return true;
+}
+
 type Result =
   | { ok: true; data: AgentConfig }
   | { ok: false; error: string };
@@ -62,11 +94,21 @@ export function RuntimeCapabilities({
     config.runtime_outcome_grader,
   );
   const [mcpConnector, setMcpConnector] = useState(config.runtime_mcp_connector);
-  // Skills: store the currently-selected skill_ids in a Set for O(1)
-  // toggle. Hidrated from the config; only skills with a non-null
-  // skill_id (uploaded) can be in the set.
-  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(
-    () => new Set((config.runtime_skills ?? []).map((s) => s.skill_id)),
+  // Skills: store ``skill_id → channels[]`` for every currently-
+  // selected skill. An empty array means "load on every channel" (the
+  // back-compat default); a non-empty array gates the skill to the
+  // listed channels (e.g. ``["whatsapp"]``). Hidrated from the config;
+  // skills not in the map are NOT selected.
+  const [selectedSkills, setSelectedSkills] = useState<
+    Map<string, string[]>
+  >(
+    () =>
+      new Map(
+        (config.runtime_skills ?? []).map((s) => [
+          s.skill_id,
+          [...(s.channels ?? [])],
+        ]),
+      ),
   );
   // MCP servers stay opaque from the UI in v1 — we only expose the
   // kill switch and a read-only summary of what's configured.
@@ -74,12 +116,34 @@ export function RuntimeCapabilities({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  function toggleSkill(skillId: string) {
+  function toggleSkill(skillId: string, skillName: string) {
     if (!editable) return;
-    setSelectedSkillIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(skillId)) next.delete(skillId);
-      else next.add(skillId);
+    setSelectedSkills((prev) => {
+      const next = new Map(prev);
+      if (next.has(skillId)) {
+        next.delete(skillId);
+      } else {
+        // Smart default: whatsapp-* skills auto-gate to the WhatsApp
+        // channel so the operator doesn't have to remember to set it.
+        next.set(skillId, defaultChannelsFor(skillName));
+      }
+      return next;
+    });
+  }
+
+  function toggleChannel(skillId: string, channelId: string) {
+    if (!editable) return;
+    setSelectedSkills((prev) => {
+      const next = new Map(prev);
+      const current = next.get(skillId);
+      if (current === undefined) return prev; // skill not selected
+      const isSet = current.includes(channelId);
+      next.set(
+        skillId,
+        isSet
+          ? current.filter((c) => c !== channelId)
+          : [...current, channelId],
+      );
       return next;
     });
   }
@@ -88,29 +152,42 @@ export function RuntimeCapabilities({
     if (memoryTool !== config.runtime_memory_tool) return true;
     if (outcomeGrader !== config.runtime_outcome_grader) return true;
     if (mcpConnector !== config.runtime_mcp_connector) return true;
-    const prevSkillIds = new Set(
-      (config.runtime_skills ?? []).map((s) => s.skill_id),
+    const prev = new Map(
+      (config.runtime_skills ?? []).map((s) => [
+        s.skill_id,
+        [...(s.channels ?? [])],
+      ]),
     );
-    if (prevSkillIds.size !== selectedSkillIds.size) return true;
-    for (const id of selectedSkillIds) {
-      if (!prevSkillIds.has(id)) return true;
+    if (prev.size !== selectedSkills.size) return true;
+    for (const [id, channels] of selectedSkills) {
+      const prevChannels = prev.get(id);
+      if (prevChannels === undefined) return true;
+      if (!sameChannels(prevChannels, channels)) return true;
     }
     return false;
   }
 
   function onSave() {
     if (!editable) return;
-    const selectedSkills: SkillRef[] = availableSkills
-      .filter((s) => s.skill_id && selectedSkillIds.has(s.skill_id))
-      .map((s) => ({
-        skill_id: s.skill_id as string,
-        version: s.uploaded_version ?? "latest",
-      }));
+    const skillsBody: SkillRef[] = availableSkills
+      .filter((s) => s.skill_id && selectedSkills.has(s.skill_id))
+      .map((s) => {
+        const channels = selectedSkills.get(s.skill_id as string) ?? [];
+        const ref: SkillRef = {
+          skill_id: s.skill_id as string,
+          version: s.uploaded_version ?? "latest",
+        };
+        // Only attach ``channels`` when non-empty — the backend treats
+        // null/missing as "load everywhere" (back-compat with rows
+        // written before the gate landed).
+        if (channels.length > 0) ref.channels = channels;
+        return ref;
+      });
     const body: RuntimeCapabilitiesInput = {
       runtime_memory_tool: memoryTool,
       runtime_outcome_grader: outcomeGrader,
       runtime_mcp_connector: mcpConnector,
-      runtime_skills: selectedSkills,
+      runtime_skills: skillsBody,
       runtime_mcp_servers: mcpServers,
     };
     startTransition(async () => {
@@ -155,8 +232,9 @@ export function RuntimeCapabilities({
 
         <SkillsPicker
           skills={availableSkills}
-          selectedSkillIds={selectedSkillIds}
-          onToggle={toggleSkill}
+          selectedSkills={selectedSkills}
+          onToggleSkill={toggleSkill}
+          onToggleChannel={toggleChannel}
           disabled={!editable}
         />
 
@@ -261,13 +339,15 @@ function ToggleRow({
 
 function SkillsPicker({
   skills,
-  selectedSkillIds,
-  onToggle,
+  selectedSkills,
+  onToggleSkill,
+  onToggleChannel,
   disabled,
 }: {
   skills: AvailableSkill[];
-  selectedSkillIds: Set<string>;
-  onToggle: (skillId: string) => void;
+  selectedSkills: Map<string, string[]>;
+  onToggleSkill: (skillId: string, skillName: string) => void;
+  onToggleChannel: (skillId: string, channelId: string) => void;
   disabled?: boolean;
 }) {
   if (skills.length === 0) {
@@ -285,58 +365,123 @@ function SkillsPicker({
         <p className="text-sm font-medium">Anthropic Skills</p>
         <p className="text-xs text-muted-foreground">
           Patterns reusables que reducen el tamaño del system prompt. Selecciona
-          las que aplican al vertical de este tenant.
+          las que aplican al vertical de este tenant. Para cada skill podés
+          limitar en qué canales se carga (ej. una skill de WhatsApp no
+          debería cargarse en el chat web del admin).
         </p>
       </div>
       <div className="space-y-2">
         {skills.map((skill) => {
           const uploaded = skill.skill_id != null;
-          const checked = uploaded && selectedSkillIds.has(skill.skill_id!);
+          const skillChannels = uploaded
+            ? selectedSkills.get(skill.skill_id!) ?? null
+            : null;
+          const checked = skillChannels !== null;
           const rowDisabled = disabled || !uploaded;
           return (
             <div
               key={skill.name}
-              className="flex items-start gap-3 rounded-md border p-3"
+              className="rounded-md border p-3"
             >
-              <Checkbox
-                id={`skill-${skill.name}`}
-                checked={checked}
-                onCheckedChange={() =>
-                  skill.skill_id && onToggle(skill.skill_id)
-                }
-                disabled={rowDisabled}
-                className="mt-0.5"
-              />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <Label
-                    htmlFor={`skill-${skill.name}`}
-                    className="font-mono text-sm font-medium"
-                  >
-                    {skill.name}
-                  </Label>
-                  {uploaded ? (
-                    <Badge variant="secondary">
-                      v{skill.uploaded_version ?? skill.local_version}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">No uploadeada</Badge>
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id={`skill-${skill.name}`}
+                  checked={checked}
+                  onCheckedChange={() =>
+                    skill.skill_id &&
+                    onToggleSkill(skill.skill_id, skill.name)
+                  }
+                  disabled={rowDisabled}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Label
+                      htmlFor={`skill-${skill.name}`}
+                      className="font-mono text-sm font-medium"
+                    >
+                      {skill.name}
+                    </Label>
+                    {uploaded ? (
+                      <Badge variant="secondary">
+                        v{skill.uploaded_version ?? skill.local_version}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">No uploadeada</Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {skill.description || "(sin descripción)"}
+                  </p>
+                  {!uploaded && (
+                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                      Antes de asignar, correr{" "}
+                      <code>
+                        uv run python apps/worker/scripts/upload_skill.py --skill{" "}
+                        {skill.name} --create
+                      </code>
+                    </p>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {skill.description || "(sin descripción)"}
-                </p>
-                {!uploaded && (
-                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                    Antes de asignar, correr{" "}
-                    <code>
-                      uv run python apps/worker/scripts/upload_skill.py --skill{" "}
-                      {skill.name} --create
-                    </code>
-                  </p>
-                )}
               </div>
+              {checked && skill.skill_id && (
+                <ChannelGatePicker
+                  skillId={skill.skill_id}
+                  selected={skillChannels ?? []}
+                  onToggle={onToggleChannel}
+                  disabled={rowDisabled}
+                />
+              )}
             </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ChannelGatePicker({
+  skillId,
+  selected,
+  onToggle,
+  disabled,
+}: {
+  skillId: string;
+  selected: string[];
+  onToggle: (skillId: string, channelId: string) => void;
+  disabled?: boolean;
+}) {
+  const all = selected.length === 0;
+  return (
+    <div className="mt-3 ml-7 rounded-md bg-muted/30 p-2">
+      <p className="text-xs font-medium text-muted-foreground">
+        Limitar a canales
+        {all && (
+          <span className="ml-1 font-normal italic">
+            · sin filtro (carga en todos los canales)
+          </span>
+        )}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {KNOWN_CHANNELS.map(({ id, label }) => {
+          const isOn = selected.includes(id);
+          return (
+            <button
+              key={id}
+              type="button"
+              disabled={disabled}
+              onClick={() => onToggle(skillId, id)}
+              data-testid={`channel-toggle-${skillId}-${id}`}
+              className={
+                "rounded-full border px-2.5 py-0.5 text-xs transition-colors " +
+                (isOn
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-input bg-background hover:bg-muted") +
+                (disabled ? " cursor-not-allowed opacity-50" : " cursor-pointer")
+              }
+            >
+              {label}
+            </button>
           );
         })}
       </div>

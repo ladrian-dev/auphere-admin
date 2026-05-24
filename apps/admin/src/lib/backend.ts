@@ -207,6 +207,11 @@ export type ChannelOut = {
 export type SkillRef = {
   skill_id: string;
   version: string;
+  /** Optional channel-gate. When non-empty, the skill is only injected
+   *  on turns where ``state.channel_type`` matches one of these. Empty
+   *  / undefined = load on every channel (back-compat with skills
+   *  uploaded before the gate landed). */
+  channels?: string[] | null;
 };
 
 export type McpServerRef = {
