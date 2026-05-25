@@ -39,6 +39,8 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
+from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudClient
 from nexus_channels.whatsapp_ycloud.signature import (
     YCloudSignatureError,
     verify_ycloud_signature,
@@ -51,9 +53,16 @@ from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.config import get_settings
 from nexus_api.core.logging_context import bind_tenant
 from nexus_api.core.tenant_context import apply_tenant_to_session
-from nexus_api.db.models import OwnerConsultation, OwnerPhoneIndex
+from nexus_api.db.models import (
+    Conversation,
+    OwnerConsultation,
+    OwnerPhoneIndex,
+    Tenant,
+    TenantStatus,
+)
 from nexus_api.repositories.auphere_channels import resolve_channel_for_inbound
 from nexus_api.services.owner_command_parser import (
+    ParsedOwnerMessage,
     parse_owner_message,
 )
 
@@ -72,6 +81,87 @@ def _normalize_e164(phone: str) -> str:
     """Strip whitespace; keep the leading ``+`` if present. YCloud sends
     phones in E.164 already so this is mostly defensive."""
     return phone.strip()
+
+
+# ── Phase 2 — slash-command vocabulary surfaced to the owner ────────────
+
+_HELP_TEXT = (
+    "Comandos disponibles:\n"
+    "/yes — confirmar la consulta abierta\n"
+    "/no — rechazar la consulta abierta\n"
+    "/done — marcar la consulta como resuelta (ya respondiste fuera de WhatsApp)\n"
+    "/handoff — tomar control de la conversación con el cliente (agente queda silenciado)\n"
+    "/pause — pausar todos los agentes de tu negocio\n"
+    "/help — mostrar este mensaje"
+)
+
+_NO_OPEN_CONSULTATION_TEXT = (
+    "No tenés ninguna consulta abierta de tu agente ahora mismo.\n\n"
+    "Si querés pausar al agente o tomar control de una conversación, "
+    "podés hacerlo desde el panel de administración. Escribí /help para "
+    "ver los comandos disponibles."
+)
+
+# Phase 2 TOFU — Trust On First Use. When the admin registers an owner
+# phone, we wait for an explicit ``/yes`` from that phone before
+# unlocking the full surface. Until then we only reply with these
+# instructions.
+_TOFU_WELCOME_TEXT = (
+    "Hola, soy Auphere 👋\n\n"
+    "Tu número fue registrado como dueño/encargado de este negocio. "
+    "Antes de empezar a recibir consultas del agente, necesito que "
+    "confirmes que sos vos.\n\n"
+    "Respondé /yes para activar tu canal."
+)
+
+_TOFU_CONFIRMED_TEXT = (
+    "Confirmado ✅ tu canal está activo.\n\n"
+    "Cuando el agente necesite tu input te voy a escribir por acá. "
+    "Escribí /help para ver los comandos disponibles."
+)
+
+
+def _build_ycloud_adapter() -> WhatsAppYCloudAdapter:
+    """Construct a YCloud adapter for sending free-form text replies to
+    the owner. Override target for tests via
+    ``app.dependency_overrides``."""
+    settings = get_settings()
+    client = YCloudClient(
+        api_key=settings.ycloud_api_key,
+        base_url=settings.ycloud_api_base_url,
+    )
+    return WhatsAppYCloudAdapter(client)
+
+
+async def _send_owner_reply(
+    *,
+    from_phone: str,
+    to_phone: str,
+    text: str,
+    tenant_id: uuid.UUID | None = None,
+) -> None:
+    """Best-effort free-form reply to the owner over WhatsApp.
+
+    Used for slash-command acknowledgements, the "no open consultation"
+    notice, and the TOFU welcome. Failures are non-fatal: we never want
+    the webhook to 5xx because the reply failed — the BSP retries
+    inbounds aggressively and a 5xx would re-deliver the same message.
+    """
+    adapter = _build_ycloud_adapter()
+    try:
+        await adapter.send_text(
+            from_phone=from_phone,
+            recipient=to_phone,
+            text=text,
+            tenant_id=tenant_id or uuid.UUID(int=0),
+            channel_id=uuid.UUID(int=0),  # backchannel — no per-tenant channel row
+        )
+    except Exception as exc:
+        log.warning(
+            "owner_channel.reply_failed",
+            to=_mask_phone(to_phone),
+            error=str(exc)[:200],
+        )
 
 
 def _mask_phone(phone: str) -> str:
@@ -186,6 +276,7 @@ async def auphere_owner_inbound(
         return {"status": "ignored:inactive_phone"}
 
     tenant_id: uuid.UUID = idx.tenant_id
+    is_confirmed = idx.confirmed_at is not None
     bind_tenant(tenant_id)
 
     if session.in_transaction():
@@ -194,38 +285,129 @@ async def auphere_owner_inbound(
     parsed = parse_owner_message(text)
     if parsed.kind == "empty":
         return {"status": "ignored:empty"}
+
+    # Phase 2 TOFU — refuse to drive consultations / slash side effects
+    # until the owner has confirmed they're the right person on this
+    # number. The admin registers the phone in the panel; the first
+    # ``/yes`` from that phone stamps ``confirmed_at`` and unlocks the
+    # rest of the surface. Existing Phase 1 owners were backfilled by
+    # migration 0043 so they bypass this check.
+    if not is_confirmed:
+        if parsed.kind == "yes":
+            # Re-fetch under a fresh transaction so the UPDATE rides
+            # the session's normal autocommit boundary instead of
+            # stamping a stale, expired-after-rollback identity.
+            async with session.begin():
+                idx_fresh = await session.get(OwnerPhoneIndex, sender)
+                if idx_fresh is not None:
+                    idx_fresh.confirmed_at = datetime.now(UTC)
+            await _send_owner_reply(
+                from_phone=channel.phone_e164,
+                to_phone=sender,
+                text=_TOFU_CONFIRMED_TEXT,
+                tenant_id=tenant_id,
+            )
+            log.info(
+                "owner_channel.tofu_confirmed",
+                tenant_id=str(tenant_id),
+                phone=_mask_phone(sender),
+            )
+            return {"status": "tofu_confirmed"}
+
+        await _send_owner_reply(
+            from_phone=channel.phone_e164,
+            to_phone=sender,
+            text=_TOFU_WELCOME_TEXT,
+            tenant_id=tenant_id,
+        )
+        log.info(
+            "owner_channel.tofu_pending",
+            tenant_id=str(tenant_id),
+            phone=_mask_phone(sender),
+            command_kind=parsed.kind,
+        )
+        return {"status": "tofu_pending"}
+
+    # /help is special — never touches a consultation, always replies.
+    if parsed.kind == "help":
+        await _send_owner_reply(
+            from_phone=channel.phone_e164,
+            to_phone=sender,
+            text=_HELP_TEXT,
+            tenant_id=tenant_id,
+        )
+        log.info("owner_channel.help_sent", tenant_id=str(tenant_id))
+        return {"status": "help_sent"}
+
+    # Unknown slash verb — reply with help so the owner learns the
+    # vocabulary instead of having their message silently swallowed.
     if parsed.kind == "unknown_command":
-        # Phase 2 implements slash commands. For Phase 1 we surface them
-        # via logs so the operator can spot owners trying to use them.
+        await _send_owner_reply(
+            from_phone=channel.phone_e164,
+            to_phone=sender,
+            text=(
+                f"No reconozco el comando /{parsed.slash_verb}.\n\n{_HELP_TEXT}"
+            ),
+            tenant_id=tenant_id,
+        )
         log.info(
             "owner_channel.unknown_command",
             tenant_id=str(tenant_id),
             verb=parsed.slash_verb,
         )
-        return {"status": "ignored:slash_unsupported"}
+        return {"status": "unknown_command_replied"}
 
+    # Everything else (free_text / yes / no / done / handoff / pause)
+    # requires an open consultation. Look it up under the tenant scope.
     async with session.begin():
         await apply_tenant_to_session(session, tenant_id)
         consultation = await _resolve_open_consultation(session, parsed.free_text)
         if consultation is None:
+            # Phase 2 — reply explaining instead of dropping silently.
+            # Two cases:
+            # (a) the owner sent free text out of the blue ("hola che");
+            # (b) the owner sent a slash command but we have no open
+            #     consultation to apply it to (handoff/pause/yes/no/done).
+            #
+            # Both deserve the same answer: "no abierta + cómo seguir".
+            # /handoff and /pause are the exception — they don't NEED a
+            # consultation to be useful, but the side effects (toggle
+            # agent_active on a specific conversation, pause the whole
+            # tenant) need scope that only an open consultation provides.
+            # The owner can still pause from the admin panel.
             log.info(
                 "owner_channel.no_matching_consultation",
                 tenant_id=str(tenant_id),
                 phone=_mask_phone(sender),
+                command_kind=parsed.kind,
             )
-            return {"status": "ignored:no_open_consultation"}
+            await _send_owner_reply(
+                from_phone=channel.phone_e164,
+                to_phone=sender,
+                text=_NO_OPEN_CONSULTATION_TEXT,
+                tenant_id=tenant_id,
+            )
+            return {"status": "no_open_consultation_replied"}
 
         consultation.owner_response_text = parsed.free_text
         consultation.owner_response_at = datetime.now(UTC)
         consultation.owner_command_kind = parsed.kind
         consultation.status = "answered"
         consultation_id = consultation.id
+        conv_id_for_handoff = consultation.conversation_id
+
+        # Phase 2 — slash-command side effects on the tenant world.
+        side_effect = await _apply_slash_side_effect(
+            session,
+            tenant_id=tenant_id,
+            parsed=parsed,
+            conversation_id=conv_id_for_handoff,
+        )
 
     # Outside the transaction — enqueue the fanout. Stream entries
     # survive a Redis restart only via AOF/RDB; the underlying row in
-    # ``owner_consultations`` already has ``status='answered'`` so a
-    # cron sweep can re-enqueue if the entry is lost. Phase 1 ships
-    # without that sweep but the data model supports it.
+    # ``owner_consultations`` already has ``status='answered'`` so the
+    # PR-P2-4 sweep cron re-enqueues if the entry is lost.
     await redis.xadd(
         OWNER_FANOUT_STREAM,
         {
@@ -234,13 +416,103 @@ async def auphere_owner_inbound(
         },
     )
 
+    # Ack the owner with a short confirmation describing what happened.
+    ack_text = _ack_text_for(parsed, side_effect)
+    if ack_text:
+        await _send_owner_reply(
+            from_phone=channel.phone_e164,
+            to_phone=sender,
+            text=ack_text,
+            tenant_id=tenant_id,
+        )
+
     log.info(
         "owner_channel.answered",
         tenant_id=str(tenant_id),
         consultation_id=str(consultation_id),
         command_kind=parsed.kind,
+        side_effect=side_effect,
     )
-    return {"status": "queued_for_fanout"}
+    return {
+        "status": "queued_for_fanout",
+        "side_effect": side_effect or "none",
+    }
+
+
+async def _apply_slash_side_effect(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    parsed: ParsedOwnerMessage,
+    conversation_id: uuid.UUID,
+) -> str | None:
+    """Apply the tenant-world side effect of a slash command.
+
+    Called inside the tenant-scoped transaction so the writes share the
+    same commit boundary as the consultation update. Returns a short
+    label for logging / ack messages.
+
+    - ``handoff`` → set ``conversations.agent_active=false`` on the
+      conversation the consultation belongs to. The dispatcher already
+      respects this flag and stops invoking the pipeline on new
+      inbounds.
+    - ``pause`` → set ``tenants.status=paused``. The dispatcher refuses
+      ALL inbounds for the tenant. Reversible: the operator clicks
+      "Resume" in the admin panel.
+    - ``yes`` / ``no`` / ``done`` / ``free_text`` → no side effect; the
+      consultation row carries the verdict and the pipeline picks it up
+      on fanout.
+    """
+    if parsed.kind == "handoff":
+        conv = await session.get(Conversation, conversation_id)
+        if conv is not None and conv.agent_active:
+            conv.agent_active = False
+            conv.agent_active_version = (conv.agent_active_version or 0) + 1
+            conv.takeover_context = {
+                "reason": "owner /handoff",
+                "notes": parsed.slash_arg or None,
+                "started_at": datetime.now(UTC).isoformat(),
+                "operator_id": "owner:backchannel",
+            }
+        return "handoff_applied"
+    if parsed.kind == "pause":
+        # Tenant table is global (no RLS) but writing while in a
+        # tenant-scoped session is fine — the row lookup goes through
+        # the primary key.
+        tenant = await session.get(Tenant, tenant_id)
+        if tenant is not None and tenant.status != TenantStatus.PAUSED:
+            tenant.status = TenantStatus.PAUSED
+        return "tenant_paused"
+    return None
+
+
+def _ack_text_for(parsed: ParsedOwnerMessage, side_effect: str | None) -> str:
+    """Build the WhatsApp ack message the owner sees after each slash
+    command (or natural yes/no). Keep it terse — the owner doesn't want
+    a paragraph back, just confirmation.
+    """
+    if parsed.kind == "yes":
+        return "Recibido ✅ marqué la consulta como confirmada."
+    if parsed.kind == "no":
+        return "Recibido ❌ marqué la consulta como rechazada."
+    if parsed.kind == "done":
+        return "Marqué la consulta como resuelta. Gracias."
+    if parsed.kind == "handoff":
+        return (
+            "Tomaste control de la conversación con el cliente. El agente "
+            "queda silenciado hasta que vuelvas a activarlo desde el panel."
+        )
+    if parsed.kind == "pause":
+        return (
+            "Pausé todos tus agentes. Ninguna conversación nueva va a recibir "
+            "respuesta automática hasta que reanudes desde el panel."
+        )
+    if parsed.kind == "free_text":
+        # The pipeline will pick up the free_text via fanout; no ack
+        # needed (the customer is the one who'll see the agent's
+        # downstream message).
+        return ""
+    return ""
 
 
 async def _resolve_open_consultation(session: AsyncSession, text: str) -> OwnerConsultation | None:

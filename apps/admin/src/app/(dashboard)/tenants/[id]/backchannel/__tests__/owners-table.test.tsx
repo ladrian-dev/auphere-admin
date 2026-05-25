@@ -17,6 +17,7 @@ function makeOwner(o: Partial<OwnerPhoneIndexOut> = {}): OwnerPhoneIndexOut {
     active: true,
     added_at: "2026-05-24T12:00:00Z",
     auphere_channel_id: null,
+    confirmed_at: "2026-05-24T12:00:00Z",
     ...o,
   };
 }

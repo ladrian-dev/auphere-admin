@@ -1,23 +1,26 @@
 """Owner inbound message parser.
 
-The owner sends free-form text (or, in Phase 2, slash commands) over
-WhatsApp. This module turns that text into a tagged
-:class:`ParsedOwnerMessage` the webhook handler can route on.
+The owner sends free-form text or slash commands over WhatsApp. This
+module turns that text into a tagged :class:`ParsedOwnerMessage` the
+webhook handler can route on.
 
-Phase 1 scope (per ADR-018 + ``architecture/owner-backchannel.md`` §13):
-- ``free_text`` — anything that doesn't match a yes / no shortcut.
-- ``yes`` — unambiguous affirmatives (sí, ok, dale, listo, hecho).
-- ``no`` — unambiguous negatives.
-- ``unknown_command`` — recognised slash prefix but the verb is not in
-  the Phase 1 set; the handler should reply "use /help" but Phase 1 has
-  no slash verbs implemented, so any slash command degrades to
-  ``unknown_command``.
+Phase 1 + Phase 2 vocabulary:
+
+- ``free_text`` — anything that doesn't match a yes/no shortcut or a
+  known slash verb.
+- ``yes`` / ``no`` — unambiguous affirmatives/negatives (sí, ok, dale,
+  listo / no, nope, negativo). Both natural and ``/yes`` / ``/no``
+  shortcuts collapse to these kinds.
+- Phase 2 slash kinds — ``done``, ``handoff``, ``pause``, ``help``.
+  ``slash_verb`` is set to the literal verb on every slash kind so the
+  webhook can build an accurate ack message.
+- ``unknown_command`` — slash with a verb not in the recognised set;
+  the webhook replies with the help list.
 
 The parser is intentionally **conservative**: borderline messages
 ("hmm puede ser") classify as ``free_text``, not as a yes/no. The
 agent sees the literal text in the fanout system note and can ask the
-customer for clarification if needed — that is much safer than
-mis-classifying.
+customer for clarification if needed — much safer than mis-classifying.
 """
 
 from __future__ import annotations
@@ -63,16 +66,29 @@ _NO_TOKENS = frozenset(
 )
 
 
+# Slash verbs that map 1:1 to a ``kind``. Both ``yes`` and ``no``
+# collapse into the same kinds as their natural-language counterparts
+# so the dispatch table is simpler.
+_SLASH_VERB_KIND: dict[str, str] = {
+    "yes": "yes",
+    "no": "no",
+    "done": "done",
+    "handoff": "handoff",
+    "pause": "pause",
+    "help": "help",
+}
+
+
 @dataclass(frozen=True)
 class ParsedOwnerMessage:
     """Result of parsing a single owner inbound text.
 
     ``kind`` is the routing label the handler dispatches on. ``free_text``
-    carries the (stripped) original text. ``yes`` / ``no`` keep the
-    original text in ``free_text`` for the audit log.
+    carries the (stripped) original text. ``yes`` / ``no`` / slash kinds
+    keep the original text in ``free_text`` for the audit log.
     """
 
-    kind: str  # 'free_text' | 'yes' | 'no' | 'unknown_command' | 'empty'
+    kind: str  # 'free_text' | 'yes' | 'no' | 'done' | 'handoff' | 'pause' | 'help' | 'unknown_command' | 'empty'
     free_text: str = ""
     slash_verb: str | None = None
     slash_arg: str = ""
@@ -90,15 +106,16 @@ def parse_owner_message(text: str) -> ParsedOwnerMessage:
     if not stripped:
         return ParsedOwnerMessage(kind="empty")
 
-    # Slash commands — Phase 2 will route the recognised verbs. Phase 1
-    # acknowledges that the owner tried a slash command but cannot act
-    # on it; the webhook handler replies with a "not yet supported" note.
+    # Slash commands — recognised verbs route to dedicated kinds; an
+    # unknown verb returns ``unknown_command`` so the webhook can reply
+    # with the help list rather than silently swallow it.
     m = _COMMAND_RE.match(stripped)
     if m:
         verb = (m.group(1) or "").lower()
         arg = (m.group(2) or "").strip()
+        kind = _SLASH_VERB_KIND.get(verb, "unknown_command")
         return ParsedOwnerMessage(
-            kind="unknown_command",
+            kind=kind,
             free_text=stripped,
             slash_verb=verb,
             slash_arg=arg,

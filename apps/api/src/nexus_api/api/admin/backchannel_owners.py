@@ -48,6 +48,7 @@ def _to_out(row: OwnerPhoneIndex) -> OwnerPhoneIndexOut:
         active=row.active,
         added_at=row.added_at,
         auphere_channel_id=row.auphere_channel_id,
+        confirmed_at=row.confirmed_at,
     )
 
 

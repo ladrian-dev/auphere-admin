@@ -76,18 +76,41 @@ def test_none_is_empty() -> None:
     assert parse_owner_message(None).kind == "empty"  # type: ignore[arg-type]
 
 
-def test_slash_command_unsupported_in_phase_1() -> None:
-    parsed = parse_owner_message("/handoff")
-    assert parsed.kind == "unknown_command"
-    assert parsed.slash_verb == "handoff"
-    assert parsed.slash_arg == ""
+@pytest.mark.parametrize(
+    "text,expected_kind",
+    [
+        ("/yes", "yes"),
+        ("/no", "no"),
+        ("/done", "done"),
+        ("/handoff", "handoff"),
+        ("/pause", "pause"),
+        ("/help", "help"),
+        ("/YES", "yes"),
+        ("/Done", "done"),
+    ],
+)
+def test_recognised_slash_verbs_route_to_specific_kinds(
+    text: str, expected_kind: str
+) -> None:
+    parsed = parse_owner_message(text)
+    assert parsed.kind == expected_kind
+    assert parsed.slash_verb == text.lstrip("/").lower()
 
 
-def test_slash_command_with_argument() -> None:
+def test_unknown_slash_command_returns_unknown_command() -> None:
+    """A slash verb the dispatcher doesn't know about still parses as a
+    slash command — the webhook replies with the help list rather than
+    swallowing the message."""
     parsed = parse_owner_message("/responde Decile que llegue 10 minutos antes")
     assert parsed.kind == "unknown_command"
     assert parsed.slash_verb == "responde"
     assert parsed.slash_arg == "Decile que llegue 10 minutos antes"
+
+
+def test_slash_command_with_argument_preserves_arg() -> None:
+    parsed = parse_owner_message("/done lo confirmé por teléfono")
+    assert parsed.kind == "done"
+    assert parsed.slash_arg == "lo confirmé por teléfono"
 
 
 def test_parsed_dataclass_is_immutable() -> None:

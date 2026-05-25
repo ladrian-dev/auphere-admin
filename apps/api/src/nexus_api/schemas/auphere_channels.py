@@ -153,6 +153,10 @@ class OwnerPhoneIndexOut(BaseModel):
     active: bool
     added_at: datetime
     auphere_channel_id: uuid.UUID | None
+    # Phase 2 TOFU — NULL until the owner sends ``/yes`` on the
+    # registered phone. The panel surfaces "pendiente de confirmación"
+    # for rows where this is still NULL.
+    confirmed_at: datetime | None = None
 
 
 class OwnerPhoneIndexCreateIn(BaseModel):

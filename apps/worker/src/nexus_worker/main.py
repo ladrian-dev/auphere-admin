@@ -58,6 +58,11 @@ from nexus_worker.streams.memory_versions_retention import (
 from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
 from nexus_worker.streams.operator_alerts import run_operator_alerter
 from nexus_worker.streams.outbound import run_outbound_dispatcher
+from nexus_worker.streams.owner_consultation_timeout_cron import (
+    run_owner_consultation_timeout_sweep,
+)
+from nexus_worker.streams.owner_fanout import run_owner_fanout_consumer
+from nexus_worker.streams.owner_fanout_sweep import run_owner_fanout_sweep
 from nexus_worker.streams.reminder_cron import run_reminder_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
 
@@ -206,6 +211,35 @@ async def _amain() -> None:
             ),
             name="memory-versions-retention-cron",
         )
+        # Phase 2 backchannel — three coordinating tasks:
+        #
+        # 1) ``owner-fanout-consumer`` drains ``nexus:owner_fanout`` and
+        #    re-enters the pipeline with the owner's reply in scope.
+        # 2) ``owner-consultation-timeout-sweep`` enforces the per-tenant
+        #    SLA on rows the owner never answered (re-send + park as
+        #    timed_out).
+        # 3) ``owner-fanout-sweep`` covers the durability hole between the
+        #    webhook XADD and the consumer ack: rows that are
+        #    ``status='answered'`` but never got ``result_applied_at``
+        #    stamped get re-enqueued, bounded by an age window so old
+        #    answers don't suddenly surface to the customer.
+        owner_fanout_consumer_task = asyncio.create_task(
+            run_owner_fanout_consumer(
+                redis,
+                pipeline,
+                consumer_name=worker_settings.inbound_consumer_name + ":ownerfanout",
+                stop=stop,
+            ),
+            name="owner-fanout-consumer",
+        )
+        owner_timeout_task = asyncio.create_task(
+            run_owner_consultation_timeout_sweep(stop=stop),
+            name="owner-consultation-timeout-sweep",
+        )
+        owner_fanout_sweep_task = asyncio.create_task(
+            run_owner_fanout_sweep(redis, stop=stop),
+            name="owner-fanout-sweep",
+        )
         try:
             await asyncio.gather(
                 consumer_task,
@@ -221,6 +255,9 @@ async def _amain() -> None:
                 async_booking_task,
                 continuous_eval_task,
                 memory_retention_task,
+                owner_fanout_consumer_task,
+                owner_timeout_task,
+                owner_fanout_sweep_task,
             )
         finally:
             await ycloud_client.close()

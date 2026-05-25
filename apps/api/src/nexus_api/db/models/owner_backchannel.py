@@ -96,6 +96,15 @@ class OwnerConsultation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base)
 
     created_by: Mapped[str] = mapped_column(String(60), nullable=False)
 
+    # Migration 0042 (Phase 2) — fanout durability. Set by the worker
+    # ``owner_fanout`` consumer once the pipeline re-invocation finished
+    # successfully. NULL on rows that were answered but the fanout did
+    # not complete (worker crash, Redis loss). The sweep cron
+    # re-publishes such rows after ``owner_response_at + 5min``.
+    result_applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
 
 class OwnerPhoneIndex(Base):
     """Global ``phone_e164 → tenant_id`` lookup.
@@ -126,6 +135,15 @@ class OwnerPhoneIndex(Base):
         UUID(as_uuid=True),
         ForeignKey("auphere_owner_channels.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    # Migration 0043 — Phase 2 TOFU. Set on the first ``/yes`` from the
+    # registered phone after admin registration. Until this is non-NULL
+    # the webhook refuses to drive consultations or apply slash side
+    # effects — only an instructions reply goes out. Existing Phase 1
+    # owners were backfilled to ``added_at`` by the migration so they
+    # stay operational.
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

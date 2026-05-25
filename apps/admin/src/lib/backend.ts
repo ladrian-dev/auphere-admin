@@ -559,6 +559,10 @@ export type OwnerPhoneIndexOut = {
   active: boolean;
   added_at: string;
   auphere_channel_id: string | null;
+  /** Phase 2 TOFU — NULL until the owner sends ``/yes`` on the
+   *  registered phone. The panel surfaces "pendiente de confirmación"
+   *  for rows where this is still NULL. */
+  confirmed_at: string | null;
 };
 
 export type BackchannelOwnerCreateInput = {

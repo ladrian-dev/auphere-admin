@@ -38,7 +38,7 @@ from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Channel, Conversation, Customer, OwnerConsultation
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
-from sqlalchemy import select
+from sqlalchemy import select, update as sa_update
 
 from nexus_worker.runtime.state import new_state
 from nexus_worker.runtime.thread_id import make_thread_id
@@ -162,6 +162,26 @@ async def process_owner_fanout(
         thread_id=thread_id,
     )
     final = await pipeline.ainvoke(state, config=config)
+
+    # Phase 2 — record successful fanout application so the sweep cron
+    # doesn't re-publish this entry. We do the write in a fresh scoped
+    # session because the original transaction was closed before the
+    # pipeline ran (LangGraph state + LLM call latency would otherwise
+    # hold the transaction open across minutes).
+    from datetime import UTC as _UTC
+    from datetime import datetime as _dt
+
+    async with sm() as cleanup_session, tenant_scoped_session(
+        cleanup_session, tenant_uuid
+    ):
+        await cleanup_session.execute(
+            sa_update(OwnerConsultation)
+            .where(OwnerConsultation.id == consultation_id)
+            .where(OwnerConsultation.result_applied_at.is_(None))
+            .values(result_applied_at=_dt.now(_UTC))
+        )
+        await cleanup_session.commit()
+
     return dict(final)
 
 
