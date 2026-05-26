@@ -15,6 +15,30 @@
     "whatsapp-native-components": {
       "skill_id": "skill_01AqU1ZcZ7WFePZDSv9xFoM9",
       "version": "1779632739322930"
+    },
+    "medical-claims-discipline": {
+      "skill_id": "skill_01Ey8EgnJJAMpFyzCiNoDAgv",
+      "version": "1779800860324696"
+    },
+    "pre-op-screening": {
+      "skill_id": "skill_014qsaKSfwUKgUnvdi9qNgTF",
+      "version": "1779800886848281"
+    },
+    "before-after-photos": {
+      "skill_id": "skill_01GhG8qbyMDd1DdYkSuPK4zR",
+      "version": "1779800889129442"
+    },
+    "phi-redaction": {
+      "skill_id": "skill_013SU69EdnW9j2dyRZaUBwVF",
+      "version": "1779800891716933"
+    },
+    "post-op-symptom-triage": {
+      "skill_id": "skill_017bMxELjhGk9xU5exgebi11",
+      "version": "1779800894072248"
+    },
+    "aesthetic-procedures-kb": {
+      "skill_id": "skill_01KuE3eWrdDmhB2yxYLB2QKx",
+      "version": "1779800896557317"
     }
   },
   "_doc": "Manifest of Anthropic Skills uploaded by this repo. Maps the local skill_name to the skill_id Anthropic returned and the latest pinned version. The upload_skill.py script writes here; pipeline reads it to know the skill_id for a given name. Empty initially — fill via `apps/worker/scripts/upload_skill.py` with a real ANTHROPIC_API_KEY."
