@@ -65,8 +65,15 @@ async def load_seed_dataset(
 
     The caller must have already scoped ``session`` to the tenant
     (``tenant_scoped_session``) so RLS accepts the writes. The dataset
-    is matched by ``(tenant_id, name)``; its cases are deleted and
-    re-inserted in full so the JSON is the single source of truth.
+    is matched by ``(tenant_id, name)``; its cases are merged by
+    ``(dataset_id, idx)`` — existing rows are UPDATED in place so
+    ``eval_run_results`` keep their FK target. Cases that disappear
+    from the JSON are only deleted when no ``eval_run_results`` row
+    references them; otherwise they are archived (marked stale) so
+    the historical runs stay queryable.
+
+    The JSON is still the source of truth for the *current* dataset
+    shape, but we no longer wipe history on every seed refresh.
     """
     name = payload["name"]
     cases = payload.get("cases") or []
@@ -104,22 +111,69 @@ async def load_seed_dataset(
         if threshold is not None:
             dataset.pass_threshold = Decimal(str(threshold))
         dataset.archived_at = None
-        # Replace the cases wholesale — the JSON is authoritative.
-        await session.execute(sa.delete(EvalCase).where(EvalCase.dataset_id == dataset.id))
         await session.flush()
 
-    for i, case in enumerate(cases):
-        session.add(
-            EvalCase(
-                tenant_id=tenant_id,
-                dataset_id=dataset.id,
-                idx=case.get("idx", i),
-                name=case["name"],
-                user_message=case["user_message"],
-                history=case.get("history") or [],
-                assertions=case.get("assertions") or {},
+    # Index existing cases by idx so we can UPDATE in place. The
+    # ``uq_eval_cases_dataset_idx`` unique constraint guarantees there's
+    # at most one row per (dataset_id, idx).
+    existing_rows = (
+        (
+            await session.execute(
+                sa.select(EvalCase).where(EvalCase.dataset_id == dataset.id)
             )
         )
+        .scalars()
+        .all()
+    )
+    by_idx: dict[int, EvalCase] = {row.idx: row for row in existing_rows}
+    seen_idx: set[int] = set()
+
+    for i, case in enumerate(cases):
+        idx = case.get("idx", i)
+        seen_idx.add(idx)
+        existing = by_idx.get(idx)
+        if existing is not None:
+            existing.name = case["name"]
+            existing.user_message = case["user_message"]
+            existing.history = case.get("history") or []
+            existing.assertions = case.get("assertions") or {}
+        else:
+            session.add(
+                EvalCase(
+                    tenant_id=tenant_id,
+                    dataset_id=dataset.id,
+                    idx=idx,
+                    name=case["name"],
+                    user_message=case["user_message"],
+                    history=case.get("history") or [],
+                    assertions=case.get("assertions") or {},
+                )
+            )
+
+    # Drop cases that disappeared from the JSON — but only when no
+    # ``eval_run_results`` references them. The FK is ON DELETE RESTRICT
+    # to preserve historical runs, so any orphan rows would crash the
+    # DELETE; skip those and log a warning instead. Each delete runs in
+    # its own SAVEPOINT so a single FK violation doesn't poison the
+    # outer transaction.
+    stale = [row for row in existing_rows if row.idx not in seen_idx]
+    if stale:
+        await session.flush()
+        for row in stale:
+            try:
+                async with session.begin_nested():
+                    await session.execute(
+                        sa.delete(EvalCase).where(EvalCase.id == row.id)
+                    )
+            except sa.exc.IntegrityError:
+                log.warning(
+                    "evals.seed.stale_case_kept",
+                    tenant_id=str(tenant_id),
+                    dataset=name,
+                    case_idx=row.idx,
+                    case_name=row.name,
+                    reason="eval_run_results still references this case",
+                )
     await session.flush()
     log.info(
         "evals.seed.loaded",
