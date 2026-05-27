@@ -38,9 +38,24 @@ import {
 
 // ── WhatsApp YCloud manual wizard ──────────────────────────────────────────
 
+// ``phone_number_id`` is optional on purpose. YCloud's SMB tier rarely
+// exposes the Meta-side phone_number_id in its dashboard; the backend
+// resolves the single phone registered under the WABA via the listing
+// endpoint when this field is left blank. When the operator does paste
+// something, validate it looks like a Meta id (numeric, 1–32 digits) to
+// catch the common mistake of pasting the E.164 phone here — the backend
+// validates this too, but failing client-side gives a tighter feedback
+// loop and skips a round-trip.
 const whatsappSchema = z.object({
   waba_id: z.string().min(1, "Requerido").max(64),
-  phone_number_id: z.string().min(1, "Requerido").max(64),
+  phone_number_id: z
+    .string()
+    .max(64)
+    .optional()
+    .refine(
+      (v) => !v || /^\d{1,32}$/.test(v.trim()),
+      "Debe ser numérico (no es el número de teléfono — dejá vacío si tu YCloud no lo muestra)",
+    ),
 });
 
 type WhatsappFormValues = z.infer<typeof whatsappSchema>;
@@ -75,8 +90,8 @@ export function WhatsAppSetupDialog({
     setSubmitting(true);
     try {
       const result = await verifyWhatsAppAction(
-        values.waba_id,
-        values.phone_number_id,
+        values.waba_id.trim(),
+        values.phone_number_id?.trim() || undefined,
       );
       if (!result.ok) {
         toast.error("YCloud rechazó la verificación", {
@@ -97,7 +112,7 @@ export function WhatsAppSetupDialog({
     try {
       const result = await connectWhatsAppSetupAction(tenantId, {
         waba_id: preview.waba_id,
-        phone_number_id: preview.phone_number_id,
+        phone_number_id: preview.phone_number_id || undefined,
       });
       if (!result.ok) {
         toast.error("No se pudo conectar el número", {
@@ -136,8 +151,8 @@ export function WhatsAppSetupDialog({
         <DialogHeader>
           <DialogTitle>Conectar WhatsApp</DialogTitle>
           <DialogDescription>
-            Pegá el WABA ID y el Phone Number ID que copiaste del dashboard de
-            YCloud. Confirmamos contra YCloud antes de guardar.
+            Pegá el WABA ID que ves en tu dashboard de YCloud. Confirmamos
+            contra YCloud antes de guardar.
           </DialogDescription>
         </DialogHeader>
 
@@ -166,24 +181,47 @@ export function WhatsAppSetupDialog({
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="phone_number_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone Number ID</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        autoComplete="off"
-                        className="font-mono"
-                        placeholder="987654321098765"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <details className="group rounded-md border border-border bg-muted/20 [&_summary::-webkit-details-marker]:hidden">
+                <summary
+                  className="flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-[10px] font-mono uppercase text-muted-foreground"
+                  style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+                >
+                  <span>Opciones avanzadas</span>
+                  <span
+                    aria-hidden
+                    className="transition-transform duration-150 group-open:rotate-90"
+                  >
+                    ›
+                  </span>
+                </summary>
+                <div className="border-t border-border px-3 py-3">
+                  <FormField
+                    control={form.control}
+                    name="phone_number_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number ID (opcional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            value={field.value ?? ""}
+                            autoComplete="off"
+                            inputMode="numeric"
+                            className="font-mono"
+                            placeholder="987654321098765"
+                          />
+                        </FormControl>
+                        <p className="mt-1.5 text-[11px] text-muted-foreground">
+                          Solo necesario si tu WABA tiene varios números. YCloud
+                          rara vez lo muestra en SMB — dejá vacío y el backend
+                          resuelve el único número registrado.
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </details>
               <DialogFooter>
                 <Button
                   type="button"

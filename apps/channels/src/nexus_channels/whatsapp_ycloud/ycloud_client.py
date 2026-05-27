@@ -432,9 +432,9 @@ class YCloudClient:
         - ``/v2/whatsapp/phoneNumbers/{wabaId}`` — list endpoint that returns
           all phones registered under the WABA. Used when ``phone_number_id``
           is unknown: we pick the only phone or 4xx if the WABA has more
-          than one. This is the path the restaurant-ai project uses because
-          phone_number_id isn't reliably surfaced by YCloud's UI for SMB
-          customers.
+          than one. Necessary because YCloud's SMB UI doesn't reliably
+          surface the Meta phone_number_id, so the manual wizard treats
+          it as optional and falls back to this listing endpoint.
 
         Returns the same camelCase shape (``phoneNumber``, ``displayName``,
         ``verifiedName``, ``qualityRating``) regardless of which form we

@@ -899,6 +899,9 @@ export const backend = {
       { method: "POST", body },
     ),
 
+  getEvalRun: (tenantId: string, runId: string) =>
+    call<EvalRunDetail>(`/admin/tenants/${tenantId}/eval-runs/${runId}`),
+
   listEvalRuns: (
     tenantId: string,
     opts: { agent_config_version?: number; limit?: number } = {},
@@ -1148,20 +1151,25 @@ export const backend = {
   deleteTenant: (tenantId: string) =>
     call<null>(`/admin/tenants/${tenantId}`, { method: "DELETE" }),
 
-  verifyWhatsApp: (waba_id: string, phone_number_id: string) =>
-    call<WhatsAppPreview>(
-      `/admin/integrations/whatsapp/verify?waba_id=${encodeURIComponent(
-        waba_id,
-      )}&phone_number_id=${encodeURIComponent(phone_number_id)}`,
-    ),
+  // ``phone_number_id`` is optional — YCloud's SMB UI rarely exposes the
+  // Meta-side phone_number_id, and the backend falls back to the WABA
+  // listing endpoint when omitted (picks the single registered phone, or
+  // 4xx if the WABA has multiple numbers).
+  verifyWhatsApp: (waba_id: string, phone_number_id?: string) => {
+    const trimmed = (phone_number_id ?? "").trim();
+    const qs = trimmed
+      ? `waba_id=${encodeURIComponent(waba_id)}&phone_number_id=${encodeURIComponent(trimmed)}`
+      : `waba_id=${encodeURIComponent(waba_id)}`;
+    return call<WhatsAppPreview>(`/admin/integrations/whatsapp/verify?${qs}`);
+  },
 
   connectWhatsAppManual: (
     tenantId: string,
-    body: { waba_id: string; phone_number_id: string },
+    body: { waba_id: string; phone_number_id?: string },
   ) =>
     call<WhatsAppConnect>(
       `/admin/tenants/${tenantId}/integrations/whatsapp/connect-manual`,
-      { method: "POST", body },
+      { method: "POST", body: { ...body, phone_number_id: body.phone_number_id ?? "" } },
     ),
 
   /** Complete an Embedded Signup v4 flow for a tenant. The browser already

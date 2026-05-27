@@ -5,12 +5,21 @@ the REAL compiled pipeline, so the run tests inject an
 ``InMemoryProvider``-backed ``LLMRouter`` via ``set_eval_llm_router``
 (scripted: classify → ``info``, handler → a fixed text reply). The judge
 is still faked via ``set_judge_provider``. No call ever reaches LiteLLM.
+
+The trigger endpoint went async (202 + asyncio.create_task) to survive
+prod proxy timeouts on real-sized datasets. The run-related tests
+exercise that shape: POST returns immediately with ``status=pending``
+and an empty ``results`` list, then ``_await_run_terminal`` polls
+``GET /eval-runs/{id}`` until the run reaches a terminal status, then
+the assertions run against the polled detail.
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -20,6 +29,43 @@ from nexus_api.api.admin.evals import set_judge_provider
 from nexus_api.services.evals import FakeJudgeProvider, set_eval_llm_router
 
 pytestmark = pytest.mark.asyncio
+
+
+_TERMINAL = {"passed", "failed", "error"}
+
+
+async def _await_run_terminal(
+    client: Any,
+    tid: uuid.UUID,
+    run_id: str,
+    headers: dict,
+    *,
+    timeout_s: float = 5.0,
+    poll_s: float = 0.05,
+) -> dict:
+    """Poll ``GET /eval-runs/{id}`` until ``status`` is terminal.
+
+    Mirrors the polling shape the admin UI uses. Fast tight loop because
+    the fake judge + in-memory router resolve in microseconds; the
+    background ``asyncio.create_task`` just needs the event loop to come
+    back around.
+    """
+    deadline = asyncio.get_event_loop().time() + timeout_s
+    while True:
+        r = await client.get(
+            f"/admin/tenants/{tid}/eval-runs/{run_id}",
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        if body["status"] in _TERMINAL:
+            return body
+        if asyncio.get_event_loop().time() >= deadline:
+            raise AssertionError(
+                f"eval run {run_id} did not reach terminal in {timeout_s}s — "
+                f"last status={body['status']!r} body={body!r}"
+            )
+        await asyncio.sleep(poll_s)
 
 
 @pytest_asyncio.fixture
@@ -232,8 +278,11 @@ async def test_run_dataset_passing_path(
         headers=admin_headers,
         json={},
     )
-    assert r.status_code == 201, r.text
-    body = r.json()
+    assert r.status_code == 202, r.text
+    pending = r.json()
+    assert pending["status"] == "pending"
+    assert pending["results"] == []
+    body = await _await_run_terminal(client, tid, pending["id"], admin_headers)
     assert body["status"] == "passed"
     assert body["case_count"] == 1
     assert body["pass_count"] == 1
@@ -277,8 +326,8 @@ async def test_run_dataset_failing_path(
         headers=admin_headers,
         json={},
     )
-    assert r.status_code == 201, r.text
-    body = r.json()
+    assert r.status_code == 202, r.text
+    body = await _await_run_terminal(client, tid, r.json()["id"], admin_headers)
     assert body["status"] == "failed"
     assert body["fail_count"] == 1
     assert body["pass_rate"] == "0.000"
@@ -318,8 +367,8 @@ async def test_run_judge_error_marks_case_error(
         headers=admin_headers,
         json={},
     )
-    assert r.status_code == 201, r.text
-    body = r.json()
+    assert r.status_code == 202, r.text
+    body = await _await_run_terminal(client, tid, r.json()["id"], admin_headers)
     assert body["error_count"] == 1
     assert body["status"] == "error"
 
@@ -360,8 +409,8 @@ async def test_run_judge_unknown_marks_case_error(
         headers=admin_headers,
         json={},
     )
-    assert r.status_code == 201, r.text
-    body = r.json()
+    assert r.status_code == 202, r.text
+    body = await _await_run_terminal(client, tid, r.json()["id"], admin_headers)
     assert body["error_count"] == 1
     assert body["status"] == "error"
     kinds = {a["kind"] for a in body["results"][0]["assertion_results"]}
@@ -411,11 +460,13 @@ async def test_list_runs_filter_by_version(
             "assertions": {"must_emit_text": True},
         },
     )
-    await client.post(
+    triggered = await client.post(
         f"/admin/tenants/{tid}/eval-datasets/{ds['id']}/run",
         headers=admin_headers,
         json={},
     )
+    assert triggered.status_code == 202
+    await _await_run_terminal(client, tid, triggered.json()["id"], admin_headers)
     r = await client.get(
         f"/admin/tenants/{tid}/eval-runs?agent_config_version=7",
         headers=admin_headers,
@@ -513,8 +564,9 @@ async def test_promote_allowed_with_passing_run(
         headers=admin_headers,
         json={"agent_config_version": 1},
     )
-    assert run.status_code == 201, run.text
-    assert run.json()["status"] == "passed"
+    assert run.status_code == 202, run.text
+    final = await _await_run_terminal(client, tid, run.json()["id"], admin_headers)
+    assert final["status"] == "passed"
 
     r = await client.post(
         f"/admin/tenants/{tid}/agent-config/1/promote",

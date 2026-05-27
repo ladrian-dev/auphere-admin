@@ -88,7 +88,23 @@ export async function triggerRunAction(
   await requireSession();
   try {
     const r = await backend.triggerEvalRun(tenantId, datasetId, body);
+    // The endpoint returns 202 with status=pending; the real result
+    // lands when polling completes. Revalidate so "Últimos runs" picks
+    // up the new pending row immediately.
     revalidatePath(`/tenants/${tenantId}/agent`);
+    return { ok: true, data: r! };
+  } catch (e) {
+    return { ok: false, error: pluck(e) };
+  }
+}
+
+export async function getRunAction(
+  tenantId: string,
+  runId: string,
+): Promise<Result<EvalRunDetail>> {
+  await requireSession();
+  try {
+    const r = await backend.getEvalRun(tenantId, runId);
     return { ok: true, data: r! };
   } catch (e) {
     return { ok: false, error: pluck(e) };

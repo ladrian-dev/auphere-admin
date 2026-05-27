@@ -26,6 +26,7 @@ datasets get fat enough to warrant it.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated
@@ -37,6 +38,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import scoped_session_from_path
 from nexus_api.core.security import require_admin_token
+from nexus_api.core.tenant_context import tenant_scoped_session
+from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     AgentConfig,
     AgentConfigStatus,
@@ -412,10 +415,97 @@ async def delete_case(
 # ── Runs ──────────────────────────────────────────────────────────────────
 
 
+async def _run_eval_background(
+    tenant_id: uuid.UUID,
+    run_id: uuid.UUID,
+    dataset_id: uuid.UUID,
+    agent_config_id: uuid.UUID,
+    judge_provider: JudgeProvider,
+) -> None:
+    """Background driver for an eval run.
+
+    Opens its own session (the request session has already committed and
+    is gone) under ``tenant_scoped_session`` so RLS accepts the writes,
+    re-fetches the pinned entities by id, and drives ``run_eval`` to
+    completion. On any exception the run row is flipped to ``error`` with
+    a redacted message; the request handler is long gone by then.
+
+    The background task is fire-and-forget from the endpoint's view —
+    callers poll ``GET /eval-runs/{run_id}`` to see progress (the runner
+    flushes ``EvalRunResult`` rows incrementally) and final status.
+
+    Crash recovery: if the API container restarts mid-run, the EvalRun
+    stays in ``running`` with stale ``updated_at``. A future sweep cron
+    can mark such rows as ``error`` with reason ``api_restart``; for the
+    pre-promote use case the operator just re-triggers the run, which is
+    safe — datasets and cases are immutable inputs.
+    """
+    Session = get_sessionmaker()
+    try:
+        async with Session() as session:
+            async with tenant_scoped_session(session, tenant_id):
+                run = (
+                    await session.execute(sa.select(EvalRun).where(EvalRun.id == run_id))
+                ).scalar_one()
+                dataset = (
+                    await session.execute(
+                        sa.select(EvalDataset).where(EvalDataset.id == dataset_id)
+                    )
+                ).scalar_one()
+                cases = (
+                    (
+                        await session.execute(
+                            sa.select(EvalCase)
+                            .where(EvalCase.dataset_id == dataset_id)
+                            .order_by(EvalCase.idx.asc())
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                agent_config = (
+                    await session.execute(
+                        sa.select(AgentConfig).where(AgentConfig.id == agent_config_id)
+                    )
+                ).scalar_one()
+
+                await run_eval(
+                    session,
+                    tenant_id=tenant_id,
+                    run=run,
+                    dataset=dataset,
+                    cases=list(cases),
+                    agent_config=agent_config,
+                    judge_provider=judge_provider,
+                )
+    except Exception as exc:  # pragma: no cover — defensive top-level
+        log.exception(
+            "evals.run.background_aborted",
+            run_id=str(run_id),
+            tenant_id=str(tenant_id),
+            error=str(exc),
+        )
+        try:
+            async with Session() as session:
+                async with tenant_scoped_session(session, tenant_id):
+                    run = (
+                        await session.execute(
+                            sa.select(EvalRun).where(EvalRun.id == run_id)
+                        )
+                    ).scalar_one()
+                    run.status = EvalRunStatus.ERROR.value
+                    run.error_message = str(exc)[:1024]
+                    run.finished_at = datetime.now(UTC)
+        except Exception:
+            log.exception(
+                "evals.run.error_marker_failed", run_id=str(run_id)
+            )
+
+
 @router.post(
     "/tenants/{tenant_id}/eval-datasets/{dataset_id}/run",
     response_model=EvalRunDetailOut,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def trigger_run(
     tenant_id: Annotated[uuid.UUID, Path()],
@@ -425,6 +515,20 @@ async def trigger_run(
     judge_provider: JudgeProvider = Depends(get_judge_provider),
     actor: str = Depends(require_admin_token),
 ) -> EvalRunDetailOut:
+    """Trigger an eval run.
+
+    Returns 202 immediately with an ``EvalRun`` row in ``pending`` state
+    and an empty results list. The actual run drives in the background
+    (see ``_run_eval_background``); clients poll ``GET /eval-runs/{id}``
+    to see progress and final status.
+
+    Returning synchronously here was the v1 shape and broke under prod
+    proxy timeouts (Vercel server-action 60s on Pro, Cloudflare 100s)
+    once the dataset grew past ~3 cases. The runner itself stays
+    sequential — the change is purely how the HTTP request hands off
+    control to the work. The polling shape on the client side is the
+    other half of this fix.
+    """
     dataset = await _get_dataset(session, tenant_id=tenant_id, dataset_id=dataset_id)
 
     cases = (
@@ -453,6 +557,7 @@ async def trigger_run(
         agent_config_version=agent_config.version,
         agent_config_status=agent_config.status.value,
         status=EvalRunStatus.PENDING.value,
+        case_count=len(cases),
         actor=f"admin:{actor[:8]}",
         started_at=datetime.now(UTC),
     )
@@ -460,38 +565,37 @@ async def trigger_run(
     await session.flush()
     await session.refresh(run)
 
-    try:
-        await run_eval(
-            session,
-            tenant_id=tenant_id,
-            run=run,
-            dataset=dataset,
-            cases=list(cases),
-            agent_config=agent_config,
-            judge_provider=judge_provider,
-        )
-    except Exception as exc:
-        run.status = EvalRunStatus.ERROR.value
-        run.error_message = str(exc)
-        run.finished_at = datetime.now(UTC)
-        await session.flush()
-        log.exception("evals.run.aborted", run_id=str(run.id), error=str(exc))
+    run_id = run.id
+    agent_config_id = agent_config.id
 
-    await session.refresh(run)
-    results = (
-        (
-            await session.execute(
-                sa.select(EvalRunResult)
-                .where(EvalRunResult.run_id == run.id)
-                .order_by(EvalRunResult.case_idx.asc())
-            )
-        )
-        .scalars()
-        .all()
+    # Persist the pending row so the background task can read it.
+    # The dependency commits at exit — but we explicitly flush here so
+    # ``run_id`` is stable. The background coroutine is scheduled on the
+    # main loop; it'll re-open its own session under tenant_scoped_session
+    # once the request handler returns.
+    asyncio.create_task(
+        _run_eval_background(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            dataset_id=dataset.id,
+            agent_config_id=agent_config_id,
+            judge_provider=judge_provider,
+        ),
+        name=f"eval-run-{run_id}",
     )
+
+    log.info(
+        "evals.run.scheduled",
+        run_id=str(run_id),
+        tenant_id=str(tenant_id),
+        dataset_id=str(dataset.id),
+        case_count=len(cases),
+        agent_config_version=agent_config.version,
+    )
+
     return EvalRunDetailOut(
         **EvalRunOut.model_validate(run).model_dump(),
-        results=[EvalRunResultOut.model_validate(r) for r in results],
+        results=[],
     )
 
 

@@ -29,7 +29,7 @@ function toError(err: unknown): string {
 
 export async function verifyWhatsAppAction(
   waba_id: string,
-  phone_number_id: string,
+  phone_number_id?: string,
 ): Promise<ActionResult<WhatsAppPreview>> {
   await requireSession();
   try {
@@ -45,7 +45,7 @@ export async function verifyWhatsAppAction(
 
 export async function connectWhatsAppManualAction(
   tenantId: string,
-  body: { waba_id: string; phone_number_id: string },
+  body: { waba_id: string; phone_number_id?: string },
 ): Promise<ActionResult<WhatsAppConnect>> {
   await requireSession();
   try {

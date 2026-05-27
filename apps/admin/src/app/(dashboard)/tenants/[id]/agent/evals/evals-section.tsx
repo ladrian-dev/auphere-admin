@@ -11,8 +11,9 @@
  * comparison views. ADR-015 spells out the deferred features.
  */
 
-import { Beaker, Play, Plus, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { Beaker, Loader2, Play, Plus, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -46,8 +47,12 @@ import {
   createCaseAction,
   createDatasetAction,
   deleteCaseAction,
+  getRunAction,
   triggerRunAction,
 } from "./actions";
+
+const POLL_INTERVAL_MS = 3000;
+const TERMINAL_STATUSES = new Set<EvalRun["status"]>(["passed", "failed", "error"]);
 
 const STATUS_TONE: Record<EvalRun["status"], "default" | "destructive" | "secondary" | "outline"> = {
   pending: "secondary",
@@ -70,10 +75,74 @@ export function EvalsSection({
   recentRuns: EvalRun[];
   activeVersion: number | null;
 }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [createDatasetOpen, setCreateDatasetOpen] = useState(false);
   const [createCaseOpen, setCreateCaseOpen] = useState(false);
   const [runResult, setRunResult] = useState<EvalRunDetail | null>(null);
+  const lastNotifiedRunId = useRef<string | null>(null);
+  const isRunInFlight =
+    runResult !== null && !TERMINAL_STATUSES.has(runResult.status);
+
+  // Polling: while the active run is pending/running, fetch detail every
+  // POLL_INTERVAL_MS. Stops cleanly when status reaches a terminal value,
+  // when the component unmounts, or when the user triggers a new run
+  // (which resets ``runResult`` to the new pending row and the effect
+  // re-subscribes).
+  useEffect(() => {
+    if (!runResult || TERMINAL_STATUSES.has(runResult.status)) {
+      return;
+    }
+    let cancelled = false;
+    const runId = runResult.id;
+
+    const tick = async () => {
+      if (cancelled) return;
+      const res = await getRunAction(tenantId, runId);
+      if (cancelled) return;
+      if (!res.ok) {
+        // Network blip — keep polling, don't toast on every retry.
+        return;
+      }
+      setRunResult(res.data);
+      if (TERMINAL_STATUSES.has(res.data.status)) {
+        // Refresh the parent route so "Últimos runs" shows the final
+        // row. The toast fires from the dedicated terminal effect
+        // below so it can't double-fire across renders.
+        router.refresh();
+      }
+    };
+
+    const handle = window.setInterval(tick, POLL_INTERVAL_MS);
+    // Fire one immediately so the user doesn't wait the full interval
+    // for the first progress update.
+    void tick();
+    return () => {
+      cancelled = true;
+      window.clearInterval(handle);
+    };
+  }, [runResult, tenantId, router]);
+
+  // Terminal-status toast — fires once per run id when status crosses
+  // into a terminal value. Guard via ``lastNotifiedRunId`` so re-renders
+  // from polling don't repeat the toast.
+  useEffect(() => {
+    if (!runResult || !TERMINAL_STATUSES.has(runResult.status)) return;
+    if (lastNotifiedRunId.current === runResult.id) return;
+    lastNotifiedRunId.current = runResult.id;
+    const r = runResult;
+    if (r.status === "passed") {
+      toast.success(
+        `Run pasó · ${r.pass_count}/${r.case_count} · v${r.agent_config_version}`,
+      );
+    } else if (r.status === "failed") {
+      toast.warning(
+        `Run falló · ${r.pass_count}/${r.case_count} · v${r.agent_config_version}`,
+      );
+    } else {
+      toast.error(`Run con errores · ${r.error_count} casos en error`);
+    }
+  }, [runResult]);
 
   function onCreateDataset(formData: FormData) {
     const name = String(formData.get("name") ?? "").trim();
@@ -151,22 +220,16 @@ export function EvalsSection({
     start(async () => {
       const res = await triggerRunAction(tenantId, primaryDataset.id, {});
       if (!res.ok) {
-        toast.error(`Run falló: ${res.error}`);
+        toast.error(`No se pudo encolar el run: ${res.error}`);
         return;
       }
+      // The endpoint returns 202 with status=pending. The polling
+      // effect picks it up from here; terminal toast fires once when
+      // status crosses into passed/failed/error.
       setRunResult(res.data);
-      const r = res.data;
-      if (r.status === "passed") {
-        toast.success(
-          `Run pasó · ${r.pass_count}/${r.case_count} · v${r.agent_config_version}`,
-        );
-      } else if (r.status === "failed") {
-        toast.warning(
-          `Run falló · ${r.pass_count}/${r.case_count} · v${r.agent_config_version}`,
-        );
-      } else {
-        toast.error(`Run con errores · ${r.error_count} casos en error`);
-      }
+      toast.info(
+        `Run encolado · ${res.data.case_count} casos · v${res.data.agent_config_version}`,
+      );
     });
   }
 
@@ -187,12 +250,20 @@ export function EvalsSection({
             {primaryDataset && primaryDataset.cases.length > 0 ? (
               <Button
                 size="sm"
-                disabled={pending}
+                disabled={pending || isRunInFlight}
                 onClick={onRun}
                 className="inline-flex items-center gap-1.5"
               >
-                <Play className="size-3.5" />
-                {pending ? "Corriendo…" : "Run evals"}
+                {isRunInFlight ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Play className="size-3.5" />
+                )}
+                {isRunInFlight
+                  ? `Corriendo · ${(runResult?.pass_count ?? 0) + (runResult?.fail_count ?? 0) + (runResult?.error_count ?? 0)}/${runResult?.case_count ?? 0}`
+                  : pending
+                    ? "Encolando…"
+                    : "Run evals"}
               </Button>
             ) : null}
             {datasets.length === 0 ? (
@@ -232,8 +303,13 @@ export function EvalsSection({
               pending={pending}
               onDelete={onDeleteCase}
             />
+            {isRunInFlight && runResult ? (
+              <RunInFlight run={runResult} />
+            ) : null}
             <RecentRuns runs={recentRuns} activeVersion={activeVersion} />
-            {runResult ? <RunInline run={runResult} /> : null}
+            {runResult && TERMINAL_STATUSES.has(runResult.status) ? (
+              <RunInline run={runResult} />
+            ) : null}
           </>
         )}
       </CardContent>
@@ -475,6 +551,50 @@ function RecentRuns({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function RunInFlight({ run }: { run: EvalRunDetail }) {
+  const completed = run.pass_count + run.fail_count + run.error_count;
+  const total = run.case_count || run.results.length || 0;
+  const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
+  return (
+    <div
+      className="grid gap-2 rounded-md border border-border bg-card px-4 py-3"
+      aria-live="polite"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Loader2 className="size-3.5 animate-spin text-primary" />
+          <span className="text-sm font-medium">
+            Corriendo evals · v{run.agent_config_version}
+          </span>
+          <Badge variant="secondary" className="uppercase text-[10px]">
+            {run.status}
+          </Badge>
+        </div>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {completed}/{total} · {pct}%
+        </span>
+      </div>
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={completed}
+        aria-label="Progreso del run de evals"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className="h-full bg-primary transition-[width] duration-300 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        El run corre en segundo plano (background task). Esta vista se
+        actualiza sola; podés navegar y volver — el progreso continúa.
+      </p>
     </div>
   );
 }
