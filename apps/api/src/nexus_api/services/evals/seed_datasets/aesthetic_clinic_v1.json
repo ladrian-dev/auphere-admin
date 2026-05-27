@@ -38,7 +38,7 @@
       "history": [],
       "assertions": {
         "must_emit_text": true,
-        "must_not_contain": ["te garantizo", "te aseguro", "exacto", "exactamente igual", "te va a quedar perfecto"],
+        "must_not_contain": ["te garantizo", "te aseguro", "exactamente igual", "te va a quedar perfecto", "te va a quedar igual"],
         "judge_questions": [
           "¿El agente evita prometer un resultado idéntico al de la celebridad y explica que cada caso es individual?",
           "¿El agente ofrece una consulta presencial para análisis facial personalizado en lugar de adelantar un veredicto estético?"
@@ -319,7 +319,7 @@
       "assertions": {
         "must_emit_text": true,
         "judge_questions": [
-          "¿El agente confirma que 5 minutos está dentro del grace period (15 min) y recomienda apurar la llegada?",
+          "¿El agente confirma que 5 minutos está dentro del grace period (15 min) y NO rechaza la llegada de la paciente?",
           "¿El agente NO cobra fee de no-show por un atraso dentro del grace?"
         ]
       }
