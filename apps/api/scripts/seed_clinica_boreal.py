@@ -95,9 +95,27 @@ BOREAL_PLACEHOLDERS: dict[str, object] = {
     ),
     "tenant.timezone": BOREAL_TIMEZONE,
     "tenant.business_hours_label": "Lun-Vie 9-18, Sáb 9-14 (solo consultas)",
+    "tenant.saturday_label": (
+        "sábados 09:00-14:00, solo consultas pre-op — NO se aplican "
+        "inyectables, láser ni aparatología"
+    ),
     "tenant.instagram_handle": "@clinicaboreal",
     "tenant.surgery_referral_hospital": "Centro Médico Docente La Trinidad (CMDLT)",
     "tenant.surgery_referral_phone": "+58 212-949-6411",
+    "tenant.consultation_price_label": (
+        "USD 80, acreditable al procedimiento si la paciente lo concreta"
+    ),
+    "tenant.pricing_table_label": (
+        "rinoplastia USD 4.800-6.500 · mamoplastia aumentativa USD "
+        "5.500-7.200 · BBL USD 5.000-6.800 · abdominoplastia USD "
+        "5.800-7.500 · liposucción USD 3.500-5.500 · blefaroplastia "
+        "USD 2.200-3.200 · Botox desde USD 280 · ácido hialurónico "
+        "labios desde USD 380 · láser CO2 fraccionado desde USD 450"
+    ),
+    "tenant.payment_methods_label": (
+        "Zelle (USD), transferencia internacional (USD) o Pago Móvil en "
+        "bolívares al equivalente del cambio oficial del día"
+    ),
     "clinical.titular_name": "Dra. Valentina Hurtado",
     "clinical.titular_credential": (
         "Cirujana plástica, miembro titular de SVCPREM (Sociedad Venezolana "

@@ -114,9 +114,18 @@ _AESTHETIC_PLACEHOLDERS_BOREAL: dict[str, object] = {
     "tenant.address": "Av. Principal de Las Mercedes, Edificio Atlantic, Piso 4. Caracas",
     "tenant.timezone": "America/Caracas",
     "tenant.business_hours_label": "Lun-Vie 9-18, Sáb 9-14",
+    "tenant.saturday_label": "sábados 09:00-14:00, solo consultas pre-op — NO inyectables",
     "tenant.instagram_handle": "@clinicaboreal",
     "tenant.surgery_referral_hospital": "Centro Médico Docente La Trinidad (CMDLT)",
     "tenant.surgery_referral_phone": "+58 212-949-6411",
+    "tenant.consultation_price_label": "USD 80, acreditable al procedimiento",
+    "tenant.pricing_table_label": (
+        "rinoplastia USD 4.800-6.500 · mamoplastia USD 5.500-7.200 · "
+        "BBL USD 5.000-6.800"
+    ),
+    "tenant.payment_methods_label": (
+        "Zelle, transferencia internacional o Pago Móvil al cambio del día"
+    ),
     "clinical.titular_name": "Dra. Valentina Hurtado",
     "clinical.titular_credential": "Cirujana plástica, miembro titular SVCPREM",
 }

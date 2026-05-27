@@ -104,10 +104,19 @@ class JudgeProvider(Protocol):
 
 
 class LiteLLMJudgeProvider:
-    """Production judge — Haiku 4.5 via LiteLLM with cache_control on
-    the system block so subsequent questions reuse the prefix."""
+    """Production judge — Sonnet 4.6 via LiteLLM with cache_control on
+    the system block so subsequent questions reuse the prefix.
 
-    def __init__(self, model: str = "anthropic/claude-haiku-4-5") -> None:
+    Moved from Haiku 4.5 → Sonnet 4.6 on 2026-05-27 after Boreal evals
+    showed instability (17/30 vs 19/30 vs 18/30 over the same dataset).
+    The judge_questions in aesthetic_clinic_v1 demand regulatory nuance
+    (red-flag triage, off-label refusal, no-criticism-of-colleague) that
+    Haiku rated inconsistently. Sonnet evaluates with consistency at the
+    cost of ~3x judge tokens — acceptable while continuous_eval_cron is
+    disabled and runs are operator-triggered.
+    """
+
+    def __init__(self, model: str = "anthropic/claude-sonnet-4-6") -> None:
         self._model = model
 
     async def judge(

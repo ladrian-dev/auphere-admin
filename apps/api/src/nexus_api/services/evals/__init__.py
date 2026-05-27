@@ -13,7 +13,7 @@ Public surface:
 - :func:`build_eval_driver` / :func:`set_eval_llm_router` — the real-
   pipeline driver and its LLM-router test hook.
 - :class:`JudgeProvider` — Protocol for the LLM-as-judge call. Production
-  uses :class:`LiteLLMJudgeProvider` (Haiku); tests inject
+  uses :class:`LiteLLMJudgeProvider` (Sonnet); tests inject
   :class:`FakeJudgeProvider`.
 - :func:`evaluate_assertions` — pure-Python applicator for deterministic
   checks. Exposed for unit tests and for the runner.
