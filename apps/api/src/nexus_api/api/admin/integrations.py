@@ -139,14 +139,11 @@ class WhatsAppVerifyOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     phone_number: str
-    # ``phone_number_id`` may be empty when the operator paired only the
-    # WABA (YCloud's SMB onboarding doesn't always surface the phone_number_id
-    # in its UI; the platform falls back to the WABA-level listing endpoint
-    # and persists whatever id YCloud returns — empty if none). The webhook
-    # and outbound paths never use phone_number_id; tenant resolution is by
-    # ``provider_identifier`` (E.164). Keeping the field so the UI can show
-    # it when present and skip the field when not, without breaking older
-    # clients.
+    # Canonical Meta phone_number_id, as returned by YCloud in the payload
+    # ``id`` field. Empty when YCloud didn't surface one (rare). The webhook
+    # and outbound paths route by E.164 (``provider_identifier``), so an
+    # empty phone_number_id is functional — we keep it for diagnostics
+    # and the WhatsApp health cron's snapshot refresh.
     phone_number_id: str = ""
     waba_id: str
     display_name: str | None
@@ -158,22 +155,19 @@ class WhatsAppConnectManualIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     waba_id: str = Field(min_length=1, max_length=64)
-    # Optional. Leave empty (or omit) when YCloud's UI doesn't expose the
-    # Meta phone_number_id under the SMB tier; the backend resolves the
-    # single phone registered under the WABA via the listing endpoint and
-    # persists whatever ``id`` YCloud returns (often empty). Outbound sends
-    # route by E.164 (the ``from`` field of ``sendDirectly`` is the business
-    # phone), so an empty phone_number_id is functional.
-    #
-    # When provided, must be the Meta-side numeric identifier — NOT the
-    # phone number itself. The validator below rejects E.164-looking
-    # values up front so the operator sees the typo before YCloud does.
-    phone_number_id: str = Field(default="", max_length=64)
+    # E.164 phone number the operator pasted from their YCloud dashboard.
+    # YCloud SMB doesn't expose a Meta phone_number_id in its UI, and its
+    # listing endpoint ``GET /whatsapp/phoneNumbers/{wabaId}`` 404s for
+    # SMB-bound WABAs — so we make the operator paste what they always
+    # know (the phone) and use it as the second path segment of YCloud's
+    # ``GET /whatsapp/phoneNumbers/{wabaId}/{lookup}``, which soft-matches
+    # by phone number and returns the canonical id in the payload.
+    phone_number_e164: str = Field(min_length=1, max_length=20)
 
-    @field_validator("phone_number_id")
+    @field_validator("phone_number_e164")
     @classmethod
-    def _validate_phone_number_id(cls, value: str) -> str:
-        return _normalize_phone_number_id(value)
+    def _validate_phone_number_e164(cls, value: str) -> str:
+        return _normalize_phone_number_e164(value)
 
 
 class WhatsAppConnectOut(BaseModel):
@@ -189,64 +183,36 @@ class WhatsAppConnectOut(BaseModel):
     audit_log_id: uuid.UUID
 
 
-# Meta phone_number_id is a numeric identifier (15–16 digits in practice,
-# but YCloud has surfaced shorter/longer forms historically). Anything
-# that doesn't look numeric — most commonly an E.164 the operator pasted
-# into the wrong field — is rejected with a clear message before we
-# round-trip to YCloud.
-_PHONE_NUMBER_ID_RE = re.compile(r"^\d{1,32}$")
+# E.164: ``+`` followed by 8–15 digits. The ITU spec maxes out at 15
+# digits; we accept down to 8 to cover short country/area codes.
+_PHONE_E164_RE = re.compile(r"^\+\d{8,15}$")
 
 
-def _normalize_phone_number_id(value: str | None) -> str:
-    """Trim and validate the optional ``phone_number_id`` input.
+def _normalize_phone_number_e164(value: str | None) -> str:
+    """Trim, normalise whitespace, and validate the E.164 phone number.
 
-    Empty / None → ``""`` (backend resolves via WABA listing fallback).
-    Non-empty → must match ``^\\d+$``. Common operator mistake:
-    pasting the E.164 phone (``+34632719028``) into the phone_number_id
-    field. YCloud sometimes 200s on that path (soft-match) but the ``id``
-    it returns is not round-trippable, breaking the subsequent connect
-    call. Catch it here so the operator gets an actionable error.
+    Operators copy-paste this from YCloud's dashboard, which often pads
+    with spaces ("+34 632 719028"). We strip internal spaces and require
+    the canonical ``+<digits>`` form before forwarding to YCloud.
     """
-    raw = (value or "").strip()
+    raw = (value or "").strip().replace(" ", "").replace("-", "")
     if not raw:
-        return ""
-    if not _PHONE_NUMBER_ID_RE.fullmatch(raw):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "phone_number_id no es un número de teléfono — es un "
-                "identificador numérico de Meta. Si tu dashboard de YCloud "
-                "no lo muestra, dejá el campo vacío y el backend resuelve "
-                "el número registrado en la WABA."
+                "Falta el número de teléfono en formato E.164 "
+                "(empezando con + y el código de país, ej. +34632719028)."
+            ),
+        )
+    if not _PHONE_E164_RE.fullmatch(raw):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "El número debe estar en formato E.164: empieza con + "
+                "y tiene entre 8 y 15 dígitos. Ej: +34632719028."
             ),
         )
     return raw
-
-
-def _reconcile_phone_number_id(
-    *,
-    operator_input: str,
-    ycloud_id: str,
-    waba_id: str,
-) -> str:
-    """Resolve the canonical ``phone_number_id`` to persist.
-
-    Trust order: whatever YCloud returned in the payload (it's the
-    canonical id, even when the operator pasted the phone number itself
-    and YCloud soft-matched it) > what the operator typed > ``""``.
-
-    Logs a warning when the inputs diverge so we have a paper trail of
-    operator typos.
-    """
-    canonical = (ycloud_id or "").strip()
-    if canonical and operator_input and operator_input != canonical:
-        log.warning(
-            "whatsapp.phone_number_id.mismatch",
-            waba_id=waba_id,
-            operator_input=operator_input,
-            canonical=canonical,
-        )
-    return canonical or operator_input or ""
 
 
 def _build_ycloud_client() -> YCloudClient:
@@ -307,9 +273,9 @@ def _ycloud_error_to_http(exc: YCloudAPIError, *, context: str) -> HTTPException
         )
     elif exc.status_code == 404:
         detail = (
-            "YCloud no encontró el par (waba_id, phone_number_id). "
-            "Revisar que los IDs estén copiados sin espacios y que el "
-            "número esté registrado en la WABA."
+            "YCloud no encontró el número bajo este WABA. Verificar que "
+            "el WABA ID esté copiado sin espacios y que el número esté "
+            "registrado y bindeado en YCloud."
         )
     elif exc.status_code == 0:
         detail = f"YCloud transport error ({context}): {exc.message}"
@@ -325,26 +291,24 @@ def _ycloud_error_to_http(exc: YCloudAPIError, *, context: str) -> HTTPException
 )
 async def verify_whatsapp(
     waba_id: str = Query(..., min_length=1, max_length=64),
-    phone_number_id: str = Query(default="", max_length=64),
+    phone_number_e164: str = Query(..., min_length=1, max_length=20),
 ) -> WhatsAppVerifyOut:
-    """Dry-run probe of the WABA against YCloud.
+    """Dry-run probe of the WABA + phone pair against YCloud.
 
     The wizard calls this BEFORE the connect step so Lee sees a preview
     (E.164 + display_name + quality_rating) and can confirm. No DB writes.
 
-    When ``phone_number_id`` is omitted (empty string) the client falls
-    back to the WABA-level listing endpoint and resolves the single
-    registered phone — necessary because YCloud's SMB UI doesn't always
-    expose the Meta phone_number_id. When provided, it must look like a
-    Meta-side numeric id (see :func:`_normalize_phone_number_id`).
+    ``phone_number_e164`` is what the operator pastes — YCloud's SMB UI
+    doesn't expose the Meta phone_number_id, so we use the phone as the
+    second path segment of ``/whatsapp/phoneNumbers/{wabaId}/{lookup}``.
+    YCloud soft-matches and returns the canonical id in the payload.
     """
-    normalized_input = _normalize_phone_number_id(phone_number_id)
+    phone_lookup = _normalize_phone_number_e164(phone_number_e164)
     client = _build_ycloud_client()
     try:
         try:
             payload = await client.get_phone_number(
-                waba_id=waba_id,
-                phone_number_id=normalized_input or None,
+                waba_id=waba_id, phone_lookup=phone_lookup
             )
         except YCloudAPIError as exc:
             raise _ycloud_error_to_http(exc, context="get_phone_number") from exc
@@ -354,16 +318,14 @@ async def verify_whatsapp(
     if not summary["phone_number"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="YCloud devolvió una respuesta sin phoneNumber — verificar IDs",
+            detail=(
+                "YCloud devolvió una respuesta sin phoneNumber — verificar "
+                "el WABA ID y el número de teléfono."
+            ),
         )
-    resolved_phone_id = _reconcile_phone_number_id(
-        operator_input=normalized_input,
-        ycloud_id=summary["phone_number_id"],
-        waba_id=waba_id,
-    )
     return WhatsAppVerifyOut(
         phone_number=summary["phone_number"],
-        phone_number_id=resolved_phone_id,
+        phone_number_id=summary["phone_number_id"],
         waba_id=waba_id,
         display_name=summary["display_name"],
         verified_name=summary["verified_name"],
@@ -387,15 +349,13 @@ async def connect_whatsapp_manual(
     The DB invariant ``UNIQUE(type, provider_identifier)`` is global, so
     if the same E.164 already maps to a different tenant we return 409.
     """
-    # The Pydantic model already ran ``_normalize_phone_number_id`` on
-    # ``body.phone_number_id`` via the field validator, so anything that
-    # looks like an E.164 has already been rejected with 400.
+    # The Pydantic model already ran ``_normalize_phone_number_e164`` on
+    # ``body.phone_number_e164`` via the field validator.
     client = _build_ycloud_client()
     try:
         try:
             payload = await client.get_phone_number(
-                waba_id=body.waba_id,
-                phone_number_id=body.phone_number_id or None,
+                waba_id=body.waba_id, phone_lookup=body.phone_number_e164
             )
         except YCloudAPIError as exc:
             raise _ycloud_error_to_http(exc, context="get_phone_number") from exc
@@ -407,13 +367,14 @@ async def connect_whatsapp_manual(
     if not phone_number:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="YCloud devolvió una respuesta sin phoneNumber — verificar IDs",
+            detail=(
+                "YCloud devolvió una respuesta sin phoneNumber — verificar "
+                "el WABA ID y el número de teléfono."
+            ),
         )
-    resolved_phone_id = _reconcile_phone_number_id(
-        operator_input=body.phone_number_id,
-        ycloud_id=summary["phone_number_id"],
-        waba_id=body.waba_id,
-    )
+    # Persist whatever canonical id YCloud surfaced in the payload (or
+    # "" when it didn't). Outbound routes by E.164, so an empty id is fine.
+    resolved_phone_id = summary["phone_number_id"]
 
     # Look for an existing whatsapp Channel under THIS tenant. If present,
     # update in place (idempotent re-connect of the same number). If a

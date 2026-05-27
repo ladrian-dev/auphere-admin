@@ -1151,25 +1151,25 @@ export const backend = {
   deleteTenant: (tenantId: string) =>
     call<null>(`/admin/tenants/${tenantId}`, { method: "DELETE" }),
 
-  // ``phone_number_id`` is optional — YCloud's SMB UI rarely exposes the
-  // Meta-side phone_number_id, and the backend falls back to the WABA
-  // listing endpoint when omitted (picks the single registered phone, or
-  // 4xx if the WABA has multiple numbers).
-  verifyWhatsApp: (waba_id: string, phone_number_id?: string) => {
-    const trimmed = (phone_number_id ?? "").trim();
-    const qs = trimmed
-      ? `waba_id=${encodeURIComponent(waba_id)}&phone_number_id=${encodeURIComponent(trimmed)}`
-      : `waba_id=${encodeURIComponent(waba_id)}`;
-    return call<WhatsAppPreview>(`/admin/integrations/whatsapp/verify?${qs}`);
-  },
+  // YCloud SMB doesn't expose a Meta phone_number_id in its dashboard,
+  // so the wizard asks the operator for the E.164 phone number — that's
+  // what they always know. The backend uses it as the second path
+  // segment of YCloud's ``/whatsapp/phoneNumbers/{wabaId}/{lookup}``,
+  // which soft-matches by phone and returns the canonical id.
+  verifyWhatsApp: (waba_id: string, phone_number_e164: string) =>
+    call<WhatsAppPreview>(
+      `/admin/integrations/whatsapp/verify?waba_id=${encodeURIComponent(
+        waba_id,
+      )}&phone_number_e164=${encodeURIComponent(phone_number_e164)}`,
+    ),
 
   connectWhatsAppManual: (
     tenantId: string,
-    body: { waba_id: string; phone_number_id?: string },
+    body: { waba_id: string; phone_number_e164: string },
   ) =>
     call<WhatsAppConnect>(
       `/admin/tenants/${tenantId}/integrations/whatsapp/connect-manual`,
-      { method: "POST", body: { ...body, phone_number_id: body.phone_number_id ?? "" } },
+      { method: "POST", body },
     ),
 
   /** Complete an Embedded Signup v4 flow for a tenant. The browser already

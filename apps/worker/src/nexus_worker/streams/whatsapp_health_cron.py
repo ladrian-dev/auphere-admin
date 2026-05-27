@@ -103,7 +103,13 @@ async def _check_one(
         waba_id = cfg.get("waba_id")
         if not isinstance(waba_id, str) or not waba_id:
             return
-        phone_number_id = cfg.get("phone_number_id") or None
+        # Prefer the canonical Meta phone_number_id when YCloud emitted
+        # one at connect-time; otherwise fall back to the E.164 stored as
+        # the channel's provider_identifier — YCloud accepts both as the
+        # second path segment of /whatsapp/phoneNumbers/{waba}/{lookup}.
+        phone_lookup = cfg.get("phone_number_id") or channel.provider_identifier
+        if not isinstance(phone_lookup, str) or not phone_lookup:
+            return
 
         client = YCloudClient(
             api_key=settings.ycloud_api_key, base_url=settings.ycloud_api_base_url
@@ -111,7 +117,7 @@ async def _check_one(
         try:
             try:
                 payload = await client.get_phone_number(
-                    waba_id=waba_id, phone_number_id=phone_number_id
+                    waba_id=waba_id, phone_lookup=phone_lookup
                 )
             except YCloudAPIError as exc:
                 log.warning(

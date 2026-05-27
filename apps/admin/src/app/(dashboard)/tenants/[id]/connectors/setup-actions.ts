@@ -37,11 +37,11 @@ function toError(err: unknown): string {
 
 export async function verifyWhatsAppAction(
   waba_id: string,
-  phone_number_id?: string,
+  phone_number_e164: string,
 ): Promise<ActionResult<WhatsAppPreview>> {
   await requireSession();
   try {
-    const result = await backend.verifyWhatsApp(waba_id, phone_number_id);
+    const result = await backend.verifyWhatsApp(waba_id, phone_number_e164);
     if (!result) {
       return { ok: false, error: "El backend no devolvió datos del número." };
     }
@@ -53,7 +53,7 @@ export async function verifyWhatsAppAction(
 
 export async function connectWhatsAppSetupAction(
   tenantId: string,
-  body: { waba_id: string; phone_number_id?: string },
+  body: { waba_id: string; phone_number_e164: string },
 ): Promise<ActionResult<{ phone_number: string }>> {
   await requireSession();
   try {

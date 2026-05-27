@@ -1,10 +1,14 @@
 """Tests Block J — WhatsApp manual setup endpoints.
 
-Phase 1 onboarding: owner crea la WABA en YCloud dashboard, copia
-``waba_id`` + ``phone_number_id`` y los pega en el wizard. Backend valida
-contra YCloud, crea la fila ``Channel``.
+Phase 1 onboarding (Camino C): owner creates the WABA in YCloud's SMB
+dashboard, copies ``waba_id`` + the phone number in E.164 (``+34...``),
+and pastes both in the wizard. Backend uses the phone as the second
+path segment of ``GET /v2/whatsapp/phoneNumbers/{wabaId}/{lookup}`` —
+YCloud SMB doesn't expose a listing endpoint, so we never query the
+WABA without a phone lookup.
 
-YCloud transport stubbed via a fake module-level factory; no network calls.
+YCloud transport stubbed via a fake module-level factory; no network
+calls.
 
 Note: imports of ``nexus_api.api.admin.integrations`` and the YCloud
 exception types are deferred to function scope. Importing them at module
@@ -34,23 +38,22 @@ pytestmark = pytest.mark.asyncio
 class _FakeYCloudClient:
     """Mimics :class:`YCloudClient` for the two endpoints we exercise.
 
-    ``responses`` is a (waba_id, phone_number_id_or_None) → either dict
-    (success) or YCloudAPIError instance (raise on call). ``None`` as
-    the second tuple element matches the WABA-listing fallback (when the
-    operator omits ``phone_number_id`` and the backend lists the WABA).
+    ``responses`` is a ``(waba_id, phone_lookup) → dict | YCloudAPIError``
+    map. The lookup is whatever the caller passed as the second path
+    segment (phone E.164 in the new flow; numeric Meta id in TP flows).
     """
 
-    def __init__(self, responses: dict[tuple[str, str | None], Any]) -> None:
+    def __init__(self, responses: dict[tuple[str, str], Any]) -> None:
         self._responses = responses
         self.closed = False
-        self.calls: list[tuple[str, str | None]] = []
+        self.calls: list[tuple[str, str]] = []
 
     async def get_phone_number(
-        self, *, waba_id: str, phone_number_id: str | None = None
+        self, *, waba_id: str, phone_lookup: str
     ) -> dict[str, Any]:
         from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudAPIError
 
-        key: tuple[str, str | None] = (waba_id, phone_number_id)
+        key = (waba_id, phone_lookup)
         self.calls.append(key)
         match = self._responses.get(key)
         if match is None:
@@ -75,60 +78,83 @@ def _ycloud_error(status_code: int, message: str) -> YCloudAPIError:
     return YCloudAPIError(status_code, message)
 
 
+# Canonical fixture values: WABA `2038094370103030` + phone `+34632719028`
+# — same shape as the Auphere production case that surfaced this bug.
+_WABA = "2038094370103030"
+_E164 = "+34632719028"
+_CANONICAL_PHONE_ID = "987654321098765"
+
+
+def _ycloud_payload(**overrides: Any) -> dict[str, Any]:
+    payload = {
+        "phoneNumber": _E164,
+        "displayName": "Auphere",
+        "verifiedName": "Auphere",
+        "qualityRating": "GREEN",
+        "id": _CANONICAL_PHONE_ID,
+    }
+    payload.update(overrides)
+    return payload
+
+
 # ── verify (dry-run) ───────────────────────────────────────────────────────
 
 
 async def test_verify_returns_phone_summary(client, admin_headers, monkeypatch):
-    fake = _FakeYCloudClient(
-        {
-            ("WABA1", "123412341234123"): {
-                "phoneNumber": "+56911112222",
-                "displayName": "Cultor Barber",
-                "verifiedName": "Cultor Barber SpA",
-                "qualityRating": "GREEN",
-            }
-        }
-    )
+    fake = _FakeYCloudClient({(_WABA, _E164): _ycloud_payload()})
     _patch_ycloud(monkeypatch, fake)
     r = await client.get(
-        "/admin/integrations/whatsapp/verify?waba_id=WABA1&phone_number_id=123412341234123",
+        f"/admin/integrations/whatsapp/verify?waba_id={_WABA}"
+        f"&phone_number_e164={_E164.replace('+', '%2B')}",
         headers=admin_headers,
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["phone_number"] == "+56911112222"
-    assert body["display_name"] == "Cultor Barber"
+    assert body["phone_number"] == _E164
+    assert body["display_name"] == "Auphere"
     assert body["quality_rating"] == "GREEN"
+    # The canonical id YCloud surfaced is what we forward to the wizard.
+    assert body["phone_number_id"] == _CANONICAL_PHONE_ID
     assert fake.closed is True
+    assert fake.calls == [(_WABA, _E164)]
 
 
-async def test_verify_404_returns_400_with_friendly_message(client, admin_headers, monkeypatch):
-    fake = _FakeYCloudClient({("WABA1", "123412341234123"): _ycloud_error(404, "Not Found")})
+async def test_verify_404_returns_400_with_friendly_message(
+    client, admin_headers, monkeypatch
+):
+    fake = _FakeYCloudClient({(_WABA, _E164): _ycloud_error(404, "Not Found")})
     _patch_ycloud(monkeypatch, fake)
     r = await client.get(
-        "/admin/integrations/whatsapp/verify?waba_id=WABA1&phone_number_id=123412341234123",
+        f"/admin/integrations/whatsapp/verify?waba_id={_WABA}"
+        f"&phone_number_e164={_E164.replace('+', '%2B')}",
         headers=admin_headers,
     )
     assert r.status_code == 400
     assert "no encontró" in r.json()["detail"]
 
 
-async def test_verify_401_returns_400_pointing_at_doppler(client, admin_headers, monkeypatch):
-    fake = _FakeYCloudClient({("WABA1", "123412341234123"): _ycloud_error(401, "Unauthorized")})
+async def test_verify_401_returns_400_pointing_at_doppler(
+    client, admin_headers, monkeypatch
+):
+    fake = _FakeYCloudClient({(_WABA, _E164): _ycloud_error(401, "Unauthorized")})
     _patch_ycloud(monkeypatch, fake)
     r = await client.get(
-        "/admin/integrations/whatsapp/verify?waba_id=WABA1&phone_number_id=123412341234123",
+        f"/admin/integrations/whatsapp/verify?waba_id={_WABA}"
+        f"&phone_number_e164={_E164.replace('+', '%2B')}",
         headers=admin_headers,
     )
     assert r.status_code == 400
     assert "NEXUS_YCLOUD_API_KEY" in r.json()["detail"]
 
 
-async def test_verify_403_returns_400_pointing_at_tech_provider(client, admin_headers, monkeypatch):
-    fake = _FakeYCloudClient({("WABA1", "123412341234123"): _ycloud_error(403, "Forbidden")})
+async def test_verify_403_returns_400_pointing_at_tech_provider(
+    client, admin_headers, monkeypatch
+):
+    fake = _FakeYCloudClient({(_WABA, _E164): _ycloud_error(403, "Forbidden")})
     _patch_ycloud(monkeypatch, fake)
     r = await client.get(
-        "/admin/integrations/whatsapp/verify?waba_id=WABA1&phone_number_id=123412341234123",
+        f"/admin/integrations/whatsapp/verify?waba_id={_WABA}"
+        f"&phone_number_e164={_E164.replace('+', '%2B')}",
         headers=admin_headers,
     )
     assert r.status_code == 400
@@ -138,8 +164,45 @@ async def test_verify_403_returns_400_pointing_at_tech_provider(client, admin_he
 async def test_verify_requires_auth(client, monkeypatch):
     fake = _FakeYCloudClient({})
     _patch_ycloud(monkeypatch, fake)
-    r = await client.get("/admin/integrations/whatsapp/verify?waba_id=WABA1&phone_number_id=123412341234123")
+    r = await client.get(
+        f"/admin/integrations/whatsapp/verify?waba_id={_WABA}"
+        f"&phone_number_e164={_E164.replace('+', '%2B')}"
+    )
     assert r.status_code == 401
+
+
+async def test_verify_rejects_non_e164_phone(client, admin_headers, monkeypatch):
+    """The most common typo: pasting just digits (no leading +) or a
+    Meta phone_number_id into the phone field. Caught client-side too
+    but the backend is the line of defense."""
+    fake = _FakeYCloudClient({})
+    _patch_ycloud(monkeypatch, fake)
+    r = await client.get(
+        f"/admin/integrations/whatsapp/verify?waba_id={_WABA}"
+        "&phone_number_e164=34632719028",  # no +
+        headers=admin_headers,
+    )
+    assert r.status_code == 400
+    assert "E.164" in r.json()["detail"]
+    # We never reached YCloud.
+    assert fake.calls == []
+
+
+async def test_verify_normalises_whitespace_and_dashes(
+    client, admin_headers, monkeypatch
+):
+    """YCloud's dashboard often shows the phone with spaces or dashes —
+    accept it and strip before forwarding."""
+    fake = _FakeYCloudClient({(_WABA, _E164): _ycloud_payload()})
+    _patch_ycloud(monkeypatch, fake)
+    # "+34 632 719-028" with the + URL-encoded.
+    r = await client.get(
+        f"/admin/integrations/whatsapp/verify?waba_id={_WABA}"
+        "&phone_number_e164=%2B34%20632%20719-028",
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    assert fake.calls == [(_WABA, _E164)]
 
 
 # ── connect-manual ─────────────────────────────────────────────────────────
@@ -148,28 +211,21 @@ async def test_verify_requires_auth(client, monkeypatch):
 async def test_connect_manual_creates_channel_and_audit(
     client, admin_headers, monkeypatch, seed_tenants, db_session
 ):
-    fake = _FakeYCloudClient(
-        {
-            ("WABA1", "123412341234123"): {
-                "phoneNumber": "+56911112222",
-                "displayName": "Cultor Barber",
-                "verifiedName": "Cultor Barber SpA",
-                "qualityRating": "GREEN",
-            }
-        }
-    )
+    fake = _FakeYCloudClient({(_WABA, _E164): _ycloud_payload()})
     _patch_ycloud(monkeypatch, fake)
     tenant_id = seed_tenants["a"]
     r = await client.post(
         f"/admin/tenants/{tenant_id}/integrations/whatsapp/connect-manual",
         headers=admin_headers,
-        json={"waba_id": "WABA1", "phone_number_id": "123412341234123"},
+        json={"waba_id": _WABA, "phone_number_e164": _E164},
     )
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["status"] == "connected"
-    assert body["phone_number"] == "+56911112222"
-    assert body["display_name"] == "Cultor Barber"
+    assert body["phone_number"] == _E164
+    assert body["display_name"] == "Auphere"
+    # We persist the canonical id YCloud surfaced.
+    assert body["phone_number_id"] == _CANONICAL_PHONE_ID
 
     # Channel row created with the right shape.
     channel = (
@@ -180,12 +236,12 @@ async def test_connect_manual_creates_channel_and_audit(
         )
     ).scalar_one()
     assert channel.provider == "ycloud"
-    assert channel.provider_identifier == "+56911112222"
+    assert channel.provider_identifier == _E164
     assert channel.status == ChannelStatus.ACTIVE
-    assert channel.config["waba_id"] == "WABA1"
-    assert channel.config["phone_number_id"] == "123412341234123"
-    assert channel.config["display_name"] == "Cultor Barber"
-    assert channel.config["verified_name"] == "Cultor Barber SpA"
+    assert channel.config["waba_id"] == _WABA
+    assert channel.config["phone_number_id"] == _CANONICAL_PHONE_ID
+    assert channel.config["display_name"] == "Auphere"
+    assert channel.config["verified_name"] == "Auphere"
     assert channel.config["quality_rating"] == "GREEN"
 
     # Audit row.
@@ -198,7 +254,32 @@ async def test_connect_manual_creates_channel_and_audit(
         )
     ).scalar_one()
     assert audit.before_json is None
-    assert audit.after_json["phone_number"] == "+56911112222"
+    assert audit.after_json["phone_number"] == _E164
+
+
+async def test_connect_manual_persists_empty_phone_number_id_when_ycloud_omits_it(
+    client, admin_headers, monkeypatch, seed_tenants, db_session
+):
+    """Some YCloud SMB responses don't include an ``id`` field. Outbound
+    routes by E.164, so the channel still works — we persist ``""``."""
+    fake = _FakeYCloudClient({(_WABA, _E164): _ycloud_payload(id=None)})
+    _patch_ycloud(monkeypatch, fake)
+    tenant_id = seed_tenants["a"]
+    r = await client.post(
+        f"/admin/tenants/{tenant_id}/integrations/whatsapp/connect-manual",
+        headers=admin_headers,
+        json={"waba_id": _WABA, "phone_number_e164": _E164},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["phone_number_id"] == ""
+    channel = (
+        await db_session.execute(
+            select(Channel).where(
+                Channel.tenant_id == tenant_id, Channel.type == ChannelType.WHATSAPP
+            )
+        )
+    ).scalar_one()
+    assert channel.config["phone_number_id"] == ""
 
 
 async def test_connect_manual_idempotent_reconnects_in_place(
@@ -206,19 +287,11 @@ async def test_connect_manual_idempotent_reconnects_in_place(
 ):
     """Re-running connect-manual for the same tenant updates the existing
     Channel row (rather than tripping UNIQUE on a 2nd insert)."""
-    fake = _FakeYCloudClient(
-        {
-            ("WABA1", "123412341234123"): {
-                "phoneNumber": "+56911112222",
-                "displayName": "Cultor Barber",
-                "qualityRating": "GREEN",
-            }
-        }
-    )
+    fake = _FakeYCloudClient({(_WABA, _E164): _ycloud_payload()})
     _patch_ycloud(monkeypatch, fake)
     tenant_id = seed_tenants["a"]
     url = f"/admin/tenants/{tenant_id}/integrations/whatsapp/connect-manual"
-    body = {"waba_id": "WABA1", "phone_number_id": "123412341234123"}
+    body = {"waba_id": _WABA, "phone_number_e164": _E164}
     r1 = await client.post(url, headers=admin_headers, json=body)
     assert r1.status_code == 201
     r2 = await client.post(url, headers=admin_headers, json=body)
@@ -241,20 +314,13 @@ async def test_connect_manual_idempotent_reconnects_in_place(
 async def test_connect_manual_duplicate_e164_across_tenants_409(
     client, admin_headers, monkeypatch, seed_tenants
 ):
-    """Tenant A connects +56911112222. Tenant B tries the same number → 409
+    """Tenant A connects +34632719028. Tenant B tries the same number → 409
     (the global UNIQUE on (type, provider_identifier) trips)."""
-    fake = _FakeYCloudClient(
-        {
-            ("WABA1", "123412341234123"): {
-                "phoneNumber": "+56911112222",
-                "displayName": "Cultor Barber",
-            }
-        }
-    )
+    fake = _FakeYCloudClient({(_WABA, _E164): _ycloud_payload()})
     _patch_ycloud(monkeypatch, fake)
     tenant_a = seed_tenants["a"]
     tenant_b = seed_tenants["b"]
-    body = {"waba_id": "WABA1", "phone_number_id": "123412341234123"}
+    body = {"waba_id": _WABA, "phone_number_e164": _E164}
     r1 = await client.post(
         f"/admin/tenants/{tenant_a}/integrations/whatsapp/connect-manual",
         headers=admin_headers,
@@ -273,15 +339,16 @@ async def test_connect_manual_duplicate_e164_across_tenants_409(
 async def test_connect_manual_ycloud_404_returns_400(
     client, admin_headers, monkeypatch, seed_tenants
 ):
-    fake = _FakeYCloudClient({("WABA1", "123412341234123"): _ycloud_error(404, "Not Found")})
+    fake = _FakeYCloudClient({(_WABA, _E164): _ycloud_error(404, "Not Found")})
     _patch_ycloud(monkeypatch, fake)
     tenant_id = seed_tenants["a"]
     r = await client.post(
         f"/admin/tenants/{tenant_id}/integrations/whatsapp/connect-manual",
         headers=admin_headers,
-        json={"waba_id": "WABA1", "phone_number_id": "123412341234123"},
+        json={"waba_id": _WABA, "phone_number_e164": _E164},
     )
     assert r.status_code == 400
+    assert "no encontró" in r.json()["detail"]
 
 
 async def test_connect_manual_unknown_tenant_404(client, admin_headers, monkeypatch):
@@ -290,101 +357,12 @@ async def test_connect_manual_unknown_tenant_404(client, admin_headers, monkeypa
     r = await client.post(
         f"/admin/tenants/{uuid.uuid4()}/integrations/whatsapp/connect-manual",
         headers=admin_headers,
-        json={"waba_id": "WABA1", "phone_number_id": "123412341234123"},
+        json={"waba_id": _WABA, "phone_number_e164": _E164},
     )
     assert r.status_code == 404
 
 
-# ── phone_number_id is optional + validated (Camino B regression suite) ────
-
-
-async def test_verify_without_phone_number_id_uses_waba_listing(
-    client, admin_headers, monkeypatch
-):
-    """When the operator omits ``phone_number_id``, the backend falls
-    back to the WABA-listing endpoint of YCloud and resolves the single
-    phone registered under the WABA. The wizard's primary path."""
-    fake = _FakeYCloudClient(
-        {
-            ("WABA1", None): {
-                "phoneNumber": "+34632719028",
-                "displayName": None,
-                "verifiedName": "Auphere",
-                "qualityRating": "GREEN",
-                "id": "987654321098765",
-            }
-        }
-    )
-    _patch_ycloud(monkeypatch, fake)
-    r = await client.get(
-        "/admin/integrations/whatsapp/verify?waba_id=WABA1",
-        headers=admin_headers,
-    )
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["phone_number"] == "+34632719028"
-    assert body["verified_name"] == "Auphere"
-    # YCloud's listing returned an ``id`` — that's the canonical one we surface.
-    assert body["phone_number_id"] == "987654321098765"
-    assert fake.calls == [("WABA1", None)]
-
-
-async def test_verify_rejects_e164_in_phone_number_id_field(
-    client, admin_headers, monkeypatch
-):
-    """Most common operator typo: pasting the phone number itself into
-    the phone_number_id field. Caught client-side too, but the backend
-    is the line of defense — must 400 before touching YCloud."""
-    fake = _FakeYCloudClient({})
-    _patch_ycloud(monkeypatch, fake)
-    r = await client.get(
-        "/admin/integrations/whatsapp/verify"
-        "?waba_id=WABA1&phone_number_id=%2B34632719028",
-        headers=admin_headers,
-    )
-    assert r.status_code == 400
-    assert "número de teléfono" in r.json()["detail"]
-    # We never reached YCloud.
-    assert fake.calls == []
-
-
-async def test_connect_manual_without_phone_number_id_uses_waba_listing(
-    client, admin_headers, monkeypatch, seed_tenants, db_session
-):
-    fake = _FakeYCloudClient(
-        {
-            ("WABA1", None): {
-                "phoneNumber": "+34632719028",
-                "verifiedName": "Auphere",
-                "qualityRating": "GREEN",
-                "id": "987654321098765",
-            }
-        }
-    )
-    _patch_ycloud(monkeypatch, fake)
-    tenant_id = seed_tenants["a"]
-    r = await client.post(
-        f"/admin/tenants/{tenant_id}/integrations/whatsapp/connect-manual",
-        headers=admin_headers,
-        json={"waba_id": "WABA1"},
-    )
-    assert r.status_code == 201, r.text
-    body = r.json()
-    assert body["phone_number"] == "+34632719028"
-    # Persisted the canonical id returned by YCloud's listing, not "".
-    assert body["phone_number_id"] == "987654321098765"
-    channel = (
-        await db_session.execute(
-            select(Channel).where(
-                Channel.tenant_id == tenant_id, Channel.type == ChannelType.WHATSAPP
-            )
-        )
-    ).scalar_one()
-    assert channel.config["phone_number_id"] == "987654321098765"
-    assert fake.calls == [("WABA1", None)]
-
-
-async def test_connect_manual_rejects_e164_in_phone_number_id_field(
+async def test_connect_manual_rejects_non_e164_phone(
     client, admin_headers, monkeypatch, seed_tenants
 ):
     fake = _FakeYCloudClient({})
@@ -393,45 +371,8 @@ async def test_connect_manual_rejects_e164_in_phone_number_id_field(
     r = await client.post(
         f"/admin/tenants/{tenant_id}/integrations/whatsapp/connect-manual",
         headers=admin_headers,
-        json={"waba_id": "WABA1", "phone_number_id": "+34632719028"},
+        json={"waba_id": _WABA, "phone_number_e164": "34632719028"},  # missing +
     )
-    # Pydantic validators bubble up as 422 by default — but our normalizer
-    # raises HTTPException(400) explicitly to keep the contract uniform
-    # with the verify endpoint and with the operator-facing toast.
-    assert r.status_code == 400, r.text
-    assert "número de teléfono" in r.json()["detail"]
+    assert r.status_code == 400
+    assert "E.164" in r.json()["detail"]
     assert fake.calls == []
-
-
-async def test_connect_manual_trusts_ycloud_canonical_id_over_operator_input(
-    client, admin_headers, monkeypatch, seed_tenants, db_session
-):
-    """When the operator pastes one id but YCloud returns a different
-    canonical id in the payload, persist YCloud's version. Defensive
-    against operator typos that YCloud silently soft-matches."""
-    fake = _FakeYCloudClient(
-        {
-            ("WABA1", "111111111111111"): {
-                "phoneNumber": "+34632719028",
-                "verifiedName": "Auphere",
-                "id": "987654321098765",  # canonical, differs from input
-            }
-        }
-    )
-    _patch_ycloud(monkeypatch, fake)
-    tenant_id = seed_tenants["a"]
-    r = await client.post(
-        f"/admin/tenants/{tenant_id}/integrations/whatsapp/connect-manual",
-        headers=admin_headers,
-        json={"waba_id": "WABA1", "phone_number_id": "111111111111111"},
-    )
-    assert r.status_code == 201, r.text
-    assert r.json()["phone_number_id"] == "987654321098765"
-    channel = (
-        await db_session.execute(
-            select(Channel).where(
-                Channel.tenant_id == tenant_id, Channel.type == ChannelType.WHATSAPP
-            )
-        )
-    ).scalar_one()
-    assert channel.config["phone_number_id"] == "987654321098765"

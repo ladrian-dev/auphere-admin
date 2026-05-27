@@ -418,55 +418,30 @@ class YCloudClient:
         )
 
     async def get_phone_number(
-        self, *, waba_id: str, phone_number_id: str | None = None
-    ) -> dict[str, Any]:
+        self, *, waba_id: str, phone_lookup: str) -> dict[str, Any]:
         """Read the WABA phone number metadata.
 
-        YCloud accepts two forms here:
+        ``phone_lookup`` is the second path segment of YCloud's endpoint
+        ``/v2/whatsapp/phoneNumbers/{wabaId}/{phoneLookup}``. YCloud
+        accepts two shapes here:
 
-        - ``/v2/whatsapp/phoneNumbers/{wabaId}/{phoneNumberId}`` — the Meta
-          GraphAPI form, when the operator copied both IDs from their YCloud
-          dashboard. ``phone_number_id`` is a *Meta-side* identifier and is
-          surfaced by YCloud as a passthrough; some YCloud workspaces don't
-          expose it on the surface UI.
-        - ``/v2/whatsapp/phoneNumbers/{wabaId}`` — list endpoint that returns
-          all phones registered under the WABA. Used when ``phone_number_id``
-          is unknown: we pick the only phone or 4xx if the WABA has more
-          than one. Necessary because YCloud's SMB UI doesn't reliably
-          surface the Meta phone_number_id, so the manual wizard treats
-          it as optional and falls back to this listing endpoint.
+        - A Meta-side ``phone_number_id`` (numeric, 15–16 digits) when
+          the operator has it from a Tech Provider–bound WABA.
+        - The E.164 phone number itself (``+34632719028``). YCloud
+          soft-matches it and returns the canonical phone payload — this
+          is the path the SMB-bound flow uses, because YCloud's SMB UI
+          doesn't expose the Meta phone_number_id.
 
-        Returns the same camelCase shape (``phoneNumber``, ``displayName``,
-        ``verifiedName``, ``qualityRating``) regardless of which form we
-        hit; the ``id`` (or ``phoneNumberId``) field is preserved from the
-        upstream response so the caller can persist it if it came back.
+        We previously had a listing fallback (``GET /whatsapp/phoneNumbers/{wabaId}``
+        without the second segment) but YCloud returns 404 for that
+        endpoint on SMB-bound WABAs, so it was never useful in practice.
+        Removed.
+
+        Returns the camelCase YCloud payload (``phoneNumber``, ``displayName``,
+        ``verifiedName``, ``qualityRating``, ``id``). The caller persists
+        the canonical ``id`` for later reference.
         """
-        if phone_number_id:
-            return await self._get(f"/whatsapp/phoneNumbers/{waba_id}/{phone_number_id}")
-        # List form — YCloud returns ``{"data": [{...phone1...}, ...]}``
-        # (envelope) or ``[{...}, ...]`` (flat). The wrapper normalises
-        # flat → ``{"data": ...}``.
-        listing = await self._get(f"/whatsapp/phoneNumbers/{waba_id}")
-        items = listing.get("data") if isinstance(listing.get("data"), list) else None
-        if items is None:
-            items = listing.get("items") if isinstance(listing.get("items"), list) else None
-        if not items:
-            raise YCloudAPIError(
-                404,
-                "no phone numbers registered under this WABA",
-                body=str(listing)[:300],
-            )
-        if len(items) > 1:
-            raise YCloudAPIError(
-                400,
-                "multiple phone numbers registered under this WABA; "
-                "specify phone_number_id explicitly",
-                body=f"count={len(items)}",
-            )
-        single = items[0]
-        if not isinstance(single, dict):
-            raise YCloudAPIError(500, "malformed YCloud listing payload")
-        return single
+        return await self._get(f"/whatsapp/phoneNumbers/{waba_id}/{phone_lookup}")
 
     async def get_waba(self, waba_id: str) -> dict[str, Any]:
         return await self._get(f"/whatsapp/businessAccounts/{waba_id}")

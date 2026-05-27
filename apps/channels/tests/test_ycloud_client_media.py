@@ -1,5 +1,5 @@
 """Block N additions to YCloudClient — media outbound, reactions, context
-message id, mark_as_read, and the fallback path of get_phone_number."""
+message id, and mark_as_read."""
 
 from __future__ import annotations
 
@@ -107,36 +107,26 @@ async def test_mark_as_read_calls_correct_endpoint():
         assert '"status":"read"' in body
 
 
-async def test_get_phone_number_falls_back_to_listing_when_id_missing():
-    """When phone_number_id is unknown, the client hits the WABA listing
-    endpoint and returns the single phone registered under the WABA."""
+async def test_get_phone_number_uses_e164_as_lookup_path_segment():
+    """YCloud SMB doesn't expose a listing endpoint — the WABA-only
+    ``GET /whatsapp/phoneNumbers/{wabaId}`` returns 404 — so the client
+    always sends the second path segment. It can be either the Meta
+    phone_number_id (numeric) or the E.164 phone number (YCloud
+    soft-matches it)."""
     async with respx.mock(base_url=YCLOUD_BASE_URL) as mock:
-        listing = mock.get("/whatsapp/phoneNumbers/waba1").respond(
+        route = mock.get("/whatsapp/phoneNumbers/waba1/+56933334444").respond(
             200,
             json={
-                "data": [
-                    {
-                        "phoneNumber": "+56933334444",
-                        "displayName": "Cultor",
-                        "qualityRating": "GREEN",
-                        "phoneNumberId": "ycloud_phone_1",
-                    }
-                ]
+                "phoneNumber": "+56933334444",
+                "displayName": "Cultor",
+                "qualityRating": "GREEN",
+                "id": "987654321098765",
             },
         )
         async with YCloudClient(api_key="k") as client:
-            result = await client.get_phone_number(waba_id="waba1")
-        assert listing.called
+            result = await client.get_phone_number(
+                waba_id="waba1", phone_lookup="+56933334444"
+            )
+        assert route.called
         assert result["phoneNumber"] == "+56933334444"
-        assert result["phoneNumberId"] == "ycloud_phone_1"
-
-
-async def test_get_phone_number_listing_multiple_raises_400():
-    async with respx.mock(base_url=YCLOUD_BASE_URL) as mock:
-        mock.get("/whatsapp/phoneNumbers/waba1").respond(
-            200, json={"data": [{"phoneNumber": "+1"}, {"phoneNumber": "+2"}]}
-        )
-        async with YCloudClient(api_key="k") as client:
-            with pytest.raises(YCloudAPIError) as info:
-                await client.get_phone_number(waba_id="waba1")
-        assert info.value.status_code == 400
+        assert result["id"] == "987654321098765"
