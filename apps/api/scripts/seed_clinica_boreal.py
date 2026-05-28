@@ -127,17 +127,28 @@ BOREAL_PLACEHOLDERS: dict[str, object] = {
 # Skills locales que el agente de Boreal usa. El runtime las consume
 # por ``skill_id`` (no por nombre local) — el seed script lee
 # ``apps/worker/skills/uploaded.json`` para resolver el id de cada una.
+#
+# Anthropic limita ``container.skills`` a 8 por request. Curamos a 6
+# manteniendo solo las skills que aportan CONOCIMIENTO denso o mecánica
+# de canal que no cabe bien en el system_prompt. Las 4 que eran reglas
+# cortas de conversación se quitaron porque YA viven como reglas duras
+# en el system_prompt renderizado (aesthetic_clinic_v1.yaml):
+#   - medical-claims-discipline  → reglas 1-4 (sin dosis/promesa/marca/off-label)
+#   - anti-hallucination-booking → regla 10 (no confirmar sin tool result)
+#   - escalation-policy          → reglas 13/14/18 + sección ESCALACIÓN
+#   - before-after-photos        → regla 8 (política de fotos)
+# Tenerlas como skill además del prompt gastaba slots del límite de 8
+# sin aportar contenido nuevo. Decisión 2026-05-28.
 BOREAL_SKILL_NAMES: list[str] = [
-    "anti-hallucination-booking",
-    "escalation-policy",
+    # Conocimiento denso — no cabría en el prompt, progressive disclosure.
+    "aesthetic-procedures-kb",
+    "post-op-symptom-triage",
+    "pre-op-screening",
+    # Compliance técnico — qué redactar antes de escribir a memory tool.
+    "phi-redaction",
+    # Mecánica del canal WhatsApp — no es regla de dominio.
     "whatsapp-native-components",
     "whatsapp-24h-window",
-    "medical-claims-discipline",
-    "pre-op-screening",
-    "before-after-photos",
-    "phi-redaction",
-    "post-op-symptom-triage",
-    "aesthetic-procedures-kb",
 ]
 
 # Eval dataset seedeado al tenant (idempotente: re-load reemplaza
