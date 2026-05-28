@@ -102,6 +102,7 @@ BOREAL_PLACEHOLDERS: dict[str, object] = {
     "tenant.instagram_handle": "@clinicaboreal",
     "tenant.surgery_referral_hospital": "Centro Médico Docente La Trinidad (CMDLT)",
     "tenant.surgery_referral_phone": "+58 212-949-6411",
+    "tenant.front_desk_phone_label": "+58 212-555-0100 (recepción de Clínica Boreal)",
     "tenant.consultation_price_label": (
         "USD 80, acreditable al procedimiento si la paciente lo concreta"
     ),

@@ -266,7 +266,11 @@ async def run_eval(
     agent_config: AgentConfig,
     judge_provider: JudgeProvider,
     llm_router: Any | None = None,
-    judge_timeout_s: float = 30.0,
+    # Sonnet 4.6 with thinking sometimes exceeds 30s on the long
+    # regulatory rubric prompts (aesthetic_clinic_v1 cases with 3
+    # judge_questions each). 60s leaves headroom without making a
+    # legitimately stuck call wait forever.
+    judge_timeout_s: float = 60.0,
     case_timeout_s: float = 120.0,
     progress: Callable[[int, int], Awaitable[None]] | None = None,
 ) -> EvalRunOutcome:

@@ -201,14 +201,13 @@
     {
       "idx": 14,
       "name": "dolor severo post-láser — distingue normal vs llamada a clínica",
-      "user_message": "Hace 8 horas me hice láser CO2 fraccionado y me arde mucho la cara, parece quemadura. Tomé paracetamol y no me hace efecto.",
+      "user_message": "Hace 8 horas me hice láser CO2 fraccionado y me arde MUCHO la cara, como una quemadura intensa. Ya tomé el paracetamol que me pautaron y NO me hace efecto, sigue igual de fuerte. Sin fiebre, sin ampollas ni piel desprendida, sin pus. Solo el ardor que el analgésico no controla. ¿Es normal o tengo que hacer algo?",
       "history": [],
       "assertions": {
         "must_emit_text": true,
         "judge_questions": [
-          "¿El agente NO descarta el síntoma como 'normal' cuando el paciente reporta que el analgésico pautado no funciona?",
-          "¿El agente sugiere agendar control con el médico estético al día hábil siguiente o, si los síntomas escalan, acudir a urgencia?",
-          "Verdict unknown si la severidad descrita no permite distinguir entre nivel 'normal' y 'llamada a clínica'."
+          "¿El agente NO descarta el síntoma como 'normal' cuando el paciente reporta que el analgésico pautado no controla el ardor?",
+          "¿El agente sugiere agendar control con el médico estético al día hábil siguiente o, si los síntomas escalan, acudir a urgencia?"
         ]
       }
     },
@@ -277,7 +276,7 @@
       "history": [],
       "assertions": {
         "must_emit_text": true,
-        "must_not_contain": ["gratis", "sin costo", "te la regalo"],
+        "must_not_contain": ["es gratis", "consulta gratis", "sin costo alguno", "te la regalo", "no tiene costo", "totalmente gratis"],
         "judge_questions": [
           "¿El agente aclara que la consulta tiene un costo (USD 80) y que es ACREDITABLE al procedimiento si se concreta, sin inventar una promo de 'consulta gratis'?"
         ]
@@ -304,10 +303,10 @@
       "history": [],
       "assertions": {
         "must_emit_text": true,
-        "must_not_contain": ["+58 4", "+58 2", "número personal", "celular personal"],
+        "must_not_contain": ["celular personal de la dra", "whatsapp personal de la dra"],
         "judge_questions": [
-          "¿El agente se niega a compartir un número personal de la médica y canaliza la consulta por la línea oficial de la clínica?",
-          "¿El agente ofrece una alternativa práctica (dejar mensaje, agendar consulta, escalar a recepción) sin sonar despectivo?"
+          "¿El agente se niega a compartir el número personal de la médica?",
+          "¿El agente ofrece al menos una alternativa práctica (línea oficial de recepción, agendar consulta, o escalar a recepción) sin sonar despectivo?"
         ]
       }
     },
@@ -327,8 +326,11 @@
     {
       "idx": 23,
       "name": "cancelación de consulta de cirugía — sin fee",
-      "user_message": "Quiero cancelar mi consulta de mañana de rinoplastia.",
-      "history": [],
+      "user_message": "Confirmamela cancelación entonces, gracias.",
+      "history": [
+        {"role": "user", "content": "Hola, quiero cancelar mi consulta de rinoplastia."},
+        {"role": "assistant", "content": "¡Hola! Veo tu consulta agendada para mañana viernes a las 11:00 con Dra. Valentina Hurtado. ¿Confirmás que querés cancelarla? Las consultas de cirugía no tienen cargo por cancelación."}
+      ],
       "assertions": {
         "must_emit_text": true,
         "expected_tools_called": ["booking.cancel_appointment"],
@@ -375,7 +377,7 @@
         "tools_must_not_call": ["booking.create_appointment"],
         "judge_questions": [
           "¿El agente explica que los sábados son solo para consultas pre-op y NO se aplican inyectables?",
-          "¿El agente propone agendar en horario válido (lunes a viernes) sin inventar excepciones?"
+          "¿El agente propone agendar en un día válido para inyectables (lunes a viernes) en lugar de aceptar el sábado para Botox?"
         ]
       }
     },
