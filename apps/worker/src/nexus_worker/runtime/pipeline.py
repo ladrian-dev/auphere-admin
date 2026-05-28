@@ -140,6 +140,13 @@ _CODE_EXECUTION_TOOL: dict[str, Any] = {
 _SKILLS_BETA_HEADER_VALUE: str = (
     "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
 )
+# Anthropic enforces a hard limit on ``container.skills`` (validation
+# error ``container.ContainerParams.skills: List should have at most 8
+# items``). When a tenant attaches more than 8 skills, we truncate to
+# the first N to keep the request valid — the priority is the order in
+# ``agent_config.runtime_skills`` (operator-curated). A warning is
+# logged so we can audit which tenants exceed the cap.
+_ANTHROPIC_SKILLS_CAP: int = 8
 
 
 def _filter_skills_for_channel(
@@ -786,6 +793,18 @@ def make_handler_node(
                 bundle.runtime_skills,
                 state.get("channel_type") or "whatsapp",
             )
+            if len(applicable_skills) > _ANTHROPIC_SKILLS_CAP:
+                log.warning(
+                    "skills.cap_exceeded",
+                    tenant_id=str(tenant_id),
+                    requested=len(applicable_skills),
+                    cap=_ANTHROPIC_SKILLS_CAP,
+                    dropped=[
+                        s["skill_id"]
+                        for s in applicable_skills[_ANTHROPIC_SKILLS_CAP:]
+                    ],
+                )
+                applicable_skills = applicable_skills[:_ANTHROPIC_SKILLS_CAP]
             skills_extra: dict[str, Any] = {}
             if applicable_skills:
                 skills_extra = {

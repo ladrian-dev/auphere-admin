@@ -23,12 +23,20 @@ class WorkerSettings(BaseSettings):
     )
 
     # LLM — LiteLLM-compatible identifiers. Keys are read by LiteLLM directly
-    # from env (ANTHROPIC_API_KEY, OPENAI_API_KEY) when the caller doesn't pass
-    # one explicitly; in dev/tests we run in-memory and never touch the wire.
+    # from env (ANTHROPIC_API_KEY) when the caller doesn't pass one explicitly.
+    # Production runs the real LiteLLM provider; tests opt-in to
+    # ``InMemoryProvider`` via ``NEXUS_LLM_USE_INMEMORY=true``.
+    #
+    # ``llm_use_inmemory`` previously defaulted to ``True``, which silently
+    # caused production to serve the mock fallback string
+    # ``[fallback:<model>] ok`` to real patients — incident 2026-05-28,
+    # Boreal tenant. Default flipped to False; tests configure the setting
+    # explicitly through fixtures.
+    #
+    # The fallback model lives hardcoded in ``main.py`` — see comment there.
     llm_classify_model: str = "anthropic/claude-haiku-4-5"
     llm_respond_model: str = "anthropic/claude-sonnet-4-6"
-    llm_fallback_model: str = "openai/gpt-4o"
-    llm_use_inmemory: bool = True
+    llm_use_inmemory: bool = False
 
     # Redis Stream names.
     inbound_stream: str = "nexus:inbound"

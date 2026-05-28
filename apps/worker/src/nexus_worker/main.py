@@ -82,10 +82,16 @@ async def _amain() -> None:
     init_langfuse(worker_settings)
 
     loader = AgentLoader(max_size=worker_settings.agent_cache_size)
+    # Fallback model is hardcoded same-vendor (Anthropic Haiku) — cross-
+    # provider fallback to OpenAI was unworkable because the request
+    # payload carries Anthropic-only params (``context_management``,
+    # ``container.skills``) that OpenAI rejects. Not configurable by env
+    # var — incident 2026-05-28 showed cross-vendor fallback is a
+    # footgun, not a feature.
     router = build_default_router(
         classify_model=worker_settings.llm_classify_model,
         respond_model=worker_settings.llm_respond_model,
-        fallback_model=worker_settings.llm_fallback_model,
+        fallback_model="anthropic/claude-haiku-4-5",
         use_inmemory=worker_settings.llm_use_inmemory,
     )
     redis = get_redis()
