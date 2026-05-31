@@ -106,8 +106,8 @@ _TOOL_RESULT_CHAR_CAP = 8_000
 # empty final answer we surface a neutral message instead of sending the
 # customer an empty WhatsApp.
 _EMPTY_RESPONSE_FALLBACK = (
-    "Disculpá, tuve un inconveniente para completar la respuesta. "
-    "¿Podés intentarlo de nuevo en un momento?"
+    "Disculpa, tuve un inconveniente para completar la respuesta. "
+    "¿Puedes intentarlo de nuevo en un momento?"
 )
 
 
@@ -521,6 +521,24 @@ def _channel_format_note(channel: str) -> str:
     )
 
 
+# Cross-tenant conduct rule, injected on every turn like the channel note
+# (so it applies to already-rendered agent_configs, not just future seeds).
+# The model defaults to feminine greetings in Spanish ("¡Bienvenida!") and
+# improvises a generic greeting that assumes the customer's gender — flagged
+# on Clínica Boreal. We never know the customer's gender from a phone number
+# or an opening "Hola", so the agent must stay neutral until the customer
+# reveals it.
+_GENDER_NEUTRAL_NOTE = (
+    "Never assume the customer's gender. You do not know it from their "
+    "phone number, name, or an opening greeting. Until the customer makes "
+    "it explicit, avoid gendered greetings, honorifics and adjectives. In "
+    "Spanish: do NOT use '¡Bienvenida!'/'¡Bienvenido!', 'señora'/'señor', "
+    "or gendered adjectives directed at the customer — greet with a neutral "
+    "'¡Hola!' and phrase things in a gender-neutral way. Mirror a gendered "
+    "form only after the customer has clearly revealed their gender."
+)
+
+
 def _build_handler_messages(
     state: AgentState,
     bundle: AgentBundle,
@@ -540,6 +558,7 @@ def _build_handler_messages(
             "role": "system",
             "content": _channel_format_note(state.get("channel_type") or "whatsapp"),
         },
+        {"role": "system", "content": _GENDER_NEUTRAL_NOTE},
     ]
     if kg_snapshot:
         messages.append({"role": "system", "content": kg_snapshot})
@@ -564,10 +583,48 @@ def _build_handler_messages(
     return messages
 
 
-def _assistant_tool_message(response: LLMResponse) -> dict[str, Any]:
+# Anthropic server-side / hosted tools execute inside Anthropic's own
+# container (``code_execution`` and the skills ``text_editor``, plus
+# ``web_search`` etc.) and carry a ``srvtoolu_`` id prefix. Anthropic
+# resolves both the tool_use AND its tool_result internally — they never
+# round-trip to us. The worker must NOT dispatch them nor inject a
+# ``tool_result`` for them: doing so leaves an orphan ``tool_result``
+# whose ``tool_use`` has no client-side pair, which Anthropic rejects on
+# the next request with ``unexpected tool_use_id found in tool_result
+# blocks`` (incident 2026-05-28, Boreal — the aesthetic-procedures-kb
+# skill runs inside code_execution). We passthrough: drop server-side
+# calls from our message bookkeeping entirely; they already did their job
+# inside the response that produced ``response.text``.
+_SERVER_SIDE_TOOL_ID_PREFIX = "srvtoolu_"
+_SERVER_SIDE_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "code_execution",
+        "text_editor_code_execution",
+        "bash_code_execution",
+        "web_search",
+    }
+)
+
+
+def _is_server_side_tool_call(call: ToolCall) -> bool:
+    """True when the call is an Anthropic hosted tool the worker must not
+    dispatch — identified by the ``srvtoolu_`` id prefix or a known hosted
+    tool name. See ``_SERVER_SIDE_TOOL_NAMES`` for the rationale."""
+    return (call.id or "").startswith(_SERVER_SIDE_TOOL_ID_PREFIX) or (
+        call.name in _SERVER_SIDE_TOOL_NAMES
+    )
+
+
+def _assistant_tool_message(
+    response: LLMResponse, calls: list[ToolCall]
+) -> dict[str, Any]:
     """The assistant message recording the tool calls the model just made,
     in the OpenAI/LiteLLM shape, so the next request shows the model its own
-    previous output before the tool results."""
+    previous output before the tool results.
+
+    ``calls`` is the CLIENT-SIDE subset only — server-side calls are
+    excluded so we never echo a ``srvtoolu_`` tool_use we won't pair with
+    a tool_result (Anthropic rejects the orphan)."""
     return {
         "role": "assistant",
         "content": response.text or "",
@@ -577,7 +634,7 @@ def _assistant_tool_message(response: LLMResponse) -> dict[str, Any]:
                 "type": "function",
                 "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
             }
-            for tc in response.tool_calls
+            for tc in calls
         ],
     }
 
@@ -889,15 +946,24 @@ def make_handler_node(
                 if response.text:
                     final_text = response.text
 
-                # No tools offered, or the model chose not to call any →
-                # this text is the final answer.
-                if not tools_arg or not response.tool_calls:
+                # Anthropic resolves server-side tools (code_execution, the
+                # skills text_editor, web_search) inside its own container
+                # before returning — they're already done. Partition them
+                # out so we never dispatch them nor record an orphan
+                # tool_result for a ``srvtoolu_`` id (incident 2026-05-28).
+                client_calls = [
+                    c for c in response.tool_calls if not _is_server_side_tool_call(c)
+                ]
+
+                # No tools offered, or the model only made server-side calls
+                # (already resolved by Anthropic) → this text is the final answer.
+                if not tools_arg or not client_calls:
                     break
 
                 # Record the model's tool request, then dispatch each call
                 # and feed the REAL result back into the thread.
-                messages.append(_assistant_tool_message(response))
-                for call in response.tool_calls:
+                messages.append(_assistant_tool_message(response, client_calls))
+                for call in client_calls:
                     if call.name == _MEMORY_TOOL_NAME and memory_tool is not None:
                         # Built-in dispatch: the memory tool result is a
                         # string by Anthropic contract; we wrap it in an

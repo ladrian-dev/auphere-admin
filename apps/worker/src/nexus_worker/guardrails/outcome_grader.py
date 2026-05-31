@@ -53,9 +53,9 @@ log = structlog.get_logger(__name__)
 # best UX we can give when the agent could not produce a verified
 # response in three attempts.
 GRADER_FALLBACK_RESPONSE: str = (
-    "Disculpá, tuve dificultades para confirmarte esto ahora mismo. "
-    "Un miembro del equipo te va a contactar a la brevedad. "
-    "Gracias por la paciencia."
+    "Disculpa, tuve dificultades para confirmarte esto ahora mismo. "
+    "Un miembro del equipo te contactará a la brevedad. "
+    "Gracias por tu paciencia."
 )
 
 # Max grader retries. The original draft counts as attempt 0; each fail

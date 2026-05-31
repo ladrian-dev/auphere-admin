@@ -190,9 +190,9 @@ _SUCCESS_PAGE = """<!doctype html>
 <body>
   <div class="ok">✓</div>
   <h1>Conexión establecida</h1>
-  <p>Tu agente ya puede acceder al servicio que acabás de autorizar. Podés
+  <p>Tu agente ya puede acceder al servicio que acabas de autorizar. Puedes
      cerrar esta ventana.</p>
-  <p class="small">Si tenés dudas, contactá al equipo de Auphere.</p>
+  <p class="small">Si tienes dudas, contacta al equipo de Auphere.</p>
 </body>
 </html>
 """
@@ -213,8 +213,8 @@ _GENERIC_PAGE = """<!doctype html>
 </head>
 <body>
   <h1>Auphere</h1>
-  <p>Si llegaste acá después de autorizar un servicio para tu agente, ya
-     deberías ver el connector como conectado. Si no, contactá al equipo.</p>
+  <p>Si llegaste aquí después de autorizar un servicio para tu agente, ya
+     deberías ver el connector como conectado. Si no, contacta al equipo.</p>
 </body>
 </html>
 """

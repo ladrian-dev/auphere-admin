@@ -96,9 +96,9 @@ _HELP_TEXT = (
 )
 
 _NO_OPEN_CONSULTATION_TEXT = (
-    "No tenés ninguna consulta abierta de tu agente ahora mismo.\n\n"
-    "Si querés pausar al agente o tomar control de una conversación, "
-    "podés hacerlo desde el panel de administración. Escribí /help para "
+    "No tienes ninguna consulta abierta de tu agente ahora mismo.\n\n"
+    "Si quieres pausar al agente o tomar control de una conversación, "
+    "puedes hacerlo desde el panel de administración. Escribe /help para "
     "ver los comandos disponibles."
 )
 
@@ -110,14 +110,14 @@ _TOFU_WELCOME_TEXT = (
     "Hola, soy Auphere 👋\n\n"
     "Tu número fue registrado como dueño/encargado de este negocio. "
     "Antes de empezar a recibir consultas del agente, necesito que "
-    "confirmes que sos vos.\n\n"
-    "Respondé /yes para activar tu canal."
+    "confirmes que eres tú.\n\n"
+    "Responde /yes para activar tu canal."
 )
 
 _TOFU_CONFIRMED_TEXT = (
     "Confirmado ✅ tu canal está activo.\n\n"
-    "Cuando el agente necesite tu input te voy a escribir por acá. "
-    "Escribí /help para ver los comandos disponibles."
+    "Cuando el agente necesite tu input te escribiré por aquí. "
+    "Escribe /help para ver los comandos disponibles."
 )
 
 

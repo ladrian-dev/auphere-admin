@@ -353,6 +353,68 @@ class TestHandlerSkillsInjection:
 # ── channel-gated skills ──────────────────────────────────────────────
 
 
+class TestServerSideToolPassthrough:
+    """Regression for incident 2026-05-28 (Boreal): Anthropic resolves
+    server-side tools (code_execution, skills text_editor) inside its own
+    container and they arrive with a ``srvtoolu_`` id. The worker must NOT
+    dispatch them nor record a tool_result for them — otherwise the next
+    request carries an orphan ``tool_result`` and Anthropic 400s with
+    ``unexpected tool_use_id found in tool_result blocks``."""
+
+    def test_detects_server_tool_by_id_prefix(self) -> None:
+        from nexus_worker.runtime.llm import ToolCall
+        from nexus_worker.runtime.pipeline import _is_server_side_tool_call
+
+        call = ToolCall(id="srvtoolu_01EnDwmyc5ygTtvSmWK4VNGq", name="whatever", arguments={})
+        assert _is_server_side_tool_call(call) is True
+
+    def test_detects_server_tool_by_name(self) -> None:
+        from nexus_worker.runtime.llm import ToolCall
+        from nexus_worker.runtime.pipeline import _is_server_side_tool_call
+
+        for name in (
+            "code_execution",
+            "text_editor_code_execution",
+            "bash_code_execution",
+            "web_search",
+        ):
+            call = ToolCall(id="toolu_x", name=name, arguments={})
+            assert _is_server_side_tool_call(call) is True, name
+
+    def test_client_tool_is_not_server_side(self) -> None:
+        from nexus_worker.runtime.llm import ToolCall
+        from nexus_worker.runtime.pipeline import _is_server_side_tool_call
+
+        call = ToolCall(id="toolu_01abc", name="booking.create_appointment", arguments={})
+        assert _is_server_side_tool_call(call) is False
+
+    def test_assistant_message_excludes_server_calls(self) -> None:
+        """The assistant message we echo back to Anthropic must only carry
+        client-side tool_use blocks — never a ``srvtoolu_`` we won't pair
+        with a tool_result."""
+        from nexus_worker.runtime.llm import LLMResponse, ToolCall
+        from nexus_worker.runtime.pipeline import (
+            _assistant_tool_message,
+            _is_server_side_tool_call,
+        )
+
+        server_call = ToolCall(
+            id="srvtoolu_01EnDwmyc5ygTtvSmWK4VNGq",
+            name="text_editor_code_execution",
+            arguments={},
+        )
+        client_call = ToolCall(
+            id="toolu_01abc", name="booking.create_appointment", arguments={"day": "fri"}
+        )
+        response = LLMResponse(text="ok", tool_calls=(server_call, client_call))
+        client_calls = [c for c in response.tool_calls if not _is_server_side_tool_call(c)]
+
+        msg = _assistant_tool_message(response, client_calls)
+        ids = {tc["id"] for tc in msg["tool_calls"]}
+        assert ids == {"toolu_01abc"}
+        assert not any(i.startswith("srvtoolu_") for i in ids)
+
+
 class TestChannelGatingHelper:
     """Unit tests for ``_filter_skills_for_channel`` in isolation. The
     helper is the single decision point — verify it before wiring it
