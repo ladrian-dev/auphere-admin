@@ -161,3 +161,118 @@ async def test_oauth_callback_renders_success(client, seeded_catalog) -> None:
 async def test_oauth_callback_with_bad_token_still_200(client, seeded_catalog) -> None:
     r = await client.get("/connectors/oauth-callback?consent_token=tampered.token")
     assert r.status_code == 200
+
+
+async def test_sync_reconciles_pending_when_webhook_was_missed(
+    client, admin_headers, db_session, seed_tenants, seeded_catalog, fake_composio
+) -> None:
+    """If Composio's webhook never lands, the install stays ``pending`` even
+    though the OAuth succeeded. The operator's ``sync`` must reconcile it to
+    ``connected`` off the live Composio status — and fan out to the tools
+    sync — without ever seeing the webhook. (Boreal Google Calendar, prod.)"""
+    tenant_a = seed_tenants["a"]
+    tenant_row = await db_session.scalar(select(Tenant).where(Tenant.id == tenant_a))
+    expected_user_id = f"tenant_{tenant_row.slug}"
+    await db_session.commit()
+
+    # Step 1: operator initiates consent → row is pending.
+    r1 = await client.post(
+        f"/admin/tenants/{tenant_a}/connectors/googlecalendar/initiate-consent",
+        headers=admin_headers,
+    )
+    assert r1.status_code == 201, r1.text
+    tc_row = await db_session.scalar(
+        select(TenantConnector).where(TenantConnector.tenant_id == tenant_a)
+    )
+    composio_conn_id = tc_row.credentials_ref["composio_connection_id"]
+    assert tc_row.status == "pending"
+
+    # Step 2: the user finishes OAuth on Composio (connection is ACTIVE there)
+    # but the webhook NEVER fires. Our row is still pending.
+    fake_composio.force_connect(
+        connection_id=composio_conn_id,
+        user_id=expected_user_id,
+        toolkit="googlecalendar",
+        scopes=["calendar.readonly", "calendar.events.write"],
+    )
+    db_session.expire_all()
+    tc_row = await db_session.scalar(
+        select(TenantConnector).where(TenantConnector.tenant_id == tenant_a)
+    )
+    assert tc_row.status == "pending"  # still stuck — no webhook
+
+    # Step 3: operator clicks "Sincronizar" → reconcile flips it to connected.
+    r2 = await client.post(
+        f"/admin/tenants/{tenant_a}/connectors/googlecalendar/sync",
+        headers=admin_headers,
+    )
+    assert r2.status_code == 200, r2.text
+
+    db_session.expire_all()
+    tc_row = await db_session.scalar(
+        select(TenantConnector).where(TenantConnector.tenant_id == tenant_a)
+    )
+    assert tc_row.status == "connected"
+    assert tc_row.connected_at is not None
+    assert "calendar.readonly" in tc_row.scopes_granted
+    assert tc_row.consent_token is None
+
+    # Tools landed via the fanned-out sync.
+    slugs = {
+        t.name
+        for t in (
+            await db_session.scalars(
+                select(ToolCatalog).where(ToolCatalog.name.like("GOOGLECALENDAR_%"))
+            )
+        ).all()
+    }
+    assert "GOOGLECALENDAR_LIST_EVENTS" in slugs
+
+
+async def test_sync_is_noop_when_already_connected(
+    client, admin_headers, db_session, seed_tenants, seeded_catalog, fake_composio
+) -> None:
+    """Reconcile must be idempotent: an already-connected install syncs tools
+    normally and does NOT churn the status."""
+    tenant_a = seed_tenants["a"]
+    tenant_row = await db_session.scalar(select(Tenant).where(Tenant.id == tenant_a))
+    expected_user_id = f"tenant_{tenant_row.slug}"
+    await db_session.commit()
+
+    r1 = await client.post(
+        f"/admin/tenants/{tenant_a}/connectors/googlecalendar/initiate-consent",
+        headers=admin_headers,
+    )
+    assert r1.status_code == 201
+    tc_row = await db_session.scalar(
+        select(TenantConnector).where(TenantConnector.tenant_id == tenant_a)
+    )
+    composio_conn_id = tc_row.credentials_ref["composio_connection_id"]
+    fake_composio.force_connect(
+        connection_id=composio_conn_id,
+        user_id=expected_user_id,
+        toolkit="googlecalendar",
+        scopes=["calendar.readonly"],
+    )
+    webhook_body = {
+        "type": "connected_account.active",
+        "data": {
+            "connection_id": composio_conn_id,
+            "status": "ACTIVE",
+            "granted_scopes": ["calendar.readonly"],
+        },
+    }
+    headers, payload = _signed_webhook("test_whsec_001", webhook_body)
+    await client.post("/connectors/composio-webhook", headers=headers, content=payload)
+
+    # A subsequent sync on the connected install must succeed and stay connected.
+    r2 = await client.post(
+        f"/admin/tenants/{tenant_a}/connectors/googlecalendar/sync",
+        headers=admin_headers,
+    )
+    assert r2.status_code == 200, r2.text
+    db_session.expire_all()
+    tc_row = await db_session.scalar(
+        select(TenantConnector).where(TenantConnector.tenant_id == tenant_a)
+    )
+    assert tc_row.status == "connected"

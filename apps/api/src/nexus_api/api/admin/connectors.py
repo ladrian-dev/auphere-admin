@@ -555,6 +555,25 @@ async def sync_connector(
             detail=f"tenant has no install of {slug}; initiate-consent first",
         )
     try:
+        # First reconcile the install's status against Composio's live state.
+        # Catches the missed-webhook case: an OAuth that succeeded (ACTIVE on
+        # Composio) but whose webhook never landed, leaving us stuck on
+        # ``pending``. On ACTIVE this also fans out to the tools sync +
+        # auto-enable, so we're done; otherwise fall through to a plain
+        # tools refresh for an already-connected install.
+        reconciled = await connector_service.reconcile_connector_status(
+            session,
+            tenant_connector=tc,
+            connector=connector,
+            composio=composio,
+            actor=f"admin:{actor[:8]}",
+        )
+        if reconciled is not None:
+            return SyncOut(
+                added=reconciled.tools_added,
+                deprecated=reconciled.tools_deprecated,
+                unchanged_count=0,
+            )
         result = await connector_service.sync_tools_for(
             session,
             tenant_connector=tc,

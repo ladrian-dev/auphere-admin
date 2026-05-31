@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,6 +62,8 @@ from .composio_client import (
     ComposioUnavailable,
 )
 from .consent_token import sign_consent_token
+
+log = structlog.get_logger(__name__)
 
 # ── exceptions ──────────────────────────────────────────────────────────────
 
@@ -448,6 +451,74 @@ async def complete_consent_from_webhook(
         tools_deprecated=sync.deprecated,
         auto_enabled=auto_enabled,
         blocked_pending_operator=blocked,
+    )
+
+
+async def reconcile_connector_status(
+    session: AsyncSession,
+    *,
+    tenant_connector: TenantConnector,
+    connector: Connector,
+    composio: ComposioClientProtocol,
+    actor: str = "system:sync_reconcile",
+) -> CompleteConsentResult | None:
+    """Reconcile a tenant_connector's status against Composio's live state.
+
+    The status of an ``oauth_composio`` install flips to ``connected`` only
+    via the Composio webhook (``complete_consent_from_webhook``). If that
+    server-to-server callback never lands — Composio webhook not configured,
+    a transient miss, a signature mismatch — the install stays ``pending``
+    forever even though the OAuth succeeded and the connection is ``ACTIVE``
+    on Composio. Neither the browser ``oauth-callback`` nor a tools-only sync
+    recover from that.
+
+    This polls ``composio.get_account`` and, when the upstream status implies
+    a transition our row hasn't applied yet, drives it through the SAME path
+    the webhook uses (so ACTIVE also fans out to tools sync + auto-enable).
+    Returns the transition result, or ``None`` when nothing was applied
+    (already in sync, not an oauth_composio install, or no connection id).
+
+    Idempotent: when the row already matches the upstream status it is a
+    no-op, so the operator's "Sincronizar" button is safe to click anytime.
+    """
+    if connector.auth_kind != "oauth_composio":
+        return None
+    connection_id = (tenant_connector.credentials_ref or {}).get(
+        "composio_connection_id"
+    )
+    if not connection_id:
+        return None
+    try:
+        account = await composio.get_account(str(connection_id))
+    except ComposioNotFound:
+        # The connection no longer exists on Composio's side. Don't guess —
+        # leave the row as-is; a fresh consent is the only safe recovery.
+        log.info(
+            "connector.reconcile.connection_not_found",
+            connector=connector.slug,
+            connection_id=str(connection_id),
+        )
+        return None
+
+    upstream = (account.status or "").upper()
+    target_status = {
+        "ACTIVE": TenantConnectorStatus.CONNECTED.value,
+        "EXPIRED": TenantConnectorStatus.NEEDS_REAUTH.value,
+        "FAILED": TenantConnectorStatus.ERROR.value,
+    }.get(upstream)
+    # Nothing to do when the upstream status is unmapped, or our row already
+    # reflects it (the common case for a healthy, already-connected install).
+    if target_status is None or tenant_connector.status == target_status:
+        return None
+
+    counters.incr(f"connector.reconcile.applied:{connector.slug}:{upstream}")
+    return await complete_consent_from_webhook(
+        session,
+        composio_connection_id=str(connection_id),
+        upstream_status=upstream,
+        granted_scopes=list(account.granted_scopes),
+        composio=composio,
+        actor=actor,
     )
 
 
