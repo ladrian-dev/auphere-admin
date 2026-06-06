@@ -23,11 +23,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import signal
+import uuid
 
 import structlog
 from nexus_api.config import get_settings
 from nexus_api.core.metrics import isolation_event_drainer
 from nexus_api.core.redis_client import get_redis
+from nexus_api.core.tenant_context import tenant_scoped_session
+from nexus_api.db.base import get_sessionmaker
+from nexus_channels.whatsapp_meta import MetaChannelAdapter, MetaClient
+from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
 from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
 from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudClient
 from nexus_mcp.servers.agendapro_public.transport import (
@@ -97,14 +102,36 @@ async def _amain() -> None:
     redis = get_redis()
     stop = asyncio.Event()
 
-    # Block F: a single YCloud client + adapter shared across the outbound
-    # dispatcher and the operator alerter. Per-tenant API keys are a Phase
-    # 4+ white-label concern; the BSP-level key here is Auphere's.
+    # Block F: a single YCloud client + adapter. YCloud uses one global BSP
+    # key (Auphere's) shared across every tenant.
     ycloud_client = YCloudClient(
         api_key=nexus_settings.ycloud_api_key,
         base_url=nexus_settings.ycloud_api_base_url,
     )
     whatsapp_adapter = WhatsAppYCloudAdapter(ycloud_client)
+
+    # Meta Cloud API adapter — direct Tech Provider integration. Unlike
+    # YCloud, each Meta tenant has its OWN encrypted BISUAT + phone_number_id
+    # in ``tenant_credentials`` (integration="meta_whatsapp"). The adapter is
+    # stateless past construction; the credentials loader resolves the
+    # per-tenant ``(phone_number_id, bisuat)`` inside a fresh tenant-scoped
+    # session on each send, so RLS is the only authority on which row is read.
+    meta_sm = get_sessionmaker()
+
+    async def _load_meta_credentials(*, tenant_id: uuid.UUID) -> tuple[str, str]:
+        async with meta_sm() as cred_session, tenant_scoped_session(cred_session, tenant_id):
+            creds = await MetaCredentialsRepository(cred_session).get_or_raise()
+            return (creds.phone_number_id, creds.bisuat)
+
+    meta_client = MetaClient(
+        app_secret=nexus_settings.meta_app_secret,
+        require_appsecret_proof=nexus_settings.meta_require_appsecret_proof,
+    )
+    meta_adapter = MetaChannelAdapter(meta_client, credentials_loader=_load_meta_credentials)
+
+    # Provider registry. The outbound dispatcher and operator alerter pick the
+    # adapter per ``channels.provider`` so YCloud and Meta tenants coexist.
+    whatsapp_adapters = {"ycloud": whatsapp_adapter, "meta": meta_adapter}
 
     # Block O: AgendaPro public-link Node MCP subprocess pool. Configured
     # lazily so the worker can boot in test/dev where the Node binary or
@@ -152,11 +179,11 @@ async def _amain() -> None:
             name="inbound-consumer",
         )
         outbound_task = asyncio.create_task(
-            run_outbound_dispatcher(adapter=whatsapp_adapter, stop=stop),
+            run_outbound_dispatcher(adapters=whatsapp_adapters, stop=stop),
             name="outbound-dispatcher",
         )
         alerter_task = asyncio.create_task(
-            run_operator_alerter(adapter=whatsapp_adapter, stop=stop),
+            run_operator_alerter(adapters=whatsapp_adapters, stop=stop),
             name="operator-alerter",
         )
         reminder_task = asyncio.create_task(
@@ -267,6 +294,8 @@ async def _amain() -> None:
             )
         finally:
             await ycloud_client.close()
+            with contextlib.suppress(Exception):
+                await meta_client.close()
             with contextlib.suppress(Exception):
                 await agendapro_public_pool.shutdown()
             langfuse_shutdown()

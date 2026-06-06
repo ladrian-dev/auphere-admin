@@ -63,7 +63,7 @@ async def test_outbound_dispatcher_sends_pending_messages(
     msg_id = await _seed_pending_message(tenant_info=info, content="Hola desde Cultor")
 
     sm = get_sessionmaker()
-    await _drain_tenant(sm, info["tenant_id"], fake_adapter, batch_size=10)
+    await _drain_tenant(sm, info["tenant_id"], {"ycloud": fake_adapter}, batch_size=10)
 
     msg = await _read_message(info["tenant_id"], msg_id)
     assert msg.status is MessageStatus.SENT
@@ -85,7 +85,7 @@ async def test_outbound_dispatcher_marks_failed_after_retries(
 
     sm = get_sessionmaker()
     for _ in range(MAX_ATTEMPTS + 1):
-        await _drain_tenant(sm, info["tenant_id"], fake_adapter, batch_size=10)
+        await _drain_tenant(sm, info["tenant_id"], {"ycloud": fake_adapter}, batch_size=10)
 
     msg = await _read_message(info["tenant_id"], msg_id)
     assert msg.status is MessageStatus.FAILED
@@ -104,8 +104,8 @@ async def test_outbound_dispatcher_isolation_two_tenants(
 
     sm = get_sessionmaker()
     await asyncio.gather(
-        _drain_tenant(sm, info_a["tenant_id"], fake_adapter, batch_size=10),
-        _drain_tenant(sm, info_b["tenant_id"], fake_adapter, batch_size=10),
+        _drain_tenant(sm, info_a["tenant_id"], {"ycloud": fake_adapter}, batch_size=10),
+        _drain_tenant(sm, info_b["tenant_id"], {"ycloud": fake_adapter}, batch_size=10),
     )
 
     msg_a = await _read_message(info_a["tenant_id"], a_msg)
@@ -132,9 +132,9 @@ async def test_outbound_dispatcher_skips_already_sent_messages(
 
     sm = get_sessionmaker()
     # First tick sends; second tick should find no pending and not call adapter.
-    await _drain_tenant(sm, info["tenant_id"], fake_adapter, batch_size=10)
+    await _drain_tenant(sm, info["tenant_id"], {"ycloud": fake_adapter}, batch_size=10)
     assert len(fake_adapter.text_calls) == 1
-    await _drain_tenant(sm, info["tenant_id"], fake_adapter, batch_size=10)
+    await _drain_tenant(sm, info["tenant_id"], {"ycloud": fake_adapter}, batch_size=10)
     assert len(fake_adapter.text_calls) == 1  # unchanged
 
     msg = await _read_message(info["tenant_id"], msg_id)

@@ -1,7 +1,12 @@
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The dev/test default Fernet key (see ``fernet_key`` below). Hoisted to a
+# module constant so the production secret guard can compare against it
+# without duplicating the literal.
+_DEV_FERNET_KEY = "RQ8j4zYQ3W3ofSt7pUJoKxTYwhZ8JkRdJ-T_Wc1G3xs="
 
 
 class Settings(BaseSettings):
@@ -207,6 +212,34 @@ class Settings(BaseSettings):
     @property
     def is_dev(self) -> bool:
         return not self.is_prod
+
+    @model_validator(mode="after")
+    def _forbid_dev_secrets_in_prod(self) -> "Settings":
+        """Hard-fail boot in production if the WhatsApp/Meta credential
+        secrets still carry their dev placeholders. Without this guard a
+        prod deploy missing ``NEXUS_META_APP_SECRET`` /
+        ``NEXUS_META_WEBHOOK_VERIFY_TOKEN`` boots silently with the
+        ``change-me`` defaults and fails every Meta call + the webhook
+        handshake — a footgun the security audit flagged. The Fernet key is
+        included because the dev default would make stored BISUATs readable
+        by anyone who knows the public placeholder.
+        """
+        if not self.is_prod:
+            return self
+        offenders: list[str] = []
+        if "change-me" in self.meta_app_secret:
+            offenders.append("NEXUS_META_APP_SECRET")
+        if "change-me" in self.meta_webhook_verify_token:
+            offenders.append("NEXUS_META_WEBHOOK_VERIFY_TOKEN")
+        if self.fernet_key == _DEV_FERNET_KEY:
+            offenders.append("NEXUS_FERNET_KEY")
+        if offenders:
+            raise ValueError(
+                "Refusing to boot in production with dev placeholder secrets: "
+                + ", ".join(offenders)
+                + ". Set them via Doppler/env before deploying."
+            )
+        return self
 
 
 @lru_cache

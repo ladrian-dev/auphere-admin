@@ -35,8 +35,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import sqlalchemy as sa
 import structlog
@@ -53,12 +54,14 @@ from nexus_api.db.models import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-if TYPE_CHECKING:
-    from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
-
 log = structlog.get_logger(__name__)
 
 DEFAULT_TICK_SECONDS = 30.0
+
+# Provider → ChannelAdapter, shared with the outbound dispatcher. The alerter
+# resolves the adapter from the tenant's active WhatsApp channel provider so
+# operator alerts go out through the same WABA the tenant is served on.
+AdapterRegistry = Mapping[str, Any]
 
 
 _ACTION_TO_TEMPLATE: dict[str, str] = {
@@ -77,16 +80,16 @@ _ACTION_TO_TEMPLATE: dict[str, str] = {
 
 async def run_operator_alerter(
     *,
-    adapter: WhatsAppYCloudAdapter,
+    adapters: AdapterRegistry,
     stop: asyncio.Event,
     tick_seconds: float = DEFAULT_TICK_SECONDS,
 ) -> None:
     """Background task. One pass per ``tick_seconds``."""
-    log.info("operator_alerter.start", tick_seconds=tick_seconds)
+    log.info("operator_alerter.start", tick_seconds=tick_seconds, providers=sorted(adapters.keys()))
     sm = get_sessionmaker()
     while not stop.is_set():
         try:
-            await _process_pending(sm, adapter)
+            await _process_pending(sm, adapters)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -98,7 +101,7 @@ async def run_operator_alerter(
 
 async def _process_pending(
     sm: sa.orm.sessionmaker,  # type: ignore[type-arg]
-    adapter: WhatsAppYCloudAdapter,
+    adapters: AdapterRegistry,
 ) -> None:
     """One iteration: find unprocessed audit rows, alert, ledger them."""
     async with sm() as session:
@@ -109,13 +112,13 @@ async def _process_pending(
 
     for tid in tenant_ids:
         async with sm() as session, tenant_scoped_session(session, tid):
-            await _process_tenant(session, tid, adapter)
+            await _process_tenant(session, tid, adapters)
 
 
 async def _process_tenant(
     session: AsyncSession,
     tenant_id: uuid.UUID,
-    adapter: WhatsAppYCloudAdapter,
+    adapters: AdapterRegistry,
 ) -> None:
     """Find audit rows of interest that don't yet have a notification ledger."""
     actions = list(_ACTION_TO_TEMPLATE.keys())
@@ -141,13 +144,13 @@ async def _process_tenant(
         count=len(rows),
     )
     for audit_row in rows:
-        await _alert_one(session, audit_row, adapter, tenant_id)
+        await _alert_one(session, audit_row, adapters, tenant_id)
 
 
 async def _alert_one(
     session: AsyncSession,
     audit_row: AuditLog,
-    adapter: WhatsAppYCloudAdapter,
+    adapters: AdapterRegistry,
     tenant_id: uuid.UUID,
 ) -> None:
     template = _ACTION_TO_TEMPLATE[audit_row.action]
@@ -172,7 +175,7 @@ async def _alert_one(
         )
         return
 
-    recipient_phone, owner_business_phone = await _resolve_recipient_and_business_phone(
+    recipient_phone, owner_business_phone, provider = await _resolve_recipient_and_business_phone(
         session, tenant_id
     )
     if recipient_phone is None:
@@ -184,7 +187,7 @@ async def _alert_one(
             audit_log_id=str(audit_row.id),
         )
         return
-    if owner_business_phone is None:
+    if owner_business_phone is None or provider is None:
         notif.status = OperatorNotificationStatus.FAILED
         notif.last_error = "no_whatsapp_channel_for_tenant"
         log.warning(
@@ -194,16 +197,28 @@ async def _alert_one(
         )
         return
 
+    adapter = adapters.get(provider)
+    if adapter is None:
+        notif.status = OperatorNotificationStatus.FAILED
+        notif.last_error = f"no adapter for provider: {provider}"
+        log.warning(
+            "operator_alerter.unsupported_provider",
+            tenant_id=str(tenant_id),
+            audit_log_id=str(audit_row.id),
+            provider=provider,
+        )
+        return
+
     body_params = await _render_params(session, audit_row, template)
     try:
-        await adapter.send_template(
+        await _send_alert_template(
+            adapter=adapter,
+            provider=provider,
             from_phone=owner_business_phone,
             recipient=recipient_phone,
-            template_name=template,
-            language="es_CL",
+            template=template,
             body_params=body_params,
             tenant_id=tenant_id,
-            channel_id=uuid.uuid4(),  # placeholder — adapter only logs
         )
     except Exception as exc:
         notif.status = OperatorNotificationStatus.FAILED
@@ -230,12 +245,13 @@ async def _alert_one(
 async def _resolve_recipient_and_business_phone(
     session: AsyncSession,
     tenant_id: uuid.UUID,
-) -> tuple[str | None, str | None]:
-    """Return (recipient_e164, owner_whatsapp_business_phone).
+) -> tuple[str | None, str | None, str | None]:
+    """Return (recipient_e164, owner_whatsapp_business_phone, provider).
 
     Recipient = tenant.owner_phone || settings.operator_fallback_phone.
-    Business phone = first active WhatsApp channel of this tenant
-    (used as ``from_phone`` so YCloud knows which WABA to send through).
+    Business phone + provider = first active WhatsApp channel of this tenant.
+    The provider drives which adapter sends the alert so a Meta-served tenant
+    is alerted through Meta, not YCloud.
     """
     settings = get_settings()
     tenant_row = await session.execute(sa.select(Tenant.owner_phone).where(Tenant.id == tenant_id))
@@ -245,16 +261,51 @@ async def _resolve_recipient_and_business_phone(
     from nexus_api.db.models import Channel, ChannelStatus
 
     channel_row = await session.execute(
-        sa.select(Channel.provider_identifier)
+        sa.select(Channel.provider_identifier, Channel.provider)
         .where(
             Channel.type == "whatsapp",
-            Channel.provider == "ycloud",
             Channel.status == ChannelStatus.ACTIVE,
         )
+        .order_by(Channel.created_at.asc())
         .limit(1)
     )
-    business_phone = channel_row.scalar_one_or_none()
-    return recipient, business_phone
+    row = channel_row.first()
+    if row is None:
+        return recipient, None, None
+    business_phone, provider = row
+    return recipient, business_phone, provider
+
+
+async def _send_alert_template(
+    *,
+    adapter: Any,
+    provider: str,
+    from_phone: str,
+    recipient: str,
+    template: str,
+    body_params: list[str],
+    tenant_id: uuid.UUID,
+) -> None:
+    """Send an operator alert template via the resolved adapter.
+
+    The two adapters expose ``send_template`` with different parameter
+    shapes — YCloud takes positional ``body_params``, Meta takes a single
+    ``params`` dict (its ``_build_template_components`` reads ``body`` as a
+    positional list). The ``channel_id`` is a placeholder because both
+    adapters only log it.
+    """
+    common = {
+        "from_phone": from_phone,
+        "recipient": recipient,
+        "template_name": template,
+        "language": "es_CL",
+        "tenant_id": tenant_id,
+        "channel_id": uuid.uuid4(),  # placeholder — adapter only logs
+    }
+    if provider == "meta":
+        await adapter.send_template(params={"body": body_params}, **common)
+    else:
+        await adapter.send_template(body_params=body_params, **common)
 
 
 async def _render_params(

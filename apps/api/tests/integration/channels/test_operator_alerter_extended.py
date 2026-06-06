@@ -59,7 +59,7 @@ async def test_alerter_sends_cost_threshold_template(two_tenants_with_channels, 
         },
     )
     sm = get_sessionmaker()
-    await _process_pending(sm, fake_adapter)
+    await _process_pending(sm, {"ycloud": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 1
     call = fake_adapter.template_calls[0]
@@ -81,7 +81,7 @@ async def test_alerter_sends_isolation_template(two_tenants_with_channels, fake_
         },
     )
     sm = get_sessionmaker()
-    await _process_pending(sm, fake_adapter)
+    await _process_pending(sm, {"ycloud": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 1
     call = fake_adapter.template_calls[0]
@@ -102,7 +102,7 @@ async def test_alerter_sends_ycloud_burst_template(two_tenants_with_channels, fa
         },
     )
     sm = get_sessionmaker()
-    await _process_pending(sm, fake_adapter)
+    await _process_pending(sm, {"ycloud": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 1
     call = fake_adapter.template_calls[0]

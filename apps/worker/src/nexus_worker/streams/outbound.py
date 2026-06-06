@@ -47,8 +47,9 @@ import asyncio
 import contextlib
 import json
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 import structlog
@@ -71,7 +72,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from nexus_channels.base import SendResult
-    from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
+
+# Provider → ChannelAdapter. YCloud and Meta expose the same outbound method
+# surface (send_text/template/interactive/image/audio/video/document/reaction)
+# with identical keyword signatures, so the dispatcher treats them uniformly
+# and only differs in *which* adapter it resolves per ``channels.provider``.
+AdapterRegistry = Mapping[str, Any]
 
 log = structlog.get_logger(__name__)
 
@@ -113,13 +119,23 @@ _NO_RETRY_PREFIXES: tuple[str, ...] = ("132",)  # all 132xxx template rejects
 
 async def run_outbound_dispatcher(
     *,
-    adapter: WhatsAppYCloudAdapter,
+    adapters: AdapterRegistry,
     stop: asyncio.Event,
     tick_seconds: float = DEFAULT_TICK_SECONDS,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> None:
-    """Background task. Returns when ``stop`` is set."""
-    log.info("outbound.dispatcher.start", tick_seconds=tick_seconds, batch=batch_size)
+    """Background task. Returns when ``stop`` is set.
+
+    ``adapters`` maps ``channels.provider`` (``"ycloud"``/``"meta"``) to the
+    matching :class:`ChannelAdapter`. Each pending row resolves its adapter
+    from the channel's provider, so a single worker serves both transports.
+    """
+    log.info(
+        "outbound.dispatcher.start",
+        tick_seconds=tick_seconds,
+        batch=batch_size,
+        providers=sorted(adapters.keys()),
+    )
     sm = get_sessionmaker()
     while not stop.is_set():
         try:
@@ -127,7 +143,7 @@ async def run_outbound_dispatcher(
             for tid in tenant_ids:
                 if stop.is_set():
                     break
-                await _drain_tenant(sm, tid, adapter, batch_size)
+                await _drain_tenant(sm, tid, adapters, batch_size)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -148,7 +164,7 @@ async def _list_active_tenants(sm: sa.orm.sessionmaker) -> list[uuid.UUID]:  # t
 async def _drain_tenant(
     sm: sa.orm.sessionmaker,  # type: ignore[type-arg]
     tenant_id: uuid.UUID,
-    adapter: WhatsAppYCloudAdapter,
+    adapters: AdapterRegistry,
     batch_size: int,
 ) -> None:
     async with sm() as session, tenant_scoped_session(session, tenant_id):
@@ -171,13 +187,13 @@ async def _drain_tenant(
             count=len(pending),
         )
         for msg in pending:
-            await _send_one(session, msg, adapter, tenant_id)
+            await _send_one(session, msg, adapters, tenant_id)
 
 
 async def _send_one(
     session: AsyncSession,
     msg: Message,
-    adapter: WhatsAppYCloudAdapter,
+    adapters: AdapterRegistry,
     tenant_id: uuid.UUID,
 ) -> None:
     """Resolve the channel + recipient, send via adapter, update status.
@@ -189,7 +205,13 @@ async def _send_one(
     3. Otherwise → ``send_text`` (the historical path).
     """
     info = await session.execute(
-        sa.select(Channel.id, Channel.provider_identifier, Channel.type, Customer.identifier)
+        sa.select(
+            Channel.id,
+            Channel.provider_identifier,
+            Channel.type,
+            Channel.provider,
+            Customer.identifier,
+        )
         .join(Conversation, Conversation.channel_id == Channel.id)
         .join(Customer, Customer.id == Conversation.customer_id)
         .where(Conversation.id == msg.conversation_id)
@@ -208,12 +230,31 @@ async def _send_one(
             message_id=str(msg.id),
         )
         return
-    channel_id, business_phone, channel_type, recipient = row
+    channel_id, business_phone, channel_type, provider, recipient = row
     if channel_type != ChannelType.WHATSAPP:
         msg.status = MessageStatus.FAILED
         msg.failed_at = datetime.now(UTC)
         msg.failure_code = "unsupported_channel"
         msg.last_error = f"unsupported channel type: {channel_type}"
+        return
+
+    # Resolve the adapter for this channel's provider. A channel whose
+    # provider has no registered adapter is parked failed (no retry) instead
+    # of silently sending through the wrong transport — sending a Meta
+    # tenant's reply through YCloud (or vice versa) would hit a WABA the
+    # credential has no authority over.
+    adapter = adapters.get(provider)
+    if adapter is None:
+        msg.status = MessageStatus.FAILED
+        msg.failed_at = datetime.now(UTC)
+        msg.failure_code = "unsupported_provider"
+        msg.last_error = f"no adapter registered for provider: {provider}"
+        log.warning(
+            "outbound.dispatcher.unsupported_provider",
+            tenant_id=str(tenant_id),
+            message_id=str(msg.id),
+            provider=provider,
+        )
         return
 
     # Opt-out check (Block N). The recipient's number may have STOP'd us —
@@ -289,7 +330,7 @@ async def _send_one(
 
 async def _dispatch_message(
     *,
-    adapter: WhatsAppYCloudAdapter,
+    adapter: Any,
     msg: Message,
     from_phone: str,
     recipient: str,
@@ -397,6 +438,35 @@ async def _dispatch_message(
     )
 
 
+async def _maybe_flag_meta_reauth(
+    *,
+    session: AsyncSession,
+    exc: Exception,
+    tenant_id: uuid.UUID,
+) -> None:
+    """If ``exc`` is a Meta token-invalidation, flip the tenant's Meta
+    credentials to ``needs_reauth``. Best-effort: a failure here must not
+    mask the original send failure being classified by the caller."""
+    from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
+    from nexus_channels.whatsapp_meta.exceptions import TokenInvalidatedError
+
+    if not isinstance(exc, TokenInvalidatedError):
+        return
+    try:
+        await MetaCredentialsRepository(session).mark_reauth_needed()
+        log.warning(
+            "outbound.dispatcher.meta_reauth_flagged",
+            tenant_id=str(tenant_id),
+            code=getattr(exc, "code", None),
+        )
+    except Exception as flag_exc:
+        log.error(
+            "outbound.dispatcher.meta_reauth_flag_failed",
+            tenant_id=str(tenant_id),
+            error=str(flag_exc),
+        )
+
+
 async def _handle_send_exception(
     *,
     session: AsyncSession,
@@ -411,6 +481,14 @@ async def _handle_send_exception(
     msg.last_error = error_str
     status_code = int(getattr(exc, "status_code", -1) or 0)
     meta_code = _extract_meta_code(exc)
+
+    # Meta token invalidation (OAuthException 190/463/467). The BISUAT is
+    # dead — flag the tenant's credentials ``needs_reauth`` so the operator
+    # can re-run Embedded Signup instead of the dispatcher silently failing
+    # every send forever. We're already inside the tenant-scoped session, so
+    # the repo writes the right row under RLS. YCloud failures never raise
+    # this type, so the branch is naturally Meta-only.
+    await _maybe_flag_meta_reauth(session=session, exc=exc, tenant_id=tenant_id)
 
     no_retry = False
     if meta_code in _NO_RETRY_CODES or any(meta_code.startswith(p) for p in _NO_RETRY_PREFIXES):
@@ -467,12 +545,21 @@ async def _handle_send_exception(
 
 
 def _extract_meta_code(exc: Exception) -> str:
-    """Parse the embedded Meta error code from a YCloudAPIError body.
+    """Parse the embedded Meta error code from a provider error.
 
-    YCloud forwards Meta's payload verbatim. We look for an ``error.code``
-    field; if absent, return empty string and the caller falls back to
-    the HTTP status code.
+    Two shapes:
+    - ``MetaAPIError`` (direct Meta path) exposes a structured ``.code`` —
+      the Cloud API error code — which we use directly.
+    - ``YCloudAPIError`` forwards Meta's payload verbatim in ``.body``; we
+      look for an ``error.code`` field there.
+
+    If neither is present, return empty string and the caller falls back to
+    the HTTP status code. Either way the ``_NO_RETRY_CODES`` table (131026,
+    131047, 132xxx, …) applies uniformly across both transports.
     """
+    direct_code = getattr(exc, "code", None)
+    if direct_code is not None:
+        return str(direct_code)
     body = getattr(exc, "body", None)
     if not body:
         return ""

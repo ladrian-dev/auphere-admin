@@ -73,9 +73,9 @@ async def test_alerter_sends_escalation_template_once(
     )
 
     sm = get_sessionmaker()
-    await _process_pending(sm, fake_adapter)
+    await _process_pending(sm, {"ycloud": fake_adapter})
     # Run a second time — it must NOT re-notify.
-    await _process_pending(sm, fake_adapter)
+    await _process_pending(sm, {"ycloud": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 1
     call = fake_adapter.template_calls[0]
@@ -104,7 +104,7 @@ async def test_alerter_sends_needs_reauth_template(
     )
 
     sm = get_sessionmaker()
-    await _process_pending(sm, fake_adapter)
+    await _process_pending(sm, {"ycloud": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 1
     assert fake_adapter.template_calls[0]["template_name"] == "alert_needs_reauth_v1"
@@ -130,7 +130,7 @@ async def test_alerter_isolation_two_tenants(
     )
 
     sm = get_sessionmaker()
-    await _process_pending(sm, fake_adapter)
+    await _process_pending(sm, {"ycloud": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 2
     by_recipient = {c["recipient"]: c for c in fake_adapter.template_calls}
@@ -155,7 +155,7 @@ async def test_alerter_marks_failed_when_send_fails(
     )
 
     sm = get_sessionmaker()
-    await _process_pending(sm, fake_adapter)
+    await _process_pending(sm, {"ycloud": fake_adapter})
 
     notif = await _read_notification(info["tenant_id"], audit_id)
     assert notif.status is OperatorNotificationStatus.FAILED
@@ -175,6 +175,6 @@ async def test_alerter_skips_unrelated_audit_actions(
     )
 
     sm = get_sessionmaker()
-    await _process_pending(sm, fake_adapter)
+    await _process_pending(sm, {"ycloud": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 0

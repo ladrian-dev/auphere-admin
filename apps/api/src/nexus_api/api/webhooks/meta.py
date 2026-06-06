@@ -34,6 +34,9 @@ import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from nexus_channels.base import InboundMessage
 from nexus_channels.whatsapp_meta import (
+    MetaAPIError,
+    MetaChannelAdapter,
+    MetaClient,
     MetaSignatureError,
     extract_business_phone,
     parse_app_state_sync,
@@ -44,6 +47,7 @@ from nexus_channels.whatsapp_meta import (
     parse_template_status,
     verify_meta_signature,
 )
+from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
 from nexus_channels.whatsapp_ycloud.webhook_adapter import is_opt_out_text
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -57,13 +61,16 @@ from nexus_api.core.logging_context import bind_tenant
 from nexus_api.core.metrics import CHANNEL_UNRESOLVED_EVENT, counters
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import resolve_tenant
+from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     Message,
     MessageStatus,
+    Tenant,
     WhatsAppOptOut,
     WhatsAppTemplateStatus,
 )
 from nexus_api.repositories import ChannelRepository
+from nexus_api.services.media_storage import MediaStorageError, get_media_storage
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -257,6 +264,46 @@ async def _handle_inbound(
         )
         return {"status": "ignored"}
 
+    # Media download — resolve the Cloud API media id to bytes and persist
+    # to S3 BEFORE enqueue so the multimodal pipeline has a reference by the
+    # time the consumer picks up the stream entry. On failure we still
+    # enqueue the turn (the agent asks the user to resend) instead of going
+    # silent. Mirror of the YCloud route.
+    s3_key: str | None = None
+    media_mime: str | None = None
+    media_size: int | None = None
+    media_filename: str | None = None
+    sha256: str | None = None
+    media_kind_value: str | None = None
+
+    if inbound.media is not None and inbound.kind.value in {
+        "audio",
+        "image",
+        "document",
+        "video",
+        "sticker",
+    }:
+        media_kind_value = inbound.kind.value
+        try:
+            s3_key, media_mime, media_size, sha256 = await _download_inbound_media(
+                tenant_id=tenant_id,
+                wamid=wamid,
+                media_id=inbound.media.provider_media_id,
+                hint_mime=inbound.media.mime_type,
+                hint_sha=inbound.media.sha256,
+            )
+            media_filename = inbound.media.filename
+        except (MetaAPIError, MediaStorageError) as exc:
+            log.warning(
+                "webhook.meta.media_download_failed",
+                tenant_id=str(tenant_id),
+                wamid=wamid,
+                media_id=inbound.media.provider_media_id,
+                error=str(exc),
+            )
+
+    content = _render_content(inbound)
+
     # Opt-out detection — keyword-based, provider-agnostic.
     opted_out = False
     if inbound.text is not None:
@@ -273,8 +320,6 @@ async def _handle_inbound(
                 source_wamid=wamid,
             )
 
-    # Enqueue.
-    content = inbound.text or f"[{inbound.kind.value}]"
     fields: dict[str, str] = {
         "tenant_id": str(tenant_id),
         "channel_id": str(channel.id),
@@ -286,12 +331,56 @@ async def _handle_inbound(
     }
     if inbound.sender_name:
         fields["customer_name"] = inbound.sender_name
-    if opted_out:
-        fields["opted_out"] = "true"
+    if media_kind_value:
+        fields["media_kind"] = media_kind_value
+    if s3_key:
+        fields["media_s3_key"] = s3_key
+    if media_mime:
+        fields["media_mime"] = media_mime
+    if media_size is not None:
+        fields["media_size_bytes"] = str(media_size)
+    if media_filename:
+        fields["media_filename"] = media_filename
+    if sha256:
+        fields["media_sha256"] = sha256
     if inbound.context_message_id:
         fields["context_message_id"] = inbound.context_message_id
+    if inbound.reaction is not None:
+        fields["reaction_emoji"] = inbound.reaction.emoji
+        fields["reaction_target_wamid"] = inbound.reaction.target_message_id
+    if inbound.location is not None:
+        fields["location_latitude"] = str(inbound.location.latitude)
+        fields["location_longitude"] = str(inbound.location.longitude)
+        if inbound.location.name:
+            fields["location_name"] = inbound.location.name
+        if inbound.location.address:
+            fields["location_address"] = inbound.location.address
+    if opted_out:
+        fields["opted_out"] = "true"
+
+    if opted_out:
+        # Persist the opt-out but do NOT enqueue — the dispatcher would
+        # otherwise generate an outbound reply that violates the opt-out the
+        # user just expressed. The operator panel still sees the message via
+        # the persisted opt-out + audit log.
+        log.info(
+            "webhook.meta.opted_out_skip_enqueue",
+            tenant_id=str(tenant_id),
+            wamid=wamid,
+            recipient=inbound.sender_identifier,
+        )
+        return {"status": "opted_out"}
 
     await redis.xadd(INBOUND_STREAM, fields)
+
+    # Politeness: mark as read so the customer sees the two blue checks.
+    # Best-effort — failure never blocks the turn.
+    await _mark_read_best_effort(
+        tenant_id=tenant_id,
+        channel_id=channel.id,
+        from_phone=channel.provider_identifier,
+        wamid=wamid,
+    )
 
     log.info(
         "webhook.meta.inbound_enqueued",
@@ -299,6 +388,7 @@ async def _handle_inbound(
         channel_id=str(channel.id),
         wamid=wamid,
         kind=inbound.kind.value,
+        has_media=bool(media_kind_value),
         opted_out=opted_out,
     )
     return {"status": "enqueued"}
@@ -599,6 +689,142 @@ def _extract_change_value(
                 if isinstance(value, dict):
                     return value
     return None
+
+
+# ── inbound content + media helpers ──────────────────────────────────────────
+
+
+def _build_meta_adapter() -> MetaChannelAdapter:
+    """Construct a Meta adapter for webhook-side reads (media fetch,
+    mark-as-read). The credentials loader opens its own tenant-scoped
+    session so RLS is the only authority on which BISUAT it reads.
+    """
+    settings = get_settings()
+    client = MetaClient(
+        app_secret=settings.meta_app_secret,
+        require_appsecret_proof=settings.meta_require_appsecret_proof,
+    )
+
+    async def _loader(*, tenant_id: uuid.UUID) -> tuple[str, str]:
+        sm = get_sessionmaker()
+        async with sm() as cred_session, tenant_scoped_session(cred_session, tenant_id):
+            creds = await MetaCredentialsRepository(cred_session).get_or_raise()
+            return (creds.phone_number_id, creds.bisuat)
+
+    return MetaChannelAdapter(client, credentials_loader=_loader)
+
+
+def _render_content(inbound: InboundMessage) -> str:
+    """Render the inbound event into a single ``content`` string the pipeline
+    consumes. Identical contract to the YCloud route so the provider-agnostic
+    worker consumer sees uniform stream entries regardless of transport.
+
+    The multimodal pipeline overwrites the media prefix with the transcript /
+    vision summary; if download failed this prefix is what reaches the
+    classifier so it can route to a graceful "no pude leerlo" reply.
+    """
+    if inbound.text is not None and inbound.kind.value == "text":
+        return str(inbound.text)
+    if inbound.interactive is not None:
+        title = inbound.interactive.title or ""
+        return f"[interactive:{inbound.interactive.kind}:{inbound.interactive.payload_id}]{title}"
+    if inbound.reaction is not None:
+        emoji = inbound.reaction.emoji or "(removed)"
+        return f"[reaction:{emoji}:on={inbound.reaction.target_message_id}]"
+    if inbound.location is not None:
+        name = inbound.location.name or ""
+        return (
+            f"[location:lat={inbound.location.latitude:.6f},"
+            f"lon={inbound.location.longitude:.6f}]{name}".strip()
+        )
+    if inbound.kind.value in {"audio", "image", "document", "video", "sticker"}:
+        kind = inbound.kind.value
+        if inbound.media is not None and inbound.media.caption:
+            return f"[media:{kind}]{inbound.media.caption}"
+        return f"[media:{kind}]"
+    if inbound.kind.value == "contacts" and inbound.text:
+        return f"[contacts]{inbound.text}"
+    return inbound.text or f"[unsupported:{inbound.raw_event_type or 'unknown'}]"
+
+
+async def _download_inbound_media(
+    *,
+    tenant_id: uuid.UUID,
+    wamid: str,
+    media_id: str,
+    hint_mime: str | None,
+    hint_sha: str | None,
+) -> tuple[str, str | None, int, str | None]:
+    """Resolve media_id → bytes → S3. Returns (key, mime, size, sha256).
+
+    Honours ``Settings.media_max_size_mb`` — oversized media raise so the
+    caller surfaces a meaningful prefix instead of persisting a bomb.
+    """
+    settings = get_settings()
+    storage = get_media_storage()
+    adapter = _build_meta_adapter()
+    try:
+        content, mime, sha = await adapter.fetch_media_bytes(
+            media_id=media_id, tenant_id=tenant_id
+        )
+    finally:
+        await adapter._client.close()
+    if not mime and hint_mime:
+        mime = hint_mime
+    if not sha and hint_sha:
+        sha = hint_sha
+    size = len(content)
+    if size > settings.media_max_size_mb * 1024 * 1024:
+        raise MediaStorageError(
+            f"inbound media too large: {size} bytes > {settings.media_max_size_mb}MB limit"
+        )
+
+    tenant_slug = await _tenant_slug_for(tenant_id)
+    stored = await storage.put_inbound(
+        tenant_slug=tenant_slug,
+        wamid=wamid,
+        content=content,
+        content_type=mime,
+        sha256=sha,
+    )
+    return stored.key, stored.content_type, stored.size_bytes, stored.sha256
+
+
+async def _tenant_slug_for(tenant_id: uuid.UUID) -> str:
+    """Resolve tenant_id → slug without RLS scope (tenants is a global
+    table). Used to build the S3 key prefix."""
+    sm = get_sessionmaker()
+    async with sm() as s:
+        slug = await s.scalar(select(Tenant.slug).where(Tenant.id == tenant_id))
+    return slug or str(tenant_id)
+
+
+async def _mark_read_best_effort(
+    *,
+    tenant_id: uuid.UUID,
+    channel_id: uuid.UUID,
+    from_phone: str,
+    wamid: str,
+) -> None:
+    """Send the read receipt. Never raises — the inbound turn already
+    enqueued, so a failed read receipt is cosmetic."""
+    adapter = _build_meta_adapter()
+    try:
+        await adapter.mark_as_read(
+            from_phone=from_phone,
+            wamid=wamid,
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+        )
+    except Exception as exc:
+        log.info(
+            "webhook.meta.mark_as_read_failed",
+            tenant_id=str(tenant_id),
+            wamid=wamid,
+            error=str(exc),
+        )
+    finally:
+        await adapter._client.close()
 
 
 # ── helpers ────────────────────────────────────────────────────────────────

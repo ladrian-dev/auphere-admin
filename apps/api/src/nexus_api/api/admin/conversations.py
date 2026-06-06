@@ -1,21 +1,27 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
-import json
-
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from redis.asyncio import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from nexus_api.api.deps import get_redis, scoped_session_from_path
 from nexus_api.core.security import require_admin_token
-from nexus_api.db.models import AuditLog, Message, MessageDirection, MessageStatus
+from nexus_api.db.models import (
+    AuditLog,
+    Channel,
+    Message,
+    MessageDirection,
+    MessageStatus,
+)
 from nexus_api.repositories import ConversationRepository, MessageRepository
 from nexus_api.schemas.conversation import (
     ConversationAgentToggleIn,
@@ -46,10 +52,27 @@ async def list_conversations(
 ) -> ConversationPageOut:
     repo = ConversationRepository(session)
     page = await repo.list_paginated(limit=limit, cursor=cursor)
-    return ConversationPageOut(
-        items=[ConversationOut.model_validate(c) for c in page.items],
-        next_cursor=page.next_cursor,
+    providers = await _provider_map(session, [c.channel_id for c in page.items])
+    items: list[ConversationOut] = []
+    for c in page.items:
+        out = ConversationOut.model_validate(c)
+        out.provider = providers.get(c.channel_id)
+        items.append(out)
+    return ConversationPageOut(items=items, next_cursor=page.next_cursor)
+
+
+async def _provider_map(
+    session: AsyncSession, channel_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """Resolve ``channel_id -> provider`` for a page of conversations in a
+    single query. RLS-scoped via the request session, so it only ever sees
+    the active tenant's channels."""
+    if not channel_ids:
+        return {}
+    rows = await session.execute(
+        select(Channel.id, Channel.provider).where(Channel.id.in_(set(channel_ids)))
     )
+    return {cid: provider for cid, provider in rows}
 
 
 @router.get(
@@ -70,7 +93,9 @@ async def get_conversation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"conversation {conversation_id} not found",
         )
-    return ConversationOut.model_validate(conv)
+    out = ConversationOut.model_validate(conv)
+    out.provider = (await _provider_map(session, [conv.channel_id])).get(conv.channel_id)
+    return out
 
 
 @router.get(

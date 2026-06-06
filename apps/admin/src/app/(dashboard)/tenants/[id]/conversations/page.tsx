@@ -90,7 +90,7 @@ export default async function ConversationsPage({
         <CardContent className="p-0">
           {page.items.length === 0 ? (
             <div className="px-6 py-12 text-center text-muted-foreground text-sm">
-              Sin conversaciones todavía. Cuando llegue el primer mensaje al webhook YCloud aparecerán acá.
+              Sin conversaciones todavía. Cuando llegue el primer mensaje de WhatsApp aparecerán acá.
             </div>
           ) : (
             <Table>
@@ -111,8 +111,13 @@ export default async function ConversationsPage({
                         href={`/tenants/${tenant.id}/conversations/${conv.id}`}
                         className="flex flex-col outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                       >
-                        <span className="font-mono text-sm">
+                        <span className="font-mono text-sm flex items-center gap-2">
                           {conv.id.slice(0, 8)}
+                          {conv.provider ? (
+                            <span className="rounded-sm border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                              {conv.provider}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="text-xs text-muted-foreground font-mono">
                           customer {conv.customer_id.slice(0, 8)}

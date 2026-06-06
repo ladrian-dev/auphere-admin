@@ -166,18 +166,23 @@ class MetaChannelAdapter:
         *,
         from_phone: str,
         recipient: str,
-        payload: dict[str, Any],
+        interactive: dict[str, Any],
         tenant_id: uuid.UUID,
         channel_id: uuid.UUID,
         context_message_id: str | None = None,
     ) -> SendResult:
+        # Keyword is ``interactive`` (not ``payload``) to match the de-facto
+        # runtime contract: the outbound dispatcher and the YCloud adapter
+        # both speak ``interactive=``. The base.py Protocol still says
+        # ``payload`` — that Protocol predates the dispatcher and is stale;
+        # neither WhatsApp adapter conforms to it (both add ``from_phone``).
         pnid, token = await self._load_credentials(tenant_id=tenant_id)
         try:
             raw = await self._client.send_interactive(
                 phone_number_id=pnid,
                 access_token=token,
                 to=recipient,
-                interactive=payload,
+                interactive=interactive,
                 context_message_id=context_message_id,
             )
         except MetaAPIError as exc:

@@ -44,6 +44,21 @@ async def test_list_conversations_with_data(client, admin_headers, seed_tenants,
     assert len(r.json()["items"]) == 3
 
 
+async def test_list_conversations_exposes_provider(
+    client, admin_headers, seed_tenants, db_session
+):
+    """Each conversation carries its channel's transport provider so the
+    panel can badge Meta vs YCloud threads instead of assuming YCloud."""
+    tid = seed_tenants["a"]
+    async with db_session.begin():
+        await _seed_one(db_session, tid)
+    r = await client.get(f"/admin/tenants/{tid}/conversations", headers=admin_headers)
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert items, "expected at least one conversation"
+    assert items[0]["provider"] == "ycloud"
+
+
 async def test_list_conversations_pagination(client, admin_headers, seed_tenants, db_session):
     tid = seed_tenants["a"]
     async with db_session.begin():

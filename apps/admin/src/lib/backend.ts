@@ -453,6 +453,10 @@ export type ConversationOut = {
    *  resume and cleared. Populated only while the conversation is
    *  in a takeover window. */
   takeover_context: TakeoverContext | null;
+  /** Transport provider of the conversation's channel ("ycloud" | "meta").
+   *  Lets the panel badge each thread instead of assuming YCloud. Null only
+   *  when the underlying channel row is missing. */
+  provider: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -104,8 +104,9 @@ export function MetaTestSendDialog({ tenantId }: { tenantId: string }) {
           <DialogTitle>Enviar mensaje de prueba</DialogTitle>
           <DialogDescription>
             Usa el BISUAT del tenant para enviar un mensaje desde el número
-            conectado. El template <code>hello_world</code> está pre-aprobado y
-            funciona aunque no haya ventana de servicio abierta.
+            conectado. <code>hello_world</code> solo funciona desde los Public
+            Test Numbers de Meta; un número productivo necesita un template
+            propio aprobado, o una ventana de servicio abierta para texto libre.
           </DialogDescription>
         </DialogHeader>
 
@@ -177,6 +178,12 @@ export function MetaTestSendDialog({ tenantId }: { tenantId: string }) {
                   disabled={busy}
                 />
               </div>
+              {templateName.trim() === "hello_world" ? (
+                <p className="col-span-2 text-[11px] leading-snug text-[color:var(--color-status-warning)]">
+                  <code>hello_world</code> falla en números productivos (error
+                  Meta #131058). Cámbialo por un template aprobado del tenant.
+                </p>
+              ) : null}
             </div>
           ) : (
             <div className="flex flex-col gap-1.5">
