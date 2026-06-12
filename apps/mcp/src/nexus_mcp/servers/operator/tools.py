@@ -47,10 +47,10 @@ _DEFAULT_ACK = "Déjame consultar para confirmarte y te aviso por acá apenas te
 
 
 def _pick_template(expected_reply_kind: str) -> str:
-    """Map ``expected_reply_kind`` to a YCloud template name.
+    """Map ``expected_reply_kind`` to a WhatsApp template name.
 
     Template names match the strings already submitted to Meta for
-    approval (see ADR-018 'Templates YCloud aprobados').
+    approval on the Auphere WABA (see ADR-018).
     """
     if expected_reply_kind == "action_done":
         return "auphere_owner_action_request"

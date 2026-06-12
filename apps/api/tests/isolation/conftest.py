@@ -126,7 +126,7 @@ async def seed_channel(
     ch = Channel(
         tenant_id=tenant_id,
         type=ChannelType.WHATSAPP,
-        provider="ycloud",
+        provider="meta",
         provider_identifier=provider_identifier,
         config={},
         status=ChannelStatus.ACTIVE,

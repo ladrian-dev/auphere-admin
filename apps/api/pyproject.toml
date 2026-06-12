@@ -23,7 +23,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy>=0.49b0",
     "opentelemetry-instrumentation-redis>=0.49b0",
     "opentelemetry-instrumentation-asyncpg>=0.49b0",
-    # Block F: webhook layer parses YCloud payloads via the channel adapter.
+    # Block F: webhook layer parses provider payloads via the channel adapter.
     "nexus-channels",
     # Block J: seed_templates loads vertical YAMLs (apps/api/.../seeds/*.yaml).
     "pyyaml>=6.0.2",
@@ -41,7 +41,7 @@ dependencies = [
     # operator-interactive (sub-3s perceived latency expected).
     "litellm>=1.52.0",
     # Block N: WhatsApp media storage. ``boto3`` powers ``S3MediaStorage``
-    # (AWS, R2, MinIO) — the webhook downloads inbound media from YCloud
+    # (AWS, R2, MinIO) — the webhook downloads inbound media from Meta
     # and the outbound dispatcher presigns S3 URLs the Cloud API fetches.
     # The adapter falls back to in-memory storage in dev/tests when keys
     # are absent, but production always needs the package available.
@@ -122,7 +122,7 @@ markers = [
     "unit: fast unit tests, no IO",
     "integration: requires Postgres/Redis containers",
     "isolation: blocking suite — verifies the 7 isolation guarantees",
-    "manual_only: release smoke / Browserbase / YCloud — opt-in via env vars",
+    "manual_only: release smoke / Browserbase / Meta — opt-in via env vars",
     "slow: tests that take notable wall time; CI still runs them",
     "contract: agent ↔ UCM schema contract tests (Fase 6)",
 ]

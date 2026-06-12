@@ -17,7 +17,9 @@ import type {
   MetaSignupResult,
   MetaTestSendInput,
   MetaTestSendResult,
-  WhatsAppPreview,
+  WhatsAppTemplateCreateInput,
+  WhatsAppTemplateCreateResult,
+  WhatsAppTemplateList,
 } from "@/lib/backend";
 import { requireSession } from "@/lib/session";
 
@@ -31,46 +33,6 @@ function toError(err: unknown): string {
     return body?.detail ?? `HTTP ${err.status}`;
   }
   return err instanceof Error ? err.message : String(err);
-}
-
-// ── WhatsApp YCloud ────────────────────────────────────────────────────────
-
-export async function verifyWhatsAppAction(
-  waba_id: string,
-  phone_number_e164: string,
-): Promise<ActionResult<WhatsAppPreview>> {
-  await requireSession();
-  try {
-    const result = await backend.verifyWhatsApp(waba_id, phone_number_e164);
-    if (!result) {
-      return { ok: false, error: "El backend no devolvió datos del número." };
-    }
-    return { ok: true, data: result };
-  } catch (err) {
-    return { ok: false, error: toError(err) };
-  }
-}
-
-export async function connectWhatsAppSetupAction(
-  tenantId: string,
-  body: { waba_id: string; phone_number_e164: string },
-): Promise<ActionResult<{ phone_number: string }>> {
-  await requireSession();
-  try {
-    const channel = await backend.connectWhatsAppManual(tenantId, body);
-    if (!channel) {
-      return { ok: false, error: "El backend no devolvió el canal creado." };
-    }
-    // Install the connector row so the channel shows up under "Conectados".
-    await backend.connectManualConnector(tenantId, "whatsapp_ycloud", {
-      channel_id: channel.channel_id,
-    });
-    revalidatePath(`/tenants/${tenantId}/connectors`);
-    revalidatePath(`/tenants/${tenantId}`);
-    return { ok: true, data: { phone_number: channel.phone_number } };
-  } catch (err) {
-    return { ok: false, error: toError(err) };
-  }
 }
 
 // ── WhatsApp Meta (Embedded Signup v4) ─────────────────────────────────────
@@ -198,6 +160,55 @@ export async function agendaProSetPublicUrlAction(
     revalidatePath(`/tenants/${tenantId}/connectors`);
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: { public_url: result.public_url } };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+// ── WhatsApp template (HSM) management ─────────────────────────────────────
+
+export async function listWhatsAppTemplatesAction(
+  tenantId: string,
+): Promise<ActionResult<WhatsAppTemplateList>> {
+  await requireSession();
+  try {
+    const result = await backend.listWhatsAppTemplates(tenantId);
+    if (!result) {
+      return { ok: false, error: "El backend no devolvió plantillas." };
+    }
+    return { ok: true, data: result };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+export async function createWhatsAppTemplateAction(
+  tenantId: string,
+  body: WhatsAppTemplateCreateInput,
+): Promise<ActionResult<WhatsAppTemplateCreateResult>> {
+  await requireSession();
+  try {
+    const result = await backend.createWhatsAppTemplate(tenantId, body);
+    if (!result) {
+      return { ok: false, error: "El backend no devolvió la plantilla creada." };
+    }
+    return { ok: true, data: result };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+export async function deleteWhatsAppTemplateAction(
+  tenantId: string,
+  name: string,
+): Promise<ActionResult<{ name: string; deleted: boolean }>> {
+  await requireSession();
+  try {
+    const result = await backend.deleteWhatsAppTemplate(tenantId, name);
+    if (!result) {
+      return { ok: false, error: "El backend no confirmó el borrado." };
+    }
+    return { ok: true, data: result };
   } catch (err) {
     return { ok: false, error: toError(err) };
   }

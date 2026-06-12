@@ -95,7 +95,7 @@ async def composio_webhook(
         raise HTTPException(status_code=400, detail="payload missing connection_id")
 
     # Resolve tenant_id with RLS off — same pattern as resolve_channel_tenant
-    # in the webhook YCloud path. We capture the tenant_id, then turn row_security
+    # in the webhook Meta path. We capture the tenant_id, then turn row_security
     # back ON before switching to the non-superuser role; otherwise PG raises
     # ``query would be affected by row-level security policy`` for the
     # subsequent queries (nexus_app can't bypass RLS, so row_security=off is

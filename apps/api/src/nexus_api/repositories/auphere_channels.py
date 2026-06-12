@@ -1,20 +1,18 @@
 """Repository + resolver for ``auphere_owner_channels`` (migration 0038).
 
-Centralises three lookups the webhook + outbox + admin endpoints all
-need:
+Centralises the lookups the webhook + outbox + admin endpoints all need:
 
-- :meth:`AuphereChannelRepository.get_by_phone` — for the inbound
-  webhook, given the ``to`` field of an incoming WhatsApp message.
+- :meth:`AuphereChannelRepository.get_by_phone` — given the E.164 of an
+  incoming WhatsApp message's destination.
+- :meth:`AuphereChannelRepository.get_by_provider_phone_id` — for the
+  Meta webhook, given the ``metadata.phone_number_id`` of the event.
 - :meth:`AuphereChannelRepository.get_default` — fallback when an
   ``OwnerPhoneIndex`` row carries no explicit ``auphere_channel_id``.
-- :func:`resolve_channel_for_owner` — combines the two with the
-  legacy-settings fallback so callers don't repeat the if-else dance.
+- :func:`resolve_channel_for_owner` — combines the lookups so callers
+  don't repeat the if-else dance.
 
-The resolver returns a :class:`ResolvedAuphereChannel` value object —
-either a real row from the registry OR a legacy fallback synthesised
-from ``settings.auphere_owner_phone``. The caller treats both the same
-way (``phone_e164`` + optional ``webhook_secret``), which keeps the
-webhook + outbox blissfully unaware of the migration boundary.
+The resolver returns a :class:`ResolvedAuphereChannel` value object with
+the decrypted Meta access token ready for :class:`MetaClient` sends.
 """
 
 from __future__ import annotations
@@ -26,37 +24,29 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_api.config import get_settings
 from nexus_api.db.models import AuphereOwnerChannel, OwnerPhoneIndex
 
 
 @dataclass(frozen=True)
 class ResolvedAuphereChannel:
-    """A backchannel number ready to use — either a real registry row
-    or the legacy settings-based fallback.
+    """A backchannel number ready to use.
 
-    ``channel_id`` is ``None`` when the resolution fell back to
-    ``settings.auphere_owner_phone`` (Phase 1 compatibility). The
-    webhook + outbox treat both the same way; only the admin UI
-    distinguishes ("default" vs "registered") in display.
-
-    ``webhook_secret`` is the DECRYPTED secret ready to feed into
-    :func:`verify_ycloud_signature`. When the registry row has
-    ``webhook_secret_encrypted=NULL`` OR the resolution fell back to
-    settings, this is ``None`` and the caller uses
-    ``settings.ycloud_webhook_secret`` (or provider equivalent).
+    ``provider_phone_id`` is the Meta ``phone_number_id``;
+    ``access_token`` is the DECRYPTED system-user token (BISUAT) for
+    sends from this number — ``None`` means the channel can receive but
+    not send (operator must finish setup in the panel).
     """
 
     phone_e164: str
     provider: str
     provider_phone_id: str | None
-    webhook_secret: str | None
-    channel_id: uuid.UUID | None
+    access_token: str | None
+    channel_id: uuid.UUID
     display_name: str
 
     @property
-    def is_legacy_fallback(self) -> bool:
-        return self.channel_id is None
+    def can_send(self) -> bool:
+        return bool(self.provider_phone_id and self.access_token)
 
 
 class AuphereChannelRepository:
@@ -88,10 +78,9 @@ class AuphereChannelRepository:
     async def get_by_phone(
         self, phone_e164: str, *, only_active: bool = True
     ) -> AuphereOwnerChannel | None:
-        """Inbound webhook entry point — given the ``to`` field of the
-        incoming message, find the channel row. Active-only by default
-        so a deactivated number's traffic is rejected (204) at the
-        webhook layer."""
+        """Given the destination phone of an incoming message, find the
+        channel row. Active-only by default so a deactivated number's
+        traffic is rejected at the webhook layer."""
         stmt = select(AuphereOwnerChannel).where(
             AuphereOwnerChannel.phone_e164 == phone_e164
         )
@@ -100,8 +89,23 @@ class AuphereChannelRepository:
         row = await self._session.execute(stmt)
         return row.scalar_one_or_none()
 
+    async def get_by_provider_phone_id(
+        self, provider_phone_id: str, *, only_active: bool = True
+    ) -> AuphereOwnerChannel | None:
+        """Meta webhook entry point — given ``metadata.phone_number_id``
+        of the incoming event, find the Auphere channel row. ``None``
+        means the event belongs to a tenant channel, not the
+        backchannel."""
+        stmt = select(AuphereOwnerChannel).where(
+            AuphereOwnerChannel.provider_phone_id == provider_phone_id
+        )
+        if only_active:
+            stmt = stmt.where(AuphereOwnerChannel.active.is_(True))
+        row = await self._session.execute(stmt)
+        return row.scalar_one_or_none()
+
     async def get_default(
-        self, *, provider: str = "ycloud"
+        self, *, provider: str = "meta"
     ) -> AuphereOwnerChannel | None:
         """Resolver fallback — the row marked ``is_default=true`` for
         the provider. The partial unique index guarantees at most one
@@ -122,55 +126,32 @@ def _to_resolved(
 ) -> ResolvedAuphereChannel:
     """Wrap an ORM row in the value object. The Fernet column's
     ``__get__`` returns ``bytes | None``; we decode to UTF-8 because
-    the upstream signature helpers expect ``str``."""
-    secret_raw = channel.webhook_secret_encrypted
-    secret = secret_raw.decode("utf-8") if secret_raw else None
+    the Meta client expects ``str``."""
+    token_raw = channel.access_token_encrypted
+    token = token_raw.decode("utf-8") if token_raw else None
     return ResolvedAuphereChannel(
         phone_e164=channel.phone_e164,
         provider=channel.provider,
         provider_phone_id=channel.provider_phone_id,
-        webhook_secret=secret,
+        access_token=token,
         channel_id=channel.id,
         display_name=channel.display_name,
     )
 
 
-def _legacy_fallback() -> ResolvedAuphereChannel | None:
-    """Build a ResolvedAuphereChannel from the legacy
-    ``settings.auphere_owner_phone`` — preserves Phase 1 behaviour when
-    the registry is empty. Returns ``None`` when even the settings are
-    unset (the backchannel is simply disabled)."""
-    settings = get_settings()
-    if not settings.auphere_owner_phone:
-        return None
-    return ResolvedAuphereChannel(
-        phone_e164=settings.auphere_owner_phone,
-        provider="ycloud",  # Phase 1 only ever ran on YCloud
-        provider_phone_id=settings.auphere_owner_number_id,
-        webhook_secret=None,  # caller uses settings.ycloud_webhook_secret
-        channel_id=None,
-        display_name="Auphere (legacy settings)",
-    )
-
-
 async def resolve_channel_for_inbound(
-    session: AsyncSession, *, to_phone: str
+    session: AsyncSession, *, provider_phone_id: str
 ) -> ResolvedAuphereChannel | None:
-    """Inbound webhook resolution.
+    """Inbound webhook resolution by Meta ``phone_number_id``.
 
-    1. Try the registry by ``to_phone``. If hit + active → use it.
-    2. Else, if ``to_phone`` matches the legacy
-       ``settings.auphere_owner_phone`` → return the legacy fallback
-       (Phase 1 compatibility).
-    3. Else, ``None`` — webhook returns 204 (foreign destination).
+    Returns ``None`` when the phone_number_id doesn't belong to any
+    active Auphere channel — the caller treats the event as regular
+    tenant traffic.
     """
     repo = AuphereChannelRepository(session)
-    row = await repo.get_by_phone(to_phone)
+    row = await repo.get_by_provider_phone_id(provider_phone_id)
     if row is not None:
         return _to_resolved(row)
-    legacy = _legacy_fallback()
-    if legacy is not None and legacy.phone_e164 == to_phone:
-        return legacy
     return None
 
 
@@ -178,7 +159,7 @@ async def resolve_channel_for_owner(
     session: AsyncSession,
     *,
     owner: OwnerPhoneIndex,
-    provider: str = "ycloud",
+    provider: str = "meta",
 ) -> ResolvedAuphereChannel | None:
     """Outbound resolution — when the dispatcher needs to send a
     template TO an owner, decide which Auphere number to send FROM.
@@ -186,8 +167,7 @@ async def resolve_channel_for_owner(
     1. If ``owner.auphere_channel_id`` is set → load that row (must be
        active).
     2. Else load the provider's default channel.
-    3. Else fall back to ``settings.auphere_owner_phone``.
-    4. Else ``None`` — backchannel disabled.
+    3. Else ``None`` — backchannel disabled.
     """
     repo = AuphereChannelRepository(session)
     if owner.auphere_channel_id is not None:
@@ -197,4 +177,4 @@ async def resolve_channel_for_owner(
     default = await repo.get_default(provider=provider)
     if default is not None:
         return _to_resolved(default)
-    return _legacy_fallback()
+    return None

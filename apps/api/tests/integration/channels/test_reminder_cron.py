@@ -1,6 +1,6 @@
 """Reminder cron: drains scheduled_jobs of kind=reminder, dispatching them
 through ``notification.send_template`` which writes a ``messages.status='pending'``
-row that the outbound dispatcher then sends to YCloud.
+row that the outbound dispatcher then sends via the WhatsApp provider.
 """
 
 from __future__ import annotations

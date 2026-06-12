@@ -24,7 +24,6 @@ def test_all_seeds_parse() -> None:
     assert slugs == {
         "agendapro",
         "whatsapp_meta",
-        "whatsapp_ycloud",
         "woocommerce",
     }
 

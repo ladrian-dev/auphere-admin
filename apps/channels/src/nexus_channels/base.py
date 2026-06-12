@@ -64,7 +64,7 @@ class MediaReference(BaseModel):
 
     The webhook receives this from Cloud API as ``{id, mime_type, sha256,
     caption?, filename?}``. The platform later resolves ``id`` to a
-    download URL (``YCloudClient.get_media_url``) and persists the bytes
+    download URL (``MetaClient.get_media_url``) and persists the bytes
     to S3.
     """
 
@@ -160,7 +160,7 @@ class SendResult(BaseModel):
 class ChannelAdapter(Protocol):
     """Implementations live under ``nexus_channels.<channel>``.
 
-    Phase 1: ``whatsapp_ycloud``. The Protocol is async because every real
+    Providers: ``whatsapp_meta``. The Protocol is async because every real
     transport involves I/O (HTTP, websocket, etc.).
     """
 

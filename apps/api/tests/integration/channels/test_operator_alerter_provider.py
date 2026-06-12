@@ -1,9 +1,8 @@
 """Operator alerter provider routing.
 
 The alerter resolves the adapter from the tenant's active WhatsApp channel
-provider, and calls ``send_template`` with the shape that adapter expects
-(YCloud: ``body_params``; Meta: ``params={"body": [...]}``). This test pins
-the Meta branch so a Meta-served tenant is alerted through Meta.
+provider and calls ``send_template`` with the Meta adapter shape
+(``params={"body": [...]}``). This test pins that contract.
 """
 
 from __future__ import annotations
@@ -38,7 +37,7 @@ pytestmark = pytest.mark.asyncio
 
 @dataclass
 class RecordingAdapter:
-    provider: str = "ycloud"
+    provider: str = "meta"
     channel_type: str = "whatsapp"
     template_calls: list[dict[str, Any]] = field(default_factory=list)
 
@@ -94,19 +93,19 @@ async def test_meta_tenant_alert_routes_to_meta_adapter(meta_tenant_with_custome
         )
 
     meta = RecordingAdapter(provider="meta")
-    ycloud = RecordingAdapter(provider="ycloud")
-    await _process_pending(sm, {"ycloud": ycloud, "meta": meta})
+    other = RecordingAdapter(provider="other")
+    await _process_pending(sm, {"other": other, "meta": meta})
 
-    # Routed to Meta, not YCloud.
+    # Routed to Meta, not any other registry entry.
     assert len(meta.template_calls) == 1
-    assert len(ycloud.template_calls) == 0
+    assert len(other.template_calls) == 0
     call = meta.template_calls[0]
     assert call["template_name"] == "alert_escalation_v1"
     assert call["from_phone"] == info["business_phone"]
     assert call["recipient"] == "+56999990009"
-    # Meta signature: a ``params`` dict carrying the positional body params,
-    # NOT the YCloud ``body_params`` kwarg. Second param is the escalation
-    # reason; first is the customer label (name or identifier fallback).
+    # Meta signature: a ``params`` dict carrying the positional body params.
+    # Second param is the escalation reason; first is the customer label
+    # (name or identifier fallback).
     assert "body_params" not in call
     assert list(call["params"].keys()) == ["body"]
     assert call["params"]["body"][1] == "urgente"

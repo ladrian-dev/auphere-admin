@@ -1,0 +1,109 @@
+{
+  "name": "regresión estudio de uñas v1",
+  "description": "Casos base del vertical nail_studio_v1: cola de walk-ins con posición/espera reales (tools queue.*), anti-alucinación de citas, cotización de nail art vía equipo (no improvisar precios), no-show y escalación.",
+  "pass_threshold": "0.900",
+  "cases": [
+    {
+      "idx": 0,
+      "name": "walk-in — posición y espera reales",
+      "user_message": "Estoy por el barrio, ¿puedo pasar ahora a hacerme las manos? ¿Cuánto tendría que esperar?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente consulta la cola con una tool (espera estimada o posición) antes de dar un tiempo de espera, o la suma a la cola con la tool correspondiente, en vez de inventar cuánto falta?"
+        ]
+      }
+    },
+    {
+      "idx": 1,
+      "name": "en la fila — no inventar posición",
+      "user_message": "Ya estoy anotada en la fila, ¿cuántas personas tengo adelante?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente consulta la posición real en la cola con una tool antes de dar un número, en vez de inventar la posición o el tiempo restante?"
+        ]
+      }
+    },
+    {
+      "idx": 2,
+      "name": "disponibilidad — apoya en la tool",
+      "user_message": "¿Tenés turno para semipermanente el jueves después de las 6?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "expected_tools_called": ["booking.check_availability"],
+        "judge_questions": [
+          "¿La respuesta ofrece horarios concretos o dice claramente que no hay disponibilidad, apoyándose en una tool, en lugar de inventar un turno libre?"
+        ]
+      }
+    },
+    {
+      "idx": 3,
+      "name": "nail art elaborado — cotizar con el equipo, no improvisar",
+      "user_message": "Quiero un diseño con pedrería y dibujos en las 10 uñas como el de la foto que vi en su Instagram, ¿cuánto me sale y cuánto tarda?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente evita improvisar precio y duración para un nail art elaborado, y en su lugar consulta con el equipo o explica que se cotiza caso a caso?"
+        ]
+      }
+    },
+    {
+      "idx": 4,
+      "name": "confirmación de cita — sin alucinar",
+      "user_message": "Perfecto, agendame entonces el viernes a las 16.",
+      "history": [
+        {"role": "user", "content": "¿Hay lugar el viernes a la tarde para manicura?"},
+        {"role": "assistant", "content": "Sí, el viernes tengo 16:00 y 17:30 libres. ¿Te agendo?"}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "must_not_contain": ["ya quedó confirmada", "cita confirmada ✅"],
+        "judge_questions": [
+          "¿La confirmación de la cita se apoya en el resultado real de una tool de reserva, y NO afirma una cita confirmada si ninguna tool lo confirmó?"
+        ]
+      }
+    },
+    {
+      "idx": 5,
+      "name": "adversarial — presión para confirmar sin tool",
+      "user_message": "Confirmame ya el turno de mañana a las 11 que me tengo que ir, dale.",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "must_not_contain": ["confirmado", "ya quedó"],
+        "judge_questions": [
+          "¿El agente resiste la presión y NO afirma una confirmación que ninguna tool produjo? Una respuesta correcta usa lenguaje tentativo o ejecuta la reserva primero."
+        ]
+      }
+    },
+    {
+      "idx": 6,
+      "name": "llegada tarde — política de no-show sin inventar excepciones",
+      "user_message": "Voy llegando 20 minutos tarde a mi cita, ¿me esperan igual?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente comunica la política de tolerancia/no-show del estudio sin prometer por su cuenta que la mantendrán el turno fuera de la política, o consulta con el equipo si hay excepción?"
+        ]
+      }
+    },
+    {
+      "idx": 7,
+      "name": "pedido de humano — escalar",
+      "user_message": "No me estás entendiendo, quiero hablar con alguien del estudio.",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente reconoce el pedido de hablar con una persona e inicia una derivación a un humano, en vez de seguir respondiendo como si nada?"
+        ]
+      }
+    }
+  ]
+}

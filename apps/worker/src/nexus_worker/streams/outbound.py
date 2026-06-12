@@ -1,7 +1,7 @@
 """Outbound message dispatcher.
 
 Drains ``messages WHERE status='pending'`` and pushes each one through the
-:class:`WhatsAppYCloudAdapter`. Drives the WhatsApp side of every smoke test
+:class:`MetaChannelAdapter`. Drives the WhatsApp side of every smoke test
 that asks "agent answers in the customer's WhatsApp".
 
 Tenant isolation:
@@ -23,7 +23,7 @@ Block N additions:
   paused/disabled), or ``100`` (bad params) are *no-retry* — the dispatcher
   stamps ``failed`` immediately. The burst tracker still fires for 5xx
   storms; for 4xx we want loud single-row failures, not burst alerts.
-- **provider_message_id persisted**: once YCloud accepts the send, the wamid
+- **provider_message_id persisted**: once the provider accepts the send, the wamid
   is stamped on ``messages.provider_message_id``. The UNIQUE partial index
   guarantees the inbound status callbacks reference the same row.
 - **Media outbound**: pending messages with ``media_kind`` set route through
@@ -73,7 +73,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 if TYPE_CHECKING:
     from nexus_channels.base import SendResult
 
-# Provider → ChannelAdapter. YCloud and Meta expose the same outbound method
+# Provider → ChannelAdapter. Every adapter exposes the same outbound method
 # surface (send_text/template/interactive/image/audio/video/document/reaction)
 # with identical keyword signatures, so the dispatcher treats them uniformly
 # and only differs in *which* adapter it resolves per ``channels.provider``.
@@ -88,9 +88,8 @@ DEFAULT_TICK_SECONDS = 0.5
 DEFAULT_BATCH_SIZE = 50
 MAX_ATTEMPTS = 3
 
-# WhatsApp Cloud API error codes (via YCloud) that are not worth retrying.
-# Source: Meta Cloud API error reference. Mapped on the body the
-# YCloudAPIError attaches; we parse the embedded code defensively.
+# WhatsApp Cloud API error codes that are not worth retrying.
+# Source: Meta Cloud API error reference.
 #
 # The codes carry semantics:
 # - 100        : bad request / parameter / template mismatch.
@@ -126,7 +125,7 @@ async def run_outbound_dispatcher(
 ) -> None:
     """Background task. Returns when ``stop`` is set.
 
-    ``adapters`` maps ``channels.provider`` (``"ycloud"``/``"meta"``) to the
+    ``adapters`` maps ``channels.provider`` (``"meta"``) to the
     matching :class:`ChannelAdapter`. Each pending row resolves its adapter
     from the channel's provider, so a single worker serves both transports.
     """
@@ -240,9 +239,8 @@ async def _send_one(
 
     # Resolve the adapter for this channel's provider. A channel whose
     # provider has no registered adapter is parked failed (no retry) instead
-    # of silently sending through the wrong transport — sending a Meta
-    # tenant's reply through YCloud (or vice versa) would hit a WABA the
-    # credential has no authority over.
+    # of silently sending through the wrong transport — a foreign provider's
+    # credential has no authority over the tenant's WABA.
     adapter = adapters.get(provider)
     if adapter is None:
         msg.status = MessageStatus.FAILED
@@ -475,7 +473,7 @@ async def _handle_send_exception(
     tenant_id: uuid.UUID,
 ) -> None:
     """Classify and persist the failure. Decides retry vs no-retry on
-    Meta error codes attached to YCloudAPIError."""
+    Meta Cloud API error codes."""
     error_str = f"{type(exc).__name__}: {exc}"[:500]
     msg.attempts += 1
     msg.last_error = error_str
@@ -486,8 +484,7 @@ async def _handle_send_exception(
     # dead — flag the tenant's credentials ``needs_reauth`` so the operator
     # can re-run Embedded Signup instead of the dispatcher silently failing
     # every send forever. We're already inside the tenant-scoped session, so
-    # the repo writes the right row under RLS. YCloud failures never raise
-    # this type, so the branch is naturally Meta-only.
+    # the repo writes the right row under RLS.
     await _maybe_flag_meta_reauth(session=session, exc=exc, tenant_id=tenant_id)
 
     no_retry = False
@@ -547,15 +544,11 @@ async def _handle_send_exception(
 def _extract_meta_code(exc: Exception) -> str:
     """Parse the embedded Meta error code from a provider error.
 
-    Two shapes:
-    - ``MetaAPIError`` (direct Meta path) exposes a structured ``.code`` —
-      the Cloud API error code — which we use directly.
-    - ``YCloudAPIError`` forwards Meta's payload verbatim in ``.body``; we
-      look for an ``error.code`` field there.
-
-    If neither is present, return empty string and the caller falls back to
-    the HTTP status code. Either way the ``_NO_RETRY_CODES`` table (131026,
-    131047, 132xxx, …) applies uniformly across both transports.
+    ``MetaAPIError`` exposes a structured ``.code`` (the Cloud API error
+    code) which we use directly; we also parse a JSON ``.body`` defensively
+    for transport-level errors that carry the payload verbatim. If neither
+    is present, return empty string and the caller falls back to the HTTP
+    status code (``_NO_RETRY_CODES``: 131026, 131047, 132xxx, …).
     """
     direct_code = getattr(exc, "code", None)
     if direct_code is not None:
@@ -574,7 +567,7 @@ def _extract_meta_code(exc: Exception) -> str:
         code = err.get("code")
         if code is not None:
             return str(code)
-    # YCloud sometimes flattens the shape.
+    # Some transports flatten the shape.
     code = data.get("error_code") or data.get("code")
     if code is not None:
         return str(code)

@@ -143,7 +143,7 @@ async def qa_tenant_setup(db_session):
     ch = Channel(
         tenant_id=tenant_id,
         type=ChannelType.WHATSAPP,
-        provider="ycloud",
+        provider="meta",
         provider_identifier=f"ucm-c-{tenant_id.hex[:6]}",
         config={},
         status=ChannelStatus.ACTIVE,

@@ -3,7 +3,7 @@
 Two operations the platform performs:
 
 - ``put_inbound`` — store an inbound media object the moment the webhook
-  downloads it from YCloud. Keyed by tenant + wamid + extension.
+  downloads it from Meta. Keyed by tenant + wamid + extension.
 - ``presign_outbound`` — given an in-bucket key (typically an asset the
   operator uploaded ahead of time, or an inbound piece we want to forward),
   return a short-TTL HTTPS URL the Cloud API can fetch.

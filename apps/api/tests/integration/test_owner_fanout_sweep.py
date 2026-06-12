@@ -29,6 +29,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from nexus_worker.streams.owner_fanout_sweep import (
+    OWNER_FANOUT_STREAM,
+    run_owner_fanout_sweep,
+)
 
 from nexus_api.db.models import (
     Channel,
@@ -40,10 +44,6 @@ from nexus_api.db.models import (
     Tenant,
     TenantPlan,
     TenantStatus,
-)
-from nexus_worker.streams.owner_fanout_sweep import (
-    OWNER_FANOUT_STREAM,
-    run_owner_fanout_sweep,
 )
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
@@ -64,7 +64,7 @@ async def _seed_tenant_with_conversation(db_session: Any) -> dict[str, Any]:
     channel = Channel(
         tenant_id=tenant_id,
         type=ChannelType.WHATSAPP,
-        provider="ycloud",
+        provider="meta",
         provider_identifier=f"biz-{tenant_id.hex[:6]}",
         status=ChannelStatus.ACTIVE,
     )

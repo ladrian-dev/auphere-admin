@@ -31,7 +31,7 @@ Auth model:
 
 Retry policy:
 
-- Lives inside the client (vs the YCloud client, where retries live in the
+- Lives inside the client (vs adapters where retries could live in the
   outbound dispatcher). Reason: the dispatcher is only the outbound path;
   webhook handlers, signup orchestrator, and background jobs all use
   ``MetaClient`` too, and they need a uniform retry policy without
@@ -169,7 +169,7 @@ class MetaClient:
         ``components`` is the Cloud API native shape — list of dicts each
         with ``type`` in ``{"header","body","footer","button"}`` and a
         ``parameters`` array. The adapter layer builds these from the YAML
-        templates we already ship under ``whatsapp_ycloud/templates/``.
+        templates registered on the WABA.
         """
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",

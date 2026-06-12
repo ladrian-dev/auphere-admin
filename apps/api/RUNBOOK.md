@@ -21,7 +21,7 @@ KB. Para alertas y métricas ver
 | `auphere-admin` | Vercel | global | Next.js 16. Auto-deploy en `main` (configurable). |
 | Secrets | Doppler | — | Workspace `auphere`, project `nexus`, configs `dev` + `production`. Sync nativo a Railway + Vercel. |
 | LLM observability | Langfuse Cloud | — | Workspace `auphere`. SDK con noop fallback si las keys están vacías. |
-| BSP WhatsApp | YCloud Growth | — | Webhook → `https://api.auphere.com/webhook/ycloud`. |
+| WhatsApp | Meta Cloud API (Tech Provider directo) | — | Webhook → `https://api.auphere.com/webhook/meta`. |
 | Browser automation | Browserbase Startup | — | Aprovisionado en Bloque J cuando se onboardee Cultor Barber. |
 
 DNS: `api.auphere.com` → Railway, `admin.auphere.com` → Vercel. Certs
@@ -96,7 +96,7 @@ curl -s https://api.auphere.com/health
 ADMIN_TOKEN=$(doppler secrets get NEXUS_ADMIN_TOKEN --plain --config=production)
 curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
   https://api.auphere.com/admin/connectors | python3 -m json.tool
-# 5 connectors: agendapro, calendly, google_calendar, notion, whatsapp_ycloud
+# connectors custom: agendapro, whatsapp_meta, woocommerce (+ Composio dinámicos)
 
 curl -s -o /dev/null -w "%{http_code}\n" https://admin.auphere.com/connectors
 # 307 (redirect a login)
@@ -286,25 +286,23 @@ Cuando llega `alert_isolation_v1` por WhatsApp al teléfono operador:
 
 ---
 
-## Playbook — alerta `alert_ycloud_burst_v1`
+## Playbook — alerta `alert_whatsapp_burst_v1`
 
-Trigger: ≥5 errores 5xx contra YCloud en una ventana de 2min (Bloque
+Trigger: ≥5 errores 5xx contra la Cloud API en una ventana de 2min (Bloque
 H). El alerter respeta cooldown de 5min para no spamear.
 
-1. **YCloud status** — `https://status.ycloud.com`. Si hay incidente
+1. **Meta Cloud API status** — `https://metastatus.com`. Si hay incidente
    declarado, no hay nada que hacer del lado nuestro: el outbound
    dispatcher ya retri-i con backoff (`MAX_ATTEMPTS=3`). Comunicar al
    cliente afectado.
-2. **Meta Cloud API status** — YCloud sirve sobre Meta. Si Meta está
-   degradado, YCloud transitivamente lo está. `https://metastatus.com`.
 3. **Auth failure** — si los 5xx son 401/403 en realidad (algunos BSP
-   los miscatigorizan), validar que `NEXUS_YCLOUD_API_KEY` no fue
-   rolled. Doppler → production → `NEXUS_YCLOUD_API_KEY`.
-4. **Rate limit** — YCloud Growth tier es 80 msg/s. Si un tenant
+   los miscatigorizan), validar que el BISUAT del tenant sigue válido
+   (badge "Requiere re-auth" en el panel → re-correr Embedded Signup).
+4. **Rate limit** — Cloud API ~80 msg/s por número. Si un tenant
    excede, el outbound dispatcher se va a backoff hasta que el rate
    recupere. No requiere acción inmediata.
 5. **Si todo está OK upstream**: capturar el wamid + body del error en
-   Langfuse, abrir bug en KB. El YCloudBurstTracker es process-wide
+   Langfuse, abrir bug en KB. El WhatsAppBurstTracker es process-wide
    (Phase 1 = single worker); si hay falsos positivos por restarts,
    Phase 2 lo migra a Redis-backed counter.
 
@@ -357,26 +355,26 @@ Si `/health` devuelve algo distinto a 200 desde DNS público:
 
 ---
 
-## Webhook YCloud — cutover y verify
+## Webhook Meta — registro y verify
 
 Cuando `api.auphere.com` esté arriba con `/health` 200 desde DNS
 público:
 
-1. YCloud dashboard → Auphere account → Webhooks.
-2. URL: `https://api.auphere.com/webhook/ycloud`.
-3. Eventos suscritos: `whatsapp.inbound_message.received`,
-   `whatsapp.message.updated`.
-4. Secret: copiar el valor de Doppler
-   `NEXUS_YCLOUD_WEBHOOK_SECRET` (lo generás tú, no lo da YCloud).
-5. Save. YCloud envía un evento de prueba — debería responder 2xx
-   (parser ack los `message.updated` con `ignored`).
-6. Verificar en Railway logs que el webhook llega:
-   `railway logs --service nexus-api | grep "ycloud"`.
+1. Meta App dashboard (App 957213733862330) → WhatsApp → Configuration.
+2. Callback URL: `https://api.auphere.com/webhook/meta` (o el subdominio
+   `webhooks.auphere.com` si está configurado — debe coincidir con
+   `NEXUS_META_WEBHOOK_CALLBACK_URL`).
+3. Verify token: el valor de `NEXUS_META_WEBHOOK_VERIFY_TOKEN` (Doppler).
+4. Click **Verify and save** — Meta hace el GET handshake; el endpoint
+   responde el `hub.challenge` si el token coincide.
+5. Subscribe a los fields: `messages`, `message_template_status_update`
+   (+ `smb_message_echoes`, `smb_app_state_sync`, `history` si hay
+   tenants Coexistence).
+6. Confirmar en logs: `railway logs --service nexus-api | grep "webhook.meta"`.
 
-Si el cutover devuelve 401 desde YCloud: timestamp drift > 300s o
-secret mal pegado. Revalidar `NEXUS_YCLOUD_WEBHOOK_SECRET` en Doppler.
-
----
+Si el handshake devuelve 403: verify token distinto entre dashboard y
+Doppler. Si los POST devuelven 401: `NEXUS_META_APP_SECRET` no coincide
+con el App Secret real (firma X-Hub-Signature-256).
 
 ## Onboarding de un cliente nuevo (Block J)
 
@@ -391,16 +389,18 @@ Antes de tocar el panel, asegurate de tener:
 
 1. **Datos del owner**: nombre comercial, slug deseado, plan, mercado (CL/AR/...),
    timezone, email + WhatsApp E.164 del owner, horario de atención.
-2. **Templates Meta**: los 9 templates UTILITY de
-   `apps/channels/src/nexus_channels/whatsapp_ycloud/templates/cultor_barber/`
-   creados en YCloud dashboard como UTILITY. Lead Meta 24-72h — **arranca
-   día 1** para no bloquear el go-live. Los nombres exactos son:
-   `reminder_24h`, `reminder_1h`, `no_show_followup`, `welcome_cl_es`,
+2. **Templates Meta**: las plantillas UTILITY del tenant se crean y
+   gestionan desde el panel — `/tenants/[id]/connectors` → WhatsApp →
+   **Plantillas**. Lead de revisión Meta minutos–72h — **arranca día 1**
+   para no bloquear el go-live. Set recomendado: `reminder_24h`,
+   `reminder_1h`, `no_show_followup`, `welcome_cl_es`,
    `alert_escalation_v1`, `alert_needs_reauth_v1`, `alert_cost_threshold_v1`,
-   `alert_isolation_v1`, `alert_ycloud_burst_v1`.
-3. **WABA del cliente**: si migrás un número existente, el owner debe ser
-   admin del Facebook Business antes (precondición ADR-008). Si arrancás
-   con número nuevo de prueba, YCloud Growth provee uno gratis.
+   `alert_isolation_v1`, `alert_whatsapp_burst_v1` (las `alert_*` y las
+   del backchannel `auphere_owner_consult` / `auphere_owner_action_request`
+   van en la WABA de Auphere, no en la del tenant).
+3. **WABA del cliente**: el owner necesita acceso a su Facebook Business
+   y un número (nuevo o existente) para el Embedded Signup. El flujo
+   registra el número bajo la App de Auphere (Tech Provider).
 4. **Browserbase Startup tier** aprovisionado y `BROWSERBASE_API_KEY` +
    `BROWSERBASE_PROJECT_ID` en Doppler `production` (necesario para el
    bootstrap AgendaPro real; el panel devuelve 502 con mensaje claro si
@@ -421,24 +421,26 @@ Submit → redirige a `/tenants/[id]/integrations`.
 
 ### Paso 2 — Conectar WhatsApp
 
-Card "WhatsApp YCloud" → botón **Conectar manualmente** → dialog:
+Card "WhatsApp (Meta)" → botón **Conectar con Meta** (Embedded Signup):
 
-1. Pegar `waba_id` y `phone_number_id` (los obtenés del YCloud dashboard
-   → WABA → Phone numbers).
-2. Click **Verificar** → el panel llama a YCloud y muestra preview con
-   E.164, display name, verified name, quality rating.
-3. Confirmar visualmente que es la cuenta correcta.
-4. Click **Confirmar y conectar** → crea fila `Channel`, audit log.
+1. Elegir modo: **Cloud API** (número dedicado al bot) o **Coexistence**
+   (el owner sigue usando la app de WhatsApp Business en su teléfono).
+2. Se abre el popup de Facebook Login for Business — el owner (o el
+   operador con acceso delegado) autoriza y selecciona/crea el número.
+3. El backend intercambia el code por el BISUAT, registra el número,
+   suscribe el webhook y crea la fila `Channel` (audit log incluido).
+4. Smoke inmediato: botón **Enviar prueba** (template `hello_world`).
 
-Errores YCloud típicos y qué significan:
+Errores típicos:
 
-- **400 "no encontró el par"** → typo en los IDs. Re-copiar del dashboard.
-- **400 "401 / NEXUS_YCLOUD_API_KEY"** → la API key BSP fue rolled.
-  Doppler → `production` → `NEXUS_YCLOUD_API_KEY`.
-- **400 "403 / Tech Provider"** → el owner no agregó a Auphere como Tech
-  Provider en su Facebook Business, o YCloud no ha bindeado la WABA.
+- **Popup bloqueado / no carga** → revisar `NEXT_PUBLIC_META_APP_ID` y
+  los `NEXT_PUBLIC_META_CONFIG_ID_*` en Vercel (build-time).
+- **"(#10) Permission denied"** → la App no tiene Advanced Access a
+  `whatsapp_business_messaging/management` o no está en Live Mode.
+- **Token inválido post-signup** → badge "Requiere re-auth" en el panel;
+  re-correr el signup.
 - **409 "ya está conectado a otro tenant"** → el E.164 está usado por
-  otro tenant. Ver "Migrar un número entre tenants" abajo.
+  otro tenant. Desconectar el canal del tenant anterior primero.
 
 ### Paso 3 — Bootstrap AgendaPro
 
@@ -454,7 +456,8 @@ Card "AgendaPro" → **Bootstrap** → dialog con login + password + business UR
 
 `/tenants/[id]/agent` → botón **Aplicar plantilla inicial**:
 
-1. Seleccionar `barbershop_v1` (única vertical Phase 1).
+1. Seleccionar el seed del vertical (barbershop, beauty_salon, nail_studio,
+   spa, medspa, dental, clinica, restaurante, aesthetic_clinic o generic).
 2. Completar dirección, horario textual, nombre del agente, tono.
 3. Submit → backend renderea el prompt + tools whitelist + policies y
    crea `agent_config v1 staged`.
@@ -469,7 +472,7 @@ nueva versión sin redeploy (pub/sub Redis).
 Mandar un mensaje de prueba al WhatsApp del tenant desde un teléfono
 propio. Esperado:
 
-1. El webhook YCloud llega a `https://api.auphere.com/webhook/ycloud`.
+1. El webhook Meta llega a `https://api.auphere.com/webhook/meta`.
 2. El worker procesa el inbound (Redis stream).
 3. El agente responde con texto coherente al rol del seed.
 4. Trace visible en Langfuse Cloud filtrando por `user_id=<tenant_id>`.
@@ -492,18 +495,16 @@ en una WABA distinta:
      WHERE type = 'whatsapp'
        AND provider_identifier = '+56911112222';
    ```
-3. Conectar manualmente desde el panel del tenant nuevo.
-4. Coordinar con YCloud support la migración del número entre WABAs si
-   también cambia de WABA (no es un flow del panel).
+3. Re-correr Embedded Signup desde el panel del tenant nuevo.
 
 ### Decisión: número nuevo vs migración
 
-Si el cliente quiere mantener su número existente: coordinar migración con
-YCloud support. Lead típico 3-5 días hábiles.
+Si el cliente quiere mantener su número existente: el Embedded Signup
+en modo Coexistence o la migración de número de Meta lo soportan, pero
+el número no puede estar activo en otra WABA — coordinar la liberación
+primero.
 
-Si acepta un número nuevo de prueba: YCloud Growth provee uno gratis.
-Phase 1 más rápido y con menos riesgo de bloqueo. Es el path
-recomendado para cliente 1 (Cultor) si la migración demora.
+Si acepta un número nuevo: más rápido y con menos riesgo de bloqueo.
 
 ---
 

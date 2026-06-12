@@ -1,19 +1,21 @@
-"""Pin the named-dict shape returned by
-:func:`nexus_worker.streams.owner_outbox._body_params_for_template`.
+"""Pin the Cloud API components shape returned by
+:func:`nexus_worker.streams.owner_outbox._template_components`.
 
-The two YCloud templates ``auphere_owner_consult`` and
-``auphere_owner_action_request`` were registered with named variables
-(``tenant_name``, ``question``, ``urgency``, ``correlation_id``). The
-dispatcher MUST produce a dict whose keys match those names — otherwise
-YCloud rejects the send with a binding error.
+The two backchannel templates ``auphere_owner_consult`` and
+``auphere_owner_action_request`` are registered on the Auphere WABA with
+**named** variables (``tenant_name``, ``question``, ``urgency``,
+``correlation_id``). The dispatcher MUST emit ``parameter_name`` entries
+matching those names — otherwise Meta rejects the send with a binding
+error (132xxx family).
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
-from nexus_worker.streams.owner_outbox import _body_params_for_template
+from nexus_worker.streams.owner_outbox import _template_components
 
 from nexus_api.db.models import OwnerConsultation
 
@@ -39,7 +41,19 @@ def _make_row(
     )
 
 
-def test_returns_dict_with_named_keys_matching_ycloud_template() -> None:
+def _named(components: list[dict[str, Any]]) -> dict[str, str]:
+    """Flatten the components list into ``{parameter_name: text}``."""
+    assert len(components) == 1
+    body = components[0]
+    assert body["type"] == "body"
+    out: dict[str, str] = {}
+    for param in body["parameters"]:
+        assert param["type"] == "text"
+        out[param["parameter_name"]] = param["text"]
+    return out
+
+
+def test_emits_single_body_component_with_named_text_parameters() -> None:
     row = _make_row(
         template_params={
             "tenant_name": "Cultor Barber",
@@ -47,8 +61,8 @@ def test_returns_dict_with_named_keys_matching_ycloud_template() -> None:
             "urgency": "high",
         }
     )
-    params = _body_params_for_template(row, tenant_name="Cultor Barber")
-    assert params == {
+    components = _named(_template_components(row, tenant_name="Cultor Barber"))
+    assert components == {
         "tenant_name": "Cultor Barber",
         "question": "Cancelar la cita de María",
         "urgency": "high",
@@ -59,10 +73,10 @@ def test_returns_dict_with_named_keys_matching_ycloud_template() -> None:
 def test_falls_back_to_row_fields_when_template_params_missing() -> None:
     """If ``template_params_json`` is empty (defensive — should not
     happen post Phase-1 schema) the dispatcher falls back to the
-    canonical row columns."""
+    canonical row columns + the tenant name passed by the drain loop."""
     row = _make_row(template_params={})
-    params = _body_params_for_template(row, tenant_name="Backup Tenant")
-    assert params == {
+    components = _named(_template_components(row, tenant_name="Backup Tenant"))
+    assert components == {
         "tenant_name": "Backup Tenant",
         "question": "¿Puedo agendar a Juan el sábado?",
         "urgency": "normal",
@@ -82,5 +96,13 @@ def test_correlation_id_always_from_row_not_template_params() -> None:
             "correlation_id": "WRONG-VALUE",
         }
     )
-    params = _body_params_for_template(row, tenant_name="X")
-    assert params["correlation_id"] == "abcd1234"
+    components = _named(_template_components(row, tenant_name="X"))
+    assert components["correlation_id"] == "abcd1234"
+
+
+def test_all_parameters_are_strings() -> None:
+    """Cloud API rejects non-string ``text`` values — coercion happens in
+    the renderer, not at send time."""
+    row = _make_row(template_params={"urgency": "high"})
+    for param in _template_components(row, tenant_name="T")[0]["parameters"]:
+        assert isinstance(param["text"], str)

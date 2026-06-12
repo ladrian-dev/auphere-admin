@@ -1,10 +1,10 @@
 """Outbound dispatcher provider routing.
 
-The dispatcher resolves the adapter from ``channels.provider`` so YCloud and
-Meta tenants coexist on a single worker. These tests assert the routing
-itself: a Meta channel must dispatch through the Meta adapter (never YCloud),
-and a channel whose provider has no registered adapter is parked failed
-instead of being sent through the wrong transport.
+The dispatcher resolves the adapter from ``channels.provider``. Meta is the
+only registered provider now; these tests assert that a Meta channel
+dispatches through the Meta adapter and that a channel whose provider has
+no registered adapter is parked failed instead of being sent through the
+wrong transport.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ class RecordingAdapter:
     """Provider-agnostic recording adapter — same send surface as both real
     adapters. ``provider`` is informational; the registry key is what routes."""
 
-    provider: str = "ycloud"
+    provider: str = "meta"
     channel_type: str = "whatsapp"
     text_calls: list[dict[str, Any]] = field(default_factory=list)
 
@@ -138,20 +138,21 @@ async def _read(tenant_id: uuid.UUID, message_id: uuid.UUID) -> Message:
 
 
 async def test_meta_channel_routes_to_meta_adapter(meta_tenant):
-    """A provider='meta' channel sends through the Meta adapter, not YCloud."""
+    """A provider='meta' channel sends through the Meta adapter, never any
+    other registry entry."""
     meta = RecordingAdapter(provider="meta")
-    ycloud = RecordingAdapter(provider="ycloud")
+    other = RecordingAdapter(provider="other")
     msg_id = await _seed_pending(meta_tenant, "hola por Meta")
 
     sm = get_sessionmaker()
     await _drain_tenant(
-        sm, meta_tenant["tenant_id"], {"ycloud": ycloud, "meta": meta}, batch_size=10
+        sm, meta_tenant["tenant_id"], {"other": other, "meta": meta}, batch_size=10
     )
 
     msg = await _read(meta_tenant["tenant_id"], msg_id)
     assert msg.status is MessageStatus.SENT
     assert len(meta.text_calls) == 1
-    assert len(ycloud.text_calls) == 0
+    assert len(other.text_calls) == 0
     assert meta.text_calls[0]["text"] == "hola por Meta"
     assert meta.text_calls[0]["from_phone"] == meta_tenant["business_phone"]
 
@@ -159,17 +160,17 @@ async def test_meta_channel_routes_to_meta_adapter(meta_tenant):
 async def test_unsupported_provider_parks_failed(meta_tenant):
     """A channel whose provider has no registered adapter must not be sent
     through the wrong transport — it's parked failed, no retry."""
-    ycloud = RecordingAdapter(provider="ycloud")
+    other = RecordingAdapter(provider="other")
     msg_id = await _seed_pending(meta_tenant, "sin adapter")
 
     sm = get_sessionmaker()
     # Registry intentionally omits "meta".
-    await _drain_tenant(sm, meta_tenant["tenant_id"], {"ycloud": ycloud}, batch_size=10)
+    await _drain_tenant(sm, meta_tenant["tenant_id"], {"other": other}, batch_size=10)
 
     msg = await _read(meta_tenant["tenant_id"], msg_id)
     assert msg.status is MessageStatus.FAILED
     assert msg.failure_code == "unsupported_provider"
-    assert len(ycloud.text_calls) == 0
+    assert len(other.text_calls) == 0
 
 
 async def test_meta_token_invalidation_flags_needs_reauth(meta_tenant):

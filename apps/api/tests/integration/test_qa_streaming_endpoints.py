@@ -97,7 +97,7 @@ async def channel(db_session: Any, tenant_id: uuid.UUID) -> uuid.UUID:
                 id=ch_id,
                 tenant_id=tenant_id,
                 type=ChannelType.WHATSAPP,
-                provider="ycloud",
+                provider="meta",
                 provider_identifier="qa-stream-pn",
                 status=ChannelStatus.ACTIVE,
                 config={"display_phone_number": "+5491100000000"},

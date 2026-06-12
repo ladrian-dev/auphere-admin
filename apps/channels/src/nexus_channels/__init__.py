@@ -1,7 +1,7 @@
 """Nexus channel adapters.
 
 Each channel implements the :class:`ChannelAdapter` protocol from
-:mod:`nexus_channels.base`. Phase 1 ships only ``whatsapp_ycloud``; future
+:mod:`nexus_channels.base`. Providers: ``whatsapp_meta`` (Cloud API direct); future
 channels (Instagram DM, Telegram, email, web chat) plug in without touching
 the worker runtime.
 

@@ -89,28 +89,41 @@ def test_isolation_metrics_all_zero(
     assert nonzero == [], f"canary tenant has nonzero counters: {nonzero}"
 
 
-def test_webhook_ycloud_signature_required(release_api_url: str) -> None:
-    """Without a valid signature the webhook must reject. Confirms the
-    YCloud HMAC verifier is wired in production (Block F) before we
-    flip the YCloud dashboard to point at this URL.
+def test_webhook_meta_signature_required(release_api_url: str) -> None:
+    """Without a valid ``X-Hub-Signature-256`` the webhook must reject.
+    Confirms the Meta HMAC verifier is wired in production before the
+    Meta App's callback URL points at this deployment.
     """
 
     r = httpx.post(
-        f"{release_api_url}/webhook/ycloud",
-        json={"type": "whatsapp.inbound_message.received"},
+        f"{release_api_url}/webhook/meta",
+        json={"object": "whatsapp_business_account"},
         timeout=10.0,
     )
-    # 401 (unauthenticated) or 400 (signature missing) are both
-    # acceptable rejections — what we MUST NOT see is 200.
+    # 401 (unauthenticated) or 400/403 are acceptable rejections — what
+    # we MUST NOT see is 200.
     assert r.status_code in (400, 401, 403), r.text
 
 
-def test_webhook_ycloud_accepts_signed_payload(
-    release_api_url: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Optional — only runs when ``NEXUS_RELEASE_YCLOUD_WEBHOOK_SECRET``
-    is provided. Forces a turn through the dispatcher so the operator
-    can verify a Langfuse trace lands in the Cloud workspace with
+def test_webhook_meta_handshake_rejects_bad_verify_token(release_api_url: str) -> None:
+    """The GET handshake must refuse a wrong ``hub.verify_token``."""
+
+    r = httpx.get(
+        f"{release_api_url}/webhook/meta",
+        params={
+            "hub.mode": "subscribe",
+            "hub.verify_token": "definitely-not-the-token",
+            "hub.challenge": "12345",
+        },
+        timeout=10.0,
+    )
+    assert r.status_code == 403, r.text
+
+
+def test_webhook_meta_accepts_signed_payload(release_api_url: str) -> None:
+    """Optional — only runs when ``NEXUS_RELEASE_META_APP_SECRET`` is
+    provided. Forces a turn through the dispatcher so the operator can
+    verify a Langfuse trace lands in the Cloud workspace with
     ``user_id = canary_tenant_id``.
 
     The smoke ack does not assert the trace exists — that's a
@@ -119,37 +132,64 @@ def test_webhook_ycloud_accepts_signed_payload(
 
     import os
 
-    secret = os.environ.get("NEXUS_RELEASE_YCLOUD_WEBHOOK_SECRET")
+    secret = os.environ.get("NEXUS_RELEASE_META_APP_SECRET")
     if not secret:
-        pytest.skip("set NEXUS_RELEASE_YCLOUD_WEBHOOK_SECRET to exercise the dispatcher")
+        pytest.skip("set NEXUS_RELEASE_META_APP_SECRET to exercise the dispatcher")
 
+    phone_number_id = os.environ.get("NEXUS_RELEASE_CANARY_PHONE_NUMBER_ID")
     business_phone = os.environ.get("NEXUS_RELEASE_CANARY_BUSINESS_PHONE")
     customer_phone = os.environ.get("NEXUS_RELEASE_CANARY_CUSTOMER_PHONE", "+56900000000")
-    if not business_phone:
-        pytest.skip("set NEXUS_RELEASE_CANARY_BUSINESS_PHONE (E.164 of the canary channel)")
+    if not phone_number_id or not business_phone:
+        pytest.skip(
+            "set NEXUS_RELEASE_CANARY_PHONE_NUMBER_ID + "
+            "NEXUS_RELEASE_CANARY_BUSINESS_PHONE (canary channel identity)"
+        )
 
     body = json.dumps(
         {
-            "type": "whatsapp.inbound_message.received",
-            "whatsappInboundMessage": {
-                "to": business_phone,
-                "from": customer_phone,
-                "wamid": f"wamid.smoke.{int(time.time())}",
-                "type": "text",
-                "text": {"body": "release smoke"},
-            },
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "id": "WABA_ID",
+                    "changes": [
+                        {
+                            "field": "messages",
+                            "value": {
+                                "messaging_product": "whatsapp",
+                                "metadata": {
+                                    "display_phone_number": business_phone.lstrip("+"),
+                                    "phone_number_id": phone_number_id,
+                                },
+                                "contacts": [
+                                    {
+                                        "profile": {"name": "Release Smoke"},
+                                        "wa_id": customer_phone.lstrip("+"),
+                                    }
+                                ],
+                                "messages": [
+                                    {
+                                        "from": customer_phone.lstrip("+"),
+                                        "id": f"wamid.smoke.{int(time.time())}",
+                                        "timestamp": str(int(time.time())),
+                                        "type": "text",
+                                        "text": {"body": "release smoke"},
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
         }
     ).encode()
-    ts = str(int(time.time()))
-    mac = hmac.new(secret.encode(), f"{ts}.{body.decode()}".encode(), hashlib.sha256).hexdigest()
-    sig = f"t={ts},s={mac}"
+    sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
     r = httpx.post(
-        f"{release_api_url}/webhook/ycloud",
+        f"{release_api_url}/webhook/meta",
         content=body,
         headers={
             "Content-Type": "application/json",
-            "YCloud-Signature": sig,
+            "X-Hub-Signature-256": sig,
         },
         timeout=15.0,
     )

@@ -74,7 +74,7 @@ SERVICE_WINDOW = timedelta(hours=24)
 
 def _summarise_template(name: str, params: dict[str, str | int | float | bool | None]) -> str:
     """Render a debugging-friendly content string for the messages.content
-    column — the actual outbound rendering is YCloud's job in Block F."""
+    column — the actual outbound rendering happens in the dispatcher."""
     if not params:
         return f"[template:{name}]"
     rendered = ", ".join(f"{k}={v!r}" for k, v in sorted(params.items()))
@@ -213,7 +213,7 @@ class SendTemplate(ToolBase):
     description = (
         "Queue a Meta-approved WhatsApp template for delivery. The row is written "
         "with status='pending'; the outbound dispatcher pushes it through "
-        "YCloud and flips the status to 'sent'. Use templates when the conversation "
+        "Meta and flips the status to 'sent'. Use templates when the conversation "
         "is OUTSIDE the 24h customer service window, when sending a notification "
         "without an inbound trigger, or when the message is MARKETING/UTILITY "
         "category."
@@ -256,7 +256,7 @@ class SendText(ToolBase):
     description = (
         "Queue a free-form text message. Only valid INSIDE the 24h customer "
         "service window — outside, use send_template. The row is persisted with "
-        "status='pending'; the outbound dispatcher sends it via YCloud. The tool "
+        "status='pending'; the outbound dispatcher sends it via Meta. The tool "
         "enforces the window server-side and rejects with a descriptive error "
         "if the last inbound is too old."
     )

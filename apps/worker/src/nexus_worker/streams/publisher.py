@@ -1,4 +1,4 @@
-"""``XADD`` helper for the YCloud webhook (and any future ChannelAdapter).
+"""``XADD`` helper for the Meta webhook (and any future ChannelAdapter).
 
 The webhook resolves the tenant and channel from the provider identifier
 already (block B) — that is the *only* place that mapping happens, so the
@@ -22,7 +22,7 @@ async def publish_inbound(
     user_id: str,
     content: str,
     customer_name: str | None = None,
-    provider: str = "ycloud",
+    provider: str = "meta",
     stream: str = INBOUND_STREAM,
 ) -> str:
     fields: dict[str, str] = {

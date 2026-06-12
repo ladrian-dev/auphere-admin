@@ -9,7 +9,7 @@ hands it off to :class:`EmbeddedSignupOrchestrator`, which performs the
 post-signup dance (exchange code → register phone → subscribe webhook →
 persist credentials → upsert channel).
 
-Auth: Bearer admin token (same pattern as the YCloud manual wizard). The
+Auth: Bearer admin token. The
 ``tenant_id`` MUST come from the URL path, never from the request body —
 ``scoped_session_from_path`` enforces the tenant context for RLS before
 the orchestrator runs.
@@ -143,8 +143,7 @@ async def meta_signup(
       / subscribed_apps with a 4xx.
     - ``502`` — Meta unreachable or transient 5xx after retries.
     - ``409`` — the resolved business phone is already mapped to a *different*
-      tenant. This happens when a Cultor-style migration off YCloud overlaps —
-      the operator must offboard the YCloud channel first.
+      tenant — the operator must offboard the previous channel first.
     """
     settings = get_settings()
     client = _build_meta_client()

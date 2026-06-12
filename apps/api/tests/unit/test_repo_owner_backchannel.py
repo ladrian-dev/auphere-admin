@@ -33,7 +33,7 @@ async def _seed_conversation(session, tenant_id: uuid.UUID) -> uuid.UUID:
     channel = Channel(
         tenant_id=tenant_id,
         type=ChannelType.WHATSAPP,
-        provider="ycloud",
+        provider="meta",
         provider_identifier=f"+5697{suffix}",
         status=ChannelStatus.ACTIVE,
     )

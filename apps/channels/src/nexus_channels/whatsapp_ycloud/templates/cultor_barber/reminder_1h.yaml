@@ -1,8 +1,0 @@
-name: reminder_1h
-language: es_CL
-category: UTILITY
-body: |
-  Hola {{1}}, en una hora te esperamos en Cultor Barber para tu cita con {{2}}. Si necesitas reagendar, responde este mensaje.
-params:
-  - customer_name
-  - barber_name

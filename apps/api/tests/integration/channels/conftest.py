@@ -1,8 +1,8 @@
 """Shared fixtures for block F worker stream tests.
 
 The tests here drive the outbound dispatcher / operator alerter / reminder
-cron against the real Postgres test DB, but **never** hit YCloud — they
-inject :class:`FakeYCloudAdapter` whose ``send_*`` methods record calls and
+cron against the real Postgres test DB, but **never** hit the provider — they
+inject :class:`FakeWhatsAppAdapter` whose ``send_*`` methods record calls and
 optionally raise. That is the right unit of mocking: the adapter Protocol
 is the pinch point between the worker streams and the wire.
 """
@@ -31,15 +31,15 @@ from nexus_api.db.models import (
 
 
 @dataclass
-class FakeYCloudAdapter:
-    """Adapter shim with the same shape as :class:`WhatsAppYCloudAdapter`.
+class FakeWhatsAppAdapter:
+    """Adapter shim with the same shape as the WhatsApp Meta adapter.
 
     Records every send call, returns a configurable result, and can be
     primed to raise on demand to exercise retry / failure paths.
     """
 
     channel_type: str = "whatsapp"
-    provider: str = "ycloud"
+    provider: str = "meta"
     text_calls: list[dict[str, Any]] = field(default_factory=list)
     template_calls: list[dict[str, Any]] = field(default_factory=list)
     fail_text_with: Exception | None = None
@@ -71,8 +71,8 @@ class FakeYCloudAdapter:
 
 
 @pytest_asyncio.fixture
-async def fake_adapter() -> AsyncIterator[FakeYCloudAdapter]:
-    yield FakeYCloudAdapter()
+async def fake_adapter() -> AsyncIterator[FakeWhatsAppAdapter]:
+    yield FakeWhatsAppAdapter()
 
 
 @pytest_asyncio.fixture
@@ -108,7 +108,7 @@ async def two_tenants_with_channels(db_session) -> dict[str, dict[str, Any]]:
         channel = Channel(
             tenant_id=tid,
             type=ChannelType.WHATSAPP,
-            provider="ycloud",
+            provider="meta",
             provider_identifier=biz_phone,
             status=ChannelStatus.ACTIVE,
         )

@@ -52,7 +52,7 @@ class Channel(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # set by the WhatsApp quality_rating refresh cron; if Meta degrades a
     # WABA to YELLOW/RED the cron persists the snapshot here so the operator
     # panel can surface the alert without a config rewrite. ``last_provider_
-    # synced_at`` mirrors the YCloud-confirmed metadata fetch (display name,
+    # synced_at`` mirrors the provider-confirmed metadata fetch (display name,
     # verified status, phone identifier).
     last_health_check_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

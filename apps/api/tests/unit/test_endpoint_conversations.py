@@ -14,7 +14,7 @@ async def _seed_one(session, tid):
     ch = Channel(
         tenant_id=tid,
         type=ChannelType.WHATSAPP,
-        provider="ycloud",
+        provider="meta",
         provider_identifier=str(uuid.uuid4()),
     )
     cu = Customer(tenant_id=tid, identifier=str(uuid.uuid4()))
@@ -48,7 +48,7 @@ async def test_list_conversations_exposes_provider(
     client, admin_headers, seed_tenants, db_session
 ):
     """Each conversation carries its channel's transport provider so the
-    panel can badge Meta vs YCloud threads instead of assuming YCloud."""
+    panel can badge the provider per thread instead of assuming it."""
     tid = seed_tenants["a"]
     async with db_session.begin():
         await _seed_one(db_session, tid)
@@ -56,7 +56,7 @@ async def test_list_conversations_exposes_provider(
     assert r.status_code == 200
     items = r.json()["items"]
     assert items, "expected at least one conversation"
-    assert items[0]["provider"] == "ycloud"
+    assert items[0]["provider"] == "meta"
 
 
 async def test_list_conversations_pagination(client, admin_headers, seed_tenants, db_session):
@@ -117,7 +117,7 @@ async def _seed_one_and_return_id(session, tid):
     ch = Channel(
         tenant_id=tid,
         type=ChannelType.WHATSAPP,
-        provider="ycloud",
+        provider="meta",
         provider_identifier=str(uuid.uuid4()),
     )
     cu = Customer(tenant_id=tid, identifier=str(uuid.uuid4()))
@@ -641,6 +641,7 @@ async def test_stream_conversation_events_returns_event_stream_content_type(
     flaky (bufferring + cancel-scope interplay), and the publish path
     itself is already covered by the two ``*_publishes_*`` tests above."""
     import asyncio
+    import contextlib
 
     tid = seed_tenants["a"]
     async with db_session.begin():
@@ -655,13 +656,11 @@ async def test_stream_conversation_events_returns_event_stream_content_type(
             assert response.status_code == 200
             assert response.headers["content-type"].startswith("text/event-stream")
 
-    try:
+    # A timeout means the stream stayed open after the headers were
+    # verified — that's the intended behaviour. Closing the context
+    # manager triggers the disconnect and exits the heartbeat loop.
+    with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(open_and_close(), timeout=3.0)
-    except asyncio.TimeoutError:
-        # Stream stayed open after the headers were verified — that's
-        # the intended behaviour. Closing the context manager triggers
-        # the disconnect and exits the generator's heartbeat loop.
-        pass
 
 
 async def test_stream_conversation_events_404_for_unknown_conversation(

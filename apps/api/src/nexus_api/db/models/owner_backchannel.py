@@ -79,7 +79,7 @@ class OwnerConsultation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base)
     )
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
-    ycloud_message_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reminded_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -151,32 +151,30 @@ class OwnerPhoneIndex(Base):
 # a tuple of literals (not a Postgres enum) to mirror the CHECK
 # constraint without paying for enum-migration ceremony. Add a value
 # here when a new BSP is plumbed.
-AUPHERE_CHANNEL_PROVIDERS: tuple[str, ...] = ("ycloud", "meta")
+AUPHERE_CHANNEL_PROVIDERS: tuple[str, ...] = ("meta",)
 
 
 class AuphereOwnerChannel(UUIDPrimaryKey, TimestampMixin, Base):
     """Global registry of Auphere backchannel numbers (migration 0038).
 
-    Replaces the hardcoded ``settings.auphere_owner_phone`` /
-    ``auphere_owner_number_id`` / ``auphere_owner_webhook_secret``
-    trio. Each row represents one outbound number Auphere owns at a BSP
-    (YCloud today, Meta when we migrate). Resolver order at runtime:
+    Each row represents one outbound number Auphere owns on the Meta
+    Cloud API (direct Tech Provider integration). Resolver order at
+    runtime:
 
     1. If the ``OwnerPhoneIndex`` row carries an explicit
        ``auphere_channel_id`` → use that channel (when ``active``).
     2. Else use the row with ``is_default=true`` AND ``active=true``
        for the relevant provider — the partial unique index guarantees
        at most one default per provider.
-    3. Else fall back to ``settings.auphere_owner_phone`` (Phase 1
-       compatibility — empty registry behaves like the legacy
-       single-number setup).
+    3. Else the backchannel is disabled (consultations are held, not
+       cancelled, until a channel is registered).
 
-    ``webhook_secret_encrypted`` is optional: when NULL the webhook
-    falls back to ``settings.ycloud_webhook_secret`` (or the
-    provider-equivalent), which matches the operational reality where
-    YCloud uses ONE HMAC secret per WABA — many phone numbers share it.
-    Per-number secrets only kick in when an operator needs to rotate
-    one number's secret without disrupting the others.
+    ``provider_phone_id`` is the Meta ``phone_number_id`` of the Auphere
+    number; ``access_token_encrypted`` is the Fernet-encrypted system
+    user token (BISUAT) authorised to send from it. Inbound owner
+    replies arrive on the shared ``/webhook/meta`` endpoint (verified
+    with the app-secret HMAC) and are routed here when the payload's
+    ``phone_number_id`` matches a registered row.
     """
 
     __tablename__ = "auphere_owner_channels"
@@ -195,9 +193,15 @@ class AuphereOwnerChannel(UUIDPrimaryKey, TimestampMixin, Base):
     provider_phone_id: Mapped[str | None] = mapped_column(
         String(120), nullable=True
     )
-    # Fernet-encrypted at rest; NULL = use shared provider secret from
-    # settings. See ``db.types.FernetEncrypted``.
+    # Fernet-encrypted at rest; legacy YCloud-era column kept for
+    # compatibility (Meta verifies webhooks with the app secret, not a
+    # per-number secret). See ``db.types.FernetEncrypted``.
     webhook_secret_encrypted: Mapped[bytes | None] = mapped_column(
+        _FernetEncrypted(), nullable=True
+    )
+    # Fernet-encrypted Meta access token (system user / BISUAT) used to
+    # send from this number. NULL = sends from this channel are held.
+    access_token_encrypted: Mapped[bytes | None] = mapped_column(
         _FernetEncrypted(), nullable=True
     )
     active: Mapped[bool] = mapped_column(

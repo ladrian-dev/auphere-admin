@@ -311,7 +311,7 @@ async def initiate_consent(
     # Lazy upsert: if the slug is registered in Composio but doesn't have
     # a row in ``connectors`` yet (true for any OAuth toolkit the operator
     # added in the dashboard since the last deploy), create one from the
-    # Composio metadata. Custom seeds (whatsapp_ycloud, agendapro) already
+    # Composio metadata. Custom seeds (whatsapp_meta, agendapro) already
     # have rows from the seed runner.
     slug_lower = slug.lower()
     try:

@@ -1,10 +1,8 @@
 """WhatsApp Cloud API channel — direct integration with Meta as Tech Provider.
 
-Replaces ``whatsapp_ycloud`` for tenants migrated to the Auphere-owned Meta
-App (BM Facelad SpA, App ID 957213733862330). The two packages coexist
-during the migration: ``channels.provider`` discriminates ``"ycloud"`` from
-``"meta"`` at the webhook layer, so a single tenant can sit on one provider
-at a time and switch on Embedded Signup completion.
+Direct integration with the Auphere-owned Meta App (BM Facelad SpA, App ID
+957213733862330). The only WhatsApp provider — ``channels.provider`` is
+``"meta"`` for every WhatsApp channel.
 
 Public surface:
 
@@ -57,6 +55,7 @@ from nexus_channels.whatsapp_meta.webhook_adapter import (
     extract_business_phone,
     extract_phone_number_id,
     extract_waba_id,
+    is_opt_out_text,
     iter_inbound_messages,
     parse_app_state_sync,
     parse_history_sync,
@@ -89,6 +88,7 @@ __all__ = [
     "extract_business_phone",
     "extract_phone_number_id",
     "extract_waba_id",
+    "is_opt_out_text",
     "iter_inbound_messages",
     "parse_app_state_sync",
     "parse_history_sync",

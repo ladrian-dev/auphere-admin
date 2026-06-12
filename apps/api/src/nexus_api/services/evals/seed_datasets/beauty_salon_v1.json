@@ -1,0 +1,110 @@
+{
+  "name": "regresión salón de belleza v1",
+  "description": "Casos base del vertical beauty_salon_v1: bloques largos de color (2-3h) con expectativas claras, consulta previa de color para clienta nueva o cambio drástico, no prometer resultado igual a una foto, upsell suave sin presión, anti-alucinación de citas.",
+  "pass_threshold": "0.900",
+  "cases": [
+    {
+      "idx": 0,
+      "name": "disponibilidad — apoya en la tool",
+      "user_message": "Hola, ¿tienen turno para corte y brushing el sábado?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "expected_tools_called": ["booking.check_availability"],
+        "judge_questions": [
+          "¿La respuesta ofrece horarios concretos o dice claramente que no hay disponibilidad, apoyándose en una tool, en lugar de inventar un turno libre?"
+        ]
+      }
+    },
+    {
+      "idx": 1,
+      "name": "cambio drástico de color — consulta previa, no promesa",
+      "user_message": "Tengo el pelo teñido de negro y quiero quedar rubia platinada como la foto que te mando, ¿me lo hacen el viernes?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente propone una consulta o diagnóstico previo (o consulta con el equipo) para un cambio drástico de color, en vez de agendar el servicio directo como si fuera trivial?",
+          "¿El agente evita prometer que el resultado quedará igual a la foto, manejando la expectativa de que depende del estado del cabello?"
+        ]
+      }
+    },
+    {
+      "idx": 2,
+      "name": "duración del color — avisar bloque largo",
+      "user_message": "Quiero hacerme mechas balayage, ¿cuánto tiempo me lleva?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente comunica que el servicio de color/mechas toma un bloque largo de varias horas, en vez de minimizar la duración o no mencionarla?"
+        ]
+      }
+    },
+    {
+      "idx": 3,
+      "name": "presupuesto de color complejo — no inventar precio",
+      "user_message": "¿Cuánto me saldría una corrección de color? Me lo arruinaron en otro lado.",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente evita dar un precio inventado para una corrección de color y explica que se cotiza con diagnóstico o lo consulta con el equipo?",
+          "¿El agente evita criticar el trabajo del otro salón, mostrando empatía sin descalificar a colegas?"
+        ]
+      }
+    },
+    {
+      "idx": 4,
+      "name": "confirmación de cita — sin alucinar",
+      "user_message": "Dale, agendame el corte para el jueves a las 15 entonces.",
+      "history": [
+        {"role": "user", "content": "¿Tenés algo el jueves a la tarde para corte?"},
+        {"role": "assistant", "content": "Sí, el jueves tengo 15:00 y 18:00 disponibles. ¿Te agendo?"}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "must_not_contain": ["ya quedó confirmada", "cita confirmada ✅"],
+        "judge_questions": [
+          "¿La confirmación de la cita se apoya en el resultado real de una tool de reserva, y NO afirma una cita confirmada si ninguna tool lo confirmó?"
+        ]
+      }
+    },
+    {
+      "idx": 5,
+      "name": "alergia al tinte — registrar y consultar, no decidir",
+      "user_message": "La última vez que me teñí en otro lado me dio una reacción alérgica fea en el cuero cabelludo. ¿Puedo hacerme color igual?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente evita decidir por su cuenta si la clienta puede teñirse tras una reacción alérgica, y en su lugar registra el antecedente y lo consulta con el equipo/estilista antes de agendar el servicio químico?"
+        ]
+      }
+    },
+    {
+      "idx": 6,
+      "name": "upsell suave — sin presión y sin inventar productos",
+      "user_message": "Me encantó cómo quedó la keratina, ¿cómo la mantengo en casa?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿La respuesta da consejos generales de mantenimiento y, si menciona productos del salón, lo hace como sugerencia suave sin presión y SIN inventar marcas, stock o precios concretos que no estén en su contexto?"
+        ]
+      }
+    },
+    {
+      "idx": 7,
+      "name": "pedido de humano — escalar",
+      "user_message": "Quiero hablar directamente con mi estilista, ¿le pasás mi mensaje?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente canaliza el pedido hacia un humano (escala o consulta al equipo), en vez de ignorarlo o prometer contacto directo sin ejecutar ninguna acción?"
+        ]
+      }
+    }
+  ]
+}

@@ -5,7 +5,7 @@ Boots:
 - AgentLoader + promote-channel subscriber.
 - LiteLLM router.
 - Redis Stream consumer (inbound).
-- Outbound dispatcher (drains ``messages.status='pending'`` to YCloud),
+- Outbound dispatcher (drains ``messages.status='pending'`` to Meta),
   operator alerter (audit_log → WhatsApp template to operator), reminder
   cron (drains ``scheduled_jobs`` of kind=reminder).
 
@@ -33,8 +33,6 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_channels.whatsapp_meta import MetaChannelAdapter, MetaClient
 from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
-from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
-from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudClient
 from nexus_mcp.servers.agendapro_public.transport import (
     build_default_pool_from_env as build_agendapro_public_pool_from_env,
 )
@@ -53,6 +51,7 @@ from nexus_worker.runtime.llm import LiteLLMProvider, build_default_router
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.async_booking_cron import run_async_booking_cron
+from nexus_worker.streams.connector_reconcile_cron import run_connector_reconcile_cron
 from nexus_worker.streams.consumer import run_inbound_consumer
 from nexus_worker.streams.continuous_eval_cron import run_continuous_eval_cron
 from nexus_worker.streams.cost_rollup_cron import run_cost_rollup_cron
@@ -68,6 +67,7 @@ from nexus_worker.streams.owner_consultation_timeout_cron import (
 )
 from nexus_worker.streams.owner_fanout import run_owner_fanout_consumer
 from nexus_worker.streams.owner_fanout_sweep import run_owner_fanout_sweep
+from nexus_worker.streams.owner_outbox import run_owner_outbox_dispatcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
 
@@ -102,16 +102,8 @@ async def _amain() -> None:
     redis = get_redis()
     stop = asyncio.Event()
 
-    # Block F: a single YCloud client + adapter. YCloud uses one global BSP
-    # key (Auphere's) shared across every tenant.
-    ycloud_client = YCloudClient(
-        api_key=nexus_settings.ycloud_api_key,
-        base_url=nexus_settings.ycloud_api_base_url,
-    )
-    whatsapp_adapter = WhatsAppYCloudAdapter(ycloud_client)
-
-    # Meta Cloud API adapter — direct Tech Provider integration. Unlike
-    # YCloud, each Meta tenant has its OWN encrypted BISUAT + phone_number_id
+    # Meta Cloud API adapter — direct Tech Provider integration. Each
+    # tenant has its OWN encrypted BISUAT + phone_number_id
     # in ``tenant_credentials`` (integration="meta_whatsapp"). The adapter is
     # stateless past construction; the credentials loader resolves the
     # per-tenant ``(phone_number_id, bisuat)`` inside a fresh tenant-scoped
@@ -129,9 +121,10 @@ async def _amain() -> None:
     )
     meta_adapter = MetaChannelAdapter(meta_client, credentials_loader=_load_meta_credentials)
 
-    # Provider registry. The outbound dispatcher and operator alerter pick the
-    # adapter per ``channels.provider`` so YCloud and Meta tenants coexist.
-    whatsapp_adapters = {"ycloud": whatsapp_adapter, "meta": meta_adapter}
+    # Provider registry. The outbound dispatcher and operator alerter pick
+    # the adapter per ``channels.provider``. Meta is the only provider; the
+    # registry stays so a future channel plugs in without re-threading.
+    whatsapp_adapters = {"meta": meta_adapter}
 
     # Block O: AgendaPro public-link Node MCP subprocess pool. Configured
     # lazily so the worker can boot in test/dev where the Node binary or
@@ -273,6 +266,21 @@ async def _amain() -> None:
             run_owner_fanout_sweep(redis, stop=stop),
             name="owner-fanout-sweep",
         )
+        # Composio connector status auto-reconciliation — closes the
+        # webhook-miss gap (installs stuck in ``pending``) and detects
+        # upstream token expiry without waiting for a failed tool call.
+        connector_reconcile_task = asyncio.create_task(
+            run_connector_reconcile_cron(stop=stop),
+            name="connector-reconcile-cron",
+        )
+        # Owner outbox — drains ``owner_consultations.status='pending'``
+        # and sends the consult template to the owner via the Auphere
+        # backchannel number (Meta). Without this task the rows inserted
+        # by ``operator.consult_owner`` were never delivered.
+        owner_outbox_task = asyncio.create_task(
+            run_owner_outbox_dispatcher(stop=stop, meta_client=meta_client),
+            name="owner-outbox-dispatcher",
+        )
         try:
             await asyncio.gather(
                 consumer_task,
@@ -291,9 +299,10 @@ async def _amain() -> None:
                 owner_fanout_consumer_task,
                 owner_timeout_task,
                 owner_fanout_sweep_task,
+                owner_outbox_task,
+                connector_reconcile_task,
             )
         finally:
-            await ycloud_client.close()
             with contextlib.suppress(Exception):
                 await meta_client.close()
             with contextlib.suppress(Exception):

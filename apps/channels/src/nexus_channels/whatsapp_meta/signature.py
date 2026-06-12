@@ -103,7 +103,7 @@ def is_replay_acceptable(meta_timestamp: int | None, *, tolerance_seconds: int =
     """Bonus replay-window check for payloads that carry a timestamp.
 
     Meta's ``X-Hub-Signature-256`` itself does not include a timestamp
-    (unlike YCloud's ``t=...,s=...``), so replay protection is *best-effort*
+    (no timestamp in the header), so replay protection is *best-effort*
     using the timestamp Meta embeds inside the payload (``entry[].time``
     or per-message ``timestamp``). The webhook route may use this when the
     payload contains one; if not, ``meta_timestamp=None`` short-circuits to

@@ -46,7 +46,7 @@ async def _seed_tenant_world(session, tenant_id: uuid.UUID, slug: str) -> dict[s
     channel = Channel(
         tenant_id=tenant_id,
         type=ChannelType.WHATSAPP,
-        provider="ycloud",
+        provider="meta",
         provider_identifier=f"+5690000{slug}",
         status=ChannelStatus.ACTIVE,
     )

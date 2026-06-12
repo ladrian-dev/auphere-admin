@@ -22,7 +22,7 @@ from typing import ClassVar
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _E164_RE = re.compile(r"^\+[1-9]\d{1,14}$")
-_PROVIDERS: ClassVar = ("ycloud", "meta")
+_PROVIDERS: ClassVar = ("meta",)
 
 
 def _validate_e164(value: str) -> str:
@@ -40,9 +40,9 @@ def _validate_e164(value: str) -> str:
 class AuphereOwnerChannelOut(BaseModel):
     """One row of ``auphere_owner_channels`` exposed to the admin panel.
 
-    ``has_webhook_secret`` is a boolean view of
-    ``webhook_secret_encrypted IS NOT NULL`` — the secret itself never
-    leaves the server. The operator can rotate via PATCH but not read.
+    ``has_webhook_secret`` / ``has_access_token`` are boolean views of
+    the encrypted columns — the secrets themselves never leave the
+    server. The operator can rotate via PATCH but not read.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -56,6 +56,7 @@ class AuphereOwnerChannelOut(BaseModel):
     active: bool
     is_default: bool
     has_webhook_secret: bool
+    has_access_token: bool
     created_at: datetime
     updated_at: datetime
 
@@ -70,16 +71,25 @@ class AuphereOwnerChannelCreateIn(BaseModel):
     country_code: str | None = Field(
         default=None, min_length=2, max_length=2
     )
-    provider: str = Field(default="ycloud")
+    provider: str = Field(default="meta")
     provider_phone_id: str | None = Field(default=None, max_length=120)
     is_default: bool = Field(default=False)
     webhook_secret: str | None = Field(
         default=None,
         max_length=200,
         description=(
-            "Optional per-channel webhook HMAC secret. When NULL the "
-            "webhook falls back to settings.ycloud_webhook_secret (the "
-            "shared provider secret). Stored Fernet-encrypted."
+            "Optional legacy per-channel webhook HMAC secret. Meta "
+            "verifies webhooks with the app secret, so this is normally "
+            "NULL. Stored Fernet-encrypted."
+        ),
+    )
+    access_token: str | None = Field(
+        default=None,
+        max_length=600,
+        description=(
+            "Meta access token (system user / BISUAT) authorised to send "
+            "from this number. Required for the backchannel to deliver "
+            "consultations and replies. Stored Fernet-encrypted."
         ),
     )
 
@@ -125,7 +135,15 @@ class AuphereOwnerChannelUpdateIn(BaseModel):
         max_length=200,
         description=(
             "Rotates the per-channel HMAC secret. Pass an empty string "
-            "to clear it (revert to shared provider secret)."
+            "to clear it."
+        ),
+    )
+    access_token: str | None = Field(
+        default=None,
+        max_length=600,
+        description=(
+            "Rotates the Meta access token for this number. Pass an "
+            "empty string to clear it (sends are held until set again)."
         ),
     )
 

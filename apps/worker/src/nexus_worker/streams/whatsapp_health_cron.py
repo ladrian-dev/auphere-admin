@@ -1,7 +1,7 @@
-"""WhatsApp WABA health-check cron.
+"""WhatsApp WABA health-check cron (Meta Cloud API).
 
-Periodically fetches ``GET /v2/whatsapp/phoneNumbers/...`` for every
-ACTIVE tenant's WhatsApp channel and refreshes the snapshot fields:
+Periodically fetches ``GET /{phone_number_id}`` for every ACTIVE tenant's
+WhatsApp channel and refreshes the snapshot fields:
 
 - ``Channel.config['quality_rating']`` — Meta's degradation indicator
   (GREEN / YELLOW / RED). A YELLOW or RED transition triggers an audit
@@ -17,7 +17,8 @@ an hour without burning the budget.
 
 Pattern: shared with ``health_check_cron`` (AgendaPro) — RLS-free tenant
 discovery, then per-tenant scoped session for the channel update +
-audit log insert.
+audit log insert. The per-tenant BISUAT is resolved INSIDE the scoped
+session (RLS is the only authority on which credentials row is read).
 """
 
 from __future__ import annotations
@@ -40,7 +41,9 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
-from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudAPIError, YCloudClient
+from nexus_channels.whatsapp_meta import MetaClient
+from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
+from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
 
 log = structlog.get_logger(__name__)
 
@@ -86,8 +89,6 @@ async def _check_one(
 ) -> None:
     """Fetch the channel's WhatsApp phone metadata + persist refreshed snapshot."""
     settings = get_settings()
-    if not settings.ycloud_api_key:
-        return
 
     async with sm() as session, tenant_scoped_session(session, tenant_id):
         channel = await session.scalar(
@@ -100,32 +101,31 @@ async def _check_one(
         if channel is None:
             return
         cfg = channel.config or {}
-        waba_id = cfg.get("waba_id")
-        if not isinstance(waba_id, str) or not waba_id:
+
+        creds = await MetaCredentialsRepository(session).get()
+        if creds is None:
             return
-        # Prefer the canonical Meta phone_number_id when YCloud emitted
-        # one at connect-time; otherwise fall back to the E.164 stored as
-        # the channel's provider_identifier — YCloud accepts both as the
-        # second path segment of /whatsapp/phoneNumbers/{waba}/{lookup}.
-        phone_lookup = cfg.get("phone_number_id") or channel.provider_identifier
-        if not isinstance(phone_lookup, str) or not phone_lookup:
+        phone_number_id = creds.phone_number_id or cfg.get("phone_number_id")
+        if not isinstance(phone_number_id, str) or not phone_number_id:
             return
 
-        client = YCloudClient(
-            api_key=settings.ycloud_api_key, base_url=settings.ycloud_api_base_url
+        client = MetaClient(
+            app_secret=settings.meta_app_secret,
+            require_appsecret_proof=settings.meta_require_appsecret_proof,
         )
         try:
             try:
                 payload = await client.get_phone_number(
-                    waba_id=waba_id, phone_lookup=phone_lookup
+                    phone_number_id=phone_number_id,
+                    access_token=creds.bisuat,
                 )
-            except YCloudAPIError as exc:
+            except MetaAPIError as exc:
                 log.warning(
                     "whatsapp_health.fetch_failed",
                     tenant_id=str(tenant_id),
-                    waba_id=waba_id,
+                    phone_number_id=phone_number_id,
                     status=exc.status_code,
-                    detail=exc.message,
+                    detail=str(exc),
                 )
                 channel.last_health_check_at = datetime.now(UTC)
                 return
@@ -133,9 +133,9 @@ async def _check_one(
             await client.close()
 
         prior_quality = cfg.get("quality_rating")
-        new_quality = payload.get("qualityRating") or payload.get("quality_rating")
-        new_display = payload.get("displayName") or payload.get("display_name")
-        new_verified = payload.get("verifiedName") or payload.get("verified_name")
+        new_quality = payload.get("quality_rating") or payload.get("qualityRating")
+        new_display = payload.get("display_phone_number") or payload.get("display_name")
+        new_verified = payload.get("verified_name") or payload.get("verifiedName")
 
         # Persist refreshed snapshot.
         cfg = dict(cfg)

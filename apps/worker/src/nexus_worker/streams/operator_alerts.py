@@ -13,9 +13,9 @@ Five events trigger an alert in Phase 1:
 - ``isolation.violation_detected`` — written by the isolation watcher
   (block H) when an ``isolation_events`` row lands for any of the 7 P1
   metrics. Template: ``alert_isolation_v1``.
-- ``channel.ycloud_5xx_burst`` — written by the outbound dispatcher's
-  burst tracker (block H) when YCloud 5xx errors >= 5 within 2min.
-  Template: ``alert_ycloud_burst_v1``.
+- ``channel.whatsapp_5xx_burst`` — written by the outbound dispatcher's
+  burst tracker (block H) when provider 5xx errors >= 5 within 2min.
+  Template: ``alert_whatsapp_burst_v1``.
 
 The :mod:`nexus_api.db.models.operator_notification` table is the
 deduplication ledger — we INSERT a row keyed on ``audit_log_id`` BEFORE
@@ -69,7 +69,7 @@ _ACTION_TO_TEMPLATE: dict[str, str] = {
     "integration.agendapro.needs_reauth": "alert_needs_reauth_v1",
     "cost.daily_threshold_exceeded": "alert_cost_threshold_v1",
     "isolation.violation_detected": "alert_isolation_v1",
-    "channel.ycloud_5xx_burst": "alert_ycloud_burst_v1",
+    "channel.whatsapp_5xx_burst": "alert_whatsapp_burst_v1",
     # Block L — Connectors module. Both map to the existing needs_reauth
     # template (same operational signal: "go to the panel and reconnect"),
     # avoiding a new Meta template approval round-trip.
@@ -250,8 +250,7 @@ async def _resolve_recipient_and_business_phone(
 
     Recipient = tenant.owner_phone || settings.operator_fallback_phone.
     Business phone + provider = first active WhatsApp channel of this tenant.
-    The provider drives which adapter sends the alert so a Meta-served tenant
-    is alerted through Meta, not YCloud.
+    The provider drives which adapter sends the alert.
     """
     settings = get_settings()
     tenant_row = await session.execute(sa.select(Tenant.owner_phone).where(Tenant.id == tenant_id))
@@ -288,24 +287,19 @@ async def _send_alert_template(
 ) -> None:
     """Send an operator alert template via the resolved adapter.
 
-    The two adapters expose ``send_template`` with different parameter
-    shapes — YCloud takes positional ``body_params``, Meta takes a single
-    ``params`` dict (its ``_build_template_components`` reads ``body`` as a
-    positional list). The ``channel_id`` is a placeholder because both
-    adapters only log it.
+    Meta's ``send_template`` takes a single ``params`` dict; its
+    ``_build_template_components`` reads ``body`` as a positional list.
+    The ``channel_id`` is a placeholder because the adapter only logs it.
     """
-    common = {
-        "from_phone": from_phone,
-        "recipient": recipient,
-        "template_name": template,
-        "language": "es_CL",
-        "tenant_id": tenant_id,
-        "channel_id": uuid.uuid4(),  # placeholder — adapter only logs
-    }
-    if provider == "meta":
-        await adapter.send_template(params={"body": body_params}, **common)
-    else:
-        await adapter.send_template(body_params=body_params, **common)
+    await adapter.send_template(
+        from_phone=from_phone,
+        recipient=recipient,
+        template_name=template,
+        language="es_CL",
+        tenant_id=tenant_id,
+        channel_id=uuid.uuid4(),  # placeholder — adapter only logs
+        params={"body": body_params},
+    )
 
 
 async def _render_params(
@@ -344,7 +338,7 @@ async def _render_params(
         metric = str(after.get("metric") or "isolation.unknown")
         count = str(after.get("count") or after.get("count_24h") or "1")
         return [metric, count]
-    if template == "alert_ycloud_burst_v1":
+    if template == "alert_whatsapp_burst_v1":
         count = str(after.get("threshold") or "5")
         return [count]
     return []

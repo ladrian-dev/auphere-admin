@@ -4,7 +4,7 @@ Agent runtime worker. Block C scaffold.
 
 ## Responsibilities
 
-- Consume the `nexus:inbound` Redis Stream populated by the YCloud webhook.
+- Consume the `nexus:inbound` Redis Stream populated by the Meta webhook.
 - Run a LangGraph 1.0 pipeline (8 nodes) per inbound message.
 - Filter the global `tool_catalog` by the active `agent_config.tools` whitelist
   before any tool definition reaches the LLM (garantía 2).

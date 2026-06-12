@@ -76,7 +76,7 @@ async def _make_tenant_with_channel(
     channel = Channel(
         tenant_id=tenant_id,
         type=ChannelType.WHATSAPP,
-        provider="ycloud",
+        provider="meta",
         provider_identifier=f"m1-{tenant_id.hex[:6]}",
         status=ChannelStatus.ACTIVE,
     )

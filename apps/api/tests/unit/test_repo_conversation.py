@@ -16,7 +16,7 @@ async def _seed_conversations(session, tid, n):
     channel = Channel(
         tenant_id=tid,
         type=ChannelType.WHATSAPP,
-        provider="ycloud",
+        provider="meta",
         provider_identifier=f"pid-{uuid.uuid4()}",
     )
     customer = Customer(tenant_id=tid, identifier=f"cust-{uuid.uuid4()}")

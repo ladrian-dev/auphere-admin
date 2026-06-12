@@ -1,20 +1,27 @@
-"""Owner outbox dispatcher.
+"""Owner outbox dispatcher (Meta Cloud API).
 
 Mirrors :mod:`nexus_worker.streams.outbound` but drains
 ``owner_consultations WHERE status='pending'`` instead of customer-side
 messages. For each row:
 
-1. Resolve the recipient owner phone via :class:`OwnerPhoneIndexRepository`.
-2. Render the YCloud template with the row's stored params.
-3. Send through :class:`WhatsAppYCloudAdapter`. The ``from_phone`` is the
-   Auphere multi-tenant number (``settings.auphere_owner_phone``), NOT
-   the tenant's business number — the owner sees Auphere talking to them,
-   not their own business sending messages to itself.
-4. On success: mark ``status='sent'``, persist ``ycloud_message_id`` so
-   the inbound webhook can match an owner reply via ``quoted_message_id``.
-5. On failure: increment a retry counter inside ``cancelled_reason``
-   prefix and either retry the next tick or mark ``cancelled`` after
-   :data:`MAX_ATTEMPTS`.
+1. Resolve the recipient owner phone via ``owner_phone_index``.
+2. Resolve the Auphere backchannel number for that owner
+   (``resolve_channel_for_owner`` — pinned channel, else provider
+   default). The channel row carries the Meta ``phone_number_id`` and
+   the Fernet-encrypted access token.
+3. Render the template with the row's stored params and send through
+   :class:`MetaClient.send_template`. The sender is the Auphere
+   multi-tenant number, NOT the tenant's business number — the owner
+   sees Auphere talking to them.
+4. On success: mark ``status='sent'``, persist ``provider_message_id``
+   so an owner reply can be matched via quoted message.
+5. On failure: increment a retry counter and either retry the next tick
+   or mark ``cancelled`` after :data:`MAX_ATTEMPTS`.
+
+Templates (``auphere_owner_consult`` / ``auphere_owner_action_request``)
+use **named** variables — the components builder emits
+``parameter_name`` entries per the Cloud API contract. The templates
+must be approved on the Auphere WABA in Meta Business Manager.
 
 Tenant isolation: each row carries ``tenant_id`` and the dispatcher
 enters :func:`tenant_scoped_session` BEFORE reading any tenant-scoped
@@ -28,18 +35,17 @@ import asyncio
 import contextlib
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import Any
 
 import sqlalchemy as sa
 import structlog
+from nexus_api.config import get_settings
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import OwnerConsultation, OwnerPhoneIndex, Tenant
 from nexus_api.repositories import resolve_channel_for_owner
-from sqlalchemy.ext.asyncio import AsyncSession
-
-if TYPE_CHECKING:
-    from nexus_channels.whatsapp_ycloud.adapter import WhatsAppYCloudAdapter
+from nexus_api.repositories.auphere_channels import ResolvedAuphereChannel
+from nexus_channels.whatsapp_meta import MetaClient
 
 log = structlog.get_logger(__name__)
 
@@ -50,39 +56,49 @@ MAX_ATTEMPTS = 5
 
 async def run_owner_outbox_dispatcher(
     *,
-    adapter: WhatsAppYCloudAdapter,
     stop: asyncio.Event,
     tick_seconds: float = DEFAULT_TICK_SECONDS,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    meta_client: MetaClient | None = None,
 ) -> None:
     """Background task. Returns when ``stop`` is set.
 
-    Migration 0038: the dispatcher no longer reads
-    ``settings.auphere_owner_phone`` to compute ``from_phone`` once at
-    startup. Instead, each consultation resolves its own outbound
-    channel per-tenant via ``resolve_channel_for_owner`` — so a
-    multi-country setup can serve CL owners from +56 and AR owners
-    from +54 without any operator restart.
+    Each consultation resolves its own outbound channel per-tenant via
+    ``resolve_channel_for_owner`` — so a multi-country setup can serve
+    CL owners from +56 and AR owners from +54 without any restart.
+    ``meta_client`` is injectable for tests; production builds one from
+    settings and closes it on exit.
     """
     log.info(
         "owner_outbox.dispatcher.start",
         tick_seconds=tick_seconds,
         batch=batch_size,
     )
+    settings = get_settings()
+    own_client = meta_client is None
+    client = meta_client or MetaClient(
+        app_secret=settings.meta_app_secret,
+        require_appsecret_proof=settings.meta_require_appsecret_proof,
+    )
     sm = get_sessionmaker()
-    while not stop.is_set():
-        try:
-            tenant_ids = await _list_tenants_with_pending(sm)
-            for tid in tenant_ids:
-                if stop.is_set():
-                    break
-                await _drain_tenant(sm, tid, adapter, batch_size)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            log.error("owner_outbox.dispatcher.tick_failed", error=str(exc))
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(stop.wait(), timeout=tick_seconds)
+    try:
+        while not stop.is_set():
+            try:
+                tenant_ids = await _list_tenants_with_pending(sm)
+                for tid in tenant_ids:
+                    if stop.is_set():
+                        break
+                    await _drain_tenant(sm, tid, client, batch_size)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.error("owner_outbox.dispatcher.tick_failed", error=str(exc))
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=tick_seconds)
+    finally:
+        if own_client:
+            with contextlib.suppress(Exception):
+                await client.close()
     log.info("owner_outbox.dispatcher.stopped")
 
 
@@ -104,7 +120,7 @@ async def _list_tenants_with_pending(
 async def _drain_tenant(
     sm: sa.orm.sessionmaker,  # type: ignore[type-arg]
     tenant_id: uuid.UUID,
-    adapter: WhatsAppYCloudAdapter,
+    client: MetaClient,
     batch_size: int,
 ) -> None:
     async with sm() as session, tenant_scoped_session(session, tenant_id):
@@ -127,12 +143,10 @@ async def _drain_tenant(
 
         # Resolve the Auphere channel ONCE per tenant batch. Per-owner
         # resolution happens via ``owner.auphere_channel_id``, with
-        # fallback to the provider default and finally to legacy
-        # settings.
-        channel = None
+        # fallback to the provider default.
+        channel: ResolvedAuphereChannel | None = None
         if owner is not None:
             channel = await resolve_channel_for_owner(session, owner=owner)
-        from_phone = channel.phone_e164 if channel else None
 
         rows = await session.execute(
             sa.select(OwnerConsultation)
@@ -153,10 +167,9 @@ async def _drain_tenant(
         )
         for row in pending:
             await _send_one(
-                session=session,
                 row=row,
-                adapter=adapter,
-                from_phone=from_phone,
+                client=client,
+                channel=channel,
                 recipient=owner.phone_e164 if owner else None,
                 tenant_name=tenant_row.name,
             )
@@ -164,10 +177,9 @@ async def _drain_tenant(
 
 async def _send_one(
     *,
-    session: AsyncSession,
     row: OwnerConsultation,
-    adapter: WhatsAppYCloudAdapter,
-    from_phone: str | None,
+    client: MetaClient,
+    channel: ResolvedAuphereChannel | None,
     recipient: str | None,
     tenant_name: str,
 ) -> None:
@@ -181,28 +193,29 @@ async def _send_one(
             consultation_id=str(row.id),
         )
         return
-    if from_phone is None:
-        # No backchannel resolved — registry is empty AND
-        # settings.auphere_owner_phone is unset. Hold the row so a
-        # later config change picks it up (do NOT cancel — operator
-        # may be in the middle of setting up).
+    if channel is None or not channel.can_send:
+        # No backchannel resolved (registry empty) OR the channel lacks
+        # credentials. Hold the row so a later config change picks it up
+        # (do NOT cancel — operator may be mid-setup in the panel).
         log.info(
             "owner_outbox.held.no_channel",
             tenant_id=str(row.tenant_id),
             consultation_id=str(row.id),
+            has_channel=channel is not None,
         )
         return
 
-    body_params = _body_params_for_template(row, tenant_name=tenant_name)
+    components = _template_components(row, tenant_name=tenant_name)
     try:
-        result = await adapter.send_template(
-            from_phone=from_phone,
-            recipient=recipient,
+        assert channel.provider_phone_id is not None  # can_send guarantees
+        assert channel.access_token is not None
+        result = await client.send_template(
+            phone_number_id=channel.provider_phone_id,
+            access_token=channel.access_token,
+            to=recipient.lstrip("+"),
             template_name=row.template_name,
             language="es",
-            body_params=body_params,
-            tenant_id=row.tenant_id,
-            channel_id=uuid.UUID(int=0),  # backchannel — no per-tenant channel row
+            components=components,
         )
     except Exception as exc:
         row.reminded_count += 1
@@ -230,22 +243,35 @@ async def _send_one(
 
     row.status = "sent"
     row.sent_at = datetime.now(UTC)
-    row.ycloud_message_id = result.provider_message_id
+    row.provider_message_id = _extract_wamid(result)
     log.info(
         "owner_outbox.sent",
         tenant_id=str(row.tenant_id),
         consultation_id=str(row.id),
-        ycloud_message_id=row.ycloud_message_id,
+        provider_message_id=row.provider_message_id,
     )
 
 
-def _body_params_for_template(row: OwnerConsultation, *, tenant_name: str) -> dict[str, str]:
-    """Render the YCloud body parameters dict for the row.
+def _extract_wamid(result: dict[str, Any]) -> str | None:
+    messages = result.get("messages")
+    if isinstance(messages, list) and messages:
+        first = messages[0]
+        if isinstance(first, dict):
+            wamid = first.get("id")
+            if isinstance(wamid, str):
+                return wamid
+    return None
+
+
+def _template_components(
+    row: OwnerConsultation, *, tenant_name: str
+) -> list[dict[str, Any]]:
+    """Build Cloud API ``components`` with NAMED body parameters.
 
     Both Phase 1 templates (``auphere_owner_consult`` and
-    ``auphere_owner_action_request``) were created in YCloud with
-    **named** variables (not positional ``{{1}}…{{4}}``). The dict keys
-    match the variable names registered in the template:
+    ``auphere_owner_action_request``) declare **named** variables (not
+    positional ``{{1}}…{{4}}``). The keys match the variable names
+    registered in the template:
 
     - ``tenant_name`` — tenant business name
     - ``question`` — question / action description
@@ -253,15 +279,21 @@ def _body_params_for_template(row: OwnerConsultation, *, tenant_name: str) -> di
     - ``correlation_id`` — short ref the owner quotes when replying
 
     Keeping the key set identical across templates lets us add new
-    template variants without touching this renderer. The downstream
-    :class:`WhatsAppYCloudAdapter.send_template` accepts both list (for
-    legacy positional templates like ``alert_*``) and dict (named) and
-    renders the right Meta payload shape for each.
+    template variants without touching this renderer.
     """
     params = row.template_params_json or {}
-    return {
+    named = {
         "tenant_name": str(params.get("tenant_name") or tenant_name),
         "question": str(params.get("question") or row.question_text),
         "urgency": str(params.get("urgency") or row.urgency),
         "correlation_id": row.correlation_id,
     }
+    return [
+        {
+            "type": "body",
+            "parameters": [
+                {"type": "text", "parameter_name": key, "text": value}
+                for key, value in named.items()
+            ],
+        }
+    ]

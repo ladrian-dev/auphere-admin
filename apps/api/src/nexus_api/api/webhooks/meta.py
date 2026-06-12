@@ -1,7 +1,6 @@
 """Meta WhatsApp Cloud API webhook endpoint.
 
-Mirror of the YCloud webhook (``./ycloud.py``) but speaking Meta's wire
-format directly. The route handles:
+Speaks Meta's wire format directly. The route handles:
 
 1. ``GET /webhook/meta`` — Meta's initial ``hub.verify_token`` handshake.
    Echoes ``hub.challenge`` if the verify token matches.
@@ -39,6 +38,8 @@ from nexus_channels.whatsapp_meta import (
     MetaClient,
     MetaSignatureError,
     extract_business_phone,
+    extract_phone_number_id,
+    is_opt_out_text,
     parse_app_state_sync,
     parse_history_sync,
     parse_inbound,
@@ -48,7 +49,6 @@ from nexus_channels.whatsapp_meta import (
     verify_meta_signature,
 )
 from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
-from nexus_channels.whatsapp_ycloud.webhook_adapter import is_opt_out_text
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -70,14 +70,21 @@ from nexus_api.db.models import (
     WhatsAppTemplateStatus,
 )
 from nexus_api.repositories import ChannelRepository
+from nexus_api.repositories.auphere_channels import (
+    ResolvedAuphereChannel,
+)
+from nexus_api.repositories.auphere_channels import (
+    resolve_channel_for_inbound as resolve_owner_channel_for_inbound,
+)
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
+from nexus_api.services.owner_channel_flow import handle_owner_inbound
 
 router = APIRouter()
 log = structlog.get_logger()
 
 
 INBOUND_STREAM = "nexus:inbound"
-WAMID_DEDUPE_TTL = 600  # match the YCloud route
+WAMID_DEDUPE_TTL = 600  # above Meta's retry budget
 
 # Coexistence-only buffer streams. The webhook ack must return 200 within
 # Meta's retry budget, so persistence (which may involve thousands of
@@ -160,6 +167,20 @@ async def meta_webhook(
         log.info("webhook.meta.non_whatsapp_object", object=payload.get("object"))
         return {"status": "ignored"}
 
+    # Owner backchannel detection — events whose ``phone_number_id`` belongs
+    # to a registered Auphere owner-channel number are NOT tenant traffic.
+    # Route inbound text to the owner flow; drop everything else (status
+    # callbacks on the backchannel carry no state we track).
+    phone_number_id = extract_phone_number_id(payload)
+    if phone_number_id:
+        owner_channel = await resolve_owner_channel_for_inbound(
+            session, provider_phone_id=phone_number_id
+        )
+        if owner_channel is not None:
+            return await _handle_owner_channel_event(
+                payload, channel=owner_channel, session=session, redis=redis
+            )
+
     # Route by ``field`` within the first change. Real Meta batches carry
     # one field per change; mixed-field batches are spec-allowed but never
     # observed in practice. Iterate so we surface the right handler.
@@ -194,6 +215,42 @@ async def meta_webhook(
                 log.info("webhook.meta.unhandled_field", field=field)
 
     return {"status": "ok" if handled else "ignored"}
+
+
+# ── owner backchannel ──────────────────────────────────────────────────────
+
+
+async def _handle_owner_channel_event(
+    payload: dict[str, Any],
+    *,
+    channel: ResolvedAuphereChannel,
+    session: AsyncSession,
+    redis: Redis,
+) -> dict[str, Any]:
+    """Route a webhook event addressed to an Auphere owner-channel number.
+
+    Only inbound messages drive the backchannel; statuses/template events
+    on the backchannel are acked and dropped. The HMAC signature was
+    already verified at the route layer (app secret), so no per-channel
+    secret dance is needed.
+    """
+    inbound = parse_inbound(payload)
+    if inbound is None:
+        log.info(
+            "webhook.meta.owner_channel_non_inbound",
+            channel=channel.display_name,
+        )
+        return {"status": "owner_channel:ignored"}
+    result = await handle_owner_inbound(
+        session,
+        redis,
+        channel=channel,
+        sender_phone=inbound.sender_identifier,
+        text=inbound.text,
+    )
+    return {"status": f"owner_channel:{result.get('status', 'ok')}", **{
+        k: v for k, v in result.items() if k != "status"
+    }}
 
 
 # ── inbound message ────────────────────────────────────────────────────────
@@ -268,7 +325,7 @@ async def _handle_inbound(
     # to S3 BEFORE enqueue so the multimodal pipeline has a reference by the
     # time the consumer picks up the stream entry. On failure we still
     # enqueue the turn (the agent asks the user to resend) instead of going
-    # silent. Mirror of the YCloud route.
+    # silent.
     s3_key: str | None = None
     media_mime: str | None = None
     media_size: int | None = None
@@ -716,7 +773,7 @@ def _build_meta_adapter() -> MetaChannelAdapter:
 
 def _render_content(inbound: InboundMessage) -> str:
     """Render the inbound event into a single ``content`` string the pipeline
-    consumes. Identical contract to the YCloud route so the provider-agnostic
+    consumes. Provider-agnostic contract so the
     worker consumer sees uniform stream entries regardless of transport.
 
     The multimodal pipeline overwrites the media prefix with the transcript /

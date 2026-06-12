@@ -151,7 +151,7 @@ class TenantConnector(UUIDPrimaryKey, TimestampMixin, Base):
       points to a row in the existing ``tenant_credentials`` table
       (Fernet vault, ADR-006). AgendaPro and similar.
     - ``webhook_manual`` → ``credentials_ref.channel_id`` points to a row
-      in ``channels``. WhatsApp YCloud.
+      in ``channels``. WhatsApp (Meta).
     - ``api_key`` → two valid shapes:
         - ``credentials_ref.secret_ref`` is a Doppler path (platform-wide
           secrets, e.g. shared API key used by every tenant).

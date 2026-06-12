@@ -18,10 +18,10 @@ class ConversationOut(BaseModel):
     agent_active: bool
     agent_active_version: int = 0
     takeover_context: dict[str, Any] | None = None
-    # Transport provider of the conversation's channel ("ycloud" / "meta").
+    # Transport provider of the conversation's channel ("meta").
     # Populated by the endpoint from a channel lookup, not stored on the
     # Conversation row — lets the operator panel badge each thread and stop
-    # assuming every conversation is YCloud. NULL only if the channel row
+    # assuming a provider. NULL only if the channel row
     # vanished (orphan conversation).
     provider: str | None = None
     created_at: datetime

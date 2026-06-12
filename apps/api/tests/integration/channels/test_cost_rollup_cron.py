@@ -48,7 +48,7 @@ async def _seed_tenant(db_session, *, threshold: Decimal) -> dict:
     channel = Channel(
         tenant_id=tid,
         type=ChannelType.WHATSAPP,
-        provider="ycloud",
+        provider="meta",
         provider_identifier=f"+5699999{tid.hex[:4]}",
         status=ChannelStatus.ACTIVE,
     )

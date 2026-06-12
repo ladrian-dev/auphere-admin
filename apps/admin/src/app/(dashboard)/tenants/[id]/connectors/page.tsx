@@ -32,10 +32,10 @@ import {
   SyncButton,
 } from "./connector-actions";
 import { MetaTestSendDialog } from "./meta-test-send-dialog";
+import { WhatsAppTemplatesDialog } from "./whatsapp-templates-dialog";
 import { MetaWhatsAppSetupDialog } from "./meta-signup-dialog";
 import {
   AgendaProSetupDialog,
-  WhatsAppSetupDialog,
   WooCommerceSetupDialog,
 } from "./setup-wizards";
 
@@ -200,7 +200,10 @@ function InstalledConnectorCard({
             ) : null}
             {tc.connector_slug === "whatsapp_meta" &&
             tc.status === "connected" ? (
-              <MetaTestSendDialog tenantId={tenantId} />
+              <>
+                <MetaTestSendDialog tenantId={tenantId} />
+                <WhatsAppTemplatesDialog tenantId={tenantId} />
+              </>
             ) : null}
             {tc.status === "connected" ||
             tc.status === "partial" ||
@@ -224,8 +227,6 @@ function InstalledConnectorCard({
               // /connect-manual"). Reconnect must go through Embedded
               // Signup, same dialog as a fresh connection.
               <MetaWhatsAppSetupDialog tenantId={tenantId} alreadyConnected />
-            ) : tc.connector_slug === "whatsapp_ycloud" ? (
-              <WhatsAppSetupDialog tenantId={tenantId} alreadyConnected />
             ) : (
               <InitiateConsentButton
                 tenantId={tenantId}
@@ -342,11 +343,6 @@ function AvailableConnectorCard({
                 />
               ) : connector.slug === "whatsapp_meta" ? (
                 <MetaWhatsAppSetupDialog
-                  tenantId={tenantId}
-                  alreadyConnected={false}
-                />
-              ) : connector.slug === "whatsapp_ycloud" ? (
-                <WhatsAppSetupDialog
                   tenantId={tenantId}
                   alreadyConnected={false}
                 />

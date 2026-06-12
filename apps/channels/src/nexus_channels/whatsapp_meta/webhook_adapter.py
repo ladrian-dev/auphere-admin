@@ -62,7 +62,7 @@ INBOUND_OBJECT = "whatsapp_business_account"
 class StatusUpdate:
     """An outbound message status transition.
 
-    Mirrors the YCloud-adapter shape so the webhook layer can normalise
+    Canonical webhook-parsing surface so the webhook layer can normalise
     both providers behind a single switch.
     """
 
@@ -217,6 +217,40 @@ def extract_phone_number_id(payload: dict[str, Any]) -> str | None:
     return None
 
 
+_OPT_OUT_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "stop",
+        "unsubscribe",
+        "baja",
+        "cancelar",
+        "cancela",
+        "darme de baja",
+        "no quiero más mensajes",
+        "salir",
+    }
+)
+
+
+def is_opt_out_text(body: str | None) -> tuple[bool, str | None]:
+    """Return ``(matched, keyword)`` if ``body`` is an opt-out request.
+
+    Match policy: exact equality on trimmed/lowercased body OR keyword
+    surrounded only by whitespace/punctuation. Conservative on purpose —
+    a "no me molesten más" inside a paragraph is the LLM's job, not the
+    webhook's.
+    """
+    if not body:
+        return False, None
+    normalised = body.strip().lower().rstrip(".!?,")
+    if normalised in _OPT_OUT_KEYWORDS:
+        return True, normalised
+    # Single-token messages where the token alone is the keyword.
+    tokens = normalised.split()
+    if len(tokens) == 1 and tokens[0] in _OPT_OUT_KEYWORDS:
+        return True, tokens[0]
+    return False, None
+
+
 # ── parse_inbound ───────────────────────────────────────────────────────────
 
 
@@ -224,7 +258,7 @@ def parse_inbound(payload: dict[str, Any]) -> InboundMessage | None:
     """Return the first inbound message in the payload, or ``None``.
 
     Meta batches multiple events in a single webhook. Phase 1 processes one
-    message at a time (matches the YCloud path) — if a batch carries
+    message at a time — if a batch carries
     multiple, the webhook route must enumerate ``iter_inbound_messages``
     explicitly. For 99% of traffic batches contain one event.
 
@@ -662,7 +696,7 @@ def _to_e164(phone: Any) -> str | None:
 
     Meta sometimes drops the ``+`` from ``display_phone_number``. The
     ``channels.provider_identifier`` column stores E.164 *with* the plus,
-    matching the YCloud adapter — so callers can use either provider with
+    kept provider-agnostic — so callers can plug a future provider with
     the same resolver query.
     """
     if not isinstance(phone, str) or not phone:

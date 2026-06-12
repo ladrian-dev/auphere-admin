@@ -46,8 +46,6 @@ Mandatory:
 | `NEXUS_ADMIN_TOKEN` | Doppler — `openssl rand -hex 32` |
 | `NEXUS_WEBHOOK_HMAC_SECRET` | Doppler — `openssl rand -hex 32` |
 | `NEXUS_FERNET_KEY` | Doppler — `python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'` |
-| `NEXUS_YCLOUD_API_KEY` | Doppler — copy from YCloud dashboard |
-| `NEXUS_YCLOUD_WEBHOOK_SECRET` | Doppler — generate, paste into YCloud dashboard at cutover |
 | `NEXUS_OPERATOR_FALLBACK_PHONE` | Doppler — Lee's E.164 |
 
 Worker-only (also accepted by API):

@@ -6,7 +6,7 @@ Block H adds three more action handlers:
 
 - ``cost.daily_threshold_exceeded`` → ``alert_cost_threshold_v1``.
 - ``isolation.violation_detected`` → ``alert_isolation_v1``.
-- ``channel.ycloud_5xx_burst`` → ``alert_ycloud_burst_v1``.
+- ``channel.whatsapp_5xx_burst`` → ``alert_whatsapp_burst_v1``.
 
 These tests assert the action → template mapping + the rendered body
 params shape so the YAML templates and runtime stay in sync.
@@ -59,13 +59,13 @@ async def test_alerter_sends_cost_threshold_template(two_tenants_with_channels, 
         },
     )
     sm = get_sessionmaker()
-    await _process_pending(sm, {"ycloud": fake_adapter})
+    await _process_pending(sm, {"meta": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 1
     call = fake_adapter.template_calls[0]
     assert call["template_name"] == "alert_cost_threshold_v1"
-    assert "USD 42.50" in call["body_params"][0]
-    assert "USD 40.00" in call["body_params"][0]
+    assert "USD 42.50" in call["params"]["body"][0]
+    assert "USD 40.00" in call["params"]["body"][0]
 
 
 async def test_alerter_sends_isolation_template(two_tenants_with_channels, fake_adapter):
@@ -81,19 +81,19 @@ async def test_alerter_sends_isolation_template(two_tenants_with_channels, fake_
         },
     )
     sm = get_sessionmaker()
-    await _process_pending(sm, {"ycloud": fake_adapter})
+    await _process_pending(sm, {"meta": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 1
     call = fake_adapter.template_calls[0]
     assert call["template_name"] == "alert_isolation_v1"
-    assert call["body_params"] == ["isolation.tool_whitelist_violation", "3"]
+    assert call["params"]["body"] == ["isolation.tool_whitelist_violation", "3"]
 
 
-async def test_alerter_sends_ycloud_burst_template(two_tenants_with_channels, fake_adapter):
+async def test_alerter_sends_whatsapp_burst_template(two_tenants_with_channels, fake_adapter):
     info = two_tenants_with_channels["a"]
     await _seed_audit(
         tenant_info=info,
-        action="channel.ycloud_5xx_burst",
+        action="channel.whatsapp_5xx_burst",
         after_json={
             "threshold": 5,
             "window_seconds": 120,
@@ -102,9 +102,9 @@ async def test_alerter_sends_ycloud_burst_template(two_tenants_with_channels, fa
         },
     )
     sm = get_sessionmaker()
-    await _process_pending(sm, {"ycloud": fake_adapter})
+    await _process_pending(sm, {"meta": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 1
     call = fake_adapter.template_calls[0]
-    assert call["template_name"] == "alert_ycloud_burst_v1"
-    assert call["body_params"] == ["5"]
+    assert call["template_name"] == "alert_whatsapp_burst_v1"
+    assert call["params"]["body"] == ["5"]

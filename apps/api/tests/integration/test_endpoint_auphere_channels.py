@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from sqlalchemy import select, text as _text
+from sqlalchemy import select
 
 from nexus_api.db.models import AuditLog, AuphereOwnerChannel
 
@@ -36,7 +36,7 @@ class TestList:
             json={
                 "phone_e164": "+56000000001",
                 "display_name": "A",
-                "provider": "ycloud",
+                "provider": "meta",
             },
         )
         b = await client.post(
@@ -45,7 +45,7 @@ class TestList:
             json={
                 "phone_e164": "+56000000002",
                 "display_name": "B",
-                "provider": "ycloud",
+                "provider": "meta",
             },
         )
         # Deactivate B.
@@ -71,7 +71,7 @@ class TestCreate:
             json={
                 "phone_e164": "+56000000010",
                 "display_name": "Auphere CL",
-                "provider": "ycloud",
+                "provider": "meta",
             },
         )
         assert r.status_code == 201, r.text
@@ -80,6 +80,28 @@ class TestCreate:
         assert body["active"] is True
         assert body["is_default"] is False
         assert body["has_webhook_secret"] is False
+        assert body["has_access_token"] is False
+
+    async def test_with_access_token(self, client, db_session):
+        r = await client.post(
+            "/admin/auphere/channels",
+            headers=_ADMIN,
+            json={
+                "phone_e164": "+56000000017",
+                "display_name": "Auphere CL",
+                "provider": "meta",
+                "provider_phone_id": "123456789",
+                "access_token": "EAAsystemusertoken",
+            },
+        )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["has_access_token"] is True
+        assert body["provider_phone_id"] == "123456789"
+        # Stored encrypted; decryptable via the Fernet column type.
+        row = await db_session.get(AuphereOwnerChannel, uuid.UUID(body["id"]))
+        assert row is not None
+        assert row.access_token_encrypted == b"EAAsystemusertoken"
 
     async def test_with_per_channel_secret(self, client, db_session):
         r = await client.post(
@@ -88,7 +110,7 @@ class TestCreate:
             json={
                 "phone_e164": "+56000000011",
                 "display_name": "Auphere CL",
-                "provider": "ycloud",
+                "provider": "meta",
                 "webhook_secret": "channel-specific-hmac",
             },
         )
@@ -109,7 +131,7 @@ class TestCreate:
             json={
                 "phone_e164": "56912345678",  # missing leading +
                 "display_name": "bad",
-                "provider": "ycloud",
+                "provider": "meta",
             },
         )
         assert r.status_code == 422
@@ -133,7 +155,7 @@ class TestCreate:
             json={
                 "phone_e164": "+56000000013",
                 "display_name": "CL",
-                "provider": "ycloud",
+                "provider": "meta",
                 "country_code": "cl",
             },
         )
@@ -146,7 +168,7 @@ class TestCreate:
             json={
                 "phone_e164": "+56000000014",
                 "display_name": "first",
-                "provider": "ycloud",
+                "provider": "meta",
             },
         )
         r = await client.post(
@@ -155,7 +177,7 @@ class TestCreate:
             json={
                 "phone_e164": "+56000000014",
                 "display_name": "second",
-                "provider": "ycloud",
+                "provider": "meta",
             },
         )
         assert r.status_code == 409
@@ -167,7 +189,7 @@ class TestCreate:
             json={
                 "phone_e164": "+56000000015",
                 "display_name": "first default",
-                "provider": "ycloud",
+                "provider": "meta",
                 "is_default": True,
             },
         )
@@ -177,7 +199,7 @@ class TestCreate:
             json={
                 "phone_e164": "+56000000016",
                 "display_name": "second default",
-                "provider": "ycloud",
+                "provider": "meta",
                 "is_default": True,
             },
         )
@@ -189,7 +211,7 @@ class TestUpdate:
         payload = {
             "phone_e164": overrides.pop("phone_e164", "+56000000020"),
             "display_name": overrides.pop("display_name", "name"),
-            "provider": overrides.pop("provider", "ycloud"),
+            "provider": overrides.pop("provider", "meta"),
         }
         payload.update(overrides)
         r = await client.post(
@@ -231,6 +253,32 @@ class TestUpdate:
         row = await db_session.get(AuphereOwnerChannel, uuid.UUID(cid))
         assert row is not None and row.webhook_secret_encrypted is None
 
+    async def test_rotate_access_token_via_patch(self, client, db_session):
+        cid = await self._make(client, phone_e164="+56000000025")
+        r = await client.patch(
+            f"/admin/auphere/channels/{cid}",
+            headers=_ADMIN,
+            json={"access_token": "EAArotated"},
+        )
+        assert r.status_code == 200
+        assert r.json()["has_access_token"] is True
+        row = await db_session.get(AuphereOwnerChannel, uuid.UUID(cid))
+        assert row is not None and row.access_token_encrypted == b"EAArotated"
+
+    async def test_clear_access_token_via_empty_string(self, client, db_session):
+        cid = await self._make(
+            client, phone_e164="+56000000026", access_token="EAAinitial"
+        )
+        r = await client.patch(
+            f"/admin/auphere/channels/{cid}",
+            headers=_ADMIN,
+            json={"access_token": ""},
+        )
+        assert r.status_code == 200
+        assert r.json()["has_access_token"] is False
+        row = await db_session.get(AuphereOwnerChannel, uuid.UUID(cid))
+        assert row is not None and row.access_token_encrypted is None
+
     async def test_promote_to_default_blocked_when_other_exists(
         self, client, db_session
     ):
@@ -258,7 +306,7 @@ class TestDeactivate:
             json={
                 "phone_e164": "+56000000030",
                 "display_name": "to-deactivate",
-                "provider": "ycloud",
+                "provider": "meta",
                 "is_default": True,
             },
         )
@@ -286,7 +334,7 @@ class TestAuditLog:
             json={
                 "phone_e164": "+56000000040",
                 "display_name": "audited",
-                "provider": "ycloud",
+                "provider": "meta",
             },
         )
         # Bypass RLS via direct SELECT.
@@ -312,7 +360,7 @@ class TestAuditLog:
             json={
                 "phone_e164": "+56000000041",
                 "display_name": "v1",
-                "provider": "ycloud",
+                "provider": "meta",
             },
         )
         cid = c.json()["id"]

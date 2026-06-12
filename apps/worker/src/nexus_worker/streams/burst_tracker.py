@@ -1,10 +1,10 @@
-"""In-process YCloud 5xx burst detector.
+"""In-process WhatsApp provider 5xx burst detector.
 
-When the outbound dispatcher catches >=5 ``YCloudAPIError`` with status
+When the outbound dispatcher catches >=5 ``MetaAPIError`` with status
 500-599 within a 2-minute sliding window for a single tenant, this
-tracker emits exactly one ``channel.ycloud_5xx_burst`` audit row. The
-operator alerter consumes the audit and notifies Lee via WhatsApp
-template ``alert_ycloud_burst_v1``.
+tracker emits exactly one ``channel.whatsapp_5xx_burst`` audit row. The
+operator alerter consumes the audit and notifies the operator via WhatsApp
+template ``alert_whatsapp_burst_v1``.
 
 Per-process state — block H runs a single worker; multi-replica is a
 phase 2+ concern (a Redis-backed counter would replace this when we
@@ -30,12 +30,12 @@ THRESHOLD = 5
 COOLDOWN_SECONDS = 300.0  # one audit per (tenant) per 5min after firing
 
 
-class YCloudBurstTracker:
+class WhatsAppBurstTracker:
     """Thread-safe sliding-window detector. Uses ``deque`` per tenant.
 
     ``record_failure`` is called from the dispatcher's failure path with
     the tenant_id and HTTP status code (or 0 for transport errors which
-    we treat as 5xx-equivalent — they signal a problem on YCloud's side
+    we treat as 5xx-equivalent — they signal a problem on the provider's side
     or the network between us). Returns True iff this call crossed the
     threshold and an audit was emitted.
     """
@@ -102,7 +102,7 @@ class YCloudBurstTracker:
                 audit = AuditLog(
                     tenant_id=tenant_id,
                     actor="system:outbound_dispatcher",
-                    action="channel.ycloud_5xx_burst",
+                    action="channel.whatsapp_5xx_burst",
                     target=f"tenant:{tenant_id}",
                     before_json=None,
                     after_json={
@@ -115,7 +115,7 @@ class YCloudBurstTracker:
                 session.add(audit)
                 await session.commit()
             log.warning(
-                "outbound.dispatcher.ycloud_5xx_burst",
+                "outbound.dispatcher.whatsapp_5xx_burst",
                 tenant_id=str(tenant_id),
                 window_s=int(self._window),
             )
@@ -129,15 +129,15 @@ class YCloudBurstTracker:
             return False
 
 
-_default_tracker: YCloudBurstTracker | None = None
+_default_tracker: WhatsAppBurstTracker | None = None
 _tracker_lock = threading.Lock()
 
 
-def get_default_tracker() -> YCloudBurstTracker:
+def get_default_tracker() -> WhatsAppBurstTracker:
     global _default_tracker
     with _tracker_lock:
         if _default_tracker is None:
-            _default_tracker = YCloudBurstTracker()
+            _default_tracker = WhatsAppBurstTracker()
         return _default_tracker
 
 

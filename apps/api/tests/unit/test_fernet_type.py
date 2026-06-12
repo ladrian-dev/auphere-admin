@@ -43,7 +43,7 @@ async def test_fernet_str_input_roundtrips_to_bytes(db_session, seed_tenants):
     tid = seed_tenants["a"]
     cred = TenantCredentials(
         tenant_id=tid,
-        integration="ycloud",
+        integration="meta",
         encrypted_payload="hello-world",  # str, not bytes
     )
     async with db_session.begin():

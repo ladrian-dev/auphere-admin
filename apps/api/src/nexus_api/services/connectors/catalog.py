@@ -3,7 +3,7 @@
 Composio is the single source of truth for OAuth connectors. Every
 auth_config the operator registers in the Composio dashboard becomes a
 connectable toolkit in the Nexus panel without a redeploy. Custom
-non-Composio integrations (``whatsapp_ycloud``, ``agendapro``) keep
+non-Composio integrations (``whatsapp_meta``, ``agendapro``) keep
 living in seed YAMLs because they have no equivalent in Composio.
 
 Catalog shape:

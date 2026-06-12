@@ -40,9 +40,10 @@ const schema = z.object({
     .regex(ISO2_RE, "2 letras ISO (ej. CL)")
     .optional()
     .or(z.literal("")),
-  provider: z.enum(["ycloud", "meta"]),
+  provider: z.enum(["meta"]),
   provider_phone_id: z.string().max(120).optional().or(z.literal("")),
   webhook_secret: z.string().max(200).optional().or(z.literal("")),
+  access_token: z.string().max(600).optional().or(z.literal("")),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -57,9 +58,10 @@ export function CreateChannelForm({ createAction }: { createAction: Action }) {
       phone_e164: "",
       display_name: "",
       country_code: "",
-      provider: "ycloud",
+      provider: "meta",
       provider_phone_id: "",
       webhook_secret: "",
+      access_token: "",
     },
   });
 
@@ -74,6 +76,7 @@ export function CreateChannelForm({ createAction }: { createAction: Action }) {
         provider_phone_id: values.provider_phone_id || null,
         is_default: isDefault,
         webhook_secret: values.webhook_secret || null,
+        access_token: values.access_token || null,
       });
       if (!result.ok) {
         toast.error("No se pudo crear el canal", {
@@ -160,8 +163,7 @@ export function CreateChannelForm({ createAction }: { createAction: Action }) {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="ycloud">YCloud</SelectItem>
-                  <SelectItem value="meta">Meta</SelectItem>
+                  <SelectItem value="meta">Meta (WhatsApp Cloud API)</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -178,7 +180,7 @@ export function CreateChannelForm({ createAction }: { createAction: Action }) {
                 <Input
                   {...field}
                   className="font-mono"
-                  placeholder="YCloud number_id / Meta phone_number_id"
+                  placeholder="Meta phone_number_id"
                   autoComplete="off"
                 />
               </FormControl>
@@ -203,6 +205,29 @@ export function CreateChannelForm({ createAction }: { createAction: Action }) {
               </FormControl>
               <FormDescription>
                 Vacío = usa el shared secret del provider.
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="access_token"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Access token Meta</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  type="password"
+                  className="font-mono"
+                  placeholder="Token de usuario de sistema (BISUAT)"
+                  autoComplete="off"
+                />
+              </FormControl>
+              <FormDescription>
+                Necesario para enviar consultas a los dueños desde este
+                número. Se guarda cifrado y no vuelve a mostrarse.
               </FormDescription>
               <FormMessage />
             </FormItem>

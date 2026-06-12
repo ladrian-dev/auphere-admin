@@ -1,14 +1,12 @@
-# Connector seed — WhatsApp via Meta direct (Tech Provider, post-YCloud).
+# Connector seed — WhatsApp via Meta direct (Tech Provider).
 #
 # Auphere operates a Meta App (957213733862330) under Business Manager
 # Facelad SpA as a Tech Provider. Onboarding goes through Embedded Signup
 # v4 — the tenant owner authorises via Facebook Login for Business and the
-# backend exchanges the OAuth code for a BISUAT.
+# backend exchanges the OAuth code for a BISUAT. This is the ONLY WhatsApp
+# provider (YCloud removed 2026-06-12).
 #
-# Coexists with ``whatsapp_ycloud`` during the cutover: each tenant lives
-# on exactly one provider at a time (``channels.provider`` discriminates).
-#
-# auth_kind=webhook_manual reuses the same pattern as YCloud — even though
+# auth_kind=webhook_manual — even though
 # the flow is OAuth-driven, the row in tenant_connectors only carries the
 # resulting channel_id. The real auth state (BISUAT + verify_token) lives
 # in tenant_credentials with integration="meta_whatsapp", encrypted by

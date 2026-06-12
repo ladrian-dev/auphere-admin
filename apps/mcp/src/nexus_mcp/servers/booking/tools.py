@@ -171,7 +171,7 @@ class CreateAppointment(ToolBase):
     description = (
         "Book an appointment. Idempotent: a second call with the same "
         "``idempotency_key`` returns the original row without creating a duplicate "
-        "(required because the YCloud webhook may retry on transient errors). The "
+        "(required because the WhatsApp webhook may retry on transient errors). The "
         "caller should derive a stable key from the conversation turn — for "
         "example, ``conv:{conversation_id}:create_appt:{intent_hash}``."
     )

@@ -11,7 +11,7 @@ be run by Lee from a laptop after a deploy:
 
 Block J adds a wizard-driven onboarding test; for now Block I covers
 ``/health``, ``/admin/tenants``, ``/admin/tenants/:id/isolation/metrics``
-and a YCloud webhook ack.
+and a Meta webhook ack.
 """
 
 from __future__ import annotations

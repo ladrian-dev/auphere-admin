@@ -36,7 +36,7 @@ def _logo_from_provider_meta(provider_meta: dict[str, object] | None) -> str | N
 
     The shape varies by ``auth_kind``: Composio toolkits store ``logo``
     at the top level; custom seeds use ``logo_url`` for the same purpose
-    (whatsapp_ycloud, agendapro). Front-end already has a fallback chain
+    (whatsapp_meta, agendapro). Front-end already has a fallback chain
     in ``ConnectorLogo`` — we just hand it the best URL we have here.
     """
     if not provider_meta:

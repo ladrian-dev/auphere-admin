@@ -89,7 +89,7 @@ class InboundEvent:
     user_id: str  # external identifier (phone number, etc.)
     content: str
     customer_name: str | None = None
-    provider: str = "ycloud"
+    provider: str = "meta"
     # Block N: native WhatsApp metadata propagated end-to-end so the
     # persisted ``Message`` row carries the full picture (and the
     # multimodal pipeline can pick the media handle without re-parsing

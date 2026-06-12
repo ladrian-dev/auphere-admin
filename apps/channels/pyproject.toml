@@ -1,7 +1,7 @@
 [project]
 name = "nexus-channels"
 version = "0.1.0"
-description = "Nexus channel adapters — WhatsApp via YCloud (Phase 1) + future channels"
+description = "Nexus channel adapters — WhatsApp via Meta Cloud API + future channels"
 requires-python = ">=3.11"
 license = { text = "Proprietary" }
 authors = [{ name = "Auphere" }]
@@ -52,7 +52,6 @@ pythonpath = ["src"]
 markers = [
     "unit: fast unit tests, no IO",
     "integration: requires Postgres/Redis containers",
-    "requires_ycloud: hits the real YCloud API; manual smoke only, never in CI",
 ]
 
 [tool.mypy]

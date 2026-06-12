@@ -1,29 +1,29 @@
-"""Tests for ``auphere_owner_channels`` (migration 0038).
+"""Tests for ``auphere_owner_channels`` (migrations 0038 + 0044).
 
 Three layers verified:
 
-1. **Repository** — get_by_phone / get_default / list_all behaviours
-   including the active-flag filter and the unique-default constraint.
-2. **Resolver** — ``resolve_channel_for_inbound`` and
-   ``resolve_channel_for_owner`` cover the lookup priority and the
-   legacy settings fallback.
-3. **Inbound webhook** — the route accepts traffic for a registered
-   channel, falls back to ``settings.auphere_owner_phone`` when the
-   registry is empty, and rejects foreign destinations.
-
-A few tests monkeypatch the YCloud signature verifier so we can drive
-the inbound endpoint without forging real HMAC headers — the routing
-logic (the actual surface this PR changes) is what we want to pin.
+1. **Repository** — get_by_phone / get_by_provider_phone_id /
+   get_default / list_all behaviours including the active-flag filter
+   and the unique-default constraint.
+2. **Resolver** — ``resolve_channel_for_inbound`` (by Meta
+   ``phone_number_id``) and ``resolve_channel_for_owner`` cover the
+   lookup priority. There is no settings fallback anymore — an empty
+   registry means the backchannel is disabled.
+3. **Inbound webhook** — ``/webhook/meta`` routes events whose
+   ``metadata.phone_number_id`` matches a registered Auphere channel to
+   the owner flow, and treats foreign phone_number_ids as regular
+   tenant traffic.
 """
 
 from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC, datetime
 
 import pytest
+from nexus_channels.whatsapp_meta.signature import sign_meta_request
 
-from nexus_api.config import get_settings
 from nexus_api.db.models import AuphereOwnerChannel, OwnerPhoneIndex
 from nexus_api.repositories.auphere_channels import (
     AuphereChannelRepository,
@@ -34,7 +34,7 @@ from nexus_api.repositories.auphere_channels import (
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 
-_ADMIN_HEADERS = {"Authorization": "Bearer test-admin-token"}
+META_APP_SECRET = "dev-meta-app-secret-change-me"
 
 
 async def _insert_channel(
@@ -43,11 +43,11 @@ async def _insert_channel(
     phone: str,
     name: str = "Test channel",
     country: str | None = None,
-    provider: str = "ycloud",
+    provider: str = "meta",
     provider_phone_id: str | None = None,
+    access_token: str | None = None,
     active: bool = True,
     is_default: bool = False,
-    webhook_secret: str | None = None,
 ) -> AuphereOwnerChannel:
     row = AuphereOwnerChannel(
         phone_e164=phone,
@@ -55,11 +55,11 @@ async def _insert_channel(
         country_code=country,
         provider=provider,
         provider_phone_id=provider_phone_id,
+        access_token_encrypted=(
+            access_token.encode("utf-8") if access_token else None
+        ),
         active=active,
         is_default=is_default,
-        webhook_secret_encrypted=(
-            webhook_secret.encode("utf-8") if webhook_secret else None
-        ),
     )
     db_session.add(row)
     await db_session.commit()
@@ -90,52 +90,72 @@ class TestRepository:
         miss2 = await repo.get_by_phone("+56000000002", only_active=False)
         assert miss2 is not None
 
-    async def test_get_default_per_provider(self, db_session):
-        ycloud_default = await _insert_channel(
+    async def test_get_by_provider_phone_id(self, db_session):
+        hit_row = await _insert_channel(
             db_session,
             phone="+56000000003",
-            name="YCloud default",
-            provider="ycloud",
-            is_default=True,
+            name="CL",
+            provider_phone_id="111000111",
         )
         await _insert_channel(
             db_session,
             phone="+56000000004",
+            name="dead",
+            provider_phone_id="222000222",
+            active=False,
+        )
+        repo = AuphereChannelRepository(db_session)
+        hit = await repo.get_by_provider_phone_id("111000111")
+        assert hit is not None and hit.id == hit_row.id
+        # Inactive rows are hidden by default at the webhook layer.
+        assert await repo.get_by_provider_phone_id("222000222") is None
+        assert (
+            await repo.get_by_provider_phone_id("222000222", only_active=False)
+            is not None
+        )
+
+    async def test_get_default_returns_meta_default(self, db_session):
+        await _insert_channel(
+            db_session,
+            phone="+56000000005",
+            name="not default",
+            is_default=False,
+        )
+        the_default = await _insert_channel(
+            db_session,
+            phone="+56000000006",
             name="Meta default",
-            provider="meta",
             is_default=True,
         )
         repo = AuphereChannelRepository(db_session)
-        yc = await repo.get_default(provider="ycloud")
-        meta = await repo.get_default(provider="meta")
-        assert yc is not None and yc.id == ycloud_default.id
-        assert meta is not None and meta.provider == "meta"
+        default = await repo.get_default()
+        assert default is not None and default.id == the_default.id
 
     async def test_unique_default_constraint(self, db_session):
         await _insert_channel(
             db_session,
-            phone="+56000000005",
+            phone="+56000000007",
             name="first default",
-            provider="ycloud",
             is_default=True,
         )
         # Second default for the same provider trips the partial unique
         # index.
-        with pytest.raises(Exception):
+        from sqlalchemy.exc import IntegrityError
+
+        with pytest.raises(IntegrityError):
             await _insert_channel(
                 db_session,
-                phone="+56000000006",
+                phone="+56000000008",
                 name="second default",
-                provider="ycloud",
                 is_default=True,
             )
 
     async def test_list_all_active_only_by_default(self, db_session):
         await _insert_channel(
-            db_session, phone="+56000000007", name="active", active=True
+            db_session, phone="+56000000009", name="active", active=True
         )
         await _insert_channel(
-            db_session, phone="+56000000008", name="inactive", active=False
+            db_session, phone="+56000000010", name="inactive", active=False
         )
         repo = AuphereChannelRepository(db_session)
         active = await repo.list_all()
@@ -144,73 +164,76 @@ class TestRepository:
         assert {c.display_name for c in all_rows} == {"active", "inactive"}
 
 
-# ── Resolver: inbound ───────────────────────────────────────────────
+# ── Resolver: inbound (by Meta phone_number_id) ─────────────────────
 
 
 class TestResolverInbound:
     async def test_hit_in_registry(self, db_session):
         await _insert_channel(
             db_session,
-            phone="+56000000010",
+            phone="+56000000020",
             name="CL",
-            webhook_secret="per-channel-secret",
+            provider_phone_id="333000333",
+            access_token="EAAtoken",
         )
         resolved = await resolve_channel_for_inbound(
-            db_session, to_phone="+56000000010"
+            db_session, provider_phone_id="333000333"
         )
         assert resolved is not None
-        assert resolved.phone_e164 == "+56000000010"
-        assert resolved.webhook_secret == "per-channel-secret"
-        assert resolved.is_legacy_fallback is False
+        assert resolved.phone_e164 == "+56000000020"
+        assert resolved.provider == "meta"
+        assert resolved.provider_phone_id == "333000333"
+        assert resolved.access_token == "EAAtoken"
+        assert resolved.can_send is True
 
-    async def test_falls_back_to_settings_when_registry_empty(
-        self, db_session, monkeypatch
-    ):
-        settings = get_settings()
-        monkeypatch.setattr(
-            settings, "auphere_owner_phone", "+56000000099"
+    async def test_resolved_without_token_cannot_send(self, db_session):
+        await _insert_channel(
+            db_session,
+            phone="+56000000021",
+            name="setup pending",
+            provider_phone_id="444000444",
+            access_token=None,
         )
         resolved = await resolve_channel_for_inbound(
-            db_session, to_phone="+56000000099"
+            db_session, provider_phone_id="444000444"
         )
         assert resolved is not None
-        assert resolved.is_legacy_fallback is True
-        # The legacy fallback has no per-channel secret — caller uses
-        # the shared YCloud one.
-        assert resolved.webhook_secret is None
+        assert resolved.access_token is None
+        assert resolved.can_send is False
 
-    async def test_returns_none_for_foreign_destination(
-        self, db_session, monkeypatch
-    ):
-        settings = get_settings()
-        monkeypatch.setattr(
-            settings, "auphere_owner_phone", "+56000000099"
-        )
-        # Registry empty, settings doesn't match.
+    async def test_returns_none_for_foreign_phone_number_id(self, db_session):
         resolved = await resolve_channel_for_inbound(
-            db_session, to_phone="+34000000000"
+            db_session, provider_phone_id="999999999"
         )
         assert resolved is None
 
-    async def test_inactive_channel_treated_as_foreign(
-        self, db_session, monkeypatch
-    ):
+    async def test_inactive_channel_treated_as_foreign(self, db_session):
         await _insert_channel(
             db_session,
-            phone="+56000000011",
+            phone="+56000000022",
             name="paused",
+            provider_phone_id="555000555",
             active=False,
         )
-        settings = get_settings()
-        # Make sure legacy fallback doesn't accidentally rescue it.
-        monkeypatch.setattr(settings, "auphere_owner_phone", None)
         resolved = await resolve_channel_for_inbound(
-            db_session, to_phone="+56000000011"
+            db_session, provider_phone_id="555000555"
         )
         assert resolved is None
 
 
 # ── Resolver: outbound ──────────────────────────────────────────────
+
+
+def _owner(
+    *, phone: str, tenant_id: uuid.UUID, channel_id: uuid.UUID | None = None
+) -> OwnerPhoneIndex:
+    return OwnerPhoneIndex(
+        phone_e164=phone,
+        tenant_id=tenant_id,
+        added_at=datetime.now(UTC),
+        active=True,
+        auphere_channel_id=channel_id,
+    )
 
 
 class TestResolverOutbound:
@@ -219,18 +242,14 @@ class TestResolverOutbound:
     ):
         pinned = await _insert_channel(
             db_session,
-            phone="+56000000020",
+            phone="+56000000030",
             name="CL pinned",
             is_default=False,
         )
-        owner = OwnerPhoneIndex(
-            phone_e164="+56999111222",
+        owner = _owner(
+            phone="+56999111222",
             tenant_id=seed_tenants["a"],
-            added_at=__import__(
-                "datetime"
-            ).datetime.now(__import__("datetime").UTC),
-            active=True,
-            auphere_channel_id=pinned.id,
+            channel_id=pinned.id,
         )
         db_session.add(owner)
         await db_session.commit()
@@ -245,74 +264,51 @@ class TestResolverOutbound:
     ):
         await _insert_channel(
             db_session,
-            phone="+56000000021",
-            name="YCloud default",
+            phone="+56000000031",
+            name="Meta default",
             is_default=True,
         )
-        owner = OwnerPhoneIndex(
-            phone_e164="+56999333444",
-            tenant_id=seed_tenants["a"],
-            added_at=__import__(
-                "datetime"
-            ).datetime.now(__import__("datetime").UTC),
-            active=True,
-            auphere_channel_id=None,
-        )
+        owner = _owner(phone="+56999333444", tenant_id=seed_tenants["a"])
         db_session.add(owner)
         await db_session.commit()
         await db_session.refresh(owner)
 
         resolved = await resolve_channel_for_owner(db_session, owner=owner)
         assert resolved is not None
-        assert resolved.display_name == "YCloud default"
+        assert resolved.display_name == "Meta default"
 
-    async def test_falls_back_to_settings_when_no_default(
-        self, db_session, seed_tenants, monkeypatch
+    async def test_returns_none_when_registry_empty(
+        self, db_session, seed_tenants
     ):
-        settings = get_settings()
-        monkeypatch.setattr(
-            settings, "auphere_owner_phone", "+56000000077"
-        )
-        owner = OwnerPhoneIndex(
-            phone_e164="+56999555666",
-            tenant_id=seed_tenants["a"],
-            added_at=__import__(
-                "datetime"
-            ).datetime.now(__import__("datetime").UTC),
-            active=True,
-        )
+        """No registered channel and no default → backchannel disabled.
+        (The legacy settings fallback was removed with YCloud.)"""
+        owner = _owner(phone="+56999555666", tenant_id=seed_tenants["a"])
         db_session.add(owner)
         await db_session.commit()
         await db_session.refresh(owner)
 
         resolved = await resolve_channel_for_owner(db_session, owner=owner)
-        assert resolved is not None
-        assert resolved.is_legacy_fallback is True
-        assert resolved.phone_e164 == "+56000000077"
+        assert resolved is None
 
     async def test_inactive_pinned_falls_back_to_default(
         self, db_session, seed_tenants
     ):
         inactive = await _insert_channel(
             db_session,
-            phone="+56000000030",
+            phone="+56000000032",
             name="dead",
             active=False,
         )
         default = await _insert_channel(
             db_session,
-            phone="+56000000031",
+            phone="+56000000033",
             name="alive default",
             is_default=True,
         )
-        owner = OwnerPhoneIndex(
-            phone_e164="+56999777888",
+        owner = _owner(
+            phone="+56999777888",
             tenant_id=seed_tenants["a"],
-            added_at=__import__(
-                "datetime"
-            ).datetime.now(__import__("datetime").UTC),
-            active=True,
-            auphere_channel_id=inactive.id,
+            channel_id=inactive.id,
         )
         db_session.add(owner)
         await db_session.commit()
@@ -326,101 +322,111 @@ class TestResolverOutbound:
 # ── Inbound webhook end-to-end (multi-channel) ──────────────────────
 
 
-def _bypass_signature(monkeypatch) -> None:
-    """Replace ``verify_ycloud_signature`` with a no-op so the test
-    drives the routing logic without forging real HMAC."""
-    import nexus_api.api.webhooks.owner_channel as oc
+def _meta_inbound_payload(
+    *, phone_number_id: str, sender: str, text: str
+) -> bytes:
+    return json.dumps(
+        {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "id": "WABA1",
+                    "changes": [
+                        {
+                            "field": "messages",
+                            "value": {
+                                "messaging_product": "whatsapp",
+                                "metadata": {
+                                    "display_phone_number": "56222000001",
+                                    "phone_number_id": phone_number_id,
+                                },
+                                "contacts": [
+                                    {
+                                        "profile": {"name": "Owner"},
+                                        "wa_id": sender.lstrip("+"),
+                                    }
+                                ],
+                                "messages": [
+                                    {
+                                        "from": sender.lstrip("+"),
+                                        "id": f"wamid.{uuid.uuid4().hex}",
+                                        "timestamp": "1700000000",
+                                        "type": "text",
+                                        "text": {"body": text},
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+    ).encode()
 
-    def _noop(secret, body, sig, *, tolerance_seconds):  # noqa: D401
-        return True
 
-    monkeypatch.setattr(oc, "verify_ycloud_signature", _noop)
+async def _post_meta(client, body: bytes):
+    return await client.post(
+        "/webhook/meta",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": sign_meta_request(META_APP_SECRET, body),
+        },
+    )
 
 
 class TestWebhookMultiChannel:
     async def test_routes_inbound_to_registered_channel(
-        self, client, db_session, monkeypatch
+        self, client, db_session
     ):
-        _bypass_signature(monkeypatch)
         await _insert_channel(
-            db_session, phone="+56222000001", name="CL"
+            db_session,
+            phone="+56222000001",
+            name="CL",
+            provider_phone_id="666000666",
         )
-        # OwnerPhoneIndex row for the sender → tenant lookup.
-        # Without a matching tenant the webhook returns "unknown_phone"
-        # which is still a 200 with status payload — that's what we
-        # check.
-        payload = json.dumps(
-            {
-                "type": "whatsapp.inbound_message.received",
-                "whatsappInboundMessage": {
-                    "to": "+56222000001",
-                    "from": "+56999000999",
-                    "text": {"body": "hola"},
-                },
-            }
+        # Sender has no OwnerPhoneIndex row → the owner flow answers
+        # "unknown_phone", which proves the event was routed to the
+        # backchannel (and not treated as tenant traffic).
+        body = _meta_inbound_payload(
+            phone_number_id="666000666",
+            sender="+56999000999",
+            text="hola",
         )
-        r = await client.post(
-            "/webhook/ycloud/owner-channel",
-            content=payload,
-            headers={"YCloud-Signature": "ignored"},
-        )
+        r = await _post_meta(client, body)
         assert r.status_code == 200, r.text
-        # We expect either "ignored:unknown_phone" or
-        # "ignored:no_open_consultation" — both indicate the routing
-        # accepted the destination AND looked further. "ignored:
-        # wrong_destination" would mean routing rejected.
-        assert "wrong_destination" not in r.json()["status"]
+        assert r.json()["status"] == "owner_channel:ignored:unknown_phone"
 
-    async def test_rejects_foreign_destination(
-        self, client, db_session, monkeypatch
+    async def test_foreign_phone_number_id_is_tenant_traffic(
+        self, client, db_session
     ):
-        _bypass_signature(monkeypatch)
-        settings = get_settings()
-        # Clear legacy fallback to make sure rejection is real.
-        monkeypatch.setattr(settings, "auphere_owner_phone", None)
-        payload = json.dumps(
-            {
-                "type": "whatsapp.inbound_message.received",
-                "whatsappInboundMessage": {
-                    "to": "+99999999999",  # unknown
-                    "from": "+56999000999",
-                    "text": {"body": "hola"},
-                },
-            }
+        """An event whose phone_number_id is NOT in the registry must go
+        down the regular tenant path, never the owner flow."""
+        body = _meta_inbound_payload(
+            phone_number_id="999888777",
+            sender="+56999000999",
+            text="hola",
         )
-        r = await client.post(
-            "/webhook/ycloud/owner-channel",
-            content=payload,
-            headers={"YCloud-Signature": "ignored"},
-        )
+        r = await _post_meta(client, body)
         assert r.status_code == 200
-        assert r.json()["status"] == "ignored:wrong_destination"
+        assert not r.json()["status"].startswith("owner_channel:")
 
-    async def test_legacy_settings_fallback_still_works(
-        self, client, db_session, monkeypatch
+    async def test_inactive_channel_is_tenant_traffic(
+        self, client, db_session
     ):
-        """When the registry is empty, an inbound to the legacy
-        ``settings.auphere_owner_phone`` MUST still be accepted —
-        Phase 1 compatibility."""
-        _bypass_signature(monkeypatch)
-        settings = get_settings()
-        monkeypatch.setattr(
-            settings, "auphere_owner_phone", "+56222999999"
+        """A deactivated Auphere number no longer captures traffic."""
+        await _insert_channel(
+            db_session,
+            phone="+56222000002",
+            name="off",
+            provider_phone_id="777000777",
+            active=False,
         )
-        payload = json.dumps(
-            {
-                "type": "whatsapp.inbound_message.received",
-                "whatsappInboundMessage": {
-                    "to": "+56222999999",
-                    "from": "+56999000999",
-                    "text": {"body": "hola"},
-                },
-            }
+        body = _meta_inbound_payload(
+            phone_number_id="777000777",
+            sender="+56999000999",
+            text="hola",
         )
-        r = await client.post(
-            "/webhook/ycloud/owner-channel",
-            content=payload,
-            headers={"YCloud-Signature": "ignored"},
-        )
+        r = await _post_meta(client, body)
         assert r.status_code == 200
-        assert "wrong_destination" not in r.json()["status"]
+        assert not r.json()["status"].startswith("owner_channel:")

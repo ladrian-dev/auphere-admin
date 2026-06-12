@@ -1,6 +1,6 @@
 """WhatsApp Cloud API :class:`ChannelAdapter` — direct Meta integration.
 
-Replaces :class:`nexus_channels.whatsapp_ycloud.adapter.WhatsAppYCloudAdapter`
+The WhatsApp :class:`ChannelAdapter`
 for tenants migrated to the Auphere-owned Meta App. Same Protocol — same
 runtime path — different transport.
 
@@ -126,7 +126,7 @@ class MetaChannelAdapter:
         """Adapter signature matches the Protocol: a single ``params`` dict.
 
         ``params`` accepts three optional keys for backward-compat with the
-        YCloud-era callers:
+        Callers:
 
         * ``"body"`` — ``list[str]`` (positional) or ``dict[str, str]`` (named).
         * ``"header"`` — ``list[str]`` of header text parameters.
@@ -172,7 +172,7 @@ class MetaChannelAdapter:
         context_message_id: str | None = None,
     ) -> SendResult:
         # Keyword is ``interactive`` (not ``payload``) to match the de-facto
-        # runtime contract: the outbound dispatcher and the YCloud adapter
+        # runtime contract: the outbound dispatcher
         # both speak ``interactive=``. The base.py Protocol still says
         # ``payload`` — that Protocol predates the dispatcher and is stale;
         # neither WhatsApp adapter conforms to it (both add ``from_phone``).
@@ -370,7 +370,7 @@ class MetaChannelAdapter:
         channel_id: uuid.UUID,
     ) -> None:
         """Best-effort. Failing to put the two blue checks never blocks an
-        inbound turn — same contract as the YCloud adapter."""
+        inbound turn."""
         try:
             pnid, token = await self._load_credentials(tenant_id=tenant_id)
             await self._client.mark_as_read(
@@ -453,7 +453,7 @@ def _to_result(raw: dict[str, Any]) -> SendResult:
 
 
 def _build_template_components(params: dict[str, Any]) -> list[dict[str, Any]]:
-    """Build Cloud API ``components`` from the YCloud-era ``params`` shape.
+    """Build Cloud API ``components`` from the dispatcher ``params`` shape.
 
     Supported keys (all optional):
 

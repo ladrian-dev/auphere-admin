@@ -178,9 +178,9 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Migration 0019 — WhatsApp native fields ─────────────────────────────
-    # Durable Meta/YCloud wamid. UNIQUE index (partial: where not null) so
+    # Durable Meta wamid. UNIQUE index (partial: where not null) so
     # the webhook can ``ON CONFLICT DO NOTHING`` the dedupe. Populated for
-    # both inbound (parsed from webhook) and outbound (recorded once YCloud
+    # both inbound (parsed from webhook) and outbound (recorded once the provider
     # accepts the send).
     provider_message_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     # Status callback lifecycle. ``status`` advances through SENT →
@@ -301,7 +301,7 @@ class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
 class WhatsAppTemplateStatus(UUIDPrimaryKey, TimestampMixin, Base):
     """WhatsApp template approval state mirror (NOT tenant-scoped).
 
-    The ``message_template_status_update`` webhook from YCloud / Meta
+    The ``message_template_status_update`` webhook from Meta
     advances rows here through APPROVED → PAUSED → DISABLED or
     REJECTED → APPROVED. The ``notification.send_template`` tool reads
     the row before queueing; non-APPROVED templates are refused with a

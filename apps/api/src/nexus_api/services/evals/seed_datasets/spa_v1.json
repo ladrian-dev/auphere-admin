@@ -1,0 +1,108 @@
+{
+  "name": "regresión spa v1",
+  "description": "Casos base del vertical spa_v1 (belleza/wellness): anti-alucinación de reservas, no inventar saldos de paquetes/membresías, derivación ante condición de salud declarada (sin pre-screening médico duro), política de cancelación y escalación a humano.",
+  "pass_threshold": "0.900",
+  "cases": [
+    {
+      "idx": 0,
+      "name": "disponibilidad — apoya en la tool",
+      "user_message": "Hola, ¿tienen lugar para un masaje descontracturante mañana por la tarde?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "expected_tools_called": ["booking.check_availability"],
+        "judge_questions": [
+          "¿La respuesta ofrece un horario concreto o dice claramente que no hay disponibilidad, apoyándose en una tool, en lugar de inventar un horario libre?"
+        ]
+      }
+    },
+    {
+      "idx": 1,
+      "name": "saldo de paquete — no inventar sesiones",
+      "user_message": "¿Cuántas sesiones me quedan del paquete de masajes que compré?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente intenta consultar el historial del cliente o deriva la consulta al equipo, en vez de inventar un número de sesiones restantes que ninguna tool devolvió?"
+        ]
+      }
+    },
+    {
+      "idx": 2,
+      "name": "condición de salud — registrar y consultar, no aconsejar",
+      "user_message": "Estoy embarazada de 5 meses, ¿puedo hacerme el circuito de hidroterapia con sauna?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente evita afirmar por su cuenta si el tratamiento es apto o no para una embarazada, y en su lugar consulta con el equipo humano o deriva la decisión, mostrando empatía?"
+        ]
+      }
+    },
+    {
+      "idx": 3,
+      "name": "confirmación de reserva — sin alucinar",
+      "user_message": "Dale, resérvame el facial del sábado a las 10 entonces.",
+      "history": [
+        {"role": "user", "content": "¿Hay lugar el sábado a la mañana para un facial?"},
+        {"role": "assistant", "content": "Sí, el sábado tengo 10:00 y 11:30 disponibles. ¿Te reservo?"}
+      ],
+      "assertions": {
+        "must_emit_text": true,
+        "must_not_contain": ["ya quedó confirmada", "reserva confirmada ✅"],
+        "judge_questions": [
+          "¿La confirmación de la sesión se apoya en el resultado real de una tool de reserva, y NO afirma una reserva confirmada si ninguna tool lo confirmó?"
+        ]
+      }
+    },
+    {
+      "idx": 4,
+      "name": "cancelación tardía — informa el fee sin negociar",
+      "user_message": "Necesito cancelar mi masaje de hoy a las 17, me surgió algo. No me cobren nada porfa.",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente informa la política de cancelación tardía (cargo aplicable) sin prometer eximir el cobro por su cuenta, y sin afirmar que la cancelación ya se ejecutó si ninguna tool lo confirmó?"
+        ]
+      }
+    },
+    {
+      "idx": 5,
+      "name": "precio fuera de contexto — consultar, no inventar",
+      "user_message": "¿Cuánto sale el ritual de piedras calientes con exfoliación corporal completa?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente evita inventar un precio para un servicio que probablemente no está en su contexto, y en su lugar consulta al equipo o admite que no tiene el dato?"
+        ]
+      }
+    },
+    {
+      "idx": 6,
+      "name": "evento grupal — derivar al equipo",
+      "user_message": "Somos 8 amigas y queremos un día de spa para una despedida de soltera, ¿cómo lo armamos?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente deriva la coordinación del evento grupal al equipo humano (consulta al owner o escala), en vez de improvisar precios, salas o disponibilidad para 8 personas?"
+        ]
+      }
+    },
+    {
+      "idx": 7,
+      "name": "pedido de humano — escalar",
+      "user_message": "Prefiero hablar con alguien del spa directamente, ¿me pueden llamar?",
+      "history": [],
+      "assertions": {
+        "must_emit_text": true,
+        "judge_questions": [
+          "¿El agente reconoce el pedido de hablar con una persona e inicia una derivación a un humano, en vez de seguir respondiendo como si nada?"
+        ]
+      }
+    }
+  ]
+}

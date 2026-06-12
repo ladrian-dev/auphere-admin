@@ -40,23 +40,11 @@ class Settings(BaseSettings):
     # Auth for admin endpoints. Better Auth replaces this in block G.
     admin_token: str = "dev-admin-token-change-me"
 
-    # Generic HMAC secret kept for any future webhook with a simple HMAC scheme
-    # (NOT YCloud — YCloud has its own ``t={ts},s={sig}`` shape, see below).
+    # Generic HMAC secret kept for any future webhook with a simple HMAC scheme.
     webhook_hmac_secret: str = "dev-hmac-secret-change-me"
 
-    # YCloud — Phase 1 BSP for WhatsApp.
-    # Auphere is the YCloud customer; each tenant is a WABA migrated to that
-    # BSP. Per-tenant API keys are a Phase 4+ white-label concern.
-    ycloud_api_key: str = "dev-ycloud-key-change-me"
-    ycloud_webhook_secret: str = "dev-ycloud-webhook-secret-change-me"
-    ycloud_api_base_url: str = "https://api.ycloud.com/v2"
-    # YCloud webhook signature timestamp tolerance (replay protection).
-    ycloud_signature_tolerance_seconds: int = 300
-
-    # Meta WhatsApp Cloud API — direct Tech Provider integration.
-    # Auphere replaces YCloud progressively per-tenant; YCloud and Meta
-    # coexist in the database (``channels.provider`` discriminates) until
-    # the cutover finishes.
+    # Meta WhatsApp Cloud API — direct Tech Provider integration. The only
+    # WhatsApp provider (YCloud removed 2026-06-12).
     #
     # App ID and Configuration IDs are PUBLIC values from the Meta App
     # dashboard (https://developers.facebook.com/apps/957213733862330/).
@@ -94,19 +82,10 @@ class Settings(BaseSettings):
     operator_fallback_phone: str | None = None
 
     # Owner backchannel (ADR-018 / architecture/owner-backchannel.md).
-    # ``auphere_owner_phone`` is the E.164 of the Auphere multi-tenant
-    # number used to talk to ALL owners. Inbound webhooks from this number
-    # route through ``/webhooks/ycloud/owner-channel``; outbound template
-    # sends use this as ``from_phone``. ``auphere_owner_number_id`` is the
-    # YCloud phone_number_id reserved for the same number — kept separate
-    # because some YCloud endpoints take the id rather than the E.164.
-    # ``auphere_owner_webhook_secret`` lets the owner-channel webhook have
-    # its own signing secret distinct from the tenant business numbers
-    # (operationally we may reuse ``ycloud_webhook_secret`` if the BSP
-    # signs all events with the same secret).
-    auphere_owner_phone: str | None = None
-    auphere_owner_number_id: str | None = None
-    auphere_owner_webhook_secret: str | None = None
+    # Auphere backchannel numbers live in the ``auphere_owner_channels``
+    # registry (provider=meta, with phone_number_id + encrypted access
+    # token per row). No settings-based fallback — registering a channel
+    # in the panel is the only way to enable the backchannel.
 
     # Fernet key for tenant_credentials.encrypted_payload. Must be a urlsafe-base64
     # 32-byte key. Generate one with `python -c 'from cryptography.fernet import Fernet;
@@ -152,7 +131,7 @@ class Settings(BaseSettings):
     # S3 (or S3-compatible — Cloudflare R2, MinIO) for media storage. All
     # inbound media (audio/image/document/video/sticker) goes into the bucket
     # keyed by tenant + wamid + extension; outbound media is uploaded the
-    # same way before generating a presigned URL for YCloud to fetch.
+    # same way before generating a presigned URL for Meta to fetch.
     media_s3_bucket: str = ""
     media_s3_region: str = "us-east-1"
     # When ``endpoint_url`` is set we hit a non-AWS endpoint (R2, MinIO).

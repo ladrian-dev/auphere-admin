@@ -59,7 +59,7 @@ def _to_event(fields: dict[str, str]) -> InboundEvent:
         user_id=fields["user_id"],
         content=fields["content"],
         customer_name=fields.get("customer_name"),
-        provider=fields.get("provider", "ycloud"),
+        provider=fields.get("provider", "meta"),
         kind=fields.get("kind", "text"),
         provider_message_id=fields.get("provider_message_id"),
         media_kind=fields.get("media_kind"),

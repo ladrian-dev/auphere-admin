@@ -16,6 +16,7 @@ from nexus_api.api.admin import (
     skills,
     tenants,
     tool_catalog,
+    whatsapp_templates,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -34,3 +35,4 @@ router.include_router(skills.router)
 router.include_router(audit.router)
 router.include_router(auphere_channels.router)
 router.include_router(backchannel_owners.router)
+router.include_router(whatsapp_templates.router)

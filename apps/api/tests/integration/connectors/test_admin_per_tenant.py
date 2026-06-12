@@ -98,7 +98,7 @@ async def test_initiate_consent_wrong_auth_kind(
     """Trying to initiate consent on a webhook_manual connector → 400."""
     await _set_owner_phone(db_session, seed_tenants["a"])
     r = await client.post(
-        f"/admin/tenants/{seed_tenants['a']}/connectors/whatsapp_ycloud/initiate-consent",
+        f"/admin/tenants/{seed_tenants['a']}/connectors/whatsapp_meta/initiate-consent",
         headers=admin_headers,
     )
     assert r.status_code == 400

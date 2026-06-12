@@ -52,10 +52,11 @@ export default async function AuphereChannelsPage({
           <CardTitle>Canales Auphere (backchannel)</CardTitle>
           <CardDescription>
             Registry global de los números desde los que Auphere escribe a
-            los dueños de los tenants. Cada canal vive en una WABA (YCloud
-            o Meta) y puede llevar un webhook secret propio. Mantén un
-            ★ default por provider — el resolver cae ahí cuando un{" "}
-            <code>owner_phone_index</code> no tiene channel pin.
+            los dueños de los tenants. Cada canal vive en la WABA de
+            Auphere (Meta Cloud API) y necesita su phone_number_id + access
+            token para poder enviar. Mantén un ★ default — el resolver cae
+            ahí cuando un <code>owner_phone_index</code> no tiene channel
+            pin.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -74,10 +75,9 @@ export default async function AuphereChannelsPage({
           <CardTitle>Registrar nuevo canal</CardTitle>
           <CardDescription>
             E.164 obligatorio. Si marcás <strong>Default</strong>, ningún
-            otro canal de ese provider puede ser default — desactivá el
-            anterior primero. El webhook secret se guarda cifrado (Fernet);
-            si lo dejás vacío, el endpoint usa el shared secret de
-            YCloud/Meta.
+            otro canal puede ser default — desactivá el anterior primero.
+            El access token y el webhook secret se guardan cifrados
+            (Fernet) y no vuelven a mostrarse.
           </CardDescription>
         </CardHeader>
         <CardContent>

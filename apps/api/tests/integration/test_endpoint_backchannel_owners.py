@@ -11,7 +11,7 @@ import uuid
 
 import pytest
 
-from nexus_api.db.models import AuphereOwnerChannel, OwnerPhoneIndex
+from nexus_api.db.models import AuphereOwnerChannel
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -22,7 +22,7 @@ async def _insert_channel(db_session, *, phone: str = "+56999000001") -> str:
     row = AuphereOwnerChannel(
         phone_e164=phone,
         display_name="Test Channel",
-        provider="ycloud",
+        provider="meta",
         active=True,
         is_default=False,
     )
@@ -100,7 +100,7 @@ class TestRegister:
         row = AuphereOwnerChannel(
             phone_e164="+56999000020",
             display_name="Inactive",
-            provider="ycloud",
+            provider="meta",
             active=False,
             is_default=False,
         )
@@ -254,6 +254,7 @@ class TestDelete:
 class TestAuditLog:
     async def test_register_writes_audit(self, client, db_session, seed_tenants):
         from sqlalchemy import select
+
         from nexus_api.db.models import AuditLog
 
         tid = seed_tenants["a"]

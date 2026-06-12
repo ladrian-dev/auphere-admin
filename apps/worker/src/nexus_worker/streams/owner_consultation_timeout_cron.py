@@ -5,7 +5,7 @@ window for the row's urgency. For each match:
 
 - If the row has not been reminded yet → re-enqueue the dispatcher by
   setting ``status='pending'`` again. The outbox dispatcher resends the
-  template (idempotent on YCloud because the template + correlation_id
+  template (idempotent because the template + correlation_id
   haven't changed). The ``reminded_count`` is bumped to record the nudge.
 - If the row has already been reminded once and is still ``sent`` past
   a second SLA window → mark ``status='timed_out'``. Phase 1 logs and

@@ -235,10 +235,8 @@ class EmbeddedSignupOrchestrator:
         )
 
         # 7) Invalidate the tenant-resolver cache so the next webhook hits
-        # the freshly-written channels row instead of any prior YCloud
-        # mapping that might exist from a migration window.
+        # the freshly-written channels row.
         await invalidate_tenant_cache(self._redis, "meta", display_phone)
-        await invalidate_tenant_cache(self._redis, "ycloud", display_phone)
 
         log.info(
             "meta.signup.complete",
@@ -274,7 +272,7 @@ class EmbeddedSignupOrchestrator:
         """Insert/update the ``channels`` row for this WABA.
 
         ``provider_identifier`` is the E.164 business phone — same shape as
-        the YCloud row. ``config`` JSONB holds the Meta-specific IDs so the
+        previous providers. ``config`` JSONB holds the Meta-specific IDs so the
         webhook layer can read them without a join.
         """
         tenant_id = require_current_tenant()

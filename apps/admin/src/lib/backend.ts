@@ -133,21 +133,6 @@ export type SlugAvailability = {
   available: boolean;
 };
 
-export type WhatsAppPreview = {
-  phone_number: string;
-  phone_number_id: string;
-  waba_id: string;
-  display_name: string | null;
-  verified_name: string | null;
-  quality_rating: string | null;
-};
-
-export type WhatsAppConnect = WhatsAppPreview & {
-  status: string;
-  channel_id: string;
-  audit_log_id: string;
-};
-
 /** Mirror of ``MetaSignupOut`` from ``apps/api`` admin endpoint. The
  *  frontend never sees the BISUAT — only post-signup metadata + the
  *  channel row id needed to install the connector row. */
@@ -172,6 +157,36 @@ export type MetaSignupInput = {
   phone_number_id?: string;
   business_id?: string;
   mode: "cloud_api" | "coexistence";
+};
+
+export type WhatsAppTemplate = {
+  id: string | null;
+  name: string;
+  language: string;
+  category: string | null;
+  status: string | null;
+  quality_score: string | null;
+  components: Array<Record<string, unknown>>;
+};
+
+export type WhatsAppTemplateList = {
+  templates: WhatsAppTemplate[];
+  waba_id: string;
+};
+
+export type WhatsAppTemplateCreateInput = {
+  name: string;
+  language?: string;
+  category?: string;
+  components: Array<Record<string, unknown>>;
+};
+
+export type WhatsAppTemplateCreateResult = {
+  id: string | null;
+  name: string;
+  status: string | null;
+  category: string | null;
+  audit_log_id: string;
 };
 
 export type MetaTestSendInput = {
@@ -453,8 +468,8 @@ export type ConversationOut = {
    *  resume and cleared. Populated only while the conversation is
    *  in a takeover window. */
   takeover_context: TakeoverContext | null;
-  /** Transport provider of the conversation's channel ("ycloud" | "meta").
-   *  Lets the panel badge each thread instead of assuming YCloud. Null only
+  /** Transport provider of the conversation's channel ("meta").
+   *  Lets the panel badge each thread. Null only
    *  when the underlying channel row is missing. */
   provider: string | null;
   created_at: string;
@@ -519,7 +534,7 @@ export type AuditLogPage = {
 
 // ── auphere_owner_channels (Bloque D Fase 2) ──────────────────────────
 
-export type AuphereChannelProvider = "ycloud" | "meta";
+export type AuphereChannelProvider = "meta";
 
 export type AuphereOwnerChannelOut = {
   id: string;
@@ -531,6 +546,7 @@ export type AuphereOwnerChannelOut = {
   active: boolean;
   is_default: boolean;
   has_webhook_secret: boolean;
+  has_access_token: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -543,6 +559,7 @@ export type AuphereChannelCreateInput = {
   provider_phone_id?: string | null;
   is_default?: boolean;
   webhook_secret?: string | null;
+  access_token?: string | null;
 };
 
 export type AuphereChannelUpdateInput = {
@@ -552,6 +569,7 @@ export type AuphereChannelUpdateInput = {
   active?: boolean;
   is_default?: boolean;
   webhook_secret?: string | null;
+  access_token?: string | null;
 };
 
 // ── owner_phone_index (per tenant) ────────────────────────────────────
@@ -1155,27 +1173,6 @@ export const backend = {
   deleteTenant: (tenantId: string) =>
     call<null>(`/admin/tenants/${tenantId}`, { method: "DELETE" }),
 
-  // YCloud SMB doesn't expose a Meta phone_number_id in its dashboard,
-  // so the wizard asks the operator for the E.164 phone number — that's
-  // what they always know. The backend uses it as the second path
-  // segment of YCloud's ``/whatsapp/phoneNumbers/{wabaId}/{lookup}``,
-  // which soft-matches by phone and returns the canonical id.
-  verifyWhatsApp: (waba_id: string, phone_number_e164: string) =>
-    call<WhatsAppPreview>(
-      `/admin/integrations/whatsapp/verify?waba_id=${encodeURIComponent(
-        waba_id,
-      )}&phone_number_e164=${encodeURIComponent(phone_number_e164)}`,
-    ),
-
-  connectWhatsAppManual: (
-    tenantId: string,
-    body: { waba_id: string; phone_number_e164: string },
-  ) =>
-    call<WhatsAppConnect>(
-      `/admin/tenants/${tenantId}/integrations/whatsapp/connect-manual`,
-      { method: "POST", body },
-    ),
-
   /** Complete an Embedded Signup v4 flow for a tenant. The browser already
    *  ran ``FB.login`` and captured ``code`` + ``data``; this call hands them
    *  off to the orchestrator which does the exchange + register + subscribe
@@ -1191,6 +1188,26 @@ export const backend = {
    *  template so it works outside the 24h service window. Used by the
    *  "Enviar prueba" button in the connector card to smoke-test the
    *  BISUAT and to exercise whatsapp_business_messaging for App Review. */
+  listWhatsAppTemplates: (tenantId: string) =>
+    call<WhatsAppTemplateList>(
+      `/admin/tenants/${tenantId}/whatsapp/templates`,
+    ),
+
+  createWhatsAppTemplate: (
+    tenantId: string,
+    body: WhatsAppTemplateCreateInput,
+  ) =>
+    call<WhatsAppTemplateCreateResult>(
+      `/admin/tenants/${tenantId}/whatsapp/templates`,
+      { method: "POST", body },
+    ),
+
+  deleteWhatsAppTemplate: (tenantId: string, name: string) =>
+    call<{ name: string; deleted: boolean }>(
+      `/admin/tenants/${tenantId}/whatsapp/templates/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    ),
+
   metaTestSend: (tenantId: string, body: MetaTestSendInput) =>
     call<MetaTestSendResult>(
       `/admin/tenants/${tenantId}/integrations/meta/test-send`,

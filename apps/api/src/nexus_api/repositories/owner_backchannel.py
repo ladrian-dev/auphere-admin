@@ -72,10 +72,10 @@ class OwnerConsultationRepository:
         stmt = select(OwnerConsultation).where(OwnerConsultation.correlation_id == correlation_id)
         return (await self._session.execute(stmt)).scalar_one_or_none()
 
-    async def get_by_ycloud_message_id(self, ycloud_message_id: str) -> OwnerConsultation | None:
+    async def get_by_provider_message_id(self, provider_message_id: str) -> OwnerConsultation | None:
         require_current_tenant()
         stmt = select(OwnerConsultation).where(
-            OwnerConsultation.ycloud_message_id == ycloud_message_id
+            OwnerConsultation.provider_message_id == provider_message_id
         )
         return (await self._session.execute(stmt)).scalar_one_or_none()
 

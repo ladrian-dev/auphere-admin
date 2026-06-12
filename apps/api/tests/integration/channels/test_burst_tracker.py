@@ -1,7 +1,7 @@
-"""Block H: YCloud 5xx burst tracker — sliding window + audit emit.
+"""Block H: WhatsApp provider 5xx burst tracker — sliding window + audit emit.
 
 Window default 2min, threshold default 5. Once tripped the tracker
-writes a single ``channel.ycloud_5xx_burst`` audit row and enters a
+writes a single ``channel.whatsapp_5xx_burst`` audit row and enters a
 cooldown so a sustained burst doesn't generate one audit per tick.
 """
 
@@ -13,7 +13,7 @@ from time import monotonic
 import pytest
 import sqlalchemy as sa
 from nexus_worker.streams.burst_tracker import (
-    YCloudBurstTracker,
+    WhatsAppBurstTracker,
     reset_default_tracker,
 )
 
@@ -44,7 +44,7 @@ async def _seed(db_session) -> uuid.UUID:
 
 def test_tracker_under_threshold_does_not_alert():
     reset_default_tracker()
-    t = YCloudBurstTracker(threshold=5, window_seconds=120)
+    t = WhatsAppBurstTracker(threshold=5, window_seconds=120)
     tid = uuid.uuid4()
     for _ in range(4):
         assert t.should_alert(tid, 503) is False
@@ -52,7 +52,7 @@ def test_tracker_under_threshold_does_not_alert():
 
 def test_tracker_above_threshold_alerts_once_then_cools():
     reset_default_tracker()
-    t = YCloudBurstTracker(threshold=3, window_seconds=120, cooldown_seconds=600)
+    t = WhatsAppBurstTracker(threshold=3, window_seconds=120, cooldown_seconds=600)
     tid = uuid.uuid4()
     assert t.should_alert(tid, 502) is False
     assert t.should_alert(tid, 503) is False
@@ -65,7 +65,7 @@ def test_tracker_above_threshold_alerts_once_then_cools():
 
 def test_tracker_ignores_non_5xx_codes():
     reset_default_tracker()
-    t = YCloudBurstTracker(threshold=2, window_seconds=120)
+    t = WhatsAppBurstTracker(threshold=2, window_seconds=120)
     tid = uuid.uuid4()
     assert t.should_alert(tid, 401) is False
     assert t.should_alert(tid, 422) is False
@@ -74,7 +74,7 @@ def test_tracker_ignores_non_5xx_codes():
 
 def test_tracker_treats_zero_as_transport_error():
     reset_default_tracker()
-    t = YCloudBurstTracker(threshold=2, window_seconds=120)
+    t = WhatsAppBurstTracker(threshold=2, window_seconds=120)
     tid = uuid.uuid4()
     assert t.should_alert(tid, 0) is False
     assert t.should_alert(tid, 0) is True
@@ -82,7 +82,7 @@ def test_tracker_treats_zero_as_transport_error():
 
 def test_tracker_window_drops_old_entries(monkeypatch):
     reset_default_tracker()
-    t = YCloudBurstTracker(threshold=3, window_seconds=10, cooldown_seconds=600)
+    t = WhatsAppBurstTracker(threshold=3, window_seconds=10, cooldown_seconds=600)
     tid = uuid.uuid4()
     fake_now = [monotonic()]
 
@@ -104,7 +104,7 @@ def test_tracker_window_drops_old_entries(monkeypatch):
 async def test_tracker_writes_audit_log_when_alerting(db_session):
     reset_default_tracker()
     tid = await _seed(db_session)
-    t = YCloudBurstTracker(threshold=2, window_seconds=120, cooldown_seconds=600)
+    t = WhatsAppBurstTracker(threshold=2, window_seconds=120, cooldown_seconds=600)
 
     fired_a = await t.record_failure_and_maybe_audit(tid, 502, error_message="upstream")
     fired_b = await t.record_failure_and_maybe_audit(tid, 503, error_message="upstream")
@@ -114,7 +114,7 @@ async def test_tracker_writes_audit_log_when_alerting(db_session):
     sm = get_sessionmaker()
     async with sm() as session, tenant_scoped_session(session, tid):
         rows = await session.execute(
-            sa.select(AuditLog).where(AuditLog.action == "channel.ycloud_5xx_burst")
+            sa.select(AuditLog).where(AuditLog.action == "channel.whatsapp_5xx_burst")
         )
         items = list(rows.scalars())
         assert len(items) == 1

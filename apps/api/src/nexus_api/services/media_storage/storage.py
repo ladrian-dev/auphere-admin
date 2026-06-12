@@ -79,7 +79,7 @@ class MediaStorage(abc.ABC):
 
     @abc.abstractmethod
     async def presign_get(self, key: str, *, ttl_seconds: int | None = None) -> str:
-        """Return a short-TTL HTTPS URL Meta/YCloud can fetch."""
+        """Return a short-TTL HTTPS URL Meta can fetch."""
 
     @abc.abstractmethod
     async def get_object(self, key: str) -> tuple[bytes, str]:

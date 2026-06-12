@@ -25,7 +25,7 @@ async def seeded_catalog(db_session: AsyncSession) -> None:
 
     OAuth connectors live in Composio dashboards now — the ``fake_composio``
     fixture pre-registers them so the catalog endpoint surfaces them
-    dynamically. Only ``whatsapp_ycloud`` and ``agendapro`` are seeded
+    dynamically. Only the custom seeds (``whatsapp_meta``, ``agendapro``, ``woocommerce``) are applied
     from local YAMLs.
     """
     seeds = load_all_seeds()

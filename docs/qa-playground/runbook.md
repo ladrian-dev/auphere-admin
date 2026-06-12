@@ -81,7 +81,7 @@ dentro del API gana:
 Cuando aterrice **un canal web público para clientes finales** (widget
 embebido en sitios de clientes, no este Playground interno). Ese canal
 sí necesitará streaming visible token-por-token. Se diseñará como un
-**channel adapter** más (igual que YCloud WhatsApp hoy), con su propio
+**channel adapter** más (igual que Meta WhatsApp hoy), con su propio
 endpoint público y su decisión arquitectónica entre SSE custom vs
 LangGraph Server enterprise vs WebSocket. NO se va a retrofittear el
 Playground interno.

@@ -53,6 +53,7 @@ def _to_out(row: AuphereOwnerChannel) -> AuphereOwnerChannelOut:
         active=row.active,
         is_default=row.is_default,
         has_webhook_secret=row.webhook_secret_encrypted is not None,
+        has_access_token=row.access_token_encrypted is not None,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -71,6 +72,7 @@ def _audit_snapshot(row: AuphereOwnerChannel) -> dict:
         "active": row.active,
         "is_default": row.is_default,
         "has_webhook_secret": row.webhook_secret_encrypted is not None,
+        "has_access_token": row.access_token_encrypted is not None,
     }
 
 
@@ -183,6 +185,9 @@ async def create_channel(
             webhook_secret_encrypted=(
                 body.webhook_secret.encode("utf-8") if body.webhook_secret else None
             ),
+            access_token_encrypted=(
+                body.access_token.encode("utf-8") if body.access_token else None
+            ),
         )
         session.add(row)
         await session.flush()
@@ -259,6 +264,13 @@ async def update_channel(
             secret = patch["webhook_secret"]
             row.webhook_secret_encrypted = (
                 secret.encode("utf-8") if secret else None
+            )
+
+        # Access token rotation: same semantics as webhook_secret.
+        if "access_token" in patch:
+            token = patch["access_token"]
+            row.access_token_encrypted = (
+                token.encode("utf-8") if token else None
             )
 
         await session.flush()

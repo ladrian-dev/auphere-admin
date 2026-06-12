@@ -1,5 +1,5 @@
 """Outbound dispatcher: drains ``messages.status='pending'`` to the
-:class:`WhatsAppYCloudAdapter` (faked here)."""
+the WhatsApp Meta adapter (faked here)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import asyncio
 from typing import Any
 
 import pytest
-from nexus_channels.whatsapp_ycloud.ycloud_client import YCloudAPIError
+from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
 from nexus_worker.streams.outbound import (
     MAX_ATTEMPTS,
     _drain_tenant,
@@ -63,7 +63,7 @@ async def test_outbound_dispatcher_sends_pending_messages(
     msg_id = await _seed_pending_message(tenant_info=info, content="Hola desde Cultor")
 
     sm = get_sessionmaker()
-    await _drain_tenant(sm, info["tenant_id"], {"ycloud": fake_adapter}, batch_size=10)
+    await _drain_tenant(sm, info["tenant_id"], {"meta": fake_adapter}, batch_size=10)
 
     msg = await _read_message(info["tenant_id"], msg_id)
     assert msg.status is MessageStatus.SENT
@@ -80,17 +80,17 @@ async def test_outbound_dispatcher_marks_failed_after_retries(
     fake_adapter,
 ):
     info = two_tenants_with_channels["a"]
-    fake_adapter.fail_text_with = YCloudAPIError(502, "Bad Gateway")
+    fake_adapter.fail_text_with = MetaAPIError("Bad Gateway", status_code=502)
     msg_id = await _seed_pending_message(tenant_info=info, content="reintenta")
 
     sm = get_sessionmaker()
     for _ in range(MAX_ATTEMPTS + 1):
-        await _drain_tenant(sm, info["tenant_id"], {"ycloud": fake_adapter}, batch_size=10)
+        await _drain_tenant(sm, info["tenant_id"], {"meta": fake_adapter}, batch_size=10)
 
     msg = await _read_message(info["tenant_id"], msg_id)
     assert msg.status is MessageStatus.FAILED
     assert msg.attempts == MAX_ATTEMPTS
-    assert "YCloudAPIError" in (msg.last_error or "")
+    assert "MetaAPIError" in (msg.last_error or "")
 
 
 async def test_outbound_dispatcher_isolation_two_tenants(
@@ -104,8 +104,8 @@ async def test_outbound_dispatcher_isolation_two_tenants(
 
     sm = get_sessionmaker()
     await asyncio.gather(
-        _drain_tenant(sm, info_a["tenant_id"], {"ycloud": fake_adapter}, batch_size=10),
-        _drain_tenant(sm, info_b["tenant_id"], {"ycloud": fake_adapter}, batch_size=10),
+        _drain_tenant(sm, info_a["tenant_id"], {"meta": fake_adapter}, batch_size=10),
+        _drain_tenant(sm, info_b["tenant_id"], {"meta": fake_adapter}, batch_size=10),
     )
 
     msg_a = await _read_message(info_a["tenant_id"], a_msg)
@@ -132,9 +132,9 @@ async def test_outbound_dispatcher_skips_already_sent_messages(
 
     sm = get_sessionmaker()
     # First tick sends; second tick should find no pending and not call adapter.
-    await _drain_tenant(sm, info["tenant_id"], {"ycloud": fake_adapter}, batch_size=10)
+    await _drain_tenant(sm, info["tenant_id"], {"meta": fake_adapter}, batch_size=10)
     assert len(fake_adapter.text_calls) == 1
-    await _drain_tenant(sm, info["tenant_id"], {"ycloud": fake_adapter}, batch_size=10)
+    await _drain_tenant(sm, info["tenant_id"], {"meta": fake_adapter}, batch_size=10)
     assert len(fake_adapter.text_calls) == 1  # unchanged
 
     msg = await _read_message(info["tenant_id"], msg_id)
