@@ -39,6 +39,7 @@ from nexus_api.core.qa_security import require_qa_operator
 from nexus_api.core.tenant_context import (
     _current_tenant,
     apply_tenant_to_session,
+    customer_context,
     tenant_context,
 )
 from nexus_api.db.models import (
@@ -664,7 +665,11 @@ async def _run_in_process(
 
     op_token = _current_operator.set(operator_id)
     try:
-        with tenant_context(tenant_id), qa_thread_context(qa_thread_id):
+        with (
+            tenant_context(tenant_id),
+            qa_thread_context(qa_thread_id),
+            customer_context(customer_id),
+        ):
             final_state = await pipeline.ainvoke(state, config=config)
     finally:
         _current_operator.reset(op_token)

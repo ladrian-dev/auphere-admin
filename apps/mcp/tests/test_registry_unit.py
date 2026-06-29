@@ -24,7 +24,7 @@ def test_default_registry_has_all_block_d_tools():
     reset_default_registry()
     reg = build_default_registry()
     names = set(reg.names())
-    assert len(names) == 41
+    assert len(names) == 44
     assert "operator.consult_owner" in names
     assert "response.send_interactive" in names
     # Block O internal tools — not LLM-facing.
@@ -49,6 +49,12 @@ def test_default_registry_has_all_block_d_tools():
         "woocommerce.update_order",
         "woocommerce.update_order_status",
         "woocommerce.add_order_note",
+    }.issubset(names)
+    # Amigable Cobro (billing.*) — debtor + admin debt-lookup tools.
+    assert {
+        "billing.get_my_debt",
+        "billing.get_debtor_by_phone",
+        "billing.list_overdue",
     }.issubset(names)
 
 

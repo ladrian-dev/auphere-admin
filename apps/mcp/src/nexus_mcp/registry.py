@@ -406,6 +406,7 @@ def build_default_registry() -> MCPRegistry:
     from nexus_mcp.servers.agendapro_public.tools import (
         build_agendapro_public_tools,
     )
+    from nexus_mcp.servers.amigable_cobro.tools import AMIGABLE_COBRO_TOOLS
     from nexus_mcp.servers.booking.tools import BOOKING_TOOLS
     from nexus_mcp.servers.client.tools import CLIENT_TOOLS
     from nexus_mcp.servers.commission.tools import COMMISSION_TOOLS
@@ -425,6 +426,7 @@ def build_default_registry() -> MCPRegistry:
         *NOTIFICATION_TOOLS,
         *OPERATOR_TOOLS,
         *WOOCOMMERCE_TOOLS,
+        *AMIGABLE_COBRO_TOOLS,
     ):
         registry.register(tool_cls())
     # Block O: agendapro_public.* are INTERNAL — the transport is

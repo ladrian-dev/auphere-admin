@@ -55,7 +55,11 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 from langgraph.graph import END, START, StateGraph
-from nexus_api.core.tenant_context import tenant_context, tenant_scoped_session
+from nexus_api.core.tenant_context import (
+    customer_context,
+    tenant_context,
+    tenant_scoped_session,
+)
 from nexus_api.db.base import get_sessionmaker
 from nexus_mcp import MCPRegistry, build_default_registry
 from nexus_mcp.base import ToolError, ToolNotInWhitelist
@@ -137,9 +141,7 @@ _CODE_EXECUTION_TOOL: dict[str, Any] = {
     "type": "code_execution_20250825",
     "name": "code_execution",
 }
-_SKILLS_BETA_HEADER_VALUE: str = (
-    "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
-)
+_SKILLS_BETA_HEADER_VALUE: str = "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
 # Anthropic enforces a hard limit on ``container.skills`` (validation
 # error ``container.ContainerParams.skills: List should have at most 8
 # items``). When a tenant attaches more than 8 skills, we truncate to
@@ -161,11 +163,7 @@ def _filter_skills_for_channel(
     is in the list, so e.g. ``whatsapp-24h-window`` never reaches the
     LLM on the QA Playground ``web`` channel.
     """
-    return tuple(
-        s
-        for s in skills
-        if not s.get("channels") or channel_type in s["channels"]
-    )
+    return tuple(s for s in skills if not s.get("channels") or channel_type in s["channels"])
 
 
 async def _resolve_mcp_token(tenant_id: uuid.UUID, credential_key: str) -> str | None:
@@ -189,9 +187,7 @@ async def _resolve_mcp_token(tenant_id: uuid.UUID, credential_key: str) -> str |
     async with sm() as session, tenant_scoped_session(session, tenant_id):
         row = (
             await session.execute(
-                _select(TenantCredentials).where(
-                    TenantCredentials.integration == credential_key
-                )
+                _select(TenantCredentials).where(TenantCredentials.integration == credential_key)
             )
         ).scalar_one_or_none()
     if row is None or row.needs_reauth:
@@ -615,9 +611,7 @@ def _is_server_side_tool_call(call: ToolCall) -> bool:
     )
 
 
-def _assistant_tool_message(
-    response: LLMResponse, calls: list[ToolCall]
-) -> dict[str, Any]:
+def _assistant_tool_message(response: LLMResponse, calls: list[ToolCall]) -> dict[str, Any]:
     """The assistant message recording the tool calls the model just made,
     in the OpenAI/LiteLLM shape, so the next request shows the model its own
     previous output before the tool results.
@@ -785,7 +779,9 @@ def make_handler_node(
 
     async def handler(state: AgentState) -> dict[str, Any]:
         tenant_id = _tenant_uuid(state)
-        with tenant_context(tenant_id):
+        _customer_raw = state.get("customer_id")
+        _customer_id = uuid.UUID(_customer_raw) if _customer_raw else None
+        with tenant_context(tenant_id), customer_context(_customer_id):
             bundle: AgentBundle = await loader.load(tenant_id)
             available_names = _filter_tools_for_intent_with_composio(bundle, intent)
             scoped_registry, available_names = await _view_with_composio(
@@ -856,10 +852,7 @@ def make_handler_node(
                     tenant_id=str(tenant_id),
                     requested=len(applicable_skills),
                     cap=_ANTHROPIC_SKILLS_CAP,
-                    dropped=[
-                        s["skill_id"]
-                        for s in applicable_skills[_ANTHROPIC_SKILLS_CAP:]
-                    ],
+                    dropped=[s["skill_id"] for s in applicable_skills[_ANTHROPIC_SKILLS_CAP:]],
                 )
                 applicable_skills = applicable_skills[:_ANTHROPIC_SKILLS_CAP]
             skills_extra: dict[str, Any] = {}
@@ -951,9 +944,7 @@ def make_handler_node(
                 # before returning — they're already done. Partition them
                 # out so we never dispatch them nor record an orphan
                 # tool_result for a ``srvtoolu_`` id (incident 2026-05-28).
-                client_calls = [
-                    c for c in response.tool_calls if not _is_server_side_tool_call(c)
-                ]
+                client_calls = [c for c in response.tool_calls if not _is_server_side_tool_call(c)]
 
                 # No tools offered, or the model only made server-side calls
                 # (already resolved by Anthropic) → this text is the final answer.
@@ -969,9 +960,7 @@ def make_handler_node(
                         # string by Anthropic contract; we wrap it in an
                         # MCP-shaped envelope for traces but feed the LLM
                         # the raw string.
-                        envelope, tool_msg = await _dispatch_memory_tool(
-                            memory_tool, call, intent
-                        )
+                        envelope, tool_msg = await _dispatch_memory_tool(memory_tool, call, intent)
                         envelopes.append(envelope)
                         messages.append(
                             {
@@ -981,9 +970,7 @@ def make_handler_node(
                             }
                         )
                         continue
-                    envelope = await _dispatch_tool(
-                        scoped_registry, call, available_names, intent
-                    )
+                    envelope = await _dispatch_tool(scoped_registry, call, available_names, intent)
                     envelopes.append(envelope)
                     messages.append(
                         {
@@ -1003,10 +990,13 @@ def make_handler_node(
                     # (window expired, payload malformed, not in
                     # whitelist) — in that case we leave the payload
                     # unset so the agent falls back to plain text in the
-                    # next iteration.
-                    if (
-                        call.name == _INTERACTIVE_TOOL_NAME
-                        and envelope.get("status") == "ok"
+                    # next iteration. ``skipped:dry_run`` is NOT a rejection:
+                    # the QA Playground intercepts the real send but must still
+                    # render the interactive component in the preview, so we
+                    # capture the payload in that case too.
+                    if call.name == _INTERACTIVE_TOOL_NAME and envelope.get("status") in (
+                        "ok",
+                        "skipped:dry_run",
                     ):
                         raw_args = dict(call.arguments or {})
                         # Drop the routing fields the formatter doesn't

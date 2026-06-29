@@ -1,0 +1,54 @@
+# Connector seed — Amigable Cobro (debt / accounts-receivable API).
+#
+# auth_kind=api_key: the platform issues an entity-id (UUID) + a Bearer
+# token per authorised agent. Each tenant also has a `business_uuid`
+# identifying its business inside Amigable Cobro. We talk to the REST API
+# directly (own client, no Composio).
+#
+# tenant_connectors.credentials_ref shape:
+#   {
+#     "tenant_credentials_id": "<uuid>",                 # FK to tenant_credentials
+#     "endpoint_meta": {"business_uuid": "<uuid>"}        # + optional "base_url"
+#   }
+# tenant_credentials.encrypted_payload (Fernet) decrypts to JSON:
+#   {"entity_id": "<uuid>", "token": "<bearer>"}
+# tenant_credentials.integration = "amigable_cobro"
+#
+# Setup flow: the operator pastes entity-id + token + business_uuid in the
+# admin wizard. All tools are read-only, so they're enabled on connect.
+slug: amigable_cobro
+display_name: Amigable Cobro
+vendor: Amacrux Lab
+category: billing
+capabilities:
+  - read
+auth_kind: api_key
+mcp_server_ref: internal:amigable_cobro
+provider_meta:
+  vendor_url: https://amigablecobro.amacruxlab.com
+  docs_url: https://amigablecobro.amacruxlab.com/docs
+  brand_color: "#2563EB"
+  # api_key shape advertised to the admin wizard. secret=true masks the
+  # input and routes the value to the Fernet-encrypted payload; secret=false
+  # fields land in endpoint_meta.
+  credentials_form:
+    - field: business_uuid
+      label: Business UUID
+      placeholder: 9621a21b-7434-46cf-b934-dccedc456e60
+      secret: false
+      required: true
+    - field: entity_id
+      label: Entity ID
+      placeholder: 779d1ab2-2bc1-4f27-b6a8-9e99cc00cd64
+      secret: true
+      required: true
+    - field: token
+      label: API Token
+      placeholder: (Bearer token)
+      secret: true
+      required: true
+auto_enable_on_connect: true
+# Read-only connector — no destructive tools to gate.
+auto_enable_destructive: false
+consent_link_template_name: null
+status: available

@@ -22,6 +22,7 @@ See ADR-020 and ``Auphere/nexus/features/qa-playground-mvp.md`` (Phase 2).
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -31,6 +32,21 @@ from ucm_schema import (
     degrade,
     parse_ucm,
 )
+
+# Markdown the LLM tends to emit vs. WhatsApp's native micro-formatting.
+# WhatsApp (and both UCM renderers) show the body verbatim, and WhatsApp bold
+# is a SINGLE asterisk — so ``**bold**`` reaches the user as literal asterisks.
+# The system prompt asks for WhatsApp syntax, but models slip into markdown;
+# this normalises the output deterministically. Channel-safe: single-asterisk
+# bold is what WhatsApp renders and what the web preview shows verbatim.
+_MD_BOLD_STARS = re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*", re.DOTALL)
+_MD_BOLD_UNDERSCORES = re.compile(r"__(?=\S)(.+?)(?<=\S)__", re.DOTALL)
+
+
+def to_whatsapp_formatting(text: str) -> str:
+    """Convert markdown bold (``**x**`` / ``__x__``) to WhatsApp bold (``*x*``)."""
+    text = _MD_BOLD_STARS.sub(r"*\1*", text)
+    return _MD_BOLD_UNDERSCORES.sub(r"*\1*", text)
 
 
 def format_response_as_ucm(
@@ -70,16 +86,14 @@ def format_response_as_ucm(
     their id from the parent's id (``<parent>::text``,
     ``<parent>::interactive``) so the trace stays joinable.
     """
-    body = response_text or ""
+    body = to_whatsapp_formatting(response_text or "")
     mid = message_id or str(uuid.uuid4())
     meta = metadata or {}
 
     if not interactive_payload:
         return _wrap_text(body, mid, meta)
 
-    interactive_ucm = _build_interactive_ucm(
-        interactive_payload, f"{mid}::interactive", meta
-    )
+    interactive_ucm = _build_interactive_ucm(interactive_payload, f"{mid}::interactive", meta)
 
     if not body.strip():
         # Agent answered with the component alone. Return it directly.
@@ -92,12 +106,10 @@ def format_response_as_ucm(
         "message_id": mid,
         "type": "composite",
         "capabilities_required": list(
-            dict.fromkeys(
-                text_child.capabilities_required
-                + interactive_ucm.capabilities_required
-            )
+            dict.fromkeys(text_child.capabilities_required + interactive_ucm.capabilities_required)
         ),
-        "fallback_text": body if not interactive_ucm.fallback_text
+        "fallback_text": body
+        if not interactive_ucm.fallback_text
         else f"{body}\n\n{interactive_ucm.fallback_text}",
         "metadata": meta,
         "content": {
@@ -136,10 +148,7 @@ def _build_interactive_ucm(
     """
     body = str(payload.get("body") or "")
     if payload.get("buttons"):
-        buttons = [
-            {"id": str(b["id"]), "title": str(b["title"])}
-            for b in payload["buttons"]
-        ]
+        buttons = [{"id": str(b["id"]), "title": str(b["title"])} for b in payload["buttons"]]
         # Composite captions / headers degrade per channel — keep them
         # in metadata for now since QuickRepliesContent doesn't model
         # header/footer (Meta supports them but the UCM schema scoped
@@ -164,11 +173,7 @@ def _build_interactive_ucm(
                     {
                         "id": str(r["id"]),
                         "title": str(r["title"]),
-                        **(
-                            {"description": str(r["description"])}
-                            if r.get("description")
-                            else {}
-                        ),
+                        **({"description": str(r["description"])} if r.get("description") else {}),
                     }
                     for r in lst["items"]
                 ],
@@ -186,16 +191,8 @@ def _build_interactive_ucm(
                     "body": body,
                     "button_text": str(lst["button"]),
                     "sections": sections,
-                    **(
-                        {"header": str(payload["header"])}
-                        if payload.get("header")
-                        else {}
-                    ),
-                    **(
-                        {"footer": str(payload["footer"])}
-                        if payload.get("footer")
-                        else {}
-                    ),
+                    **({"header": str(payload["header"])} if payload.get("header") else {}),
+                    **({"footer": str(payload["footer"])} if payload.get("footer") else {}),
                 },
             }
         )
@@ -228,9 +225,7 @@ def _build_interactive_ucm(
     )
 
 
-def _meta_with_chrome(
-    base: dict[str, Any], payload: dict[str, Any]
-) -> dict[str, Any]:
+def _meta_with_chrome(base: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     """Carry header / footer / context_message_id on metadata so the
     outbound adapter can re-include them in the Meta interactive
     block. UCM v1.0.0 doesn't model these uniformly across types, but
@@ -256,8 +251,7 @@ def _fallback_buttons(body: str, buttons: list[dict[str, str]]) -> str:
 
 def _fallback_list(body: str, rows: list[dict[str, Any]]) -> str:
     enumerated = "\n".join(
-        f"  {i + 1}) {r['title']}"
-        + (f" — {r['description']}" if r.get("description") else "")
+        f"  {i + 1}) {r['title']}" + (f" — {r['description']}" if r.get("description") else "")
         for i, r in enumerate(rows)
     )
     return f"{body}\n{enumerated}" if body else enumerated

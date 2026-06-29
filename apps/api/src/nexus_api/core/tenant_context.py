@@ -45,6 +45,26 @@ def tenant_context(tenant_id: uuid.UUID) -> Iterator[uuid.UUID]:
         _current_tenant.reset(token)
 
 
+# Current customer (debtor) of the turn. Set by the runtime per turn so
+# customer-facing tools can resolve "the person I'm talking to" WITHOUT
+# trusting an LLM-supplied identifier — e.g. billing.get_my_debt looks up
+# only this customer's debt, making cross-customer lookups impossible.
+_current_customer: ContextVar[uuid.UUID | None] = ContextVar("current_customer", default=None)
+
+
+def get_current_customer() -> uuid.UUID | None:
+    return _current_customer.get()
+
+
+@contextmanager
+def customer_context(customer_id: uuid.UUID | None) -> Iterator[uuid.UUID | None]:
+    token = _current_customer.set(customer_id)
+    try:
+        yield customer_id
+    finally:
+        _current_customer.reset(token)
+
+
 async def apply_tenant_to_session(session: AsyncSession, tenant_id: uuid.UUID) -> None:
     """Scope this transaction to `tenant_id` AND switch to the `nexus_app` role.
 

@@ -60,6 +60,10 @@ services:
       # valid when the var is unset locally.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Fernet key for tenant_credentials encryption. Forwarded from the
+      # host (inject via ``doppler run``) so api_key connectors seeded with
+      # the same key decrypt locally. In Railway this is a service env var.
+      NEXUS_FERNET_KEY: ${NEXUS_FERNET_KEY:-}
     ports:
       - "8000:8000"
     depends_on:
