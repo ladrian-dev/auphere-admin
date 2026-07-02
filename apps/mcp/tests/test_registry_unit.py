@@ -14,7 +14,8 @@ def test_default_registry_has_all_block_d_tools():
     """21 Block-D + ``operator.consult_owner`` (ADR-018) + 6 native-output
     notification tools (migration 0020) + 12 woocommerce.* tools
     (migration 0024) + ``response.send_interactive`` (migration 0036)
-    = 41 LLM-facing.
+    + 9 billing.* Amigable Cobro tools (migrations 0045 read + 0046 write)
+    = 50 LLM-facing.
 
     Block O (ADR-017) registers 2 INTERNAL tools (``agendapro_public.
     check_availability`` and ``.create_appointment``) that the booking
@@ -24,7 +25,7 @@ def test_default_registry_has_all_block_d_tools():
     reset_default_registry()
     reg = build_default_registry()
     names = set(reg.names())
-    assert len(names) == 44
+    assert len(names) == 50
     assert "operator.consult_owner" in names
     assert "response.send_interactive" in names
     # Block O internal tools — not LLM-facing.
@@ -50,11 +51,17 @@ def test_default_registry_has_all_block_d_tools():
         "woocommerce.update_order_status",
         "woocommerce.add_order_note",
     }.issubset(names)
-    # Amigable Cobro (billing.*) — debtor + admin debt-lookup tools.
+    # Amigable Cobro (billing.*) — reads + admin writes (cobranza_v1 v2).
     assert {
         "billing.get_my_debt",
         "billing.get_debtor_by_phone",
         "billing.list_overdue",
+        "billing.get_account",
+        "billing.register_payment",
+        "billing.update_status",
+        "billing.apply_discount",
+        "billing.create_account",
+        "billing.update_account",
     }.issubset(names)
 
 

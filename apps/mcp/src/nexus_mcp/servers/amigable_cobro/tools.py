@@ -35,13 +35,23 @@ from sqlalchemy import select
 
 from nexus_mcp.base import ToolBase, ToolError
 from nexus_mcp.servers.amigable_cobro.client import DEFAULT_BASE_URL, AmigableCobroClient
+from nexus_mcp.servers.amigable_cobro.errors import AmigableCobroNotFound
 from nexus_mcp.servers.amigable_cobro.schemas import (
+    ApplyDiscountInput,
+    CreateAccountInput,
     DebtRecord,
+    GetAccountInput,
+    GetAccountOutput,
     GetDebtorByPhoneInput,
     GetDebtorByPhoneOutput,
     GetMyDebtInput,
     ListOverdueInput,
     ListOverdueOutput,
+    PaymentEntry,
+    RegisterPaymentInput,
+    UpdateAccountInput,
+    UpdateStatusInput,
+    WriteResultOutput,
 )
 
 log = structlog.get_logger(__name__)
@@ -295,12 +305,185 @@ class GetMyDebt(_AmigableTool):
         )
 
 
+class GetAccount(_AmigableTool):
+    name = "billing.get_account"
+    description = (
+        "Consulta UNA cuenta por cobrar por su ID, incluyendo el historial "
+        "completo de abonos (payments). Úsala antes de registrar un pago o "
+        "modificar una cuenta, para confirmar con el admin sobre datos reales."
+    )
+    input_model = GetAccountInput
+    output_model = GetAccountOutput
+
+    async def run(self, payload: GetAccountInput) -> GetAccountOutput:  # type: ignore[override]
+        client = await self._client()
+        try:
+            raw = await client.get_cuenta(payload.transaction_id)
+        except AmigableCobroNotFound:
+            return GetAccountOutput(found=False, account=None, payments=[])
+        payments = [
+            PaymentEntry(
+                id=p.get("id"),
+                amount=float(p.get("amount") or 0),
+                payment_date=p.get("payment_date"),
+                payment_method=p.get("payment_method"),
+                reference=p.get("reference"),
+                notes=p.get("notes"),
+            )
+            for p in (raw.get("payments") or [])
+            if isinstance(p, dict)
+        ]
+        return GetAccountOutput(found=True, account=_to_record(raw), payments=payments)
+
+
+# ── write tools (admin-only agent) ───────────────────────────────────────
+#
+# These mutate real data in Amigable Cobro. They declare
+# ``side_effects=("mutates_db",)`` so the QA Playground (dry_run)
+# intercepts them — the operator sees WHAT would have been written
+# without touching production data. The agent's system prompt requires
+# an explicit admin confirmation before calling any of these.
+
+
+class _AmigableWriteTool(_AmigableTool):
+    side_effects: ClassVar[tuple[str, ...]] = ("mutates_db",)
+
+    @staticmethod
+    def _shape(raw: dict[str, Any], default_msg: str) -> WriteResultOutput:
+        """Map the API's write response into WriteResultOutput.
+
+        ``_unwrap`` returns either the refreshed account object or the
+        flat ``{"success": ..., "message": ...}`` envelope.
+        """
+        account = _to_record(raw) if raw.get("id") and raw.get("total_amount") is not None else None
+        message = str(raw.get("message") or default_msg)
+        ok = bool(raw.get("success", True))
+        return WriteResultOutput(ok=ok, message=message, account=account)
+
+
+class RegisterPayment(_AmigableWriteTool):
+    name = "billing.register_payment"
+    description = (
+        "Registra un abono (pago parcial o total) en una cuenta por cobrar de "
+        "Amigable Cobro. La plataforma actualiza el monto pagado y marca PAID "
+        "automáticamente si el saldo llega a cero. SOLO llamar después de que "
+        "el administrador confirme explícitamente monto y cuenta."
+    )
+    input_model = RegisterPaymentInput
+    output_model = WriteResultOutput
+
+    async def run(self, payload: RegisterPaymentInput) -> WriteResultOutput:  # type: ignore[override]
+        client = await self._client()
+        raw = await client.register_payment(
+            payload.transaction_id,
+            amount=payload.amount,
+            payment_method=payload.payment_method,
+            reference=payload.reference,
+            notes=payload.notes,
+        )
+        return self._shape(raw, "Abono registrado")
+
+
+class UpdateStatus(_AmigableWriteTool):
+    name = "billing.update_status"
+    description = (
+        "Cambia manualmente el estado de una cuenta por cobrar: PENDING, PAID, "
+        "OVERDUE o CANCELLED. Ej.: marcar PAID si se cobró en efectivo fuera del "
+        "sistema, o CANCELLED para anularla. SOLO tras confirmación del admin."
+    )
+    input_model = UpdateStatusInput
+    output_model = WriteResultOutput
+
+    async def run(self, payload: UpdateStatusInput) -> WriteResultOutput:  # type: ignore[override]
+        client = await self._client()
+        raw = await client.update_status(payload.transaction_id, status=payload.status)
+        return self._shape(raw, f"Estado actualizado a {payload.status}")
+
+
+class ApplyDiscount(_AmigableWriteTool):
+    name = "billing.apply_discount"
+    description = (
+        "Aplica un descuento porcentual sobre el saldo pendiente de una o varias "
+        "cuentas. Si el saldo queda en cero la cuenta pasa a PAID automáticamente. "
+        "SOLO tras confirmación explícita del admin (cuentas + porcentaje)."
+    )
+    input_model = ApplyDiscountInput
+    output_model = WriteResultOutput
+
+    async def run(self, payload: ApplyDiscountInput) -> WriteResultOutput:  # type: ignore[override]
+        client = await self._client()
+        raw = await client.apply_discount(payload.transaction_ids, percentage=payload.percentage)
+        return self._shape(raw, "Descuento aplicado")
+
+
+class CreateAccount(_AmigableWriteTool):
+    name = "billing.create_account"
+    description = (
+        "Crea una nueva cuenta por cobrar (deuda) en Amigable Cobro, con estado "
+        "inicial PENDING y monto pagado en cero. SOLO tras confirmación del admin "
+        "con nombre del deudor y monto."
+    )
+    input_model = CreateAccountInput
+    output_model = WriteResultOutput
+
+    async def run(self, payload: CreateAccountInput) -> WriteResultOutput:  # type: ignore[override]
+        client = await self._client()
+        fields: dict[str, Any] = {
+            "client_name": payload.client_name,
+            "total_amount": payload.total_amount,
+        }
+        if payload.client_phone:
+            fields["client_phone"] = payload.client_phone
+        if payload.client_document:
+            fields["client_document"] = payload.client_document
+        if payload.due_date:
+            fields["due_date"] = payload.due_date
+        raw = await client.create_cuenta(fields)
+        return self._shape(raw, "Cuenta creada")
+
+
+class UpdateAccount(_AmigableWriteTool):
+    name = "billing.update_account"
+    description = (
+        "Actualiza los datos de una cuenta por cobrar existente (nombre, teléfono, "
+        "documento, monto total, vencimiento o estado). SOLO tras confirmación del "
+        "admin, y solo los campos que pidió cambiar."
+    )
+    input_model = UpdateAccountInput
+    output_model = WriteResultOutput
+
+    async def run(self, payload: UpdateAccountInput) -> WriteResultOutput:  # type: ignore[override]
+        client = await self._client()
+        fields = {
+            k: v
+            for k, v in {
+                "client_name": payload.client_name,
+                "client_phone": payload.client_phone,
+                "client_document": payload.client_document,
+                "total_amount": payload.total_amount,
+                "due_date": payload.due_date,
+                "status": payload.status,
+            }.items()
+            if v is not None
+        }
+        raw = await client.update_cuenta(payload.transaction_id, fields)
+        return self._shape(raw, "Cuenta actualizada")
+
+
 AMIGABLE_COBRO_TOOLS: tuple[type[ToolBase], ...] = (
-    # Debtor-facing (own debt only, no phone arg).
+    # Debtor-facing (own debt only, no phone arg). Not whitelisted in the
+    # admin-only cobranza_v1 vertical; kept for future debtor-facing use.
     GetMyDebt,
-    # Admin-facing (arbitrary lookups / bulk list). NOT for the debtor agent.
+    # Admin reads.
+    GetAccount,
     GetDebtorByPhone,
     ListOverdue,
+    # Admin writes (dry_run-intercepted in QA; prompt requires confirmation).
+    ApplyDiscount,
+    CreateAccount,
+    RegisterPayment,
+    UpdateAccount,
+    UpdateStatus,
 )
 
 

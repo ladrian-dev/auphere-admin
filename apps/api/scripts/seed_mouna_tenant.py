@@ -75,6 +75,22 @@ PAYMENT_DATA: dict[str, str] = {
     "policies.payment.binance.pay_id": "pagos.mouna@gmail.com",
 }
 
+# Teléfonos ADMIN de Mouna (E.164) — los ÚNICOS números a los que el
+# agente responde (gate en el dispatcher: policies.admin_access). Todo
+# otro remitente queda registrado pero sin respuesta.
+#
+# NOTA: +34672138367 es la LÍNEA del agente (la WABA en Meta, modo
+# coexistence), por eso NO está aquí — un número no puede escribirse a sí
+# mismo por WhatsApp. Los admins le escriben a esa línea desde estos
+# teléfonos. (+34632719028 fue el candidato inicial de línea pero quedó
+# atascado en un WABA viejo; ahora se usa como teléfono admin de pruebas.)
+ADMIN_PHONES: list[str] = [
+    "+34610777570",
+    "+584249125716",
+    "+584244095405",
+    "+34632719028",
+]
+
 
 async def _amain() -> int:
     engine = get_engine()
@@ -87,6 +103,8 @@ async def _amain() -> int:
             "tenant.name": MOUNA_NAME,
             "tenant.timezone": MOUNA_TIMEZONE,
             **PAYMENT_DATA,
+            # Whitelist admin — se mergea en policies.admin_access.admin_phones.
+            "policies.admin_access.admin_phones": ADMIN_PHONES,
         },
     )
 

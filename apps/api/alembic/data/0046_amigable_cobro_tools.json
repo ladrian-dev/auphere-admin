@@ -1,0 +1,1838 @@
+{
+ "billing.apply_discount": {
+  "description": "Aplica un descuento porcentual sobre el saldo pendiente de una o varias cuentas. Si el saldo queda en cero la cuenta pasa a PAID automáticamente. SOLO tras confirmación explícita del admin (cuentas + porcentaje).",
+  "destructive": true,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "percentage": {
+     "description": "Porcentaje de descuento sobre el saldo pendiente.",
+     "exclusiveMinimum": 0,
+     "maximum": 100,
+     "title": "Percentage",
+     "type": "number"
+    },
+    "transaction_ids": {
+     "description": "IDs de las cuentas a descontar.",
+     "items": {
+      "type": "integer"
+     },
+     "maxItems": 50,
+     "minItems": 1,
+     "title": "Transaction Ids",
+     "type": "array"
+    }
+   },
+   "required": [
+    "transaction_ids",
+    "percentage"
+   ],
+   "title": "ApplyDiscountInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "DebtRecord": {
+     "additionalProperties": false,
+     "description": "One accounts-receivable record from Amigable Cobro.",
+     "properties": {
+      "balance": {
+       "description": "Saldo pendiente (total_amount - paid_amount).",
+       "title": "Balance",
+       "type": "number"
+      },
+      "client_document": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Cédula o RIF del deudor.",
+       "title": "Client Document"
+      },
+      "client_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Nombre del deudor.",
+       "title": "Client Name"
+      },
+      "client_phone": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Teléfono del deudor (E.164).",
+       "title": "Client Phone"
+      },
+      "created_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de creación (ISO 8601).",
+       "title": "Created At"
+      },
+      "due_date": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de vencimiento (ISO 8601) o null.",
+       "title": "Due Date"
+      },
+      "id": {
+       "description": "ID interno de la cuenta por cobrar en Amigable Cobro.",
+       "title": "Id",
+       "type": "integer"
+      },
+      "paid_amount": {
+       "description": "Monto pagado hasta ahora.",
+       "title": "Paid Amount",
+       "type": "number"
+      },
+      "status": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Estado de la cuenta (ej. PENDING).",
+       "title": "Status"
+      },
+      "total_amount": {
+       "description": "Monto total de la deuda.",
+       "title": "Total Amount",
+       "type": "number"
+      }
+     },
+     "required": [
+      "id",
+      "total_amount",
+      "paid_amount",
+      "balance"
+     ],
+     "title": "DebtRecord",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "account": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/DebtRecord"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "La cuenta después del cambio, si la API la devuelve."
+    },
+    "message": {
+     "description": "Mensaje de resultado de la plataforma.",
+     "title": "Message",
+     "type": "string"
+    },
+    "ok": {
+     "description": "True si la operación se aplicó en Amigable Cobro.",
+     "title": "Ok",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "ok",
+    "message"
+   ],
+   "title": "WriteResultOutput",
+   "type": "object"
+  },
+  "read_only": false,
+  "side_effects": [
+   "mutates_db"
+  ]
+ },
+ "billing.create_account": {
+  "description": "Crea una nueva cuenta por cobrar (deuda) en Amigable Cobro, con estado inicial PENDING y monto pagado en cero. SOLO tras confirmación del admin con nombre del deudor y monto.",
+  "destructive": true,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "client_document": {
+     "anyOf": [
+      {
+       "maxLength": 40,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Cédula o RIF del deudor.",
+     "title": "Client Document"
+    },
+    "client_name": {
+     "description": "Nombre del deudor.",
+     "maxLength": 160,
+     "minLength": 1,
+     "title": "Client Name",
+     "type": "string"
+    },
+    "client_phone": {
+     "anyOf": [
+      {
+       "maxLength": 32,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Teléfono del deudor (E.164, ej. +58424...).",
+     "title": "Client Phone"
+    },
+    "due_date": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Fecha de vencimiento (ISO 8601), opcional.",
+     "title": "Due Date"
+    },
+    "total_amount": {
+     "description": "Monto total de la nueva deuda.",
+     "exclusiveMinimum": 0,
+     "title": "Total Amount",
+     "type": "number"
+    }
+   },
+   "required": [
+    "client_name",
+    "total_amount"
+   ],
+   "title": "CreateAccountInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "DebtRecord": {
+     "additionalProperties": false,
+     "description": "One accounts-receivable record from Amigable Cobro.",
+     "properties": {
+      "balance": {
+       "description": "Saldo pendiente (total_amount - paid_amount).",
+       "title": "Balance",
+       "type": "number"
+      },
+      "client_document": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Cédula o RIF del deudor.",
+       "title": "Client Document"
+      },
+      "client_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Nombre del deudor.",
+       "title": "Client Name"
+      },
+      "client_phone": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Teléfono del deudor (E.164).",
+       "title": "Client Phone"
+      },
+      "created_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de creación (ISO 8601).",
+       "title": "Created At"
+      },
+      "due_date": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de vencimiento (ISO 8601) o null.",
+       "title": "Due Date"
+      },
+      "id": {
+       "description": "ID interno de la cuenta por cobrar en Amigable Cobro.",
+       "title": "Id",
+       "type": "integer"
+      },
+      "paid_amount": {
+       "description": "Monto pagado hasta ahora.",
+       "title": "Paid Amount",
+       "type": "number"
+      },
+      "status": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Estado de la cuenta (ej. PENDING).",
+       "title": "Status"
+      },
+      "total_amount": {
+       "description": "Monto total de la deuda.",
+       "title": "Total Amount",
+       "type": "number"
+      }
+     },
+     "required": [
+      "id",
+      "total_amount",
+      "paid_amount",
+      "balance"
+     ],
+     "title": "DebtRecord",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "account": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/DebtRecord"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "La cuenta después del cambio, si la API la devuelve."
+    },
+    "message": {
+     "description": "Mensaje de resultado de la plataforma.",
+     "title": "Message",
+     "type": "string"
+    },
+    "ok": {
+     "description": "True si la operación se aplicó en Amigable Cobro.",
+     "title": "Ok",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "ok",
+    "message"
+   ],
+   "title": "WriteResultOutput",
+   "type": "object"
+  },
+  "read_only": false,
+  "side_effects": [
+   "mutates_db"
+  ]
+ },
+ "billing.get_account": {
+  "description": "Consulta UNA cuenta por cobrar por su ID, incluyendo el historial completo de abonos (payments). Úsala antes de registrar un pago o modificar una cuenta, para confirmar con el admin sobre datos reales.",
+  "destructive": false,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "transaction_id": {
+     "description": "ID de la cuenta por cobrar a consultar.",
+     "minimum": 1,
+     "title": "Transaction Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "transaction_id"
+   ],
+   "title": "GetAccountInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "DebtRecord": {
+     "additionalProperties": false,
+     "description": "One accounts-receivable record from Amigable Cobro.",
+     "properties": {
+      "balance": {
+       "description": "Saldo pendiente (total_amount - paid_amount).",
+       "title": "Balance",
+       "type": "number"
+      },
+      "client_document": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Cédula o RIF del deudor.",
+       "title": "Client Document"
+      },
+      "client_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Nombre del deudor.",
+       "title": "Client Name"
+      },
+      "client_phone": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Teléfono del deudor (E.164).",
+       "title": "Client Phone"
+      },
+      "created_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de creación (ISO 8601).",
+       "title": "Created At"
+      },
+      "due_date": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de vencimiento (ISO 8601) o null.",
+       "title": "Due Date"
+      },
+      "id": {
+       "description": "ID interno de la cuenta por cobrar en Amigable Cobro.",
+       "title": "Id",
+       "type": "integer"
+      },
+      "paid_amount": {
+       "description": "Monto pagado hasta ahora.",
+       "title": "Paid Amount",
+       "type": "number"
+      },
+      "status": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Estado de la cuenta (ej. PENDING).",
+       "title": "Status"
+      },
+      "total_amount": {
+       "description": "Monto total de la deuda.",
+       "title": "Total Amount",
+       "type": "number"
+      }
+     },
+     "required": [
+      "id",
+      "total_amount",
+      "paid_amount",
+      "balance"
+     ],
+     "title": "DebtRecord",
+     "type": "object"
+    },
+    "PaymentEntry": {
+     "additionalProperties": false,
+     "description": "One recorded payment (abono) on an account.",
+     "properties": {
+      "amount": {
+       "description": "Monto del abono.",
+       "title": "Amount",
+       "type": "number"
+      },
+      "id": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "ID del pago.",
+       "title": "Id"
+      },
+      "notes": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Notas del pago.",
+       "title": "Notes"
+      },
+      "payment_date": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha del pago (ISO 8601).",
+       "title": "Payment Date"
+      },
+      "payment_method": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Método de pago usado.",
+       "title": "Payment Method"
+      },
+      "reference": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Referencia del pago.",
+       "title": "Reference"
+      }
+     },
+     "required": [
+      "amount"
+     ],
+     "title": "PaymentEntry",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "account": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/DebtRecord"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "La cuenta consultada."
+    },
+    "found": {
+     "description": "True si la cuenta existe.",
+     "title": "Found",
+     "type": "boolean"
+    },
+    "payments": {
+     "description": "Historial de abonos registrados.",
+     "items": {
+      "$ref": "#/$defs/PaymentEntry"
+     },
+     "title": "Payments",
+     "type": "array"
+    }
+   },
+   "required": [
+    "found"
+   ],
+   "title": "GetAccountOutput",
+   "type": "object"
+  },
+  "read_only": true,
+  "side_effects": []
+ },
+ "billing.get_debtor_by_phone": {
+  "description": "Look up a debtor's accounts-receivable by phone number. Use when a customer replies to a reminder so you can confirm their real pending balance, status and due date before answering. The Amigable Cobro API has no phone filter, so this scans pages and matches by the last digits of the number (tolerating +58 / leading 0 / formatting).",
+  "destructive": false,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "max_pages": {
+     "default": 10,
+     "description": "Tope de páginas a escanear al buscar (la API no filtra por teléfono).",
+     "maximum": 50,
+     "minimum": 1,
+     "title": "Max Pages",
+     "type": "integer"
+    },
+    "phone": {
+     "description": "Teléfono del deudor a buscar. Se compara por los últimos dígitos, tolerando prefijos/formatos (+58, 0, espacios, guiones).",
+     "maxLength": 32,
+     "minLength": 4,
+     "title": "Phone",
+     "type": "string"
+    }
+   },
+   "required": [
+    "phone"
+   ],
+   "title": "GetDebtorByPhoneInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "DebtRecord": {
+     "additionalProperties": false,
+     "description": "One accounts-receivable record from Amigable Cobro.",
+     "properties": {
+      "balance": {
+       "description": "Saldo pendiente (total_amount - paid_amount).",
+       "title": "Balance",
+       "type": "number"
+      },
+      "client_document": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Cédula o RIF del deudor.",
+       "title": "Client Document"
+      },
+      "client_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Nombre del deudor.",
+       "title": "Client Name"
+      },
+      "client_phone": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Teléfono del deudor (E.164).",
+       "title": "Client Phone"
+      },
+      "created_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de creación (ISO 8601).",
+       "title": "Created At"
+      },
+      "due_date": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de vencimiento (ISO 8601) o null.",
+       "title": "Due Date"
+      },
+      "id": {
+       "description": "ID interno de la cuenta por cobrar en Amigable Cobro.",
+       "title": "Id",
+       "type": "integer"
+      },
+      "paid_amount": {
+       "description": "Monto pagado hasta ahora.",
+       "title": "Paid Amount",
+       "type": "number"
+      },
+      "status": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Estado de la cuenta (ej. PENDING).",
+       "title": "Status"
+      },
+      "total_amount": {
+       "description": "Monto total de la deuda.",
+       "title": "Total Amount",
+       "type": "number"
+      }
+     },
+     "required": [
+      "id",
+      "total_amount",
+      "paid_amount",
+      "balance"
+     ],
+     "title": "DebtRecord",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "debts": {
+     "description": "Cuentas del deudor (puede haber varias).",
+     "items": {
+      "$ref": "#/$defs/DebtRecord"
+     },
+     "title": "Debts",
+     "type": "array"
+    },
+    "found": {
+     "description": "True si se encontró al menos una cuenta para ese teléfono.",
+     "title": "Found",
+     "type": "boolean"
+    },
+    "total_balance": {
+     "description": "Suma del saldo pendiente de todas sus cuentas.",
+     "title": "Total Balance",
+     "type": "number"
+    }
+   },
+   "required": [
+    "found",
+    "debts",
+    "total_balance"
+   ],
+   "title": "GetDebtorByPhoneOutput",
+   "type": "object"
+  },
+  "read_only": true,
+  "side_effects": []
+ },
+ "billing.get_my_debt": {
+  "description": "Consulta el saldo del DEUDOR ACTUAL — el cliente de ESTA conversación. No recibe teléfono: usa la identidad del chat, así nunca puede consultar la deuda de otra persona. Úsala cuando el cliente pregunta cuánto debe o antes de hablar de montos con él.",
+  "destructive": false,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "max_pages": {
+     "default": 10,
+     "description": "Tope de páginas a escanear (la API no filtra por teléfono).",
+     "maximum": 50,
+     "minimum": 1,
+     "title": "Max Pages",
+     "type": "integer"
+    }
+   },
+   "title": "GetMyDebtInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "DebtRecord": {
+     "additionalProperties": false,
+     "description": "One accounts-receivable record from Amigable Cobro.",
+     "properties": {
+      "balance": {
+       "description": "Saldo pendiente (total_amount - paid_amount).",
+       "title": "Balance",
+       "type": "number"
+      },
+      "client_document": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Cédula o RIF del deudor.",
+       "title": "Client Document"
+      },
+      "client_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Nombre del deudor.",
+       "title": "Client Name"
+      },
+      "client_phone": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Teléfono del deudor (E.164).",
+       "title": "Client Phone"
+      },
+      "created_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de creación (ISO 8601).",
+       "title": "Created At"
+      },
+      "due_date": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de vencimiento (ISO 8601) o null.",
+       "title": "Due Date"
+      },
+      "id": {
+       "description": "ID interno de la cuenta por cobrar en Amigable Cobro.",
+       "title": "Id",
+       "type": "integer"
+      },
+      "paid_amount": {
+       "description": "Monto pagado hasta ahora.",
+       "title": "Paid Amount",
+       "type": "number"
+      },
+      "status": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Estado de la cuenta (ej. PENDING).",
+       "title": "Status"
+      },
+      "total_amount": {
+       "description": "Monto total de la deuda.",
+       "title": "Total Amount",
+       "type": "number"
+      }
+     },
+     "required": [
+      "id",
+      "total_amount",
+      "paid_amount",
+      "balance"
+     ],
+     "title": "DebtRecord",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "debts": {
+     "description": "Cuentas del deudor (puede haber varias).",
+     "items": {
+      "$ref": "#/$defs/DebtRecord"
+     },
+     "title": "Debts",
+     "type": "array"
+    },
+    "found": {
+     "description": "True si se encontró al menos una cuenta para ese teléfono.",
+     "title": "Found",
+     "type": "boolean"
+    },
+    "total_balance": {
+     "description": "Suma del saldo pendiente de todas sus cuentas.",
+     "title": "Total Balance",
+     "type": "number"
+    }
+   },
+   "required": [
+    "found",
+    "debts",
+    "total_balance"
+   ],
+   "title": "GetDebtorByPhoneOutput",
+   "type": "object"
+  },
+  "read_only": true,
+  "side_effects": []
+ },
+ "billing.list_overdue": {
+  "description": "List the tenant's accounts-receivable (debts) from Amigable Cobro, one page at a time. Use to drive a collections campaign or review who owes money. By default returns only accounts with a pending balance. Inspect has_more / last_page to decide whether to request another page.",
+  "destructive": false,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "only_with_balance": {
+     "default": true,
+     "description": "Si true, devuelve solo cuentas con saldo pendiente (>0).",
+     "title": "Only With Balance",
+     "type": "boolean"
+    },
+    "page": {
+     "default": 1,
+     "description": "Página a consultar (empieza en 1).",
+     "minimum": 1,
+     "title": "Page",
+     "type": "integer"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Filtro opcional por estado exacto (ej. 'PENDING'). Case-insensitive.",
+     "title": "Status"
+    }
+   },
+   "title": "ListOverdueInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "DebtRecord": {
+     "additionalProperties": false,
+     "description": "One accounts-receivable record from Amigable Cobro.",
+     "properties": {
+      "balance": {
+       "description": "Saldo pendiente (total_amount - paid_amount).",
+       "title": "Balance",
+       "type": "number"
+      },
+      "client_document": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Cédula o RIF del deudor.",
+       "title": "Client Document"
+      },
+      "client_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Nombre del deudor.",
+       "title": "Client Name"
+      },
+      "client_phone": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Teléfono del deudor (E.164).",
+       "title": "Client Phone"
+      },
+      "created_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de creación (ISO 8601).",
+       "title": "Created At"
+      },
+      "due_date": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de vencimiento (ISO 8601) o null.",
+       "title": "Due Date"
+      },
+      "id": {
+       "description": "ID interno de la cuenta por cobrar en Amigable Cobro.",
+       "title": "Id",
+       "type": "integer"
+      },
+      "paid_amount": {
+       "description": "Monto pagado hasta ahora.",
+       "title": "Paid Amount",
+       "type": "number"
+      },
+      "status": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Estado de la cuenta (ej. PENDING).",
+       "title": "Status"
+      },
+      "total_amount": {
+       "description": "Monto total de la deuda.",
+       "title": "Total Amount",
+       "type": "number"
+      }
+     },
+     "required": [
+      "id",
+      "total_amount",
+      "paid_amount",
+      "balance"
+     ],
+     "title": "DebtRecord",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "current_page": {
+     "description": "Página actual.",
+     "title": "Current Page",
+     "type": "integer"
+    },
+    "has_more": {
+     "description": "True si hay más páginas por consultar.",
+     "title": "Has More",
+     "type": "boolean"
+    },
+    "items": {
+     "description": "Cuentas por cobrar de esta página.",
+     "items": {
+      "$ref": "#/$defs/DebtRecord"
+     },
+     "title": "Items",
+     "type": "array"
+    },
+    "last_page": {
+     "description": "Última página disponible.",
+     "title": "Last Page",
+     "type": "integer"
+    },
+    "total": {
+     "description": "Total de cuentas reportadas por el negocio.",
+     "title": "Total",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "items",
+    "total",
+    "current_page",
+    "last_page",
+    "has_more"
+   ],
+   "title": "ListOverdueOutput",
+   "type": "object"
+  },
+  "read_only": true,
+  "side_effects": []
+ },
+ "billing.register_payment": {
+  "description": "Registra un abono (pago parcial o total) en una cuenta por cobrar de Amigable Cobro. La plataforma actualiza el monto pagado y marca PAID automáticamente si el saldo llega a cero. SOLO llamar después de que el administrador confirme explícitamente monto y cuenta.",
+  "destructive": true,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "amount": {
+     "description": "Monto del abono (parcial o total).",
+     "exclusiveMinimum": 0,
+     "title": "Amount",
+     "type": "number"
+    },
+    "notes": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Nota opcional.",
+     "title": "Notes"
+    },
+    "payment_method": {
+     "anyOf": [
+      {
+       "maxLength": 40,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Método de pago (ej. pago_movil, transferencia, binance, efectivo).",
+     "title": "Payment Method"
+    },
+    "reference": {
+     "anyOf": [
+      {
+       "maxLength": 120,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Número de referencia del pago, si existe.",
+     "title": "Reference"
+    },
+    "transaction_id": {
+     "description": "ID de la cuenta a la que se abona.",
+     "minimum": 1,
+     "title": "Transaction Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "transaction_id",
+    "amount"
+   ],
+   "title": "RegisterPaymentInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "DebtRecord": {
+     "additionalProperties": false,
+     "description": "One accounts-receivable record from Amigable Cobro.",
+     "properties": {
+      "balance": {
+       "description": "Saldo pendiente (total_amount - paid_amount).",
+       "title": "Balance",
+       "type": "number"
+      },
+      "client_document": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Cédula o RIF del deudor.",
+       "title": "Client Document"
+      },
+      "client_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Nombre del deudor.",
+       "title": "Client Name"
+      },
+      "client_phone": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Teléfono del deudor (E.164).",
+       "title": "Client Phone"
+      },
+      "created_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de creación (ISO 8601).",
+       "title": "Created At"
+      },
+      "due_date": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de vencimiento (ISO 8601) o null.",
+       "title": "Due Date"
+      },
+      "id": {
+       "description": "ID interno de la cuenta por cobrar en Amigable Cobro.",
+       "title": "Id",
+       "type": "integer"
+      },
+      "paid_amount": {
+       "description": "Monto pagado hasta ahora.",
+       "title": "Paid Amount",
+       "type": "number"
+      },
+      "status": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Estado de la cuenta (ej. PENDING).",
+       "title": "Status"
+      },
+      "total_amount": {
+       "description": "Monto total de la deuda.",
+       "title": "Total Amount",
+       "type": "number"
+      }
+     },
+     "required": [
+      "id",
+      "total_amount",
+      "paid_amount",
+      "balance"
+     ],
+     "title": "DebtRecord",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "account": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/DebtRecord"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "La cuenta después del cambio, si la API la devuelve."
+    },
+    "message": {
+     "description": "Mensaje de resultado de la plataforma.",
+     "title": "Message",
+     "type": "string"
+    },
+    "ok": {
+     "description": "True si la operación se aplicó en Amigable Cobro.",
+     "title": "Ok",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "ok",
+    "message"
+   ],
+   "title": "WriteResultOutput",
+   "type": "object"
+  },
+  "read_only": false,
+  "side_effects": [
+   "mutates_db"
+  ]
+ },
+ "billing.update_account": {
+  "description": "Actualiza los datos de una cuenta por cobrar existente (nombre, teléfono, documento, monto total, vencimiento o estado). SOLO tras confirmación del admin, y solo los campos que pidió cambiar.",
+  "destructive": true,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "client_document": {
+     "anyOf": [
+      {
+       "maxLength": 40,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Client Document"
+    },
+    "client_name": {
+     "anyOf": [
+      {
+       "maxLength": 160,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Client Name"
+    },
+    "client_phone": {
+     "anyOf": [
+      {
+       "maxLength": 32,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Client Phone"
+    },
+    "due_date": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Due Date"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "pattern": "^(PENDING|PAID|OVERDUE|CANCELLED)$",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Status"
+    },
+    "total_amount": {
+     "anyOf": [
+      {
+       "exclusiveMinimum": 0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Total Amount"
+    },
+    "transaction_id": {
+     "description": "ID de la cuenta a actualizar.",
+     "minimum": 1,
+     "title": "Transaction Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "transaction_id"
+   ],
+   "title": "UpdateAccountInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "DebtRecord": {
+     "additionalProperties": false,
+     "description": "One accounts-receivable record from Amigable Cobro.",
+     "properties": {
+      "balance": {
+       "description": "Saldo pendiente (total_amount - paid_amount).",
+       "title": "Balance",
+       "type": "number"
+      },
+      "client_document": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Cédula o RIF del deudor.",
+       "title": "Client Document"
+      },
+      "client_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Nombre del deudor.",
+       "title": "Client Name"
+      },
+      "client_phone": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Teléfono del deudor (E.164).",
+       "title": "Client Phone"
+      },
+      "created_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de creación (ISO 8601).",
+       "title": "Created At"
+      },
+      "due_date": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de vencimiento (ISO 8601) o null.",
+       "title": "Due Date"
+      },
+      "id": {
+       "description": "ID interno de la cuenta por cobrar en Amigable Cobro.",
+       "title": "Id",
+       "type": "integer"
+      },
+      "paid_amount": {
+       "description": "Monto pagado hasta ahora.",
+       "title": "Paid Amount",
+       "type": "number"
+      },
+      "status": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Estado de la cuenta (ej. PENDING).",
+       "title": "Status"
+      },
+      "total_amount": {
+       "description": "Monto total de la deuda.",
+       "title": "Total Amount",
+       "type": "number"
+      }
+     },
+     "required": [
+      "id",
+      "total_amount",
+      "paid_amount",
+      "balance"
+     ],
+     "title": "DebtRecord",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "account": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/DebtRecord"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "La cuenta después del cambio, si la API la devuelve."
+    },
+    "message": {
+     "description": "Mensaje de resultado de la plataforma.",
+     "title": "Message",
+     "type": "string"
+    },
+    "ok": {
+     "description": "True si la operación se aplicó en Amigable Cobro.",
+     "title": "Ok",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "ok",
+    "message"
+   ],
+   "title": "WriteResultOutput",
+   "type": "object"
+  },
+  "read_only": false,
+  "side_effects": [
+   "mutates_db"
+  ]
+ },
+ "billing.update_status": {
+  "description": "Cambia manualmente el estado de una cuenta por cobrar: PENDING, PAID, OVERDUE o CANCELLED. Ej.: marcar PAID si se cobró en efectivo fuera del sistema, o CANCELLED para anularla. SOLO tras confirmación del admin.",
+  "destructive": true,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "status": {
+     "description": "Nuevo estado: PENDING, PAID, OVERDUE o CANCELLED.",
+     "pattern": "^(PENDING|PAID|OVERDUE|CANCELLED)$",
+     "title": "Status",
+     "type": "string"
+    },
+    "transaction_id": {
+     "description": "ID de la cuenta.",
+     "minimum": 1,
+     "title": "Transaction Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "transaction_id",
+    "status"
+   ],
+   "title": "UpdateStatusInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "DebtRecord": {
+     "additionalProperties": false,
+     "description": "One accounts-receivable record from Amigable Cobro.",
+     "properties": {
+      "balance": {
+       "description": "Saldo pendiente (total_amount - paid_amount).",
+       "title": "Balance",
+       "type": "number"
+      },
+      "client_document": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Cédula o RIF del deudor.",
+       "title": "Client Document"
+      },
+      "client_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Nombre del deudor.",
+       "title": "Client Name"
+      },
+      "client_phone": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Teléfono del deudor (E.164).",
+       "title": "Client Phone"
+      },
+      "created_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de creación (ISO 8601).",
+       "title": "Created At"
+      },
+      "due_date": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Fecha de vencimiento (ISO 8601) o null.",
+       "title": "Due Date"
+      },
+      "id": {
+       "description": "ID interno de la cuenta por cobrar en Amigable Cobro.",
+       "title": "Id",
+       "type": "integer"
+      },
+      "paid_amount": {
+       "description": "Monto pagado hasta ahora.",
+       "title": "Paid Amount",
+       "type": "number"
+      },
+      "status": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Estado de la cuenta (ej. PENDING).",
+       "title": "Status"
+      },
+      "total_amount": {
+       "description": "Monto total de la deuda.",
+       "title": "Total Amount",
+       "type": "number"
+      }
+     },
+     "required": [
+      "id",
+      "total_amount",
+      "paid_amount",
+      "balance"
+     ],
+     "title": "DebtRecord",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "account": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/DebtRecord"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "La cuenta después del cambio, si la API la devuelve."
+    },
+    "message": {
+     "description": "Mensaje de resultado de la plataforma.",
+     "title": "Message",
+     "type": "string"
+    },
+    "ok": {
+     "description": "True si la operación se aplicó en Amigable Cobro.",
+     "title": "Ok",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "ok",
+    "message"
+   ],
+   "title": "WriteResultOutput",
+   "type": "object"
+  },
+  "read_only": false,
+  "side_effects": [
+   "mutates_db"
+  ]
+ }
+}

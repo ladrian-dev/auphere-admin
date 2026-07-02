@@ -81,11 +81,112 @@ class GetDebtorByPhoneOutput(OutputModel):
     total_balance: float = Field(description="Suma del saldo pendiente de todas sus cuentas.")
 
 
+# ── detail read (with payments history) ─────────────────────────────────
+
+
+class PaymentEntry(OutputModel):
+    """One recorded payment (abono) on an account."""
+
+    id: int | None = Field(default=None, description="ID del pago.")
+    amount: float = Field(description="Monto del abono.")
+    payment_date: str | None = Field(default=None, description="Fecha del pago (ISO 8601).")
+    payment_method: str | None = Field(default=None, description="Método de pago usado.")
+    reference: str | None = Field(default=None, description="Referencia del pago.")
+    notes: str | None = Field(default=None, description="Notas del pago.")
+
+
+class GetAccountInput(InputModel):
+    transaction_id: int = Field(ge=1, description="ID de la cuenta por cobrar a consultar.")
+
+
+class GetAccountOutput(OutputModel):
+    found: bool = Field(description="True si la cuenta existe.")
+    account: DebtRecord | None = Field(default=None, description="La cuenta consultada.")
+    payments: list[PaymentEntry] = Field(
+        default_factory=list, description="Historial de abonos registrados."
+    )
+
+
+# ── writes (admin-only agent; ejecutar SOLO tras confirmación del admin) ─
+
+
+class WriteResultOutput(OutputModel):
+    ok: bool = Field(description="True si la operación se aplicó en Amigable Cobro.")
+    message: str = Field(description="Mensaje de resultado de la plataforma.")
+    account: DebtRecord | None = Field(
+        default=None, description="La cuenta después del cambio, si la API la devuelve."
+    )
+
+
+class RegisterPaymentInput(InputModel):
+    transaction_id: int = Field(ge=1, description="ID de la cuenta a la que se abona.")
+    amount: float = Field(gt=0, description="Monto del abono (parcial o total).")
+    payment_method: str | None = Field(
+        default=None,
+        max_length=40,
+        description="Método de pago (ej. pago_movil, transferencia, binance, efectivo).",
+    )
+    reference: str | None = Field(
+        default=None, max_length=120, description="Número de referencia del pago, si existe."
+    )
+    notes: str | None = Field(default=None, max_length=500, description="Nota opcional.")
+
+
+class UpdateStatusInput(InputModel):
+    transaction_id: int = Field(ge=1, description="ID de la cuenta.")
+    status: str = Field(
+        description="Nuevo estado: PENDING, PAID, OVERDUE o CANCELLED.",
+        pattern="^(PENDING|PAID|OVERDUE|CANCELLED)$",
+    )
+
+
+class ApplyDiscountInput(InputModel):
+    transaction_ids: list[int] = Field(
+        min_length=1, max_length=50, description="IDs de las cuentas a descontar."
+    )
+    percentage: float = Field(
+        gt=0, le=100, description="Porcentaje de descuento sobre el saldo pendiente."
+    )
+
+
+class CreateAccountInput(InputModel):
+    client_name: str = Field(min_length=1, max_length=160, description="Nombre del deudor.")
+    total_amount: float = Field(gt=0, description="Monto total de la nueva deuda.")
+    client_phone: str | None = Field(
+        default=None, max_length=32, description="Teléfono del deudor (E.164, ej. +58424...)."
+    )
+    client_document: str | None = Field(
+        default=None, max_length=40, description="Cédula o RIF del deudor."
+    )
+    due_date: str | None = Field(
+        default=None, description="Fecha de vencimiento (ISO 8601), opcional."
+    )
+
+
+class UpdateAccountInput(InputModel):
+    transaction_id: int = Field(ge=1, description="ID de la cuenta a actualizar.")
+    client_name: str | None = Field(default=None, max_length=160)
+    client_phone: str | None = Field(default=None, max_length=32)
+    client_document: str | None = Field(default=None, max_length=40)
+    total_amount: float | None = Field(default=None, gt=0)
+    due_date: str | None = Field(default=None)
+    status: str | None = Field(default=None, pattern="^(PENDING|PAID|OVERDUE|CANCELLED)$")
+
+
 __all__ = [
+    "ApplyDiscountInput",
+    "CreateAccountInput",
     "DebtRecord",
+    "GetAccountInput",
+    "GetAccountOutput",
     "GetDebtorByPhoneInput",
     "GetDebtorByPhoneOutput",
     "GetMyDebtInput",
     "ListOverdueInput",
     "ListOverdueOutput",
+    "PaymentEntry",
+    "RegisterPaymentInput",
+    "UpdateAccountInput",
+    "UpdateStatusInput",
+    "WriteResultOutput",
 ]

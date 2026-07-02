@@ -16,6 +16,7 @@ this module owns the per-turn lifecycle:
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -25,6 +26,7 @@ import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Conversation, Message, Tenant, TenantStatus
+from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 
 from nexus_worker.multimodal import ProcessedMedia, get_media_processor
 from nexus_worker.observability.tracing import trace_turn, update_trace
@@ -44,6 +46,26 @@ log = structlog.get_logger(__name__)
 _INACTIVE_STATUSES: frozenset[TenantStatus] = frozenset(
     {TenantStatus.PAUSED, TenantStatus.ARCHIVED}
 )
+
+
+def _sender_is_admin(sender: str | None, admin_phones: list[Any]) -> bool:
+    """True when ``sender`` matches one of the whitelisted admin phones.
+
+    Compared by trailing digits (up to 10) so ``+58424...``, ``0424...``
+    and formatted variants all match. Numbers shorter than 7 digits never
+    match — too ambiguous to grant admin access on.
+    """
+    ds = re.sub(r"\D", "", sender or "")
+    if len(ds) < 7:
+        return False
+    for raw in admin_phones:
+        da = re.sub(r"\D", "", str(raw or ""))
+        if len(da) < 7:
+            continue
+        n = min(len(ds), len(da), 10)
+        if ds[-n:] == da[-n:]:
+            return True
+    return False
 
 
 def _build_operator_briefing(
@@ -211,6 +233,18 @@ async def process_inbound(
         conversation_id = conversation.id
         inbound_id = inbound_msg.id
         conversation_agent_active = conversation.agent_active
+        # Admin-only agents (e.g. cobranza_v1): read the active config's
+        # policies while the session is open so the sender gate below can
+        # check the whitelist without another transaction.
+        agent_policies: dict[str, Any] = (
+            await session.execute(
+                sa.select(AgentConfig.policies)
+                .where(AgentConfig.tenant_id == event.tenant_id)
+                .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
+                .order_by(AgentConfig.version.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none() or {}
         # Bloque C — Operator intervention. ``takeover_context`` is populated
         # by ``PATCH .../agent`` when the operator pauses the agent. The
         # first turn after the operator reactivates (i.e. ``agent_active``
@@ -230,9 +264,7 @@ async def process_inbound(
                 from datetime import datetime as _dt2
 
                 try:
-                    started_at_dt = _dt2.fromisoformat(
-                        started_at_iso.replace("Z", "+00:00")
-                    )
+                    started_at_dt = _dt2.fromisoformat(started_at_iso.replace("Z", "+00:00"))
                     stmt = stmt.where(Message.created_at >= started_at_dt)
                 except ValueError:
                     # Malformed timestamp — fall back to "all operator
@@ -285,6 +317,28 @@ async def process_inbound(
             "conversation_id": str(conversation_id),
             "inbound_message_id": str(inbound_id),
         }
+
+    # Admin-only gate. When the active agent_config declares
+    # ``policies.admin_access.admin_only``, ONLY whitelisted phones get a
+    # reply. Everyone else's inbound is persisted for audit (the operator
+    # panel still shows it) but the agent stays silent — no outbound, no
+    # acknowledgement, no information leak. This is how the cobranza admin
+    # agent ignores debtors and strangers.
+    admin_access = agent_policies.get("admin_access") or {}
+    if isinstance(admin_access, dict) and admin_access.get("admin_only"):
+        allowed = admin_access.get("admin_phones") or []
+        if not _sender_is_admin(event.user_id, list(allowed)):
+            log.info(
+                "pipeline.skipped.not_admin",
+                tenant_id=str(event.tenant_id),
+                conversation_id=str(conversation_id),
+                inbound_message_id=str(inbound_id),
+            )
+            return {
+                "skipped": "not_admin",
+                "conversation_id": str(conversation_id),
+                "inbound_message_id": str(inbound_id),
+            }
 
     # Bloque C — prepend the operator briefing (if any) so the LLM sees
     # the "what the human did while you were paused" context before the
@@ -350,9 +404,7 @@ async def process_inbound(
     # ``takeover_context`` set so the next retry still receives the
     # briefing.
     if operator_briefing is not None:
-        async with sm() as cleanup_session, tenant_scoped_session(
-            cleanup_session, event.tenant_id
-        ):
+        async with sm() as cleanup_session, tenant_scoped_session(cleanup_session, event.tenant_id):
             await cleanup_session.execute(
                 sa.update(Conversation)
                 .where(Conversation.id == conversation_id)

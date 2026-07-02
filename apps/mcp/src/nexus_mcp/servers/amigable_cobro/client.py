@@ -147,5 +147,77 @@ class AmigableCobroClient(BaseHTTPConnectorClient):
         meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
         return records, meta
 
+    def _unwrap(self, body: Any, *, context: str) -> dict[str, Any]:
+        """Return the ``data`` object of a success envelope (or the whole
+        body when the endpoint answers flat)."""
+        if not isinstance(body, dict):
+            raise AmigableCobroValidationError(
+                f"expected JSON object from {context}, got {type(body).__name__}"
+            )
+        data = body.get("data")
+        return data if isinstance(data, dict) else body
+
+    async def get_cuenta(self, transaction_id: int) -> dict[str, Any]:
+        """GET one account with its full ``payments`` history."""
+        _resp, body = await self.get(
+            f"/cuentas-y-cobros/{transaction_id}",
+            params={"business_uuid": self.business_uuid},
+        )
+        return self._unwrap(body, context=f"GET /cuentas-y-cobros/{transaction_id}")
+
+    async def register_payment(
+        self,
+        transaction_id: int,
+        *,
+        amount: float,
+        payment_method: str | None = None,
+        reference: str | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /cuentas-y-cobros/{id}/payments — record a partial/total payment.
+
+        The platform updates ``paid_amount`` and flips status to PAID
+        automatically when the balance reaches zero.
+        """
+        payload: dict[str, Any] = {"business_uuid": self.business_uuid, "amount": amount}
+        if payment_method:
+            payload["payment_method"] = payment_method
+        if reference:
+            payload["reference"] = reference
+        if notes:
+            payload["notes"] = notes
+        _resp, body = await self.post(f"/cuentas-y-cobros/{transaction_id}/payments", json=payload)
+        return self._unwrap(body, context="POST payments")
+
+    async def update_status(self, transaction_id: int, *, status: str) -> dict[str, Any]:
+        """PUT /cuentas-y-cobros/{id}/status — PENDING | PAID | OVERDUE | CANCELLED."""
+        payload = {"business_uuid": self.business_uuid, "status": status}
+        _resp, body = await self.put(f"/cuentas-y-cobros/{transaction_id}/status", json=payload)
+        return self._unwrap(body, context="PUT status")
+
+    async def apply_discount(
+        self, transaction_ids: list[int], *, percentage: float
+    ) -> dict[str, Any]:
+        """POST /cuentas-y-cobros/apply-discount — % off the pending balance."""
+        payload = {
+            "business_uuid": self.business_uuid,
+            "transaction_ids": transaction_ids,
+            "percentage": percentage,
+        }
+        _resp, body = await self.post("/cuentas-y-cobros/apply-discount", json=payload)
+        return self._unwrap(body, context="POST apply-discount")
+
+    async def create_cuenta(self, fields: dict[str, Any]) -> dict[str, Any]:
+        """POST /cuentas-y-cobros — new PENDING account (paid_amount=0)."""
+        payload = {"business_uuid": self.business_uuid, **fields}
+        _resp, body = await self.post("/cuentas-y-cobros", json=payload)
+        return self._unwrap(body, context="POST cuentas-y-cobros")
+
+    async def update_cuenta(self, transaction_id: int, fields: dict[str, Any]) -> dict[str, Any]:
+        """PUT /cuentas-y-cobros/{id} — edit account fields."""
+        payload = {"business_uuid": self.business_uuid, **fields}
+        _resp, body = await self.put(f"/cuentas-y-cobros/{transaction_id}", json=payload)
+        return self._unwrap(body, context="PUT cuentas-y-cobros/{id}")
+
 
 __all__ = ["DEFAULT_BASE_URL", "AmigableCobroClient"]
