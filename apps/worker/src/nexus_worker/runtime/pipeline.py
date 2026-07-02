@@ -385,14 +385,25 @@ def _filter_tools_for_intent_with_composio(bundle: AgentBundle, intent: str) -> 
             if intent in _CONNECTOR_TOOL_INTENTS:
                 extras.append(t)
             continue
-        # Namespaced (Composio) connector tool — keep the original
-        # toolkit-slug routing so existing tenants see no change.
+        # Namespaced connector tool. Composio toolkits with a natural intent
+        # affinity keep their original narrow routing so existing tenants see
+        # no change (calendar→book, gmail→escalate, and everything on 'info').
+        # Every OTHER namespaced connector toolkit (e.g. the cobranza
+        # ``billing.*`` tools) has no such affinity: surface it on all working
+        # intents, exactly like the un-namespaced connector tools above.
+        # Otherwise an admin whose message classifies as ``fallback`` (or
+        # ``queue``/``book``) never gets its tools bound and the model emits
+        # the tool call as plain text instead of invoking it.
         toolkit = t.split(".", 1)[0]
-        if (
-            intent == "info"
-            or (toolkit in {"googlecalendar", "calendly"} and intent == "book")
-            or (toolkit == "gmail" and intent == "escalate")
-        ):
+        if intent == "info":
+            extras.append(t)
+        elif toolkit in {"googlecalendar", "calendly"}:
+            if intent == "book":
+                extras.append(t)
+        elif toolkit == "gmail":
+            if intent == "escalate":
+                extras.append(t)
+        elif intent in _CONNECTOR_TOOL_INTENTS:
             extras.append(t)
     return base + tuple(extras)
 

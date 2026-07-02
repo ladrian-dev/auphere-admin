@@ -25,6 +25,8 @@ _NATIVE_INFO_TOOL = "client.get_history"
 _CONNECTOR_TOOL = "list_products"
 _CONNECTOR_TOOL_2 = "get_product"
 _COMPOSIO_TOOL = "notion.create_page"
+# Namespaced connector tool with NO intent affinity (cobranza billing.*).
+_BILLING_TOOL = "billing.list_overdue"
 
 
 def _bundle(tools: set[str]) -> AgentBundle:
@@ -64,6 +66,32 @@ class TestIntentToolFilter:
         bundle = _bundle({_COMPOSIO_TOOL})
         result = _filter_tools_for_intent_with_composio(bundle, "info")
         assert _COMPOSIO_TOOL in result
+
+    def test_billing_connector_surfaces_on_all_working_intents(self) -> None:
+        """A namespaced connector tool with no intent affinity (cobranza
+        ``billing.*``) must bind on every working intent — otherwise an admin
+        whose message classifies as ``fallback`` gets no tools and the model
+        emits the tool call as plain text."""
+        bundle = _bundle({_BILLING_TOOL})
+        for intent in ("book", "queue", "info", "fallback"):
+            result = _filter_tools_for_intent_with_composio(bundle, intent)
+            assert _BILLING_TOOL in result, f"missing on intent={intent}"
+        # ``escalate`` hands off to a human — still excluded.
+        assert _BILLING_TOOL not in _filter_tools_for_intent_with_composio(bundle, "escalate")
+
+    def test_gmail_and_calendar_keep_narrow_scoping(self) -> None:
+        """The affinity-scoped Composio toolkits are unchanged by the billing
+        broadening: gmail only on info+escalate, calendar only on info+book."""
+        gmail = _bundle({"gmail.send"})
+        cal = _bundle({"googlecalendar.create_event"})
+        assert "gmail.send" in _filter_tools_for_intent_with_composio(gmail, "escalate")
+        assert "gmail.send" in _filter_tools_for_intent_with_composio(gmail, "info")
+        assert "gmail.send" not in _filter_tools_for_intent_with_composio(gmail, "fallback")
+        assert "googlecalendar.create_event" in _filter_tools_for_intent_with_composio(cal, "book")
+        assert "googlecalendar.create_event" in _filter_tools_for_intent_with_composio(cal, "info")
+        assert "googlecalendar.create_event" not in _filter_tools_for_intent_with_composio(
+            cal, "queue"
+        )
 
     def test_result_is_always_a_subset_of_the_whitelist(self) -> None:
         """Garantía 2 at the filter plane: the filter only narrows — it can
