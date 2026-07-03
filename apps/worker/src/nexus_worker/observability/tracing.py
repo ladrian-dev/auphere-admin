@@ -70,30 +70,36 @@ def trace_turn(
     tags = ["agent.turn"]
     if channel_id is not None:
         tags.append(f"channel:{channel_id}")
+    # SETUP ONLY inside the try. A ``@contextmanager`` must ``yield`` exactly
+    # once; yielding again from an ``except`` after the body raised makes
+    # ``__exit__`` throw ``RuntimeError("generator didn't stop after throw()")``,
+    # which masks the real turn error AND breaks clean unwinding (leaking the
+    # LLM's httpx connection → pool exhaustion → instant litellm timeouts).
+    # So we only guard trace creation here; the body's exceptions propagate
+    # through the single ``yield`` below untouched.
+    trace: Any = None
     try:
         # The v3 SDK exposes ``trace()`` on the client; attribute access
         # tolerates older minor versions that exposed it as a context.
         start_trace = getattr(client, "trace", None) or getattr(client, "start_span", None)
-        if start_trace is None:
-            yield None
-            return
-        trace = start_trace(
-            name=name,
-            user_id=str(tenant_id),
-            metadata=_redact(
-                {
-                    "tenant_id": str(tenant_id),
-                    "channel_id": str(channel_id) if channel_id else None,
-                    "user_id_inside_channel": user_id_inside_channel,
-                    **(metadata or {}),
-                }
-            ),
-            tags=tags,
-        )
-        yield trace
+        if start_trace is not None:
+            trace = start_trace(
+                name=name,
+                user_id=str(tenant_id),
+                metadata=_redact(
+                    {
+                        "tenant_id": str(tenant_id),
+                        "channel_id": str(channel_id) if channel_id else None,
+                        "user_id_inside_channel": user_id_inside_channel,
+                        **(metadata or {}),
+                    }
+                ),
+                tags=tags,
+            )
     except Exception as exc:
         log.warning("langfuse.trace_failed", error=str(exc))
-        yield None
+        trace = None
+    yield trace
 
 
 @contextlib.contextmanager
@@ -108,25 +114,30 @@ def span(
         yield None
         return
     client = get_client()
+    # SETUP ONLY inside the try (see trace_turn): yield exactly once so a
+    # body exception unwinds cleanly instead of triggering "generator didn't
+    # stop after throw()".
+    s: Any = None
     try:
         start_span = getattr(client, "span", None) or getattr(client, "start_span", None)
-        if start_span is None:
-            yield None
-            return
-        s = start_span(
-            name=name,
-            input=_redact(input),
-            metadata=_redact(metadata or {}),
-        )
-        try:
-            yield s
-        finally:
-            end = getattr(s, "end", None)
-            if callable(end):
-                end()
+        if start_span is not None:
+            s = start_span(
+                name=name,
+                input=_redact(input),
+                metadata=_redact(metadata or {}),
+            )
     except Exception as exc:
         log.warning("langfuse.span_failed", name=name, error=str(exc))
-        yield None
+        s = None
+    try:
+        yield s
+    finally:
+        end = getattr(s, "end", None)
+        if callable(end):
+            try:
+                end()
+            except Exception as exc:
+                log.warning("langfuse.span_end_failed", name=name, error=str(exc))
 
 
 def update_trace(*, output: Any = None, level: str | None = None) -> None:
