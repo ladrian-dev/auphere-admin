@@ -16,13 +16,13 @@ this module owns the per-turn lifecycle:
 
 from __future__ import annotations
 
-import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
 import sqlalchemy as sa
 import structlog
+from nexus_api.core.admin_gate import admin_only_suppresses, sender_is_admin
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Conversation, Message, Tenant, TenantStatus
@@ -48,24 +48,11 @@ _INACTIVE_STATUSES: frozenset[TenantStatus] = frozenset(
 )
 
 
-def _sender_is_admin(sender: str | None, admin_phones: list[Any]) -> bool:
-    """True when ``sender`` matches one of the whitelisted admin phones.
-
-    Compared by trailing digits (up to 10) so ``+58424...``, ``0424...``
-    and formatted variants all match. Numbers shorter than 7 digits never
-    match — too ambiguous to grant admin access on.
-    """
-    ds = re.sub(r"\D", "", sender or "")
-    if len(ds) < 7:
-        return False
-    for raw in admin_phones:
-        da = re.sub(r"\D", "", str(raw or ""))
-        if len(da) < 7:
-            continue
-        n = min(len(ds), len(da), 10)
-        if ds[-n:] == da[-n:]:
-            return True
-    return False
+# The admin gate lives in ``nexus_api.core.admin_gate`` (single source of
+# truth) so the Meta webhook can apply the SAME rule to read receipts —
+# a non-admin on a coexistence line gets neither a reply nor a read receipt.
+# Re-exported here under the historical name for the dispatcher's tests.
+_sender_is_admin = sender_is_admin
 
 
 def _build_operator_briefing(
@@ -323,22 +310,20 @@ async def process_inbound(
     # reply. Everyone else's inbound is persisted for audit (the operator
     # panel still shows it) but the agent stays silent — no outbound, no
     # acknowledgement, no information leak. This is how the cobranza admin
-    # agent ignores debtors and strangers.
-    admin_access = agent_policies.get("admin_access") or {}
-    if isinstance(admin_access, dict) and admin_access.get("admin_only"):
-        allowed = admin_access.get("admin_phones") or []
-        if not _sender_is_admin(event.user_id, list(allowed)):
-            log.info(
-                "pipeline.skipped.not_admin",
-                tenant_id=str(event.tenant_id),
-                conversation_id=str(conversation_id),
-                inbound_message_id=str(inbound_id),
-            )
-            return {
-                "skipped": "not_admin",
-                "conversation_id": str(conversation_id),
-                "inbound_message_id": str(inbound_id),
-            }
+    # agent ignores debtors and strangers. (The Meta webhook applies the same
+    # rule to read receipts so non-admin messages also stay unread.)
+    if admin_only_suppresses(agent_policies, event.user_id):
+        log.info(
+            "pipeline.skipped.not_admin",
+            tenant_id=str(event.tenant_id),
+            conversation_id=str(conversation_id),
+            inbound_message_id=str(inbound_id),
+        )
+        return {
+            "skipped": "not_admin",
+            "conversation_id": str(conversation_id),
+            "inbound_message_id": str(inbound_id),
+        }
 
     # Bloque C — prepend the operator briefing (if any) so the LLM sees
     # the "what the human did while you were paused" context before the

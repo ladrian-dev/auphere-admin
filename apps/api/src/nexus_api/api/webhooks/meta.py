@@ -56,6 +56,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.config import get_settings
+from nexus_api.core.admin_gate import admin_only_suppresses
 from nexus_api.core.errors import TenantNotFound
 from nexus_api.core.logging_context import bind_tenant
 from nexus_api.core.metrics import CHANNEL_UNRESOLVED_EVENT, counters
@@ -69,6 +70,7 @@ from nexus_api.db.models import (
     WhatsAppOptOut,
     WhatsAppTemplateStatus,
 )
+from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 from nexus_api.repositories import ChannelRepository
 from nexus_api.repositories.auphere_channels import (
     ResolvedAuphereChannel,
@@ -248,9 +250,10 @@ async def _handle_owner_channel_event(
         sender_phone=inbound.sender_identifier,
         text=inbound.text,
     )
-    return {"status": f"owner_channel:{result.get('status', 'ok')}", **{
-        k: v for k, v in result.items() if k != "status"
-    }}
+    return {
+        "status": f"owner_channel:{result.get('status', 'ok')}",
+        **{k: v for k, v in result.items() if k != "status"},
+    }
 
 
 # ── inbound message ────────────────────────────────────────────────────────
@@ -312,6 +315,17 @@ async def _handle_inbound(
         channel = await ChannelRepository(session).get_by_provider_identifier(
             "meta", business_phone
         )
+        # Active agent policies — needed to decide whether a non-admin sender
+        # on an admin-only agent should even get a read receipt (see below).
+        agent_policies: dict[str, Any] = (
+            await session.scalar(
+                select(AgentConfig.policies)
+                .where(AgentConfig.tenant_id == tenant_id)
+                .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
+                .order_by(AgentConfig.version.desc())
+                .limit(1)
+            )
+        ) or {}
 
     if channel is None:
         log.warning(
@@ -432,12 +446,27 @@ async def _handle_inbound(
 
     # Politeness: mark as read so the customer sees the two blue checks.
     # Best-effort — failure never blocks the turn.
-    await _mark_read_best_effort(
-        tenant_id=tenant_id,
-        channel_id=channel.id,
-        from_phone=channel.provider_identifier,
-        wamid=wamid,
-    )
+    #
+    # EXCEPTION — admin-only agents on a coexistence line: if the sender is
+    # NOT a whitelisted admin, do NOT send a read receipt. The Cloud API and
+    # the human's WhatsApp Business app share the number, so a read receipt
+    # here would mark the message read in the human's inbox. Non-admin
+    # messages (still persisted + enqueued; the worker skips the reply) must
+    # stay UNREAD until a human opens the chat.
+    if admin_only_suppresses(agent_policies, inbound.sender_identifier):
+        log.info(
+            "webhook.meta.read_receipt_suppressed_not_admin",
+            tenant_id=str(tenant_id),
+            channel_id=str(channel.id),
+            wamid=wamid,
+        )
+    else:
+        await _mark_read_best_effort(
+            tenant_id=tenant_id,
+            channel_id=channel.id,
+            from_phone=channel.provider_identifier,
+            wamid=wamid,
+        )
 
     log.info(
         "webhook.meta.inbound_enqueued",
@@ -728,9 +757,7 @@ async def _handle_history_sync(
     return {"status": "enqueued"}
 
 
-def _extract_change_value(
-    payload: dict[str, Any], *, field: str
-) -> dict[str, Any] | None:
+def _extract_change_value(payload: dict[str, Any], *, field: str) -> dict[str, Any] | None:
     """Pull ``changes[].value`` for the first change matching ``field``.
 
     Coexistence handlers stream the raw value alongside the parsed
@@ -821,9 +848,7 @@ async def _download_inbound_media(
     storage = get_media_storage()
     adapter = _build_meta_adapter()
     try:
-        content, mime, sha = await adapter.fetch_media_bytes(
-            media_id=media_id, tenant_id=tenant_id
-        )
+        content, mime, sha = await adapter.fetch_media_bytes(media_id=media_id, tenant_id=tenant_id)
     finally:
         await adapter._client.close()
     if not mime and hint_mime:
