@@ -62,4 +62,5 @@ def test_whatsapp_strict_limits():
     wa = get_channel("whatsapp")
     assert wa.limits.quick_replies_max_buttons == 3
     assert wa.limits.list_max_rows_total == 10
-    assert wa.limits.text_body_max_chars == 1024
+    # WhatsApp Cloud API's real text-body limit (was 1024, too conservative).
+    assert wa.limits.text_body_max_chars == 4096

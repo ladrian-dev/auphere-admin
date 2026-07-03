@@ -58,7 +58,12 @@ class _StrictModel(BaseModel):
 
 
 class TextContent(_StrictModel):
-    body: str = Field(min_length=1, max_length=1024)
+    # 4096 = WhatsApp Cloud API's real text-body limit and the largest across
+    # all channels. This is the channel-agnostic ceiling; ``degrade()`` narrows
+    # it per channel (e.g. SMS/Instagram) at send time. It must be >= every
+    # channel's ``text_body_max_chars`` or long replies fail validation in
+    # ``parse_ucm`` before ``degrade`` can truncate them.
+    body: str = Field(min_length=1, max_length=4096)
     format: Literal["plain", "markdown"] = "plain"
 
 

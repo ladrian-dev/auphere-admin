@@ -78,7 +78,10 @@ WHATSAPP: Final[ChannelProfile] = ChannelProfile(
         list_row_description_max_chars=72,
         list_button_text_max_chars=20,
         cta_url_button_title_max_chars=20,
-        text_body_max_chars=1024,
+        # WhatsApp Cloud API allows 4096 chars in a text body (was set to
+        # 1024, which truncated/blocked legitimate long replies like a
+        # collections agent's account list).
+        text_body_max_chars=4096,
         composite_max_depth=1,
     ),
 )
