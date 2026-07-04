@@ -51,6 +51,7 @@ from nexus_channels.base import (
     MediaReference,
     ReactionPayload,
 )
+from nexus_channels.whatsapp_meta.phone import to_e164
 
 INBOUND_OBJECT = "whatsapp_business_account"
 
@@ -349,9 +350,7 @@ def parse_message_echo(payload: dict[str, Any]) -> MessageEcho | None:
             if not isinstance(value, dict):
                 continue
             metadata = value.get("metadata") or {}
-            pnid = (
-                metadata.get("phone_number_id") if isinstance(metadata, dict) else None
-            )
+            pnid = metadata.get("phone_number_id") if isinstance(metadata, dict) else None
             for msg in value.get("messages") or []:
                 if not isinstance(msg, dict):
                     continue
@@ -394,9 +393,7 @@ def parse_app_state_sync(payload: dict[str, Any]) -> AppStateSync | None:
             if not isinstance(value, dict):
                 continue
             metadata = value.get("metadata") or {}
-            pnid = (
-                metadata.get("phone_number_id") if isinstance(metadata, dict) else None
-            )
+            pnid = metadata.get("phone_number_id") if isinstance(metadata, dict) else None
             contacts = value.get("contacts") or []
             return AppStateSync(
                 waba_id=str(waba_id),
@@ -428,9 +425,7 @@ def parse_history_sync(payload: dict[str, Any]) -> HistorySync | None:
             if not isinstance(value, dict):
                 continue
             metadata = value.get("metadata") or {}
-            pnid = (
-                metadata.get("phone_number_id") if isinstance(metadata, dict) else None
-            )
+            pnid = metadata.get("phone_number_id") if isinstance(metadata, dict) else None
             history_threads = value.get("history") or []
             message_count = 0
             if isinstance(history_threads, list):
@@ -465,11 +460,7 @@ def parse_template_status(payload: dict[str, Any]) -> TemplateStatusUpdate | Non
                 continue
             tid = value.get("message_template_id") or value.get("template_id") or ""
             name = value.get("message_template_name") or value.get("name") or ""
-            lang = (
-                value.get("message_template_language")
-                or value.get("language")
-                or ""
-            )
+            lang = value.get("message_template_language") or value.get("language") or ""
             new_status = value.get("event") or value.get("new_status") or ""
             reason = value.get("reason") if isinstance(value.get("reason"), str) else None
             return TemplateStatusUpdate(
@@ -543,7 +534,9 @@ def _normalise_body(
 ) -> tuple[InboundMessageKind | None, dict[str, Any]]:
     if raw_type == "text":
         body = message.get("text") or {}
-        return InboundMessageKind.TEXT, {"text": body.get("body") if isinstance(body, dict) else None}
+        return InboundMessageKind.TEXT, {
+            "text": body.get("body") if isinstance(body, dict) else None
+        }
 
     if raw_type == "interactive":
         inter = message.get("interactive") or {}
@@ -664,9 +657,7 @@ def _build_status(
             pricing.get("category") if isinstance(pricing.get("category"), str) else None
         ),
         pricing_model=(
-            pricing.get("pricing_model")
-            if isinstance(pricing.get("pricing_model"), str)
-            else None
+            pricing.get("pricing_model") if isinstance(pricing.get("pricing_model"), str) else None
         ),
         error_code=err.get("code") if isinstance(err.get("code"), int) else None,
         error_title=err.get("title") if isinstance(err.get("title"), str) else None,
@@ -692,13 +683,11 @@ def _first_contact_name(contacts: list[Any]) -> str | None:
 
 
 def _to_e164(phone: Any) -> str | None:
-    """Normalise a phone string to E.164 with leading '+'.
+    """Normalise a phone string to canonical E.164 (``+`` + digits only).
 
-    Meta sometimes drops the ``+`` from ``display_phone_number``. The
-    ``channels.provider_identifier`` column stores E.164 *with* the plus,
-    kept provider-agnostic — so callers can plug a future provider with
-    the same resolver query.
+    Delegates to the shared normaliser so the webhook resolves channels by
+    the exact same value the signup stored. Meta's webhook
+    ``display_phone_number`` is usually unspaced while the signup's Graph API
+    value is spaced — both must collapse to ``+34672138367``.
     """
-    if not isinstance(phone, str) or not phone:
-        return None
-    return phone if phone.startswith("+") else f"+{phone}"
+    return to_e164(phone)

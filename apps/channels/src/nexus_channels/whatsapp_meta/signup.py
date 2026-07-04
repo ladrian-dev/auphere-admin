@@ -54,6 +54,7 @@ from nexus_channels.whatsapp_meta.exceptions import (
     TokenExchangeError,
 )
 from nexus_channels.whatsapp_meta.meta_client import MetaClient
+from nexus_channels.whatsapp_meta.phone import to_e164
 
 log = structlog.get_logger(__name__)
 
@@ -157,8 +158,7 @@ class EmbeddedSignupOrchestrator:
             first = phones_data[0] if isinstance(phones_data, list) and phones_data else None
             if not isinstance(first, dict) or not isinstance(first.get("id"), str):
                 raise RegisterPhoneError(
-                    f"waba {payload.waba_id} returned no phone numbers — "
-                    f"cannot complete signup"
+                    f"waba {payload.waba_id} returned no phone numbers — cannot complete signup"
                 )
             phone_number_id = first["id"]
 
@@ -291,12 +291,8 @@ class EmbeddedSignupOrchestrator:
             "business_id": business_id,
             "mode": mode,
             "verified_name": verified_name if isinstance(verified_name, str) else None,
-            "quality_rating": (
-                quality_rating if isinstance(quality_rating, str) else None
-            ),
-            "messaging_tier": (
-                messaging_tier if isinstance(messaging_tier, str) else None
-            ),
+            "quality_rating": (quality_rating if isinstance(quality_rating, str) else None),
+            "messaging_tier": (messaging_tier if isinstance(messaging_tier, str) else None),
         }
         now = datetime.now(tz=UTC)
         if row is None:
@@ -339,6 +335,8 @@ def _generate_pin() -> str:
 
 
 def _normalise_e164(phone: Any) -> str | None:
-    if not isinstance(phone, str) or not phone:
-        return None
-    return phone if phone.startswith("+") else f"+{phone}"
+    # Canonical E.164 (``+`` + digits) via the shared normaliser, so the
+    # channel we store here resolves against the same value the webhook
+    # derives from ``metadata.display_phone_number``. The Graph API hands a
+    # spaced number ("+34 672 13 83 67") — must collapse to "+34672138367".
+    return to_e164(phone)
