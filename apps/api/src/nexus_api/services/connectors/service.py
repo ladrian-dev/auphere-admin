@@ -196,6 +196,28 @@ _TOOL_SLUG_ANNOTATIONS: dict[str, dict[str, bool]] = {
 }
 
 
+def _drop_blank_tools(tools: list[ComposioTool], *, connector_slug: str) -> list[ComposioTool]:
+    """Drop Composio tools with a blank slug.
+
+    ``tool_catalog.name`` is derived from the slug, so a blank one inserts
+    ``name=''`` and violates the ``tool_catalog_name_key`` unique constraint
+    (only one empty name can exist). That IntegrityError aborts the whole
+    sync — and the reconcile cron that drives it, spamming
+    ``connector_reconcile.tick_failed`` every tick. Composio has been seen to
+    return such a malformed tool for googlecalendar; drop them defensively.
+    """
+    kept = [t for t in tools if (t.slug or "").strip()]
+    dropped = len(tools) - len(kept)
+    if dropped:
+        log.warning(
+            "connector.sync.dropped_blank_tools",
+            connector=connector_slug,
+            count=dropped,
+        )
+        counters.incr(f"connector.sync.blank_tool:{connector_slug}")
+    return kept
+
+
 def _derive_annotations(tool: ComposioTool) -> dict[str, bool]:
     """Resolve read_only / destructive for a tool.
 
@@ -483,9 +505,7 @@ async def reconcile_connector_status(
     """
     if connector.auth_kind != "oauth_composio":
         return None
-    connection_id = (tenant_connector.credentials_ref or {}).get(
-        "composio_connection_id"
-    )
+    connection_id = (tenant_connector.credentials_ref or {}).get("composio_connection_id")
     if not connection_id:
         return None
     try:
@@ -558,6 +578,7 @@ async def sync_tools_for(
         counters.incr(f"connector.sync.failed:{connector.slug}:composio_unavailable")
         raise
 
+    tools = _drop_blank_tools(tools, connector_slug=connector.slug)
     upstream_slugs = {t.slug for t in tools}
     existing_rows = (
         await session.scalars(select(ToolCatalog).where(ToolCatalog.connector_id == connector.id))
