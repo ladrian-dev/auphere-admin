@@ -121,4 +121,9 @@ async def _reconcile_tenant(
                     connector=connector.slug,
                     status=tenant_connector.status,
                 )
-        await session.commit()
+        # No explicit commit: ``tenant_scoped_session`` wraps the body in
+        # ``async with session.begin()`` and commits on clean exit. Calling
+        # ``session.commit()`` here closes that transaction early, so the
+        # context manager's own commit then hit a closed transaction and
+        # raised "Can't operate on closed transaction inside context manager"
+        # on every tick.
