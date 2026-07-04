@@ -95,7 +95,8 @@ export const WHATSAPP: ChannelProfile = {
     listRowDescriptionMaxChars: 72,
     listButtonTextMaxChars: 20,
     ctaUrlButtonTitleMaxChars: 20,
-    textBodyMaxChars: 1024,
+    // WhatsApp Cloud API allows 4096 chars in a text body (was 1024).
+    textBodyMaxChars: 4096,
     compositeMaxDepth: 1,
   },
 };

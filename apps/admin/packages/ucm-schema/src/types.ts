@@ -22,6 +22,10 @@ const MessageId = z
   .describe("Stable id for this UCM message — survives across channels.");
 
 const NonEmptyShortString = z.string().min(1).max(1024);
+// Plain-text message body. 4096 = WhatsApp Cloud API's real limit (the
+// interactive bodies below stay at 1024, which Meta caps them to). Mirrors
+// the Python schema's TextContent.body.
+const TextBody = z.string().min(1).max(4096);
 const FallbackText = z
   .string()
   .min(1)
@@ -51,7 +55,7 @@ export type CapabilityKey = z.infer<typeof CapabilityKey>;
 
 const TextContent = z
   .object({
-    body: NonEmptyShortString,
+    body: TextBody,
     format: z.enum(["plain", "markdown"]).default("plain"),
   })
   .strict();
