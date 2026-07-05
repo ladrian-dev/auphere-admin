@@ -133,6 +133,23 @@ export type SlugAvailability = {
   available: boolean;
 };
 
+export type ReadinessStatus = "ok" | "warning" | "blocker";
+
+export type ReadinessItem = {
+  key: string;
+  label: string;
+  status: ReadinessStatus;
+  detail: string;
+  action_label: string | null;
+  action_href: string | null;
+};
+
+export type ReadinessOut = {
+  /** true iff no item has status "blocker". */
+  ready: boolean;
+  items: ReadinessItem[];
+};
+
 /** Mirror of ``MetaSignupOut`` from ``apps/api`` admin endpoint. The
  *  frontend never sees the BISUAT — only post-signup metadata + the
  *  channel row id needed to install the connector row. */
@@ -774,6 +791,9 @@ export const backend = {
 
   getTenant: (tenantId: string) =>
     call<Tenant>(`/admin/tenants/${tenantId}`, { optional: true }),
+
+  getReadiness: (tenantId: string) =>
+    call<ReadinessOut>(`/admin/tenants/${tenantId}/readiness`),
 
   getAgentConfig: (tenantId: string) =>
     call<AgentConfigBundle>(`/admin/tenants/${tenantId}/agent-config`).then(

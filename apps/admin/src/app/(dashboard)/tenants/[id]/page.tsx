@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Eyebrow } from "@/components/brand/eyebrow";
+import { ReadinessCard } from "@/components/tenants/readiness-card";
 import {
   Card,
   CardContent,
@@ -22,13 +23,15 @@ export default async function TenantOverview({
   const session = await requireSession();
   const operatorId = session.user.id;
 
-  const [tenant, agentBundle, recentThreads] = await Promise.all([
+  const [tenant, agentBundle, recentThreads, readiness] = await Promise.all([
     backend.getTenant(id),
     backend.getAgentConfig(id),
     // Best-effort fetch — if /qa/* is misconfigured we still render the page.
     qaApi
       .listThreads({ operatorId, tenantId: id, limit: 5 })
       .catch(() => [] as QAThread[]),
+    // Best-effort — a readiness failure must not break the overview.
+    backend.getReadiness(id).catch(() => null),
   ]);
   if (!tenant) return null;
 
@@ -39,6 +42,9 @@ export default async function TenantOverview({
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
+      {/* Go-live readiness — full width, top of the grid */}
+      <ReadinessCard readiness={readiness} />
+
       {/* Identity */}
       <Card className="lg:col-span-1">
         <CardHeader>
