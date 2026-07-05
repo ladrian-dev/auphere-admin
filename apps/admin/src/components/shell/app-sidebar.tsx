@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronsUpDown,
+  Handshake,
   LayoutDashboard,
   LogOut,
   Phone,
@@ -41,6 +42,7 @@ type Item = { href: string; label: string; icon: LucideIcon };
 
 const NAV: Item[] = [
   { href: "/tenants", label: "Tenants", icon: LayoutDashboard },
+  { href: "/partners", label: "Partners", icon: Handshake },
   { href: "/connectors", label: "Connectors", icon: Plug },
   { href: "/auphere/channels", label: "Auphere channels", icon: Phone },
 ];

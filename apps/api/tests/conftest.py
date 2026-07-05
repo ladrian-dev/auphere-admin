@@ -301,6 +301,13 @@ _TRUNCATE_TABLES = (
     "agent_memory_versions",
     "agent_memories",
     "customers",
+    # Migrations 0047/0048 — partner platform + broadcasts (ADR-028).
+    "broadcast_recipients",
+    "broadcasts",
+    "embed_audit_log",
+    "partner_tenants",
+    "api_keys",
+    "partners",
     "kg_edges",
     "kg_nodes",
     "tenant_credentials",

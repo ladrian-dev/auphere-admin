@@ -24,6 +24,10 @@ class TenantStatus(str, enum.Enum):
     ACTIVE = "active"
     PAUSED = "paused"
     ARCHIVED = "archived"
+    # Migration 0047 (ADR-028) — created just-in-time by partner client
+    # provisioning; no channel yet, so the dispatcher and pipeline must
+    # treat it as non-active until the WhatsApp signup completes.
+    PROVISIONING = "provisioning"
 
 
 class Tenant(UUIDPrimaryKey, TimestampMixin, Base):

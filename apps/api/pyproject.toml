@@ -62,6 +62,9 @@ dependencies = [
     # it here so the image build can resolve the version without first
     # resolving the editable worker.
     "langgraph>=1.0.0",
+    # ADR-028: widget session JWTs for the partner embed surface
+    # (``POST /v1/widget-sessions`` mints, ``/v1/embed/*`` verifies).
+    "pyjwt>=2.9.0",
 ]
 
 [project.optional-dependencies]
@@ -76,7 +79,9 @@ dev = [
     "ruff>=0.7.0",
     "mypy>=1.13.0",
     "types-pyyaml>=6.0.12.20240917",
-    "fakeredis>=2.26.0",
+    # [lua] pulls in ``lupa`` so fakeredis can execute the rate-limit
+    # token-bucket Lua script (ADR-028) in tests.
+    "fakeredis[lua]>=2.26.0",
     "asgi-lifespan>=2.1.0",
     # Sync Postgres driver used by tests/conftest._ensure_test_db /
     # _reset_test_db when running on CI (no docker exec available there).

@@ -231,6 +231,17 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         JSONB, nullable=True
     )
 
+    # HSM template payload — populated by the broadcast fan-out service
+    # (migration 0049, ADR-028). Shape: ``{"name": str, "language": str,
+    # "params": {"body": {<named var>: <value>}, "header": [...],
+    # "buttons": [...]}}``. The outbound dispatcher routes any row with
+    # non-NULL ``template_payload`` through ``adapter.send_template``
+    # (named parameters); ``content`` carries a human-readable preview
+    # for the operator panel only.
+    template_payload: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+
     # Outcome grader verdict per turn (migration 0037, ADR-023 Fase C).
     # Populated by the checkpoint node from ``AgentState.outcome_*``;
     # NULL on rows that pre-date the migration or were written via

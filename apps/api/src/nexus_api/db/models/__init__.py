@@ -4,6 +4,12 @@ from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 from nexus_api.db.models.agent_memory import AgentMemory
 from nexus_api.db.models.appointment import Appointment, AppointmentStatus
 from nexus_api.db.models.audit import AuditLog
+from nexus_api.db.models.broadcast import (
+    Broadcast,
+    BroadcastRecipient,
+    BroadcastRecipientStatus,
+    BroadcastStatus,
+)
 from nexus_api.db.models.channel import (
     Channel,
     ChannelStatus,
@@ -46,14 +52,22 @@ from nexus_api.db.models.operator_notification import (
     OperatorNotificationStatus,
 )
 from nexus_api.db.models.owner_backchannel import (
-    OWNER_COMMAND_KINDS,
     AUPHERE_CHANNEL_PROVIDERS,
+    OWNER_COMMAND_KINDS,
     OWNER_CONSULTATION_EXPECTED_REPLY_KINDS,
     OWNER_CONSULTATION_STATUSES,
     OWNER_CONSULTATION_URGENCIES,
     AuphereOwnerChannel,
     OwnerConsultation,
     OwnerPhoneIndex,
+)
+from nexus_api.db.models.partner import (
+    ApiKeyType,
+    EmbedAuditLog,
+    Partner,
+    PartnerApiKey,
+    PartnerStatus,
+    PartnerTenant,
 )
 from nexus_api.db.models.qa import QAAuditLog, QARun, QASideEffectAudit, QAThread
 from nexus_api.db.models.queue_entry import QueueEntry, QueueEntryStatus
@@ -67,6 +81,7 @@ from nexus_api.db.models.tool import ToolCatalog, ToolStatus
 from nexus_api.db.models.usage import UsageEvent
 
 __all__ = [
+    "AUPHERE_CHANNEL_PROVIDERS",
     "OWNER_COMMAND_KINDS",
     "OWNER_CONSULTATION_EXPECTED_REPLY_KINDS",
     "OWNER_CONSULTATION_STATUSES",
@@ -74,9 +89,15 @@ __all__ = [
     "AgentConfig",
     "AgentConfigStatus",
     "AgentMemory",
+    "ApiKeyType",
     "Appointment",
     "AppointmentStatus",
     "AuditLog",
+    "AuphereOwnerChannel",
+    "Broadcast",
+    "BroadcastRecipient",
+    "BroadcastRecipientStatus",
+    "BroadcastStatus",
     "Channel",
     "ChannelStatus",
     "ChannelType",
@@ -88,6 +109,7 @@ __all__ = [
     "ConversationStatus",
     "Customer",
     "DailyCostSnapshot",
+    "EmbedAuditLog",
     "EvalCase",
     "EvalCaseResultStatus",
     "EvalDataset",
@@ -104,10 +126,12 @@ __all__ = [
     "MessageStatus",
     "OperatorNotification",
     "OperatorNotificationStatus",
-    "AUPHERE_CHANNEL_PROVIDERS",
-    "AuphereOwnerChannel",
     "OwnerConsultation",
     "OwnerPhoneIndex",
+    "Partner",
+    "PartnerApiKey",
+    "PartnerStatus",
+    "PartnerTenant",
     "QAAuditLog",
     "QARun",
     "QASideEffectAudit",

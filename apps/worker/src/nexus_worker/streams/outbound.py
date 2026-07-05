@@ -338,6 +338,25 @@ async def _dispatch_message(
     """Route the pending row to the right adapter call."""
     context = msg.context_message_id
 
+    # -1) HSM template rows (migration 0049, ADR-028) — written by the
+    # broadcast fan-out service. ``template_payload`` mirrors the
+    # ``interactive_payload`` pattern: the row is self-contained, retry
+    # bookkeeping applies unchanged, and template rejects (132xxx) are
+    # already in the no-retry list. ``content`` only carries a preview
+    # for the operator panel.
+    if msg.template_payload:
+        tp = msg.template_payload
+        return await adapter.send_template(
+            from_phone=from_phone,
+            recipient=recipient,
+            template_name=tp["name"],
+            language=tp.get("language", "es"),
+            params=tp.get("params", {}),
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            context_message_id=context,
+        )
+
     # 0) Interactive components take priority over text but coexist
     # with the rest. A row with ``interactive_payload`` set is the
     # output of a ``response.send_interactive`` tool call; the field

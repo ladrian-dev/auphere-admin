@@ -1,0 +1,53 @@
+# Publish @auphere/embed to the public npm registry (ADR-028).
+#
+# Trigger: push a tag `embed-sdk-vX.Y.Z` matching the version in
+# packages/embed-sdk/package.json. Publishes with npm provenance
+# (requires the repo to be public OR npm org with provenance enabled;
+# id-token: write covers the OIDC attestation).
+#
+# Secret required: NPM_TOKEN — an automation token for the @auphere org.
+name: publish-embed
+
+on:
+  push:
+    tags:
+      - "embed-sdk-v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm --provenance
+    defaults:
+      run:
+        working-directory: packages/embed-sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify tag matches package version
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#embed-sdk-v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag $TAG_VERSION does not match package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm build
+
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,4 +1,5 @@
 import pytest
+
 from nexus_api.config import _DEV_FERNET_KEY, Settings, get_settings
 
 
@@ -8,6 +9,7 @@ def _set_prod_secrets(monkeypatch):
     monkeypatch.setenv("NEXUS_META_APP_SECRET", "real-app-secret")
     monkeypatch.setenv("NEXUS_META_WEBHOOK_VERIFY_TOKEN", "real-verify-token")
     monkeypatch.setenv("NEXUS_FERNET_KEY", "prod-fernet-key-override")
+    monkeypatch.setenv("NEXUS_EMBED_JWT_SECRET", "real-embed-jwt-secret-32-bytes-long!")
 
 
 def test_settings_loads_from_env(monkeypatch):
@@ -67,6 +69,9 @@ def test_prod_rejects_placeholder_meta_app_secret(monkeypatch):
     assert "NEXUS_META_APP_SECRET" in msg
     assert "NEXUS_META_WEBHOOK_VERIFY_TOKEN" in msg
     assert "NEXUS_FERNET_KEY" in msg
+    # ADR-028: the embed JWT secret joined the guard — a prod deploy that
+    # forgets it must not silently mint tokens with the public default.
+    assert "NEXUS_EMBED_JWT_SECRET" in msg
 
 
 def test_prod_boots_with_real_secrets(monkeypatch):

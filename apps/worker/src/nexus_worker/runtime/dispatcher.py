@@ -42,9 +42,11 @@ log = structlog.get_logger(__name__)
 
 # Tenant statuses where the agent is muted — the inbound message is
 # persisted for audit but the pipeline does NOT run. PAUSED is reversible
-# (operator clicks Resume); ARCHIVED is one-way (soft delete).
+# (operator clicks Resume); ARCHIVED is one-way (soft delete); PROVISIONING
+# (migration 0047, ADR-028) is a partner-provisioned tenant that has no
+# agent config or channel yet.
 _INACTIVE_STATUSES: frozenset[TenantStatus] = frozenset(
-    {TenantStatus.PAUSED, TenantStatus.ARCHIVED}
+    {TenantStatus.PAUSED, TenantStatus.ARCHIVED, TenantStatus.PROVISIONING}
 )
 
 

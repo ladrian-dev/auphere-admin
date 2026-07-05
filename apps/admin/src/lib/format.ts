@@ -92,6 +92,8 @@ export function statusLabel(status: string): string {
       return "Pausado";
     case "archived":
       return "Archivado";
+    case "suspended":
+      return "Suspendido";
     case "escalated":
       return "Escalado";
     case "open":

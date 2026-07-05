@@ -784,6 +784,94 @@ export type ConnectorToolOverride = {
   updated_at: string;
 };
 
+// ── partners (ADR-028 — embed widget platform) ──────────────────────────────
+
+export type PartnerStatus = "active" | "suspended";
+
+export type PartnerOut = {
+  id: string;
+  name: string;
+  slug: string;
+  status: PartnerStatus;
+  contact_email: string | null;
+  broadcast_recipient_cap: number;
+  rate_limit_mint_per_min: number;
+  rate_limit_embed_per_min: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PartnerCreateInput = {
+  name: string;
+  slug: string;
+  contact_email?: string | null;
+};
+
+export type PartnerUpdateInput = Partial<{
+  name: string;
+  status: PartnerStatus;
+  contact_email: string | null;
+  broadcast_recipient_cap: number;
+  rate_limit_mint_per_min: number;
+  rate_limit_embed_per_min: number;
+}>;
+
+export type PartnerApiKeyType = "live" | "test";
+
+export type PartnerApiKeyOut = {
+  id: string;
+  type: PartnerApiKeyType;
+  prefix_snippet: string;
+  scopes: string[];
+  allowed_origins: string[];
+  last_used_at: string | null;
+  created_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  grace_expires_at: string | null;
+};
+
+/** Returned ONLY on key creation / rotation. ``plaintext`` is the single
+ *  time the secret exists outside the partner's own storage — the panel
+ *  shows it once in an un-dismissable dialog and never persists it. */
+export type PartnerApiKeyCreatedOut = PartnerApiKeyOut & {
+  plaintext: string;
+};
+
+export type PartnerApiKeyCreateInput = {
+  type?: PartnerApiKeyType;
+  scopes?: string[];
+  allowed_origins?: string[];
+  expires_at?: string | null;
+};
+
+export type PartnerTenantOut = {
+  partner_id: string;
+  external_client_ref: string;
+  tenant_id: string;
+  client_name: string | null;
+  created_at: string;
+};
+
+export type PartnerTenantLinkInput = {
+  external_client_ref: string;
+  tenant_id: string;
+  client_name?: string | null;
+};
+
+export type EmbedAuditEntryOut = {
+  id: number;
+  partner_id: string | null;
+  api_key_id: string | null;
+  tenant_id: string | null;
+  event: string;
+  payload: Record<string, unknown>;
+  ip: string | null;
+  origin: string | null;
+  jti: string | null;
+  created_at: string;
+};
+
 // ── tenants ─────────────────────────────────────────────────────────────────
 
 export const backend = {
@@ -1349,4 +1437,79 @@ export const backend = {
       `/admin/tenants/${tenantId}/connector-tool-overrides/${encodeURIComponent(toolName)}`,
       { method: "DELETE" },
     ),
+
+  // ── Partners (ADR-028 — embed widget platform) ─────────────────────────
+
+  listPartners: () =>
+    call<PartnerOut[]>("/admin/partners").then((r) => r ?? []),
+
+  getPartner: (partnerId: string) =>
+    call<PartnerOut>(`/admin/partners/${partnerId}`, { optional: true }),
+
+  createPartner: (body: PartnerCreateInput) =>
+    call<PartnerOut>("/admin/partners", { method: "POST", body }),
+
+  updatePartner: (partnerId: string, body: PartnerUpdateInput) =>
+    call<PartnerOut>(`/admin/partners/${partnerId}`, {
+      method: "PATCH",
+      body,
+    }),
+
+  listPartnerKeys: (partnerId: string) =>
+    call<PartnerApiKeyOut[]>(`/admin/partners/${partnerId}/keys`).then(
+      (r) => r ?? [],
+    ),
+
+  createPartnerKey: (partnerId: string, body: PartnerApiKeyCreateInput) =>
+    call<PartnerApiKeyCreatedOut>(`/admin/partners/${partnerId}/keys`, {
+      method: "POST",
+      body,
+    }),
+
+  /** Mint a replacement key; the old one keeps authenticating until
+   *  ``grace_expires_at`` (now + grace_hours) so the partner can deploy
+   *  the new secret without downtime. */
+  rotatePartnerKey: (
+    partnerId: string,
+    keyId: string,
+    body: { grace_hours?: number },
+  ) =>
+    call<PartnerApiKeyCreatedOut>(
+      `/admin/partners/${partnerId}/keys/${keyId}/rotate`,
+      { method: "POST", body },
+    ),
+
+  /** Immediate revoke, no grace — the key and every session token minted
+   *  with it die now. */
+  revokePartnerKey: (partnerId: string, keyId: string) =>
+    call<PartnerApiKeyOut>(
+      `/admin/partners/${partnerId}/keys/${keyId}/revoke`,
+      { method: "POST", body: {} },
+    ),
+
+  updatePartnerKeyOrigins: (
+    partnerId: string,
+    keyId: string,
+    allowedOrigins: string[],
+  ) =>
+    call<PartnerApiKeyOut>(
+      `/admin/partners/${partnerId}/keys/${keyId}/origins`,
+      { method: "PUT", body: { allowed_origins: allowedOrigins } },
+    ),
+
+  listPartnerTenants: (partnerId: string) =>
+    call<PartnerTenantOut[]>(`/admin/partners/${partnerId}/tenants`).then(
+      (r) => r ?? [],
+    ),
+
+  linkPartnerTenant: (partnerId: string, body: PartnerTenantLinkInput) =>
+    call<PartnerTenantOut>(`/admin/partners/${partnerId}/tenants`, {
+      method: "POST",
+      body,
+    }),
+
+  listPartnerAudit: (partnerId: string, limit = 100) =>
+    call<EmbedAuditEntryOut[]>(
+      `/admin/partners/${partnerId}/audit?limit=${limit}`,
+    ).then((r) => r ?? []),
 };

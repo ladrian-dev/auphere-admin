@@ -1,0 +1,65 @@
+{
+  "name": "@auphere/embed",
+  "version": "0.1.0",
+  "description": "Auphere embed SDK — WhatsApp template broadcasts inside your own product. Thin loader: mounts the Auphere iframe, handshakes a short-lived session token, never touches credentials.",
+  "license": "MIT",
+  "homepage": "https://auphere.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/auphere/nexus.git",
+    "directory": "packages/embed-sdk"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "require": "./dist/react/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "jsdom": "^29.1.1",
+    "react": "19.2.4",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "auphere",
+    "whatsapp",
+    "embed",
+    "widget",
+    "broadcast"
+  ]
+}

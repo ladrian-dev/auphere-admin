@@ -28,18 +28,26 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
-from nexus_channels.whatsapp_meta import MetaAPIError, MetaClient
-from nexus_channels.whatsapp_meta.credentials import (
-    MetaCredentials,
-    MetaCredentialsRepository,
-)
+from nexus_channels.whatsapp_meta import MetaAPIError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import scoped_session_from_path
-from nexus_api.config import get_settings
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import AuditLog
+from nexus_api.services.whatsapp_templates import (
+    TemplateOut,
+    fetch_templates,
+)
+from nexus_api.services.whatsapp_templates import (
+    build_meta_client as _build_client,
+)
+from nexus_api.services.whatsapp_templates import (
+    meta_error_to_http as _meta_error_to_http,
+)
+from nexus_api.services.whatsapp_templates import (
+    require_meta_credentials as _require_meta_credentials,
+)
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -48,19 +56,6 @@ log = structlog.get_logger()
 _TEMPLATE_NAME_RE = re.compile(r"^[a-z0-9_]{1,512}$")
 
 _VALID_CATEGORIES = ("MARKETING", "UTILITY", "AUTHENTICATION")
-
-
-class TemplateOut(BaseModel):
-    """One template as Meta reports it. ``components`` is passed through
-    verbatim — the panel renders body text + buttons from it."""
-
-    id: str | None = None
-    name: str
-    language: str
-    category: str | None = None
-    status: str | None = None
-    quality_score: str | None = None
-    components: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class TemplateListOut(BaseModel):
@@ -115,42 +110,6 @@ class TemplateDeleteOut(BaseModel):
     audit_log_id: uuid.UUID
 
 
-async def _require_meta_credentials(session: AsyncSession) -> MetaCredentials:
-    creds = await MetaCredentialsRepository(session).get()
-    if creds is None or not creds.waba_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Este cliente no tiene WhatsApp conectado por Meta. "
-                "Conectá el número con Embedded Signup primero."
-            ),
-        )
-    return creds
-
-
-def _build_client() -> MetaClient:
-    settings = get_settings()
-    return MetaClient(
-        app_secret=settings.meta_app_secret,
-        require_appsecret_proof=settings.meta_require_appsecret_proof,
-    )
-
-
-def _meta_error_to_http(exc: MetaAPIError, *, context: str) -> HTTPException:
-    """Map a Cloud API error to a clean operator-facing HTTPException."""
-    code = getattr(exc, "code", None)
-    status_code = getattr(exc, "status_code", None) or 502
-    detail = f"Meta rechazó {context}: {exc}"
-    if code is not None:
-        detail += f" (code {code})"
-    http_status = (
-        status.HTTP_422_UNPROCESSABLE_ENTITY
-        if 400 <= int(status_code) < 500
-        else status.HTTP_502_BAD_GATEWAY
-    )
-    return HTTPException(status_code=http_status, detail=detail)
-
-
 @router.get(
     "/tenants/{tenant_id}/whatsapp/templates",
     response_model=TemplateListOut,
@@ -160,40 +119,8 @@ async def list_whatsapp_templates(
     tenant_id: uuid.UUID,
     session: AsyncSession = Depends(scoped_session_from_path),
 ) -> TemplateListOut:
-    creds = await _require_meta_credentials(session)
-    client = _build_client()
-    try:
-        try:
-            payload = await client.list_templates(
-                waba_id=creds.waba_id, access_token=creds.bisuat
-            )
-        except MetaAPIError as exc:
-            raise _meta_error_to_http(exc, context="el listado de plantillas") from exc
-    finally:
-        await client.close()
-
-    templates: list[TemplateOut] = []
-    for raw in payload.get("data") or []:
-        if not isinstance(raw, dict):
-            continue
-        templates.append(
-            TemplateOut(
-                id=raw.get("id"),
-                name=str(raw.get("name") or ""),
-                language=str(raw.get("language") or ""),
-                category=raw.get("category"),
-                status=raw.get("status"),
-                quality_score=(
-                    (raw.get("quality_score") or {}).get("score")
-                    if isinstance(raw.get("quality_score"), dict)
-                    else raw.get("quality_score")
-                ),
-                components=[
-                    c for c in (raw.get("components") or []) if isinstance(c, dict)
-                ],
-            )
-        )
-    return TemplateListOut(templates=templates, waba_id=creds.waba_id)
+    templates, waba_id = await fetch_templates(session)
+    return TemplateListOut(templates=templates, waba_id=waba_id)
 
 
 @router.post(
