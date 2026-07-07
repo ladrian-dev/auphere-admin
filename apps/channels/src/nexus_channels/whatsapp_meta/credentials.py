@@ -66,9 +66,7 @@ class MetaCredentials:
     def from_payload(cls, payload: bytes) -> MetaCredentials:
         raw = json.loads(payload.decode("utf-8"))
         expires_raw = raw.get("bisuat_expires_at")
-        expires = (
-            datetime.fromisoformat(expires_raw) if isinstance(expires_raw, str) else None
-        )
+        expires = datetime.fromisoformat(expires_raw) if isinstance(expires_raw, str) else None
         return cls(
             bisuat=raw["bisuat"],
             waba_id=raw["waba_id"],
@@ -95,9 +93,7 @@ class MetaCredentialsRepository:
 
     async def get(self) -> MetaCredentials | None:
         require_current_tenant()
-        stmt = select(TenantCredentials).where(
-            TenantCredentials.integration == INTEGRATION_KEY
-        )
+        stmt = select(TenantCredentials).where(TenantCredentials.integration == INTEGRATION_KEY)
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
         if row is None:
@@ -118,9 +114,7 @@ class MetaCredentialsRepository:
         the ciphertext and invalidate caches downstream unnecessarily.
         """
         tenant_id = require_current_tenant()
-        stmt = select(TenantCredentials).where(
-            TenantCredentials.integration == INTEGRATION_KEY
-        )
+        stmt = select(TenantCredentials).where(TenantCredentials.integration == INTEGRATION_KEY)
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
         payload = creds.to_payload()
@@ -148,9 +142,7 @@ class MetaCredentialsRepository:
         owner re-runs Embedded Signup.
         """
         require_current_tenant()
-        stmt = select(TenantCredentials).where(
-            TenantCredentials.integration == INTEGRATION_KEY
-        )
+        stmt = select(TenantCredentials).where(TenantCredentials.integration == INTEGRATION_KEY)
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
         if row is not None:
@@ -160,9 +152,7 @@ class MetaCredentialsRepository:
     async def delete(self) -> None:
         """Hard-delete on tenant offboarding from the Meta channel."""
         require_current_tenant()
-        stmt = select(TenantCredentials).where(
-            TenantCredentials.integration == INTEGRATION_KEY
-        )
+        stmt = select(TenantCredentials).where(TenantCredentials.integration == INTEGRATION_KEY)
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
         if row is not None:

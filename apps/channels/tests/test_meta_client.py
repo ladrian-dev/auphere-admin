@@ -115,9 +115,7 @@ async def test_http_429_raises_rate_limited_after_retries() -> None:
 
 async def test_500_raises_transient_after_retries() -> None:
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
-        mock.post("/PN_1/messages").respond(
-            502, json={"error": {"message": "bad gateway"}}
-        )
+        mock.post("/PN_1/messages").respond(502, json={"error": {"message": "bad gateway"}})
         async with MetaClient(_SECRET, max_retries=2) as client:
             with pytest.raises(MetaTransientError):
                 await client.send_text(
@@ -170,9 +168,7 @@ async def test_transport_error_promotes_to_transient() -> None:
 
 async def test_send_template_builds_payload() -> None:
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
-        route = mock.post("/PN_1/messages").respond(
-            200, json={"messages": [{"id": "wamid.T"}]}
-        )
+        route = mock.post("/PN_1/messages").respond(200, json={"messages": [{"id": "wamid.T"}]})
         async with MetaClient(_SECRET) as client:
             await client.send_template(
                 phone_number_id="PN_1",
@@ -198,9 +194,7 @@ async def test_send_template_builds_payload() -> None:
 
 async def test_subscribe_app_payload_optional_fields() -> None:
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
-        route = mock.post("/WABA_1/subscribed_apps").respond(
-            200, json={"success": True}
-        )
+        route = mock.post("/WABA_1/subscribed_apps").respond(200, json={"success": True})
         async with MetaClient(_SECRET) as client:
             await client.subscribe_app(
                 waba_id="WABA_1",
@@ -242,9 +236,7 @@ async def test_get_phone_number_passes_fields_param() -> None:
             },
         )
         async with MetaClient(_SECRET) as client:
-            info = await client.get_phone_number(
-                phone_number_id="PN_1", access_token=_TOKEN
-            )
+            info = await client.get_phone_number(phone_number_id="PN_1", access_token=_TOKEN)
         assert info["quality_rating"] == "GREEN"
         assert "fields=" in str(route.calls[-1].request.url)
 
@@ -268,9 +260,7 @@ async def test_get_media_url_then_download_media() -> None:
         )
         async with MetaClient(_SECRET) as client:
             meta = await client.get_media_url(media_id="media-1", access_token=_TOKEN)
-            content, content_type = await client.download_media(
-                url=cdn_url, access_token=_TOKEN
-            )
+            content, content_type = await client.download_media(url=cdn_url, access_token=_TOKEN)
         assert meta["url"] == cdn_url
         assert content[:3] == b"\xff\xd8\xff"
         assert content_type == "image/jpeg"

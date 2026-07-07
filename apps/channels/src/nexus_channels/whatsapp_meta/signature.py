@@ -61,9 +61,7 @@ def verify_meta_signature(
     if not header_value:
         raise MetaSignatureError("missing X-Hub-Signature-256 header")
     if not header_value.startswith(_PREFIX):
-        raise MetaSignatureError(
-            f"unexpected signature prefix: {header_value[: len(_PREFIX)]!r}"
-        )
+        raise MetaSignatureError(f"unexpected signature prefix: {header_value[: len(_PREFIX)]!r}")
     received = header_value[len(_PREFIX) :]
     expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, received):

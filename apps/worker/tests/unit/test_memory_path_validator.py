@@ -81,9 +81,7 @@ class TestMeAliasResolution:
 
     def test_me_without_customer_in_scope_errors(self) -> None:
         with pytest.raises(PathValidationError, match=r"me.*requires a customer"):
-            validate_and_resolve_path(
-                "/memories/customer/me/preferences.md", customer_id=None
-            )
+            validate_and_resolve_path("/memories/customer/me/preferences.md", customer_id=None)
 
 
 class TestCrossCustomerProbing:
@@ -106,9 +104,7 @@ class TestCrossCustomerProbing:
 
     def test_non_uuid_customer_id_errors_clearly(self) -> None:
         with pytest.raises(PathValidationError, match="UUID"):
-            validate_and_resolve_path(
-                "/memories/customer/not-a-uuid/x.md", customer_id=CUSTOMER_A
-            )
+            validate_and_resolve_path("/memories/customer/not-a-uuid/x.md", customer_id=CUSTOMER_A)
 
     def test_missing_customer_id_segment_errors(self) -> None:
         with pytest.raises(PathValidationError, match="missing customer identifier"):
@@ -117,9 +113,7 @@ class TestCrossCustomerProbing:
 
 class TestNormalisation:
     def test_trailing_slash_stripped(self) -> None:
-        out = validate_and_resolve_path(
-            "/memories/tenant/policies/", customer_id=None
-        )
+        out = validate_and_resolve_path("/memories/tenant/policies/", customer_id=None)
         assert out == "/memories/tenant/policies"
 
     def test_no_trailing_slash_preserved(self) -> None:

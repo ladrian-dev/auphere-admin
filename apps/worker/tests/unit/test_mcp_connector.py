@@ -34,9 +34,7 @@ class TestMergeBetaCSV:
             "code-execution-2025-08-25,mcp-client-2025-11-20",
         )
         # Order preserved, duplicates removed.
-        assert out == (
-            "code-execution-2025-08-25,skills-2025-10-02,mcp-client-2025-11-20"
-        )
+        assert out == ("code-execution-2025-08-25,skills-2025-10-02,mcp-client-2025-11-20")
 
     def test_empty_inputs(self) -> None:
         assert merge_beta_csv("", "mcp-client-2025-11-20") == "mcp-client-2025-11-20"
@@ -68,18 +66,14 @@ class TestBuildMcpExtra:
                 "credential_key": "linear",
             },
         )
-        out = await build_mcp_extra(
-            servers=servers, token_resolver=resolver, base_extra=None
-        )
+        out = await build_mcp_extra(servers=servers, token_resolver=resolver, base_extra=None)
         assert out is not None
         assert out["mcp_servers"] == [
             {
                 "type": "url",
                 "url": "https://mcp.linear.app/mcp",
                 "name": "linear",
-                "tool_configuration": {
-                    "allowed_tools": ["list_issues", "create_issue"]
-                },
+                "tool_configuration": {"allowed_tools": ["list_issues", "create_issue"]},
                 "authorization_token": "token-for-linear",
             }
         ]
@@ -92,6 +86,7 @@ class TestBuildMcpExtra:
         tool flow, so a missing MCP credential should never break the
         runtime — it just falls back to "no MCP for this server".
         """
+
         async def resolver(_k: str) -> str | None:
             return None  # always missing
 
@@ -103,9 +98,7 @@ class TestBuildMcpExtra:
                 "credential_key": "github",
             },
         )
-        out = await build_mcp_extra(
-            servers=servers, token_resolver=resolver, base_extra=None
-        )
+        out = await build_mcp_extra(servers=servers, token_resolver=resolver, base_extra=None)
         # All servers dropped → result is base_extra (None).
         assert out is None
 
@@ -127,9 +120,7 @@ class TestBuildMcpExtra:
                 "credential_key": "good",
             },
         )
-        out = await build_mcp_extra(
-            servers=servers, token_resolver=resolver, base_extra=None
-        )
+        out = await build_mcp_extra(servers=servers, token_resolver=resolver, base_extra=None)
         assert out is not None
         names = [s["name"] for s in out["mcp_servers"]]
         assert names == ["good"]
@@ -139,13 +130,12 @@ class TestBuildMcpExtra:
         ``build_mcp_extra`` must merge the beta-header CSV rather than
         replace it. Both features active in the same turn need both
         betas in the header."""
+
         async def resolver(_k: str) -> str | None:
             return "tok"
 
         skills_extra = {
-            "container": {
-                "skills": [{"type": "custom", "skill_id": "x", "version": "1"}]
-            },
+            "container": {"skills": [{"type": "custom", "skill_id": "x", "version": "1"}]},
             "extra_headers": {
                 "anthropic-beta": (
                     "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
@@ -166,8 +156,7 @@ class TestBuildMcpExtra:
         beta = out["extra_headers"]["anthropic-beta"]
         # All 4 betas present, in the right order, no dupes.
         assert beta == (
-            "code-execution-2025-08-25,skills-2025-10-02,"
-            "files-api-2025-04-14,mcp-client-2025-11-20"
+            "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14,mcp-client-2025-11-20"
         )
         # Skills container survives the merge.
         assert out["container"] == skills_extra["container"]
@@ -191,9 +180,7 @@ class TestBuildMcpExtra:
                 "credential_key": "",
             },
         )
-        out = await build_mcp_extra(
-            servers=servers, token_resolver=resolver, base_extra=None
-        )
+        out = await build_mcp_extra(servers=servers, token_resolver=resolver, base_extra=None)
         assert out is not None
         assert called == []  # resolver not invoked
         assert "authorization_token" not in out["mcp_servers"][0]
@@ -207,8 +194,6 @@ class TestBuildMcpExtra:
             {"name": "no-url", "url": "", "credential_key": ""},
             {"name": "good", "url": "https://x", "credential_key": ""},
         )
-        out = await build_mcp_extra(
-            servers=servers, token_resolver=resolver, base_extra=None
-        )
+        out = await build_mcp_extra(servers=servers, token_resolver=resolver, base_extra=None)
         assert out is not None
         assert [s["name"] for s in out["mcp_servers"]] == ["good"]

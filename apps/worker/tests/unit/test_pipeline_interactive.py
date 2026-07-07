@@ -27,9 +27,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
-
 from nexus_mcp import MCPRegistry
 from nexus_mcp.servers.notification import SendInteractive
+
 from nexus_worker.runtime.agent_loader import AgentBundle
 from nexus_worker.runtime.llm import LLMResponse, LLMRouter, ToolCall
 from nexus_worker.runtime.pipeline import (
@@ -120,9 +120,7 @@ class _LoaderStub:
         pass
 
 
-def _stub_dispatch(
-    monkeypatch: pytest.MonkeyPatch, *, status: str = "ok"
-) -> list[ToolCall]:
+def _stub_dispatch(monkeypatch: pytest.MonkeyPatch, *, status: str = "ok") -> list[ToolCall]:
     """Replace ``_dispatch_tool`` so the test doesn't touch the DB.
     Returns a list the test reads to inspect what was dispatched."""
     seen: list[ToolCall] = []
@@ -184,9 +182,7 @@ class TestCapture:
         # itself is monkey-patched above so this never hits the DB.
         registry = MCPRegistry()
         registry.register(SendInteractive())
-        handler = make_handler_node(
-            "info", _LoaderStub(bundle), _router(provider), registry
-        )
+        handler = make_handler_node("info", _LoaderStub(bundle), _router(provider), registry)
 
         out = await handler(_make_state(bundle.tenant_id))
 
@@ -236,18 +232,14 @@ class TestCapture:
         # itself is monkey-patched above so this never hits the DB.
         registry = MCPRegistry()
         registry.register(SendInteractive())
-        handler = make_handler_node(
-            "info", _LoaderStub(bundle), _router(provider), registry
-        )
+        handler = make_handler_node("info", _LoaderStub(bundle), _router(provider), registry)
         out = await handler(_make_state(bundle.tenant_id))
         # No text was emitted and none was synthesized — the empty
         # fallback path is gated on ``interactive_payload is None``.
         assert out["response"] == ""
         assert out["interactive_payload"]["list"]["button"] == "Ver"
 
-    async def test_skipped_envelope_does_not_capture(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_skipped_envelope_does_not_capture(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Whitelist violation: the dispatcher returns
         # ``status='skipped:not_in_whitelist'`` and our capture path
         # gates on ``status='ok'``. The agent then falls through to the
@@ -280,9 +272,7 @@ class TestCapture:
         # itself is monkey-patched above so this never hits the DB.
         registry = MCPRegistry()
         registry.register(SendInteractive())
-        handler = make_handler_node(
-            "info", _LoaderStub(bundle), _router(provider), registry
-        )
+        handler = make_handler_node("info", _LoaderStub(bundle), _router(provider), registry)
         out = await handler(_make_state(bundle.tenant_id))
         # Loop did not exit on the bad envelope: a second LLM call
         # produced the final text. Empty interactive_payload signals

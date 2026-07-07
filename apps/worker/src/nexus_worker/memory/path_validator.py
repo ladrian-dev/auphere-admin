@@ -88,17 +88,13 @@ def validate_and_resolve_path(path: str, *, customer_id: uuid.UUID | None) -> st
         raise PathValidationError("path must be a non-empty string")
 
     if _looks_like_traversal(path):
-        raise PathValidationError(
-            "path contains traversal segments ('..' or '.') and is rejected"
-        )
+        raise PathValidationError("path contains traversal segments ('..' or '.') and is rejected")
 
     if path == "/memories" or path == "/memories/":
         return "/memories"
 
     if not any(path.startswith(p) for p in _ALLOWED_PREFIXES):
-        raise PathValidationError(
-            "path must start with /memories/customer/ or /memories/tenant/"
-        )
+        raise PathValidationError("path must start with /memories/customer/ or /memories/tenant/")
 
     # Strip a trailing slash so equal paths compare equal in SQL.
     normalised = path.rstrip("/") or "/memories"
@@ -113,7 +109,7 @@ def validate_and_resolve_path(path: str, *, customer_id: uuid.UUID | None) -> st
                 "the 'me' alias requires a customer in the current turn; "
                 "use /memories/tenant/... for tenant-wide memories"
             )
-        suffix = normalised[len(_CUSTOMER_ME_PREFIX):]
+        suffix = normalised[len(_CUSTOMER_ME_PREFIX) :]
         return f"/memories/customer/{customer_id}{suffix}"
 
     # Bare ``/memories/customer`` (or ``/memories/customer/``) without
@@ -122,8 +118,7 @@ def validate_and_resolve_path(path: str, *, customer_id: uuid.UUID | None) -> st
     # ``/memories/customer/me`` for its own scope.
     if normalised == "/memories/customer":
         raise PathValidationError(
-            "missing customer identifier after /memories/customer/ "
-            "(use /memories/customer/me)"
+            "missing customer identifier after /memories/customer/ (use /memories/customer/me)"
         )
 
     # Explicit ``/memories/customer/{uuid}/...`` — refuse anything that
@@ -131,18 +126,15 @@ def validate_and_resolve_path(path: str, *, customer_id: uuid.UUID | None) -> st
     # exist" (not "permission denied") so we do not leak the existence
     # of other customers.
     if normalised.startswith("/memories/customer/"):
-        rest = normalised[len("/memories/customer/"):]
+        rest = normalised[len("/memories/customer/") :]
         first = rest.split("/", 1)[0]
         if not first:
-            raise PathValidationError(
-                "missing customer identifier after /memories/customer/"
-            )
+            raise PathValidationError("missing customer identifier after /memories/customer/")
         try:
             target = uuid.UUID(first)
         except ValueError as exc:
             raise PathValidationError(
-                "customer identifier after /memories/customer/ must be 'me' "
-                "or a UUID"
+                "customer identifier after /memories/customer/ must be 'me' or a UUID"
             ) from exc
         if customer_id is None or target != customer_id:
             # Same wording as a missing-path response so the LLM cannot

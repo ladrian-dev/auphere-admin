@@ -166,7 +166,7 @@ def _build_interactive_ucm(
         )
     if payload.get("list"):
         lst = payload["list"]
-        sections = [
+        sections: list[dict[str, Any]] = [
             {
                 "title": "Opciones",
                 "rows": [

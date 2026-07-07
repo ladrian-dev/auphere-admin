@@ -447,7 +447,9 @@ def _to_result(raw: dict[str, Any]) -> SendResult:
     return SendResult(
         provider_message_id=wamid,
         status=status,
-        cost_usd_estimate=cast(float | None, raw.get("pricing", {}).get("total")) if isinstance(raw.get("pricing"), dict) else None,
+        cost_usd_estimate=cast(float | None, raw.get("pricing", {}).get("total"))
+        if isinstance(raw.get("pricing"), dict)
+        else None,
         raw=raw,
     )
 

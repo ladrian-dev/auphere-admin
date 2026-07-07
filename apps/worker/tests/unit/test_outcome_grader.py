@@ -82,9 +82,7 @@ class _ScriptedProvider:
         tools: list[dict[str, Any]],
         extra: dict[str, Any] | None = None,
     ) -> LLMResponse:
-        text = await self.acomplete(
-            tenant_id=tenant_id, role=role, model=model, messages=messages
-        )
+        text = await self.acomplete(tenant_id=tenant_id, role=role, model=model, messages=messages)
         return LLMResponse(text=text, tool_calls=())
 
 
@@ -111,9 +109,7 @@ class TestGraderHappyPath:
         assert verdict.feedback == ""
 
     async def test_grader_uses_default_model(self) -> None:
-        provider = _ScriptedProvider(
-            responses=[json.dumps({"overall": "pass", "feedback": ""})]
-        )
+        provider = _ScriptedProvider(responses=[json.dumps({"overall": "pass", "feedback": ""})])
         grader = OutcomeGrader(provider=provider)
         await grader.grade(
             tenant_id=uuid.uuid4(),
@@ -208,9 +204,7 @@ class TestGraderAntiCorrelation:
         If a future refactor leaks the agent's system prompt into the
         grader's user turn, the test catches it.
         """
-        provider = _ScriptedProvider(
-            responses=[json.dumps({"overall": "pass", "feedback": ""})]
-        )
+        provider = _ScriptedProvider(responses=[json.dumps({"overall": "pass", "feedback": ""})])
         grader = OutcomeGrader(provider=provider)
         agent_system_prompt = "TOP SECRET: never mention strawberries"
 
@@ -248,9 +242,7 @@ class TestEnvelopeSummarisation:
         verbatim to the grader — the helper trims to load-bearing keys.
         """
         big_catalogue = {f"product_{i}": "x" * 200 for i in range(500)}
-        provider = _ScriptedProvider(
-            responses=[json.dumps({"overall": "pass", "feedback": ""})]
-        )
+        provider = _ScriptedProvider(responses=[json.dumps({"overall": "pass", "feedback": ""})])
         grader = OutcomeGrader(provider=provider)
         await grader.grade(
             tenant_id=uuid.uuid4(),
@@ -266,9 +258,7 @@ class TestEnvelopeSummarisation:
                 }
             ],
         )
-        user_msg = next(
-            m["content"] for m in provider.calls[0]["messages"] if m["role"] == "user"
-        )
+        user_msg = next(m["content"] for m in provider.calls[0]["messages"] if m["role"] == "user")
         # The unsummarised payload would be > 100KB; the summary should
         # have stripped non-load-bearing keys → much smaller.
         assert len(user_msg) < 4000
@@ -380,19 +370,13 @@ class TestRetryFlowNode:
         tenant_id = uuid.uuid4()
 
         # Grader fails ALL the time (initial + every retry).
-        fail_json = json.dumps(
-            {"C1": "fail", "overall": "fail", "feedback": "still wrong"}
-        )
-        grader_provider = _ScriptedProvider(
-            responses=[fail_json, fail_json, fail_json, fail_json]
-        )
+        fail_json = json.dumps({"C1": "fail", "overall": "fail", "feedback": "still wrong"})
+        grader_provider = _ScriptedProvider(responses=[fail_json, fail_json, fail_json, fail_json])
         grader = OutcomeGrader(provider=grader_provider)
 
         # Each rewrite produces a non-empty draft, so the loop hits the
         # retry ceiling rather than the empty-draft bail-out.
-        agent_provider = _ScriptedProvider(
-            responses=["attempt 2", "attempt 3", "attempt 4"]
-        )
+        agent_provider = _ScriptedProvider(responses=["attempt 2", "attempt 3", "attempt 4"])
         router = LLMRouter(
             provider=agent_provider,
             classify_model="anthropic/haiku",

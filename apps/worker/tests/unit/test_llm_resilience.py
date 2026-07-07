@@ -326,19 +326,12 @@ class TestContextEditing:
                     ],
                 }
             )
-            messages.append(
-                {"role": "tool", "tool_call_id": f"call_{i}", "content": "{}"}
-            )
+            messages.append({"role": "tool", "tool_call_id": f"call_{i}", "content": "{}"})
 
         assert len(patched_litellm.calls) == 4
         for idx, call in enumerate(patched_litellm.calls):
-            assert "context_management" in call, (
-                f"iteration {idx} dropped context_management"
-            )
-            assert (
-                call["context_management"]["edits"][0]["type"]
-                == "clear_tool_uses_20250919"
-            )
+            assert "context_management" in call, f"iteration {idx} dropped context_management"
+            assert call["context_management"]["edits"][0]["type"] == "clear_tool_uses_20250919"
 
 
 class TestDefaultContextManagementFromEnv:
@@ -347,15 +340,11 @@ class TestDefaultContextManagementFromEnv:
         assert default_context_management_from_env() == DEFAULT_CONTEXT_MANAGEMENT
 
     @pytest.mark.parametrize("flag", ["0", "false", "FALSE", "no", "off", ""])
-    def test_returns_none_when_disabled(
-        self, monkeypatch: pytest.MonkeyPatch, flag: str
-    ) -> None:
+    def test_returns_none_when_disabled(self, monkeypatch: pytest.MonkeyPatch, flag: str) -> None:
         monkeypatch.setenv("NEXUS_CONTEXT_EDITING_ENABLED", flag)
         assert default_context_management_from_env() is None
 
     @pytest.mark.parametrize("flag", ["1", "true", "TRUE", "yes"])
-    def test_returns_default_when_enabled(
-        self, monkeypatch: pytest.MonkeyPatch, flag: str
-    ) -> None:
+    def test_returns_default_when_enabled(self, monkeypatch: pytest.MonkeyPatch, flag: str) -> None:
         monkeypatch.setenv("NEXUS_CONTEXT_EDITING_ENABLED", flag)
         assert default_context_management_from_env() == DEFAULT_CONTEXT_MANAGEMENT

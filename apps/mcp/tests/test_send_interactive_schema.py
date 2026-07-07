@@ -99,10 +99,7 @@ class TestButtonLimits:
             SendInteractiveInput(
                 conversation_id=_conv_id(),
                 body="?",
-                buttons=[
-                    InteractiveButton(id=f"b{i}", title=f"t{i}")
-                    for i in range(4)
-                ],
+                buttons=[InteractiveButton(id=f"b{i}", title=f"t{i}") for i in range(4)],
             )
         assert "between 1 and 3" in str(exc.value)
 
@@ -114,10 +111,7 @@ class TestButtonLimits:
         m = SendInteractiveInput(
             conversation_id=_conv_id(),
             body="?",
-            buttons=[
-                InteractiveButton(id=f"b{i}", title=f"t{i}")
-                for i in range(3)
-            ],
+            buttons=[InteractiveButton(id=f"b{i}", title=f"t{i}") for i in range(3)],
         )
         assert len(m.buttons or []) == 3
 
@@ -127,10 +121,7 @@ class TestListLimits:
         with pytest.raises(ValidationError):
             InteractiveList(
                 button="Ver",
-                items=[
-                    InteractiveListRow(id=f"r{i}", title=f"t{i}")
-                    for i in range(11)
-                ],
+                items=[InteractiveListRow(id=f"r{i}", title=f"t{i}") for i in range(11)],
             )
 
     def test_row_title_too_long_rejected(self) -> None:

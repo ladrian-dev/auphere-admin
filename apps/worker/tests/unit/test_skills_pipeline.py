@@ -131,9 +131,7 @@ class TestLiteLLMExtraMerge:
         tools = [{"type": "function", "function": {"name": "x", "parameters": {}}}]
         extra = {
             "container": {
-                "skills": [
-                    {"type": "custom", "skill_id": "skill_abc", "version": "latest"}
-                ]
+                "skills": [{"type": "custom", "skill_id": "skill_abc", "version": "latest"}]
             },
             "extra_headers": {
                 "anthropic-beta": (
@@ -160,9 +158,7 @@ class TestLiteLLMExtraMerge:
         # (the call has tools — provider attaches it automatically).
         assert "context_management" in kw
 
-    async def test_extra_omitted_when_none(
-        self, patched_litellm: _LiteLLMStub
-    ) -> None:
+    async def test_extra_omitted_when_none(self, patched_litellm: _LiteLLMStub) -> None:
         provider = LiteLLMProvider()
         await provider.acomplete_with_tools(
             tenant_id=uuid.uuid4(),
@@ -543,9 +539,7 @@ class TestChannelGatingHandlerIntegration(TestHandlerSkillsInjection):
         ``channels`` key at all. The loader normalises it to an empty
         tuple; the handler must treat that as 'no gate' and inject."""
         provider = await self._run_handler(
-            runtime_skills=(
-                {"skill_id": "skill_legacy", "version": "latest"},
-            ),
+            runtime_skills=({"skill_id": "skill_legacy", "version": "latest"},),
             channel_type="web",
         )
         cap = provider.captures[0]
@@ -581,9 +575,7 @@ class TestBundledSkills:
 
         from scripts.upload_skill import _parse_frontmatter, _validate_frontmatter
 
-        skill_dir = (
-            Path(__file__).resolve().parents[2] / "skills" / skill_name
-        )
+        skill_dir = Path(__file__).resolve().parents[2] / "skills" / skill_name
         meta = _parse_frontmatter(skill_dir / "SKILL.md")
         _validate_frontmatter(meta, skill_name)
         assert meta["name"] == skill_name
@@ -603,10 +595,8 @@ class TestBundledSkills:
 
         from scripts.upload_skill import _lint_skill_dir
 
-        skill_dir = (
-            Path(__file__).resolve().parents[2] / "skills" / skill_name
-        )
+        skill_dir = Path(__file__).resolve().parents[2] / "skills" / skill_name
         violations = _lint_skill_dir(skill_dir)
-        assert violations == [], (
-            "bundled skill must not carry network imports: " + "; ".join(violations)
+        assert violations == [], "bundled skill must not carry network imports: " + "; ".join(
+            violations
         )

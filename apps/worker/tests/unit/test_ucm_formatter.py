@@ -158,9 +158,7 @@ class TestInteractivePayload:
         # serialises them in this order so the customer reads the
         # explanation before the choice).
         assert ucm.content.children[0].type == "text"
-        assert ucm.content.children[0].content.body == (
-            "Encontré tu cita disponible."
-        )
+        assert ucm.content.children[0].content.body == ("Encontré tu cita disponible.")
         assert ucm.content.children[1].type == "quick_replies"
         assert ucm.content.children[1].content.body == "¿Confirmas la reserva?"
         # Children inherit a stable id derived from the parent so
@@ -174,9 +172,7 @@ class TestInteractivePayload:
             "header": "Tu búsqueda",
             "footer": "Precios CLP",
         }
-        ucm = format_response_as_ucm(
-            response_text="", interactive_payload=payload
-        )
+        ucm = format_response_as_ucm(response_text="", interactive_payload=payload)
         assert ucm.content.header == "Tu búsqueda"
         assert ucm.content.footer == "Precios CLP"
 

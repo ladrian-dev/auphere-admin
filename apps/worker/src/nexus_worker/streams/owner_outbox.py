@@ -263,9 +263,7 @@ def _extract_wamid(result: dict[str, Any]) -> str | None:
     return None
 
 
-def _template_components(
-    row: OwnerConsultation, *, tenant_name: str
-) -> list[dict[str, Any]]:
+def _template_components(row: OwnerConsultation, *, tenant_name: str) -> list[dict[str, Any]]:
     """Build Cloud API ``components`` with NAMED body parameters.
 
     Both Phase 1 templates (``auphere_owner_consult`` and

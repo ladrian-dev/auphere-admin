@@ -554,7 +554,7 @@ class SendInteractive(ToolBase):
     description = (
         "Emit a native WhatsApp interactive component (reply buttons, "
         "list, or CTA URL) as the response to the user. Exactly ONE of "
-        "``buttons`` (1–3 reply buttons), ``list`` (1–10 selectable "
+        "``buttons`` (1-3 reply buttons), ``list`` (1-10 selectable "
         "items), or ``cta_url`` (single URL-opening button) must be "
         "set. This tool is the TERMINAL action of the turn — after "
         "calling it the agent does not need to call any more tools. "

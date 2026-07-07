@@ -159,9 +159,7 @@ class AgentLoader:
                     {
                         "skill_id": str(s.get("skill_id", "")),
                         "version": str(s.get("version", "latest")),
-                        "channels": tuple(
-                            str(c) for c in (s.get("channels") or ())
-                        ),
+                        "channels": tuple(str(c) for c in (s.get("channels") or ())),
                     }
                     for s in (cfg.runtime_skills or ())
                     if isinstance(s, dict) and s.get("skill_id")
@@ -170,9 +168,7 @@ class AgentLoader:
                     {
                         "name": str(s.get("name", "")),
                         "url": str(s.get("url", "")),
-                        "allowed_tools": tuple(
-                            str(t) for t in (s.get("allowed_tools") or ())
-                        ),
+                        "allowed_tools": tuple(str(t) for t in (s.get("allowed_tools") or ())),
                         "credential_key": str(s.get("credential_key", "")),
                     }
                     for s in (cfg.runtime_mcp_servers or ())

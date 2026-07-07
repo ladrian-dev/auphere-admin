@@ -320,9 +320,7 @@ class MetaClient:
         try:
             response = await self._client.get(url, headers=headers)
         except (httpx.ConnectError, httpx.ReadTimeout) as exc:
-            raise MetaTransientError(
-                str(exc), status_code=0, body=None
-            ) from exc
+            raise MetaTransientError(str(exc), status_code=0, body=None) from exc
         if response.status_code >= 400:
             raise MetaAPIError(
                 f"media download failed: {response.text[:200]}",
@@ -373,10 +371,7 @@ class MetaClient:
         *,
         waba_id: str,
         access_token: str,
-        fields: str = (
-            "id,display_phone_number,verified_name,quality_rating,"
-            "messaging_limit_tier"
-        ),
+        fields: str = ("id,display_phone_number,verified_name,quality_rating,messaging_limit_tier"),
     ) -> dict[str, Any]:
         """``GET /{waba_id}/phone_numbers``.
 
@@ -696,9 +691,7 @@ class MetaClient:
                     except (httpx.ConnectError, httpx.ReadTimeout) as exc:
                         # Promote transport errors to MetaTransientError so
                         # callers don't have to know about httpx internals.
-                        raise MetaTransientError(
-                            f"transport error: {exc}", status_code=0
-                        ) from exc
+                        raise MetaTransientError(f"transport error: {exc}", status_code=0) from exc
         except RetryError as exc:
             inner = exc.last_attempt.exception() if exc.last_attempt else None
             if isinstance(inner, MetaAPIError):

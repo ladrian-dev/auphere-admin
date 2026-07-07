@@ -210,8 +210,7 @@ class OutcomeGrader:
                 overall="fail",
                 criteria={},
                 feedback=(
-                    "Grader could not be reached — defaulting to fail. "
-                    "Manual review recommended."
+                    "Grader could not be reached — defaulting to fail. Manual review recommended."
                 ),
             )
 
@@ -306,8 +305,7 @@ def _parse_verdict(raw: str) -> GraderVerdict:
         feedback = str(feedback)
     if overall == "fail" and not feedback:
         feedback = (
-            "Response failed grading; no feedback provided by grader. "
-            "Re-check rubric criteria."
+            "Response failed grading; no feedback provided by grader. Re-check rubric criteria."
         )
 
     return GraderVerdict(

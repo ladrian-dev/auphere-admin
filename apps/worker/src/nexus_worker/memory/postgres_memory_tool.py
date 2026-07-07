@@ -216,9 +216,7 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
 
     # ── command implementations ─────────────────────────────────────
 
-    async def view(
-        self, command: BetaMemoryTool20250818ViewCommand
-    ) -> BetaFunctionToolResultType:
+    async def view(self, command: BetaMemoryTool20250818ViewCommand) -> BetaFunctionToolResultType:
         """View a file (line-numbered) or list a directory.
 
         ``view_range`` (1-indexed inclusive bounds) trims the output to
@@ -237,7 +235,7 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
                         start, end = rng
                         # 1-indexed → 0-indexed; clamp at bounds.
                         s = max(1, start) - 1
-                        e = (len(lines) if end is None else min(end, len(lines)))
+                        e = len(lines) if end is None else min(end, len(lines))
                         lines = lines[s:e]
                         offset = s + 1
                     else:
@@ -354,9 +352,7 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
                     replacing_existing_size=row.size_bytes,
                 )
                 await session.execute(
-                    update(AgentMemory)
-                    .where(AgentMemory.id == row.id)
-                    .values(content=new_content)
+                    update(AgentMemory).where(AgentMemory.id == row.id).values(content=new_content)
                 )
                 await session.commit()
                 return f"replaced in '{command.path}'"
@@ -388,9 +384,7 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
                     replacing_existing_size=row.size_bytes,
                 )
                 await session.execute(
-                    update(AgentMemory)
-                    .where(AgentMemory.id == row.id)
-                    .values(content=new_content)
+                    update(AgentMemory).where(AgentMemory.id == row.id).values(content=new_content)
                 )
                 await session.commit()
                 return f"inserted at line {insert_at} of '{command.path}'"
@@ -430,8 +424,7 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
             new_resolved = self._resolve(command.new_path)
             if self._customer_id_for(old_resolved) != self._customer_id_for(new_resolved):
                 return (
-                    "rename across customer/tenant scopes is not allowed; "
-                    "use create+delete instead"
+                    "rename across customer/tenant scopes is not allowed; use create+delete instead"
                 )
             sm = get_sessionmaker()
             async with sm() as session, tenant_scoped_session(session, self._tenant_id):
@@ -442,14 +435,9 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
                 # invariant as ``create``.
                 existing_dest = await self._row_for_path(session, new_resolved)
                 if existing_dest is not None:
-                    return (
-                        f"destination '{command.new_path}' already exists; "
-                        "delete it first"
-                    )
+                    return f"destination '{command.new_path}' already exists; delete it first"
                 await session.execute(
-                    update(AgentMemory)
-                    .where(AgentMemory.id == row.id)
-                    .values(path=new_resolved)
+                    update(AgentMemory).where(AgentMemory.id == row.id).values(path=new_resolved)
                 )
                 await session.commit()
                 return f"renamed '{command.old_path}' to '{command.new_path}'"

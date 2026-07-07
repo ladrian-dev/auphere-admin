@@ -35,9 +35,7 @@ def _text_payload(text: str = "hola", *, waba: str = "WABA_1") -> dict:
                                 "display_phone_number": "56933334444",
                                 "phone_number_id": "PN_1",
                             },
-                            "contacts": [
-                                {"profile": {"name": "Juan"}, "wa_id": "56911112222"}
-                            ],
+                            "contacts": [{"profile": {"name": "Juan"}, "wa_id": "56911112222"}],
                             "messages": [
                                 {
                                     "from": "56911112222",

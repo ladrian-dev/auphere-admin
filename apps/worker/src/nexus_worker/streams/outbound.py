@@ -370,9 +370,7 @@ async def _dispatch_message(
         # for quoted replies; prefer it over the row-level ``context``
         # (the row's column is populated by media / text paths, not by
         # the interactive tool).
-        quote_wamid = (
-            msg.interactive_payload.get("context_message_id") or context
-        )
+        quote_wamid = msg.interactive_payload.get("context_message_id") or context
         return await adapter.send_interactive(
             from_phone=from_phone,
             recipient=recipient,
@@ -602,7 +600,7 @@ def _ms_since(when: datetime) -> int | None:
     return int(delta.total_seconds() * 1000)
 
 
-def _to_meta_interactive(payload: dict[str, object]) -> dict[str, object]:
+def _to_meta_interactive(payload: dict[str, Any]) -> dict[str, object]:
     """Convert our ``response.send_interactive`` tool payload into a
     Meta Cloud API ``interactive`` block.
 
@@ -636,15 +634,15 @@ def _to_meta_interactive(payload: dict[str, object]) -> dict[str, object]:
                     "type": "reply",
                     "reply": {"id": str(b["id"]), "title": str(b["title"])},
                 }
-                for b in payload["buttons"]  # type: ignore[union-attr]
+                for b in payload["buttons"]
             ]
         }
         return block
 
     if payload.get("list"):
-        lst = payload["list"]  # type: ignore[assignment]
+        lst = payload["list"]
         rows = []
-        for r in lst["items"]:  # type: ignore[index]
+        for r in lst["items"]:
             row: dict[str, object] = {
                 "id": str(r["id"]),
                 "title": str(r["title"]),
@@ -654,19 +652,19 @@ def _to_meta_interactive(payload: dict[str, object]) -> dict[str, object]:
             rows.append(row)
         block["type"] = "list"
         block["action"] = {
-            "button": str(lst["button"]),  # type: ignore[index]
+            "button": str(lst["button"]),
             "sections": [{"title": "Opciones", "rows": rows}],
         }
         return block
 
     if payload.get("cta_url"):
-        cta = payload["cta_url"]  # type: ignore[assignment]
+        cta = payload["cta_url"]
         block["type"] = "cta_url"
         block["action"] = {
             "name": "cta_url",
             "parameters": {
-                "display_text": str(cta["text"]),  # type: ignore[index]
-                "url": str(cta["url"]),  # type: ignore[index]
+                "display_text": str(cta["text"]),
+                "url": str(cta["url"]),
             },
         }
         return block

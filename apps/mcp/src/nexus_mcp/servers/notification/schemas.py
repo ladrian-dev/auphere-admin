@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import AnyHttpUrl, BaseModel, Field, model_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
 
 from nexus_mcp.base import InputModel, OutputModel
 
@@ -249,7 +249,7 @@ class SendInteractiveInput(InputModel):
     )
     buttons: list[InteractiveButton] | None = Field(
         default=None,
-        description="1–3 reply buttons. Use for ≤3 closed-choice questions.",
+        description="1-3 reply buttons. Use for <=3 closed-choice questions.",
     )
     # The JSON-facing name is ``list`` (matches the SKILL.md guidance
     # the LLM sees) but the Python attribute is ``list_block`` because
@@ -261,7 +261,7 @@ class SendInteractiveInput(InputModel):
     list_block: InteractiveList | None = Field(
         default=None,
         alias="list",
-        description="A 1–10 item selectable list. Use for 4–10 options.",
+        description="A 1-10 item selectable list. Use for 4-10 options.",
     )
     cta_url: InteractiveCtaUrl | None = Field(
         default=None,
@@ -273,17 +273,15 @@ class SendInteractiveInput(InputModel):
         description="Optional wamid to quote as a reply.",
     )
 
-    model_config = {
-        # Accept both the JSON alias (``list``) and the Python name
-        # (``list_block``) on input so tests can construct the model
-        # either way. Output still defaults to the Python name; the
-        # pipeline captures ``call.arguments`` which carries the JSON
-        # alias the LLM emitted.
-        "populate_by_name": True,
-    }
+    # Accept both the JSON alias (``list``) and the Python name
+    # (``list_block``) on input so tests can construct the model either
+    # way. Output still defaults to the Python name; the pipeline
+    # captures ``call.arguments`` which carries the JSON alias the LLM
+    # emitted.
+    model_config = ConfigDict(populate_by_name=True)
 
     @model_validator(mode="after")
-    def _exactly_one_component(self) -> "SendInteractiveInput":
+    def _exactly_one_component(self) -> SendInteractiveInput:
         set_components: list[str] = []
         if self.buttons is not None:
             set_components.append("buttons")
@@ -300,10 +298,7 @@ class SendInteractiveInput(InputModel):
         # on Optional[list[...]] trips a forward-ref bug in this scope,
         # so enforce here instead.
         if self.buttons is not None and not (1 <= len(self.buttons) <= 3):
-            raise ValueError(
-                "buttons must have between 1 and 3 entries; "
-                f"got {len(self.buttons)}"
-            )
+            raise ValueError(f"buttons must have between 1 and 3 entries; got {len(self.buttons)}")
         return self
 
 
