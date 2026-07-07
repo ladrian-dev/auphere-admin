@@ -467,12 +467,21 @@ def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
     async def classify(state: AgentState) -> dict[str, Any]:
         tenant_id = _tenant_uuid(state)
         with tenant_context(tenant_id):
-            await loader.load(tenant_id)  # warms cache; raises if no active config
+            bundle = await loader.load(tenant_id)  # warms cache; raises if no active config
             history = await _load_recent_history(
                 tenant_id,
                 state.get("conversation_id"),
                 exclude_message_id=state.get("inbound_message_id"),
             )
+            # Admin-only agents (e.g. cobranza): the dispatcher already
+            # ensured the sender is a whitelisted admin, and EVERY message is
+            # a command for the tool-using agent — the book/queue/info/
+            # escalate taxonomy never fits, so the classifier always returns
+            # 'fallback'. Skip the LLM round-trip entirely and route straight
+            # to 'fallback' (which binds the connector tools). Saves ~1-2s/turn.
+            access = bundle.policies.get("admin_access") or {}
+            if isinstance(access, dict) and access.get("admin_only"):
+                return {"intent": "fallback", "route": "fallback", "history": history}
             messages = [
                 {
                     "role": "system",
