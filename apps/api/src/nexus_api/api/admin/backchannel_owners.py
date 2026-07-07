@@ -52,20 +52,16 @@ def _to_out(row: OwnerPhoneIndex) -> OwnerPhoneIndexOut:
     )
 
 
-def _audit_snapshot(row: OwnerPhoneIndex) -> dict:
+def _audit_snapshot(row: OwnerPhoneIndex) -> dict[str, object]:
     return {
         "phone_e164": row.phone_e164,
         "user_label": row.user_label,
         "active": row.active,
-        "auphere_channel_id": (
-            str(row.auphere_channel_id) if row.auphere_channel_id else None
-        ),
+        "auphere_channel_id": (str(row.auphere_channel_id) if row.auphere_channel_id else None),
     }
 
 
-async def _validate_channel_id(
-    global_session: AsyncSession, channel_id: uuid.UUID
-) -> None:
+async def _validate_channel_id(global_session: AsyncSession, channel_id: uuid.UUID) -> None:
     """The channel registry is global (no RLS). Validate from the
     unscoped session passed by ``get_db_session`` — calling this from
     the tenant-scoped session would not find any rows."""
@@ -216,8 +212,7 @@ async def update_owner(
         "backchannel_owner.updated",
         tenant_id=str(tenant_id),
         phone=phone_e164,
-        fields=sorted(patch.keys())
-        + (["auphere_channel_id"] if body.clear_channel_id else []),
+        fields=sorted(patch.keys()) + (["auphere_channel_id"] if body.clear_channel_id else []),
     )
     return _to_out(row)
 

@@ -89,9 +89,7 @@ def test_none_is_empty() -> None:
         ("/Done", "done"),
     ],
 )
-def test_recognised_slash_verbs_route_to_specific_kinds(
-    text: str, expected_kind: str
-) -> None:
+def test_recognised_slash_verbs_route_to_specific_kinds(text: str, expected_kind: str) -> None:
     parsed = parse_owner_message(text)
     assert parsed.kind == expected_kind
     assert parsed.slash_verb == text.lstrip("/").lower()

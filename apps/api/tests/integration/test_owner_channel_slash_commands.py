@@ -268,9 +268,7 @@ class TestHelpCommand:
 
 
 class TestUnknownSlash:
-    async def test_unknown_verb_replies_with_help(
-        self, client, db_session, reply_recorder
-    ):
+    async def test_unknown_verb_replies_with_help(self, client, db_session, reply_recorder):
         ctx = await _seed_full_backchannel(db_session)
 
         r = await _post(client, "/blabla", owner_phone=ctx["owner_phone"])
@@ -295,14 +293,10 @@ class TestYesNoDone:
         assert row.owner_command_kind == "yes"
         assert any("confirmada" in s["text"] for s in reply_recorder)
 
-    async def test_slash_done_marks_done(
-        self, client, db_session, reply_recorder
-    ):
+    async def test_slash_done_marks_done(self, client, db_session, reply_recorder):
         ctx = await _seed_full_backchannel(db_session)
 
-        await _post(
-            client, "/done lo confirmé por teléfono", owner_phone=ctx["owner_phone"]
-        )
+        await _post(client, "/done lo confirmé por teléfono", owner_phone=ctx["owner_phone"])
         row = await _read_consultation(ctx["tenant_id"], ctx["consultation_id"])
         assert row.owner_command_kind == "done"
         assert row.status == "answered"
@@ -360,9 +354,7 @@ class TestHandoff:
 
 
 class TestPause:
-    async def test_pause_sets_tenant_status_paused(
-        self, client, db_session, reply_recorder
-    ):
+    async def test_pause_sets_tenant_status_paused(self, client, db_session, reply_recorder):
         ctx = await _seed_full_backchannel(db_session)
 
         r = await _post(client, "/pause", owner_phone=ctx["owner_phone"])
@@ -433,9 +425,7 @@ class TestTOFU:
             row.confirmed_at = None
             await session.commit()
 
-    async def test_first_yes_confirms_and_replies_welcome(
-        self, client, db_session, reply_recorder
-    ):
+    async def test_first_yes_confirms_and_replies_welcome(self, client, db_session, reply_recorder):
         ctx = await _seed_full_backchannel(db_session)
         await self._set_unconfirmed(db_session, ctx["owner_phone"])
 
@@ -470,9 +460,7 @@ class TestTOFU:
         cons = await _read_consultation(ctx["tenant_id"], ctx["consultation_id"])
         assert cons.status == "sent"
 
-    async def test_slash_pause_blocked_until_confirmation(
-        self, client, db_session, reply_recorder
-    ):
+    async def test_slash_pause_blocked_until_confirmation(self, client, db_session, reply_recorder):
         """Slash side effects are blocked behind TOFU — a /pause from
         an unconfirmed phone must NOT change the tenant status."""
         ctx = await _seed_full_backchannel(db_session)
@@ -485,9 +473,7 @@ class TestTOFU:
         assert tenant.status == TenantStatus.ACTIVE  # unchanged
         assert any("registrado como dueño" in s["text"] for s in reply_recorder)
 
-    async def test_confirmed_owner_skips_tofu(
-        self, client, db_session, reply_recorder
-    ):
+    async def test_confirmed_owner_skips_tofu(self, client, db_session, reply_recorder):
         """Control case — once confirmed_at is set, the webhook proceeds
         to the normal slash-command dispatch."""
         ctx = await _seed_full_backchannel(db_session)

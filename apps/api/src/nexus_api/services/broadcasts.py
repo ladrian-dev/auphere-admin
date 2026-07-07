@@ -218,25 +218,25 @@ async def create_broadcast(
     rejected: list[RejectedRecipientOut] = []
     seen: set[str] = set()
 
+    def _reject(reason: str, *, phone: str, variables: dict[str, str]) -> None:
+        rejected.append(RejectedRecipientOut(phone=phone, reason=reason))
+        session.add(
+            BroadcastRecipient(
+                tenant_id=tenant_id,
+                broadcast_id=broadcast.id,
+                phone_e164=phone,
+                params=variables,
+                status=BroadcastRecipientStatus.REJECTED.value,
+                reject_reason=reason,
+            )
+        )
+
     for recipient in payload.recipients:
         e164 = to_e164(recipient.phone)
         display_phone = e164 or recipient.phone[:20]
 
-        def _reject(reason: str, *, phone: str) -> None:
-            rejected.append(RejectedRecipientOut(phone=phone, reason=reason))
-            session.add(
-                BroadcastRecipient(
-                    tenant_id=tenant_id,
-                    broadcast_id=broadcast.id,
-                    phone_e164=phone,
-                    params=recipient.variables,
-                    status=BroadcastRecipientStatus.REJECTED.value,
-                    reject_reason=reason,
-                )
-            )
-
         if e164 is None or not _E164_RE.match(e164):
-            _reject("invalid_phone", phone=display_phone)
+            _reject("invalid_phone", phone=display_phone, variables=recipient.variables)
             continue
         if e164 in seen:
             # Payload artifact, not a real recipient — report it in the
@@ -247,7 +247,11 @@ async def create_broadcast(
 
         missing = resolved.body_vars - set(recipient.variables)
         if missing:
-            _reject(f"missing_variables:{','.join(sorted(missing))}", phone=e164)
+            _reject(
+                f"missing_variables:{','.join(sorted(missing))}",
+                phone=e164,
+                variables=recipient.variables,
+            )
             continue
 
         # Meta's ``from`` format — MUST match what the inbound webhook
@@ -262,7 +266,7 @@ async def create_broadcast(
             )
         )
         if opted_out is not None:
-            _reject("opted_out", phone=e164)
+            _reject("opted_out", phone=e164, variables=recipient.variables)
             continue
 
         customer = await upsert_customer(session, identifier=wa_identifier)

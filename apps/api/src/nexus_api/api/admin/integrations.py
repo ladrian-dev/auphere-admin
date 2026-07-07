@@ -110,5 +110,3 @@ async def set_agendapro_public_url(
         updated_at=datetime.now(UTC),
         audit_log_id=audit.id,
     )
-
-

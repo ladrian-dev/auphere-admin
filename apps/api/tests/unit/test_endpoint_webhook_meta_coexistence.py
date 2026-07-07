@@ -127,9 +127,7 @@ async def test_webhook_enqueues_message_echo_to_dedicated_stream(
     assert len(entries) == 1
     _entry_id, fields = entries[0]
     decoded = {
-        k.decode() if isinstance(k, bytes) else k: (
-            v.decode() if isinstance(v, bytes) else v
-        )
+        k.decode() if isinstance(k, bytes) else k: (v.decode() if isinstance(v, bytes) else v)
         for k, v in fields.items()
     }
     assert decoded["tenant_id"] == str(tenant_id)
@@ -172,9 +170,7 @@ async def test_webhook_enqueues_app_state_sync_with_raw_value_for_consumer(
     assert len(entries) == 1
     _entry_id, fields = entries[0]
     decoded = {
-        k.decode() if isinstance(k, bytes) else k: (
-            v.decode() if isinstance(v, bytes) else v
-        )
+        k.decode() if isinstance(k, bytes) else k: (v.decode() if isinstance(v, bytes) else v)
         for k, v in fields.items()
     }
     assert decoded["tenant_id"] == str(tenant_id)
@@ -218,9 +214,7 @@ async def test_webhook_enqueues_history_with_message_count_and_error_code(
     assert len(entries) == 1
     _entry_id, fields = entries[0]
     decoded = {
-        k.decode() if isinstance(k, bytes) else k: (
-            v.decode() if isinstance(v, bytes) else v
-        )
+        k.decode() if isinstance(k, bytes) else k: (v.decode() if isinstance(v, bytes) else v)
         for k, v in fields.items()
     }
     assert decoded["tenant_id"] == str(tenant_id)

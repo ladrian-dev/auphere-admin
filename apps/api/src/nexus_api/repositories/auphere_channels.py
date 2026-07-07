@@ -70,9 +70,7 @@ class AuphereChannelRepository:
         rows = await self._session.execute(stmt)
         return rows.scalars().all()
 
-    async def get_by_id(
-        self, channel_id: uuid.UUID
-    ) -> AuphereOwnerChannel | None:
+    async def get_by_id(self, channel_id: uuid.UUID) -> AuphereOwnerChannel | None:
         return await self._session.get(AuphereOwnerChannel, channel_id)
 
     async def get_by_phone(
@@ -81,9 +79,7 @@ class AuphereChannelRepository:
         """Given the destination phone of an incoming message, find the
         channel row. Active-only by default so a deactivated number's
         traffic is rejected at the webhook layer."""
-        stmt = select(AuphereOwnerChannel).where(
-            AuphereOwnerChannel.phone_e164 == phone_e164
-        )
+        stmt = select(AuphereOwnerChannel).where(AuphereOwnerChannel.phone_e164 == phone_e164)
         if only_active:
             stmt = stmt.where(AuphereOwnerChannel.active.is_(True))
         row = await self._session.execute(stmt)
@@ -104,9 +100,7 @@ class AuphereChannelRepository:
         row = await self._session.execute(stmt)
         return row.scalar_one_or_none()
 
-    async def get_default(
-        self, *, provider: str = "meta"
-    ) -> AuphereOwnerChannel | None:
+    async def get_default(self, *, provider: str = "meta") -> AuphereOwnerChannel | None:
         """Resolver fallback — the row marked ``is_default=true`` for
         the provider. The partial unique index guarantees at most one
         per provider; returns ``None`` when the registry is empty for

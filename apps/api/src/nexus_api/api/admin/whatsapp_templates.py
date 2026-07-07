@@ -72,8 +72,7 @@ class TemplateCreateIn(BaseModel):
     components: list[dict[str, Any]] = Field(
         min_length=1,
         description=(
-            "Cloud API native components — e.g. "
-            '[{"type":"BODY","text":"Hola {{nombre}} ..."}]'
+            'Cloud API native components — e.g. [{"type":"BODY","text":"Hola {{nombre}} ..."}]'
         ),
     )
 
@@ -82,8 +81,7 @@ class TemplateCreateIn(BaseModel):
     def _validate_name(cls, v: str) -> str:
         if not _TEMPLATE_NAME_RE.match(v):
             raise ValueError(
-                "name must be lowercase letters, digits and underscores "
-                "(e.g. reminder_24h)"
+                "name must be lowercase letters, digits and underscores (e.g. reminder_24h)"
             )
         return v
 
@@ -219,9 +217,7 @@ async def delete_whatsapp_template(
     )
     session.add(audit)
     await session.flush()
-    log.info(
-        "whatsapp_templates.deleted", tenant_id=str(tenant_id), name=name
-    )
+    log.info("whatsapp_templates.deleted", tenant_id=str(tenant_id), name=name)
     return TemplateDeleteOut(
         name=name,
         deleted=bool(result.get("success", True)),

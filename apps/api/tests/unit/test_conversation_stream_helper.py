@@ -62,9 +62,7 @@ class TestPublishConversationEvent:
     async def test_payload_optional(self) -> None:
         redis = _StubRedis()
         cid = uuid.uuid4()
-        await publish_conversation_event(
-            redis, conversation_id=cid, event="agent.toggled"
-        )
+        await publish_conversation_event(redis, conversation_id=cid, event="agent.toggled")
         assert json.loads(redis.published[0][1]) == {"event": "agent.toggled"}
 
     @pytest.mark.asyncio

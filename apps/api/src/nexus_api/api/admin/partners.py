@@ -161,7 +161,9 @@ async def create_key(
             api_key_id=key.id,
             payload={"type": body.type, "scopes": body.scopes},
         )
-    return ApiKeyCreatedOut(plaintext=generated.plaintext, **ApiKeyOut.model_validate(key).model_dump())
+    return ApiKeyCreatedOut(
+        plaintext=generated.plaintext, **ApiKeyOut.model_validate(key).model_dump()
+    )
 
 
 @router.post(
@@ -211,7 +213,9 @@ async def rotate_key(
             api_key_id=new.id,
             payload={"replaces": str(key_id), "grace_hours": body.grace_hours},
         )
-    return ApiKeyCreatedOut(plaintext=generated.plaintext, **ApiKeyOut.model_validate(new).model_dump())
+    return ApiKeyCreatedOut(
+        plaintext=generated.plaintext, **ApiKeyOut.model_validate(new).model_dump()
+    )
 
 
 @router.post("/{partner_id}/keys/{key_id}/revoke", response_model=ApiKeyOut)

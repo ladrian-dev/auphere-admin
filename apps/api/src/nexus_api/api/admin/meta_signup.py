@@ -367,11 +367,7 @@ async def meta_test_send(
         await client.close()
 
     messages = result.get("messages") or []
-    wamid = (
-        messages[0].get("id")
-        if messages and isinstance(messages[0], dict)
-        else None
-    )
+    wamid = messages[0].get("id") if messages and isinstance(messages[0], dict) else None
     if not isinstance(wamid, str):
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

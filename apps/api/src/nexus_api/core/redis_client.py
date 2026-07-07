@@ -32,9 +32,7 @@ def _sanitize_redis_url(url: str) -> str:
     if not parts.query:
         return url
     kept = [
-        (k, v)
-        for k, v in parse_qsl(parts.query, keep_blank_values=True)
-        if k != "socket_timeout"
+        (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "socket_timeout"
     ]
     return urlunsplit(parts._replace(query=urlencode(kept)))
 

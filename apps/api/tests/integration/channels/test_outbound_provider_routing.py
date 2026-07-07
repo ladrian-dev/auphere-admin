@@ -145,9 +145,7 @@ async def test_meta_channel_routes_to_meta_adapter(meta_tenant):
     msg_id = await _seed_pending(meta_tenant, "hola por Meta")
 
     sm = get_sessionmaker()
-    await _drain_tenant(
-        sm, meta_tenant["tenant_id"], {"other": other, "meta": meta}, batch_size=10
-    )
+    await _drain_tenant(sm, meta_tenant["tenant_id"], {"other": other, "meta": meta}, batch_size=10)
 
     msg = await _read(meta_tenant["tenant_id"], msg_id)
     assert msg.status is MessageStatus.SENT
@@ -203,9 +201,7 @@ async def test_meta_token_invalidation_flags_needs_reauth(meta_tenant):
         await session.commit()
 
     msg_id = await _seed_pending(meta_tenant, "se cayó el token")
-    await _drain_tenant(
-        sm, tid, {"meta": TokenInvalidatedAdapter()}, batch_size=10
-    )
+    await _drain_tenant(sm, tid, {"meta": TokenInvalidatedAdapter()}, batch_size=10)
 
     msg = await _read(tid, msg_id)
     assert msg.status is MessageStatus.FAILED
@@ -213,9 +209,7 @@ async def test_meta_token_invalidation_flags_needs_reauth(meta_tenant):
     async with sm() as session, tenant_scoped_session(session, tid):
         row = (
             await session.execute(
-                select(TenantCredentials).where(
-                    TenantCredentials.integration == INTEGRATION_KEY
-                )
+                select(TenantCredentials).where(TenantCredentials.integration == INTEGRATION_KEY)
             )
         ).scalar_one()
         assert row.needs_reauth is True

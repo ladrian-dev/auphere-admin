@@ -213,9 +213,7 @@ async def handle_owner_inbound(
                 idx_fresh = await session.get(OwnerPhoneIndex, sender)
                 if idx_fresh is not None:
                     idx_fresh.confirmed_at = datetime.now(UTC)
-            await _send_owner_reply(
-                channel=channel, to_phone=sender, text=_TOFU_CONFIRMED_TEXT
-            )
+            await _send_owner_reply(channel=channel, to_phone=sender, text=_TOFU_CONFIRMED_TEXT)
             log.info(
                 "owner_channel.tofu_confirmed",
                 tenant_id=str(tenant_id),
@@ -223,9 +221,7 @@ async def handle_owner_inbound(
             )
             return {"status": "tofu_confirmed"}
 
-        await _send_owner_reply(
-            channel=channel, to_phone=sender, text=_TOFU_WELCOME_TEXT
-        )
+        await _send_owner_reply(channel=channel, to_phone=sender, text=_TOFU_WELCOME_TEXT)
         log.info(
             "owner_channel.tofu_pending",
             tenant_id=str(tenant_id),

@@ -207,9 +207,7 @@ async def _stage_v1(client, admin_headers, tenant_id) -> int:
     return int(response.json()["version"])
 
 
-async def test_patch_runtime_capabilities_updates_staged(
-    client, admin_headers, seed_tenants
-):
+async def test_patch_runtime_capabilities_updates_staged(client, admin_headers, seed_tenants):
     tid = seed_tenants["a"]
     version = await _stage_v1(client, admin_headers, tid)
     body = {
@@ -262,9 +260,7 @@ async def test_patch_runtime_refuses_active(client, admin_headers, seed_tenants)
     assert "STAGED" in response.json()["detail"]
 
 
-async def test_patch_runtime_returns_404_for_unknown_version(
-    client, admin_headers, seed_tenants
-):
+async def test_patch_runtime_returns_404_for_unknown_version(client, admin_headers, seed_tenants):
     tid = seed_tenants["a"]
     body = {
         "runtime_memory_tool": False,
@@ -281,9 +277,7 @@ async def test_patch_runtime_returns_404_for_unknown_version(
     assert response.status_code == 404
 
 
-async def test_patch_runtime_writes_audit_log(
-    client, admin_headers, seed_tenants, db_session
-):
+async def test_patch_runtime_writes_audit_log(client, admin_headers, seed_tenants, db_session):
     """Every runtime capability change must end up in the audit log so
     operators can see who turned memory tool on for a tenant and when.
     """
@@ -310,13 +304,19 @@ async def test_patch_runtime_writes_audit_log(
 
     await db_session.execute(_text("RESET ROLE"))
     rows = (
-        await db_session.execute(
-            __import__("sqlalchemy").select(AuditLog).where(
-                AuditLog.tenant_id == tid,
-                AuditLog.action == "agent_config.runtime.update",
+        (
+            await db_session.execute(
+                __import__("sqlalchemy")
+                .select(AuditLog)
+                .where(
+                    AuditLog.tenant_id == tid,
+                    AuditLog.action == "agent_config.runtime.update",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].after_json["runtime_memory_tool"] is True
 

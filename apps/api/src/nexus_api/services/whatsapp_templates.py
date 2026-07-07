@@ -80,9 +80,7 @@ async def fetch_templates(session: AsyncSession) -> tuple[list[TemplateOut], str
     client = build_meta_client()
     try:
         try:
-            payload = await client.list_templates(
-                waba_id=creds.waba_id, access_token=creds.bisuat
-            )
+            payload = await client.list_templates(waba_id=creds.waba_id, access_token=creds.bisuat)
         except MetaAPIError as exc:
             raise meta_error_to_http(exc, context="el listado de plantillas") from exc
     finally:

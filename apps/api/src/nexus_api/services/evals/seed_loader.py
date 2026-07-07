@@ -117,11 +117,7 @@ async def load_seed_dataset(
     # ``uq_eval_cases_dataset_idx`` unique constraint guarantees there's
     # at most one row per (dataset_id, idx).
     existing_rows = (
-        (
-            await session.execute(
-                sa.select(EvalCase).where(EvalCase.dataset_id == dataset.id)
-            )
-        )
+        (await session.execute(sa.select(EvalCase).where(EvalCase.dataset_id == dataset.id)))
         .scalars()
         .all()
     )
@@ -162,9 +158,7 @@ async def load_seed_dataset(
         for row in stale:
             try:
                 async with session.begin_nested():
-                    await session.execute(
-                        sa.delete(EvalCase).where(EvalCase.id == row.id)
-                    )
+                    await session.execute(sa.delete(EvalCase).where(EvalCase.id == row.id))
             except sa.exc.IntegrityError:
                 log.warning(
                     "evals.seed.stale_case_kept",

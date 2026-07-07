@@ -1,9 +1,9 @@
 """Admin catalog endpoints — list + detail.
 
 The catalog merges custom seeds (whatsapp_meta,
-agendapro, woocommerce) with the dynamic auth_configs that Composio
-surfaces. The ``fake_composio`` fixture pre-registers googlecalendar /
-calendly / notion in the fake Composio project.
+agendapro, woocommerce, amigable_cobro) with the dynamic auth_configs
+that Composio surfaces. The ``fake_composio`` fixture pre-registers
+googlecalendar / calendly / notion in the fake Composio project.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ async def test_list_catalog_merges_seeds_and_composio(
     slugs = {c["slug"] for c in r.json()}
     assert slugs == {
         "agendapro",
+        "amigable_cobro",
         "calendly",
         "googlecalendar",
         "notion",
@@ -40,6 +41,7 @@ async def test_list_catalog_without_composio_falls_back_to_seeds(
         slugs = {c["slug"] for c in r.json()}
         assert slugs == {
             "agendapro",
+            "amigable_cobro",
             "whatsapp_meta",
             "woocommerce",
         }

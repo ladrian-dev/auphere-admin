@@ -55,9 +55,7 @@ async def _insert_channel(
         country_code=country,
         provider=provider,
         provider_phone_id=provider_phone_id,
-        access_token_encrypted=(
-            access_token.encode("utf-8") if access_token else None
-        ),
+        access_token_encrypted=(access_token.encode("utf-8") if access_token else None),
         active=active,
         is_default=is_default,
     )
@@ -71,15 +69,9 @@ async def _insert_channel(
 
 
 class TestRepository:
-    async def test_get_by_phone_returns_active_only_by_default(
-        self, db_session
-    ):
-        active = await _insert_channel(
-            db_session, phone="+56000000001", name="A", active=True
-        )
-        await _insert_channel(
-            db_session, phone="+56000000002", name="B", active=False
-        )
+    async def test_get_by_phone_returns_active_only_by_default(self, db_session):
+        active = await _insert_channel(db_session, phone="+56000000001", name="A", active=True)
+        await _insert_channel(db_session, phone="+56000000002", name="B", active=False)
         repo = AuphereChannelRepository(db_session)
         hit = await repo.get_by_phone("+56000000001")
         assert hit is not None and hit.id == active.id
@@ -109,10 +101,7 @@ class TestRepository:
         assert hit is not None and hit.id == hit_row.id
         # Inactive rows are hidden by default at the webhook layer.
         assert await repo.get_by_provider_phone_id("222000222") is None
-        assert (
-            await repo.get_by_provider_phone_id("222000222", only_active=False)
-            is not None
-        )
+        assert await repo.get_by_provider_phone_id("222000222", only_active=False) is not None
 
     async def test_get_default_returns_meta_default(self, db_session):
         await _insert_channel(
@@ -151,12 +140,8 @@ class TestRepository:
             )
 
     async def test_list_all_active_only_by_default(self, db_session):
-        await _insert_channel(
-            db_session, phone="+56000000009", name="active", active=True
-        )
-        await _insert_channel(
-            db_session, phone="+56000000010", name="inactive", active=False
-        )
+        await _insert_channel(db_session, phone="+56000000009", name="active", active=True)
+        await _insert_channel(db_session, phone="+56000000010", name="inactive", active=False)
         repo = AuphereChannelRepository(db_session)
         active = await repo.list_all()
         assert {c.display_name for c in active} == {"active"}
@@ -176,9 +161,7 @@ class TestResolverInbound:
             provider_phone_id="333000333",
             access_token="EAAtoken",
         )
-        resolved = await resolve_channel_for_inbound(
-            db_session, provider_phone_id="333000333"
-        )
+        resolved = await resolve_channel_for_inbound(db_session, provider_phone_id="333000333")
         assert resolved is not None
         assert resolved.phone_e164 == "+56000000020"
         assert resolved.provider == "meta"
@@ -194,17 +177,13 @@ class TestResolverInbound:
             provider_phone_id="444000444",
             access_token=None,
         )
-        resolved = await resolve_channel_for_inbound(
-            db_session, provider_phone_id="444000444"
-        )
+        resolved = await resolve_channel_for_inbound(db_session, provider_phone_id="444000444")
         assert resolved is not None
         assert resolved.access_token is None
         assert resolved.can_send is False
 
     async def test_returns_none_for_foreign_phone_number_id(self, db_session):
-        resolved = await resolve_channel_for_inbound(
-            db_session, provider_phone_id="999999999"
-        )
+        resolved = await resolve_channel_for_inbound(db_session, provider_phone_id="999999999")
         assert resolved is None
 
     async def test_inactive_channel_treated_as_foreign(self, db_session):
@@ -215,9 +194,7 @@ class TestResolverInbound:
             provider_phone_id="555000555",
             active=False,
         )
-        resolved = await resolve_channel_for_inbound(
-            db_session, provider_phone_id="555000555"
-        )
+        resolved = await resolve_channel_for_inbound(db_session, provider_phone_id="555000555")
         assert resolved is None
 
 
@@ -237,9 +214,7 @@ def _owner(
 
 
 class TestResolverOutbound:
-    async def test_uses_pinned_channel_when_owner_has_one(
-        self, db_session, seed_tenants
-    ):
+    async def test_uses_pinned_channel_when_owner_has_one(self, db_session, seed_tenants):
         pinned = await _insert_channel(
             db_session,
             phone="+56000000030",
@@ -259,9 +234,7 @@ class TestResolverOutbound:
         assert resolved is not None
         assert resolved.channel_id == pinned.id
 
-    async def test_falls_back_to_default_when_owner_has_no_pin(
-        self, db_session, seed_tenants
-    ):
+    async def test_falls_back_to_default_when_owner_has_no_pin(self, db_session, seed_tenants):
         await _insert_channel(
             db_session,
             phone="+56000000031",
@@ -277,9 +250,7 @@ class TestResolverOutbound:
         assert resolved is not None
         assert resolved.display_name == "Meta default"
 
-    async def test_returns_none_when_registry_empty(
-        self, db_session, seed_tenants
-    ):
+    async def test_returns_none_when_registry_empty(self, db_session, seed_tenants):
         """No registered channel and no default → backchannel disabled.
         (The legacy settings fallback was removed with YCloud.)"""
         owner = _owner(phone="+56999555666", tenant_id=seed_tenants["a"])
@@ -290,9 +261,7 @@ class TestResolverOutbound:
         resolved = await resolve_channel_for_owner(db_session, owner=owner)
         assert resolved is None
 
-    async def test_inactive_pinned_falls_back_to_default(
-        self, db_session, seed_tenants
-    ):
+    async def test_inactive_pinned_falls_back_to_default(self, db_session, seed_tenants):
         inactive = await _insert_channel(
             db_session,
             phone="+56000000032",
@@ -322,9 +291,7 @@ class TestResolverOutbound:
 # ── Inbound webhook end-to-end (multi-channel) ──────────────────────
 
 
-def _meta_inbound_payload(
-    *, phone_number_id: str, sender: str, text: str
-) -> bytes:
+def _meta_inbound_payload(*, phone_number_id: str, sender: str, text: str) -> bytes:
     return json.dumps(
         {
             "object": "whatsapp_business_account",
@@ -376,9 +343,7 @@ async def _post_meta(client, body: bytes):
 
 
 class TestWebhookMultiChannel:
-    async def test_routes_inbound_to_registered_channel(
-        self, client, db_session
-    ):
+    async def test_routes_inbound_to_registered_channel(self, client, db_session):
         await _insert_channel(
             db_session,
             phone="+56222000001",
@@ -397,9 +362,7 @@ class TestWebhookMultiChannel:
         assert r.status_code == 200, r.text
         assert r.json()["status"] == "owner_channel:ignored:unknown_phone"
 
-    async def test_foreign_phone_number_id_is_tenant_traffic(
-        self, client, db_session
-    ):
+    async def test_foreign_phone_number_id_is_tenant_traffic(self, client, db_session):
         """An event whose phone_number_id is NOT in the registry must go
         down the regular tenant path, never the owner flow."""
         body = _meta_inbound_payload(
@@ -411,9 +374,7 @@ class TestWebhookMultiChannel:
         assert r.status_code == 200
         assert not r.json()["status"].startswith("owner_channel:")
 
-    async def test_inactive_channel_is_tenant_traffic(
-        self, client, db_session
-    ):
+    async def test_inactive_channel_is_tenant_traffic(self, client, db_session):
         """A deactivated Auphere number no longer captures traffic."""
         await _insert_channel(
             db_session,

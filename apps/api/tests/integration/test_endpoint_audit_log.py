@@ -55,9 +55,7 @@ async def _insert_audit(
         # server_default that can't be set on insert from the ORM
         # without breaking the trigger. Bypass RLS for this admin op.
         await db_session.execute(
-            _text(
-                "UPDATE audit_log SET created_at = :ts WHERE id = :id"
-            ),
+            _text("UPDATE audit_log SET created_at = :ts WHERE id = :id"),
             {"ts": created_at, "id": row.id},
         )
         await db_session.commit()
@@ -66,9 +64,7 @@ async def _insert_audit(
 
 async def test_empty_for_fresh_tenant(client, seed_tenants):
     tid = seed_tenants["a"]
-    r = await client.get(
-        f"/admin/tenants/{tid}/audit-log", headers=_ADMIN_HEADERS
-    )
+    r = await client.get(f"/admin/tenants/{tid}/audit-log", headers=_ADMIN_HEADERS)
     assert r.status_code == 200
     body = r.json()
     assert body == {"items": [], "next_cursor": None}
@@ -93,9 +89,7 @@ async def test_returns_entries_newest_first(client, db_session, seed_tenants):
         target="woocommerce",
         created_at=base + timedelta(minutes=5),
     )
-    r = await client.get(
-        f"/admin/tenants/{tid}/audit-log", headers=_ADMIN_HEADERS
-    )
+    r = await client.get(f"/admin/tenants/{tid}/audit-log", headers=_ADMIN_HEADERS)
     assert r.status_code == 200
     items = r.json()["items"]
     assert len(items) == 2
@@ -106,22 +100,14 @@ async def test_returns_entries_newest_first(client, db_session, seed_tenants):
 
 async def test_filter_by_actor_substring(client, db_session, seed_tenants):
     tid = seed_tenants["a"]
-    await _insert_audit(
-        db_session, tenant_id=tid, actor="luis", action="x", target="t1"
-    )
-    await _insert_audit(
-        db_session, tenant_id=tid, actor="alice", action="x", target="t2"
-    )
-    r = await client.get(
-        f"/admin/tenants/{tid}/audit-log?actor=lui", headers=_ADMIN_HEADERS
-    )
+    await _insert_audit(db_session, tenant_id=tid, actor="luis", action="x", target="t1")
+    await _insert_audit(db_session, tenant_id=tid, actor="alice", action="x", target="t2")
+    r = await client.get(f"/admin/tenants/{tid}/audit-log?actor=lui", headers=_ADMIN_HEADERS)
     items = r.json()["items"]
     assert {it["actor"] for it in items} == {"luis"}
 
 
-async def test_filter_by_action_exact_vs_prefix(
-    client, db_session, seed_tenants
-):
+async def test_filter_by_action_exact_vs_prefix(client, db_session, seed_tenants):
     tid = seed_tenants["a"]
     await _insert_audit(
         db_session, tenant_id=tid, actor="luis", action="connector.connected", target="x"
@@ -166,15 +152,27 @@ async def test_filter_by_date_range(client, db_session, seed_tenants):
     tid = seed_tenants["a"]
     base = datetime(2026, 5, 24, 12, 0, 0, tzinfo=UTC)
     await _insert_audit(
-        db_session, tenant_id=tid, actor="l", action="x", target="early",
+        db_session,
+        tenant_id=tid,
+        actor="l",
+        action="x",
+        target="early",
         created_at=base - timedelta(hours=2),
     )
     await _insert_audit(
-        db_session, tenant_id=tid, actor="l", action="x", target="window",
+        db_session,
+        tenant_id=tid,
+        actor="l",
+        action="x",
+        target="window",
         created_at=base,
     )
     await _insert_audit(
-        db_session, tenant_id=tid, actor="l", action="x", target="late",
+        db_session,
+        tenant_id=tid,
+        actor="l",
+        action="x",
+        target="late",
         created_at=base + timedelta(hours=2),
     )
     from urllib.parse import quote
@@ -190,9 +188,7 @@ async def test_filter_by_date_range(client, db_session, seed_tenants):
     assert targets == {"window"}
 
 
-async def test_cursor_pagination_preserves_order(
-    client, db_session, seed_tenants
-):
+async def test_cursor_pagination_preserves_order(client, db_session, seed_tenants):
     tid = seed_tenants["a"]
     base = datetime(2026, 5, 24, 12, 0, 0, tzinfo=UTC)
     # 5 rows, evenly spaced. Page size 2 → expect 3 pages.
@@ -229,29 +225,19 @@ async def test_tenant_isolation(client, db_session, seed_tenants):
     audit feed even if the same actor + action + target string."""
     a_id = seed_tenants["a"]
     b_id = seed_tenants["b"]
-    await _insert_audit(
-        db_session, tenant_id=a_id, actor="luis", action="x", target="secret-a"
-    )
-    await _insert_audit(
-        db_session, tenant_id=b_id, actor="luis", action="x", target="secret-b"
-    )
-    r_a = await client.get(
-        f"/admin/tenants/{a_id}/audit-log", headers=_ADMIN_HEADERS
-    )
-    r_b = await client.get(
-        f"/admin/tenants/{b_id}/audit-log", headers=_ADMIN_HEADERS
-    )
+    await _insert_audit(db_session, tenant_id=a_id, actor="luis", action="x", target="secret-a")
+    await _insert_audit(db_session, tenant_id=b_id, actor="luis", action="x", target="secret-b")
+    r_a = await client.get(f"/admin/tenants/{a_id}/audit-log", headers=_ADMIN_HEADERS)
+    r_b = await client.get(f"/admin/tenants/{b_id}/audit-log", headers=_ADMIN_HEADERS)
     targets_a = {it["target"] for it in r_a.json()["items"]}
     targets_b = {it["target"] for it in r_b.json()["items"]}
     assert "secret-a" in targets_a and "secret-a" not in targets_b
     assert "secret-b" in targets_b and "secret-b" not in targets_a
 
 
-async def test_distinct_actions_sorted_by_frequency(
-    client, db_session, seed_tenants
-):
+async def test_distinct_actions_sorted_by_frequency(client, db_session, seed_tenants):
     tid = seed_tenants["a"]
-    # 3× connector.connected, 2× agent_config.promote, 1× tenant.created
+    # 3x connector.connected, 2x agent_config.promote, 1x tenant.created
     for _ in range(3):
         await _insert_audit(
             db_session,
@@ -268,12 +254,8 @@ async def test_distinct_actions_sorted_by_frequency(
             action="agent_config.promote",
             target="x",
         )
-    await _insert_audit(
-        db_session, tenant_id=tid, actor="l", action="tenant.created", target="x"
-    )
-    r = await client.get(
-        f"/admin/tenants/{tid}/audit-log/actions", headers=_ADMIN_HEADERS
-    )
+    await _insert_audit(db_session, tenant_id=tid, actor="l", action="tenant.created", target="x")
+    r = await client.get(f"/admin/tenants/{tid}/audit-log/actions", headers=_ADMIN_HEADERS)
     assert r.status_code == 200
     actions = r.json()
     assert actions == [
@@ -294,9 +276,7 @@ async def test_before_after_json_round_trips(client, db_session, seed_tenants):
         before={"runtime_memory_tool": False},
         after={"runtime_memory_tool": True},
     )
-    r = await client.get(
-        f"/admin/tenants/{tid}/audit-log", headers=_ADMIN_HEADERS
-    )
+    r = await client.get(f"/admin/tenants/{tid}/audit-log", headers=_ADMIN_HEADERS)
     item = r.json()["items"][0]
     assert item["before_json"] == {"runtime_memory_tool": False}
     assert item["after_json"] == {"runtime_memory_tool": True}

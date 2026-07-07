@@ -75,9 +75,7 @@ async def _set_tenant(db_session, tenant_id: uuid.UUID) -> None:
 
 
 def _tool(ids: dict[str, uuid.UUID]) -> NexusPostgresMemoryTool:
-    return NexusPostgresMemoryTool(
-        tenant_id=ids["tenant_id"], customer_id=ids["customer_id"]
-    )
+    return NexusPostgresMemoryTool(tenant_id=ids["tenant_id"], customer_id=ids["customer_id"])
 
 
 # ── create + view ────────────────────────────────────────────────────
@@ -328,8 +326,7 @@ async def test_audit_trigger_writes_versions_on_each_op(seeded_tenant, db_sessio
         rows = (
             await db_session.execute(
                 text(
-                    "SELECT operation, content FROM agent_memory_versions "
-                    "ORDER BY versioned_at ASC"
+                    "SELECT operation, content FROM agent_memory_versions ORDER BY versioned_at ASC"
                 )
             )
         ).all()

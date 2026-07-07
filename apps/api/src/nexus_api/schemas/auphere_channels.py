@@ -17,12 +17,12 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
-from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _E164_RE = re.compile(r"^\+[1-9]\d{1,14}$")
-_PROVIDERS: ClassVar = ("meta",)
+# Module-level constant (not a class var) — ClassVar is invalid here.
+_PROVIDERS: tuple[str, ...] = ("meta",)
 
 
 def _validate_e164(value: str) -> str:
@@ -68,9 +68,7 @@ class AuphereOwnerChannelCreateIn(BaseModel):
 
     phone_e164: str = Field(min_length=2, max_length=20)
     display_name: str = Field(min_length=1, max_length=120)
-    country_code: str | None = Field(
-        default=None, min_length=2, max_length=2
-    )
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
     provider: str = Field(default="meta")
     provider_phone_id: str | None = Field(default=None, max_length=120)
     is_default: bool = Field(default=False)
@@ -111,9 +109,7 @@ class AuphereOwnerChannelCreateIn(BaseModel):
     @classmethod
     def _validate_provider(cls, v: str) -> str:
         if v not in _PROVIDERS:
-            raise ValueError(
-                f"provider must be one of {list(_PROVIDERS)}; got {v!r}"
-            )
+            raise ValueError(f"provider must be one of {list(_PROVIDERS)}; got {v!r}")
         return v
 
 
@@ -124,19 +120,14 @@ class AuphereOwnerChannelUpdateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
-    country_code: str | None = Field(
-        default=None, min_length=2, max_length=2
-    )
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
     provider_phone_id: str | None = Field(default=None, max_length=120)
     active: bool | None = Field(default=None)
     is_default: bool | None = Field(default=None)
     webhook_secret: str | None = Field(
         default=None,
         max_length=200,
-        description=(
-            "Rotates the per-channel HMAC secret. Pass an empty string "
-            "to clear it."
-        ),
+        description=("Rotates the per-channel HMAC secret. Pass an empty string to clear it."),
     )
     access_token: str | None = Field(
         default=None,

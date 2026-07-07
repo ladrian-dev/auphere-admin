@@ -127,9 +127,9 @@ async def test_me_alias_resolves_to_current_customer_only(db_session, tenants_ab
     # Verify the row's customer_id is X (not the literal string "me").
     async with db_session.begin():
         await set_tenant(db_session, a)
-        rows = (await db_session.execute(
-            text("SELECT customer_id, content FROM agent_memories")
-        )).all()
+        rows = (
+            await db_session.execute(text("SELECT customer_id, content FROM agent_memories"))
+        ).all()
         # Exactly one row — the one X just wrote.
         assert len(rows) == 1
         assert str(rows[0][0]) == str(x_id)
@@ -194,9 +194,7 @@ async def test_unscoped_session_sees_no_memories(db_session, tenants_ab) -> None
         # No set_tenant — app.tenant_id is unset → RLS hides everything.
         await db_session.execute(text("RESET ROLE"))
         await db_session.execute(text("SET LOCAL ROLE nexus_app"))
-        rows = (await db_session.execute(
-            text("SELECT count(*) FROM agent_memories")
-        )).scalar_one()
+        rows = (await db_session.execute(text("SELECT count(*) FROM agent_memories"))).scalar_one()
         assert rows == 0
 
 
@@ -214,6 +212,4 @@ def _create(path: str, file_text: str):
     """Build a ``BetaMemoryTool20250818CreateCommand``."""
     from anthropic.types.beta import BetaMemoryTool20250818CreateCommand
 
-    return BetaMemoryTool20250818CreateCommand(
-        command="create", path=path, file_text=file_text
-    )
+    return BetaMemoryTool20250818CreateCommand(command="create", path=path, file_text=file_text)

@@ -59,7 +59,7 @@ def _to_out(row: AuphereOwnerChannel) -> AuphereOwnerChannelOut:
     )
 
 
-def _audit_snapshot(row: AuphereOwnerChannel) -> dict:
+def _audit_snapshot(row: AuphereOwnerChannel) -> dict[str, object]:
     """Snapshot fields we want in the audit log. The encrypted secret
     column is INTENTIONALLY excluded — even bytes form leaks rotation
     cadence to anyone reading audit. We only record whether it exists."""
@@ -82,8 +82,8 @@ async def _record_audit(
     actor: str,
     action: str,
     row: AuphereOwnerChannel,
-    before: dict | None = None,
-    after: dict | None = None,
+    before: dict[str, object] | None = None,
+    after: dict[str, object] | None = None,
 ) -> None:
     """Write a platform-level audit row (tenant_id = NULL). Uses
     :meth:`AuditRepository.record` with ``platform=True`` — migration
@@ -262,16 +262,12 @@ async def update_channel(
         # encrypts on the way in via the TypeDecorator.
         if "webhook_secret" in patch:
             secret = patch["webhook_secret"]
-            row.webhook_secret_encrypted = (
-                secret.encode("utf-8") if secret else None
-            )
+            row.webhook_secret_encrypted = secret.encode("utf-8") if secret else None
 
         # Access token rotation: same semantics as webhook_secret.
         if "access_token" in patch:
             token = patch["access_token"]
-            row.access_token_encrypted = (
-                token.encode("utf-8") if token else None
-            )
+            row.access_token_encrypted = token.encode("utf-8") if token else None
 
         await session.flush()
         await session.refresh(row)

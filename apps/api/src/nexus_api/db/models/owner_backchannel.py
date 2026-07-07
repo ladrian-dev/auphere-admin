@@ -142,9 +142,7 @@ class OwnerPhoneIndex(Base):
     # effects — only an instructions reply goes out. Existing Phase 1
     # owners were backfilled to ``added_at`` by the migration so they
     # stay operational.
-    confirmed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # Allowed provider values for ``AuphereOwnerChannel.provider`` — kept as
@@ -182,17 +180,11 @@ class AuphereOwnerChannel(UUIDPrimaryKey, TimestampMixin, Base):
     # ``id``, ``created_at`` and ``updated_at`` come from the mixins
     # (server-default UUID + ``now()``) — same pattern the rest of the
     # codebase uses, so tests + admin endpoints don't need to set them.
-    phone_e164: Mapped[str] = mapped_column(
-        String(20), nullable=False, unique=True
-    )
+    phone_e164: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
-    country_code: Mapped[str | None] = mapped_column(
-        String(2), nullable=True
-    )
+    country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
     provider: Mapped[str] = mapped_column(String(20), nullable=False)
-    provider_phone_id: Mapped[str | None] = mapped_column(
-        String(120), nullable=True
-    )
+    provider_phone_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # Fernet-encrypted at rest; legacy YCloud-era column kept for
     # compatibility (Meta verifies webhooks with the app secret, not a
     # per-number secret). See ``db.types.FernetEncrypted``.
@@ -201,12 +193,6 @@ class AuphereOwnerChannel(UUIDPrimaryKey, TimestampMixin, Base):
     )
     # Fernet-encrypted Meta access token (system user / BISUAT) used to
     # send from this number. NULL = sends from this channel are held.
-    access_token_encrypted: Mapped[bytes | None] = mapped_column(
-        _FernetEncrypted(), nullable=True
-    )
-    active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True
-    )
-    is_default: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
+    access_token_encrypted: Mapped[bytes | None] = mapped_column(_FernetEncrypted(), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

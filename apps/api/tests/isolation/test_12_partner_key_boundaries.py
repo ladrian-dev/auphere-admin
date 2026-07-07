@@ -140,10 +140,14 @@ async def test_mint_own_client_succeeds_and_is_tenant_scoped(
 
     # Mint is audited with the token's jti.
     audit = (
-        await db_session.execute(
-            sa.select(EmbedAuditLog).where(EmbedAuditLog.event == "session.minted")
+        (
+            await db_session.execute(
+                sa.select(EmbedAuditLog).where(EmbedAuditLog.event == "session.minted")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert any(row.jti == claims.jti for row in audit)
 
 
@@ -270,16 +274,22 @@ async def test_provisioned_clients_are_partner_scoped(client, two_partners) -> N
     """Same external ref provisioned by A and B lands on two DIFFERENT
     tenants — the ref namespace is per-partner."""
     ref = {"external_client_ref": "shared-ref", "name": "Same Name"}
-    ra = await client.post("/v1/partners/clients", json=ref, headers=_auth(two_partners["a"]["key"]))
-    rb = await client.post("/v1/partners/clients", json=ref, headers=_auth(two_partners["b"]["key"]))
+    ra = await client.post(
+        "/v1/partners/clients", json=ref, headers=_auth(two_partners["a"]["key"])
+    )
+    rb = await client.post(
+        "/v1/partners/clients", json=ref, headers=_auth(two_partners["b"]["key"])
+    )
     assert ra.status_code == rb.status_code == 200
 
     ta = await client.post(
-        "/v1/widget-sessions", json={"external_client_ref": "shared-ref"},
+        "/v1/widget-sessions",
+        json={"external_client_ref": "shared-ref"},
         headers=_auth(two_partners["a"]["key"]),
     )
     tb = await client.post(
-        "/v1/widget-sessions", json={"external_client_ref": "shared-ref"},
+        "/v1/widget-sessions",
+        json={"external_client_ref": "shared-ref"},
         headers=_auth(two_partners["b"]["key"]),
     )
     from nexus_api.core.embed_jwt import verify_widget_token

@@ -18,6 +18,7 @@ import uuid
 import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import (
     EmbedContext,
@@ -55,7 +56,7 @@ router = APIRouter(prefix="/v1/embed", tags=["embed"])
 async def partner_config(
     response: Response,
     p: str = Query(min_length=2, max_length=80, description="partner slug"),
-    session=Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session),
 ) -> PartnerConfigOut:
     """Union of ``allowed_origins`` across the partner's active keys.
     Cached at the CDN edge — the embed middleware calls this on every

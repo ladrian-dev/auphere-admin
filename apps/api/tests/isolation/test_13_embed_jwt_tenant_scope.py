@@ -150,9 +150,7 @@ async def test_revoking_key_kills_live_token(client, embed_world, db_session) ->
 async def test_removing_mapping_kills_live_token(client, embed_world, db_session) -> None:
     token = _token_for(embed_world["a"])
     await db_session.execute(
-        sa.delete(PartnerTenant).where(
-            PartnerTenant.partner_id == embed_world["a"]["partner_id"]
-        )
+        sa.delete(PartnerTenant).where(PartnerTenant.partner_id == embed_world["a"]["partner_id"])
     )
     await db_session.commit()
     resp = await client.get("/v1/embed/status", headers=_auth(token))
@@ -191,9 +189,7 @@ async def test_partner_config_unknown_slug_is_empty(client) -> None:
     assert resp.json()["allowed_origins"] == []
 
 
-async def test_rls_blocks_direct_cross_tenant_channel_read(
-    client, embed_world, db_session
-) -> None:
+async def test_rls_blocks_direct_cross_tenant_channel_read(client, embed_world, db_session) -> None:
     """Belt-and-braces: assert directly in the DB that a session scoped
     to tenant A sees zero channels of tenant B."""
     from .conftest import set_tenant
@@ -201,10 +197,14 @@ async def test_rls_blocks_direct_cross_tenant_channel_read(
     async with db_session.begin():
         await set_tenant(db_session, embed_world["a"]["tenant_id"])
         rows = (
-            await db_session.execute(
-                sa.select(Channel.provider_identifier).where(
-                    Channel.tenant_id == embed_world["b"]["tenant_id"]
+            (
+                await db_session.execute(
+                    sa.select(Channel.provider_identifier).where(
+                        Channel.tenant_id == embed_world["b"]["tenant_id"]
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert rows == []

@@ -44,9 +44,7 @@ async def test_list_conversations_with_data(client, admin_headers, seed_tenants,
     assert len(r.json()["items"]) == 3
 
 
-async def test_list_conversations_exposes_provider(
-    client, admin_headers, seed_tenants, db_session
-):
+async def test_list_conversations_exposes_provider(client, admin_headers, seed_tenants, db_session):
     """Each conversation carries its channel's transport provider so the
     panel can badge the provider per thread instead of assuming it."""
     tid = seed_tenants["a"]
@@ -450,9 +448,7 @@ async def test_operator_send_persists_outbound_pending_message(
 
     # Cross-check the DB row directly.
     msg = (
-        await db_session.execute(
-            select(Message).where(Message.id == uuid.UUID(body["id"]))
-        )
+        await db_session.execute(select(Message).where(Message.id == uuid.UUID(body["id"])))
     ).scalar_one()
     assert msg.actor_kind == "operator"
     assert msg.status.value == "pending"
@@ -476,9 +472,7 @@ async def test_operator_send_refuses_when_agent_active(
     assert r.json()["detail"]["error"] == "agent_active"
 
 
-async def test_operator_send_unknown_conversation_returns_404(
-    client, admin_headers, seed_tenants
-):
+async def test_operator_send_unknown_conversation_returns_404(client, admin_headers, seed_tenants):
     tid = seed_tenants["a"]
     r = await client.post(
         f"/admin/tenants/{tid}/conversations/{uuid.uuid4()}/send",
@@ -512,9 +506,7 @@ async def test_operator_send_empty_content_rejected(
     assert r.status_code == 422
 
 
-async def test_operator_send_audit_log_recorded(
-    client, admin_headers, seed_tenants, db_session
-):
+async def test_operator_send_audit_log_recorded(client, admin_headers, seed_tenants, db_session):
     from sqlalchemy import select
 
     from nexus_api.db.models import AuditLog
@@ -557,9 +549,7 @@ async def _collect_published(fake_redis, channel: str, count: int, timeout: floa
     out: list[dict] = []
     deadline = asyncio.get_event_loop().time() + timeout
     while len(out) < count and asyncio.get_event_loop().time() < deadline:
-        msg = await pubsub.get_message(
-            ignore_subscribe_messages=True, timeout=0.2
-        )
+        msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.2)
         if msg is None:
             continue
         data = msg.get("data")

@@ -35,9 +35,7 @@ async def _insert_channel(db_session, *, phone: str = "+56999000001") -> str:
 class TestList:
     async def test_empty(self, client, db_session, seed_tenants):
         tid = seed_tenants["a"]
-        r = await client.get(
-            f"/admin/tenants/{tid}/backchannel/owners", headers=_ADMIN
-        )
+        r = await client.get(f"/admin/tenants/{tid}/backchannel/owners", headers=_ADMIN)
         assert r.status_code == 200
         assert r.json() == []
 
@@ -120,9 +118,7 @@ class TestRegister:
         assert r.status_code == 400
         assert "inactive" in r.json()["detail"]
 
-    async def test_phone_cross_tenant_collision_returns_409(
-        self, client, db_session, seed_tenants
-    ):
+    async def test_phone_cross_tenant_collision_returns_409(self, client, db_session, seed_tenants):
         # Register the same phone under tenant A first.
         a, b = seed_tenants["a"], seed_tenants["b"]
         r1 = await client.post(
@@ -237,9 +233,7 @@ class TestDelete:
         )
         assert r.status_code == 204
         # And re-listing returns empty.
-        rs = await client.get(
-            f"/admin/tenants/{tid}/backchannel/owners", headers=_ADMIN
-        )
+        rs = await client.get(f"/admin/tenants/{tid}/backchannel/owners", headers=_ADMIN)
         assert rs.json() == []
 
     async def test_404_unknown(self, client, db_session, seed_tenants):

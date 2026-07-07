@@ -19,6 +19,7 @@ admin token.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -58,7 +59,9 @@ def key_is_active(key: PartnerApiKey, *, now: datetime) -> bool:
     return True
 
 
-def require_partner_key(scope: str):
+def require_partner_key(
+    scope: str,
+) -> Callable[..., Awaitable[PartnerContext]]:
     """Dependency factory: ``Depends(require_partner_key("provision"))``."""
 
     async def _dependency(

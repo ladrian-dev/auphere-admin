@@ -47,6 +47,7 @@ async def _set_tenant(session, tenant_id: uuid.UUID) -> None:
     )
     await session.execute(sa.text("SET LOCAL ROLE nexus_app"))
 
+
 _TEMPLATE = TemplateOut(
     id="t1",
     name="cobro_pendiente",
@@ -116,9 +117,7 @@ async def world(db_session):
         )
     )
     db_session.add(
-        PartnerTenant(
-            partner_id=partner_id, external_client_ref="c1", tenant_id=tenant_id
-        )
+        PartnerTenant(partner_id=partner_id, external_client_ref="c1", tenant_id=tenant_id)
     )
     await db_session.commit()
     await db_session.refresh(channel)
@@ -143,8 +142,14 @@ def _payload(**overrides):
         "template_name": "cobro_pendiente",
         "language": "es",
         "recipients": [
-            {"phone": "+56 9 1111 2223", "variables": {"cliente": "Ana", "saldo_pendiente": "$12.000"}},
-            {"phone": "+56911112224", "variables": {"cliente": "Luis", "saldo_pendiente": "$8.000"}},
+            {
+                "phone": "+56 9 1111 2223",
+                "variables": {"cliente": "Ana", "saldo_pendiente": "$12.000"},
+            },
+            {
+                "phone": "+56911112224",
+                "variables": {"cliente": "Luis", "saldo_pendiente": "$8.000"},
+            },
         ],
     }
     payload.update(overrides)
@@ -162,7 +167,11 @@ async def test_fanout_creates_pending_template_messages(client, world, db_sessio
     async with db_session.begin():
         await _set_tenant(db_session, world["tenant_id"])
         messages = (
-            (await db_session.execute(sa.select(Message).where(Message.template_payload.is_not(None))))
+            (
+                await db_session.execute(
+                    sa.select(Message).where(Message.template_payload.is_not(None))
+                )
+            )
             .scalars()
             .all()
         )
@@ -173,9 +182,7 @@ async def test_fanout_creates_pending_template_messages(client, world, db_sessio
         assert params == {"Ana", "Luis"}
         # Customer identifiers use Meta's from-format: digits WITHOUT '+',
         # spaces stripped — exactly what the inbound webhook writes.
-        customers = (
-            (await db_session.execute(sa.select(Customer.identifier))).scalars().all()
-        )
+        customers = (await db_session.execute(sa.select(Customer.identifier))).scalars().all()
         assert sorted(customers) == ["56911112223", "56911112224"]
 
 
@@ -272,9 +279,7 @@ async def test_idempotency_key_replays_without_double_send(client, world, db_ses
 
 async def test_customer_reused_across_broadcasts(client, world, db_session) -> None:
     for _ in range(2):
-        resp = await client.post(
-            "/v1/embed/broadcasts", json=_payload(), headers=world["headers"]
-        )
+        resp = await client.post("/v1/embed/broadcasts", json=_payload(), headers=world["headers"])
         assert resp.status_code == 202
 
     await db_session.rollback()  # clear any autobegin state from fixtures
@@ -288,9 +293,7 @@ async def test_broadcast_status_aggregates_message_state(client, world, db_sessi
     resp = await client.post("/v1/embed/broadcasts", json=_payload(), headers=world["headers"])
     broadcast_id = resp.json()["broadcast_id"]
 
-    status_resp = await client.get(
-        f"/v1/embed/broadcasts/{broadcast_id}", headers=world["headers"]
-    )
+    status_resp = await client.get(f"/v1/embed/broadcasts/{broadcast_id}", headers=world["headers"])
     assert status_resp.status_code == 200
     body = status_resp.json()
     assert body["counts"] == {"pending": 2}
@@ -312,7 +315,9 @@ async def test_broadcast_status_aggregates_message_state(client, world, db_sessi
             .all()
         )
         await db_session.execute(
-            sa.update(Message).where(Message.id == rows[0].message_id).values(status=MessageStatus.SENT)
+            sa.update(Message)
+            .where(Message.id == rows[0].message_id)
+            .values(status=MessageStatus.SENT)
         )
         await db_session.execute(
             sa.update(Message)
@@ -351,9 +356,7 @@ async def test_broadcast_of_other_tenant_is_404(client, world, db_session) -> No
         )
     )
     db_session.add(
-        PartnerTenant(
-            partner_id=other_partner, external_client_ref="oc", tenant_id=other_tenant
-        )
+        PartnerTenant(partner_id=other_partner, external_client_ref="oc", tenant_id=other_tenant)
     )
     await db_session.commit()
     token, _, _ = mint_widget_token(

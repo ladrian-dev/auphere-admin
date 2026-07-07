@@ -19,6 +19,7 @@ import uuid
 import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -168,7 +169,7 @@ async def create_widget_session(
     request: Request,
     ctx: PartnerContext = Depends(require_partner_key("widget_sessions")),
     session: AsyncSession = Depends(get_db_session),
-    redis=Depends(get_redis),
+    redis: Redis = Depends(get_redis),
 ) -> WidgetSessionOut:
     """Mint a short-lived session JWT scoped to exactly one tenant.
 
@@ -190,9 +191,7 @@ async def create_widget_session(
         mapping = await PartnerTenantRepository(session).get_mapping(
             ctx.partner.id, body.external_client_ref
         )
-        tenant = (
-            await session.get(Tenant, mapping.tenant_id) if mapping is not None else None
-        )
+        tenant = await session.get(Tenant, mapping.tenant_id) if mapping is not None else None
     if (
         mapping is None
         or tenant is None

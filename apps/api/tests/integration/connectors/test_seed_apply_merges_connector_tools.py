@@ -128,9 +128,7 @@ async def _seed_tenant_with_connector(
     return connector.id, always_tool.id, blocked_tool.id
 
 
-async def test_seed_apply_includes_always_mode_connector_tools(
-    client, db_session
-):
+async def test_seed_apply_includes_always_mode_connector_tools(client, db_session):
     """Happy path: connect first, then apply seed → the connector's
     ``always``-mode tool lands in the staged config alongside the seed's
     ``tools_required``. The ``blocked``-mode tool stays out."""
@@ -156,16 +154,12 @@ async def test_seed_apply_includes_always_mode_connector_tools(
     assert "seedmerge.destructive_thing" not in tools
 
 
-async def test_seed_apply_skips_connector_with_auto_enable_off(
-    client, db_session
-):
+async def test_seed_apply_skips_connector_with_auto_enable_off(client, db_session):
     """A connector whose ``auto_enable_on_connect=false`` does NOT
     contribute tools to a fresh seed apply — the operator opts in
     deliberately. Mirrors ``auto_enable_connector_tools``."""
     tenant_id = uuid.uuid4()
-    await _seed_tenant_with_connector(
-        db_session, tenant_id=tenant_id, auto_enable=False
-    )
+    await _seed_tenant_with_connector(db_session, tenant_id=tenant_id, auto_enable=False)
 
     r = await client.post(
         f"/admin/tenants/{tenant_id}/agent-config/from-seed",
@@ -187,9 +181,7 @@ async def test_seed_apply_includes_paused_connector_tools(client, db_session):
     later without re-applying the seed. Mirrors the editor's
     ``canSelect`` which allows paused tools to be ticked."""
     tenant_id = uuid.uuid4()
-    await _seed_tenant_with_connector(
-        db_session, tenant_id=tenant_id, install_status="paused"
-    )
+    await _seed_tenant_with_connector(db_session, tenant_id=tenant_id, install_status="paused")
 
     r = await client.post(
         f"/admin/tenants/{tenant_id}/agent-config/from-seed",

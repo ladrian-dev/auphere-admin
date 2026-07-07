@@ -430,9 +430,7 @@ async def stage_agent_config_from_seed(
     # union mirrors the same "always-mode" filter that
     # ``auto_enable_connector_tools`` uses when the order is reversed
     # (seed first, then connect) — keeping both orderings symmetric.
-    connector_tools = await _safe_connector_tools_for_tenant(
-        session, tenant_id
-    )
+    connector_tools = await _safe_connector_tools_for_tenant(session, tenant_id)
     merged_tools = sorted(set(rendered.tools) | connector_tools)
 
     svc = AgentConfigService(session)
@@ -463,9 +461,7 @@ _USABLE_CONNECTOR_STATUSES: tuple[str, ...] = (
 )
 
 
-async def _safe_connector_tools_for_tenant(
-    session: AsyncSession, tenant_id: uuid.UUID
-) -> set[str]:
+async def _safe_connector_tools_for_tenant(session: AsyncSession, tenant_id: uuid.UUID) -> set[str]:
     """Return the names of read-only ("always"-mode) tools the tenant's
     installed connectors contribute.
 

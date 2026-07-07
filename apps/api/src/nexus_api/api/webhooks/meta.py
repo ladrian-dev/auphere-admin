@@ -50,7 +50,7 @@ from nexus_channels.whatsapp_meta import (
 )
 from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -442,7 +442,7 @@ async def _handle_inbound(
         )
         return {"status": "opted_out"}
 
-    await redis.xadd(INBOUND_STREAM, fields)
+    await redis.xadd(INBOUND_STREAM, fields)  # type: ignore[arg-type]  # redis stub: invariant dict
 
     # Politeness: mark as read so the customer sees the two blue checks.
     # Best-effort — failure never blocks the turn.
@@ -531,7 +531,7 @@ async def _handle_status_callback(
         if status_update.conversation_id:
             values["conversation_provider_id"] = status_update.conversation_id
         await session.execute(
-            Message.__table__.update()
+            update(Message)
             .where(Message.provider_message_id == status_update.wamid)
             .values(**values)
         )
@@ -667,7 +667,7 @@ async def _handle_message_echo(
         fields["text"] = echo.text
     await redis.xadd(
         COEXISTENCE_ECHO_STREAM,
-        fields,
+        fields,  # type: ignore[arg-type]  # redis stub types xadd fields as invariant dict
         maxlen=COEXISTENCE_STREAM_MAXLEN,
         approximate=True,
     )
@@ -707,7 +707,7 @@ async def _handle_app_state_sync(
     }
     await redis.xadd(
         COEXISTENCE_STATE_SYNC_STREAM,
-        fields,
+        fields,  # type: ignore[arg-type]  # redis stub types xadd fields as invariant dict
         maxlen=COEXISTENCE_STREAM_MAXLEN,
         approximate=True,
     )
@@ -744,7 +744,7 @@ async def _handle_history_sync(
         fields["error_code"] = str(hist.error_code)
     await redis.xadd(
         COEXISTENCE_HISTORY_STREAM,
-        fields,
+        fields,  # type: ignore[arg-type]  # redis stub types xadd fields as invariant dict
         maxlen=COEXISTENCE_STREAM_MAXLEN,
         approximate=True,
     )

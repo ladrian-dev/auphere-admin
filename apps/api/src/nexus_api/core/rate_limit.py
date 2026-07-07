@@ -13,6 +13,9 @@ page, not hide.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
+from typing import Any, cast
+
 import structlog
 from redis.asyncio import Redis
 
@@ -67,16 +70,21 @@ async def allow(
     if per_minute <= 0:
         return False
     try:
-        seconds, micros = await redis.time()
+        # redis-py types these as sync|async unions (the client can be
+        # either); we only ever use the async client, so cast to Awaitable.
+        seconds, micros = await cast("Awaitable[tuple[int, int]]", redis.time())
         now = float(seconds) + float(micros) / 1e6
-        result = await redis.eval(
-            _TOKEN_BUCKET_LUA,
-            1,
-            key,
-            per_minute,
-            per_minute / 60.0,
-            now,
-            cost,
+        result = await cast(
+            "Awaitable[Any]",
+            redis.eval(
+                _TOKEN_BUCKET_LUA,
+                1,
+                key,
+                per_minute,
+                per_minute / 60.0,
+                now,
+                cost,
+            ),
         )
         return bool(int(result))
     except Exception:

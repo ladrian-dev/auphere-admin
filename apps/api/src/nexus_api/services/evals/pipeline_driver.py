@@ -187,9 +187,12 @@ class EvalPipelineDriver:
         try:
             # ── seed: customer + conversation + history + inbound ────────
             async with sm() as session, tenant_scoped_session(session, self.tenant_id):
-                conversation_id, customer_id, customer_identifier, inbound_id = (
-                    await self._seed_case(session, history=history, user_message=user_message)
-                )
+                (
+                    conversation_id,
+                    customer_id,
+                    customer_identifier,
+                    inbound_id,
+                ) = await self._seed_case(session, history=history, user_message=user_message)
 
             # ── invoke the real graph (outside any tx — it opens its own) ─
             state: dict[str, Any] = {
@@ -259,9 +262,7 @@ class EvalPipelineDriver:
         base = datetime.now(UTC) - timedelta(seconds=len(history) + 1)
         for i, turn in enumerate(history):
             role = turn.get("role")
-            direction = (
-                MessageDirection.INBOUND if role == "user" else MessageDirection.OUTBOUND
-            )
+            direction = MessageDirection.INBOUND if role == "user" else MessageDirection.OUTBOUND
             session.add(
                 Message(
                     tenant_id=self.tenant_id,
@@ -308,9 +309,7 @@ class EvalPipelineDriver:
                         sa.delete(Conversation).where(Conversation.id == conversation_id)
                     )
                 if customer_id is not None:
-                    await session.execute(
-                        sa.delete(Customer).where(Customer.id == customer_id)
-                    )
+                    await session.execute(sa.delete(Customer).where(Customer.id == customer_id))
         except Exception as exc:
             log.warning(
                 "evals.driver.cleanup_failed",

@@ -56,9 +56,7 @@ class TestList:
         phones = [c["phone_e164"] for c in r.json()]
         assert phones == ["+56000000001"]
 
-        r_all = await client.get(
-            "/admin/auphere/channels?include_inactive=true", headers=_ADMIN
-        )
+        r_all = await client.get("/admin/auphere/channels?include_inactive=true", headers=_ADMIN)
         phones_all = {c["phone_e164"] for c in r_all.json()}
         assert phones_all == {"+56000000001", "+56000000002"}
 
@@ -214,9 +212,7 @@ class TestUpdate:
             "provider": overrides.pop("provider", "meta"),
         }
         payload.update(overrides)
-        r = await client.post(
-            "/admin/auphere/channels", headers=_ADMIN, json=payload
-        )
+        r = await client.post("/admin/auphere/channels", headers=_ADMIN, json=payload)
         return r.json()["id"]
 
     async def test_patch_display_name(self, client, db_session):
@@ -241,9 +237,7 @@ class TestUpdate:
         assert row is not None and row.webhook_secret_encrypted == b"rotated"
 
     async def test_clear_secret_via_empty_string(self, client, db_session):
-        cid = await self._make(
-            client, phone_e164="+56000000022", webhook_secret="initial"
-        )
+        cid = await self._make(client, phone_e164="+56000000022", webhook_secret="initial")
         r = await client.patch(
             f"/admin/auphere/channels/{cid}",
             headers=_ADMIN,
@@ -266,9 +260,7 @@ class TestUpdate:
         assert row is not None and row.access_token_encrypted == b"EAArotated"
 
     async def test_clear_access_token_via_empty_string(self, client, db_session):
-        cid = await self._make(
-            client, phone_e164="+56000000026", access_token="EAAinitial"
-        )
+        cid = await self._make(client, phone_e164="+56000000026", access_token="EAAinitial")
         r = await client.patch(
             f"/admin/auphere/channels/{cid}",
             headers=_ADMIN,
@@ -279,9 +271,7 @@ class TestUpdate:
         row = await db_session.get(AuphereOwnerChannel, uuid.UUID(cid))
         assert row is not None and row.access_token_encrypted is None
 
-    async def test_promote_to_default_blocked_when_other_exists(
-        self, client, db_session
-    ):
+    async def test_promote_to_default_blocked_when_other_exists(self, client, db_session):
         await self._make(
             client,
             phone_e164="+56000000023",
@@ -297,9 +287,7 @@ class TestUpdate:
 
 
 class TestDeactivate:
-    async def test_sets_active_false_and_clears_default(
-        self, client, db_session
-    ):
+    async def test_sets_active_false_and_clears_default(self, client, db_session):
         r = await client.post(
             "/admin/auphere/channels",
             headers=_ADMIN,
@@ -311,18 +299,14 @@ class TestDeactivate:
             },
         )
         cid = r.json()["id"]
-        d = await client.delete(
-            f"/admin/auphere/channels/{cid}", headers=_ADMIN
-        )
+        d = await client.delete(f"/admin/auphere/channels/{cid}", headers=_ADMIN)
         assert d.status_code == 200
         body = d.json()
         assert body["active"] is False
         assert body["is_default"] is False
 
     async def test_404_unknown(self, client, db_session):
-        r = await client.delete(
-            f"/admin/auphere/channels/{uuid.uuid4()}", headers=_ADMIN
-        )
+        r = await client.delete(f"/admin/auphere/channels/{uuid.uuid4()}", headers=_ADMIN)
         assert r.status_code == 404
 
 

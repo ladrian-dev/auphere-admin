@@ -121,8 +121,7 @@ _AESTHETIC_PLACEHOLDERS_BOREAL: dict[str, object] = {
     "tenant.front_desk_phone_label": "+58 212-555-0100",
     "tenant.consultation_price_label": "USD 80, acreditable al procedimiento",
     "tenant.pricing_table_label": (
-        "rinoplastia USD 4.800-6.500 · mamoplastia USD 5.500-7.200 · "
-        "BBL USD 5.000-6.800"
+        "rinoplastia USD 4.800-6.500 · mamoplastia USD 5.500-7.200 · BBL USD 5.000-6.800"
     ),
     "tenant.payment_methods_label": (
         "Zelle, transferencia internacional o Pago Móvil al cambio del día"

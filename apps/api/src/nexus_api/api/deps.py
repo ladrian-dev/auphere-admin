@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from fastapi import Depends, Header, HTTPException, Path, status
 from redis.asyncio import Redis
@@ -14,6 +15,10 @@ from nexus_api.core import redis_client
 from nexus_api.core.logging_context import bind_tenant
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.repositories import TenantRepository
+
+if TYPE_CHECKING:
+    from nexus_api.core.embed_jwt import WidgetClaims
+    from nexus_api.db.models import Partner
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:
@@ -74,8 +79,8 @@ class EmbedContext:
     source."""
 
     session: AsyncSession
-    claims: WidgetClaims  # noqa: F821 — forward ref, imported lazily below
-    partner: Partner  # noqa: F821
+    claims: WidgetClaims
+    partner: Partner
 
 
 async def scoped_session_from_embed_jwt(

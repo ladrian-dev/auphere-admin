@@ -67,9 +67,7 @@ async def test_agent_sees_prior_turns_on_same_conversation(
     await db_session.commit()
     await db_session.refresh(conv)
 
-    in_memory_provider.responder = lambda c: (
-        "info" if c.role == "classify" else _TURN1_REPLY
-    )
+    in_memory_provider.responder = lambda c: "info" if c.role == "classify" else _TURN1_REPLY
     pipeline = make_pipeline(
         agent_loader=agent_loader,
         llm_router=llm_router,

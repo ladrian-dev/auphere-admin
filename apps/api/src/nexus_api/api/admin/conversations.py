@@ -173,7 +173,7 @@ async def toggle_conversation_agent(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="If-Match must be an integer version",
-            )
+            ) from None
         if expected_version != conv.agent_active_version:
             raise HTTPException(
                 status_code=status.HTTP_412_PRECONDITION_FAILED,
@@ -374,9 +374,7 @@ async def stream_conversation_events(
                         conversation_id=str(conversation_id),
                     )
                     break
-                msg = await pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=15.0
-                )
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
                 if msg is None:
                     yield {"event": "heartbeat", "data": "ping"}
                     continue
@@ -392,7 +390,7 @@ async def stream_conversation_events(
         finally:
             try:
                 await pubsub.unsubscribe(channel)
-                await pubsub.aclose()
+                await pubsub.aclose()  # type: ignore[no-untyped-call]  # redis stub: aclose untyped
             except Exception:
                 pass
 

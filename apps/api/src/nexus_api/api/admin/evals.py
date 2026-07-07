@@ -74,6 +74,11 @@ from nexus_api.services.evals import (
 router = APIRouter()
 log = structlog.get_logger()
 
+# Strong refs to in-flight background eval tasks. Without this the event
+# loop only keeps a weak reference and the task can be garbage-collected
+# mid-run (see CPython docs on ``asyncio.create_task``).
+_background_eval_tasks: set[asyncio.Task[None]] = set()
+
 
 # ── Judge provider DI ─────────────────────────────────────────────────────
 
@@ -440,44 +445,41 @@ async def _run_eval_background(
     pre-promote use case the operator just re-triggers the run, which is
     safe — datasets and cases are immutable inputs.
     """
-    Session = get_sessionmaker()
+    session_factory = get_sessionmaker()
     try:
-        async with Session() as session:
-            async with tenant_scoped_session(session, tenant_id):
-                run = (
-                    await session.execute(sa.select(EvalRun).where(EvalRun.id == run_id))
-                ).scalar_one()
-                dataset = (
+        async with session_factory() as session, tenant_scoped_session(session, tenant_id):
+            run = (
+                await session.execute(sa.select(EvalRun).where(EvalRun.id == run_id))
+            ).scalar_one()
+            dataset = (
+                await session.execute(sa.select(EvalDataset).where(EvalDataset.id == dataset_id))
+            ).scalar_one()
+            cases = (
+                (
                     await session.execute(
-                        sa.select(EvalDataset).where(EvalDataset.id == dataset_id)
+                        sa.select(EvalCase)
+                        .where(EvalCase.dataset_id == dataset_id)
+                        .order_by(EvalCase.idx.asc())
                     )
-                ).scalar_one()
-                cases = (
-                    (
-                        await session.execute(
-                            sa.select(EvalCase)
-                            .where(EvalCase.dataset_id == dataset_id)
-                            .order_by(EvalCase.idx.asc())
-                        )
-                    )
-                    .scalars()
-                    .all()
                 )
-                agent_config = (
-                    await session.execute(
-                        sa.select(AgentConfig).where(AgentConfig.id == agent_config_id)
-                    )
-                ).scalar_one()
+                .scalars()
+                .all()
+            )
+            agent_config = (
+                await session.execute(
+                    sa.select(AgentConfig).where(AgentConfig.id == agent_config_id)
+                )
+            ).scalar_one()
 
-                await run_eval(
-                    session,
-                    tenant_id=tenant_id,
-                    run=run,
-                    dataset=dataset,
-                    cases=list(cases),
-                    agent_config=agent_config,
-                    judge_provider=judge_provider,
-                )
+            await run_eval(
+                session,
+                tenant_id=tenant_id,
+                run=run,
+                dataset=dataset,
+                cases=list(cases),
+                agent_config=agent_config,
+                judge_provider=judge_provider,
+            )
     except Exception as exc:  # pragma: no cover — defensive top-level
         log.exception(
             "evals.run.background_aborted",
@@ -486,20 +488,18 @@ async def _run_eval_background(
             error=str(exc),
         )
         try:
-            async with Session() as session:
+            # Nested with kept on purpose: the inner block has its own
+            # try/except and flattening it obscures the scope boundary.
+            async with session_factory() as session:  # noqa: SIM117
                 async with tenant_scoped_session(session, tenant_id):
                     run = (
-                        await session.execute(
-                            sa.select(EvalRun).where(EvalRun.id == run_id)
-                        )
+                        await session.execute(sa.select(EvalRun).where(EvalRun.id == run_id))
                     ).scalar_one()
                     run.status = EvalRunStatus.ERROR.value
                     run.error_message = str(exc)[:1024]
                     run.finished_at = datetime.now(UTC)
         except Exception:
-            log.exception(
-                "evals.run.error_marker_failed", run_id=str(run_id)
-            )
+            log.exception("evals.run.error_marker_failed", run_id=str(run_id))
 
 
 @router.post(
@@ -573,7 +573,7 @@ async def trigger_run(
     # ``run_id`` is stable. The background coroutine is scheduled on the
     # main loop; it'll re-open its own session under tenant_scoped_session
     # once the request handler returns.
-    asyncio.create_task(
+    task = asyncio.create_task(
         _run_eval_background(
             tenant_id=tenant_id,
             run_id=run_id,
@@ -583,6 +583,8 @@ async def trigger_run(
         ),
         name=f"eval-run-{run_id}",
     )
+    _background_eval_tasks.add(task)
+    task.add_done_callback(_background_eval_tasks.discard)
 
     log.info(
         "evals.run.scheduled",

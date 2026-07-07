@@ -149,11 +149,7 @@ async def test_tool_result_reaches_the_responding_llm(db_session):
     )
     final = await pipeline.ainvoke(
         state,
-        config={
-            "configurable": {
-                "thread_id": make_thread_id(tenant_id, channel.id, "react-user")
-            }
-        },
+        config={"configurable": {"thread_id": make_thread_id(tenant_id, channel.id, "react-user")}},
     )
 
     # ── The loop produced the final text itself (no respond node). ────────
@@ -250,11 +246,7 @@ async def test_loop_is_bounded_when_model_never_stops(db_session):
     )
     final = await pipeline.ainvoke(
         state,
-        config={
-            "configurable": {
-                "thread_id": make_thread_id(tenant_id, channel.id, "loop-user")
-            }
-        },
+        config={"configurable": {"thread_id": make_thread_id(tenant_id, channel.id, "loop-user")}},
     )
 
     # The loop terminated and produced a non-empty answer.

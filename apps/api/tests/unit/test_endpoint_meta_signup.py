@@ -162,8 +162,7 @@ async def test_meta_signup_subscribed_apps_uses_global_verify_token(
     body_bytes = captured["body"]
     assert isinstance(body_bytes, (bytes, bytearray))
     assert expected.encode("utf-8") in bytes(body_bytes), (
-        f"expected verify_token {expected!r} in subscribed_apps body but got "
-        f"{body_bytes!r}"
+        f"expected verify_token {expected!r} in subscribed_apps body but got {body_bytes!r}"
     )
 
 
@@ -217,9 +216,7 @@ async def test_meta_signup_coexistence_skips_register_and_derives_phone(
     # ``assert_all_called=False`` so the canary /register route below
     # doesn't fail the fixture — the whole point is to assert it was
     # NOT touched, which is verified explicitly via ``register_route.called``.
-    async with respx.mock(
-        base_url=META_GRAPH_BASE_URL, assert_all_called=False
-    ) as mock:
+    async with respx.mock(base_url=META_GRAPH_BASE_URL, assert_all_called=False) as mock:
         _mock_coex_happy_path(mock)
         register_route = mock.post("/PN_COEX/register").respond(
             500, json={"error": {"message": "should_not_be_called"}}
@@ -343,8 +340,9 @@ async def _seed_meta_credentials(db_session, tenant_id) -> None:
     """Helper to put a tenant_credentials row in place so test-send has a
     BISUAT to read."""
     from nexus_channels.whatsapp_meta.credentials import MetaCredentials
-    from nexus_api.db.models import TenantCredentials
     from sqlalchemy import text as sql_text
+
+    from nexus_api.db.models import TenantCredentials
 
     creds = MetaCredentials(
         bisuat="EAA-fake-bisuat",
@@ -417,9 +415,7 @@ async def test_meta_test_send_text_requires_text_body(
     assert "text_body" in r.json()["detail"]
 
 
-async def test_meta_test_send_text_sends_payload(
-    client, admin_headers, seed_tenants, db_session
-):
+async def test_meta_test_send_text_sends_payload(client, admin_headers, seed_tenants, db_session):
     tenant_id = seed_tenants["a"]
     await _seed_meta_credentials(db_session, tenant_id)
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
@@ -441,9 +437,7 @@ async def test_meta_test_send_text_sends_payload(
     assert payload["text"]["body"] == "Hola mundo"
 
 
-async def test_meta_test_send_returns_404_when_no_credentials(
-    client, admin_headers, seed_tenants
-):
+async def test_meta_test_send_returns_404_when_no_credentials(client, admin_headers, seed_tenants):
     """No Embedded Signup completed yet → no credentials row → 404."""
     tenant_id = seed_tenants["a"]
     r = await client.post(
@@ -454,9 +448,7 @@ async def test_meta_test_send_returns_404_when_no_credentials(
     assert r.status_code == 404
 
 
-async def test_meta_test_send_surfaces_meta_400(
-    client, admin_headers, seed_tenants, db_session
-):
+async def test_meta_test_send_surfaces_meta_400(client, admin_headers, seed_tenants, db_session):
     """If Meta rejects the send (eg recipient outside service window for
     a text), the endpoint returns 400 with Meta's message."""
     tenant_id = seed_tenants["a"]

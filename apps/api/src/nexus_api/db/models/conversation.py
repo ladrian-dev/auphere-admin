@@ -130,9 +130,7 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # started_at, operator_id). The dispatcher consumes it on the first
     # turn after reactivation to brief the LLM about the human
     # intervention, then sets it back to NULL.
-    takeover_context: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True
-    )
+    takeover_context: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     # Migration 0041 (Bloque C) — optimistic-locking counter for the
     # ``agent_active`` toggle. Every PATCH .../agent that actually flips
@@ -227,9 +225,7 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # row with non-NULL ``interactive_payload`` through
     # ``adapter.send_interactive``; rows without it follow the
     # historical text / media paths unchanged.
-    interactive_payload: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True
-    )
+    interactive_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     # HSM template payload — populated by the broadcast fan-out service
     # (migration 0049, ADR-028). Shape: ``{"name": str, "language": str,
@@ -238,9 +234,7 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # non-NULL ``template_payload`` through ``adapter.send_template``
     # (named parameters); ``content`` carries a human-readable preview
     # for the operator panel only.
-    template_payload: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True
-    )
+    template_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     # Outcome grader verdict per turn (migration 0037, ADR-023 Fase C).
     # Populated by the checkpoint node from ``AgentState.outcome_*``;
@@ -248,12 +242,8 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # tools (e.g. ``notification.send_image``) that don't go through
     # the grader. The operator panel renders these as a badge —
     # ``pass`` green, ``fail`` red, ``skipped`` muted, ``error`` amber.
-    outcome_overall: Mapped[str | None] = mapped_column(
-        String(20), nullable=True
-    )
-    outcome_retries: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
-    )
+    outcome_overall: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    outcome_retries: Mapped[int | None] = mapped_column(Integer, nullable=True)
     outcome_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Migration 0041 (Bloque C) — actor identity for outbound rows ───
@@ -269,9 +259,7 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # Admin user uuid for ``operator`` rows; NULL otherwise. No FK — the
     # admin user table is owned upstream (auth provider) and we just
     # store the resolved uuid for audit/UX.
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
 class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):

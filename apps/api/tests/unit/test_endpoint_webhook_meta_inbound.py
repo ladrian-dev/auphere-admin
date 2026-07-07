@@ -41,9 +41,7 @@ def _inbound_envelope(*, business_phone: str, sender: str, message: dict) -> dic
                                 "display_phone_number": business_phone.lstrip("+"),
                                 "phone_number_id": "PN1",
                             },
-                            "contacts": [
-                                {"profile": {"name": "Cliente"}, "wa_id": sender}
-                            ],
+                            "contacts": [{"profile": {"name": "Cliente"}, "wa_id": sender}],
                             "messages": [message],
                         },
                     }
@@ -180,9 +178,7 @@ async def test_inbound_image_downloads_media_to_s3(
         # the returned S3 reference onto the stream entry.
         return (f"{tenant_id}/inbound/{wamid}.jpg", "image/jpeg", 2048, "deadbeef")
 
-    monkeypatch.setattr(
-        "nexus_api.api.webhooks.meta._download_inbound_media", _fake_download
-    )
+    monkeypatch.setattr("nexus_api.api.webhooks.meta._download_inbound_media", _fake_download)
 
     payload = _inbound_envelope(
         business_phone=business_phone,

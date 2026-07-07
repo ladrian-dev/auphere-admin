@@ -93,9 +93,7 @@ class AuditRepository:
         Use either, not both.
         """
         require_current_tenant()
-        stmt = select(AuditLog).order_by(
-            desc(AuditLog.created_at), desc(AuditLog.id)
-        )
+        stmt = select(AuditLog).order_by(desc(AuditLog.created_at), desc(AuditLog.id))
 
         if actor_contains:
             stmt = stmt.where(AuditLog.actor.ilike(f"%{actor_contains}%"))

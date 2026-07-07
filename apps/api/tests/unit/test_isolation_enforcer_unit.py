@@ -75,4 +75,4 @@ def test_scoped_set_matches_migration_scope():
     }
     # Enforcer set is the migration set MINUS dual-mode tables.
     dual_mode = {"audit_log"}
-    assert _SCOPED_TABLES == rls_enabled_in_migration - dual_mode
+    assert rls_enabled_in_migration - dual_mode == _SCOPED_TABLES
