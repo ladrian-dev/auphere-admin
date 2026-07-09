@@ -238,3 +238,80 @@ def test_aesthetic_clinic_v1_override_deposit_pct() -> None:
     assert rendered.policies["surgery"]["deposit_pct"] == 40
     # Otras policies quedan al default.
     assert rendered.policies["minor"]["consent_required"] is True
+
+
+# ── woocommerce_sales_v1 — agente de ventas sobre una tienda WooCommerce ──
+
+
+def test_list_seed_templates_includes_woocommerce_sales() -> None:
+    assert "woocommerce_sales_v1" in list_seed_templates()
+
+
+def test_woocommerce_sales_v1_loads_with_expected_shape() -> None:
+    tpl = load_seed_template("woocommerce_sales_v1")
+    assert tpl.version == "1.0.0"
+    assert "ventas" in tpl.display_name.lower()
+    assert tpl.agent_defaults["name"] == "Nico"
+    assert tpl.agent_defaults["language"] == "es"
+
+    # Whitelist: las 8 lecturas + 4 escrituras woocommerce.* + interactive.
+    reads = {
+        "woocommerce.list_products",
+        "woocommerce.get_product",
+        "woocommerce.list_product_variations",
+        "woocommerce.list_categories",
+        "woocommerce.list_orders",
+        "woocommerce.get_order",
+        "woocommerce.list_customers",
+        "woocommerce.get_customer",
+    }
+    writes = {
+        "woocommerce.create_order",
+        "woocommerce.update_order_status",
+        "woocommerce.update_order",
+        "woocommerce.add_order_note",
+    }
+    assert reads.issubset(tpl.tools_required)
+    assert writes.issubset(tpl.tools_required)
+    assert "response.send_interactive" in tpl.tools_required
+    # No filtra tools de otros verticales (booking / billing).
+    assert "booking.create_appointment" not in tpl.tools_required
+    assert "billing.create_account" not in tpl.tools_required
+
+    assert tpl.policies_default["store"]["currency"] == "CLP"
+
+
+def test_woocommerce_sales_v1_renders_with_store_data() -> None:
+    tpl = load_seed_template("woocommerce_sales_v1")
+    rendered = render_seed_template(
+        tpl,
+        placeholders={
+            "tenant.name": "Barber Supply Chile",
+            "tenant.timezone": "America/Santiago",
+        },
+    )
+    assert rendered.seed_template_ref == "woocommerce_sales_v1"
+    assert "Barber Supply Chile" in rendered.system_prompt
+    assert "Nico" in rendered.system_prompt
+    assert "CLP" in rendered.system_prompt
+    # Anclas de comportamiento clave llegan al prompt final.
+    assert "grounding" in rendered.system_prompt.lower()
+    assert "confirmaci" in rendered.system_prompt.lower()  # protocolo de pedido
+    assert "woocommerce.create_order" in rendered.system_prompt
+    # Tools persistidas.
+    assert "woocommerce.create_order" in rendered.tools
+    assert rendered.policies["store"]["currency"] == "CLP"
+
+
+def test_woocommerce_sales_v1_override_currency() -> None:
+    tpl = load_seed_template("woocommerce_sales_v1")
+    rendered = render_seed_template(
+        tpl,
+        placeholders={
+            "tenant.name": "X",
+            "tenant.timezone": "America/Santiago",
+            "policies.store.currency": "USD",
+        },
+    )
+    assert rendered.policies["store"]["currency"] == "USD"
+    assert "USD" in rendered.system_prompt
