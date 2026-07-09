@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from nexus_api import __version__
-from nexus_api.api import admin, embed, partners, qa, webhooks
+from nexus_api.api import admin, embed, partners, qa, webhooks, widget
 from nexus_api.api import connectors as connectors_public
 from nexus_api.config import settings
 from nexus_api.core import isolation_enforcer, otel
@@ -17,6 +17,7 @@ from nexus_api.core.logging_context import LoggingContextMiddleware
 from nexus_api.core.metrics import isolation_event_drainer
 from nexus_api.core.qa_checkpointer import close_qa_checkpointer, init_qa_checkpointer
 from nexus_api.core.redis_client import close_redis
+from nexus_api.core.widget_cors import WidgetCORSMiddleware
 from nexus_api.db.base import dispose_engine, get_engine
 from nexus_api.health import router as health_router
 from nexus_api.logging import configure_logging
@@ -85,6 +86,11 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
     max_age=600,
 )
+# Public web chat widget: CORS reflects the tenant's own site origin for
+# ``/v1/widget/*`` (per-tenant, dynamic). Added last ⇒ outermost, so it
+# owns the widget preflight before the strict global CORS layer above.
+# Authorization is the session JWT + server-side origin check, not CORS.
+app.add_middleware(WidgetCORSMiddleware)
 app.include_router(health_router)
 app.include_router(admin.router)
 app.include_router(webhooks.router)
@@ -94,3 +100,7 @@ app.include_router(qa.router)
 # + browser-facing embed surface (widget session JWT).
 app.include_router(partners.router)
 app.include_router(embed.router)
+# Public web chat widget (native chat bubble on a tenant's own site).
+app.include_router(widget.router)
+# The embeddable loader (``GET /widget.js``) is served from the API itself.
+app.include_router(widget.loader_router)

@@ -25,7 +25,7 @@ import structlog
 from nexus_api.core.admin_gate import admin_only_suppresses, sender_is_admin
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Conversation, Message, Tenant, TenantStatus
+from nexus_api.db.models import Channel, ChannelType, Conversation, Message, Tenant, TenantStatus
 from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 
 from nexus_worker.multimodal import ProcessedMedia, get_media_processor
@@ -185,6 +185,21 @@ async def process_inbound(
             )
             return {"skipped": "tenant_unknown"}
 
+        # Resolve the channel's type so the pipeline (and its checkpoint
+        # node) knows which medium this turn runs on. Historically the state
+        # defaulted to "whatsapp"; the web widget channel needs the real
+        # value so the checkpoint can persist web outbound rows as SENT
+        # (they skip the WhatsApp-only outbound dispatcher). For WhatsApp
+        # channels this resolves to the same "whatsapp" — no behaviour change.
+        channel_type_raw = (
+            await session.execute(sa.select(Channel.type).where(Channel.id == event.channel_id))
+        ).scalar_one_or_none()
+        channel_type_value = (
+            channel_type_raw.value
+            if isinstance(channel_type_raw, ChannelType)
+            else (str(channel_type_raw) if channel_type_raw is not None else "whatsapp")
+        )
+
         customer = await _upsert_customer(
             session, identifier=event.user_id, name=event.customer_name
         )
@@ -338,6 +353,7 @@ async def process_inbound(
     state = new_state(
         tenant_id=event.tenant_id,
         channel_id=event.channel_id,
+        channel_type=channel_type_value,
         user_id=event.user_id,
         conversation_id=conversation_id,
         customer_id=customer_id,

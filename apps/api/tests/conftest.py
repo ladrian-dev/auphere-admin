@@ -311,6 +311,8 @@ _TRUNCATE_TABLES = (
     "kg_edges",
     "kg_nodes",
     "tenant_credentials",
+    # Migration 0050 — public web chat widget config (FK CASCADE to tenants).
+    "tenant_widget_configs",
     "channels",
     "agent_configs",
     "tenants",

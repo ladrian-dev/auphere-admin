@@ -79,6 +79,7 @@ from nexus_api.db.models.scheduled_job import (
 from nexus_api.db.models.tenant import Tenant, TenantPlan, TenantStatus
 from nexus_api.db.models.tool import ToolCatalog, ToolStatus
 from nexus_api.db.models.usage import UsageEvent
+from nexus_api.db.models.widget import TenantWidgetConfig
 
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
@@ -148,6 +149,7 @@ __all__ = [
     "TenantCredentials",
     "TenantPlan",
     "TenantStatus",
+    "TenantWidgetConfig",
     "ToolCatalog",
     "ToolStatus",
     "UsageEvent",
