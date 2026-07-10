@@ -31,6 +31,7 @@ import {
   ReissueConsentButton,
   SyncButton,
 } from "./connector-actions";
+import { MetaConnectOwnedDialog } from "./meta-connect-owned-dialog";
 import { MetaTestSendDialog } from "./meta-test-send-dialog";
 import { WhatsAppTemplatesDialog } from "./whatsapp-templates-dialog";
 import { MetaWhatsAppSetupDialog } from "./meta-signup-dialog";
@@ -342,10 +343,13 @@ function AvailableConnectorCard({
                   ownerPhone={ownerPhone}
                 />
               ) : connector.slug === "whatsapp_meta" ? (
-                <MetaWhatsAppSetupDialog
-                  tenantId={tenantId}
-                  alreadyConnected={false}
-                />
+                <>
+                  <MetaWhatsAppSetupDialog
+                    tenantId={tenantId}
+                    alreadyConnected={false}
+                  />
+                  <MetaConnectOwnedDialog tenantId={tenantId} />
+                </>
               ) : connector.slug === "agendapro" ? (
                 <AgendaProSetupDialog
                   tenantId={tenantId}

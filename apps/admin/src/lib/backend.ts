@@ -162,6 +162,16 @@ export type MetaSignupResult = {
   mode: "cloud_api" | "coexistence";
   bisuat_expires_at: string | null;
   audit_log_id: string;
+  catalog_id?: string | null;
+};
+
+export type MetaConnectOwnedInput = {
+  system_user_token: string;
+  waba_id: string;
+  phone_number_id?: string;
+  business_id?: string;
+  catalog_id?: string;
+  attempt_register?: boolean;
 };
 
 export type MetaSignupInput = {
@@ -1288,6 +1298,16 @@ export const backend = {
   metaSignup: (tenantId: string, body: MetaSignupInput) =>
     call<MetaSignupResult>(
       `/admin/tenants/${tenantId}/integrations/meta/signup`,
+      { method: "POST", body },
+    ),
+
+  /** Connect a WhatsApp number the app OWNER already controls (a number
+   *  under the portfolio that owns the Auphere app), via a permanent
+   *  System User token — Embedded Signup refuses that portfolio. The
+   *  operator supplies the token + WABA/phone/catalog ids. */
+  metaConnectOwned: (tenantId: string, body: MetaConnectOwnedInput) =>
+    call<MetaSignupResult>(
+      `/admin/tenants/${tenantId}/integrations/meta/connect-owned`,
       { method: "POST", body },
     ),
 

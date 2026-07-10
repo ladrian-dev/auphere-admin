@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache";
 
 import { BackendError, backend } from "@/lib/backend";
 import type {
+  MetaConnectOwnedInput,
   MetaSignupInput,
   MetaSignupResult,
   MetaTestSendInput,
@@ -63,6 +64,38 @@ export async function connectMetaWhatsAppSetupAction(
     const result = await backend.metaSignup(tenantId, body);
     if (!result) {
       return { ok: false, error: "El backend no devolvió datos del signup." };
+    }
+    await backend.connectManualConnector(tenantId, "whatsapp_meta", {
+      channel_id: result.channel_id,
+    });
+    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`);
+    return { ok: true, data: result };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+/**
+ * Connect a WhatsApp number the app OWNER already controls (a number under
+ * the portfolio that owns the Auphere app — Facelad), via a permanent
+ * System User token. Embedded Signup refuses that portfolio, so this is
+ * the manual path: the backend skips the OAuth exchange, subscribes the
+ * webhook, persists the token, upserts the channel and stores catalog_id.
+ * Then installs the whatsapp_meta connector row like the signup action.
+ *
+ * The System User token is a secret: it is POSTed straight to the backend
+ * (which Fernet-encrypts it) and never stored client-side or surfaced back.
+ */
+export async function connectMetaOwnedNumberAction(
+  tenantId: string,
+  body: MetaConnectOwnedInput,
+): Promise<ActionResult<MetaSignupResult>> {
+  await requireSession();
+  try {
+    const result = await backend.metaConnectOwned(tenantId, body);
+    if (!result) {
+      return { ok: false, error: "El backend no devolvió datos de la conexión." };
     }
     await backend.connectManualConnector(tenantId, "whatsapp_meta", {
       channel_id: result.channel_id,
