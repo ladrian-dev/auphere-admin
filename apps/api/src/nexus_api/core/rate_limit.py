@@ -98,11 +98,3 @@ def mint_bucket_key(partner_id: str) -> str:
 
 def embed_bucket_key(partner_id: str) -> str:
     return f"rl:partner:{partner_id}:embed"
-
-
-def widget_message_bucket_key(session_id: str) -> str:
-    return f"rl:widget:{session_id}:msg"
-
-
-def widget_poll_bucket_key(session_id: str) -> str:
-    return f"rl:widget:{session_id}:poll"

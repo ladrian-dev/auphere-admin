@@ -187,15 +187,6 @@ class Settings(BaseSettings):
     # Dev: override to http://localhost:3002 (apps/embed dev server).
     embed_app_origin: str = "https://embed.auphere.com"
 
-    # ── Web chat widget (native public chat bubble) ─────────────────────────
-    # Per-anonymous-session rate limits on the public ``/v1/widget/*``
-    # surface. Sessions are cheap to mint (public site key + origin check),
-    # so the ceilings are per browser session: ``message`` caps how fast a
-    # visitor can hit the agent; ``poll`` gives ~1s polling headroom for the
-    # GET history endpoint. Both fail-open on a Redis outage.
-    widget_message_rate_limit_per_min: int = 30
-    widget_poll_rate_limit_per_min: int = 120
-
     @property
     def media_s3_enabled(self) -> bool:
         """True when enough creds are present to upload to S3. In dev with

@@ -1458,18 +1458,6 @@ def make_checkpoint_node() -> NodeFn:
         outcome_retries = state.get("outcome_retries")
         outcome_feedback = state.get("outcome_feedback") or None
 
-        # Web widget turns have no external transport. The outbound
-        # dispatcher only delivers WhatsApp rows — it parks any non-whatsapp
-        # channel as FAILED ``unsupported_channel``. So persist web replies
-        # as SENT: they skip the dispatcher (which drains only PENDING) and
-        # are immediately readable by the widget's poll endpoint. WhatsApp
-        # and every other channel keep the default PENDING so the dispatcher
-        # delivers them normally.
-        from nexus_api.db.models import ChannelType, MessageStatus
-
-        is_web = (state.get("channel_type") or "whatsapp") == ChannelType.WEB.value
-        outbound_status = MessageStatus.SENT if is_web else MessageStatus.PENDING
-
         sm = get_sessionmaker()
         async with sm() as session, tenant_scoped_session(session, tenant_id):
             # Row 1: plain-text answer. Always written when response is
@@ -1485,7 +1473,6 @@ def make_checkpoint_node() -> NodeFn:
                     intent=intent,
                     model=model,
                     tool_calls=tool_calls,
-                    status=outbound_status,
                     outcome_overall=outcome_overall,
                     outcome_retries=outcome_retries,
                     outcome_feedback=outcome_feedback,
@@ -1508,7 +1495,6 @@ def make_checkpoint_node() -> NodeFn:
                     # call; don't re-add. Empty list keeps the row
                     # self-contained.
                     tool_calls=[],
-                    status=outbound_status,
                     interactive_payload=interactive,
                     outcome_overall=outcome_overall,
                     outcome_retries=outcome_retries,
