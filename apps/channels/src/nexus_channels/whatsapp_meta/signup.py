@@ -257,6 +257,120 @@ class EmbeddedSignupOrchestrator:
             bisuat_expires_at=expires_at,
         )
 
+    async def connect_with_token(
+        self,
+        *,
+        token: str,
+        waba_id: str,
+        phone_number_id: str | None,
+        catalog_id: str | None = None,
+        business_id: str = "",
+        mode: Literal["cloud_api", "coexistence"] = "cloud_api",
+        attempt_register: bool = True,
+    ) -> SignupResult:
+        """Connect a WhatsApp number the app OWNER already controls, using a
+        permanent System User access token instead of Embedded Signup.
+
+        Meta's Embedded Signup only onboards *client* portfolios — it refuses
+        the portfolio that owns the app (Facelad owns Auphere). For our own
+        numbers we skip the OAuth code exchange and use a provided System
+        User token directly; the remaining steps mirror ``complete()``.
+
+        ``register_phone`` is best-effort: an already-live number is usually
+        registered under the app, and a wrong/duplicate PIN must not block
+        the connect — ``subscribed_apps`` is what activates the webhook.
+        """
+        tenant_id = require_current_tenant()
+
+        # Derive phone_number_id from the WABA if the caller didn't pass it.
+        if not phone_number_id:
+            phones = await self._client.list_phone_numbers(waba_id=waba_id, access_token=token)
+            phones_data = phones.get("data") if isinstance(phones, dict) else None
+            first = phones_data[0] if isinstance(phones_data, list) and phones_data else None
+            if not isinstance(first, dict) or not isinstance(first.get("id"), str):
+                raise RegisterPhoneError(
+                    f"waba {waba_id} returned no phone numbers — cannot connect"
+                )
+            phone_number_id = first["id"]
+
+        if attempt_register:
+            try:
+                await self._client.register_phone(
+                    phone_number_id=phone_number_id, access_token=token, pin=_generate_pin()
+                )
+            except Exception as exc:
+                log.warning(
+                    "meta.connect_owned.register_skipped",
+                    phone_number_id=phone_number_id,
+                    reason=str(exc),
+                )
+
+        verify_token = self._webhook_verify_token
+        try:
+            await self._client.subscribe_app(
+                waba_id=waba_id,
+                access_token=token,
+                override_callback_uri=self._webhook_callback_url,
+                verify_token=verify_token,
+            )
+        except Exception as exc:
+            raise SubscribeWebhookError(
+                f"subscribed_apps failed for waba={waba_id}: {exc}"
+            ) from exc
+
+        phone_info = await self._client.get_phone_number(
+            phone_number_id=phone_number_id, access_token=token
+        )
+        display_phone = _normalise_e164(phone_info.get("display_phone_number"))
+        if not display_phone:
+            raise RegisterPhoneError(
+                f"phone_number_id {phone_number_id} has no display_phone_number"
+            )
+
+        credentials = MetaCredentials(
+            bisuat=token,
+            bisuat_expires_at=None,  # permanent System User token — no expiry
+            waba_id=waba_id,
+            phone_number_id=phone_number_id,
+            business_id=business_id,
+            display_phone_number=display_phone,
+            verify_token=verify_token,
+            mode=mode,
+            external_user_id_enrolled=False,
+        )
+        await self._credentials.upsert(credentials)
+
+        channel_id = await self._upsert_channel(
+            display_phone=display_phone,
+            waba_id=waba_id,
+            phone_number_id=phone_number_id,
+            business_id=business_id,
+            mode=mode,
+            quality_rating=phone_info.get("quality_rating"),
+            verified_name=phone_info.get("verified_name"),
+            messaging_tier=phone_info.get("messaging_limit_tier"),
+            catalog_id=catalog_id,
+        )
+
+        await invalidate_tenant_cache(self._redis, "meta", display_phone)
+        log.info(
+            "meta.connect_owned.complete",
+            tenant_id=str(tenant_id),
+            channel_id=str(channel_id),
+            waba_id=waba_id,
+            phone_number_id=phone_number_id,
+            display_phone=display_phone,
+            catalog_id=catalog_id,
+        )
+        return SignupResult(
+            channel_id=channel_id,
+            waba_id=waba_id,
+            phone_number_id=phone_number_id,
+            display_phone_number=display_phone,
+            mode=mode,
+            bisuat_expires_at=None,
+        )
+
     async def _upsert_channel(
         self,
         *,
@@ -268,6 +382,7 @@ class EmbeddedSignupOrchestrator:
         quality_rating: Any,
         verified_name: Any,
         messaging_tier: Any,
+        catalog_id: str | None = None,
     ) -> uuid.UUID:
         """Insert/update the ``channels`` row for this WABA.
 
@@ -294,6 +409,11 @@ class EmbeddedSignupOrchestrator:
             "quality_rating": (quality_rating if isinstance(quality_rating, str) else None),
             "messaging_tier": (messaging_tier if isinstance(messaging_tier, str) else None),
         }
+        # Meta Commerce catalog linked to this WABA (WhatsApp native product
+        # messages). Set only when provided (owned-number connect); the
+        # Embedded Signup path leaves it absent.
+        if catalog_id:
+            config["catalog_id"] = catalog_id
         now = datetime.now(tz=UTC)
         if row is None:
             row = Channel(

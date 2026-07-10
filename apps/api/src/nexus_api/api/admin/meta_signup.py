@@ -95,6 +95,30 @@ class MetaSignupOut(BaseModel):
     mode: str
     bisuat_expires_at: str | None
     audit_log_id: uuid.UUID
+    catalog_id: str | None = None  # set by the owned-number connect path
+
+
+class MetaConnectOwnedIn(BaseModel):
+    """Connect a WhatsApp number the app OWNER already controls, via a
+    permanent System User access token — the alternative to Embedded
+    Signup for numbers under the portfolio that owns the Auphere app
+    (Facelad). The frontend/operator supplies the token; the backend never
+    exchanges an OAuth code here.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Permanent System User token with whatsapp_business_messaging +
+    # whatsapp_business_management (+ catalog_management for product cards).
+    system_user_token: str = Field(min_length=20, max_length=512)
+    waba_id: str = Field(min_length=1, max_length=64)
+    phone_number_id: str | None = Field(default=None, max_length=64)
+    business_id: str | None = Field(default=None, max_length=64)
+    # Meta Commerce catalog linked to this WABA (native product messages).
+    catalog_id: str | None = Field(default=None, max_length=64)
+    # An already-live number is usually registered under the app; leave the
+    # best-effort register on by default, but allow skipping it explicitly.
+    attempt_register: bool = True
 
 
 # ── dependency factories ───────────────────────────────────────────────────
@@ -258,6 +282,125 @@ async def meta_signup(
             result.bisuat_expires_at.isoformat() if result.bisuat_expires_at is not None else None
         ),
         audit_log_id=audit.id,
+    )
+
+
+# ── connect owned number (System User token, no Embedded Signup) ────────────
+
+
+@router.post(
+    "/tenants/{tenant_id}/integrations/meta/connect-owned",
+    response_model=MetaSignupOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def meta_connect_owned(
+    body: MetaConnectOwnedIn,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    redis: Redis = Depends(get_redis),
+    actor: str = Depends(require_admin_token),
+) -> MetaSignupOut:
+    """Connect a number under the app-owner portfolio (Facelad) using a
+    permanent System User token. Embedded Signup refuses that portfolio;
+    this path skips the OAuth exchange and reuses the same post-signup
+    steps: (best-effort) register phone → subscribe webhook → persist creds
+    → upsert channel (with ``catalog_id``) → invalidate resolver cache.
+    """
+    settings = get_settings()
+    client = _build_meta_client()
+    orchestrator = EmbeddedSignupOrchestrator(
+        session=session,
+        redis=redis,
+        client=client,
+        app_id=settings.meta_app_id,
+        webhook_callback_url=settings.meta_webhook_callback_url,
+        webhook_verify_token=settings.meta_webhook_verify_token,
+    )
+    try:
+        result = await orchestrator.connect_with_token(
+            token=body.system_user_token,
+            waba_id=body.waba_id,
+            phone_number_id=body.phone_number_id,
+            catalog_id=body.catalog_id,
+            business_id=body.business_id or "",
+            attempt_register=body.attempt_register,
+        )
+    except RegisterPhoneError as exc:
+        log.warning("meta.connect_owned.register_phone_failed", reason=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "No se pudo resolver/registrar el número. Verifica waba_id / "
+                "phone_number_id y que el token tenga acceso a esa WABA."
+            ),
+        ) from exc
+    except SubscribeWebhookError as exc:
+        log.warning("meta.connect_owned.subscribe_webhook_failed", reason=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Meta no aceptó subscribed_apps — el webhook quedó sin "
+                "configurar. Revisa que el token tenga whatsapp_business_"
+                "management sobre esta WABA."
+            ),
+        ) from exc
+    except MetaAPIError as exc:
+        log.warning(
+            "meta.connect_owned.api_error",
+            status=exc.status_code,
+            code=exc.code,
+            reason=exc.message,
+        )
+        http_status = (
+            status.HTTP_502_BAD_GATEWAY
+            if exc.status_code and exc.status_code >= 500
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(
+            status_code=http_status,
+            detail=f"Meta API error: {exc.message}",
+        ) from exc
+    finally:
+        await client.close()
+
+    from nexus_api.core.tenant_context import require_current_tenant
+
+    tenant_id = require_current_tenant()
+    audit = AuditLog(
+        tenant_id=tenant_id,
+        actor=f"admin:{actor[:8]}",
+        action="channel.whatsapp.meta_connect_owned",
+        target=f"channel:{result.channel_id}",
+        before_json=None,
+        after_json={
+            "waba_id": result.waba_id,
+            "phone_number_id": result.phone_number_id,
+            "display_phone_number": result.display_phone_number,
+            "mode": result.mode,
+            "channel_id": str(result.channel_id),
+            "catalog_id": body.catalog_id,
+        },
+    )
+    session.add(audit)
+    await session.flush()
+
+    log.info(
+        "meta.connect_owned.success",
+        tenant_id=str(tenant_id),
+        channel_id=str(result.channel_id),
+        waba_id=result.waba_id,
+        catalog_id=body.catalog_id,
+    )
+
+    return MetaSignupOut(
+        status="connected",
+        channel_id=result.channel_id,
+        waba_id=result.waba_id,
+        phone_number_id=result.phone_number_id,
+        display_phone_number=result.display_phone_number,
+        mode=result.mode,
+        bisuat_expires_at=None,
+        audit_log_id=audit.id,
+        catalog_id=body.catalog_id,
     )
 
 

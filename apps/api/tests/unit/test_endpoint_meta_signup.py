@@ -120,6 +120,86 @@ async def test_meta_signup_creates_channel_credentials_and_audit(
     assert audit.after_json["channel_id"] == str(chan.id)
 
 
+# ── connect owned number (System User token) ─────────────────────────────────
+
+
+async def test_meta_connect_owned_creates_channel_with_catalog(
+    client, admin_headers, seed_tenants, db_session
+):
+    """Owned-number path: no OAuth exchange; a provided System User token is
+    persisted as the credential and ``catalog_id`` lands on the channel."""
+    tenant_id = seed_tenants["a"]
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        # No /oauth/access_token here — the token is supplied directly.
+        mock.post("/PN_TEST/register").respond(200, json={"success": True})
+        mock.post("/WABA_TEST/subscribed_apps").respond(200, json={"success": True})
+        mock.get("/PN_TEST").respond(200, json=_ok_phone_response())
+        r = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/connect-owned",
+            json={
+                "system_user_token": "EAA-system-user-permanent-token-xyz",
+                "waba_id": "WABA_TEST",
+                "phone_number_id": "PN_TEST",
+                "catalog_id": "CATALOG_123",
+            },
+            headers=admin_headers,
+        )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["status"] == "connected"
+    assert body["display_phone_number"] == "+56933334444"
+    assert body["bisuat_expires_at"] is None  # permanent token
+    assert body["catalog_id"] == "CATALOG_123"
+
+    chan = await db_session.scalar(
+        select(Channel).where(Channel.tenant_id == tenant_id, Channel.provider == "meta")
+    )
+    assert chan is not None
+    assert chan.config["catalog_id"] == "CATALOG_123"
+    assert chan.config["waba_id"] == "WABA_TEST"
+
+    cred = await db_session.scalar(
+        select(TenantCredentials).where(
+            TenantCredentials.tenant_id == tenant_id,
+            TenantCredentials.integration == "meta_whatsapp",
+        )
+    )
+    assert cred is not None
+    assert b"EAA-system-user-permanent-token-xyz" in cred.encrypted_payload
+
+    audit = await db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.action == "channel.whatsapp.meta_connect_owned",
+        )
+    )
+    assert audit is not None
+    assert audit.after_json["catalog_id"] == "CATALOG_123"
+
+
+async def test_meta_connect_owned_survives_register_failure(client, admin_headers, seed_tenants):
+    """register_phone is best-effort — an already-registered live number
+    (Meta 400 on re-register) must NOT block the connect; subscribe is what
+    matters."""
+    tenant_id = seed_tenants["a"]
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.post("/PN_TEST/register").respond(
+            400, json={"error": {"message": "already registered"}}
+        )
+        mock.post("/WABA_TEST/subscribed_apps").respond(200, json={"success": True})
+        mock.get("/PN_TEST").respond(200, json=_ok_phone_response())
+        r = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/connect-owned",
+            json={
+                "system_user_token": "EAA-token-abcdefghij",
+                "waba_id": "WABA_TEST",
+                "phone_number_id": "PN_TEST",
+            },
+            headers=admin_headers,
+        )
+    assert r.status_code == 201, r.text
+
+
 # ── verify_token contract ──────────────────────────────────────────────────
 
 
