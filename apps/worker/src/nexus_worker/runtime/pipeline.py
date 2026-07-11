@@ -930,12 +930,18 @@ def make_handler_node(
                         tools_arg.append(dict(_CODE_EXECUTION_TOOL))
 
                 try:
+                    # The tool-free final iteration drops ``code_execution``
+                    # from ``tools`` — so it must ALSO drop the skills
+                    # ``container`` from ``extra``, or Anthropic rejects the
+                    # call ("container: skills can only be used when a code
+                    # execution tool is enabled"). No tools this turn means
+                    # skills/MCP aren't usable anyway.
                     response = await llm.respond_with_tools(
                         tenant_id=tenant_id,
                         role=intent,
                         messages=messages,
                         tools=tools_arg,
-                        extra=mcp_extra,
+                        extra=None if last else mcp_extra,
                     )
                 except Exception as exc:
                     # The router exhausted retries + fallback. Rather than
