@@ -267,6 +267,17 @@ class SendInteractiveInput(InputModel):
         default=None,
         description="A single URL-opening button. Use for checkout / external link.",
     )
+    products: list[str] | None = Field(
+        default=None,
+        description=(
+            "Native WhatsApp catalog cards. List of product_retailer_id "
+            "(the store's product IDs, e.g. WooCommerce product IDs from "
+            "list_products). 1 id → a single product card; 2+ → a "
+            "multi-product list the customer can add to their WhatsApp "
+            "cart. The catalog is resolved server-side from the channel; "
+            "never send a catalog_id. 1-30 items."
+        ),
+    )
     context_message_id: str | None = Field(
         default=None,
         max_length=160,
@@ -289,11 +300,15 @@ class SendInteractiveInput(InputModel):
             set_components.append("list")
         if self.cta_url is not None:
             set_components.append("cta_url")
+        if self.products is not None:
+            set_components.append("products")
         if len(set_components) != 1:
             raise ValueError(
                 "send_interactive requires EXACTLY ONE of buttons / list "
-                f"/ cta_url; got: {set_components or 'none'}"
+                f"/ cta_url / products; got: {set_components or 'none'}"
             )
+        if self.products is not None and not (1 <= len(self.products) <= 30):
+            raise ValueError(f"products must have between 1 and 30 ids; got {len(self.products)}")
         # Buttons-specific length checks — Pydantic Field min/max_length
         # on Optional[list[...]] trips a forward-ref bug in this scope,
         # so enforce here instead.

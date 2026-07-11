@@ -94,6 +94,46 @@ class TestCtaUrl:
         }
 
 
+class TestProducts:
+    def test_single_product_message(self) -> None:
+        block = _to_meta_interactive(
+            {"body": "Mira esta máquina 👇", "products": ["2291"]},
+            catalog_id="CAT_123",
+        )
+        assert block["type"] == "product"
+        assert block["body"] == {"text": "Mira esta máquina 👇"}
+        assert "header" not in block  # single product messages have no header
+        assert block["action"] == {
+            "catalog_id": "CAT_123",
+            "product_retailer_id": "2291",
+        }
+
+    def test_multi_product_list(self) -> None:
+        block = _to_meta_interactive(
+            {"body": "Opciones", "header": "Máquinas", "products": ["2291", "2363", "2388"]},
+            catalog_id="CAT_123",
+        )
+        assert block["type"] == "product_list"
+        assert block["header"] == {"type": "text", "text": "Máquinas"}
+        assert block["action"] == {
+            "catalog_id": "CAT_123",
+            "sections": [
+                {
+                    "title": "Máquinas",
+                    "product_items": [
+                        {"product_retailer_id": "2291"},
+                        {"product_retailer_id": "2363"},
+                        {"product_retailer_id": "2388"},
+                    ],
+                }
+            ],
+        }
+
+    def test_products_without_catalog_id_raises(self) -> None:
+        with pytest.raises(ValueError, match="catalog_id"):
+            _to_meta_interactive({"body": "x", "products": ["2291"]}, catalog_id=None)
+
+
 class TestMalformed:
     def test_no_component_raises(self) -> None:
         with pytest.raises(ValueError, match="missing buttons / list / cta_url"):

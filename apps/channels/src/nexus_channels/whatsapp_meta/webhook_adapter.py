@@ -538,6 +538,37 @@ def _normalise_body(
             "text": body.get("body") if isinstance(body, dict) else None
         }
 
+    if raw_type == "order":
+        # Native WhatsApp cart: the customer added catalog products and sent
+        # their cart. Surface it as TEXT so the agent confirms + creates the
+        # WooCommerce order via create_order. ``product_retailer_id`` is the
+        # store product id (catalog synced from WooCommerce).
+        order = message.get("order")
+        if not isinstance(order, dict):
+            return InboundMessageKind.UNSUPPORTED, {}
+        lines: list[str] = []
+        for it in order.get("product_items") or []:
+            if not isinstance(it, dict):
+                continue
+            rid = str(it.get("product_retailer_id") or "").strip()
+            if not rid:
+                continue
+            qty = it.get("quantity")
+            price = it.get("item_price")
+            cur = it.get("currency") or ""
+            lines.append(f"- product_id={rid} x{qty} (precio unit {price} {cur})")
+        if not lines:
+            return InboundMessageKind.UNSUPPORTED, {}
+        text = (
+            "[PEDIDO_WHATSAPP] El cliente armó un carrito desde el catálogo y lo "
+            "envió. Cada product_id es el ID de producto de la tienda para "
+            "create_order (line_items):\n" + "\n".join(lines)
+        )
+        note = order.get("text")
+        if isinstance(note, str) and note.strip():
+            text += f"\nNota del cliente: {note.strip()}"
+        return InboundMessageKind.TEXT, {"text": text}
+
     if raw_type == "interactive":
         inter = message.get("interactive") or {}
         if not isinstance(inter, dict):

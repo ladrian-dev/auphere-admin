@@ -210,6 +210,7 @@ async def _send_one(
             Channel.type,
             Channel.provider,
             Customer.identifier,
+            Channel.config,
         )
         .join(Conversation, Conversation.channel_id == Channel.id)
         .join(Customer, Customer.id == Conversation.customer_id)
@@ -229,7 +230,10 @@ async def _send_one(
             message_id=str(msg.id),
         )
         return
-    channel_id, business_phone, channel_type, provider, recipient = row
+    channel_id, business_phone, channel_type, provider, recipient, channel_config = row
+    # Meta Commerce catalog linked to this WABA — used to resolve native
+    # product-card messages. Resolved server-side; the LLM never sees it.
+    catalog_id = (channel_config or {}).get("catalog_id")
     if channel_type != ChannelType.WHATSAPP:
         msg.status = MessageStatus.FAILED
         msg.failed_at = datetime.now(UTC)
@@ -286,6 +290,7 @@ async def _send_one(
             recipient=recipient,
             tenant_id=tenant_id,
             channel_id=channel_id,
+            catalog_id=catalog_id,
         )
     except MediaStorageError as exc:
         # Media couldn't be resolved to a presigned URL. Park failed.
@@ -334,6 +339,7 @@ async def _dispatch_message(
     recipient: str,
     tenant_id: uuid.UUID,
     channel_id: uuid.UUID,
+    catalog_id: str | None = None,
 ) -> SendResult:
     """Route the pending row to the right adapter call."""
     context = msg.context_message_id
@@ -365,7 +371,7 @@ async def _dispatch_message(
     # body (for operator-panel previews) but the Cloud API only sees
     # the structured block.
     if msg.interactive_payload:
-        interactive_block = _to_meta_interactive(msg.interactive_payload)
+        interactive_block = _to_meta_interactive(msg.interactive_payload, catalog_id=catalog_id)
         # The tool's payload may carry an in-band ``context_message_id``
         # for quoted replies; prefer it over the row-level ``context``
         # (the row's column is populated by media / text paths, not by
@@ -600,12 +606,19 @@ def _ms_since(when: datetime) -> int | None:
     return int(delta.total_seconds() * 1000)
 
 
-def _to_meta_interactive(payload: dict[str, Any]) -> dict[str, object]:
+def _to_meta_interactive(
+    payload: dict[str, Any], *, catalog_id: str | None = None
+) -> dict[str, object]:
     """Convert our ``response.send_interactive`` tool payload into a
     Meta Cloud API ``interactive`` block.
 
     Input shape (validated by ``SendInteractiveInput``):
-        {body, header?, footer?, buttons|list|cta_url, context_message_id?}
+        {body, header?, footer?, buttons|list|cta_url|products, context_message_id?}
+
+    ``catalog_id`` (the tenant's Meta Commerce catalog, from the channel
+    config) is required to serialise ``products`` into native
+    ``product`` / ``product_list`` messages; it is injected server-side
+    and never comes from the LLM.
 
     Output shape (Meta WhatsApp Cloud API):
         {type: "button"|"list"|"cta_url",
@@ -669,7 +682,41 @@ def _to_meta_interactive(payload: dict[str, Any]) -> dict[str, object]:
         }
         return block
 
+    if payload.get("products"):
+        product_ids = [str(p) for p in payload["products"] if str(p).strip()]
+        if not catalog_id:
+            raise ValueError(
+                "product message requires a catalog_id on the channel "
+                "(config.catalog_id) — none set; cannot send catalog cards"
+            )
+        if not product_ids:
+            raise ValueError("products list is empty after cleaning")
+        section_title = str(header or "Productos")[:24]
+        if len(product_ids) == 1:
+            # Single Product Message — Meta allows only body/footer/action
+            # (no header). Drop any header the generic prefix added.
+            block.pop("header", None)
+            block["type"] = "product"
+            block["action"] = {
+                "catalog_id": str(catalog_id),
+                "product_retailer_id": product_ids[0],
+            }
+        else:
+            # Multi-Product Message — Meta requires a text header + sections.
+            block["type"] = "product_list"
+            block["header"] = {"type": "text", "text": str(header or "Productos")}
+            block["action"] = {
+                "catalog_id": str(catalog_id),
+                "sections": [
+                    {
+                        "title": section_title,
+                        "product_items": [{"product_retailer_id": pid} for pid in product_ids],
+                    }
+                ],
+            }
+        return block
+
     raise ValueError(
-        "interactive_payload missing buttons / list / cta_url — "
+        "interactive_payload missing buttons / list / cta_url / products — "
         "tool validation failed earlier; refusing to send a malformed block"
     )

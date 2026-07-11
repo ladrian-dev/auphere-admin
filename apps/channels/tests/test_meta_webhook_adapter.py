@@ -81,6 +81,52 @@ def test_parse_inbound_text() -> None:
     assert msg.sender_name == "Juan"
 
 
+def test_parse_inbound_order_becomes_text_cart() -> None:
+    payload = _envelope(
+        {
+            "messaging_product": "whatsapp",
+            "metadata": {"display_phone_number": "56933334444", "phone_number_id": "PN_1"},
+            "contacts": [{"profile": {"name": "Juan"}, "wa_id": "56911112222"}],
+            "messages": [
+                {
+                    "from": "56911112222",
+                    "id": "wamid.ORDER",
+                    "timestamp": "1716220800",
+                    "type": "order",
+                    "order": {
+                        "catalog_id": "979903338124604",
+                        "product_items": [
+                            {
+                                "product_retailer_id": "2291",
+                                "quantity": 2,
+                                "item_price": 10990,
+                                "currency": "CLP",
+                            },
+                            {
+                                "product_retailer_id": "2363",
+                                "quantity": 1,
+                                "item_price": 7990,
+                                "currency": "CLP",
+                            },
+                        ],
+                        "text": "urgente porfa",
+                    },
+                }
+            ],
+        }
+    )
+    msg = parse_inbound(payload)
+    assert msg is not None
+    # Surfaced as TEXT so the agent confirms + creates the WooCommerce order.
+    assert msg.kind == InboundMessageKind.TEXT
+    assert msg.text is not None
+    assert "[PEDIDO_WHATSAPP]" in msg.text
+    assert "product_id=2291 x2" in msg.text
+    assert "product_id=2363 x1" in msg.text
+    assert "Nota del cliente: urgente porfa" in msg.text
+    assert msg.raw_event_type == "order"
+
+
 def test_parse_inbound_interactive_button() -> None:
     payload = _envelope(
         {
