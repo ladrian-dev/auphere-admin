@@ -214,12 +214,25 @@ def _build_interactive_ucm(
             }
         )
 
+    if payload.get("products"):
+        # Native catalog product cards are sent straight from
+        # ``interactive_payload`` by the outbound dispatcher (product /
+        # product_list Meta message). The UCM schema (v1.0.0) has no
+        # product content type, so represent the turn as text for the
+        # shadow/telemetry layer — the real product-card send is
+        # unaffected. Without this the formatter would raise and fail the
+        # whole turn (the customer gets no reply).
+        n = len([p for p in payload["products"] if str(p).strip()])
+        return _wrap_text(
+            body or f"Te comparto {n} producto(s) del catálogo 👇", mid, metadata
+        )
+
     # Unreachable if the tool's validator did its job, but stay loud
     # rather than silently downgrading: a missing component means the
     # agent emitted something malformed and the operator should see it
     # in traces.
     raise ValueError(
-        "interactive_payload has no buttons / list / cta_url; "
+        "interactive_payload has no buttons / list / cta_url / products; "
         "tool validation should have caught this — refusing to "
         "fabricate a UCM"
     )
