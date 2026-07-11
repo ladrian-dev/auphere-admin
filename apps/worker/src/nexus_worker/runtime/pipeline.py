@@ -314,7 +314,12 @@ _NATIVE_OUTPUT_TOOLS: tuple[str, ...] = (
     "notification.send_reaction",
     "response.send_interactive",
 )
-for _intent in ("book", "queue", "info"):
+# ``fallback`` is included so single-purpose agents (e.g. the WooCommerce
+# sales agent, whose queries the classifier often lands on ``fallback``)
+# can still emit native components / product cards — the connector tools
+# already surface on ``fallback`` (``_CONNECTOR_TOOL_INTENTS``), so keeping
+# the native output palette aligned avoids a text-only fallback.
+for _intent in ("book", "queue", "info", "fallback"):
     _INTENT_CATEGORIES[_intent] = _INTENT_CATEGORIES[_intent] + _NATIVE_OUTPUT_TOOLS
 
 
