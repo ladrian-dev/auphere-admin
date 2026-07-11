@@ -131,6 +131,7 @@ def _stub_dispatch(monkeypatch: pytest.MonkeyPatch, *, status: str = "ok") -> li
         call: ToolCall,
         available_names: tuple[str, ...],
         intent: str,
+        conversation_id: str | None = None,
     ) -> dict[str, Any]:
         seen.append(call)
         return {

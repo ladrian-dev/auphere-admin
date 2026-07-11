@@ -738,6 +738,7 @@ async def _dispatch_tool(
     call: ToolCall,
     available_names: tuple[str, ...],
     intent: str,
+    conversation_id: str | None = None,
 ) -> dict[str, Any]:
     """Dispatch one tool call, returning an envelope no matter what.
 
@@ -746,10 +747,20 @@ async def _dispatch_tool(
     violation or a tool error becomes an envelope with a non-``ok`` status
     so the loop can feed the failure back to the model instead of crashing
     the turn.
+
+    ``conversation_id`` is the turn's real conversation. Tools like
+    ``response.send_interactive`` / ``notification.*`` require it, but it is
+    an internal UUID the LLM cannot know — it hallucinates one, which then
+    fails ``_load_conversation`` ("conversation not found"). We inject the
+    real value whenever the tool declares the field, so the model never has
+    to (and cannot corrupt) it.
     """
+    args = dict(call.arguments or {})
+    if conversation_id and "conversation_id" in args:
+        args["conversation_id"] = conversation_id
     try:
         envelope: dict[str, Any] = await registry.dispatch(
-            call.name, dict(call.arguments), whitelist=available_names
+            call.name, args, whitelist=available_names
         )
         envelope["intent"] = intent
         return envelope
@@ -992,7 +1003,13 @@ def make_handler_node(
                             }
                         )
                         continue
-                    envelope = await _dispatch_tool(scoped_registry, call, available_names, intent)
+                    envelope = await _dispatch_tool(
+                        scoped_registry,
+                        call,
+                        available_names,
+                        intent,
+                        conversation_id=state.get("conversation_id"),
+                    )
                     envelopes.append(envelope)
                     messages.append(
                         {
