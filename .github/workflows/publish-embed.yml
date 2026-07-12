@@ -9,8 +9,15 @@
 # Publishes with npm provenance (repo is public + id-token: write covers the
 # OIDC attestation; repository.url in package.json MUST match this repo).
 #
-# Uses npm throughout to match the committed package-lock.json (no pnpm —
-# one less third-party action in the supply chain).
+# Uses npm (no pnpm — one less third-party action in the supply chain).
+# `npm install` (not `npm ci`): tsup 8 pulls platform-specific rolldown
+# bindings as OPTIONAL deps, and each binding pins a different exact
+# @emnapi/core version (macOS 1.11.1 vs linux 1.11.2). A lockfile
+# generated on one OS omits the other OS's binding node, so `npm ci`
+# fails "Missing from lock file" on the linux runner. The SDK ships 0
+# runtime deps and dist/ is built deterministically from src/ by tsup,
+# so a strict lockfile buys nothing here — `npm install` resolves the
+# right binding per platform.
 #
 # Secret required: NPM_TOKEN — a granular access token for the `auphere`
 # npm user with read+write on the @auphere scope.
@@ -54,7 +61,7 @@ jobs:
           fi
 
       - if: steps.guard.outputs.already == 'false'
-        run: npm ci
+        run: npm install --no-audit --no-fund
       - if: steps.guard.outputs.already == 'false'
         run: npm run typecheck
       - if: steps.guard.outputs.already == 'false'
