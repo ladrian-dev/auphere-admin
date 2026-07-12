@@ -18,11 +18,13 @@ import uuid
 import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import (
     EmbedContext,
     get_db_session,
+    get_redis,
     scoped_session_from_embed_jwt,
 )
 from nexus_api.db.models import (
@@ -40,11 +42,14 @@ from nexus_api.schemas.embed import (
     BroadcastCreateIn,
     BroadcastRecipientStatusOut,
     BroadcastStatusOut,
+    EmbedSignupIn,
+    EmbedSignupOut,
     EmbedStatusOut,
     EmbedTemplatesOut,
     PartnerConfigOut,
 )
 from nexus_api.services.broadcasts import create_broadcast
+from nexus_api.services.partner_provisioning import activate_tenant_if_ready
 from nexus_api.services.whatsapp_templates import fetch_templates
 
 log = structlog.get_logger(__name__)
@@ -119,6 +124,146 @@ def _require_send_scope(ctx: EmbedContext) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Session token lacks widget:send scope",
         )
+
+
+@router.post("/whatsapp/signup", response_model=EmbedSignupOut, status_code=201)
+async def embed_whatsapp_signup(
+    body: EmbedSignupIn,
+    ctx: EmbedContext = Depends(scoped_session_from_embed_jwt),
+    redis: Redis = Depends(get_redis),
+) -> EmbedSignupOut:
+    """Complete Meta Embedded Signup from the ``/signup`` iframe (ADR-028
+    Fase 2). Public variant of ``/admin/tenants/{id}/integrations/meta/
+    signup`` — same orchestrator, but the tenant comes exclusively from
+    the widget JWT claims and the audit lands in ``embed_audit_log``.
+
+    On success, hands off to ``activate_tenant_if_ready``: partners with
+    ``auto_activate`` get the tenant flipped PROVISIONING → ACTIVE when a
+    promoted agent_config exists, so the number starts answering without
+    an operator in the loop.
+    """
+    if "widget:connect" not in ctx.claims.scope:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Session token lacks widget:connect scope",
+        )
+
+    from nexus_channels.whatsapp_meta import (
+        EmbeddedSignupOrchestrator,
+        MetaAPIError,
+        MetaClient,
+        SignupIngressPayload,
+    )
+    from nexus_channels.whatsapp_meta.exceptions import (
+        RegisterPhoneError,
+        SubscribeWebhookError,
+        TokenExchangeError,
+    )
+
+    from nexus_api.config import get_settings
+
+    settings = get_settings()
+    client = MetaClient(
+        app_secret=settings.meta_app_secret,
+        require_appsecret_proof=settings.meta_require_appsecret_proof,
+    )
+    orchestrator = EmbeddedSignupOrchestrator(
+        session=ctx.session,
+        redis=redis,
+        client=client,
+        app_id=settings.meta_app_id,
+        webhook_callback_url=settings.meta_webhook_callback_url,
+        webhook_verify_token=settings.meta_webhook_verify_token,
+    )
+    payload = SignupIngressPayload(
+        code=body.code,
+        waba_id=body.waba_id,
+        phone_number_id=body.phone_number_id,
+        business_id=body.business_id,
+        mode=body.mode,
+    )
+    try:
+        result = await orchestrator.complete(payload)
+    except TokenExchangeError as exc:
+        log.warning("embed.signup.code_exchange_failed", reason=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Meta rejected the OAuth code — it expired or was already "
+                "consumed. Close the dialog and retry the connection."
+            ),
+        ) from exc
+    except RegisterPhoneError as exc:
+        log.warning("embed.signup.register_phone_failed", reason=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Meta did not accept the phone registration. Usual cause: the "
+                "number is registered under another app with a different PIN."
+            ),
+        ) from exc
+    except SubscribeWebhookError as exc:
+        log.warning("embed.signup.subscribe_webhook_failed", reason=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Meta did not accept the webhook subscription. Retry the connection.",
+        ) from exc
+    except MetaAPIError as exc:
+        log.warning(
+            "embed.signup.api_error",
+            status=exc.status_code,
+            code=exc.code,
+            reason=exc.message,
+        )
+        http_status = (
+            status.HTTP_502_BAD_GATEWAY
+            if exc.status_code and exc.status_code >= 500
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(
+            status_code=http_status, detail=f"Meta API error: {exc.message}"
+        ) from exc
+    finally:
+        await client.close()
+
+    from nexus_api.repositories.partner import EmbedAuditRepository
+
+    await EmbedAuditRepository(ctx.session).record(
+        event="whatsapp.signup.completed",
+        partner_id=ctx.claims.partner_id,
+        api_key_id=ctx.claims.key_id,
+        tenant_id=ctx.claims.tenant_id,
+        payload={
+            "waba_id": result.waba_id,
+            "phone_number_id": result.phone_number_id,
+            "display_phone_number": result.display_phone_number,
+            "mode": result.mode,
+            "channel_id": str(result.channel_id),
+        },
+        jti=ctx.claims.jti,
+    )
+
+    activated = await activate_tenant_if_ready(
+        ctx.session,
+        partner=ctx.partner,
+        tenant_id=ctx.claims.tenant_id,
+        api_key_id=ctx.claims.key_id,
+        jti=ctx.claims.jti,
+    )
+
+    log.info(
+        "embed.signup.success",
+        tenant_id=str(ctx.claims.tenant_id),
+        partner_id=str(ctx.claims.partner_id),
+        channel_id=str(result.channel_id),
+        waba_id=result.waba_id,
+        tenant_activated=activated,
+    )
+    return EmbedSignupOut(
+        status="connected",
+        display_phone_number=result.display_phone_number,
+        tenant_activated=activated,
+    )
 
 
 @router.post("/broadcasts", response_model=BroadcastAcceptedOut, status_code=202)

@@ -12,7 +12,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +38,7 @@ from nexus_api.schemas.partner import (
     PartnerTenantLinkIn,
     PartnerTenantOut,
     PartnerUpdateIn,
+    PartnerUsageOut,
 )
 
 log = structlog.get_logger(__name__)
@@ -106,6 +107,35 @@ async def update_partner(
     async with session.begin():
         partner = await _get_partner_or_404(session, partner_id)
         changes = body.model_dump(exclude_unset=True, exclude_none=True)
+        # Blueprint refs (Fase 2b): empty string clears; a non-empty value
+        # must exist so a typo doesn't surface later as a broken provision.
+        if "default_seed_template" in changes:
+            if changes["default_seed_template"] == "":
+                changes["default_seed_template"] = None
+            else:
+                from nexus_api.services.templating.seed_templates import list_seed_templates
+
+                if changes["default_seed_template"] not in list_seed_templates():
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"seed template {changes['default_seed_template']!r} not found",
+                    )
+        if "default_connector_slug" in changes:
+            if changes["default_connector_slug"] == "":
+                changes["default_connector_slug"] = None
+            else:
+                import sqlalchemy as sa
+
+                from nexus_api.db.models import Connector
+
+                connector = await session.scalar(
+                    sa.select(Connector).where(Connector.slug == changes["default_connector_slug"])
+                )
+                if connector is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"connector {changes['default_connector_slug']!r} not found",
+                    )
         for field, value in changes.items():
             setattr(partner, field, value)
         if changes:
@@ -320,6 +350,128 @@ async def link_tenant(
             detail="client ref or tenant already mapped for this partner",
         ) from exc
     return PartnerTenantOut.model_validate(mapping)
+
+
+# ── Usage (metrics / billing) ───────────────────────────────────────────────
+
+
+@router.get("/{partner_id}/usage", response_model=PartnerUsageOut)
+async def partner_usage(
+    partner_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    window_days: int = Query(default=30, ge=1, le=365),
+) -> PartnerUsageOut:
+    """Aggregated usage across every tenant mapped to the partner —
+    the billing/metrics view. Tenant-scoped tables (channels,
+    agent_configs, broadcasts, messages) are RLS-protected, so each
+    tenant is read in its own short scoped transaction (same pattern as
+    ``_whatsapp_status`` on the provision surface); N is the partner's
+    client count, small by construction.
+    """
+    import sqlalchemy as sa
+
+    from nexus_api.core.tenant_context import _current_tenant, apply_tenant_to_session
+    from nexus_api.db.models import (
+        AgentConfig,
+        AgentConfigStatus,
+        Broadcast,
+        BroadcastRecipient,
+        Channel,
+        ChannelStatus,
+        ChannelType,
+        Message,
+        MessageDirection,
+    )
+    from nexus_api.schemas.partner import PartnerClientUsageOut, PartnerUsageOut
+
+    # Reads run in their own transaction block — autobegin would collide
+    # with the explicit per-tenant ``begin()`` below.
+    async with session.begin():
+        await _get_partner_or_404(session, partner_id)
+        mappings = await PartnerTenantRepository(session).list_for_partner(partner_id)
+    since = datetime.now(UTC) - timedelta(days=window_days)
+
+    clients: list[PartnerClientUsageOut] = []
+    for mapping in mappings:
+        ctx_token = _current_tenant.set(mapping.tenant_id)
+        try:
+            async with session.begin():
+                await apply_tenant_to_session(session, mapping.tenant_id)
+                tenant = await session.get(Tenant, mapping.tenant_id)
+                phone = await session.scalar(
+                    sa.select(Channel.provider_identifier)
+                    .where(
+                        Channel.type == ChannelType.WHATSAPP,
+                        Channel.status == ChannelStatus.ACTIVE,
+                    )
+                    .limit(1)
+                )
+                agent = await session.scalar(
+                    sa.select(AgentConfig)
+                    .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
+                    .limit(1)
+                )
+                broadcasts, recipients = (
+                    await session.execute(
+                        sa.select(
+                            sa.func.count(sa.distinct(Broadcast.id)),
+                            sa.func.count(BroadcastRecipient.id),
+                        )
+                        .select_from(Broadcast)
+                        .outerjoin(
+                            BroadcastRecipient,
+                            BroadcastRecipient.broadcast_id == Broadcast.id,
+                        )
+                        .where(Broadcast.created_at >= since)
+                    )
+                ).one()
+                inbound, outbound, cost = (
+                    await session.execute(
+                        sa.select(
+                            sa.func.count(Message.id).filter(
+                                Message.direction == MessageDirection.INBOUND
+                            ),
+                            sa.func.count(Message.id).filter(
+                                Message.direction == MessageDirection.OUTBOUND
+                            ),
+                            sa.func.coalesce(sa.func.sum(Message.cost_usd), 0.0),
+                        ).where(Message.created_at >= since)
+                    )
+                ).one()
+        finally:
+            _current_tenant.reset(ctx_token)
+
+        clients.append(
+            PartnerClientUsageOut(
+                external_client_ref=mapping.external_client_ref,
+                client_name=mapping.client_name,
+                tenant_id=mapping.tenant_id,
+                tenant_status=tenant.status.value if tenant else "unknown",
+                whatsapp_connected=phone is not None,
+                agent_version=agent.version if agent else None,
+                agent_seed_template=agent.seed_template_ref if agent else None,
+                broadcasts=broadcasts,
+                broadcast_recipients=recipients,
+                messages_inbound=inbound,
+                messages_outbound=outbound,
+                cost_usd=float(cost),
+            )
+        )
+
+    return PartnerUsageOut(
+        partner_id=partner_id,
+        window_days=window_days,
+        clients_total=len(clients),
+        clients_active=sum(1 for c in clients if c.tenant_status == "active"),
+        clients_whatsapp_connected=sum(1 for c in clients if c.whatsapp_connected),
+        clients_with_agent=sum(1 for c in clients if c.agent_version is not None),
+        broadcasts=sum(c.broadcasts for c in clients),
+        broadcast_recipients=sum(c.broadcast_recipients for c in clients),
+        messages_inbound=sum(c.messages_inbound for c in clients),
+        messages_outbound=sum(c.messages_outbound for c in clients),
+        cost_usd=round(sum(c.cost_usd for c in clients), 6),
+        clients=clients,
+    )
 
 
 # ── Audit ────────────────────────────────────────────────────────────────────

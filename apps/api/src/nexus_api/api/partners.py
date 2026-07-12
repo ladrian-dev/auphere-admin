@@ -38,11 +38,16 @@ from nexus_api.db.models import (
 )
 from nexus_api.repositories.partner import EmbedAuditRepository, PartnerTenantRepository
 from nexus_api.schemas.partner import (
+    ClientAgentOut,
     ClientProvisionIn,
     ClientProvisionOut,
     WhatsAppStatusOut,
     WidgetSessionIn,
     WidgetSessionOut,
+)
+from nexus_api.services.partner_provisioning import (
+    ProvisioningError,
+    provision_client_blueprint,
 )
 
 log = structlog.get_logger(__name__)
@@ -101,11 +106,18 @@ async def provision_client(
     request: Request,
     ctx: PartnerContext = Depends(require_partner_key("provision")),
     session: AsyncSession = Depends(get_db_session),
+    redis: Redis = Depends(get_redis),
 ) -> ClientProvisionOut:
     """Idempotent: registering the same ``external_client_ref`` twice
     returns the existing mapping. First registration creates the tenant
     just-in-time with status ``provisioning`` (no channel until the
-    WhatsApp signup completes)."""
+    WhatsApp signup completes).
+
+    Partners configured with a blueprint (``default_seed_template`` /
+    ``default_connector_slug``) also get their agent seeded + promoted
+    and the connector installed in the same call — see
+    ``services/partner_provisioning.py``. Re-provisioning rotates
+    connector credentials but never re-seeds an existing agent."""
     mappings = PartnerTenantRepository(session)
 
     # Reads and writes each run in their own transaction block — SQLAlchemy
@@ -151,11 +163,68 @@ async def provision_client(
                     detail="provisioning conflict",
                 ) from None
 
+    agent_out = ClientAgentOut(status="not_configured")
+    connector_connected = False
+    run_blueprint = ctx.partner.default_seed_template is not None or (
+        ctx.partner.default_connector_slug is not None and body.connector is not None
+    )
+    if run_blueprint:
+        from nexus_api.core.tenant_context import _current_tenant
+
+        ctx_token = _current_tenant.set(mapping.tenant_id)
+        try:
+            async with session.begin():
+                await apply_tenant_to_session(session, mapping.tenant_id)
+                blueprint_tenant = await session.get(Tenant, mapping.tenant_id)
+                if blueprint_tenant is None:  # pragma: no cover - FK guarantees the row
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="tenant row missing for mapping",
+                    )
+                result = await provision_client_blueprint(
+                    session,
+                    partner=ctx.partner,
+                    tenant=blueprint_tenant,
+                    placeholders=body.agent.placeholders if body.agent else None,
+                    connector_credentials=(body.connector.credentials if body.connector else None),
+                    connector_meta=body.connector.meta if body.connector else None,
+                    api_key_id=ctx.api_key.id,
+                    ip=request.client.host if request.client else None,
+                )
+        except ProvisioningError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        finally:
+            _current_tenant.reset(ctx_token)
+
+        connector_connected = result.connector_connected
+        if ctx.partner.default_seed_template is not None:
+            agent_out = ClientAgentOut(
+                status="provisioned" if result.agent_provisioned else "already_provisioned"
+            )
+        if result.agent_provisioned:
+            # Same channel the admin promote uses — a worker with a warm
+            # cache for this tenant (unlikely for a fresh one) reloads.
+            from nexus_api.api.admin.agent_configs import PROMOTE_CHANNEL
+
+            try:
+                await redis.publish(PROMOTE_CHANNEL, str(mapping.tenant_id))
+            except Exception as exc:  # pragma: no cover - stale-cache risk only
+                log.warning(
+                    "partner.promote_publish_failed",
+                    tenant_id=str(mapping.tenant_id),
+                    error=str(exc),
+                )
+
     whatsapp = await _whatsapp_status(session, mapping.tenant_id)
     return ClientProvisionOut(
         external_client_ref=body.external_client_ref,
         status="provisioned",
         whatsapp=whatsapp,
+        agent=agent_out,
+        connector_connected=connector_connected,
     )
 
 

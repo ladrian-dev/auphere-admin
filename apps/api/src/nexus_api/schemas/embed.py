@@ -25,6 +25,27 @@ class EmbedTemplatesOut(BaseModel):
     templates: list[TemplateOut]
 
 
+class EmbedSignupIn(BaseModel):
+    """What the ``/signup`` iframe POSTs after ``FB.login`` finishes —
+    same envelope Meta hands the admin flow (``MetaSignupIn``), minus
+    any tenant reference: the tenant comes from the JWT claims only."""
+
+    code: str = Field(min_length=1, max_length=512)
+    waba_id: str = Field(min_length=1, max_length=64)
+    phone_number_id: str | None = Field(default=None, max_length=64)
+    business_id: str | None = Field(default=None, max_length=64)
+    mode: Literal["cloud_api", "coexistence"] = "cloud_api"
+
+
+class EmbedSignupOut(BaseModel):
+    status: Literal["connected"]
+    display_phone_number: str
+    # True when the signup also flipped the tenant live (partner has
+    # auto_activate and a promoted agent) — the widget can tell the user
+    # "listo, tu asistente ya responde".
+    tenant_activated: bool
+
+
 class PartnerConfigOut(BaseModel):
     """Public (unauthenticated) — feeds the CSP ``frame-ancestors``
     middleware of the embed app. Origins are not secrets: they are

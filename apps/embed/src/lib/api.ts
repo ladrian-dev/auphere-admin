@@ -101,6 +101,27 @@ export function fetchBroadcast(id: string) {
   return request<BroadcastStatus>(`/broadcasts/${id}`);
 }
 
+export interface SignupResult {
+  status: "connected";
+  display_phone_number: string;
+  tenant_activated: boolean;
+}
+
+/** Complete Meta Embedded Signup with the envelope from `FB.login` +
+ * the popup's postMessage. Requires the `widget:connect` scope. */
+export function completeSignup(body: {
+  code: string;
+  waba_id: string;
+  phone_number_id?: string;
+  business_id?: string;
+  mode?: "cloud_api" | "coexistence";
+}) {
+  return request<SignupResult>("/whatsapp/signup", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 /** Named `{{variables}}` of the template's BODY component. */
 export function templateBodyVars(template: Template): string[] {
   const body = template.components.find((c) => c.type?.toUpperCase() === "BODY");

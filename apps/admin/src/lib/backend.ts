@@ -807,6 +807,9 @@ export type PartnerOut = {
   broadcast_recipient_cap: number;
   rate_limit_mint_per_min: number;
   rate_limit_embed_per_min: number;
+  default_seed_template: string | null;
+  default_connector_slug: string | null;
+  auto_activate: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -824,7 +827,41 @@ export type PartnerUpdateInput = Partial<{
   broadcast_recipient_cap: number;
   rate_limit_mint_per_min: number;
   rate_limit_embed_per_min: number;
+  // Blueprint (Fase 2b) — "" limpia el campo en el backend.
+  default_seed_template: string;
+  default_connector_slug: string;
+  auto_activate: boolean;
 }>;
+
+export type PartnerClientUsage = {
+  external_client_ref: string;
+  client_name: string | null;
+  tenant_id: string;
+  tenant_status: string;
+  whatsapp_connected: boolean;
+  agent_version: number | null;
+  agent_seed_template: string | null;
+  broadcasts: number;
+  broadcast_recipients: number;
+  messages_inbound: number;
+  messages_outbound: number;
+  cost_usd: number;
+};
+
+export type PartnerUsageOut = {
+  partner_id: string;
+  window_days: number;
+  clients_total: number;
+  clients_active: number;
+  clients_whatsapp_connected: number;
+  clients_with_agent: number;
+  broadcasts: number;
+  broadcast_recipients: number;
+  messages_inbound: number;
+  messages_outbound: number;
+  cost_usd: number;
+  clients: PartnerClientUsage[];
+};
 
 export type PartnerApiKeyType = "live" | "test";
 
@@ -1532,4 +1569,10 @@ export const backend = {
     call<EmbedAuditEntryOut[]>(
       `/admin/partners/${partnerId}/audit?limit=${limit}`,
     ).then((r) => r ?? []),
+
+  getPartnerUsage: (partnerId: string, windowDays = 30) =>
+    call<PartnerUsageOut>(
+      `/admin/partners/${partnerId}/usage?window_days=${windowDays}`,
+      { optional: true },
+    ),
 };

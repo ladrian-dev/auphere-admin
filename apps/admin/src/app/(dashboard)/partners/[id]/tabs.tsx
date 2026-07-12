@@ -10,6 +10,7 @@ const TABS = [
   { slug: "origins", label: "Origins" },
   { slug: "tenants", label: "Tenants" },
   { slug: "limits", label: "Límites" },
+  { slug: "usage", label: "Uso" },
   { slug: "audit", label: "Auditoría" },
 ] as const;
 

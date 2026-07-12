@@ -23,6 +23,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -77,6 +78,19 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
     )
     rate_limit_embed_per_min: Mapped[int] = mapped_column(
         Integer, nullable=False, default=600, server_default="600"
+    )
+    # Auto-provisioning blueprint (migration 0050). A partner with a
+    # ``default_seed_template`` gets a rendered + promoted agent_config v1
+    # for every client it provisions; ``default_connector_slug`` names the
+    # ``api_key`` connector installed with the credentials sent at
+    # provision time. NULL = assisted onboarding (operator does it).
+    default_seed_template: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    default_connector_slug: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Flip the tenant PROVISIONING → ACTIVE when its WhatsApp signup
+    # completes and an active agent_config exists. False = operator
+    # reviews and activates by hand.
+    auto_activate: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
     )
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
