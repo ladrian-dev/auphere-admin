@@ -917,6 +917,18 @@ def make_handler_node(
                     base_extra=skills_extra or None,
                 )
 
+            # Per-tenant respond-model override (agent_config
+            # ``policies.llm.respond_model``): lets a latency-sensitive agent
+            # (e.g. the WooCommerce sales agent) run on a faster model like
+            # Haiku without changing the global default (Mouna stays on
+            # Sonnet). Empty / missing → the router's global respond model.
+            _llm_pol = bundle.policies.get("llm")
+            respond_model_override = (
+                _llm_pol.get("respond_model") if isinstance(_llm_pol, dict) else None
+            )
+            if not isinstance(respond_model_override, str) or not respond_model_override:
+                respond_model_override = None
+
             for iteration in range(MAX_TOOL_ITERATIONS):
                 # The last iteration is tool-free: the model MUST answer.
                 last = iteration == MAX_TOOL_ITERATIONS - 1
@@ -953,6 +965,7 @@ def make_handler_node(
                         messages=messages,
                         tools=tools_arg,
                         extra=None if last else mcp_extra,
+                        model_override=respond_model_override,
                     )
                 except Exception as exc:
                     # The router exhausted retries + fallback. Rather than

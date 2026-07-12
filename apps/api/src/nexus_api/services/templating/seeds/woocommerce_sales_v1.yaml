@@ -36,6 +36,12 @@ agent:
   language_default: "es"
 
 policies:
+  # Modelo de respuesta por tenant (override del global). El agente de ventas
+  # se fundamenta en datos de WooCommerce, así que Haiku 4.5 (mucho más
+  # rápido) da buena latencia sin sacrificar precisión. El worker lee
+  # policies.llm.respond_model; vacío = modelo global.
+  llm:
+    respond_model: "anthropic/claude-haiku-4-5"
   store:
     # Moneda de la tienda para presentar precios (el monto sale de WooCommerce).
     currency: "CLP"

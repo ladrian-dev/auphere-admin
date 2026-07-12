@@ -554,6 +554,7 @@ class LLMRouter:
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
         extra: dict[str, Any] | None = None,
+        model_override: str | None = None,
     ) -> LLMResponse:
         """Function-calling completion for the handler ReAct loop. ``role``
         is the intent (``book``, ``queue``, …) so traces can attribute the
@@ -577,7 +578,10 @@ class LLMRouter:
         return await self._call_with_resilience(
             tenant_id=tenant_id,
             role=role,
-            models=self._model_chain(self.respond_model),
+            # Per-tenant override (e.g. a latency-sensitive sales agent pinned
+            # to a faster model) wins over the global respond model; the
+            # fallback chain still applies for resilience.
+            models=self._model_chain(model_override or self.respond_model),
             invoke=invoke,
         )
 
