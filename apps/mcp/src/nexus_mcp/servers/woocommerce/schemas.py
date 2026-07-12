@@ -17,7 +17,7 @@ Design rules (apply to every schema in this file):
 
 from __future__ import annotations
 
-from typing import Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import EmailStr, Field
 
@@ -334,6 +334,11 @@ class OrderDetail(OutputModel):
     payment_method: str | None = None
     payment_method_title: str | None = None
     transaction_id: str | None = None
+    # WooCommerce "pay for order" link — the customer opens it to pay the
+    # order with the store's active gateways (e.g. Mercado Pago). Present
+    # while the order still needs payment; the agent sends it as the
+    # "Pagar ahora" button after creating the order.
+    payment_url: str | None = None
     line_items: list[LineItemOutput] = Field(default_factory=list)
 
 
@@ -480,6 +485,15 @@ class CreateOrderInput(InputModel):
     status: OrderStatus = Field(
         default="pending",
         description="Default 'pending' so the operator can review.",
+    )
+    meta_data: list[dict[str, Any]] | None = Field(
+        default=None,
+        max_length=30,
+        description=(
+            "Custom order metadata as [{key, value}] pairs. Used to tag the "
+            "sales channel, e.g. [{'key':'_auphere_source','value':'whatsapp'}] "
+            "so orders created from WhatsApp are identifiable in WooCommerce."
+        ),
     )
     # set_paid lives in WooCommerce too but we don't expose it — the
     # agent should not be able to mark an order paid without going

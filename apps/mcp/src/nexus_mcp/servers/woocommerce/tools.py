@@ -428,6 +428,7 @@ def _order_detail(o: dict[str, Any]) -> OrderDetail:
         payment_method=o.get("payment_method") or None,
         payment_method_title=o.get("payment_method_title") or None,
         transaction_id=o.get("transaction_id") or None,
+        payment_url=o.get("payment_url") or None,
         line_items=_line_items(o.get("line_items")),
     )
 
@@ -775,6 +776,8 @@ class CreateOrder(_WooTool):
             body["payment_method_title"] = payload.payment_method_title
         if payload.customer_note:
             body["customer_note"] = payload.customer_note
+        if payload.meta_data:
+            body["meta_data"] = payload.meta_data
 
         data = await client.post_resource("/orders", payload=body)
         log.info(
