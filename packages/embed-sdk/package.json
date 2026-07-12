@@ -3,11 +3,14 @@
   "version": "0.1.0",
   "description": "Auphere embed SDK — WhatsApp template broadcasts inside your own product. Thin loader: mounts the Auphere iframe, handshakes a short-lived session token, never touches credentials.",
   "license": "MIT",
-  "homepage": "https://auphere.com",
+  "homepage": "https://github.com/ladrian-dev/auphere-admin/tree/main/packages/embed-sdk#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/auphere/nexus.git",
+    "url": "git+https://github.com/ladrian-dev/auphere-admin.git",
     "directory": "packages/embed-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/ladrian-dev/auphere-admin/issues"
   },
   "type": "module",
   "main": "./dist/index.cjs",
@@ -34,7 +37,7 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "pnpm build"
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "react": ">=18"
