@@ -207,18 +207,21 @@ async def _resolve_retailer_id(
     """Map a Meta catalog ``retailer_id`` back to a WooCommerce
     ``(product_id, variation_id)``.
 
-    The Facebook-for-WooCommerce plugin sets each catalog item's
-    retailer_id to the product SKU when present, else ``wc_post_id_{id}``.
-    A native WhatsApp cart returns those retailer_ids, so to create the
-    WooCommerce order we reverse the mapping:
+    The Facebook-for-WooCommerce catalog keys each item by the raw
+    WooCommerce product id (verified against Meta's catalog), so a native
+    WhatsApp cart returns those ids. Reverse them to a WooCommerce
+    product_id:
 
-    - ``wc_post_id_{N}`` → ``product_id = N``
+    - a bare numeric id → ``product_id`` directly (the common case)
+    - ``wc_post_id_{N}`` → ``product_id = N`` (plugin fallback format)
     - otherwise treat it as a SKU and look the product up.
 
     Raises ``ToolError`` when it can't be resolved so the order isn't
     silently created with the wrong items.
     """
     rid = retailer_id.strip()
+    if rid.isdigit():
+        return int(rid), None
     m = _WC_POST_ID_RE.match(rid)
     if m:
         return int(m.group(1)), None
