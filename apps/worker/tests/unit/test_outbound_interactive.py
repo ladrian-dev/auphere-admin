@@ -136,6 +136,26 @@ class TestProducts:
             _to_meta_interactive({"body": "x", "products": ["2291"]}, catalog_id=None)
 
 
+class TestCatalogMessage:
+    def test_catalog_message_with_thumbnail(self) -> None:
+        block = _to_meta_interactive(
+            {"body": "Mira nuestro catálogo 👇", "catalog": True, "header": "ignored"},
+            catalog_thumbnail="0749672931693",
+        )
+        assert block["type"] == "catalog_message"
+        assert block["body"] == {"text": "Mira nuestro catálogo 👇"}
+        assert "header" not in block  # catalog_message has no header
+        assert block["action"] == {
+            "name": "catalog_message",
+            "parameters": {"thumbnail_product_retailer_id": "0749672931693"},
+        }
+
+    def test_catalog_message_without_thumbnail_omits_parameters(self) -> None:
+        block = _to_meta_interactive({"body": "Catálogo 👇", "catalog": True})
+        assert block["type"] == "catalog_message"
+        assert block["action"] == {"name": "catalog_message"}
+
+
 class TestMalformed:
     def test_no_component_raises(self) -> None:
         with pytest.raises(ValueError, match="missing buttons / list / cta_url"):

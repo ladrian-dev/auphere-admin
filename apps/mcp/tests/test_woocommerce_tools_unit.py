@@ -377,8 +377,52 @@ async def test_create_order_rejects_line_item_without_product_or_variation(fake_
         "total": "0",
         "line_items": [],
     }
-    with pytest.raises(Exception, match="product_id or variation_id"):
+    with pytest.raises(Exception, match="product_id / variation_id / retailer_id"):
         await CreateOrder().invoke({"line_items": [{"quantity": 1}]})
+
+
+async def test_create_order_resolves_wc_post_id_retailer(fake_client, tenant_ctx):
+    """A native-cart line item with retailer_id ``wc_post_id_{N}`` resolves
+    to product_id N with no extra lookup."""
+    fake_client.next_post = {
+        "id": 7,
+        "number": "7",
+        "status": "pending",
+        "currency": "CLP",
+        "total": "0",
+        "line_items": [],
+    }
+    await CreateOrder().invoke(
+        {"line_items": [{"retailer_id": "wc_post_id_2782", "quantity": 2}]}
+    )
+    post = next(c for kind, c in fake_client.calls if kind == "post")
+    assert post["payload"]["line_items"] == [{"quantity": 2, "product_id": 2782}]
+    # wc_post_id_ parses locally — no product lookup needed.
+    assert not any(kind == "list" for kind, _ in fake_client.calls)
+
+
+async def test_create_order_resolves_sku_retailer_via_lookup(fake_client, tenant_ctx):
+    """A retailer_id that is a SKU is resolved to its product_id via a
+    ``/products?sku=`` lookup."""
+    fake_client.next_list = (
+        [{"id": 2836}],
+        PaginationMeta(page=1, per_page=1, total_count=1, total_pages=1, has_more=False),
+    )
+    fake_client.next_post = {
+        "id": 8,
+        "number": "8",
+        "status": "pending",
+        "currency": "CLP",
+        "total": "0",
+        "line_items": [],
+    }
+    await CreateOrder().invoke(
+        {"line_items": [{"retailer_id": "0749672931693", "quantity": 1}]}
+    )
+    lookup = next(c for kind, c in fake_client.calls if kind == "list")
+    assert lookup["params"] == {"sku": "0749672931693"}
+    post = next(c for kind, c in fake_client.calls if kind == "post")
+    assert post["payload"]["line_items"] == [{"quantity": 1, "product_id": 2836}]
 
 
 # ── update_order_status ──────────────────────────────────────────────────

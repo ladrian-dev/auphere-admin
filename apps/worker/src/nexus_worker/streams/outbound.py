@@ -234,6 +234,10 @@ async def _send_one(
     # Meta Commerce catalog linked to this WABA — used to resolve native
     # product-card messages. Resolved server-side; the LLM never sees it.
     catalog_id = (channel_config or {}).get("catalog_id")
+    # Thumbnail retailer_id for the native catalog message (Meta requires a
+    # valid catalog item to render the catalog card). Set once in channel
+    # config; the LLM never sees it.
+    catalog_thumbnail = (channel_config or {}).get("catalog_thumbnail_retailer_id")
     if channel_type != ChannelType.WHATSAPP:
         msg.status = MessageStatus.FAILED
         msg.failed_at = datetime.now(UTC)
@@ -291,6 +295,7 @@ async def _send_one(
             tenant_id=tenant_id,
             channel_id=channel_id,
             catalog_id=catalog_id,
+            catalog_thumbnail=catalog_thumbnail,
         )
     except MediaStorageError as exc:
         # Media couldn't be resolved to a presigned URL. Park failed.
@@ -340,6 +345,7 @@ async def _dispatch_message(
     tenant_id: uuid.UUID,
     channel_id: uuid.UUID,
     catalog_id: str | None = None,
+    catalog_thumbnail: str | None = None,
 ) -> SendResult:
     """Route the pending row to the right adapter call."""
     context = msg.context_message_id
@@ -384,7 +390,9 @@ async def _dispatch_message(
                     **payload,
                     "products": [retailer_map.get(pid, pid) for pid in product_ids],
                 }
-        interactive_block = _to_meta_interactive(payload, catalog_id=catalog_id)
+        interactive_block = _to_meta_interactive(
+            payload, catalog_id=catalog_id, catalog_thumbnail=catalog_thumbnail
+        )
         # The tool's payload may carry an in-band ``context_message_id``
         # for quoted replies; prefer it over the row-level ``context``
         # (the row's column is populated by media / text paths, not by
@@ -698,7 +706,10 @@ async def _variable_retailer_id(client: Any, product_id: str) -> str:
 
 
 def _to_meta_interactive(
-    payload: dict[str, Any], *, catalog_id: str | None = None
+    payload: dict[str, Any],
+    *,
+    catalog_id: str | None = None,
+    catalog_thumbnail: str | None = None,
 ) -> dict[str, object]:
     """Convert our ``response.send_interactive`` tool payload into a
     Meta Cloud API ``interactive`` block.
@@ -771,6 +782,21 @@ def _to_meta_interactive(
                 "url": str(cta["url"]),
             },
         }
+        return block
+
+    if payload.get("catalog"):
+        # Native catalog message: a card with a "View catalog" button that
+        # opens the store's full Meta catalog inside WhatsApp. Meta needs a
+        # valid catalog item for the thumbnail; the catalog itself is the
+        # one linked to the WABA (no catalog_id in this message type).
+        block["type"] = "catalog_message"
+        block.pop("header", None)  # catalog_message allows only body/footer/action
+        action: dict[str, object] = {"name": "catalog_message"}
+        if catalog_thumbnail:
+            action["parameters"] = {
+                "thumbnail_product_retailer_id": str(catalog_thumbnail)
+            }
+        block["action"] = action
         return block
 
     if payload.get("products"):

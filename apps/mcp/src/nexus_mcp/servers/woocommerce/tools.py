@@ -198,6 +198,41 @@ async def _resolve_client(tenant_id: uuid.UUID) -> WooCommerceClient:
     return await _load_woocommerce_client(tenant_id)
 
 
+_WC_POST_ID_RE = re.compile(r"^wc_post_id_(\d+)$")
+
+
+async def _resolve_retailer_id(
+    client: WooCommerceClient, retailer_id: str
+) -> tuple[int | None, int | None]:
+    """Map a Meta catalog ``retailer_id`` back to a WooCommerce
+    ``(product_id, variation_id)``.
+
+    The Facebook-for-WooCommerce plugin sets each catalog item's
+    retailer_id to the product SKU when present, else ``wc_post_id_{id}``.
+    A native WhatsApp cart returns those retailer_ids, so to create the
+    WooCommerce order we reverse the mapping:
+
+    - ``wc_post_id_{N}`` → ``product_id = N``
+    - otherwise treat it as a SKU and look the product up.
+
+    Raises ``ToolError`` when it can't be resolved so the order isn't
+    silently created with the wrong items.
+    """
+    rid = retailer_id.strip()
+    m = _WC_POST_ID_RE.match(rid)
+    if m:
+        return int(m.group(1)), None
+    items, _meta = await client.list_paginated(
+        "/products", page=1, per_page=1, extra_params={"sku": rid}
+    )
+    if items:
+        return int(items[0]["id"]), None
+    raise ToolError(
+        f"could not resolve catalog retailer_id {retailer_id!r} to a "
+        "WooCommerce product (unknown SKU)"
+    )
+
+
 # ── shared shaping helpers ───────────────────────────────────────────────
 
 
@@ -747,13 +782,23 @@ class CreateOrder(_WooTool):
         client = await self._client()
         line_items_payload: list[dict[str, Any]] = []
         for li in payload.line_items:
-            if li.product_id is None and li.variation_id is None:
-                raise ToolError("every line_item must include product_id or variation_id")
+            product_id = li.product_id
+            variation_id = li.variation_id
+            # Native-cart items arrive as Meta catalog retailer_ids. Resolve
+            # them to WooCommerce ids server-side (deterministic; not via the
+            # LLM) so the same cart the customer built maps to real products.
+            if product_id is None and variation_id is None and li.retailer_id:
+                product_id, variation_id = await _resolve_retailer_id(client, li.retailer_id)
+            if product_id is None and variation_id is None:
+                raise ToolError(
+                    "every line_item must include product_id, variation_id, or a "
+                    "resolvable retailer_id"
+                )
             item: dict[str, Any] = {"quantity": li.quantity}
-            if li.product_id is not None:
-                item["product_id"] = li.product_id
-            if li.variation_id is not None:
-                item["variation_id"] = li.variation_id
+            if product_id is not None:
+                item["product_id"] = product_id
+            if variation_id is not None:
+                item["variation_id"] = variation_id
             if li.subtotal is not None:
                 item["subtotal"] = li.subtotal
             line_items_payload.append(item)

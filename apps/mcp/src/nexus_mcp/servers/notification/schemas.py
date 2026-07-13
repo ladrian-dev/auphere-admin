@@ -278,6 +278,18 @@ class SendInteractiveInput(InputModel):
             "never send a catalog_id. 1-30 items."
         ),
     )
+    catalog: bool = Field(
+        default=False,
+        description=(
+            "Send the store's FULL native Meta catalog message: a card with "
+            "a 'View catalog' button that opens the whole catalog inside "
+            "WhatsApp, where the customer browses by category and adds items "
+            "to their native cart. Use this to show products — the agent "
+            "cannot list individual products. ``body`` is the short text "
+            "shown above the card. The catalog + thumbnail are resolved "
+            "server-side; send nothing else."
+        ),
+    )
     context_message_id: str | None = Field(
         default=None,
         max_length=160,
@@ -302,10 +314,12 @@ class SendInteractiveInput(InputModel):
             set_components.append("cta_url")
         if self.products is not None:
             set_components.append("products")
+        if self.catalog:
+            set_components.append("catalog")
         if len(set_components) != 1:
             raise ValueError(
                 "send_interactive requires EXACTLY ONE of buttons / list "
-                f"/ cta_url / products; got: {set_components or 'none'}"
+                f"/ cta_url / products / catalog; got: {set_components or 'none'}"
             )
         if self.products is not None and not (1 <= len(self.products) <= 30):
             raise ValueError(f"products must have between 1 and 30 ids; got {len(self.products)}")

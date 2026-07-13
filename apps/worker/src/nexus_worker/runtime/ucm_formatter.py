@@ -227,6 +227,14 @@ def _build_interactive_ucm(
             body or f"Te comparto {n} producto(s) del catálogo 👇", mid, metadata
         )
 
+    if payload.get("catalog"):
+        # Native Meta catalog message (interactive.type == "catalog_message").
+        # Like products above, the real send happens straight from
+        # ``interactive_payload`` in the outbound dispatcher; UCM v1.0.0 has
+        # no catalog type, so shadow it as text so the formatter doesn't
+        # raise and kill the turn.
+        return _wrap_text(body or "Mira nuestro catálogo 👇", mid, metadata)
+
     # Unreachable if the tool's validator did its job, but stay loud
     # rather than silently downgrading: a missing component means the
     # agent emitted something malformed and the operator should see it

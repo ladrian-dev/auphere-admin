@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, model_validator
 
 from nexus_mcp.base import InputModel, OutputModel
 
@@ -449,6 +449,16 @@ class LineItemInput(InputModel):
 
     product_id: int | None = Field(default=None, ge=1)
     variation_id: int | None = Field(default=None, ge=1)
+    retailer_id: str | None = Field(
+        default=None,
+        max_length=200,
+        description=(
+            "Meta catalog retailer_id from a native WhatsApp cart "
+            "([PEDIDO_WHATSAPP]) — e.g. 'wc_post_id_2782' or a SKU. Resolved "
+            "server-side to the WooCommerce product/variation; pass it "
+            "verbatim when the id came from a native cart."
+        ),
+    )
     quantity: int = Field(ge=1, le=10_000)
     # Optional manual price override — Woo honours it when the user
     # role permits it. The LLM should not set this unless explicitly
@@ -459,6 +469,14 @@ class LineItemInput(InputModel):
         description="Optional manual line subtotal (string decimal). "
         "Leave unset to let WooCommerce compute from product price.",
     )
+
+    @model_validator(mode="after")
+    def _at_least_one_identifier(self) -> LineItemInput:
+        if self.product_id is None and self.variation_id is None and not self.retailer_id:
+            raise ValueError(
+                "line item needs one of product_id / variation_id / retailer_id"
+            )
+        return self
 
 
 class CreateOrderInput(InputModel):
