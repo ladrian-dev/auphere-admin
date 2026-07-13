@@ -371,12 +371,25 @@ async def _dispatch_message(
     # body (for operator-panel previews) but the Cloud API only sees
     # the structured block.
     if msg.interactive_payload:
-        interactive_block = _to_meta_interactive(msg.interactive_payload, catalog_id=catalog_id)
+        payload = msg.interactive_payload
+        # Product cards: the agent passes WooCommerce product ids, but Meta's
+        # catalog keys items by the plugin's retailer_id (SKU or
+        # ``wc_post_id_{id}``). Translate before building the block, else the
+        # card is delivered empty. Only product payloads pay this lookup.
+        if payload.get("products"):
+            product_ids = [str(p) for p in payload["products"] if str(p).strip()]
+            retailer_map = await _resolve_product_retailer_ids(tenant_id, product_ids)
+            if retailer_map:
+                payload = {
+                    **payload,
+                    "products": [retailer_map.get(pid, pid) for pid in product_ids],
+                }
+        interactive_block = _to_meta_interactive(payload, catalog_id=catalog_id)
         # The tool's payload may carry an in-band ``context_message_id``
         # for quoted replies; prefer it over the row-level ``context``
         # (the row's column is populated by media / text paths, not by
         # the interactive tool).
-        quote_wamid = msg.interactive_payload.get("context_message_id") or context
+        quote_wamid = payload.get("context_message_id") or context
         return await adapter.send_interactive(
             from_phone=from_phone,
             recipient=recipient,
@@ -604,6 +617,84 @@ def _ms_since(when: datetime) -> int | None:
     if delta is None:
         return None
     return int(delta.total_seconds() * 1000)
+
+
+async def _resolve_product_retailer_ids(
+    tenant_id: uuid.UUID, product_ids: list[str]
+) -> dict[str, str]:
+    """Map WooCommerce product ids → Meta catalog ``retailer_id``s.
+
+    The agent passes WooCommerce product ids (the ``id`` field from
+    ``woocommerce.list_products``). Meta's catalog, however, is synced by
+    the Facebook-for-WooCommerce plugin, which sets each item's
+    ``retailer_id`` (Meta "Content ID") to the product **SKU** when it has
+    one, else ``wc_post_id_{id}``. Sending the raw WooCommerce id therefore
+    points at an item Meta doesn't know, and the card renders empty on the
+    customer's phone (message delivered, no product shown). Resolve the real
+    retailer_id per product:
+
+    - simple product → ``sku`` if set, else ``wc_post_id_{id}``
+    - variable product → first in-stock variation's ``sku`` (else
+      ``wc_post_id_{variation_id}``); Meta indexes variations, not the
+      parent group.
+
+    Best-effort: ids that can't be resolved (WooCommerce unreachable,
+    unknown id, non-numeric) are omitted from the map so the caller keeps
+    the original value and the send still goes out.
+    """
+    numeric = [pid for pid in product_ids if pid.isdigit()]
+    if not numeric:
+        return {}
+    # Lazy import: keeps the MCP dependency off the hot text/media send path
+    # and avoids an import cycle at module load.
+    from nexus_mcp.servers.woocommerce.tools import _load_woocommerce_client
+
+    mapping: dict[str, str] = {}
+    try:
+        client = await _load_woocommerce_client(tenant_id)
+        items, _meta = await client.list_paginated(
+            "/products",
+            page=1,
+            per_page=min(len(numeric), 100),
+            extra_params={"include": ",".join(numeric)},
+        )
+        by_id = {str(it.get("id")): it for it in items}
+        for pid in numeric:
+            it = by_id.get(pid)
+            if it is None:
+                continue
+            if it.get("type") == "variable":
+                mapping[pid] = await _variable_retailer_id(client, pid)
+            else:
+                sku = str(it.get("sku") or "").strip()
+                mapping[pid] = sku or f"wc_post_id_{pid}"
+    except Exception as exc:
+        log.warning(
+            "outbound.retailer_id_resolve_failed",
+            tenant_id=str(tenant_id),
+            error=str(exc),
+        )
+    return mapping
+
+
+async def _variable_retailer_id(client: Any, product_id: str) -> str:
+    """Retailer id for a variable product: first in-stock variation's SKU
+    (else ``wc_post_id_{variation_id}``), falling back to
+    ``wc_post_id_{product_id}`` when it has no usable variations."""
+    try:
+        variations, _meta = await client.list_paginated(
+            f"/products/{product_id}/variations",
+            page=1,
+            per_page=100,
+        )
+    except Exception:
+        return f"wc_post_id_{product_id}"
+    instock = [v for v in variations if v.get("stock_status") == "instock"] or variations
+    if not instock:
+        return f"wc_post_id_{product_id}"
+    chosen = instock[0]
+    sku = str(chosen.get("sku") or "").strip()
+    return sku or f"wc_post_id_{chosen.get('id') or product_id}"
 
 
 def _to_meta_interactive(

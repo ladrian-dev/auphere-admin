@@ -10,6 +10,8 @@ adapter sends. Bugs here surface as Cloud API 4xx errors at send time
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from nexus_worker.streams.outbound import _to_meta_interactive
@@ -152,3 +154,93 @@ class TestMalformed:
         block = _to_meta_interactive(payload)
         assert "context_message_id" not in block
         assert "context" not in block
+
+
+class TestResolveRetailerIds:
+    """``_resolve_product_retailer_ids`` maps WooCommerce product ids to the
+    Facebook-for-WooCommerce catalog retailer_ids (SKU, else
+    ``wc_post_id_{id}``; variable products use a variation)."""
+
+    class _FakeClient:
+        def __init__(
+            self,
+            products: list[dict[str, Any]],
+            variations: dict[str, list[dict[str, Any]]] | None = None,
+        ) -> None:
+            self._products = products
+            self._variations = variations or {}
+
+        async def list_paginated(
+            self,
+            path: str,
+            *,
+            page: int,
+            per_page: int,
+            extra_params: dict[str, Any] | None = None,
+        ) -> tuple[list[dict[str, Any]], None]:
+            if path == "/products":
+                inc = set((extra_params or {}).get("include", "").split(","))
+                return [p for p in self._products if str(p["id"]) in inc], None
+            # /products/{id}/variations
+            pid = path.split("/")[2]
+            return self._variations.get(pid, []), None
+
+    async def _resolve(
+        self, monkeypatch: pytest.MonkeyPatch, client: TestResolveRetailerIds._FakeClient
+    ) -> dict[str, str]:
+        import uuid as _uuid
+
+        import nexus_worker.streams.outbound as ob
+
+        async def _fake_loader(_tenant_id: _uuid.UUID) -> TestResolveRetailerIds._FakeClient:
+            return client
+
+        monkeypatch.setattr(
+            "nexus_mcp.servers.woocommerce.tools._load_woocommerce_client",
+            _fake_loader,
+        )
+        result: dict[str, str] = await ob._resolve_product_retailer_ids(
+            _uuid.uuid4(), ["2836", "2782", "2389"]
+        )
+        return result
+
+    @pytest.mark.asyncio
+    async def test_sku_and_wc_post_id_and_variation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = self._FakeClient(
+            products=[
+                {"id": 2836, "type": "simple", "sku": "0749672931693"},
+                {"id": 2782, "type": "simple", "sku": ""},
+                {"id": 2389, "type": "variable", "sku": ""},
+            ],
+            variations={
+                "2389": [
+                    {"id": 9001, "sku": "", "stock_status": "outofstock"},
+                    {"id": 9002, "sku": "GEL-STRONG", "stock_status": "instock"},
+                ]
+            },
+        )
+        mapping = await self._resolve(monkeypatch, client)
+        assert mapping["2836"] == "0749672931693"       # SKU present
+        assert mapping["2782"] == "wc_post_id_2782"      # no SKU → prefix
+        assert mapping["2389"] == "GEL-STRONG"           # first in-stock variation SKU
+
+    @pytest.mark.asyncio
+    async def test_unknown_id_omitted_and_woo_error_is_soft(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import uuid as _uuid
+
+        import nexus_worker.streams.outbound as ob
+
+        async def _boom(_tenant_id: _uuid.UUID) -> None:
+            raise RuntimeError("woo down")
+
+        monkeypatch.setattr(
+            "nexus_mcp.servers.woocommerce.tools._load_woocommerce_client", _boom
+        )
+        # Best-effort: on failure returns empty map, caller keeps original ids.
+        assert await ob._resolve_product_retailer_ids(_uuid.uuid4(), ["2836"]) == {}
+        # Non-numeric ids are never looked up.
+        assert await ob._resolve_product_retailer_ids(_uuid.uuid4(), ["wc_post_id_5"]) == {}
