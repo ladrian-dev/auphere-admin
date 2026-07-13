@@ -191,6 +191,15 @@ class ListProductsInput(InputModel):
     schema bump — keep the surface small for now."""
 
     search: str | None = Field(default=None, max_length=200)
+    ids: list[int] | None = Field(
+        default=None,
+        max_length=100,
+        description=(
+            "Fetch specific products by WooCommerce id (e.g. the retailer_ids "
+            "of a native WhatsApp cart). Returns those products with their "
+            "names/prices in one call — use it to resolve cart item names."
+        ),
+    )
     category: str | None = Field(
         default=None,
         max_length=120,

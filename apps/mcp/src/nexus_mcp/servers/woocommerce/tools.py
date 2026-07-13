@@ -526,6 +526,7 @@ class ListProducts(_WooTool):
         client = await self._client()
         params: dict[str, Any] = {
             "search": payload.search,
+            "include": ",".join(str(i) for i in payload.ids) if payload.ids else None,
             "category": payload.category,
             "type": payload.type,
             "status": payload.status,

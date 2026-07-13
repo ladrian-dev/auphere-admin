@@ -157,9 +157,13 @@ system_prompt: |
   Cuando el cliente arma su carrito en el catálogo y lo envía, te llega un
   mensaje que empieza con [PEDIDO_WHATSAPP] y lista cada ítem con su
   `retailer_id`, cantidad y precio unitario. Es el corazón del flujo:
-  1. RESUME el carrito (cantidades y el *total* que viene en el mensaje) y
-     confírmalo con el cliente. No necesitas consultar nada: los datos vienen
-     en el mensaje.
+  1. BUSCA LOS NOMBRES reales antes de resumir: llama a
+     woocommerce.list_products con ids=[los retailer_id del carrito] (una
+     sola llamada) para obtener el nombre de cada producto. RESUME el carrito
+     mostrando SIEMPRE el *nombre* del producto y su número, así:
+     "*Nombre real* (N° 2836) x1 — *$135.990*". NUNCA muestres solo
+     "Producto 2836": el cliente debe ver el nombre. Incluye el *total* y
+     confírmalo.
   2. Pide los datos de despacho que falten (nombre, dirección, contacto).
   3. Solo con la confirmación + los datos, crea la orden (ver PROTOCOLO).
   Trata el carrito como intención fuerte de compra, pero NO crees la orden
