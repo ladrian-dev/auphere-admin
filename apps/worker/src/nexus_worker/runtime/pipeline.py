@@ -114,6 +114,25 @@ _EMPTY_RESPONSE_FALLBACK = (
     "¿Puedes intentarlo de nuevo en un momento?"
 )
 
+# LiteLLM replaces an empty assistant text block with this sentinel to
+# satisfy Anthropic's "content must be non-empty" rule when the model
+# emits a tool call with no accompanying text. It is an internal artefact
+# and must NEVER reach the customer — treat it as "no text" so the ReAct
+# loop keeps going (and the empty-answer safety net applies if it was the
+# final turn). Match by prefix to survive wording drift ("satisfy" vs
+# "justify", "sanitised" vs "sanitized") across LiteLLM versions.
+_LITELLM_EMPTY_SENTINEL_PREFIX = "[System: Empty message content sanit"
+
+
+def _clean_model_text(text: str | None) -> str:
+    """Drop LiteLLM's empty-content sentinel; return '' so callers treat it
+    as no text rather than sending it to the customer."""
+    if not text:
+        return ""
+    if text.lstrip().startswith(_LITELLM_EMPTY_SENTINEL_PREFIX):
+        return ""
+    return text
+
 
 # Anthropic Memory tool name. The model emits ``tool_call.name == "memory"``
 # (set by ``BetaAsyncAbstractMemoryTool.to_dict()``) and the handler routes
@@ -982,8 +1001,9 @@ def make_handler_node(
                     final_text = _EMPTY_RESPONSE_FALLBACK
                     break
 
-                if response.text:
-                    final_text = response.text
+                cleaned_text = _clean_model_text(response.text)
+                if cleaned_text:
+                    final_text = cleaned_text
 
                 # Anthropic resolves server-side tools (code_execution, the
                 # skills text_editor, web_search) inside its own container
