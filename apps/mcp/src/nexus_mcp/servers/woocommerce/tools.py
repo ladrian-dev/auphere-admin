@@ -55,6 +55,8 @@ from nexus_mcp.servers.woocommerce.schemas import (
     AddressInput,
     AddressOutput,
     AttributeCompact,
+    BuildCheckoutLinkInput,
+    BuildCheckoutLinkOutput,
     Category,
     CategoryRef,
     CreateOrderInput,
@@ -838,6 +840,35 @@ class CreateOrder(_WooTool):
         return CreateOrderOutput(order=_order_detail(data))
 
 
+class BuildCheckoutLink(_WooTool):
+    name = "woocommerce.build_checkout_link"
+    description = (
+        "Build the payment link: a checkout URL that pre-fills the cart with "
+        "the given products and opens the store's checkout page, where the "
+        "customer enters their name + shipping address and pays (Mercado "
+        "Pago). The order is created by the checkout when they pay, tagged as "
+        "a WhatsApp sale (wa=1). Use this to send the payment link after the "
+        "customer confirms — do NOT create the order yourself and do NOT ask "
+        "for the address in chat."
+    )
+    input_model = BuildCheckoutLinkInput
+    output_model = BuildCheckoutLinkOutput
+    # Read-only: builds a URL from the tenant's store; no mutation, no API call.
+    side_effects: ClassVar[tuple[str, ...]] = ()
+
+    async def run(self, payload: BuildCheckoutLinkInput) -> BuildCheckoutLinkOutput:  # type: ignore[override]
+        client = await self._client()
+        parts = [
+            str(i.product_id) if i.quantity == 1 else f"{i.product_id}:{i.quantity}"
+            for i in payload.items
+        ]
+        # WooCommerce checkout (es_CL default slug). ``add-to-cart`` accepts a
+        # comma list (needs the tenant's multi-add snippet); ``wa=1`` flags the
+        # order as a WhatsApp sale for the tenant's snippet to tag.
+        url = f"{client.store_url}/finalizar-compra/?add-to-cart={','.join(parts)}&wa=1"
+        return BuildCheckoutLinkOutput(url=url)
+
+
 class UpdateOrderStatus(_WooTool):
     name = "woocommerce.update_order_status"
     description = (
@@ -951,6 +982,7 @@ class AddOrderNote(_WooTool):
 # inside each kind (read-only / destructive) keeps PRs reviewable.
 WOOCOMMERCE_TOOLS: tuple[type[ToolBase], ...] = (
     # read-only
+    BuildCheckoutLink,
     GetCustomer,
     GetOrder,
     GetProduct,

@@ -22,6 +22,7 @@ from nexus_mcp.servers.woocommerce.errors import (
 from nexus_mcp.servers.woocommerce.tools import (
     WOOCOMMERCE_TOOLS,
     AddOrderNote,
+    BuildCheckoutLink,
     CreateOrder,
     GetCustomer,
     GetOrder,
@@ -50,6 +51,7 @@ class FakeWooClient(WooCommerceClient):
         # Skip the parent __init__ — we don't want it validating
         # store_url etc. We're a fake.
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.store_url = "https://barbersupply.cl"
         self.next_list: tuple[list[dict[str, Any]], PaginationMeta] | None = None
         self.next_get: dict[str, Any] | None = None
         self.next_post: dict[str, Any] | None = None
@@ -123,13 +125,14 @@ def tenant_ctx():
 # ── catalog sanity ───────────────────────────────────────────────────────
 
 
-def test_catalog_has_twelve_tools():
-    assert len(WOOCOMMERCE_TOOLS) == 12
+def test_catalog_has_thirteen_tools():
+    assert len(WOOCOMMERCE_TOOLS) == 13
     names = {cls.name for cls in WOOCOMMERCE_TOOLS}
     assert "woocommerce.list_products" in names
     assert "woocommerce.list_product_variations" in names
     assert "woocommerce.create_order" in names
     assert "woocommerce.update_order_status" in names
+    assert "woocommerce.build_checkout_link" in names
 
 
 def test_destructive_tools_marked_with_mutates_db():
@@ -379,6 +382,20 @@ async def test_create_order_rejects_line_item_without_product_or_variation(fake_
     }
     with pytest.raises(Exception, match="product_id / variation_id / retailer_id"):
         await CreateOrder().invoke({"line_items": [{"quantity": 1}]})
+
+
+async def test_build_checkout_link(fake_client, tenant_ctx):
+    """Builds a multi-product checkout URL with quantities + the wa=1 flag,
+    off the tenant's own store_url (no API call)."""
+    result = await BuildCheckoutLink().invoke(
+        {"items": [{"product_id": 2836}, {"product_id": 2830, "quantity": 2}]}
+    )
+    assert result["status"] == "ok"
+    assert result["result"]["url"] == (
+        "https://barbersupply.cl/finalizar-compra/?add-to-cart=2836,2830:2&wa=1"
+    )
+    # Pure URL builder — no WooCommerce API call.
+    assert fake_client.calls == []
 
 
 async def test_create_order_resolves_raw_id_retailer(fake_client, tenant_ctx):

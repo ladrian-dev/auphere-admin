@@ -556,14 +556,14 @@ def _normalise_body(
             qty = it.get("quantity")
             price = it.get("item_price")
             cur = it.get("currency") or ""
-            lines.append(f"- retailer_id={rid} x{qty} (precio unit {price} {cur})")
+            lines.append(f"- product_id={rid} x{qty} (precio unit {price} {cur})")
         if not lines:
             return InboundMessageKind.UNSUPPORTED, {}
         text = (
             "[PEDIDO_WHATSAPP] El cliente armó un carrito desde el catálogo de "
-            "WhatsApp y lo envió. Para crear la orden llama a create_order con "
-            "line_items usando el campo retailer_id (pásalo tal cual; el sistema "
-            "lo traduce al producto de la tienda):\n" + "\n".join(lines)
+            "WhatsApp y lo envió. Cada product_id es el id de producto de la "
+            "tienda. Resume con los nombres reales, confirma, y al confirmar "
+            "genera el link de pago con build_checkout_link:\n" + "\n".join(lines)
         )
         note = order.get("text")
         if isinstance(note, str) and note.strip():

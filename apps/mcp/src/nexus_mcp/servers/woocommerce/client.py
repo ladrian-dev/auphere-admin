@@ -63,7 +63,8 @@ class WooCommerceClient(BaseHTTPConnectorClient):
         if not consumer_key or not consumer_secret:
             msg = "consumer_key and consumer_secret are required"
             raise ValueError(msg)
-        base = f"{store_url.rstrip('/')}{self.API_PREFIX}"
+        self.store_url = store_url.rstrip("/")
+        base = f"{self.store_url}{self.API_PREFIX}"
         super().__init__(
             base_url=base,
             timeout_s=timeout_s,

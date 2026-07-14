@@ -531,6 +531,27 @@ class CreateOrderOutput(OutputModel):
     order: OrderDetail
 
 
+# ── build_checkout_link (read-only: constructs a URL) ────────────────────
+
+
+class CheckoutItemInput(InputModel):
+    """One product to pre-load into the store checkout cart."""
+
+    product_id: int = Field(ge=1)
+    quantity: int = Field(default=1, ge=1, le=10_000)
+
+
+class BuildCheckoutLinkInput(InputModel):
+    """Build a checkout URL that pre-fills the cart and opens the store's
+    checkout page (where the customer enters shipping + pays)."""
+
+    items: list[CheckoutItemInput] = Field(min_length=1, max_length=100)
+
+
+class BuildCheckoutLinkOutput(OutputModel):
+    url: str
+
+
 # ── destructive: update_order_status ─────────────────────────────────────
 
 
