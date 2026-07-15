@@ -242,7 +242,9 @@ async def _account_lock(tenant_id: uuid.UUID, transaction_id: int) -> AsyncItera
         return
     sm = get_sessionmaker()
     key = _lock_key(tenant_id, transaction_id)
-    async with sm() as session, tenant_scoped_session(session, tenant_id), session.begin():
+    # ``tenant_scoped_session`` already opens the transaction; take the
+    # xact-scoped advisory lock inside it (released when it commits on exit).
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
         await session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": key})
         yield
 
@@ -259,13 +261,31 @@ def _norm_name(value: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", " ", ascii_only.lower()).strip()
 
 
+def _token_matches(token: str, pool: set[str]) -> bool:
+    """A name token matches a token in ``pool`` exactly or via a small typo."""
+    return any(
+        token == p or difflib.SequenceMatcher(None, token, p).ratio() >= 0.85
+        for p in pool
+    )
+
+
 def _name_matches(a: str | None, b: str | None) -> bool:
+    """Match names tolerating partial names ("Leo" vs "Leo Morales Prueba") and
+    typos ("jhonny" vs "johnny"). One name's tokens being a (fuzzy) subset of
+    the other's counts as a match — the admin disambiguates."""
     na, nb = _norm_name(a), _norm_name(b)
     if not na or not nb:
         return False
     if na == nb:
         return True
-    # Tolerate typos like "jhonny" vs "johnny".
+    ta, tb = set(na.split()), set(nb.split())
+    if not ta or not tb:
+        return False
+    shorter, longer = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    # Every token of the shorter name matches some token of the longer one.
+    if all(_token_matches(t, longer) for t in shorter):
+        return True
+    # Whole-string fuzzy as a fallback (handles token order / minor edits).
     return difflib.SequenceMatcher(None, na, nb).ratio() >= 0.85
 
 
@@ -506,13 +526,11 @@ class AddCharge(_AmigableWriteTool):
                     account=None,
                 )
             base_total = float(current.get("total_amount") or 0)
-            paid = float(current.get("paid_amount") or 0)
             new_total = round(base_total + payload.amount, 2)
-            # Re-assert the fresh paid_amount so the update can't reset the
-            # abonado when only the total changes.
+            # Only send total_amount (the proven update shape). The lock +
+            # fresh read is what prevents the lost-update corruption.
             raw = await client.update_cuenta(
-                payload.transaction_id,
-                {"total_amount": new_total, "paid_amount": paid},
+                payload.transaction_id, {"total_amount": new_total}
             )
         return self._shape(
             raw, f"Cargo de {payload.amount} agregado. Nuevo total: {new_total}"

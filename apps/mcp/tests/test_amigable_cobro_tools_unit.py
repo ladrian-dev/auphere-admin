@@ -322,9 +322,9 @@ async def test_add_charge_reads_fresh_and_sums(tenant_ctx: Any) -> None:
     ops = {op for op, _ in c.write_calls}
     assert "get_cuenta" in ops  # re-read before write
     update = next(kw for op, kw in c.write_calls if op == "update_cuenta")
-    # total summed off the FRESH value; paid re-asserted so it can't reset.
+    # total summed off the FRESH value; only total_amount is sent.
     assert update["total_amount"] == 150.0
-    assert update["paid_amount"] == 40.0
+    assert "paid_amount" not in update
 
 
 # ── dedup on create ───────────────────────────────────────────────────────
@@ -366,7 +366,10 @@ async def test_find_client_by_fuzzy_name(tenant_ctx: Any) -> None:
     [
         ("jhonny regardiz", "johnny regardiz", True),
         ("Leo Morales", "leo  morales", True),
+        ("Leo", "Leo Morales Prueba", True),  # partial / first name
+        ("leo morales", "Leo Morales Prueba", True),
         ("Ana Pérez", "Pedro Gómez", False),
+        ("Leo", "Pedro Gómez", False),
     ],
 )
 def test_name_matches(a: str, b: str, expected: bool) -> None:
