@@ -45,8 +45,11 @@ from nexus_api.services.templating.seed_templates import (
     render_seed_template,
 )
 
+# Slug stays "mouna" (internal id, referenced by scripts/queries). The
+# display name is "Amigable Cobro" — the agent/tenant IS Amigable Cobro;
+# "Mouna" turned out to be one of Amigable Cobro's own clients, not the tenant.
 MOUNA_SLUG = os.environ.get("NEXUS_MOUNA_SLUG", "mouna")
-MOUNA_NAME = os.environ.get("NEXUS_MOUNA_NAME", "Mouna")
+MOUNA_NAME = os.environ.get("NEXUS_MOUNA_NAME", "Amigable Cobro")
 MOUNA_TIMEZONE = os.environ.get("NEXUS_MOUNA_TIMEZONE", "America/Caracas")
 MOUNA_MARKET = os.environ.get("NEXUS_MOUNA_MARKET", "VE")
 

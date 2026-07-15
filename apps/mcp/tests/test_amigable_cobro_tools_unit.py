@@ -18,8 +18,10 @@ from nexus_api.core.tenant_context import customer_context, tenant_context
 
 from nexus_mcp.servers.amigable_cobro.client import AmigableCobroClient
 from nexus_mcp.servers.amigable_cobro.schemas import (
+    AddChargeInput,
     ApplyDiscountInput,
     CreateAccountInput,
+    FindClientInput,
     GetAccountInput,
     GetDebtorByPhoneInput,
     GetMyDebtInput,
@@ -29,14 +31,17 @@ from nexus_mcp.servers.amigable_cobro.schemas import (
 )
 from nexus_mcp.servers.amigable_cobro.tools import (
     AMIGABLE_COBRO_TOOLS,
+    AddCharge,
     ApplyDiscount,
     CreateAccount,
+    FindClient,
     GetAccount,
     GetDebtorByPhone,
     GetMyDebt,
     ListOverdue,
     RegisterPayment,
     UpdateStatus,
+    _name_matches,
     _phone_matches,
     _to_record,
     set_test_client,
@@ -153,9 +158,11 @@ _READS = {
     "billing.get_account",
     "billing.get_debtor_by_phone",
     "billing.list_overdue",
+    "billing.find_client",
 }
 _WRITES = {
     "billing.register_payment",
+    "billing.add_charge",
     "billing.update_status",
     "billing.apply_discount",
     "billing.create_account",
@@ -163,7 +170,7 @@ _WRITES = {
 }
 
 
-def test_catalog_has_nine_tools() -> None:
+def test_catalog_has_eleven_tools() -> None:
     names = {cls.name for cls in AMIGABLE_COBRO_TOOLS}
     assert names == _READS | _WRITES
 
@@ -303,3 +310,64 @@ async def test_create_account_returns_new_record(tenant_ctx: Any) -> None:
     )
     assert out.ok is True
     assert out.account is not None and out.account.id == 99
+
+
+# ── add_charge: fresh read + atomic sum ──────────────────────────────────
+
+
+async def test_add_charge_reads_fresh_and_sums(tenant_ctx: Any) -> None:
+    c = _use([[]])  # get_cuenta returns total=100, paid=40
+    out = await AddCharge().run(AddChargeInput(transaction_id=5, amount=50.0))
+    assert out.ok is True
+    ops = {op for op, _ in c.write_calls}
+    assert "get_cuenta" in ops  # re-read before write
+    update = next(kw for op, kw in c.write_calls if op == "update_cuenta")
+    # total summed off the FRESH value; paid re-asserted so it can't reset.
+    assert update["total_amount"] == 150.0
+    assert update["paid_amount"] == 40.0
+
+
+# ── dedup on create ───────────────────────────────────────────────────────
+
+
+async def test_create_account_blocks_duplicate_by_phone(tenant_ctx: Any) -> None:
+    c = _use([[_account(id=7, client_name="Leo Morales", client_phone="+584241234567")]])
+    out = await CreateAccount().run(
+        CreateAccountInput(
+            client_name="Otro Nombre", total_amount=50.0, client_phone="04241234567"
+        )
+    )
+    assert out.ok is False
+    assert "duplicado" in out.message.lower()
+    assert out.account is not None and out.account.id == 7
+    # It must NOT have created anything.
+    assert not any(op == "create_cuenta" for op, _ in getattr(c, "write_calls", []))
+
+
+async def test_create_account_force_bypasses_dedup(tenant_ctx: Any) -> None:
+    c = _use([[_account(id=7, client_phone="+584241234567")]])
+    out = await CreateAccount().run(
+        CreateAccountInput(
+            client_name="Leo", total_amount=50.0, client_phone="04241234567", force=True
+        )
+    )
+    assert out.ok is True
+    assert any(op == "create_cuenta" for op, _ in c.write_calls)
+
+
+async def test_find_client_by_fuzzy_name(tenant_ctx: Any) -> None:
+    _use([[_account(id=46, client_name="jhonny regardiz", client_phone=None)]])
+    out = await FindClient().run(FindClientInput(name="johnny regardiz"))
+    assert out.found is True and out.matches[0].id == 46
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "expected"),
+    [
+        ("jhonny regardiz", "johnny regardiz", True),
+        ("Leo Morales", "leo  morales", True),
+        ("Ana Pérez", "Pedro Gómez", False),
+    ],
+)
+def test_name_matches(a: str, b: str, expected: bool) -> None:
+    assert _name_matches(a, b) is expected

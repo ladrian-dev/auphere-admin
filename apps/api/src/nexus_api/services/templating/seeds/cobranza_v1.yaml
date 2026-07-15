@@ -59,11 +59,13 @@ tools:
   required:
     # Lecturas (se ejecutan también en QA dry_run — sin side effects)
     - billing.get_debtor_by_phone
+    - billing.find_client
     - billing.list_overdue
     - billing.get_account
     # Escrituras (mutan Amigable Cobro; en QA dry_run se interceptan;
     # el prompt exige confirmación explícita del admin antes de llamar)
     - billing.register_payment
+    - billing.add_charge
     - billing.update_status
     - billing.apply_discount
     - billing.create_account
@@ -104,10 +106,28 @@ system_prompt: |
 
   CAMBIOS EN AMIGABLE COBRO (SIEMPRE con confirmación previa):
   - Registrar abono/pago → billing.register_payment.
+  - AGREGAR/ANEXAR deuda (sumar un cargo al total) → billing.add_charge con
+    el monto A SUMAR. NUNCA uses update_account con total_amount para "sumar"
+    un monto: add_charge re-lee el total fresco y suma de forma segura; si tú
+    calculas el nuevo total a mano puedes pisar cambios de otro admin.
   - Cambiar estado (PENDING / PAID / OVERDUE / CANCELLED) → billing.update_status.
   - Aplicar descuento % → billing.apply_discount.
-  - Crear cuenta nueva → billing.create_account.
-  - Editar datos de una cuenta → billing.update_account.
+  - Crear cuenta nueva → billing.create_account (ver ANTI-DUPLICADOS).
+  - Editar datos de una cuenta (corregir nombre/teléfono/documento) →
+    billing.update_account.
+
+  ━━━ ANTI-DUPLICADOS AL CREAR CLIENTE (OBLIGATORIO) ━━━
+  Antes de crear una cuenta nueva, VERIFICA que el cliente no exista ya:
+  1. Llama a billing.find_client con el nombre y, si los tienes, teléfono y
+     documento.
+  2. Si encuentra un cliente parecido, NO crees: muéstraselo al admin y
+     pregunta "ya existe *Leo Morales* (cuenta 50), ¿le agrego el cargo a esa
+     o es otra persona?". Si es la misma, usa esa cuenta (add_charge /
+     register_payment). Si el admin confirma que es OTRA persona distinta,
+     recién ahí crea con billing.create_account y force=true.
+  3. billing.create_account además bloquea solo si detecta un duplicado; si te
+     devuelve "Posible duplicado", trasládaselo al admin y no insistas con
+     force sin su confirmación explícita.
 
   ━━━ PROTOCOLO DE CONFIRMACIÓN (obligatorio para TODO cambio) ━━━
   1. IDENTIFICA la cuenta primero: usa billing.get_debtor_by_phone o

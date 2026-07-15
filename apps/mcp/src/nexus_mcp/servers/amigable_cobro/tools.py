@@ -12,9 +12,14 @@ Credential resolution mirrors the WooCommerce server: read
 
 from __future__ import annotations
 
+import difflib
+import hashlib
 import json
 import re
+import unicodedata
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, ClassVar
 
 import structlog
@@ -31,15 +36,18 @@ from nexus_api.db.models import (
     TenantConnectorStatus,
     TenantCredentials,
 )
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from nexus_mcp.base import ToolBase, ToolError
 from nexus_mcp.servers.amigable_cobro.client import DEFAULT_BASE_URL, AmigableCobroClient
 from nexus_mcp.servers.amigable_cobro.errors import AmigableCobroNotFound
 from nexus_mcp.servers.amigable_cobro.schemas import (
+    AddChargeInput,
     ApplyDiscountInput,
     CreateAccountInput,
     DebtRecord,
+    FindClientInput,
+    FindClientOutput,
     GetAccountInput,
     GetAccountOutput,
     GetDebtorByPhoneInput,
@@ -201,6 +209,93 @@ async def _scan_for_phone(
         raw, meta = await client.list_cuentas(page=page)
         for r in raw:
             if _phone_matches(r.get("client_phone"), phone):
+                matches.append(_to_record(r))
+        last = int(meta.get("last_page") or page)
+        if page >= last:
+            break
+        page += 1
+    return matches
+
+
+# ── concurrency: per-account advisory lock ───────────────────────────────
+#
+# The Amigable Cobro API is last-write-wins; when several admins text about
+# the SAME account at once (add a charge, register a payment…), the agent
+# would read-modify-write on stale data and clobber each other. We serialize
+# writes to one account with a Postgres transaction-scoped advisory lock
+# keyed by (tenant, account id). It auto-releases when the short lock
+# transaction commits. Writes to different accounts never block each other.
+
+
+def _lock_key(tenant_id: uuid.UUID, transaction_id: int) -> int:
+    digest = hashlib.blake2b(
+        f"{tenant_id}:{transaction_id}".encode(), digest_size=8
+    ).digest()
+    return int.from_bytes(digest, "big", signed=True)
+
+
+@asynccontextmanager
+async def _account_lock(tenant_id: uuid.UUID, transaction_id: int) -> AsyncIterator[None]:
+    """Serialize concurrent billing writes to one account across turns."""
+    if _client_override is not None:  # unit tests bypass the DB
+        yield
+        return
+    sm = get_sessionmaker()
+    key = _lock_key(tenant_id, transaction_id)
+    async with sm() as session, tenant_scoped_session(session, tenant_id), session.begin():
+        await session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": key})
+        yield
+
+
+# ── dedup: find an existing client before creating a new account ──────────
+
+
+def _norm_name(value: str | None) -> str:
+    """Lowercase, strip accents + non-alphanumerics for fuzzy name compare."""
+    if not value:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", value)
+    ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", " ", ascii_only.lower()).strip()
+
+
+def _name_matches(a: str | None, b: str | None) -> bool:
+    na, nb = _norm_name(a), _norm_name(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    # Tolerate typos like "jhonny" vs "johnny".
+    return difflib.SequenceMatcher(None, na, nb).ratio() >= 0.85
+
+
+async def _find_existing_client(
+    client: AmigableCobroClient,
+    *,
+    name: str | None,
+    phone: str | None,
+    document: str | None,
+    max_pages: int,
+) -> list[DebtRecord]:
+    """Scan accounts and return those that likely belong to the same client,
+    matching by phone (last digits), document (normalized) or fuzzy name."""
+    doc = _norm_name(document)
+    matches: list[DebtRecord] = []
+    seen: set[int] = set()
+    page = 1
+    while page <= max_pages:
+        raw, meta = await client.list_cuentas(page=page)
+        for r in raw:
+            rid = int(r.get("id") or 0)
+            if rid in seen:
+                continue
+            hit = (
+                (phone and _phone_matches(r.get("client_phone"), phone))
+                or (doc and _norm_name(r.get("client_document")) == doc)
+                or (name and _name_matches(r.get("client_name"), name))
+            )
+            if hit:
+                seen.add(rid)
                 matches.append(_to_record(r))
         last = int(meta.get("last_page") or page)
         if page >= last:
@@ -373,15 +468,55 @@ class RegisterPayment(_AmigableWriteTool):
     output_model = WriteResultOutput
 
     async def run(self, payload: RegisterPaymentInput) -> WriteResultOutput:  # type: ignore[override]
+        tenant_id = require_current_tenant()
         client = await self._client()
-        raw = await client.register_payment(
-            payload.transaction_id,
-            amount=payload.amount,
-            payment_method=payload.payment_method,
-            reference=payload.reference,
-            notes=payload.notes,
-        )
+        async with _account_lock(tenant_id, payload.transaction_id):
+            raw = await client.register_payment(
+                payload.transaction_id,
+                amount=payload.amount,
+                payment_method=payload.payment_method,
+                reference=payload.reference,
+                notes=payload.notes,
+            )
         return self._shape(raw, "Abono registrado")
+
+
+class AddCharge(_AmigableWriteTool):
+    name = "billing.add_charge"
+    description = (
+        "SUMA un cargo/anexo al monto total de una cuenta (aumenta la deuda) de "
+        "forma segura: re-lee el total actual y le suma el monto, serializado por "
+        "cuenta para no pisar cambios concurrentes de otros admins. USA ESTA para "
+        "'agregar deuda / anexar un monto', NUNCA update_account para eso. SOLO "
+        "tras confirmación explícita del admin (cuenta + monto a sumar)."
+    )
+    input_model = AddChargeInput
+    output_model = WriteResultOutput
+
+    async def run(self, payload: AddChargeInput) -> WriteResultOutput:  # type: ignore[override]
+        tenant_id = require_current_tenant()
+        client = await self._client()
+        async with _account_lock(tenant_id, payload.transaction_id):
+            try:
+                current = await client.get_cuenta(payload.transaction_id)
+            except AmigableCobroNotFound:
+                return WriteResultOutput(
+                    ok=False,
+                    message=f"No existe la cuenta {payload.transaction_id}.",
+                    account=None,
+                )
+            base_total = float(current.get("total_amount") or 0)
+            paid = float(current.get("paid_amount") or 0)
+            new_total = round(base_total + payload.amount, 2)
+            # Re-assert the fresh paid_amount so the update can't reset the
+            # abonado when only the total changes.
+            raw = await client.update_cuenta(
+                payload.transaction_id,
+                {"total_amount": new_total, "paid_amount": paid},
+            )
+        return self._shape(
+            raw, f"Cargo de {payload.amount} agregado. Nuevo total: {new_total}"
+        )
 
 
 class UpdateStatus(_AmigableWriteTool):
@@ -395,8 +530,10 @@ class UpdateStatus(_AmigableWriteTool):
     output_model = WriteResultOutput
 
     async def run(self, payload: UpdateStatusInput) -> WriteResultOutput:  # type: ignore[override]
+        tenant_id = require_current_tenant()
         client = await self._client()
-        raw = await client.update_status(payload.transaction_id, status=payload.status)
+        async with _account_lock(tenant_id, payload.transaction_id):
+            raw = await client.update_status(payload.transaction_id, status=payload.status)
         return self._shape(raw, f"Estado actualizado a {payload.status}")
 
 
@@ -428,6 +565,28 @@ class CreateAccount(_AmigableWriteTool):
 
     async def run(self, payload: CreateAccountInput) -> WriteResultOutput:  # type: ignore[override]
         client = await self._client()
+        # Anti-duplicate guard: unless the admin forced it, refuse to create a
+        # client that already exists (same phone / document / fuzzy name) and
+        # return the match so the agent can ask the admin.
+        if not payload.force:
+            dupes = await _find_existing_client(
+                client,
+                name=payload.client_name,
+                phone=payload.client_phone,
+                document=payload.client_document,
+                max_pages=10,
+            )
+            if dupes:
+                d = dupes[0]
+                return WriteResultOutput(
+                    ok=False,
+                    message=(
+                        f"Posible duplicado: ya existe '{d.client_name}' "
+                        f"(cuenta ID {d.id}, saldo {d.balance}). ¿Usas esa cuenta o "
+                        f"es otra persona? Para crear igual, confirma con force."
+                    ),
+                    account=d,
+                )
         fields: dict[str, Any] = {
             "client_name": payload.client_name,
             "total_amount": payload.total_amount,
@@ -442,6 +601,28 @@ class CreateAccount(_AmigableWriteTool):
         return self._shape(raw, "Cuenta creada")
 
 
+class FindClient(_AmigableTool):
+    name = "billing.find_client"
+    description = (
+        "Busca si un cliente YA existe en Amigable Cobro por nombre, teléfono o "
+        "documento (tolera errores de tipeo en el nombre). Úsala ANTES de crear "
+        "una cuenta nueva para no duplicar clientes."
+    )
+    input_model = FindClientInput
+    output_model = FindClientOutput
+
+    async def run(self, payload: FindClientInput) -> FindClientOutput:  # type: ignore[override]
+        client = await self._client()
+        matches = await _find_existing_client(
+            client,
+            name=payload.name,
+            phone=payload.phone,
+            document=payload.document,
+            max_pages=payload.max_pages,
+        )
+        return FindClientOutput(found=bool(matches), matches=matches)
+
+
 class UpdateAccount(_AmigableWriteTool):
     name = "billing.update_account"
     description = (
@@ -453,6 +634,7 @@ class UpdateAccount(_AmigableWriteTool):
     output_model = WriteResultOutput
 
     async def run(self, payload: UpdateAccountInput) -> WriteResultOutput:  # type: ignore[override]
+        tenant_id = require_current_tenant()
         client = await self._client()
         fields = {
             k: v
@@ -466,7 +648,8 @@ class UpdateAccount(_AmigableWriteTool):
             }.items()
             if v is not None
         }
-        raw = await client.update_cuenta(payload.transaction_id, fields)
+        async with _account_lock(tenant_id, payload.transaction_id):
+            raw = await client.update_cuenta(payload.transaction_id, fields)
         return self._shape(raw, "Cuenta actualizada")
 
 
@@ -475,10 +658,12 @@ AMIGABLE_COBRO_TOOLS: tuple[type[ToolBase], ...] = (
     # admin-only cobranza_v1 vertical; kept for future debtor-facing use.
     GetMyDebt,
     # Admin reads.
+    FindClient,
     GetAccount,
     GetDebtorByPhone,
     ListOverdue,
     # Admin writes (dry_run-intercepted in QA; prompt requires confirmation).
+    AddCharge,
     ApplyDiscount,
     CreateAccount,
     RegisterPayment,

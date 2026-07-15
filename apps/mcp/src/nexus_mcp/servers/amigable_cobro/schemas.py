@@ -149,6 +149,14 @@ class ApplyDiscountInput(InputModel):
     )
 
 
+class AddChargeInput(InputModel):
+    transaction_id: int = Field(ge=1, description="ID de la cuenta a la que se agrega el cargo.")
+    amount: float = Field(gt=0, description="Monto a SUMAR al total de la deuda (anexo/cargo).")
+    concept: str | None = Field(
+        default=None, max_length=200, description="Concepto del cargo, opcional (ej. 'anexo')."
+    )
+
+
 class CreateAccountInput(InputModel):
     client_name: str = Field(min_length=1, max_length=160, description="Nombre del deudor.")
     total_amount: float = Field(gt=0, description="Monto total de la nueva deuda.")
@@ -161,6 +169,26 @@ class CreateAccountInput(InputModel):
     due_date: str | None = Field(
         default=None, description="Fecha de vencimiento (ISO 8601), opcional."
     )
+    force: bool = Field(
+        default=False,
+        description=(
+            "Si es false (default) y ya existe un cliente parecido (por teléfono, "
+            "documento o nombre), NO crea y devuelve el posible duplicado para que "
+            "el admin decida. Pon true SOLO si el admin confirmó que es otra persona."
+        ),
+    )
+
+
+class FindClientInput(InputModel):
+    name: str | None = Field(default=None, max_length=160, description="Nombre a buscar.")
+    phone: str | None = Field(default=None, max_length=32, description="Teléfono a buscar.")
+    document: str | None = Field(default=None, max_length=40, description="Documento a buscar.")
+    max_pages: int = Field(default=10, ge=1, le=50, description="Páginas a escanear.")
+
+
+class FindClientOutput(OutputModel):
+    found: bool
+    matches: list[DebtRecord]
 
 
 class UpdateAccountInput(InputModel):
@@ -174,9 +202,12 @@ class UpdateAccountInput(InputModel):
 
 
 __all__ = [
+    "AddChargeInput",
     "ApplyDiscountInput",
     "CreateAccountInput",
     "DebtRecord",
+    "FindClientInput",
+    "FindClientOutput",
     "GetAccountInput",
     "GetAccountOutput",
     "GetDebtorByPhoneInput",
