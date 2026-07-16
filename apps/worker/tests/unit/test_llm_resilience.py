@@ -25,6 +25,7 @@ from nexus_worker.runtime.llm import (
     LiteLLMProvider,
     LLMResponse,
     LLMRouter,
+    _usage_fields,
     _with_prompt_caching,
     default_context_management_from_env,
 )
@@ -174,6 +175,115 @@ class TestRouterResilience:
 
         # 2 primary attempts + 2 fallback attempts.
         assert len(provider.calls) == 4
+
+
+# ── fast retry on transient connection errors (no backoff) ───────────────────
+
+
+class _NamedError(Exception):
+    """Exception whose *class name* is what ``_is_fast_retry_error`` matches on.
+
+    Subclasses below reproduce the class names litellm raises for a dead
+    pooled socket (``Timeout``) vs a rate limit (``RateLimitError``) without
+    importing litellm into the test.
+    """
+
+
+class Timeout(_NamedError):
+    """Mirrors ``litellm.Timeout`` — the class the stale-connection storm hit."""
+
+
+class RateLimitError(_NamedError):
+    """Mirrors ``litellm.RateLimitError`` — must still back off."""
+
+
+@dataclass
+class _ExcThenOkProvider:
+    """Raises ``exc`` on the first call, then succeeds. Records call count."""
+
+    exc: Exception
+    calls: int = 0
+
+    async def acomplete(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        messages: list[dict[str, str]],
+    ) -> str:
+        self.calls += 1
+        if self.calls == 1:
+            raise self.exc
+        return "ok"
+
+    async def acomplete_with_tools(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
+    ) -> LLMResponse:
+        self.calls += 1
+        if self.calls == 1:
+            raise self.exc
+        return LLMResponse(text="ok", tool_calls=())
+
+
+class TestFastRetryNoBackoff:
+    async def test_connection_error_retries_without_backoff(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A stale-socket ``Timeout`` retries on a fresh connection with NO
+        sleep — killing the 0.5s latency every post-idle turn used to pay."""
+        sleeps: list[float] = []
+
+        async def _fake_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+
+        monkeypatch.setattr("nexus_worker.runtime.llm.asyncio.sleep", _fake_sleep)
+
+        provider = _ExcThenOkProvider(exc=Timeout("Connection timed out"))
+        router = LLMRouter(
+            provider=provider,  # type: ignore[arg-type]
+            classify_model="primary",
+            respond_model="primary",
+            fallback_model="fallback",
+        )
+
+        out = await router.classify(tenant_id=uuid.uuid4(), messages=[])
+
+        assert out == "ok"
+        assert provider.calls == 2  # failed once, retried once, succeeded
+        assert sleeps == []  # no backoff for a transient connection error
+
+    async def test_rate_limit_still_backs_off(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A rate limit is NOT a dead socket — it must keep the backoff so the
+        immediate retry doesn't just re-trip the limit."""
+        sleeps: list[float] = []
+
+        async def _fake_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+
+        monkeypatch.setattr("nexus_worker.runtime.llm.asyncio.sleep", _fake_sleep)
+
+        provider = _ExcThenOkProvider(exc=RateLimitError("429"))
+        router = LLMRouter(
+            provider=provider,  # type: ignore[arg-type]
+            classify_model="primary",
+            respond_model="primary",
+            fallback_model="fallback",
+        )
+
+        out = await router.classify(tenant_id=uuid.uuid4(), messages=[])
+
+        assert out == "ok"
+        assert sleeps == [0.5]  # backoff preserved for non-connection errors
 
 
 # ── context editing (Fase A — claude-platform-integration) ───────────────────
@@ -348,3 +458,45 @@ class TestDefaultContextManagementFromEnv:
     def test_returns_default_when_enabled(self, monkeypatch: pytest.MonkeyPatch, flag: str) -> None:
         monkeypatch.setenv("NEXUS_CONTEXT_EDITING_ENABLED", flag)
         assert default_context_management_from_env() == DEFAULT_CONTEXT_MANAGEMENT
+
+
+# ── usage / cache telemetry ──────────────────────────────────────────────────
+
+
+class TestUsageFields:
+    def test_extracts_tokens_and_cache_read(self) -> None:
+        """Dict-shaped LiteLLM usage with an explicit cache-read field — the
+        signal that tells us the Anthropic prompt cache actually hit."""
+        response = {
+            "usage": {
+                "prompt_tokens": 1200,
+                "completion_tokens": 90,
+                "cache_read_input_tokens": 1000,
+                "cache_creation_input_tokens": 0,
+            }
+        }
+        assert _usage_fields(response) == {
+            "prompt_tokens": 1200,
+            "completion_tokens": 90,
+            "cache_read_input_tokens": 1000,
+            "cache_creation_input_tokens": 0,
+        }
+
+    def test_cache_read_from_prompt_tokens_details(self) -> None:
+        """Some responses report the cache hit under
+        ``prompt_tokens_details.cached_tokens`` — read it as the fallback."""
+        response = {
+            "usage": {
+                "prompt_tokens": 800,
+                "prompt_tokens_details": {"cached_tokens": 640},
+            }
+        }
+        out = _usage_fields(response)
+        assert out["prompt_tokens"] == 800
+        assert out["cache_read_input_tokens"] == 640
+
+    def test_missing_usage_is_empty_not_error(self) -> None:
+        """Instrumentation must never raise — a response without usage yields
+        an empty dict, not an exception."""
+        assert _usage_fields({"choices": []}) == {}
+        assert _usage_fields(None) == {}

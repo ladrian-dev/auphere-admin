@@ -49,6 +49,7 @@ set in the orchestrator is not guaranteed to leak in.
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
@@ -948,6 +949,7 @@ def make_handler_node(
             if not isinstance(respond_model_override, str) or not respond_model_override:
                 respond_model_override = None
 
+            _turn_started = time.perf_counter()
             for iteration in range(MAX_TOOL_ITERATIONS):
                 # The last iteration is tool-free: the model MUST answer.
                 last = iteration == MAX_TOOL_ITERATIONS - 1
@@ -1094,6 +1096,21 @@ def make_handler_node(
                     iterations=iteration + 1,
                 )
                 final_text = _EMPTY_RESPONSE_FALLBACK
+
+            # Per-turn latency summary. ``iterations`` × per-call latency (see
+            # ``llm.call_complete``) is the whole story of a slow turn: a turn
+            # that hit the ``MAX_TOOL_ITERATIONS`` cap with N sequential Sonnet
+            # calls is structurally different from one slow single call, and we
+            # could not tell them apart before this event existed.
+            log.info(
+                "handler.turn_complete",
+                tenant_id=str(tenant_id),
+                intent=intent,
+                iterations=iteration + 1,
+                elapsed_ms=round((time.perf_counter() - _turn_started) * 1000),
+                respond_model=respond_model_override or llm.respond_model,
+                tool_calls=len(envelopes),
+            )
 
             return {
                 "tool_calls": envelopes,

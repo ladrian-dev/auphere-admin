@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -59,6 +60,74 @@ def litellm_kwargs_contract() -> dict[str, Any]:
 _MAX_ATTEMPTS_PER_MODEL = 2
 # Linear backoff base, in seconds (attempt 0 → 0.5s, attempt 1 → 1.0s …).
 _RETRY_BACKOFF_S = 0.5
+
+# Transient connection/timeout failures where the socket died before the
+# request completed — a stale keep-alive connection reused from the pool after
+# the server closed it (litellm maps aiohttp ``ServerDisconnected`` / connect
+# errors onto ``Timeout`` / ``APIConnectionError``, failing in ~1ms). Retrying
+# on a fresh connection succeeds instantly, so these skip the backoff: the
+# ``_RETRY_BACKOFF_S`` wait was pure added latency on every post-idle turn.
+# Matched by class NAME so the router stays provider-agnostic (no litellm /
+# openai import here). Rate-limit / auth / bad-request errors are deliberately
+# absent — those must keep backing off, an immediate retry would just re-fail.
+_FAST_RETRY_ERROR_NAMES = frozenset(
+    {
+        "Timeout",
+        "APITimeoutError",
+        "APIConnectionError",
+        "ServiceUnavailableError",
+        "InternalServerError",
+    }
+)
+
+
+def _is_fast_retry_error(exc: BaseException) -> bool:
+    """True for transient connection/timeout errors that should retry with no
+    backoff (a dead pooled socket), False for anything else (rate limits, …)."""
+    return type(exc).__name__ in _FAST_RETRY_ERROR_NAMES
+
+
+# ── latency / cache observability ────────────────────────────────────────────
+
+# Which token-usage fields to surface on ``llm.call_complete``. ``cache_read``
+# > 0 means the Anthropic prompt cache HIT (the ~90% input discount + latency
+# drop); ``cache_creation`` > 0 means we paid to write the cache this call. If
+# every call shows cache_read=0 the caching is not working and that alone
+# explains slow turns — the exact question "why are all agents slow" needs.
+def _usage_fields(response: Any) -> dict[str, int]:
+    """Best-effort extraction of token usage from a LiteLLM response. Tolerates
+    both dict- and attribute-shaped responses and missing fields (returns only
+    what's present, never raises — instrumentation must not break a turn)."""
+
+    def _get(obj: Any, key: str) -> Any:
+        if obj is None:
+            return None
+        if hasattr(obj, "get"):
+            try:
+                return obj.get(key)
+            except Exception:
+                return None
+        return getattr(obj, key, None)
+
+    usage = _get(response, "usage")
+    if usage is None:
+        return {}
+    out: dict[str, int] = {}
+    for key in (
+        "prompt_tokens",
+        "completion_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    ):
+        val = _get(usage, key)
+        if isinstance(val, int):
+            out[key] = val
+    # Anthropic sometimes reports the cache hit under ``prompt_tokens_details``.
+    if "cache_read_input_tokens" not in out:
+        cached = _get(_get(usage, "prompt_tokens_details"), "cached_tokens")
+        if isinstance(cached, int):
+            out["cache_read_input_tokens"] = cached
+    return out
 
 # Return type of a resilient call — preserved through ``_call_with_resilience``.
 _T = TypeVar("_T")
@@ -431,7 +500,25 @@ class LiteLLMProvider:
                 "litellm batching is enabled globally; refusing to invoke for "
                 f"tenant {tenant_id!s} — see architecture/agent-isolation.md garantía 7"
             )
-        return await litellm.acompletion(**kwargs)
+
+        # Per-call latency + token/cache telemetry. This is the single choke
+        # point every litellm call (classify, respond, grader, multimodal) of
+        # every agent flows through, so one INFO event here gives us the whole
+        # latency picture we were missing — where turn time goes and whether
+        # the Anthropic prompt cache is actually hitting (cache_read > 0).
+        started = time.perf_counter()
+        response = await litellm.acompletion(**kwargs)
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        log.info(
+            "llm.call_complete",
+            tenant_id=str(tenant_id),
+            role=role,
+            model=model,
+            elapsed_ms=elapsed_ms,
+            has_tools=bool(tools),
+            **_usage_fields(response),
+        )
+        return response
 
 
 # ── Router ────────────────────────────────────────────────────────────────────
@@ -479,6 +566,7 @@ class LLMRouter:
                     return await invoke(model)
                 except Exception as exc:
                     last_exc = exc
+                    fast_retry = _is_fast_retry_error(exc)
                     log.warning(
                         "llm.attempt_failed",
                         tenant_id=str(tenant_id),
@@ -486,9 +574,14 @@ class LLMRouter:
                         model=model,
                         attempt=attempt,
                         error=str(exc),
+                        fast_retry=fast_retry,
                     )
                     if attempt + 1 < _MAX_ATTEMPTS_PER_MODEL:
-                        await asyncio.sleep(_RETRY_BACKOFF_S * (attempt + 1))
+                        # A dead pooled socket fails in ~1ms; retry it on a fresh
+                        # connection immediately instead of paying the backoff.
+                        # Everything else (rate limits, …) still backs off.
+                        if not fast_retry:
+                            await asyncio.sleep(_RETRY_BACKOFF_S * (attempt + 1))
         assert last_exc is not None  # the loop ran at least once
         log.error(
             "llm.all_attempts_exhausted",
