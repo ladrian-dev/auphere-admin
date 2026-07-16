@@ -1,7 +1,7 @@
 """Partner auto-provisioning blueprint (ADR-028 Fase 2b)
 
 Revision ID: 0050_partner_provisioning
-Revises: 0049_message_template_payload
+Revises: 0051_drop_tenant_widget_configs
 Create Date: 2026-07-09
 
 Adds the per-partner agent blueprint so ``POST /v1/partners/clients`` can
@@ -32,7 +32,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0050_partner_provisioning"
-down_revision: str | Sequence[str] | None = "0049_message_template_payload"
+down_revision: str | Sequence[str] | None = "0051_drop_tenant_widget_configs"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
