@@ -51,6 +51,7 @@ from nexus_worker.runtime.llm import LiteLLMProvider, build_default_router
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.async_booking_cron import run_async_booking_cron
+from nexus_worker.streams.cobranza_reminder_cron import run_cobranza_reminder_cron
 from nexus_worker.streams.connector_reconcile_cron import run_connector_reconcile_cron
 from nexus_worker.streams.consumer import run_inbound_consumer
 from nexus_worker.streams.continuous_eval_cron import run_continuous_eval_cron
@@ -183,6 +184,13 @@ async def _amain() -> None:
             run_reminder_cron(stop=stop),
             name="reminder-cron",
         )
+        # Cobranza due-date sweep: queues payment reminders for every tenant
+        # with an Amigable Cobro connector. Idle until its WhatsApp templates
+        # are APPROVED, so it is safe to run unconditionally.
+        cobranza_reminder_task = asyncio.create_task(
+            run_cobranza_reminder_cron(stop=stop),
+            name="cobranza-reminder-cron",
+        )
         # Block H: persistent isolation events drainer + 3 cron streams
         # (no_show_scrape, cost_rollup, isolation_watcher). The AgendaPro
         # health-check cron was removed with the admin browser MCP
@@ -288,6 +296,7 @@ async def _amain() -> None:
                 outbound_task,
                 alerter_task,
                 reminder_task,
+                cobranza_reminder_task,
                 drainer_task,
                 no_show_task,
                 cost_rollup_task,

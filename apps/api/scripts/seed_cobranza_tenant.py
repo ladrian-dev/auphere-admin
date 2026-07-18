@@ -1,7 +1,27 @@
-"""Seed the Mouna tenant + agent_config from the cobranza_v1 seed template.
+"""Provision a COBRANZA tenant (Amigable Cobro business) from cobranza_v1.
 
-Mouna is the first client of the ``cobranza_v1`` vertical (outbound payment
-reminders over WhatsApp, Venezuela). Ficha: Auphere/nexus/clients/mouna.md.
+REPLICABLE BY DESIGN — everything that differs between businesses is an env
+var, so onboarding a new Amigable Cobro client needs **no code change**:
+
+    NEXUS_COBRANZA_SLUG            # url-safe id, e.g. "barberia-lopez"
+    NEXUS_COBRANZA_NAME            # display name, e.g. "Barbería López"
+    NEXUS_COBRANZA_TIMEZONE        # e.g. "America/Caracas"
+    NEXUS_COBRANZA_MARKET          # e.g. "VE"
+    NEXUS_COBRANZA_ADMIN_PHONES    # comma-separated E.164 admin whitelist
+    NEXUS_COBRANZA_PAYMENT_JSON    # {"policies.payment.pago_movil.banco": "...", ...}
+
+(The legacy ``NEXUS_MOUNA_*`` names still work for the first tenant.)
+
+Full onboarding checklist for a NEW business:
+ 1. Run this script with the env vars above → tenant + agent_config ACTIVE.
+ 2. Connect its **amigable_cobro** connector (its own ``business_uuid`` +
+    token) so ``billing.*`` reads/writes that business's accounts.
+ 3. Connect its WhatsApp line (Meta embedded signup or owned-number connect).
+ 4. Approve the two reminder templates in THAT line's WABA
+    (``recordatorio_pago_proximo`` / ``recordatorio_pago_vencido``,
+    category UTILITY, named vars: cliente, negocio, monto, fecha).
+ 5. Done — the cobranza due-date sweep picks the tenant up automatically and
+    starts sending reminders; ``{{negocio}}`` is filled with the tenant name.
 
 Idempotent: re-running picks up the existing tenant by ``slug`` and only
 creates the agent_config if there isn't an ACTIVE one yet.
@@ -19,12 +39,13 @@ and the runtime both read them from one place.
 Usage:
 
     NEXUS_DATABASE_URL=postgresql+asyncpg://... \\
-      uv run python apps/api/scripts/seed_mouna_tenant.py
+      uv run python apps/api/scripts/seed_cobranza_tenant.py
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import uuid
@@ -48,10 +69,10 @@ from nexus_api.services.templating.seed_templates import (
 # Slug stays "mouna" (internal id, referenced by scripts/queries). The
 # display name is "Amigable Cobro" — the agent/tenant IS Amigable Cobro;
 # "Mouna" turned out to be one of Amigable Cobro's own clients, not the tenant.
-MOUNA_SLUG = os.environ.get("NEXUS_MOUNA_SLUG", "mouna")
-MOUNA_NAME = os.environ.get("NEXUS_MOUNA_NAME", "Amigable Cobro")
-MOUNA_TIMEZONE = os.environ.get("NEXUS_MOUNA_TIMEZONE", "America/Caracas")
-MOUNA_MARKET = os.environ.get("NEXUS_MOUNA_MARKET", "VE")
+MOUNA_SLUG = os.environ.get("NEXUS_COBRANZA_SLUG") or os.environ.get("NEXUS_MOUNA_SLUG", "mouna")
+MOUNA_NAME = os.environ.get("NEXUS_COBRANZA_NAME") or os.environ.get("NEXUS_MOUNA_NAME", "Amigable Cobro")
+MOUNA_TIMEZONE = os.environ.get("NEXUS_COBRANZA_TIMEZONE") or os.environ.get("NEXUS_MOUNA_TIMEZONE", "America/Caracas")
+MOUNA_MARKET = os.environ.get("NEXUS_COBRANZA_MARKET") or os.environ.get("NEXUS_MOUNA_MARKET", "VE")
 
 # Datos bancarios de Mouna — PLACEHOLDER hasta tener los reales.
 # Overridean policies.payment.* del seed cobranza_v1.
@@ -63,7 +84,7 @@ MOUNA_MARKET = os.environ.get("NEXUS_MOUNA_MARKET", "VE")
 #   binance.{pay_id}
 #   zelle.{email,titular,banco}
 # NOTA: datos de EJEMPLO (Venezuela). Reemplazar por los reales de Mouna.
-PAYMENT_DATA: dict[str, str] = {
+_DEFAULT_PAYMENT_DATA: dict[str, str] = {
     # Pago móvil
     "policies.payment.pago_movil.banco": "0134 - Banesco",
     "policies.payment.pago_movil.telefono": "0414-1234567",
@@ -78,6 +99,24 @@ PAYMENT_DATA: dict[str, str] = {
     "policies.payment.binance.pay_id": "pagos.mouna@gmail.com",
 }
 
+
+def _env_json(name: str, default: dict[str, str]) -> dict[str, str]:
+    """Per-business payment data as a JSON env var (keys = policy paths)."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return {str(k): str(v) for k, v in json.loads(raw).items()}
+
+
+def _env_list(name: str, default: list[str]) -> list[str]:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+PAYMENT_DATA: dict[str, str] = _env_json("NEXUS_COBRANZA_PAYMENT_JSON", _DEFAULT_PAYMENT_DATA)
+
 # Teléfonos ADMIN de Mouna (E.164) — los ÚNICOS números a los que el
 # agente responde (gate en el dispatcher: policies.admin_access). Todo
 # otro remitente queda registrado pero sin respuesta.
@@ -87,12 +126,15 @@ PAYMENT_DATA: dict[str, str] = {
 # mismo por WhatsApp. Los admins le escriben a esa línea desde estos
 # teléfonos. (+34632719028 fue el candidato inicial de línea pero quedó
 # atascado en un WABA viejo; ahora se usa como teléfono admin de pruebas.)
-ADMIN_PHONES: list[str] = [
-    "+34610777570",
-    "+584249125716",
-    "+584244095405",
-    "+34632719028",
-]
+ADMIN_PHONES: list[str] = _env_list(
+    "NEXUS_COBRANZA_ADMIN_PHONES",
+    [
+        "+34610777570",
+        "+584249125716",
+        "+584244095405",
+        "+34632719028",
+    ],
+)
 
 
 async def _amain() -> int:
@@ -161,7 +203,7 @@ async def _amain() -> int:
                 tools=rendered.tools,
                 policies=rendered.policies,
                 seed_template_ref=rendered.seed_template_ref,
-                created_by="seed_mouna_tenant.py",
+                created_by="seed_cobranza_tenant.py",
             )
             session.add(config)
             print(

@@ -54,7 +54,7 @@ async def _amain() -> int:
             await lookup.execute(select(Tenant).where(Tenant.slug == MOUNA_SLUG))
         ).scalar_one_or_none()
     if tenant is None:
-        print(f"ERROR: tenant {MOUNA_SLUG!r} not found — run seed_mouna_tenant.py first")
+        print(f"ERROR: tenant {MOUNA_SLUG!r} not found — run seed_cobranza_tenant.py first")
         return 1
 
     async with Session() as session:
