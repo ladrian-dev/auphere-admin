@@ -1,6 +1,6 @@
 """Amigable Cobro REST client — thin wrapper over the shared HTTP base.
 
-Amigable Cobro (https://api-amigablecobro.amacruxlab.com/api/v1) is the
+Amigable Cobro (https://cobro-api.amigable.app/api/v1) is the
 debt-management platform that owns the accounts-receivable ("cuentas y
 cobros") the cobranza agent reminds about.
 
@@ -44,7 +44,7 @@ from nexus_mcp.servers.amigable_cobro.errors import (
 
 log = structlog.get_logger(__name__)
 
-DEFAULT_BASE_URL = "https://api-amigablecobro.amacruxlab.com/api/v1"
+DEFAULT_BASE_URL = "https://cobro-api.amigable.app/api/v1"
 
 
 class AmigableCobroClient(BaseHTTPConnectorClient):

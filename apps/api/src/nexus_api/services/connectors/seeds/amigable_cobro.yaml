@@ -25,8 +25,8 @@ capabilities:
 auth_kind: api_key
 mcp_server_ref: internal:amigable_cobro
 provider_meta:
-  vendor_url: https://amigablecobro.amacruxlab.com
-  docs_url: https://amigablecobro.amacruxlab.com/docs
+  vendor_url: https://cobro.amigable.app
+  docs_url: https://cobro.amigable.app/docs
   brand_color: "#2563EB"
   # api_key shape advertised to the admin wizard. secret=true masks the
   # input and routes the value to the Fernet-encrypted payload; secret=false
