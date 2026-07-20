@@ -19,6 +19,7 @@ admin token.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -39,6 +40,21 @@ log = structlog.get_logger(__name__)
 class PartnerContext:
     partner: Partner
     api_key: PartnerApiKey
+
+
+@dataclass(frozen=True)
+class TenantKeyContext:
+    """A request authenticated by a key bound to exactly one tenant.
+
+    The distinction from ``PartnerContext`` is the whole point: here the
+    tenant comes from the key row, so no request field can widen it.
+    Endpoints taking this context cannot be talked into touching another
+    tenant — there is no input to talk them with.
+    """
+
+    partner: Partner
+    api_key: PartnerApiKey
+    tenant_id: uuid.UUID
 
 
 def _unauthorized(detail: str = "Invalid API key") -> HTTPException:
@@ -115,5 +131,36 @@ def require_partner_key(
             await session.rollback()
 
         return PartnerContext(partner=partner, api_key=api_key)
+
+    return _dependency
+
+
+def require_tenant_key(
+    scope: str,
+) -> Callable[..., Awaitable[TenantKeyContext]]:
+    """Like ``require_partner_key``, but the key must name a tenant.
+
+    Layered on top rather than beside it: every credential check
+    (checksum, hash lookup, revocation, grace window, partner status,
+    scope) stays in one place, and this adds the single extra condition.
+
+    A key without ``tenant_id`` is a *valid* credential used on the wrong
+    surface — 403, not 401. Retrying with the same key will never work;
+    the caller needs a different key.
+    """
+
+    async def _dependency(
+        ctx: PartnerContext = Depends(require_partner_key(scope)),
+    ) -> TenantKeyContext:
+        if ctx.api_key.tenant_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This endpoint requires a tenant-scoped API key",
+            )
+        return TenantKeyContext(
+            partner=ctx.partner,
+            api_key=ctx.api_key,
+            tenant_id=ctx.api_key.tenant_id,
+        )
 
     return _dependency

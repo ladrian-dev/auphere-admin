@@ -57,7 +57,7 @@ from nexus_api.services.whatsapp_templates import TemplateOut, fetch_templates
 log = structlog.get_logger(__name__)
 
 # E.164: + followed by 8-15 digits, first digit nonzero.
-_E164_RE = re.compile(r"^\+[1-9]\d{7,14}$")
+E164_RE = re.compile(r"^\+[1-9]\d{7,14}$")
 
 # Named template placeholders: {{cliente}}, {{ saldo_pendiente }} …
 _NAMED_VAR_RE = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
@@ -78,9 +78,7 @@ def _template_body_vars(template: TemplateOut) -> frozenset[str]:
     return frozenset()
 
 
-async def _resolve_template(
-    session: AsyncSession, *, name: str, language: str
-) -> _ResolvedTemplate:
+async def resolve_template(session: AsyncSession, *, name: str, language: str) -> _ResolvedTemplate:
     """Live lookup against Meta (source of truth). The modal listed
     templates through the same call moments earlier, so this also
     catches a template paused in between."""
@@ -118,7 +116,7 @@ async def _resolve_template(
     return _ResolvedTemplate(template=match, body_vars=_template_body_vars(match))
 
 
-async def _active_whatsapp_channel(session: AsyncSession) -> Channel:
+async def active_whatsapp_channel(session: AsyncSession) -> Channel:
     result = await session.execute(
         sa.select(Channel)
         .where(
@@ -195,8 +193,8 @@ async def create_broadcast(
         if replay is not None:
             return replay, False
 
-    channel = await _active_whatsapp_channel(session)
-    resolved = await _resolve_template(
+    channel = await active_whatsapp_channel(session)
+    resolved = await resolve_template(
         session, name=payload.template_name, language=payload.language
     )
 
@@ -235,7 +233,7 @@ async def create_broadcast(
         e164 = to_e164(recipient.phone)
         display_phone = e164 or recipient.phone[:20]
 
-        if e164 is None or not _E164_RE.match(e164):
+        if e164 is None or not E164_RE.match(e164):
             _reject("invalid_phone", phone=display_phone, variables=recipient.variables)
             continue
         if e164 in seen:

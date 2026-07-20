@@ -62,6 +62,7 @@ from nexus_api.db.models.owner_backchannel import (
     OwnerPhoneIndex,
 )
 from nexus_api.db.models.partner import (
+    ApiKeyScope,
     ApiKeyType,
     EmbedAuditLog,
     Partner,
@@ -89,6 +90,7 @@ __all__ = [
     "AgentConfig",
     "AgentConfigStatus",
     "AgentMemory",
+    "ApiKeyScope",
     "ApiKeyType",
     "Appointment",
     "AppointmentStatus",

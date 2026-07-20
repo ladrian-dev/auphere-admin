@@ -175,6 +175,11 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Migration 0053 — caller-supplied replay guard for direct sends
+    # (``POST /v1/messages/template``). UNIQUE per tenant where not null;
+    # see the migration for why it is tenant-scoped and not global.
+    idempotency_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
     # ── Migration 0019 — WhatsApp native fields ─────────────────────────────
     # Durable Meta wamid. UNIQUE index (partial: where not null) so
     # the webhook can ``ON CONFLICT DO NOTHING`` the dedupe. Populated for

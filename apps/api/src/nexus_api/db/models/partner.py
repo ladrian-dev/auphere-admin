@@ -50,6 +50,25 @@ class ApiKeyType(str, enum.Enum):
     TEST = "test"
 
 
+class ApiKeyScope(str, enum.Enum):
+    """What a key is allowed to do. Stored as plain strings in
+    ``api_keys.scopes`` — this enum is the vocabulary, not a DB type.
+
+    ``PROVISION`` and ``WIDGET_SESSIONS`` are partner-level: they act
+    across the partner's clients. ``MESSAGES_SEND`` is tenant-level and
+    only meaningful on a key that carries ``tenant_id`` (see migration
+    0052) — sending needs one unambiguous WhatsApp channel to send from.
+    """
+
+    PROVISION = "provision"
+    WIDGET_SESSIONS = "widget_sessions"
+    MESSAGES_SEND = "messages_send"
+
+
+#: Scopes that require the key to be bound to a single tenant.
+TENANT_SCOPED_API_KEY_SCOPES = frozenset({ApiKeyScope.MESSAGES_SEND.value})
+
+
 class Partner(UUIDPrimaryKey, TimestampMixin, Base):
     __tablename__ = "partners"
     __table_args__ = (
@@ -115,13 +134,31 @@ class PartnerApiKey(UUIDPrimaryKey, Base):
     __tablename__ = "api_keys"
     __table_args__ = (
         CheckConstraint("type IN ('live', 'test')", name="ck_api_keys_type"),
+        CheckConstraint(
+            "tenant_id IS NULL OR NOT ('provision' = ANY(scopes))",
+            name="ck_api_keys_tenant_scope_no_provision",
+        ),
         Index("ix_api_keys_partner_revoked", "partner_id", "revoked_at"),
+        Index(
+            "ix_api_keys_tenant_revoked",
+            "tenant_id",
+            "revoked_at",
+            postgresql_where=text("tenant_id IS NOT NULL"),
+        ),
     )
 
     partner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("partners.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    # Set → the key IS this tenant and resolves without an
+    # ``external_client_ref`` in the request. NULL → partner-scoped key,
+    # tenant resolved per request via ``partner_tenants`` as before.
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=True,
     )
     type: Mapped[str] = mapped_column(
         String(10), nullable=False, default=ApiKeyType.LIVE.value, server_default="live"
