@@ -50,8 +50,8 @@ from nexus_worker.runtime.checkpointer import postgres_checkpointer
 from nexus_worker.runtime.llm import LiteLLMProvider, build_default_router
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
-from nexus_worker.streams.async_booking_cron import run_async_booking_cron
 from nexus_worker.streams.agent_sales_poll_cron import run_agent_sales_poll_cron
+from nexus_worker.streams.async_booking_cron import run_async_booking_cron
 from nexus_worker.streams.cobranza_reminder_cron import run_cobranza_reminder_cron
 from nexus_worker.streams.connector_reconcile_cron import run_connector_reconcile_cron
 from nexus_worker.streams.consumer import run_inbound_consumer
