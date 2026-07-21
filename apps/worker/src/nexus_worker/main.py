@@ -51,6 +51,7 @@ from nexus_worker.runtime.llm import LiteLLMProvider, build_default_router
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.async_booking_cron import run_async_booking_cron
+from nexus_worker.streams.agent_sales_poll_cron import run_agent_sales_poll_cron
 from nexus_worker.streams.cobranza_reminder_cron import run_cobranza_reminder_cron
 from nexus_worker.streams.connector_reconcile_cron import run_connector_reconcile_cron
 from nexus_worker.streams.consumer import run_inbound_consumer
@@ -191,6 +192,12 @@ async def _amain() -> None:
             run_cobranza_reminder_cron(stop=stop),
             name="cobranza-reminder-cron",
         )
+        # Agent-sales poll: records paid WhatsApp WooCommerce orders into
+        # agent_sales for the Facelad commission. Records only, never bills.
+        agent_sales_task = asyncio.create_task(
+            run_agent_sales_poll_cron(stop=stop),
+            name="agent-sales-poll-cron",
+        )
         # Block H: persistent isolation events drainer + 3 cron streams
         # (no_show_scrape, cost_rollup, isolation_watcher). The AgendaPro
         # health-check cron was removed with the admin browser MCP
@@ -297,6 +304,7 @@ async def _amain() -> None:
                 alerter_task,
                 reminder_task,
                 cobranza_reminder_task,
+                agent_sales_task,
                 drainer_task,
                 no_show_task,
                 cost_rollup_task,
