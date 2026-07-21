@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import enum
+import uuid
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Integer, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from nexus_api.db.base import Base
@@ -56,6 +57,22 @@ class Tenant(UUIDPrimaryKey, TimestampMixin, Base):
         default=Decimal("40.00"),
         server_default="40.00",
     )
+    # Migration 0054 — billing. ``partner_id`` NULL means a direct Auphere
+    # client (billed individually); set means the tenant rolls up into
+    # that partner's monthly invoice. ``billing_plan_id`` gives the base
+    # price; ``price_override_cents`` (USD cents) wins when negotiated.
+    partner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("partners.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    billing_plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("billing_plans.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    price_override_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Block P (migration 0017). When true, ``promote_agent_config``
     # rejects unless there's a passing :class:`EvalRun` for the
     # candidate version. False keeps the legacy "promote freely"

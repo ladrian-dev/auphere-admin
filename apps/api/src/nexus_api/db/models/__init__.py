@@ -4,6 +4,12 @@ from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 from nexus_api.db.models.agent_memory import AgentMemory
 from nexus_api.db.models.appointment import Appointment, AppointmentStatus
 from nexus_api.db.models.audit import AuditLog
+from nexus_api.db.models.billing import (
+    BillingPlan,
+    Invoice,
+    InvoiceLine,
+    InvoiceStatus,
+)
 from nexus_api.db.models.broadcast import (
     Broadcast,
     BroadcastRecipient,
@@ -96,6 +102,7 @@ __all__ = [
     "AppointmentStatus",
     "AuditLog",
     "AuphereOwnerChannel",
+    "BillingPlan",
     "Broadcast",
     "BroadcastRecipient",
     "BroadcastRecipientStatus",
@@ -118,6 +125,9 @@ __all__ = [
     "EvalRun",
     "EvalRunResult",
     "EvalRunStatus",
+    "Invoice",
+    "InvoiceLine",
+    "InvoiceStatus",
     "IsolationEvent",
     "KGEdge",
     "KGNode",

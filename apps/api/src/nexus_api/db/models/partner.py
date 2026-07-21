@@ -86,6 +86,9 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
         String(20), nullable=False, default=PartnerStatus.ACTIVE.value, server_default="active"
     )
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Migration 0054 — where this agency's monthly invoice is sent. NULL
+    # until billing is set up for the partner.
+    billing_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Hard cap on recipients per broadcast. Default 250 — Meta starts new
     # WABAs at the 250 unique-conversations/24h tier; blasting past it
     # degrades the client's number quality rating.
