@@ -78,6 +78,7 @@ from nexus_api.db.models.partner import (
 )
 from nexus_api.db.models.qa import QAAuditLog, QARun, QASideEffectAudit, QAThread
 from nexus_api.db.models.queue_entry import QueueEntry, QueueEntryStatus
+from nexus_api.db.models.sales import AgentSale
 from nexus_api.db.models.scheduled_job import (
     ScheduledJob,
     ScheduledJobKind,
@@ -96,6 +97,7 @@ __all__ = [
     "AgentConfig",
     "AgentConfigStatus",
     "AgentMemory",
+    "AgentSale",
     "ApiKeyScope",
     "ApiKeyType",
     "Appointment",
