@@ -70,6 +70,7 @@ from nexus_worker.streams.owner_consultation_timeout_cron import (
 from nexus_worker.streams.owner_fanout import run_owner_fanout_consumer
 from nexus_worker.streams.owner_fanout_sweep import run_owner_fanout_sweep
 from nexus_worker.streams.owner_outbox import run_owner_outbox_dispatcher
+from nexus_worker.streams.partner_receipt_cron import run_partner_receipt_cron
 from nexus_worker.streams.reminder_cron import run_reminder_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
 
@@ -198,6 +199,12 @@ async def _amain() -> None:
             run_agent_sales_poll_cron(stop=stop),
             name="agent-sales-poll-cron",
         )
+        # Partner receipt: emits the monthly USD recibo (previous month) on the
+        # 1st and mails it. Idempotent; bills the commission recorded above.
+        partner_receipt_task = asyncio.create_task(
+            run_partner_receipt_cron(stop=stop),
+            name="partner-receipt-cron",
+        )
         # Block H: persistent isolation events drainer + 3 cron streams
         # (no_show_scrape, cost_rollup, isolation_watcher). The AgendaPro
         # health-check cron was removed with the admin browser MCP
@@ -305,6 +312,7 @@ async def _amain() -> None:
                 reminder_task,
                 cobranza_reminder_task,
                 agent_sales_task,
+                partner_receipt_task,
                 drainer_task,
                 no_show_task,
                 cost_rollup_task,
