@@ -200,6 +200,17 @@ class Settings(BaseSettings):
             )
         )
 
+    # Transactional email (Resend HTTP API) — used for the monthly partner
+    # receipt. When the key is unset/placeholder the email step no-ops with a
+    # warning, so the receipt is still generated and visible in the panel.
+    resend_api_key: str = "dev-resend-key-change-me"
+    receipt_from_email: str = "Auphere <facturacion@auphere.com>"
+
+    @property
+    def email_enabled(self) -> bool:
+        key = self.resend_api_key
+        return bool(key) and not key.startswith("dev-")
+
     @property
     def is_prod(self) -> bool:
         return self.environment.lower() in {"prod", "production"}

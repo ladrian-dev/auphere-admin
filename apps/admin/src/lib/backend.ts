@@ -804,6 +804,7 @@ export type PartnerOut = {
   slug: string;
   status: PartnerStatus;
   contact_email: string | null;
+  billing_email: string | null;
   broadcast_recipient_cap: number;
   rate_limit_mint_per_min: number;
   rate_limit_embed_per_min: number;
@@ -917,6 +918,57 @@ export type EmbedAuditEntryOut = {
   origin: string | null;
   jti: string | null;
   created_at: string;
+};
+
+export type ReceiptSummaryOut = {
+  invoice_id: string;
+  period_year: number;
+  period_month: number;
+  total_usd: number;
+  currency: string;
+  status: string;
+  issued_at: string | null;
+  due_date: string;
+};
+
+export type ReceiptLineOut = {
+  tenant_id: string;
+  tenant_slug: string;
+  tenant_name: string;
+  model: string;
+  description: string;
+  amount_usd: number;
+  commission_clp: number | null;
+};
+
+export type ReceiptOut = {
+  invoice_id: string;
+  partner_id: string;
+  partner_slug: string;
+  partner_name: string;
+  billing_email: string | null;
+  period_year: number;
+  period_month: number;
+  total_usd: number;
+  currency: string;
+  status: string;
+  clp_per_usd: number | null;
+  issued_at: string | null;
+  due_date: string;
+  created: boolean;
+  lines: ReceiptLineOut[];
+};
+
+export type ReceiptGenerateInput = {
+  period_year: number;
+  period_month: number;
+  send_email?: boolean;
+};
+
+export type ReceiptSendOut = {
+  invoice_id: string;
+  emailed: boolean;
+  to: string | null;
 };
 
 // ── tenants ─────────────────────────────────────────────────────────────────
@@ -1574,5 +1626,28 @@ export const backend = {
     call<PartnerUsageOut>(
       `/admin/partners/${partnerId}/usage?window_days=${windowDays}`,
       { optional: true },
+    ),
+
+  listPartnerReceipts: (partnerId: string) =>
+    call<ReceiptSummaryOut[]>(`/admin/partners/${partnerId}/receipts`).then(
+      (r) => r ?? [],
+    ),
+
+  getPartnerReceipt: (partnerId: string, invoiceId: string) =>
+    call<ReceiptOut>(
+      `/admin/partners/${partnerId}/receipts/${invoiceId}`,
+      { optional: true },
+    ),
+
+  generatePartnerReceipt: (partnerId: string, body: ReceiptGenerateInput) =>
+    call<ReceiptOut>(`/admin/partners/${partnerId}/receipts`, {
+      method: "POST",
+      body,
+    }),
+
+  sendPartnerReceipt: (partnerId: string, invoiceId: string) =>
+    call<ReceiptSendOut>(
+      `/admin/partners/${partnerId}/receipts/${invoiceId}/send`,
+      { method: "POST", body: {} },
     ),
 };
