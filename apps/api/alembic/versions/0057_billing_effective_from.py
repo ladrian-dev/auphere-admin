@@ -1,6 +1,6 @@
 """tenants.billing_effective_from — first month a subscription is billed
 
-Revision ID: 0057_tenant_billing_effective_from
+Revision ID: 0057_billing_effective_from
 Revises: 0056_agent_sales
 Create Date: 2026-07-22
 
@@ -22,7 +22,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0057_tenant_billing_effective_from"
+revision: str = "0057_billing_effective_from"
 down_revision: str | Sequence[str] | None = "0056_agent_sales"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
