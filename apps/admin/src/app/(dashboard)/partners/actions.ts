@@ -26,6 +26,9 @@ import type {
   PartnerTenantLinkInput,
   PartnerTenantOut,
   PartnerUpdateInput,
+  ReceiptGenerateInput,
+  ReceiptOut,
+  ReceiptSendOut,
 } from "@/lib/backend";
 
 export type ActionResult<T> =
@@ -155,6 +158,36 @@ export async function linkPartnerTenantAction(
     const r = await backend.linkPartnerTenant(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath(`/partners/${partnerId}/tenants`);
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+// ── recibos mensuales ────────────────────────────────────────────────────────
+
+export async function generateReceiptAction(
+  partnerId: string,
+  body: ReceiptGenerateInput,
+): Promise<ActionResult<ReceiptOut>> {
+  try {
+    const r = await backend.generatePartnerReceipt(partnerId, body);
+    if (!r) return { ok: false, error: "Respuesta vacía del backend" };
+    revalidatePath(`/partners/${partnerId}/receipts`);
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function sendReceiptAction(
+  partnerId: string,
+  invoiceId: string,
+): Promise<ActionResult<ReceiptSendOut>> {
+  try {
+    const r = await backend.sendPartnerReceipt(partnerId, invoiceId);
+    if (!r) return { ok: false, error: "Respuesta vacía del backend" };
+    revalidatePath(`/partners/${partnerId}/receipts`);
     return { ok: true, data: r };
   } catch (e) {
     return err(e);

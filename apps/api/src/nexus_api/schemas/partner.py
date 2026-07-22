@@ -110,6 +110,7 @@ class PartnerOut(BaseModel):
     slug: str
     status: str
     contact_email: str | None
+    billing_email: str | None
     broadcast_recipient_cap: int
     rate_limit_mint_per_min: int
     rate_limit_embed_per_min: int
