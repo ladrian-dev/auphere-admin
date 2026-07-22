@@ -2,8 +2,8 @@
 
 Billing cycle (fixed policy): each receipt covers the **previous calendar
 month** (1st→last), is emitted on the **1st**, and is due on the **5th**.
-The emission day is evaluated in Chile time (``America/Santiago``), the
-timezone of the businesses being billed.
+The emission day is evaluated in Spain time (``Europe/Madrid``), Auphere's
+billing timezone.
 
 Once per emission day, for every ACTIVE partner that owns at least one tenant:
 
@@ -38,7 +38,7 @@ from nexus_api.services.partner_receipt_email import receipt_subject, render_rec
 log = structlog.get_logger(__name__)
 
 DEFAULT_TICK_SECONDS = 3600.0  # hourly; idempotency makes the real work fire once
-_BILLING_TZ = ZoneInfo("America/Santiago")
+_BILLING_TZ = ZoneInfo("Europe/Madrid")
 # Emission day-of-month. Overridable for a manual back-run / testing.
 EMISSION_DAY = int(os.getenv("NEXUS_RECEIPT_EMISSION_DAY", "1"))
 

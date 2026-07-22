@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import enum
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -73,6 +74,12 @@ class Tenant(UUIDPrimaryKey, TimestampMixin, Base):
         nullable=True,
     )
     price_override_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Migration 0057 — first month a subscription is billed. NULL = active
+    # from the start. The monthly receipt charges a subscription in advance
+    # for the emission month, so a tenant whose service begins in August
+    # (``billing_effective_from = 2026-08-01``) first appears on the receipt
+    # emitted 2026-08-01 (which covers July's commission).
+    billing_effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Block P (migration 0017). When true, ``promote_agent_config``
     # rejects unless there's a passing :class:`EvalRun` for the
     # candidate version. False keeps the legacy "promote freely"

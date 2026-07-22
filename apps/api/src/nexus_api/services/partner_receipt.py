@@ -128,6 +128,22 @@ def due_date_for(year: int, month: int) -> date:
     )
 
 
+def emission_month_start(year: int, month: int) -> date:
+    """First day of the receipt's emission month (the 1st of M+1).
+
+    Subscriptions are billed in advance for this month, so it is what a
+    tenant's ``billing_effective_from`` is compared against. Derived from the
+    period (not the wall clock) so the result is deterministic regardless of
+    when the receipt is actually generated.
+    """
+    return date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+
+
+def subscription_active(effective_from: date | None, emission_start: date) -> bool:
+    """True when a subscription is billable for a receipt emitted that month."""
+    return effective_from is None or emission_start >= effective_from
+
+
 # --- classification --------------------------------------------------------
 
 
@@ -225,15 +241,22 @@ async def generate_partner_receipt(
         )
 
     start, end = period_bounds(period_year, period_month)
+    emis_start = emission_month_start(period_year, period_month)
 
     # 2. Classify every tenant and gather commission sums (tenant-scoped reads).
     planned: list[tuple[_TenantPlan, str, int, Decimal | None, list[uuid.UUID]]] = []
     any_commission_clp = Decimal("0")
     for tp in roster:
         if tp.tenant.billing_plan_id is not None:
-            cents = subscription_cents(
-                price_override_cents=tp.tenant.price_override_cents,
-                plan_amount_cents=tp.plan.monthly_amount_cents if tp.plan else None,
+            # Billed in advance for the emission month — $0 until its start.
+            active = subscription_active(tp.tenant.billing_effective_from, emis_start)
+            cents = (
+                subscription_cents(
+                    price_override_cents=tp.tenant.price_override_cents,
+                    plan_amount_cents=tp.plan.monthly_amount_cents if tp.plan else None,
+                )
+                if active
+                else 0
             )
             planned.append((tp, "subscription", cents, None, []))
         elif await _has_any_sales(sm, tp.tenant.id):
@@ -264,7 +287,7 @@ async def generate_partner_receipt(
                 tenant_slug=tp.tenant.slug,
                 tenant_name=tp.tenant.name,
                 model=model,
-                description=_line_description(tp, model, line_clp, clp_per_usd),
+                description=_line_description(tp, model, line_clp, clp_per_usd, emis_start),
                 amount_cents=cents,
                 commission_clp=line_clp,
                 sale_ids=tuple(ids),
@@ -350,10 +373,21 @@ async def _load_roster(session: AsyncSession, partner_id: uuid.UUID) -> list[_Te
 
 
 def _line_description(
-    tp: _TenantPlan, model: str, clp: Decimal | None, clp_per_usd: Decimal | None
+    tp: _TenantPlan,
+    model: str,
+    clp: Decimal | None,
+    clp_per_usd: Decimal | None,
+    emis_start: date,
 ) -> str:
     name = tp.tenant.name
     if model == "subscription":
+        if not subscription_active(tp.tenant.billing_effective_from, emis_start):
+            eff = tp.tenant.billing_effective_from
+            return (
+                f"{name} — suscripción (inicia {eff:%d/%m/%Y})"
+                if eff
+                else f"{name} — suscripción mensual"
+            )
         return f"{name} — suscripción mensual"
     if model == "commission":
         if clp and clp > 0 and clp_per_usd:

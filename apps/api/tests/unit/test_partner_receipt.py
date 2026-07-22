@@ -13,7 +13,9 @@ from nexus_api.services.partner_receipt import (
     ReceiptResult,
     commission_cents,
     due_date_for,
+    emission_month_start,
     period_bounds,
+    subscription_active,
     subscription_cents,
 )
 from nexus_api.services.partner_receipt_email import receipt_subject, render_receipt_html
@@ -61,6 +63,32 @@ class TestPeriod:
 
     def test_due_date_rolls_over_december(self) -> None:
         assert due_date_for(2026, 12) == date(2027, 1, 5)
+
+    def test_emission_month_start_is_first_of_next_month(self) -> None:
+        assert emission_month_start(2026, 7) == date(2026, 8, 1)
+
+    def test_emission_month_start_rolls_over_december(self) -> None:
+        assert emission_month_start(2026, 12) == date(2027, 1, 1)
+
+
+class TestSubscriptionEffectivity:
+    """New Air: $40/mo billed in advance, effective from August 2026.
+
+    First appears on the receipt emitted 2026-08-01 (which covers July).
+    """
+
+    EFFECTIVE = date(2026, 8, 1)
+
+    def test_null_effective_is_always_active(self) -> None:
+        assert subscription_active(None, date(2020, 1, 1)) is True
+
+    def test_july_receipt_bills_new_air_in_advance_for_august(self) -> None:
+        # Receipt for July period is emitted 2026-08-01.
+        assert subscription_active(self.EFFECTIVE, emission_month_start(2026, 7)) is True
+
+    def test_june_receipt_does_not_bill_new_air_yet(self) -> None:
+        # Receipt for June period is emitted 2026-07-01, before the start.
+        assert subscription_active(self.EFFECTIVE, emission_month_start(2026, 6)) is False
 
 
 def _result() -> ReceiptResult:
