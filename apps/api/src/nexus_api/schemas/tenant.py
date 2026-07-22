@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -34,6 +34,14 @@ class TenantOut(BaseModel):
     owner_email: str | None
     cost_alert_threshold_usd_per_day: Decimal
     agendapro_public_url: str | None = None
+    # Billing (migrations 0054/0057). ``partner_id`` NULL = direct Auphere
+    # client. ``billing_plan_id`` gives the subscription; ``price_override_cents``
+    # wins over the plan's price; ``billing_effective_from`` is the first month
+    # a subscription is billed (NULL = from the start).
+    partner_id: uuid.UUID | None = None
+    billing_plan_id: uuid.UUID | None = None
+    price_override_cents: int | None = None
+    billing_effective_from: date | None = None
     created_at: datetime
     updated_at: datetime
 

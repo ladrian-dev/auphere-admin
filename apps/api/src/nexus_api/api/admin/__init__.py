@@ -5,6 +5,7 @@ from nexus_api.api.admin import (
     audit,
     auphere_channels,
     backchannel_owners,
+    billing,
     connectors,
     conversations,
     evals,
@@ -40,3 +41,4 @@ router.include_router(backchannel_owners.router)
 router.include_router(whatsapp_templates.router)
 router.include_router(partners.router)
 router.include_router(receipts.router)
+router.include_router(billing.router)

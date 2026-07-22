@@ -31,8 +31,11 @@ from nexus_api.core.tenant_context import (
     apply_tenant_to_session,
 )
 from nexus_api.db.models import (
+    AgentSale,
     AuditLog,
+    BillingPlan,
     Channel,
+    Partner,
     Tenant,
     TenantConnector,
     TenantConnectorToolOverride,
@@ -40,6 +43,10 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 from nexus_api.repositories import AuditRepository, ChannelRepository, TenantRepository
+from nexus_api.schemas.billing import (
+    TenantBillingOut,
+    TenantBillingUpdateIn,
+)
 from nexus_api.schemas.tenant import (
     ChannelOut,
     SlugAvailabilityOut,
@@ -385,3 +392,111 @@ async def list_tenant_channels(
 # Reference Channel so mypy doesn't drop the import when only used through
 # ChannelOut.model_validate; the type is read off the SQLAlchemy row above.
 _ = Channel
+
+
+# ── billing (Facturación tab) ───────────────────────────────────────────────
+
+
+async def _billing_view(session: AsyncSession, tenant: Tenant) -> TenantBillingOut:
+    """Resolve a tenant's billing config (partner + plan) for the panel."""
+    partner_name: str | None = None
+    if tenant.partner_id is not None:
+        partner_name = await session.scalar(
+            sa.select(Partner.name).where(Partner.id == tenant.partner_id)
+        )
+    plan_name: str | None = None
+    plan_amount: int | None = None
+    if tenant.billing_plan_id is not None:
+        row = (
+            await session.execute(
+                sa.select(BillingPlan.name, BillingPlan.monthly_amount_cents).where(
+                    BillingPlan.id == tenant.billing_plan_id
+                )
+            )
+        ).first()
+        if row is not None:
+            plan_name, plan_amount = row
+
+    if tenant.billing_plan_id is not None:
+        model = "subscription"
+        effective = (
+            tenant.price_override_cents if tenant.price_override_cents is not None else plan_amount
+        )
+    else:
+        has_sales = await session.scalar(sa.select(AgentSale.id).limit(1)) is not None
+        model = "commission" if has_sales else "inactive"
+        effective = None
+
+    return TenantBillingOut(
+        tenant_id=tenant.id,
+        tenant_name=tenant.name,
+        partner_id=tenant.partner_id,
+        partner_name=partner_name,
+        billing_plan_id=tenant.billing_plan_id,
+        plan_name=plan_name,
+        plan_amount_cents=plan_amount,
+        price_override_cents=tenant.price_override_cents,
+        billing_effective_from=tenant.billing_effective_from,
+        effective_monthly_cents=effective,
+        model=model,
+    )
+
+
+@router.get("/tenants/{tenant_id}/billing", response_model=TenantBillingOut)
+async def get_tenant_billing(
+    tenant_id: uuid.UUID,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    _: str = Depends(require_admin_token),
+) -> TenantBillingOut:
+    tenant = await TenantRepository(session).get(tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"tenant {tenant_id} not found")
+    return await _billing_view(session, tenant)
+
+
+@router.put("/tenants/{tenant_id}/billing", response_model=TenantBillingOut)
+async def update_tenant_billing(
+    tenant_id: uuid.UUID,
+    body: TenantBillingUpdateIn,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    _: str = Depends(require_admin_token),
+) -> TenantBillingOut:
+    """Set a tenant's partner / plan / price override / start date. PATCH
+    semantics — only fields present in the body change; send ``null`` to
+    clear one (e.g. detach the partner)."""
+    tenant = await TenantRepository(session).get(tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"tenant {tenant_id} not found")
+
+    payload = body.model_dump(exclude_unset=True)
+
+    if "partner_id" in payload:
+        pid = payload["partner_id"]
+        if pid is not None and not await session.scalar(
+            sa.select(Partner.id).where(Partner.id == pid)
+        ):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"partner {pid} not found")
+        tenant.partner_id = pid
+    if "billing_plan_id" in payload:
+        plan_id = payload["billing_plan_id"]
+        if plan_id is not None and not await session.scalar(
+            sa.select(BillingPlan.id).where(BillingPlan.id == plan_id)
+        ):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, f"billing plan {plan_id} not found"
+            )
+        tenant.billing_plan_id = plan_id
+    if "price_override_cents" in payload:
+        tenant.price_override_cents = payload["price_override_cents"]
+    if "billing_effective_from" in payload:
+        tenant.billing_effective_from = payload["billing_effective_from"]
+
+    await session.flush()
+    log.info(
+        "tenant.billing_updated",
+        tenant_id=str(tenant_id),
+        partner_id=str(tenant.partner_id) if tenant.partner_id else None,
+        billing_plan_id=str(tenant.billing_plan_id) if tenant.billing_plan_id else None,
+        price_override_cents=tenant.price_override_cents,
+    )
+    return await _billing_view(session, tenant)

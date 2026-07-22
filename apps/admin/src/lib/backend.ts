@@ -971,6 +971,41 @@ export type ReceiptSendOut = {
   to: string | null;
 };
 
+export type BillingPlanOut = {
+  id: string;
+  code: string;
+  name: string;
+  monthly_amount_cents: number;
+  active: boolean;
+};
+
+export type BillingPlanCreateInput = {
+  code: string;
+  name: string;
+  monthly_amount_cents: number;
+};
+
+export type TenantBillingOut = {
+  tenant_id: string;
+  tenant_name: string;
+  partner_id: string | null;
+  partner_name: string | null;
+  billing_plan_id: string | null;
+  plan_name: string | null;
+  plan_amount_cents: number | null;
+  price_override_cents: number | null;
+  billing_effective_from: string | null;
+  effective_monthly_cents: number | null;
+  model: string;
+};
+
+export type TenantBillingUpdateInput = {
+  partner_id?: string | null;
+  billing_plan_id?: string | null;
+  price_override_cents?: number | null;
+  billing_effective_from?: string | null;
+};
+
 // ── tenants ─────────────────────────────────────────────────────────────────
 
 export const backend = {
@@ -1650,4 +1685,22 @@ export const backend = {
       `/admin/partners/${partnerId}/receipts/${invoiceId}/send`,
       { method: "POST", body: {} },
     ),
+
+  // ── billing plans + per-tenant billing ────────────────────────────────
+  listBillingPlans: () =>
+    call<BillingPlanOut[]>("/admin/billing-plans").then((r) => r ?? []),
+
+  createBillingPlan: (body: BillingPlanCreateInput) =>
+    call<BillingPlanOut>("/admin/billing-plans", { method: "POST", body }),
+
+  getTenantBilling: (tenantId: string) =>
+    call<TenantBillingOut>(`/admin/tenants/${tenantId}/billing`, {
+      optional: true,
+    }),
+
+  updateTenantBilling: (tenantId: string, body: TenantBillingUpdateInput) =>
+    call<TenantBillingOut>(`/admin/tenants/${tenantId}/billing`, {
+      method: "PUT",
+      body,
+    }),
 };

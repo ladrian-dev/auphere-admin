@@ -12,6 +12,7 @@ const TABS = [
   { slug: "connectors", label: "Connectors" },
   { slug: "backchannel", label: "Backchannel" },
   { slug: "isolation", label: "Aislamiento" },
+  { slug: "billing", label: "Facturación" },
   { slug: "audit", label: "Auditoría" },
 ] as const;
 

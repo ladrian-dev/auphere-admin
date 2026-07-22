@@ -66,3 +66,32 @@ export async function deleteTenantAction(
     return err(e);
   }
 }
+
+// ── Facturación ──────────────────────────────────────────────────────────────
+
+export async function updateTenantBillingAction(
+  tenantId: string,
+  body: import("@/lib/backend").TenantBillingUpdateInput,
+): Promise<ActionResult<import("@/lib/backend").TenantBillingOut>> {
+  try {
+    const r = await backend.updateTenantBilling(tenantId, body);
+    if (!r) return { ok: false, error: "empty response" };
+    revalidatePath(`/tenants/${tenantId}/billing`);
+    revalidatePath(`/tenants/${tenantId}`);
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function createBillingPlanAction(
+  body: import("@/lib/backend").BillingPlanCreateInput,
+): Promise<ActionResult<import("@/lib/backend").BillingPlanOut>> {
+  try {
+    const r = await backend.createBillingPlan(body);
+    if (!r) return { ok: false, error: "empty response" };
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
