@@ -46,7 +46,10 @@ class TestWhatsAppDetection:
     def test_ignores_orders_without_the_mark(self) -> None:
         assert _is_whatsapp_order(_order(meta_data=[])) is False
         assert _is_whatsapp_order(_order(meta_data=[{"key": "other", "value": "x"}])) is False
-        assert _is_whatsapp_order(_order(meta_data=[{"key": "_auphere_source", "value": "web"}])) is False
+        assert (
+            _is_whatsapp_order(_order(meta_data=[{"key": "_auphere_source", "value": "web"}]))
+            is False
+        )
 
 
 class TestCommission:
@@ -59,12 +62,16 @@ class TestCommission:
         assert row["wc_status"] == "completed"
 
     def test_processing_counts_as_paid(self) -> None:
-        row = _sale_row(_order(status="processing", total="1000"), tenant_id=_TENANT, rate=Decimal("0.025"))
+        row = _sale_row(
+            _order(status="processing", total="1000"), tenant_id=_TENANT, rate=Decimal("0.025")
+        )
         assert row is not None and row["commission_amount"] == Decimal("25.00")
 
     @pytest.mark.parametrize("status", ["refunded", "cancelled", "pending", "on-hold", "failed"])
     def test_unpaid_states_accrue_zero_commission(self, status: str) -> None:
-        row = _sale_row(_order(status=status, total="36980"), tenant_id=_TENANT, rate=Decimal("0.025"))
+        row = _sale_row(
+            _order(status=status, total="36980"), tenant_id=_TENANT, rate=Decimal("0.025")
+        )
         assert row is not None
         # gross is still captured, but nothing is owed until money is collected.
         assert row["commission_amount"] == Decimal("0.00")
@@ -73,6 +80,48 @@ class TestCommission:
     def test_keeps_store_currency_not_converted(self) -> None:
         row = _sale_row(_order(currency="CLP"), tenant_id=_TENANT, rate=DEFAULT_COMMISSION_RATE)
         assert row is not None and row["currency"] == "CLP"
+
+
+class TestCashOnDeliveryDate:
+    """COD / pickup orders never get a date_paid from WooCommerce. Without a
+    fallback the receipt (which buckets by date_paid) would never bill them."""
+
+    def test_falls_back_to_completed_date_when_paid_without_date_paid(self) -> None:
+        row = _sale_row(
+            _order(date_paid_gmt=None, date_completed_gmt="2026-07-21T18:00:00"),
+            tenant_id=_TENANT,
+            rate=DEFAULT_COMMISSION_RATE,
+        )
+        assert row is not None and row["date_paid"] is not None
+        assert row["date_paid"].day == 21
+
+    def test_falls_back_to_created_date_when_nothing_else(self) -> None:
+        row = _sale_row(
+            _order(status="processing", date_paid_gmt=None, date_created_gmt="2026-07-20T10:00:00"),
+            tenant_id=_TENANT,
+            rate=DEFAULT_COMMISSION_RATE,
+        )
+        assert row is not None and row["date_paid"] is not None
+        assert row["date_paid"].day == 20
+        # and the commission is still charged — the money was collected
+        assert row["commission_amount"] > 0
+
+    def test_unpaid_orders_keep_a_null_date(self) -> None:
+        row = _sale_row(
+            _order(status="pending", date_paid_gmt=None, date_created_gmt="2026-07-20T10:00:00"),
+            tenant_id=_TENANT,
+            rate=DEFAULT_COMMISSION_RATE,
+        )
+        assert row is not None and row["date_paid"] is None
+
+    def test_real_date_paid_still_wins(self) -> None:
+        row = _sale_row(
+            _order(date_paid_gmt="2026-07-15T12:00:00", date_created_gmt="2026-07-01T10:00:00"),
+            tenant_id=_TENANT,
+            rate=DEFAULT_COMMISSION_RATE,
+        )
+        assert row is not None and row["date_paid"] is not None
+        assert row["date_paid"].day == 15
 
 
 class TestHelpers:

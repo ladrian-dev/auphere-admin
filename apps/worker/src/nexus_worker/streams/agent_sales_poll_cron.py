@@ -137,7 +137,11 @@ async def _poll_tenant(
 
 def _is_whatsapp_order(order: dict[str, Any]) -> bool:
     for m in order.get("meta_data") or []:
-        if isinstance(m, dict) and m.get("key") == WA_META_KEY and str(m.get("value")) == WA_META_VALUE:
+        if (
+            isinstance(m, dict)
+            and m.get("key") == WA_META_KEY
+            and str(m.get("value")) == WA_META_VALUE
+        ):
             return True
     return False
 
@@ -172,6 +176,17 @@ def _sale_row(
         if is_paid
         else Decimal("0.00")
     )
+    # Cash-on-delivery and local-pickup orders are collected off-gateway, so
+    # WooCommerce never writes ``date_paid`` even once the money is in. The
+    # monthly receipt buckets commissions by this date, so leaving it NULL
+    # would silently drop those sales from billing forever. Fall back to when
+    # the order was completed, else when it was created.
+    paid_at = _parse_dt(order.get("date_paid_gmt") or order.get("date_paid"))
+    if paid_at is None and is_paid:
+        paid_at = _parse_dt(
+            order.get("date_completed_gmt") or order.get("date_completed")
+        ) or _parse_dt(order.get("date_created_gmt") or order.get("date_created"))
+
     billing = order.get("billing") or {}
     return {
         "tenant_id": tenant_id,
@@ -181,7 +196,7 @@ def _sale_row(
         "commission_rate": rate,
         "commission_amount": commission,
         "wc_status": status[:20],
-        "date_paid": _parse_dt(order.get("date_paid_gmt") or order.get("date_paid")),
+        "date_paid": paid_at,
         "source_meta": {
             "number": order.get("number"),
             "billing_phone": billing.get("phone") if isinstance(billing, dict) else None,
