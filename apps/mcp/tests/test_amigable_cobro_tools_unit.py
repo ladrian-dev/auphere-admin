@@ -167,10 +167,12 @@ _WRITES = {
     "billing.apply_discount",
     "billing.create_account",
     "billing.update_account",
+    # On-demand admin action: queues due-date reminders (confirm=true).
+    "billing.send_reminders",
 }
 
 
-def test_catalog_has_eleven_tools() -> None:
+def test_catalog_has_all_tools() -> None:
     names = {cls.name for cls in AMIGABLE_COBRO_TOOLS}
     assert names == _READS | _WRITES
 

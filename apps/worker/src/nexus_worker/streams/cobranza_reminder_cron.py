@@ -1,9 +1,11 @@
-"""Cobranza due-date sweep — automatic payment reminders.
+"""Cobranza due-date reminders — sent ON DEMAND, never autonomously.
 
-Multi-tenant BY DESIGN: the sweep iterates every ACTIVE tenant that has a
-connected ``amigable_cobro`` connector, so onboarding another business to
-Amigable Cobro needs **no code change** — connect the connector, whitelist
-its admins, approve the templates, and its debtors start getting reminders.
+Previously a background cron swept every tenant hourly and queued these
+reminders on its own. That is gone: reminders now go out ONLY when a
+business admin explicitly asks the agent for them (and confirms), via the
+``billing.send_reminders`` MCP tool, which calls
+``send_due_reminders_for_tenant`` for that one tenant. No timer, no
+autonomous sends.
 
 Per account (pending balance, not CANCELLED, with a phone and a due date):
 
@@ -13,12 +15,11 @@ Per account (pending balance, not CANCELLED, with a phone and a due date):
 
 Guards, in order:
 1. **Template approval** — the tenant's WABA must report the template as
-   APPROVED (Meta rejects unapproved sends anyway). The sweep therefore
-   stays idle until approval lands; no special "armed" flag needed.
+   APPROVED (Meta rejects unapproved sends anyway).
 2. **Opt-out** — a debtor who replied BAJA/STOP is skipped.
 3. **Idempotency** — the queued message stores the account id + stage in
    ``template_payload``; a stage already sent for that account is never
-   re-sent. No extra table required.
+   re-sent, so an admin can safely trigger the same run twice in a day.
 
 Reminders are queued as pending template messages; the existing outbound
 dispatcher delivers them (retries, wamid, status callbacks included).
@@ -26,8 +27,6 @@ dispatcher delivers them (retries, wamid, status callbacks included).
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import uuid
 from datetime import UTC, date, datetime
 from typing import Any
@@ -43,15 +42,12 @@ from nexus_api.db.models import (
     Message,
     MessageDirection,
     MessageStatus,
-    Tenant,
-    TenantStatus,
     WhatsAppOptOut,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
 log = structlog.get_logger(__name__)
 
-DEFAULT_TICK_SECONDS = 3600.0  # hourly tick; idempotency makes it send once
 MAX_PAGES = 20
 
 TEMPLATE_PROXIMO = "recordatorio_pago_proximo"
@@ -66,76 +62,55 @@ _STAGES: tuple[tuple[int, str, str], ...] = (
 )
 
 
-async def run_cobranza_reminder_cron(
-    *, stop: asyncio.Event, tick_seconds: float = DEFAULT_TICK_SECONDS
-) -> None:
-    """Background task. Returns when ``stop`` is set."""
-    log.info("cobranza_reminder_cron.start", tick_seconds=tick_seconds)
-    sm = get_sessionmaker()
-    while not stop.is_set():
-        try:
-            await _sweep_all_tenants(sm)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            log.error("cobranza_reminder_cron.tick_failed", error=str(exc))
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(stop.wait(), timeout=tick_seconds)
-    log.info("cobranza_reminder_cron.stopped")
-
-
-async def _sweep_all_tenants(sm: sa.orm.sessionmaker) -> None:  # type: ignore[type-arg]
-    async with sm() as session:
-        rows = await session.execute(
-            sa.select(Tenant.id, Tenant.name).where(Tenant.status == TenantStatus.ACTIVE)
-        )
-        tenants = [(r[0], r[1]) for r in rows]
-    for tenant_id, tenant_name in tenants:
-        try:
-            await _sweep_tenant(sm, tenant_id, tenant_name)
-        except Exception as exc:
-            log.warning(
-                "cobranza_reminder_cron.tenant_failed",
-                tenant_id=str(tenant_id),
-                error=str(exc),
-            )
-
-
-async def _sweep_tenant(
-    sm: sa.orm.sessionmaker,  # type: ignore[type-arg]
+async def send_due_reminders_for_tenant(
     tenant_id: uuid.UUID,
     tenant_name: str,
-) -> None:
-    """Scan one business's accounts and queue any due reminders."""
+    *,
+    today: date | None = None,
+) -> dict[str, Any]:
+    """Queue every due-date reminder for ONE business, right now.
+
+    Called on demand from the ``billing.send_reminders`` tool after an admin
+    asks for it. Returns a summary the agent can report back:
+
+        {"status": "ok"|"no_connector"|"no_channel"|
+                    "templates_not_approved"|"no_due_accounts",
+         "queued": int,
+         "recipients": [{"cliente", "stage", "monto", "fecha"}, ...]}
+
+    Idempotency (account+stage already sent) means a repeat call the same day
+    queues nothing new.
+    """
     # Lazy import: keeps the MCP surface off this module's import path.
     from nexus_mcp.servers.amigable_cobro.tools import (
         AmigableCobroNotConfigured,
         _load_amigable_client,
     )
 
+    sm = get_sessionmaker()
     try:
         client = await _load_amigable_client(tenant_id)
     except AmigableCobroNotConfigured:
-        return  # tenant doesn't use Amigable Cobro — nothing to do
+        return {"status": "no_connector", "queued": 0, "recipients": []}
 
     async with sm() as session, tenant_scoped_session(session, tenant_id):
         channel = await _active_whatsapp_channel(session)
         if channel is None:
-            return
+            return {"status": "no_channel", "queued": 0, "recipients": []}
         approved = await _approved_templates(session)
     if not approved:
-        return  # templates not approved yet — stay idle
+        return {"status": "templates_not_approved", "queued": 0, "recipients": []}
 
-    today = datetime.now(UTC).date()
+    today = today or datetime.now(UTC).date()
     accounts = await _scan_accounts(client)
-    queued = 0
+    recipients: list[dict[str, Any]] = []
     for raw in accounts:
         plan = _reminder_for(raw, today=today, approved=approved)
         if plan is None:
             continue
         stage, template_name, due = plan
         async with sm() as session, tenant_scoped_session(session, tenant_id):
-            sent = await _queue_reminder(
+            queued = await _queue_reminder(
                 session,
                 tenant_id=tenant_id,
                 channel=channel,
@@ -145,15 +120,20 @@ async def _sweep_tenant(
                 due=due,
                 business_name=tenant_name,
             )
-            if sent:
+            if queued is not None:
                 await session.commit()
-                queued += 1
-    if queued:
+                recipients.append(queued)
+    if recipients:
         log.info(
-            "cobranza_reminder_cron.queued",
+            "cobranza_reminder.queued",
             tenant_id=str(tenant_id),
-            reminders=queued,
+            reminders=len(recipients),
         )
+    return {
+        "status": "ok" if recipients else "no_due_accounts",
+        "queued": len(recipients),
+        "recipients": recipients,
+    }
 
 
 async def _active_whatsapp_channel(session: AsyncSession) -> Channel | None:
@@ -250,8 +230,9 @@ async def _queue_reminder(
     template_name: str,
     due: date,
     business_name: str,
-) -> bool:
-    """Queue one reminder. Returns False when skipped (opt-out / already sent)."""
+) -> dict[str, Any] | None:
+    """Queue one reminder. Returns a summary dict, or None when skipped
+    (no phone / opt-out / already sent)."""
     from nexus_channels.whatsapp_meta.phone import to_e164
 
     from nexus_worker.persistence.messages import (
@@ -262,7 +243,7 @@ async def _queue_reminder(
     account_id = str(account.get("id") or "")
     e164 = to_e164(str(account.get("client_phone") or ""))
     if not e164:
-        return False
+        return None
     # Meta's ``from`` format — must match what the inbound webhook stores or
     # customers/opt-outs fork per format.
     wa_identifier = e164.removeprefix("+")
@@ -277,7 +258,7 @@ async def _queue_reminder(
         .limit(1)
     )
     if already is not None:
-        return False
+        return None
 
     opted_out = await session.scalar(
         sa.select(WhatsAppOptOut.id).where(
@@ -287,7 +268,7 @@ async def _queue_reminder(
         )
     )
     if opted_out is not None:
-        return False
+        return None
 
     total = float(account.get("total_amount") or 0)
     paid = float(account.get("paid_amount") or 0)
@@ -321,4 +302,9 @@ async def _queue_reminder(
             },
         )
     )
-    return True
+    return {
+        "cliente": variables["cliente"],
+        "stage": stage,
+        "monto": variables["monto"],
+        "fecha": variables["fecha"],
+    }

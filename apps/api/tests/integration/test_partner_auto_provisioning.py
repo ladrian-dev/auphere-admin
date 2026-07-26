@@ -50,13 +50,16 @@ CONNECTOR = "amigable_cobro"
 # connector row itself comes from apply_seeds).
 _BILLING_TOOLS = (
     "billing.get_debtor_by_phone",
+    "billing.find_client",
     "billing.list_overdue",
     "billing.get_account",
     "billing.register_payment",
+    "billing.add_charge",
     "billing.update_status",
     "billing.apply_discount",
     "billing.create_account",
     "billing.update_account",
+    "billing.send_reminders",
 )
 
 
@@ -425,3 +428,128 @@ async def test_partner_usage_aggregates_clients(client, db_session, admin_header
     assert row["agent_version"] == 1
     assert row["agent_seed_template"] == SEED
     assert row["tenant_status"] == "active"
+
+
+# ── partner self-serve: WhatsApp line + admin whitelist ─────────────────────
+
+
+def _mock_graph_coexistence(mock: respx.MockRouter) -> None:
+    """Coexistence skips /register (breaks the number) — only exchange,
+    subscribe and the phone-metadata read are hit."""
+    mock.get("/oauth/access_token").respond(
+        200, json={"access_token": "EAA-bisuat-test", "expires_in": 5_184_000}
+    )
+    mock.post("/WABA_TEST/subscribed_apps").respond(200, json={"success": True})
+    mock.get("/PN_TEST").respond(
+        200,
+        json={
+            "display_phone_number": "58 424-4095716",
+            "verified_name": "Bodegón El Ávila",
+            "quality_rating": "GREEN",
+        },
+    )
+
+
+async def test_partner_connects_client_whatsapp_coexistence(client, db_session) -> None:
+    world, tenant_id = await _provisioned_world(client, db_session)
+    body = {
+        "code": "OAUTH_CODE_XYZ",
+        "waba_id": "WABA_TEST",
+        "phone_number_id": "PN_TEST",
+        "business_id": "BIZ_TEST",
+        "mode": "coexistence",
+    }
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        _mock_graph_coexistence(mock)
+        r = await client.post(
+            "/v1/partners/clients/negocio-42/whatsapp/signup",
+            json=body,
+            headers=_auth(world["key"]),
+        )
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert out["status"] == "connected"
+    assert out["mode"] == "coexistence"
+    assert out["display_phone_number"].startswith("+58")
+
+    channel = await db_session.scalar(
+        sa.select(Channel).where(Channel.tenant_id == tenant_id, Channel.provider == "meta")
+    )
+    assert channel is not None
+
+
+async def test_partner_whatsapp_signup_unknown_ref_is_404(client, db_session) -> None:
+    world = await _blueprint_partner(db_session)
+    r = await client.post(
+        "/v1/partners/clients/does-not-exist/whatsapp/signup",
+        json={"code": "X", "waba_id": "WABA_TEST"},
+        headers=_auth(world["key"]),
+    )
+    assert r.status_code == 404
+
+
+async def test_partner_signup_config_exposes_ids(client, db_session) -> None:
+    world = await _blueprint_partner(db_session)
+    r = await client.get("/v1/partners/whatsapp/signup-config", headers=_auth(world["key"]))
+    assert r.status_code == 200, r.text
+    cfg = r.json()
+    assert cfg["app_id"]
+    assert cfg["coexistence_config_id"]
+    assert cfg["cloud_api_config_id"]
+
+
+async def test_partner_sets_and_reads_admins(client, db_session) -> None:
+    world, tenant_id = await _provisioned_world(client, db_session)
+
+    # Provisioning seeded admin_phones from the blueprint placeholders.
+    r0 = await client.get("/v1/partners/clients/negocio-42/admins", headers=_auth(world["key"]))
+    assert r0.status_code == 200, r0.text
+    assert r0.json()["admin_only"] is True
+    assert [a["phone"] for a in r0.json()["admins"]] == ["+584244095716"]
+
+    # Replace the whitelist with two admins (formatting is normalised).
+    r = await client.put(
+        "/v1/partners/clients/negocio-42/admins",
+        json={
+            "admins": [
+                {"phone": "+58 412 111 2233", "name": "Ana"},
+                {"phone": "+584249990000"},
+            ]
+        },
+        headers=_auth(world["key"]),
+    )
+    assert r.status_code == 200, r.text
+    phones = {a["phone"] for a in r.json()["admins"]}
+    assert phones == {"+584121112233", "+584249990000"}
+    assert dict((a["phone"], a["name"]) for a in r.json()["admins"])["+584121112233"] == "Ana"
+
+    # A fresh agent_config version is promoted carrying the new whitelist.
+    active = await db_session.scalar(
+        sa.select(AgentConfig).where(
+            AgentConfig.tenant_id == tenant_id,
+            AgentConfig.status == AgentConfigStatus.ACTIVE,
+        )
+    )
+    assert active is not None
+    assert active.version == 2
+    assert set(active.policies["admin_access"]["admin_phones"]) == {
+        "+584121112233",
+        "+584249990000",
+    }
+
+    # GET reflects the update.
+    r2 = await client.get("/v1/partners/clients/negocio-42/admins", headers=_auth(world["key"]))
+    assert {a["phone"] for a in r2.json()["admins"]} == {
+        "+584121112233",
+        "+584249990000",
+    }
+
+
+async def test_partner_rejects_invalid_admin_phone(client, db_session) -> None:
+    world, _tenant_id = await _provisioned_world(client, db_session)
+    r = await client.put(
+        "/v1/partners/clients/negocio-42/admins",
+        json={"admins": [{"phone": "not-a-phone"}]},
+        headers=_auth(world["key"]),
+    )
+    assert r.status_code == 400

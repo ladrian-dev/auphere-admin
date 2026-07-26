@@ -1,0 +1,93 @@
+{
+ "billing.send_reminders": {
+  "description": "Envía los recordatorios de vencimiento de pago a los deudores del negocio (faltan 3 días, vence hoy, o 7 días vencido). Acción bajo demanda: SOLO cuando un admin lo pide y confirma (confirm=true). El agente nunca la ejecuta por su cuenta. Idempotente por cuenta/etapa.",
+  "destructive": false,
+  "read_only": false,
+  "side_effects": [
+   "mutates_db"
+  ],
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "confirm": {
+     "default": false,
+     "description": "DEBE ser true para enviar. Ponlo en true SOLO después de que el admin te pida explícitamente enviar los recordatorios y confirme. El agente nunca envía recordatorios por iniciativa propia.",
+     "title": "Confirm",
+     "type": "boolean"
+    }
+   },
+   "title": "SendRemindersInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "ReminderRecipient": {
+     "additionalProperties": false,
+     "properties": {
+      "cliente": {
+       "description": "Nombre del deudor al que se le encoló el recordatorio.",
+       "title": "Cliente",
+       "type": "string"
+      },
+      "stage": {
+       "description": "Etapa: T-3 (faltan 3 días), T0 (vence hoy) o T+7 (7 días vencido).",
+       "title": "Stage",
+       "type": "string"
+      },
+      "monto": {
+       "description": "Saldo pendiente formateado (ej. $1.668,50).",
+       "title": "Monto",
+       "type": "string"
+      },
+      "fecha": {
+       "description": "Fecha de vencimiento (dd/mm/aaaa).",
+       "title": "Fecha",
+       "type": "string"
+      }
+     },
+     "required": [
+      "cliente",
+      "stage",
+      "monto",
+      "fecha"
+     ],
+     "title": "ReminderRecipient",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "status": {
+     "description": "ok | no_connector | no_channel | templates_not_approved | no_due_accounts | not_confirmed.",
+     "title": "Status",
+     "type": "string"
+    },
+    "queued": {
+     "description": "Cantidad de recordatorios encolados en este envío.",
+     "title": "Queued",
+     "type": "integer"
+    },
+    "recipients": {
+     "description": "Detalle de los recordatorios encolados.",
+     "items": {
+      "$ref": "#/$defs/ReminderRecipient"
+     },
+     "title": "Recipients",
+     "type": "array"
+    },
+    "message": {
+     "description": "Resumen legible para reportarle al admin.",
+     "title": "Message",
+     "type": "string"
+    }
+   },
+   "required": [
+    "status",
+    "queued",
+    "message"
+   ],
+   "title": "SendRemindersOutput",
+   "type": "object"
+  }
+ }
+}

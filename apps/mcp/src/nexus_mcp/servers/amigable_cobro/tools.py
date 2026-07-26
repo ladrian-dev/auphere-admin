@@ -32,6 +32,7 @@ from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     Connector,
     Customer,
+    Tenant,
     TenantConnector,
     TenantConnectorStatus,
     TenantCredentials,
@@ -57,6 +58,9 @@ from nexus_mcp.servers.amigable_cobro.schemas import (
     ListOverdueOutput,
     PaymentEntry,
     RegisterPaymentInput,
+    ReminderRecipient,
+    SendRemindersInput,
+    SendRemindersOutput,
     UpdateAccountInput,
     UpdateStatusInput,
     WriteResultOutput,
@@ -228,9 +232,7 @@ async def _scan_for_phone(
 
 
 def _lock_key(tenant_id: uuid.UUID, transaction_id: int) -> int:
-    digest = hashlib.blake2b(
-        f"{tenant_id}:{transaction_id}".encode(), digest_size=8
-    ).digest()
+    digest = hashlib.blake2b(f"{tenant_id}:{transaction_id}".encode(), digest_size=8).digest()
     return int.from_bytes(digest, "big", signed=True)
 
 
@@ -263,10 +265,7 @@ def _norm_name(value: str | None) -> str:
 
 def _token_matches(token: str, pool: set[str]) -> bool:
     """A name token matches a token in ``pool`` exactly or via a small typo."""
-    return any(
-        token == p or difflib.SequenceMatcher(None, token, p).ratio() >= 0.85
-        for p in pool
-    )
+    return any(token == p or difflib.SequenceMatcher(None, token, p).ratio() >= 0.85 for p in pool)
 
 
 def _name_matches(a: str | None, b: str | None) -> bool:
@@ -529,12 +528,8 @@ class AddCharge(_AmigableWriteTool):
             new_total = round(base_total + payload.amount, 2)
             # Only send total_amount (the proven update shape). The lock +
             # fresh read is what prevents the lost-update corruption.
-            raw = await client.update_cuenta(
-                payload.transaction_id, {"total_amount": new_total}
-            )
-        return self._shape(
-            raw, f"Cargo de {payload.amount} agregado. Nuevo total: {new_total}"
-        )
+            raw = await client.update_cuenta(payload.transaction_id, {"total_amount": new_total})
+        return self._shape(raw, f"Cargo de {payload.amount} agregado. Nuevo total: {new_total}")
 
 
 class UpdateStatus(_AmigableWriteTool):
@@ -671,6 +666,65 @@ class UpdateAccount(_AmigableWriteTool):
         return self._shape(raw, "Cuenta actualizada")
 
 
+_REMINDER_STATUS_MESSAGE: dict[str, str] = {
+    "no_connector": "No pude enviar: este negocio no tiene el conector de Amigable Cobro conectado.",
+    "no_channel": "No pude enviar: este negocio aún no tiene una línea de WhatsApp activa.",
+    "templates_not_approved": (
+        "No pude enviar: las plantillas de recordatorio todavía no están aprobadas por Meta."
+    ),
+    "no_due_accounts": "No hay cuentas con recordatorio pendiente para hoy — no se envió ninguno.",
+    "not_confirmed": "No se enviaron recordatorios: falta la confirmación explícita del admin.",
+}
+
+
+async def _tenant_name(tenant_id: uuid.UUID) -> str:
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        tenant = await session.get(Tenant, tenant_id)
+        return tenant.name if tenant else ""
+
+
+class SendReminders(_AmigableTool):
+    name = "billing.send_reminders"
+    description = (
+        "Envía los recordatorios de vencimiento de pago a los DEUDORES del negocio "
+        "(faltan 3 días, vence hoy, o 7 días vencido). Es una acción bajo demanda: "
+        "úsala SOLO cuando un admin te pida explícitamente enviar los recordatorios, "
+        "y llama con confirm=true únicamente después de que confirme. NUNCA la "
+        "ejecutes por iniciativa propia ni de forma programada. Es idempotente: si un "
+        "recordatorio ya se envió hoy para una cuenta/etapa, no se reenvía."
+    )
+    input_model = SendRemindersInput
+    output_model = SendRemindersOutput
+    # Encola mensajes salientes reales → efecto de lado (interceptado en QA dry_run).
+    side_effects: ClassVar[tuple[str, ...]] = ("mutates_db",)
+
+    async def run(self, payload: SendRemindersInput) -> SendRemindersOutput:  # type: ignore[override]
+        if not payload.confirm:
+            return SendRemindersOutput(
+                status="not_confirmed",
+                queued=0,
+                recipients=[],
+                message=_REMINDER_STATUS_MESSAGE["not_confirmed"],
+            )
+        tenant_id = require_current_tenant()
+        tenant_name = await _tenant_name(tenant_id)
+        # Lazy import: the reminder engine lives in the worker package.
+        from nexus_worker.streams.cobranza_reminder_cron import send_due_reminders_for_tenant
+
+        result = await send_due_reminders_for_tenant(tenant_id, tenant_name)
+        recipients = [ReminderRecipient(**r) for r in result.get("recipients", [])]
+        queued = int(result.get("queued") or 0)
+        status = str(result.get("status") or "ok")
+        if status == "ok":
+            message = f"Encolé {queued} recordatorio(s) de vencimiento."
+        else:
+            message = _REMINDER_STATUS_MESSAGE.get(status, "No se enviaron recordatorios.")
+        return SendRemindersOutput(
+            status=status, queued=queued, recipients=recipients, message=message
+        )
+
+
 AMIGABLE_COBRO_TOOLS: tuple[type[ToolBase], ...] = (
     # Debtor-facing (own debt only, no phone arg). Not whitelisted in the
     # admin-only cobranza_v1 vertical; kept for future debtor-facing use.
@@ -687,6 +741,8 @@ AMIGABLE_COBRO_TOOLS: tuple[type[ToolBase], ...] = (
     RegisterPayment,
     UpdateAccount,
     UpdateStatus,
+    # Admin on-demand action: send due-date reminders (requires confirm=true).
+    SendReminders,
 )
 
 

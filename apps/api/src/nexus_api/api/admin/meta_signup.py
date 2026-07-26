@@ -37,7 +37,6 @@ from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
 from nexus_channels.whatsapp_meta.exceptions import (
     RegisterPhoneError,
     SubscribeWebhookError,
-    TokenExchangeError,
 )
 from pydantic import BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
@@ -47,6 +46,7 @@ from nexus_api.api.deps import get_redis, scoped_session_from_path
 from nexus_api.config import get_settings
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import AuditLog
+from nexus_api.services.meta_signup_service import complete_meta_signup
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -169,16 +169,12 @@ async def meta_signup(
     - ``409`` — the resolved business phone is already mapped to a *different*
       tenant — the operator must offboard the previous channel first.
     """
-    settings = get_settings()
-    client = _build_meta_client()
-    orchestrator = EmbeddedSignupOrchestrator(
-        session=session,
-        redis=redis,
-        client=client,
-        app_id=settings.meta_app_id,
-        webhook_callback_url=settings.meta_webhook_callback_url,
-        webhook_verify_token=settings.meta_webhook_verify_token,
-    )
+    # ``scoped_session_from_path`` already set the tenant context var;
+    # ``require_current_tenant`` is the canonical way to read it back
+    # (and asserts it's populated — guards against accidental misuse).
+    from nexus_api.core.tenant_context import require_current_tenant
+
+    tenant_id = require_current_tenant()
     payload = SignupIngressPayload(
         code=body.code,
         waba_id=body.waba_id,
@@ -186,90 +182,15 @@ async def meta_signup(
         business_id=body.business_id,
         mode=body.mode,
     )
-    try:
-        result = await orchestrator.complete(payload)
-    except TokenExchangeError as exc:
-        log.warning("meta.signup.code_exchange_failed", reason=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Meta rechazó el OAuth code — probablemente expiró o ya fue "
-                "consumido. El cliente debe repetir el flow desde el panel."
-            ),
-        ) from exc
-    except RegisterPhoneError as exc:
-        log.warning("meta.signup.register_phone_failed", reason=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Meta no aceptó el registro del número de teléfono. Causa "
-                "habitual: el número ya está registrado bajo otra app con "
-                "un PIN distinto, o no tiene display_phone_number todavía."
-            ),
-        ) from exc
-    except SubscribeWebhookError as exc:
-        log.warning("meta.signup.subscribe_webhook_failed", reason=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Meta no aceptó subscribed_apps — la WABA quedó sin "
-                "webhook configurado. Revisar dashboard de la Meta App."
-            ),
-        ) from exc
-    except MetaAPIError as exc:
-        log.warning(
-            "meta.signup.api_error",
-            status=exc.status_code,
-            code=exc.code,
-            reason=exc.message,
-        )
-        http_status = (
-            status.HTTP_502_BAD_GATEWAY
-            if exc.status_code and exc.status_code >= 500
-            else status.HTTP_400_BAD_REQUEST
-        )
-        raise HTTPException(
-            status_code=http_status,
-            detail=f"Meta API error: {exc.message}",
-        ) from exc
-    finally:
-        await client.close()
-
-    # ``scoped_session_from_path`` already set the tenant context var;
-    # ``require_current_tenant`` is the canonical way to read it back
-    # (and asserts it's populated — guards against accidental misuse).
-    from nexus_api.core.tenant_context import require_current_tenant
-
-    tenant_id = require_current_tenant()
-    audit = AuditLog(
+    bundle = await complete_meta_signup(
+        session=session,
+        redis=redis,
+        payload=payload,
         tenant_id=tenant_id,
         actor=f"admin:{actor[:8]}",
-        action="channel.whatsapp.meta_signup",
-        target=f"channel:{result.channel_id}",
-        before_json=None,
-        after_json={
-            "waba_id": result.waba_id,
-            "phone_number_id": result.phone_number_id,
-            "display_phone_number": result.display_phone_number,
-            "mode": result.mode,
-            "channel_id": str(result.channel_id),
-            "bisuat_expires_at": (
-                result.bisuat_expires_at.isoformat()
-                if result.bisuat_expires_at is not None
-                else None
-            ),
-        },
+        audit_action="channel.whatsapp.meta_signup",
     )
-    session.add(audit)
-    await session.flush()
-
-    log.info(
-        "meta.signup.success",
-        tenant_id=str(tenant_id),
-        channel_id=str(result.channel_id),
-        waba_id=result.waba_id,
-        mode=result.mode,
-    )
+    result = bundle.result
 
     return MetaSignupOut(
         status="connected",
@@ -281,7 +202,7 @@ async def meta_signup(
         bisuat_expires_at=(
             result.bisuat_expires_at.isoformat() if result.bisuat_expires_at is not None else None
         ),
-        audit_log_id=audit.id,
+        audit_log_id=bundle.audit_log_id,
     )
 
 

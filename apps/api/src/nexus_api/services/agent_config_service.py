@@ -61,6 +61,52 @@ class AgentConfigService:
         )
         return config
 
+    async def set_admin_access(
+        self,
+        *,
+        actor: str,
+        admin_phones: list[str],
+        admins: list[dict[str, Any]] | None = None,
+    ) -> AgentConfig:
+        """Update the admin whitelist of the ACTIVE config and promote it.
+
+        The whitelist (``policies.admin_access.admin_phones``) is the binary
+        access model: a phone on the list can do everything the admin agent
+        exposes; one off it gets no reply. Registering/editing admins from
+        the partner app therefore clones the active config, swaps only
+        ``admin_access``, and promotes — so the change travels through the
+        normal STAGED → ACTIVE flow (audit + rollback) without touching the
+        prompt/tools identity.
+
+        Deliberately NOT gated by ``Tenant.eval_required``: changing who may
+        talk to the agent is not a prompt/behaviour change, so it must not be
+        blocked by (or require) an eval run. ``admins`` is optional metadata
+        (e.g. ``[{"phone", "name"}]``) kept alongside the list for traceability;
+        the runtime gate only ever reads ``admin_phones``.
+        """
+        active = await self.get_active()
+        if active is None:
+            raise AgentConfigConflict("tenant has no active agent config to update")
+
+        policies = dict(active.policies or {})
+        access = dict(policies.get("admin_access") or {})
+        access["admin_only"] = True
+        access["admin_phones"] = list(admin_phones)
+        if admins is not None:
+            access["admins"] = admins
+        policies["admin_access"] = access
+
+        staged = await self.stage_new_version(
+            actor=actor,
+            system_prompt_rendered=active.system_prompt_rendered,
+            channels=list(active.channels or []),
+            tools=list(active.tools or []),
+            policies=policies,
+            seed_template_ref=active.seed_template_ref,
+            kg_schema_id=active.kg_schema_id,
+        )
+        return await self.promote(staged.version, actor=actor)
+
     async def promote(self, version: int, *, actor: str) -> AgentConfig:
         before = await self.configs.get_active()
         config = await self.configs.promote(version, promoted_by=actor)

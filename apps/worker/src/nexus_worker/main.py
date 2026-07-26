@@ -52,7 +52,6 @@ from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.agent_sales_poll_cron import run_agent_sales_poll_cron
 from nexus_worker.streams.async_booking_cron import run_async_booking_cron
-from nexus_worker.streams.cobranza_reminder_cron import run_cobranza_reminder_cron
 from nexus_worker.streams.connector_reconcile_cron import run_connector_reconcile_cron
 from nexus_worker.streams.consumer import run_inbound_consumer
 from nexus_worker.streams.continuous_eval_cron import run_continuous_eval_cron
@@ -186,13 +185,9 @@ async def _amain() -> None:
             run_reminder_cron(stop=stop),
             name="reminder-cron",
         )
-        # Cobranza due-date sweep: queues payment reminders for every tenant
-        # with an Amigable Cobro connector. Idle until its WhatsApp templates
-        # are APPROVED, so it is safe to run unconditionally.
-        cobranza_reminder_task = asyncio.create_task(
-            run_cobranza_reminder_cron(stop=stop),
-            name="cobranza-reminder-cron",
-        )
+        # Cobranza due-date reminders are NO LONGER sent autonomously: an
+        # admin must ask the agent for them (billing.send_reminders). So there
+        # is no cobranza sweep task here anymore.
         # Agent-sales poll: records paid WhatsApp WooCommerce orders into
         # agent_sales for the Facelad commission. Records only, never bills.
         agent_sales_task = asyncio.create_task(
@@ -310,7 +305,6 @@ async def _amain() -> None:
                 outbound_task,
                 alerter_task,
                 reminder_task,
-                cobranza_reminder_task,
                 agent_sales_task,
                 partner_receipt_task,
                 drainer_task,

@@ -201,6 +201,40 @@ class UpdateAccountInput(InputModel):
     status: str | None = Field(default=None, pattern="^(PENDING|PAID|OVERDUE|CANCELLED)$")
 
 
+class SendRemindersInput(InputModel):
+    confirm: bool = Field(
+        default=False,
+        description=(
+            "DEBE ser true para enviar. Ponlo en true SOLO después de que el "
+            "admin te pida explícitamente enviar los recordatorios y confirme. "
+            "El agente nunca envía recordatorios por iniciativa propia."
+        ),
+    )
+
+
+class ReminderRecipient(OutputModel):
+    cliente: str = Field(description="Nombre del deudor al que se le encoló el recordatorio.")
+    stage: str = Field(
+        description="Etapa: T-3 (faltan 3 días), T0 (vence hoy) o T+7 (7 días vencido)."
+    )
+    monto: str = Field(description="Saldo pendiente formateado (ej. $1.668,50).")
+    fecha: str = Field(description="Fecha de vencimiento (dd/mm/aaaa).")
+
+
+class SendRemindersOutput(OutputModel):
+    status: str = Field(
+        description=(
+            "ok | no_connector | no_channel | templates_not_approved | "
+            "no_due_accounts | not_confirmed."
+        )
+    )
+    queued: int = Field(description="Cantidad de recordatorios encolados en este envío.")
+    recipients: list[ReminderRecipient] = Field(
+        default_factory=list, description="Detalle de los recordatorios encolados."
+    )
+    message: str = Field(description="Resumen legible para reportarle al admin.")
+
+
 __all__ = [
     "AddChargeInput",
     "ApplyDiscountInput",
@@ -217,6 +251,9 @@ __all__ = [
     "ListOverdueOutput",
     "PaymentEntry",
     "RegisterPaymentInput",
+    "ReminderRecipient",
+    "SendRemindersInput",
+    "SendRemindersOutput",
     "UpdateAccountInput",
     "UpdateStatusInput",
     "WriteResultOutput",

@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from nexus_api import __version__
-from nexus_api.api import admin, embed, messages, partners, qa, webhooks
+from nexus_api.api import admin, embed, messages, partners, partners_clients, qa, webhooks
 from nexus_api.api import connectors as connectors_public
 from nexus_api.config import settings
 from nexus_api.core import isolation_enforcer, otel
@@ -93,6 +93,7 @@ app.include_router(qa.router)
 # ADR-028: public partner surface (secret API key, server-to-server)
 # + browser-facing embed surface (widget session JWT).
 app.include_router(partners.router)
+app.include_router(partners_clients.router)
 app.include_router(embed.router)
 # Direct outbound sends for tenant-scoped keys (n8n, cron, scripts).
 app.include_router(messages.router)

@@ -70,6 +70,9 @@ tools:
     - billing.apply_discount
     - billing.create_account
     - billing.update_account
+    # Envío de recordatorios de vencimiento a deudores — SOLO bajo demanda del
+    # admin y con confirmación (confirm=true). El agente nunca lo hace solo.
+    - billing.send_reminders
     # Botones para confirmar operaciones
     - response.send_interactive
 
@@ -115,6 +118,17 @@ system_prompt: |
   - Crear cuenta nueva → billing.create_account (ver ANTI-DUPLICADOS).
   - Editar datos de una cuenta (corregir nombre/teléfono/documento) →
     billing.update_account.
+
+  ENVIAR RECORDATORIOS DE VENCIMIENTO A LOS DEUDORES (bajo demanda):
+  - El sistema NO envía recordatorios solo. Solo se envían cuando un admin te
+    lo pide explícitamente (ej.: "envía los recordatorios de hoy", "manda los
+    avisos de vencimiento").
+  - Cuando te lo pidan: confirma primero ("Voy a enviar los recordatorios de
+    vencimiento a los deudores que correspondan hoy, ¿confirmas?"). SOLO al
+    confirmar el admin, llama billing.send_reminders con confirm=true.
+  - Reporta el resultado real (cuántos se encolaron; o el motivo si no se envió
+    ninguno). NUNCA llames esta herramienta por iniciativa propia ni sin
+    confirmación explícita.
 
   ━━━ ANTI-DUPLICADOS AL CREAR CLIENTE (OBLIGATORIO) ━━━
   Antes de crear una cuenta nueva, VERIFICA que el cliente no exista ya:
