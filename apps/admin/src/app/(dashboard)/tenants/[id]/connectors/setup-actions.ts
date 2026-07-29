@@ -129,6 +129,55 @@ export async function metaTestSendAction(
   }
 }
 
+// ── TikTok Business Messaging (OAuth redirect) ─────────────────────────────
+
+/**
+ * Mint the URL the business owner opens to authorise the Auphere TikTok app.
+ *
+ * Deliberately different from the Meta flow: TikTok uses a server-side
+ * redirect, so the panel never sees the ``auth_code``. The owner leaves for
+ * TikTok, TikTok posts the code straight to the API callback, and the
+ * callback bounces the browser back here with ``?tiktok=<status>``. That is
+ * why this action returns a URL rather than a connected channel — and why
+ * the connector row is installed by the callback, not by the panel.
+ */
+export async function tiktokAuthorizeUrlAction(
+  tenantId: string,
+): Promise<ActionResult<{ authorize_url: string }>> {
+  await requireSession();
+  try {
+    const result = await backend.tiktokAuthorizeUrl(tenantId);
+    if (!result) {
+      return { ok: false, error: "El backend no devolvió la URL de autorización." };
+    }
+    return { ok: true, data: { authorize_url: result.authorize_url } };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+/**
+ * Offboard the tenant from TikTok. Deletes the webhook registration on
+ * TikTok's side first so they stop delivering to a channel we no longer
+ * serve, then drops the credentials and marks the channel disconnected.
+ */
+export async function tiktokDisconnectAction(
+  tenantId: string,
+): Promise<ActionResult<{ status: string }>> {
+  await requireSession();
+  try {
+    const result = await backend.tiktokDisconnect(tenantId);
+    if (!result) {
+      return { ok: false, error: "El backend no confirmó la desconexión." };
+    }
+    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`);
+    return { ok: true, data: { status: result.status } };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
 // ── WooCommerce (api_key, ADR-019) ─────────────────────────────────────────
 
 /**

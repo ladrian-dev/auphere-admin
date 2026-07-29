@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # Mirror of ``ChannelType`` enum values. Hardcoded here to keep this
 # schemas module free of db.models imports (the schemas layer is meant
 # to be importable from the admin frontend codegen).
-_KNOWN_CHANNELS: frozenset[str] = frozenset({"whatsapp", "instagram", "telegram", "email", "web"})
+_KNOWN_CHANNELS: frozenset[str] = frozenset(
+    {"whatsapp", "instagram", "telegram", "email", "web", "tiktok"}
+)
 
 
 class SkillRef(BaseModel):

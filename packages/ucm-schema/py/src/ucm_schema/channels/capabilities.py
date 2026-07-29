@@ -11,7 +11,7 @@ from typing import Final, Literal
 
 from ..types import CapabilityKey
 
-ChannelName = Literal["web", "whatsapp", "instagram", "messenger", "voice"]
+ChannelName = Literal["web", "whatsapp", "instagram", "messenger", "voice", "tiktok"]
 
 
 @dataclass(frozen=True)
@@ -127,12 +127,29 @@ VOICE: Final[ChannelProfile] = ChannelProfile(
     limits=ChannelLimits(text_body_max_chars=600, composite_max_depth=1),
 )
 
+# TikTok Business Messaging is the narrowest channel we support. The API
+# exposes exactly two outbound content shapes we can render — plain text and
+# an uploaded image — so every button, list, CTA and location in a UCM
+# payload degrades to text. There is no template/HSM equivalent either;
+# that's enforced in the adapter, not here, because it's a *send-initiation*
+# restriction rather than a rendering one.
+#
+# ``text_body_max_chars`` is a deliberate under-estimate: TikTok does not
+# publish a body limit, and truncating locally beats a rejected send. Revisit
+# once we have production evidence of the real ceiling.
+TIKTOK: Final[ChannelProfile] = ChannelProfile(
+    name="tiktok",
+    capabilities=frozenset({"text", "media.image"}),
+    limits=ChannelLimits(text_body_max_chars=1000, composite_max_depth=1),
+)
+
 CHANNELS: Final[dict[ChannelName, ChannelProfile]] = {
     "web": WEB,
     "whatsapp": WHATSAPP,
     "instagram": INSTAGRAM,
     "messenger": MESSENGER,
     "voice": VOICE,
+    "tiktok": TIKTOK,
 }
 
 

@@ -35,6 +35,7 @@ import { MetaConnectOwnedDialog } from "./meta-connect-owned-dialog";
 import { MetaTestSendDialog } from "./meta-test-send-dialog";
 import { WhatsAppTemplatesDialog } from "./whatsapp-templates-dialog";
 import { MetaWhatsAppSetupDialog } from "./meta-signup-dialog";
+import { TikTokConnectDialog } from "./tiktok-connect-dialog";
 import {
   AgendaProSetupDialog,
   WooCommerceSetupDialog,
@@ -63,14 +64,74 @@ const STATUS_LABEL: Record<TenantConnectorStatus, string> = {
   error: "Error",
 };
 
+/**
+ * The TikTok OAuth callback lives on the API, not here, so the only way it
+ * can tell the operator what happened is by bouncing the browser back with
+ * ``?tiktok=<status>``. Without this map the owner returns to a page that
+ * looks unchanged and has no idea whether the connection worked.
+ *
+ * ``error_409`` is its own case on purpose: it is the one failure that is
+ * permanent and has nothing to do with the operator doing something wrong.
+ */
+type CallbackTone = "positive" | "warning" | "danger";
+
+// The status colours live as CSS custom properties, not as Tailwind colour
+// utilities — ``border-positive`` would silently render borderless.
+const TIKTOK_CALLBACK_BORDER: Record<CallbackTone, string> = {
+  positive: "border-[color:var(--color-status-positive)]",
+  warning: "border-[color:var(--color-status-warning)]",
+  danger: "border-[color:var(--color-status-danger)]",
+};
+
+const TIKTOK_CALLBACK_MESSAGE: Record<
+  string,
+  { tone: CallbackTone; text: string }
+> = {
+  connected: {
+    tone: "positive",
+    text: "TikTok conectado. El canal ya recibe mensajes directos.",
+  },
+  state_expired: {
+    tone: "warning",
+    text: "La autorización tardó demasiado y el enlace expiró. Volvé a empezar desde “Conectar”.",
+  },
+  error_400: {
+    tone: "danger",
+    text: "TikTok rechazó la autorización. Suele ser una cuenta personal en vez de Business, o un código ya usado.",
+  },
+  error_409: {
+    tone: "danger",
+    text: "Esta cuenta está registrada en el EEE, Suiza o Reino Unido, donde TikTok no ofrece Business Messaging. No se puede conectar.",
+  },
+  error_502: {
+    tone: "warning",
+    text: "TikTok aceptó la autorización pero falló el registro del webhook — el canal quedaría sordo. Reintentá la conexión.",
+  },
+  error_503: {
+    tone: "warning",
+    text: "El canal de TikTok está desactivado en este entorno (NEXUS_TIKTOK_ENABLED).",
+  },
+};
+
 export default async function TenantConnectorsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tiktok?: string }>;
 }) {
   const { id } = await params;
+  const { tiktok: tiktokStatus } = await searchParams;
   const tenant = await backend.getTenant(id);
   if (!tenant) notFound();
+
+  const tiktokCallback: { tone: CallbackTone; text: string } | null =
+    tiktokStatus
+      ? (TIKTOK_CALLBACK_MESSAGE[tiktokStatus] ?? {
+          tone: "danger",
+          text: "La conexión con TikTok no se completó.",
+        })
+      : null;
 
   const [installed, catalog, overrides] = await Promise.all([
     backend.listTenantConnectors(id),
@@ -87,6 +148,17 @@ export default async function TenantConnectorsPage({
 
   return (
     <div className="grid gap-6">
+      {tiktokCallback ? (
+        <Card
+          role="status"
+          className={TIKTOK_CALLBACK_BORDER[tiktokCallback.tone]}
+        >
+          <CardContent className="flex items-start gap-3 py-4 text-sm">
+            <StatusDot tone={tiktokCallback.tone} className="mt-1.5 shrink-0" />
+            <span>{tiktokCallback.text}</span>
+          </CardContent>
+        </Card>
+      ) : null}
       <section className="flex flex-col gap-3">
         <Eyebrow>Conectados</Eyebrow>
         {installed.length === 0 ? (
@@ -228,6 +300,12 @@ function InstalledConnectorCard({
               // /connect-manual"). Reconnect must go through Embedded
               // Signup, same dialog as a fresh connection.
               <MetaWhatsAppSetupDialog tenantId={tenantId} alreadyConnected />
+            ) : tc.connector_slug === "tiktok_bm" ? (
+              // Same reasoning as Meta: webhook_manual, so reconnect means
+              // re-running the OAuth redirect rather than /initiate-consent.
+              // Expected to be used regularly — TikTok's refresh token
+              // expires after a year and only a human can renew it.
+              <TikTokConnectDialog tenantId={tenantId} alreadyConnected />
             ) : (
               <InitiateConsentButton
                 tenantId={tenantId}
@@ -360,6 +438,8 @@ function AvailableConnectorCard({
                   tenantId={tenantId}
                   alreadyConnected={false}
                 />
+              ) : connector.slug === "tiktok_bm" ? (
+                <TikTokConnectDialog tenantId={tenantId} />
               ) : (
                 <Badge variant="outline" className="text-xs">
                   Setup manual

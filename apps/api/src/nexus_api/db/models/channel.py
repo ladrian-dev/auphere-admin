@@ -20,6 +20,9 @@ class ChannelType(str, enum.Enum):
     TELEGRAM = "telegram"
     EMAIL = "email"
     WEB = "web"
+    # Migration 0059 — TikTok Business Messaging. ``provider="tiktok"``,
+    # ``provider_identifier`` is the Business Account ``business_id``.
+    TIKTOK = "tiktok"
 
 
 class ChannelStatus(str, enum.Enum):

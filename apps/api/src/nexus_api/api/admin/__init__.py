@@ -18,6 +18,7 @@ from nexus_api.api.admin import (
     screenshots,
     skills,
     tenants,
+    tiktok_authorize,
     tool_catalog,
     whatsapp_templates,
 )
@@ -34,6 +35,7 @@ router.include_router(isolation.router)
 router.include_router(evals.router)
 router.include_router(prompt_library.router)
 router.include_router(meta_signup.router)
+router.include_router(tiktok_authorize.router)
 router.include_router(skills.router)
 router.include_router(audit.router)
 router.include_router(auphere_channels.router)

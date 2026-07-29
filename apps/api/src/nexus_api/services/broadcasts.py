@@ -117,6 +117,20 @@ async def resolve_template(session: AsyncSession, *, name: str, language: str) -
 
 
 async def active_whatsapp_channel(session: AsyncSession) -> Channel:
+    """The tenant's active WhatsApp channel, for business-initiated sends.
+
+    The ``ChannelType.WHATSAPP`` filter is a **guardrail, not an accident**.
+    Broadcasts and direct messages both start a conversation the customer did
+    not ask for, and WhatsApp is the only channel we have that permits that
+    (via approved HSM templates). TikTok Business Messaging forbids
+    business-initiated messages outright — there is no template mechanism and
+    no way to address a user who has not written first.
+
+    So do NOT generalise this to "the tenant's active channel". Widening the
+    filter would let a broadcast fan out onto a TikTok channel, where every
+    row would sit ``pending`` until the adapter rejected it for having no
+    conversation to reply into.
+    """
     result = await session.execute(
         sa.select(Channel)
         .where(

@@ -21,6 +21,7 @@ import type {
 // enum; if a new channel lands, update both sides together.
 const KNOWN_CHANNELS: ReadonlyArray<{ id: string; label: string }> = [
   { id: "whatsapp", label: "WhatsApp" },
+  { id: "tiktok", label: "TikTok (DMs)" },
   { id: "instagram", label: "Instagram" },
   { id: "telegram", label: "Telegram" },
   { id: "email", label: "Email" },

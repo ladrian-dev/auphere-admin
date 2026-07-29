@@ -31,6 +31,8 @@ from nexus_api.core.metrics import isolation_event_drainer
 from nexus_api.core.redis_client import get_redis
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_channels.tiktok_bm import TikTokChannelAdapter, TikTokClient
+from nexus_channels.tiktok_bm.credentials import TikTokCredentialsRepository
 from nexus_channels.whatsapp_meta import MetaChannelAdapter, MetaClient
 from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
 from nexus_mcp.servers.agendapro_public.transport import (
@@ -71,6 +73,7 @@ from nexus_worker.streams.owner_fanout_sweep import run_owner_fanout_sweep
 from nexus_worker.streams.owner_outbox import run_owner_outbox_dispatcher
 from nexus_worker.streams.partner_receipt_cron import run_partner_receipt_cron
 from nexus_worker.streams.reminder_cron import run_reminder_cron
+from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
 
 configure_logging()
@@ -123,10 +126,31 @@ async def _amain() -> None:
     )
     meta_adapter = MetaChannelAdapter(meta_client, credentials_loader=_load_meta_credentials)
 
+    # TikTok Business Messaging adapter. Same construction shape as Meta —
+    # stateless, with a per-tenant credentials loader — but note the token it
+    # resolves is only valid for ~24h, so it is the refresh cron below, not
+    # this loader, that keeps the channel alive.
+    tiktok_client = TikTokClient(
+        nexus_settings.tiktok_app_id,
+        nexus_settings.tiktok_app_secret,
+        base_url=nexus_settings.tiktok_api_base_url,
+        api_version=nexus_settings.tiktok_api_version,
+    )
+
+    async def _load_tiktok_credentials(*, tenant_id: uuid.UUID) -> tuple[str, str]:
+        async with meta_sm() as cred_session, tenant_scoped_session(cred_session, tenant_id):
+            creds = await TikTokCredentialsRepository(cred_session).get_or_raise()
+            return (creds.business_id, creds.access_token)
+
+    tiktok_adapter = TikTokChannelAdapter(
+        tiktok_client, credentials_loader=_load_tiktok_credentials
+    )
+
     # Provider registry. The outbound dispatcher and operator alerter pick
-    # the adapter per ``channels.provider``. Meta is the only provider; the
-    # registry stays so a future channel plugs in without re-threading.
-    whatsapp_adapters = {"meta": meta_adapter}
+    # the adapter per ``channels.provider``. TikTok is registered
+    # unconditionally: a tenant can only have a TikTok channel row if the
+    # authorisation flow ran, which is itself gated on ``tiktok_enabled``.
+    channel_adapters = {"meta": meta_adapter, "tiktok": tiktok_adapter}
 
     # Block O: AgendaPro public-link Node MCP subprocess pool. Configured
     # lazily so the worker can boot in test/dev where the Node binary or
@@ -174,11 +198,11 @@ async def _amain() -> None:
             name="inbound-consumer",
         )
         outbound_task = asyncio.create_task(
-            run_outbound_dispatcher(adapters=whatsapp_adapters, stop=stop),
+            run_outbound_dispatcher(adapters=channel_adapters, stop=stop),
             name="outbound-dispatcher",
         )
         alerter_task = asyncio.create_task(
-            run_operator_alerter(adapters=whatsapp_adapters, stop=stop),
+            run_operator_alerter(adapters=channel_adapters, stop=stop),
             name="operator-alerter",
         )
         reminder_task = asyncio.create_task(
@@ -227,6 +251,14 @@ async def _amain() -> None:
         whatsapp_health_task = asyncio.create_task(
             run_whatsapp_health_cron(stop=stop),
             name="whatsapp-health-cron",
+        )
+        # TikTok access tokens live ~24h. Unlike the WhatsApp health cron
+        # above — which only reports — this one keeps the channel alive: skip
+        # it and every TikTok channel goes silent within a day. Returns
+        # immediately when the channel is disabled.
+        tiktok_refresh_task = asyncio.create_task(
+            run_tiktok_token_refresh_cron(stop=stop),
+            name="tiktok-token-refresh-cron",
         )
         # Block O: AgendaPro public-link async booking cron — drains
         # ``scheduled_jobs(kind=async_booking)`` and drives the public
@@ -312,6 +344,7 @@ async def _amain() -> None:
                 cost_rollup_task,
                 isolation_watcher_task,
                 whatsapp_health_task,
+                tiktok_refresh_task,
                 async_booking_task,
                 continuous_eval_task,
                 memory_retention_task,

@@ -23,7 +23,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ChannelType = Literal["whatsapp", "instagram", "telegram", "email", "web"]
+ChannelType = Literal["whatsapp", "instagram", "telegram", "email", "web", "tiktok"]
 
 
 class InboundMessageKind(str, enum.Enum):
@@ -115,14 +115,20 @@ class InboundMessage(BaseModel):
     provider_message_id: str = Field(min_length=1, max_length=255)
     provider_identifier: str = Field(
         min_length=1,
-        max_length=40,
+        max_length=128,
         description=(
             "Stable identifier of the *receiver* (the business). For WhatsApp "
-            "this is the business phone number in E.164 format. The webhook "
-            "uses this to resolve (provider, identifier) -> tenant_id."
+            "this is the business phone number in E.164 format; for TikTok it "
+            "is the Business Account ``business_id``. The webhook uses this to "
+            "resolve (provider, identifier) -> tenant_id."
         ),
     )
-    sender_identifier: str = Field(min_length=1, max_length=40)
+    # 128, not 40: E.164 phone numbers fit in 16 chars but TikTok's ``open_id``
+    # / ``business_id`` are opaque provider strings with no documented bound.
+    # The DB columns behind these (``channels.provider_identifier``,
+    # ``customers.identifier``) are already String(255), so the Pydantic bound
+    # was the only thing that would have rejected a legitimate TikTok event.
+    sender_identifier: str = Field(min_length=1, max_length=128)
     sender_name: str | None = None
     text: str | None = None
     interactive: InteractiveReply | None = None
@@ -135,6 +141,16 @@ class InboundMessage(BaseModel):
     context_message_id: str | None = None
     raw_event_type: str | None = None
     received_at: datetime
+
+
+class ChannelCapabilityError(RuntimeError):
+    """The adapter's transport cannot express what the caller asked for.
+
+    Distinct from a transport failure: retrying will never help, and it is
+    not the provider rejecting the payload — the capability simply does not
+    exist on this channel (e.g. templates on TikTok). The outbound
+    dispatcher treats it as terminal and does not burn retry attempts.
+    """
 
 
 class SendStatus(str, enum.Enum):
@@ -160,8 +176,14 @@ class SendResult(BaseModel):
 class ChannelAdapter(Protocol):
     """Implementations live under ``nexus_channels.<channel>``.
 
-    Providers: ``whatsapp_meta``. The Protocol is async because every real
-    transport involves I/O (HTTP, websocket, etc.).
+    Providers: ``whatsapp_meta``, ``tiktok_bm``. The Protocol is async because
+    every real transport involves I/O (HTTP, websocket, etc.).
+
+    Not every provider supports every method. TikTok has no template
+    (HSM) equivalent and no business-initiated messaging at all, so its
+    adapter raises :class:`ChannelCapabilityError` from ``send_template``
+    rather than pretending to succeed. Callers that fan out across channels
+    MUST handle that.
     """
 
     channel_type: ChannelType

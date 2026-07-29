@@ -165,6 +165,19 @@ export type MetaSignupResult = {
   catalog_id?: string | null;
 };
 
+/** TikTok authorisation is a redirect, not a popup SDK: the backend mints a
+ *  URL and the browser leaves the panel. There is no "signup result" to
+ *  render inline — the channel appears once TikTok bounces the owner back to
+ *  the API callback, which redirects here with ``?tiktok=<status>``. */
+export type TikTokAuthorizeUrlResult = {
+  authorize_url: string;
+};
+
+export type TikTokDisconnectResult = {
+  status: string;
+  audit_log_id: string;
+};
+
 export type MetaConnectOwnedInput = {
   system_user_token: string;
   waba_id: string;
@@ -241,7 +254,7 @@ export type SeedTemplate = {
 
 export type ChannelOut = {
   id: string;
-  type: "whatsapp" | "instagram" | "telegram" | "email" | "web";
+  type: "whatsapp" | "instagram" | "telegram" | "email" | "web" | "tiktok";
   provider: string;
   provider_identifier: string;
   config: Record<string, unknown>;
@@ -1433,6 +1446,25 @@ export const backend = {
     call<MetaSignupResult>(
       `/admin/tenants/${tenantId}/integrations/meta/connect-owned`,
       { method: "POST", body },
+    ),
+
+  /** Mint the URL the business owner opens to authorise the Auphere TikTok
+   *  app over their Business Account. The URL carries a signed, tenant-bound
+   *  ``state``; TikTok redirects the browser straight back to the API
+   *  callback, so — unlike Meta's Embedded Signup — the panel never handles
+   *  the auth_code itself. */
+  tiktokAuthorizeUrl: (tenantId: string) =>
+    call<TikTokAuthorizeUrlResult>(
+      `/admin/tenants/${tenantId}/integrations/tiktok/authorize-url`,
+      { method: "POST" },
+    ),
+
+  /** Offboard the tenant from TikTok: delete the webhook registration,
+   *  drop the credentials, mark the channel disconnected. */
+  tiktokDisconnect: (tenantId: string) =>
+    call<TikTokDisconnectResult>(
+      `/admin/tenants/${tenantId}/integrations/tiktok`,
+      { method: "DELETE" },
     ),
 
   /** Send a one-off test message from the tenant's connected Meta

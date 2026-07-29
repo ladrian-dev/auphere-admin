@@ -18,6 +18,7 @@ Block B introduces the foundation tests; block C will replace the contract-only 
 | `test_8_audit_log_scoped.py` | extra — `audit_log` RLS | Live |
 | `test_9_channel_credentials_scoped.py` | extra — `tenant_credentials` RLS + Fernet | Live |
 | `test_10_repos_reject_explicit_tenant.py` | extra — repo contract introspection | Static |
+| `test_15_tiktok_channel_isolation.py` | extra — TikTok channel resolution + OAuth state | Live |
 
 10 tests minimum; running this directory by itself blocks merge if any fail.
 

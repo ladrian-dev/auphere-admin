@@ -1,0 +1,48 @@
+# Connector seed — TikTok DMs via the TikTok Business Messaging API.
+#
+# Auphere operates a single developer app on business-api.tiktok.com under
+# the Facelad TikTok Business account. Onboarding is a plain OAuth redirect:
+# the tenant owner authorises that app over their own Business Account and
+# TikTok calls back with an auth_code, which the backend exchanges for an
+# access/refresh token pair.
+#
+# auth_kind=webhook_manual — same reasoning as whatsapp_meta. The flow is
+# OAuth-driven but the row in tenant_connectors only carries the resulting
+# channel_id. The real auth state (access_token + refresh_token) lives in
+# tenant_credentials with integration="tiktok_bm", encrypted by
+# FernetEncrypted. The connectors module never sees the tokens.
+#
+# tenant_connectors.credentials_ref = {"channel_id": "<uuid>"}.
+#
+# Two constraints the panel must communicate, because they change what the
+# channel is good for:
+#   * The business can NEVER message first. Only replies, inside a 48h
+#     window opened by the customer. There is no template/HSM mechanism.
+#   * Accounts registered in the EEA, Switzerland or the UK cannot use
+#     Business Messaging at all; the authorisation flow refuses them up front.
+slug: tiktok_bm
+display_name: TikTok (Mensajes directos)
+vendor: TikTok
+category: messaging
+capabilities:
+  - inbound
+  - outbound
+auth_kind: webhook_manual
+mcp_server_ref: internal:tiktok_bm
+provider_meta:
+  icon_url: https://upload.wikimedia.org/wikipedia/commons/e/ea/TikTok_logo.svg
+  vendor_url: https://business-api.tiktok.com/portal
+  docs_url: https://business-api.tiktok.com/portal/docs/business-messaging/v1.3
+  brand_color: "#FE2C55"
+  channel_only: true # signals UI to render channel-style card, not tools list
+  oauth_redirect: true # marks this connector as the redirect flow (vs FB.login)
+  inbound_only_initiation: true # the business cannot open a conversation
+  service_window_hours: 48
+auto_enable_on_connect: true
+auto_enable_destructive: false
+consent_link_template_name: null
+# ``available`` once TikTok approves the Data Security & Privacy Review. The
+# API surface is built and tested; the panel additionally gates on
+# NEXUS_TIKTOK_ENABLED, so listing it here does not expose a flow that
+# would fail at the token exchange.
+status: available

@@ -68,6 +68,7 @@ from nexus_api.db.models import (
     WhatsAppOptOut,
 )
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
+from nexus_channels.base import ChannelCapabilityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -78,6 +79,11 @@ if TYPE_CHECKING:
 # with identical keyword signatures, so the dispatcher treats them uniformly
 # and only differs in *which* adapter it resolves per ``channels.provider``.
 AdapterRegistry = Mapping[str, Any]
+
+# Channel types the dispatcher knows how to drive. Anything else is parked
+# ``failed`` rather than pushed at an adapter that may not implement the
+# method — a channel with no transport is a config error, not a send error.
+_DISPATCHABLE_CHANNEL_TYPES = frozenset({ChannelType.WHATSAPP, ChannelType.TIKTOK})
 
 log = structlog.get_logger(__name__)
 
@@ -112,6 +118,25 @@ _NO_RETRY_CODES: frozenset[str] = frozenset(
         "368",
     }
 )
+# TikTok Business Messaging error codes that are not worth retrying.
+#
+# These matter more than their Meta counterparts because **TikTok returns
+# HTTP 200 on failure** — the generic "4xx is a contract error" branch below
+# never fires for them, so an unlisted permanent failure would burn all three
+# attempts on every send.
+#
+# - 40001/40100/40101/40102/40105 : authentication. The token is dead;
+#   retrying with the same one cannot help. Handled here *and* flagged for
+#   re-auth further down.
+# - 40002/40003 : bad parameter — usually a conversation_id that expired out
+#   of the 48h window, which no amount of retrying reopens.
+# - 40016 : the conversation is closed or outside the messaging window.
+_TIKTOK_NO_RETRY_CODES: frozenset[str] = frozenset(
+    {"40001", "40002", "40003", "40016", "40100", "40101", "40102", "40105"}
+)
+
+_NO_RETRY_CODES = _NO_RETRY_CODES | _TIKTOK_NO_RETRY_CODES
+
 # Numeric ranges expressed as prefixes; matches anything starting with these.
 _NO_RETRY_PREFIXES: tuple[str, ...] = ("132",)  # all 132xxx template rejects
 
@@ -238,7 +263,7 @@ async def _send_one(
     # valid catalog item to render the catalog card). Set once in channel
     # config; the LLM never sees it.
     catalog_thumbnail = (channel_config or {}).get("catalog_thumbnail_retailer_id")
-    if channel_type != ChannelType.WHATSAPP:
+    if channel_type not in _DISPATCHABLE_CHANNEL_TYPES:
         msg.status = MessageStatus.FAILED
         msg.failed_at = datetime.now(UTC)
         msg.failure_code = "unsupported_channel"
@@ -266,12 +291,23 @@ async def _send_one(
     # Opt-out check (Block N). The recipient's number may have STOP'd us —
     # park the row failed instead of sending. The audit log + operator alert
     # already happened at opt-out registration time.
-    opted_out = await session.scalar(
-        sa.select(WhatsAppOptOut.id).where(
-            WhatsAppOptOut.channel_id == channel_id,
-            WhatsAppOptOut.recipient_phone == recipient,
-            WhatsAppOptOut.opted_in_at.is_(None),
+    #
+    # WhatsApp-only by construction: ``whatsapp_opt_outs`` is keyed by phone
+    # number, and the STOP-keyword convention it encodes is a WhatsApp/SMS
+    # norm with no TikTok equivalent (a TikTok user opts out by not replying,
+    # which the 48h window enforces on its own). Running this query for a
+    # TikTok channel would compare an ``open_id`` against a phone column —
+    # never matching, but implying a protection that isn't there.
+    opted_out = (
+        await session.scalar(
+            sa.select(WhatsAppOptOut.id).where(
+                WhatsAppOptOut.channel_id == channel_id,
+                WhatsAppOptOut.recipient_phone == recipient,
+                WhatsAppOptOut.opted_in_at.is_(None),
+            )
         )
+        if channel_type == ChannelType.WHATSAPP
+        else None
     )
     if opted_out is not None:
         msg.status = MessageStatus.FAILED
@@ -471,31 +507,50 @@ async def _dispatch_message(
     )
 
 
-async def _maybe_flag_meta_reauth(
+async def _maybe_flag_reauth(
     *,
     session: AsyncSession,
     exc: Exception,
     tenant_id: uuid.UUID,
 ) -> None:
-    """If ``exc`` is a Meta token-invalidation, flip the tenant's Meta
-    credentials to ``needs_reauth``. Best-effort: a failure here must not
-    mask the original send failure being classified by the caller."""
-    from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
+    """If ``exc`` is a token-invalidation, flip that provider's credentials
+    to ``needs_reauth``.
+
+    Both providers land here because both can lose auth, but for different
+    reasons: Meta's BISUAT is long-lived and dies when the business revokes
+    it, whereas TikTok's token dies on a schedule and this path fires when
+    even the refresh cron can no longer save it.
+
+    Best-effort: a failure here must not mask the original send failure the
+    caller is classifying.
+    """
+    from nexus_channels.tiktok_bm.exceptions import TikTokTokenInvalidatedError
     from nexus_channels.whatsapp_meta.exceptions import TokenInvalidatedError
 
-    if not isinstance(exc, TokenInvalidatedError):
+    if isinstance(exc, TokenInvalidatedError):
+        from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
+
+        provider, repo = "meta", MetaCredentialsRepository(session)
+    elif isinstance(exc, TikTokTokenInvalidatedError):
+        from nexus_channels.tiktok_bm.credentials import TikTokCredentialsRepository
+
+        provider, repo = "tiktok", TikTokCredentialsRepository(session)
+    else:
         return
+
     try:
-        await MetaCredentialsRepository(session).mark_reauth_needed()
+        await repo.mark_reauth_needed()
         log.warning(
-            "outbound.dispatcher.meta_reauth_flagged",
+            "outbound.dispatcher.reauth_flagged",
             tenant_id=str(tenant_id),
+            provider=provider,
             code=getattr(exc, "code", None),
         )
     except Exception as flag_exc:
         log.error(
-            "outbound.dispatcher.meta_reauth_flag_failed",
+            "outbound.dispatcher.reauth_flag_failed",
             tenant_id=str(tenant_id),
+            provider=provider,
             error=str(flag_exc),
         )
 
@@ -515,12 +570,28 @@ async def _handle_send_exception(
     status_code = int(getattr(exc, "status_code", -1) or 0)
     meta_code = _extract_meta_code(exc)
 
-    # Meta token invalidation (OAuthException 190/463/467). The BISUAT is
-    # dead — flag the tenant's credentials ``needs_reauth`` so the operator
-    # can re-run Embedded Signup instead of the dispatcher silently failing
-    # every send forever. We're already inside the tenant-scoped session, so
-    # the repo writes the right row under RLS.
-    await _maybe_flag_meta_reauth(session=session, exc=exc, tenant_id=tenant_id)
+    # Token invalidation (Meta OAuthException 190/463/467, TikTok 401xx). The
+    # credential is dead — flag ``needs_reauth`` so the operator can re-run
+    # onboarding instead of the dispatcher silently failing every send
+    # forever. We're already inside the tenant-scoped session, so the repo
+    # writes the right row under RLS.
+    await _maybe_flag_reauth(session=session, exc=exc, tenant_id=tenant_id)
+
+    # A capability error is the channel saying "this can never work here" —
+    # a TikTok template send, or a reply with no conversation to reply into.
+    # Retrying is pure waste and it hides a real config problem behind three
+    # identical failures.
+    if isinstance(exc, ChannelCapabilityError):
+        msg.status = MessageStatus.FAILED
+        msg.failed_at = datetime.now(UTC)
+        msg.failure_code = "unsupported_capability"
+        log.warning(
+            "outbound.dispatcher.unsupported_capability",
+            tenant_id=str(tenant_id),
+            message_id=str(msg.id),
+            error=msg.last_error,
+        )
+        return
 
     no_retry = False
     if meta_code in _NO_RETRY_CODES or any(meta_code.startswith(p) for p in _NO_RETRY_PREFIXES):

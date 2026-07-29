@@ -76,6 +76,54 @@ class Settings(BaseSettings):
     # this stays True in every environment that talks to the real API.
     meta_require_appsecret_proof: bool = True
 
+    # TikTok Business Messaging API — single Auphere developer app, same
+    # Tech-Provider shape as Meta: every tenant authorises *this* app over
+    # their own Business Account.
+    #
+    # ``tiktok_enabled`` is the master switch and defaults OFF. TikTok gates
+    # Business Messaging behind a Data Security & Privacy Review that is
+    # still in flight, so production runs with the channel dark until the
+    # App ID / App Secret are real. Keeping the flag means the prod secret
+    # guard below can be strict *without* blocking every deploy in the
+    # meantime.
+    tiktok_enabled: bool = False
+    tiktok_app_id: str = ""
+    tiktok_app_secret: str = "dev-tiktok-app-secret-change-me"
+    # Where TikTok redirects after the business owner authorises the app.
+    # Must match the redirect URL registered in the developer app exactly —
+    # TikTok rejects the code exchange on any mismatch.
+    # Must match the **TikTok account holder redirect URL** registered on the
+    # app (My Apps > App Detail > Basic Information) character for character —
+    # TikTok re-validates it at token-exchange time, and a trailing slash is
+    # enough to fail it. Note this is a different field in the TikTok console
+    # from the "Advertiser redirect URL", which belongs to the ad-account flow
+    # we do not use.
+    tiktok_redirect_uri: str = "https://api.auphere.com/admin/integrations/tiktok/callback"
+    # The base authorisation URL is **issued by TikTok**, not constructed by
+    # us: it lives at My Apps > App Detail > Basic Information > "TikTok
+    # account holder authorization URL" and only appears once the app has the
+    # TikTok Accounts permission. Paste it here verbatim; the service appends
+    # a signed ``state`` for CSRF protection, which TikTok echoes back.
+    #
+    # Empty by default because guessing the format would produce a URL that
+    # looks plausible and fails at authorisation time — better to fail fast
+    # with "not configured".
+    tiktok_authorize_url: str = ""
+    # Signs the OAuth ``state`` that carries the connecting tenant through
+    # TikTok's redirect. Deliberately NOT the app secret: this key protects a
+    # cross-tenant write on our side, and reusing TikTok's credential for it
+    # would mean a TikTok-side leak also lets an attacker graft accounts onto
+    # arbitrary tenants.
+    tiktok_oauth_state_secret: str = "dev-tiktok-state-secret-change-me-min-32"
+    # Callback registered per tenant on the Business Messaging webhook
+    # configuration. Override in dev with a tunnel pointing at
+    # ``/webhook/tiktok`` on the local API.
+    tiktok_webhook_callback_url: str = "https://webhooks.auphere.com/webhook/tiktok"
+    # API host + version pinned at the client level, same rationale as the
+    # Graph API pin above.
+    tiktok_api_base_url: str = "https://business-api.tiktok.com"
+    tiktok_api_version: str = "v1.3"
+
     # Operator phone (E.164) used as recipient for ``alert_*`` templates when
     # the tenant has not configured ``tenants.owner_phone``. In Phase 1 this
     # is Lee. Templates for the tenant owner override this when present.
@@ -110,6 +158,11 @@ class Settings(BaseSettings):
     # is redirected to after consenting on the provider. Local dev keeps it
     # blank and uses http://localhost:8000 via the frontend BFF.
     public_api_base_url: str = "http://localhost:8000"
+    # Public base URL of the operator panel. Used to bounce a browser back
+    # into the UI after a provider redirect (TikTok's OAuth callback lands on
+    # the API, not on the panel, and a person should not end up staring at a
+    # JSON body).
+    admin_panel_base_url: str = "http://localhost:3000"
 
     # HMAC secret for consent_token signing (see services/connectors/consent_token.py).
     # Used to mint the magic-link tokens we ship to tenant owners via WhatsApp.
@@ -241,6 +294,16 @@ class Settings(BaseSettings):
             offenders.append("NEXUS_FERNET_KEY")
         if "change-me" in self.embed_jwt_secret:
             offenders.append("NEXUS_EMBED_JWT_SECRET")
+        # Only enforced once the operator flips ``NEXUS_TIKTOK_ENABLED`` on —
+        # until TikTok approves the Business Messaging review the channel
+        # ships dark and there is nothing real to put here.
+        if self.tiktok_enabled:
+            if "change-me" in self.tiktok_app_secret:
+                offenders.append("NEXUS_TIKTOK_APP_SECRET")
+            if not self.tiktok_app_id:
+                offenders.append("NEXUS_TIKTOK_APP_ID")
+            if "change-me" in self.tiktok_oauth_state_secret:
+                offenders.append("NEXUS_TIKTOK_OAUTH_STATE_SECRET")
         if offenders:
             raise ValueError(
                 "Refusing to boot in production with dev placeholder secrets: "
