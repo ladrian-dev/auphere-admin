@@ -161,6 +161,13 @@ class MCPRegistry:
             )
         self._internal_tools[tool.name] = tool
 
+    def is_side_effecting(self, name: str) -> bool:
+        """True when the public tool ``name`` declares side effects
+        (non-empty ``ToolBase.side_effects`` — e.g. ``mutates_db``). Unknown
+        names are False. Used to gate write tools for read-only admins."""
+        tool = self._tools.get(name)
+        return bool(tool and tool.side_effects)
+
     def has(self, name: str) -> bool:
         return name in self._tools
 

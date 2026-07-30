@@ -66,6 +66,18 @@ def test_default_registry_has_all_block_d_tools():
     }.issubset(names)
 
 
+def test_is_side_effecting_reads_vs_writes():
+    """The read-only-admin gate depends on this split: writes are side-
+    effecting, reads are not, unknown names are False (safe default)."""
+    reset_default_registry()
+    reg = build_default_registry()
+    for write in ("billing.register_payment", "billing.add_charge", "billing.send_reminders"):
+        assert reg.is_side_effecting(write) is True, write
+    for read in ("billing.list_overdue", "billing.get_account", "billing.find_client"):
+        assert reg.is_side_effecting(read) is False, read
+    assert reg.is_side_effecting("does.not.exist") is False
+
+
 def test_get_tool_definitions_filters_to_whitelist():
     reset_default_registry()
     reg = build_default_registry()
