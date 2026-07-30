@@ -1,8 +1,13 @@
 """TikTok as a channel type (Business Messaging API)
 
 Revision ID: 0059_tiktok_channel
-Revises: 0058_cobranza_send_reminders
+Revises: 0059_cobranza_find_client
 Create Date: 2026-07-28
+
+Chained AFTER ``0059_cobranza_find_client`` (originally both branched from
+``0058_cobranza_send_reminders``, which left Alembic with two heads and broke
+``alembic upgrade head``). This migration was unapplied everywhere, so
+re-parenting it is safe; the cobranza 0059 was already live in prod.
 
 Second real channel after ``whatsapp_meta``. TikTok Business Messaging lets
 an authorised Business Account exchange direct messages with TikTok users;
@@ -33,7 +38,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0059_tiktok_channel"
-down_revision: str | Sequence[str] | None = "0058_cobranza_send_reminders"
+down_revision: str | Sequence[str] | None = "0059_cobranza_find_client"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
