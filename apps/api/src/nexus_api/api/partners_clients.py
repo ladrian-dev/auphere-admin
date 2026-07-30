@@ -14,6 +14,8 @@ An unknown ref is an opaque 404.
 
 from __future__ import annotations
 
+from typing import Literal
+
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_channels.whatsapp_meta import SignupIngressPayload
@@ -82,6 +84,15 @@ class AdminIn(BaseModel):
 
     phone: str = Field(min_length=4, max_length=32, description="Teléfono del admin (E.164).")
     name: str | None = Field(default=None, max_length=120)
+    role: Literal["full", "readonly"] = Field(
+        default="full",
+        description=(
+            "'full' = acceso total (consultas + cambios de deudores). "
+            "'readonly' = solo consultar información (deudas, cuentas, "
+            "listados); no puede registrar pagos, crear cuentas ni ningún "
+            "cambio."
+        ),
+    )
 
 
 class AdminsUpdateIn(BaseModel):
@@ -97,6 +108,7 @@ class AdminsUpdateIn(BaseModel):
 class AdminOut(BaseModel):
     phone: str
     name: str | None = None
+    role: Literal["full", "readonly"] = "full"
 
 
 class AdminsOut(BaseModel):
@@ -211,12 +223,14 @@ async def set_client_admins(
     session: AsyncSession = Depends(get_db_session),
     redis: Redis = Depends(get_redis),
 ) -> AdminsOut:
-    """Replace the client's admin whitelist.
+    """Replace the client's admin whitelist (with per-admin roles).
 
-    An admin is a phone that may query the agent and make debtor changes —
-    the binary access model. The list here becomes
-    ``policies.admin_access.admin_phones`` on a freshly promoted agent
-    config; the ``name`` is kept as metadata for traceability only.
+    Each admin is a phone allowed to talk to the agent. ``role`` sets what it
+    can do: ``full`` = query + all debtor changes; ``readonly`` = only query
+    information (no writes — the worker strips write tools for that sender).
+    The phones become ``policies.admin_access.admin_phones`` and the
+    ``{phone, name, role}`` entries become ``admin_access.admins`` on a
+    freshly promoted agent config.
     """
     tenant_id = await _resolve_tenant_id(session, ctx, external_client_ref)
 
@@ -231,7 +245,7 @@ async def set_client_admins(
             )
         if e164 not in phones:
             phones.append(e164)
-            admins_meta.append({"phone": e164, "name": admin.name})
+            admins_meta.append({"phone": e164, "name": admin.name, "role": admin.role})
 
     async with tenant_scoped_session(session, tenant_id):
         try:
@@ -265,15 +279,19 @@ async def set_client_admins(
 def _admins_out(policies: dict | None) -> AdminsOut:
     access = (policies or {}).get("admin_access") or {}
     phones = [str(p) for p in (access.get("admin_phones") or [])]
-    meta = {
-        str(a.get("phone")): a.get("name")
-        for a in (access.get("admins") or [])
-        if isinstance(a, dict)
-    }
-    return AdminsOut(
-        admin_only=bool(access.get("admin_only")),
-        admins=[AdminOut(phone=p, name=meta.get(p)) for p in phones],
-    )
+    meta = {str(a.get("phone")): a for a in (access.get("admins") or []) if isinstance(a, dict)}
+    out: list[AdminOut] = []
+    for p in phones:
+        entry = meta.get(p) or {}
+        role = str(entry.get("role") or "full").lower()
+        out.append(
+            AdminOut(
+                phone=p,
+                name=entry.get("name"),
+                role="readonly" if role == "readonly" else "full",
+            )
+        )
+    return AdminsOut(admin_only=bool(access.get("admin_only")), admins=out)
 
 
 __all__ = ["router"]

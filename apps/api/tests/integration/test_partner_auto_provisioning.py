@@ -553,3 +553,49 @@ async def test_partner_rejects_invalid_admin_phone(client, db_session) -> None:
         headers=_auth(world["key"]),
     )
     assert r.status_code == 400
+
+
+async def test_partner_admin_roles_round_trip(client, db_session) -> None:
+    from nexus_api.core.admin_gate import sender_role
+
+    world, tenant_id = await _provisioned_world(client, db_session)
+    r = await client.put(
+        "/v1/partners/clients/negocio-42/admins",
+        json={
+            "admins": [
+                {"phone": "+584249398142", "name": "Dueño", "role": "full"},
+                {"phone": "+584249693698", "name": "Consulta", "role": "readonly"},
+            ]
+        },
+        headers=_auth(world["key"]),
+    )
+    assert r.status_code == 200, r.text
+    roles = {a["phone"]: a["role"] for a in r.json()["admins"]}
+    assert roles == {"+584249398142": "full", "+584249693698": "readonly"}
+
+    # GET reflects the roles.
+    r2 = await client.get("/v1/partners/clients/negocio-42/admins", headers=_auth(world["key"]))
+    assert {a["phone"]: a["role"] for a in r2.json()["admins"]} == roles
+
+    # The active agent_config carries the per-admin roles, and the gate agrees.
+    active = await db_session.scalar(
+        sa.select(AgentConfig).where(
+            AgentConfig.tenant_id == tenant_id,
+            AgentConfig.status == AgentConfigStatus.ACTIVE,
+        )
+    )
+    by_phone = {a["phone"]: a["role"] for a in active.policies["admin_access"]["admins"]}
+    assert by_phone == {"+584249398142": "full", "+584249693698": "readonly"}
+    assert sender_role(active.policies, "584249693698") == "readonly"
+    assert sender_role(active.policies, "584249398142") == "full"
+
+
+async def test_partner_admin_role_defaults_full(client, db_session) -> None:
+    world, _tenant_id = await _provisioned_world(client, db_session)
+    r = await client.put(
+        "/v1/partners/clients/negocio-42/admins",
+        json={"admins": [{"phone": "+584249398142"}]},  # no role
+        headers=_auth(world["key"]),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["admins"][0]["role"] == "full"

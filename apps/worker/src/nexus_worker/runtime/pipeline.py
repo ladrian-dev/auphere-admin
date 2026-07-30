@@ -56,6 +56,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 from langgraph.graph import END, START, StateGraph
+from nexus_api.core.admin_gate import ROLE_READONLY, sender_role
 from nexus_api.core.tenant_context import (
     customer_context,
     tenant_context,
@@ -142,6 +143,21 @@ def _clean_model_text(text: str | None) -> str:
 # customer_id) and the ``tool_result`` is a string, not the MCP envelope.
 # See architecture/builtin-tools-vs-mcp-tools.md.
 _MEMORY_TOOL_NAME = "memory"
+
+# Injected as a system note when the current sender is a READ-ONLY admin, so
+# the agent declines write requests gracefully instead of just silently
+# lacking the tool. The hard enforcement is the tool-whitelist filtering in
+# the handler node (write tools are removed from what the model sees AND from
+# what ``registry.dispatch`` will accept); this note is the UX layer on top.
+_READONLY_ADMIN_NOTE = (
+    "PERMISOS DEL USUARIO ACTUAL: SOLO LECTURA. Este administrador puede "
+    "CONSULTAR información (deudas, cuentas, listados, buscar clientes) pero "
+    "NO tiene permiso para ejecutar cambios: registrar pagos/abonos, crear "
+    "cuentas, agregar cargos, cambiar estados, aplicar descuentos, editar "
+    "cuentas ni enviar recordatorios. Si pide una operación de ese tipo, "
+    "explicale con amabilidad que no tiene permiso para hacerla y ofrecele "
+    "consultar la información que sí puede ver."
+)
 
 
 # Fase D — Anthropic custom Skills wiring.
@@ -836,11 +852,24 @@ def make_handler_node(
                 tenant_id=tenant_id,
                 available_names=available_names,
             )
+            # Per-admin role gate (cobranza): a READ-ONLY admin never gets the
+            # write tools. Dropping them from the whitelist means the model
+            # never sees them AND ``registry.dispatch`` refuses them
+            # (ToolNotInWhitelist) if the model hallucinates one — real
+            # enforcement, not just hiding. ``None``/``full`` = no change.
+            admin_role = sender_role(bundle.policies, state.get("user_id"))
+            if admin_role == ROLE_READONLY:
+                available_names = tuple(
+                    n for n in available_names if not scoped_registry.is_side_effecting(n)
+                )
             available_defs = scoped_registry.get_openai_tools(available_names)
             kg_snapshot = await _load_kg_snapshot_text(tenant_id)
             messages = _build_handler_messages(
                 state, bundle, intent=intent, kg_snapshot=kg_snapshot
             )
+            if admin_role == ROLE_READONLY:
+                # System prompt is messages[0]; keep the note right after it.
+                messages.insert(1, {"role": "system", "content": _READONLY_ADMIN_NOTE})
 
             # Built-in Anthropic Memory tool (Fase B). Opt-in per
             # agent_config via the ``runtime_memory_tool`` boolean —
@@ -1097,7 +1126,7 @@ def make_handler_node(
                 )
                 final_text = _EMPTY_RESPONSE_FALLBACK
 
-            # Per-turn latency summary. ``iterations`` × per-call latency (see
+            # Per-turn latency summary. ``iterations`` x per-call latency (see
             # ``llm.call_complete``) is the whole story of a slow turn: a turn
             # that hit the ``MAX_TOOL_ITERATIONS`` cap with N sequential Sonnet
             # calls is structurally different from one slow single call, and we
