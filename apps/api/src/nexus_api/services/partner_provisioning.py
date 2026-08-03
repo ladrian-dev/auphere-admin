@@ -22,6 +22,8 @@ JWT (signup), the only two sanctioned paths.
 
 from __future__ import annotations
 
+import json
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -29,6 +31,7 @@ from typing import Any
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.core.admin_gate import usable_admin_phones
 from nexus_api.core.errors import AgentConfigConflict
 from nexus_api.db.models import AgentConfig, Partner, Tenant, TenantStatus
 from nexus_api.repositories.partner import EmbedAuditRepository
@@ -51,6 +54,14 @@ class ProvisioningError(Exception):
     """Blueprint execution failed for a reason the partner can fix
     (missing placeholder, wrong credential fields). Maps to HTTP 400/422
     at the surface."""
+
+
+#: Seed templates spell unresolved business data as ``<<…>>`` defaults
+#: (bank account, shipping policy, …). They render fine — which is the
+#: problem: the agent would go live quoting a literal
+#: "<<transferencia banco — pendiente>>" to a real admin. Provisioning
+#: refuses instead, naming every one so the partner can send it.
+_PENDING_MARKER = re.compile(r"<<([^<>]{1,160})>>")
 
 
 @dataclass(frozen=True)
@@ -149,6 +160,45 @@ async def provision_client_blueprint(
     )
 
 
+def _pending_placeholders(system_prompt: str, policies: dict[str, Any]) -> list[str]:
+    """Every ``<<…>>`` marker left in the rendered agent, deduped."""
+    blob = f"{system_prompt}\n{json.dumps(policies, ensure_ascii=False)}"
+    return sorted({m.group(1).strip() for m in _PENDING_MARKER.finditer(blob)})
+
+
+def _assert_business_data_complete(*, system_prompt: str, policies: dict[str, Any]) -> None:
+    """Refuse to promote an agent that cannot do its job on day one.
+
+    Two failure modes, both silent until a real admin hits them:
+
+    1. **Unfilled business data** — the agent quotes ``<<… pendiente>>``
+       (bank details, policies) as if it were fact.
+    2. **Empty admin whitelist on an ``admin_only`` agent** — the gate
+       suppresses EVERY sender, so the client's brand-new number never
+       answers anyone and nothing in the logs looks broken.
+
+    Both are the partner's to fix by sending placeholders, so they surface
+    as 422 with the exact keys missing.
+    """
+    pending = _pending_placeholders(system_prompt, policies)
+    if pending:
+        listed = ", ".join(pending)
+        raise ProvisioningError(
+            "Faltan datos del negocio para armar el agente. Envíalos en "
+            f"agent.placeholders. Pendientes: {listed}"
+        )
+
+    access = (policies or {}).get("admin_access") or {}
+    admin_only = isinstance(access, dict) and bool(access.get("admin_only"))
+    if admin_only and not usable_admin_phones(access.get("admin_phones")):
+        raise ProvisioningError(
+            "Este agente solo responde a administradores autorizados y la "
+            "whitelist quedó vacía: nadie podría hablar con él. Envía "
+            "agent.placeholders['policies.admin_access.admin_phones'] con "
+            "al menos un teléfono (E.164, mínimo 7 dígitos)."
+        )
+
+
 async def _seed_agent(
     session: AsyncSession,
     *,
@@ -180,6 +230,14 @@ async def _seed_agent(
         rendered = render_seed_template(template, placeholders=resolved)
     except SeedTemplatePlaceholderMissing as exc:
         raise ProvisioningError(str(exc)) from exc
+
+    # Rendering succeeded, but "renders" is not "works" — a seed's own
+    # defaults can leave the agent quoting placeholders or unable to talk
+    # to anyone. Fail here, before anything is promoted.
+    _assert_business_data_complete(
+        system_prompt=rendered.system_prompt,
+        policies=rendered.policies,
+    )
 
     # Union with tools contributed by connectors already installed on
     # this tenant (the blueprint installs the connector first) — mirrors

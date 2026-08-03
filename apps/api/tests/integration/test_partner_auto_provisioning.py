@@ -144,6 +144,21 @@ def _auth(key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"}
 
 
+#: Every ``<<… pendiente>>`` default cobranza_v1 ships. Provisioning
+#: refuses to promote an agent that still carries any of them, so a
+#: realistic body fills them all.
+_PAYMENT_PLACEHOLDERS = {
+    "policies.payment.pago_movil.banco": "0134 - Banesco",
+    "policies.payment.pago_movil.telefono": "0424-4095716",
+    "policies.payment.pago_movil.cedula": "V-12.345.678",
+    "policies.payment.transferencia.banco": "Banesco",
+    "policies.payment.transferencia.numero_cuenta": "0134 0000 11 2222222222",
+    "policies.payment.transferencia.titular": "Bodegón El Ávila, C.A.",
+    "policies.payment.transferencia.cedula_rif": "J-40000000-1",
+    "policies.payment.binance.pay_id": "pagos@elavila.test",
+}
+
+
 def _provision_body(ref: str = "negocio-42") -> dict:
     return {
         "external_client_ref": ref,
@@ -153,6 +168,7 @@ def _provision_body(ref: str = "negocio-42") -> dict:
             "placeholders": {
                 "agent.name": "Mouna",
                 "policies.admin_access.admin_phones": ["+584244095716"],
+                **_PAYMENT_PLACEHOLDERS,
             }
         },
         "connector": {
@@ -258,6 +274,45 @@ async def test_provision_without_blueprint_stays_bare(client, db_session) -> Non
         sa.select(AgentConfig).where(AgentConfig.tenant_id == tenant_id)
     )
     assert config is None
+
+
+async def test_provision_rejects_unfilled_business_data(client, db_session) -> None:
+    """A seed's own ``<<… pendiente>>`` defaults render fine — and would
+    put an agent in production quoting them as if they were the client's
+    real bank details. Provisioning must refuse and name what's missing."""
+    world = await _blueprint_partner(db_session)
+    body = _provision_body()
+    body["agent"]["placeholders"].pop("policies.payment.transferencia.numero_cuenta")
+    r = await client.post("/v1/partners/clients", json=body, headers=_auth(world["key"]))
+    assert r.status_code == 422, r.text
+    detail = r.json()["detail"]
+    assert "transferencia número de cuenta" in detail
+
+    tenant_id = await _mapped_tenant_id(db_session, world["partner_id"], "negocio-42")
+    config = await db_session.scalar(
+        sa.select(AgentConfig).where(AgentConfig.tenant_id == tenant_id)
+    )
+    assert config is None  # nothing promoted
+
+
+async def test_provision_rejects_empty_admin_whitelist(client, db_session) -> None:
+    """cobranza_v1 is ``admin_only``: with an empty whitelist the gate
+    suppresses every sender, so the client's number would answer nobody."""
+    world = await _blueprint_partner(db_session)
+    body = _provision_body()
+    body["agent"]["placeholders"]["policies.admin_access.admin_phones"] = []
+    r = await client.post("/v1/partners/clients", json=body, headers=_auth(world["key"]))
+    assert r.status_code == 422, r.text
+    assert "admin_phones" in r.json()["detail"]
+
+
+async def test_provision_rejects_unusable_admin_phone(client, db_session) -> None:
+    """Too few digits to ever match a sender — same outcome as empty."""
+    world = await _blueprint_partner(db_session)
+    body = _provision_body()
+    body["agent"]["placeholders"]["policies.admin_access.admin_phones"] = ["123"]
+    r = await client.post("/v1/partners/clients", json=body, headers=_auth(world["key"]))
+    assert r.status_code == 422, r.text
 
 
 async def test_provision_connector_requires_credentials_shape(client, db_session) -> None:
@@ -476,6 +531,117 @@ async def test_partner_connects_client_whatsapp_coexistence(client, db_session) 
         sa.select(Channel).where(Channel.tenant_id == tenant_id, Channel.provider == "meta")
     )
     assert channel is not None
+
+    # The partner path must activate too — otherwise a client onboarded
+    # entirely from the partner's app gets a live number and a silent
+    # agent (PROVISIONING is inactive for the worker dispatcher).
+    assert out["tenant_activated"] is True
+    assert out["tenant_status"] == "active"
+    assert out["activation_blocked_reason"] is None
+    tenant = await db_session.get(TenantModel, tenant_id)
+    await db_session.refresh(tenant)
+    assert tenant.status is TenantStatus.ACTIVE
+
+    events = (
+        await db_session.scalars(
+            sa.select(EmbedAuditLog.event).where(EmbedAuditLog.tenant_id == tenant_id)
+        )
+    ).all()
+    assert "tenant.activated" in events
+
+
+async def test_partner_signup_without_auto_activate_reports_operator_review(
+    client, db_session
+) -> None:
+    world, tenant_id = await _provisioned_world(client, db_session, auto_activate=False)
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        _mock_graph_coexistence(mock)
+        r = await client.post(
+            "/v1/partners/clients/negocio-42/whatsapp/signup",
+            json={
+                "code": "OAUTH_CODE_XYZ",
+                "waba_id": "WABA_TEST",
+                "phone_number_id": "PN_TEST",
+                "mode": "coexistence",
+            },
+            headers=_auth(world["key"]),
+        )
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert out["tenant_activated"] is False
+    assert out["tenant_status"] == "provisioning"
+    assert out["activation_blocked_reason"] == "operator_review"
+    tenant = await db_session.get(TenantModel, tenant_id)
+    await db_session.refresh(tenant)
+    assert tenant.status is TenantStatus.PROVISIONING
+
+
+async def test_partner_signup_without_agent_reports_no_agent(client, db_session) -> None:
+    world = await _blueprint_partner(db_session, seed=None, connector=None)
+    body = _provision_body()
+    body.pop("agent")
+    body.pop("connector")
+    await client.post("/v1/partners/clients", json=body, headers=_auth(world["key"]))
+
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        _mock_graph_coexistence(mock)
+        r = await client.post(
+            "/v1/partners/clients/negocio-42/whatsapp/signup",
+            json={
+                "code": "OAUTH_CODE_XYZ",
+                "waba_id": "WABA_TEST",
+                "phone_number_id": "PN_TEST",
+                "mode": "coexistence",
+            },
+            headers=_auth(world["key"]),
+        )
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert out["tenant_activated"] is False
+    assert out["activation_blocked_reason"] == "no_agent"
+
+
+async def test_partner_client_status_tracks_onboarding(client, db_session) -> None:
+    world, _tenant_id = await _provisioned_world(client, db_session)
+
+    before = await client.get("/v1/partners/clients/negocio-42", headers=_auth(world["key"]))
+    assert before.status_code == 200, before.text
+    b = before.json()
+    assert b["status"] == "provisioning"
+    assert b["agent_configured"] is True
+    assert b["agent_version"] == 1
+    assert b["agent_seed_template"] == SEED
+    assert b["admins_count"] == 1
+    assert b["whatsapp_connected"] is False
+    assert b["ready"] is False
+    assert b["missing"] == ["whatsapp"]
+
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        _mock_graph_coexistence(mock)
+        await client.post(
+            "/v1/partners/clients/negocio-42/whatsapp/signup",
+            json={
+                "code": "OAUTH_CODE_XYZ",
+                "waba_id": "WABA_TEST",
+                "phone_number_id": "PN_TEST",
+                "mode": "coexistence",
+            },
+            headers=_auth(world["key"]),
+        )
+
+    after = await client.get("/v1/partners/clients/negocio-42", headers=_auth(world["key"]))
+    a = after.json()
+    assert a["status"] == "active"
+    assert a["whatsapp_connected"] is True
+    assert a["display_phone_number"].startswith("+58")
+    assert a["ready"] is True
+    assert a["missing"] == []
+
+
+async def test_partner_client_status_unknown_ref_is_404(client, db_session) -> None:
+    world = await _blueprint_partner(db_session)
+    r = await client.get("/v1/partners/clients/nope", headers=_auth(world["key"]))
+    assert r.status_code == 404
 
 
 async def test_partner_whatsapp_signup_unknown_ref_is_404(client, db_session) -> None:

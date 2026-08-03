@@ -14,8 +14,10 @@ An unknown ref is an opaque 404.
 
 from __future__ import annotations
 
-from typing import Literal
+import uuid
+from typing import Any, Literal
 
+import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_channels.whatsapp_meta import SignupIngressPayload
@@ -28,9 +30,18 @@ from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.config import get_settings
 from nexus_api.core.partner_auth import PartnerContext, require_partner_key
 from nexus_api.core.tenant_context import tenant_scoped_session
+from nexus_api.db.models import (
+    Channel,
+    ChannelStatus,
+    ChannelType,
+    PartnerTenant,
+    Tenant,
+    TenantStatus,
+)
 from nexus_api.repositories.partner import PartnerTenantRepository
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.meta_signup_service import complete_meta_signup
+from nexus_api.services.partner_provisioning import activate_tenant_if_ready
 
 log = structlog.get_logger(__name__)
 
@@ -77,6 +88,24 @@ class WhatsAppSignupOut(BaseModel):
     display_phone_number: str
     mode: str
     bisuat_expires_at: str | None = None
+    tenant_status: str = Field(
+        description=(
+            "Estado del cliente tras conectar. 'active' = el agente ya "
+            "responde en esa línea; 'provisioning' = falta algo (ver "
+            "activation_blocked_reason)."
+        ),
+    )
+    tenant_activated: bool = Field(
+        description="True si esta llamada fue la que activó al cliente.",
+    )
+    activation_blocked_reason: str | None = Field(
+        default=None,
+        description=(
+            "Por qué el cliente sigue sin activarse: 'no_agent' (no tiene "
+            "agente aún — reprovisionar), 'operator_review' (el partner no "
+            "tiene auto_activate; lo activa un operador de Auphere)."
+        ),
+    )
 
 
 class AdminIn(BaseModel):
@@ -116,11 +145,40 @@ class AdminsOut(BaseModel):
     admins: list[AdminOut]
 
 
+class ClientStatusOut(BaseModel):
+    """Everything the partner's UI needs to render a client's onboarding
+    state without re-provisioning (which would rotate credentials)."""
+
+    external_client_ref: str
+    name: str
+    timezone: str
+    status: str = Field(
+        description="Estado del cliente: provisioning | active | paused | archived."
+    )
+    whatsapp_connected: bool
+    display_phone_number: str | None = None
+    agent_configured: bool = Field(
+        description="True si el cliente ya tiene un agente activo respondiendo.",
+    )
+    agent_version: int | None = None
+    agent_seed_template: str | None = None
+    admins_count: int
+    ready: bool = Field(
+        description="True cuando el agente ya puede atender: activo, con WhatsApp y con admins.",
+    )
+    missing: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Qué falta para que ``ready`` sea true: 'agent', 'whatsapp', 'admins', 'activation'."
+        ),
+    )
+
+
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 
-async def _resolve_tenant_id(session: AsyncSession, ctx: PartnerContext, ref: str):
-    """Tenant behind ``ref`` for the authenticated partner, or opaque 404."""
+async def _resolve_mapping(session: AsyncSession, ctx: PartnerContext, ref: str) -> PartnerTenant:
+    """Mapping row behind ``ref`` for the authenticated partner, or opaque 404."""
     async with session.begin():
         mapping = await PartnerTenantRepository(session).get_mapping(ctx.partner.id, ref)
     if mapping is None:
@@ -128,6 +186,12 @@ async def _resolve_tenant_id(session: AsyncSession, ctx: PartnerContext, ref: st
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Unknown client reference",
         )
+    return mapping
+
+
+async def _resolve_tenant_id(session: AsyncSession, ctx: PartnerContext, ref: str) -> uuid.UUID:
+    """Tenant behind ``ref`` for the authenticated partner, or opaque 404."""
+    mapping = await _resolve_mapping(session, ctx, ref)
     return mapping.tenant_id
 
 
@@ -171,6 +235,13 @@ async def connect_client_whatsapp(
     (``complete_meta_signup``): exchange code → register phone → subscribe
     webhook → persist credentials → upsert the ``channels`` row. On success
     that number is the line where the business's agent lives.
+
+    Then, in the same transaction, runs ``activate_tenant_if_ready`` — the
+    same handoff the iframe signup does. Without it a client provisioned
+    and connected entirely from the partner's app would stay
+    ``provisioning``, which the worker dispatcher treats as inactive: the
+    number would be live and the agent silent, with nothing in the logs
+    looking broken.
     """
     tenant_id = await _resolve_tenant_id(session, ctx, external_client_ref)
     payload = SignupIngressPayload(
@@ -189,7 +260,29 @@ async def connect_client_whatsapp(
             actor=_partner_actor(ctx),
             audit_action="channel.whatsapp.partner_signup",
         )
+        activated = await activate_tenant_if_ready(
+            session,
+            partner=ctx.partner,
+            tenant_id=tenant_id,
+            api_key_id=ctx.api_key.id,
+        )
+        tenant = await session.get(Tenant, tenant_id)
+        tenant_status = (
+            tenant.status.value if tenant is not None else TenantStatus.PROVISIONING.value
+        )
+        blocked = None
+        if tenant_status == TenantStatus.PROVISIONING.value:
+            blocked = "operator_review" if not ctx.partner.auto_activate else "no_agent"
+
     result = bundle.result
+    log.info(
+        "partner.client_whatsapp_connected",
+        partner=ctx.partner.slug,
+        tenant_id=str(tenant_id),
+        phone_number_id=result.phone_number_id,
+        tenant_status=tenant_status,
+        tenant_activated=activated,
+    )
     return WhatsAppSignupOut(
         status="connected",
         waba_id=result.waba_id,
@@ -199,6 +292,75 @@ async def connect_client_whatsapp(
         bisuat_expires_at=(
             result.bisuat_expires_at.isoformat() if result.bisuat_expires_at is not None else None
         ),
+        tenant_status=tenant_status,
+        tenant_activated=activated,
+        activation_blocked_reason=blocked,
+    )
+
+
+@router.get("/clients/{external_client_ref}", response_model=ClientStatusOut)
+async def get_client_status(
+    external_client_ref: str,
+    ctx: PartnerContext = Depends(require_partner_key("provision")),
+    session: AsyncSession = Depends(get_db_session),
+) -> ClientStatusOut:
+    """Read-only onboarding state of one client.
+
+    The partner's UI needs this to decide what to show ("Conectar
+    WhatsApp" vs. "Listo"). Re-POSTing ``/v1/partners/clients`` would
+    answer part of it but also rotates the connector credentials, so
+    polling that endpoint is the wrong tool.
+    """
+    mapping = await _resolve_mapping(session, ctx, external_client_ref)
+    tenant_id = mapping.tenant_id
+
+    async with tenant_scoped_session(session, tenant_id):
+        tenant = await session.get(Tenant, tenant_id)
+        if tenant is None:  # pragma: no cover - FK guarantees the row
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Unknown client reference",
+            )
+        active = await AgentConfigService(session).get_active()
+        phone = await session.scalar(
+            sa.select(Channel.provider_identifier)
+            .where(
+                Channel.type == ChannelType.WHATSAPP,
+                Channel.status == ChannelStatus.ACTIVE,
+            )
+            .limit(1)
+        )
+        tenant_status = tenant.status.value
+        tenant_name = tenant.name
+        tenant_tz = tenant.timezone
+
+    admins = _admins_out(active.policies if active else None)
+    missing: list[str] = []
+    if active is None:
+        missing.append("agent")
+    if phone is None:
+        missing.append("whatsapp")
+    if admins.admin_only and not admins.admins:
+        missing.append("admins")
+    if not missing and tenant_status != TenantStatus.ACTIVE.value:
+        # Everything is in place but the tenant never flipped — an
+        # operator has to review it (partner without ``auto_activate``)
+        # or it was paused/archived on purpose.
+        missing.append("activation")
+
+    return ClientStatusOut(
+        external_client_ref=external_client_ref,
+        name=tenant_name,
+        timezone=tenant_tz,
+        status=tenant_status,
+        whatsapp_connected=phone is not None,
+        display_phone_number=phone,
+        agent_configured=active is not None,
+        agent_version=active.version if active else None,
+        agent_seed_template=active.seed_template_ref if active else None,
+        admins_count=len(admins.admins),
+        ready=not missing,
+        missing=missing,
     )
 
 
@@ -276,7 +438,7 @@ async def set_client_admins(
     return _admins_out(policies)
 
 
-def _admins_out(policies: dict | None) -> AdminsOut:
+def _admins_out(policies: dict[str, Any] | None) -> AdminsOut:
     access = (policies or {}).get("admin_access") or {}
     phones = [str(p) for p in (access.get("admin_phones") or [])]
     meta = {str(a.get("phone")): a for a in (access.get("admins") or []) if isinstance(a, dict)}

@@ -109,6 +109,30 @@ conecte WhatsApp.
   personalizaciones), pero **sí rota** las credenciales del connector.
 - Errores: `422` con el placeholder/credencial que falta.
 
+**El 422 es estricto a propósito.** Un agente solo se promueve si puede
+trabajar el día uno, así que la provisión rechaza dos casos que antes
+pasaban silenciosos:
+
+- **Datos del negocio sin rellenar** — si algún valor del seed queda como
+  `<<… pendiente>>`, el agente le dictaría ese literal a un admin como si
+  fuera la cuenta bancaria real. El `detail` nombra cada pendiente.
+- **Whitelist de admins vacía** — en verticales `admin_only` (como
+  `cobranza_v1`) el agente solo responde a los teléfonos autorizados; sin
+  ninguno, el número quedaría conectado y mudo. Manda al menos un teléfono
+  E.164 con 7+ dígitos.
+
+Placeholders obligatorios de `cobranza_v1`:
+
+```
+policies.admin_access.admin_phones          ["+584241234567", …]
+policies.payment.pago_movil.banco           policies.payment.pago_movil.telefono
+policies.payment.pago_movil.cedula          policies.payment.transferencia.banco
+policies.payment.transferencia.numero_cuenta  policies.payment.transferencia.titular
+policies.payment.transferencia.cedula_rif   policies.payment.binance.pay_id
+```
+
+(`agent.name` es opcional — por defecto "Sofía".)
+
 ### 3.2 Mintear session token — cada vez que tu frontend lo pida
 
 `POST /v1/widget-sessions`
@@ -123,6 +147,81 @@ Expón esto en TU backend como un endpoint autenticado para tu frontend
 (ej. `POST /api/auphere/session` que valida la sesión de tu usuario y
 resuelve QUÉ negocio le corresponde). `whatsapp.status` te dice
 server-side si renderizar el botón de campañas.
+
+### 3.3 Consultar el estado de un negocio
+
+`GET /v1/partners/clients/{external_client_ref}`
+
+```json
+{
+  "external_client_ref": "…", "name": "Bodegón El Ávila",
+  "timezone": "America/Caracas", "status": "active",
+  "whatsapp_connected": true, "display_phone_number": "+584241234567",
+  "agent_configured": true, "agent_version": 1,
+  "agent_seed_template": "cobranza_v1", "admins_count": 2,
+  "ready": true, "missing": []
+}
+```
+
+Esto es lo que tu UI consulta para decidir qué mostrar. `missing` enumera
+lo que falta (`agent`, `whatsapp`, `admins`, `activation`) y `ready` es
+true solo cuando el agente ya puede atender. **No uses `POST
+/v1/partners/clients` para consultar estado**: es idempotente pero rota
+las credenciales del connector en cada llamada.
+
+### 3.4 Conectar el WhatsApp del negocio (sin operador de Auphere)
+
+`GET /v1/partners/whatsapp/signup-config` devuelve `app_id`,
+`coexistence_config_id`, `cloud_api_config_id` y `graph_api_version`: con
+eso tu frontend abre Facebook Login for Business con la Meta App de
+Auphere. **Usá el `coexistence_config_id`** — el negocio conserva su app
+móvil de WhatsApp Business.
+
+Con el `code` que devuelve Meta, tu backend cierra el flujo:
+
+`POST /v1/partners/clients/{external_client_ref}/whatsapp/signup`
+
+```json
+{ "code": "<oauth code>", "waba_id": "<waba>", "phone_number_id": "<opcional>", "mode": "coexistence" }
+```
+
+→
+
+```json
+{
+  "status": "connected", "display_phone_number": "+584241234567",
+  "mode": "coexistence", "tenant_status": "active",
+  "tenant_activated": true, "activation_blocked_reason": null
+}
+```
+
+Esta llamada registra el número, suscribe el webhook, guarda las
+credenciales cifradas **y activa al negocio** si tiene agente y tu
+partner tiene `auto_activate`. Si `tenant_status` sigue en
+`provisioning`, `activation_blocked_reason` dice por qué: `no_agent` (el
+negocio no tiene agente — revisá la provisión) u `operator_review` (tu
+partner no auto-activa; lo revisa Auphere).
+
+El `code` es de un solo uso y expira rápido: mandalo apenas lo recibís y,
+si Meta lo rechaza (`400`), reabrí el popup en vez de reintentar el mismo.
+
+### 3.5 Administradores del negocio
+
+`GET` / `PUT /v1/partners/clients/{external_client_ref}/admins`
+
+```json
+{ "admins": [
+  { "phone": "+584241234567", "name": "Ana", "role": "full" },
+  { "phone": "+584249990000", "name": "Luis", "role": "readonly" }
+] }
+```
+
+El `PUT` **reemplaza** la lista completa y promueve una versión nueva del
+agente (auditada y reversible). Solo esos teléfonos pueden hablar con el
+agente; cualquier otro queda registrado pero sin respuesta ni acuse de
+lectura. `readonly` puede consultar pero no registrar pagos, crear
+cuentas ni ningún cambio. Los teléfonos se normalizan a E.164; uno
+inválido devuelve `400` nombrándolo.
 
 ## 4. Frontend del partner (`@auphere/embed`)
 
@@ -173,17 +272,34 @@ Notas:
 
 ## 5. El flujo completo de un negocio nuevo
 
+Hay dos caminos para conectar WhatsApp y son intercambiables: el
+**server-to-server** (§3.4, todo desde tu app con tu secret key) o el
+**iframe** (`connectWhatsApp()` del SDK). Los dos corren la misma
+orquestación y los dos activan al negocio. Elegí uno: el primero si ya
+tenés tu propia UI de onboarding, el segundo si preferís no tocar el
+popup de Meta.
+
 1. **Tu admin crea el negocio** → tu backend llama
    `POST /v1/partners/clients` (con placeholders + credenciales) →
    agente clonado, tenant en `provisioning`.
-2. **Conectar WhatsApp** → tu UI llama `auphere.connectWhatsApp()` → el
-   dueño autoriza en Meta → registramos el número, suscribimos el
-   webhook y guardamos las credenciales cifradas → si `auto_activate`,
-   el tenant pasa a **ACTIVE** y el agente empieza a responder.
-3. **Broadcasts** → el botón de campañas aparece solo con WhatsApp
+2. **Registrar admins** → `PUT …/admins` con los teléfonos que podrán
+   hablar con el agente (§3.5). Si ya los mandaste como placeholder en el
+   paso 1, esto es solo para editarlos después.
+3. **Conectar WhatsApp** → `POST …/whatsapp/signup` (§3.4) o
+   `auphere.connectWhatsApp()` → el dueño autoriza en Meta → registramos
+   el número, suscribimos el webhook y guardamos las credenciales
+   cifradas → si `auto_activate`, el negocio pasa a **ACTIVE** y el
+   agente empieza a responder.
+4. **Plantillas** → aprobá las plantillas de recordatorio en la WABA del
+   negocio (§6). Sin esto el agente contesta y consulta, pero no puede
+   enviar recordatorios a los deudores.
+5. **Broadcasts** → el botón de campañas aparece solo con WhatsApp
    conectado; tu app pasa la audiencia; el widget muestra plantillas
    aprobadas + preview y dispara. Respetamos opt-outs, ventana de 24h y
    el cap por envío del partner.
+
+En cualquier momento, `GET /v1/partners/clients/{ref}` (§3.3) te dice en
+cuál de estos pasos está cada negocio.
 
 ## 6. Plantillas HSM
 
@@ -220,6 +336,9 @@ facturación por negocio activo.
 | `401` al mintear | Key revocada/expirada o checksum inválido | Verificar la key; pedir rotación |
 | `403 Session token lacks widget:connect` | Token minteado con scopes viejos | Re-mintear (los scopes van en el JWT) |
 | `422` al provisionar | Placeholder del seed sin valor / credenciales vacías | El detail dice exactamente qué falta |
+| `422` "Faltan datos del negocio" | Quedó un `<<… pendiente>>` sin rellenar | Mandá los placeholders que nombra el detail (§3.1) |
+| `422` "whitelist quedó vacía" | Vertical `admin_only` sin `admin_phones` usables | Al menos un teléfono E.164 con 7+ dígitos |
+| Conectó WhatsApp pero el agente no responde | `tenant_status` quedó en `provisioning` | Mirá `activation_blocked_reason`: `no_agent` → revisar la provisión; `operator_review` → lo activa Auphere |
 | Widget no monta / iframe en blanco | Origin no está en `allowed_origins` | Agregar el origin exacto (esquema+host+puerto) en el panel |
 | Meta rechaza el OAuth code | Code expirado o reusado | Cerrar y reintentar el flujo |
 | `409` al conectar número | El número ya está mapeado a otro tenant | Contactar al operador Auphere (offboard previo) |

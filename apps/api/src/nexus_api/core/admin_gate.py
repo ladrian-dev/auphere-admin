@@ -47,6 +47,17 @@ def sender_is_admin(sender: str | None, admin_phones: list[Any]) -> bool:
     return any(_phone_matches(sender, raw) for raw in admin_phones)
 
 
+def usable_admin_phones(admin_phones: list[Any] | None) -> list[str]:
+    """The subset of ``admin_phones`` that can ever match a sender.
+
+    Same rule as :func:`_phone_matches`: fewer than 7 digits is too
+    ambiguous to grant admin access on, so such an entry is dead weight —
+    it will never let anyone in. Callers use this to refuse a whitelist
+    that would leave an ``admin_only`` agent unable to answer ANYONE.
+    """
+    return [str(p) for p in (admin_phones or []) if len(_digits(p)) >= 7]
+
+
 def admin_only_suppresses(policies: dict[str, Any] | None, sender: str | None) -> bool:
     """True when the active agent is ``admin_only`` and ``sender`` is NOT
     whitelisted — the inbound must be fully suppressed (no reply, no read
@@ -90,4 +101,5 @@ __all__ = [
     "admin_only_suppresses",
     "sender_is_admin",
     "sender_role",
+    "usable_admin_phones",
 ]
