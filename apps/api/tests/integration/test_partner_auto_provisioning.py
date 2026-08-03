@@ -638,6 +638,30 @@ async def test_partner_client_status_tracks_onboarding(client, db_session) -> No
     assert a["missing"] == []
 
 
+async def test_admin_patch_partner_blueprint_returns_200(
+    client, db_session, admin_headers
+) -> None:
+    """Regression: the PATCH committed and then blew up serialising the
+    response (``updated_at`` is server-side ``onupdate``, so the flush
+    expires it and reading it outside the async block raises
+    MissingGreenlet). Operators saw a 500 on a change that HAD applied."""
+    world = await _blueprint_partner(db_session, seed=None, connector=None)
+    r = await client.patch(
+        f"/admin/partners/{world['partner_id']}",
+        json={
+            "default_seed_template": SEED,
+            "default_connector_slug": CONNECTOR,
+            "auto_activate": True,
+        },
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["default_seed_template"] == SEED
+    assert body["default_connector_slug"] == CONNECTOR
+    assert body["auto_activate"] is True
+
+
 async def test_partner_client_status_unknown_ref_is_404(client, db_session) -> None:
     world = await _blueprint_partner(db_session)
     r = await client.get("/v1/partners/clients/nope", headers=_auth(world["key"]))

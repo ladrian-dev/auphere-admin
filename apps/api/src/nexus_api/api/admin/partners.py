@@ -144,6 +144,12 @@ async def update_partner(
                 partner_id=partner.id,
                 payload={"fields": sorted(changes)},
             )
+        # ``updated_at`` is server-side ``onupdate``: the flush expires it,
+        # and reading it after the block (outside the async context) raises
+        # MissingGreenlet — a 500 on a request that already committed. Load
+        # it here, while there is still a greenlet to do the IO.
+        await session.flush()
+        await session.refresh(partner)
     return PartnerOut.model_validate(partner)
 
 
