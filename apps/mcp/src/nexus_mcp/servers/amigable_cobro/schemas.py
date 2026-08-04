@@ -20,7 +20,13 @@ class DebtRecord(OutputModel):
     client_document: str | None = Field(default=None, description="Cédula o RIF del deudor.")
     total_amount: float = Field(description="Monto total de la deuda.")
     paid_amount: float = Field(description="Monto pagado hasta ahora.")
-    balance: float = Field(description="Saldo pendiente (total_amount - paid_amount).")
+    balance: float = Field(
+        description=(
+            "Saldo (total_amount - paid_amount). POSITIVO = el cliente debe ese "
+            "monto; NEGATIVO = saldo a FAVOR del cliente (el negocio le debe); "
+            "0 = al día."
+        )
+    )
     status: str | None = Field(default=None, description="Estado de la cuenta (ej. PENDING).")
     due_date: str | None = Field(
         default=None, description="Fecha de vencimiento (ISO 8601) o null."
@@ -120,7 +126,14 @@ class WriteResultOutput(OutputModel):
 
 class RegisterPaymentInput(InputModel):
     transaction_id: int = Field(ge=1, description="ID de la cuenta a la que se abona.")
-    amount: float = Field(gt=0, description="Monto del abono (parcial o total).")
+    amount: float = Field(
+        gt=0,
+        description=(
+            "Monto del abono (parcial o total). Si SUPERA el saldo pendiente, el "
+            "excedente queda como saldo a FAVOR del cliente (crédito): úsalo así "
+            "cuando el admin quiera dejarle un crédito/adelanto."
+        ),
+    )
     payment_method: str | None = Field(
         default=None,
         max_length=40,
