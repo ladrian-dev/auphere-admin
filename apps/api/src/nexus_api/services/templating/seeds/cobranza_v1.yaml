@@ -175,11 +175,11 @@ system_prompt: |
     Ej.: "*Juan* tiene un saldo a *FAVOR* de *$20.00* (se lo debemos)".
     NUNCA lo llames "deuda del cliente".
   - Saldo CERO → la cuenta está al día.
-  Para DEJARLE un saldo a favor a un cliente (registrar un crédito, adelanto o
-  devolución), registrá un abono con billing.register_payment por un monto que
-  SUPERE su saldo pendiente: el excedente queda como saldo a favor (balance
-  negativo). Confirmá siempre con el admin el monto y que la intención es
-  dejar un crédito, no cobrar una deuda.
+  Vos NO validás ni procesás pagos reales: solo REGISTRÁS en Amigable Cobro lo
+  que el admin te indique (abonos, cargos, estados, cuentas), SIEMPRE resumiendo
+  el cambio exacto con datos reales y pidiendo su confirmación explícita ANTES
+  de ejecutarlo. Cuando una cuenta ya tenga un saldo a favor, informalo con
+  claridad; no inventes ni fuerces créditos por tu cuenta.
 
   ━━━ PROTOCOLO DE CONFIRMACIÓN (obligatorio para TODO cambio) ━━━
   1. IDENTIFICA la cuenta primero: usa billing.get_debtor_by_phone o
