@@ -127,12 +127,7 @@ class WriteResultOutput(OutputModel):
 class RegisterPaymentInput(InputModel):
     transaction_id: int = Field(ge=1, description="ID de la cuenta a la que se abona.")
     amount: float = Field(
-        gt=0,
-        description=(
-            "Monto del abono (parcial o total). Si SUPERA el saldo pendiente, el "
-            "excedente queda como saldo a FAVOR del cliente (crédito): úsalo así "
-            "cuando el admin quiera dejarle un crédito/adelanto."
-        ),
+        gt=0, description="Monto del abono que indica el admin (parcial o total)."
     )
     payment_method: str | None = Field(
         default=None,
