@@ -224,22 +224,6 @@ class Settings(BaseSettings):
     # environment via ``NEXUS_USE_UCM_FORMATTER=false`` for instant rollback.
     use_ucm_formatter: bool = True
 
-    # ── ADR-028: embed widget partner platform ──────────────────────────────
-    # HS256 signing secret for the short-lived widget session JWTs minted
-    # by ``POST /v1/widget-sessions``. Only this API mints and verifies
-    # them, so a symmetric key is correct. Distinct from ``admin_token``
-    # on purpose: compromising one surface must not open the other.
-    embed_jwt_secret: str = "dev-embed-jwt-secret-change-me-0000"  # ≥32 bytes per RFC 7518
-    # Session token TTL. 15 min (Stripe AccountSession ballpark) — long
-    # enough for a broadcast flow, short enough that a leaked token is
-    # near-useless. The loader re-mints via the partner's backend on
-    # ``auph:token:expiring``.
-    embed_token_ttl_seconds: int = 900
-    # JWT audience AND the only origin allowed by the API's CORS layer —
-    # the iframe app is the sole browser consumer of ``/v1/embed/*``.
-    # Dev: override to http://localhost:3002 (apps/embed dev server).
-    embed_app_origin: str = "https://embed.auphere.com"
-
     @property
     def media_s3_enabled(self) -> bool:
         """True when enough creds are present to upload to S3. In dev with
@@ -292,8 +276,6 @@ class Settings(BaseSettings):
             offenders.append("NEXUS_META_WEBHOOK_VERIFY_TOKEN")
         if self.fernet_key == _DEV_FERNET_KEY:
             offenders.append("NEXUS_FERNET_KEY")
-        if "change-me" in self.embed_jwt_secret:
-            offenders.append("NEXUS_EMBED_JWT_SECRET")
         # Only enforced once the operator flips ``NEXUS_TIKTOK_ENABLED`` on —
         # until TikTok approves the Business Messaging review the channel
         # ships dark and there is nothing real to put here.

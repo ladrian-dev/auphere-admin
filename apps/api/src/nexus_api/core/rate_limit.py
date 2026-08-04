@@ -98,3 +98,10 @@ def mint_bucket_key(partner_id: str) -> str:
 
 def embed_bucket_key(partner_id: str) -> str:
     return f"rl:partner:{partner_id}:embed"
+
+
+def broadcast_bucket_key(partner_id: str) -> str:
+    """Server-to-server broadcast surface. Its own bucket so a partner
+    hammering sends cannot starve its own provisioning calls (or the
+    other way round) — the limits are tuned per surface, not shared."""
+    return f"rl:partner:{partner_id}:broadcast"

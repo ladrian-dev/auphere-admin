@@ -12,12 +12,11 @@ until its WhatsApp signup completes, at which point
 Every function here assumes the caller already holds a tenant-scoped
 transaction: ``app.tenant_id`` applied to the session AND the
 ``_current_tenant`` contextvar set (AgentConfigRepository reads it).
-``/v1/partners/clients`` wraps the calls itself; the embed signup
-endpoint arrives pre-scoped via ``scoped_session_from_embed_jwt``.
+``/v1/partners/clients`` and the client signup endpoint wrap the calls
+themselves.
 
 Isolation note: nothing in this module chooses a tenant_id — callers
-resolve it through ``partner_tenants`` (provision) or the signed widget
-JWT (signup), the only two sanctioned paths.
+resolve it through ``partner_tenants``, the only sanctioned path.
 """
 
 from __future__ import annotations

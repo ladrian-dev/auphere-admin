@@ -68,6 +68,7 @@ from nexus_api.db.models.owner_backchannel import (
     OwnerPhoneIndex,
 )
 from nexus_api.db.models.partner import (
+    TENANT_SCOPED_API_KEY_SCOPES,
     ApiKeyScope,
     ApiKeyType,
     EmbedAuditLog,
@@ -94,6 +95,7 @@ __all__ = [
     "OWNER_CONSULTATION_EXPECTED_REPLY_KINDS",
     "OWNER_CONSULTATION_STATUSES",
     "OWNER_CONSULTATION_URGENCIES",
+    "TENANT_SCOPED_API_KEY_SCOPES",
     "AgentConfig",
     "AgentConfigStatus",
     "AgentMemory",

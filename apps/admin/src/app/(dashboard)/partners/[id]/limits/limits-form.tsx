@@ -151,7 +151,7 @@ export function LimitsForm({ partner }: { partner: PartnerOut }) {
             name="rate_limit_embed_per_min"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Embed / min</FormLabel>
+                <FormLabel>Campañas / min</FormLabel>
                 <FormControl>
                   <Input
                     {...field}
@@ -162,7 +162,7 @@ export function LimitsForm({ partner }: { partner: PartnerOut }) {
                   />
                 </FormControl>
                 <FormDescription>
-                  Llamadas del widget por minuto.
+                  Envíos de campaña por minuto.
                 </FormDescription>
                 <FormMessage />
               </FormItem>

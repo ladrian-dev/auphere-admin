@@ -71,7 +71,6 @@ def test_prod_rejects_placeholder_meta_app_secret(monkeypatch):
     assert "NEXUS_FERNET_KEY" in msg
     # ADR-028: the embed JWT secret joined the guard — a prod deploy that
     # forgets it must not silently mint tokens with the public default.
-    assert "NEXUS_EMBED_JWT_SECRET" in msg
 
 
 def test_prod_boots_with_real_secrets(monkeypatch):

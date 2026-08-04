@@ -26,6 +26,8 @@ from nexus_worker.runtime.dispatcher import InboundEvent, process_inbound
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
+    AgentConfig,
+    AgentConfigStatus,
     Channel,
     ChannelStatus,
     ChannelType,
@@ -59,8 +61,16 @@ class _RecordingPipeline:
 
 
 async def _make_tenant_with_channel(
-    db_session: Any, status: TenantStatus
+    db_session: Any,
+    status: TenantStatus,
+    *,
+    agent: AgentConfigStatus | None = AgentConfigStatus.ACTIVE,
 ) -> tuple[uuid.UUID, uuid.UUID]:
+    """Tenant + channel, with an agent_config in ``agent`` status.
+
+    ``agent=None`` builds a **send-only** tenant: no agent_config row ever,
+    the shape of a client that only uses the outbound template API.
+    """
     tenant_id = uuid.uuid4()
     db_session.add(
         Tenant(
@@ -72,6 +82,21 @@ async def _make_tenant_with_channel(
         )
     )
     await db_session.commit()
+
+    if agent is not None:
+        db_session.add(
+            AgentConfig(
+                tenant_id=tenant_id,
+                version=1,
+                status=agent,
+                system_prompt_rendered="Eres un asistente de prueba.",
+                channels=[],
+                tools=[],
+                policies={},
+                created_by="test",
+            )
+        )
+        await db_session.commit()
 
     channel = Channel(
         tenant_id=tenant_id,
@@ -162,6 +187,60 @@ async def test_archived_tenant_persists_inbound_but_skips_pipeline(
     assert result["skipped"] == "tenant_inactive"
     assert result["tenant_status"] == "archived"
     assert await _count_inbound(tenant_id) == 1
+
+
+async def test_send_only_tenant_skips_pipeline_without_erroring(
+    db_session: Any,
+) -> None:
+    """A tenant that never had an agent_config uses the outbound template
+    API only. Its customers' replies still arrive, and they must be a
+    skip (acked) — NOT an IsolationViolation that leaves the Redis entry
+    pending forever and floods the logs with ERROR."""
+    tenant_id, channel_id = await _make_tenant_with_channel(
+        db_session, TenantStatus.ACTIVE, agent=None
+    )
+    pipeline = _RecordingPipeline()
+
+    result = await process_inbound(
+        InboundEvent(
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            user_id="+5699910005",
+            content="gracias, ya pagué",
+        ),
+        pipeline=pipeline,
+    )
+
+    assert pipeline.calls == [], "a send-only tenant has nothing to run"
+    assert result["skipped"] == "no_agent"
+    # Still persisted: the operator panel shows the customer's reply.
+    assert await _count_inbound(tenant_id) == 1
+
+
+async def test_tenant_with_only_archived_agent_is_not_treated_as_send_only(
+    db_session: Any,
+) -> None:
+    """Having versions but no ACTIVE one is a BROKEN agent, not a
+    send-only client. It must keep reaching the pipeline, where the loader
+    raises IsolationViolation and the consumer logs a real error (the
+    sentinel pipeline here stands in for that path)."""
+    tenant_id, channel_id = await _make_tenant_with_channel(
+        db_session, TenantStatus.ACTIVE, agent=AgentConfigStatus.ARCHIVED
+    )
+    pipeline = _RecordingPipeline()
+
+    result = await process_inbound(
+        InboundEvent(
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            user_id="+5699910006",
+            content="hola?",
+        ),
+        pipeline=pipeline,
+    )
+
+    assert result.get("skipped") is None, "a broken agent must not be silenced"
+    assert len(pipeline.calls) == 1
 
 
 async def test_unknown_tenant_returns_skipped_without_raising(

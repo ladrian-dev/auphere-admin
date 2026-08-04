@@ -88,7 +88,6 @@ export async function createPartnerKeyAction(
     const r = await backend.createPartnerKey(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath(`/partners/${partnerId}`);
-    revalidatePath(`/partners/${partnerId}/origins`);
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -106,7 +105,6 @@ export async function rotatePartnerKeyAction(
     });
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath(`/partners/${partnerId}`);
-    revalidatePath(`/partners/${partnerId}/origins`);
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -121,27 +119,6 @@ export async function revokePartnerKeyAction(
     const r = await backend.revokePartnerKey(partnerId, keyId);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath(`/partners/${partnerId}`);
-    revalidatePath(`/partners/${partnerId}/origins`);
-    return { ok: true, data: r };
-  } catch (e) {
-    return err(e);
-  }
-}
-
-export async function updateKeyOriginsAction(
-  partnerId: string,
-  keyId: string,
-  allowedOrigins: string[],
-): Promise<ActionResult<PartnerApiKeyOut>> {
-  try {
-    const r = await backend.updatePartnerKeyOrigins(
-      partnerId,
-      keyId,
-      allowedOrigins,
-    );
-    if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}`);
-    revalidatePath(`/partners/${partnerId}/origins`);
     return { ok: true, data: r };
   } catch (e) {
     return err(e);

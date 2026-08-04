@@ -32,7 +32,6 @@ from nexus_api.schemas.partner import (
     ApiKeyOut,
     ApiKeyRotateIn,
     EmbedAuditEntryOut,
-    OriginsUpdateIn,
     PartnerCreateIn,
     PartnerOut,
     PartnerTenantLinkIn,
@@ -272,33 +271,6 @@ async def revoke_key(
             event="key.revoked",
             partner_id=partner_id,
             api_key_id=key.id,
-        )
-    return ApiKeyOut.model_validate(key)
-
-
-@router.put("/{partner_id}/keys/{key_id}/origins", response_model=ApiKeyOut)
-async def update_origins(
-    partner_id: uuid.UUID,
-    key_id: uuid.UUID,
-    body: OriginsUpdateIn,
-    session: AsyncSession = Depends(get_db_session),
-) -> ApiKeyOut:
-    for origin in body.allowed_origins:
-        if not origin.startswith("https://") and not origin.startswith("http://localhost"):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"origin must be https (or http://localhost for dev): {origin}",
-            )
-    async with session.begin():
-        key = await PartnerApiKeyRepository(session).get(key_id)
-        if key is None or key.partner_id != partner_id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="key not found")
-        key.allowed_origins = body.allowed_origins
-        await EmbedAuditRepository(session).record(
-            event="key.origins_updated",
-            partner_id=partner_id,
-            api_key_id=key.id,
-            payload={"allowed_origins": body.allowed_origins},
         )
     return ApiKeyOut.model_validate(key)
 

@@ -6,10 +6,9 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from nexus_api import __version__
-from nexus_api.api import admin, embed, messages, partners, partners_clients, qa, webhooks
+from nexus_api.api import admin, messages, partners, partners_clients, qa, webhooks
 from nexus_api.api import connectors as connectors_public
 from nexus_api.config import settings
 from nexus_api.core import isolation_enforcer, otel
@@ -75,25 +74,17 @@ app = FastAPI(
 )
 
 app.add_middleware(LoggingContextMiddleware)
-# ADR-028: the iframe app is the ONLY browser consumer of this API —
-# CORS allows exactly that origin. Everything else is server-to-server
-# (admin token / partner secret key) and needs no CORS at all.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[settings.embed_app_origin],
-    allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type"],
-    max_age=600,
-)
+# No CORS layer on purpose: every surface of this API is
+# server-to-server (admin token, partner secret key, tenant key or
+# webhook signature). Nothing is called from a browser, so allowing an
+# origin would only widen the attack surface.
 app.include_router(health_router)
 app.include_router(admin.router)
 app.include_router(webhooks.router)
 app.include_router(connectors_public.router)
 app.include_router(qa.router)
-# ADR-028: public partner surface (secret API key, server-to-server)
-# + browser-facing embed surface (widget session JWT).
+# ADR-028: public partner surface (secret API key, server-to-server).
 app.include_router(partners.router)
 app.include_router(partners_clients.router)
-app.include_router(embed.router)
 # Direct outbound sends for tenant-scoped keys (n8n, cron, scripts).
 app.include_router(messages.router)

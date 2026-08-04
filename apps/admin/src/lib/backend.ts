@@ -1663,16 +1663,6 @@ export const backend = {
       { method: "POST", body: {} },
     ),
 
-  updatePartnerKeyOrigins: (
-    partnerId: string,
-    keyId: string,
-    allowedOrigins: string[],
-  ) =>
-    call<PartnerApiKeyOut>(
-      `/admin/partners/${partnerId}/keys/${keyId}/origins`,
-      { method: "PUT", body: { allowed_origins: allowedOrigins } },
-    ),
-
   listPartnerTenants: (partnerId: string) =>
     call<PartnerTenantOut[]>(`/admin/partners/${partnerId}/tenants`).then(
       (r) => r ?? [],

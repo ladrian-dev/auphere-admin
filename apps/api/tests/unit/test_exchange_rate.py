@@ -26,7 +26,9 @@ class TestParse:
         }
         assert _parse_observed_dollar(payload) == Decimal("932.84")
 
-    @pytest.mark.parametrize("payload", [{}, {"serie": []}, {"serie": [{}]}, {"serie": [{"valor": 0}]}])
+    @pytest.mark.parametrize(
+        "payload", [{}, {"serie": []}, {"serie": [{}]}, {"serie": [{"valor": 0}]}]
+    )
     def test_raises_on_bad_payload(self, payload: dict) -> None:
         with pytest.raises(ExchangeRateUnavailable):
             _parse_observed_dollar(payload)

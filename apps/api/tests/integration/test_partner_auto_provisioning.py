@@ -1,4 +1,4 @@
-"""Partner auto-provisioning + embed signup (ADR-028 Fase 2a/2b).
+"""Partner auto-provisioning + WhatsApp signup (ADR-028 Fase 2a/2b).
 
 End-to-end over the public surfaces with the real DB and a respx-mocked
 Graph API:
@@ -8,9 +8,10 @@ Graph API:
    connected ``api_key`` connector behind — not just a bare tenant.
 2. Re-provisioning never re-seeds the agent (idempotent) but rotates
    connector credentials.
-3. ``POST /v1/embed/whatsapp/signup`` completes Embedded Signup from a
-   widget JWT and flips the tenant PROVISIONING → ACTIVE when the
-   partner has ``auto_activate`` and a promoted agent exists.
+3. ``POST /v1/partners/clients/{ref}/whatsapp/signup`` completes Embedded
+   Signup from the partner's own backend and flips the tenant
+   PROVISIONING → ACTIVE when the partner has ``auto_activate`` and a
+   promoted agent exists.
 4. ``GET /admin/partners/{id}/usage`` aggregates the per-client rows the
    billing view needs.
 """
@@ -24,7 +25,6 @@ import respx
 import sqlalchemy as sa
 from nexus_channels.whatsapp_meta.meta_client import META_GRAPH_BASE_URL
 
-from nexus_api.core.embed_jwt import mint_widget_token
 from nexus_api.core.partner_keys import generate_api_key
 from nexus_api.db.models import (
     AgentConfig,
@@ -132,7 +132,7 @@ async def _blueprint_partner(
             partner_id=partner_id,
             prefix_snippet=generated.prefix_snippet,
             key_hash=generated.key_hash,
-            scopes=["provision", "widget_sessions"],
+            scopes=["provision", "broadcasts"],
             allowed_origins=["https://partner.example"],
         )
     )
@@ -324,47 +324,8 @@ async def test_provision_connector_requires_credentials_shape(client, db_session
     assert r.status_code == 422
 
 
-# ── embed signup ───────────────────────────────────────────────────────────
-
-
-def _widget_token(world: dict, tenant_id: uuid.UUID, *, scope: list[str] | None = None) -> str:
-    token, _jti, _exp = mint_widget_token(
-        tenant_id=tenant_id,
-        partner_id=world["partner_id"],
-        key_id=world["key_id"],
-        scope=scope if scope is not None else ["widget:send", "widget:connect"],
-        allowed_origins=["https://partner.example"],
-    )
-    return token
-
-
-def _signup_body() -> dict:
-    return {
-        "code": "OAUTH_CODE_XYZ",
-        "waba_id": "WABA_TEST",
-        "phone_number_id": "PN_TEST",
-        "business_id": "BIZ_TEST",
-        "mode": "cloud_api",
-    }
-
-
-def _mock_graph_happy_path(mock: respx.MockRouter) -> None:
-    mock.get("/oauth/access_token").respond(
-        200, json={"access_token": "EAA-bisuat-test", "expires_in": 5_184_000}
-    )
-    mock.post("/PN_TEST/register").respond(200, json={"success": True})
-    mock.post("/WABA_TEST/subscribed_apps").respond(200, json={"success": True})
-    mock.get("/PN_TEST").respond(
-        200,
-        json={
-            "display_phone_number": "58 424-4095716",
-            "verified_name": "Bodegón El Ávila",
-            "quality_rating": "GREEN",
-        },
-    )
-
-
 async def _provisioned_world(client, db_session, **partner_kwargs) -> tuple[dict, uuid.UUID]:
+    """Blueprint partner + one provisioned client, ready for signup."""
     world = await _blueprint_partner(db_session, **partner_kwargs)
     r = await client.post(
         "/v1/partners/clients", json=_provision_body(), headers=_auth(world["key"])
@@ -374,102 +335,23 @@ async def _provisioned_world(client, db_session, **partner_kwargs) -> tuple[dict
     return world, tenant_id
 
 
-async def test_embed_signup_connects_and_activates(client, db_session) -> None:
-    world, tenant_id = await _provisioned_world(client, db_session)
-    token = _widget_token(world, tenant_id)
-    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
-        _mock_graph_happy_path(mock)
-        r = await client.post(
-            "/v1/embed/whatsapp/signup", json=_signup_body(), headers=_auth(token)
-        )
-    assert r.status_code == 201, r.text
-    body = r.json()
-    assert body["status"] == "connected"
-    assert body["display_phone_number"].startswith("+58")
-    assert body["tenant_activated"] is True
-
-    tenant = await db_session.get(TenantModel, tenant_id)
-    await db_session.refresh(tenant)
-    assert tenant.status is TenantStatus.ACTIVE
-
-    channel = await db_session.scalar(
-        sa.select(Channel).where(Channel.tenant_id == tenant_id, Channel.provider == "meta")
-    )
-    assert channel is not None
-
-    events = (
-        await db_session.scalars(
-            sa.select(EmbedAuditLog.event).where(EmbedAuditLog.tenant_id == tenant_id)
-        )
-    ).all()
-    assert "whatsapp.signup.completed" in events
-    assert "tenant.activated" in events
-
-    # The embed status endpoint now reports connected — what gates the
-    # partner's broadcast button.
-    status_resp = await client.get("/v1/embed/status", headers=_auth(token))
-    assert status_resp.json()["status"] == "connected"
-
-
-async def test_embed_signup_requires_connect_scope(client, db_session) -> None:
-    world, tenant_id = await _provisioned_world(client, db_session)
-    send_only = _widget_token(world, tenant_id, scope=["widget:send"])
-    r = await client.post(
-        "/v1/embed/whatsapp/signup", json=_signup_body(), headers=_auth(send_only)
-    )
-    assert r.status_code == 403
-    assert "widget:connect" in r.json()["detail"]
-
-
-async def test_embed_signup_without_auto_activate_stays_provisioning(client, db_session) -> None:
-    world, tenant_id = await _provisioned_world(client, db_session, auto_activate=False)
-    token = _widget_token(world, tenant_id)
-    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
-        _mock_graph_happy_path(mock)
-        r = await client.post(
-            "/v1/embed/whatsapp/signup", json=_signup_body(), headers=_auth(token)
-        )
-    assert r.status_code == 201, r.text
-    assert r.json()["tenant_activated"] is False
-    tenant = await db_session.get(TenantModel, tenant_id)
-    await db_session.refresh(tenant)
-    assert tenant.status is TenantStatus.PROVISIONING
-
-
-async def test_embed_signup_without_agent_stays_provisioning(client, db_session) -> None:
-    """auto_activate=True but the partner has no seed blueprint → the
-    tenant has no agent, so activation must NOT happen (an answered
-    number with no agent behind it)."""
-    world = await _blueprint_partner(db_session, seed=None, connector=None)
-    body = _provision_body()
-    body.pop("agent")
-    body.pop("connector")
-    r = await client.post("/v1/partners/clients", json=body, headers=_auth(world["key"]))
-    assert r.status_code == 200
-    tenant_id = await _mapped_tenant_id(db_session, world["partner_id"], "negocio-42")
-
-    token = _widget_token(world, tenant_id)
-    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
-        _mock_graph_happy_path(mock)
-        resp = await client.post(
-            "/v1/embed/whatsapp/signup", json=_signup_body(), headers=_auth(token)
-        )
-    assert resp.status_code == 201, resp.text
-    assert resp.json()["tenant_activated"] is False
-    tenant = await db_session.get(TenantModel, tenant_id)
-    await db_session.refresh(tenant)
-    assert tenant.status is TenantStatus.PROVISIONING
-
-
 # ── usage / billing view ───────────────────────────────────────────────────
 
 
 async def test_partner_usage_aggregates_clients(client, db_session, admin_headers) -> None:
-    world, tenant_id = await _provisioned_world(client, db_session)
-    token = _widget_token(world, tenant_id)
+    world, _tenant_id = await _provisioned_world(client, db_session)
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
-        _mock_graph_happy_path(mock)
-        await client.post("/v1/embed/whatsapp/signup", json=_signup_body(), headers=_auth(token))
+        _mock_graph_coexistence(mock)
+        await client.post(
+            "/v1/partners/clients/negocio-42/whatsapp/signup",
+            json={
+                "code": "OAUTH_CODE_XYZ",
+                "waba_id": "WABA_TEST",
+                "phone_number_id": "PN_TEST",
+                "mode": "coexistence",
+            },
+            headers=_auth(world["key"]),
+        )
 
     r = await client.get(f"/admin/partners/{world['partner_id']}/usage", headers=admin_headers)
     assert r.status_code == 200, r.text
@@ -638,9 +520,7 @@ async def test_partner_client_status_tracks_onboarding(client, db_session) -> No
     assert a["missing"] == []
 
 
-async def test_admin_patch_partner_blueprint_returns_200(
-    client, db_session, admin_headers
-) -> None:
+async def test_admin_patch_partner_blueprint_returns_200(client, db_session, admin_headers) -> None:
     """Regression: the PATCH committed and then blew up serialising the
     response (``updated_at`` is server-side ``onupdate``, so the flush
     expires it and reading it outside the async block raises

@@ -54,15 +54,23 @@ class ApiKeyScope(str, enum.Enum):
     """What a key is allowed to do. Stored as plain strings in
     ``api_keys.scopes`` — this enum is the vocabulary, not a DB type.
 
-    ``PROVISION`` and ``WIDGET_SESSIONS`` are partner-level: they act
-    across the partner's clients. ``MESSAGES_SEND`` is tenant-level and
-    only meaningful on a key that carries ``tenant_id`` (see migration
-    0052) — sending needs one unambiguous WhatsApp channel to send from.
+    ``PROVISION``, ``WIDGET_SESSIONS`` and ``BROADCASTS`` are
+    partner-level: they act across the partner's clients.
+    ``MESSAGES_SEND`` is tenant-level and only meaningful on a key that
+    carries ``tenant_id`` (see migration 0052) — sending needs one
+    unambiguous WhatsApp channel to send from.
+
+    ``PROVISION`` and ``BROADCASTS`` are deliberately separate: creating
+    clients and configuring who administers them is an integration-time
+    capability, while messaging a client's end customers is an operational
+    one with real-world reach. A partner can hold a key for each, so a
+    leaked provisioning key cannot message anyone's debtors.
     """
 
     PROVISION = "provision"
     WIDGET_SESSIONS = "widget_sessions"
     MESSAGES_SEND = "messages_send"
+    BROADCASTS = "broadcasts"
 
 
 #: Scopes that require the key to be bound to a single tenant.

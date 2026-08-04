@@ -31,7 +31,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.partner_keys import checksum_ok, hash_key
-from nexus_api.db.models import Partner, PartnerApiKey, PartnerStatus
+from nexus_api.db.models import (
+    TENANT_SCOPED_API_KEY_SCOPES,
+    Partner,
+    PartnerApiKey,
+    PartnerStatus,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -115,6 +120,22 @@ def require_partner_key(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"API key lacks required scope: {scope}",
+            )
+        # A key confined to one tenant may NEVER exercise a partner-level
+        # scope: those endpoints pick the tenant from ``external_client_ref``,
+        # so honouring one here would let a key issued for tenant A act on
+        # every other client of the partner. The DB check constraint only
+        # covers ``provision`` (migration 0052); this covers every present
+        # and future partner-level scope. Tenant-scoped scopes
+        # (``messages_send``) are exactly the ones that MUST carry a
+        # tenant, so they are not affected.
+        if api_key.tenant_id is not None and scope not in TENANT_SCOPED_API_KEY_SCOPES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f"scope {scope!r} is partner-level and cannot be used from a "
+                    "tenant-scoped API key"
+                ),
             )
 
         # Bookkeeping — never let it fail the authenticated request.

@@ -16,6 +16,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+#: The scope vocabulary, mirrored from ``ApiKeyScope`` so the admin
+#: surface rejects unknown values at the edge instead of storing them.
+ApiKeyScopeLiteral = Literal["provision", "widget_sessions", "messages_send", "broadcasts"]
+
 # ── /v1/partners (public, server-to-server) ─────────────────────────────────
 
 
@@ -123,7 +127,10 @@ class PartnerOut(BaseModel):
 
 class ApiKeyCreateIn(BaseModel):
     type: Literal["live", "test"] = "live"
-    scopes: list[str] = Field(default=["provision", "widget_sessions"])
+    # Validated against the vocabulary: a typo used to mint a key that
+    # silently authorises nothing (or, worse, reads as authorising more
+    # than it does on the partner's side).
+    scopes: list[ApiKeyScopeLiteral] = Field(default=["provision", "broadcasts"])
     allowed_origins: list[str] = Field(default_factory=list)
     expires_at: datetime | None = None
 

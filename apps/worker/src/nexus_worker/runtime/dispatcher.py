@@ -225,15 +225,28 @@ async def process_inbound(
         # Admin-only agents (e.g. cobranza_v1): read the active config's
         # policies while the session is open so the sender gate below can
         # check the whitelist without another transaction.
-        agent_policies: dict[str, Any] = (
+        active_agent = (
             await session.execute(
-                sa.select(AgentConfig.policies)
+                sa.select(AgentConfig.id, AgentConfig.policies)
                 .where(AgentConfig.tenant_id == event.tenant_id)
                 .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
                 .order_by(AgentConfig.version.desc())
                 .limit(1)
             )
-        ).scalar_one_or_none() or {}
+        ).first()
+        agent_policies: dict[str, Any] = (active_agent[1] if active_agent else None) or {}
+        # A tenant with NO agent_config at all is send-only by design (it
+        # uses the outbound template API and never had an agent). One with
+        # versions but none ACTIVE is a broken agent — see the skip below.
+        ever_had_agent = True
+        if active_agent is None:
+            ever_had_agent = bool(
+                await session.scalar(
+                    sa.select(sa.func.count())
+                    .select_from(AgentConfig)
+                    .where(AgentConfig.tenant_id == event.tenant_id)
+                )
+            )
         # Bloque C — Operator intervention. ``takeover_context`` is populated
         # by ``PATCH .../agent`` when the operator pauses the agent. The
         # first turn after the operator reactivates (i.e. ``agent_active``
@@ -286,6 +299,30 @@ async def process_inbound(
         return {
             "skipped": "tenant_inactive",
             "tenant_status": tenant_status.value,
+            "conversation_id": str(conversation_id),
+            "inbound_message_id": str(inbound_id),
+        }
+
+    if active_agent is None and not ever_had_agent:
+        # Send-only tenant: it uses the outbound template API and never had
+        # an agent, so replies from its customers have nothing to run. The
+        # inbound is persisted (the panel shows the conversation) and the
+        # Redis entry is acked.
+        #
+        # Letting this fall through would raise IsolationViolation deep in
+        # the loader, which the consumer logs as ``dispatch_failed`` and
+        # leaves UNACKED — growing the pending list forever and burying
+        # real incidents under a permanent stream of ERROR lines. A tenant
+        # that HAS agent versions but no ACTIVE one still takes that path:
+        # that one really is broken.
+        log.info(
+            "pipeline.skipped.no_agent",
+            tenant_id=str(event.tenant_id),
+            conversation_id=str(conversation_id),
+            inbound_message_id=str(inbound_id),
+        )
+        return {
+            "skipped": "no_agent",
             "conversation_id": str(conversation_id),
             "inbound_message_id": str(inbound_id),
         }

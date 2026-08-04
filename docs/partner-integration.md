@@ -1,12 +1,16 @@
-# Guía de integración para partners — Auphere Embed
+# Guía de integración para partners — Auphere API
 
-> Cómo un partner SaaS integra Auphere en su plataforma para que **cada
-> negocio (cliente final) del partner** tenga su propio agente de WhatsApp
-> con sus datos aislados, conecte su número self-serve y envíe campañas
-> (broadcasts) de plantillas desde la vista de su negocio.
+> Cómo un partner SaaS integra Auphere para que **cada negocio (cliente
+> final) del partner** tenga su propio agente de WhatsApp con sus datos
+> aislados, conecte su propio número y envíe campañas de plantillas — todo
+> desde la app del partner, server-to-server, sin operador de Auphere en
+> el medio.
 >
 > Audiencia: el equipo de desarrollo del partner + el operador Auphere
 > que da de alta al partner. Arquitectura de referencia: ADR-028.
+>
+> Es una API HTTP: no hay SDK que instalar ni nada que montar en tu
+> frontend. Tu backend habla con `api.auphere.com` con tu secret key.
 
 ---
 
@@ -18,25 +22,28 @@
 | Negocio / cliente final | `tenant` aislado (RLS), referenciado SOLO por **tu** id (`external_client_ref`) |
 | WhatsApp del negocio | Canal Meta Cloud API propio del tenant (WABA del negocio) |
 | Agente del negocio | `agent_config` clonado del **blueprint** del partner (seed template) |
-| Recordatorios masivos | `broadcast` de plantilla HSM a N destinatarios |
+| Campañas / recordatorios | `broadcast` de plantilla HSM a 1..N destinatarios |
 
 Reglas de oro:
 
-1. **La secret key nunca sale de tu backend.** El browser solo ve *session
-   tokens* efímeros (JWT, 15 min) scoped a UN negocio.
+1. **La secret key nunca sale de tu backend.** Nunca la pongas en tu
+   frontend: todas estas llamadas son server-to-server.
 2. **Nunca conoces nuestros `tenant_id`.** Hablas con tu propio
    `external_client_ref`; nosotros mapeamos.
 3. **Los destinatarios y variables los mandas tú.** Tu CRM es la fuente de
-   verdad; el widget solo previsualiza y dispara.
+   verdad; nosotros validamos, encolamos, entregamos y reportamos.
+4. **Dos scopes, dos capacidades.** `provision` da de alta y configura
+   negocios; `broadcasts` les manda mensajes a sus clientes finales. Podés
+   tener una key para cada cosa.
 
 ## 2. Requisitos previos
 
 **Del partner:**
-- Backend server-to-server capaz de guardar la secret key (env/secret
-  manager, jamás en el bundle del frontend).
-- Frontend web (React o vanilla) donde montar `@auphere/embed`.
+- Backend capaz de guardar la secret key (env/secret manager, jamás en el
+  bundle del frontend).
 - Un id estable por negocio (`external_client_ref`) — UUID recomendado.
-- Los orígenes (URLs) desde donde se embebe el widget (para CORS/CSP).
+- Para conectar WhatsApp: poder abrir el popup de Meta desde tu web (JS
+  SDK de Facebook con NUESTRO `app_id`, que te damos por API).
 
 **De cada negocio que se conecta:**
 - Acceso a su **Meta Business** (el login de Meta lo completa el dueño o
@@ -54,14 +61,26 @@ Reglas de oro:
      `amigable_cobro`). Opcional.
    - `auto_activate` — si el tenant pasa a ACTIVE solo al completar el
      signup de WhatsApp (default `true`).
-3. Emitir la **API key** con los `allowed_origins` del partner. El
-   plaintext se muestra UNA vez — entregarlo por canal seguro.
-4. Ajustar límites si aplica: `broadcast_recipient_cap` (default 250),
-   rate limits de mint/embed.
+3. Emitir la **API key** con los scopes que corresponda (`provision`,
+   `broadcasts`, o ambos). El plaintext se muestra UNA vez — entregarlo
+   por canal seguro.
+4. Ajustar límites si aplica: `broadcast_recipient_cap` (default 250) y
+   el rate limit de campañas por minuto.
 
 ## 3. Contrato de API (backend del partner)
 
 Base: `https://api.auphere.com` (prod). Auth: `Authorization: Bearer ak_live_…`.
+
+| Endpoint | Scope |
+|---|---|
+| `POST /v1/partners/clients` | `provision` |
+| `GET /v1/partners/clients/{ref}` | `provision` |
+| `GET /v1/partners/whatsapp/signup-config` | `provision` |
+| `POST /v1/partners/clients/{ref}/whatsapp/signup` | `provision` |
+| `GET`/`PUT /v1/partners/clients/{ref}/admins` | `provision` |
+| `GET /v1/partners/clients/{ref}/templates` | `broadcasts` |
+| `POST /v1/partners/clients/{ref}/broadcasts` | `broadcasts` |
+| `GET /v1/partners/clients/{ref}/broadcasts/{id}` | `broadcasts` |
 
 ### 3.1 Provisionar un negocio — al crearlo en tu admin
 
@@ -133,20 +152,71 @@ policies.payment.transferencia.cedula_rif   policies.payment.binance.pay_id
 
 (`agent.name` es opcional — por defecto "Sofía".)
 
-### 3.2 Mintear session token — cada vez que tu frontend lo pida
+### 3.2 Enviar plantillas (campañas)
 
-`POST /v1/widget-sessions`
+Dos llamadas, ambas con la key de scope `broadcasts`.
+
+**Listar las plantillas del negocio** — lectura en vivo de SU WABA,
+filtrada a APPROVED (ofrecer otra cosa da un envío que Meta rechaza):
+
+`GET /v1/partners/clients/{external_client_ref}/templates`
 
 ```json
-{ "external_client_ref": "<tu-uuid-del-negocio>" }
+{ "templates": [
+  { "name": "recordatorio_pago_vencido", "language": "es", "status": "APPROVED",
+    "category": "UTILITY",
+    "components": [{ "type": "BODY", "text": "Hola {{cliente}}, tienes {{monto}} pendiente desde {{fecha}}." }] }
+] }
 ```
 
-→ `{ "session_token": "eyJ…", "expires_in": 900, "whatsapp": { "status": "…" } }`
+**Enviar** a uno o a muchos — es el mismo endpoint:
 
-Expón esto en TU backend como un endpoint autenticado para tu frontend
-(ej. `POST /api/auphere/session` que valida la sesión de tu usuario y
-resuelve QUÉ negocio le corresponde). `whatsapp.status` te dice
-server-side si renderizar el botón de campañas.
+`POST /v1/partners/clients/{external_client_ref}/broadcasts`
+
+```json
+{
+  "template_name": "recordatorio_pago_vencido",
+  "language": "es",
+  "idempotency_key": "factura-991-aviso-1",
+  "recipients": [
+    { "phone": "+584241234567",
+      "variables": { "cliente": "Ana", "monto": "36.00", "fecha": "12/08" } }
+  ]
+}
+```
+
+→ `202 { "broadcast_id": "…", "accepted": 1, "rejected": [] }`
+
+`202` significa **encolado y durable**, no entregado: el dispatcher se
+encarga de enviar, reintentar y seguir el estado.
+
+**Seguir el envío:**
+
+`GET /v1/partners/clients/{external_client_ref}/broadcasts/{broadcast_id}`
+
+```json
+{ "broadcast_id": "…", "template_name": "recordatorio_pago_vencido",
+  "counts": { "delivered": 1 },
+  "recipients": [ { "phone": "+584241234567", "status": "delivered" } ] }
+```
+
+Estados por destinatario: `pending` → `sent` → `delivered` → `read`, o
+`failed` / `rejected` (con `reason`).
+
+Lo que aplicamos por vos en cada envío:
+
+- **Idempotencia** — repetir el mismo `idempotency_key` devuelve `200`
+  con el resultado original en vez de enviar dos veces. Usá un id de tu
+  dominio (factura, recordatorio), no un random.
+- **Variables nombradas** — las claves deben coincidir con los
+  `{{nombre}}` de la plantilla. Las posicionales (`{{1}}`) se rechazan
+  con `422`.
+- **Opt-out** — quien respondió BAJA/STOP se descarta y aparece en
+  `rejected`.
+- **Cap por envío** — `250` destinatarios por defecto (el tier inicial
+  de Meta); por encima, `413`. Trocealo o pedinos subirlo.
+- **Plantilla viva** — se verifica contra Meta en el momento del envío,
+  no contra una copia nuestra.
 
 ### 3.3 Consultar el estado de un negocio
 
@@ -223,61 +293,7 @@ lectura. `readonly` puede consultar pero no registrar pagos, crear
 cuentas ni ningún cambio. Los teléfonos se normalizan a E.164; uno
 inválido devuelve `400` nombrándolo.
 
-## 4. Frontend del partner (`@auphere/embed`)
-
-```bash
-npm install @auphere/embed
-```
-
-```tsx
-import { createAuphere } from "@auphere/embed";
-import { AuphereBroadcastButton } from "@auphere/embed/react";
-
-const auphere = createAuphere({
-  partnerSlug: "<tu-slug>",
-  fetchSession: async () => {
-    const r = await fetch("/api/auphere/session", { method: "POST" });
-    return r.json(); // ← tu backend mintea con la secret key
-  },
-  appearance: { colorPrimary: "#2CC295", radius: "12px" },
-  locale: "es",
-});
-
-// 1) Conectar WhatsApp (ajustes/onboarding del negocio, o desde tu admin)
-await auphere.connectWhatsApp({
-  onConnected: ({ displayPhoneNumber }) => refreshUI(),
-  onExit: () => {},
-});
-
-// 2) Botón de campañas (solo se muestra si el negocio está conectado)
-<AuphereBroadcastButton
-  auphere={auphere}
-  recipients={clientesDelNegocio.map((c) => ({
-    phone: c.telefonoE164, // +58424…
-    variables: { cliente: c.nombre, saldo_pendiente: c.saldo, fecha: c.vence },
-  }))}
->
-  Enviar recordatorios
-</AuphereBroadcastButton>
-```
-
-Notas:
-- El widget corre en un iframe de `embed.auphere.com` — tus scripts no
-  ven credenciales y nosotros deployamos mejoras sin que actualices npm.
-- Las claves de `variables` deben coincidir con los *named parameters*
-  de la plantilla aprobada (posicionales `{{1}}` no están soportados).
-- `connectWhatsApp()` abre el popup de Meta: quien lo complete necesita
-  acceso al Meta Business **del negocio**. Tu admin puede lanzar el
-  flujo en nombre del negocio si tiene ese acceso delegado.
-
-## 5. El flujo completo de un negocio nuevo
-
-Hay dos caminos para conectar WhatsApp y son intercambiables: el
-**server-to-server** (§3.4, todo desde tu app con tu secret key) o el
-**iframe** (`connectWhatsApp()` del SDK). Los dos corren la misma
-orquestación y los dos activan al negocio. Elegí uno: el primero si ya
-tenés tu propia UI de onboarding, el segundo si preferís no tocar el
-popup de Meta.
+## 4. El flujo completo de un negocio nuevo
 
 1. **Tu admin crea el negocio** → tu backend llama
    `POST /v1/partners/clients` (con placeholders + credenciales) →
@@ -285,31 +301,28 @@ popup de Meta.
 2. **Registrar admins** → `PUT …/admins` con los teléfonos que podrán
    hablar con el agente (§3.5). Si ya los mandaste como placeholder en el
    paso 1, esto es solo para editarlos después.
-3. **Conectar WhatsApp** → `POST …/whatsapp/signup` (§3.4) o
-   `auphere.connectWhatsApp()` → el dueño autoriza en Meta → registramos
-   el número, suscribimos el webhook y guardamos las credenciales
-   cifradas → si `auto_activate`, el negocio pasa a **ACTIVE** y el
-   agente empieza a responder.
-4. **Plantillas** → aprobá las plantillas de recordatorio en la WABA del
-   negocio (§6). Sin esto el agente contesta y consulta, pero no puede
-   enviar recordatorios a los deudores.
-5. **Broadcasts** → el botón de campañas aparece solo con WhatsApp
-   conectado; tu app pasa la audiencia; el widget muestra plantillas
-   aprobadas + preview y dispara. Respetamos opt-outs, ventana de 24h y
-   el cap por envío del partner.
+3. **Conectar WhatsApp** → `POST …/whatsapp/signup` (§3.4) → el dueño
+   autoriza en Meta → registramos el número, suscribimos el webhook y
+   guardamos las credenciales cifradas → si `auto_activate`, el negocio
+   pasa a **ACTIVE** y el agente empieza a responder.
+4. **Plantillas** → aprobá las plantillas del negocio en SU WABA (§5).
+   Sin esto el agente contesta y consulta, pero no puede enviar
+   recordatorios a los deudores.
+5. **Campañas** → `POST …/broadcasts` (§3.2) con la audiencia que salga
+   de tu CRM. Respetamos opt-outs y el cap por envío.
 
 En cualquier momento, `GET /v1/partners/clients/{ref}` (§3.3) te dice en
 cuál de estos pasos está cada negocio.
 
-## 6. Plantillas HSM
+## 5. Plantillas HSM
 
 Cada negocio envía desde SU propia WABA, así que las plantillas se
 aprueban **por negocio** en Meta. Hoy la creación del set inicial de
 plantillas es asistida por el operador Auphere tras el signup (la
 provisión automática de un catálogo por partner está en el roadmap).
-El widget solo ofrece plantillas ya APPROVED.
+`GET …/templates` solo devuelve las que ya están APPROVED.
 
-## 7. Métricas y facturación
+## 6. Métricas y facturación
 
 El uso queda atribuido al partner vía el mapeo negocio→tenant:
 `GET /admin/partners/{id}/usage` (panel Auphere) agrega por cliente:
@@ -317,41 +330,48 @@ estado, WhatsApp conectado, versión/seed del agente, broadcasts,
 destinatarios, mensajes in/out y costo de modelo — la base de la
 facturación por negocio activo.
 
-## 8. Seguridad (resumen para tu equipo)
+## 7. Seguridad (resumen para tu equipo)
 
-- Secret key: solo backend; rotación con ventana de gracia y revocación
-  inmediata desde el panel Auphere. Storage SHA-256 (no reversible).
-- Session token: 15 min, scoped a un negocio, muere si se revoca la key,
-  se suspende el partner o se elimina el mapeo (re-check por request).
-- Aislamiento: el `tenant_id` se elige solo en el mint (gateado por el
-  mapeo del partner) y el surface del widget lo lee solo del JWT firmado
-  → un negocio no puede ver datos de otro, ni un partner los de otro.
-- CORS/CSP: solo los `allowed_origins` de tu key pueden embeber el
-  widget; todo lo demás recibe `frame-ancestors 'none'`.
+- **Secret key**: solo backend; rotación con ventana de gracia y
+  revocación inmediata desde el panel Auphere. Guardamos SHA-256, no la
+  key (no es reversible ni la podemos recuperar: si se pierde, se rota).
+- **Scopes mínimos**: `provision` y `broadcasts` son independientes. Una
+  key de integración filtrada no puede mandarle mensajes a los clientes
+  finales de nadie.
+- **Aislamiento**: el `tenant_id` no se acepta nunca del request — sale
+  del mapeo `(partner, external_client_ref)`. Cada consulta corre bajo
+  RLS de ese tenant, así que un negocio no puede ver datos de otro ni un
+  partner los de otro. El ref de otro partner devuelve `404` opaco: no
+  revelamos si existe.
+- **Sin superficie de navegador**: la API no tiene CORS habilitado. Todo
+  es server-to-server; nada de esto se llama desde un frontend.
+- **Auditoría**: cada provisión, signup, cambio de admins y campaña deja
+  una fila append-only con la key que lo hizo y la IP de origen.
 
-## 9. Troubleshooting
+## 8. Troubleshooting
 
 | Síntoma | Causa probable | Acción |
 |---|---|---|
-| `401` al mintear | Key revocada/expirada o checksum inválido | Verificar la key; pedir rotación |
-| `403 Session token lacks widget:connect` | Token minteado con scopes viejos | Re-mintear (los scopes van en el JWT) |
+| `401` en cualquier llamada | Key revocada/expirada o checksum inválido | Verificar la key; pedir rotación |
+| `403 API key lacks required scope` | La key no tiene el scope del endpoint (§3) | Pedir una key con `broadcasts` (o `provision`) |
 | `422` al provisionar | Placeholder del seed sin valor / credenciales vacías | El detail dice exactamente qué falta |
 | `422` "Faltan datos del negocio" | Quedó un `<<… pendiente>>` sin rellenar | Mandá los placeholders que nombra el detail (§3.1) |
 | `422` "whitelist quedó vacía" | Vertical `admin_only` sin `admin_phones` usables | Al menos un teléfono E.164 con 7+ dígitos |
 | Conectó WhatsApp pero el agente no responde | `tenant_status` quedó en `provisioning` | Mirá `activation_blocked_reason`: `no_agent` → revisar la provisión; `operator_review` → lo activa Auphere |
-| Widget no monta / iframe en blanco | Origin no está en `allowed_origins` | Agregar el origin exacto (esquema+host+puerto) en el panel |
 | Meta rechaza el OAuth code | Code expirado o reusado | Cerrar y reintentar el flujo |
 | `409` al conectar número | El número ya está mapeado a otro tenant | Contactar al operador Auphere (offboard previo) |
 | Broadcast `413` | Audiencia > cap del partner | Trocear el envío o pedir aumento de cap |
+| Broadcast `409 whatsapp_not_connected` | El negocio aún no conectó su número | Completar el signup (§3.4) |
+| Broadcast `429` | Superaste el rate limit de campañas | Espaciar los envíos o pedir aumento |
+| `422` "positional parameters" | La plantilla usa `{{1}}` en vez de `{{cliente}}` | Recrearla en Meta con parámetros nombrados |
 | Plantilla no aparece | No está APPROVED en la WABA del negocio | Esperar aprobación de Meta / revisar en el panel |
 
-## 10. Checklist de go-live de un partner
+## 9. Checklist de go-live de un partner
 
 - [ ] Partner creado + blueprint configurado (seed, connector, auto_activate).
-- [ ] API key emitida con `allowed_origins` de producción.
-- [ ] Endpoint de sesión implementado en el backend del partner.
+- [ ] API key emitida con los scopes acordados (`provision`, `broadcasts`).
 - [ ] Provisión llamada desde el alta de negocios del partner.
-- [ ] `@auphere/embed` montado (signup + botón de campañas).
-- [ ] Negocio piloto conectado E2E (signup → activo → broadcast de prueba).
-- [ ] `embed.auphere.com` en los dominios permitidos de la app de Meta.
+- [ ] Flujo de Embedded Signup montado en la app del partner (§3.4).
+- [ ] Negocio piloto E2E: provisión → admins → signup → `ready: true` →
+      campaña de prueba a un número propio.
 - [ ] Plantillas iniciales aprobadas en la WABA del piloto.

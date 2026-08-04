@@ -404,7 +404,7 @@ function KeyRowActions({
           <DialogHeader>
             <DialogTitle>Rotar {apiKey.prefix_snippet}</DialogTitle>
             <DialogDescription>
-              Se genera una key nueva con los mismos scopes y origins. La
+              Se genera una key nueva con los mismos scopes. La
               actual queda revocada pero sigue autenticando durante el
               período de gracia — tiempo para que el partner despliegue el
               secreto nuevo sin downtime.

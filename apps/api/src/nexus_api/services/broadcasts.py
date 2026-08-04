@@ -1,7 +1,7 @@
-"""Broadcast fan-out service (ADR-028, Fase 1).
+"""Broadcast fan-out service (ADR-028).
 
-Turns one ``POST /v1/embed/broadcasts`` call into N pending ``messages``
-rows that the existing outbound dispatcher drains. Everything runs
+Turns one ``POST /v1/partners/clients/{ref}/broadcasts`` call into N
+pending ``messages`` rows that the existing outbound dispatcher drains. Everything runs
 inside the caller's tenant-scoped transaction (RLS active), so nothing
 here can touch another tenant.
 
@@ -47,9 +47,11 @@ from nexus_api.db.models import (
     MessageStatus,
     WhatsAppOptOut,
 )
-from nexus_api.schemas.embed import (
+from nexus_api.schemas.broadcasts import (
     BroadcastAcceptedOut,
     BroadcastCreateIn,
+    BroadcastRecipientStatusOut,
+    BroadcastStatusOut,
     RejectedRecipientOut,
 )
 from nexus_api.services.whatsapp_templates import TemplateOut, fetch_templates
@@ -61,7 +63,7 @@ E164_RE = re.compile(r"^\+[1-9]\d{7,14}$")
 
 # Named template placeholders: {{cliente}}, {{ saldo_pendiente }} …
 _NAMED_VAR_RE = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
-# Positional placeholders: {{1}}, {{2}} — unsupported in Fase 1.
+# Positional placeholders: {{1}}, {{2}} — unsupported.
 _POSITIONAL_VAR_RE = re.compile(r"\{\{\s*\d+\s*\}\}")
 
 
@@ -79,7 +81,7 @@ def _template_body_vars(template: TemplateOut) -> frozenset[str]:
 
 
 async def resolve_template(session: AsyncSession, *, name: str, language: str) -> _ResolvedTemplate:
-    """Live lookup against Meta (source of truth). The modal listed
+    """Live lookup against Meta (source of truth). The caller listed
     templates through the same call moments earlier, so this also
     catches a template paused in between."""
     templates, _waba = await fetch_templates(session)
@@ -186,7 +188,7 @@ async def create_broadcast(
     tenant_id: uuid.UUID,
     partner_id: uuid.UUID,
     recipient_cap: int,
-    jti: str,
+    jti: str | None,
     payload: BroadcastCreateIn,
 ) -> tuple[BroadcastAcceptedOut, bool]:
     """Returns ``(result, created)`` — ``created=False`` on idempotent
@@ -327,4 +329,54 @@ async def create_broadcast(
     return (
         BroadcastAcceptedOut(broadcast_id=broadcast.id, accepted=accepted, rejected=rejected),
         True,
+    )
+
+
+async def get_broadcast_status(
+    session: AsyncSession,
+    *,
+    broadcast_id: uuid.UUID,
+) -> BroadcastStatusOut:
+    """Counters + per-recipient state for one broadcast.
+
+    Delivery state comes from the JOIN to ``messages`` — the status
+    webhook advances it there and nothing is duplicated on the broadcast
+    rows. Caller must hold the tenant-scoped transaction: RLS is what
+    makes another tenant's broadcast a 404 rather than a leak.
+    """
+    broadcast = await session.get(Broadcast, broadcast_id)
+    if broadcast is None:  # RLS already hides other tenants' rows
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+
+    rows = (
+        await session.execute(
+            sa.select(BroadcastRecipient, Message.status, Message.failure_code)
+            .outerjoin(Message, Message.id == BroadcastRecipient.message_id)
+            .where(BroadcastRecipient.broadcast_id == broadcast.id)
+            .order_by(BroadcastRecipient.created_at)
+        )
+    ).all()
+
+    counts: dict[str, int] = {}
+    recipients: list[BroadcastRecipientStatusOut] = []
+    for recipient, msg_status, failure_code in rows:
+        if recipient.status == BroadcastRecipientStatus.REJECTED.value:
+            state, reason = "rejected", recipient.reject_reason
+        elif msg_status is None:
+            state, reason = "queued", None
+        else:
+            state = msg_status.value if hasattr(msg_status, "value") else str(msg_status)
+            reason = failure_code
+        counts[state] = counts.get(state, 0) + 1
+        recipients.append(
+            BroadcastRecipientStatusOut(phone=recipient.phone_e164, status=state, reason=reason)
+        )
+
+    return BroadcastStatusOut(
+        broadcast_id=broadcast.id,
+        template_name=broadcast.template_name,
+        status=broadcast.status,
+        created_at=broadcast.created_at,
+        counts=counts,
+        recipients=recipients,
     )

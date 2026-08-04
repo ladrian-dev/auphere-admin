@@ -1,13 +1,17 @@
 """Partner self-serve for a client's WhatsApp line + admin whitelist.
 
 ``/v1/partners/clients/{external_client_ref}/…`` — server-to-server,
-authenticated with the partner's secret API key (``provision`` scope).
-This is what lets Amigable Cobro connect the WhatsApp where a business's
-agent lives and register that business's admins **from their own app**,
-instead of an Auphere operator doing it in the panel.
+authenticated with the partner's secret API key. This is the whole
+partner surface for one client: connect the WhatsApp line where its
+agent lives, manage who administers it, read its onboarding state, and
+send approved templates to its contacts — all from the partner's own
+app, with no Auphere operator in the loop.
 
-Tenancy invariant (same as ``/v1/widget-sessions``): the tenant is ALWAYS
-resolved from ``partner_tenants`` under the authenticated partner — never
+Two scopes, deliberately split: ``provision`` for the integration-time
+capabilities (signup, admins, status) and ``broadcasts`` for messaging
+the client's end customers.
+
+Tenancy invariant: the tenant is ALWAYS resolved from ``partner_tenants`` under the authenticated partner — never
 from the request body — so a partner can only ever touch its own clients.
 An unknown ref is an opaque 404.
 """
@@ -19,7 +23,7 @@ from typing import Any, Literal
 
 import sqlalchemy as sa
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from nexus_channels.whatsapp_meta import SignupIngressPayload
 from nexus_channels.whatsapp_meta.phone import to_e164
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,9 +32,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.config import get_settings
+from nexus_api.core import rate_limit
 from nexus_api.core.partner_auth import PartnerContext, require_partner_key
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.models import (
+    ApiKeyScope,
     Channel,
     ChannelStatus,
     ChannelType,
@@ -38,10 +44,18 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
-from nexus_api.repositories.partner import PartnerTenantRepository
+from nexus_api.repositories.partner import EmbedAuditRepository, PartnerTenantRepository
+from nexus_api.schemas.broadcasts import (
+    BroadcastAcceptedOut,
+    BroadcastCreateIn,
+    BroadcastStatusOut,
+    ClientTemplatesOut,
+)
 from nexus_api.services.agent_config_service import AgentConfigService
+from nexus_api.services.broadcasts import create_broadcast, get_broadcast_status
 from nexus_api.services.meta_signup_service import complete_meta_signup
 from nexus_api.services.partner_provisioning import activate_tenant_if_ready
+from nexus_api.services.whatsapp_templates import fetch_templates
 
 log = structlog.get_logger(__name__)
 
@@ -436,6 +450,123 @@ async def set_client_admins(
         )
 
     return _admins_out(policies)
+
+
+@router.get("/clients/{external_client_ref}/templates", response_model=ClientTemplatesOut)
+async def list_client_templates(
+    external_client_ref: str,
+    ctx: PartnerContext = Depends(require_partner_key(ApiKeyScope.BROADCASTS.value)),
+    session: AsyncSession = Depends(get_db_session),
+) -> ClientTemplatesOut:
+    """APPROVED templates in THIS client's own WABA.
+
+    Live read from Meta (the source of truth), filtered to APPROVED so the
+    partner never offers a template that would be rejected at send time.
+    Templates are per-WABA, so this is always the client's own catalogue.
+    """
+    tenant_id = await _resolve_tenant_id(session, ctx, external_client_ref)
+    async with tenant_scoped_session(session, tenant_id):
+        templates, _waba_id = await fetch_templates(session)
+    approved = [t for t in templates if (t.status or "").upper() == "APPROVED"]
+    return ClientTemplatesOut(templates=approved)
+
+
+@router.post(
+    "/clients/{external_client_ref}/broadcasts",
+    response_model=BroadcastAcceptedOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_client_broadcast(
+    external_client_ref: str,
+    body: BroadcastCreateIn,
+    request: Request,
+    response: Response,
+    ctx: PartnerContext = Depends(require_partner_key(ApiKeyScope.BROADCASTS.value)),
+    session: AsyncSession = Depends(get_db_session),
+    redis: Redis = Depends(get_redis),
+) -> BroadcastAcceptedOut:
+    """Send one approved template to 1..N of the client's contacts.
+
+    ``202`` means queued and durable — the outbound dispatcher delivers,
+    retries and tracks status; poll ``GET .../broadcasts/{id}``. A replay
+    of the same ``idempotency_key`` returns ``200`` with the original
+    result instead of sending twice.
+
+    Guards, all inherited from the shared service so both surfaces behave
+    identically: template must be APPROVED and LIVE in the client's WABA,
+    named parameters only, opted-out recipients dropped, and the
+    partner's ``broadcast_recipient_cap`` enforced per call.
+    """
+    if not await rate_limit.allow(
+        redis,
+        key=rate_limit.broadcast_bucket_key(str(ctx.partner.id)),
+        per_minute=ctx.partner.rate_limit_embed_per_min,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded for broadcasts",
+        )
+
+    tenant_id = await _resolve_tenant_id(session, ctx, external_client_ref)
+    async with tenant_scoped_session(session, tenant_id):
+        result, created = await create_broadcast(
+            session,
+            tenant_id=tenant_id,
+            partner_id=ctx.partner.id,
+            recipient_cap=ctx.partner.broadcast_recipient_cap,
+            # No session JWT on this path — the API key is the actor, and
+            # it is what the audit row records.
+            jti=None,
+            payload=body,
+        )
+        if created:
+            await EmbedAuditRepository(session).record(
+                event="broadcast.created",
+                partner_id=ctx.partner.id,
+                api_key_id=ctx.api_key.id,
+                tenant_id=tenant_id,
+                payload={
+                    "broadcast_id": str(result.broadcast_id),
+                    "template_name": body.template_name,
+                    "accepted": result.accepted,
+                    "rejected": len(result.rejected),
+                },
+                ip=request.client.host if request.client else None,
+            )
+
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    log.info(
+        "partner.broadcast_created",
+        partner=ctx.partner.slug,
+        tenant_id=str(tenant_id),
+        broadcast_id=str(result.broadcast_id),
+        accepted=result.accepted,
+        rejected=len(result.rejected),
+        replay=not created,
+    )
+    return result
+
+
+@router.get(
+    "/clients/{external_client_ref}/broadcasts/{broadcast_id}",
+    response_model=BroadcastStatusOut,
+)
+async def get_client_broadcast(
+    external_client_ref: str,
+    broadcast_id: uuid.UUID,
+    ctx: PartnerContext = Depends(require_partner_key(ApiKeyScope.BROADCASTS.value)),
+    session: AsyncSession = Depends(get_db_session),
+) -> BroadcastStatusOut:
+    """Counters + per-recipient delivery state.
+
+    A broadcast belonging to another client is a 404, not a 403: the read
+    happens under this client's RLS scope, so other tenants' rows are not
+    visible in the first place.
+    """
+    tenant_id = await _resolve_tenant_id(session, ctx, external_client_ref)
+    async with tenant_scoped_session(session, tenant_id):
+        return await get_broadcast_status(session, broadcast_id=broadcast_id)
 
 
 def _admins_out(policies: dict[str, Any] | None) -> AdminsOut:
