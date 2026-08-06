@@ -540,9 +540,11 @@ def _normalise_body(
 
     if raw_type == "order":
         # Native WhatsApp cart: the customer added catalog products and sent
-        # their cart. Surface it as TEXT so the agent confirms + creates the
-        # WooCommerce order via create_order. ``product_retailer_id`` is the
-        # store product id (catalog synced from WooCommerce).
+        # their cart. Surface it as TEXT so the agent confirms and sends the
+        # payment link via build_checkout_link (the agent is read-only on
+        # orders; the order is created by the web checkout, not create_order).
+        # ``product_retailer_id`` is the store product id (catalog synced
+        # from WooCommerce).
         order = message.get("order")
         if not isinstance(order, dict):
             return InboundMessageKind.UNSUPPORTED, {}

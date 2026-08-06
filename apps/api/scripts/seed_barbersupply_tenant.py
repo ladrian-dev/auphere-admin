@@ -30,8 +30,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import sys
 from pathlib import Path
+from typing import Any
 
 # Make ``nexus_api`` importable when run via plain ``python``.
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,15 +57,74 @@ TENANT_SLUG = os.environ.get("NEXUS_BARBERSUPPLY_SLUG", "barbersupply")
 SEED = "woocommerce_sales_v1"
 ACTOR = "seed_barbersupply_tenant.py"
 
-# Destructive WooCommerce tools the sales agent needs to take orders. They
-# start ``default_mode='blocked'`` in the catalog; enabling them per-tenant
-# lets the agent call them. Confirmation-before-write is enforced by prompt.
-WRITE_TOOLS = (
+# Destructive WooCommerce tools. The sales agent is READ-ONLY on orders
+# (audit F-2/F-3): it consults orders but never mutates them, and any change
+# escalates to a human. We actively BLOCK these per-tenant so any
+# previously-granted ``always`` override is revoked.
+BLOCKED_TOOLS = (
     "woocommerce.create_order",
     "woocommerce.update_order_status",
     "woocommerce.update_order",
     "woocommerce.add_order_note",
 )
+
+# Policy fields that MUST carry real store data before the agent goes live
+# (audit F-1). Each is provided via its env var; if absent, we fall back to
+# the value already in the tenant's active config (audit F-5 — never clobber
+# an operator-set real value with a template placeholder). Rendering fails
+# fast if any of these remains an unfilled ``<<...>>`` sentinel.
+_POLICY_ENV: dict[str, str] = {
+    "policies.wholesale.contact_name": "NEXUS_BARBERSUPPLY_WHOLESALE_NAME",
+    "policies.wholesale.contact_phone": "NEXUS_BARBERSUPPLY_WHOLESALE_PHONE",
+    "policies.store.shipping_info": "NEXUS_BARBERSUPPLY_SHIPPING_INFO",
+    "policies.store.returns_info": "NEXUS_BARBERSUPPLY_RETURNS_INFO",
+}
+
+# ``<<...>>`` is the seed template's "fill me in" sentinel. A live agent must
+# never hand a customer one of these literally (e.g. ``<<+56900000000>>``).
+_SENTINEL_RE = re.compile(r"<<[^>]*>>")
+
+
+def _existing_policy_value(policies: dict[str, Any], dotted: str) -> str | None:
+    """Walk ``policies`` by the ``policies.a.b`` dotted key; return the
+    string value if present, else None."""
+    node: Any = policies
+    for part in dotted.removeprefix("policies.").split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node if isinstance(node, str) else None
+
+
+def _find_sentinels(system_prompt: str, policies: dict[str, Any]) -> set[str]:
+    """Collect every unfilled ``<<...>>`` sentinel in the rendered prompt
+    and policy values."""
+    found: set[str] = set(_SENTINEL_RE.findall(system_prompt))
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, str):
+            found.update(_SENTINEL_RE.findall(node))
+        elif isinstance(node, dict):
+            for v in node.values():
+                _walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                _walk(v)
+
+    _walk(policies)
+    return found
+
+
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Deep-merge ``override`` onto ``base``. ``override`` wins for keys it
+    defines; keys present only in ``base`` (operator-set extras) survive."""
+    out: dict[str, Any] = {k: v for k, v in base.items()}
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
 
 
 async def _amain() -> int:
@@ -84,10 +145,6 @@ async def _amain() -> int:
         tenant_tz = tenant.timezone
 
     template = load_seed_template(SEED)
-    rendered = render_seed_template(
-        template,
-        placeholders={"tenant.name": tenant_name, "tenant.timezone": tenant_tz},
-    )
 
     async with session_factory() as session, tenant_scoped_session(session, tenant_id):
         config = (
@@ -103,28 +160,66 @@ async def _amain() -> int:
             print(f"barbersupply: no ACTIVE agent_config for {TENANT_SLUG!r} — aborting")
             return 1
 
+        # Build render overrides: tenant identity + real policy values. Each
+        # policy field comes from its env var, else from the value already in
+        # the active config (F-5: never clobber an operator-set value with a
+        # placeholder). Anything still missing stays as the template sentinel
+        # and is caught by the validation below.
+        existing_policies = dict(config.policies or {})
+        overrides: dict[str, Any] = {
+            "tenant.name": tenant_name,
+            "tenant.timezone": tenant_tz,
+        }
+        for dotted, env_var in _POLICY_ENV.items():
+            value = os.environ.get(env_var)
+            if not value:
+                prior = _existing_policy_value(existing_policies, dotted)
+                if prior and not _SENTINEL_RE.search(prior):
+                    value = prior
+            if value:
+                overrides[dotted] = value
+
+        rendered = render_seed_template(template, placeholders=overrides)
+
+        # F-1: refuse to publish with unfilled placeholders. A live agent
+        # must never hand a customer a literal ``<<+56900000000>>``.
+        unfilled = _find_sentinels(rendered.system_prompt, rendered.policies)
+        if unfilled:
+            print(
+                "barbersupply: ABORT — unfilled placeholders still present: "
+                + ", ".join(sorted(unfilled))
+            )
+            print("  fill them via env vars: " + ", ".join(sorted(_POLICY_ENV.values())))
+            return 1
+
         prev_seed = config.seed_template_ref
         config.system_prompt_rendered = rendered.system_prompt
         config.tools = rendered.tools
-        config.policies = rendered.policies
+        # F-5: merge policies (rendered wins for the keys it defines; any
+        # operator-set keys not in the template survive) instead of a blind
+        # replace that reverts operator edits on every re-run.
+        config.policies = _deep_merge(existing_policies, rendered.policies)
         config.seed_template_ref = rendered.seed_template_ref
         print(
             f"barbersupply: re-rendered active agent_config v{config.version} "
             f"({prev_seed} -> {SEED}, {len(rendered.tools)} tools)"
         )
 
+        # F-2 / F-3: the sales agent is read-only on orders. Actively BLOCK
+        # every destructive woocommerce tool so any previously-granted
+        # ``always`` override is revoked. Changes escalate to a human.
         tenant_row = await session.get(Tenant, tenant_id)
         assert tenant_row is not None  # already fetched above
-        for tool in WRITE_TOOLS:
+        for tool in BLOCKED_TOOLS:
             await upsert_override(
                 session,
                 tenant=tenant_row,
                 tool_name=tool,
-                mode=ConnectorToolMode.ALWAYS,
-                reason="Sales agent takes orders (confirmation enforced by prompt).",
+                mode=ConnectorToolMode.BLOCKED,
+                reason="Sales agent is read-only on orders; changes escalate to a human.",
                 actor=ACTOR,
             )
-            print(f"barbersupply: enabled write tool {tool} (mode=always)")
+            print(f"barbersupply: blocked destructive tool {tool} (mode=blocked)")
         # tenant_scoped_session commits on clean exit — no explicit commit.
 
     print(f"barbersupply: ok slug={TENANT_SLUG} id={tenant_id}")

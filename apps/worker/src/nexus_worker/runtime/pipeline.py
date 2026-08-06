@@ -48,10 +48,13 @@ set in the orchestrator is not guaranteed to leak in.
 
 from __future__ import annotations
 
+import difflib
 import json
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -1522,6 +1525,99 @@ def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
     return ucm_formatter
 
 
+# Threshold above which the plain-text answer is treated as a duplicate of
+# the interactive component's ``body`` and therefore NOT sent as its own
+# message. The model routinely paraphrases the same sentence into both the
+# free text AND the interactive body (e.g. "Completa tu compra acá 👉" as
+# text plus "¡Listo! Completa tu compra en el siguiente enlace" as the
+# button body), which reaches the customer as two near-identical messages.
+# 0.6 catches paraphrases while leaving genuinely distinct explanations
+# (a product summary before an actionable button) as their own message.
+_TEXT_BODY_DUP_RATIO = 0.6
+
+
+def _normalise_for_dup(text: str) -> str:
+    """Lowercase, drop emojis/punctuation, collapse whitespace — so the
+    duplicate check compares meaning, not decoration."""
+    lowered = text.lower()
+    # Keep letters (incl. accented), digits and spaces; drop the rest.
+    stripped = re.sub(r"[^0-9a-záéíóúñü ]+", " ", lowered)
+    return re.sub(r"\s+", " ", stripped).strip()
+
+
+def _text_duplicates_body(text: str, body: str) -> bool:
+    """True when the free-text answer is redundant with the interactive
+    body and should be suppressed to avoid a double send.
+
+    Redundant when, after normalisation, one contains the other or the
+    two are at least ``_TEXT_BODY_DUP_RATIO`` similar. Empty inputs are
+    never duplicates (nothing to suppress)."""
+    a = _normalise_for_dup(text)
+    b = _normalise_for_dup(body)
+    if not a or not b:
+        return False
+    if a in b or b in a:
+        return True
+    return difflib.SequenceMatcher(None, a, b).ratio() >= _TEXT_BODY_DUP_RATIO
+
+
+# How far back to look for an already-sent identical checkout link. Scopes
+# the resend guard to the active buying session — a customer returning days
+# later with a genuinely new cart gets a fresh link (the URL differs anyway
+# once the cart changes).
+_CHECKOUT_RESEND_WINDOW = timedelta(hours=12)
+
+# Short human reply sent instead of re-pushing an identical payment link
+# when the customer just acknowledges ("gracias", "voy en camino"). Keeps
+# the conversation alive without spamming the "Pagar ahora" card again.
+_LINK_ALREADY_SENT_ACK = (
+    "Quedo atento por acá. El link para completar tu pedido te lo dejé más arriba. 🙌"
+)
+
+
+def _checkout_url_from_interactive(interactive: dict[str, Any] | None) -> str | None:
+    """Return the checkout/payment URL when the interactive component is a
+    ``cta_url`` link, else None. Only ``cta_url`` components carry a link we
+    guard against re-sending; buttons / lists / product cards are untouched."""
+    if not interactive:
+        return None
+    cta = interactive.get("cta_url")
+    if isinstance(cta, dict):
+        url = str(cta.get("url") or "").strip()
+        return url or None
+    return None
+
+
+async def _checkout_link_already_sent(
+    session: Any, conversation_id: uuid.UUID, url: str
+) -> bool:
+    """True when an identical checkout link was already sent on this
+    conversation within ``_CHECKOUT_RESEND_WINDOW``.
+
+    Guards the cross-turn resend loop: after the link is out, a customer
+    "gracias" / "voy en camino" must not trigger the same "Pagar ahora"
+    card again. Scoped to a recent window so a genuinely new order (whose
+    URL differs once the cart changes) is never blocked. Runs inside the
+    caller's tenant-scoped session (RLS limits it to this tenant)."""
+    from sqlalchemy import func, select
+
+    from nexus_api.db.models import Message, MessageDirection
+
+    cutoff = datetime.now(UTC) - _CHECKOUT_RESEND_WINDOW
+    stmt = (
+        select(func.count())
+        .select_from(Message)
+        .where(
+            Message.conversation_id == conversation_id,
+            Message.direction == MessageDirection.OUTBOUND,
+            Message.interactive_payload["cta_url"]["url"].astext == url,
+            Message.created_at >= cutoff,
+        )
+    )
+    count = await session.scalar(stmt)
+    return bool(count and count > 0)
+
+
 def make_checkpoint_node() -> NodeFn:
     """Persist the outbound message(s) in the ``messages`` table.
 
@@ -1565,18 +1661,45 @@ def make_checkpoint_node() -> NodeFn:
         outcome_retries = state.get("outcome_retries")
         outcome_feedback = state.get("outcome_feedback") or None
 
+        # Same-turn duplicate guard (G-1): when the turn carries an
+        # interactive component whose ``body`` already says what the free
+        # text says, suppress the separate text row so the customer gets ONE
+        # message, not two paraphrases (barbersupply "Pagar ahora" incident).
+        interactive_body = str((interactive or {}).get("body") or "") if interactive else ""
+        text_is_redundant = bool(
+            interactive_body and _text_duplicates_body(response_text, interactive_body)
+        )
+
         sm = get_sessionmaker()
         async with sm() as session, tenant_scoped_session(session, tenant_id):
-            # Row 1: plain-text answer. Always written when response is
-            # non-empty so the operator panel + ucm shadow diff stay
-            # aligned. The interactive row, when present, is written
-            # AFTER so the dispatcher (which orders by created_at /
-            # sequence) drains text first.
-            if response_text.strip():
+            # Cross-turn resend guard (G-1): if the interactive is a payment
+            # link we already sent on this conversation recently, don't push
+            # the same "Pagar ahora" card again — the customer is just
+            # acknowledging. Drop the interactive; keep a reply so they are
+            # not ghosted.
+            checkout_url = _checkout_url_from_interactive(interactive)
+            suppress_interactive = bool(checkout_url) and await _checkout_link_already_sent(
+                session, conv_id, checkout_url or ""
+            )
+
+            # Decide the text row. Normally: write the free text unless it is
+            # a duplicate of the interactive body. But when we are dropping a
+            # duplicate payment link AND have no distinct text to send, fall
+            # back to a short human ack so the customer still gets a reply.
+            write_text = bool(response_text.strip()) and not text_is_redundant
+            text_to_write = response_text
+            if suppress_interactive and not write_text:
+                text_to_write = _LINK_ALREADY_SENT_ACK
+                write_text = True
+
+            # Row 1: plain-text answer, written first so the outbound
+            # dispatcher (ordered by created_at / sequence) drains text
+            # before any interactive component.
+            if write_text:
                 await persist_outbound_message(
                     session,
                     conversation_id=conv_id,
-                    content=response_text,
+                    content=text_to_write,
                     intent=intent,
                     model=model,
                     tool_calls=tool_calls,
@@ -1586,11 +1709,12 @@ def make_checkpoint_node() -> NodeFn:
                 )
 
             # Row 2: interactive component, when the agent called
-            # ``response.send_interactive`` this turn. The dispatcher
-            # detects ``interactive_payload IS NOT NULL`` and routes
-            # through ``adapter.send_interactive``; ``content`` is the
-            # body so the operator panel renders a sensible preview.
-            if interactive:
+            # ``response.send_interactive`` this turn AND it is not a
+            # duplicate payment link. The dispatcher detects
+            # ``interactive_payload IS NOT NULL`` and routes through
+            # ``adapter.send_interactive``; ``content`` is the body so the
+            # operator panel renders a sensible preview.
+            if interactive and not suppress_interactive:
                 body = str(interactive.get("body") or response_text or "[interactive]")
                 await persist_outbound_message(
                     session,
