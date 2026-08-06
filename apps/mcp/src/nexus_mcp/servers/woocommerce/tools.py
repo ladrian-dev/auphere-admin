@@ -1008,6 +1008,7 @@ def build_woocommerce_tools() -> list[ToolBase]:
 __all__ = [
     "WOOCOMMERCE_TOOLS",
     "AddOrderNote",
+    "BuildCheckoutLink",
     "CreateOrder",
     "GetCustomer",
     "GetOrder",

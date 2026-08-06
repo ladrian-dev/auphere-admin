@@ -254,7 +254,10 @@ def test_woocommerce_sales_v1_loads_with_expected_shape() -> None:
     assert tpl.agent_defaults["name"] == "Nico"
     assert tpl.agent_defaults["language"] == "es"
 
-    # Whitelist: las 8 lecturas + 4 escrituras woocommerce.* + interactive.
+    # Whitelist: lecturas de catálogo/pedidos + link de pago + escalado +
+    # interactive. El agente de ventas es SOLO LECTURA sobre órdenes: las
+    # escrituras (create/update/add_note) NO están habilitadas (F-2/F-3);
+    # cualquier cambio se deriva a un humano con escalate.escalate_to_human.
     reads = {
         "woocommerce.list_products",
         "woocommerce.get_product",
@@ -262,18 +265,19 @@ def test_woocommerce_sales_v1_loads_with_expected_shape() -> None:
         "woocommerce.list_categories",
         "woocommerce.list_orders",
         "woocommerce.get_order",
-        "woocommerce.list_customers",
-        "woocommerce.get_customer",
     }
-    writes = {
+    order_writes = {
         "woocommerce.create_order",
         "woocommerce.update_order_status",
         "woocommerce.update_order",
         "woocommerce.add_order_note",
     }
     assert reads.issubset(tpl.tools_required)
-    assert writes.issubset(tpl.tools_required)
+    assert "woocommerce.build_checkout_link" in tpl.tools_required
+    assert "escalate.escalate_to_human" in tpl.tools_required
     assert "response.send_interactive" in tpl.tools_required
+    # Ninguna escritura destructiva de órdenes está en el whitelist.
+    assert order_writes.isdisjoint(tpl.tools_required)
     # No filtra tools de otros verticales (booking / billing).
     assert "booking.create_appointment" not in tpl.tools_required
     assert "billing.create_account" not in tpl.tools_required
@@ -297,9 +301,11 @@ def test_woocommerce_sales_v1_renders_with_store_data() -> None:
     # Anclas de comportamiento clave llegan al prompt final.
     assert "grounding" in rendered.system_prompt.lower()
     assert "confirmaci" in rendered.system_prompt.lower()  # protocolo de pedido
-    assert "woocommerce.create_order" in rendered.system_prompt
-    # Tools persistidas.
-    assert "woocommerce.create_order" in rendered.tools
+    # El cierre de venta se hace con build_checkout_link (no create_order).
+    assert "build_checkout_link" in rendered.system_prompt
+    # El agente NO crea órdenes: create_order no está en el whitelist.
+    assert "woocommerce.create_order" not in rendered.tools
+    assert "woocommerce.build_checkout_link" in rendered.tools
     assert rendered.policies["store"]["currency"] == "CLP"
 
 
