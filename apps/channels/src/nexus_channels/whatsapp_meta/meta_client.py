@@ -671,6 +671,16 @@ class MetaClient:
     ) -> dict[str, Any]:
         # Tenacity wraps the awaitable; non-retriable exceptions (the bulk
         # of 4xx and TokenInvalidatedError) escape immediately.
+        #
+        # ``httpx.TransportError`` — NOT the two leaf classes it is tempting
+        # to list — is the base of every failure that happens before a
+        # response exists: connect/read/write/pool timeouts, connection and
+        # protocol errors. Naming leaves instead let ``PoolTimeout`` and
+        # ``ConnectTimeout`` escape raw, and a raw httpx error is not a
+        # ``MetaAPIError``, so every caller that maps Meta failures to a
+        # clean 4xx/502 missed it and FastAPI turned it into a 500. That is
+        # exactly what broke the New Air campaign: a burst of template
+        # lookups exhausted the pool and the 500 aborted the whole run.
         try:
             async for retry_state in AsyncRetrying(
                 stop=stop_after_attempt(self._max_retries),
@@ -679,8 +689,7 @@ class MetaClient:
                     (
                         MetaTransientError,
                         MetaRateLimitedError,
-                        httpx.ConnectError,
-                        httpx.ReadTimeout,
+                        httpx.TransportError,
                     )
                 ),
                 reraise=True,
@@ -688,10 +697,13 @@ class MetaClient:
                 with retry_state:
                     try:
                         return await attempt()
-                    except (httpx.ConnectError, httpx.ReadTimeout) as exc:
+                    except httpx.TransportError as exc:
                         # Promote transport errors to MetaTransientError so
                         # callers don't have to know about httpx internals.
-                        raise MetaTransientError(f"transport error: {exc}", status_code=0) from exc
+                        raise MetaTransientError(
+                            f"transport error: {type(exc).__name__}: {exc}",
+                            status_code=0,
+                        ) from exc
         except RetryError as exc:
             inner = exc.last_attempt.exception() if exc.last_attempt else None
             if isinstance(inner, MetaAPIError):

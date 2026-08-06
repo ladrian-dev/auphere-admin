@@ -166,6 +166,34 @@ async def test_transport_error_promotes_to_transient() -> None:
                 )
 
 
+@pytest.mark.parametrize(
+    "transport_exc",
+    [
+        httpx.PoolTimeout("pool exhausted"),
+        httpx.ConnectTimeout("connect timed out"),
+        httpx.ReadTimeout("read timed out"),
+        httpx.ConnectError("refused"),
+        httpx.RemoteProtocolError("peer closed"),
+    ],
+    ids=["pool", "connect_timeout", "read_timeout", "connect_error", "protocol"],
+)
+async def test_every_transport_error_promotes_to_transient(
+    transport_exc: Exception,
+) -> None:
+    """No httpx error may escape raw.
+
+    Callers map ``MetaAPIError`` to a clean 4xx/502; anything else reaches
+    FastAPI as a 500. ``PoolTimeout`` escaping this way is what aborted the
+    New Air campaign mid-batch, so the guarantee is per transport class,
+    not per the two that happened to be listed.
+    """
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.get("/WABA_1/message_templates").mock(side_effect=transport_exc)
+        async with MetaClient(_SECRET, max_retries=2) as client:
+            with pytest.raises(MetaTransientError):
+                await client.list_templates(waba_id="WABA_1", access_token=_TOKEN)
+
+
 async def test_send_template_builds_payload() -> None:
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
         route = mock.post("/PN_1/messages").respond(200, json={"messages": [{"id": "wamid.T"}]})

@@ -9,6 +9,7 @@ session — RLS is the only authority on which row is read.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -34,6 +35,37 @@ class TemplateOut(BaseModel):
     status: str | None = None
     quality_score: str | None = None
     components: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# Per-WABA template cache. A single-recipient send resolves the template
+# live on every call, so a campaign of N recipients meant N Graph API
+# round-trips fired back-to-back — 141 of them in the New Air run, which
+# exhausted the HTTP pool and failed the batch mid-way.
+#
+# Keyed by waba_id (never by tenant alone): the value is derived purely
+# from that WABA, and the key comes from credentials already resolved
+# under RLS, so one tenant cannot read another's entry.
+#
+# The TTL is deliberately short. ``resolve_template`` treats Meta as the
+# source of truth precisely so a template paused between listing and
+# sending is caught; caching for minutes would trade that guarantee away.
+# Seconds collapse the burst while keeping the window small enough that a
+# pause is caught on the next batch rather than the next hour.
+_TEMPLATE_CACHE_TTL_SECONDS = 30.0
+_template_cache: dict[str, tuple[float, list[TemplateOut]]] = {}
+
+
+def invalidate_template_cache(waba_id: str | None = None) -> None:
+    """Drop cached templates — all of them, or one WABA's.
+
+    Call after any write that changes what Meta would return (create,
+    delete, or an approval webhook), so the panel never shows a template
+    the operator just changed in its stale state.
+    """
+    if waba_id is None:
+        _template_cache.clear()
+    else:
+        _template_cache.pop(waba_id, None)
 
 
 async def require_meta_credentials(session: AsyncSession) -> MetaCredentials:
@@ -72,11 +104,26 @@ def meta_error_to_http(exc: MetaAPIError, *, context: str) -> HTTPException:
     return HTTPException(status_code=http_status, detail=detail)
 
 
-async def fetch_templates(session: AsyncSession) -> tuple[list[TemplateOut], str]:
+async def fetch_templates(
+    session: AsyncSession, *, use_cache: bool = True
+) -> tuple[list[TemplateOut], str]:
     """Live template list for the scoped tenant. Returns ``(templates,
     waba_id)``. Raises 409 without Meta credentials; Meta API errors map
-    to 422/502."""
+    to 422/502.
+
+    Results are cached per WABA for a few seconds (see
+    ``_TEMPLATE_CACHE_TTL_SECONDS``) so a fan-out of sends does not fire
+    one Graph API call per recipient. Pass ``use_cache=False`` where a
+    stale read would be wrong — right after creating or deleting a
+    template, for instance.
+    """
     creds = await require_meta_credentials(session)
+
+    if use_cache:
+        cached = _template_cache.get(creds.waba_id)
+        if cached is not None and (time.monotonic() - cached[0]) < _TEMPLATE_CACHE_TTL_SECONDS:
+            return list(cached[1]), creds.waba_id
+
     client = build_meta_client()
     try:
         try:
@@ -105,4 +152,6 @@ async def fetch_templates(session: AsyncSession) -> tuple[list[TemplateOut], str
                 components=[c for c in (raw.get("components") or []) if isinstance(c, dict)],
             )
         )
+
+    _template_cache[creds.waba_id] = (time.monotonic(), list(templates))
     return templates, creds.waba_id

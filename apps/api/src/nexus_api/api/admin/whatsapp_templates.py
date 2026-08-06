@@ -38,6 +38,7 @@ from nexus_api.db.models import AuditLog
 from nexus_api.services.whatsapp_templates import (
     TemplateOut,
     fetch_templates,
+    invalidate_template_cache,
 )
 from nexus_api.services.whatsapp_templates import (
     build_meta_client as _build_client,
@@ -117,7 +118,10 @@ async def list_whatsapp_templates(
     tenant_id: uuid.UUID,
     session: AsyncSession = Depends(scoped_session_from_path),
 ) -> TemplateListOut:
-    templates, waba_id = await fetch_templates(session)
+    # The operator panel is the one surface that must never show a stale
+    # list — it is where a human goes to check whether Meta approved a
+    # template. The send path takes the cached read; this one does not.
+    templates, waba_id = await fetch_templates(session, use_cache=False)
     return TemplateListOut(templates=templates, waba_id=waba_id)
 
 
@@ -148,6 +152,8 @@ async def create_whatsapp_template(
             raise _meta_error_to_http(exc, context="la creación de la plantilla") from exc
     finally:
         await client.close()
+
+    invalidate_template_cache(creds.waba_id)
 
     audit = AuditLog(
         tenant_id=tenant_id,
@@ -206,6 +212,8 @@ async def delete_whatsapp_template(
             raise _meta_error_to_http(exc, context="el borrado de la plantilla") from exc
     finally:
         await client.close()
+
+    invalidate_template_cache(creds.waba_id)
 
     audit = AuditLog(
         tenant_id=tenant_id,

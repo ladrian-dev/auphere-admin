@@ -80,6 +80,7 @@ from nexus_api.repositories.auphere_channels import (
 )
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
 from nexus_api.services.owner_channel_flow import handle_owner_inbound
+from nexus_api.services.whatsapp_templates import invalidate_template_cache
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -511,6 +512,7 @@ async def _handle_status_callback(
     if new_status is None:
         return {"status": "ignored"}
 
+    outcome: str | None = None
     async with tenant_scoped_session(session, tenant_id):
         values: dict[str, Any] = {
             "status": new_status,
@@ -530,11 +532,37 @@ async def _handle_status_callback(
             values["pricing_category"] = status_update.pricing_category
         if status_update.conversation_id:
             values["conversation_provider_id"] = status_update.conversation_id
-        await session.execute(
-            update(Message)
-            .where(Message.provider_message_id == status_update.wamid)
-            .values(**values)
-        )
+        stmt = update(Message).where(Message.provider_message_id == status_update.wamid)
+        # Meta does not guarantee callback ordering, and it re-drives the
+        # same event on any non-2xx. Without this guard a late "sent"
+        # overwrites a "read" and the message looks undelivered forever.
+        # ``failed`` is exempt: it is terminal and carries the error code.
+        if new_status is not MessageStatus.FAILED:
+            stmt = stmt.where(Message.status.in_(_STATUSES_BELOW[new_status]))
+        result = await session.execute(stmt.values(**values))
+        if not (result.rowcount or 0):
+            # Nothing moved. Either we have no such message (in coexistence
+            # Meta also reports statuses for messages typed on the phone),
+            # or the row is already at or past this status — a re-drive,
+            # which is routine. Only the former is a problem, and logging
+            # both as success is how a row ends up parked at ``sent``
+            # forever while Meta considers it delivered.
+            known = await session.scalar(
+                select(Message.id)
+                .where(Message.provider_message_id == status_update.wamid)
+                .limit(1)
+            )
+            outcome = "stale" if known is not None else "no_match"
+
+    if outcome is not None:
+        if outcome == "no_match":
+            log.warning(
+                "webhook.meta.status_update_no_match",
+                tenant_id=str(tenant_id),
+                wamid=status_update.wamid,
+                new_status=new_status.value,
+            )
+        return {"status": outcome}
 
     log.info(
         "webhook.meta.status_update",
@@ -544,6 +572,20 @@ async def _handle_status_callback(
         error_code=status_update.error_code,
     )
     return {"status": "ok"}
+
+
+# Statuses a message may legitimately be in for a given callback to be an
+# advance rather than a regression. Progression is
+# pending → sent → delivered → read.
+_STATUSES_BELOW: dict[MessageStatus, tuple[MessageStatus, ...]] = {
+    MessageStatus.SENT: (MessageStatus.PENDING,),
+    MessageStatus.DELIVERED: (MessageStatus.PENDING, MessageStatus.SENT),
+    MessageStatus.READ: (
+        MessageStatus.PENDING,
+        MessageStatus.SENT,
+        MessageStatus.DELIVERED,
+    ),
+}
 
 
 def _map_status(meta_status: str) -> MessageStatus | None:
@@ -589,6 +631,9 @@ async def _handle_template_status(
         },
     )
     await session.execute(stmt)
+    # A template that Meta just paused or rejected must stop being sent
+    # now, not when the send-path cache happens to expire.
+    invalidate_template_cache(update.waba_id)
     log.info(
         "webhook.meta.template_status",
         waba_id=update.waba_id,
