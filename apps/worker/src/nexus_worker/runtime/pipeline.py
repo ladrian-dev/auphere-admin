@@ -48,11 +48,15 @@ set in the orchestrator is not guaranteed to leak in.
 
 from __future__ import annotations
 
+import difflib
 import json
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 import structlog
 from langgraph.graph import END, START, StateGraph
@@ -63,6 +67,7 @@ from nexus_api.core.tenant_context import (
     tenant_scoped_session,
 )
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models import AuditLog
 from nexus_mcp import MCPRegistry, build_default_registry
 from nexus_mcp.base import ToolError, ToolNotInWhitelist
 
@@ -143,6 +148,58 @@ def _clean_model_text(text: str | None) -> str:
 # customer_id) and the ``tool_result`` is a string, not the MCP envelope.
 # See architecture/builtin-tools-vs-mcp-tools.md.
 _MEMORY_TOOL_NAME = "memory"
+
+_SPANISH_DAYS = (
+    "lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo",
+)
+_SPANISH_MONTHS = (
+    "", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+    "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+
+
+def _current_datetime_note(tz_name: str) -> str:
+    """A per-turn system note with 'now' in the BUSINESS timezone, so the agent
+    can resolve relative dates (hoy/mañana/el viernes) and know WHEN a change
+    is made. Injected fresh each turn (it changes), so it lives outside the
+    cached prompt prefix."""
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:  # unknown/invalid tz string — fall back to UTC
+        tz, tz_name = ZoneInfo("UTC"), "UTC"
+    now = datetime.now(tz)
+    return (
+        f"FECHA Y HORA ACTUAL: {_SPANISH_DAYS[now.weekday()]} {now.day} de "
+        f"{_SPANISH_MONTHS[now.month]} de {now.year}, {now.strftime('%H:%M')} "
+        f"(zona horaria {tz_name}; ISO {now.strftime('%Y-%m-%d')}). Usá esto como "
+        "referencia para interpretar 'hoy', 'mañana', 'el viernes' y cualquier "
+        "fecha relativa, y para saber cuándo se hace cada cambio."
+    )
+
+
+async def _audit_admin_write(
+    tenant_id: uuid.UUID, actor: str, tool_name: str, args: dict[str, Any], result: Any
+) -> None:
+    """Best-effort audit row for an admin billing write: WHO (actor), WHAT
+    (tool + args), WHEN (``AuditLog.created_at``, real server time), and the
+    result. Never fails the turn — audit is bookkeeping, not the change."""
+    tgt = args.get("transaction_id") or args.get("transaction_ids") or "-"
+    sm = get_sessionmaker()
+    try:
+        async with sm() as session, tenant_scoped_session(session, tenant_id):
+            session.add(
+                AuditLog(
+                    tenant_id=tenant_id,
+                    actor=str(actor)[:255],
+                    action=str(tool_name)[:80],
+                    target=f"account:{tgt}"[:255],
+                    before_json=None,
+                    after_json={"args": args, "result": result},
+                )
+            )
+            await session.commit()
+    except Exception as exc:  # pragma: no cover - audit must never break a turn
+        log.warning("billing.audit_failed", tool=tool_name, error=str(exc))
 
 # Injected as a system note when the current sender is a READ-ONLY admin, so
 # the agent declines write requests gracefully instead of just silently
@@ -870,6 +927,13 @@ def make_handler_node(
             if admin_role == ROLE_READONLY:
                 # System prompt is messages[0]; keep the note right after it.
                 messages.insert(1, {"role": "system", "content": _READONLY_ADMIN_NOTE})
+            # Current date/time in the business timezone — inserted just before
+            # the user message so the cacheable prefix (system prompt + history)
+            # is untouched, since this note changes every turn.
+            messages.insert(
+                max(len(messages) - 1, 1),
+                {"role": "system", "content": _current_datetime_note(bundle.timezone)},
+            )
 
             # Built-in Anthropic Memory tool (Fase B). Opt-in per
             # agent_config via the ``runtime_memory_tool`` boolean —
@@ -1082,6 +1146,21 @@ def make_handler_node(
                             "content": _tool_result_content(envelope),
                         }
                     )
+                    # Audit trail: every admin billing WRITE gets a timestamped
+                    # AuditLog row (who / what / when). Read tools are not
+                    # side-effecting, so they're skipped.
+                    if (
+                        call.name.startswith("billing.")
+                        and scoped_registry.is_side_effecting(call.name)
+                        and envelope.get("status") == "ok"
+                    ):
+                        await _audit_admin_write(
+                            tenant_id,
+                            f"{state.get('user_id') or '?'} ({admin_role or 'admin'})",
+                            call.name,
+                            dict(call.arguments or {}),
+                            envelope.get("result"),
+                        )
                     # ``response.send_interactive`` is terminal — capture
                     # its validated args so the ucm_formatter + checkpoint
                     # nodes can render the WhatsApp interactive component.
@@ -1522,6 +1601,42 @@ def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
     return ucm_formatter
 
 
+# Threshold above which the plain-text answer is treated as a duplicate of
+# the interactive component's ``body`` and therefore NOT sent as its own
+# message. The model routinely paraphrases the same sentence into both the
+# free text AND the interactive body (e.g. "Completa tu compra acá 👉" as
+# text plus "¡Listo! Completa tu compra en el siguiente enlace" as the
+# button body), which reaches the customer as two near-identical messages.
+# 0.6 catches paraphrases while leaving genuinely distinct explanations
+# (a product summary before an actionable button) as their own message.
+_TEXT_BODY_DUP_RATIO = 0.6
+
+
+def _normalise_for_dup(text: str) -> str:
+    """Lowercase, drop emojis/punctuation, collapse whitespace — so the
+    duplicate check compares meaning, not decoration."""
+    lowered = text.lower()
+    # Keep letters (incl. accented), digits and spaces; drop the rest.
+    stripped = re.sub(r"[^0-9a-záéíóúñü ]+", " ", lowered)
+    return re.sub(r"\s+", " ", stripped).strip()
+
+
+def _text_duplicates_body(text: str, body: str) -> bool:
+    """True when the free-text answer is redundant with the interactive
+    body and should be suppressed to avoid a double send.
+
+    Redundant when, after normalisation, one contains the other or the
+    two are ≥ ``_TEXT_BODY_DUP_RATIO`` similar. Empty inputs are never
+    duplicates (nothing to suppress)."""
+    a = _normalise_for_dup(text)
+    b = _normalise_for_dup(body)
+    if not a or not b:
+        return False
+    if a in b or b in a:
+        return True
+    return difflib.SequenceMatcher(None, a, b).ratio() >= _TEXT_BODY_DUP_RATIO
+
+
 def make_checkpoint_node() -> NodeFn:
     """Persist the outbound message(s) in the ``messages`` table.
 
@@ -1565,14 +1680,27 @@ def make_checkpoint_node() -> NodeFn:
         outcome_retries = state.get("outcome_retries")
         outcome_feedback = state.get("outcome_feedback") or None
 
+        # Duplicate-send guard: when the turn carries an interactive
+        # component whose ``body`` already says what the free text says,
+        # suppress the separate text row so the customer gets ONE message,
+        # not two paraphrases of the same thing (incident: barbersupply
+        # "Pagar ahora" sent as text + button back-to-back). The text row
+        # only survives when it adds distinct content (e.g. a product
+        # summary before an actionable button).
+        interactive_body = str((interactive or {}).get("body") or "") if interactive else ""
+        text_is_redundant = bool(
+            interactive_body and _text_duplicates_body(response_text, interactive_body)
+        )
+
         sm = get_sessionmaker()
         async with sm() as session, tenant_scoped_session(session, tenant_id):
-            # Row 1: plain-text answer. Always written when response is
-            # non-empty so the operator panel + ucm shadow diff stay
-            # aligned. The interactive row, when present, is written
-            # AFTER so the dispatcher (which orders by created_at /
-            # sequence) drains text first.
-            if response_text.strip():
+            # Row 1: plain-text answer. Written when response is non-empty
+            # AND not a duplicate of the interactive body (see guard above)
+            # so the operator panel + ucm shadow diff stay aligned. The
+            # interactive row, when present, is written AFTER so the
+            # dispatcher (which orders by created_at / sequence) drains
+            # text first.
+            if response_text.strip() and not text_is_redundant:
                 await persist_outbound_message(
                     session,
                     conversation_id=conv_id,

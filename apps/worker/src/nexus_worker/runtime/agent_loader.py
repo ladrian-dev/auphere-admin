@@ -36,6 +36,7 @@ import structlog
 from nexus_api.core.errors import IsolationViolation
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models import Tenant
 from nexus_api.repositories import AgentConfigRepository
 
 log = structlog.get_logger(__name__)
@@ -49,6 +50,10 @@ class AgentBundle:
     system_prompt: str
     tools: frozenset[str]
     policies: dict[str, Any] = field(default_factory=dict)
+    # Business timezone (``Tenant.timezone``). The handler stamps the current
+    # date/time in THIS zone into every turn so the agent can resolve relative
+    # dates ("hoy", "el viernes") and know when each change is made.
+    timezone: str = "UTC"
     # Fase D — Anthropic Skills attached to this agent_config. Each
     # element: ``{"skill_id": str, "version": str | "latest",
     # "channels": tuple[str, ...]}``. Empty tuple = no skills, the
@@ -148,6 +153,8 @@ class AgentLoader:
                 raise IsolationViolation(
                     f"no active agent_config for tenant {tenant_id} — refusing to run"
                 )
+            tenant = await session.get(Tenant, tenant_id)
+            tz = tenant.timezone if tenant and tenant.timezone else "UTC"
             return AgentBundle(
                 tenant_id=tenant_id,
                 version=cfg.version,
@@ -155,6 +162,7 @@ class AgentLoader:
                 system_prompt=cfg.system_prompt_rendered,
                 tools=frozenset(cfg.tools or ()),
                 policies=dict(cfg.policies or {}),
+                timezone=tz,
                 runtime_skills=tuple(
                     {
                         "skill_id": str(s.get("skill_id", "")),
