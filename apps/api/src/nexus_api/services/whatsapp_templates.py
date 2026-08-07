@@ -12,6 +12,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+import structlog
 from fastapi import HTTPException, status
 from nexus_channels.whatsapp_meta import MetaAPIError, MetaClient
 from nexus_channels.whatsapp_meta.credentials import (
@@ -22,6 +23,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.config import get_settings
+
+log = structlog.get_logger(__name__)
 
 
 class TemplateOut(BaseModel):
@@ -122,16 +125,41 @@ async def fetch_templates(
     if use_cache:
         cached = _template_cache.get(creds.waba_id)
         if cached is not None and (time.monotonic() - cached[0]) < _TEMPLATE_CACHE_TTL_SECONDS:
+            log.debug(
+                "templates.fetch.cache_hit",
+                waba_id=creds.waba_id,
+                count=len(cached[1]),
+                age_seconds=round(time.monotonic() - cached[0], 2),
+            )
             return list(cached[1]), creds.waba_id
 
+    # Every miss is one Graph API round-trip made while the caller holds
+    # an open DB transaction. A run of these in quick succession is the
+    # shape of the pool exhaustion that aborted the New Air campaign, so
+    # the miss — not the hit — is the event worth seeing at INFO.
+    started = time.monotonic()
     client = build_meta_client()
     try:
         try:
             payload = await client.list_templates(waba_id=creds.waba_id, access_token=creds.bisuat)
         except MetaAPIError as exc:
+            log.warning(
+                "templates.fetch.failed",
+                waba_id=creds.waba_id,
+                status_code=getattr(exc, "status_code", None),
+                code=getattr(exc, "code", None),
+                error=str(exc),
+                elapsed_ms=int((time.monotonic() - started) * 1000),
+            )
             raise meta_error_to_http(exc, context="el listado de plantillas") from exc
     finally:
         await client.close()
+    log.info(
+        "templates.fetch.cache_miss",
+        waba_id=creds.waba_id,
+        use_cache=use_cache,
+        elapsed_ms=int((time.monotonic() - started) * 1000),
+    )
 
     templates: list[TemplateOut] = []
     for raw in payload.get("data") or []:

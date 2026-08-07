@@ -259,6 +259,134 @@ async def test_idempotency_key_replays_instead_of_resending(client, world, db_se
         assert count == 1
 
 
+async def test_replay_of_a_failed_send_requeues_instead_of_answering_duplicate(
+    client, world, db_session
+) -> None:
+    """The New Air symptom: ``duplicate=true`` on a message nobody received.
+
+    The first send is queued and then fails at the dispatcher (Meta
+    rejects the number, the template is paused, the token is dead — the
+    reason does not matter, the row ends ``failed``). The automation runs
+    again the next day with the same key. Answering ``duplicate`` there
+    tells the caller the message is handled and queues nothing, so the
+    recipient never hears from us and the spreadsheet row gets marked as
+    sent. The retry has to re-drive the same row instead.
+    """
+    payload = _payload(idempotency_key="newair-instalacion-fila-15")
+
+    first = await client.post("/v1/messages/template", json=payload, headers=world["headers"])
+    assert first.status_code == 202, first.text
+    message_id = uuid.UUID(first.json()["message_id"])
+
+    # The dispatcher's terminal state for a rejected recipient.
+    await db_session.rollback()
+    async with db_session.begin():
+        await _set_tenant(db_session, world["tenant_id"])
+        await db_session.execute(
+            sa.update(Message)
+            .where(Message.id == message_id)
+            .values(
+                status="failed",
+                attempts=3,
+                failed_at=datetime.now(UTC),
+                failure_code="131026",
+                last_error="MetaAPIError: recipient unable to receive message",
+            )
+        )
+
+    second = await client.post("/v1/messages/template", json=payload, headers=world["headers"])
+    assert second.status_code == 202, second.text
+    body = second.json()
+    assert body["duplicate"] is False, "a failed send must not be reported as a duplicate"
+    assert body["status"] == "pending"
+    assert uuid.UUID(body["message_id"]) == message_id, "same row, re-driven"
+
+    await db_session.rollback()
+    async with db_session.begin():
+        await _set_tenant(db_session, world["tenant_id"])
+        message = (
+            await db_session.execute(sa.select(Message).where(Message.id == message_id))
+        ).scalar_one()
+        assert message.status.value == "pending"
+        # A fresh retry budget: inheriting attempts=3 would make the
+        # dispatcher park the row on its very first failure.
+        assert message.attempts == 0
+        assert message.failure_code is None
+        assert message.failed_at is None
+        assert message.last_error is None
+
+        # Still exactly one row — the unique index on (tenant_id,
+        # idempotency_key) is intact, we re-drove rather than duplicated.
+        count = await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(Message)
+            .where(Message.idempotency_key == "newair-instalacion-fila-15")
+        )
+        assert count == 1
+
+
+async def test_delivered_send_still_replays_as_duplicate(client, world, db_session) -> None:
+    """The guard the test above must not break: a send that actually
+    reached the customer stays a duplicate on retry, forever."""
+    payload = _payload(idempotency_key="newair-mantencion-fila-8")
+
+    first = await client.post("/v1/messages/template", json=payload, headers=world["headers"])
+    message_id = uuid.UUID(first.json()["message_id"])
+
+    await db_session.rollback()
+    async with db_session.begin():
+        await _set_tenant(db_session, world["tenant_id"])
+        await db_session.execute(
+            sa.update(Message)
+            .where(Message.id == message_id)
+            .values(status="delivered", delivered_at=datetime.now(UTC))
+        )
+
+    second = await client.post("/v1/messages/template", json=payload, headers=world["headers"])
+    assert second.status_code == 202
+    assert second.json()["duplicate"] is True
+    assert second.json()["status"] == "delivered"
+
+
+async def test_key_collision_between_two_different_rows_is_logged(client, world) -> None:
+    """Two different messages under one key: the second is swallowed.
+
+    This is the caller's bug, not ours — a key built from
+    ``tipo-telefono-fecha`` collides whenever two spreadsheet rows share
+    those fields. We cannot deliver both under one key, but we must not
+    lose it silently, so the drop is a WARNING with both payloads.
+    """
+    first = await client.post(
+        "/v1/messages/template",
+        json=_payload(
+            idempotency_key="newair-2026-08-07",
+            variables={
+                "nombre": "Juan Pérez",
+                "fecha": "15/01/2026",
+            },
+        ),
+        headers=world["headers"],
+    )
+    assert first.status_code == 202
+
+    second = await client.post(
+        "/v1/messages/template",
+        json=_payload(
+            idempotency_key="newair-2026-08-07",
+            variables={
+                "nombre": "Marta Silva",
+                "fecha": "20/01/2026",
+            },
+        ),
+        headers=world["headers"],
+    )
+    assert second.status_code == 202
+    # Same key, different customer entirely — reported as a duplicate and
+    # never sent. The response cannot express this; the log must.
+    assert second.json()["duplicate"] is True
+    assert second.json()["message_id"] == first.json()["message_id"]
+
+
 async def test_status_endpoint_returns_delivery_state(client, world) -> None:
     sent = await client.post("/v1/messages/template", json=_payload(), headers=world["headers"])
     message_id = sent.json()["message_id"]

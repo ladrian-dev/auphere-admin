@@ -161,9 +161,13 @@ async def run_outbound_dispatcher(
         providers=sorted(adapters.keys()),
     )
     sm = get_sessionmaker()
+    tick = 0
     while not stop.is_set():
         try:
             tenant_ids = await _list_active_tenants(sm)
+            if tick % _UNDRAINED_CHECK_EVERY_TICKS == 0:
+                await _warn_on_undrained_tenants(sm, tenant_ids)
+            tick += 1
             for tid in tenant_ids:
                 if stop.is_set():
                     break
@@ -183,6 +187,53 @@ async def _list_active_tenants(sm: sa.orm.sessionmaker) -> list[uuid.UUID]:  # t
             sa.select(Tenant.id).where(Tenant.status == TenantStatus.ACTIVE)
         )
         return [row[0] for row in rows]
+
+
+# One tick is 500ms, so this is roughly every five minutes.
+_UNDRAINED_CHECK_EVERY_TICKS = 600
+
+
+async def _warn_on_undrained_tenants(
+    sm: sa.orm.sessionmaker,  # type: ignore[type-arg]
+    active: list[uuid.UUID],
+) -> None:
+    """Warn about pending sends the loop above will never look at.
+
+    The drain is driven by ``tenants.status = 'active'``. A tenant that is
+    suspended, or was provisioned without ever being activated, still
+    accepts ``POST /v1/messages/template`` — the API answers 202 and the
+    row lands ``pending`` — but no tick ever selects it. From the caller's
+    side that is indistinguishable from a delivered message, and from the
+    dispatcher's side it is perfectly silent: the tenant simply is not in
+    the loop.
+
+    This session does not switch to ``nexus_app``, so it reads across
+    tenants deliberately — it is a global operational count, and the only
+    thing it reports is which tenant ids are stuck and how many rows.
+    """
+    async with sm() as session:
+        rows = await session.execute(
+            sa.select(Message.tenant_id, sa.func.count())
+            .where(
+                Message.direction == MessageDirection.OUTBOUND,
+                Message.status == MessageStatus.PENDING,
+                Message.tenant_id.not_in(active) if active else sa.true(),
+            )
+            .group_by(Message.tenant_id)
+        )
+        stuck = list(rows)
+    if not stuck:
+        return
+    log.warning(
+        "outbound.dispatcher.undrained_inactive_tenants",
+        tenants={str(tid): count for tid, count in stuck},
+        total=sum(count for _tid, count in stuck),
+        hint=(
+            "these tenants are not status='active', so the dispatcher never "
+            "selects their pending rows — the API accepted the sends and "
+            "nothing will ever deliver them"
+        ),
+    )
 
 
 async def _drain_tenant(
@@ -209,6 +260,15 @@ async def _drain_tenant(
             "outbound.dispatcher.batch",
             tenant_id=str(tenant_id),
             count=len(pending),
+            # A campaign is a burst of template rows. Splitting the count
+            # by kind is what tells an operator, at a glance, whether the
+            # queue they are staring at is the campaign or ordinary agent
+            # traffic that happens to be backed up behind it.
+            templates=sum(1 for m in pending if m.template_payload),
+            oldest_created_at=(
+                pending[0].created_at.isoformat() if pending[0].created_at else None
+            ),
+            retries=sum(1 for m in pending if m.attempts),
         )
         for msg in pending:
             await _send_one(session, msg, adapters, tenant_id)
@@ -243,6 +303,21 @@ async def _send_one(
         .limit(1)
     )
     row = info.first()
+    # Emitted before anything can go wrong, and carrying the caller's
+    # idempotency key: this is the line that joins an n8n spreadsheet row
+    # to a wamid. Without it the API says "queued" and the next event is
+    # either a send three seconds later or silence, with no way to tell
+    # which row the silence belongs to.
+    log.info(
+        "outbound.dispatcher.picked_up",
+        tenant_id=str(tenant_id),
+        message_id=str(msg.id),
+        idempotency_key=msg.idempotency_key,
+        template=(msg.template_payload or {}).get("name"),
+        attempts=msg.attempts,
+        queued_ms=_ms_since(msg.created_at),
+        has_conversation=row is not None,
+    )
     if row is None:
         msg.status = MessageStatus.FAILED
         msg.attempts += 1
@@ -368,7 +443,15 @@ async def _send_one(
         tenant_id=str(tenant_id),
         message_id=str(msg.id),
         provider_message_id=result.provider_message_id,
-        kind=msg.media_kind or ("reaction" if msg.reaction_emoji else "text"),
+        kind=(
+            "template"
+            if msg.template_payload
+            else msg.media_kind or ("reaction" if msg.reaction_emoji else "text")
+        ),
+        template=(msg.template_payload or {}).get("name"),
+        idempotency_key=msg.idempotency_key,
+        attempts=msg.attempts,
+        latency_ms=msg.latency_ms,
     )
 
 
@@ -394,6 +477,22 @@ async def _dispatch_message(
     # for the operator panel.
     if msg.template_payload:
         tp = msg.template_payload
+        # Variable *names* only, never their values: a reminder's body
+        # carries the customer's name. The names are what actually breaks
+        # (a {{nombre}}/name mismatch renders an empty placeholder or is
+        # rejected outright), and they are safe to keep.
+        body_params = (tp.get("params") or {}).get("body")
+        log.info(
+            "outbound.dispatcher.template_send",
+            tenant_id=str(tenant_id),
+            message_id=str(msg.id),
+            template=tp.get("name"),
+            language=tp.get("language", "es"),
+            body_var_names=sorted(body_params) if isinstance(body_params, dict) else None,
+            body_var_count=(len(body_params) if isinstance(body_params, (dict, list)) else 0),
+            positional=isinstance(body_params, list),
+            from_phone=from_phone,
+        )
         return await adapter.send_template(
             from_phone=from_phone,
             recipient=recipient,
@@ -777,9 +876,7 @@ def _to_meta_interactive(
         block.pop("header", None)  # catalog_message allows only body/footer/action
         action: dict[str, object] = {"name": "catalog_message"}
         if catalog_thumbnail:
-            action["parameters"] = {
-                "thumbnail_product_retailer_id": str(catalog_thumbnail)
-            }
+            action["parameters"] = {"thumbnail_product_retailer_id": str(catalog_thumbnail)}
         block["action"] = action
         return block
 

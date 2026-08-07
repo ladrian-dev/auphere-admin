@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 
 import sqlalchemy as sa
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,9 +27,10 @@ from nexus_api.schemas.messages import (
     TemplateMessageAcceptedOut,
     TemplateMessageIn,
 )
-from nexus_api.services.direct_messages import send_template_message
+from nexus_api.services.direct_messages import mask_phone, send_template_message
 
 router = APIRouter(prefix="/v1/messages", tags=["messages"])
+log = structlog.get_logger(__name__)
 
 
 @router.post(
@@ -48,8 +50,30 @@ async def post_template_message(
     retries, backoff and Meta reauth. Poll ``GET /v1/messages/{id}`` for
     the delivery state.
     """
+    # Who called, on which key. A campaign that half-sends is almost
+    # always one automation looping, and the key prefix is what ties a
+    # burst of these lines back to a single n8n run.
+    log.info(
+        "api.messages.template.request",
+        tenant_id=str(ctx.tenant_id),
+        partner_id=str(ctx.partner.id),
+        api_key_prefix=ctx.api_key.prefix_snippet,
+        template=payload.template_name,
+        to_masked=mask_phone(payload.to),
+        idempotency_key=payload.idempotency_key,
+    )
     async with tenant_scoped_session(session, ctx.tenant_id):
-        return await send_template_message(session, tenant_id=ctx.tenant_id, payload=payload)
+        result = await send_template_message(session, tenant_id=ctx.tenant_id, payload=payload)
+    log.info(
+        "api.messages.template.response",
+        tenant_id=str(ctx.tenant_id),
+        message_id=str(result.message_id),
+        status=result.status,
+        duplicate=result.duplicate,
+        template=payload.template_name,
+        idempotency_key=payload.idempotency_key,
+    )
+    return result
 
 
 @router.get(

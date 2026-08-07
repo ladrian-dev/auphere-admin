@@ -250,6 +250,24 @@ async def fake_redis(
 # Cheap to recreate; cleaner than monkey-patching every internal import site.
 
 
+# ── per-test WhatsApp template cache reset ─────────────────────────────────────
+# ``services/whatsapp_templates`` memoises Meta's template list per WABA in a
+# module-level dict for a few seconds, so a fan-out of sends doesn't fire one
+# Graph API call per recipient. Tests build their WABAs from the same fixtures
+# and therefore share the key: without this reset, the first test to populate
+# the cache silently satisfies the next one's ``respx`` mock, whose
+# ``assert_all_called`` then fails on a route that never had to be called.
+
+
+@pytest.fixture(autouse=True)
+def _reset_template_cache() -> Iterator[None]:
+    from nexus_api.services.whatsapp_templates import invalidate_template_cache
+
+    invalidate_template_cache()
+    yield
+    invalidate_template_cache()
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def _reset_db_engine_cache() -> AsyncIterator[None]:
     db_base.reset_engine_cache()

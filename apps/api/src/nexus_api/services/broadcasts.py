@@ -84,17 +84,37 @@ async def resolve_template(session: AsyncSession, *, name: str, language: str) -
     """Live lookup against Meta (source of truth). The caller listed
     templates through the same call moments earlier, so this also
     catches a template paused in between."""
-    templates, _waba = await fetch_templates(session)
+    templates, waba = await fetch_templates(session)
     match = next(
         (t for t in templates if t.name == name and t.language == language),
         None,
     )
     if match is None:
+        # The two ways this fails look identical from the 422 body but
+        # need opposite fixes: a typo in ``name`` versus the right name in
+        # the wrong locale (``es`` vs ``es_ES`` is the classic). Log both
+        # candidate sets so the answer is in the line itself.
+        log.warning(
+            "template.resolve.not_found",
+            waba_id=waba,
+            requested=name,
+            requested_language=language,
+            same_name_other_languages=[t.language for t in templates if t.name == name],
+            available=[f"{t.name}/{t.language}" for t in templates],
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"template {name!r} ({language}) does not exist for this account",
         )
     if (match.status or "").upper() != "APPROVED":
+        log.warning(
+            "template.resolve.not_approved",
+            waba_id=waba,
+            template=name,
+            language=language,
+            template_status=match.status,
+            category=match.category,
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"template {name!r} ({language}) is {match.status}, not APPROVED",
@@ -139,15 +159,40 @@ async def active_whatsapp_channel(session: AsyncSession) -> Channel:
             Channel.type == ChannelType.WHATSAPP,
             Channel.status == ChannelStatus.ACTIVE,
         )
-        .limit(1)
+        .order_by(Channel.created_at.asc())
     )
-    channel = result.scalar_one_or_none()
-    if channel is None:
+    channels = list(result.scalars())
+    if not channels:
+        # Distinguish "no WhatsApp at all" from "one exists but is not
+        # active" — the 409 body says the same thing either way, and the
+        # second case is a one-click fix an operator can only make if the
+        # log tells them the channel is sitting there paused.
+        any_whatsapp = await session.execute(
+            sa.select(Channel.id, Channel.status).where(Channel.type == ChannelType.WHATSAPP)
+        )
+        rows = list(any_whatsapp)
+        log.warning(
+            "broadcast.channel.not_connected",
+            whatsapp_channels_total=len(rows),
+            statuses=[str(s) for _cid, s in rows],
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="whatsapp_not_connected",
         )
-    return channel
+    if len(channels) > 1:
+        # Oldest wins, deterministically. Before the ORDER BY this was
+        # whatever Postgres returned first, so a tenant with a second
+        # active number could send some messages from one and some from
+        # the other with nothing in the logs to show it.
+        log.warning(
+            "broadcast.channel.ambiguous",
+            chosen_channel_id=str(channels[0].id),
+            chosen_identifier=channels[0].provider_identifier,
+            candidates=[str(c.id) for c in channels],
+            identifiers=[c.provider_identifier for c in channels],
+        )
+    return channels[0]
 
 
 async def _existing_broadcast(
