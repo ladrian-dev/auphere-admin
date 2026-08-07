@@ -36,6 +36,7 @@ import { MetaTestSendDialog } from "./meta-test-send-dialog";
 import { WhatsAppTemplatesDialog } from "./whatsapp-templates-dialog";
 import { MetaWhatsAppSetupDialog } from "./meta-signup-dialog";
 import { TikTokConnectDialog } from "./tiktok-connect-dialog";
+import { WhatsAppNumbers } from "./whatsapp-numbers";
 import {
   AgendaProSetupDialog,
   WooCommerceSetupDialog,
@@ -133,10 +134,11 @@ export default async function TenantConnectorsPage({
         })
       : null;
 
-  const [installed, catalog, overrides] = await Promise.all([
+  const [installed, catalog, overrides, channels] = await Promise.all([
     backend.listTenantConnectors(id),
     backend.listConnectors({ status: "available" }),
     backend.listConnectorToolOverrides(id),
+    backend.listChannels(id),
   ]);
 
   const installedBySlug = new Map(installed.map((c) => [c.connector_slug, c]));
@@ -159,6 +161,7 @@ export default async function TenantConnectorsPage({
           </CardContent>
         </Card>
       ) : null}
+      <WhatsAppNumbers tenantId={id} channels={channels} />
       <section className="flex flex-col gap-3">
         <Eyebrow>Conectados</Eyebrow>
         {installed.length === 0 ? (

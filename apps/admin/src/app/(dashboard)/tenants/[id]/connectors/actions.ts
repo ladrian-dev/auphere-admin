@@ -10,7 +10,13 @@
 
 import { revalidatePath } from "next/cache";
 
-import { BackendError, backend, type ConnectorToolMode } from "@/lib/backend";
+import {
+  BackendError,
+  backend,
+  type ChannelOut,
+  type ConnectorToolMode,
+} from "@/lib/backend";
+import type { ChannelRole } from "@/lib/channels";
 
 export type ActionResult<T> =
   | { ok: true; data: T }
@@ -156,6 +162,21 @@ export async function deleteOverrideAction(
     await backend.deleteConnectorToolOverride(tenantId, toolName);
     revalidatePath(`/tenants/${tenantId}/connectors`);
     return { ok: true, data: undefined };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function updateChannelRoleAction(
+  tenantId: string,
+  channelId: string,
+  body: { role?: ChannelRole | null; agent_enabled?: boolean },
+): Promise<ActionResult<ChannelOut>> {
+  try {
+    const r = await backend.updateChannelRole(tenantId, channelId, body);
+    if (!r) return { ok: false, error: "empty response" };
+    revalidatePath(`/tenants/${tenantId}/connectors`);
+    return { ok: true, data: r };
   } catch (e) {
     return err(e);
   }

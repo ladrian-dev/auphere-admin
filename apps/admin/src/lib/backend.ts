@@ -23,6 +23,8 @@
 
 import "server-only";
 
+import type { ChannelRole } from "@/lib/channels";
+
 const BACKEND_URL = process.env.NEXUS_BACKEND_URL ?? "http://localhost:8000";
 const ADMIN_TOKEN = process.env.NEXUS_ADMIN_TOKEN ?? "dev-admin-token-change-me";
 
@@ -257,6 +259,12 @@ export type ChannelOut = {
   type: "whatsapp" | "instagram" | "telegram" | "email" | "web" | "tiktok";
   provider: string;
   provider_identifier: string;
+  /**
+   * Meta identifiers written at connect time, plus the two operator-editable
+   * flags: `role` and `agent_enabled`. Read them through `channelRole()` /
+   * `channelAgentEnabled()` so the defaults stay in one place — an absent
+   * flag means "behave as before roles existed", not "false".
+   */
   config: Record<string, unknown>;
   status: "active" | "paused" | "degraded" | "disconnected";
   created_at: string;
@@ -1514,6 +1522,26 @@ export const backend = {
     call<ChannelOut[]>(`/admin/tenants/${tenantId}/channels`).then(
       (r) => r ?? [],
     ),
+
+  /**
+   * Assign what a WhatsApp number is for.
+   *
+   * `role` decides which line business-initiated sends (broadcasts, cobranza
+   * reminders, the template API) leave from. `agent_enabled: false` makes the
+   * line send-only: inbound is still stored and visible, but nothing answers
+   * and no read receipt goes out.
+   *
+   * Omitted fields are left untouched; `role: null` clears the assignment.
+   */
+  updateChannelRole: (
+    tenantId: string,
+    channelId: string,
+    body: { role?: ChannelRole | null; agent_enabled?: boolean },
+  ) =>
+    call<ChannelOut>(`/admin/tenants/${tenantId}/channels/${channelId}`, {
+      method: "PATCH",
+      body,
+    }),
 
   // ── Connectors (Block L / ADR-011) ─────────────────────────────────────
 
