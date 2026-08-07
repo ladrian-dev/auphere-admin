@@ -65,6 +65,7 @@ async def _make_tenant_with_channel(
     status: TenantStatus,
     *,
     agent: AgentConfigStatus | None = AgentConfigStatus.ACTIVE,
+    channel_config: dict[str, Any] | None = None,
 ) -> tuple[uuid.UUID, uuid.UUID]:
     """Tenant + channel, with an agent_config in ``agent`` status.
 
@@ -104,11 +105,33 @@ async def _make_tenant_with_channel(
         provider="meta",
         provider_identifier=f"m1-{tenant_id.hex[:6]}",
         status=ChannelStatus.ACTIVE,
+        config=dict(channel_config or {}),
     )
     db_session.add(channel)
     await db_session.commit()
     await db_session.refresh(channel)
     return tenant_id, channel.id
+
+
+async def _add_channel(
+    db_session: Any,
+    tenant_id: uuid.UUID,
+    *,
+    config: dict[str, Any] | None = None,
+) -> uuid.UUID:
+    """A second WhatsApp channel on an existing tenant."""
+    channel = Channel(
+        tenant_id=tenant_id,
+        type=ChannelType.WHATSAPP,
+        provider="meta",
+        provider_identifier=f"m1b-{uuid.uuid4().hex[:8]}",
+        status=ChannelStatus.ACTIVE,
+        config=dict(config or {}),
+    )
+    db_session.add(channel)
+    await db_session.commit()
+    await db_session.refresh(channel)
+    return channel.id
 
 
 async def _count_inbound(tenant_id: uuid.UUID) -> int:
@@ -527,3 +550,119 @@ async def test_no_takeover_context_passes_user_message_untouched(
     state, _config = pipeline.calls[0]
     assert state["user_message"] == "hola normal"
     assert "[Contexto interno" not in state["user_message"]
+
+
+# ── send-only CHANNEL (per-number, not per-tenant) ──────────────────────────
+#
+# A business running two numbers can have an agent on one and a pure
+# notifications line on the other. ``agent_configs`` is per tenant, so the
+# tenant-level skip above cannot express that — the flag lives on the channel.
+
+
+async def test_send_only_channel_persists_inbound_but_skips_pipeline(
+    db_session: Any,
+) -> None:
+    """Mouna's notifications line: a debtor replies and gets no answer.
+
+    The reply must still be persisted — the operator panel is the only place
+    the business would ever see a "ya pagué" arriving on that number."""
+    tenant_id, _agent_channel = await _make_tenant_with_channel(db_session, TenantStatus.ACTIVE)
+    notif_channel = await _add_channel(
+        db_session, tenant_id, config={"role": "notifications", "agent_enabled": False}
+    )
+    pipeline = _RecordingPipeline()
+
+    result = await process_inbound(
+        InboundEvent(
+            tenant_id=tenant_id,
+            channel_id=notif_channel,
+            user_id="+5699910200",
+            content="ya pagué, gracias",
+        ),
+        pipeline=pipeline,
+    )
+
+    assert pipeline.calls == [], "a send-only channel must NOT run the pipeline"
+    assert result["skipped"] == "send_only_channel"
+    assert await _count_inbound(tenant_id) == 1
+
+
+async def test_agent_channel_of_the_same_tenant_still_replies(db_session: Any) -> None:
+    """The other half of the contract: disabling one number must not mute the
+    other. Same tenant, same agent_config, two channels, opposite outcomes."""
+    tenant_id, agent_channel = await _make_tenant_with_channel(db_session, TenantStatus.ACTIVE)
+    notif_channel = await _add_channel(
+        db_session, tenant_id, config={"role": "notifications", "agent_enabled": False}
+    )
+    pipeline = _RecordingPipeline()
+
+    muted = await process_inbound(
+        InboundEvent(
+            tenant_id=tenant_id,
+            channel_id=notif_channel,
+            user_id="+5699910201",
+            content="quién me escribe?",
+        ),
+        pipeline=pipeline,
+    )
+    answered = await process_inbound(
+        InboundEvent(
+            tenant_id=tenant_id,
+            channel_id=agent_channel,
+            user_id="+5699910202",
+            content="pásame los vencidos",
+        ),
+        pipeline=pipeline,
+    )
+
+    assert muted["skipped"] == "send_only_channel"
+    assert answered.get("skipped") is None
+    assert len(pipeline.calls) == 1
+    assert pipeline.calls[0][0]["user_message"] == "pásame los vencidos"
+    # Both inbounds are on the record regardless of who answered.
+    assert await _count_inbound(tenant_id) == 2
+
+
+async def test_untagged_channel_keeps_answering(db_session: Any) -> None:
+    """The no-op guarantee at the dispatcher. Every channel in production has
+    an empty config; none of them may go quiet because this flag now exists."""
+    tenant_id, channel_id = await _make_tenant_with_channel(
+        db_session, TenantStatus.ACTIVE, channel_config={}
+    )
+    pipeline = _RecordingPipeline()
+
+    result = await process_inbound(
+        InboundEvent(
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            user_id="+5699910203",
+            content="hola",
+        ),
+        pipeline=pipeline,
+    )
+
+    assert result.get("skipped") is None
+    assert len(pipeline.calls) == 1
+
+
+async def test_notifications_role_alone_does_not_mute_a_channel(db_session: Any) -> None:
+    """``role`` and ``agent_enabled`` are independent on purpose: a business
+    may want its notifications line to answer too. Only the explicit flag
+    silences it."""
+    tenant_id, channel_id = await _make_tenant_with_channel(
+        db_session, TenantStatus.ACTIVE, channel_config={"role": "notifications"}
+    )
+    pipeline = _RecordingPipeline()
+
+    result = await process_inbound(
+        InboundEvent(
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            user_id="+5699910204",
+            content="hola",
+        ),
+        pipeline=pipeline,
+    )
+
+    assert result.get("skipped") is None
+    assert len(pipeline.calls) == 1

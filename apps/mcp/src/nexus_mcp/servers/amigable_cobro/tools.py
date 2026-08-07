@@ -674,6 +674,18 @@ _REMINDER_STATUS_MESSAGE: dict[str, str] = {
     ),
     "no_due_accounts": "No hay cuentas con recordatorio pendiente para hoy — no se envió ninguno.",
     "not_confirmed": "No se enviaron recordatorios: falta la confirmación explícita del admin.",
+    # The business has more than one active WhatsApp number and none is
+    # marked as the notifications line. We refuse rather than pick one:
+    # sending a debt reminder from the line the owner administers on is not
+    # something a retry can undo.
+    "channel_role_unassigned": (
+        "No pude enviar: este negocio tiene más de una línea de WhatsApp activa y ninguna "
+        "está marcada como línea de notificaciones. Hay que asignarla en el panel antes "
+        "de enviar."
+    ),
+    "channel_not_available": (
+        "No pude enviar: la línea de WhatsApp indicada no está activa para este negocio."
+    ),
 }
 
 

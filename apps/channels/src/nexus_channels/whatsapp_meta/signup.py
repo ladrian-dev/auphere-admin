@@ -45,6 +45,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_channels.whatsapp_meta.credentials import (
+    ChannelCredentialsRepository,
     MetaCredentials,
     MetaCredentialsRepository,
 )
@@ -123,6 +124,7 @@ class EmbeddedSignupOrchestrator:
         # handshake handler only knows the global one. Keep them aligned.
         self._webhook_verify_token = webhook_verify_token
         self._credentials = MetaCredentialsRepository(session)
+        self._channel_credentials = ChannelCredentialsRepository(session)
 
     async def complete(self, payload: SignupIngressPayload) -> SignupResult:
         tenant_id = require_current_tenant()
@@ -208,7 +210,20 @@ class EmbeddedSignupOrchestrator:
                 f"phone_number_id {phone_number_id} has no display_phone_number"
             )
 
-        # 5) Persist credentials
+        # 5) Upsert channels row (provider="meta") FIRST — the credential is
+        # written against the channel, so the row has to exist.
+        channel_id = await self._upsert_channel(
+            display_phone=display_phone,
+            waba_id=payload.waba_id,
+            phone_number_id=phone_number_id,
+            business_id=business_id,
+            mode=payload.mode,
+            quality_rating=phone_info.get("quality_rating"),
+            verified_name=phone_info.get("verified_name"),
+            messaging_tier=phone_info.get("messaging_limit_tier"),
+        )
+
+        # 6) Persist credentials
         credentials = MetaCredentials(
             bisuat=bisuat,
             bisuat_expires_at=expires_at,
@@ -220,19 +235,7 @@ class EmbeddedSignupOrchestrator:
             mode=payload.mode,
             external_user_id_enrolled=False,
         )
-        await self._credentials.upsert(credentials)
-
-        # 6) Upsert channels row (provider="meta")
-        channel_id = await self._upsert_channel(
-            display_phone=display_phone,
-            waba_id=payload.waba_id,
-            phone_number_id=phone_number_id,
-            business_id=business_id,
-            mode=payload.mode,
-            quality_rating=phone_info.get("quality_rating"),
-            verified_name=phone_info.get("verified_name"),
-            messaging_tier=phone_info.get("messaging_limit_tier"),
-        )
+        await self._persist_credentials(credentials, channel_id=channel_id)
 
         # 7) Invalidate the tenant-resolver cache so the next webhook hits
         # the freshly-written channels row.
@@ -327,19 +330,6 @@ class EmbeddedSignupOrchestrator:
                 f"phone_number_id {phone_number_id} has no display_phone_number"
             )
 
-        credentials = MetaCredentials(
-            bisuat=token,
-            bisuat_expires_at=None,  # permanent System User token — no expiry
-            waba_id=waba_id,
-            phone_number_id=phone_number_id,
-            business_id=business_id,
-            display_phone_number=display_phone,
-            verify_token=verify_token,
-            mode=mode,
-            external_user_id_enrolled=False,
-        )
-        await self._credentials.upsert(credentials)
-
         channel_id = await self._upsert_channel(
             display_phone=display_phone,
             waba_id=waba_id,
@@ -351,6 +341,19 @@ class EmbeddedSignupOrchestrator:
             messaging_tier=phone_info.get("messaging_limit_tier"),
             catalog_id=catalog_id,
         )
+
+        credentials = MetaCredentials(
+            bisuat=token,
+            bisuat_expires_at=None,  # permanent System User token — no expiry
+            waba_id=waba_id,
+            phone_number_id=phone_number_id,
+            business_id=business_id,
+            display_phone_number=display_phone,
+            verify_token=verify_token,
+            mode=mode,
+            external_user_id_enrolled=False,
+        )
+        await self._persist_credentials(credentials, channel_id=channel_id)
 
         await invalidate_tenant_cache(self._redis, "meta", display_phone)
         log.info(
@@ -370,6 +373,44 @@ class EmbeddedSignupOrchestrator:
             mode=mode,
             bisuat_expires_at=None,
         )
+
+    async def _persist_credentials(
+        self, credentials: MetaCredentials, *, channel_id: uuid.UUID
+    ) -> None:
+        """Store the credential on the channel, and on the tenant only if safe.
+
+        The channel row always gets it: that is what makes a number
+        self-describing and lets two numbers coexist.
+
+        The tenant row is the subtle part. ``tenant_credentials`` holds ONE
+        Meta credential per tenant, including a single ``phone_number_id``.
+        Before this, connecting a second number overwrote it, and from that
+        moment every outbound of the tenant — the agent's replies on the first
+        line included — went out through the newly connected number. So we
+        refresh it only when it is not somebody else's:
+
+        - no tenant credential yet → write it (first connect, unchanged);
+        - it already points at THIS number → refresh it (re-connect and token
+          rotation, unchanged);
+        - it points at a DIFFERENT number → leave it alone. The other line
+          keeps resolving through it, this one resolves through its own row.
+
+        Every tenant in production has exactly one number, so they all take
+        one of the first two branches and see no change at all.
+        """
+        await self._channel_credentials.upsert(channel_id, credentials)
+
+        existing = await self._credentials.get()
+        if existing is not None and existing.phone_number_id != credentials.phone_number_id:
+            log.info(
+                "meta.credentials.tenant_row_preserved",
+                channel_id=str(channel_id),
+                tenant_phone_number_id=existing.phone_number_id,
+                connected_phone_number_id=credentials.phone_number_id,
+                reason="additional_number_connected",
+            )
+            return
+        await self._credentials.upsert(credentials)
 
     async def _upsert_channel(
         self,

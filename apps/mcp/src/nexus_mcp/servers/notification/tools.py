@@ -177,6 +177,7 @@ async def _queue_outbound(
     reaction_emoji: str | None = None,
     reaction_target_wamid: str | None = None,
     context_message_id: str | None = None,
+    template_payload: dict[str, Any] | None = None,
 ) -> uuid.UUID:
     tenant_id = require_current_tenant()
     payload: dict[str, Any] = {"tool": tool_name}
@@ -195,6 +196,7 @@ async def _queue_outbound(
         reaction_emoji=reaction_emoji,
         reaction_target_wamid=reaction_target_wamid,
         context_message_id=context_message_id,
+        template_payload=template_payload,
     )
     session.add(msg)
     await session.flush()
@@ -243,6 +245,21 @@ class SendTemplate(ToolBase):
                     "template": payload.template_name,
                     "language": payload.language,
                     "parameters": payload.parameters,
+                },
+                # THE row-level contract with the outbound dispatcher. The
+                # dispatcher routes a pending row through
+                # ``adapter.send_template`` if and only if this column is
+                # non-NULL; without it the row falls through to the text
+                # path and Cloud API receives the literal
+                # ``[template:foo] nombre='Ana'`` as a free-form body —
+                # rejected with 131047 outside the 24h window, and garbage
+                # inside it. Same shape as ``services/broadcasts`` and the
+                # cobranza reminder engine; ``content`` stays a preview for
+                # the operator panel only.
+                template_payload={
+                    "name": payload.template_name,
+                    "language": payload.language,
+                    "params": {"body": dict(payload.parameters)},
                 },
             )
         return SendTemplateOutput(message_id=msg_id, status="pending")

@@ -12,6 +12,7 @@ Covers the two Phase-2 fixes plus a baseline:
 from __future__ import annotations
 
 import json
+import uuid
 
 import pytest
 from nexus_channels.whatsapp_meta.signature import sign_meta_request
@@ -173,9 +174,17 @@ async def test_inbound_image_downloads_media_to_s3(
     sender = "56911114444"
     await _seed_meta_channel(db_session, tenant_id, business_phone)
 
-    async def _fake_download(*, tenant_id, wamid, media_id, hint_mime, hint_sha):
+    seen: dict[str, object] = {}
+
+    async def _fake_download(*, tenant_id, channel_id, wamid, media_id, hint_mime, hint_sha):
         # Avoid the real Graph API media fetch; assert the wiring persists
         # the returned S3 reference onto the stream entry.
+        #
+        # ``channel_id`` is captured and asserted below: a media id is scoped
+        # to the WABA that received it, so the download must use the token of
+        # the channel the message arrived on — not whichever number the tenant
+        # credential happens to point at.
+        seen["channel_id"] = channel_id
         return (f"{tenant_id}/inbound/{wamid}.jpg", "image/jpeg", 2048, "deadbeef")
 
     monkeypatch.setattr("nexus_api.api.webhooks.meta._download_inbound_media", _fake_download)
@@ -210,3 +219,5 @@ async def test_inbound_image_downloads_media_to_s3(
     assert mine[0]["media_s3_key"] == f"{tenant_id}/inbound/wamid.img-1.jpg"
     assert mine[0]["media_mime"] == "image/jpeg"
     assert mine[0]["media_size_bytes"] == "2048"
+    # The download was scoped to the channel that received the message.
+    assert seen["channel_id"] == uuid.UUID(mine[0]["channel_id"])

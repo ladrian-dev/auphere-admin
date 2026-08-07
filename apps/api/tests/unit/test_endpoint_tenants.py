@@ -228,3 +228,142 @@ async def test_delete_tenant_requires_auth(client, seed_tenants):
     tenant_id = seed_tenants["a"]
     r = await client.delete(f"/admin/tenants/{tenant_id}")
     assert r.status_code == 401
+
+
+# ── channel roles ──────────────────────────────────────────────────────────
+#
+# Assigning what a number is for. ``role`` decides which line a
+# business-initiated send leaves from; ``agent_enabled`` decides whether the
+# line answers. They are independent, and both live in ``channels.config``.
+
+
+async def _seed_whatsapp_channel(db_session, tenant_id, identifier="+584249018017"):
+    from nexus_api.db.models import Channel, ChannelStatus, ChannelType
+
+    ch = Channel(
+        tenant_id=tenant_id,
+        type=ChannelType.WHATSAPP,
+        provider="meta",
+        provider_identifier=identifier,
+        config={"phone_number_id": "PNID-1"},
+        status=ChannelStatus.ACTIVE,
+    )
+    db_session.add(ch)
+    await db_session.commit()
+    await db_session.refresh(ch)
+    return ch
+
+
+async def test_patch_channel_sets_role_and_agent_enabled(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+    channel = await _seed_whatsapp_channel(db_session, tenant_id)
+
+    r = await client.patch(
+        f"/admin/tenants/{tenant_id}/channels/{channel.id}",
+        json={"role": "notifications", "agent_enabled": False},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    config = r.json()["config"]
+    assert config["role"] == "notifications"
+    assert config["agent_enabled"] is False
+    # Meta identifiers written at connect time must survive the edit.
+    assert config["phone_number_id"] == "PNID-1"
+
+    audit = await db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.tenant_id == tenant_id, AuditLog.action == "channel.role_changed"
+        )
+    )
+    assert audit is not None
+    assert audit.after_json == {"role": "notifications", "agent_enabled": False}
+
+
+async def test_patch_channel_leaves_omitted_fields_untouched(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+    channel = await _seed_whatsapp_channel(db_session, tenant_id)
+
+    await client.patch(
+        f"/admin/tenants/{tenant_id}/channels/{channel.id}",
+        json={"role": "agent", "agent_enabled": False},
+        headers=admin_headers,
+    )
+    r = await client.patch(
+        f"/admin/tenants/{tenant_id}/channels/{channel.id}",
+        json={"agent_enabled": True},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["config"]["role"] == "agent"
+    assert r.json()["config"]["agent_enabled"] is True
+
+
+async def test_patch_channel_null_role_clears_it(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+    channel = await _seed_whatsapp_channel(db_session, tenant_id)
+
+    await client.patch(
+        f"/admin/tenants/{tenant_id}/channels/{channel.id}",
+        json={"role": "notifications"},
+        headers=admin_headers,
+    )
+    r = await client.patch(
+        f"/admin/tenants/{tenant_id}/channels/{channel.id}",
+        json={"role": None},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    assert "role" not in r.json()["config"]
+
+
+async def test_patch_channel_rejects_unknown_role(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+    channel = await _seed_whatsapp_channel(db_session, tenant_id)
+    r = await client.patch(
+        f"/admin/tenants/{tenant_id}/channels/{channel.id}",
+        json={"role": "notificaciones"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 422
+
+
+async def test_patch_channel_unknown_id_is_404(client, admin_headers, seed_tenants):
+    r = await client.patch(
+        f"/admin/tenants/{seed_tenants['a']}/channels/{uuid.uuid4()}",
+        json={"role": "agent"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 404
+
+
+async def test_patch_channel_of_another_tenant_is_404(
+    client, admin_headers, seed_tenants, db_session
+):
+    """The channel id is caller-supplied. RLS scopes the lookup to the tenant
+    in the path, so tenant A cannot retag tenant B's number."""
+    b_channel = await _seed_whatsapp_channel(
+        db_session, seed_tenants["b"], identifier="+560000000077"
+    )
+    r = await client.patch(
+        f"/admin/tenants/{seed_tenants['a']}/channels/{b_channel.id}",
+        json={"role": "notifications"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 404
+
+
+async def test_patch_channel_requires_admin_token(client, seed_tenants, db_session):
+    channel = await _seed_whatsapp_channel(db_session, seed_tenants["a"])
+    r = await client.patch(
+        f"/admin/tenants/{seed_tenants['a']}/channels/{channel.id}",
+        json={"role": "agent"},
+    )
+    assert r.status_code in (401, 403)

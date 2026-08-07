@@ -40,8 +40,6 @@ from nexus_api.db.models import (
     BroadcastRecipient,
     BroadcastRecipientStatus,
     Channel,
-    ChannelStatus,
-    ChannelType,
     Message,
     MessageDirection,
     MessageStatus,
@@ -53,6 +51,11 @@ from nexus_api.schemas.broadcasts import (
     BroadcastRecipientStatusOut,
     BroadcastStatusOut,
     RejectedRecipientOut,
+)
+from nexus_api.services.channel_routing import (
+    CHANNEL_ROLE_NOTIFICATIONS,
+    ChannelResolutionError,
+    resolve_whatsapp_channel,
 )
 from nexus_api.services.whatsapp_templates import TemplateOut, fetch_templates
 
@@ -138,8 +141,14 @@ async def resolve_template(session: AsyncSession, *, name: str, language: str) -
     return _ResolvedTemplate(template=match, body_vars=_template_body_vars(match))
 
 
-async def active_whatsapp_channel(session: AsyncSession) -> Channel:
-    """The tenant's active WhatsApp channel, for business-initiated sends.
+async def active_whatsapp_channel(
+    session: AsyncSession,
+    *,
+    channel_id: uuid.UUID | None = None,
+    role: str | None = CHANNEL_ROLE_NOTIFICATIONS,
+    purpose: str = "broadcast",
+) -> Channel:
+    """The tenant's WhatsApp channel for a business-initiated send.
 
     The ``ChannelType.WHATSAPP`` filter is a **guardrail, not an accident**.
     Broadcasts and direct messages both start a conversation the customer did
@@ -152,47 +161,22 @@ async def active_whatsapp_channel(session: AsyncSession) -> Channel:
     filter would let a broadcast fan out onto a TikTok channel, where every
     row would sit ``pending`` until the adapter rejected it for having no
     conversation to reply into.
+
+    Role defaults to ``notifications`` because that is what this function is
+    for: messages to people who did not write first. On a tenant with a single
+    active channel the role is ignored and the behaviour is unchanged — see
+    :mod:`nexus_api.services.channel_routing` for why the multi-channel case
+    refuses rather than guessing.
     """
-    result = await session.execute(
-        sa.select(Channel)
-        .where(
-            Channel.type == ChannelType.WHATSAPP,
-            Channel.status == ChannelStatus.ACTIVE,
+    try:
+        return await resolve_whatsapp_channel(
+            session, role=role, channel_id=channel_id, purpose=purpose
         )
-        .order_by(Channel.created_at.asc())
-    )
-    channels = list(result.scalars())
-    if not channels:
-        # Distinguish "no WhatsApp at all" from "one exists but is not
-        # active" — the 409 body says the same thing either way, and the
-        # second case is a one-click fix an operator can only make if the
-        # log tells them the channel is sitting there paused.
-        any_whatsapp = await session.execute(
-            sa.select(Channel.id, Channel.status).where(Channel.type == ChannelType.WHATSAPP)
-        )
-        rows = list(any_whatsapp)
-        log.warning(
-            "broadcast.channel.not_connected",
-            whatsapp_channels_total=len(rows),
-            statuses=[str(s) for _cid, s in rows],
-        )
+    except ChannelResolutionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="whatsapp_not_connected",
-        )
-    if len(channels) > 1:
-        # Oldest wins, deterministically. Before the ORDER BY this was
-        # whatever Postgres returned first, so a tenant with a second
-        # active number could send some messages from one and some from
-        # the other with nothing in the logs to show it.
-        log.warning(
-            "broadcast.channel.ambiguous",
-            chosen_channel_id=str(channels[0].id),
-            chosen_identifier=channels[0].provider_identifier,
-            candidates=[str(c.id) for c in channels],
-            identifiers=[c.provider_identifier for c in channels],
-        )
-    return channels[0]
+            detail=str(exc) if exc.reason != "whatsapp_not_connected" else "whatsapp_not_connected",
+        ) from exc
 
 
 async def _existing_broadcast(
@@ -254,7 +238,7 @@ async def create_broadcast(
         if replay is not None:
             return replay, False
 
-    channel = await active_whatsapp_channel(session)
+    channel = await active_whatsapp_channel(session, channel_id=payload.channel_id)
     resolved = await resolve_template(
         session, name=payload.template_name, language=payload.language
     )

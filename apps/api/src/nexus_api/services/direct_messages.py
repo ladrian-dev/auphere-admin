@@ -220,11 +220,14 @@ async def send_template_message(
             ),
         )
 
-    channel = await active_whatsapp_channel(session)
+    channel = await active_whatsapp_channel(
+        session, channel_id=payload.channel_id, purpose="direct_message"
+    )
     log.info(
         "direct_message.channel_resolved",
         tenant_id=str(tenant_id),
         channel_id=str(channel.id),
+        requested_channel_id=str(payload.channel_id) if payload.channel_id else None,
         provider=channel.provider,
         provider_identifier=channel.provider_identifier,
         channel_status=channel.status.value,

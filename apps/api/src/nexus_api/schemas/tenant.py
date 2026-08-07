@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -208,3 +208,27 @@ class ChannelOut(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+class ChannelRoleIn(BaseModel):
+    """What a WhatsApp number is for. Both fields optional and independent.
+
+    Omitting a field leaves it untouched; ``role: null`` clears the
+    assignment. ``agent_enabled`` is separate from ``role`` on purpose — a
+    notifications line that also answers is a legitimate setup.
+    """
+
+    role: Literal["agent", "notifications"] | None = Field(
+        default=None,
+        description=(
+            "Which number business-initiated sends (broadcasts, reminders, "
+            "template API) leave from. Null clears the assignment."
+        ),
+    )
+    agent_enabled: bool | None = Field(
+        default=None,
+        description=(
+            "False makes this a send-only line: inbound is still stored and "
+            "visible, but the agent never replies and no read receipt is sent."
+        ),
+    )

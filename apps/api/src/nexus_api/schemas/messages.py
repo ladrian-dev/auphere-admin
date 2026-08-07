@@ -39,6 +39,14 @@ class TemplateMessageIn(BaseModel):
             "your tenant, so it only needs to be unique to you."
         ),
     )
+    channel_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Which of your WhatsApp numbers to send from. Omit it and we use "
+            "the number assigned the 'notifications' role, or your only "
+            "number if you have just one."
+        ),
+    )
 
 
 class TemplateMessageAcceptedOut(BaseModel):

@@ -495,6 +495,22 @@ async def test_notification_send_template_and_text_and_schedule_and_cancel(
         assert len(msgs) == 2
         assert all(m.status == MessageStatus.PENDING for m in msgs)
 
+        # The template row MUST carry ``template_payload``: that column, and
+        # nothing else, is what makes the outbound dispatcher send it through
+        # ``adapter.send_template``. A NULL here means the row falls through
+        # to the text path and the customer receives the literal
+        # ``[template:reminder_24h] name='Luis'`` preview string.
+        by_kind = {m.content.startswith("[template:"): m for m in msgs}
+        template_row = by_kind[True]
+        assert template_row.template_payload == {
+            "name": "reminder_24h",
+            "language": "es",
+            "params": {"body": {"name": "Luis"}},
+        }
+        # The free-form row must NOT carry it, or it would be sent as a
+        # template with no approved name behind it.
+        assert by_kind[False].template_payload is None
+
         jobs = (await s.execute(select(ScheduledJob))).scalars().all()
         assert len(jobs) == 1
         assert jobs[0].status == ScheduledJobStatus.CANCELLED

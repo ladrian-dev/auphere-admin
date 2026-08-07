@@ -16,13 +16,19 @@ Per account (pending balance, not CANCELLED, with a phone and a due date):
 Guards, in order:
 1. **Template approval** — the tenant's WABA must report the template as
    APPROVED (Meta rejects unapproved sends anyway).
-2. **Opt-out** — a debtor who replied BAJA/STOP is skipped.
+2. **Opt-out** — a debtor who replied BAJA/STOP is skipped, on ANY of the
+   business's numbers (see ``_queue_reminder``).
 3. **Idempotency** — the queued message stores the account id + stage in
    ``template_payload``; a stage already sent for that account is never
    re-sent, so an admin can safely trigger the same run twice in a day.
 
 Reminders are queued as pending template messages; the existing outbound
 dispatcher delivers them (retries, wamid, status callbacks included).
+
+Which number they leave from: the channel tagged ``role=notifications``. A
+business with a single active WhatsApp line keeps the old behaviour (that line
+is used, tagged or not). A business with two and no tag gets a refusal rather
+than a guess — see :mod:`nexus_api.services.channel_routing`.
 """
 
 from __future__ import annotations
@@ -37,12 +43,16 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     Channel,
-    ChannelStatus,
-    ChannelType,
     Message,
     MessageDirection,
     MessageStatus,
     WhatsAppOptOut,
+)
+from nexus_api.services.channel_routing import (
+    CHANNEL_ROLE_NOTIFICATIONS,
+    ChannelResolutionError,
+    describe_channel,
+    resolve_whatsapp_channel,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,9 +104,35 @@ async def send_due_reminders_for_tenant(
         return {"status": "no_connector", "queued": 0, "recipients": []}
 
     async with sm() as session, tenant_scoped_session(session, tenant_id):
-        channel = await _active_whatsapp_channel(session)
-        if channel is None:
-            return {"status": "no_channel", "queued": 0, "recipients": []}
+        try:
+            channel = await resolve_whatsapp_channel(
+                session,
+                role=CHANNEL_ROLE_NOTIFICATIONS,
+                provider="meta",
+                purpose="cobranza_reminder",
+            )
+        except ChannelResolutionError as exc:
+            # Reported back to the admin who asked for the run, verbatim.
+            # "No channel" and "you have two numbers and neither is the
+            # notifications line" need different fixes, so they must not
+            # collapse into the same status.
+            log.warning(
+                "cobranza_reminder.channel_unresolved",
+                tenant_id=str(tenant_id),
+                reason=exc.reason,
+                detail=str(exc),
+            )
+            return {
+                "status": "no_channel" if exc.reason == "whatsapp_not_connected" else exc.reason,
+                "queued": 0,
+                "recipients": [],
+                "detail": str(exc),
+            }
+        log.info(
+            "cobranza_reminder.channel_resolved",
+            tenant_id=str(tenant_id),
+            **describe_channel(channel),
+        )
         approved = await _approved_templates(session)
     if not approved:
         return {"status": "templates_not_approved", "queued": 0, "recipients": []}
@@ -134,20 +170,6 @@ async def send_due_reminders_for_tenant(
         "queued": len(recipients),
         "recipients": recipients,
     }
-
-
-async def _active_whatsapp_channel(session: AsyncSession) -> Channel | None:
-    return (
-        await session.execute(
-            sa.select(Channel)
-            .where(
-                Channel.type == ChannelType.WHATSAPP,
-                Channel.provider == "meta",
-                Channel.status == ChannelStatus.ACTIVE,
-            )
-            .limit(1)
-        )
-    ).scalar_one_or_none()
 
 
 async def _approved_templates(session: AsyncSession) -> set[str]:
@@ -260,14 +282,30 @@ async def _queue_reminder(
     if already is not None:
         return None
 
+    # Opt-out is checked across EVERY channel of the tenant, not just the one
+    # we are about to send from. The table is keyed per channel because that
+    # is where the STOP arrived, but a debtor who said BAJA means "stop
+    # chasing me", not "stop chasing me from this number". Once a business
+    # runs two lines, the per-channel check would let a reminder through on
+    # the second one — a compliance failure in a collections vertical, and
+    # one nobody would notice until a debtor complained.
+    #
+    # RLS scopes the query to the tenant, so this is exactly "any active
+    # opt-out this business holds for this phone".
     opted_out = await session.scalar(
         sa.select(WhatsAppOptOut.id).where(
-            WhatsAppOptOut.channel_id == channel.id,
             WhatsAppOptOut.recipient_phone == wa_identifier,
             WhatsAppOptOut.opted_in_at.is_(None),
         )
     )
     if opted_out is not None:
+        log.info(
+            "cobranza_reminder.skipped_opt_out",
+            tenant_id=str(tenant_id),
+            channel_id=str(channel.id),
+            account=account_id,
+            stage=stage,
+        )
         return None
 
     total = float(account.get("total_amount") or 0)

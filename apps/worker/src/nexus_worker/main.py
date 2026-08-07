@@ -34,7 +34,7 @@ from nexus_api.db.base import get_sessionmaker
 from nexus_channels.tiktok_bm import TikTokChannelAdapter, TikTokClient
 from nexus_channels.tiktok_bm.credentials import TikTokCredentialsRepository
 from nexus_channels.whatsapp_meta import MetaChannelAdapter, MetaClient
-from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
+from nexus_channels.whatsapp_meta.credentials import resolve_send_credentials
 from nexus_mcp.servers.agendapro_public.transport import (
     build_default_pool_from_env as build_agendapro_public_pool_from_env,
 )
@@ -107,18 +107,22 @@ async def _amain() -> None:
     redis = get_redis()
     stop = asyncio.Event()
 
-    # Meta Cloud API adapter — direct Tech Provider integration. Each
-    # tenant has its OWN encrypted BISUAT + phone_number_id
-    # in ``tenant_credentials`` (integration="meta_whatsapp"). The adapter is
-    # stateless past construction; the credentials loader resolves the
-    # per-tenant ``(phone_number_id, bisuat)`` inside a fresh tenant-scoped
-    # session on each send, so RLS is the only authority on which row is read.
+    # Meta Cloud API adapter — direct Tech Provider integration. The adapter
+    # is stateless past construction; the credentials loader resolves
+    # ``(phone_number_id, bisuat)`` inside a fresh tenant-scoped session on
+    # each send, so RLS is the only authority on which rows are read.
+    #
+    # Resolution is per CHANNEL, not per tenant: the sender number belongs to
+    # the channel the message is on, and only the token may fall back to the
+    # tenant row. See ``resolve_send_credentials``.
     meta_sm = get_sessionmaker()
 
-    async def _load_meta_credentials(*, tenant_id: uuid.UUID) -> tuple[str, str]:
+    async def _load_meta_credentials(
+        *, tenant_id: uuid.UUID, channel_id: uuid.UUID | None = None
+    ) -> tuple[str, str]:
         async with meta_sm() as cred_session, tenant_scoped_session(cred_session, tenant_id):
-            creds = await MetaCredentialsRepository(cred_session).get_or_raise()
-            return (creds.phone_number_id, creds.bisuat)
+            pnid, token = await resolve_send_credentials(cred_session, channel_id=channel_id)
+            return (pnid, token)
 
     meta_client = MetaClient(
         app_secret=nexus_settings.meta_app_secret,

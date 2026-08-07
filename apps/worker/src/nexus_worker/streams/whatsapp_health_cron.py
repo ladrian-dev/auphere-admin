@@ -42,8 +42,9 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 from nexus_channels.whatsapp_meta import MetaClient
-from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
+from nexus_channels.whatsapp_meta.credentials import resolve_send_credentials
 from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 log = structlog.get_logger(__name__)
 
@@ -87,103 +88,122 @@ async def _check_one(
     sm: sa.orm.sessionmaker,  # type: ignore[type-arg]
     tenant_id: uuid.UUID,
 ) -> None:
-    """Fetch the channel's WhatsApp phone metadata + persist refreshed snapshot."""
-    settings = get_settings()
+    """Refresh the health snapshot of EVERY live WhatsApp number of a tenant.
 
+    This used to read a single channel with ``scalar()``, which on a tenant
+    with two numbers silently picked one and left the other's quality rating
+    frozen at whatever it was when it was connected — the operator panel would
+    show GREEN for a line Meta had already downgraded.
+    """
     async with sm() as session, tenant_scoped_session(session, tenant_id):
-        channel = await session.scalar(
-            sa.select(Channel).where(
-                Channel.tenant_id == tenant_id,
-                Channel.type == ChannelType.WHATSAPP,
-                Channel.status != ChannelStatus.DISCONNECTED,
-            )
+        channels = list(
+            (
+                await session.execute(
+                    sa.select(Channel).where(
+                        Channel.type == ChannelType.WHATSAPP,
+                        Channel.status != ChannelStatus.DISCONNECTED,
+                    )
+                )
+            ).scalars()
         )
-        if channel is None:
-            return
-        cfg = channel.config or {}
+        for channel in channels:
+            await _check_channel(session, tenant_id=tenant_id, channel=channel)
 
-        creds = await MetaCredentialsRepository(session).get()
-        if creds is None:
-            return
-        phone_number_id = creds.phone_number_id or cfg.get("phone_number_id")
-        if not isinstance(phone_number_id, str) or not phone_number_id:
-            return
 
-        client = MetaClient(
-            app_secret=settings.meta_app_secret,
-            require_appsecret_proof=settings.meta_require_appsecret_proof,
+async def _check_channel(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    channel: Channel,
+) -> None:
+    """Fetch one channel's WhatsApp phone metadata + persist the snapshot."""
+    settings = get_settings()
+    cfg = channel.config or {}
+
+    # Per-channel: the phone_number_id belongs to the number, and on a
+    # two-WABA tenant so does the token.
+    try:
+        phone_number_id, access_token = await resolve_send_credentials(
+            session, channel_id=channel.id
         )
+    except LookupError:
+        return
+
+    client = MetaClient(
+        app_secret=settings.meta_app_secret,
+        require_appsecret_proof=settings.meta_require_appsecret_proof,
+    )
+    try:
         try:
-            try:
-                payload = await client.get_phone_number(
-                    phone_number_id=phone_number_id,
-                    access_token=creds.bisuat,
-                )
-            except MetaAPIError as exc:
-                log.warning(
-                    "whatsapp_health.fetch_failed",
-                    tenant_id=str(tenant_id),
-                    phone_number_id=phone_number_id,
-                    status=exc.status_code,
-                    detail=str(exc),
-                )
-                channel.last_health_check_at = datetime.now(UTC)
-                return
-        finally:
-            await client.close()
-
-        prior_quality = cfg.get("quality_rating")
-        new_quality = payload.get("quality_rating") or payload.get("qualityRating")
-        new_display = payload.get("display_phone_number") or payload.get("display_name")
-        new_verified = payload.get("verified_name") or payload.get("verifiedName")
-
-        # Persist refreshed snapshot.
-        cfg = dict(cfg)
-        if new_quality:
-            cfg["quality_rating"] = new_quality
-        if new_display:
-            cfg["display_name"] = new_display
-        if new_verified:
-            cfg["verified_name"] = new_verified
-        channel.config = cfg
-        channel.last_health_check_at = datetime.now(UTC)
-        channel.last_provider_synced_at = datetime.now(UTC)
-
-        # Mark the channel DEGRADED on a YELLOW / RED transition so the
-        # operator panel surfaces it. The original status is restored
-        # automatically on the next GREEN reading.
-        old_status = channel.status
-        if isinstance(new_quality, str) and new_quality.upper() in {"YELLOW", "RED"}:
-            channel.status = ChannelStatus.DEGRADED
-        elif (
-            isinstance(new_quality, str)
-            and new_quality.upper() == "GREEN"
-            and channel.status == ChannelStatus.DEGRADED
-        ):
-            channel.status = ChannelStatus.ACTIVE
-
-        if prior_quality != new_quality or old_status != channel.status:
-            audit = AuditLog(
-                tenant_id=tenant_id,
-                actor=ACTOR,
-                action="channel.whatsapp.quality_rating_changed",
-                target=f"channel:{channel.id}",
-                before_json={
-                    "quality_rating": prior_quality,
-                    "status": old_status.value if old_status else None,
-                },
-                after_json={
-                    "quality_rating": new_quality,
-                    "status": channel.status.value,
-                },
+            payload = await client.get_phone_number(
+                phone_number_id=phone_number_id,
+                access_token=access_token,
             )
-            session.add(audit)
-            log.info(
-                "whatsapp_health.quality_changed",
+        except MetaAPIError as exc:
+            log.warning(
+                "whatsapp_health.fetch_failed",
                 tenant_id=str(tenant_id),
-                channel_id=str(channel.id),
-                prior=prior_quality,
-                new=new_quality,
-                status=channel.status.value,
+                phone_number_id=phone_number_id,
+                status=exc.status_code,
+                detail=str(exc),
             )
-        await session.flush()
+            channel.last_health_check_at = datetime.now(UTC)
+            return
+    finally:
+        await client.close()
+
+    prior_quality = cfg.get("quality_rating")
+    new_quality = payload.get("quality_rating") or payload.get("qualityRating")
+    new_display = payload.get("display_phone_number") or payload.get("display_name")
+    new_verified = payload.get("verified_name") or payload.get("verifiedName")
+
+    # Persist refreshed snapshot.
+    cfg = dict(cfg)
+    if new_quality:
+        cfg["quality_rating"] = new_quality
+    if new_display:
+        cfg["display_name"] = new_display
+    if new_verified:
+        cfg["verified_name"] = new_verified
+    channel.config = cfg
+    channel.last_health_check_at = datetime.now(UTC)
+    channel.last_provider_synced_at = datetime.now(UTC)
+
+    # Mark the channel DEGRADED on a YELLOW / RED transition so the
+    # operator panel surfaces it. The original status is restored
+    # automatically on the next GREEN reading.
+    old_status = channel.status
+    if isinstance(new_quality, str) and new_quality.upper() in {"YELLOW", "RED"}:
+        channel.status = ChannelStatus.DEGRADED
+    elif (
+        isinstance(new_quality, str)
+        and new_quality.upper() == "GREEN"
+        and channel.status == ChannelStatus.DEGRADED
+    ):
+        channel.status = ChannelStatus.ACTIVE
+
+    if prior_quality != new_quality or old_status != channel.status:
+        audit = AuditLog(
+            tenant_id=tenant_id,
+            actor=ACTOR,
+            action="channel.whatsapp.quality_rating_changed",
+            target=f"channel:{channel.id}",
+            before_json={
+                "quality_rating": prior_quality,
+                "status": old_status.value if old_status else None,
+            },
+            after_json={
+                "quality_rating": new_quality,
+                "status": channel.status.value,
+            },
+        )
+        session.add(audit)
+        log.info(
+            "whatsapp_health.quality_changed",
+            tenant_id=str(tenant_id),
+            channel_id=str(channel.id),
+            prior=prior_quality,
+            new=new_quality,
+            status=channel.status.value,
+        )
+    await session.flush()

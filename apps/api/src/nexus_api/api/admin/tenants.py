@@ -49,11 +49,13 @@ from nexus_api.schemas.billing import (
 )
 from nexus_api.schemas.tenant import (
     ChannelOut,
+    ChannelRoleIn,
     SlugAvailabilityOut,
     TenantCreateIn,
     TenantOut,
     TenantUpdateIn,
 )
+from nexus_api.services.channel_routing import channel_agent_enabled, channel_role
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -387,6 +389,89 @@ async def list_tenant_channels(
     surface ``Conectado / Sin conectar`` for each provider."""
     channels = await ChannelRepository(session).list_all()
     return [ChannelOut.model_validate(c) for c in channels]
+
+
+@router.patch(
+    "/tenants/{tenant_id}/channels/{channel_id}",
+    response_model=ChannelOut,
+)
+async def update_tenant_channel_role(
+    tenant_id: uuid.UUID,
+    channel_id: uuid.UUID,
+    body: ChannelRoleIn,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> ChannelOut:
+    """Assign what a WhatsApp number is for.
+
+    Two independent flags, both living in ``channels.config``:
+
+    - ``role`` — which number a business-initiated send leaves from. A tenant
+      with two active numbers and no ``notifications`` role gets a refusal
+      rather than a guess, so this is what unblocks broadcasts and cobranza
+      reminders for a multi-number client.
+    - ``agent_enabled`` — whether inbound on this number reaches the agent.
+      ``false`` makes it a pure notifications line: replies are still stored
+      and visible here, but nothing answers them and no read receipt is sent.
+
+    They are deliberately separate. A business can legitimately want its
+    notifications line to answer too; collapsing them would make that
+    unexpressable.
+
+    Both are optional — an omitted field is left untouched, and passing
+    ``role: null`` clears it back to the pre-roles behaviour.
+    """
+    channel = await ChannelRepository(session).get(channel_id)
+    if channel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="channel not found")
+
+    before = {
+        "role": channel_role(channel),
+        "agent_enabled": channel_agent_enabled(channel),
+    }
+    # Rebind the whole dict: SQLAlchemy does not track in-place JSONB mutation,
+    # so mutating ``channel.config`` would flush nothing.
+    config = dict(channel.config or {})
+    fields = body.model_dump(exclude_unset=True)
+    if "role" in fields:
+        if fields["role"] is None:
+            config.pop("role", None)
+        else:
+            config["role"] = fields["role"]
+    if "agent_enabled" in fields:
+        config["agent_enabled"] = bool(fields["agent_enabled"])
+    channel.config = config
+    await session.flush()
+    # ``updated_at`` carries an onupdate, so the flush expires it. Refresh
+    # while we are still in async context — serialising the response would
+    # otherwise trigger a lazy load from the sync validator and blow up with
+    # MissingGreenlet.
+    await session.refresh(channel)
+
+    after = {
+        "role": channel_role(channel),
+        "agent_enabled": channel_agent_enabled(channel),
+    }
+    if before != after:
+        session.add(
+            AuditLog(
+                tenant_id=tenant_id,
+                actor=actor,
+                action="channel.role_changed",
+                target=f"channel:{channel_id}",
+                before_json=before,
+                after_json=after,
+            )
+        )
+        log.info(
+            "channel.role_changed",
+            tenant_id=str(tenant_id),
+            channel_id=str(channel_id),
+            identifier=channel.provider_identifier,
+            before=before,
+            after=after,
+        )
+    return ChannelOut.model_validate(channel)
 
 
 # Reference Channel so mypy doesn't drop the import when only used through

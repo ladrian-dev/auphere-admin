@@ -45,6 +45,14 @@ class BroadcastCreateIn(BaseModel):
     language: str = Field(default="es", min_length=2, max_length=20)
     recipients: list[BroadcastRecipientIn] = Field(min_length=1)
     idempotency_key: str | None = Field(default=None, max_length=80)
+    channel_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Which of the client's WhatsApp numbers to send from. Omit it to "
+            "use the number assigned the 'notifications' role, or the only "
+            "number when there is just one."
+        ),
+    )
 
 
 class RejectedRecipientOut(BaseModel):

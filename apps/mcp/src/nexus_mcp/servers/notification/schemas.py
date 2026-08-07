@@ -18,7 +18,12 @@ class SendTemplateInput(InputModel):
     )
     parameters: dict[str, Any] = Field(
         default_factory=dict,
-        description="Template parameter map.",
+        description=(
+            "Named BODY variables of the template, e.g. {'nombre': 'Ana', "
+            "'monto': '120'}. Keys must match the {{named}} placeholders Meta "
+            "approved for this template; header and button parameters are not "
+            "settable from this tool."
+        ),
     )
     # Block N: optional language override for templates approved in
     # multiple locales. Defaults to es (Auphere is LATAM).

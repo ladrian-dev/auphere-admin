@@ -48,7 +48,7 @@ from nexus_channels.whatsapp_meta import (
     parse_template_status,
     verify_meta_signature,
 )
-from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
+from nexus_channels.whatsapp_meta.credentials import resolve_send_credentials
 from redis.asyncio import Redis
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -78,6 +78,7 @@ from nexus_api.repositories.auphere_channels import (
 from nexus_api.repositories.auphere_channels import (
     resolve_channel_for_inbound as resolve_owner_channel_for_inbound,
 )
+from nexus_api.services.channel_routing import config_agent_enabled
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
 from nexus_api.services.owner_channel_flow import handle_owner_inbound
 from nexus_api.services.whatsapp_templates import invalidate_template_cache
@@ -359,6 +360,7 @@ async def _handle_inbound(
         try:
             s3_key, media_mime, media_size, sha256 = await _download_inbound_media(
                 tenant_id=tenant_id,
+                channel_id=channel.id,
                 wamid=wamid,
                 media_id=inbound.media.provider_media_id,
                 hint_mime=inbound.media.mime_type,
@@ -448,13 +450,26 @@ async def _handle_inbound(
     # Politeness: mark as read so the customer sees the two blue checks.
     # Best-effort — failure never blocks the turn.
     #
-    # EXCEPTION — admin-only agents on a coexistence line: if the sender is
-    # NOT a whitelisted admin, do NOT send a read receipt. The Cloud API and
-    # the human's WhatsApp Business app share the number, so a read receipt
-    # here would mark the message read in the human's inbox. Non-admin
-    # messages (still persisted + enqueued; the worker skips the reply) must
-    # stay UNREAD until a human opens the chat.
-    if admin_only_suppresses(agent_policies, inbound.sender_identifier):
+    # Two exceptions, both about not claiming someone read a message nobody
+    # read:
+    #
+    # 1. Admin-only agents on a coexistence line: if the sender is NOT a
+    #    whitelisted admin, do NOT send a read receipt. The Cloud API and the
+    #    human's WhatsApp Business app share the number, so a read receipt
+    #    here would mark the message read in the human's inbox. Non-admin
+    #    messages (still persisted + enqueued; the worker skips the reply)
+    #    must stay UNREAD until a human opens the chat.
+    # 2. A send-only channel: the agent will not answer and there is no
+    #    human inbox behind it either. Blue ticks on a line nobody watches
+    #    tell the customer they were heard when they were not.
+    if not config_agent_enabled(channel.config):
+        log.info(
+            "webhook.meta.read_receipt_suppressed_send_only_channel",
+            tenant_id=str(tenant_id),
+            channel_id=str(channel.id),
+            wamid=wamid,
+        )
+    elif admin_only_suppresses(agent_policies, inbound.sender_identifier):
         log.info(
             "webhook.meta.read_receipt_suppressed_not_admin",
             tenant_id=str(tenant_id),
@@ -834,11 +849,13 @@ def _build_meta_adapter() -> MetaChannelAdapter:
         require_appsecret_proof=settings.meta_require_appsecret_proof,
     )
 
-    async def _loader(*, tenant_id: uuid.UUID) -> tuple[str, str]:
+    async def _loader(
+        *, tenant_id: uuid.UUID, channel_id: uuid.UUID | None = None
+    ) -> tuple[str, str]:
         sm = get_sessionmaker()
         async with sm() as cred_session, tenant_scoped_session(cred_session, tenant_id):
-            creds = await MetaCredentialsRepository(cred_session).get_or_raise()
-            return (creds.phone_number_id, creds.bisuat)
+            pnid, token = await resolve_send_credentials(cred_session, channel_id=channel_id)
+            return (pnid, token)
 
     return MetaChannelAdapter(client, credentials_loader=_loader)
 
@@ -879,6 +896,7 @@ def _render_content(inbound: InboundMessage) -> str:
 async def _download_inbound_media(
     *,
     tenant_id: uuid.UUID,
+    channel_id: uuid.UUID,
     wamid: str,
     media_id: str,
     hint_mime: str | None,
@@ -893,7 +911,12 @@ async def _download_inbound_media(
     storage = get_media_storage()
     adapter = _build_meta_adapter()
     try:
-        content, mime, sha = await adapter.fetch_media_bytes(media_id=media_id, tenant_id=tenant_id)
+        # ``channel_id`` scopes the token: a media id belongs to the WABA that
+        # received it, so on a tenant whose numbers sit under different WABAs
+        # the other line's token cannot resolve it.
+        content, mime, sha = await adapter.fetch_media_bytes(
+            media_id=media_id, tenant_id=tenant_id, channel_id=channel_id
+        )
     finally:
         await adapter._client.close()
     if not mime and hint_mime:

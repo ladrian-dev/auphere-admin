@@ -560,3 +560,111 @@ async def test_meta_test_send_requires_admin_token(client, seed_tenants):
         json={"to": "+56911112222"},
     )
     assert r.status_code == 401
+
+
+# ── connecting a SECOND number ─────────────────────────────────────────────
+#
+# ``tenant_credentials`` holds one Meta credential per tenant, including a
+# single ``phone_number_id``. Connecting a second number used to overwrite it,
+# which silently re-pointed every outbound of the tenant — the agent's replies
+# on the first line included — at the number just connected. Nothing errored;
+# the wrong number simply started writing to people.
+
+
+async def _connect_owned(client, admin_headers, tenant_id, *, pnid: str, display: str):
+    with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.post(f"/{pnid}/register").respond(200, json={"success": True})
+        mock.post("/WABA_TEST/subscribed_apps").respond(200, json={"success": True})
+        mock.get(f"/{pnid}").respond(
+            200, json={**_ok_phone_response(), "display_phone_number": display}
+        )
+        return await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/connect-owned",
+            json={
+                "system_user_token": f"EAA-system-user-permanent-token-for-{pnid}",
+                "waba_id": "WABA_TEST",
+                "phone_number_id": pnid,
+            },
+            headers=admin_headers,
+        )
+
+
+async def test_connecting_a_second_number_does_not_repoint_the_first(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+
+    first = await _connect_owned(
+        client, admin_headers, tenant_id, pnid="PN_FIRST", display="56933334444"
+    )
+    assert first.status_code == 201, first.text
+    second = await _connect_owned(
+        client, admin_headers, tenant_id, pnid="PN_SECOND", display="56955556666"
+    )
+    assert second.status_code == 201, second.text
+
+    # Two channel rows, each carrying its own phone_number_id.
+    channels = (
+        (
+            await db_session.execute(
+                select(Channel).where(
+                    Channel.tenant_id == tenant_id, Channel.provider == "meta"
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_pnid = {c.config["phone_number_id"]: c for c in channels}
+    assert set(by_pnid) == {"PN_FIRST", "PN_SECOND"}
+
+    # THE regression: the tenant-level credential still points at the first
+    # number. Had it been overwritten, the first line's sends would now leave
+    # from the second number.
+    cred = await db_session.scalar(
+        select(TenantCredentials).where(
+            TenantCredentials.tenant_id == tenant_id,
+            TenantCredentials.integration == "meta_whatsapp",
+        )
+    )
+    assert cred is not None
+    assert b"PN_FIRST" in cred.encrypted_payload
+    assert b"PN_SECOND" not in cred.encrypted_payload
+
+    # And each channel carries its own token, so neither depends on the
+    # tenant row being right.
+    assert b"EAA-system-user-permanent-token-for-PN_FIRST" in by_pnid["PN_FIRST"].config_encrypted
+    assert b"EAA-system-user-permanent-token-for-PN_SECOND" in by_pnid["PN_SECOND"].config_encrypted
+
+
+async def test_reconnecting_the_same_number_still_refreshes_the_tenant_credential(
+    client, admin_headers, seed_tenants, db_session
+):
+    """Token rotation must keep working: re-connecting the SAME number is not
+    a second number and has to refresh the tenant row as it always did."""
+    tenant_id = seed_tenants["a"]
+
+    await _connect_owned(client, admin_headers, tenant_id, pnid="PN_ONLY", display="56933334444")
+    with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.post("/PN_ONLY/register").respond(200, json={"success": True})
+        mock.post("/WABA_TEST/subscribed_apps").respond(200, json={"success": True})
+        mock.get("/PN_ONLY").respond(200, json=_ok_phone_response())
+        again = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/connect-owned",
+            json={
+                "system_user_token": "EAA-rotated-system-user-token-abcdef",
+                "waba_id": "WABA_TEST",
+                "phone_number_id": "PN_ONLY",
+            },
+            headers=admin_headers,
+        )
+    assert again.status_code == 201, again.text
+
+    cred = await db_session.scalar(
+        select(TenantCredentials).where(
+            TenantCredentials.tenant_id == tenant_id,
+            TenantCredentials.integration == "meta_whatsapp",
+        )
+    )
+    assert cred is not None
+    assert b"EAA-rotated-system-user-token-abcdef" in cred.encrypted_payload

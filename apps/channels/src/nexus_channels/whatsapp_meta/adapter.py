@@ -31,17 +31,26 @@ log = structlog.get_logger(__name__)
 
 
 class CredentialsLoader(Protocol):
-    """Callback the caller wires up to resolve per-tenant Meta credentials.
+    """Callback the caller wires up to resolve Meta credentials for a send.
 
     Returning a tuple instead of a dict because the adapter only ever needs
     the two fields and a flat tuple is the cheapest shape to type. In
     production this dispatches to
     :class:`nexus_channels.whatsapp_meta.credentials.MetaCredentialsRepository`
     after the request opens a tenant-scoped session.
+
+    ``channel_id`` is what makes a tenant with two numbers work. The
+    ``phone_number_id`` is per NUMBER, not per tenant: resolving it from the
+    tenant's single credential row would send every message of the tenant
+    from whichever number was connected last — including the agent's replies
+    on the other line. It is optional only for the media-download path, which
+    needs the token and never a sender number.
     """
 
-    async def __call__(self, *, tenant_id: uuid.UUID) -> tuple[str, str]:
-        """Return ``(phone_number_id, bisuat)`` for the active tenant."""
+    async def __call__(
+        self, *, tenant_id: uuid.UUID, channel_id: uuid.UUID | None = None
+    ) -> tuple[str, str]:
+        """Return ``(phone_number_id, bisuat)`` for this channel."""
         ...
 
 
@@ -90,7 +99,7 @@ class MetaChannelAdapter:
         channel_id: uuid.UUID,
         context_message_id: str | None = None,
     ) -> SendResult:
-        pnid, token = await self._load_credentials(tenant_id=tenant_id)
+        pnid, token = await self._load_credentials(tenant_id=tenant_id, channel_id=channel_id)
         try:
             raw = await self._client.send_text(
                 phone_number_id=pnid,
@@ -136,7 +145,7 @@ class MetaChannelAdapter:
         manually, pass ``params={"components": [...]}`` and the rest is
         forwarded verbatim.
         """
-        pnid, token = await self._load_credentials(tenant_id=tenant_id)
+        pnid, token = await self._load_credentials(tenant_id=tenant_id, channel_id=channel_id)
         components = _build_template_components(params)
         try:
             raw = await self._client.send_template(
@@ -176,7 +185,7 @@ class MetaChannelAdapter:
         # both speak ``interactive=``. The base.py Protocol still says
         # ``payload`` — that Protocol predates the dispatcher and is stale;
         # neither WhatsApp adapter conforms to it (both add ``from_phone``).
-        pnid, token = await self._load_credentials(tenant_id=tenant_id)
+        pnid, token = await self._load_credentials(tenant_id=tenant_id, channel_id=channel_id)
         try:
             raw = await self._client.send_interactive(
                 phone_number_id=pnid,
@@ -304,7 +313,7 @@ class MetaChannelAdapter:
         channel_id: uuid.UUID,
         context_message_id: str | None,
     ) -> SendResult:
-        pnid, token = await self._load_credentials(tenant_id=tenant_id)
+        pnid, token = await self._load_credentials(tenant_id=tenant_id, channel_id=channel_id)
         try:
             raw = await self._client.send_media(
                 phone_number_id=pnid,
@@ -340,7 +349,7 @@ class MetaChannelAdapter:
         tenant_id: uuid.UUID,
         channel_id: uuid.UUID,
     ) -> SendResult:
-        pnid, token = await self._load_credentials(tenant_id=tenant_id)
+        pnid, token = await self._load_credentials(tenant_id=tenant_id, channel_id=channel_id)
         try:
             raw = await self._client.send_reaction(
                 phone_number_id=pnid,
@@ -372,7 +381,7 @@ class MetaChannelAdapter:
         """Best-effort. Failing to put the two blue checks never blocks an
         inbound turn."""
         try:
-            pnid, token = await self._load_credentials(tenant_id=tenant_id)
+            pnid, token = await self._load_credentials(tenant_id=tenant_id, channel_id=channel_id)
             await self._client.mark_as_read(
                 phone_number_id=pnid,
                 access_token=token,
@@ -394,13 +403,20 @@ class MetaChannelAdapter:
         *,
         media_id: str,
         tenant_id: uuid.UUID,
+        channel_id: uuid.UUID | None = None,
     ) -> tuple[bytes, str | None, str | None]:
         """Two-step media fetch: resolve URL, then download bytes.
 
         Returns ``(content, mime_type, sha256)``. Used by the inbound media
         pipeline before persisting to S3.
+
+        ``channel_id`` is optional but should be passed whenever the caller
+        knows it: a media id is scoped to the WABA that received it, so on a
+        tenant whose two numbers sit under different WABAs the other line's
+        token cannot resolve it. The sender number is irrelevant here — only
+        the token is used.
         """
-        _, token = await self._load_credentials(tenant_id=tenant_id)
+        _, token = await self._load_credentials(tenant_id=tenant_id, channel_id=channel_id)
         metadata = await self._client.get_media_url(media_id=media_id, access_token=token)
         url = metadata.get("url")
         if not isinstance(url, str) or not url:

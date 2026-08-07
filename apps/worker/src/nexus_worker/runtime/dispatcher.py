@@ -25,8 +25,9 @@ import structlog
 from nexus_api.core.admin_gate import admin_only_suppresses, sender_is_admin
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Conversation, Message, Tenant, TenantStatus
+from nexus_api.db.models import Channel, Conversation, Message, Tenant, TenantStatus
 from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
+from nexus_api.services.channel_routing import config_agent_enabled, config_role
 
 from nexus_worker.multimodal import ProcessedMedia, get_media_processor
 from nexus_worker.observability.tracing import trace_turn, update_trace
@@ -222,6 +223,15 @@ async def process_inbound(
         conversation_id = conversation.id
         inbound_id = inbound_msg.id
         conversation_agent_active = conversation.agent_active
+        # Send-only channel (``config.agent_enabled = false``): a number the
+        # business uses to push notifications out, with nobody behind it to
+        # answer what comes back. Read here, inside the session that is
+        # already open, and consumed by the skip below.
+        channel_config = (
+            await session.scalar(
+                sa.select(Channel.config).where(Channel.id == event.channel_id)
+            )
+        ) or {}
         # Admin-only agents (e.g. cobranza_v1): read the active config's
         # policies while the session is open so the sender gate below can
         # check the whitelist without another transaction.
@@ -299,6 +309,31 @@ async def process_inbound(
         return {
             "skipped": "tenant_inactive",
             "tenant_status": tenant_status.value,
+            "conversation_id": str(conversation_id),
+            "inbound_message_id": str(inbound_id),
+        }
+
+    if not config_agent_enabled(channel_config):
+        # Send-only CHANNEL — the per-number sibling of the send-only tenant
+        # skip below. A business running two numbers can have an agent on one
+        # of them and a pure notifications line on the other; the tenant-level
+        # check cannot express that, because ``agent_configs`` is per tenant.
+        #
+        # The inbound is persisted first (above) on purpose: a debtor replying
+        # "ya pagué" to a reminder must still land in the operator panel. What
+        # we skip is the reply, not the record. The Meta webhook applies the
+        # same rule to read receipts, so the message also stays unread — on a
+        # line nobody is watching, a blue tick would be a lie.
+        log.info(
+            "pipeline.skipped.send_only_channel",
+            tenant_id=str(event.tenant_id),
+            channel_id=str(event.channel_id),
+            channel_role=config_role(channel_config),
+            conversation_id=str(conversation_id),
+            inbound_message_id=str(inbound_id),
+        )
+        return {
+            "skipped": "send_only_channel",
             "conversation_id": str(conversation_id),
             "inbound_message_id": str(inbound_id),
         }
