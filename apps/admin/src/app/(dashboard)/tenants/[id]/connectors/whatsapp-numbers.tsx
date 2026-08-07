@@ -91,8 +91,14 @@ export function WhatsAppNumbers({
   tenantId: string;
   channels: ChannelOut[];
 }) {
+  const [showRetired, setShowRetired] = useState(false);
   const whatsapp = channels.filter((c) => c.type === "whatsapp");
   const active = whatsapp.filter((c) => c.status !== "disconnected");
+  const retired = whatsapp.filter((c) => c.status === "disconnected");
+  // Sole number: the backend ignores roles entirely and uses it for
+  // everything. Saying "sin asignar" there would be technically true and
+  // practically misleading.
+  const soleNumber = active.length === 1;
   // The refusal condition, mirrored from the backend resolver: more than one
   // live number and none of them claiming the notifications role.
   const sendsBlocked =
@@ -108,8 +114,8 @@ export function WhatsAppNumbers({
           <CardTitle className="text-base">Números de WhatsApp</CardTitle>
           <CardDescription>
             {active.length > 1
-              ? "Este negocio tiene más de un número activo. Asigná cuál manda las notificaciones y cuál atiende el agente."
-              : "Con un solo número activo no hace falta asignar nada: se usa ese para todo."}
+              ? "Asigná cuál manda las notificaciones y cuál atiende el agente."
+              : "Con un solo número activo se usa ese para todo: notificaciones y agente."}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
@@ -123,9 +129,38 @@ export function WhatsAppNumbers({
               rechazar en vez de salir por el número equivocado.
             </div>
           ) : null}
-          {whatsapp.map((channel) => (
-            <NumberRow key={channel.id} tenantId={tenantId} channel={channel} />
+          {active.map((channel) => (
+            <NumberRow
+              key={channel.id}
+              tenantId={tenantId}
+              channel={channel}
+              soleNumber={soleNumber}
+            />
           ))}
+          {retired.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setShowRetired((v) => !v)}
+                className="self-start text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                aria-expanded={showRetired}
+              >
+                {showRetired
+                  ? "Ocultar números retirados"
+                  : `Mostrar ${retired.length} número${retired.length > 1 ? "s" : ""} retirado${retired.length > 1 ? "s" : ""}`}
+              </button>
+              {showRetired
+                ? retired.map((channel) => (
+                    <NumberRow
+                      key={channel.id}
+                      tenantId={tenantId}
+                      channel={channel}
+                      soleNumber={false}
+                    />
+                  ))
+                : null}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </section>
@@ -135,15 +170,23 @@ export function WhatsAppNumbers({
 function NumberRow({
   tenantId,
   channel,
+  soleNumber,
 }: {
   tenantId: string;
   channel: ChannelOut;
+  soleNumber: boolean;
 }) {
   const [pending, start] = useTransition();
   const [confirmSilence, setConfirmSilence] = useState(false);
   const role = channelRole(channel);
   const agentOn = channelAgentEnabled(channel);
   const retired = channel.status === "disconnected";
+  // What "no role" actually means depends on how many numbers are live. With
+  // one, the backend uses it for everything — so that is what we say. With
+  // two, an unassigned number is a real gap the operator has to close.
+  const unassignedLabel = soleNumber
+    ? "Notificaciones y agente"
+    : "Sin asignar";
   const verifiedName =
     typeof channel.config?.verified_name === "string"
       ? channel.config.verified_name
@@ -190,14 +233,22 @@ function NumberRow({
             }
           >
             <SelectTrigger
-              className="h-8 w-[210px] text-xs"
+              className="h-8 w-[230px] text-xs"
               aria-label={`Rol de ${phoneOf(channel)}`}
             >
-              <SelectValue />
+              {/* base-ui renders the raw value unless it is given a formatter,
+                  which would surface the `__unassigned__` sentinel verbatim. */}
+              <SelectValue>
+                {(value: string | null) =>
+                  value && value !== UNASSIGNED
+                    ? ROLE_LABEL[value as ChannelRole]
+                    : unassignedLabel
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={UNASSIGNED} className="text-xs">
-                Sin asignar
+                {unassignedLabel}
               </SelectItem>
               <SelectItem value="notifications" className="text-xs">
                 {ROLE_LABEL.notifications}

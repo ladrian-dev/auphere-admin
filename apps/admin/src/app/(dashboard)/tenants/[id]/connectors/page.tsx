@@ -300,9 +300,14 @@ function InstalledConnectorCard({
               // Meta is webhook_manual, not oauth_composio — the generic
               // InitiateConsentButton calls /initiate-consent which the
               // backend rejects ("use /bootstrap-browser or
-              // /connect-manual"). Reconnect must go through Embedded
-              // Signup, same dialog as a fresh connection.
-              <MetaWhatsAppSetupDialog tenantId={tenantId} alreadyConnected />
+              // /connect-manual"). Both paths below go through the same
+              // orchestrator as a first connection, and both now ADD a
+              // number rather than replace one: the channel row is keyed on
+              // the phone, and a different phone inserts a new row.
+              <>
+                <MetaWhatsAppSetupDialog tenantId={tenantId} alreadyConnected />
+                <MetaConnectOwnedDialog tenantId={tenantId} />
+              </>
             ) : tc.connector_slug === "tiktok_bm" ? (
               // Same reasoning as Meta: webhook_manual, so reconnect means
               // re-running the OAuth redirect rather than /initiate-consent.

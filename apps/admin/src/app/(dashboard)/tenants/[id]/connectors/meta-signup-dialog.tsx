@@ -101,7 +101,10 @@ export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected }: Props) {
       <DialogTrigger
         render={
           <Button size="sm" variant={alreadyConnected ? "outline" : "default"}>
-            {alreadyConnected ? "Reconectar" : "Conectar"}
+            {/* Not "Reconectar": the flow adds whatever number the client
+                picks in the Meta popup, and a tenant can hold several. Only
+                choosing the same number again replaces it. */}
+            {alreadyConnected ? "Conectar otro número" : "Conectar"}
           </Button>
         }
       />

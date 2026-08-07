@@ -78,22 +78,94 @@ describe("WhatsAppNumbers — what is shown", () => {
     expect(screen.queryByText(/qa_playground/)).not.toBeInTheDocument();
   });
 
-  it("shows a retired number without controls", () => {
+  it("keeps retired numbers collapsed so they do not clutter the list", () => {
     render(
       <WhatsAppNumbers
         tenantId="tnt_1"
         channels={[
+          makeChannel(),
           makeChannel({
+            id: "ch_dead",
             status: "disconnected",
             provider_identifier: "disconnected:45166e02:+34672138367",
           }),
         ]}
       />,
     );
+    expect(screen.getByText("+584249018017")).toBeInTheDocument();
+    expect(screen.queryByText("+34672138367")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Mostrar 1 número retirado/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a retired number without controls once expanded", async () => {
+    const user = userEvent.setup();
+    render(
+      <WhatsAppNumbers
+        tenantId="tnt_1"
+        channels={[
+          makeChannel(),
+          makeChannel({
+            id: "ch_dead",
+            status: "disconnected",
+            provider_identifier: "disconnected:45166e02:+34672138367",
+          }),
+        ]}
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", { name: /Mostrar 1 número retirado/ }),
+    );
     // The bookkeeping prefix is stripped — the operator sees the number.
     expect(screen.getByText("+34672138367")).toBeInTheDocument();
     expect(screen.getByText("Desconectado")).toBeInTheDocument();
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    // One combobox only: the live number's. The retired row has no controls.
+    expect(screen.getAllByRole("combobox")).toHaveLength(1);
+  });
+});
+
+describe("WhatsAppNumbers — the sole-number default", () => {
+  it("says the only number does both jobs, never 'sin asignar'", () => {
+    render(<WhatsAppNumbers tenantId="tnt_1" channels={[makeChannel()]} />);
+    expect(screen.getByRole("combobox")).toHaveTextContent(
+      "Notificaciones y agente",
+    );
+    // The raw sentinel must never reach the screen.
+    expect(screen.queryByText(/__unassigned__/)).not.toBeInTheDocument();
+  });
+
+  it("switches to 'Sin asignar' once a second number is live", () => {
+    render(
+      <WhatsAppNumbers
+        tenantId="tnt_1"
+        channels={[
+          makeChannel({ id: "ch_a" }),
+          makeChannel({ id: "ch_b", provider_identifier: "+584240000001" }),
+        ]}
+      />,
+    );
+    const [first] = screen.getAllByRole("combobox");
+    expect(first).toHaveTextContent("Sin asignar");
+  });
+
+  it("a retired sibling does not stop the live one being the sole number", () => {
+    render(
+      <WhatsAppNumbers
+        tenantId="tnt_1"
+        channels={[
+          makeChannel(),
+          makeChannel({
+            id: "ch_dead",
+            status: "disconnected",
+            provider_identifier: "disconnected:x:+34672138367",
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByRole("combobox")).toHaveTextContent(
+      "Notificaciones y agente",
+    );
   });
 });
 
@@ -174,7 +246,11 @@ describe("WhatsAppNumbers — assigning a role", () => {
     );
 
     await user.click(screen.getByRole("combobox"));
-    await user.click(await screen.findByRole("option", { name: "Sin asignar" }));
+    // Sole live number, so the unassigned option reads as what it actually
+    // does rather than as a gap.
+    await user.click(
+      await screen.findByRole("option", { name: "Notificaciones y agente" }),
+    );
 
     expect(updateChannelRoleAction).toHaveBeenCalledWith("tnt_1", "ch_1", {
       role: null,
