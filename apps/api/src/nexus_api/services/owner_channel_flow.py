@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.config import get_settings
 from nexus_api.core.logging_context import bind_tenant
+from nexus_api.core.streams import xadd_capped
 from nexus_api.core.tenant_context import apply_tenant_to_session
 from nexus_api.db.models import (
     Conversation,
@@ -287,7 +288,8 @@ async def handle_owner_inbound(
     # survive a Redis restart only via AOF/RDB; the underlying row in
     # ``owner_consultations`` already has ``status='answered'`` so the
     # PR-P2-4 sweep cron re-enqueues if the entry is lost.
-    await redis.xadd(
+    await xadd_capped(
+        redis,
         OWNER_FANOUT_STREAM,
         {
             "tenant_id": str(tenant_id),

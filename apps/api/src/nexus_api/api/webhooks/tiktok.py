@@ -55,6 +55,7 @@ from nexus_api.core.errors import TenantNotFound
 from nexus_api.core.logging_context import bind_tenant
 from nexus_api.core.metrics import CHANNEL_UNRESOLVED_EVENT, counters
 from nexus_api.core.otel import inject_trace_fields
+from nexus_api.core.streams import xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import resolve_tenant
 from nexus_api.db.models import Message
@@ -263,7 +264,7 @@ async def _handle_inbound(
     # WP-01: carry the webhook's trace context across the queue so the
     # worker's turn span joins this trace instead of starting a new one.
     inject_trace_fields(fields)
-    await redis.xadd(INBOUND_STREAM, fields)  # type: ignore[arg-type]  # redis stub: invariant dict
+    await xadd_capped(redis, INBOUND_STREAM, fields)
 
     log.info(
         "webhook.tiktok.enqueued",

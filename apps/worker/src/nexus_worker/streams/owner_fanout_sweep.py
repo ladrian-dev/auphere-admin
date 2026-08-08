@@ -38,6 +38,7 @@ from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 import structlog
+from nexus_api.core.streams import xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import OwnerConsultation, Tenant
@@ -175,7 +176,8 @@ async def _reenqueue_tenant(
             .limit(batch_size)
         )
         for row in rows.scalars():
-            await redis.xadd(
+            await xadd_capped(
+                redis,
                 OWNER_FANOUT_STREAM,
                 {
                     "tenant_id": str(tenant_id),
