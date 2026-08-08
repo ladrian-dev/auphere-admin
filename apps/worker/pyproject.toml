@@ -63,6 +63,11 @@ dev = [
 
 [project.scripts]
 nexus-worker = "nexus_worker.main:run"
+# WP-07 — one console script per service of the v2 map. ``nexus-worker``
+# stays as the all-in-one dev/rollback mode.
+nexus-runner = "nexus_worker.entrypoints.runner:run"
+nexus-scheduler = "nexus_worker.entrypoints.scheduler:run"
+nexus-egress = "nexus_worker.entrypoints.egress:run"
 
 [tool.uv.sources]
 nexus-api = { path = "../api", editable = true }

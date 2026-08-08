@@ -1,0 +1,14 @@
+# Railway service config — nexus-scheduler (WP-07)
+#
+# The 17 crons and sweeps. SINGLETON: exactly 1 replica as steady state.
+# WP-08 wraps every tick in a Postgres advisory lock so a second replica
+# during a rollout duplicates nothing — but 2 is a transient, not a target.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/worker/Dockerfile"
+
+[deploy]
+startCommand = "nexus-scheduler"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

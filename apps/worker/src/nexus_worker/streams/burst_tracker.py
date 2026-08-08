@@ -1,14 +1,21 @@
-"""In-process WhatsApp provider 5xx burst detector.
+"""WhatsApp provider 5xx burst detector — Redis-backed (WP-08).
 
 When the outbound dispatcher catches >=5 ``MetaAPIError`` with status
-500-599 within a 2-minute sliding window for a single tenant, this
-tracker emits exactly one ``channel.whatsapp_5xx_burst`` audit row. The
-operator alerter consumes the audit and notifies the operator via WhatsApp
-template ``alert_whatsapp_burst_v1``.
+500-599 within the window for a single tenant, this tracker emits exactly
+one ``channel.whatsapp_5xx_burst`` audit row. The operator alerter consumes
+the audit and notifies the operator via WhatsApp template
+``alert_whatsapp_burst_v1``.
 
-Per-process state — block H runs a single worker; multi-replica is a
-phase 2+ concern (a Redis-backed counter would replace this when we
-scale out, same shape).
+WP-08 moved the state out of the process: counters are ``INCR`` + ``EXPIRE``
+on ``nexus:burst:{tenant}:{window}`` and the cooldown is a ``SET NX EX``
+marker, so N egress replicas see one shared count and a burst spread across
+replicas still trips exactly one audit. The sliding window became a fixed
+bucket (``now // window_seconds``) — strikes split across a bucket boundary
+can take up to 2x the window to trip, which is an acceptable trade for
+multi-replica correctness.
+
+Failure policy: any Redis error suppresses the alert (log + False). The
+tracker is an alarm, not a control path — it must never break a send.
 """
 
 from __future__ import annotations
@@ -16,9 +23,10 @@ from __future__ import annotations
 import threading
 import time
 import uuid
-from collections import defaultdict, deque
+from typing import Any
 
 import structlog
+from nexus_api.core.redis_client import get_redis
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import AuditLog
@@ -27,17 +35,14 @@ log = structlog.get_logger(__name__)
 
 WINDOW_SECONDS = 120.0
 THRESHOLD = 5
-COOLDOWN_SECONDS = 300.0  # one audit per (tenant) per 5min after firing
+COOLDOWN_SECONDS = 300.0  # one audit per tenant per 5min after firing
 
 
 class WhatsAppBurstTracker:
-    """Thread-safe sliding-window detector. Uses ``deque`` per tenant.
+    """Redis-windowed detector shared by every egress replica.
 
-    ``record_failure`` is called from the dispatcher's failure path with
-    the tenant_id and HTTP status code (or 0 for transport errors which
-    we treat as 5xx-equivalent — they signal a problem on the provider's side
-    or the network between us). Returns True iff this call crossed the
-    threshold and an audit was emitted.
+    ``should_alert`` is async (Redis I/O). It counts the failure and
+    returns True iff this call crossed the threshold outside the cooldown.
     """
 
     def __init__(
@@ -46,43 +51,48 @@ class WhatsAppBurstTracker:
         window_seconds: float = WINDOW_SECONDS,
         threshold: int = THRESHOLD,
         cooldown_seconds: float = COOLDOWN_SECONDS,
+        redis: Any | None = None,
     ) -> None:
         self._window = window_seconds
         self._threshold = threshold
         self._cooldown = cooldown_seconds
-        self._failures: dict[uuid.UUID, deque[float]] = defaultdict(deque)
-        self._last_audit_at: dict[uuid.UUID, float] = {}
-        self._lock = threading.Lock()
+        self._redis = redis
+
+    def _get_redis(self) -> Any:
+        return self._redis if self._redis is not None else get_redis()
 
     def _is_relevant(self, status_code: int) -> bool:
+        # 0 = transport error — provider-side or network trouble, treated
+        # as 5xx-equivalent.
         return status_code == 0 or 500 <= status_code <= 599
 
-    def _trim(self, dq: deque[float], now: float) -> None:
-        cutoff = now - self._window
-        while dq and dq[0] < cutoff:
-            dq.popleft()
-
-    def should_alert(self, tenant_id: uuid.UUID, status_code: int) -> bool:
+    async def should_alert(self, tenant_id: uuid.UUID, status_code: int) -> bool:
         if not self._is_relevant(status_code):
             return False
-        now = time.monotonic()
-        with self._lock:
-            dq = self._failures[tenant_id]
-            dq.append(now)
-            self._trim(dq, now)
-            if len(dq) < self._threshold:
+        try:
+            redis = self._get_redis()
+            bucket = int(time.time() // self._window)
+            count_key = f"nexus:burst:{tenant_id}:{bucket}"
+            count = int(await redis.incr(count_key))
+            # 2x window so a bucket straddling a boundary still counts.
+            await redis.expire(count_key, int(self._window * 2))
+            if count < self._threshold:
                 return False
-            # Default to -inf so a never-alerted tenant always clears the
-            # cooldown check. Using 0.0 was a latent bug: ``time.monotonic()``
-            # references an arbitrary point (boot time on Linux/macOS), so on
-            # a CI VM with uptime < cooldown_seconds, ``now - 0.0`` could be
-            # smaller than the cooldown and falsely suppress the first audit.
-            last = self._last_audit_at.get(tenant_id, float("-inf"))
-            if now - last < self._cooldown:
+            cooldown_key = f"nexus:burst:cooldown:{tenant_id}"
+            fresh = await redis.set(cooldown_key, "1", nx=True, ex=int(self._cooldown))
+            if not fresh:
                 return False
-            self._last_audit_at[tenant_id] = now
-            dq.clear()
+            # Reset the bucket so the next burst counts from zero instead of
+            # re-tripping the moment the cooldown expires.
+            await redis.delete(count_key)
             return True
+        except Exception as exc:
+            log.warning(
+                "burst_tracker.redis_failed",
+                tenant_id=str(tenant_id),
+                error=str(exc),
+            )
+            return False
 
     async def record_failure_and_maybe_audit(
         self,
@@ -94,7 +104,7 @@ class WhatsAppBurstTracker:
         """Mark the failure and, if the threshold tripped, persist the
         audit row in its own short-lived tenant-scoped session so the
         outbound dispatcher's session stays clean."""
-        if not self.should_alert(tenant_id, status_code):
+        if not await self.should_alert(tenant_id, status_code):
             return False
         try:
             sm = get_sessionmaker()

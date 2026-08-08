@@ -1,0 +1,18 @@
+# Railway service config — nexus-runner (WP-07)
+#
+# Inbound turns: consumer + stream claimer + owner-fanout consumer +
+# promote subscriber. Scales horizontally — every replica joins the same
+# consumer group, and the promote pub/sub reaches all of them.
+#
+# No pre-deploy command — migrations belong to the API service so they run
+# exactly once per release. No HTTP healthcheck (daemon); liveness is the
+# heartbeat surfaced at GET /health/workers on the API.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/worker/Dockerfile"
+
+[deploy]
+startCommand = "nexus-runner"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
