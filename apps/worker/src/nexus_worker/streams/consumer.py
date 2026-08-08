@@ -81,6 +81,7 @@ def _to_event(fields: dict[str, str]) -> InboundEvent:
         kind=fields.get("kind", "text"),
         provider_message_id=fields.get("provider_message_id"),
         media_kind=fields.get("media_kind"),
+        media_provider_id=fields.get("media_provider_id"),
         media_s3_key=fields.get("media_s3_key"),
         media_mime=fields.get("media_mime"),
         media_size_bytes=_opt_int("media_size_bytes"),
@@ -130,7 +131,8 @@ async def run_inbound_consumer(
     redis: Redis,
     pipeline: Any,
     *,
-    stream: str,
+    stream: str | None = None,
+    streams: list[str] | tuple[str, ...] | None = None,
     group: str,
     consumer_name: str,
     block_ms: int = 5_000,
@@ -146,6 +148,10 @@ async def run_inbound_consumer(
     per replica so concurrency can't exhaust the DB pool or provider quotas.
     Closes V1 — the previous strictly-serial loop capped the whole platform
     at ~10-14 turns/min.
+
+    WP-10: reads a LIST of streams in one XREADGROUP (tier streams + the
+    legacy one during the transition release). ``stream=`` remains accepted
+    as the single-stream spelling.
     """
     if slots is None or max_inflight is None:
         from nexus_worker.config import get_worker_settings
@@ -154,10 +160,17 @@ async def run_inbound_consumer(
         slots = slots or ws.runner_slots
         max_inflight = max_inflight or ws.runner_max_inflight
 
-    await _ensure_group(redis, stream, group)
+    stream_list: tuple[str, ...] = tuple(streams or ())
+    if stream is not None:
+        stream_list = (stream, *stream_list)
+    if not stream_list:
+        raise ValueError("run_inbound_consumer needs at least one stream")
+
+    for stream_name in stream_list:
+        await _ensure_group(redis, stream_name, group)
     log.info(
         "consumer.start",
-        stream=stream,
+        streams=list(stream_list),
         group=group,
         consumer=consumer_name,
         slots=slots,
@@ -172,13 +185,13 @@ async def run_inbound_consumer(
             item = await queue.get()
             if item is _SLOT_SENTINEL:
                 return
-            entry_id, raw_fields = item
+            source_stream, entry_id, raw_fields = item
             try:
                 async with inflight:
                     await handle_entry(
                         redis,
                         pipeline=pipeline,
-                        stream=stream,
+                        stream=source_stream,
                         group=group,
                         entry_id=entry_id,
                         raw_fields=raw_fields,
@@ -192,13 +205,14 @@ async def run_inbound_consumer(
         for i, queue in enumerate(queues)
     ]
 
+    read_spec = {s: ">" for s in stream_list}
     try:
         while stop is None or not stop.is_set():
             try:
                 response = await redis.xreadgroup(
                     groupname=group,
                     consumername=consumer_name,
-                    streams={stream: ">"},
+                    streams=read_spec,  # type: ignore[arg-type]
                     count=READ_BATCH,
                     block=block_ms,
                 )
@@ -216,10 +230,11 @@ async def run_inbound_consumer(
                 await asyncio.sleep(0.01)
                 continue
 
-            for _stream_name, entries in response:
+            for stream_name, entries in response:
+                source = stream_name.decode() if isinstance(stream_name, bytes) else stream_name
                 for entry_id, raw_fields in entries:
                     decoded = _decode_fields(raw_fields)
-                    await queues[slot_for(decoded, slots)].put((entry_id, raw_fields))
+                    await queues[slot_for(decoded, slots)].put((source, entry_id, raw_fields))
     finally:
         # Graceful drain: workers finish whatever is queued, then exit on
         # the sentinel. Anything not yet processed stays unacked in the PEL
@@ -228,7 +243,7 @@ async def run_inbound_consumer(
             await queue.put(_SLOT_SENTINEL)
         await asyncio.gather(*workers, return_exceptions=True)
 
-    log.info("consumer.stopped", stream=stream, group=group)
+    log.info("consumer.stopped", streams=list(stream_list), group=group)
 
 
 async def _delivery_count(redis: Redis, stream: str, group: str, entry_id: str) -> int:

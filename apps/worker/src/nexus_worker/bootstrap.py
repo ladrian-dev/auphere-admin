@@ -221,6 +221,13 @@ def build_context(service_name: str) -> WorkerContext:
     tiktok_adapter = TikTokChannelAdapter(tiktok_client, credentials_loader=_load_tiktok_credentials)
     channel_adapters = {"meta": meta_adapter, "tiktok": tiktok_adapter}
 
+    # WP-11 (D10): the runner resolves inbound media (webhook publishes only
+    # the provider media id). The Meta adapter's fetch_media_bytes carries
+    # the per-channel credential scoping already.
+    from nexus_worker.multimodal.media_fetch import set_media_fetcher
+
+    set_media_fetcher(meta_adapter.fetch_media_bytes)
+
     # Block O: AgendaPro public-link Node MCP subprocess pool (lazy —
     # tolerates missing Node binary in dev/test).
     agendapro_public_pool = build_agendapro_public_pool_from_env()
@@ -299,7 +306,7 @@ def runner_tasks(
             run_inbound_consumer(
                 ctx.redis,
                 pipeline,
-                stream=ws.inbound_stream,
+                streams=ws.inbound_streams_list,
                 group=ws.inbound_consumer_group,
                 consumer_name=ws.inbound_consumer_name,
                 stop=ctx.stop,
@@ -310,7 +317,7 @@ def runner_tasks(
             run_stream_claimer(
                 ctx.redis,
                 pipeline,
-                stream=ws.inbound_stream,
+                streams=ws.inbound_streams_list,
                 group=ws.inbound_consumer_group,
                 consumer_name=f"{ws.inbound_consumer_name}-claimer",
                 stop=ctx.stop,

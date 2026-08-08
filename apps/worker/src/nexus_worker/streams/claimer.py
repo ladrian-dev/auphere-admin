@@ -83,7 +83,8 @@ async def run_stream_claimer(
     redis: Redis,
     pipeline: Any,
     *,
-    stream: str,
+    stream: str | None = None,
+    streams: list[str] | tuple[str, ...] | None = None,
     group: str,
     consumer_name: str,
     min_idle_ms: int = DEFAULT_MIN_IDLE_MS,
@@ -92,35 +93,43 @@ async def run_stream_claimer(
     on_processed: Callable[..., Awaitable[None]] | None = None,
     on_backlog: BacklogHook | None = None,
 ) -> None:
+    stream_list: tuple[str, ...] = tuple(streams or ())
+    if stream is not None:
+        stream_list = (stream, *stream_list)
+    if not stream_list:
+        raise ValueError("run_stream_claimer needs at least one stream")
     log.info(
         "claimer.start",
-        stream=stream,
+        streams=list(stream_list),
         group=group,
         consumer=consumer_name,
         min_idle_ms=min_idle_ms,
     )
     while stop is None or not stop.is_set():
-        try:
-            await claim_once(
-                redis,
-                pipeline,
-                stream=stream,
-                group=group,
-                consumer_name=consumer_name,
-                min_idle_ms=min_idle_ms,
-                on_processed=on_processed,
-            )
-            await _check_backlog(redis, stream=stream, group=group, on_backlog=on_backlog)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            log.error("claimer.tick_failed", stream=stream, error=str(exc))
+        for stream_name in stream_list:
+            try:
+                await claim_once(
+                    redis,
+                    pipeline,
+                    stream=stream_name,
+                    group=group,
+                    consumer_name=consumer_name,
+                    min_idle_ms=min_idle_ms,
+                    on_processed=on_processed,
+                )
+                await _check_backlog(
+                    redis, stream=stream_name, group=group, on_backlog=on_backlog
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.error("claimer.tick_failed", stream=stream_name, error=str(exc))
         if stop is None:
             await asyncio.sleep(interval_s)
         else:
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=interval_s)
-    log.info("claimer.stopped", stream=stream)
+    log.info("claimer.stopped", streams=list(stream_list))
 
 
 async def claim_once(

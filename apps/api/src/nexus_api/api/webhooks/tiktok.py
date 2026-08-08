@@ -55,9 +55,9 @@ from nexus_api.core.errors import TenantNotFound
 from nexus_api.core.logging_context import bind_tenant
 from nexus_api.core.metrics import CHANNEL_UNRESOLVED_EVENT, counters
 from nexus_api.core.otel import inject_trace_fields
-from nexus_api.core.streams import xadd_capped
+from nexus_api.core.streams import stream_for_tier, xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
-from nexus_api.core.tenant_resolver import resolve_tenant
+from nexus_api.core.tenant_resolver import resolve_tenant, resolve_tenant_tier
 from nexus_api.db.models import Message
 from nexus_api.repositories import ChannelRepository
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
@@ -66,7 +66,6 @@ router = APIRouter()
 log = structlog.get_logger()
 
 PROVIDER = "tiktok"
-INBOUND_STREAM = "nexus:inbound"
 # Above TikTok's retry budget, same rationale as the Meta route's wamid TTL.
 MESSAGE_DEDUPE_TTL = 600
 
@@ -264,7 +263,10 @@ async def _handle_inbound(
     # WP-01: carry the webhook's trace context across the queue so the
     # worker's turn span joins this trace instead of starting a new one.
     inject_trace_fields(fields)
-    await xadd_capped(redis, INBOUND_STREAM, fields)
+    # WP-10: route by tenant tier (dedicated stream + runner pool for
+    # priority tenants).
+    tier = await resolve_tenant_tier(session, redis, tenant_id)
+    await xadd_capped(redis, stream_for_tier(tier), fields)
 
     log.info(
         "webhook.tiktok.enqueued",

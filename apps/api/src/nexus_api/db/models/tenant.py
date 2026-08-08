@@ -22,6 +22,15 @@ class TenantPlan(str, enum.Enum):
     INTERNAL = "internal"  # canary / Auphere internal tenants
 
 
+class TenantTier(str, enum.Enum):
+    """WP-10 (plataforma v2): performance isolation tier. ``priority``
+    tenants get their own inbound stream + runner pool, so a traffic burst
+    on ``standard`` cannot move their latency."""
+
+    STANDARD = "standard"
+    PRIORITY = "priority"
+
+
 class TenantStatus(str, enum.Enum):
     ACTIVE = "active"
     PAUSED = "paused"
@@ -46,6 +55,12 @@ class Tenant(UUIDPrimaryKey, TimestampMixin, Base):
         pg_enum(TenantStatus, name="tenant_status"),
         nullable=False,
         default=TenantStatus.ACTIVE,
+    )
+    tier: Mapped[TenantTier] = mapped_column(
+        pg_enum(TenantTier, name="tenant_tier"),
+        nullable=False,
+        default=TenantTier.STANDARD,
+        server_default="standard",
     )
     market: Mapped[str | None] = mapped_column(String(8), nullable=True)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")

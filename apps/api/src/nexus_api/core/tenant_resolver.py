@@ -61,3 +61,45 @@ async def resolve_tenant(
 
 async def invalidate_tenant_cache(redis: Redis, provider: str, identifier: str) -> None:
     await redis.delete(_cache_key(provider, identifier))
+
+
+# ── WP-10: tenant tier (performance isolation) ──────────────────────────────
+
+
+def _tier_cache_key(tenant_id: uuid.UUID) -> str:
+    return f"nexus:tenant_tier:{tenant_id}"
+
+
+async def resolve_tenant_tier(
+    session: AsyncSession,
+    redis: Redis,
+    tenant_id: uuid.UUID,
+) -> str:
+    """Tier for stream routing, cached alongside the tenant resolution.
+
+    Fail-safe by design: any error (cache, DB, unexpected value) resolves to
+    ``standard`` — a tier lookup problem must never block or drop a message,
+    it can only cost a priority tenant one turn at standard latency.
+    """
+    settings = get_settings()
+    key = _tier_cache_key(tenant_id)
+    try:
+        cached = await redis.get(key)
+        if cached in ("standard", "priority"):
+            return cached
+        result = await session.execute(
+            text("SELECT tier FROM tenants WHERE id = :tid"),
+            {"tid": str(tenant_id)},
+        )
+        tier = result.scalar_one_or_none() or "standard"
+        tier = tier if tier in ("standard", "priority") else "standard"
+        await redis.setex(key, settings.tenant_cache_ttl, tier)
+        return tier
+    except Exception:
+        return "standard"
+
+
+async def invalidate_tenant_tier_cache(redis: Redis, tenant_id: uuid.UUID) -> None:
+    """Call on tier change from the admin so the new stream applies within
+    one request instead of one TTL."""
+    await redis.delete(_tier_cache_key(tenant_id))
