@@ -4,20 +4,26 @@ A consumer group lets multiple worker replicas share the work without dropping
 messages (each entry is delivered exactly once across the group). The group is
 created idempotently on first read.
 
-Failures: on exception during dispatch we LOG and DO NOT ack, so the entry
-becomes pending and a retry kicks in via ``XCLAIM`` later. Block H wires the
-DLQ + alerting; for block C we just log loudly so failures show up in dev.
+Failures (WP-04): on exception during dispatch we LOG and DO NOT ack, so the
+entry stays pending and gets redelivered — by this replica on restart, or by
+another replica via the stream claimer (``claimer.py``, ``XAUTOCLAIM``).
+After ``MAX_DELIVERY_ATTEMPTS`` failed deliveries the entry is moved to
+``nexus:inbound:dlq`` and acked, so a poison message can't block its slot
+forever while staying invisible.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 import structlog
+from nexus_api.core.otel_metrics import record_turn, record_turn_error
+from nexus_api.core.streams import xadd_capped
 from opentelemetry import trace as otel_trace
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
@@ -26,6 +32,12 @@ from nexus_worker.observability.otel import TRACE_FIELDS, extract_trace_context,
 from nexus_worker.runtime.dispatcher import InboundEvent, process_inbound
 
 log = structlog.get_logger(__name__)
+
+# WP-04: after this many failed deliveries an entry is moved to the DLQ
+# instead of retrying forever (V6 — poison messages used to sit in the PEL
+# silently until someone noticed the conversation had died).
+MAX_DELIVERY_ATTEMPTS = 5
+DLQ_STREAM = "nexus:inbound:dlq"
 
 
 async def _ensure_group(redis: Redis, stream: str, group: str) -> None:
@@ -119,51 +131,165 @@ async def run_inbound_consumer(
 
         for _stream_name, entries in response:
             for entry_id, raw_fields in entries:
-                entry_id_str = entry_id.decode() if isinstance(entry_id, bytes) else entry_id
-                fields = _decode_fields(raw_fields)
-                try:
-                    event = _to_event(fields)
-                except KeyError as exc:
-                    log.warning(
-                        "consumer.malformed_entry",
-                        entry_id=entry_id_str,
-                        missing=str(exc),
-                    )
-                    await redis.xack(stream, group, entry_id_str)
-                    continue
-                # WP-01: the ``turn`` span is the worker half of the
-                # end-to-end trace. ``extract_trace_context`` rebuilds the
-                # webhook's context from the entry fields so this span joins
-                # that trace; entries without ``traceparent`` start fresh.
-                with get_tracer().start_as_current_span(
-                    "turn",
-                    context=extract_trace_context(fields),
-                    kind=otel_trace.SpanKind.CONSUMER,
-                    attributes={
-                        "tenant_id": str(event.tenant_id),
-                        "channel_id": str(event.channel_id),
-                        "messaging.provider": event.provider,
-                        "messaging.destination.name": stream,
-                    },
-                ) as turn_span:
-                    try:
-                        await process_inbound(event, pipeline=pipeline)
-                    except Exception as exc:
-                        turn_span.set_status(
-                            otel_trace.Status(otel_trace.StatusCode.ERROR, str(exc))
-                        )
-                        turn_span.record_exception(exc)
-                        log.error(
-                            "consumer.dispatch_failed",
-                            entry_id=entry_id_str,
-                            tenant_id=str(event.tenant_id),
-                            error=str(exc),
-                        )
-                        # Don't ack — leave it pending for retry.
-                        continue
-                await redis.xack(stream, group, entry_id_str)
-                if on_processed is not None:
-                    with contextlib.suppress(Exception):
-                        await on_processed(event)
+                await handle_entry(
+                    redis,
+                    pipeline=pipeline,
+                    stream=stream,
+                    group=group,
+                    entry_id=entry_id,
+                    raw_fields=raw_fields,
+                    on_processed=on_processed,
+                )
 
     log.info("consumer.stopped", stream=stream, group=group)
+
+
+async def _delivery_count(redis: Redis, stream: str, group: str, entry_id: str) -> int:
+    """How many times this pending entry has been delivered. Falls back to 1
+    (first attempt) when XPENDING fails — degrading to the pre-DLQ behaviour
+    (retry) rather than dead-lettering on a probe error."""
+    try:
+        pending = await redis.xpending_range(
+            stream, group, min=entry_id, max=entry_id, count=1
+        )
+    except Exception as exc:
+        log.warning("consumer.xpending_failed", entry_id=entry_id, error=str(exc))
+        return 1
+    if not pending:
+        return 1
+    info = pending[0]
+    count = info.get("times_delivered") if isinstance(info, dict) else None
+    return int(count) if count else 1
+
+
+async def _dead_letter(
+    redis: Redis,
+    *,
+    stream: str,
+    group: str,
+    entry_id: str,
+    fields: dict[str, str],
+    error: str,
+    attempts: int,
+) -> None:
+    """Move a poison entry to the DLQ and ack it so it stops blocking the PEL.
+
+    The DLQ entry carries the full original payload plus diagnosis fields —
+    an operator can replay it by re-publishing the original fields to the
+    source stream once the bug is fixed.
+    """
+    dlq_fields = {
+        **{k: v for k, v in fields.items() if k not in TRACE_FIELDS},
+        "dlq_source_stream": stream,
+        "dlq_source_entry_id": entry_id,
+        "dlq_error": error[:500],
+        "dlq_attempts": str(attempts),
+    }
+    await xadd_capped(redis, DLQ_STREAM, dlq_fields)
+    await redis.xack(stream, group, entry_id)
+    log.error(
+        "consumer.dead_lettered",
+        entry_id=entry_id,
+        stream=stream,
+        dlq=DLQ_STREAM,
+        attempts=attempts,
+        error=error,
+    )
+
+
+async def handle_entry(
+    redis: Redis,
+    *,
+    pipeline: Any,
+    stream: str,
+    group: str,
+    entry_id: bytes | str,
+    raw_fields: dict[bytes | str, bytes | str],
+    on_processed: Callable[[InboundEvent], Awaitable[None]] | None = None,
+    max_attempts: int = MAX_DELIVERY_ATTEMPTS,
+) -> bool:
+    """Process one stream entry: dispatch, ack on success, dead-letter after
+    ``max_attempts`` failed deliveries (WP-04). Shared by the consumer loop
+    and the stream claimer so both paths have identical semantics.
+
+    Returns True when the entry was acked (success, malformed or DLQ),
+    False when it stays pending for retry.
+    """
+    entry_id_str = entry_id.decode() if isinstance(entry_id, bytes) else entry_id
+    fields = _decode_fields(raw_fields)
+    try:
+        event = _to_event(fields)
+    except KeyError as exc:
+        log.warning(
+            "consumer.malformed_entry",
+            entry_id=entry_id_str,
+            missing=str(exc),
+        )
+        await redis.xack(stream, group, entry_id_str)
+        return True
+    # WP-01: the ``turn`` span is the worker half of the end-to-end trace.
+    # ``extract_trace_context`` rebuilds the webhook's context from the entry
+    # fields so this span joins that trace; entries without ``traceparent``
+    # start fresh.
+    with get_tracer().start_as_current_span(
+        "turn",
+        context=extract_trace_context(fields),
+        kind=otel_trace.SpanKind.CONSUMER,
+        attributes={
+            "tenant_id": str(event.tenant_id),
+            "channel_id": str(event.channel_id),
+            "messaging.provider": event.provider,
+            "messaging.destination.name": stream,
+        },
+    ) as turn_span:
+        started = time.perf_counter()
+        try:
+            result = await process_inbound(event, pipeline=pipeline)
+        except Exception as exc:
+            record_turn_error(tenant_id=str(event.tenant_id), stage="dispatch")
+            # WP-06: windowed error counter consumed by the platform watcher
+            # (alert when a tenant crosses the burst threshold). Best-effort.
+            with contextlib.suppress(Exception):
+                window = int(time.time()) // 600
+                err_key = f"nexus:alert:turn_errors:{event.tenant_id}:{window}"
+                await redis.incr(err_key)
+                await redis.expire(err_key, 1_200)
+            turn_span.set_status(otel_trace.Status(otel_trace.StatusCode.ERROR, str(exc)))
+            turn_span.record_exception(exc)
+            attempts = await _delivery_count(redis, stream, group, entry_id_str)
+            log.error(
+                "consumer.dispatch_failed",
+                entry_id=entry_id_str,
+                tenant_id=str(event.tenant_id),
+                attempts=attempts,
+                error=str(exc),
+            )
+            if attempts >= max_attempts:
+                # Poison entry: retrying forever blocks the PEL and hides
+                # the failure (V6). Park it where an operator can see it.
+                with contextlib.suppress(Exception):
+                    await _dead_letter(
+                        redis,
+                        stream=stream,
+                        group=group,
+                        entry_id=entry_id_str,
+                        fields=fields,
+                        error=str(exc),
+                        attempts=attempts,
+                    )
+                return True
+            # Below the cap: don't ack — leave it pending for retry.
+            return False
+        # WP-05: the turn SLI, labelled with the routed intent so the panel
+        # can split p95 by conversation type.
+        record_turn(
+            duration_ms=(time.perf_counter() - started) * 1000,
+            tenant_id=str(event.tenant_id),
+            intent=(result or {}).get("intent") if isinstance(result, dict) else None,
+            channel=event.provider,
+        )
+    await redis.xack(stream, group, entry_id_str)
+    if on_processed is not None:
+        with contextlib.suppress(Exception):
+            await on_processed(event)
+    return True
