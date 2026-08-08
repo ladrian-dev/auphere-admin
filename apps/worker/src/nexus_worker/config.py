@@ -44,6 +44,15 @@ class WorkerSettings(BaseSettings):
     inbound_consumer_name: str = "worker-1"
     promote_channel: str = "nexus:agent_config:promote"
 
+    # ── WP-09: concurrent partitioned consumer ──────────────────────────────
+    # ``runner_slots`` fixes the partition count: entries are routed to a
+    # slot by crc32(thread_id) % slots — strictly serial within a slot
+    # (conversation order preserved), concurrent across slots.
+    # ``runner_max_inflight`` caps simultaneous turns per replica so the
+    # concurrency can't exhaust the Postgres pool or provider quotas.
+    runner_slots: int = 64
+    runner_max_inflight: int = 64
+
     # AgentLoader cache size (entries == number of distinct (tenant, version) pairs).
     agent_cache_size: int = 64
 
