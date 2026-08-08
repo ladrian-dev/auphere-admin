@@ -136,6 +136,36 @@ def _to_event(fields: dict[str, str]) -> InboundEvent:
     )
 
 
+# WP-09: read batch size. Bigger batches amortise the XREADGROUP round-trip
+# once the slots consume concurrently.
+READ_BATCH = 64
+
+# Per-slot queue bound: when a hot conversation fills its slot queue the
+# reader blocks on put() — natural backpressure that keeps unacked entries
+# in Redis (crash-safe) instead of piling them up in process memory.
+SLOT_QUEUE_MAXSIZE = 8
+
+_SLOT_SENTINEL: Any = object()
+
+
+def slot_for(fields: dict[str, str], n_slots: int) -> int:
+    """Partition key: crc32 of the canonical thread_id. Two customers of the
+    same tenant land in different slots (progress in parallel); two messages
+    of the same conversation always land in the same slot (strict order)."""
+    from zlib import crc32
+
+    from nexus_worker.runtime.thread_id import make_thread_id
+
+    try:
+        thread_id = make_thread_id(
+            fields["tenant_id"], fields["channel_id"], fields["user_id"]
+        )
+    except (KeyError, ValueError):
+        # Malformed entries go to slot 0 where handle_entry acks them away.
+        return 0
+    return crc32(thread_id.encode()) % n_slots
+
+
 async def run_inbound_consumer(
     redis: Redis,
     pipeline: Any,
@@ -146,40 +176,97 @@ async def run_inbound_consumer(
     block_ms: int = 5_000,
     stop: asyncio.Event | None = None,
     on_processed: Callable[[InboundEvent], Awaitable[None]] | None = None,
+    slots: int | None = None,
+    max_inflight: int | None = None,
 ) -> None:
+    """WP-09: concurrent consumer partitioned by ``thread_id``.
+
+    One reader task feeds ``slots`` FIFO queues; one worker per slot
+    processes strictly in order. A global semaphore caps simultaneous turns
+    per replica so concurrency can't exhaust the DB pool or provider quotas.
+    Closes V1 — the previous strictly-serial loop capped the whole platform
+    at ~10-14 turns/min.
+    """
+    if slots is None or max_inflight is None:
+        from nexus_worker.config import get_worker_settings
+
+        ws = get_worker_settings()
+        slots = slots or ws.runner_slots
+        max_inflight = max_inflight or ws.runner_max_inflight
+
     await _ensure_group(redis, stream, group)
-    log.info("consumer.start", stream=stream, group=group, consumer=consumer_name)
+    log.info(
+        "consumer.start",
+        stream=stream,
+        group=group,
+        consumer=consumer_name,
+        slots=slots,
+        max_inflight=max_inflight,
+    )
 
-    while stop is None or not stop.is_set():
-        try:
-            response = await redis.xreadgroup(
-                groupname=group,
-                consumername=consumer_name,
-                streams={stream: ">"},
-                count=10,
-                block=block_ms,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            log.error("consumer.xreadgroup_failed", error=str(exc))
-            await asyncio.sleep(1.0)
-            continue
+    queues: list[asyncio.Queue] = [asyncio.Queue(maxsize=SLOT_QUEUE_MAXSIZE) for _ in range(slots)]
+    inflight = asyncio.Semaphore(max_inflight)
 
-        if not response:
-            continue
+    async def _slot_worker(queue: asyncio.Queue) -> None:
+        while True:
+            item = await queue.get()
+            if item is _SLOT_SENTINEL:
+                return
+            entry_id, raw_fields = item
+            try:
+                async with inflight:
+                    await handle_entry(
+                        redis,
+                        pipeline=pipeline,
+                        stream=stream,
+                        group=group,
+                        entry_id=entry_id,
+                        raw_fields=raw_fields,
+                        on_processed=on_processed,
+                    )
+            except Exception as exc:  # handle_entry never raises; belt+braces
+                log.error("consumer.slot_worker_failed", error=str(exc))
 
-        for _stream_name, entries in response:
-            for entry_id, raw_fields in entries:
-                await handle_entry(
-                    redis,
-                    pipeline=pipeline,
-                    stream=stream,
-                    group=group,
-                    entry_id=entry_id,
-                    raw_fields=raw_fields,
-                    on_processed=on_processed,
+    workers = [
+        asyncio.create_task(_slot_worker(queue), name=f"slot-{i}")
+        for i, queue in enumerate(queues)
+    ]
+
+    try:
+        while stop is None or not stop.is_set():
+            try:
+                response = await redis.xreadgroup(
+                    groupname=group,
+                    consumername=consumer_name,
+                    streams={stream: ">"},
+                    count=READ_BATCH,
+                    block=block_ms,
                 )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.error("consumer.xreadgroup_failed", error=str(exc))
+                await asyncio.sleep(1.0)
+                continue
+
+            if not response:
+                # Yield explicitly: with a client whose blocking read
+                # completes synchronously (fakeredis) this loop would
+                # otherwise starve every other task on the loop.
+                await asyncio.sleep(0.01)
+                continue
+
+            for _stream_name, entries in response:
+                for entry_id, raw_fields in entries:
+                    decoded = _decode_fields(raw_fields)
+                    await queues[slot_for(decoded, slots)].put((entry_id, raw_fields))
+    finally:
+        # Graceful drain: workers finish whatever is queued, then exit on
+        # the sentinel. Anything not yet processed stays unacked in the PEL
+        # and is redelivered (or reclaimed) — never lost.
+        for queue in queues:
+            await queue.put(_SLOT_SENTINEL)
+        await asyncio.gather(*workers, return_exceptions=True)
 
     log.info("consumer.stopped", stream=stream, group=group)
 

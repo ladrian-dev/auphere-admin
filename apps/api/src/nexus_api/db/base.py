@@ -29,6 +29,9 @@ class Base(DeclarativeBase):
 @lru_cache(maxsize=1)
 def get_engine() -> AsyncEngine:
     settings = get_settings()
+    # WP-09: pool sizing is env-driven — the concurrent runner's sizing rule
+    # is ``réplicas x (pool_size + max_overflow) < max_connections x 0.7``,
+    # which can't hold with hardcoded numbers once replicas scale.
     return create_async_engine(
         settings.database_url,
         echo=False,
@@ -42,8 +45,8 @@ def get_engine() -> AsyncEngine:
         # are retried at the consumer boundary (see streams/consumer.py).
         pool_pre_ping=True,
         pool_recycle=280,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
     )
 
 
