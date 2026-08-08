@@ -28,6 +28,7 @@ Context editing (Fase A — claude-platform-integration):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import time
@@ -41,6 +42,7 @@ from nexus_api.core.metrics import (
     ISOLATION_LLM_BATCH_CROSS_TENANT,
     record_isolation_event,
 )
+from nexus_api.core.otel_metrics import record_llm_call
 
 from nexus_worker.observability.tracing import record_generation
 
@@ -521,6 +523,26 @@ class LiteLLMProvider:
             has_tools=bool(tools),
             **usage_fields,
         )
+        # WP-05: llm_call_ms + llm_tokens_total (the cache-read ratio panel
+        # derives from these counters). Never raises.
+        record_llm_call(
+            model=model, role=role, duration_ms=elapsed_ms, usage=usage_fields
+        )
+        # WP-06: hourly token counters for the cache-ratio alert. Best-effort.
+        with contextlib.suppress(Exception):
+            from nexus_api.core.redis_client import get_redis
+
+            redis = get_redis()
+            hour_window = int(time.time()) // 3600
+            for usage_key, label in (
+                ("prompt_tokens", "input"),
+                ("cache_read_input_tokens", "cache_read"),
+            ):
+                value = usage_fields.get(usage_key)
+                if value:
+                    token_key = f"nexus:alert:llmtok:{label}:{hour_window}"
+                    await redis.incrby(token_key, value)
+                    await redis.expire(token_key, 7_200)
         # WP-02: one Langfuse generation per call, with token counts and
         # tenant_id as metadata. Noop when Langfuse is disabled; never raises.
         record_generation(

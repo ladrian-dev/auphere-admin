@@ -75,6 +75,11 @@ _ACTION_TO_TEMPLATE: dict[str, str] = {
     # avoiding a new Meta template approval round-trip.
     "connector.needs_reauth": "alert_needs_reauth_v1",
     "connector.error": "alert_needs_reauth_v1",
+    # WP-06 — platform watcher: a tenant whose turns are failing in a burst.
+    # Reuses the approved burst template (same operational signal, and
+    # ``after_json.threshold`` carries the count) — no new Meta template
+    # approval round-trip.
+    "platform.turn_error_burst": "alert_whatsapp_burst_v1",
 }
 
 

@@ -53,6 +53,8 @@ from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 import structlog
+from nexus_api.core.otel_metrics import record_meta_send_failure, record_outbound_delivery
+from nexus_api.core.redis_client import get_redis
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
@@ -438,6 +440,9 @@ async def _send_one(
     if msg.cost_usd is None and result.cost_usd_estimate is not None:
         msg.cost_usd = result.cost_usd_estimate
     msg.latency_ms = msg.latency_ms or _ms_since(msg.created_at)
+    # WP-05: outbound_delivery_ms — time from row creation to provider accept.
+    if msg.latency_ms is not None:
+        record_outbound_delivery(provider="meta", duration_ms=float(msg.latency_ms))
     log.info(
         "outbound.dispatcher.sent",
         tenant_id=str(tenant_id),
@@ -654,6 +659,20 @@ async def _maybe_flag_reauth(
         )
 
 
+async def _count_failure_for_watcher(code: str) -> None:
+    """WP-06: windowed per-code failure counter consumed by the platform
+    watcher (alert when the same Meta error code repeats in a burst)."""
+    import contextlib as _contextlib
+    import time as _time
+
+    with _contextlib.suppress(Exception):
+        redis = get_redis()
+        window = int(_time.time()) // 600
+        key = f"nexus:alert:metafail:{code}:{window}"
+        await redis.incr(key)
+        await redis.expire(key, 1_200)
+
+
 async def _handle_send_exception(
     *,
     session: AsyncSession,
@@ -715,6 +734,8 @@ async def _handle_send_exception(
         msg.status = MessageStatus.FAILED
         msg.failed_at = datetime.now(UTC)
         msg.failure_code = meta_code or str(status_code)
+        record_meta_send_failure(code=msg.failure_code)
+        await _count_failure_for_watcher(msg.failure_code)
         log.warning(
             "outbound.dispatcher.permanent_failure_no_retry",
             tenant_id=str(tenant_id),
@@ -729,6 +750,8 @@ async def _handle_send_exception(
         msg.status = MessageStatus.FAILED
         msg.failed_at = datetime.now(UTC)
         msg.failure_code = meta_code or str(status_code) or "exhausted_retries"
+        record_meta_send_failure(code=msg.failure_code)
+        await _count_failure_for_watcher(msg.failure_code)
         log.warning(
             "outbound.dispatcher.permanent_failure",
             tenant_id=str(tenant_id),

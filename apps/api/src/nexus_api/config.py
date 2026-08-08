@@ -137,6 +137,11 @@ class Settings(BaseSettings):
     # is Lee. Templates for the tenant owner override this when present.
     operator_fallback_phone: str | None = None
 
+    # WP-06 (plataforma v2, Fase 0): destination for platform-level alerts
+    # (queue backlog, DLQ entries, dead workers, cache-ratio collapse, Meta
+    # failure bursts). Unset → alerts are logged at ERROR only.
+    operator_alert_email: str | None = None
+
     # Owner backchannel (ADR-018 / architecture/owner-backchannel.md).
     # Auphere backchannel numbers live in the ``auphere_owner_channels``
     # registry (provider=meta, with phone_number_id + encrypted access

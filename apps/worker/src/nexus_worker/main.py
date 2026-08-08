@@ -28,6 +28,7 @@ import uuid
 import structlog
 from nexus_api.config import get_settings
 from nexus_api.core.metrics import isolation_event_drainer
+from nexus_api.core.otel_metrics import ensure_queue_gauges, install_metrics
 from nexus_api.core.redis_client import get_redis
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
@@ -44,10 +45,10 @@ from nexus_mcp.servers.agendapro_public.transport import (
 
 from nexus_worker.config import get_api_settings, get_worker_settings
 from nexus_worker.guardrails import OutcomeGrader
+from nexus_worker.health import run_heartbeat
 from nexus_worker.logging import configure_logging
 from nexus_worker.observability import init_langfuse
 from nexus_worker.observability import shutdown as langfuse_shutdown
-from nexus_worker.health import run_heartbeat
 from nexus_worker.observability.otel import install_worker_tracing
 from nexus_worker.runtime.agent_loader import AgentLoader
 from nexus_worker.runtime.checkpointer import postgres_checkpointer
@@ -56,6 +57,7 @@ from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.agent_sales_poll_cron import run_agent_sales_poll_cron
 from nexus_worker.streams.async_booking_cron import run_async_booking_cron
+from nexus_worker.streams.claimer import run_stream_claimer
 from nexus_worker.streams.connector_reconcile_cron import run_connector_reconcile_cron
 from nexus_worker.streams.consumer import run_inbound_consumer
 from nexus_worker.streams.continuous_eval_cron import run_continuous_eval_cron
@@ -74,6 +76,7 @@ from nexus_worker.streams.owner_fanout import run_owner_fanout_consumer
 from nexus_worker.streams.owner_fanout_sweep import run_owner_fanout_sweep
 from nexus_worker.streams.owner_outbox import run_owner_outbox_dispatcher
 from nexus_worker.streams.partner_receipt_cron import run_partner_receipt_cron
+from nexus_worker.streams.platform_watcher import run_platform_watcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
@@ -96,6 +99,9 @@ async def _amain() -> None:
     # WP-01: OTel tracing for the worker half of the end-to-end trace.
     # No-op export unless NEXUS_OTEL_ENABLED + OTLP endpoint are set.
     install_worker_tracing("nexus-worker")
+    # WP-05: SLI instruments + queue-lag gauges (same export gating).
+    install_metrics("nexus-worker")
+    ensure_queue_gauges()
 
     loader = AgentLoader(max_size=worker_settings.agent_cache_size)
     # Fallback model is hardcoded same-vendor (Anthropic Haiku) — cross-
@@ -212,6 +218,19 @@ async def _amain() -> None:
             ),
             name="inbound-consumer",
         )
+        # WP-04: reclaims entries orphaned by a dead replica and reports
+        # backlog. Same handle_entry path (and DLQ semantics) as the consumer.
+        claimer_task = asyncio.create_task(
+            run_stream_claimer(
+                redis,
+                pipeline,
+                stream=worker_settings.inbound_stream,
+                group=worker_settings.inbound_consumer_group,
+                consumer_name=f"{worker_settings.inbound_consumer_name}-claimer",
+                stop=stop,
+            ),
+            name="stream-claimer",
+        )
         outbound_task = asyncio.create_task(
             run_outbound_dispatcher(adapters=channel_adapters, stop=stop),
             name="outbound-dispatcher",
@@ -219,6 +238,12 @@ async def _amain() -> None:
         alerter_task = asyncio.create_task(
             run_operator_alerter(adapters=channel_adapters, stop=stop),
             name="operator-alerter",
+        )
+        # WP-06: platform-level alerts (queue backlog, DLQ, dead workers,
+        # cache-ratio collapse, Meta failure bursts) with a human recipient.
+        platform_watcher_task = asyncio.create_task(
+            run_platform_watcher(redis, stop=stop),
+            name="platform-watcher",
         )
         reminder_task = asyncio.create_task(
             run_reminder_cron(stop=stop),
@@ -349,6 +374,8 @@ async def _amain() -> None:
             await asyncio.gather(
                 heartbeat_task,
                 consumer_task,
+                claimer_task,
+                platform_watcher_task,
                 promote_task,
                 outbound_task,
                 alerter_task,
