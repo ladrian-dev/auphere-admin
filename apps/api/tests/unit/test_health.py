@@ -18,7 +18,8 @@ async def test_liveness_returns_alive(client):
 async def test_readiness_returns_ready(client):
     response = await client.get("/health/ready")
     assert response.status_code == 200
-    assert response.json() == {"status": "ready"}
+    # WP-03: readiness now carries per-dependency detail.
+    assert response.json() == {"status": "ready", "checks": {"postgres": "ok", "redis": "ok"}}
 
 
 async def test_request_id_header_is_echoed(client):
