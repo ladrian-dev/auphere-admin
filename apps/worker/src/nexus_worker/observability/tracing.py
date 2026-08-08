@@ -140,6 +140,58 @@ def span(
                 log.warning("langfuse.span_end_failed", name=name, error=str(exc))
 
 
+def record_generation(
+    *,
+    tenant_id: uuid.UUID | str,
+    role: str,
+    model: str,
+    usage: dict[str, int],
+    latency_ms: int,
+) -> None:
+    """WP-02: emit one Langfuse generation per LLM call.
+
+    Called from ``LiteLLMProvider._raw_complete`` — the single choke point
+    every call (classify, respond, grader, multimodal) flows through, so one
+    call site gives full coverage. Nests under the current ``trace_turn``
+    automatically (the v3 SDK uses contextvars).
+
+    Never raises: instrumentation must not break a turn. Token keys follow
+    what ``_usage_fields`` extracted — ``prompt_tokens`` /
+    ``completion_tokens`` / ``cache_read_input_tokens`` /
+    ``cache_creation_input_tokens``; absent keys are simply not reported.
+    """
+    if not is_enabled():
+        return
+    client = get_client()
+    try:
+        usage_details: dict[str, int] = {}
+        if "prompt_tokens" in usage:
+            usage_details["input"] = usage["prompt_tokens"]
+        if "completion_tokens" in usage:
+            usage_details["output"] = usage["completion_tokens"]
+        for cache_key in ("cache_read_input_tokens", "cache_creation_input_tokens"):
+            if cache_key in usage:
+                usage_details[cache_key] = usage[cache_key]
+
+        start = getattr(client, "start_generation", None) or getattr(client, "generation", None)
+        if start is None:
+            return
+        gen = start(
+            name=f"llm.{role}",
+            model=model,
+            metadata={
+                "tenant_id": str(tenant_id),
+                "role": role,
+                "latency_ms": latency_ms,
+            },
+        )
+        end = getattr(gen, "end", None)
+        if callable(end):
+            end(usage_details=usage_details)
+    except Exception as exc:
+        log.warning("langfuse.generation_failed", role=role, model=model, error=str(exc))
+
+
 def update_trace(*, output: Any = None, level: str | None = None) -> None:
     """Attach the final output / outcome level to the current trace."""
     if not is_enabled():
