@@ -29,12 +29,16 @@ router = APIRouter(tags=["health"])
 # orchestrator polling a hung probe is as blind as one polling a stub.
 _PROBE_TIMEOUT_S = 2.0
 
-# Worker services expected to report a heartbeat. Extended in WP-07 when the
-# worker splits into runner/scheduler/egress (each entrypoint reports its own
-# service name).
-EXPECTED_WORKER_SERVICES = ("nexus-worker",)
-
 HEARTBEAT_KEY_PREFIX = "nexus:health:"
+
+
+def _expected_worker_services() -> tuple[str, ...]:
+    """WP-07: env-driven (``NEXUS_EXPECTED_WORKER_SERVICES``) so the
+    expectation matches the deployment — single ``nexus-worker`` today,
+    ``nexus-runner,nexus-scheduler,nexus-egress`` after the split cutover."""
+    from nexus_api.config import get_settings
+
+    return get_settings().expected_worker_services_list
 
 
 async def _check_postgres() -> None:
@@ -89,7 +93,7 @@ async def workers(response: Response) -> dict[str, Any]:
     from nexus_api.core.redis_client import get_redis
 
     redis = get_redis()
-    services: dict[str, list[str]] = {name: [] for name in EXPECTED_WORKER_SERVICES}
+    services: dict[str, list[str]] = {name: [] for name in _expected_worker_services()}
     try:
         keys = [
             key

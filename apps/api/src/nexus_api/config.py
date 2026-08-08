@@ -45,6 +45,13 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
 
+    # WP-09 (plataforma v2, Fase 1): engine pool sizing. Sizing rule to keep:
+    # replicas x (pool_size + max_overflow) < Postgres max_connections x 0.7.
+    # With PgBouncer (WP-15) the ceiling becomes the pooler's, not Postgres'.
+    # Defaults preserve the historical 10/20 shape until tuned per service.
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+
     # Auth for admin endpoints. Better Auth replaces this in block G.
     admin_token: str = "dev-admin-token-change-me"
 
@@ -136,6 +143,20 @@ class Settings(BaseSettings):
     # the tenant has not configured ``tenants.owner_phone``. In Phase 1 this
     # is Lee. Templates for the tenant owner override this when present.
     operator_fallback_phone: str | None = None
+
+    # WP-07: worker services expected to report a heartbeat, comma-separated.
+    # Single-service deploys keep the default; after cutting over to the
+    # split deployment set
+    # ``NEXUS_EXPECTED_WORKER_SERVICES=nexus-runner,nexus-scheduler,nexus-egress``.
+    # Consumed by GET /health/workers and by the platform watcher's
+    # dead-worker alert.
+    expected_worker_services: str = "nexus-worker"
+
+    @property
+    def expected_worker_services_list(self) -> tuple[str, ...]:
+        return tuple(
+            name.strip() for name in self.expected_worker_services.split(",") if name.strip()
+        )
 
     # WP-06 (plataforma v2, Fase 0): destination for platform-level alerts
     # (queue backlog, DLQ entries, dead workers, cache-ratio collapse, Meta

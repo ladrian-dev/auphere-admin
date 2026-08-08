@@ -85,5 +85,60 @@ services:
         "--reload-dir", "/app/apps/channels/src"
       ]
 
+  # ── WP-07: worker split — same image, one command per service ────────────
+  # ``docker compose --profile workers up`` boots the three v2 services.
+  # Day-to-day dev keeps running the all-in-one ``nexus-worker`` outside
+  # Docker (or none at all); the profile exists to exercise the split
+  # locally before touching a real environment.
+  runner:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: nexus-runner
+    profiles: ["workers"]
+    environment: &worker-env
+      NEXUS_ENVIRONMENT: dev
+      NEXUS_LOG_LEVEL: INFO
+      NEXUS_DATABASE_URL: postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      NEXUS_REDIS_URL: redis://redis:6379/0
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      NEXUS_FERNET_KEY: ${NEXUS_FERNET_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["nexus-runner"]
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: nexus-scheduler
+    profiles: ["workers"]
+    environment: *worker-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["nexus-scheduler"]
+
+  egress:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: nexus-egress
+    profiles: ["workers"]
+    environment: *worker-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["nexus-egress"]
+
 volumes:
   pgdata:

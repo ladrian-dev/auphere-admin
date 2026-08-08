@@ -51,9 +51,12 @@ CACHE_RATIO_THRESHOLD = 0.30
 CACHE_RATIO_MIN_TOKENS = 100_000
 HEARTBEAT_DEAD_AFTER_S = 180.0
 
-# Services expected to heartbeat. Mirrors the API's /health/workers contract;
-# extended in WP-07 when the worker splits into runner/scheduler/egress.
-EXPECTED_SERVICES = ("nexus-worker",)
+def _expected_services() -> tuple[str, ...]:
+    """WP-07: same env-driven contract as GET /health/workers
+    (``NEXUS_EXPECTED_WORKER_SERVICES``)."""
+    from nexus_api.config import get_settings
+
+    return get_settings().expected_worker_services_list
 
 # One notification per condition per this window (seconds).
 DEDUP_TTL_S = 3_600
@@ -143,7 +146,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
 
     # 5 · dead workers (heartbeat tracking via last-seen ledger)
     with contextlib.suppress(Exception):
-        for service in EXPECTED_SERVICES:
+        for service in _expected_services():
             alive = False
             async for _ in redis.scan_iter(match=f"nexus:health:{service}:*", count=10):
                 alive = True
