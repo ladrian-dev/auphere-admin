@@ -1,0 +1,126 @@
+{
+  "__comment": "WP-05 (plataforma v2, Fase 0). Dashboard versionado en el repo — importar en Grafana Cloud contra el datasource Prometheus/Mimir que recibe el OTLP. Responde de un vistazo: ¿cuál es el p95 de turno y el cache hit rate ahora mismo? Nota de nombres: la traducción OTLP→Mimir de Grafana Cloud puede sufijar unidades (p.ej. turn_latency_ms_milliseconds_bucket); si el panel sale vacío, ajustar el nombre con el explorador de métricas — el JSON es el punto de partida versionado, no una foto inmutable.",
+  "title": "Nexus — Overview (Fase 0)",
+  "uid": "nexus-overview",
+  "schemaVersion": 39,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "tenant",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(turn_latency_ms_bucket, tenant)",
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Turn p95 (ahora)",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 5000 }, { "color": "red", "value": 8000 } ] } } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(turn_latency_ms_bucket{tenant=~\"$tenant\"}[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "LLM cache read ratio (1h)",
+      "description": "cache_read / (input + cache_read). < 0.3 sostenido = invalidador silencioso de caché en el prefijo del prompt — es la diferencia entre $0,013 y $0,03 por turno.",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "green", "value": 0.6 } ] } } },
+      "targets": [
+        {
+          "expr": "sum(increase(llm_tokens_total{type=\"cache_read\"}[1h])) / (sum(increase(llm_tokens_total{type=\"input\"}[1h])) + sum(increase(llm_tokens_total{type=\"cache_read\"}[1h])))",
+          "legendFormat": "cache read ratio"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Cola: entradas pendientes",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 100 } ] } } },
+      "targets": [ { "expr": "max(queue_lag_entries) by (stream)", "legendFormat": "{{stream}}" } ]
+    },
+    {
+      "type": "stat",
+      "title": "Cola: entrada más vieja",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 30 }, { "color": "red", "value": 300 } ] } } },
+      "targets": [ { "expr": "max(queue_oldest_pending_seconds) by (stream)", "legendFormat": "{{stream}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latencia de turno p50 / p95 / p99",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(turn_latency_ms_bucket{tenant=~\"$tenant\"}[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(turn_latency_ms_bucket{tenant=~\"$tenant\"}[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(turn_latency_ms_bucket{tenant=~\"$tenant\"}[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Errores de turno por tenant",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "targets": [
+        { "expr": "sum(increase(turn_errors_total[10m])) by (tenant, stage)", "legendFormat": "{{tenant}} · {{stage}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latencia LLM por rol (p95)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(llm_call_ms_bucket[5m])) by (le, role))", "legendFormat": "{{role}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tokens LLM por tipo (tasa/min)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 13 },
+      "targets": [
+        { "expr": "sum(rate(llm_tokens_total[5m])) by (type) * 60", "legendFormat": "{{type}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "webhook_ack_ms p95 · outbound_delivery_ms p95",
+      "description": "Aceptación WP-11: webhook_ack p95 < 50 ms. Aceptación WP-12: outbound p95 < 300 ms.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(webhook_ack_ms_bucket[5m])) by (le, provider))", "legendFormat": "ack {{provider}}" },
+        { "expr": "histogram_quantile(0.95, sum(rate(outbound_delivery_ms_bucket[5m])) by (le, provider))", "legendFormat": "delivery {{provider}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Fallos de envío Meta por código",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "targets": [
+        { "expr": "sum(increase(meta_send_failures_total[10m])) by (code)", "legendFormat": "{{code}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Backlog por stream (entradas pendientes)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "targets": [
+        { "expr": "max(queue_lag_entries) by (stream)", "legendFormat": "{{stream}}" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,206 @@
+"""OTel metrics — the SLIs of Fase 0 (WP-05, plataforma v2).
+
+One module owns every instrument so the metric names, units and label sets
+live in exactly one place. Recording helpers are cheap no-ops until
+``install_metrics`` runs (the SDK hands out noop instruments), and recording
+NEVER raises — instrumentation must not break a turn or a webhook ack.
+
+Instruments (labels):
+- ``turn_latency_ms``        histogram (tenant, intent, channel)
+- ``turn_errors_total``      counter   (tenant, stage)
+- ``queue_lag_entries``      obs. gauge (stream)
+- ``queue_oldest_pending_seconds`` obs. gauge (stream)
+- ``llm_call_ms``            histogram (model, role)
+- ``llm_tokens_total``       counter   (type=input|output|cache_read|cache_write, model)
+- ``webhook_ack_ms``         histogram (provider)
+- ``outbound_delivery_ms``   histogram (provider)
+- ``meta_send_failures_total`` counter (code)
+
+``llm_cache_read_ratio`` is deliberately NOT an instrument: it is derived in
+the dashboard as ``cache_read / (input + cache_read)`` over
+``llm_tokens_total`` — deriving it at query time keeps the raw counters
+usable for cost math too.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import threading
+from typing import Any
+
+import structlog
+from opentelemetry import metrics as otel_metrics_api
+
+log = structlog.get_logger(__name__)
+
+_lock = threading.Lock()
+_installed = False
+_provider: Any | None = None
+_instruments: dict[str, Any] = {}
+
+# Latest backlog measurements per stream, read by the observable-gauge
+# callbacks (OTel callbacks are sync; the claimer updates these async).
+_queue_lag: dict[str, tuple[int, float]] = {}
+
+
+def set_queue_lag(stream: str, *, entries: int, oldest_pending_s: float) -> None:
+    """Called by the stream claimer on every tick (WP-04 hook)."""
+    _queue_lag[stream] = (entries, oldest_pending_s)
+
+
+def _lag_entries_callback(_options: Any) -> list[Any]:
+    from opentelemetry.metrics import Observation
+
+    return [
+        Observation(entries, {"stream": stream})
+        for stream, (entries, _oldest) in _queue_lag.items()
+    ]
+
+
+def _lag_oldest_callback(_options: Any) -> list[Any]:
+    from opentelemetry.metrics import Observation
+
+    return [
+        Observation(oldest, {"stream": stream})
+        for stream, (_entries, oldest) in _queue_lag.items()
+    ]
+
+
+def install_metrics(service_name: str, *, extra_reader: Any | None = None) -> None:
+    """Install the global MeterProvider. Exports over OTLP/HTTP when
+    ``NEXUS_OTEL_ENABLED`` + ``OTEL_EXPORTER_OTLP_ENDPOINT`` are set (same
+    contract as tracing); otherwise instruments exist but nothing leaves the
+    process. ``extra_reader`` is for tests (InMemoryMetricReader)."""
+    global _installed
+    import os
+
+    from opentelemetry.sdk.metrics import MeterProvider
+
+    from nexus_api.config import settings
+    from nexus_api.core.otel import build_resource
+
+    with _lock:
+        if _installed:
+            return
+        readers = []
+        if extra_reader is not None:
+            readers.append(extra_reader)
+        if settings.otel_enabled and os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+            from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+                OTLPMetricExporter,
+            )
+            from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+
+            readers.append(PeriodicExportingMetricReader(OTLPMetricExporter()))
+        global _provider
+        _provider = MeterProvider(
+            resource=build_resource(service_name), metric_readers=readers
+        )
+        # Best-effort global registration; the SDK only honours the FIRST
+        # call per process, which is why ``_meter`` below resolves through
+        # the module's own reference instead of the global API — reinstalls
+        # (tests, dev all-in-one process) keep working.
+        with contextlib.suppress(Exception):
+            otel_metrics_api.set_meter_provider(_provider)
+        _installed = True
+        _instruments.clear()
+        log.info("otel.metrics_installed", service=service_name, exporters=len(readers))
+
+
+def _meter() -> Any:
+    if _provider is not None:
+        return _provider.get_meter("nexus")
+    return otel_metrics_api.get_meter("nexus")
+
+
+def _instrument(name: str, kind: str, *, unit: str = "", description: str = "") -> Any:
+    inst = _instruments.get(name)
+    if inst is not None:
+        return inst
+    meter = _meter()
+    if kind == "histogram":
+        inst = meter.create_histogram(name, unit=unit, description=description)
+    elif kind == "counter":
+        inst = meter.create_counter(name, unit=unit, description=description)
+    else:  # pragma: no cover - guarded by callers
+        raise ValueError(kind)
+    _instruments[name] = inst
+    return inst
+
+
+def ensure_queue_gauges() -> None:
+    """Register the queue-lag observable gauges (idempotent)."""
+    if "queue_lag_entries" in _instruments:
+        return
+    meter = _meter()
+    _instruments["queue_lag_entries"] = meter.create_observable_gauge(
+        "queue_lag_entries",
+        callbacks=[_lag_entries_callback],
+        description="Pending entries (PEL) per stream consumer group",
+    )
+    _instruments["queue_oldest_pending_seconds"] = meter.create_observable_gauge(
+        "queue_oldest_pending_seconds",
+        callbacks=[_lag_oldest_callback],
+        unit="s",
+        description="Age of the oldest pending entry per stream",
+    )
+
+
+def record_turn(*, duration_ms: float, tenant_id: str, intent: str | None, channel: str) -> None:
+    with contextlib.suppress(Exception):
+        _instrument("turn_latency_ms", "histogram", unit="ms").record(
+            duration_ms,
+            {"tenant": tenant_id, "intent": intent or "unknown", "channel": channel},
+        )
+
+
+def record_turn_error(*, tenant_id: str, stage: str) -> None:
+    with contextlib.suppress(Exception):
+        _instrument("turn_errors_total", "counter").add(
+            1, {"tenant": tenant_id, "stage": stage}
+        )
+
+
+def record_llm_call(*, model: str, role: str, duration_ms: float, usage: dict[str, int]) -> None:
+    with contextlib.suppress(Exception):
+        _instrument("llm_call_ms", "histogram", unit="ms").record(
+            duration_ms, {"model": model, "role": role}
+        )
+        tokens = _instrument("llm_tokens_total", "counter")
+        for usage_key, label in (
+            ("prompt_tokens", "input"),
+            ("completion_tokens", "output"),
+            ("cache_read_input_tokens", "cache_read"),
+            ("cache_creation_input_tokens", "cache_write"),
+        ):
+            value = usage.get(usage_key)
+            if value:
+                tokens.add(value, {"type": label, "model": model})
+
+
+def record_webhook_ack(*, provider: str, duration_ms: float) -> None:
+    with contextlib.suppress(Exception):
+        _instrument("webhook_ack_ms", "histogram", unit="ms").record(
+            duration_ms, {"provider": provider}
+        )
+
+
+def record_outbound_delivery(*, provider: str, duration_ms: float) -> None:
+    with contextlib.suppress(Exception):
+        _instrument("outbound_delivery_ms", "histogram", unit="ms").record(
+            duration_ms, {"provider": provider}
+        )
+
+
+def record_meta_send_failure(*, code: str) -> None:
+    with contextlib.suppress(Exception):
+        _instrument("meta_send_failures_total", "counter").add(1, {"code": code})
+
+
+def reset_for_tests() -> None:
+    global _installed, _provider
+    with _lock:
+        _installed = False
+        _provider = None
+        _instruments.clear()
+        _queue_lag.clear()
