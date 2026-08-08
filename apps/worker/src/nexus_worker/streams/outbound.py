@@ -143,43 +143,162 @@ _NO_RETRY_CODES = _NO_RETRY_CODES | _TIKTOK_NO_RETRY_CODES
 _NO_RETRY_PREFIXES: tuple[str, ...] = ("132",)  # all 132xxx template rejects
 
 
+# WP-12 (D11): the dispatcher is notification-driven. The 0062 trigger emits
+# ``pg_notify('nexus_outbound', tenant_id)`` per fresh pending outbound row;
+# a safety sweep every 30 s covers notifications lost across reconnects and
+# rows re-queued via UPDATE (retries), which the INSERT trigger doesn't see.
+NOTIFY_CHANNEL = "nexus_outbound"
+SWEEP_SECONDS = 30.0
+# Tenants drained concurrently per wake-up. Each tenant's drain is serial
+# internally (commit per message, well under Meta's per-WABA rate limits).
+MAX_CONCURRENT_TENANT_DRAINS = 8
+
+
+class OutboundWorkSet:
+    """Tenants with (probable) pending work, fed by LISTEN or the sweep."""
+
+    def __init__(self) -> None:
+        self._tenants: set[uuid.UUID] = set()
+        self._wakeup = asyncio.Event()
+
+    def add(self, tenant_id: uuid.UUID) -> None:
+        self._tenants.add(tenant_id)
+        self._wakeup.set()
+
+    def add_raw(self, payload: str) -> None:
+        with contextlib.suppress(ValueError):
+            self.add(uuid.UUID(payload))
+
+    def pop_all(self) -> set[uuid.UUID]:
+        drained = self._tenants
+        self._tenants = set()
+        self._wakeup.clear()
+        return drained
+
+    async def wait(self, timeout: float) -> None:
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(self._wakeup.wait(), timeout=timeout)
+
+
+def _asyncpg_dsn() -> str:
+    from nexus_api.config import get_settings
+
+    return get_settings().database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+
+async def _run_listener(work: OutboundWorkSet, stop: asyncio.Event) -> None:
+    """Hold a dedicated LISTEN connection; feed the work set. Reconnects
+    with backoff — the 30 s sweep covers anything missed while down."""
+    import asyncpg
+
+    while not stop.is_set():
+        conn = None
+        try:
+            conn = await asyncpg.connect(_asyncpg_dsn())
+
+            def _on_notify(_conn, _pid, _channel, payload):  # type: ignore[no-untyped-def]
+                work.add_raw(payload)
+
+            await conn.add_listener(NOTIFY_CHANNEL, _on_notify)
+            log.info("outbound.listener.connected", channel=NOTIFY_CHANNEL)
+            while not stop.is_set():
+                # The connection delivers notifications via the callback; we
+                # just keep it alive and probe it so a dead socket surfaces.
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(stop.wait(), timeout=15.0)
+                if not stop.is_set():
+                    await conn.execute("SELECT 1")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning("outbound.listener.reconnecting", error=str(exc))
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=2.0)
+        finally:
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    await conn.close()
+    log.info("outbound.listener.stopped")
+
+
 async def run_outbound_dispatcher(
     *,
     adapters: AdapterRegistry,
     stop: asyncio.Event,
-    tick_seconds: float = DEFAULT_TICK_SECONDS,
+    tick_seconds: float = DEFAULT_TICK_SECONDS,  # kept for signature compat (tests)
     batch_size: int = DEFAULT_BATCH_SIZE,
+    sweep_seconds: float = SWEEP_SECONDS,
+    work: OutboundWorkSet | None = None,
+    listen: bool = True,
 ) -> None:
     """Background task. Returns when ``stop`` is set.
 
-    ``adapters`` maps ``channels.provider`` (``"meta"``) to the
-    matching :class:`ChannelAdapter`. Each pending row resolves its adapter
-    from the channel's provider, so a single worker serves both transports.
+    ``adapters`` maps ``channels.provider`` (``"meta"``) to the matching
+    :class:`ChannelAdapter`.
+
+    WP-12: database cost is proportional to TRAFFIC, not to tenant count —
+    the dispatcher only opens tenant-scoped transactions for tenants that
+    notified work (or on the 30 s safety sweep, which still visits every
+    active tenant to catch lost notifications and re-queued retries).
+    ``work``/``listen`` are test seams: inject a work set and disable the
+    real LISTEN connection.
     """
     log.info(
         "outbound.dispatcher.start",
-        tick_seconds=tick_seconds,
+        sweep_seconds=sweep_seconds,
         batch=batch_size,
         providers=sorted(adapters.keys()),
     )
     sm = get_sessionmaker()
-    tick = 0
-    while not stop.is_set():
-        try:
-            tenant_ids = await _list_active_tenants(sm)
-            if tick % _UNDRAINED_CHECK_EVERY_TICKS == 0:
-                await _warn_on_undrained_tenants(sm, tenant_ids)
-            tick += 1
-            for tid in tenant_ids:
-                if stop.is_set():
-                    break
-                await _drain_tenant(sm, tid, adapters, batch_size)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            log.error("outbound.dispatcher.tick_failed", error=str(exc))
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(stop.wait(), timeout=tick_seconds)
+    work = work if work is not None else OutboundWorkSet()
+    listener_task = (
+        asyncio.create_task(_run_listener(work, stop), name="outbound-listener")
+        if listen
+        else None
+    )
+    drain_limit = asyncio.Semaphore(MAX_CONCURRENT_TENANT_DRAINS)
+
+    async def _drain_limited(tid: uuid.UUID) -> None:
+        async with drain_limit:
+            await _drain_tenant(sm, tid, adapters, batch_size)
+
+    last_sweep = float("-inf")  # first iteration always sweeps
+    try:
+        while not stop.is_set():
+            try:
+                now = asyncio.get_running_loop().time()
+                if now - last_sweep >= sweep_seconds:
+                    last_sweep = now
+                    tenant_ids = await _list_active_tenants(sm)
+                    await _warn_on_undrained_tenants(sm, tenant_ids)
+                    for tid in tenant_ids:
+                        work.add(tid)
+                notified = work.pop_all()
+                if notified:
+                    await asyncio.gather(
+                        *(_drain_limited(tid) for tid in notified),
+                        return_exceptions=False,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.error("outbound.dispatcher.tick_failed", error=str(exc))
+            # Wake on the next notification, or in time for the sweep.
+            remaining = max(0.1, sweep_seconds - (asyncio.get_running_loop().time() - last_sweep))
+            wait_task = asyncio.create_task(work.wait(remaining))
+            stop_task = asyncio.create_task(stop.wait())
+            _done, pending = await asyncio.wait(
+                {wait_task, stop_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in pending:
+                task.cancel()
+            with contextlib.suppress(Exception):
+                await asyncio.gather(*pending, return_exceptions=True)
+    finally:
+        if listener_task is not None:
+            listener_task.cancel()
+            with contextlib.suppress(Exception):
+                await asyncio.gather(listener_task, return_exceptions=True)
     log.info("outbound.dispatcher.stopped")
 
 
