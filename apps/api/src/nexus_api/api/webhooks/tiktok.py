@@ -54,6 +54,7 @@ from nexus_api.config import get_settings
 from nexus_api.core.errors import TenantNotFound
 from nexus_api.core.logging_context import bind_tenant
 from nexus_api.core.metrics import CHANNEL_UNRESOLVED_EVENT, counters
+from nexus_api.core.otel import inject_trace_fields
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import resolve_tenant
 from nexus_api.db.models import Message
@@ -259,6 +260,9 @@ async def _handle_inbound(
     if media_size is not None:
         fields["media_size_bytes"] = str(media_size)
 
+    # WP-01: carry the webhook's trace context across the queue so the
+    # worker's turn span joins this trace instead of starting a new one.
+    inject_trace_fields(fields)
     await redis.xadd(INBOUND_STREAM, fields)  # type: ignore[arg-type]  # redis stub: invariant dict
 
     log.info(

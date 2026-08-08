@@ -23,6 +23,9 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy>=0.49b0",
     "opentelemetry-instrumentation-redis>=0.49b0",
     "opentelemetry-instrumentation-asyncpg>=0.49b0",
+    # WP-01 (plataforma v2, Fase 0): ship spans to Grafana Cloud over
+    # OTLP/HTTP. Attached only when NEXUS_OTEL_ENABLED=true.
+    "opentelemetry-exporter-otlp-proto-http>=1.28.0",
     # Block F: webhook layer parses provider payloads via the channel adapter.
     "nexus-channels",
     # Block J: seed_templates loads vertical YAMLs (apps/api/.../seeds/*.yaml).

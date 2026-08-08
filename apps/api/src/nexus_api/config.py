@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     environment: str = "dev"
     log_level: str = "INFO"
 
+    # ── WP-01 (plataforma v2, Fase 0): OTLP export ──────────────────────────
+    # Master switch for shipping traces/metrics out of the process. Endpoint,
+    # headers and sampler come from the standard OTEL_* env vars
+    # (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS,
+    # OTEL_TRACES_SAMPLER=parentbased_traceidratio, OTEL_TRACES_SAMPLER_ARG).
+    # Default OFF per execution rule 5 — flipped per environment.
+    otel_enabled: bool = False
+
     database_url: str = "postgresql+asyncpg://nexus:nexus@localhost:5433/nexus"
 
     @field_validator("database_url", mode="before")

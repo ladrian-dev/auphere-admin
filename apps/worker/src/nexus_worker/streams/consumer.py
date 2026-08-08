@@ -18,10 +18,12 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import structlog
+from opentelemetry import trace as otel_trace
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 
+from nexus_worker.observability.otel import TRACE_FIELDS, extract_trace_context, get_tracer
 from nexus_worker.runtime.dispatcher import InboundEvent, process_inbound
 
 log = structlog.get_logger(__name__)
@@ -85,6 +87,10 @@ def _decode_fields(raw: dict[bytes | str, bytes | str]) -> dict[str, str]:
 
 
 def _to_event(fields: dict[str, str]) -> InboundEvent:
+    # WP-01: ``traceparent``/``tracestate`` ride the entry for context
+    # propagation; they are not part of the business payload.
+    fields = {k: v for k, v in fields.items() if k not in TRACE_FIELDS}
+
     def _opt_int(name: str) -> int | None:
         value = fields.get(name)
         return int(value) if value is not None and value != "" else None
@@ -165,39 +171,64 @@ async def run_inbound_consumer(
                     )
                     await redis.xack(stream, group, entry_id_str)
                     continue
+                # WP-01: the ``turn`` span is the worker half of the
+                # end-to-end trace. ``extract_trace_context`` rebuilds the
+                # webhook's context from the entry fields so this span joins
+                # that trace; entries without ``traceparent`` start fresh.
                 dispatched = False
                 for attempt in range(1, _MAX_DISPATCH_ATTEMPTS + 1):
-                    try:
-                        await process_inbound(event, pipeline=pipeline)
-                        dispatched = True
-                        break
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as exc:
-                        transient = _is_transient_db_error(exc)
-                        if transient and attempt < _MAX_DISPATCH_ATTEMPTS:
-                            delay = _DISPATCH_RETRY_BASE_DELAY * (2 ** (attempt - 1))
-                            log.warning(
-                                "consumer.dispatch_retry",
+                    with get_tracer().start_as_current_span(
+                        "turn",
+                        context=extract_trace_context(fields),
+                        kind=otel_trace.SpanKind.CONSUMER,
+                        attributes={
+                            "tenant_id": str(event.tenant_id),
+                            "channel_id": str(event.channel_id),
+                            "messaging.provider": event.provider,
+                            "messaging.destination.name": stream,
+                        },
+                    ) as turn_span:
+                        try:
+                            await process_inbound(event, pipeline=pipeline)
+                            dispatched = True
+                            break
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as exc:
+                            turn_span.set_status(
+                                otel_trace.Status(otel_trace.StatusCode.ERROR, str(exc))
+                            )
+                            turn_span.record_exception(exc)
+                            transient = _is_transient_db_error(exc)
+                            if transient and attempt < _MAX_DISPATCH_ATTEMPTS:
+                                delay = _DISPATCH_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                                log.warning(
+                                    "consumer.dispatch_retry",
+                                    entry_id=entry_id_str,
+                                    tenant_id=str(event.tenant_id),
+                                    attempt=attempt,
+                                    delay=round(delay, 2),
+                                    error=str(exc),
+                                )
+                                await asyncio.sleep(delay)
+                                continue
+                            log.error(
+                                "consumer.dispatch_failed",
                                 entry_id=entry_id_str,
                                 tenant_id=str(event.tenant_id),
-                                attempt=attempt,
-                                delay=round(delay, 2),
                                 error=str(exc),
+                                attempts=attempt,
+                                transient=transient,
                             )
-                            await asyncio.sleep(delay)
-                            continue
-                        log.error(
+                            break
+                if not dispatched:
+                    log.error(
                             "consumer.dispatch_failed",
                             entry_id=entry_id_str,
                             tenant_id=str(event.tenant_id),
                             error=str(exc),
-                            attempts=attempt,
-                            transient=transient,
                         )
-                        break
-                if not dispatched:
-                    # Don't ack — leave it pending.
+                        # Don't ack — leave it pending for retry.
                     continue
                 await redis.xack(stream, group, entry_id_str)
                 if on_processed is not None:
