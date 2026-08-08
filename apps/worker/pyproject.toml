@@ -26,6 +26,12 @@ dependencies = [
     # when NEXUS_LANGFUSE_PUBLIC_KEY is unset, so dev/test runs do not
     # require live credentials.
     "langfuse>=3.0.0",
+    # WP-01 (plataforma v2, Fase 0): the worker now installs OTel tracing
+    # (the API package carries the SDK; the exporter ships spans to Grafana
+    # Cloud when NEXUS_OTEL_ENABLED=true).
+    "opentelemetry-api>=1.28.0",
+    "opentelemetry-sdk>=1.28.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.28.0",
     # Block N: the multimodal MediaProcessor uses LiteLLM for both
     # Whisper transcription (audio) and Claude Sonnet vision (image,
     # OCR fallback for scanned documents). The API package already

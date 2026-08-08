@@ -97,6 +97,25 @@ NodeFn = Callable[[AgentState], Awaitable[Any]]
 log = structlog.get_logger(__name__)
 
 
+def _traced(name: str, fn: NodeFn) -> NodeFn:
+    """WP-01: wrap a graph node in an OTel span so a turn's trace shows the
+    per-node breakdown (classify → <intent> → grade_outcome → ucm_formatter
+    → checkpoint). Zero-cost when no exporter is installed — the default
+    provider hands out non-recording spans.
+    """
+    from opentelemetry import trace as otel_trace
+
+    async def traced(state: AgentState) -> Any:
+        tracer = otel_trace.get_tracer("nexus_worker")
+        with tracer.start_as_current_span(f"node.{name}") as span:
+            tenant_id = state.get("tenant_id")
+            if tenant_id:
+                span.set_attribute("tenant_id", str(tenant_id))
+            return await fn(state)
+
+    return traced
+
+
 VALID_INTENTS = ("book", "queue", "info", "escalate", "fallback")
 
 # Hard cap on the handler's ReAct loop. Without it a model that keeps
@@ -1783,15 +1802,23 @@ def build_pipeline(
         use_ucm_formatter = bool(get_settings().use_ucm_formatter)
 
     g: Any = StateGraph(AgentState)
-    g.add_node("classify", make_classify_node(agent_loader, llm_router))
+    g.add_node("classify", _traced("classify", make_classify_node(agent_loader, llm_router)))
     for intent in VALID_INTENTS:
-        g.add_node(intent, make_handler_node(intent, agent_loader, llm_router, registry))
+        g.add_node(
+            intent,
+            _traced(intent, make_handler_node(intent, agent_loader, llm_router, registry)),
+        )
     g.add_node(
         "grade_outcome",
-        make_grade_outcome_node(grader=outcome_grader, llm_router=llm_router),
+        _traced(
+            "grade_outcome",
+            make_grade_outcome_node(grader=outcome_grader, llm_router=llm_router),
+        ),
     )
-    g.add_node("ucm_formatter", make_ucm_formatter_node(enabled=use_ucm_formatter))
-    g.add_node("checkpoint", make_checkpoint_node())
+    g.add_node(
+        "ucm_formatter", _traced("ucm_formatter", make_ucm_formatter_node(enabled=use_ucm_formatter))
+    )
+    g.add_node("checkpoint", _traced("checkpoint", make_checkpoint_node()))
 
     g.add_edge(START, "classify")
     g.add_conditional_edges(
