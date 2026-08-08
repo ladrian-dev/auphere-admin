@@ -85,7 +85,7 @@ from nexus_api.db.models.scheduled_job import (
     ScheduledJobKind,
     ScheduledJobStatus,
 )
-from nexus_api.db.models.tenant import Tenant, TenantPlan, TenantStatus
+from nexus_api.db.models.tenant import Tenant, TenantPlan, TenantStatus, TenantTier
 from nexus_api.db.models.tool import ToolCatalog, ToolStatus
 from nexus_api.db.models.usage import UsageEvent
 
@@ -164,6 +164,7 @@ __all__ = [
     "TenantCredentials",
     "TenantPlan",
     "TenantStatus",
+    "TenantTier",
     "ToolCatalog",
     "ToolStatus",
     "UsageEvent",

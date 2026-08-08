@@ -41,6 +41,7 @@ from nexus_api.db.models import (
     TenantConnectorToolOverride,
     TenantPlan,
     TenantStatus,
+    TenantTier,
 )
 from nexus_api.repositories import AuditRepository, ChannelRepository, TenantRepository
 from nexus_api.schemas.billing import (
@@ -86,6 +87,7 @@ def _tenant_to_dict(t: Tenant) -> dict[str, Any]:
         "slug": t.slug,
         "plan": t.plan.value,
         "status": t.status.value,
+        "tier": t.tier.value,
         "market": t.market,
         "timezone": t.timezone,
         "owner_email": t.owner_email,
@@ -237,6 +239,14 @@ async def update_tenant(
         tenant.plan = TenantPlan(payload["plan"])
     if "status" in payload:
         tenant.status = TenantStatus(payload["status"])
+    if "tier" in payload:
+        tenant.tier = TenantTier(payload["tier"])
+        # WP-10: the webhook caches the tier for stream routing — flush it so
+        # the new tier applies on the next message, not one TTL later.
+        from nexus_api.core.redis_client import get_redis
+        from nexus_api.core.tenant_resolver import invalidate_tenant_tier_cache
+
+        await invalidate_tenant_tier_cache(get_redis(), tenant_id)
     if "market" in payload:
         tenant.market = payload["market"]
     if "timezone" in payload:

@@ -25,6 +25,22 @@ from redis.asyncio import Redis
 
 DEFAULT_MAXLEN = 100_000
 
+# WP-10: inbound streams by tenant tier. ``priority`` tenants get their own
+# stream consumed by a dedicated runner pool, so a burst on ``standard``
+# cannot move their latency. The legacy un-tiered stream stays consumed for
+# one release to drain in-flight entries published by the previous version.
+INBOUND_STREAM_STANDARD = "nexus:inbound:standard"
+INBOUND_STREAM_PRIORITY = "nexus:inbound:priority"
+LEGACY_INBOUND_STREAM = "nexus:inbound"
+
+
+def stream_for_tier(tier: str | None) -> str:
+    """Map a tenant tier to its inbound stream. Unknown/missing tier falls
+    back to standard — a tier lookup problem must never drop a message."""
+    if tier == "priority":
+        return INBOUND_STREAM_PRIORITY
+    return INBOUND_STREAM_STANDARD
+
 
 async def xadd_capped(
     redis: Redis,

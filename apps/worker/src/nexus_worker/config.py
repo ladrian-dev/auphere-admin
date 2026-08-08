@@ -39,7 +39,13 @@ class WorkerSettings(BaseSettings):
     llm_use_inmemory: bool = False
 
     # Redis Stream names.
-    inbound_stream: str = "nexus:inbound"
+    #
+    # WP-10: the runner consumes a LIST of inbound streams (comma-separated
+    # env ``NEXUS_INBOUND_STREAMS``). Default covers the standard tier plus
+    # the legacy un-tiered stream (kept consumed for one release to drain
+    # entries published by the previous version). The priority runner pool
+    # deploys with ``NEXUS_INBOUND_STREAMS=nexus:inbound:priority``.
+    inbound_streams: str = "nexus:inbound:standard,nexus:inbound"
     inbound_consumer_group: str = "nexus-worker"
     inbound_consumer_name: str = "worker-1"
     promote_channel: str = "nexus:agent_config:promote"
@@ -52,6 +58,10 @@ class WorkerSettings(BaseSettings):
     # concurrency can't exhaust the Postgres pool or provider quotas.
     runner_slots: int = 64
     runner_max_inflight: int = 64
+
+    @property
+    def inbound_streams_list(self) -> tuple[str, ...]:
+        return tuple(s.strip() for s in self.inbound_streams.split(",") if s.strip())
 
     # AgentLoader cache size (entries == number of distinct (tenant, version) pairs).
     agent_cache_size: int = 64

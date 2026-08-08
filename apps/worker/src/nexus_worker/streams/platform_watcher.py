@@ -42,6 +42,17 @@ INBOUND_STREAM = "nexus:inbound"
 INBOUND_GROUP = "nexus-worker"
 DLQ_STREAM = "nexus:inbound:dlq"
 
+
+def _watched_streams() -> tuple[str, ...]:
+    """WP-10: watch every configured inbound stream (tier streams + legacy),
+    not just the historical single one."""
+    try:
+        from nexus_worker.config import get_worker_settings
+
+        return get_worker_settings().inbound_streams_list or (INBOUND_STREAM,)
+    except Exception:
+        return (INBOUND_STREAM,)
+
 QUEUE_AGE_THRESHOLD_S = 300.0
 TURN_ERROR_THRESHOLD = 5
 META_FAILURE_THRESHOLD = 20
@@ -79,28 +90,29 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
     window = int(now) // 600
     hour_window = int(now) // 3600
 
-    # 1 · queue backlog age
-    with contextlib.suppress(Exception):
-        summary = await redis.xpending(INBOUND_STREAM, INBOUND_GROUP)
-        pending = int(summary.get("pending") or 0) if isinstance(summary, dict) else 0
-        min_id = summary.get("min") if isinstance(summary, dict) else None
-        if pending and min_id:
-            min_id_str = min_id.decode() if isinstance(min_id, bytes) else str(min_id)
-            entry_ms = int(min_id_str.split("-")[0])
-            oldest_s = max(0.0, now - entry_ms / 1000.0)
-            if oldest_s > QUEUE_AGE_THRESHOLD_S:
-                alerts.append(
-                    Alert(
-                        kind="queue_backlog",
-                        dedup_key=f"nexus:alert:sent:queue_backlog:{hour_window}",
-                        subject="[Nexus] Cola inbound atascada",
-                        detail=(
-                            f"La entrada más vieja de {INBOUND_STREAM} lleva "
-                            f"{oldest_s:.0f}s pendiente ({pending} entradas en el PEL)."
-                        ),
-                        count=pending,
+    # 1 · queue backlog age — every configured inbound stream (WP-10)
+    for watched in _watched_streams():
+        with contextlib.suppress(Exception):
+            summary = await redis.xpending(watched, INBOUND_GROUP)
+            pending = int(summary.get("pending") or 0) if isinstance(summary, dict) else 0
+            min_id = summary.get("min") if isinstance(summary, dict) else None
+            if pending and min_id:
+                min_id_str = min_id.decode() if isinstance(min_id, bytes) else str(min_id)
+                entry_ms = int(min_id_str.split("-")[0])
+                oldest_s = max(0.0, now - entry_ms / 1000.0)
+                if oldest_s > QUEUE_AGE_THRESHOLD_S:
+                    alerts.append(
+                        Alert(
+                            kind="queue_backlog",
+                            dedup_key=f"nexus:alert:sent:queue_backlog:{watched}:{hour_window}",
+                            subject="[Nexus] Cola inbound atascada",
+                            detail=(
+                                f"La entrada más vieja de {watched} lleva "
+                                f"{oldest_s:.0f}s pendiente ({pending} entradas en el PEL)."
+                            ),
+                            count=pending,
+                        )
                     )
-                )
 
     # 2 · DLQ entries
     with contextlib.suppress(Exception):

@@ -27,6 +27,9 @@ class TenantOut(BaseModel):
     slug: str
     plan: str
     status: str
+    # WP-10: performance isolation tier — priority tenants get their own
+    # inbound stream + runner pool.
+    tier: str = "standard"
     market: str | None
     timezone: str
     business_hours: dict[str, Any] | None
@@ -123,6 +126,7 @@ class TenantUpdateIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     plan: str | None = Field(default=None)
     status: str | None = Field(default=None)
+    tier: str | None = Field(default=None)
     market: str | None = Field(default=None)
     timezone: str | None = Field(default=None, max_length=64)
     owner_email: EmailStr | None = Field(default=None)
@@ -146,6 +150,15 @@ class TenantUpdateIn(BaseModel):
             return None
         if v not in ("active", "paused", "archived"):
             raise ValueError("status must be one of: active, paused, archived")
+        return v
+
+    @field_validator("tier")
+    @classmethod
+    def _tier_known(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if v not in ("standard", "priority"):
+            raise ValueError("tier must be one of: standard, priority")
         return v
 
     @field_validator("market")

@@ -120,7 +120,7 @@ async def test_webhook_inbound_entry_carries_traceparent(
         )
     assert r.status_code == 200, r.text
 
-    entries = await fake_redis.xrange("nexus:inbound", count=50)
+    entries = await fake_redis.xrange("nexus:inbound:standard", count=50)
     assert entries, "webhook did not enqueue the inbound message"
     decoded = [
         {

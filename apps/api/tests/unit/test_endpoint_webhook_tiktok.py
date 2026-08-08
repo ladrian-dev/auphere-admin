@@ -83,7 +83,7 @@ async def _seed_tiktok_channel(db_session, tenant_id, business_id: str = BUSINES
 
 
 async def _inbound_entries(fake_redis) -> list[dict[str, str]]:
-    entries = await fake_redis.xrange("nexus:inbound", count=50)
+    entries = await fake_redis.xrange("nexus:inbound:standard", count=50)
     return [
         {
             (k.decode() if isinstance(k, bytes) else k): (v.decode() if isinstance(v, bytes) else v)
