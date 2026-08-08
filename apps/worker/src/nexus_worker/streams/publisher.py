@@ -11,6 +11,8 @@ import uuid
 
 from redis.asyncio import Redis
 
+from nexus_api.core.streams import xadd_capped
+
 INBOUND_STREAM = "nexus:inbound"
 
 
@@ -34,5 +36,5 @@ async def publish_inbound(
     }
     if customer_name:
         fields["customer_name"] = customer_name
-    msg_id = await redis.xadd(stream, fields)  # type: ignore[arg-type]
+    msg_id = await xadd_capped(redis, stream, fields)
     return msg_id if isinstance(msg_id, str) else msg_id.decode()
