@@ -30,6 +30,7 @@ from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 from nexus_api.services.channel_routing import config_agent_enabled, config_role
 
 from nexus_worker.multimodal import ProcessedMedia, get_media_processor
+from nexus_worker.multimodal.media_fetch import fetch_inbound_media
 from nexus_worker.observability.tracing import trace_turn, update_trace
 from nexus_worker.persistence.messages import (
     persist_inbound_message,
@@ -109,6 +110,9 @@ class InboundEvent:
     kind: str = "text"
     provider_message_id: str | None = None
     media_kind: str | None = None
+    # WP-11 (D10): the webhook publishes the provider's media id; the runner
+    # resolves bytes → S3 (``media_s3_key`` stays None until then).
+    media_provider_id: str | None = None
     media_s3_key: str | None = None
     media_mime: str | None = None
     media_size_bytes: int | None = None
@@ -136,13 +140,36 @@ async def process_inbound(
     # populate ``processed.error`` and the pipeline still runs with
     # the bare ``[media:...]`` prefix; the agent surfaces a "no pude
     # leerlo" reply.
+    # WP-11 (D10): resolve the provider media id to S3 here, out of the
+    # webhook's request path. Failure degrades to a text-only turn (the
+    # agent asks the customer to resend) — same contract the webhook-side
+    # download had, now without holding Meta's connection open for it.
+    media_s3_key = event.media_s3_key
+    media_mime = event.media_mime
+    media_size_bytes = event.media_size_bytes
+    media_sha256 = event.media_sha256
+    if event.media_provider_id and not media_s3_key and event.media_kind:
+        fetched = await fetch_inbound_media(
+            tenant_id=event.tenant_id,
+            channel_id=event.channel_id,
+            provider_message_id=event.provider_message_id or f"noid-{event.user_id}",
+            media_provider_id=event.media_provider_id,
+            hint_mime=event.media_mime,
+            hint_sha=event.media_sha256,
+        )
+        if fetched is not None:
+            media_s3_key = fetched.s3_key
+            media_mime = fetched.mime
+            media_size_bytes = fetched.size_bytes
+            media_sha256 = fetched.sha256
+
     processed_media: ProcessedMedia | None = None
-    if event.media_kind and event.media_s3_key:
+    if event.media_kind and media_s3_key:
         try:
             processed_media = await get_media_processor().process(
-                s3_key=event.media_s3_key,
+                s3_key=media_s3_key,
                 media_kind=event.media_kind,
-                mime_type=event.media_mime,
+                mime_type=media_mime,
                 filename=event.media_filename,
             )
         except Exception as exc:
@@ -205,9 +232,9 @@ async def process_inbound(
             content=event.content,
             provider_message_id=event.provider_message_id,
             media_kind=event.media_kind,
-            media_s3_key=event.media_s3_key,
-            media_mime=event.media_mime,
-            media_size_bytes=event.media_size_bytes,
+            media_s3_key=media_s3_key,
+            media_mime=media_mime,
+            media_size_bytes=media_size_bytes,
             media_filename=event.media_filename,
             reaction_emoji=event.reaction_emoji,
             reaction_target_wamid=event.reaction_target_wamid,
