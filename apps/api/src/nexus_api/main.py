@@ -11,7 +11,7 @@ from nexus_api import __version__
 from nexus_api.api import admin, messages, partners, partners_clients, qa, webhooks
 from nexus_api.api import connectors as connectors_public
 from nexus_api.config import settings
-from nexus_api.core import isolation_enforcer, otel
+from nexus_api.core import isolation_enforcer, otel, otel_metrics
 from nexus_api.core.logging_context import LoggingContextMiddleware
 from nexus_api.core.metrics import isolation_event_drainer
 from nexus_api.core.qa_checkpointer import close_qa_checkpointer, init_qa_checkpointer
@@ -29,6 +29,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine = get_engine()
     isolation_enforcer.install(engine)
     otel.install(app, engine)
+    # WP-05: SLI instruments (exports only when NEXUS_OTEL_ENABLED + endpoint).
+    otel_metrics.install_metrics("nexus-api")
 
     # Block H: drainer that persists ``isolation.*`` events to the
     # ``isolation_events`` table. Best-effort; shutdown signals it to
@@ -74,6 +76,28 @@ app = FastAPI(
 )
 
 app.add_middleware(LoggingContextMiddleware)
+
+
+@app.middleware("http")
+async def _webhook_ack_timing(request, call_next):  # type: ignore[no-untyped-def]
+    """WP-05: ``webhook_ack_ms`` — how long a provider waits for our 200.
+
+    Meta retries (and eventually disables) webhooks that answer slowly, so
+    this is the SLI that says whether the webhook stays on the happy path.
+    Only measures ``/webhook/*`` to keep the hot path of every other route
+    untouched.
+    """
+    if not request.url.path.startswith("/webhook/"):
+        return await call_next(request)
+    import time as _time
+
+    started = _time.perf_counter()
+    response = await call_next(request)
+    provider = request.url.path.removeprefix("/webhook/").split("/")[0] or "unknown"
+    otel_metrics.record_webhook_ack(
+        provider=provider, duration_ms=(_time.perf_counter() - started) * 1000
+    )
+    return response
 # No CORS layer on purpose: every surface of this API is
 # server-to-server (admin token, partner secret key, tenant key or
 # webhook signature). Nothing is called from a browser, so allowing an
