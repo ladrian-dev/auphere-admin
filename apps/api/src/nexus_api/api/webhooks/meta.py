@@ -33,7 +33,6 @@ import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from nexus_channels.base import InboundMessage
 from nexus_channels.whatsapp_meta import (
-    MetaAPIError,
     MetaChannelAdapter,
     MetaClient,
     MetaSignatureError,
@@ -61,14 +60,13 @@ from nexus_api.core.errors import TenantNotFound
 from nexus_api.core.logging_context import bind_tenant
 from nexus_api.core.metrics import CHANNEL_UNRESOLVED_EVENT, counters
 from nexus_api.core.otel import inject_trace_fields
-from nexus_api.core.streams import xadd_capped
+from nexus_api.core.streams import stream_for_tier, xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
-from nexus_api.core.tenant_resolver import resolve_tenant
+from nexus_api.core.tenant_resolver import resolve_tenant, resolve_tenant_tier
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     Message,
     MessageStatus,
-    Tenant,
     WhatsAppOptOut,
     WhatsAppTemplateStatus,
 )
@@ -81,7 +79,6 @@ from nexus_api.repositories.auphere_channels import (
     resolve_channel_for_inbound as resolve_owner_channel_for_inbound,
 )
 from nexus_api.services.channel_routing import config_agent_enabled
-from nexus_api.services.media_storage import MediaStorageError, get_media_storage
 from nexus_api.services.owner_channel_flow import handle_owner_inbound
 from nexus_api.services.whatsapp_templates import invalidate_template_cache
 
@@ -89,7 +86,6 @@ router = APIRouter()
 log = structlog.get_logger()
 
 
-INBOUND_STREAM = "nexus:inbound"
 WAMID_DEDUPE_TTL = 600  # above Meta's retry budget
 
 # Coexistence-only buffer streams. The webhook ack must return 200 within
@@ -339,17 +335,18 @@ async def _handle_inbound(
         )
         return {"status": "ignored"}
 
-    # Media download — resolve the Cloud API media id to bytes and persist
-    # to S3 BEFORE enqueue so the multimodal pipeline has a reference by the
-    # time the consumer picks up the stream entry. On failure we still
-    # enqueue the turn (the agent asks the user to resend) instead of going
-    # silent.
+    # WP-11 (D10, cierra V7): the webhook no longer downloads media bytes.
+    # It publishes the provider's ``media_id`` and the RUNNER resolves
+    # bytes → S3 before ``classify`` — Meta gets its 200 in milliseconds
+    # regardless of media size, and a burst of voice notes can no longer
+    # saturate the API's pool.
     s3_key: str | None = None
     media_mime: str | None = None
     media_size: int | None = None
     media_filename: str | None = None
     sha256: str | None = None
     media_kind_value: str | None = None
+    media_provider_id: str | None = None
 
     if inbound.media is not None and inbound.kind.value in {
         "audio",
@@ -359,24 +356,10 @@ async def _handle_inbound(
         "sticker",
     }:
         media_kind_value = inbound.kind.value
-        try:
-            s3_key, media_mime, media_size, sha256 = await _download_inbound_media(
-                tenant_id=tenant_id,
-                channel_id=channel.id,
-                wamid=wamid,
-                media_id=inbound.media.provider_media_id,
-                hint_mime=inbound.media.mime_type,
-                hint_sha=inbound.media.sha256,
-            )
-            media_filename = inbound.media.filename
-        except (MetaAPIError, MediaStorageError) as exc:
-            log.warning(
-                "webhook.meta.media_download_failed",
-                tenant_id=str(tenant_id),
-                wamid=wamid,
-                media_id=inbound.media.provider_media_id,
-                error=str(exc),
-            )
+        media_provider_id = inbound.media.provider_media_id
+        media_mime = inbound.media.mime_type
+        media_filename = inbound.media.filename
+        sha256 = inbound.media.sha256
 
     content = _render_content(inbound)
 
@@ -409,6 +392,8 @@ async def _handle_inbound(
         fields["customer_name"] = inbound.sender_name
     if media_kind_value:
         fields["media_kind"] = media_kind_value
+    if media_provider_id:
+        fields["media_provider_id"] = media_provider_id
     if s3_key:
         fields["media_s3_key"] = s3_key
     if media_mime:
@@ -450,7 +435,10 @@ async def _handle_inbound(
     # WP-01: carry the webhook's trace context across the queue so the
     # worker's turn span joins this trace instead of starting a new one.
     inject_trace_fields(fields)
-    await xadd_capped(redis, INBOUND_STREAM, fields)
+    # WP-10: priority tenants publish to their own stream (dedicated runner
+    # pool) so standard-tier bursts can't move their latency.
+    tier = await resolve_tenant_tier(session, redis, tenant_id)
+    await xadd_capped(redis, stream_for_tier(tier), fields)
 
     # Politeness: mark as read so the customer sees the two blue checks.
     # Best-effort — failure never blocks the turn.
@@ -896,62 +884,6 @@ def _render_content(inbound: InboundMessage) -> str:
     if inbound.kind.value == "contacts" and inbound.text:
         return f"[contacts]{inbound.text}"
     return inbound.text or f"[unsupported:{inbound.raw_event_type or 'unknown'}]"
-
-
-async def _download_inbound_media(
-    *,
-    tenant_id: uuid.UUID,
-    channel_id: uuid.UUID,
-    wamid: str,
-    media_id: str,
-    hint_mime: str | None,
-    hint_sha: str | None,
-) -> tuple[str, str | None, int, str | None]:
-    """Resolve media_id → bytes → S3. Returns (key, mime, size, sha256).
-
-    Honours ``Settings.media_max_size_mb`` — oversized media raise so the
-    caller surfaces a meaningful prefix instead of persisting a bomb.
-    """
-    settings = get_settings()
-    storage = get_media_storage()
-    adapter = _build_meta_adapter()
-    try:
-        # ``channel_id`` scopes the token: a media id belongs to the WABA that
-        # received it, so on a tenant whose numbers sit under different WABAs
-        # the other line's token cannot resolve it.
-        content, mime, sha = await adapter.fetch_media_bytes(
-            media_id=media_id, tenant_id=tenant_id, channel_id=channel_id
-        )
-    finally:
-        await adapter._client.close()
-    if not mime and hint_mime:
-        mime = hint_mime
-    if not sha and hint_sha:
-        sha = hint_sha
-    size = len(content)
-    if size > settings.media_max_size_mb * 1024 * 1024:
-        raise MediaStorageError(
-            f"inbound media too large: {size} bytes > {settings.media_max_size_mb}MB limit"
-        )
-
-    tenant_slug = await _tenant_slug_for(tenant_id)
-    stored = await storage.put_inbound(
-        tenant_slug=tenant_slug,
-        wamid=wamid,
-        content=content,
-        content_type=mime,
-        sha256=sha,
-    )
-    return stored.key, stored.content_type, stored.size_bytes, stored.sha256
-
-
-async def _tenant_slug_for(tenant_id: uuid.UUID) -> str:
-    """Resolve tenant_id → slug without RLS scope (tenants is a global
-    table). Used to build the S3 key prefix."""
-    sm = get_sessionmaker()
-    async with sm() as s:
-        slug = await s.scalar(select(Tenant.slug).where(Tenant.id == tenant_id))
-    return slug or str(tenant_id)
 
 
 async def _mark_read_best_effort(

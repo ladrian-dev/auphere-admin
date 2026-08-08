@@ -5,14 +5,13 @@ Covers the two Phase-2 fixes plus a baseline:
 - text inbound → enqueued to ``nexus:inbound`` (baseline, previously untested);
 - STOP inbound → opt-out persisted AND NOT enqueued (the dispatcher must not
   reply to someone who opted out);
-- media inbound → bytes resolved to S3 before enqueue, stream carries the
-  ``media_s3_key`` so the multimodal pipeline has a reference.
+- media inbound → the webhook does ZERO media I/O (WP-11): the stream entry
+  carries ``media_provider_id`` and the runner resolves bytes → S3.
 """
 
 from __future__ import annotations
 
 import json
-import uuid
 
 import pytest
 from nexus_channels.whatsapp_meta.signature import sign_meta_request
@@ -74,7 +73,7 @@ async def _seed_meta_channel(db_session, tenant_id, business_phone: str) -> None
 
 
 async def _inbound_entries(fake_redis) -> list[dict[str, str]]:
-    entries = await fake_redis.xrange("nexus:inbound", count=50)
+    entries = await fake_redis.xrange("nexus:inbound:standard", count=50)
     out = []
     for _id, fields in entries:
         out.append(
@@ -166,28 +165,25 @@ async def test_inbound_stop_records_optout_and_skips_enqueue(
     assert count == 1
 
 
-async def test_inbound_image_downloads_media_to_s3(
+async def test_inbound_image_publishes_provider_id_without_download(
     client, db_session, fake_redis, seed_tenants, monkeypatch
 ):
+    """WP-11 (D10, cierra V7): the webhook must do ZERO media I/O. It
+    publishes the provider media id + hints and the RUNNER resolves bytes →
+    S3 before classify. Any storage or Graph-media call from the webhook
+    path is a regression back to V7 (a burst of voice notes saturating the
+    API's pool while Meta waits for its 200)."""
     tenant_id = seed_tenants["a"]
     business_phone = "+56999995555"
     sender = "56911114444"
     await _seed_meta_channel(db_session, tenant_id, business_phone)
 
-    seen: dict[str, object] = {}
+    def _no_storage_allowed(*args, **kwargs):
+        raise AssertionError("webhook must not touch media storage (WP-11)")
 
-    async def _fake_download(*, tenant_id, channel_id, wamid, media_id, hint_mime, hint_sha):
-        # Avoid the real Graph API media fetch; assert the wiring persists
-        # the returned S3 reference onto the stream entry.
-        #
-        # ``channel_id`` is captured and asserted below: a media id is scoped
-        # to the WABA that received it, so the download must use the token of
-        # the channel the message arrived on — not whichever number the tenant
-        # credential happens to point at.
-        seen["channel_id"] = channel_id
-        return (f"{tenant_id}/inbound/{wamid}.jpg", "image/jpeg", 2048, "deadbeef")
-
-    monkeypatch.setattr("nexus_api.api.webhooks.meta._download_inbound_media", _fake_download)
+    monkeypatch.setattr(
+        "nexus_api.services.media_storage.get_media_storage", _no_storage_allowed
+    )
 
     payload = _inbound_envelope(
         business_phone=business_phone,
@@ -216,8 +212,8 @@ async def test_inbound_image_downloads_media_to_s3(
     mine = [e for e in entries if e.get("provider_message_id") == "wamid.img-1"]
     assert len(mine) == 1
     assert mine[0]["media_kind"] == "image"
-    assert mine[0]["media_s3_key"] == f"{tenant_id}/inbound/wamid.img-1.jpg"
+    assert mine[0]["media_provider_id"] == "MEDIA_ID_1"
     assert mine[0]["media_mime"] == "image/jpeg"
-    assert mine[0]["media_size_bytes"] == "2048"
-    # The download was scoped to the channel that received the message.
-    assert seen["channel_id"] == uuid.UUID(mine[0]["channel_id"])
+    assert mine[0]["media_sha256"] == "abc123"
+    # No S3 reference yet — that is the runner's job now.
+    assert "media_s3_key" not in mine[0]
