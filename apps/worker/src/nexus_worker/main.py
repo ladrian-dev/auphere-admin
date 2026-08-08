@@ -47,6 +47,8 @@ from nexus_worker.guardrails import OutcomeGrader
 from nexus_worker.logging import configure_logging
 from nexus_worker.observability import init_langfuse
 from nexus_worker.observability import shutdown as langfuse_shutdown
+from nexus_worker.health import run_heartbeat
+from nexus_worker.observability.otel import install_worker_tracing
 from nexus_worker.runtime.agent_loader import AgentLoader
 from nexus_worker.runtime.checkpointer import postgres_checkpointer
 from nexus_worker.runtime.llm import LiteLLMProvider, build_default_router
@@ -90,6 +92,10 @@ async def _amain() -> None:
     # ``litellm.success_callback`` hook. Noop client when keys are
     # absent (dev/test).
     init_langfuse(worker_settings)
+
+    # WP-01: OTel tracing for the worker half of the end-to-end trace.
+    # No-op export unless NEXUS_OTEL_ENABLED + OTLP endpoint are set.
+    install_worker_tracing("nexus-worker")
 
     loader = AgentLoader(max_size=worker_settings.agent_cache_size)
     # Fallback model is hardcoded same-vendor (Anthropic Haiku) — cross-
@@ -186,6 +192,11 @@ async def _amain() -> None:
             llm_router=router,
             checkpointer=saver,
             outcome_grader=outcome_grader,
+        )
+        # WP-03: heartbeat consumed by GET /health/workers on the API.
+        heartbeat_task = asyncio.create_task(
+            run_heartbeat(redis, service="nexus-worker", stop=stop),
+            name="heartbeat",
         )
         promote_task = asyncio.create_task(
             run_promote_subscriber(redis, loader, stop=stop), name="promote-subscriber"
@@ -336,6 +347,7 @@ async def _amain() -> None:
         )
         try:
             await asyncio.gather(
+                heartbeat_task,
                 consumer_task,
                 promote_task,
                 outbound_task,
