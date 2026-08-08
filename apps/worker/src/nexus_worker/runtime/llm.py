@@ -42,6 +42,8 @@ from nexus_api.core.metrics import (
     record_isolation_event,
 )
 
+from nexus_worker.observability.tracing import record_generation
+
 log = structlog.get_logger(__name__)
 
 
@@ -509,6 +511,7 @@ class LiteLLMProvider:
         started = time.perf_counter()
         response = await litellm.acompletion(**kwargs)
         elapsed_ms = round((time.perf_counter() - started) * 1000)
+        usage_fields = _usage_fields(response)
         log.info(
             "llm.call_complete",
             tenant_id=str(tenant_id),
@@ -516,7 +519,16 @@ class LiteLLMProvider:
             model=model,
             elapsed_ms=elapsed_ms,
             has_tools=bool(tools),
-            **_usage_fields(response),
+            **usage_fields,
+        )
+        # WP-02: one Langfuse generation per call, with token counts and
+        # tenant_id as metadata. Noop when Langfuse is disabled; never raises.
+        record_generation(
+            tenant_id=tenant_id,
+            role=role,
+            model=model,
+            usage=usage_fields,
+            latency_ms=elapsed_ms,
         )
         return response
 
