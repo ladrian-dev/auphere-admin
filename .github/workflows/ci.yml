@@ -169,3 +169,26 @@ jobs:
       - name: mypy --strict (mcp)
         working-directory: apps/mcp
         run: mypy --strict src/nexus_mcp
+
+  # WP-23/25: la infraestructura también tiene tests que bloquean — fmt y
+  # validate de cada stack (sin backend: no toca AWS ni el estado).
+  terraform-validate:
+    name: terraform-validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: terraform fmt -check
+        working-directory: infra/terraform
+        run: terraform fmt -check -recursive -diff
+      - name: terraform validate (todos los stacks)
+        working-directory: infra/terraform
+        run: |
+          set -euo pipefail
+          for stack in bootstrap 00-network 10-data 20-services 30-observability; do
+            echo "== $stack =="
+            terraform -chdir="$stack" init -backend=false -input=false >/dev/null
+            terraform -chdir="$stack" validate
+          done

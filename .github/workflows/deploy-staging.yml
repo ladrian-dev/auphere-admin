@@ -1,0 +1,129 @@
+name: deploy-staging
+
+# WP-25: develop → staging AUTOMÁTICO, pero solo tras el workflow ``ci``
+# verde (workflow_run). Secuencia: build+push imágenes → task de migración
+# (BLOQUEANTE: exit != 0 aborta el deploy, mismo contrato que el
+# preDeployCommand de Railway) → force-new-deployment de los 4 servicios.
+#
+# OJO: los triggers workflow_run se leen del branch por defecto (main) —
+# este archivo empieza a disparar cuando llegue a main; el checkout usa el
+# sha real de develop que pasó CI.
+#
+# Requisitos previos (una vez):
+#   - Rol IAM con OIDC de GitHub Actions (permisos: ECR push, ECS run-task/
+#     update-service/describe, SSM get-parameter, iam:PassRole de los roles
+#     de task) — secret AWS_DEPLOY_ROLE_ARN.
+#   - Stacks de infra/terraform aplicados en workspace staging (publica los
+#     parámetros /nexus/staging/deploy/* que este workflow consume).
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-1
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'develop'
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: configure aws credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: login ecr
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: build and push images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          for image in nexus-api nexus-worker; do
+            case "$image" in
+              nexus-api)    dockerfile=apps/api/Dockerfile ;;
+              nexus-worker) dockerfile=apps/worker/Dockerfile ;;
+            esac
+            docker build -f "$dockerfile" \
+              -t "$REGISTRY/$image:$SHA" \
+              -t "$REGISTRY/$image:staging" \
+              .
+            docker push "$REGISTRY/$image:$SHA"
+            docker push "$REGISTRY/$image:staging"
+          done
+
+      - name: read deploy parameters (SSM)
+        id: params
+        run: |
+          set -euo pipefail
+          get() { aws ssm get-parameter --name "/nexus/staging/deploy/$1" --query Parameter.Value --output text; }
+          {
+            echo "cluster=$(get cluster)"
+            echo "subnets=$(get private_subnet_ids)"
+            echo "migrate_task_def=$(get migrate_task_def)"
+            echo "migrate_sg=$(get migrate_sg_id)"
+            echo "services=$(get services)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: run migration task (blocking)
+        run: |
+          set -euo pipefail
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${{ steps.params.outputs.cluster }}" \
+            --task-definition "${{ steps.params.outputs.migrate_task_def }}" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ steps.params.outputs.subnets }}],securityGroups=[${{ steps.params.outputs.migrate_sg }}],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+          echo "migration task: $TASK_ARN"
+
+          aws ecs wait tasks-stopped \
+            --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN"
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[?name==`migrate`][0].exitCode' --output text)
+          STOP_REASON=$(aws ecs describe-tasks \
+            --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN" \
+            --query 'tasks[0].stoppedReason' --output text)
+          echo "migration exit code: $EXIT_CODE ($STOP_REASON)"
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::La migración falló — deploy ABORTADO. Logs en /nexus/staging/migrate."
+            exit 1
+          fi
+
+      - name: roll services
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra SERVICES <<< "${{ steps.params.outputs.services }}"
+          for svc in "${SERVICES[@]}"; do
+            aws ecs update-service \
+              --cluster "${{ steps.params.outputs.cluster }}" \
+              --service "$svc" --force-new-deployment >/dev/null
+            echo "rolling: $svc"
+          done
+          # services-stable espera a que el circuit breaker decida: si un
+          # servicio hace rollback, el wait falla y el run queda rojo.
+          aws ecs wait services-stable \
+            --cluster "${{ steps.params.outputs.cluster }}" \
+            --services "${SERVICES[@]}"
