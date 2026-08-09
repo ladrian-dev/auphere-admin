@@ -25,6 +25,7 @@ async def test_list_catalog_merges_seeds_and_composio(
         "calendly",
         "googlecalendar",
         "notion",
+        "tiktok_bm",
         "whatsapp_meta",
         "woocommerce",
     }
@@ -42,6 +43,7 @@ async def test_list_catalog_without_composio_falls_back_to_seeds(
         assert slugs == {
             "agendapro",
             "amigable_cobro",
+            "tiktok_bm",
             "whatsapp_meta",
             "woocommerce",
         }
