@@ -109,6 +109,44 @@ async def test_seed_creates_volumes_and_wipe_is_idempotent():
         await engine.dispose()
 
 
+async def test_seeded_channel_resolves_like_the_meta_webhook():
+    """El seed solo vale para carga si el webhook resuelve tenant con él.
+
+    ``resolve_channel_tenant('meta', <identifier>)`` es literalmente lo que
+    llama ``api/webhooks/meta.py``. El seeder nació escribiendo
+    ``provider='whatsapp_meta'``, con lo que la función devolvía NULL, el
+    webhook contestaba 200 y descartaba el evento: la rampa de carga medía
+    el ack y NADA del pipeline (visto en staging el 2026-08-09).
+    """
+    mod = _load_module()
+
+    await mod.seed(tenants=1, conversations=1, messages=1, seed=7, wipe=True)
+
+    engine = create_async_engine(mod._dsn())
+    try:
+        async with engine.begin() as conn:
+            identifier = await conn.scalar(
+                sa.text(
+                    "SELECT provider_identifier FROM channels "
+                    "WHERE config->>'synthetic' = 'true' LIMIT 1"
+                )
+            )
+            assert identifier is not None, "el seed debe dejar un canal sintético"
+
+            resolved = await conn.scalar(
+                sa.text("SELECT resolve_channel_tenant('meta', :i)"),
+                {"i": identifier},
+            )
+            assert resolved is not None, (
+                "el canal sembrado no resuelve tenant para provider='meta' — "
+                "el webhook descartaría todo el tráfico de la rampa"
+            )
+    finally:
+        async with engine.begin() as conn:
+            await mod._wipe_synthetic(conn)
+        await engine.dispose()
+
+
 async def test_seed_refuses_on_non_synthetic_tenants():
     """Guarda GDPR: una BD con tenants reales jamás es destino del seed."""
     mod = _load_module()

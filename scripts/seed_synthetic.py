@@ -270,7 +270,14 @@ async def seed(
                         id=channel_id,
                         tenant_id=tenant_id,
                         type=ChannelType.WHATSAPP.value,
-                        provider="whatsapp_meta",
+                        # "meta", NO "whatsapp_meta": es la cadena con la
+                        # que el webhook llama a resolve_channel_tenant()
+                        # (api/webhooks/meta.py). Con cualquier otra, los
+                        # canales existen pero el webhook no resuelve
+                        # tenant y descarta el evento con 200 — que es
+                        # exactamente lo que invalidó el primer intento de
+                        # rampa de carga (2026-08-09).
+                        provider="meta",
                         # Numeración reservada de ficción — jamás un E.164 real.
                         provider_identifier=f"+5699000{t_idx:04d}",
                         config={"synthetic": True},
