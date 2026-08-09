@@ -61,7 +61,11 @@ SUBNETS=$(get private_subnet_ids); SG=$(get migrate_sg_id)
 echo "── lanzando verificación SQL (task efímera)…"
 OVERRIDES=$(python3 - "$CHECK_SQL" <<'PY'
 import json, sys
-sql = sys.argv[1]
+
+# Una sola línea: el comando viaja como argumento de ``sh -c`` dentro de
+# una cadena JSON, y ahí un salto de línea escapado (\n) llega a psql como
+# barra-ene literal, no como salto — error de sintaxis garantizado.
+sql = " ".join(sys.argv[1].split())
 print(json.dumps({"containerOverrides": [{"name": "migrate",
   "command": ["sh", "-c", f'psql "$NEXUS_DATABASE_URL_DIRECT" -v ON_ERROR_STOP=1 -c {json.dumps(sql)}']}]}))
 PY
