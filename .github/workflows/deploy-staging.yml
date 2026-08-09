@@ -124,9 +124,13 @@ jobs:
           aws ecs wait tasks-stopped \
             --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN"
 
+          # Índice directo: la task de migración tiene UN contenedor. (El
+          # filtro JMESPath [?name==...][0] devuelve vacío — las
+          # proyecciones de filtro no se indexan así; falso negativo visto
+          # en el deploy #3 con la migración realmente en verde.)
           EXIT_CODE=$(aws ecs describe-tasks \
             --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN" \
-            --query 'tasks[0].containers[?name==`migrate`][0].exitCode' --output text)
+            --query 'tasks[0].containers[0].exitCode' --output text)
           STOP_REASON=$(aws ecs describe-tasks \
             --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN" \
             --query 'tasks[0].stoppedReason' --output text)
