@@ -63,8 +63,12 @@ def _psycopg_conn_string() -> str:
     ``postgresql://``. We also append ``options=-c search_path=langgraph,public``
     so the saver's CREATE TABLE / INSERT / SELECT all land in the
     dedicated schema instead of polluting ``public``.
+
+    WP-15: SIEMPRE por la URL directa — PgBouncer rechaza el parámetro de
+    arranque ``options`` ("unsupported startup parameter"), y este saver
+    mantiene un pool de sesión larga que no gana nada multiplexado.
     """
-    url = settings.database_url
+    url = settings.database_url_direct or settings.database_url
     # Strip the SQLAlchemy driver prefix — psycopg uses the bare scheme.
     for prefix in ("postgresql+asyncpg://", "postgresql+psycopg://"):
         if url.startswith(prefix):

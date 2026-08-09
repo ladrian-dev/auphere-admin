@@ -19,11 +19,16 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# WP-15: las migraciones exigen una conexión de sesión (locks DDL, DO
+# blocks) — jamás a través de un pooler en modo transaction. Con PgBouncer
+# delante, ``NEXUS_DATABASE_URL_DIRECT`` apunta al Postgres real.
+_settings = get_settings()
+_url = _settings.database_url_direct or _settings.database_url
 # ``%`` → ``%%``: set_main_option pasa por configparser, que trata ``%``
 # como interpolación. Una password url-encodeada (p. ej. la gestionada por
 # RDS en Aurora) contiene ``%xx`` y revienta sin este escape; configparser
 # lo des-escapa al leer, así que la URL llega intacta al engine.
-config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
+config.set_main_option("sqlalchemy.url", _url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 

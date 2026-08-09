@@ -1,7 +1,7 @@
 """Admin endpoint that surfaces the per-tenant audit log (Bloque B4).
 
 Reads ``audit_log`` filtered by tenant (RLS-scoped via
-``scoped_session_from_path``) with optional filters on actor, action,
+``ro_scoped_session_from_path``) with optional filters on actor, action,
 target and a date range. Cursor-based pagination so a tenant with
 10k+ rows pages cheaply without OFFSET cost.
 
@@ -19,7 +19,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_api.api.deps import scoped_session_from_path
+from nexus_api.api.deps import ro_scoped_session_from_path
 from nexus_api.core.security import require_admin_token
 from nexus_api.repositories.audit import AuditRepository
 from nexus_api.schemas.audit import AuditLogOut, AuditLogPageOut
@@ -52,7 +52,7 @@ async def list_audit_log(
     before: datetime | None = Query(
         default=None, description="Only entries with created_at <= this timestamp."
     ),
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
 ) -> AuditLogPageOut:
     repo = AuditRepository(session)
     page = await repo.list_paginated(
@@ -78,7 +78,7 @@ async def list_audit_log(
 )
 async def list_audit_actions(
     tenant_id: uuid.UUID,
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
 ) -> list[str]:
     """Distinct action names this tenant has produced — drives the
     filter dropdown in the admin UI. Sorted by frequency (most common
