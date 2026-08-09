@@ -23,6 +23,10 @@ output "aurora_security_group_id" {
   value = aws_security_group.aurora.id
 }
 
+output "pgbouncer_security_group_id" {
+  value = aws_security_group.pgbouncer.id
+}
+
 output "valkey_security_group_id" {
   value = aws_security_group.valkey.id
 }

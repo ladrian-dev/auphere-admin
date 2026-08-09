@@ -93,7 +93,10 @@ resource "aws_dynamodb_table" "tf_lock" {
 # ── ECR (compartido staging/prod: promoción por tag, WP-26) ────────────
 
 resource "aws_ecr_repository" "repos" {
-  for_each = toset(["nexus-api", "nexus-worker"])
+  # nexus-pgbouncer es un espejo de edoburu/pgbouncer (WP-15): Fargate no
+  # debe depender del rate limit anónimo de Docker Hub. Se actualiza a mano:
+  #   docker buildx imagetools create --tag <ecr>/nexus-pgbouncer:<tag> edoburu/pgbouncer:<tag>
+  for_each = toset(["nexus-api", "nexus-worker", "nexus-pgbouncer"])
 
   name = each.key
   # Tags móviles (``staging``) requieren mutabilidad; la trazabilidad la da

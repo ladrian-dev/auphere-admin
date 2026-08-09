@@ -1,25 +1,25 @@
 name: deploy-staging
 
-# WP-25: develop → staging AUTOMÁTICO, pero solo tras el workflow ``ci``
-# verde (workflow_run). Secuencia: build+push imágenes → task de migración
-# (BLOQUEANTE: exit != 0 aborta el deploy, mismo contrato que el
-# preDeployCommand de Railway) → force-new-deployment de los 4 servicios.
+# WP-25: develop → staging AUTOMÁTICO, tras esperar al workflow ``ci`` del
+# MISMO commit en verde. Secuencia: wait-for-ci → build+push imágenes →
+# task de migración (BLOQUEANTE: exit != 0 aborta el deploy, mismo contrato
+# que el preDeployCommand de Railway) → force-new-deployment de los 4
+# servicios.
 #
-# OJO: los triggers workflow_run se leen del branch por defecto (main) —
-# este archivo empieza a disparar cuando llegue a main; el checkout usa el
-# sha real de develop que pasó CI.
+# Trigger directo en push a develop (no workflow_run: ese trigger solo se
+# lee de la rama por defecto, y main no deploya nada hasta que exista el
+# entorno de producción tras la migración de clientes — decisión de Luis
+# 2026-08-09).
 #
 # Requisitos previos (una vez):
-#   - Rol IAM con OIDC de GitHub Actions (permisos: ECR push, ECS run-task/
-#     update-service/describe, SSM get-parameter, iam:PassRole de los roles
-#     de task) — secret AWS_DEPLOY_ROLE_ARN.
+#   - Rol IAM con OIDC de GitHub Actions (bootstrap/github_oidc.tf) —
+#     secret AWS_DEPLOY_ROLE_ARN.
 #   - Stacks de infra/terraform aplicados en workspace staging (publica los
 #     parámetros /nexus/staging/deploy/* que este workflow consume).
 
 on:
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
+  push:
+    branches: [develop]
 
 concurrency:
   group: deploy-staging
@@ -30,19 +30,43 @@ env:
 
 jobs:
   deploy:
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'develop'
     runs-on: ubuntu-latest
     environment: staging
     permissions:
       id-token: write
       contents: read
+      actions: read # wait-for-ci lee los runs del workflow ci
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: wait for ci on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # El workflow ci corre en paralelo sobre el mismo push; el deploy
+          # no avanza hasta que ese run del MISMO sha esté verde. Timeout
+          # 30 min; cualquier conclusión != success aborta el deploy.
+          for i in $(seq 1 60); do
+            RUN=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=50" \
+              --jq '[.workflow_runs[] | select(.name == "ci")][0] // empty')
+            if [ -n "$RUN" ]; then
+              STATUS=$(echo "$RUN" | jq -r .status)
+              CONCLUSION=$(echo "$RUN" | jq -r .conclusion)
+              echo "ci: status=$STATUS conclusion=$CONCLUSION (intento $i)"
+              if [ "$STATUS" = "completed" ]; then
+                [ "$CONCLUSION" = "success" ] && exit 0
+                echo "::error::ci terminó en '$CONCLUSION' — deploy abortado."
+                exit 1
+              fi
+            else
+              echo "ci: aún sin run para ${{ github.sha }} (intento $i)"
+            fi
+            sleep 30
+          done
+          echo "::error::timeout esperando al workflow ci."
+          exit 1
 
       - name: configure aws credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -57,7 +81,7 @@ jobs:
       - name: build and push images
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           for image in nexus-api nexus-worker; do
