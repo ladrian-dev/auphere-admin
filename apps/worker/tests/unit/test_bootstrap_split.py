@@ -62,9 +62,7 @@ def test_families_are_disjoint_and_complete() -> None:
     assert overlap_re == {"heartbeat"}
     assert overlap_se == {"heartbeat"}
     union = (
-        bootstrap.RUNNER_TASK_NAMES
-        | bootstrap.SCHEDULER_TASK_NAMES
-        | bootstrap.EGRESS_TASK_NAMES
+        bootstrap.RUNNER_TASK_NAMES | bootstrap.SCHEDULER_TASK_NAMES | bootstrap.EGRESS_TASK_NAMES
     )
     assert union == ALL_EXPECTED
 
@@ -97,9 +95,7 @@ async def test_factories_produce_the_contract() -> None:
     assert await _names_of(bootstrap.runner_tasks(ctx, pipeline=None)) == set(
         bootstrap.RUNNER_TASK_NAMES
     )
-    assert await _names_of(bootstrap.scheduler_tasks(ctx)) == set(
-        bootstrap.SCHEDULER_TASK_NAMES
-    )
+    assert await _names_of(bootstrap.scheduler_tasks(ctx)) == set(bootstrap.SCHEDULER_TASK_NAMES)
     assert await _names_of(bootstrap.egress_tasks(ctx)) == set(bootstrap.EGRESS_TASK_NAMES)
 
 

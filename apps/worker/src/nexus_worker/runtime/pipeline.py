@@ -1607,9 +1607,7 @@ def _checkout_url_from_interactive(interactive: dict[str, Any] | None) -> str | 
     return None
 
 
-async def _checkout_link_already_sent(
-    session: Any, conversation_id: uuid.UUID, url: str
-) -> bool:
+async def _checkout_link_already_sent(session: Any, conversation_id: uuid.UUID, url: str) -> bool:
     """True when an identical checkout link was already sent on this
     conversation within ``_CHECKOUT_RESEND_WINDOW``.
 
@@ -1818,7 +1816,8 @@ def build_pipeline(
         ),
     )
     g.add_node(
-        "ucm_formatter", _traced("ucm_formatter", make_ucm_formatter_node(enabled=use_ucm_formatter))
+        "ucm_formatter",
+        _traced("ucm_formatter", make_ucm_formatter_node(enabled=use_ucm_formatter)),
     )
     g.add_node("checkpoint", _traced("checkpoint", make_checkpoint_node()))
 

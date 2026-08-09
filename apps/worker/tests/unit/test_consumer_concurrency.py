@@ -76,9 +76,7 @@ async def test_32_threads_process_concurrently(monkeypatch) -> None:
         return {}
 
     started = time.perf_counter()
-    await _run_consumer(
-        redis, monkeypatch, dispatch, expected=N_THREADS, slots=64, max_inflight=64
-    )
+    await _run_consumer(redis, monkeypatch, dispatch, expected=N_THREADS, slots=64, max_inflight=64)
     elapsed = time.perf_counter() - started
 
     # Serial would be 3.2 s; concurrent should be a few 100 ms batches.

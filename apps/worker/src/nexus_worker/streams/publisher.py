@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import uuid
 
-from redis.asyncio import Redis
-
 from nexus_api.core.streams import xadd_capped
+from redis.asyncio import Redis
 
 INBOUND_STREAM = "nexus:inbound"
 

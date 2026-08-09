@@ -88,8 +88,7 @@ async def test_slot_for_is_stable_and_spreads() -> None:
     assert a == a_again  # same conversation → same slot, always
 
     slots = {
-        consumer_mod.slot_for(_fields(f"user-{i}", "x", tenant, channel), 64)
-        for i in range(200)
+        consumer_mod.slot_for(_fields(f"user-{i}", "x", tenant, channel), 64) for i in range(200)
     }
     # 200 distinct conversations must not funnel into a handful of slots.
     assert len(slots) > 32

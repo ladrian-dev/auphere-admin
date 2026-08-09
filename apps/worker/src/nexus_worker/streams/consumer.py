@@ -118,9 +118,7 @@ def slot_for(fields: dict[str, str], n_slots: int) -> int:
     from nexus_worker.runtime.thread_id import make_thread_id
 
     try:
-        thread_id = make_thread_id(
-            fields["tenant_id"], fields["channel_id"], fields["user_id"]
-        )
+        thread_id = make_thread_id(fields["tenant_id"], fields["channel_id"], fields["user_id"])
     except (KeyError, ValueError):
         # Malformed entries go to slot 0 where handle_entry acks them away.
         return 0
@@ -201,8 +199,7 @@ async def run_inbound_consumer(
                 log.error("consumer.slot_worker_failed", error=str(exc))
 
     workers = [
-        asyncio.create_task(_slot_worker(queue), name=f"slot-{i}")
-        for i, queue in enumerate(queues)
+        asyncio.create_task(_slot_worker(queue), name=f"slot-{i}") for i, queue in enumerate(queues)
     ]
 
     read_spec = {s: ">" for s in stream_list}
@@ -251,9 +248,7 @@ async def _delivery_count(redis: Redis, stream: str, group: str, entry_id: str) 
     (first attempt) when XPENDING fails — degrading to the pre-DLQ behaviour
     (retry) rather than dead-lettering on a probe error."""
     try:
-        pending = await redis.xpending_range(
-            stream, group, min=entry_id, max=entry_id, count=1
-        )
+        pending = await redis.xpending_range(stream, group, min=entry_id, max=entry_id, count=1)
     except Exception as exc:
         log.warning("consumer.xpending_failed", entry_id=entry_id, error=str(exc))
         return 1

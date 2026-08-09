@@ -260,9 +260,7 @@ class TestFastRetryNoBackoff:
         assert provider.calls == 2  # failed once, retried once, succeeded
         assert sleeps == []  # no backoff for a transient connection error
 
-    async def test_rate_limit_still_backs_off(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_rate_limit_still_backs_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A rate limit is NOT a dead socket — it must keep the backoff so the
         immediate retry doesn't just re-trip the limit."""
         sleeps: list[float] = []

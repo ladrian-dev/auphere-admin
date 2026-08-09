@@ -53,6 +53,7 @@ def _watched_streams() -> tuple[str, ...]:
     except Exception:
         return (INBOUND_STREAM,)
 
+
 QUEUE_AGE_THRESHOLD_S = 300.0
 TURN_ERROR_THRESHOLD = 5
 META_FAILURE_THRESHOLD = 20
@@ -62,12 +63,14 @@ CACHE_RATIO_THRESHOLD = 0.30
 CACHE_RATIO_MIN_TOKENS = 100_000
 HEARTBEAT_DEAD_AFTER_S = 180.0
 
+
 def _expected_services() -> tuple[str, ...]:
     """WP-07: same env-driven contract as GET /health/workers
     (``NEXUS_EXPECTED_WORKER_SERVICES``)."""
     from nexus_api.config import get_settings
 
     return get_settings().expected_worker_services_list
+
 
 # One notification per condition per this window (seconds).
 DEDUP_TTL_S = 3_600
@@ -133,9 +136,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
 
     # 3 · per-tenant turn error burst (current 10-min window)
     with contextlib.suppress(Exception):
-        async for key in redis.scan_iter(
-            match=f"nexus:alert:turn_errors:*:{window}", count=100
-        ):
+        async for key in redis.scan_iter(match=f"nexus:alert:turn_errors:*:{window}", count=100):
             key_str = key.decode() if isinstance(key, bytes) else key
             raw = await redis.get(key_str)
             count = int(raw or 0)
@@ -190,9 +191,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
     # evaluate the current hour once it has enough volume)
     with contextlib.suppress(Exception):
         input_tok = int(await redis.get(f"nexus:alert:llmtok:input:{hour_window}") or 0)
-        cache_tok = int(
-            await redis.get(f"nexus:alert:llmtok:cache_read:{hour_window}") or 0
-        )
+        cache_tok = int(await redis.get(f"nexus:alert:llmtok:cache_read:{hour_window}") or 0)
         total = input_tok + cache_tok
         if total >= CACHE_RATIO_MIN_TOKENS:
             ratio = cache_tok / total
@@ -213,9 +212,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
 
     # 7 · Meta failure code burst
     with contextlib.suppress(Exception):
-        async for key in redis.scan_iter(
-            match=f"nexus:alert:metafail:*:{window}", count=100
-        ):
+        async for key in redis.scan_iter(match=f"nexus:alert:metafail:*:{window}", count=100):
             key_str = key.decode() if isinstance(key, bytes) else key
             raw = await redis.get(key_str)
             count = int(raw or 0)

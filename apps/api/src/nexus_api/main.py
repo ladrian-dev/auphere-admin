@@ -98,6 +98,8 @@ async def _webhook_ack_timing(request, call_next):  # type: ignore[no-untyped-de
         provider=provider, duration_ms=(_time.perf_counter() - started) * 1000
     )
     return response
+
+
 # No CORS layer on purpose: every surface of this API is
 # server-to-server (admin token, partner secret key, tenant key or
 # webhook signature). Nothing is called from a browser, so allowing an

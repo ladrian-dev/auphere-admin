@@ -310,9 +310,7 @@ class TestExplicitChannelId:
 
 
 class TestCrossTenantIsolation:
-    async def test_another_tenants_channel_id_is_not_reachable(
-        self, db_session, as_tenant
-    ) -> None:
+    async def test_another_tenants_channel_id_is_not_reachable(self, db_session, as_tenant) -> None:
         """An explicit channel_id is caller-supplied input. RLS must make a
         foreign id indistinguishable from a nonexistent one — never a send
         through somebody else's WABA."""

@@ -124,9 +124,7 @@ async def test_webhook_inbound_entry_carries_traceparent(
     assert entries, "webhook did not enqueue the inbound message"
     decoded = [
         {
-            (k.decode() if isinstance(k, bytes) else k): (
-                v.decode() if isinstance(v, bytes) else v
-            )
+            (k.decode() if isinstance(k, bytes) else k): (v.decode() if isinstance(v, bytes) else v)
             for k, v in fields.items()
         }
         for _id, fields in entries

@@ -95,10 +95,7 @@ async def workers(response: Response) -> dict[str, Any]:
     redis = get_redis()
     services: dict[str, list[str]] = {name: [] for name in _expected_worker_services()}
     try:
-        keys = [
-            key
-            async for key in redis.scan_iter(match=f"{HEARTBEAT_KEY_PREFIX}*", count=100)
-        ]
+        keys = [key async for key in redis.scan_iter(match=f"{HEARTBEAT_KEY_PREFIX}*", count=100)]
     except Exception as exc:
         log.warning("health.workers.redis_failed", error=str(exc))
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE

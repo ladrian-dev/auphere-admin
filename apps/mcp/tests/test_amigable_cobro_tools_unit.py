@@ -335,9 +335,7 @@ async def test_add_charge_reads_fresh_and_sums(tenant_ctx: Any) -> None:
 async def test_create_account_blocks_duplicate_by_phone(tenant_ctx: Any) -> None:
     c = _use([[_account(id=7, client_name="Leo Morales", client_phone="+584241234567")]])
     out = await CreateAccount().run(
-        CreateAccountInput(
-            client_name="Otro Nombre", total_amount=50.0, client_phone="04241234567"
-        )
+        CreateAccountInput(client_name="Otro Nombre", total_amount=50.0, client_phone="04241234567")
     )
     assert out.ok is False
     assert "duplicado" in out.message.lower()

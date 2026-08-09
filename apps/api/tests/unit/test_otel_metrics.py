@@ -30,9 +30,7 @@ def test_sli_instruments_record_and_export() -> None:
     otel_metrics.install_metrics("nexus-test", extra_reader=reader)
     otel_metrics.ensure_queue_gauges()
 
-    otel_metrics.record_turn(
-        duration_ms=1234.5, tenant_id="t1", intent="book", channel="meta"
-    )
+    otel_metrics.record_turn(duration_ms=1234.5, tenant_id="t1", intent="book", channel="meta")
     otel_metrics.record_turn_error(tenant_id="t1", stage="dispatch")
     otel_metrics.record_llm_call(
         model="anthropic/claude-sonnet-4-6",
@@ -58,9 +56,7 @@ def test_sli_instruments_record_and_export() -> None:
 
     assert metrics["turn_errors_total"][0].value == 1
 
-    token_points = {
-        p.attributes["type"]: p.value for p in metrics["llm_tokens_total"]
-    }
+    token_points = {p.attributes["type"]: p.value for p in metrics["llm_tokens_total"]}
     assert token_points == {"input": 1000, "output": 200, "cache_read": 900}
 
     assert "llm_call_ms" in metrics
@@ -71,8 +67,7 @@ def test_sli_instruments_record_and_export() -> None:
     lag_points = {p.attributes["stream"]: p.value for p in metrics["queue_lag_entries"]}
     assert lag_points["nexus:inbound"] == 7
     oldest_points = {
-        p.attributes["stream"]: p.value
-        for p in metrics["queue_oldest_pending_seconds"]
+        p.attributes["stream"]: p.value for p in metrics["queue_oldest_pending_seconds"]
     }
     assert oldest_points["nexus:inbound"] == 3.5
 

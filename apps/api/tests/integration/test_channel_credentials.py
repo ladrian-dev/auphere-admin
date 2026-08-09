@@ -58,9 +58,7 @@ def _creds(*, pnid: str, token: str, waba: str = "WABA-1") -> MetaCredentials:
 @pytest_asyncio.fixture
 async def tenant(db_session) -> uuid.UUID:
     tid = uuid.uuid4()
-    db_session.add(
-        Tenant(id=tid, name="Creds", slug=f"creds-{tid.hex[:6]}", plan=TenantPlan.PRO)
-    )
+    db_session.add(Tenant(id=tid, name="Creds", slug=f"creds-{tid.hex[:6]}", plan=TenantPlan.PRO))
     await db_session.commit()
     return tid
 

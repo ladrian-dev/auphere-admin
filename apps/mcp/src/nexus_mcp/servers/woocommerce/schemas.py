@@ -482,9 +482,7 @@ class LineItemInput(InputModel):
     @model_validator(mode="after")
     def _at_least_one_identifier(self) -> LineItemInput:
         if self.product_id is None and self.variation_id is None and not self.retailer_id:
-            raise ValueError(
-                "line item needs one of product_id / variation_id / retailer_id"
-            )
+            raise ValueError("line item needs one of product_id / variation_id / retailer_id")
         return self
 
 

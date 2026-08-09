@@ -61,8 +61,7 @@ def _lag_oldest_callback(_options: Any) -> list[Any]:
     from opentelemetry.metrics import Observation
 
     return [
-        Observation(oldest, {"stream": stream})
-        for stream, (_entries, oldest) in _queue_lag.items()
+        Observation(oldest, {"stream": stream}) for stream, (_entries, oldest) in _queue_lag.items()
     ]
 
 
@@ -93,9 +92,7 @@ def install_metrics(service_name: str, *, extra_reader: Any | None = None) -> No
 
             readers.append(PeriodicExportingMetricReader(OTLPMetricExporter()))
         global _provider
-        _provider = MeterProvider(
-            resource=build_resource(service_name), metric_readers=readers
-        )
+        _provider = MeterProvider(resource=build_resource(service_name), metric_readers=readers)
         # Best-effort global registration; the SDK only honours the FIRST
         # call per process, which is why ``_meter`` below resolves through
         # the module's own reference instead of the global API — reinstalls
@@ -156,9 +153,7 @@ def record_turn(*, duration_ms: float, tenant_id: str, intent: str | None, chann
 
 def record_turn_error(*, tenant_id: str, stage: str) -> None:
     with contextlib.suppress(Exception):
-        _instrument("turn_errors_total", "counter").add(
-            1, {"tenant": tenant_id, "stage": stage}
-        )
+        _instrument("turn_errors_total", "counter").add(1, {"tenant": tenant_id, "stage": stage})
 
 
 def record_llm_call(*, model: str, role: str, duration_ms: float, usage: dict[str, int]) -> None:

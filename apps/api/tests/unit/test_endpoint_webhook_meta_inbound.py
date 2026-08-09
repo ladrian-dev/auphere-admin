@@ -181,9 +181,7 @@ async def test_inbound_image_publishes_provider_id_without_download(
     def _no_storage_allowed(*args, **kwargs):
         raise AssertionError("webhook must not touch media storage (WP-11)")
 
-    monkeypatch.setattr(
-        "nexus_api.services.media_storage.get_media_storage", _no_storage_allowed
-    )
+    monkeypatch.setattr("nexus_api.services.media_storage.get_media_storage", _no_storage_allowed)
 
     payload = _inbound_envelope(
         business_phone=business_phone,

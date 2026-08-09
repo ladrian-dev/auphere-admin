@@ -89,7 +89,9 @@ async def test_family_stops_when_leadership_lost(db_session) -> None:
         return [task]
 
     leader = asyncio.create_task(
-        run_exclusive(LOCK + ":lost", stop=stop, start_tasks=start, retry_seconds=0.1, ping_seconds=0.2)
+        run_exclusive(
+            LOCK + ":lost", stop=stop, start_tasks=start, retry_seconds=0.1, ping_seconds=0.2
+        )
     )
     await asyncio.sleep(0.5)
     assert journal == ["started"]

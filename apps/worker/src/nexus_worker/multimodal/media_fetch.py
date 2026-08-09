@@ -87,8 +87,7 @@ async def fetch_inbound_media(
         size = len(content)
         if size > settings.media_max_size_mb * 1024 * 1024:
             raise MediaStorageError(
-                f"inbound media too large: {size} bytes > "
-                f"{settings.media_max_size_mb}MB limit"
+                f"inbound media too large: {size} bytes > {settings.media_max_size_mb}MB limit"
             )
         storage = get_media_storage()
         stored = await storage.put_inbound(
