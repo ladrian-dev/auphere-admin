@@ -29,7 +29,7 @@ provider "aws" {
 
 variable "region" {
   type    = string
-  default = "eu-west-1"
+  default = "eu-south-2"
 }
 
 data "aws_caller_identity" "current" {}

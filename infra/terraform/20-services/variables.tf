@@ -1,6 +1,6 @@
 variable "certificate_arn" {
   description = <<-EOT
-    ARN del certificado ACM (eu-west-1) para el listener HTTPS del ALB.
+    ARN del certificado ACM (eu-south-2) para el listener HTTPS del ALB.
     Vacío = el ALB nace solo con listener HTTP :80 — suficiente para el
     primer humo de staging antes de tener DNS; NUNCA aceptable en prod
     (webhooks de Meta exigen HTTPS).

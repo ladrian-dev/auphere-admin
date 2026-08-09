@@ -34,7 +34,8 @@ resource "aws_elasticache_subnet_group" "valkey" {
 
 resource "aws_elasticache_replication_group" "valkey" {
   replication_group_id = "${local.name}-valkey"
-  description          = "Nexus ${terraform.workspace} — streams + dedupe + locks"
+  # Solo ASCII: la API de ElastiCache rechaza caracteres no imprimibles/no-ASCII.
+  description = "Nexus ${terraform.workspace} - streams, dedupe and locks"
 
   engine         = "valkey"
   engine_version = var.valkey_engine_version

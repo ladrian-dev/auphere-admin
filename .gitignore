@@ -52,3 +52,11 @@ CLAUDE.md
 .claude.json
 .claude.local.json
 .vercel
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+infra/terraform/backend.hcl
+.envrc

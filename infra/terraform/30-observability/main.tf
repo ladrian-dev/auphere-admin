@@ -40,7 +40,7 @@ check "workspace_is_named" {
 
 variable "region" {
   type    = string
-  default = "eu-west-1"
+  default = "eu-south-2"
 }
 
 variable "state_bucket" {

@@ -120,6 +120,8 @@ resource "aws_rds_cluster_instance" "main" {
 }
 
 variable "aurora_engine_version" {
+  # En eu-south-2 los 16.x serverless disponibles empiezan en 16.8
+  # (verificado 2026-08-09 con describe-orderable-db-instance-options).
   type    = string
-  default = "16.6"
+  default = "16.13"
 }

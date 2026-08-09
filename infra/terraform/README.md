@@ -1,4 +1,4 @@
-# Nexus — Terraform (AWS eu-west-1)
+# Nexus — Terraform (AWS eu-south-2)
 
 WP-23/24/25 del plan v2. Cuatro stacks + un bootstrap, con **workspaces**
 `staging` y `prod` compartiendo el mismo código y difiriendo solo en tamaños
