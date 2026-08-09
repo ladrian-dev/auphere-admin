@@ -32,12 +32,17 @@ data "aws_iam_policy_document" "github_assume" {
     }
 
     # develop (staging) y main (prod, WP-26). Nada de PRs ni forks.
+    # OJO: cuando el job declara ``environment:``, GitHub emite el sub como
+    # ``repo:<owner/repo>:environment:<nombre>`` — NO el ref. Sin esas
+    # entradas el assume falla con "Not authorized" (visto en el deploy #2).
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
         "repo:${var.github_repo}:ref:refs/heads/develop",
         "repo:${var.github_repo}:ref:refs/heads/main",
+        "repo:${var.github_repo}:environment:staging",
+        "repo:${var.github_repo}:environment:production",
       ]
     }
   }
