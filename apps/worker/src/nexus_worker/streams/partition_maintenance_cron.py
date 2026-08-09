@@ -4,7 +4,12 @@ Ensures the current and next month's partitions exist for every partitioned
 table, via the ``ensure_month_partition`` SQL function (migration 0064).
 Idempotent, so it simply runs on every tick — a month can never roll over
 into a missing partition, and the DEFAULT partition backstops even a cron
-outage. ``usage_records`` joins the list in WP-16.
+outage.
+
+Since 0069 the same function also propagates the parent's RLS to the new
+partition: a partition does NOT inherit row security, and one created
+without it is a table full of every tenant's rows that any direct query
+would read unfiltered.
 """
 
 from __future__ import annotations
@@ -19,7 +24,7 @@ from nexus_api.db.base import get_sessionmaker
 
 log = structlog.get_logger(__name__)
 
-PARTITIONED_TABLES = ("messages",)
+PARTITIONED_TABLES = ("messages", "usage_records")
 DEFAULT_TICK_SECONDS = 6 * 3600.0  # 4x/day — cheap and safely redundant
 
 
