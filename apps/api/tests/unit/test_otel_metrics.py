@@ -72,6 +72,36 @@ def test_sli_instruments_record_and_export() -> None:
     assert oldest_points["nexus:inbound"] == 3.5
 
 
+def test_outbound_backlog_gauge_is_dimensionless_and_silent_until_measured() -> None:
+    """WP-24: the gauge egress autoscales on.
+
+    Two properties the autoscaling policy depends on and that a refactor
+    could silently break:
+
+    - **no attributes**: the policy in ``20-services/autoscaling.tf``
+      declares ``outbound_pending_messages`` with no dimensions, and the
+      ADOT collector runs ``NoDimensionRollup`` — any label here and the
+      policy stops finding data (and silently stays at min capacity);
+    - **no observation before the first measurement**: an early 0 would
+      tell the autoscaler "no work" before anything has looked at the
+      database.
+    """
+    reader = InMemoryMetricReader()
+    otel_metrics.reset_for_tests()
+    otel_metrics.install_metrics("nexus-test-outbound", extra_reader=reader)
+    otel_metrics.ensure_outbound_gauges()
+
+    assert not _collect(reader).get("outbound_pending_messages")
+
+    otel_metrics.set_outbound_backlog(pending=42, oldest_pending_s=7.5)
+    metrics = _collect(reader)
+
+    pending = metrics["outbound_pending_messages"]
+    assert [p.value for p in pending] == [42]
+    assert dict(pending[0].attributes or {}) == {}
+    assert [p.value for p in metrics["outbound_oldest_pending_seconds"]] == [7.5]
+
+
 def test_recording_never_raises_without_install() -> None:
     # Helpers must be safe before install_metrics (e.g. unit tests importing
     # the consumer) — the API default meter hands out noop instruments.
