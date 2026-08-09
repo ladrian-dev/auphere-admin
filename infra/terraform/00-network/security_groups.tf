@@ -70,6 +70,38 @@ resource "aws_security_group_rule" "api_from_alb" {
   source_security_group_id = aws_security_group.alb.id
 }
 
+# WP-15: PgBouncer en modo transaction entre los servicios y Aurora.
+resource "aws_security_group" "pgbouncer" {
+  name_prefix = "${local.name}-pgbouncer-"
+  description = "PgBouncer: 5432 desde los servicios; sale solo hacia Aurora"
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = { Name = "${local.name}-pgbouncer" }
+}
+
+resource "aws_security_group_rule" "pgbouncer_from_services" {
+  for_each = toset(local.services)
+
+  type                     = "ingress"
+  description              = "pgbouncer desde nexus-${each.key}"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.pgbouncer.id
+  source_security_group_id = aws_security_group.service[each.key].id
+}
+
 resource "aws_security_group" "aurora" {
   name_prefix = "${local.name}-aurora-"
   description = "Aurora PostgreSQL: 5432 solo desde los servicios"
@@ -92,6 +124,16 @@ resource "aws_security_group_rule" "aurora_from_services" {
   protocol                 = "tcp"
   security_group_id        = aws_security_group.aurora.id
   source_security_group_id = aws_security_group.service[each.key].id
+}
+
+resource "aws_security_group_rule" "aurora_from_pgbouncer" {
+  type                     = "ingress"
+  description              = "postgres desde pgbouncer"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.aurora.id
+  source_security_group_id = aws_security_group.pgbouncer.id
 }
 
 resource "aws_security_group" "valkey" {

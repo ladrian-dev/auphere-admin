@@ -37,6 +37,10 @@ locals {
 
   common_env = [
     { name = "NEXUS_ENVIRONMENT", value = local.nexus_environment },
+    # WP-15: NEXUS_DATABASE_URL atraviesa PgBouncer en modo transaction —
+    # sin prepared statements compartidos. Inofensivo si la URL fuera
+    # directa (solo pierde el cache de statements).
+    { name = "NEXUS_DB_TRANSACTION_POOLING", value = "true" },
     { name = "NEXUS_OTEL_ENABLED", value = "true" },
     { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://127.0.0.1:4318" },
     { name = "NEXUS_LANGFUSE_ENVIRONMENT", value = local.nexus_environment },
@@ -74,6 +78,9 @@ locals {
         dimension_rollup_option          = "NoDimensionRollup"
         resource_to_telemetry_conversion = { enabled = false }
       }
+      awsxray = {
+        region = var.region
+      }
     }
     service = {
       pipelines = {
@@ -81,6 +88,14 @@ locals {
           receivers  = ["otlp"]
           processors = ["batch"]
           exporters  = ["awsemf"]
+        }
+        # Sin este pipeline los spans OTLP de la app reciben 404 del
+        # collector (visto en el primer despliegue). X-Ray es el destino
+        # provisional hasta el WP de Grafana self-hosted (D8 enmendada).
+        traces = {
+          receivers  = ["otlp"]
+          processors = ["batch"]
+          exporters  = ["awsxray"]
         }
       }
     }

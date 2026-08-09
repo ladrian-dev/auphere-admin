@@ -29,8 +29,10 @@ variable "app_secret_keys" {
   EOT
   type        = list(string)
   default = [
-    "NEXUS_DATABASE_URL",
-    "DATABASE_URL", # release.sh (psql) + Drizzle
+    "NEXUS_DATABASE_URL",        # app → PgBouncer (WP-15)
+    "NEXUS_DATABASE_URL_DIRECT", # Alembic + checkpointer LangGraph → Aurora directo
+    "NEXUS_DATABASE_URL_RO",     # routers de lectura pesada → reader endpoint
+    "DATABASE_URL",              # release.sh (psql) + Drizzle + PgBouncer → Aurora directo
     "NEXUS_REDIS_URL",
     "NEXUS_ADMIN_TOKEN",
     "NEXUS_WEBHOOK_HMAC_SECRET",

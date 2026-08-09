@@ -42,9 +42,13 @@ resource "aws_iam_role_policy_attachment" "execution_managed" {
 
 data "aws_iam_policy_document" "execution_secrets" {
   statement {
-    sid       = "ReadAppSecret"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [local.data.app_secret_arn]
+    sid     = "ReadAppSecret"
+    actions = ["secretsmanager:GetSecretValue"]
+    resources = [
+      local.data.app_secret_arn,
+      # PgBouncer lee la password cruda del secreto gestionado por RDS.
+      local.data.aurora_master_secret_arn,
+    ]
   }
 }
 
