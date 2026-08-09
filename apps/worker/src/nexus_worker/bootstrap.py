@@ -60,6 +60,7 @@ from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.streams.agent_sales_poll_cron import run_agent_sales_poll_cron
 from nexus_worker.streams.async_booking_cron import run_async_booking_cron
+from nexus_worker.streams.checkpoint_retention_cron import run_checkpoint_retention_cron
 from nexus_worker.streams.claimer import run_stream_claimer
 from nexus_worker.streams.connector_reconcile_cron import run_connector_reconcile_cron
 from nexus_worker.streams.consumer import run_inbound_consumer
@@ -78,6 +79,7 @@ from nexus_worker.streams.owner_consultation_timeout_cron import (
 from nexus_worker.streams.owner_fanout import run_owner_fanout_consumer
 from nexus_worker.streams.owner_fanout_sweep import run_owner_fanout_sweep
 from nexus_worker.streams.owner_outbox import run_owner_outbox_dispatcher
+from nexus_worker.streams.partition_maintenance_cron import run_partition_maintenance_cron
 from nexus_worker.streams.partner_receipt_cron import run_partner_receipt_cron
 from nexus_worker.streams.platform_watcher import run_platform_watcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
@@ -131,6 +133,8 @@ SCHEDULER_TASK_NAMES = frozenset(
         "owner-consultation-timeout-sweep",
         "owner-fanout-sweep",
         "connector-reconcile-cron",
+        "partition-maintenance-cron",
+        "checkpoint-retention-cron",
     }
 )
 
@@ -395,6 +399,9 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         ),
         _spawn("owner-fanout-sweep", run_owner_fanout_sweep(ctx.redis, stop=ctx.stop)),
         _spawn("connector-reconcile-cron", run_connector_reconcile_cron(stop=ctx.stop)),
+        # WP-13: partitions ahead of the calendar + checkpoint pruning.
+        _spawn("partition-maintenance-cron", run_partition_maintenance_cron(stop=ctx.stop)),
+        _spawn("checkpoint-retention-cron", run_checkpoint_retention_cron(stop=ctx.stop)),
     ]
 
 

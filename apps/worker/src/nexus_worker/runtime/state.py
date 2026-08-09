@@ -102,6 +102,49 @@ class AgentState(TypedDict, total=False):
     meta: dict[str, Any]
 
 
+# ── WP-13: checkpoint bloat control ─────────────────────────────────────────
+#
+# Every LangGraph super-step checkpoints the FULL state. The two fields that
+# made checkpoint storage grow 100:1 against ``messages`` are ``history``
+# (re-loaded fresh from Postgres by ``classify`` every turn — persisting it
+# in the checkpoint is pure duplication) and oversized tool results inside
+# ``tool_calls``. ``checkpoint_shrink_update`` is merged into the checkpoint
+# node's final state update so the durable end-of-turn checkpoint carries
+# pointers/summaries, not dumps.
+MAX_STATE_FIELD_BYTES = 32 * 1024
+
+
+def _clamp_value(value: Any) -> Any:
+    if isinstance(value, str) and len(value.encode("utf-8", "ignore")) > MAX_STATE_FIELD_BYTES:
+        clipped = value.encode("utf-8", "ignore")[:MAX_STATE_FIELD_BYTES].decode(
+            "utf-8", "ignore"
+        )
+        return f"{clipped}\n[truncated: state field exceeded {MAX_STATE_FIELD_BYTES} bytes]"
+    return value
+
+
+def checkpoint_shrink_update(state: AgentState) -> dict[str, Any]:
+    """State update applied at the checkpoint node (end of turn).
+
+    - ``history`` → ``[]``: classify reloads it from ``messages`` next turn;
+      keeping it in the checkpoint doubles every conversation's storage.
+    - ``tool_calls`` string fields → clamped to ``MAX_STATE_FIELD_BYTES``
+      with an explicit marker (a catalog dump inside a checkpoint is dead
+      weight — the business artifact already lives in ``messages`` /
+      ``tool_calls`` rows persisted by the checkpoint node).
+    """
+    update: dict[str, Any] = {"history": []}
+    tool_calls = state.get("tool_calls") or []
+    if tool_calls:
+        update["tool_calls"] = [
+            {key: _clamp_value(val) for key, val in call.items()}
+            if isinstance(call, dict)
+            else call
+            for call in tool_calls
+        ]
+    return update
+
+
 def new_state(
     *,
     tenant_id: uuid.UUID,
