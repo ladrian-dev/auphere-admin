@@ -5,11 +5,12 @@
 #   scheduler → FIJO en 1 (sin política)
 #
 # Las métricas custom viven en CloudWatch namespace ``Nexus`` vía el sidecar
-# ADOT. ``queue_oldest_pending_seconds`` la publica ya el claimer del runner
-# (dimensión ``stream``, una serie por tier WP-10). ``outbound_pending_messages``
-# AÚN NO EXISTE en la app — hasta que egress publique ese gauge la política
-# no ve datos y el servicio se queda en min capacity, que es el estado
-# seguro (min 2 en prod cubre la carga actual con holgura).
+# ADOT. ``queue_oldest_pending_seconds`` la publica el claimer del runner
+# (dimensión ``stream``, una serie por tier WP-10); ``outbound_pending_messages``
+# la publica el sweep del dispatcher de egress cada 30 s, SIN dimensiones
+# (el collector corre con ``NoDimensionRollup``: una etiqueta ahí y esta
+# política dejaría de encontrar datos). Cada réplica de egress publica la
+# misma cuenta global, de ahí el ``Maximum``.
 
 locals {
   scaling = {

@@ -53,7 +53,12 @@ from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 import structlog
-from nexus_api.core.otel_metrics import record_meta_send_failure, record_outbound_delivery
+from nexus_api.core.otel_metrics import (
+    ensure_outbound_gauges,
+    record_meta_send_failure,
+    record_outbound_delivery,
+    set_outbound_backlog,
+)
 from nexus_api.core.redis_client import get_redis
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
@@ -250,6 +255,7 @@ async def run_outbound_dispatcher(
         batch=batch_size,
         providers=sorted(adapters.keys()),
     )
+    ensure_outbound_gauges()
     sm = get_sessionmaker()
     work = work if work is not None else OutboundWorkSet()
     listener_task = (
@@ -270,6 +276,7 @@ async def run_outbound_dispatcher(
                     last_sweep = now
                     tenant_ids = await _list_active_tenants(sm)
                     await _warn_on_undrained_tenants(sm, tenant_ids)
+                    await _publish_outbound_backlog(sm)
                     for tid in tenant_ids:
                         work.add(tid)
                 notified = work.pop_all()
@@ -354,6 +361,57 @@ async def _warn_on_undrained_tenants(
             "nothing will ever deliver them"
         ),
     )
+
+
+async def _publish_outbound_backlog(
+    sm: sa.orm.sessionmaker,  # type: ignore[type-arg]
+) -> None:
+    """Publish the outbound backlog gauges that egress autoscales on (WP-24).
+
+    Deliberately GLOBAL (no tenant scoping, same reasoning as
+    :func:`_warn_on_undrained_tenants`): what egress needs to know is how
+    much work exists in total, and CloudWatch could not carry a per-tenant
+    dimension at tenant scale anyway.
+
+    The age is computed by the DATABASE (``now() - min(created_at)``)
+    instead of in Python: ``created_at`` is generated server-side, so
+    mixing it with the worker's clock would report drift as backlog.
+
+    Cost: the query is a count + min over
+    ``ix_messages_outbound_pending`` (0067), a partial index that only
+    holds rows that are actually pending — normally a handful, even though
+    ``messages`` is partitioned and holds millions. Without that index this
+    would seq-scan EVERY partition every 30 s.
+
+    Never raises: a metric must not stop the drain.
+    """
+    try:
+        async with sm() as session:
+            row = (
+                await session.execute(
+                    sa.select(
+                        sa.func.count(),
+                        sa.func.coalesce(
+                            sa.func.extract(
+                                "epoch", sa.func.now() - sa.func.min(Message.created_at)
+                            ),
+                            0,
+                        ),
+                    ).where(
+                        Message.direction == MessageDirection.OUTBOUND,
+                        Message.status == MessageStatus.PENDING,
+                    )
+                )
+            ).one()
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("outbound.dispatcher.backlog_gauge_failed", error=str(exc))
+        return
+    pending, oldest_s = int(row[0]), max(0.0, float(row[1]))
+    set_outbound_backlog(pending=pending, oldest_pending_s=oldest_s)
+    if pending:
+        log.info(
+            "outbound.dispatcher.backlog", pending=pending, oldest_pending_s=round(oldest_s, 1)
+        )
 
 
 async def _drain_tenant(

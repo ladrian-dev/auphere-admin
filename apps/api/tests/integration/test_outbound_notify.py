@@ -90,6 +90,80 @@ async def test_trigger_notifies_on_pending_outbound_insert(db_session, seed_tena
         await listener.close()
 
 
+async def _seed_pending_outbound(db_session, tenant_id: uuid.UUID, content: str) -> None:
+    async with tenant_scoped_session(db_session, tenant_id):
+        channel = Channel(
+            tenant_id=tenant_id,
+            type=ChannelType.WHATSAPP,
+            provider="meta",
+            provider_identifier=f"+569{uuid.uuid4().hex[:8]}",
+            status=ChannelStatus.ACTIVE,
+            config={},
+        )
+        db_session.add(channel)
+        await db_session.flush()
+        customer = Customer(tenant_id=tenant_id, identifier=f"569{uuid.uuid4().hex[:8]}")
+        db_session.add(customer)
+        await db_session.flush()
+        conversation = Conversation(
+            tenant_id=tenant_id, channel_id=channel.id, customer_id=customer.id
+        )
+        db_session.add(conversation)
+        await db_session.flush()
+        db_session.add(
+            Message(
+                tenant_id=tenant_id,
+                conversation_id=conversation.id,
+                direction=MessageDirection.OUTBOUND,
+                status=MessageStatus.PENDING,
+                content=content,
+            )
+        )
+        await db_session.commit()
+
+
+async def test_backlog_gauge_counts_across_tenants(db_session, seed_tenants) -> None:
+    """WP-24: the gauge egress autoscales on is a GLOBAL count.
+
+    Egress sizing is a property of the whole queue, not of one tenant —
+    the sweep reads across tenants on purpose (same reasoning as the
+    undrained-tenant warning). Measured as a delta because the suite
+    shares one database.
+    """
+    from nexus_api.core import otel_metrics
+    from nexus_api.db.base import get_sessionmaker
+
+    sm = get_sessionmaker()
+
+    await outbound_mod._publish_outbound_backlog(sm)
+    baseline = otel_metrics._outbound_backlog
+    assert baseline is not None
+
+    await _seed_pending_outbound(db_session, seed_tenants["a"], "pendiente a")
+    await _seed_pending_outbound(db_session, seed_tenants["b"], "pendiente b")
+
+    await outbound_mod._publish_outbound_backlog(sm)
+    after = otel_metrics._outbound_backlog
+    assert after is not None
+
+    assert after[0] == baseline[0] + 2, "the gauge must see BOTH tenants' pending rows"
+    assert after[1] >= 0.0
+
+
+async def test_outbound_pending_index_exists(db_session) -> None:
+    """The gauge's query and the per-tenant drain both ride on the partial
+    index of 0067. Without it they seq-scan every partition of
+    ``messages`` every 30 s — the reason the index shipped with the gauge.
+    """
+    import sqlalchemy as sa
+
+    found = await db_session.scalar(
+        sa.text("SELECT count(*) FROM pg_indexes WHERE indexname = :name"),
+        {"name": "ix_messages_outbound_pending"},
+    )
+    assert found == 1
+
+
 async def test_dispatcher_drains_only_notified_tenants(monkeypatch) -> None:
     drained: list[uuid.UUID] = []
 

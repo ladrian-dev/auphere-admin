@@ -10,6 +10,8 @@ Instruments (labels):
 - ``turn_errors_total``      counter   (tenant, stage)
 - ``queue_lag_entries``      obs. gauge (stream)
 - ``queue_oldest_pending_seconds`` obs. gauge (stream)
+- ``outbound_pending_messages``    obs. gauge (sin labels)
+- ``outbound_oldest_pending_seconds`` obs. gauge (sin labels)
 - ``llm_call_ms``            histogram (model, role)
 - ``llm_tokens_total``       counter   (type=input|output|cache_read|cache_write, model)
 - ``webhook_ack_ms``         histogram (provider)
@@ -63,6 +65,39 @@ def _lag_oldest_callback(_options: Any) -> list[Any]:
     return [
         Observation(oldest, {"stream": stream}) for stream, (_entries, oldest) in _queue_lag.items()
     ]
+
+
+# Profundidad de la cola de SALIDA (``messages`` pending outbound), medida
+# por el sweep del dispatcher de egress. Es una cuenta GLOBAL, no por
+# tenant: es la señal de autoescalado del servicio egress (WP-24) y el
+# número por tenant ni escala ni cabe como dimensión de CloudWatch.
+#
+# ``None`` = todavía no se ha medido nada en este proceso; el callback no
+# emite observación, que es distinto de emitir un 0. Un 0 falso al arrancar
+# le diría al autoescalado "no hay trabajo" antes de mirar la base.
+_outbound_backlog: tuple[int, float] | None = None
+
+
+def set_outbound_backlog(*, pending: int, oldest_pending_s: float) -> None:
+    """Called by the outbound dispatcher on every sweep (WP-24 hook)."""
+    global _outbound_backlog
+    _outbound_backlog = (pending, oldest_pending_s)
+
+
+def _outbound_pending_callback(_options: Any) -> list[Any]:
+    from opentelemetry.metrics import Observation
+
+    if _outbound_backlog is None:
+        return []
+    return [Observation(_outbound_backlog[0])]
+
+
+def _outbound_oldest_callback(_options: Any) -> list[Any]:
+    from opentelemetry.metrics import Observation
+
+    if _outbound_backlog is None:
+        return []
+    return [Observation(_outbound_backlog[1])]
 
 
 def install_metrics(service_name: str, *, extra_reader: Any | None = None) -> None:
@@ -143,6 +178,32 @@ def ensure_queue_gauges() -> None:
     )
 
 
+def ensure_outbound_gauges() -> None:
+    """Register the outbound-backlog observable gauges (idempotent).
+
+    Deliberately SIN labels: la política de autoescalado de egress
+    (``20-services/autoscaling.tf``) declara la métrica sin dimensiones, y
+    el collector ADOT corre con ``NoDimensionRollup`` — un atributo aquí
+    crearía una serie que la política nunca encontraría. Cada réplica de
+    egress publica la misma cuenta global, por eso la política agrega con
+    ``Maximum``.
+    """
+    if "outbound_pending_messages" in _instruments:
+        return
+    meter = _meter()
+    _instruments["outbound_pending_messages"] = meter.create_observable_gauge(
+        "outbound_pending_messages",
+        callbacks=[_outbound_pending_callback],
+        description="Outbound messages waiting to be sent, across all tenants",
+    )
+    _instruments["outbound_oldest_pending_seconds"] = meter.create_observable_gauge(
+        "outbound_oldest_pending_seconds",
+        callbacks=[_outbound_oldest_callback],
+        unit="s",
+        description="Age of the oldest outbound message still pending",
+    )
+
+
 def record_turn(*, duration_ms: float, tenant_id: str, intent: str | None, channel: str) -> None:
     with contextlib.suppress(Exception):
         _instrument("turn_latency_ms", "histogram", unit="ms").record(
@@ -193,9 +254,10 @@ def record_meta_send_failure(*, code: str) -> None:
 
 
 def reset_for_tests() -> None:
-    global _installed, _provider
+    global _installed, _provider, _outbound_backlog
     with _lock:
         _installed = False
         _provider = None
         _instruments.clear()
         _queue_lag.clear()
+        _outbound_backlog = None
