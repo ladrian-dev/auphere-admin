@@ -93,6 +93,15 @@ def _thread(tenant_id: uuid.UUID) -> str:
     return f"tenant:{tenant_id}:channel:{uuid.uuid4()}:user:56911112222"
 
 
+async def _set_guc(session, tenant_id) -> None:
+    """WP-14b: con RLS FORCE (0066) hasta el owner necesita el GUC para
+    escribir — mismo contrato que aplica el TenantScopedPostgresSaver."""
+    await session.execute(
+        sa.text("SELECT set_config('app.tenant_id', :t, false)"),
+        {"t": str(tenant_id)},
+    )
+
+
 async def _insert_checkpoint(session, thread_id: str) -> None:
     await session.execute(
         sa.text(
@@ -109,6 +118,7 @@ async def test_tenant_id_derived_from_thread_prefix(db_session) -> None:
     thread = _thread(tenant_id)
     sm = get_sessionmaker()
     async with sm() as session:
+        await _set_guc(session, tenant_id)
         await _insert_checkpoint(session, thread)
         await session.commit()
         derived = await session.scalar(
@@ -134,6 +144,9 @@ async def test_forged_tenant_id_is_overwritten_by_trigger(db_session) -> None:
     thread = _thread(real_tenant)
     sm = get_sessionmaker()
     async with sm() as session:
+        # GUC del tenant REAL: el WITH CHECK compara contra el tenant_id ya
+        # corregido por el trigger, así que el forjado no cuela ni con RLS.
+        await _set_guc(session, real_tenant)
         await session.execute(
             sa.text(
                 "INSERT INTO checkpoints "

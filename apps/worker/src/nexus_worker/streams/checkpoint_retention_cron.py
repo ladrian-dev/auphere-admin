@@ -73,6 +73,9 @@ _DEAD_THREADS_SQL = sa.text(
 )
 
 
+_MAINTENANCE_GUC = sa.text("SELECT set_config('app.rls_maintenance', 'on', false)")
+
+
 async def prune_once(
     *,
     keep: int,
@@ -80,7 +83,14 @@ async def prune_once(
     batch_rows: int = BATCH_ROWS,
     pause_s: float = BATCH_PAUSE_S,
 ) -> dict[str, int]:
-    """One full retention pass. Returns counters for logs/tests."""
+    """One full retention pass. Returns counters for logs/tests.
+
+    WP-14b: las tablas de checkpoint tienen RLS FORCE con policy por
+    tenant; este barrido es global A PROPÓSITO y entra por la policy de
+    mantenimiento (``app.rls_maintenance='on'``, migración 0066). Ese GUC
+    es exclusivo de los caminos de mantenimiento del scheduler — el
+    runtime jamás lo setea.
+    """
     sm = get_sessionmaker()
     trimmed = 0
     dead_threads = 0
@@ -88,6 +98,7 @@ async def prune_once(
     # 1 · per-thread trim, batched until dry.
     while True:
         async with sm() as session:
+            await session.execute(_MAINTENANCE_GUC)
             result = await session.execute(_TRIM_SQL, {"keep": keep, "batch": batch_rows})
             await session.commit()
             deleted = result.rowcount or 0
@@ -100,6 +111,7 @@ async def prune_once(
     # checkpoints (a crash mid-batch leaves a consistent, re-prunable state).
     while True:
         async with sm() as session:
+            await session.execute(_MAINTENANCE_GUC)
             rows = await session.execute(
                 _DEAD_THREADS_SQL, {"max_age_days": max_age_days, "batch": 200}
             )
