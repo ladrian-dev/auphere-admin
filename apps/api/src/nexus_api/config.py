@@ -30,7 +30,24 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://nexus:nexus@localhost:5433/nexus"
 
-    @field_validator("database_url", mode="before")
+    # WP-15 — tres URLs de base de datos:
+    #   ``database_url``        → tráfico de la app; con PgBouncer delante va
+    #                             en modo transaction (ver db_transaction_pooling).
+    #   ``database_url_direct`` → Alembic y el checkpointer de LangGraph:
+    #                             conexiones de sesión larga que NO deben pasar
+    #                             por el pooler. Vacía = usa database_url.
+    #   ``database_url_ro``     → réplica de lectura para los routers de solo
+    #                             lectura pesada. Vacía = usa database_url.
+    database_url_direct: str = ""
+    database_url_ro: str = ""
+
+    # WP-15 — activar cuando database_url apunta a un pooler en modo
+    # transaction (PgBouncer): desactiva el cache de prepared statements de
+    # asyncpg y hace únicos los nombres de statement, que es lo que rompe
+    # con multiplexado de conexiones.
+    db_transaction_pooling: bool = False
+
+    @field_validator("database_url", "database_url_direct", "database_url_ro", mode="before")
     @classmethod
     def _coerce_async_driver(cls, v: object) -> object:
         # Railway's Postgres add-on exposes ``postgresql://...`` while the

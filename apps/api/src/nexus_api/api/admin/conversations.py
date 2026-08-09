@@ -13,7 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
-from nexus_api.api.deps import get_redis, scoped_session_from_path
+from nexus_api.api.deps import (
+    get_redis,
+    ro_scoped_session_from_path,
+    scoped_session_from_path,
+)
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import (
     AuditLog,
@@ -48,7 +52,7 @@ async def list_conversations(
     tenant_id: uuid.UUID,
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = Query(default=None),
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
 ) -> ConversationPageOut:
     repo = ConversationRepository(session)
     page = await repo.list_paginated(limit=limit, cursor=cursor)
@@ -83,7 +87,7 @@ async def _provider_map(
 async def get_conversation(
     tenant_id: uuid.UUID,
     conversation_id: uuid.UUID,
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
 ) -> ConversationOut:
     """Block M.3 — detail of a single conversation. Used by the detail
     view to render the takeover control alongside the message history."""
@@ -106,7 +110,7 @@ async def get_conversation(
 async def list_conversation_messages(
     tenant_id: uuid.UUID,
     conversation_id: uuid.UUID,
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
 ) -> list[MessageOut]:
     """Block M.3 — chronological message history for the detail view."""
     conv = await ConversationRepository(session).get(conversation_id)
@@ -335,7 +339,7 @@ async def stream_conversation_events(
     request: Request,
     tenant_id: uuid.UUID,
     conversation_id: uuid.UUID,
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
     redis: Redis = Depends(get_redis),
 ) -> EventSourceResponse:
     """Bloque C — per-conversation live event stream.
@@ -404,7 +408,7 @@ async def stream_conversation_events(
 async def stream_conversations(
     request: Request,
     tenant_id: uuid.UUID,
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
 ) -> EventSourceResponse:
     """SSE stream of conversation IDs for live tailing.
 

@@ -222,7 +222,9 @@ def build_context(service_name: str) -> WorkerContext:
             creds = await TikTokCredentialsRepository(cred_session).get_or_raise()
             return (creds.business_id, creds.access_token)
 
-    tiktok_adapter = TikTokChannelAdapter(tiktok_client, credentials_loader=_load_tiktok_credentials)
+    tiktok_adapter = TikTokChannelAdapter(
+        tiktok_client, credentials_loader=_load_tiktok_credentials
+    )
     channel_adapters = {"meta": meta_adapter, "tiktok": tiktok_adapter}
 
     # WP-11 (D10): the runner resolves inbound media (webhook publishes only
@@ -272,7 +274,10 @@ def build_context(service_name: str) -> WorkerContext:
 async def pipeline_scope(ctx: WorkerContext) -> AsyncIterator[Any]:
     """Open the Postgres checkpointer and compile the graph. Runner-only —
     egress and scheduler never touch conversational state."""
-    async with postgres_checkpointer(ctx.api_settings.database_url) as saver:
+    # WP-15: el saver mantiene una conexión de sesión larga — va SIEMPRE
+    # directo a Postgres, nunca a través del pooler en modo transaction.
+    checkpointer_url = ctx.api_settings.database_url_direct or ctx.api_settings.database_url
+    async with postgres_checkpointer(checkpointer_url) as saver:
         yield build_pipeline(
             agent_loader=ctx.loader,
             llm_router=ctx.router,

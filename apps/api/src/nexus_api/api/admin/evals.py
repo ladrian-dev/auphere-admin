@@ -36,7 +36,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_api.api.deps import scoped_session_from_path
+from nexus_api.api.deps import ro_scoped_session_from_path, scoped_session_from_path
 from nexus_api.core.security import require_admin_token
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
@@ -233,7 +233,7 @@ async def create_dataset(
 )
 async def list_datasets(
     tenant_id: Annotated[uuid.UUID, Path()],
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
 ) -> list[EvalDatasetOut]:
     rows = (
         (
@@ -257,7 +257,7 @@ async def list_datasets(
 async def get_dataset(
     tenant_id: Annotated[uuid.UUID, Path()],
     dataset_id: Annotated[uuid.UUID, Path()],
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
 ) -> EvalDatasetDetailOut:
     ds = await _get_dataset(session, tenant_id=tenant_id, dataset_id=dataset_id)
     cases = (
@@ -609,7 +609,7 @@ async def trigger_run(
 async def get_run(
     tenant_id: Annotated[uuid.UUID, Path()],
     run_id: Annotated[uuid.UUID, Path()],
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
 ) -> EvalRunDetailOut:
     run = (
         await session.execute(sa.select(EvalRun).where(EvalRun.id == run_id))
@@ -640,7 +640,7 @@ async def get_run(
 )
 async def list_runs(
     tenant_id: Annotated[uuid.UUID, Path()],
-    session: AsyncSession = Depends(scoped_session_from_path),
+    session: AsyncSession = Depends(ro_scoped_session_from_path),
     agent_config_version: int | None = Query(default=None, ge=1),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[EvalRunOut]:
