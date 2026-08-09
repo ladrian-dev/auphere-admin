@@ -147,7 +147,6 @@ async def process_inbound(
     media_s3_key = event.media_s3_key
     media_mime = event.media_mime
     media_size_bytes = event.media_size_bytes
-    media_sha256 = event.media_sha256
     if event.media_provider_id and not media_s3_key and event.media_kind:
         fetched = await fetch_inbound_media(
             tenant_id=event.tenant_id,
@@ -161,7 +160,6 @@ async def process_inbound(
             media_s3_key = fetched.s3_key
             media_mime = fetched.mime
             media_size_bytes = fetched.size_bytes
-            media_sha256 = fetched.sha256
 
     processed_media: ProcessedMedia | None = None
     if event.media_kind and media_s3_key:
@@ -255,9 +253,7 @@ async def process_inbound(
         # answer what comes back. Read here, inside the session that is
         # already open, and consumed by the skip below.
         channel_config = (
-            await session.scalar(
-                sa.select(Channel.config).where(Channel.id == event.channel_id)
-            )
+            await session.scalar(sa.select(Channel.config).where(Channel.id == event.channel_id))
         ) or {}
         # Admin-only agents (e.g. cobranza_v1): read the active config's
         # policies while the session is open so the sender gate below can

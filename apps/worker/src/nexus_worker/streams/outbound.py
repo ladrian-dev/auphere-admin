@@ -252,9 +252,7 @@ async def run_outbound_dispatcher(
     sm = get_sessionmaker()
     work = work if work is not None else OutboundWorkSet()
     listener_task = (
-        asyncio.create_task(_run_listener(work, stop), name="outbound-listener")
-        if listen
-        else None
+        asyncio.create_task(_run_listener(work, stop), name="outbound-listener") if listen else None
     )
     drain_limit = asyncio.Semaphore(MAX_CONCURRENT_TENANT_DRAINS)
 

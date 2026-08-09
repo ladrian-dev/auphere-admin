@@ -302,9 +302,7 @@ async def test_patch_channel_leaves_omitted_fields_untouched(
     assert r.json()["config"]["agent_enabled"] is True
 
 
-async def test_patch_channel_null_role_clears_it(
-    client, admin_headers, seed_tenants, db_session
-):
+async def test_patch_channel_null_role_clears_it(client, admin_headers, seed_tenants, db_session):
     tenant_id = seed_tenants["a"]
     channel = await _seed_whatsapp_channel(db_session, tenant_id)
 
@@ -322,9 +320,7 @@ async def test_patch_channel_null_role_clears_it(
     assert "role" not in r.json()["config"]
 
 
-async def test_patch_channel_rejects_unknown_role(
-    client, admin_headers, seed_tenants, db_session
-):
+async def test_patch_channel_rejects_unknown_role(client, admin_headers, seed_tenants, db_session):
     tenant_id = seed_tenants["a"]
     channel = await _seed_whatsapp_channel(db_session, tenant_id)
     r = await client.patch(

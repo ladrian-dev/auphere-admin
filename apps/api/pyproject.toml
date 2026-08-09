@@ -79,7 +79,7 @@ dev = [
     # respx mocks the httpx transport — used by Meta Embedded Signup tests
     # to stub Graph API without hitting the network.
     "respx>=0.21.1",
-    "ruff>=0.7.0",
+    "ruff==0.15.12",
     "mypy>=1.13.0",
     "types-pyyaml>=6.0.12.20240917",
     # [lua] pulls in ``lupa`` so fakeredis can execute the rate-limit

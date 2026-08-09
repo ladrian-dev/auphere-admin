@@ -426,9 +426,7 @@ async def test_create_order_resolves_wc_post_id_retailer(fake_client, tenant_ctx
         "total": "0",
         "line_items": [],
     }
-    await CreateOrder().invoke(
-        {"line_items": [{"retailer_id": "wc_post_id_2782", "quantity": 2}]}
-    )
+    await CreateOrder().invoke({"line_items": [{"retailer_id": "wc_post_id_2782", "quantity": 2}]})
     post = next(c for kind, c in fake_client.calls if kind == "post")
     assert post["payload"]["line_items"] == [{"quantity": 2, "product_id": 2782}]
     assert not any(kind == "list" for kind, _ in fake_client.calls)

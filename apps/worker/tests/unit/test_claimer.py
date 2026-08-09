@@ -38,9 +38,7 @@ async def _orphan_entry(redis) -> None:
     """Deliver one entry to a consumer that will never ack it."""
     await redis.xgroup_create(STREAM, GROUP, id="0", mkstream=True)
     await redis.xadd(STREAM, _fields())
-    await redis.xreadgroup(
-        groupname=GROUP, consumername="c-dead", streams={STREAM: ">"}, count=1
-    )
+    await redis.xreadgroup(groupname=GROUP, consumername="c-dead", streams={STREAM: ">"}, count=1)
 
 
 async def test_orphaned_entry_is_reclaimed_and_processed(monkeypatch) -> None:

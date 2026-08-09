@@ -117,9 +117,7 @@ async def run_stream_claimer(
                     min_idle_ms=min_idle_ms,
                     on_processed=on_processed,
                 )
-                await _check_backlog(
-                    redis, stream=stream_name, group=group, on_backlog=on_backlog
-                )
+                await _check_backlog(redis, stream=stream_name, group=group, on_backlog=on_backlog)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

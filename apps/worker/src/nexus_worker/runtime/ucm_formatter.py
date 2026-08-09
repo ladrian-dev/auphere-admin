@@ -223,9 +223,7 @@ def _build_interactive_ucm(
         # unaffected. Without this the formatter would raise and fail the
         # whole turn (the customer gets no reply).
         n = len([p for p in payload["products"] if str(p).strip()])
-        return _wrap_text(
-            body or f"Te comparto {n} producto(s) del catálogo 👇", mid, metadata
-        )
+        return _wrap_text(body or f"Te comparto {n} producto(s) del catálogo 👇", mid, metadata)
 
     if payload.get("catalog"):
         # Native Meta catalog message (interactive.type == "catalog_message").

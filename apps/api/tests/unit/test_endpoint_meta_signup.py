@@ -607,9 +607,7 @@ async def test_connecting_a_second_number_does_not_repoint_the_first(
     channels = (
         (
             await db_session.execute(
-                select(Channel).where(
-                    Channel.tenant_id == tenant_id, Channel.provider == "meta"
-                )
+                select(Channel).where(Channel.tenant_id == tenant_id, Channel.provider == "meta")
             )
         )
         .scalars()

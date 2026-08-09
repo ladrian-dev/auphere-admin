@@ -93,6 +93,7 @@ def _is_fast_retry_error(exc: BaseException) -> bool:
 
 # ── latency / cache observability ────────────────────────────────────────────
 
+
 # Which token-usage fields to surface on ``llm.call_complete``. ``cache_read``
 # > 0 means the Anthropic prompt cache HIT (the ~90% input discount + latency
 # drop); ``cache_creation`` > 0 means we paid to write the cache this call. If
@@ -132,6 +133,7 @@ def _usage_fields(response: Any) -> dict[str, int]:
         if isinstance(cached, int):
             out["cache_read_input_tokens"] = cached
     return out
+
 
 # Return type of a resilient call — preserved through ``_call_with_resilience``.
 _T = TypeVar("_T")
@@ -525,9 +527,7 @@ class LiteLLMProvider:
         )
         # WP-05: llm_call_ms + llm_tokens_total (the cache-read ratio panel
         # derives from these counters). Never raises.
-        record_llm_call(
-            model=model, role=role, duration_ms=elapsed_ms, usage=usage_fields
-        )
+        record_llm_call(model=model, role=role, duration_ms=elapsed_ms, usage=usage_fields)
         # WP-06: hourly token counters for the cache-ratio alert. Best-effort.
         with contextlib.suppress(Exception):
             from nexus_api.core.redis_client import get_redis
@@ -610,12 +610,11 @@ class LLMRouter:
                         error=str(exc),
                         fast_retry=fast_retry,
                     )
-                    if attempt + 1 < _MAX_ATTEMPTS_PER_MODEL:
-                        # A dead pooled socket fails in ~1ms; retry it on a fresh
-                        # connection immediately instead of paying the backoff.
-                        # Everything else (rate limits, …) still backs off.
-                        if not fast_retry:
-                            await asyncio.sleep(_RETRY_BACKOFF_S * (attempt + 1))
+                    # A dead pooled socket fails in ~1ms; retry it on a fresh
+                    # connection immediately instead of paying the backoff.
+                    # Everything else (rate limits, …) still backs off.
+                    if attempt + 1 < _MAX_ATTEMPTS_PER_MODEL and not fast_retry:
+                        await asyncio.sleep(_RETRY_BACKOFF_S * (attempt + 1))
         assert last_exc is not None  # the loop ran at least once
         log.error(
             "llm.all_attempts_exhausted",

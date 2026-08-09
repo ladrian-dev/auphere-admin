@@ -116,9 +116,7 @@ MAX_STATE_FIELD_BYTES = 32 * 1024
 
 def _clamp_value(value: Any) -> Any:
     if isinstance(value, str) and len(value.encode("utf-8", "ignore")) > MAX_STATE_FIELD_BYTES:
-        clipped = value.encode("utf-8", "ignore")[:MAX_STATE_FIELD_BYTES].decode(
-            "utf-8", "ignore"
-        )
+        clipped = value.encode("utf-8", "ignore")[:MAX_STATE_FIELD_BYTES].decode("utf-8", "ignore")
         return f"{clipped}\n[truncated: state field exceeded {MAX_STATE_FIELD_BYTES} bytes]"
     return value
 

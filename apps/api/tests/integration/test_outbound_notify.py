@@ -47,6 +47,7 @@ async def test_trigger_notifies_on_pending_outbound_insert(db_session, seed_tena
 
     listener = await asyncpg.connect(_dsn())
     try:
+
         def _on_notify(_conn, _pid, _channel, payload):
             received.append(payload)
             got_one.set()
@@ -64,9 +65,7 @@ async def test_trigger_notifies_on_pending_outbound_insert(db_session, seed_tena
             )
             db_session.add(channel)
             await db_session.flush()
-            customer = Customer(
-                tenant_id=tenant_id, identifier=f"569{uuid.uuid4().hex[:8]}"
-            )
+            customer = Customer(tenant_id=tenant_id, identifier=f"569{uuid.uuid4().hex[:8]}")
             db_session.add(customer)
             await db_session.flush()
             conversation = Conversation(
