@@ -61,7 +61,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any, Final, cast
+from typing import Any, Final, TypeVar, cast
 
 import httpx
 import structlog
@@ -99,6 +99,9 @@ _RATE_LIMIT_CODES: Final = frozenset({40016, 50002})
 _TRANSIENT_CODES: Final = frozenset({50000, 50001})
 
 log = structlog.get_logger(__name__)
+
+# Retorno genérico de _with_retries: preserva el tipo del intento.
+_R = TypeVar("_R")
 
 
 class TikTokClient:
@@ -531,8 +534,8 @@ class TikTokClient:
 
     async def _with_retries(
         self,
-        attempt: Callable[[], Awaitable[Any]],
-    ) -> Any:
+        attempt: Callable[[], Awaitable[_R]],
+    ) -> _R:
         try:
             async for retry_state in AsyncRetrying(
                 stop=stop_after_attempt(self._max_retries),

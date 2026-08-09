@@ -294,17 +294,17 @@ async def shutdown_context(ctx: WorkerContext) -> None:
     langfuse_shutdown()
 
 
-def _spawn(name: str, coro: Any) -> asyncio.Task:
+def _spawn(name: str, coro: Any) -> asyncio.Task[None]:
     return asyncio.create_task(coro, name=name)
 
 
-def _heartbeat_task(ctx: WorkerContext) -> asyncio.Task:
+def _heartbeat_task(ctx: WorkerContext) -> asyncio.Task[None]:
     return _spawn("heartbeat", run_heartbeat(ctx.redis, service=ctx.service_name, stop=ctx.stop))
 
 
 def runner_tasks(
     ctx: WorkerContext, pipeline: Any, *, heartbeat: bool = True
-) -> list[asyncio.Task]:
+) -> list[asyncio.Task[None]]:
     ws = ctx.worker_settings
     return ([_heartbeat_task(ctx)] if heartbeat else []) + [
         # promote is pub/sub — EVERY runner replica must receive it (cache
@@ -344,7 +344,7 @@ def runner_tasks(
     ]
 
 
-def egress_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.Task]:
+def egress_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.Task[None]]:
     return ([_heartbeat_task(ctx)] if heartbeat else []) + [
         _spawn(
             "outbound-dispatcher",
@@ -357,7 +357,7 @@ def egress_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.
     ]
 
 
-def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.Task]:
+def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.Task[None]]:
     ws = ctx.worker_settings
     return ([_heartbeat_task(ctx)] if heartbeat else []) + [
         _spawn(
@@ -429,7 +429,7 @@ async def run_service(
     # One heartbeat per PROCESS, outside the leader gate: a hot-standby
     # scheduler must keep beating or the dead-worker alert pages for a
     # replica that is doing exactly its job.
-    tasks: list[asyncio.Task] = [_heartbeat_task(ctx)]
+    tasks: list[asyncio.Task[None]] = [_heartbeat_task(ctx)]
     try:
         if runner:
             async with pipeline_scope(ctx) as pipeline:
@@ -449,7 +449,7 @@ async def run_service(
         await shutdown_context(ctx)
 
 
-def _scheduler_leader_task(ctx: WorkerContext) -> asyncio.Task:
+def _scheduler_leader_task(ctx: WorkerContext) -> asyncio.Task[None]:
     """WP-08: the cron family only runs while holding the advisory lock —
     two scheduler replicas produce zero duplicated effects; the standby
     takes over automatically when the leader's connection dies."""

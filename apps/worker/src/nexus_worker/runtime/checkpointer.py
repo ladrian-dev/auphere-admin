@@ -94,9 +94,9 @@ def build_tenant_scoped_saver_class() -> type:
     """
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-    class TenantScopedPostgresSaver(AsyncPostgresSaver):  # type: ignore[misc]
+    class TenantScopedPostgresSaver(AsyncPostgresSaver):
         @asynccontextmanager
-        async def _cursor(self, *, pipeline: bool = False):  # type: ignore[override]
+        async def _cursor(self, *, pipeline: bool = False) -> AsyncIterator[Any]:
             tenant = _scoped_tenant.get()
             async with super()._cursor(pipeline=pipeline) as cur:
                 if tenant is None:
@@ -110,14 +110,21 @@ def build_tenant_scoped_saver_class() -> type:
                     await cur.execute("RESET ROLE")
                     await cur.execute("SELECT set_config('app.tenant_id', '', false)")
 
-        async def aget_tuple(self, config):  # type: ignore[override]
+        async def aget_tuple(self, config: Any) -> Any:
             token = _scoped_tenant.set(tenant_from_thread_config(config))
             try:
                 return await super().aget_tuple(config)
             finally:
                 _scoped_tenant.reset(token)
 
-        async def alist(self, config, *, filter=None, before=None, limit=None):  # type: ignore[override]
+        async def alist(
+            self,
+            config: Any,
+            *,
+            filter: Any = None,
+            before: Any = None,
+            limit: Any = None,
+        ) -> AsyncIterator[Any]:
             token = _scoped_tenant.set(tenant_from_thread_config(config))
             try:
                 async for item in super().alist(config, filter=filter, before=before, limit=limit):
@@ -125,21 +132,23 @@ def build_tenant_scoped_saver_class() -> type:
             finally:
                 _scoped_tenant.reset(token)
 
-        async def aput(self, config, checkpoint, metadata, new_versions):  # type: ignore[override]
+        async def aput(self, config: Any, checkpoint: Any, metadata: Any, new_versions: Any) -> Any:
             token = _scoped_tenant.set(tenant_from_thread_config(config))
             try:
                 return await super().aput(config, checkpoint, metadata, new_versions)
             finally:
                 _scoped_tenant.reset(token)
 
-        async def aput_writes(self, config, writes, task_id, task_path=""):  # type: ignore[override]
+        async def aput_writes(
+            self, config: Any, writes: Any, task_id: Any, task_path: Any = ""
+        ) -> Any:
             token = _scoped_tenant.set(tenant_from_thread_config(config))
             try:
                 return await super().aput_writes(config, writes, task_id, task_path)
             finally:
                 _scoped_tenant.reset(token)
 
-        async def adelete_thread(self, thread_id):  # type: ignore[override]
+        async def adelete_thread(self, thread_id: Any) -> Any:
             token = _scoped_tenant.set(
                 tenant_from_thread_config({"configurable": {"thread_id": thread_id}})
             )

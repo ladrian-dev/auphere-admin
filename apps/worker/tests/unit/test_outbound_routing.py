@@ -22,6 +22,7 @@ import uuid
 from typing import Any
 
 from nexus_api.db.models import Message, MessageDirection, MessageStatus
+
 from nexus_worker.streams.outbound import _dispatch_message
 
 

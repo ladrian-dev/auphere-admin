@@ -54,7 +54,9 @@ async def _check_postgres() -> None:
 async def _check_redis() -> None:
     from nexus_api.core.redis_client import get_redis
 
-    await asyncio.wait_for(get_redis().ping(), timeout=_PROBE_TIMEOUT_S)
+    ping = get_redis().ping()
+    assert not isinstance(ping, bool)  # cliente async: siempre awaitable
+    await asyncio.wait_for(ping, timeout=_PROBE_TIMEOUT_S)
 
 
 @router.get("/health")

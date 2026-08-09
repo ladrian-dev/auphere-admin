@@ -341,11 +341,12 @@ async def _download_inbound_media(
 
 
 async def _tenant_slug_for(tenant_id: uuid.UUID) -> str:
-    """Reuses the Meta route's resolver — ``tenants`` is a global table and
-    the lookup is identical, so duplicating it would only create drift."""
-    from nexus_api.api.webhooks.meta import _tenant_slug_for as resolve_slug
+    """Reuses the runner's resolver (WP-11 moved it to media_fetch along
+    with the download path) — ``tenants`` is a global table and the lookup
+    is identical, so duplicating it would only create drift."""
+    from nexus_worker.multimodal.media_fetch import _tenant_slug_for as resolve_slug
 
-    return await resolve_slug(tenant_id)
+    return str(await resolve_slug(tenant_id))
 
 
 def _build_tiktok_adapter() -> TikTokChannelAdapter:

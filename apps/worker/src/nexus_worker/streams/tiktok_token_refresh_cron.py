@@ -215,7 +215,7 @@ async def _refresh_one(
 
 async def _fail(
     *,
-    session: sa.orm.Session,  # type: ignore[type-arg]
+    session: sa.orm.Session,
     repo: TikTokCredentialsRepository,
     channel: Channel,
     tenant_id: uuid.UUID,

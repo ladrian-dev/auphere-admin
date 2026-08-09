@@ -243,7 +243,8 @@ def _build_inbound(
     sender_name = _first_str(sender, "nickname", "display_name", "name")
 
     message_type = (_first_str(entry, "message_type", "messageType") or "text").lower()
-    content = entry.get("content") if isinstance(entry.get("content"), dict) else {}
+    raw_content = entry.get("content")
+    content: dict[str, Any] = raw_content if isinstance(raw_content, dict) else {}
     kind = _KIND_BY_MESSAGE_TYPE.get(message_type, InboundMessageKind.UNSUPPORTED)
 
     text = _extract_text(message_type, content, entry)
