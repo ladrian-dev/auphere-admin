@@ -15,9 +15,30 @@ import pytest
 import structlog
 
 from nexus_api.core.logging_context import bind_tenant
-from nexus_api.logging import configure_logging
 
 pytestmark = [pytest.mark.isolation]
+
+
+@pytest.fixture(autouse=True)
+def _restore_structlog_config():
+    """Devolver structlog EXACTAMENTE como estaba, no a la config de prod.
+
+    Estos tests reconfiguran structlog para leer su salida. La versión
+    anterior restauraba llamando a ``configure_logging()``, que impone la
+    configuración de producción — y con ella
+    ``cache_logger_on_first_use=True`` — al resto del proceso. A partir de
+    ahí, ``structlog.testing.capture_logs()`` de cualquier test posterior
+    no intercepta nada (el logger ya está cacheado en su proxy) y el test
+    ve una lista vacía: eso hacía fallar
+    ``test_direct_message_log_trail`` cuando CI corre aislamiento e
+    integración en el MISMO proceso, que es lo que hace.
+    """
+    saved = structlog.get_config()
+    try:
+        yield
+    finally:
+        structlog.contextvars.clear_contextvars()
+        structlog.configure(**saved)
 
 
 def _fresh_capture():
@@ -43,7 +64,10 @@ def _fresh_capture():
 
 
 def _restore_default_logging():
-    configure_logging()
+    """No-op: la restauración la hace el fixture ``_restore_structlog_config``,
+    que devuelve la configuración previa en vez de imponer la de producción.
+    Se conserva la llamada en los ``finally`` para no tocar la forma de los
+    tests."""
 
 
 def test_bind_tenant_attaches_to_log_records():
