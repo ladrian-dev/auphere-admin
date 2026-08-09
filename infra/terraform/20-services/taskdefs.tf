@@ -43,6 +43,24 @@ locals {
     { name = "NEXUS_DB_TRANSACTION_POOLING", value = "true" },
     { name = "NEXUS_OTEL_ENABLED", value = "true" },
     { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://127.0.0.1:4318" },
+    # Los dos ajustes que hacen MEDIBLES en CloudWatch los SLI del plan.
+    # Por defecto el SDK exporta acumulativo y con histogramas de buckets
+    # explícitos, y así:
+    #   - acumulativo → cada minuto se re-publica el agregado desde el
+    #     arranque del proceso, de modo que el Maximum de la métrica no
+    #     decae nunca y no dice nada del minuto que se está mirando;
+    #   - buckets explícitos → el exportador EMF los manda como
+    #     StatisticSet (min/max/sum/count) y CloudWatch NO puede calcular
+    #     percentiles sobre eso: p95 sale vacío.
+    # Delta + histograma exponencial base-2 hacen que EMF publique
+    # Values/Counts por intervalo, que es lo que CloudWatch necesita para
+    # p95. Comprobado el 2026-08-09: antes de esto, `webhook_ack_ms` p95
+    # devolvía None y el máximo era el mismo valor en todos los periodos.
+    { name = "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", value = "delta" },
+    {
+      name  = "OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION"
+      value = "base2_exponential_bucket_histogram"
+    },
     { name = "NEXUS_LANGFUSE_ENVIRONMENT", value = local.nexus_environment },
     # /health/workers en la API espera exactamente estos servicios (WP-07).
     { name = "NEXUS_EXPECTED_WORKER_SERVICES", value = "nexus-runner,nexus-scheduler,nexus-egress" },
@@ -58,6 +76,21 @@ locals {
   # OTLP → EMF. dimension_rollup NoDimensionRollup: queremos exactamente
   # las series con dimensión ``stream`` que usan autoescalado y alarmas,
   # no el producto cartesiano de rollups.
+  #
+  # ``metric_declarations`` NO es opcional aquí, es el contrato: sin ellas
+  # el exportador añade por su cuenta una dimensión ``OTelLib`` a TODAS las
+  # series. En CloudWatch la identidad de una métrica es su conjunto EXACTO
+  # de dimensiones, así que una política que pide ``{stream}`` no encuentra
+  # una serie publicada como ``{stream, OTelLib}``: el autoescalado del
+  # runner y la alarma de cola llevaban desde el primer despliegue mirando
+  # a una métrica sin datos (y la alarma, con ``notBreaching``, sin poder
+  # dispararse jamás). Verificado con ``list-metrics`` el 2026-08-09.
+  #
+  # Cada entrada declara el conjunto de dimensiones EXPORTADO — y solo se
+  # exporta lo declarado, lo que además evita pagar por series que nadie
+  # consulta. Fuera va deliberadamente ``tenant``: a escala de plataforma
+  # es una serie por cliente y por métrica; ese corte es trabajo del WP de
+  # Grafana/Langfuse self-hosted (D8), no de CloudWatch.
   adot_config = yamlencode({
     receivers = {
       otlp = {
@@ -77,6 +110,50 @@ locals {
         log_group_name                   = "/nexus/${terraform.workspace}/emf"
         dimension_rollup_option          = "NoDimensionRollup"
         resource_to_telemetry_conversion = { enabled = false }
+
+        metric_declarations = [
+          # Sin dimensiones: los SLI agregados del plan y el gauge del que
+          # autoescala egress (su política declara la métrica sin
+          # dimensiones — ver autoscaling.tf).
+          {
+            dimensions = [[]]
+            metric_name_selectors = [
+              "turn_latency_ms",
+              "turn_errors_total",
+              "llm_call_ms",
+              "outbound_pending_messages",
+              "outbound_oldest_pending_seconds",
+            ]
+          },
+          # Cola de entrada por tier (WP-10): autoescalado del runner y
+          # alarma de cola envejecida.
+          {
+            dimensions            = [["stream"]]
+            metric_name_selectors = ["queue_lag_entries", "queue_oldest_pending_seconds"]
+          },
+          {
+            dimensions            = [["provider"]]
+            metric_name_selectors = ["webhook_ack_ms", "outbound_delivery_ms"]
+          },
+          # Dónde falla un turno, y por qué rebota Meta.
+          {
+            dimensions            = [["stage"]]
+            metric_name_selectors = ["turn_errors_total"]
+          },
+          {
+            dimensions            = [["code"]]
+            metric_name_selectors = ["meta_send_failures_total"]
+          },
+          # ``type`` es lo que hace derivable el ratio de cache read.
+          {
+            dimensions            = [["type"], ["model"]]
+            metric_name_selectors = ["llm_tokens_total"]
+          },
+          {
+            dimensions            = [["pool.name", "state"]]
+            metric_name_selectors = ["db.client.connections.usage"]
+          },
+        ]
       }
       awsxray = {
         region = var.region
