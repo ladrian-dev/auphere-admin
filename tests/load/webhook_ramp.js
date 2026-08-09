@@ -16,6 +16,12 @@
 // Perfil: calentamiento → sostenido a TARGET_TPM 15 min → pico 10x 2 min
 // → vuelta al sostenido. Criterio del plan: 1.500 turnos/min sostenidos,
 // error rate < 0.5%, webhook ack p95 < 50 ms.
+//
+// Tres knobs para no tener que editar el fichero (la campaña va por fases
+// y cada fase quiere una forma distinta — ver README):
+//   PROFILE=smoke     → 1 min a TARGET_TPM, sin pico. Valida el arnés.
+//   SUSTAINED_MINUTES → largo del tramo sostenido (default 15).
+//   PEAK_MULTIPLIER   → multiplicador del pico; 0 o 1 lo elimina.
 
 import http from "k6/http";
 import crypto from "k6/crypto";
@@ -31,6 +37,30 @@ if (!SECRET) {
 }
 
 const TARGET_RPS = Math.ceil(TARGET_TPM / 60);
+const PROFILE = __ENV.PROFILE || "full";
+const SUSTAINED_MINUTES = parseInt(__ENV.SUSTAINED_MINUTES || "15", 10);
+const PEAK_MULTIPLIER = parseInt(__ENV.PEAK_MULTIPLIER || "10", 10);
+
+function stages() {
+  if (PROFILE === "smoke") {
+    return [
+      { duration: "15s", target: TARGET_RPS },
+      { duration: "45s", target: TARGET_RPS },
+    ];
+  }
+  const base = [
+    { duration: "2m", target: TARGET_RPS }, // calentamiento
+    { duration: `${SUSTAINED_MINUTES}m`, target: TARGET_RPS }, // sostenido (criterio del plan)
+  ];
+  if (PEAK_MULTIPLIER <= 1) {
+    return base;
+  }
+  return base.concat([
+    { duration: "1m", target: TARGET_RPS * PEAK_MULTIPLIER }, // subida al pico
+    { duration: "2m", target: TARGET_RPS * PEAK_MULTIPLIER }, // pico
+    { duration: "2m", target: TARGET_RPS }, // recuperación
+  ]);
+}
 
 export const options = {
   scenarios: {
@@ -40,13 +70,7 @@ export const options = {
       timeUnit: "1s",
       preAllocatedVUs: 200,
       maxVUs: 2000,
-      stages: [
-        { duration: "2m", target: TARGET_RPS }, // calentamiento
-        { duration: "15m", target: TARGET_RPS }, // sostenido (criterio del plan)
-        { duration: "1m", target: TARGET_RPS * 10 }, // subida al pico 10x
-        { duration: "2m", target: TARGET_RPS * 10 }, // pico
-        { duration: "2m", target: TARGET_RPS }, // recuperación
-      ],
+      stages: stages(),
     },
   },
   thresholds: {

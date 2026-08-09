@@ -26,9 +26,28 @@ sostenidos, verificar en CloudWatch (namespace `Nexus`):
 - `turn_latency_ms` p95 < 8 s;
 - `webhook_ack_ms` p95 < 50 ms.
 
-Ojo con el coste: 1.500 turnos/min × 15 min = **22.500 turnos con llamada
-LLM real**. Ajustar `TARGET_TPM` al presupuesto de la key de staging, o
-correr la rampa completa solo en la validación formal de la fase.
+## Coste, y por qué la campaña va en dos fases
+
+El tramo sostenido son 22.500 turnos, pero **el perfil completo son
+~79.000**: el pico 10x (1 min de subida + 2 min arriba + 2 min de bajada a
+250 rps) mueve más mensajes que los 15 minutos sostenidos enteros. A
+Sonnet 4.6 con ~5k in / 200 out por turno eso es del orden de **$1.400** de
+Anthropic real — la key de `nexus/staging/app` es una key de verdad.
+
+De ahí la separación (decidida el 2026-08-09):
+
+1. **Rampa de infraestructura, coste ~0.** Se corre contra los tenants
+   sintéticos de `seed_synthetic.py`, que **no tienen `agent_configs`**: el
+   turno muere en el runner antes de llamar al LLM. Valida exactamente lo
+   que es infraestructura — ack del webhook, ALB, HMAC, XADD, claim del
+   consumer, autoescalado de api/egress, chaos y los dos schedulers.
+2. **Corrida de latencia, corta y pagada.** Un tenant con `agent_config`
+   real y un TPM bajo para medir `turn_latency_ms` p95 y el coste por
+   turno, y extrapolar.
+
+Lo que la fase 1 NO demuestra: que `queue_oldest_pending_seconds` aguante
+bajo turnos de verdad. Un turno que falla en 20 ms nunca hace cola. Ese
+SLI solo cuenta medido en la fase 2 (o en una rampa completa pagada).
 
 ## Chaos: matar un runner a mitad de turno
 
