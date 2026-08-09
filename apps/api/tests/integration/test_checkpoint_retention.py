@@ -172,8 +172,16 @@ async def test_trim_keeps_newest_and_purges_dead_threads(db_session) -> None:
 
 
 async def test_partition_maintenance_creates_current_and_next(db_session) -> None:
+    from nexus_worker.streams.partition_maintenance_cron import PARTITIONED_TABLES
+
     ensured = await ensure_partitions_once()
-    assert len(ensured) == 2
+    # Mes corriente + siguiente, por cada tabla particionada. usage_records
+    # (WP-16) entra aquí: una tabla de facturación que se quede sin
+    # partición al cambiar de mes cae en la DEFAULT y deja de podarse por
+    # DROP PARTITION, que es la razón de particionarla.
+    assert len(ensured) == 2 * len(PARTITIONED_TABLES)
+    assert any(name.startswith("usage_records_") for name in ensured)
+
     sm = get_sessionmaker()
     async with sm() as session:
         for name in ensured:

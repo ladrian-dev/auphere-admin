@@ -88,6 +88,7 @@ from nexus_api.db.models.scheduled_job import (
 from nexus_api.db.models.tenant import Tenant, TenantPlan, TenantStatus, TenantTier
 from nexus_api.db.models.tool import ToolCatalog, ToolStatus
 from nexus_api.db.models.usage import UsageEvent
+from nexus_api.db.models.usage_record import USAGE_METERS, UsageRecord
 
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
@@ -96,6 +97,7 @@ __all__ = [
     "OWNER_CONSULTATION_STATUSES",
     "OWNER_CONSULTATION_URGENCIES",
     "TENANT_SCOPED_API_KEY_SCOPES",
+    "USAGE_METERS",
     "AgentConfig",
     "AgentConfigStatus",
     "AgentMemory",
@@ -168,6 +170,7 @@ __all__ = [
     "ToolCatalog",
     "ToolStatus",
     "UsageEvent",
+    "UsageRecord",
     "WhatsAppOptOut",
     "WhatsAppTemplateStatus",
 ]
