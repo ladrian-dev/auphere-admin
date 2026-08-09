@@ -30,7 +30,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
@@ -220,7 +220,8 @@ async def run_owner_fanout_consumer(
         if not response:
             continue
 
-        for _stream_name, entries in response:
+        typed_response = cast("list[tuple[Any, list[tuple[Any, Any]]]]", response)
+        for _stream_name, entries in typed_response:
             for entry_id, raw_fields in entries:
                 entry_id_str = entry_id.decode() if isinstance(entry_id, bytes) else entry_id
                 fields = _decode_fields(raw_fields)

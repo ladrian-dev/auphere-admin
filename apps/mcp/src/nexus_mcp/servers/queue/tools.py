@@ -64,7 +64,7 @@ async def _redis() -> Redis:
 
 
 async def _list_position(redis: Redis, tenant_id: uuid.UUID, customer_id: uuid.UUID) -> int | None:
-    members = await redis.lrange(_list_key(tenant_id), 0, -1)  # type: ignore[misc]
+    members = await redis.lrange(_list_key(tenant_id), 0, -1)
     target = str(customer_id)
     for idx, m in enumerate(members):
         decoded = m if isinstance(m, str) else m.decode()
@@ -151,7 +151,7 @@ class JoinQueue(ToolBase):
 
             avg_minutes = await _avg_minutes_from_history(session)
 
-        await redis.rpush(list_key, str(payload.customer_id))  # type: ignore[misc]
+        await redis.rpush(list_key, str(payload.customer_id))
         await redis.set(
             _meta_key(tenant_id, payload.customer_id),
             json.dumps(
@@ -220,7 +220,7 @@ class GetEstimatedWait(ToolBase):
         assert isinstance(payload, GetEstimatedWaitInput)
         tenant_id = require_current_tenant()
         redis = await _redis()
-        length = await redis.llen(_list_key(tenant_id))  # type: ignore[misc]
+        length = await redis.llen(_list_key(tenant_id))
         async with tool_session() as session:
             avg = await _avg_minutes_from_history(session)
         return GetEstimatedWaitOutput(
@@ -296,7 +296,7 @@ class RemoveFromQueue(ToolBase):
             entry_id = uuid.UUID(meta["queue_entry_id"])
 
         # Best-effort Redis cleanup; LREM of 0 if not present is fine.
-        await redis.lrem(_list_key(tenant_id), 0, str(payload.customer_id))  # type: ignore[misc]
+        await redis.lrem(_list_key(tenant_id), 0, str(payload.customer_id))
         await redis.delete(_meta_key(tenant_id, payload.customer_id))
 
         if entry_id is not None:
