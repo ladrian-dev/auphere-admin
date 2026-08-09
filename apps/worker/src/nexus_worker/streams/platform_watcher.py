@@ -69,7 +69,8 @@ def _expected_services() -> tuple[str, ...]:
     (``NEXUS_EXPECTED_WORKER_SERVICES``)."""
     from nexus_api.config import get_settings
 
-    return get_settings().expected_worker_services_list
+    services: tuple[str, ...] = tuple(get_settings().expected_worker_services_list)
+    return services
 
 
 # One notification per condition per this window (seconds).

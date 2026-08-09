@@ -25,6 +25,12 @@ from contextlib import asynccontextmanager
 
 import pytest
 import pytest_asyncio
+from nexus_channels.whatsapp_meta.credentials import (
+    ChannelCredentialsRepository,
+    MetaCredentials,
+    MetaCredentialsRepository,
+    resolve_send_credentials,
+)
 
 from nexus_api.core.tenant_context import tenant_context
 from nexus_api.db.models import (
@@ -33,12 +39,6 @@ from nexus_api.db.models import (
     ChannelType,
     Tenant,
     TenantPlan,
-)
-from nexus_channels.whatsapp_meta.credentials import (
-    ChannelCredentialsRepository,
-    MetaCredentials,
-    MetaCredentialsRepository,
-    resolve_send_credentials,
 )
 
 pytestmark = pytest.mark.integration

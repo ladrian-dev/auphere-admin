@@ -175,10 +175,12 @@ async def run_inbound_consumer(
         max_inflight=max_inflight,
     )
 
-    queues: list[asyncio.Queue] = [asyncio.Queue(maxsize=SLOT_QUEUE_MAXSIZE) for _ in range(slots)]
+    queues: list[asyncio.Queue[Any]] = [
+        asyncio.Queue(maxsize=SLOT_QUEUE_MAXSIZE) for _ in range(slots)
+    ]
     inflight = asyncio.Semaphore(max_inflight)
 
-    async def _slot_worker(queue: asyncio.Queue) -> None:
+    async def _slot_worker(queue: asyncio.Queue[Any]) -> None:
         while True:
             item = await queue.get()
             if item is _SLOT_SENTINEL:

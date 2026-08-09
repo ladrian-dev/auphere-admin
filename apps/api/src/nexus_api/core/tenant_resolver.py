@@ -86,7 +86,7 @@ async def resolve_tenant_tier(
     try:
         cached = await redis.get(key)
         if cached in ("standard", "priority"):
-            return cached
+            return str(cached)
         result = await session.execute(
             text("SELECT tier FROM tenants WHERE id = :tid"),
             {"tid": str(tenant_id)},

@@ -548,7 +548,8 @@ async def _handle_status_callback(
         if new_status is not MessageStatus.FAILED:
             stmt = stmt.where(Message.status.in_(_STATUSES_BELOW[new_status]))
         result = await session.execute(stmt.values(**values))
-        if not (result.rowcount or 0):
+        moved = getattr(result, "rowcount", 0)
+        if not (moved or 0):
             # Nothing moved. Either we have no such message (in coexistence
             # Meta also reports statuses for messages typed on the phone),
             # or the row is already at or past this status — a re-drive,

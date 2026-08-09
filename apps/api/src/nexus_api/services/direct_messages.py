@@ -76,9 +76,10 @@ async def _replayed_message(session: AsyncSession, *, idempotency_key: str) -> M
     index is ``(tenant_id, idempotency_key)`` — another tenant's row
     with the same key is invisible here.
     """
-    return await session.scalar(
+    found: Message | None = await session.scalar(
         sa.select(Message).where(Message.idempotency_key == idempotency_key).limit(1)
     )
+    return found
 
 
 def _log_key_collision(

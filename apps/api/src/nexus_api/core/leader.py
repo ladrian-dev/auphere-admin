@@ -43,7 +43,7 @@ async def _wait_or_stop(stop: asyncio.Event, seconds: float) -> None:
         await asyncio.wait_for(stop.wait(), timeout=seconds)
 
 
-async def _cancel_all(tasks: list[asyncio.Task]) -> None:
+async def _cancel_all(tasks: list[asyncio.Task[None]]) -> None:
     for task in tasks:
         task.cancel()
     with contextlib.suppress(Exception):
@@ -54,7 +54,7 @@ async def run_exclusive(
     name: str,
     *,
     stop: asyncio.Event,
-    start_tasks: Callable[[], list[asyncio.Task]],
+    start_tasks: Callable[[], list[asyncio.Task[None]]],
     retry_seconds: float = DEFAULT_RETRY_SECONDS,
     ping_seconds: float = DEFAULT_PING_SECONDS,
 ) -> None:

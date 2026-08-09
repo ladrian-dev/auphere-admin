@@ -183,7 +183,8 @@ class OutboundWorkSet:
 def _asyncpg_dsn() -> str:
     from nexus_api.config import get_settings
 
-    return get_settings().database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    url: str = get_settings().database_url
+    return url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
 async def _run_listener(work: OutboundWorkSet, stop: asyncio.Event) -> None:
