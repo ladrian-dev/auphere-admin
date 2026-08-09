@@ -47,6 +47,9 @@ ALL_EXPECTED = {
     "owner-consultation-timeout-sweep",
     "owner-fanout-sweep",
     "connector-reconcile-cron",
+    # WP-13
+    "partition-maintenance-cron",
+    "checkpoint-retention-cron",
 }
 
 

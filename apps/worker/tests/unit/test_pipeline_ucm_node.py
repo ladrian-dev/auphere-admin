@@ -84,3 +84,36 @@ class TestUcmFormatterNode:
             # the current contract: empty response is a programming error
             # surfaced loudly during shadow runs.
             await node({"response": ""})  # type: ignore[arg-type]
+
+
+# ── WP-13: checkpoint shrink ──────────────────────────────────────────────────
+
+
+def test_checkpoint_shrink_clears_history_and_clamps_tool_dumps():
+    from nexus_worker.runtime.state import (
+        MAX_STATE_FIELD_BYTES,
+        checkpoint_shrink_update,
+    )
+
+    huge = "x" * (MAX_STATE_FIELD_BYTES + 10_000)
+    state = {
+        "history": [{"role": "user", "content": "hola"}] * 50,
+        "tool_calls": [
+            {"tool": "catalog.list", "status": "ok", "result": huge},
+            {"tool": "booking.create", "status": "ok", "result": "ok"},
+        ],
+    }
+    update = checkpoint_shrink_update(state)  # type: ignore[arg-type]
+
+    assert update["history"] == []
+    clamped = update["tool_calls"][0]["result"]
+    assert len(clamped.encode()) < MAX_STATE_FIELD_BYTES + 200
+    assert "[truncated" in clamped
+    # Small fields untouched.
+    assert update["tool_calls"][1]["result"] == "ok"
+
+
+def test_checkpoint_shrink_without_tool_calls():
+    from nexus_worker.runtime.state import checkpoint_shrink_update
+
+    assert checkpoint_shrink_update({"history": [{"a": 1}]}) == {"history": []}  # type: ignore[arg-type]

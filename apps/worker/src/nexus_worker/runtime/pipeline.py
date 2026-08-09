@@ -83,7 +83,7 @@ from nexus_worker.memory import (
 from nexus_worker.persistence.messages import persist_outbound_message
 from nexus_worker.runtime.agent_loader import AgentBundle, AgentLoader
 from nexus_worker.runtime.llm import LLMResponse, LLMRouter, ToolCall
-from nexus_worker.runtime.state import AgentState
+from nexus_worker.runtime.state import AgentState, checkpoint_shrink_update
 from nexus_worker.runtime.ucm_formatter import (
     format_response_as_ucm,
     shadow_diff_against_legacy,
@@ -1618,9 +1618,8 @@ async def _checkout_link_already_sent(
     card again. Scoped to a recent window so a genuinely new order (whose
     URL differs once the cart changes) is never blocked. Runs inside the
     caller's tenant-scoped session (RLS limits it to this tenant)."""
-    from sqlalchemy import func, select
-
     from nexus_api.db.models import Message, MessageDirection
+    from sqlalchemy import func, select
 
     cutoff = datetime.now(UTC) - _CHECKOUT_RESEND_WINDOW
     stmt = (
@@ -1750,7 +1749,10 @@ def make_checkpoint_node() -> NodeFn:
                     outcome_retries=outcome_retries,
                     outcome_feedback=outcome_feedback,
                 )
-        return {}
+        # WP-13: the end-of-turn checkpoint is the one that persists until
+        # retention prunes it — shrink it (history reloads from Postgres
+        # next turn; oversized tool dumps get clamped with a marker).
+        return checkpoint_shrink_update(state)
 
     return checkpoint
 

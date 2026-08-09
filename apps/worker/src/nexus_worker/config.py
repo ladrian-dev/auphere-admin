@@ -59,6 +59,13 @@ class WorkerSettings(BaseSettings):
     runner_slots: int = 64
     runner_max_inflight: int = 64
 
+    # ── WP-13: checkpoint retention ─────────────────────────────────────────
+    # Keep the newest N checkpoints per conversation thread; purge threads
+    # inactive beyond the age window. Both enforced by
+    # ``checkpoint-retention-cron`` (scheduler family, daily).
+    checkpoint_keep: int = 20
+    checkpoint_max_age_days: int = 90
+
     @property
     def inbound_streams_list(self) -> tuple[str, ...]:
         return tuple(s.strip() for s in self.inbound_streams.split(",") if s.strip())
