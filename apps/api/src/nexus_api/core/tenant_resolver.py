@@ -41,7 +41,8 @@ async def resolve_tenant(
     cached = await redis.get(redis_key)
     if cached:
         try:
-            return uuid.UUID(cached)
+            # redis-py puede devolver bytes o str según versión/config.
+            return uuid.UUID(cached.decode() if isinstance(cached, bytes) else cached)
         except ValueError:
             await redis.delete(redis_key)
 

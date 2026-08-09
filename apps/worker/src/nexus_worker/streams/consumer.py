@@ -19,7 +19,7 @@ import contextlib
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from nexus_api.core.otel_metrics import record_turn, record_turn_error
@@ -229,7 +229,10 @@ async def run_inbound_consumer(
                 await asyncio.sleep(0.01)
                 continue
 
-            for stream_name, entries in response:
+            # stubs de redis >=8 tipan xreadgroup como unión amplia; el shape
+            # real con decode_responses off es list[(stream, [(id, fields)])].
+            typed_response = cast("list[tuple[Any, list[tuple[Any, Any]]]]", response)
+            for stream_name, entries in typed_response:
                 source = stream_name.decode() if isinstance(stream_name, bytes) else stream_name
                 for entry_id, raw_fields in entries:
                     decoded = _decode_fields(raw_fields)

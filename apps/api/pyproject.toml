@@ -80,7 +80,7 @@ dev = [
     # to stub Graph API without hitting the network.
     "respx>=0.21.1",
     "ruff==0.15.12",
-    "mypy>=1.13.0",
+    "mypy==2.3.0",
     "types-pyyaml>=6.0.12.20240917",
     # [lua] pulls in ``lupa`` so fakeredis can execute the rate-limit
     # token-bucket Lua script (ADR-028) in tests.
