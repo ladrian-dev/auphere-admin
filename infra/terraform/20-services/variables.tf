@@ -1,12 +1,23 @@
 variable "certificate_arn" {
   description = <<-EOT
-    ARN del certificado ACM (eu-south-2) para el listener HTTPS del ALB.
-    Vacío = el ALB nace solo con listener HTTP :80 — suficiente para el
-    primer humo de staging antes de tener DNS; NUNCA aceptable en prod
-    (webhooks de Meta exigen HTTPS).
+    Override: ARN de un certificado ACM (eu-south-2) gestionado FUERA de
+    este stack. Vacío = Terraform pide el cert él mismo (ver acm.tf) con
+    los dominios del entorno.
   EOT
   type        = string
   default     = ""
+}
+
+variable "https_enabled" {
+  description = <<-EOT
+    Crea el listener 443 y convierte el 80 en redirect. Requiere que el
+    certificado esté ISSUED: con el cert en PENDING_VALIDATION el apply
+    falla. La validación DNS es manual (auphere.com no está en esta
+    cuenta), así que la secuencia es apply → crear CNAME → esperar ISSUED
+    → apply -var https_enabled=true.
+  EOT
+  type        = bool
+  default     = false
 }
 
 variable "image_tag" {

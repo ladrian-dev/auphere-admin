@@ -21,3 +21,32 @@ output "service_names" {
 output "migrate_task_definition_family" {
   value = aws_ecs_task_definition.migrate.family
 }
+
+output "certificate_arn" {
+  description = "Cert ACM del ALB (gestionado aquí o el override de var.certificate_arn)."
+  value       = local.certificate_arn
+}
+
+# Los CNAME que hay que crear a mano en el DNS de auphere.com para que ACM
+# emita. Un dominio y su comodín comparten registro, así que staging suele
+# devolver UNO solo.
+output "certificate_validation_records" {
+  description = "Registros CNAME de validación DNS del cert ACM."
+  value = local.manage_certificate ? [
+    for opt in aws_acm_certificate.public[0].domain_validation_options : {
+      domain = opt.domain_name
+      name   = opt.resource_record_name
+      type   = opt.resource_record_type
+      value  = opt.resource_record_value
+    }
+  ] : []
+}
+
+output "public_hostname" {
+  description = "Hostname público del entorno — CNAME a alb_dns_name."
+  value       = local.dns_cfg.hostname
+}
+
+output "https_enabled" {
+  value = local.https_enabled
+}

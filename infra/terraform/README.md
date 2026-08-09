@@ -55,9 +55,17 @@ workspace: aplicar `20-services` en workspace `staging` lee los outputs de
   el deploy — mismo contrato que el `preDeployCommand` de Railway.
 - **Métricas custom para autoescalado** llegan a CloudWatch (namespace
   `Nexus`) vía sidecar ADOT en cada task (OTLP → EMF). El runner escala por
-  `queue_oldest_pending_seconds`; egress por `outbound_pending_messages`
-  (gauge pendiente de publicar en la app — hasta entonces egress se queda en
-  su mínimo, que es un estado seguro).
+  `queue_oldest_pending_seconds`; egress por `outbound_pending_messages`,
+  que publica el sweep del dispatcher cada 30 s **sin dimensiones** (el
+  collector va con `NoDimensionRollup`, así que una etiqueta rompería la
+  política) apoyado en el índice parcial de la migración 0067.
+- **El cert del ALB se pide aquí pero se valida a mano** (`20-services/acm.tf`):
+  el DNS de auphere.com no vive en esta cuenta. Primer apply → cert
+  `PENDING_VALIDATION` + los CNAME en el output
+  `certificate_validation_records`; cuando ACM lo emite,
+  `terraform apply -var https_enabled=true` crea el listener 443 y convierte
+  el 80 en redirect. Staging pide el comodín de `staging.auphere.com`
+  (un solo registro de validación cubre dominio + comodín).
 
 ## Secretos
 
