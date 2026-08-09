@@ -1,0 +1,8 @@
+# Copiar a infra/terraform/backend.hcl tras aplicar bootstrap/ y rellenar:
+#   terraform init -backend-config=../backend.hcl
+#
+# ``key`` NO va aquí — cada stack fija el suyo en su bloque backend.
+bucket         = "nexus-terraform-state-<ACCOUNT_ID>"
+dynamodb_table = "nexus-terraform-lock"
+region         = "eu-west-1"
+encrypt        = true
