@@ -105,6 +105,11 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /build/apps /app/apps
 COPY --from=builder /build/packages /app/packages
 
+# Scripts operacionales de repo-raíz (seed sintético de staging, WP-25):
+# corren como task ECS efímera con la task def de migración y un command
+# override — p. ej. ``python /app/scripts/seed_synthetic.py --wipe``.
+COPY scripts /app/scripts
+
 WORKDIR /app/apps/api
 
 ENV PYTHONPATH=/app/apps/api/src:/app/apps/channels/src:/app/apps/worker/src:/app/apps/mcp/src:/app/packages/ucm-schema/py/src
