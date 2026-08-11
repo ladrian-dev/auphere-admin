@@ -37,8 +37,6 @@ from nexus_api.db.models import (
     Channel,
     Partner,
     Tenant,
-    TenantConnector,
-    TenantConnectorToolOverride,
     TenantPlan,
     TenantStatus,
     TenantTier,
@@ -294,23 +292,32 @@ async def delete_tenant(
     """Hard-delete a tenant. Guard: tenant must be ARCHIVED first.
 
     The two-step (archive → delete) is intentional. Archive is reversible
-    via PUT status='active'. Delete is NOT reversible. The audit row is
-    written BEFORE the cascade so the audit trail survives the row
-    removal — it's stored under ``tenant_id`` so RLS pins it under the
-    same tenant; once the tenant row is gone, the audit row is orphaned
-    by FK CASCADE and removed too. For long-term provenance we rely on
-    Langfuse + the structlog event.
+    via PUT status='active'. Delete is NOT reversible.
 
-    Cleanup order (the 2026-05-13 review caught HTTP 500 here):
-    ``tenant_connectors`` and ``tenant_connector_tool_overrides`` carry
-    ``ON DELETE RESTRICT`` FKs to ``tenants.id`` (block L deliberately
-    chose RESTRICT so an operator can't accidentally wipe live OAuth
-    grants by deleting the wrong tenant). The two-step archive→delete
-    workflow is the explicit confirmation, so once we get here we
-    detach those rows ourselves before the tenant goes — otherwise
-    Postgres raises a ForeignKeyViolation that surfaced as a bare
-    HTTP 500 to the operator. A migration to flip the FKs to CASCADE
-    is the durable fix; this endpoint cleanup is the resilient one.
+    **El borrado lo hace el esquema** (0077), no este handler. Antes había
+    aquí una limpieza a mano de ``tenant_connectors`` y
+    ``tenant_connector_tool_overrides``, los dos únicos hijos con FK
+    RESTRICT que alguien se había acordado de tocar; el resto —bajas de
+    contacto, difusiones, el mapeo de partner— seguía bloqueando el
+    borrado con un 502 ilegible, y `agent_sales`, `usage_records` y
+    `embed_audit_log` se quedaban huérfanos sin decir nada. Con las FKs
+    puestas, todo eso cascadea solo y este handler se queda con las dos
+    cosas que un esquema no puede decidir:
+
+    1. **Qué NO se borra**: una factura emitida tiene obligación legal de
+       conservación (RGPD art. 17.3.b la excluye del derecho de
+       supresión), así que su FK sigue en RESTRICT y aquí se comprueba
+       ANTES para responder 409 explicando qué hay que resolver, en vez
+       de dejar que Postgres lo rechace y devolver un 502.
+    2. **Qué se anonimiza en vez de borrarse**: la traza de auditoría
+       sobrevive sin tenant y sin payloads. El derecho de supresión pide
+       quitar los datos personales, no destruir el registro de quién hizo
+       qué — y con el CASCADE anterior se perdía entera, incluida la fila
+       que registraba este mismo borrado.
+
+    Los checkpoints de LangGraph se borran explícitamente: sus tablas las
+    crea y recrea la librería, así que ponerles una FK nuestra es una
+    carrera que perderíamos en el siguiente ``setup()``.
     """
     repo = TenantRepository(session)
     tenant = await repo.get(tenant_id)
@@ -324,6 +331,21 @@ async def delete_tenant(
             status_code=status.HTTP_409_CONFLICT,
             detail=("tenant must be archived before delete; PATCH status='archived' first"),
         )
+
+    invoices = await session.scalar(
+        sa.text("SELECT count(*) FROM invoices WHERE tenant_id = :t"),
+        {"t": str(tenant_id)},
+    )
+    if invoices:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"el tenant tiene {invoices} factura(s) y no se puede borrar: la "
+                "conservación de facturación es una obligación legal (RGPD art. "
+                "17.3.b). Anula o traspasa las facturas antes de borrar."
+            ),
+        )
+
     snapshot = _tenant_to_dict(tenant)
     log.warning(
         "tenant.delete.cascade",
@@ -331,46 +353,69 @@ async def delete_tenant(
         slug=tenant.slug,
         actor=actor[:8],
     )
+
+    # Anonimización de la traza: primero se vacían los payloads de las
+    # filas existentes (es donde vive cualquier dato personal), y después
+    # se añade la fila de este borrado ya sin snapshot del tenant. El
+    # ``tenant_id`` lo pone a NULL la FK SET NULL de la 0077 cuando el
+    # tenant se va.
+    anonymised = await session.execute(
+        sa.text(
+            "UPDATE audit_log SET before_json = NULL, after_json = NULL "
+            " WHERE tenant_id = :t AND (before_json IS NOT NULL OR after_json IS NOT NULL)"
+        ),
+        {"t": str(tenant_id)},
+    )
     session.add(
         AuditLog(
             tenant_id=tenant_id,
             actor=f"admin:{actor[:8]}",
             action="tenant.delete",
             target=f"tenant:{tenant_id}",
-            before_json=snapshot,
+            # Solo lo que identifica la acción, no el contenido del
+            # tenant: la fila sobrevive al borrado y no puede llevarse
+            # dentro lo que se acaba de suprimir.
+            before_json={"slug": snapshot.get("slug"), "name": snapshot.get("name")},
             after_json=None,
         )
     )
     await session.flush()
 
-    # Detach the two RESTRICT-FK children before the tenant goes. RLS is
-    # already scoped to this tenant via ``scoped_session_from_path``, so
-    # the bulk deletes are bounded — the explicit WHERE is belt-and-
-    # suspenders for clarity and for the eventual day RLS gets relaxed
-    # for an admin-bypass role.
-    overrides_result = await session.execute(
-        sa.delete(TenantConnectorToolOverride).where(
-            TenantConnectorToolOverride.tenant_id == tenant_id
+    # Checkpoints de LangGraph: fuera del alcance de las FKs (ver arriba).
+    # El prefijo del ``thread_id`` es el tenant — el mismo contrato que
+    # usa ``TenantScopedPostgresSaver`` (WP-14b).
+    # Se comprueba la COLUMNA, no solo la tabla. Las crea ``setup()`` de
+    # LangGraph, así que pueden no existir (base recién migrada) o existir
+    # SIN ``tenant_id``: la columna la añade la 0065 a las tablas que hay
+    # en ese momento, y una creada después por la librería nace sin ella
+    # hasta que ``harden_checkpoint_tables()`` corre al arrancar el
+    # worker. Las dos variantes daban un 500 en un endpoint que acababa
+    # de funcionar en dev.
+    checkpoints = 0
+    for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
+        has_column = await session.scalar(
+            sa.text(
+                "SELECT 1 FROM information_schema.columns "
+                " WHERE table_schema = 'public' AND table_name = :t "
+                "   AND column_name = 'tenant_id'"
+            ),
+            {"t": table},
         )
-    )
-    connectors_result = await session.execute(
-        sa.delete(TenantConnector).where(TenantConnector.tenant_id == tenant_id)
-    )
-    log.info(
-        "tenant.delete.cleanup",
-        tenant_id=str(tenant_id),
-        tenant_connectors=connectors_result.rowcount,  # type: ignore[attr-defined]
-        tool_overrides=overrides_result.rowcount,  # type: ignore[attr-defined]
-    )
+        if not has_column:
+            continue
+        result = await session.execute(
+            sa.text(f"DELETE FROM {table} WHERE tenant_id = :t"),
+            {"t": str(tenant_id)},
+        )
+        checkpoints += result.rowcount or 0  # type: ignore[attr-defined]
 
     try:
         await session.delete(tenant)
         await session.flush()
     except SQLAlchemyError as exc:
-        # Any remaining FK violation, RLS-blocked cascade or similar
-        # surfaces here. The 500 -> 502 conversion mirrors what we did
-        # for the sandbox endpoint (P0-1 review fix): give the operator
-        # something they can read in the toast instead of "HTTP 500".
+        # Con la 0077 puesta esto ya no debería dispararse por una FK; se
+        # deja porque un 502 legible sigue siendo mejor que un 500 pelado
+        # el día que aparezca una tabla nueva sin cascada.
         log.exception(
             "tenant.delete.failed",
             tenant_id=str(tenant_id),
@@ -380,6 +425,13 @@ async def delete_tenant(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=(f"no se pudo eliminar el tenant: {type(exc).__name__} — {exc}"),
         ) from exc
+
+    log.info(
+        "tenant.delete.done",
+        tenant_id=str(tenant_id),
+        audit_rows_anonymised=anonymised.rowcount,  # type: ignore[attr-defined]
+        checkpoint_rows_deleted=checkpoints,
+    )
     # The outer dependency commits when the response leaves the handler;
     # an explicit commit here used to clash with that block (it tried to
     # close a transaction the ``async with session.begin():`` in
