@@ -6,8 +6,10 @@ from nexus_api.api.admin import (
     auphere_channels,
     backchannel_owners,
     billing,
+    budget_policies,
     connectors,
     conversations,
+    cost,
     evals,
     integrations,
     isolation,
@@ -46,3 +48,5 @@ router.include_router(partners.router)
 router.include_router(receipts.router)
 router.include_router(billing.router)
 router.include_router(model_bindings.router)
+router.include_router(budget_policies.router)
+router.include_router(cost.router)

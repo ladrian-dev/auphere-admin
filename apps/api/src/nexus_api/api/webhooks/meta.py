@@ -46,7 +46,7 @@ from nexus_channels.whatsapp_meta import (
     verify_meta_signature,
 )
 from redis.asyncio import Redis
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,13 +66,11 @@ from nexus_api.db.models import (
     WhatsAppOptOut,
     WhatsAppTemplateStatus,
 )
-from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
-from nexus_api.repositories import ChannelRepository
 from nexus_api.repositories.auphere_channels import (
     ResolvedAuphereChannel,
 )
 from nexus_api.repositories.auphere_channels import (
-    resolve_channel_for_inbound as resolve_owner_channel_for_inbound,
+    resolve_channel_for_inbound_cached as resolve_owner_channel_for_inbound,
 )
 from nexus_api.services.channel_routing import config_agent_enabled
 from nexus_api.services.owner_channel_flow import handle_owner_inbound
@@ -100,6 +98,40 @@ COEXISTENCE_HISTORY_STREAM = "nexus:meta:history"
 # 10k events ≈ 24h of moderate Coexistence traffic. Cap is approximate
 # (Redis trims on insert when over by 50+) — fine for a buffer.
 COEXISTENCE_STREAM_MAXLEN = 10_000
+
+
+# Todo lo que el camino del ack necesita de Postgres, en un solo viaje.
+# Sin ``FROM``: son tres subconsultas escalares independientes, así que
+# una que no devuelva nada deja su columna en NULL en vez de eliminar la
+# fila entera — que es lo que pasaría con JOINs y lo que haría que un
+# canal ausente escondiese un dedupe positivo.
+#
+# Ninguna lleva ``WHERE tenant_id``: la sesión está scopeada y la RLS de
+# cada tabla es quien filtra, igual que en el resto del runtime.
+_INBOUND_PRELUDE_SQL = text(
+    """
+    SELECT
+      (SELECT m.id
+         FROM messages m
+        WHERE m.provider_message_id = :wamid
+        LIMIT 1)                                        AS prior_message_id,
+      (SELECT c.id
+         FROM channels c
+        WHERE c.provider = 'meta'
+          AND c.provider_identifier = :identifier
+        LIMIT 1)                                        AS channel_id,
+      (SELECT c.config
+         FROM channels c
+        WHERE c.provider = 'meta'
+          AND c.provider_identifier = :identifier
+        LIMIT 1)                                        AS channel_config,
+      (SELECT a.policies
+         FROM agent_configs a
+        WHERE a.status = 'active'
+        ORDER BY a.version DESC
+        LIMIT 1)                                        AS agent_policies
+    """
+)
 
 
 # ── GET handshake ──────────────────────────────────────────────────────────
@@ -171,8 +203,11 @@ async def meta_webhook(
     # callbacks on the backchannel carry no state we track).
     phone_number_id = extract_phone_number_id(payload)
     if phone_number_id:
+        # Variante cacheada: para el 100% del tráfico de tenants la
+        # respuesta es "no es un número de Auphere", y averiguarlo costaba
+        # un ida y vuelta a Postgres por mensaje entrante.
         owner_channel = await resolve_owner_channel_for_inbound(
-            session, provider_phone_id=phone_number_id
+            session, redis, provider_phone_id=phone_number_id
         )
         if owner_channel is not None:
             return await _handle_owner_channel_event(
@@ -296,40 +331,46 @@ async def _handle_inbound(
         log.info("webhook.meta.dedupe_redis_hit", tenant_id=str(tenant_id), wamid=wamid)
         return {"status": "deduped"}
 
-    # Durable dedupe via UNIQUE partial index.
+    # Las tres cosas que hacen falta antes de encolar, en UNA consulta:
+    # el dedupe durable, el canal y las políticas del agente activo.
+    #
+    # Eran tres ``execute`` seguidos dentro de la misma transacción — tres
+    # idas y vueltas a Postgres, en serie, dentro del presupuesto de 50 ms
+    # del ack. Como subconsultas escalares independientes el planificador
+    # las resuelve por índice igual que antes y la RLS se aplica a cada
+    # una por separado: el aislamiento no cambia, solo el número de
+    # viajes. No se puede hacer con JOINs: si el canal no existe, un JOIN
+    # borraría también el resultado del dedupe.
     async with tenant_scoped_session(session, tenant_id):
-        prior = await session.scalar(select(Message.id).where(Message.provider_message_id == wamid))
-        if prior is not None:
-            log.info(
-                "webhook.meta.dedupe_db_hit",
-                tenant_id=str(tenant_id),
-                wamid=wamid,
-                message_id=str(prior),
+        row = (
+            await session.execute(
+                _INBOUND_PRELUDE_SQL,
+                {"wamid": wamid, "identifier": business_phone},
             )
-            return {"status": "deduped"}
+        ).one()
 
-        channel = await ChannelRepository(session).get_by_provider_identifier(
-            "meta", business_phone
+    prior, channel_id, channel_config, agent_policies_raw = row
+    if prior is not None:
+        log.info(
+            "webhook.meta.dedupe_db_hit",
+            tenant_id=str(tenant_id),
+            wamid=wamid,
+            message_id=str(prior),
         )
-        # Active agent policies — needed to decide whether a non-admin sender
-        # on an admin-only agent should even get a read receipt (see below).
-        agent_policies: dict[str, Any] = (
-            await session.scalar(
-                select(AgentConfig.policies)
-                .where(AgentConfig.tenant_id == tenant_id)
-                .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
-                .order_by(AgentConfig.version.desc())
-                .limit(1)
-            )
-        ) or {}
+        return {"status": "deduped"}
 
-    if channel is None:
+    if channel_id is None:
         log.warning(
             "webhook.meta.channel_not_found_under_tenant",
             tenant_id=str(tenant_id),
             identifier=business_phone,
         )
         return {"status": "ignored"}
+
+    # Políticas del agente activo: deciden si un remitente no-admin en un
+    # agente admin-only debe recibir acuse de lectura (ver más abajo).
+    agent_policies: dict[str, Any] = agent_policies_raw or {}
+    channel_config = channel_config or {}
 
     # WP-11 (D10, cierra V7): the webhook no longer downloads media bytes.
     # It publishes the provider's ``media_id`` and the RUNNER resolves
@@ -368,7 +409,7 @@ async def _handle_inbound(
             await _record_opt_out(
                 session=session,
                 tenant_id=tenant_id,
-                channel_id=channel.id,
+                channel_id=channel_id,
                 recipient_phone=inbound.sender_identifier,
                 reason="keyword_stop",
                 keyword=kw,
@@ -377,7 +418,7 @@ async def _handle_inbound(
 
     fields: dict[str, str] = {
         "tenant_id": str(tenant_id),
-        "channel_id": str(channel.id),
+        "channel_id": str(channel_id),
         "user_id": inbound.sender_identifier,
         "content": content,
         "provider": "meta",
@@ -456,18 +497,18 @@ async def _handle_inbound(
     # 2. A send-only channel: the agent will not answer and there is no
     #    human inbox behind it either. Blue ticks on a line nobody watches
     #    tell the customer they were heard when they were not.
-    if not config_agent_enabled(channel.config):
+    if not config_agent_enabled(channel_config):
         log.info(
             "webhook.meta.read_receipt_suppressed_send_only_channel",
             tenant_id=str(tenant_id),
-            channel_id=str(channel.id),
+            channel_id=str(channel_id),
             wamid=wamid,
         )
     elif admin_only_suppresses(agent_policies, inbound.sender_identifier):
         log.info(
             "webhook.meta.read_receipt_suppressed_not_admin",
             tenant_id=str(tenant_id),
-            channel_id=str(channel.id),
+            channel_id=str(channel_id),
             wamid=wamid,
         )
     else:
@@ -484,7 +525,7 @@ async def _handle_inbound(
     log.info(
         "webhook.meta.inbound_enqueued",
         tenant_id=str(tenant_id),
-        channel_id=str(channel.id),
+        channel_id=str(channel_id),
         wamid=wamid,
         kind=inbound.kind.value,
         has_media=bool(media_kind_value),
