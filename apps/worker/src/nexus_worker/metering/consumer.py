@@ -15,8 +15,11 @@ Decisiones:
   que cada lote entra dentro de su ``tenant_scoped_session``. Un insert
   masivo mezclando tenants ni siquiera sería posible, y eso es
   deliberado — es una tabla de facturación.
-- **Sin precio**: se rellena ``quantity`` y ``billable_qty``; ``cost_usd``
-  queda NULL hasta que exista ``model_profiles`` (WP-19). Ver 0071.
+- **El precio se pone aquí** (WP-19): ``cost_usd`` sale de valorar la
+  cantidad contra ``model_profiles``. Lo que no se puede valorar —modelo
+  fuera de catálogo, medidor sin tarifa— entra con NULL y no con 0: un
+  cero se suma en cualquier panel de margen como si el evento fuese
+  gratis. Ver ``metering/pricing.py`` y la migración 0071.
 - **DLQ como WP-04**: una entrada envenenada (JSON roto, tenant ilegible)
   se mueve a ``nexus:usage:dlq`` con el payload íntegro y se acusa, en vez
   de bloquear el PEL para siempre. Un fallo TRANSITORIO (base caída) no
@@ -44,6 +47,7 @@ from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
 from nexus_worker.metering.collector import USAGE_STREAM
+from nexus_worker.metering.pricing import get_catalog, price_row
 
 log = structlog.get_logger(__name__)
 
@@ -102,8 +106,11 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
                 "meter": event["meter"],
                 "quantity": event["quantity"],
                 # Sin política de precios todavía, lo facturable es lo
-                # medido. El precio (cost_usd) llega con WP-19.
+                # medido. El precio lo pone ``persist_rows`` contra el
+                # catálogo; aquí se deja el hueco para que la fila esté
+                # completa aunque nadie la valore.
                 "billable_qty": event["quantity"],
+                "cost_usd": None,
                 "provider": event.get("provider"),
                 "model": event.get("model"),
                 "conversation_id": uuid.UUID(conversation_id) if conversation_id else None,
@@ -117,10 +124,10 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
 _INSERT_SQL = sa.text(
     """
     INSERT INTO usage_records (
-        tenant_id, occurred_at, meter, quantity, billable_qty,
+        tenant_id, occurred_at, meter, quantity, billable_qty, cost_usd,
         provider, model, conversation_id, agent_config_id, idempotency_key
     ) VALUES (
-        :tenant_id, :occurred_at, :meter, :quantity, :billable_qty,
+        :tenant_id, :occurred_at, :meter, :quantity, :billable_qty, :cost_usd,
         :provider, :model, :conversation_id, :agent_config_id, :idempotency_key
     )
     ON CONFLICT (idempotency_key, occurred_at) DO NOTHING
@@ -130,12 +137,28 @@ _INSERT_SQL = sa.text(
 
 async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) -> int:
     """Inserta agrupando por tenant. Devuelve filas ENVIADAS (no insertadas:
-    las que chocan con la clave de idempotencia se descartan en la base)."""
+    las que chocan con la clave de idempotencia se descartan en la base).
+
+    Valora justo antes de insertar (WP-19). El catálogo se lee una vez por
+    pasada, no por fila: son decenas de filas que cambian casi nunca.
+    Que la valoración falle no puede impedir la ingesta — la cantidad
+    medida es el dato irrecuperable, el precio siempre se puede volver a
+    calcular sobre las filas con ``cost_usd IS NULL``.
+    """
     sm = get_sessionmaker()
     sent = 0
+    try:
+        catalog = await get_catalog()
+    except Exception as exc:  # pragma: no cover - get_catalog ya traga lo suyo
+        log.warning("metering.pricing_unavailable", error=str(exc))
+        catalog = {}
+
     for tenant_id, rows in rows_by_tenant.items():
         if not rows:
             continue
+        if catalog:
+            for row in rows:
+                row["cost_usd"] = price_row(row, catalog)
         async with sm() as session, tenant_scoped_session(session, tenant_id):
             for start in range(0, len(rows), INSERT_CHUNK):
                 chunk = rows[start : start + INSERT_CHUNK]
