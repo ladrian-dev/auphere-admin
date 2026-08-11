@@ -53,6 +53,11 @@ from nexus_api.db.models.evals import (
 )
 from nexus_api.db.models.isolation_event import IsolationEvent
 from nexus_api.db.models.kg import KGEdge, KGNode, KGSchema
+from nexus_api.db.models.model_profile import (
+    MODEL_ROLES,
+    ModelProfile,
+    TenantModelBinding,
+)
 from nexus_api.db.models.operator_notification import (
     OperatorNotification,
     OperatorNotificationStatus,
@@ -92,6 +97,7 @@ from nexus_api.db.models.usage_record import USAGE_METERS, UsageRecord
 
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
+    "MODEL_ROLES",
     "OWNER_COMMAND_KINDS",
     "OWNER_CONSULTATION_EXPECTED_REPLY_KINDS",
     "OWNER_CONSULTATION_STATUSES",
@@ -142,6 +148,7 @@ __all__ = [
     "Message",
     "MessageDirection",
     "MessageStatus",
+    "ModelProfile",
     "OperatorNotification",
     "OperatorNotificationStatus",
     "OwnerConsultation",
@@ -164,6 +171,7 @@ __all__ = [
     "TenantConnectorStatus",
     "TenantConnectorToolOverride",
     "TenantCredentials",
+    "TenantModelBinding",
     "TenantPlan",
     "TenantStatus",
     "TenantTier",
