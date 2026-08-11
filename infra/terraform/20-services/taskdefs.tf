@@ -64,6 +64,11 @@ locals {
     { name = "NEXUS_LANGFUSE_ENVIRONMENT", value = local.nexus_environment },
     # /health/workers en la API espera exactamente estos servicios (WP-07).
     { name = "NEXUS_EXPECTED_WORKER_SERVICES", value = "nexus-runner,nexus-scheduler,nexus-egress" },
+    # En Fargate no hay access keys: las credenciales de S3 vienen del task
+    # role y boto3 las resuelve por su cadena por defecto. Sin este flag el
+    # gate ``media_s3_enabled`` exigía claves explícitas y la media se
+    # guardaba en memoria en vez de en S3, sin un solo error.
+    { name = "NEXUS_MEDIA_S3_USE_DEFAULT_CREDENTIALS", value = "true" },
   ]
 
   secrets = [
@@ -251,6 +256,16 @@ resource "aws_cloudwatch_log_group" "service" {
 
   name              = "/nexus/${terraform.workspace}/${each.key}"
   retention_in_days = terraform.workspace == "prod" ? 90 : 30
+}
+
+# El collector escribe aquí el EMF del que CloudWatch extrae las métricas.
+# Lo creaba el propio collector, y por tanto SIN retención: a volumen de
+# producción (un evento EMF por exportación y por serie) es el log group
+# más caro de todos, y lo que se guarda ahí ya está en las métricas.
+# Una semana basta para depurar una serie rara.
+resource "aws_cloudwatch_log_group" "emf" {
+  name              = "/nexus/${terraform.workspace}/emf"
+  retention_in_days = 7
 }
 
 resource "aws_ecs_task_definition" "service" {
