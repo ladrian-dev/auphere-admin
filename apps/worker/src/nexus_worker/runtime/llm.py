@@ -44,7 +44,7 @@ from nexus_api.core.metrics import (
 )
 from nexus_api.core.otel_metrics import record_llm_call
 
-from nexus_worker.metering.collector import record_llm_usage
+from nexus_worker.metering.collector import provider_of, record_llm_usage, usage_fields
 from nexus_worker.observability.tracing import record_generation
 
 log = structlog.get_logger(__name__)
@@ -95,45 +95,17 @@ def _is_fast_retry_error(exc: BaseException) -> bool:
 # ── latency / cache observability ────────────────────────────────────────────
 
 
-# Which token-usage fields to surface on ``llm.call_complete``. ``cache_read``
+# Which token-usage fields we surface on ``llm.call_complete``. ``cache_read``
 # > 0 means the Anthropic prompt cache HIT (the ~90% input discount + latency
 # drop); ``cache_creation`` > 0 means we paid to write the cache this call. If
 # every call shows cache_read=0 the caching is not working and that alone
 # explains slow turns — the exact question "why are all agents slow" needs.
-def _usage_fields(response: Any) -> dict[str, int]:
-    """Best-effort extraction of token usage from a LiteLLM response. Tolerates
-    both dict- and attribute-shaped responses and missing fields (returns only
-    what's present, never raises — instrumentation must not break a turn)."""
-
-    def _get(obj: Any, key: str) -> Any:
-        if obj is None:
-            return None
-        if hasattr(obj, "get"):
-            try:
-                return obj.get(key)
-            except Exception:
-                return None
-        return getattr(obj, key, None)
-
-    usage = _get(response, "usage")
-    if usage is None:
-        return {}
-    out: dict[str, int] = {}
-    for key in (
-        "prompt_tokens",
-        "completion_tokens",
-        "cache_read_input_tokens",
-        "cache_creation_input_tokens",
-    ):
-        val = _get(usage, key)
-        if isinstance(val, int):
-            out[key] = val
-    # Anthropic sometimes reports the cache hit under ``prompt_tokens_details``.
-    if "cache_read_input_tokens" not in out:
-        cached = _get(_get(usage, "prompt_tokens_details"), "cached_tokens")
-        if isinstance(cached, int):
-            out["cache_read_input_tokens"] = cached
-    return out
+#
+# The extractor itself moved to ``metering.collector``: the multimodal
+# processor calls litellm directly (vision, transcription) and needs the same
+# parsing to bill those calls. Re-exported under the old private name so the
+# resilience tests keep importing it from here.
+_usage_fields = usage_fields
 
 
 # Return type of a resilient call — preserved through ``_call_with_resilience``.
@@ -516,7 +488,7 @@ class LiteLLMProvider:
         started = time.perf_counter()
         response = await litellm.acompletion(**kwargs)
         elapsed_ms = round((time.perf_counter() - started) * 1000)
-        usage_fields = _usage_fields(response)
+        usage_counts = usage_fields(response)
         log.info(
             "llm.call_complete",
             tenant_id=str(tenant_id),
@@ -524,11 +496,11 @@ class LiteLLMProvider:
             model=model,
             elapsed_ms=elapsed_ms,
             has_tools=bool(tools),
-            **usage_fields,
+            **usage_counts,
         )
         # WP-05: llm_call_ms + llm_tokens_total (the cache-read ratio panel
         # derives from these counters). Never raises.
-        record_llm_call(model=model, role=role, duration_ms=elapsed_ms, usage=usage_fields)
+        record_llm_call(model=model, role=role, duration_ms=elapsed_ms, usage=usage_counts)
         # WP-17: los mismos tokens, pero para FACTURAR. Las métricas de
         # arriba son agregados de observabilidad; esto es el hecho contable
         # por tenant. Mismo sitio porque es el único por el que pasan todas
@@ -537,8 +509,8 @@ class LiteLLMProvider:
         # (evals, scripts) es no-op.
         record_llm_usage(
             model=model,
-            provider=model.split("/", 1)[0] if "/" in model else None,
-            usage=usage_fields,
+            provider=provider_of(model),
+            usage=usage_counts,
         )
         # WP-06: hourly token counters for the cache-ratio alert. Best-effort.
         with contextlib.suppress(Exception):
@@ -550,7 +522,7 @@ class LiteLLMProvider:
                 ("prompt_tokens", "input"),
                 ("cache_read_input_tokens", "cache_read"),
             ):
-                value = usage_fields.get(usage_key)
+                value = usage_counts.get(usage_key)
                 if value:
                     token_key = f"nexus:alert:llmtok:{label}:{hour_window}"
                     await redis.incrby(token_key, value)
@@ -561,7 +533,7 @@ class LiteLLMProvider:
             tenant_id=tenant_id,
             role=role,
             model=model,
-            usage=usage_fields,
+            usage=usage_counts,
             latency_ms=elapsed_ms,
         )
         return response
