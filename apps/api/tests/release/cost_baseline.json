@@ -1,0 +1,10 @@
+{
+  "_comment": "Línea base de coste por turno (WP-22). Se actualiza A PROPÓSITO, en un commit que explique por qué subió: es el punto entero del test. Medida contra staging, ver test_cost_regression.py.",
+  "measured_at": "2026-08-11",
+  "environment": "staging",
+  "source": "usage_records.cost_usd agregado por turno (conversation_id + occurred_at)",
+  "sample_turns": 179,
+  "usd_per_turn": 0.0033,
+  "tolerance_pct": 20,
+  "notes": "Medida en la campaña WP-15 con haiku para classify y sonnet para respond, sin grader síncrono en todos los turnos. WP-21 (grader a muestreo) debería BAJAR este número; si sube tras un cambio de prompt o de modelo, el build lo dice."
+}
