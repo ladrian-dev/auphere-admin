@@ -78,6 +78,8 @@ from nexus_api.services.media_storage import MediaStorageError, get_media_storag
 from nexus_channels.base import ChannelCapabilityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_worker.metering.collector import record_channel_message
+
 if TYPE_CHECKING:
     from nexus_channels.base import SendResult
 
@@ -619,6 +621,16 @@ async def _send_one(
     # WP-05: outbound_delivery_ms — time from row creation to provider accept.
     if msg.latency_ms is not None:
         record_outbound_delivery(provider="meta", duration_ms=float(msg.latency_ms))
+    # WP-17: un saliente aceptado por el proveedor es un ``channel.message``
+    # facturable. Se emite aquí y no en el callback de estado porque aquí
+    # es donde el envío ocurre de verdad; lo que el callback añade después
+    # es el PRECIO de Meta, que hoy no se persiste (queda para WP-18/19).
+    await record_channel_message(
+        tenant_id=tenant_id,
+        provider="meta",
+        provider_message_id=msg.provider_message_id,
+        conversation_id=msg.conversation_id,
+    )
     log.info(
         "outbound.dispatcher.sent",
         tenant_id=str(tenant_id),
