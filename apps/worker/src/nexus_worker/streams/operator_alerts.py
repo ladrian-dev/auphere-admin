@@ -68,6 +68,11 @@ _ACTION_TO_TEMPLATE: dict[str, str] = {
     "conversation.escalated": "alert_escalation_v1",
     "integration.agendapro.needs_reauth": "alert_needs_reauth_v1",
     "cost.daily_threshold_exceeded": "alert_cost_threshold_v1",
+    # WP-20 — corte duro. Reutiliza la plantilla de coste ya aprobada
+    # por Meta: la señal operativa es la misma ("se gastó el
+    # presupuesto, entra al panel") y una plantilla nueva costaría una
+    # ronda de aprobación para no decir nada distinto.
+    "budget.hard_limit_reached": "alert_cost_threshold_v1",
     "isolation.violation_detected": "alert_isolation_v1",
     "channel.whatsapp_5xx_burst": "alert_whatsapp_burst_v1",
     # Block L — Connectors module. Both map to the existing needs_reauth

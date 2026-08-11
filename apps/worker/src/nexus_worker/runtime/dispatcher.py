@@ -29,6 +29,7 @@ from nexus_api.db.models import Channel, Conversation, Message, Tenant, TenantSt
 from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 from nexus_api.services.channel_routing import config_agent_enabled, config_role
 
+from nexus_worker.metering.budget import evaluate as evaluate_budget
 from nexus_worker.metering.collector import usage_turn
 from nexus_worker.multimodal import ProcessedMedia, get_media_processor
 from nexus_worker.multimodal.media_fetch import fetch_inbound_media
@@ -38,6 +39,7 @@ from nexus_worker.persistence.messages import (
     upsert_conversation_for_customer,
 )
 from nexus_worker.persistence.messages import upsert_customer as _upsert_customer
+from nexus_worker.runtime.budget_gate import apply_hard_cutoff
 from nexus_worker.runtime.read_receipts import send_read_receipt
 from nexus_worker.runtime.state import new_state
 from nexus_worker.runtime.thread_id import make_thread_id
@@ -451,6 +453,32 @@ async def process_inbound(
     if operator_briefing is not None:
         user_message = f"{operator_briefing}\n\n[Mensaje del cliente]\n{user_message}"
 
+    # WP-20 — presupuesto, ANTES de abrir el turno: es el único punto en
+    # el que todavía no se ha gastado nada. El veredicto agrega tenant y
+    # partner y gana el más restrictivo.
+    # Import diferido: ligar ``get_redis`` al cargar el módulo se queda
+    # con la función original y esquiva cualquier sustitución del
+    # cliente (fixtures, un doble en un runbook).
+    from nexus_api.core.redis_client import get_redis
+
+    budget = await evaluate_budget(get_redis(), tenant_id=event.tenant_id)
+    if budget.is_hard:
+        # No se abre turno — pero el cliente final NO se queda sin
+        # respuesta. Ver ``runtime/budget_gate.py``: un agente mudo
+        # delante de los clientes de un tercero es el peor fallo posible
+        # de este producto.
+        warned = await apply_hard_cutoff(
+            tenant_id=event.tenant_id,
+            conversation_id=conversation_id,
+            verdict=budget,
+        )
+        return {
+            "skipped": "budget_hard_limit",
+            "conversation_id": str(conversation_id),
+            "inbound_message_id": str(inbound_id),
+            "handoff_sent": warned,
+        }
+
     state = new_state(
         tenant_id=event.tenant_id,
         channel_id=event.channel_id,
@@ -465,6 +493,18 @@ async def process_inbound(
         # ``event.content`` upstream.
         user_message=user_message,
     )
+    if budget.level == "soft":
+        # Degradación: modelo barato y/o grader apagado. El cliente
+        # final no percibe más que, quizá, una respuesta algo menos
+        # pulida — que es infinitamente mejor que no recibir ninguna.
+        state["budget_degrade_model"] = budget.degrade_model
+        state["budget_disable_grader"] = budget.disable_grader
+        log.info(
+            "budget.soft_degrade",
+            tenant_id=str(event.tenant_id),
+            scope=budget.scope,
+            action=budget.soft_action,
+        )
     thread_id = make_thread_id(event.tenant_id, event.channel_id, event.user_id)
     config = {"configurable": {"thread_id": thread_id}}
 
