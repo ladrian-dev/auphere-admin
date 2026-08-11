@@ -101,6 +101,25 @@ class WorkerSettings(BaseSettings):
     # test deadline.
     memory_retention_tick_seconds: float = 86_400.0  # 1 day
 
+    # ── WP-29: retención por tipo de dato (RGPD) ──────────────────────────
+    # Ventanas distintas porque los datos son distintos, no por simetría.
+    # Las tres son destructivas, así que un valor <= 0 DESACTIVA el paso:
+    # un error de configuración tiene que producir "no se borró nada".
+    #
+    # Transcripciones de nota de voz y punteros a media: la ventana corta.
+    # Es la voz de un cliente convertida en texto y deja de servir en
+    # cuanto la conversación se cierra.
+    retention_media_days: int = 90
+    # Mensajes: se sueltan particiones mensuales enteras, así que la
+    # granularidad real es el mes. 24 meses es holgado a propósito —
+    # acortarlo es una decisión de negocio, no de higiene.
+    retention_message_months: int = 24
+    # Consumo: DESACTIVADO. Es la base de la facturación y tiene
+    # obligación legal de conservación; la perilla existe para el día que
+    # el asesor fiscal fije la ventana.
+    retention_usage_months: int = 0
+    retention_tick_seconds: float = 86_400.0  # 1 day
+
 
 @lru_cache
 def get_worker_settings() -> WorkerSettings:
