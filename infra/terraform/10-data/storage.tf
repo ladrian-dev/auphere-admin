@@ -2,6 +2,14 @@
 # blobs de estado (adjuntos internos, exports). El adaptador de storage de
 # la app ya habla S3 (hoy apunta a R2); WP-26 solo cambia el endpoint.
 
+locals {
+  # Espejo de ``NEXUS_RETENTION_MEDIA_DAYS`` (90) del worker, con un día
+  # de gracia. La app borra el puntero; esto borra el objeto. Si los dos
+  # números se separan, o queda basura sin referencia en el bucket o
+  # desaparece un objeto que la base todavía cree tener.
+  media_retention_days = 91
+}
+
 resource "aws_s3_bucket" "media" {
   bucket = "${local.name}-media-${local.account_id}"
 }
@@ -67,6 +75,29 @@ resource "aws_s3_bucket_lifecycle_configuration" "media" {
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 3
+    }
+  }
+
+  # WP-29 · retención de media. La contrapartida en S3 del cron de
+  # retención: la aplicación borra el PUNTERO en `messages` a los 90 días
+  # (``NEXUS_RETENTION_MEDIA_DAYS``) y esto borra el OBJETO. Sin esta
+  # regla, el audio de una nota de voz seguía en el bucket para siempre
+  # aunque la base ya no supiera dónde estaba — que es la peor de las dos
+  # opciones: se conserva el dato personal y encima nadie puede
+  # encontrarlo para atender una solicitud de supresión.
+  #
+  # Los dos números tienen que coincidir. Se pone uno de gracia por
+  # encima para que el objeto no desaparezca antes que su puntero si un
+  # tick del cron se retrasa: la ventana es de conservación máxima, no un
+  # plazo exacto.
+  rule {
+    id     = "expire-media"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = local.media_retention_days
     }
   }
 }
