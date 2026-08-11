@@ -77,7 +77,11 @@ class UsageRecord(Base):
 
     meter: Mapped[str] = mapped_column(Text, nullable=False)
     quantity: Mapped[decimal.Decimal] = mapped_column(Numeric(20, 6), nullable=False)
-    cost_usd: Mapped[decimal.Decimal] = mapped_column(Numeric(14, 8), nullable=False)
+    # NULL = contado pero todavía sin precio (migración 0071). El emisor
+    # solo cuenta cantidades; el precio lo pone el consumidor desde
+    # ``model_profiles`` (WP-19), que aún no existe. NULL lo dice; un 0
+    # sería indistinguible de algo que de verdad no cuesta nada.
+    cost_usd: Mapped[decimal.Decimal | None] = mapped_column(Numeric(14, 8), nullable=True)
     billable_qty: Mapped[decimal.Decimal] = mapped_column(Numeric(20, 6), nullable=False)
 
     provider: Mapped[str | None] = mapped_column(Text, nullable=True)
