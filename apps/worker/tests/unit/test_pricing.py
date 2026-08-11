@@ -24,9 +24,11 @@ SONNET = ModelPrice(
     cache_write_per_mtok=Decimal("3.75"),
     cache_min_tokens=1024,
 )
-# En catálogo pero sin tarifas cargadas — el caso de gpt-4o y whisper en
-# el seed de 0072.
-SIN_TARIFA = ModelPrice(model_id="openai/gpt-4o")
+# En catálogo pero sin tarifas cargadas. Fue el caso real de gpt-4o y
+# whisper entre la 0072 y la 0076; ahora es el caso de cualquier modelo
+# que alguien añada al catálogo antes de saber lo que cuesta, que es la
+# situación que este módulo tiene que seguir sabiendo tratar.
+SIN_TARIFA = ModelPrice(model_id="proveedor/modelo-sin-tarifa")
 VOZ = ModelPrice(model_id="deepgram/nova-3", per_minute=Decimal("0.0043"))
 
 CATALOG = {p.model_id: p for p in (SONNET, SIN_TARIFA, VOZ)}
@@ -76,7 +78,7 @@ def test_what_cannot_be_priced_is_none_and_never_zero() -> None:
     # 2 · el modelo no está en catálogo
     assert price_row(_row("llm.input_tokens", "1000", model="anthropic/inventado"), CATALOG) is None
     # 3 · el modelo está, pero sin esa tarifa cargada
-    assert price_row(_row("llm.input_tokens", "1000", model="openai/gpt-4o"), CATALOG) is None
+    assert price_row(_row("llm.input_tokens", "1000", model=SIN_TARIFA.model_id), CATALOG) is None
     # 4 · el medidor no se valora por tarifa de modelo
     assert price_row(_row("channel.message", "1"), CATALOG) is None
 
