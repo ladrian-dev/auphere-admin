@@ -51,6 +51,8 @@ ALL_EXPECTED = {
     # WP-13
     "partition-maintenance-cron",
     "checkpoint-retention-cron",
+    # WP-29
+    "data-retention-cron",
 }
 
 

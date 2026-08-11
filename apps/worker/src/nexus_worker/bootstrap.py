@@ -66,6 +66,7 @@ from nexus_worker.streams.connector_reconcile_cron import run_connector_reconcil
 from nexus_worker.streams.consumer import run_inbound_consumer
 from nexus_worker.streams.continuous_eval_cron import run_continuous_eval_cron
 from nexus_worker.streams.cost_rollup_cron import run_cost_rollup_cron
+from nexus_worker.streams.data_retention_cron import run_data_retention_cron
 from nexus_worker.streams.grade_consumer import run_grade_consumer
 from nexus_worker.streams.isolation_watcher import run_isolation_watcher
 from nexus_worker.streams.memory_versions_retention import (
@@ -137,6 +138,7 @@ SCHEDULER_TASK_NAMES = frozenset(
         "connector-reconcile-cron",
         "partition-maintenance-cron",
         "checkpoint-retention-cron",
+        "data-retention-cron",
     }
 )
 
@@ -447,6 +449,20 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         # WP-13: partitions ahead of the calendar + checkpoint pruning.
         _spawn("partition-maintenance-cron", run_partition_maintenance_cron(stop=ctx.stop)),
         _spawn("checkpoint-retention-cron", run_checkpoint_retention_cron(stop=ctx.stop)),
+        # WP-29: retención por tipo de dato. Va en el scheduler (líder
+        # único) porque suelta particiones: dos instancias compitiendo por
+        # el mismo DROP no romperían nada, pero el log diría dos veces que
+        # se borró algo que se borró una.
+        _spawn(
+            "data-retention-cron",
+            run_data_retention_cron(
+                stop=ctx.stop,
+                media_days=ws.retention_media_days,
+                message_months=ws.retention_message_months,
+                usage_months=ws.retention_usage_months,
+                tick_seconds=ws.retention_tick_seconds,
+            ),
+        ),
     ]
 
 
