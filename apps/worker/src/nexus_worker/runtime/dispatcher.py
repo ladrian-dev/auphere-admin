@@ -29,6 +29,7 @@ from nexus_api.db.models import Channel, Conversation, Message, Tenant, TenantSt
 from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 from nexus_api.services.channel_routing import config_agent_enabled, config_role
 
+from nexus_worker.metering.collector import usage_turn
 from nexus_worker.multimodal import ProcessedMedia, get_media_processor
 from nexus_worker.multimodal.media_fetch import fetch_inbound_media
 from nexus_worker.observability.tracing import trace_turn, update_trace
@@ -285,6 +286,9 @@ async def process_inbound(
             )
         ).first()
         agent_policies: dict[str, Any] = (active_agent[1] if active_agent else None) or {}
+        # WP-17: qué VERSIÓN de agente consumió. Es lo que responde si el
+        # prompt nuevo salió más caro que el viejo.
+        agent_config_id: uuid.UUID | None = active_agent[0] if active_agent else None
         # A tenant with NO agent_config at all is send-only by design (it
         # uses the outbound template API and never had an agent). One with
         # versions but none ACTIVE is a broken agent — see the skip below.
@@ -471,14 +475,26 @@ async def process_inbound(
         user_id=event.user_id,
         thread_id=thread_id,
     )
-    with trace_turn(
+    # WP-17: el buffer de consumo del turno. Envuelve la invocación del
+    # grafo porque ahí dentro caen TODAS las llamadas al LLM (classify,
+    # respond, grader, multimodal) y el ContextVar viaja a las tareas que
+    # LangGraph cree por debajo. El id del mensaje entrante hace de turn_id
+    # — ya es único por turno y es lo que ancla la idempotencia. Publica al
+    # salir, también si el turno revienta: esos tokens ya se gastaron.
+    async with usage_turn(
         tenant_id=event.tenant_id,
-        channel_id=event.channel_id,
-        user_id_inside_channel=event.user_id,
-        name="agent.turn",
-        metadata={"thread_id": thread_id, "provider": event.provider},
+        turn_id=str(inbound_id),
+        conversation_id=conversation_id,
+        agent_config_id=agent_config_id,
     ):
-        final = await pipeline.ainvoke(state, config=config)
+        with trace_turn(
+            tenant_id=event.tenant_id,
+            channel_id=event.channel_id,
+            user_id_inside_channel=event.user_id,
+            name="agent.turn",
+            metadata={"thread_id": thread_id, "provider": event.provider},
+        ):
+            final = await pipeline.ainvoke(state, config=config)
         update_trace(
             output={
                 "intent": final.get("intent"),

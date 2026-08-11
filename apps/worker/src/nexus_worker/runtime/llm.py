@@ -44,6 +44,7 @@ from nexus_api.core.metrics import (
 )
 from nexus_api.core.otel_metrics import record_llm_call
 
+from nexus_worker.metering.collector import record_llm_usage
 from nexus_worker.observability.tracing import record_generation
 
 log = structlog.get_logger(__name__)
@@ -528,6 +529,17 @@ class LiteLLMProvider:
         # WP-05: llm_call_ms + llm_tokens_total (the cache-read ratio panel
         # derives from these counters). Never raises.
         record_llm_call(model=model, role=role, duration_ms=elapsed_ms, usage=usage_fields)
+        # WP-17: los mismos tokens, pero para FACTURAR. Las métricas de
+        # arriba son agregados de observabilidad; esto es el hecho contable
+        # por tenant. Mismo sitio porque es el único por el que pasan todas
+        # las llamadas del sistema. Solo cuenta cantidades — el precio lo
+        # pone el consumidor desde ``model_profiles``. Fuera de un turno
+        # (evals, scripts) es no-op.
+        record_llm_usage(
+            model=model,
+            provider=model.split("/", 1)[0] if "/" in model else None,
+            usage=usage_fields,
+        )
         # WP-06: hourly token counters for the cache-ratio alert. Best-effort.
         with contextlib.suppress(Exception):
             from nexus_api.core.redis_client import get_redis
