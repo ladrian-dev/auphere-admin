@@ -54,16 +54,31 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: install uv
         run: pip install uv
-      - name: install api + worker + channels + mcp deps
-        # ``apps/api[dev]`` pulls in nexus-worker / nexus-mcp / nexus-channels
-        # as runtime path deps, but NOT their ``[dev]`` extras. The pytest
-        # steps below run inside each package and need their own test-only
-        # deps (e.g. respx in channels, fakeredis in mcp). Install all four.
+      - name: install api + worker + channels + mcp deps (desde uv.lock)
+        # Los cuatro paquetes: ``apps/api[dev]`` arrastra worker / mcp /
+        # channels como dependencias de ruta, pero NO sus extras ``[dev]``,
+        # y los pytest de abajo corren dentro de cada paquete con sus
+        # dependencias de test propias (respx en channels, fakeredis en mcp).
+        #
+        # Se instala desde el LOCK, no resolviendo de cero. Resolver en cada
+        # run hacía que CI corriese con versiones distintas de las locales:
+        # así llegaron mypy 2.3 y redis 8.1 sin que nadie los pidiera, con
+        # una tarde de CI en rojo detrás. ``--frozen`` falla si el lock no
+        # concuerda con el pyproject, que es justo la señal que queremos.
+        #
+        # El export se hace DENTRO de cada paquete a propósito: las
+        # dependencias de ruta salen como rutas relativas (``-e ../worker``)
+        # y solo resuelven desde ahí.
         run: |
-          uv pip install --system "./apps/api[dev]"
-          uv pip install --system "./apps/worker[dev]"
-          uv pip install --system "./apps/channels[dev]"
-          uv pip install --system "./apps/mcp[dev]"
+          set -euo pipefail
+          for pkg in api worker channels mcp; do
+            ( cd "apps/$pkg" \
+              && uv export --frozen --extra dev --no-emit-project --no-hashes \
+                   > "/tmp/ci-$pkg-requirements.txt" \
+              && uv pip install --system -r "/tmp/ci-$pkg-requirements.txt" )
+          done
+          uv pip install --system --no-deps \
+            ./apps/api ./apps/worker ./apps/channels ./apps/mcp
       - name: alembic upgrade head (CI database)
         working-directory: apps/api
         run: alembic upgrade head
@@ -133,12 +148,20 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: install uv
         run: pip install uv
-      - name: install api + worker + mcp + channels (for mypy/ruff)
+      - name: install api + worker + mcp + channels (desde uv.lock, para mypy/ruff)
+        # Mismo motivo que en test-api: es precisamente aquí donde la
+        # resolución fresca dolía — mypy y ruff cambiando de versión bajo
+        # los pies ponen en rojo un código que no ha tocado nadie.
         run: |
-          uv pip install --system "./apps/api[dev]"
-          uv pip install --system "./apps/worker[dev]"
-          uv pip install --system "./apps/mcp[dev]"
-          uv pip install --system "./apps/channels[dev]"
+          set -euo pipefail
+          for pkg in api worker channels mcp; do
+            ( cd "apps/$pkg" \
+              && uv export --frozen --extra dev --no-emit-project --no-hashes \
+                   > "/tmp/lint-$pkg-requirements.txt" \
+              && uv pip install --system -r "/tmp/lint-$pkg-requirements.txt" )
+          done
+          uv pip install --system --no-deps \
+            ./apps/api ./apps/worker ./apps/channels ./apps/mcp
       - name: ruff check
         run: |
           ruff check apps/api/src apps/api/tests
