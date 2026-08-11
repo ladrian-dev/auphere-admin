@@ -165,3 +165,40 @@ async def test_channel_message_without_wamid_is_skipped(fake_redis) -> None:
         tenant_id=uuid.uuid4(), provider="meta", provider_message_id=None
     )
     assert fake_redis.entries == []
+
+
+class _RecordingRedis:
+    """Registra las lecturas para fijar el ORDEN, que es lo que estuvo mal."""
+
+    def __init__(self) -> None:
+        self.reads: list[str] = []
+        self.claimed = False
+
+    async def xgroup_create(self, *a, **kw):
+        return True
+
+    async def xreadgroup(self, group, consumer, streams, count=None, block=None):
+        self.reads.append(next(iter(streams.values())))
+        return []
+
+    async def xautoclaim(self, *a, **kw):
+        self.claimed = True
+        return (b"0-0", [], [])
+
+
+async def test_drain_reads_pending_then_orphans_then_new() -> None:
+    """El orden importa y es la corrección del fallo visto en staging.
+
+    Leer solo ``">"`` deja para siempre en el PEL lo que falló al
+    persistir: "no acusar para que se reintente" solo es cierto si algo
+    vuelve a leerlo. Y sin ``XAUTOCLAIM``, el trabajo de una réplica
+    muerta se pierde — en facturación, eso es dinero.
+    """
+    from nexus_worker.metering.consumer import drain_once
+
+    redis = _RecordingRedis()
+    processed = await drain_once(redis, consumer_name="c1")
+
+    assert processed == 0
+    assert redis.reads == ["0", ">"], "primero lo propio pendiente, luego lo nuevo"
+    assert redis.claimed, "hay que reclamar lo huérfano de réplicas muertas"
