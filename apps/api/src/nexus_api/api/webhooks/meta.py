@@ -33,8 +33,6 @@ import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from nexus_channels.base import InboundMessage
 from nexus_channels.whatsapp_meta import (
-    MetaChannelAdapter,
-    MetaClient,
     MetaSignatureError,
     extract_business_phone,
     extract_phone_number_id,
@@ -47,7 +45,6 @@ from nexus_channels.whatsapp_meta import (
     parse_template_status,
     verify_meta_signature,
 )
-from nexus_channels.whatsapp_meta.credentials import resolve_send_credentials
 from redis.asyncio import Redis
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -63,7 +60,6 @@ from nexus_api.core.otel import inject_trace_fields
 from nexus_api.core.streams import stream_for_tier, xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import resolve_tenant, resolve_tenant_tier
-from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     Message,
     MessageStatus,
@@ -432,16 +428,21 @@ async def _handle_inbound(
         )
         return {"status": "opted_out"}
 
-    # WP-01: carry the webhook's trace context across the queue so the
-    # worker's turn span joins this trace instead of starting a new one.
-    inject_trace_fields(fields)
-    # WP-10: priority tenants publish to their own stream (dedicated runner
-    # pool) so standard-tier bursts can't move their latency.
-    tier = await resolve_tenant_tier(session, redis, tenant_id)
-    await xadd_capped(redis, stream_for_tier(tier), fields)
-
     # Politeness: mark as read so the customer sees the two blue checks.
-    # Best-effort — failure never blocks the turn.
+    #
+    # La DECISIÓN se toma aquí (es donde están el canal y las políticas del
+    # agente); el ENVÍO lo hace el runner al recoger el turno. Vivía dentro
+    # de este handler y era una llamada HTTPS a graph.facebook.com esperada
+    # antes de contestarle 200 a Meta, con la conexión de base de datos de
+    # la petición retenida mientras tanto y un cliente httpx nuevo (TLS
+    # nuevo) por cada mensaje entrante. Medido el 2026-08-09: ~40% del ack
+    # en staging, donde la llamada además FALLA rápido; en producción es un
+    # ida y vuelta real. Con eso dentro, el SLI de `webhook_ack_ms` p95 <
+    # 50 ms es inalcanzable, y una degradación de la API de Meta se
+    # realimentaba (ack lento → Meta reintenta → más carga).
+    #
+    # Efecto secundario deseable: hoy se marcaba leído aunque el turno
+    # fallara después; ahora solo se marca cuando de verdad se atiende.
     #
     # Two exceptions, both about not claiming someone read a message nobody
     # read:
@@ -470,12 +471,15 @@ async def _handle_inbound(
             wamid=wamid,
         )
     else:
-        await _mark_read_best_effort(
-            tenant_id=tenant_id,
-            channel_id=channel.id,
-            from_phone=channel.provider_identifier,
-            wamid=wamid,
-        )
+        fields["mark_read"] = "1"
+
+    # WP-01: carry the webhook's trace context across the queue so the
+    # worker's turn span joins this trace instead of starting a new one.
+    inject_trace_fields(fields)
+    # WP-10: priority tenants publish to their own stream (dedicated runner
+    # pool) so standard-tier bursts can't move their latency.
+    tier = await resolve_tenant_tier(session, redis, tenant_id)
+    await xadd_capped(redis, stream_for_tier(tier), fields)
 
     log.info(
         "webhook.meta.inbound_enqueued",
@@ -832,28 +836,6 @@ def _extract_change_value(payload: dict[str, Any], *, field: str) -> dict[str, A
 # ── inbound content + media helpers ──────────────────────────────────────────
 
 
-def _build_meta_adapter() -> MetaChannelAdapter:
-    """Construct a Meta adapter for webhook-side reads (media fetch,
-    mark-as-read). The credentials loader opens its own tenant-scoped
-    session so RLS is the only authority on which BISUAT it reads.
-    """
-    settings = get_settings()
-    client = MetaClient(
-        app_secret=settings.meta_app_secret,
-        require_appsecret_proof=settings.meta_require_appsecret_proof,
-    )
-
-    async def _loader(
-        *, tenant_id: uuid.UUID, channel_id: uuid.UUID | None = None
-    ) -> tuple[str, str]:
-        sm = get_sessionmaker()
-        async with sm() as cred_session, tenant_scoped_session(cred_session, tenant_id):
-            pnid, token = await resolve_send_credentials(cred_session, channel_id=channel_id)
-            return (pnid, token)
-
-    return MetaChannelAdapter(client, credentials_loader=_loader)
-
-
 def _render_content(inbound: InboundMessage) -> str:
     """Render the inbound event into a single ``content`` string the pipeline
     consumes. Provider-agnostic contract so the
@@ -887,32 +869,10 @@ def _render_content(inbound: InboundMessage) -> str:
     return inbound.text or f"[unsupported:{inbound.raw_event_type or 'unknown'}]"
 
 
-async def _mark_read_best_effort(
-    *,
-    tenant_id: uuid.UUID,
-    channel_id: uuid.UUID,
-    from_phone: str,
-    wamid: str,
-) -> None:
-    """Send the read receipt. Never raises — the inbound turn already
-    enqueued, so a failed read receipt is cosmetic."""
-    adapter = _build_meta_adapter()
-    try:
-        await adapter.mark_as_read(
-            from_phone=from_phone,
-            wamid=wamid,
-            tenant_id=tenant_id,
-            channel_id=channel_id,
-        )
-    except Exception as exc:
-        log.info(
-            "webhook.meta.mark_as_read_failed",
-            tenant_id=str(tenant_id),
-            wamid=wamid,
-            error=str(exc),
-        )
-    finally:
-        await adapter._client.close()
+# ``_mark_read_best_effort`` y ``_build_meta_adapter`` vivían aquí. El
+# webhook ya no habla con Meta en absoluto: decide y encola. El envío del
+# acuse es del runner (``nexus_worker.runtime.read_receipts``), con un
+# adaptador de larga vida en vez de uno por mensaje.
 
 
 # ── helpers ────────────────────────────────────────────────────────────────

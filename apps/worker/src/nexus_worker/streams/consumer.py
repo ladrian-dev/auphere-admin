@@ -94,6 +94,10 @@ def _to_event(fields: dict[str, str]) -> InboundEvent:
         location_longitude=_opt_float("location_longitude"),
         location_name=fields.get("location_name"),
         location_address=fields.get("location_address"),
+        # Lo pone el webhook cuando toca acuse de lectura; su ausencia
+        # significa "no marcar" (canal send-only, remitente no admin en
+        # línea de coexistencia, o una entrada anterior a este cambio).
+        mark_read=fields.get("mark_read") == "1",
     )
 
 

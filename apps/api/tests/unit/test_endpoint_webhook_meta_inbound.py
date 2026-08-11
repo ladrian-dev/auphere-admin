@@ -215,3 +215,98 @@ async def test_inbound_image_publishes_provider_id_without_download(
     assert mine[0]["media_sha256"] == "abc123"
     # No S3 reference yet — that is the runner's job now.
     assert "media_s3_key" not in mine[0]
+
+
+async def test_inbound_flags_read_receipt_for_the_runner(
+    client, db_session, fake_redis, seed_tenants
+):
+    """El webhook DECIDE el acuse de lectura; ya no lo envía.
+
+    Enviarlo aquí era una llamada HTTPS a Meta esperada antes del 200, con
+    la conexión de BD de la petición retenida: ~40% del ack medido en
+    staging, y el motivo de que `webhook_ack_ms` p95 < 50 ms fuera
+    inalcanzable. Ahora viaja como `mark_read` en la entrada del stream y
+    lo envía el runner con su adaptador de larga vida.
+    """
+    tenant_id = seed_tenants["a"]
+    business_phone = "+56999996666"
+    sender = "56911113333"
+    await _seed_meta_channel(db_session, tenant_id, business_phone)
+
+    payload = _inbound_envelope(
+        business_phone=business_phone,
+        sender=sender,
+        message={
+            "from": sender,
+            "id": "wamid.read-1",
+            "timestamp": "1716300000",
+            "type": "text",
+            "text": {"body": "¿tienen hora mañana?"},
+        },
+    )
+    body = json.dumps(payload).encode()
+    r = await client.post(
+        "/webhook/meta", content=body, headers={"X-Hub-Signature-256": _hub_sig(body)}
+    )
+    assert r.status_code == 200, r.text
+
+    entries = await _inbound_entries(fake_redis)
+    mine = [e for e in entries if e.get("provider_message_id") == "wamid.read-1"]
+    assert len(mine) == 1
+    assert mine[0]["mark_read"] == "1"
+
+
+async def test_send_only_channel_does_not_flag_read_receipt(
+    client, db_session, fake_redis, seed_tenants
+):
+    """Canal send-only: nadie lee al otro lado, así que ni ticks azules ni
+    flag. La supresión sigue decidiéndose en el webhook, que es donde está
+    la configuración del canal."""
+    from nexus_api.db.models import Channel, ChannelStatus, ChannelType
+
+    tenant_id = seed_tenants["a"]
+    business_phone = "+56999995555"
+    sender = "56911114444"
+
+    async with db_session.begin():
+        await db_session.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"),
+            {"t": str(tenant_id)},
+        )
+        await db_session.execute(text("SET LOCAL ROLE nexus_app"))
+        db_session.add(
+            Channel(
+                tenant_id=tenant_id,
+                type=ChannelType.WHATSAPP,
+                provider="meta",
+                provider_identifier=business_phone,
+                status=ChannelStatus.ACTIVE,
+                config={
+                    "waba_id": "WABA1",
+                    "phone_number_id": "PN1",
+                    "agent_enabled": False,
+                },
+            )
+        )
+
+    payload = _inbound_envelope(
+        business_phone=business_phone,
+        sender=sender,
+        message={
+            "from": sender,
+            "id": "wamid.read-2",
+            "timestamp": "1716300000",
+            "type": "text",
+            "text": {"body": "hola"},
+        },
+    )
+    body = json.dumps(payload).encode()
+    r = await client.post(
+        "/webhook/meta", content=body, headers={"X-Hub-Signature-256": _hub_sig(body)}
+    )
+    assert r.status_code == 200, r.text
+
+    entries = await _inbound_entries(fake_redis)
+    mine = [e for e in entries if e.get("provider_message_id") == "wamid.read-2"]
+    assert len(mine) == 1, "el mensaje se encola igual: solo se suprime el acuse"
+    assert "mark_read" not in mine[0]
