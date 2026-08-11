@@ -17,6 +17,12 @@ from typing import Any, TypedDict
 
 
 class AgentState(TypedDict, total=False):
+    # WP-20 — degradación por presupuesto blando. Las pone el
+    # dispatcher ANTES de invocar el grafo; los nodos las leen para
+    # bajar de modelo y/o saltarse el grader. Ausentes = sin degradar.
+    budget_degrade_model: bool
+    budget_disable_grader: bool
+
     # Identity (set at entry, never mutated by nodes)
     tenant_id: str
     channel_id: str

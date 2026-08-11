@@ -140,6 +140,24 @@ def invalidate() -> None:
     _cached_at = 0.0
 
 
+async def cheapest_model() -> str | None:
+    """El modelo con la entrada más barata del catálogo (WP-20).
+
+    Se ordena por precio de ENTRADA y no por el de salida porque en estos
+    agentes el prompt domina el turno con diferencia: el sistema, el
+    historial y las envolturas de herramienta se reenvían enteros en cada
+    llamada, mientras que la respuesta son un par de frases.
+
+    Devuelve None si no hay ningún modelo con precio — degradar a un
+    modelo del que no sabemos el coste no degradaría nada.
+    """
+    catalog = await get_catalog()
+    priced = [p for p in catalog.values() if p.input_per_mtok is not None]
+    if not priced:
+        return None
+    return min(priced, key=lambda p: (p.input_per_mtok, p.model_id)).model_id
+
+
 def price_row(row: dict[str, Any], catalog: dict[str, ModelPrice]) -> Decimal | None:
     """Coste en USD de una fila de consumo, o None si no se puede valorar.
 

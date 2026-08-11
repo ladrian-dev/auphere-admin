@@ -36,6 +36,7 @@ import contextlib
 import json
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 import sqlalchemy as sa
@@ -46,6 +47,7 @@ from nexus_api.db.base import get_sessionmaker
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
+from nexus_worker.metering.budget import add_spend
 from nexus_worker.metering.collector import USAGE_STREAM
 from nexus_worker.metering.pricing import get_catalog, price_row
 
@@ -159,12 +161,57 @@ async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) ->
         if catalog:
             for row in rows:
                 row["cost_usd"] = price_row(row, catalog)
+            # WP-20 — el contador de presupuesto se alimenta AQUÍ, con el
+            # precio ya calculado. Va unos segundos por detrás del gasto
+            # real (el metering es asíncrono) y es un compromiso asumido:
+            # consultarlo en el camino crítico tiene que costar una
+            # lectura de Redis, no un agregado sobre ``usage_records``.
+            await _bump_budget(tenant_id, rows)
         async with sm() as session, tenant_scoped_session(session, tenant_id):
             for start in range(0, len(rows), INSERT_CHUNK):
                 chunk = rows[start : start + INSERT_CHUNK]
                 await session.execute(_INSERT_SQL, chunk)
                 sent += len(chunk)
     return sent
+
+
+_PARTNER_SQL = sa.text("SELECT partner_id FROM partner_tenants WHERE tenant_id = :t LIMIT 1")
+# El mapa tenant → partner cambia con altas y bajas, no con turnos.
+_partner_of: dict[uuid.UUID, uuid.UUID | None] = {}
+
+
+async def _partner_for(tenant_id: uuid.UUID) -> uuid.UUID | None:
+    if tenant_id in _partner_of:
+        return _partner_of[tenant_id]
+    try:
+        sm = get_sessionmaker()
+        async with sm() as session:
+            found = await session.scalar(_PARTNER_SQL, {"t": str(tenant_id)})
+    except Exception as exc:
+        # Sin resolver el partner solo se pierde el contador agregado del
+        # partner; el del tenant sigue subiendo. No se cachea el fallo.
+        log.warning("metering.partner_lookup_failed", tenant_id=str(tenant_id), error=str(exc))
+        return None
+    resolved = uuid.UUID(str(found)) if found else None
+    _partner_of[tenant_id] = resolved
+    return resolved
+
+
+async def _bump_budget(tenant_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
+    """Suma el coste de este lote a los contadores de tenant y partner."""
+    total = sum((r["cost_usd"] for r in rows if r.get("cost_usd") is not None), Decimal(0))
+    if total <= 0:
+        return
+    try:
+        from nexus_api.core.redis_client import get_redis
+
+        redis = get_redis()
+        await add_spend(redis, scope="tenant", scope_id=tenant_id, amount=total)
+        partner_id = await _partner_for(tenant_id)
+        if partner_id is not None:
+            await add_spend(redis, scope="partner", scope_id=partner_id, amount=total)
+    except Exception as exc:
+        log.warning("metering.budget_bump_failed", tenant_id=str(tenant_id), error=str(exc))
 
 
 async def _dead_letter(
