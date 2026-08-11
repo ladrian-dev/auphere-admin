@@ -234,6 +234,14 @@ def build_context(service_name: str) -> WorkerContext:
 
     set_media_fetcher(meta_adapter.fetch_media_bytes)
 
+    # Los dos ticks azules también salen de aquí, no del webhook: el
+    # handler decidía Y enviaba, y esa llamada a Meta dentro del ack hacía
+    # inalcanzable el SLI de 50 ms. Este adaptador es de larga vida, así
+    # que además desaparece el handshake TLS por mensaje.
+    from nexus_worker.runtime.read_receipts import set_read_receipt_sender
+
+    set_read_receipt_sender("meta", meta_adapter.mark_as_read)
+
     # Block O: AgendaPro public-link Node MCP subprocess pool (lazy —
     # tolerates missing Node binary in dev/test).
     agendapro_public_pool = build_agendapro_public_pool_from_env()

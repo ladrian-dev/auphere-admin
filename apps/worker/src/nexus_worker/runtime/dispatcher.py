@@ -37,6 +37,7 @@ from nexus_worker.persistence.messages import (
     upsert_conversation_for_customer,
 )
 from nexus_worker.persistence.messages import upsert_customer as _upsert_customer
+from nexus_worker.runtime.read_receipts import send_read_receipt
 from nexus_worker.runtime.state import new_state
 from nexus_worker.runtime.thread_id import make_thread_id
 
@@ -125,6 +126,11 @@ class InboundEvent:
     location_longitude: float | None = None
     location_name: str | None = None
     location_address: str | None = None
+    # El webhook DECIDE si tocan los dos ticks azules (es donde están el
+    # canal y las políticas del agente) y el runner los ENVÍA. Ver
+    # runtime/read_receipts.py: dentro del ack costaba ~40% del tiempo de
+    # respuesta al webhook de Meta.
+    mark_read: bool = False
 
 
 async def process_inbound(
@@ -133,6 +139,17 @@ async def process_inbound(
     pipeline: Any,
 ) -> dict[str, Any]:
     sm = get_sessionmaker()
+
+    # Lo primero del turno: el acuse de lectura es cortesía y cuanto antes
+    # llegue, mejor. Best-effort por contrato — no lanza, y un acuse
+    # perdido nunca cuesta un turno.
+    if event.mark_read:
+        await send_read_receipt(
+            provider=event.provider,
+            tenant_id=event.tenant_id,
+            channel_id=event.channel_id,
+            wamid=event.provider_message_id,
+        )
 
     # Block N: multimodal media processing. Run BEFORE persistence so
     # the transcript / vision summary can be stored on the inbound
