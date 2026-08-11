@@ -365,6 +365,23 @@ def egress_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.
     ]
 
 
+def metering_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.Task[None]]:
+    """WP-18: ingesta de ``nexus:usage`` → ``usage_records``. Sin líder —
+    el grupo de consumidores reparte y varias réplicas suman."""
+    from nexus_worker.metering.consumer import run_metering_consumer
+
+    return ([_heartbeat_task(ctx)] if heartbeat else []) + [
+        _spawn(
+            "metering-consumer",
+            run_metering_consumer(
+                ctx.redis,
+                stop=ctx.stop,
+                consumer_name=f"{ctx.worker_settings.inbound_consumer_name}:metering",
+            ),
+        ),
+    ]
+
+
 def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.Task[None]]:
     ws = ctx.worker_settings
     return ([_heartbeat_task(ctx)] if heartbeat else []) + [
@@ -424,6 +441,7 @@ async def run_service(
     runner: bool = False,
     scheduler: bool = False,
     egress: bool = False,
+    metering: bool = False,
 ) -> None:
     """Boot one worker service with the selected task families."""
     ctx = build_context(service_name)
@@ -433,6 +451,7 @@ async def run_service(
         runner=runner,
         scheduler=scheduler,
         egress=egress,
+        metering=metering,
     )
     # One heartbeat per PROCESS, outside the leader gate: a hot-standby
     # scheduler must keep beating or the dead-worker alert pages for a
@@ -446,12 +465,16 @@ async def run_service(
                     tasks.append(_scheduler_leader_task(ctx))
                 if egress:
                     tasks.extend(egress_tasks(ctx, heartbeat=False))
+                if metering:
+                    tasks.extend(metering_tasks(ctx, heartbeat=False))
                 await asyncio.gather(*tasks)
         else:
             if scheduler:
                 tasks.append(_scheduler_leader_task(ctx))
             if egress:
                 tasks.extend(egress_tasks(ctx, heartbeat=False))
+            if metering:
+                tasks.extend(metering_tasks(ctx, heartbeat=False))
             await asyncio.gather(*tasks)
     finally:
         await shutdown_context(ctx)
