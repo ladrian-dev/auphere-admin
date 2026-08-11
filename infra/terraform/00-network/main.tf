@@ -29,7 +29,7 @@ locals {
   public_cidrs  = [for i, _ in var.azs : cidrsubnet(local.cfg.cidr, 4, i)]
   private_cidrs = [for i, _ in var.azs : cidrsubnet(local.cfg.cidr, 4, i + 8)]
 
-  services = ["api", "runner", "scheduler", "egress"]
+  services = ["api", "runner", "scheduler", "egress", "metering"]
 }
 
 resource "aws_vpc" "main" {
