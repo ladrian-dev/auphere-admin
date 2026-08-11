@@ -66,6 +66,7 @@ from nexus_worker.streams.connector_reconcile_cron import run_connector_reconcil
 from nexus_worker.streams.consumer import run_inbound_consumer
 from nexus_worker.streams.continuous_eval_cron import run_continuous_eval_cron
 from nexus_worker.streams.cost_rollup_cron import run_cost_rollup_cron
+from nexus_worker.streams.grade_consumer import run_grade_consumer
 from nexus_worker.streams.isolation_watcher import run_isolation_watcher
 from nexus_worker.streams.memory_versions_retention import (
     run_memory_versions_retention_cron,
@@ -117,6 +118,7 @@ SCHEDULER_TASK_NAMES = frozenset(
     {
         "heartbeat",
         "operator-alerter",
+        "grade-consumer",
         "platform-watcher",
         "reminder-cron",
         "agent-sales-poll-cron",
@@ -388,6 +390,19 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn(
             "operator-alerter",
             run_operator_alerter(adapters=ctx.channel_adapters, stop=ctx.stop),
+        ),
+        # WP-21 — grader diferido. Va en el scheduler y NO en el runner
+        # aunque el plan lo situara allí: mete llamadas de LLM y el runner
+        # es el servicio cuya latencia mira el cliente. Aquí, como mucho,
+        # retrasa una métrica de calidad.
+        _spawn(
+            "grade-consumer",
+            run_grade_consumer(
+                ctx.redis,
+                grader=ctx.outcome_grader,
+                stop=ctx.stop,
+                consumer_name=f"{ws.inbound_consumer_name}:grade",
+            ),
         ),
         _spawn("platform-watcher", run_platform_watcher(ctx.redis, stop=ctx.stop)),
         _spawn("reminder-cron", run_reminder_cron(stop=ctx.stop)),

@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import decimal
 import enum
 import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -78,6 +88,17 @@ class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     )
     runtime_outcome_grader: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+    # WP-21 — CUÁNDO corre el grader, cuando está activo. ``sync`` en
+    # todos los turnos (lo de antes), ``off`` en ninguno, ``sampled`` solo
+    # en los de riesgo (reserva, escalado, herramienta que escribe) más
+    # una muestra del resto; los no muestreados se gradúan después, fuera
+    # del camino crítico, y su veredicto no reescribe la respuesta.
+    grader_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="sampled", server_default="sampled"
+    )
+    grader_sample_rate: Mapped[decimal.Decimal] = mapped_column(
+        Numeric(4, 3), nullable=False, default=decimal.Decimal("0.100"), server_default="0.100"
     )
     # The mcp_connector boolean is the kill switch for the entire
     # MCP-connector module. ``runtime_mcp_servers`` lists WHICH servers

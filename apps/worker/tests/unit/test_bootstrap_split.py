@@ -31,6 +31,7 @@ ALL_EXPECTED = {
     "outbound-dispatcher",
     "owner-outbox-dispatcher",
     "operator-alerter",
+    "grade-consumer",
     "platform-watcher",
     "reminder-cron",
     "agent-sales-poll-cron",

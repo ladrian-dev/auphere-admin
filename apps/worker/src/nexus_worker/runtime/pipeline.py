@@ -73,6 +73,7 @@ from nexus_worker.guardrails import (
     GRADER_FALLBACK_RESPONSE,
     OutcomeGrader,
     load_rubric_text,
+    rubric_for_intent,
 )
 from nexus_worker.guardrails.outcome_grader import MAX_GRADER_RETRIES
 from nexus_worker.mcp_connector import build_mcp_extra
@@ -80,8 +81,11 @@ from nexus_worker.memory import (
     MEMORY_TOOL_SYSTEM_PROMPT,
     NexusPostgresMemoryTool,
 )
+from nexus_worker.metering.pricing import cheapest_model
 from nexus_worker.persistence.messages import persist_outbound_message
 from nexus_worker.runtime.agent_loader import AgentBundle, AgentLoader
+from nexus_worker.runtime.grading_policy import decide as grading_decide
+from nexus_worker.runtime.grading_policy import load_read_only_tools, turn_writes
 from nexus_worker.runtime.llm import LLMResponse, LLMRouter, ToolCall
 from nexus_worker.runtime.model_resolver import chain_for
 from nexus_worker.runtime.state import AgentState, checkpoint_shrink_update
@@ -89,6 +93,7 @@ from nexus_worker.runtime.ucm_formatter import (
     format_response_as_ucm,
     shadow_diff_against_legacy,
 )
+from nexus_worker.streams.grade_consumer import publish_grade_job
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -282,13 +287,8 @@ async def _resolve_mcp_token(tenant_id: uuid.UUID, credential_key: str) -> str |
 # emit). When the pilots reveal we need finer routing we either add a
 # secondary classifier OR extend the agent_config to carry a per-intent
 # override.
-_NEXUS_INTENT_TO_RUBRIC: dict[str, str] = {
-    "book": "booking.confirm",
-    "queue": "default.general_response",
-    "info": "default.general_response",
-    "escalate": "default.general_response",
-    "fallback": "default.general_response",
-}
+# El mapa vive en ``guardrails.rubric_loader`` (lo comparten el nodo
+# síncrono y el consumidor diferido de WP-21).
 
 
 # Internal system message used to ask the agent for a corrected response
@@ -1022,6 +1022,17 @@ def make_handler_node(
                 respond_model_override = _respond_binding.model_id
                 respond_fallbacks = _respond_binding.fallback_chain
 
+            # WP-20 — presupuesto blando con acción ``downgrade``: se pasa
+            # al modelo más barato del catálogo (WP-19) por encima de
+            # cualquier elección. Es explícitamente peor calidad a cambio
+            # de seguir atendiendo, y esa es la decisión correcta cuando
+            # la alternativa es acercarse al corte duro.
+            if state.get("budget_degrade_model"):
+                cheapest = await cheapest_model()
+                if cheapest:
+                    respond_model_override = cheapest
+                    respond_fallbacks = ()
+
             _turn_started = time.perf_counter()
             for iteration in range(MAX_TOOL_ITERATIONS):
                 # The last iteration is tool-free: the model MUST answer.
@@ -1202,6 +1213,11 @@ def make_handler_node(
                     "memory_tool": bundle.runtime_memory_tool,
                     "outcome_grader": bundle.runtime_outcome_grader,
                     "mcp_connector": bundle.runtime_mcp_connector,
+                    # WP-21 — el grader decide con esto si corre ahora o
+                    # después. Viaja por el estado para no releer el
+                    # bundle en el nodo siguiente.
+                    "grader_mode": bundle.grader_mode,
+                    "grader_sample_rate": bundle.grader_sample_rate,
                 },
             }
 
@@ -1367,13 +1383,46 @@ def make_grade_outcome_node(
         # the grader on ``runtime_outcome_grader`` from the agent_config,
         # NOT on an env var — activation rides STAGED → ACTIVE.
         flags = state.get("agent_runtime_flags") or {}
-        if not flags.get("outcome_grader"):
-            return {"outcome_overall": "skipped", "outcome_retries": 0, "outcome_feedback": ""}
-
         tenant_id = _tenant_uuid(state)
 
+        # WP-21 — ¿ahora o después? El grader es la mayor partida de coste
+        # y latencia que no produce la respuesta; graduarlo todo en el
+        # camino crítico paga ese precio también en el turno que solo dice
+        # "gracias".
+        decision = grading_decide(
+            # WP-20 — el presupuesto blando apaga el grader igual que si
+            # el agent_config lo tuviera desactivado: es una de las dos
+            # palancas de coste que no degradan lo que el cliente percibe.
+            grader_enabled=bool(flags.get("outcome_grader"))
+            and not state.get("budget_disable_grader"),
+            grader_mode=str(flags.get("grader_mode") or "sampled"),
+            sample_rate=float(flags.get("grader_sample_rate") or 0),
+            intent=state.get("intent"),
+            wrote=turn_writes(
+                state.get("tool_calls") or [],
+                await load_read_only_tools(),
+            ),
+            # El id del mensaje entrante identifica el turno de forma
+            # estable: reintentarlo toma la MISMA decisión de muestreo.
+            turn_key=str(state.get("inbound_message_id") or state.get("conversation_id") or ""),
+        )
+        if decision.mode == "off":
+            return {"outcome_overall": "skipped", "outcome_retries": 0, "outcome_feedback": ""}
+        if decision.is_deferred:
+            log.info(
+                "outcome_grader.deferred",
+                tenant_id=str(tenant_id),
+                intent=state.get("intent"),
+                reason=decision.reason,
+            )
+            # ``deferred`` no es ``skipped``: el checkpoint lo distingue
+            # para publicar el trabajo, y el panel puede mostrar "pendiente
+            # de graduar" en vez de "sin graduar", que significan cosas
+            # distintas para quien audita una conversación.
+            return {"outcome_overall": "deferred", "outcome_retries": 0, "outcome_feedback": ""}
+
         intent = state.get("intent") or "fallback"
-        rubric_intent = _NEXUS_INTENT_TO_RUBRIC.get(intent, "default.general_response")
+        rubric_intent = rubric_for_intent(intent)
         rubric_body = load_rubric_text(rubric_intent)
         if rubric_body is None:
             # No rubric on disk — operator opted in but we have nothing
@@ -1734,8 +1783,9 @@ def make_checkpoint_node() -> NodeFn:
             # Row 1: plain-text answer, written first so the outbound
             # dispatcher (ordered by created_at / sequence) drains text
             # before any interactive component.
+            graded_message_id: uuid.UUID | None = None
             if write_text:
-                await persist_outbound_message(
+                text_row = await persist_outbound_message(
                     session,
                     conversation_id=conv_id,
                     content=text_to_write,
@@ -1746,6 +1796,7 @@ def make_checkpoint_node() -> NodeFn:
                     outcome_retries=outcome_retries,
                     outcome_feedback=outcome_feedback,
                 )
+                graded_message_id = text_row.id
 
             # Row 2: interactive component, when the agent called
             # ``response.send_interactive`` this turn AND it is not a
@@ -1770,6 +1821,25 @@ def make_checkpoint_node() -> NodeFn:
                     outcome_retries=outcome_retries,
                     outcome_feedback=outcome_feedback,
                 )
+        # WP-21 — el turno salió sin graduar. Se publica AQUÍ y no en el
+        # nodo del grader porque solo aquí existe ya la fila del mensaje:
+        # el veredicto diferido se escribe encima de ella, y sin su id el
+        # consumidor tendría que adivinar cuál era "el último saliente"
+        # de la conversación — que con dos filas por turno (texto +
+        # interactivo) o con turnos solapados es exactamente el tipo de
+        # suposición que acaba escribiendo el veredicto en el mensaje
+        # equivocado.
+        if outcome_overall == "deferred" and graded_message_id is not None:
+            await publish_grade_job(
+                tenant_id=tenant_id,
+                conversation_id=conv_id,
+                message_id=graded_message_id,
+                intent=intent or "fallback",
+                user_message=str(state.get("user_message") or ""),
+                response=response_text,
+                tool_calls=tool_calls,
+            )
+
         # WP-13: the end-of-turn checkpoint is the one that persists until
         # retention prunes it — shrink it (history reloads from Postgres
         # next turn; oversized tool dumps get clamped with a marker).

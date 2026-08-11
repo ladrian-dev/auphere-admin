@@ -35,6 +35,7 @@ from nexus_worker.guardrails.outcome_grader import (
 from nexus_worker.guardrails.rubric_loader import (
     available_rubric_intents,
     load_rubric_text,
+    rubric_for_intent,
 )
 
 __all__ = [
@@ -43,4 +44,5 @@ __all__ = [
     "OutcomeGrader",
     "available_rubric_intents",
     "load_rubric_text",
+    "rubric_for_intent",
 ]
