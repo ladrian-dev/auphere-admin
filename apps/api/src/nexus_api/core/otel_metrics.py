@@ -253,6 +253,34 @@ def record_meta_send_failure(*, code: str) -> None:
         _instrument("meta_send_failures_total", "counter").add(1, {"code": code})
 
 
+def record_rate_limit_rejection(*, surface: str, degraded: bool) -> None:
+    """Una petición de partner rechazada por el limitador.
+
+    ``degraded`` distingue el rechazo normal (el partner se pasó de su
+    límite) del rechazo con Redis caído, que se atiende con el cubo en
+    memoria por réplica. Son la misma métrica con dimensión distinta
+    porque el operador quiere ver los dos en el mismo panel: un pico de
+    rechazos degradados es una incidencia de infraestructura, no un
+    partner portándose mal.
+    """
+    with contextlib.suppress(Exception):
+        _instrument("partner_rate_limit_rejections_total", "counter").add(
+            1, {"surface": surface, "degraded": str(degraded).lower()}
+        )
+
+
+def record_rate_limit_degraded(*, surface: str) -> None:
+    """El limitador perdió Redis y está corriendo en memoria.
+
+    Se cuenta APARTE de los rechazos: mientras Redis esté caído el
+    límite efectivo es por réplica, así que el número real que se está
+    aplicando ya no es el configurado. Esta es la señal que debe
+    alarmar, y tiene que verse aunque no se rechace ni una petición.
+    """
+    with contextlib.suppress(Exception):
+        _instrument("partner_rate_limit_degraded_total", "counter").add(1, {"surface": surface})
+
+
 def reset_for_tests() -> None:
     global _installed, _provider, _outbound_backlog
     with _lock:
