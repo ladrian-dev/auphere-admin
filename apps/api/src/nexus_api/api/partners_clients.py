@@ -32,7 +32,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.config import get_settings
-from nexus_api.core import rate_limit
 from nexus_api.core.partner_auth import PartnerContext, require_partner_key
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.models import (
@@ -497,16 +496,11 @@ async def create_client_broadcast(
     named parameters only, opted-out recipients dropped, and the
     partner's ``broadcast_recipient_cap`` enforced per call.
     """
-    if not await rate_limit.allow(
-        redis,
-        key=rate_limit.broadcast_bucket_key(str(ctx.partner.id)),
-        per_minute=ctx.partner.rate_limit_embed_per_min,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Rate limit exceeded for broadcasts",
-        )
-
+    # El límite de difusión ya lo aplicó ``require_partner_key`` sobre el
+    # cubo ``broadcast`` (WP-30). Estaba aquí suelto y era el único de las
+    # tres superficies que llegaba a ejecutarse; ahora las tres se
+    # aplican en el mismo sitio y una superficie nueva no puede nacer sin
+    # freno por olvido.
     tenant_id = await _resolve_tenant_id(session, ctx, external_client_ref)
     async with tenant_scoped_session(session, tenant_id):
         result, created = await create_broadcast(

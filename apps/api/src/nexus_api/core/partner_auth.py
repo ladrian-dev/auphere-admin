@@ -27,9 +27,12 @@ from datetime import UTC, datetime
 import sqlalchemy as sa
 import structlog
 from fastapi import Depends, Header, HTTPException, Request, status
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_api.api.deps import get_db_session
+from nexus_api.api.deps import get_db_session, get_redis
+from nexus_api.core import rate_limit
+from nexus_api.core.otel_metrics import record_rate_limit_rejection
 from nexus_api.core.partner_keys import checksum_ok, hash_key
 from nexus_api.db.models import (
     TENANT_SCOPED_API_KEY_SCOPES,
@@ -80,6 +83,43 @@ def key_is_active(key: PartnerApiKey, *, now: datetime) -> bool:
     return True
 
 
+# WP-30: qué cubo y qué límite le toca a cada scope.
+#
+# Antes de esto, ``rate_limit_mint_per_min`` no se leía en NINGÚN sitio y
+# ``mint_bucket_key``/``embed_bucket_key`` eran código muerto con un test
+# que solo comprobaba cómo se escribe la clave. Es decir: el panel dejaba
+# configurar un tope de aprovisionamiento, lo guardaba, lo devolvía por
+# API — y una clave de partner podía crear tenants sin freno. Peor que
+# fail-open: un límite que se enseña y no existe.
+#
+# El límite se aplica AQUÍ y no en cada endpoint porque este es el único
+# punto por el que pasan todos (``require_tenant_key`` también depende de
+# él), así que una superficie nueva nace limitada en vez de nacer
+# olvidada.
+_SURFACE_BY_SCOPE: dict[str, str] = {
+    "provision": "mint",
+    "broadcasts": "broadcast",
+    "widget_sessions": "embed",
+    "messages_send": "embed",
+}
+
+_BUCKET_KEY = {
+    "mint": rate_limit.mint_bucket_key,
+    "embed": rate_limit.embed_bucket_key,
+    "broadcast": rate_limit.broadcast_bucket_key,
+}
+
+
+def _limit_for(surface: str, partner: Partner) -> int:
+    # El de emisión y el de lectura comparten cifra configurada
+    # (``rate_limit_embed_per_min``) pero NO cubo: un partner que satura
+    # sus difusiones no puede quedarse sin poder consultar el estado de
+    # las que ya mandó.
+    return (
+        partner.rate_limit_mint_per_min if surface == "mint" else partner.rate_limit_embed_per_min
+    )
+
+
 def require_partner_key(
     scope: str,
 ) -> Callable[..., Awaitable[PartnerContext]]:
@@ -89,6 +129,7 @@ def require_partner_key(
         request: Request,
         authorization: str | None = Header(default=None, alias="Authorization"),
         session: AsyncSession = Depends(get_db_session),
+        redis: Redis = Depends(get_redis),
     ) -> PartnerContext:
         if not authorization or not authorization.startswith("Bearer "):
             raise _unauthorized("Missing bearer token")
@@ -136,6 +177,29 @@ def require_partner_key(
                     f"scope {scope!r} is partner-level and cannot be used from a "
                     "tenant-scoped API key"
                 ),
+            )
+
+        # El límite va DESPUÉS de autenticar, no antes: el cubo es por
+        # partner y hasta aquí no se sabe qué partner es. Una avalancha
+        # de credenciales inválidas cuesta el checksum y una búsqueda por
+        # índice — eso lo para el ALB, no esto.
+        surface = _SURFACE_BY_SCOPE.get(scope, "embed")
+        if not await rate_limit.allow(
+            redis,
+            key=_BUCKET_KEY[surface](str(partner.id)),
+            per_minute=_limit_for(surface, partner),
+            surface=surface,
+        ):
+            record_rate_limit_rejection(surface=surface, degraded=False)
+            log.warning(
+                "partner_auth.rate_limited",
+                partner=partner.slug,
+                surface=surface,
+                scope=scope,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded for the {surface} surface",
             )
 
         # Bookkeeping — never let it fail the authenticated request.
