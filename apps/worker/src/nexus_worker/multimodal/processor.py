@@ -24,6 +24,13 @@ transcript, plus a short header like ``[transcripción de audio]: …``.
 This service is opportunistic: failures degrade gracefully to a "no pude
 leer el archivo" message. We never block the turn on a transcription
 error — the worst case is the agent admitting it can't read the media.
+
+**Billing.** Both LLM legs call litellm directly instead of going through
+``LiteLLMProvider``, so until 0076 neither of them was metered: every
+image a customer sent burned Sonnet tokens that appeared in no invoice,
+and every voice note burned Whisper minutes the same way. The two
+``record_*`` calls below close that hole. They only count quantities —
+the price comes from ``model_profiles``, same contract as the runtime.
 """
 
 from __future__ import annotations
@@ -38,6 +45,13 @@ from dataclasses import dataclass
 
 from nexus_api.config import get_settings
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
+
+from nexus_worker.metering import (
+    provider_of,
+    record_llm_usage,
+    record_voice_minutes,
+    usage_fields,
+)
 
 log = logging.getLogger(__name__)
 
@@ -161,6 +175,11 @@ class LiveMediaProcessor(MediaProcessor):
                 litellm.atranscription(
                     model=settings.llm_transcribe_model,
                     file=file_like,
+                    # ``verbose_json`` is the only response format that
+                    # carries ``duration``, and duration is the billable
+                    # unit for Whisper. It still returns ``text``, so the
+                    # happy path below is unchanged.
+                    response_format="verbose_json",
                 ),
                 timeout=settings.llm_transcribe_timeout_s,
             )
@@ -171,6 +190,22 @@ class LiveMediaProcessor(MediaProcessor):
         text = getattr(response, "text", None)
         if not isinstance(text, str) or not text.strip():
             raise MediaProcessorError("transcription returned empty text")
+        # A provider (or a litellm version) that ignores ``verbose_json``
+        # leaves ``duration`` absent. That costs us the measurement, not
+        # the transcript — and an absent row is findable, whereas a
+        # guessed duration is a plausible number nobody would question.
+        duration = getattr(response, "duration", None)
+        if isinstance(duration, int | float):
+            record_voice_minutes(
+                model=settings.llm_transcribe_model,
+                provider=provider_of(settings.llm_transcribe_model),
+                seconds=float(duration),
+            )
+        else:
+            log.warning(
+                "media.transcription_duration_missing model=%s",
+                settings.llm_transcribe_model,
+            )
         return text.strip()
 
     # ── vision summary ───────────────────────────────────────────────────────
@@ -214,6 +249,13 @@ class LiveMediaProcessor(MediaProcessor):
             raise MediaProcessorError("vision timeout") from exc
         except Exception as exc:
             raise MediaProcessorError(f"vision error: {exc}") from exc
+        # Metered before the response is parsed: the tokens were spent
+        # whether or not the answer comes back in a shape we can read.
+        record_llm_usage(
+            model=settings.llm_vision_model,
+            provider=provider_of(settings.llm_vision_model),
+            usage=usage_fields(response),
+        )
         try:
             text = response.choices[0].message.content
         except (AttributeError, IndexError) as exc:

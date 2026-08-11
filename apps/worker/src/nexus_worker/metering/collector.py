@@ -67,6 +67,58 @@ LLM_METERS: dict[str, str] = {
 }
 
 
+def provider_of(model: str) -> str | None:
+    """``anthropic/claude-sonnet-4-6`` → ``anthropic``. None si el
+    identificador no lleva proveedor: la fila se mide igual y el precio se
+    resuelve por ``model_id``, que es la clave única del catálogo."""
+    return model.split("/", 1)[0] if "/" in model else None
+
+
+def usage_fields(response: Any) -> dict[str, int]:
+    """Extrae el consumo de tokens de una respuesta de LiteLLM.
+
+    Vive aquí y no en ``runtime.llm`` porque hay más de una llamada a
+    LiteLLM en el sistema: además del proveedor del runtime, el
+    ``MediaProcessor`` invoca ``acompletion`` por su cuenta para la visión.
+    Mientras el extractor era privado de ``llm.py``, esas llamadas no
+    tenían con qué medirse y sus tokens no aparecían en ninguna factura.
+
+    Tolera respuestas con forma de dict y de objeto, y campos ausentes:
+    devuelve solo lo que hay y nunca lanza — instrumentar no puede romper
+    un turno.
+    """
+
+    def _get(obj: Any, key: str) -> Any:
+        if obj is None:
+            return None
+        if hasattr(obj, "get"):
+            try:
+                return obj.get(key)
+            except Exception:
+                return None
+        return getattr(obj, key, None)
+
+    usage = _get(response, "usage")
+    if usage is None:
+        return {}
+    out: dict[str, int] = {}
+    for key in (
+        "prompt_tokens",
+        "completion_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    ):
+        val = _get(usage, key)
+        if isinstance(val, int):
+            out[key] = val
+    # Anthropic a veces reporta el acierto de caché en ``prompt_tokens_details``.
+    if "cache_read_input_tokens" not in out:
+        cached = _get(_get(usage, "prompt_tokens_details"), "cached_tokens")
+        if isinstance(cached, int):
+            out["cache_read_input_tokens"] = cached
+    return out
+
+
 @dataclass(frozen=True)
 class UsageEvent:
     """Un evento medible. Sin precio: lo pone el consumidor."""
@@ -178,6 +230,34 @@ def record_llm_usage(*, model: str, provider: str | None, usage: dict[str, int])
                 record_usage(meter=meter, quantity=quantity, provider=provider, model=model)
     except Exception as exc:  # pragma: no cover - defensivo
         log.warning("usage.record_llm_failed", model=model, error=str(exc))
+
+
+def record_voice_minutes(*, model: str, provider: str | None, seconds: float) -> None:
+    """Transcripción de una nota de voz → medidor ``voice.minutes``.
+
+    Whisper se factura por minuto de audio, no por token, así que no cabe
+    en ``record_llm_usage``. Los segundos vienen de la respuesta del
+    proveedor (``verbose_json``): estimarlos a partir del tamaño del
+    fichero daría una cifra plausible y falsa, y una factura creíble es
+    peor que un hueco visible.
+
+    Incrementa ``call_seq`` igual que ``record_llm_usage`` — un turno con
+    dos notas de voz necesita dos claves de idempotencia distintas o la
+    segunda se descartaría en el ``ON CONFLICT`` del consumidor.
+    """
+    try:
+        scope = _scope.get()
+        if scope is None or seconds <= 0:
+            return
+        scope.call_seq += 1
+        record_usage(
+            meter="voice.minutes",
+            quantity=seconds / 60.0,
+            provider=provider,
+            model=model,
+        )
+    except Exception as exc:  # pragma: no cover - defensivo
+        log.warning("usage.record_voice_failed", model=model, error=str(exc))
 
 
 async def record_channel_message(
