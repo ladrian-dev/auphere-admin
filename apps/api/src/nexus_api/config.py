@@ -242,6 +242,14 @@ class Settings(BaseSettings):
     media_s3_endpoint_url: str | None = None
     media_s3_access_key_id: str = ""
     media_s3_secret_access_key: str = ""
+    # En ECS/Fargate no hay claves: las credenciales las da el TASK ROLE y
+    # boto3 las resuelve solo por su cadena por defecto (el cliente ya pasa
+    # ``aws_access_key_id=None`` cuando no hay clave). Sin este flag, el
+    # gate de abajo exigía claves explícitas y el almacenamiento de media
+    # se quedaba en memoria en AWS, silenciosamente. Es opt-in y no
+    # implícito para que en dev y en los tests siga sin activarse por
+    # accidente al haber un bucket configurado.
+    media_s3_use_default_credentials: bool = False
     media_s3_presign_ttl_seconds: int = 300  # 5 min — enough for Meta to fetch
     # If true, attempt server-side encryption (SSE-S3). Cloudflare R2 ignores
     # this header; AWS S3 and MinIO honour it.
@@ -285,6 +293,7 @@ class Settings(BaseSettings):
             and (
                 self.media_s3_endpoint_url
                 or (self.media_s3_access_key_id and self.media_s3_secret_access_key)
+                or self.media_s3_use_default_credentials
             )
         )
 
