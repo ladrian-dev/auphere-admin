@@ -71,17 +71,27 @@ async def apply_tenant_to_session(session: AsyncSession, tenant_id: uuid.UUID) -
     `set_config(..., is_local=true)` is the parameterised form of `SET LOCAL`
     (Postgres rejects bind params on the `SET LOCAL` statement itself).
 
-    `SET LOCAL ROLE nexus_app` drops superuser, so RLS policies actually take
+    Switching to `nexus_app` drops superuser, so RLS policies actually take
     effect. The connecting `nexus` user is a Postgres superuser (it runs
     migrations); without role-switching, RLS would be silently bypassed and
     the isolation guarantees would be a lie. Migration 0004 creates the role
     and grants the connecting user permission to assume it.
+
+    **Both settings travel in ONE statement.** `SET LOCAL ROLE x` is exactly
+    `set_config('role', 'x', true)` — `role` is a regular GUC — so the two
+    fit in a single target list. It used to be two `execute` calls, which is
+    two network round trips on the critical path of every scoped request,
+    including the webhook whose ack budget is 50 ms. The tenant GUC goes
+    first in the list for readability; the order does not matter because
+    `nexus_app` can set `app.*` just as well as the superuser can.
     """
     await session.execute(
-        text("SELECT set_config('app.tenant_id', :tid, true)"),
+        text(
+            "SELECT set_config('app.tenant_id', :tid, true), "
+            "       set_config('role', 'nexus_app', true)"
+        ),
         {"tid": str(tenant_id)},
     )
-    await session.execute(text("SET LOCAL ROLE nexus_app"))
 
 
 @asynccontextmanager
