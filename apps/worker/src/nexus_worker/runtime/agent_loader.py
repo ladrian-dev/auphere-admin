@@ -38,6 +38,8 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.repositories import AgentConfigRepository
 
+from nexus_worker.runtime.model_resolver import ModelBinding, load_bindings
+
 log = structlog.get_logger(__name__)
 
 
@@ -71,6 +73,15 @@ class AgentBundle:
     runtime_memory_tool: bool = False
     runtime_outcome_grader: bool = False
     runtime_mcp_connector: bool = False
+
+    # WP-19 — elección de modelo por rol de ESTE tenant
+    # (``tenant_model_bindings``). Viaja con el bundle porque comparte
+    # ciclo de vida y caché: se lee en la misma sesión scopeada, así que
+    # la RLS de la tabla es quien aísla, y se invalida con el mismo
+    # ``invalidate(tenant_id)`` que ya dispara el promote. Vacío = este
+    # tenant no ha elegido nada y el runtime usa la configuración global,
+    # que es el comportamiento anterior a WP-19.
+    model_bindings: dict[str, ModelBinding] = field(default_factory=dict)
 
 
 class AgentLoader:
@@ -148,6 +159,9 @@ class AgentLoader:
                 raise IsolationViolation(
                     f"no active agent_config for tenant {tenant_id} — refusing to run"
                 )
+            # Misma sesión scopeada: la RLS de ``tenant_model_bindings``
+            # es lo que impide ver la elección de otro tenant.
+            model_bindings = await load_bindings(session, tenant_id)
             return AgentBundle(
                 tenant_id=tenant_id,
                 version=cfg.version,
@@ -177,6 +191,7 @@ class AgentLoader:
                 runtime_memory_tool=bool(cfg.runtime_memory_tool),
                 runtime_outcome_grader=bool(cfg.runtime_outcome_grader),
                 runtime_mcp_connector=bool(cfg.runtime_mcp_connector),
+                model_bindings=model_bindings,
             )
 
 

@@ -83,6 +83,7 @@ from nexus_worker.memory import (
 from nexus_worker.persistence.messages import persist_outbound_message
 from nexus_worker.runtime.agent_loader import AgentBundle, AgentLoader
 from nexus_worker.runtime.llm import LLMResponse, LLMRouter, ToolCall
+from nexus_worker.runtime.model_resolver import chain_for
 from nexus_worker.runtime.state import AgentState, checkpoint_shrink_update
 from nexus_worker.runtime.ucm_formatter import (
     format_response_as_ucm,
@@ -530,7 +531,9 @@ def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
     async def classify(state: AgentState) -> dict[str, Any]:
         tenant_id = _tenant_uuid(state)
         with tenant_context(tenant_id):
-            await loader.load(tenant_id)  # warms cache; raises if no active config
+            # Warms the cache and raises if there is no active config. The
+            # bundle also carries this tenant's model bindings (WP-19).
+            bundle = await loader.load(tenant_id)
             history = await _load_recent_history(
                 tenant_id,
                 state.get("conversation_id"),
@@ -550,7 +553,16 @@ def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
                 {"role": "user", "content": state["user_message"]},
             ]
             try:
-                raw = await llm.classify(tenant_id=tenant_id, messages=messages)
+                raw = await llm.classify(
+                    tenant_id=tenant_id,
+                    messages=messages,
+                    models=chain_for(
+                        bundle.model_bindings,
+                        "classify",
+                        default_model=llm.classify_model,
+                        global_fallback=llm.fallback_model,
+                    ),
+                )
             except Exception as exc:
                 # The router already retried + fell back. If it still
                 # failed, route to ``fallback`` so the turn completes with
@@ -1000,6 +1012,16 @@ def make_handler_node(
             if not isinstance(respond_model_override, str) or not respond_model_override:
                 respond_model_override = None
 
+            # WP-19 — ``tenant_model_bindings`` gana sobre la policy del
+            # agent_config: la tabla es la fuente de verdad de la elección
+            # de modelo, la policy es el mecanismo antiguo que sobrevive
+            # para los tenants que aún no tienen binding.
+            _respond_binding = bundle.model_bindings.get("respond")
+            respond_fallbacks: tuple[str, ...] = ()
+            if _respond_binding is not None:
+                respond_model_override = _respond_binding.model_id
+                respond_fallbacks = _respond_binding.fallback_chain
+
             _turn_started = time.perf_counter()
             for iteration in range(MAX_TOOL_ITERATIONS):
                 # The last iteration is tool-free: the model MUST answer.
@@ -1038,6 +1060,7 @@ def make_handler_node(
                         tools=tools_arg,
                         extra=None if last else mcp_extra,
                         model_override=respond_model_override,
+                        fallback_override=respond_fallbacks,
                     )
                 except Exception as exc:
                     # The router exhausted retries + fallback. Rather than

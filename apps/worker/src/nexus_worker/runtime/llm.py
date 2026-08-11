@@ -33,7 +33,7 @@ import json
 import os
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar
 
@@ -636,18 +636,25 @@ class LLMRouter:
         )
         raise last_exc
 
-    def _model_chain(self, primary: str) -> tuple[str, ...]:
-        """Primary model, then the fallback — de-duplicated if they match."""
-        if self.fallback_model and self.fallback_model != primary:
-            return (primary, self.fallback_model)
-        return (primary,)
+    def _model_chain(self, primary: str, extra: Sequence[str] = ()) -> tuple[str, ...]:
+        """Primary model, then the tenant's own fallbacks (WP-19), then the
+        global fallback. De-duplicated, order preserved: a model repeated in
+        the chain would be retried twice for nothing but latency."""
+        chain = [primary, *extra]
+        if self.fallback_model:
+            chain.append(self.fallback_model)
+        return tuple(dict.fromkeys(m for m in chain if m))
 
     async def classify(
         self,
         *,
         tenant_id: uuid.UUID,
         messages: list[dict[str, str]],
+        models: Sequence[str] = (),
     ) -> str:
+        """``models`` is the tenant's resolved chain (WP-19). Empty = the
+        global classify model."""
+
         async def invoke(model: str) -> str:
             return await self.provider.acomplete(
                 tenant_id=tenant_id,
@@ -659,7 +666,7 @@ class LLMRouter:
         return await self._call_with_resilience(
             tenant_id=tenant_id,
             role="classify",
-            models=self._model_chain(self.classify_model),
+            models=tuple(models) or self._model_chain(self.classify_model),
             invoke=invoke,
         )
 
@@ -693,6 +700,7 @@ class LLMRouter:
         tools: list[dict[str, Any]],
         extra: dict[str, Any] | None = None,
         model_override: str | None = None,
+        fallback_override: Sequence[str] = (),
     ) -> LLMResponse:
         """Function-calling completion for the handler ReAct loop. ``role``
         is the intent (``book``, ``queue``, …) so traces can attribute the
@@ -718,8 +726,9 @@ class LLMRouter:
             role=role,
             # Per-tenant override (e.g. a latency-sensitive sales agent pinned
             # to a faster model) wins over the global respond model; the
-            # fallback chain still applies for resilience.
-            models=self._model_chain(model_override or self.respond_model),
+            # tenant's own fallbacks (WP-19) go next, and the global fallback
+            # always closes the chain so resilience never depends on config.
+            models=self._model_chain(model_override or self.respond_model, fallback_override),
             invoke=invoke,
         )
 
