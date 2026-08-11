@@ -8,12 +8,12 @@ locals {
   sizing = {
     staging = {
       # WP-25: tamaños mínimos.
-      cpu    = { api = 512, runner = 512, scheduler = 256, egress = 256 }
-      memory = { api = 1024, runner = 1024, scheduler = 512, egress = 512 }
+      cpu    = { api = 512, runner = 512, scheduler = 256, egress = 256, metering = 256 }
+      memory = { api = 1024, runner = 1024, scheduler = 512, egress = 512, metering = 512 }
     }
     prod = {
-      cpu    = { api = 1024, runner = 1024, scheduler = 512, egress = 512 }
-      memory = { api = 2048, runner = 2048, scheduler = 1024, egress = 1024 }
+      cpu    = { api = 1024, runner = 1024, scheduler = 512, egress = 512, metering = 512 }
+      memory = { api = 2048, runner = 2048, scheduler = 1024, egress = 1024, metering = 1024 }
     }
   }
 
@@ -29,6 +29,7 @@ locals {
     runner    = "${local.ecr_base}/nexus-worker:${var.image_tag}"
     scheduler = "${local.ecr_base}/nexus-worker:${var.image_tag}"
     egress    = "${local.ecr_base}/nexus-worker:${var.image_tag}"
+    metering  = "${local.ecr_base}/nexus-worker:${var.image_tag}"
   }
 
   # (los command de runner/scheduler/egress van inline en
@@ -247,6 +248,13 @@ locals {
     egress = [
       merge(local.app_base["egress"], { command = ["nexus-egress"] }),
       local.adot_sidecar["egress"],
+    ]
+    # WP-18: ingesta de consumo. Servicio propio y no una tarea del runner
+    # porque escribe en una tabla de FACTURACIÓN: no debe competir por los
+    # slots del turno ni caerse con él.
+    metering = [
+      merge(local.app_base["metering"], { command = ["nexus-metering"] }),
+      local.adot_sidecar["metering"],
     ]
   }
 }

@@ -61,7 +61,7 @@ resource "aws_iam_role_policy" "execution_secrets" {
 # ── Task roles por servicio ────────────────────────────────────────────
 
 locals {
-  services = ["api", "runner", "scheduler", "egress"]
+  services = ["api", "runner", "scheduler", "egress", "metering"]
 
   # Qué servicios tocan S3 media: la API presigna y sirve, el runner
   # descarga media entrante (WP-11), egress adjunta salientes. El

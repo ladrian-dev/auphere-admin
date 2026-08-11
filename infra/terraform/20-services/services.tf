@@ -1,9 +1,9 @@
 locals {
   service_counts = {
-    staging = { api = 1, runner = 1, scheduler = 1, egress = 1 }
+    staging = { api = 1, runner = 1, scheduler = 1, egress = 1, metering = 1 }
     # El scheduler es SINGLETON (WP-08: advisory locks toleran 2 durante un
     # rollout como transitorio, no como estado estable).
-    prod = { api = 2, runner = 2, scheduler = 1, egress = 2 }
+    prod = { api = 2, runner = 2, scheduler = 1, egress = 2, metering = 1 }
   }
 
   desired = local.service_counts[local.env]

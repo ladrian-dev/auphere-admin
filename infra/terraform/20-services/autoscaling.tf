@@ -3,6 +3,12 @@
 #   runner    → queue_oldest_pending_seconds, target 15 s  min 2 / max 10 (prod)
 #   egress    → outbound_pending_messages                  min 2 / max 4  (prod)
 #   scheduler → FIJO en 1 (sin política)
+#   metering  → FIJO en 1 (sin política). Es ingesta asíncrona: un retraso
+#               de minutos en escribir consumo no afecta a ningún cliente,
+#               y el stream es el amortiguador. Cuando haya volumen se le
+#               pone una política sobre su propio lag, no antes: una
+#               política sin métrica que la alimente es la que dejó ciego
+#               al runner (ver metric_declarations en taskdefs.tf).
 #
 # Las métricas custom viven en CloudWatch namespace ``Nexus`` vía el sidecar
 # ADOT. ``queue_oldest_pending_seconds`` la publica el claimer del runner
