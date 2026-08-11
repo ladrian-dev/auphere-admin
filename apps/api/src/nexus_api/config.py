@@ -194,6 +194,14 @@ class Settings(BaseSettings):
     # Tenant resolver cache TTL (seconds). 1h matches channel-adapters spec.
     tenant_cache_ttl: int = 3600
 
+    # WP-30: entre cuántas réplicas se reparte el límite de partner cuando
+    # el limitador pierde Redis y cae al cubo en memoria. Debe seguir al
+    # ``max_capacity`` de la política de autoescalado de la API (WP-24,
+    # 6 en producción): con ese valor, el techo global durante una caída
+    # de Redis se parece al límite configurado en el peor caso y es más
+    # estricto en el normal. Subirlo afloja el freno; bajarlo lo aprieta.
+    rate_limit_fallback_replicas: int = 6
+
     # Isolation enforcer behavior in dev: raise vs. warn. In prod we always raise.
     isolation_enforcer_raise_in_dev: bool = False
 
