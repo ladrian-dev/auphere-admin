@@ -12,6 +12,7 @@ from nexus_api.api.admin import (
     integrations,
     isolation,
     meta_signup,
+    model_bindings,
     partners,
     prompt_library,
     receipts,
@@ -44,3 +45,4 @@ router.include_router(whatsapp_templates.router)
 router.include_router(partners.router)
 router.include_router(receipts.router)
 router.include_router(billing.router)
+router.include_router(model_bindings.router)
