@@ -16,6 +16,7 @@ exactamente N filas, y republicarlos no produce ninguna.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 import pytest
 import sqlalchemy as sa
@@ -128,8 +129,25 @@ async def test_a_turn_becomes_usage_rows(clean_usage_stream) -> None:
     models = {r[0]: r[2] for r in rows}
     assert models["llm.cache_read"] == "anthropic/claude-sonnet-4-6"
 
-    # Lo que el emisor NO pone: el precio. NULL = contado, sin precio (0071).
-    assert all(r[3] is None for r in rows)
+    # El precio (WP-19). El emisor no lo pone: sale de valorar la cantidad
+    # contra ``model_profiles``, que es lo que permite que cambiar una
+    # tarifa sea un UPDATE y no un despliegue.
+    # Hay DOS filas por medidor de tokens (una por llamada), así que se
+    # suman: el coste de un turno es el de todas sus llamadas.
+    costs: dict[str, Decimal] = {}
+    for meter, _q, _m, cost, *_ in rows:
+        assert cost is not None, f"{meter} entró sin precio"
+        costs[meter] = costs.get(meter, Decimal(0)) + cost
+    # haiku 700 in @ $1/MTok + sonnet 5000 in @ $3/MTok
+    assert costs["llm.input_tokens"] == Decimal("0.01570000")
+    # haiku 20 out @ $5 + sonnet 300 out @ $15
+    assert costs["llm.output_tokens"] == Decimal("0.00460000")
+    # sonnet 4200 de caché leída @ $0.30/MTok — el descuento aparece de
+    # verdad: esos mismos tokens a precio de entrada costarían 0.0126.
+    assert costs["llm.cache_read"] == Decimal("0.00126000")
+
+    total = sum(c for c in costs.values() if c is not None)
+    assert total == Decimal("0.02156000"), "coste real del turno, en dólares"
     # Lo facturable, mientras no haya política de precios, es lo medido.
     assert all(r[4] == r[1] for r in rows)
     # El contexto del turno viaja con cada fila.
