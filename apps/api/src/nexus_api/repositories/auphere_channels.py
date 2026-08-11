@@ -17,10 +17,13 @@ the decrypted Meta access token ready for :class:`MetaClient` sends.
 
 from __future__ import annotations
 
+import contextlib
+import json
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -147,6 +150,88 @@ async def resolve_channel_for_inbound(
     if row is not None:
         return _to_resolved(row)
     return None
+
+
+# ── membership cache for the webhook hot path ─────────────────────────────
+
+# El registro de números de Auphere es diminuto (un puñado de filas) y
+# cambia cuando un humano registra un número, no con el tráfico. El
+# webhook, en cambio, preguntaba a la base por CADA mensaje entrante —
+# y para el 100% del tráfico de tenants la respuesta era "no". Un ida y
+# vuelta a Postgres por mensaje para confirmar un negativo.
+_PHONE_IDS_KEY = "nexus:auphere:inbound_phone_ids"
+# Corto y además invalidado a mano desde el admin: el TTL es la red de
+# seguridad para una invalidación perdida, no el mecanismo principal.
+_PHONE_IDS_TTL_S = 60
+
+
+async def _active_phone_ids(session: AsyncSession, redis: Redis) -> frozenset[str] | None:
+    """Conjunto de ``phone_number_id`` de canales Auphere activos.
+
+    ``None`` significa "no se pudo saber" (Redis caído): el llamante debe
+    caer al camino de siempre. Nunca se devuelve un conjunto vacío por
+    error — un vacío inventado desviaría el backchannel al flujo de
+    tenants, donde no resuelve y el evento se descarta en silencio.
+    """
+    try:
+        cached = await redis.get(_PHONE_IDS_KEY)
+    except Exception:
+        return None
+    if cached is not None:
+        raw = cached.decode() if isinstance(cached, bytes) else cached
+        try:
+            return frozenset(json.loads(raw))
+        except (ValueError, TypeError):
+            pass  # Cache corrupta: se recalcula abajo.
+
+    # El ``None`` se filtra: una fila sin ``provider_phone_id`` es un canal
+    # a medio configurar y no puede coincidir con ningún evento entrante.
+    ids = {
+        phone_id
+        for phone_id in (
+            await session.execute(
+                select(AuphereOwnerChannel.provider_phone_id).where(
+                    AuphereOwnerChannel.active.is_(True)
+                )
+            )
+        )
+        .scalars()
+        .all()
+        if phone_id
+    }
+    # El vacío SÍ se cachea: "no hay backchannel configurado" es una
+    # respuesta legítima y frecuente, y volver a preguntarla en cada
+    # mensaje es justo lo que esto viene a evitar.
+    with contextlib.suppress(Exception):
+        await redis.setex(_PHONE_IDS_KEY, _PHONE_IDS_TTL_S, json.dumps(sorted(ids)))
+    return frozenset(ids)
+
+
+async def resolve_channel_for_inbound_cached(
+    session: AsyncSession, redis: Redis, *, provider_phone_id: str
+) -> ResolvedAuphereChannel | None:
+    """Igual que :func:`resolve_channel_for_inbound`, pero sin tocar la
+    base cuando el número no es de Auphere — que es el caso normal.
+
+    La consulta completa (con el token descifrado) solo se hace cuando el
+    número SÍ está en el conjunto, así que el camino del backchannel se
+    comporta exactamente igual que antes.
+    """
+    known = await _active_phone_ids(session, redis)
+    if known is not None and provider_phone_id not in known:
+        return None
+    return await resolve_channel_for_inbound(session, provider_phone_id=provider_phone_id)
+
+
+async def invalidate_inbound_phone_ids(redis: Redis) -> None:
+    """Llamar tras alta, baja o cambio de estado de un canal Auphere.
+
+    Sin esto, un número recién registrado tardaría hasta un TTL en ser
+    reconocido y sus mensajes se irían al flujo de tenants, donde no
+    resuelven y se descartan con un log de ``channel.unresolved_event``.
+    """
+    with contextlib.suppress(Exception):
+        await redis.delete(_PHONE_IDS_KEY)
 
 
 async def resolve_channel_for_owner(

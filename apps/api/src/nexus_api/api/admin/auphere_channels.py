@@ -26,12 +26,15 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
+from nexus_api.core.redis_client import get_redis
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import AuphereOwnerChannel
 from nexus_api.repositories import AuditRepository, AuphereChannelRepository
+from nexus_api.repositories.auphere_channels import invalidate_inbound_phone_ids
 from nexus_api.schemas.auphere_channels import (
     AuphereOwnerChannelCreateIn,
     AuphereOwnerChannelOut,
@@ -141,6 +144,7 @@ async def create_channel(
     body: AuphereOwnerChannelCreateIn,
     actor: str = Depends(require_admin_token),
     session: AsyncSession = Depends(get_db_session),
+    redis: Redis = Depends(get_redis),
 ) -> AuphereOwnerChannelOut:
     # ``get_db_session`` yields a bare session without a transaction
     # wrapper — opposite of ``scoped_session_from_path``. Writes here
@@ -205,7 +209,13 @@ async def create_channel(
             display_name=body.display_name,
             is_default=body.is_default,
         )
-        return _to_out(row)
+        out = _to_out(row)
+    # La caché de números del webhook se invalida DESPUÉS del commit:
+    # hacerlo dentro de la transacción abre una ventana en la que otra
+    # petición la repuebla leyendo la fila vieja y el número nuevo
+    # tarda un TTL en reconocerse.
+    await invalidate_inbound_phone_ids(redis)
+    return out
 
 
 @router.patch(
@@ -217,6 +227,7 @@ async def update_channel(
     body: AuphereOwnerChannelUpdateIn,
     actor: str = Depends(require_admin_token),
     session: AsyncSession = Depends(get_db_session),
+    redis: Redis = Depends(get_redis),
 ) -> AuphereOwnerChannelOut:
     async with session.begin():
         repo = AuphereChannelRepository(session)
@@ -284,7 +295,13 @@ async def update_channel(
             channel_id=str(channel_id),
             fields=sorted(patch.keys()),
         )
-        return _to_out(row)
+        out = _to_out(row)
+    # La caché de números del webhook se invalida DESPUÉS del commit:
+    # hacerlo dentro de la transacción abre una ventana en la que otra
+    # petición la repuebla leyendo la fila vieja y el número nuevo
+    # tarda un TTL en reconocerse.
+    await invalidate_inbound_phone_ids(redis)
+    return out
 
 
 @router.delete(
@@ -295,6 +312,7 @@ async def deactivate_channel(
     channel_id: uuid.UUID,
     actor: str = Depends(require_admin_token),
     session: AsyncSession = Depends(get_db_session),
+    redis: Redis = Depends(get_redis),
 ) -> AuphereOwnerChannelOut:
     """Soft-deactivate. Sets ``active=false`` (and clears
     ``is_default`` if set) so the inbound webhook treats further
@@ -327,4 +345,10 @@ async def deactivate_channel(
             channel_id=str(channel_id),
             phone=row.phone_e164,
         )
-        return _to_out(row)
+        out = _to_out(row)
+    # La caché de números del webhook se invalida DESPUÉS del commit:
+    # hacerlo dentro de la transacción abre una ventana en la que otra
+    # petición la repuebla leyendo la fila vieja y el número nuevo
+    # tarda un TTL en reconocerse.
+    await invalidate_inbound_phone_ids(redis)
+    return out
