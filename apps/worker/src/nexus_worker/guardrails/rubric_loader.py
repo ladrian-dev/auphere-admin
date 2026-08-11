@@ -41,6 +41,26 @@ _INTENT_TO_FILE: dict[str, Path] = {
 _FALLBACK = _RUBRICS_DIR / "general" / "general_response.md"
 
 
+# Intent del pipeline → fichero de rúbrica. Vive aquí y no en
+# ``pipeline.py`` porque lo necesitan los DOS caminos del grader (WP-21):
+# el nodo síncrono y el consumidor diferido. Tenerlo en el pipeline
+# obligaba al consumidor a importarlo desde allí, que es circular — el
+# pipeline importa el publicador del consumidor.
+INTENT_TO_RUBRIC: dict[str, str] = {
+    "book": "booking.confirm",
+    "queue": "default.general_response",
+    "info": "default.general_response",
+    "escalate": "default.general_response",
+    "fallback": "default.general_response",
+}
+
+DEFAULT_RUBRIC = "default.general_response"
+
+
+def rubric_for_intent(intent: str | None) -> str:
+    return INTENT_TO_RUBRIC.get(intent or "", DEFAULT_RUBRIC)
+
+
 @functools.lru_cache(maxsize=64)
 def load_rubric_text(intent: str) -> str | None:
     """Return the rubric markdown body for ``intent``, or ``None``.

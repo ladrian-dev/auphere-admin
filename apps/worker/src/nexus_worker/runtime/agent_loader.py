@@ -74,6 +74,13 @@ class AgentBundle:
     runtime_outcome_grader: bool = False
     runtime_mcp_connector: bool = False
 
+    # WP-21 — cuándo corre el grader cuando ``runtime_outcome_grader``
+    # está activo. Viaja en el bundle como el resto de flags: activar
+    # el muestreo es una promoción de config, no una variable de
+    # entorno, así que es auditable y se revierte con un rollback.
+    grader_mode: str = "sampled"
+    grader_sample_rate: float = 0.10
+
     # WP-19 — elección de modelo por rol de ESTE tenant
     # (``tenant_model_bindings``). Viaja con el bundle porque comparte
     # ciclo de vida y caché: se lee en la misma sesión scopeada, así que
@@ -191,6 +198,8 @@ class AgentLoader:
                 runtime_memory_tool=bool(cfg.runtime_memory_tool),
                 runtime_outcome_grader=bool(cfg.runtime_outcome_grader),
                 runtime_mcp_connector=bool(cfg.runtime_mcp_connector),
+                grader_mode=str(cfg.grader_mode or "sampled"),
+                grader_sample_rate=float(cfg.grader_sample_rate or 0),
                 model_bindings=model_bindings,
             )
 
