@@ -37,6 +37,21 @@ async def _as_app_role(session, tenant_id: uuid.UUID | None) -> None:
     await session.execute(sa.text("SET ROLE nexus_app"))
 
 
+async def _ensure_tenant(session, tenant_id: uuid.UUID) -> None:
+    """El tenant tiene que existir de verdad desde la 0077: ``usage_records``
+    ya no acepta un ``tenant_id`` inventado. Antes sí, y eso significaba
+    que la tabla de facturación podía acumular consumo de clientes que no
+    existen — el test se apoyaba en esa laxitud sin saberlo."""
+    await session.execute(
+        sa.text(
+            "INSERT INTO tenants (id, name, slug, plan, status) "
+            "VALUES (:t, 'usage rls', :s, 'essential', 'active') "
+            "ON CONFLICT (id) DO NOTHING"
+        ),
+        {"t": str(tenant_id), "s": f"usage-{tenant_id.hex[:10]}"},
+    )
+
+
 async def _insert_usage(session, tenant_id: uuid.UUID, *, meter: str = "llm.input_tokens") -> str:
     key = f"test:{uuid.uuid4()}"
     await session.execute(
@@ -55,6 +70,8 @@ async def test_tenant_sees_only_its_own_usage(db_session) -> None:
     sm = get_sessionmaker()
 
     async with sm() as session:
+        await _ensure_tenant(session, a)
+        await _ensure_tenant(session, b)
         await session.execute(
             sa.text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(a)}
         )
@@ -84,6 +101,7 @@ async def test_unscoped_session_sees_no_usage(db_session) -> None:
     sm = get_sessionmaker()
 
     async with sm() as session:
+        await _ensure_tenant(session, a)
         await session.execute(
             sa.text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(a)}
         )
