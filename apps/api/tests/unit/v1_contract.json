@@ -1,0 +1,572 @@
+{
+  "/v1/messages/template": {
+    "post": {
+      "body": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "channel_id": {
+                  "anyOf": [
+                    {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "idempotency_key": {
+                  "anyOf": [
+                    {
+                      "maxLength": 80,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "language": {
+                  "default": "es",
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                "template_name": {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                "to": {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                "variables": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "to",
+                "template_name"
+              ],
+              "type": "object"
+            }
+          }
+        },
+        "required": true
+      },
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ]
+      ],
+      "responses": [
+        "202",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    }
+  },
+  "/v1/messages/{message_id}": {
+    "get": {
+      "body": {},
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ],
+        [
+          "message_id",
+          "path",
+          true
+        ]
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    }
+  },
+  "/v1/partners/clients": {
+    "post": {
+      "body": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "agent": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "placeholders": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "connector": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "credentials": {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "minProperties": 1,
+                          "type": "object"
+                        },
+                        "meta": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "credentials"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "external_client_ref": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "timezone": {
+                  "default": "UTC",
+                  "maxLength": 64,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "external_client_ref",
+                "name"
+              ],
+              "type": "object"
+            }
+          }
+        },
+        "required": true
+      },
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ]
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    }
+  },
+  "/v1/partners/clients/{external_client_ref}": {
+    "get": {
+      "body": {},
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ],
+        [
+          "external_client_ref",
+          "path",
+          true
+        ]
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    }
+  },
+  "/v1/partners/clients/{external_client_ref}/admins": {
+    "get": {
+      "body": {},
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ],
+        [
+          "external_client_ref",
+          "path",
+          true
+        ]
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    },
+    "put": {
+      "body": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "admins": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "name": {
+                        "anyOf": [
+                          {
+                            "maxLength": 120,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "phone": {
+                        "maxLength": 32,
+                        "minLength": 4,
+                        "type": "string"
+                      },
+                      "role": {
+                        "default": "full",
+                        "enum": [
+                          "full",
+                          "readonly"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "phone"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 50,
+                  "minItems": 0,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "admins"
+              ],
+              "type": "object"
+            }
+          }
+        },
+        "required": true
+      },
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ],
+        [
+          "external_client_ref",
+          "path",
+          true
+        ]
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    }
+  },
+  "/v1/partners/clients/{external_client_ref}/broadcasts": {
+    "post": {
+      "body": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "channel_id": {
+                  "anyOf": [
+                    {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "idempotency_key": {
+                  "anyOf": [
+                    {
+                      "maxLength": 80,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "language": {
+                  "default": "es",
+                  "maxLength": 20,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                "recipients": {
+                  "items": {
+                    "properties": {
+                      "phone": {
+                        "maxLength": 20,
+                        "minLength": 8,
+                        "type": "string"
+                      },
+                      "variables": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "phone"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "template_name": {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "template_name",
+                "recipients"
+              ],
+              "type": "object"
+            }
+          }
+        },
+        "required": true
+      },
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ],
+        [
+          "external_client_ref",
+          "path",
+          true
+        ]
+      ],
+      "responses": [
+        "202",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    }
+  },
+  "/v1/partners/clients/{external_client_ref}/broadcasts/{broadcast_id}": {
+    "get": {
+      "body": {},
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ],
+        [
+          "broadcast_id",
+          "path",
+          true
+        ],
+        [
+          "external_client_ref",
+          "path",
+          true
+        ]
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    }
+  },
+  "/v1/partners/clients/{external_client_ref}/templates": {
+    "get": {
+      "body": {},
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ],
+        [
+          "external_client_ref",
+          "path",
+          true
+        ]
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    }
+  },
+  "/v1/partners/clients/{external_client_ref}/whatsapp/signup": {
+    "post": {
+      "body": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "business_id": {
+                  "anyOf": [
+                    {
+                      "maxLength": 64,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "maxLength": 512,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "mode": {
+                  "default": "coexistence",
+                  "pattern": "^(cloud_api|coexistence)$",
+                  "type": "string"
+                },
+                "phone_number_id": {
+                  "anyOf": [
+                    {
+                      "maxLength": 64,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "waba_id": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "waba_id"
+              ],
+              "type": "object"
+            }
+          }
+        },
+        "required": true
+      },
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ],
+        [
+          "external_client_ref",
+          "path",
+          true
+        ]
+      ],
+      "responses": [
+        "201",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    }
+  },
+  "/v1/partners/whatsapp/signup-config": {
+    "get": {
+      "body": {},
+      "params": [
+        [
+          "Authorization",
+          "header",
+          false
+        ]
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "422",
+        "429"
+      ]
+    }
+  }
+}
