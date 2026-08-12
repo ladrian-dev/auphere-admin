@@ -202,6 +202,15 @@ class Settings(BaseSettings):
     # estricto en el normal. Subirlo afloja el freno; bajarlo lo aprieta.
     rate_limit_fallback_replicas: int = 6
 
+    # ── WP-28: obsolescencia de la API pública ────────────────────────────
+    # Fecha en que ``/v1`` quedó congelada, en formato HTTP-date (RFC 9745).
+    # Es un hecho, no una promesa.
+    api_v1_deprecation_date: str = "Mon, 11 Aug 2026 00:00:00 GMT"
+    # Fecha de apagado (RFC 8594). VACÍA a propósito: anunciar una fecha
+    # que nadie ha acordado con el partner es peor que no anunciar ninguna.
+    # Se rellena cuando Facelad confirme su plan de migración.
+    api_v1_sunset_date: str = ""
+
     # Isolation enforcer behavior in dev: raise vs. warn. In prod we always raise.
     isolation_enforcer_raise_in_dev: bool = False
 

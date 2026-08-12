@@ -58,7 +58,7 @@ from nexus_api.services.whatsapp_templates import fetch_templates
 
 log = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/v1/partners", tags=["partners"])
+router = APIRouter(prefix="/partners", tags=["partners"])
 
 
 # ── schemas ─────────────────────────────────────────────────────────────────

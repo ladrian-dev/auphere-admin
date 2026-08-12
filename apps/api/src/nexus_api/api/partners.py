@@ -47,7 +47,9 @@ from nexus_api.services.partner_provisioning import (
 
 log = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/v1", tags=["partners"])
+# Sin versión en el prefijo: la pone ``main.py`` al montarlo, una vez
+# por versión viva. Ver ``api/versioning.py``.
+router = APIRouter(tags=["partners"])
 
 # Session scopes a widget token carries. ``widget:connect`` is reserved
 # for the Phase 2 self-serve signup; shipping it in the claims now keeps

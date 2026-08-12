@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from nexus_api import __version__
 from nexus_api.api import admin, messages, partners, partners_clients, qa, webhooks
 from nexus_api.api import connectors as connectors_public
+from nexus_api.api.versioning import deprecation_middleware, mount_versioned
 from nexus_api.config import settings
 from nexus_api.core import isolation_enforcer, otel, otel_metrics
 from nexus_api.core.logging_context import LoggingContextMiddleware
@@ -77,6 +78,13 @@ app = FastAPI(
 
 app.add_middleware(LoggingContextMiddleware)
 
+app.middleware("http")(
+    deprecation_middleware(
+        deprecation_date=settings.api_v1_deprecation_date,
+        sunset_date=settings.api_v1_sunset_date or None,
+    )
+)
+
 
 @app.middleware("http")
 async def _webhook_ack_timing(request, call_next):  # type: ignore[no-untyped-def]
@@ -109,8 +117,16 @@ app.include_router(admin.router)
 app.include_router(webhooks.router)
 app.include_router(connectors_public.router)
 app.include_router(qa.router)
-# ADR-028: public partner surface (secret API key, server-to-server).
-app.include_router(partners.router)
-app.include_router(partners_clients.router)
-# Direct outbound sends for tenant-scoped keys (n8n, cron, scripts).
-app.include_router(messages.router)
+# ADR-028 + WP-28: superficie pública de partners (clave secreta,
+# servidor a servidor), montada una vez por versión viva. `/v1` está
+# congelada y responde con cabeceras de obsolescencia; `/v2` es la
+# recomendada. Ver ``api/versioning.py``.
+mount_versioned(
+    app,
+    [
+        partners.router,
+        partners_clients.router,
+        # Envíos salientes directos para claves con tenant (n8n, cron, scripts).
+        messages.router,
+    ],
+)
