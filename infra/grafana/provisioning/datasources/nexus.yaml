@@ -1,0 +1,44 @@
+# Fuentes de datos de Nexus. Ninguna lleva credenciales aquí: las tres
+# resuelven por el rol IAM de la task (CloudWatch y X-Ray) o por variables
+# de entorno que ECS inyecta desde Secrets Manager (Postgres).
+apiVersion: 1
+
+datasources:
+  # Métricas. El namespace `Nexus` lo alimenta el sidecar ADOT vía EMF.
+  # La dimensión `tenant` NO está ahí a propósito —CloudWatch cobra por
+  # serie— y por eso existe la fuente de Postgres de abajo.
+  - name: CloudWatch
+    uid: nexus-cloudwatch
+    type: cloudwatch
+    isDefault: true
+    jsonData:
+      authType: default # rol de la task, sin claves de larga duración
+      defaultRegion: ${AWS_REGION}
+      customMetricsNamespaces: Nexus
+
+  - name: X-Ray
+    uid: nexus-xray
+    type: grafana-x-ray-datasource
+    jsonData:
+      authType: default
+      defaultRegion: ${AWS_REGION}
+
+  # Coste por tenant, evals y colas. Va al endpoint de LECTURA de Aurora
+  # y con el rol `nexus_reporting` (migración 0078), que sólo alcanza
+  # columnas de facturación: ni prompts, ni mensajes, ni datos del dueño.
+  # Un panel que necesite algo fuera de ese alcance debe ampliar la 0078
+  # y su test, no la contraseña de aquí.
+  - name: Nexus Postgres (reporting)
+    uid: nexus-postgres
+    type: grafana-postgresql-datasource
+    url: ${NEXUS_REPORTING_DB_HOST}:5432
+    user: nexus_reporting
+    database: nexus
+    secureJsonData:
+      password: ${NEXUS_REPORTING_DB_PASSWORD}
+    jsonData:
+      sslmode: require
+      postgresVersion: 1600
+      # Sin esto Grafana asume que puede escribir; el rol no puede, y el
+      # error saldría como un fallo de panel en vez de como lo que es.
+      timescaledb: false

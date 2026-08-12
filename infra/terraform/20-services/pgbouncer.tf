@@ -26,10 +26,12 @@ locals {
       max_client_conn   = 500
     }
     prod = {
-      # 2 réplicas tras Cloud Map (round-robin DNS). Pool por réplica:
-      # 2 x 50 = 100 conexiones de servidor como techo — muy por debajo
-      # del max_connections=2000 fijado en Aurora.
-      count             = 2
+      # 1 réplica al crear el entorno (2026-08-12). Con 2 el pool era
+      # 2 x 50 = 100 conexiones de servidor; con 1 son 50, que sigue muy
+      # por debajo del max_connections de Aurora y sobra para el volumen
+      # de hoy. La contrapartida honesta: PgBouncer pasa a ser un punto
+      # único de fallo en el camino a la base. Subir a 2 es un apply.
+      count             = 1
       default_pool_size = 50
       max_client_conn   = 2000
     }

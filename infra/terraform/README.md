@@ -67,6 +67,53 @@ workspace: aplicar `20-services` en workspace `staging` lee los outputs de
   el 80 en redirect. Staging pide el comodín de `staging.auphere.com`
   (un solo registro de validación cubre dominio + comodín).
 
+## Grafana (WP-30b, `30-observability`)
+
+Apagado por defecto (`grafana_enabled = false`) para que un `apply` de las
+alarmas en un workspace nuevo no levante un servicio de más sin pedirlo.
+Encenderlo por primera vez son cuatro pasos, y el orden importa porque ECS
+**aborta el arranque de la task si un `valueFrom` no resuelve** — un
+secreto vacío no da un error legible, da un servicio reintentando con
+`runningCount = 0` para siempre.
+
+```bash
+# 1. La base de estado de Grafana (Aurora no es alcanzable desde fuera del
+#    VPC; va por task efímera con la task definition de migración).
+aws ecs run-task --cluster nexus-<ws> --task-definition nexus-<ws>-migrate ... \
+  --overrides '{"containerOverrides":[{"name":"migrate","command":["sh","-lc",
+    "psql \"$DATABASE_URL\" -c '\''CREATE DATABASE grafana'\''"]}]}'
+
+# 2. El secreto, ANTES del servicio.
+terraform apply -target=aws_secretsmanager_secret.grafana -var grafana_enabled=true
+aws secretsmanager put-secret-value --secret-id nexus/<ws>/grafana --secret-string \
+  '{"GF_SECURITY_ADMIN_PASSWORD":"...","NEXUS_REPORTING_DB_PASSWORD":"..."}'
+
+# 3. La imagen (arm64) — normalmente la construye .github/workflows/deploy-grafana.yml.
+docker buildx build --platform linux/arm64 -f infra/grafana/Dockerfile \
+  -t <ecr>/nexus-grafana:staging --push infra/grafana
+
+# 4. El resto del stack.
+terraform apply -var grafana_enabled=true
+```
+
+Falta un paso que **no** hace Terraform: la migración `0078` crea el rol
+`nexus_reporting` **sin contraseña** a propósito (una credencial en un
+fichero de migración queda publicada en el historial de git para siempre).
+Hay que ponérsela, y tiene que ser la misma que
+`NEXUS_REPORTING_DB_PASSWORD` del secreto:
+
+```sql
+ALTER ROLE nexus_reporting PASSWORD '<la del secreto>';
+```
+
+Hasta ese momento la fuente de datos de Postgres da
+`password authentication failed` y los paneles de coste salen vacíos; los
+de CloudWatch y X-Ray funcionan igual, porque van por el rol IAM de la task.
+
+El DNS es manual (auphere.com no vive en esta cuenta): `CNAME`
+`grafana.<ws>.auphere.com` → el `alb_dns_name` de `20-services`. El cert
+comodín `*.staging.auphere.com` ya lo cubre; **no** hace falta pedir uno.
+
 ## Secretos
 
 `10-data` crea el secreto `nexus/<workspace>/app` VACÍO. Los valores se cargan

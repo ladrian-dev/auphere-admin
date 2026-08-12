@@ -26,9 +26,21 @@ locals {
       egress = { min = 1, max = 2 }
     }
     prod = {
+      # OJO: este `min` es el que manda de verdad. Application Auto Scaling
+      # sobreescribe el `desired_count` del servicio en cuanto registra el
+      # target, así que `local.service_counts` en services.tf es letra
+      # muerta para estos tres. Comprobado al crear prod el 2026-08-12:
+      # runner y egress salieron a 2 réplicas con desired_count = 1.
+      #
+      # Redimensionado a volumen real: runner y egress arrancan en 1 y el
+      # autoescalado los sube por SEÑAL (edad de cola / pendientes de
+      # salida), que es la razón de tenerlo. Fijar 2 a mano era pagar el
+      # doble por adelantado para adivinar lo que la métrica ya sabe.
+      # La api se queda en 2: con 1, cada rollout es una ventana sin
+      # recibir webhooks de Meta.
       api    = { min = 2, max = 6 }
-      runner = { min = 2, max = 10 }
-      egress = { min = 2, max = 4 }
+      runner = { min = 1, max = 10 }
+      egress = { min = 1, max = 4 }
     }
   }
 

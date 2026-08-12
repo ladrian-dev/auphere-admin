@@ -1,0 +1,226 @@
+{
+  "uid": "nexus-margin",
+  "title": "Nexus · margen y salud por tenant",
+  "tags": ["nexus", "wp-30b"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "tenant",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "nexus-postgres" },
+        "query": "SELECT DISTINCT tenant_name AS __text, tenant_id AS __value FROM reporting_tenant_cost_monthly WHERE tenant_name IS NOT NULL ORDER BY 1",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Coste por tenant y versión de agente",
+      "description": "El corte que CloudWatch no puede dar barato: la dimensión `tenant` está fuera del EMF a propósito (se paga por serie). Sale de usage_records vía la vista reporting_tenant_cost_monthly.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "nexus-postgres" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "sin_precio" },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null },
+                    { "color": "red", "value": 1 }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "coste_usd" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 4 }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT tenant_name AS tenant,\n       coalesce(agent_version::text, '—') AS version_agente,\n       to_char(month, 'YYYY-MM') AS mes,\n       sum(cost_usd_total) AS coste_usd,\n       sum(records) AS registros,\n       sum(unpriced_records) AS sin_precio\n  FROM reporting_tenant_cost_monthly\n WHERE month >= $__timeFrom()::timestamptz\n   AND ('$tenant' = '$__all' OR tenant_id::text = ANY(string_to_array('$tenant', ',')))\n GROUP BY 1, 2, 3\n ORDER BY 4 DESC NULLS LAST"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Registros sin precio (todo el periodo)",
+      "description": "SUM ignora los NULL, y NULL es lo que WP-19 escribe cuando algo se mide y no se puede valorar. Si esto no es cero, el coste de arriba está por debajo del real — no es un aviso cosmético, es la diferencia entre un panel que informa y uno que miente con confianza.",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "nexus-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(sum(unpriced_records), 0) AS \"sin precio\"\n  FROM reporting_tenant_cost_monthly\n WHERE month >= $__timeFrom()::timestamptz"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "bargauge",
+      "title": "Acierto de caché por tenant",
+      "description": "cache_read / (cache_read + input_tokens). No hay métrica de caché en CloudWatch — sale de los medidores llm.cache_read y llm.input_tokens de usage_records.",
+      "gridPos": { "h": 5, "w": 18, "x": 6, "y": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "nexus-postgres" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "min": 0, "max": 1, "decimals": 2 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT tenant_name AS tenant,\n       sum(billable_qty_total) FILTER (WHERE meter = 'llm.cache_read')\n         / nullif(sum(billable_qty_total) FILTER (WHERE meter IN ('llm.cache_read','llm.input_tokens')), 0) AS acierto\n  FROM reporting_tenant_cost_monthly\n WHERE month >= $__timeFrom()::timestamptz\n GROUP BY 1\n HAVING sum(billable_qty_total) FILTER (WHERE meter IN ('llm.cache_read','llm.input_tokens')) > 0\n ORDER BY 2 DESC NULLS LAST"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "p95 de latencia de turno",
+      "description": "turn_latency_ms se publica sin dimensiones. El corte por tenant no existe aquí a propósito: una serie por cliente y por métrica se paga por serie.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "cloudwatch", "uid": "nexus-cloudwatch" },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        {
+          "namespace": "Nexus",
+          "metricName": "turn_latency_ms",
+          "statistic": "p95",
+          "period": "300",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "dimensions": {}
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "p95 del ack del webhook (SLI: 50 ms)",
+      "description": "El objetivo de 50 ms de la Fase 1. La Fase 1 cerró SIN cumplir este gate; la línea es el objetivo, no el estado.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "cloudwatch", "uid": "nexus-cloudwatch" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "custom": { "thresholdsStyle": { "mode": "line" } }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "namespace": "Nexus",
+          "metricName": "webhook_ack_ms",
+          "statistic": "p95",
+          "period": "300",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "dimensions": { "provider": "*" }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Profundidad de cola — entrada",
+      "description": "El pending más viejo por stream. Es lo que vigila la alarma nexus-<ws>-runner-queue-stalled (>120 s durante 10 min): el modo de fallo silencioso de este sistema es que el agente deje de contestar sin error en ningún log.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "datasource": { "type": "cloudwatch", "uid": "nexus-cloudwatch" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "namespace": "Nexus",
+          "metricName": "queue_oldest_pending_seconds",
+          "statistic": "Maximum",
+          "period": "300",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "dimensions": { "stream": "*" }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Profundidad de cola — salida",
+      "description": "outbound_pending_messages gobierna el autoescalado de egress; se publica sin dimensiones porque el collector va con NoDimensionRollup y una etiqueta rompería la política de escalado.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "datasource": { "type": "cloudwatch", "uid": "nexus-cloudwatch" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "namespace": "Nexus",
+          "metricName": "outbound_pending_messages",
+          "statistic": "Maximum",
+          "period": "300",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "dimensions": {}
+        },
+        {
+          "refId": "B",
+          "namespace": "Nexus",
+          "metricName": "outbound_oldest_pending_seconds",
+          "statistic": "Maximum",
+          "period": "300",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "dimensions": {}
+        }
+      ]
+    }
+  ]
+}

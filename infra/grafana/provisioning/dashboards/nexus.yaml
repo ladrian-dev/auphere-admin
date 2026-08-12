@@ -1,0 +1,18 @@
+# De dónde salen los paneles. `allowUiUpdates: false` es la mitad del
+# criterio de salida de D8: la UI queda de sólo lectura para los paneles
+# aprovisionados, así que la única forma de cambiar uno es el repositorio.
+# Sin esto, alguien "arregla" un panel a mano, funciona, y se pierde en el
+# siguiente despliegue sin que nadie entienda por qué.
+apiVersion: 1
+
+providers:
+  - name: nexus
+    orgId: 1
+    folder: Nexus
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
