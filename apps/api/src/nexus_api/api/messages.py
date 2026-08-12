@@ -29,7 +29,7 @@ from nexus_api.schemas.messages import (
 )
 from nexus_api.services.direct_messages import mask_phone, send_template_message
 
-router = APIRouter(prefix="/v1/messages", tags=["messages"])
+router = APIRouter(prefix="/messages", tags=["messages"])
 log = structlog.get_logger(__name__)
 
 
