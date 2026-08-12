@@ -71,6 +71,37 @@ Reglas de oro:
 
 Base: `https://api.auphere.com` (prod). Auth: `Authorization: Bearer ak_live_…`.
 
+### Versiones
+
+La superficie vive bajo un prefijo de versión. Hoy hay dos y **sirven
+exactamente lo mismo**:
+
+| Versión | Estado | Para qué |
+|---|---|---|
+| `/v2` | **actual** | Integraciones nuevas. Es donde ocurrirán los cambios |
+| `/v1` | **congelada** | Su forma no va a cambiar. Responde con `Deprecation` y `Link: </v2>; rel="successor-version"` |
+
+Migrar de `/v1` a `/v2` es cambiar el prefijo: mismos caminos, mismos
+cuerpos, mismos códigos. No hay fecha de apagado de `/v1` — cuando la haya
+se acordará contigo y saldrá en la cabecera `Sunset` antes de aplicarse.
+
+Los ejemplos de abajo usan `/v1` porque es lo que hay integrado hoy.
+
+### Respuestas de error comunes a toda la superficie
+
+| Código | Cuándo |
+|---|---|
+| `400` | El cuerpo no se pudo leer (JSON ilegible) |
+| `401` | Falta la clave, o no es válida |
+| `403` | Clave válida sin el scope necesario, o partner suspendido |
+| `422` | El cuerpo se leyó y no cumple el esquema |
+| `429` | Límite de peticiones superado. Reintentar con espera |
+
+El límite es **por superficie y por partner**: agotar la cuota de
+aprovisionamiento no afecta a tus envíos, ni al revés.
+
+### Endpoints
+
 | Endpoint | Scope |
 |---|---|
 | `POST /v1/partners/clients` | `provision` |
