@@ -12,8 +12,13 @@ locals {
       memory = { api = 1024, runner = 1024, scheduler = 512, egress = 512, metering = 512 }
     }
     prod = {
-      cpu    = { api = 1024, runner = 1024, scheduler = 512, egress = 512, metering = 512 }
-      memory = { api = 2048, runner = 2048, scheduler = 1024, egress = 1024, metering = 1024 }
+      # Redimensionado el 2026-08-12: prod arranca con el tamaño que pide
+      # el volumen de HOY y crece con el autoescalado de WP-24, que ya
+      # está puesto. La api conserva 512/1024 porque es la que recibe los
+      # webhooks de Meta y su p95 es un SLI; el resto baja al mínimo de
+      # staging. Subirlo es cambiar un número aquí.
+      cpu    = { api = 512, runner = 512, scheduler = 256, egress = 256, metering = 256 }
+      memory = { api = 1024, runner = 1024, scheduler = 512, egress = 512, metering = 512 }
     }
   }
 

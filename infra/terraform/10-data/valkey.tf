@@ -16,8 +16,16 @@ locals {
       snapshot_days = 1
     }
     prod = {
-      node_type     = "cache.t4g.medium"
-      replicas      = 1 # 2 nodos en total (WP-23)
+      # t4g.micro y no medium (2026-08-12): 20 $/mes en vez de 79. Los
+      # streams de entrada con el volumen de hoy caben de sobra, y la
+      # alarma de memoria al 75% avisa mucho antes del techo.
+      node_type = "cache.t4g.micro"
+      # Los 2 nodos SÍ se mantienen aunque prod se haya redimensionado a
+      # la baja en todo lo demás: con maxmemory-policy=noeviction, perder
+      # Valkey no es perder caché, es perder turnos encolados. 10 $/mes
+      # por no depender de una sola AZ para eso es de lo más barato que
+      # se compra aquí.
+      replicas      = 1
       multi_az      = true
       failover      = true
       snapshot_days = 7

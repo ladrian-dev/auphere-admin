@@ -96,6 +96,17 @@ resource "aws_cloudwatch_metric_alarm" "runner_queue_stalled" {
 
   alarm_actions = local.alarm_actions
   ok_actions    = local.alarm_actions
+
+  # Verificado el 2026-08-12 contra CloudWatch: `m0` publica un punto cada
+  # 300 s incluso con la cola a cero, y `m1` (stream priority) no existe
+  # todavía — `MAX` ignora la serie ausente, así que la alarma SÍ evalúa.
+  #
+  # Pero con `notBreaching`, "nadie publica" y "cola sana" son el mismo
+  # OK. Y quien publica esta métrica es justo el servicio cuya caída hay
+  # que detectar: un metering muerto apagaría la única alarma que vigila
+  # que el agente sigue contestando. INSUFFICIENT_DATA avisa de eso sin
+  # convertir cada hueco en una falsa alarma de cola parada.
+  insufficient_data_actions = local.alarm_actions
 }
 
 # ── Aurora ─────────────────────────────────────────────────────────────

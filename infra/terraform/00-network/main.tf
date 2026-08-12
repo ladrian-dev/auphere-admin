@@ -18,8 +18,14 @@ locals {
       nat_count = 1
     }
     prod = {
-      cidr      = "10.40.0.0/16"
-      nat_count = 2
+      cidr = "10.40.0.0/16"
+      # 1 NAT también en prod, decisión de Luis del 2026-08-12 al crear el
+      # entorno: 35 $/mes en vez de 70. Es un punto único de fallo para
+      # TODO el tráfico saliente —si cae esa AZ el agente deja de poder
+      # enviar por WhatsApp aunque la API siga viva— y se dobla con un
+      # apply el día que el volumen lo justifique. Queda escrito para que
+      # sea una decisión revisable y no un olvido.
+      nat_count = 1
     }
   }
 

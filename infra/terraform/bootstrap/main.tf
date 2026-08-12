@@ -96,7 +96,13 @@ resource "aws_ecr_repository" "repos" {
   # nexus-pgbouncer es un espejo de edoburu/pgbouncer (WP-15): Fargate no
   # debe depender del rate limit anónimo de Docker Hub. Se actualiza a mano:
   #   docker buildx imagetools create --tag <ecr>/nexus-pgbouncer:<tag> edoburu/pgbouncer:<tag>
-  for_each = toset(["nexus-api", "nexus-worker", "nexus-pgbouncer"])
+  # nexus-grafana es una imagen PROPIA (WP-30b): Grafana upstream + el
+  # aprovisionamiento de fuentes y paneles horneado dentro. Sin EFS no hay
+  # dónde poner esos ficheros, y hornearlos es lo que hace verdad el
+  # "paneles versionables como JSON en el repo" de la decisión D8 — un
+  # cambio hecho a mano en la UI se pierde en el siguiente despliegue, a
+  # propósito.
+  for_each = toset(["nexus-api", "nexus-worker", "nexus-pgbouncer", "nexus-grafana"])
 
   name = each.key
   # Tags móviles (``staging``) requieren mutabilidad; la trazabilidad la da

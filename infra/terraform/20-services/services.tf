@@ -3,7 +3,12 @@ locals {
     staging = { api = 1, runner = 1, scheduler = 1, egress = 1, metering = 1 }
     # El scheduler es SINGLETON (WP-08: advisory locks toleran 2 durante un
     # rollout como transitorio, no como estado estable).
-    prod = { api = 2, runner = 2, scheduler = 1, egress = 2, metering = 1 }
+    # La api se queda en 2 aunque prod se haya redimensionado a la baja:
+    # con 1 réplica, cada rollout es una ventana sin recibir webhooks de
+    # Meta, y Meta reintenta pero no indefinidamente. runner y egress
+    # bajan a 1 — el autoescalado de WP-24 los sube por cola, que es la
+    # señal correcta, no por una cifra fijada a mano hoy.
+    prod = { api = 2, runner = 1, scheduler = 1, egress = 1, metering = 1 }
   }
 
   desired = local.service_counts[local.env]

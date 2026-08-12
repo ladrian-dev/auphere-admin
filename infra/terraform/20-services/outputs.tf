@@ -50,3 +50,12 @@ output "public_hostname" {
 output "https_enabled" {
   value = local.https_enabled
 }
+
+# Lo consume 30-observability para colgar la regla de host de Grafana del
+# listener que ya existe, en vez de levantar un segundo ALB. Es null
+# mientras HTTPS esté apagado: sin 443 no hay dónde colgarla, y ese caso
+# se comprueba explícitamente allí en vez de fallar con un error de tipos.
+output "https_listener_arn" {
+  description = "ARN del listener 443 del ALB, o null si https_enabled = false."
+  value       = one(aws_lb_listener.https[*].arn)
+}

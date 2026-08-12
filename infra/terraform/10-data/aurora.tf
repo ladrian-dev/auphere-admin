@@ -24,9 +24,24 @@ locals {
       perf_insights    = false
     }
     prod = {
-      min_acu          = 8
-      max_acu          = 32
-      instance_count   = 2 # writer + 1 réplica de lectura, AZs distintas = Multi-AZ
+      # Redimensionado el 2026-08-12 al crear el entorno (decisión de Luis).
+      # El plan pedía 8-32 ACU x2 instancias. A la tarifa real de
+      # eu-south-2 (0,14 $/ACU-hora, consultada en la API de precios) eso
+      # son **1.635 $/mes con la base parada**: Serverless v2 cobra el
+      # mínimo siempre, esté ociosa o no, y por instancia. El mínimo no es
+      # un suelo de rendimiento, es una suscripción.
+      #
+      # 0,5-4 ACU con UNA instancia son 51 $/mes y el techo sigue siendo
+      # 8x el suelo. El autoescalado de WP-24 ya está puesto para subir
+      # cuando llegue tráfico real; subir el máximo aquí es un apply.
+      min_acu = 0.5
+      max_acu = 4
+      # UNA instancia: el ALMACENAMIENTO de Aurora es Multi-AZ igualmente,
+      # así que no se pierden datos. Lo que no hay es conmutación
+      # automática de CÓMPUTO — perder la AZ significa minutos de agente
+      # mudo mientras Aurora relanza en otra. Asumido con el volumen de
+      # hoy; añadir la réplica es cambiar este 1 por un 2.
+      instance_count   = 1
       max_connections  = "2000"
       backup_days      = 30
       deletion_protect = true
