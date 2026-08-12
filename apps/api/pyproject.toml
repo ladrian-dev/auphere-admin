@@ -90,6 +90,10 @@ dev = [
     # _reset_test_db when running on CI (no docker exec available there).
     # Binary wheel — no system libpq build required.
     "psycopg2-binary>=2.9.10",
+    # WP-28: contratos sobre el OpenAPI. Comprueba que el esquema
+    # publicado describe la realidad y que ninguna entrada malformada
+    # produce un 500 — lo que un partner ve como "la API se cayó".
+    "schemathesis>=3.36.0",
 ]
 
 [tool.uv.sources]
