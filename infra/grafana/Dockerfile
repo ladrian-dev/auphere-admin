@@ -13,6 +13,18 @@
 # construyen --platform linux/amd64); migrarlas es otro asunto.
 FROM grafana/grafana:11.6.0
 
+# X-Ray NO viene en Grafana OSS. Sin esto, el aprovisionamiento crea la
+# fuente igualmente y la UI la enseña como si existiera — falla sólo al
+# consultarla, con "plugin not registered". Es decir: una fuente que
+# parece configurada y no lo está, que es la peor forma de faltar.
+#
+# Se hornea en la imagen en vez de usar GF_INSTALL_PLUGINS para que el
+# arranque no dependa de que grafana.com esté disponible ni de salida a
+# internet desde la subred privada.
+USER root
+RUN grafana cli --pluginsDir /var/lib/grafana/plugins plugins install grafana-x-ray-datasource
+USER grafana
+
 # ``provisioning`` es lo que Grafana lee al arrancar. Los .yaml declaran
 # fuentes y de dónde cargar paneles; los .json son los paneles.
 COPY provisioning /etc/grafana/provisioning
