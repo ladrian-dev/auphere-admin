@@ -7,8 +7,28 @@
 locals {
   sizing = {
     staging = {
-      # WP-25: tamaños mínimos.
-      cpu    = { api = 512, runner = 512, scheduler = 256, egress = 256, metering = 256 }
+      # "Lite" de verdad (2026-08-12), dimensionado con la utilización REAL
+      # de 3 días medida en Container Insights, no a ojo:
+      #
+      #   servicio   CPU máx/asignada   MEM máx/asignada
+      #   api            512 / 512         379 / 1024
+      #   runner         511 / 512         341 / 1024
+      #   scheduler      256 / 256         305 / 512
+      #   egress         257 / 256         306 / 512
+      #   metering       190 / 256         301 / 512
+      #
+      # La CPU máxima toca el techo en los picos de arranque, pero la
+      # MEDIA va entre el 1% y el 4%. Así que se recorta CPU —que a
+      # 0,0466 $/vCPU-h es ~9 veces más cara por unidad que la memoria a
+      # 0,0051 $/GB-h— y se CONSERVA la memoria de api y runner: sus picos
+      # reales (379 y 341 MiB) dejarían sólo un 30% de holgura sobre 512,
+      # y quedarse corto de memoria no degrada, mata el contenedor.
+      #
+      # Contrapartida asumida: con 0,25 vCPU los arranques y los picos van
+      # más lentos, así que staging deja de ser un instrumento válido para
+      # medir el p95 del ack. Esa medición se muda a prod (decisión de
+      # Luis del 2026-08-12 al mover allí el reloj de la Fase 1).
+      cpu    = { api = 256, runner = 256, scheduler = 256, egress = 256, metering = 256 }
       memory = { api = 1024, runner = 1024, scheduler = 512, egress = 512, metering = 512 }
     }
     prod = {

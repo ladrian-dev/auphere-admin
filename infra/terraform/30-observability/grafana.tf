@@ -56,11 +56,13 @@ locals {
   # el navegador da error de nombre, no un 404 que se entienda.
   grafana_host = terraform.workspace == "prod" ? "grafana.auphere.com" : "grafana.staging.auphere.com"
 
-  # 0,5 vCPU / 1 GB (≈16,58 $/mes en ARM). Grafana con paneles
-  # aprovisionados y un puñado de operadores no necesita más; si algún día
-  # lo necesita, se sube aquí y se ve en la factura.
-  grafana_cpu    = 512
-  grafana_memory = 1024
+  # 0,25 vCPU / 0,5 GB (≈8,3 $/mes en ARM). Arrancó en 512/1024 y la
+  # utilización real de 3 días dijo otra cosa: 69 de 512 de CPU y 77 MiB
+  # de 1024. Con paneles aprovisionados y un operador, Grafana no trabaja
+  # — sólo consulta. Se sube aquí si algún día hace falta y se ve en la
+  # factura.
+  grafana_cpu    = 256
+  grafana_memory = 512
 }
 
 # ── Guardas: fallar en el plan, no a mitad del apply ───────────────────
