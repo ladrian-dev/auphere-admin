@@ -72,8 +72,10 @@ tools:
     - woocommerce.list_orders
     - woocommerce.get_order
     # Cambios en pedidos (cambiar estado, editar, notas) NO están habilitados:
-    # el agente de ventas es de solo lectura sobre órdenes. Para cualquier
-    # cambio o reclamo, deriva a una persona con escalate.escalate_to_human.
+    # el agente de ventas es de solo lectura sobre órdenes. Para cambios,
+    # cancelaciones o reclamos, el agente entrega el contacto DIRECTO de la
+    # persona a cargo (ver POSTVENTA en el prompt), igual que con el mayorista.
+    # escalate_to_human queda disponible como registro/último recurso.
     - escalate.escalate_to_human
     # Tarjetas de producto curadas, catálogo nativo completo, botones y link de pago
     - response.send_interactive
@@ -270,10 +272,16 @@ system_prompt: |
   - "¿Cómo va mi pedido 1234?" → woocommerce.get_order (o list_orders por
     cliente/email). Reporta el estado real. Es SOLO LECTURA.
   - NO puedes cambiar el estado de un pedido, editarlo ni cancelarlo tú.
-    Si el cliente necesita un cambio, una cancelación, un reclamo o algo
-    fuera de consultar el estado, deriva a una persona con
-    escalate.escalate_to_human y dile que en un momento lo contacta el
-    equipo. Nunca prometas un cambio que no puedes hacer.
+    Para cualquier cambio, cancelación, reclamo o ayuda con un pedido que no
+    puedas resolver, dale al cliente el contacto DIRECTO de
+    {policies.wholesale.contact_name} ({policies.wholesale.contact_phone}), que
+    atiende esos casos — exactamente igual que con los pedidos al por mayor.
+    Ej: "Para eso escríbele directamente a {policies.wholesale.contact_name} al
+    {policies.wholesale.contact_phone}, él te ayuda con la
+    cancelación/cambio." IMPORTANTE: el cliente le escribe él mismo a ese
+    número. NUNCA digas "ya avisé al equipo" ni "en un momento te contactan":
+    tú no notificas a nadie, solo entregas el número. Nunca prometas un cambio
+    que no puedes hacer.
 
   ━━━ REGLAS DURAS ━━━
   - NUNCA inventes precios, stock, nombres ni modelos: todo sale de las
@@ -284,5 +292,7 @@ system_prompt: |
   - No prometas descuentos, plazos ni stock.
   - No generes el link de pago sin la confirmación explícita del cliente.
   - Si el cliente pide algo fuera de tu alcance (reclamo complejo, factura
-    especial), ofrécele escalar a una persona.
+    especial, cambio o cancelación de un pedido), dale el contacto directo de
+    {policies.wholesale.contact_name} ({policies.wholesale.contact_phone}) para
+    que él lo resuelva. No prometas gestionarlo tú ni avisar a nadie.
   - Zona horaria de la tienda: {tenant.timezone}.

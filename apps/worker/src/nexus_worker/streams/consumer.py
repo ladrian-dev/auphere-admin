@@ -20,10 +20,50 @@ from typing import Any
 import structlog
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 
 from nexus_worker.runtime.dispatcher import InboundEvent, process_inbound
 
 log = structlog.get_logger(__name__)
+
+# Inline retry for transient DB-connection errors. The managed Postgres / proxy
+# drops connections (idle cutoff, restarts, network blips), surfacing as
+# "the connection is closed" / "SSL error: unexpected eof while reading". Before
+# this, such a failure left the entry pending forever — there is no reclaim
+# loop wired yet, so a "pending" message is effectively lost and the customer
+# never got a reply (barbersupply outage 2026-08-14). Retrying in-place with a
+# fresh session lets the turn succeed once the connection recovers.
+_MAX_DISPATCH_ATTEMPTS = 4
+_DISPATCH_RETRY_BASE_DELAY = 0.5  # seconds; doubles each attempt (0.5, 1, 2)
+
+# Substrings that identify a dropped/broken DB connection across asyncpg +
+# SQLAlchemy wrapping. Matched case-insensitively against ``str(exc)``.
+_TRANSIENT_DB_ERROR_SUBSTRINGS = (
+    "connection is closed",
+    "connection was closed",
+    "server closed the connection",
+    "terminating connection",
+    "connection reset",
+    "unexpected eof",
+    "consuming input failed",
+    "ssl error",
+    "cannot perform operation: another operation is in progress",
+)
+
+
+def _is_transient_db_error(exc: BaseException) -> bool:
+    """True when ``exc`` is a dropped/broken DB connection worth retrying.
+
+    Uses SQLAlchemy's ``connection_invalidated`` flag (set when the driver
+    connection died) and the driver exception types, with a message-substring
+    fallback for cases the flag doesn't cover (raw asyncpg surfaced through
+    other layers)."""
+    if isinstance(exc, DBAPIError) and getattr(exc, "connection_invalidated", False):
+        return True
+    if isinstance(exc, (InterfaceError, OperationalError)):
+        return True
+    message = str(exc).lower()
+    return any(sub in message for sub in _TRANSIENT_DB_ERROR_SUBSTRINGS)
 
 
 async def _ensure_group(redis: Redis, stream: str, group: str) -> None:
@@ -125,16 +165,39 @@ async def run_inbound_consumer(
                     )
                     await redis.xack(stream, group, entry_id_str)
                     continue
-                try:
-                    await process_inbound(event, pipeline=pipeline)
-                except Exception as exc:
-                    log.error(
-                        "consumer.dispatch_failed",
-                        entry_id=entry_id_str,
-                        tenant_id=str(event.tenant_id),
-                        error=str(exc),
-                    )
-                    # Don't ack — leave it pending for retry.
+                dispatched = False
+                for attempt in range(1, _MAX_DISPATCH_ATTEMPTS + 1):
+                    try:
+                        await process_inbound(event, pipeline=pipeline)
+                        dispatched = True
+                        break
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        transient = _is_transient_db_error(exc)
+                        if transient and attempt < _MAX_DISPATCH_ATTEMPTS:
+                            delay = _DISPATCH_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                            log.warning(
+                                "consumer.dispatch_retry",
+                                entry_id=entry_id_str,
+                                tenant_id=str(event.tenant_id),
+                                attempt=attempt,
+                                delay=round(delay, 2),
+                                error=str(exc),
+                            )
+                            await asyncio.sleep(delay)
+                            continue
+                        log.error(
+                            "consumer.dispatch_failed",
+                            entry_id=entry_id_str,
+                            tenant_id=str(event.tenant_id),
+                            error=str(exc),
+                            attempts=attempt,
+                            transient=transient,
+                        )
+                        break
+                if not dispatched:
+                    # Don't ack — leave it pending.
                     continue
                 await redis.xack(stream, group, entry_id_str)
                 if on_processed is not None:

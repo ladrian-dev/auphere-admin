@@ -32,7 +32,16 @@ def get_engine() -> AsyncEngine:
     return create_async_engine(
         settings.database_url,
         echo=False,
+        # ``pool_pre_ping`` replaces a dead connection at checkout. But the
+        # managed Postgres / proxy in front of it silently drops connections
+        # that have been open a while, and a connection can die mid-use
+        # (observed: "the connection is closed" / "SSL error: unexpected eof").
+        # ``pool_recycle`` proactively discards connections older than this so
+        # we never hand out one the proxy already killed. 280s stays under the
+        # common ~300s idle cutoff. Transient errors that still slip through
+        # are retried at the consumer boundary (see streams/consumer.py).
         pool_pre_ping=True,
+        pool_recycle=280,
         pool_size=10,
         max_overflow=20,
     )
