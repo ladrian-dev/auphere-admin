@@ -20,6 +20,13 @@ devolvería nada desde ``nexus_app``. El roll-up entre clientes necesita
 antes la misma decisión que se tomó para ``invoices`` en la 0073 (quién
 lee por encima del tenant y con qué rol), y esa decisión no se toma de
 paso en un endpoint.
+
+**El coste del cliente excluye el QA Playground** (columna ``source``,
+migración 0079). Los turnos que dispara un operador para probar el agente
+gastan tokens de verdad, pero los gastamos nosotros: cargárselos al
+cliente encarecería precisamente al que más atención recibe. Se devuelven
+aparte en ``internal_qa_*`` en lugar de omitirse — el motivo de medirlos
+era dejar de perderlos de vista, no cambiarles el escondite.
 """
 
 from __future__ import annotations
@@ -67,6 +74,11 @@ class CostReportOut(BaseModel):
     # "el total de arriba es un suelo", y es lo que el panel debe mirar
     # antes de pintar un margen.
     complete: bool
+    # Pruebas del operador en el QA Playground. NO están sumadas en
+    # ``total_cost_usd``: es gasto nuestro, no del cliente. Se exponen para
+    # que un consumo interno desbocado se vea, no para facturarlo.
+    internal_qa_cost_usd: float = 0.0
+    internal_qa_records: int = 0
 
 
 _SQL = sa.text(
@@ -80,8 +92,21 @@ _SQL = sa.text(
       FROM usage_records u
       LEFT JOIN agent_configs a ON a.id = u.agent_config_id
      WHERE u.occurred_at >= :since
+       AND u.source = 'channel'
      GROUP BY 1, 2
      ORDER BY 1 DESC, 3 DESC NULLS LAST
+    """
+)
+
+# El consumo interno se agrega entero, sin desglose por mes ni por versión:
+# no se factura ni se compara entre versiones, sólo tiene que ser visible.
+_QA_SQL = sa.text(
+    """
+    SELECT COALESCE(SUM(u.cost_usd), 0) AS cost_usd,
+           COUNT(*)                     AS records
+      FROM usage_records u
+     WHERE u.occurred_at >= :since
+       AND u.source = 'qa'
     """
 )
 
@@ -110,6 +135,7 @@ async def tenant_cost(
     """
     since = _first_of_month_n_back(months)
     rows = (await session.execute(_SQL, {"since": since})).mappings().all()
+    qa = (await session.execute(_QA_SQL, {"since": since})).mappings().one()
 
     # Los totales se suman en Decimal y se convierten UNA vez. Sumar floats
     # de ocho decimales arrastra error binario a una cifra que después se
@@ -137,4 +163,6 @@ async def tenant_cost(
         total_records=sum(b.records for b in buckets),
         total_unpriced_records=total_unpriced,
         complete=total_unpriced == 0,
+        internal_qa_cost_usd=float(qa["cost_usd"]),
+        internal_qa_records=int(qa["records"]),
     )

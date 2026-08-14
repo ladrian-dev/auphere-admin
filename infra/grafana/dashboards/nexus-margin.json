@@ -26,7 +26,7 @@
       "id": 1,
       "type": "table",
       "title": "Coste por tenant y versión de agente",
-      "description": "El corte que CloudWatch no puede dar barato: la dimensión `tenant` está fuera del EMF a propósito (se paga por serie). Sale de usage_records vía la vista reporting_tenant_cost_monthly.",
+      "description": "El corte que CloudWatch no puede dar barato: la dimensión `tenant` está fuera del EMF a propósito (se paga por serie). Sale de usage_records vía la vista reporting_tenant_cost_monthly. Sólo `source = 'channel'`: lo que gasta un operador probando en el QA Playground es gasto real nuestro, pero no es coste del cliente — sumarlo aquí inflaría más la factura del cliente mejor atendido, que es el que más pruebas recibe. Ese consumo tiene su propio panel abajo.",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "nexus-postgres" },
       "fieldConfig": {
@@ -67,7 +67,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT tenant_name AS tenant,\n       coalesce(agent_version::text, '—') AS version_agente,\n       to_char(month, 'YYYY-MM') AS mes,\n       sum(cost_usd_total) AS coste_usd,\n       sum(records) AS registros,\n       sum(unpriced_records) AS sin_precio\n  FROM reporting_tenant_cost_monthly\n WHERE month >= $__timeFrom()::timestamptz\n   AND ('$tenant' = '$__all' OR tenant_id::text = ANY(string_to_array('$tenant', ',')))\n GROUP BY 1, 2, 3\n ORDER BY 4 DESC NULLS LAST"
+          "rawSql": "SELECT tenant_name AS tenant,\n       coalesce(agent_version::text, '—') AS version_agente,\n       to_char(month, 'YYYY-MM') AS mes,\n       sum(cost_usd_total) AS coste_usd,\n       sum(records) AS registros,\n       sum(unpriced_records) AS sin_precio\n  FROM reporting_tenant_cost_monthly\n WHERE month >= $__timeFrom()::timestamptz\n   AND source = 'channel'\n   AND ('$tenant' = '$__all' OR tenant_id::text = ANY(string_to_array('$tenant', ',')))\n GROUP BY 1, 2, 3\n ORDER BY 4 DESC NULLS LAST"
         }
       ]
     },
@@ -75,7 +75,7 @@
       "id": 2,
       "type": "stat",
       "title": "Registros sin precio (todo el periodo)",
-      "description": "SUM ignora los NULL, y NULL es lo que WP-19 escribe cuando algo se mide y no se puede valorar. Si esto no es cero, el coste de arriba está por debajo del real — no es un aviso cosmético, es la diferencia entre un panel que informa y uno que miente con confianza.",
+      "description": "SUM ignora los NULL, y NULL es lo que WP-19 escribe cuando algo se mide y no se puede valorar. Si esto no es cero, el coste de arriba está por debajo del real — no es un aviso cosmético, es la diferencia entre un panel que informa y uno que miente con confianza. Mismo filtro que la tabla de arriba (`source = 'channel'`) para que valide exactamente la cifra que se enseña.",
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 10 },
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "nexus-postgres" },
       "fieldConfig": {
@@ -95,7 +95,27 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT coalesce(sum(unpriced_records), 0) AS \"sin precio\"\n  FROM reporting_tenant_cost_monthly\n WHERE month >= $__timeFrom()::timestamptz"
+          "rawSql": "SELECT coalesce(sum(unpriced_records), 0) AS \"sin precio\"\n  FROM reporting_tenant_cost_monthly\n WHERE month >= $__timeFrom()::timestamptz\n   AND source = 'channel'"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Gasto del QA Playground (interno, no facturable)",
+      "description": "Lo que cuestan las pruebas del operador. Hasta la 0079 este número no existía en ninguna parte: el Playground gastaba tokens de Anthropic reales y no escribía ni una fila en usage_records. No entra en el coste del cliente ni en el contador de presupuesto de WP-20 — si lo hiciera, revisar un agente a fondo apagaría el grader del cliente en producción. Pero se mira: es dinero nuestro, y si sube más que el tráfico real hay algo que revisar.",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "nexus-postgres" },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD", "decimals": 4 },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(sum(cost_usd_total), 0) AS \"gasto QA\"\n  FROM reporting_tenant_cost_monthly\n WHERE month >= $__timeFrom()::timestamptz\n   AND source = 'qa'\n   AND ('$tenant' = '$__all' OR tenant_id::text = ANY(string_to_array('$tenant', ',')))"
         }
       ]
     },
@@ -103,8 +123,8 @@
       "id": 3,
       "type": "bargauge",
       "title": "Acierto de caché por tenant",
-      "description": "cache_read / (cache_read + input_tokens). No hay métrica de caché en CloudWatch — sale de los medidores llm.cache_read y llm.input_tokens de usage_records.",
-      "gridPos": { "h": 5, "w": 18, "x": 6, "y": 10 },
+      "description": "cache_read / (cache_read + input_tokens). No hay métrica de caché en CloudWatch — sale de los medidores llm.cache_read y llm.input_tokens de usage_records. Sólo tráfico de canal: los turnos de QA arrancan con caché fría y bajarían un ratio que describe el servicio real.",
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 10 },
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "nexus-postgres" },
       "fieldConfig": {
         "defaults": { "unit": "percentunit", "min": 0, "max": 1, "decimals": 2 },
@@ -114,7 +134,7 @@
         {
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT tenant_name AS tenant,\n       sum(billable_qty_total) FILTER (WHERE meter = 'llm.cache_read')\n         / nullif(sum(billable_qty_total) FILTER (WHERE meter IN ('llm.cache_read','llm.input_tokens')), 0) AS acierto\n  FROM reporting_tenant_cost_monthly\n WHERE month >= $__timeFrom()::timestamptz\n GROUP BY 1\n HAVING sum(billable_qty_total) FILTER (WHERE meter IN ('llm.cache_read','llm.input_tokens')) > 0\n ORDER BY 2 DESC NULLS LAST"
+          "rawSql": "SELECT tenant_name AS tenant,\n       sum(billable_qty_total) FILTER (WHERE meter = 'llm.cache_read')\n         / nullif(sum(billable_qty_total) FILTER (WHERE meter IN ('llm.cache_read','llm.input_tokens')), 0) AS acierto\n  FROM reporting_tenant_cost_monthly\n WHERE month >= $__timeFrom()::timestamptz\n   AND source = 'channel'\n GROUP BY 1\n HAVING sum(billable_qty_total) FILTER (WHERE meter IN ('llm.cache_read','llm.input_tokens')) > 0\n ORDER BY 2 DESC NULLS LAST"
         }
       ]
     },

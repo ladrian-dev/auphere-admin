@@ -98,6 +98,17 @@ class UsageRecord(Base):
     # ON CONFLICT DO NOTHING: reprocesar el stream no duplica facturación.
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
 
+    # Quién originó el gasto (migración 0079). ``channel`` es tráfico del
+    # cliente y es lo facturable; ``qa`` es un operador probando el agente
+    # en el Playground — gasta tokens de verdad y NO lo paga el cliente.
+    # Sin esta columna las pruebas internas inflaban el coste del tenant en
+    # el panel de margen, y castigaban más al cliente mejor atendido.
+    source: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'channel'"),
+    )
+
 
 # Medidores conocidos. Es una lista, no un enum de Postgres, porque añadir
 # un medidor no debe exigir migración — pero el emisor (WP-17) y el

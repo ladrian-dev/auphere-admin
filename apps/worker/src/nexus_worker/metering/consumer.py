@@ -48,7 +48,7 @@ from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
 from nexus_worker.metering.budget import add_spend
-from nexus_worker.metering.collector import USAGE_STREAM
+from nexus_worker.metering.collector import SOURCE_CHANNEL, SOURCE_QA, USAGE_SOURCES, USAGE_STREAM
 from nexus_worker.metering.pricing import get_catalog, price_row
 
 log = structlog.get_logger(__name__)
@@ -91,6 +91,13 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
     tenant_id = uuid.UUID(fields["tenant_id"])
     conversation_id = fields.get("conversation_id")
     agent_config_id = fields.get("agent_config_id")
+    # Las entradas publicadas antes de la 0079 no llevan ``source``; son,
+    # todas, tráfico de canal. Un valor DESCONOCIDO sí es un error: lo
+    # rechazaría el CHECK de la tabla y tumbaría el INSERT del lote entero,
+    # así que la entrada se va al DLQ ella sola y el resto del lote entra.
+    source = fields.get("source") or SOURCE_CHANNEL
+    if source not in USAGE_SOURCES:
+        raise ValueError(f"'source' desconocido: {source!r}")
     events = json.loads(fields["events"])
     if not isinstance(events, list):
         raise ValueError("'events' no es una lista")
@@ -118,6 +125,7 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
                 "conversation_id": uuid.UUID(conversation_id) if conversation_id else None,
                 "agent_config_id": uuid.UUID(agent_config_id) if agent_config_id else None,
                 "idempotency_key": event["idempotency_key"],
+                "source": source,
             }
         )
     return tenant_id, rows
@@ -127,10 +135,12 @@ _INSERT_SQL = sa.text(
     """
     INSERT INTO usage_records (
         tenant_id, occurred_at, meter, quantity, billable_qty, cost_usd,
-        provider, model, conversation_id, agent_config_id, idempotency_key
+        provider, model, conversation_id, agent_config_id, idempotency_key,
+        source
     ) VALUES (
         :tenant_id, :occurred_at, :meter, :quantity, :billable_qty, :cost_usd,
-        :provider, :model, :conversation_id, :agent_config_id, :idempotency_key
+        :provider, :model, :conversation_id, :agent_config_id, :idempotency_key,
+        :source
     )
     ON CONFLICT (idempotency_key, occurred_at) DO NOTHING
     """
@@ -198,8 +208,24 @@ async def _partner_for(tenant_id: uuid.UUID) -> uuid.UUID | None:
 
 
 async def _bump_budget(tenant_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
-    """Suma el coste de este lote a los contadores de tenant y partner."""
-    total = sum((r["cost_usd"] for r in rows if r.get("cost_usd") is not None), Decimal(0))
+    """Suma el coste de este lote a los contadores de tenant y partner.
+
+    **El consumo de QA no cuenta.** El contador de WP-20 existe para
+    degradar o cortar el servicio cuando un tenant se pasa de gasto; si
+    las pruebas del operador lo alimentasen, revisar un agente a fondo
+    apagaría el grader del cliente en producción — un daño causado por
+    quien estaba intentando mejorarle el servicio. El gasto queda medido
+    en ``usage_records`` con ``source='qa'``, que es donde se ve; lo que
+    no hace es disparar una política pensada para otra cosa.
+    """
+    total = sum(
+        (
+            r["cost_usd"]
+            for r in rows
+            if r.get("cost_usd") is not None and r.get("source") != SOURCE_QA
+        ),
+        Decimal(0),
+    )
     if total <= 0:
         return
     try:

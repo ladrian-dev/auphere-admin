@@ -202,3 +202,51 @@ async def test_drain_reads_pending_then_orphans_then_new() -> None:
     assert processed == 0
     assert redis.reads == ["0", ">"], "primero lo propio pendiente, luego lo nuevo"
     assert redis.claimed, "hay que reclamar lo huérfano de réplicas muertas"
+
+
+# ── origen del consumo (0079) ────────────────────────────────────────────────
+
+
+async def test_a_turn_declares_its_source_and_defaults_to_channel(fake_redis) -> None:
+    """``source`` viaja en la entrada de stream, no en cada evento: es una
+    propiedad del turno, no de la llamada al LLM.
+
+    El defecto es ``channel`` a propósito. Un camino nuevo que olvide
+    declararlo cuenta como tráfico real, que es el error que se ve en la
+    factura; el revés —consumo de cliente etiquetado como interno— se
+    descontaría de los ingresos y no lo notaría nadie.
+    """
+    async with collector.usage_turn(tenant_id=uuid.uuid4(), turn_id="canal"):
+        collector.record_llm_usage(
+            model="m", provider="anthropic", usage={"prompt_tokens": 10, "completion_tokens": 1}
+        )
+    async with collector.usage_turn(
+        tenant_id=uuid.uuid4(), turn_id="playground", source=collector.SOURCE_QA
+    ):
+        collector.record_llm_usage(
+            model="m", provider="anthropic", usage={"prompt_tokens": 10, "completion_tokens": 1}
+        )
+
+    sources = [fields["source"] for _stream, fields in fake_redis.entries]
+    assert sources == ["channel", "qa"]
+
+
+async def test_an_invented_source_falls_back_to_channel(fake_redis) -> None:
+    """Mismo criterio que ``USAGE_METERS``: el conjunto es cerrado. Un
+    valor inventado no puede colar consumo como interno — cae al lado
+    facturable, que es el que alguien revisa."""
+    async with collector.usage_turn(tenant_id=uuid.uuid4(), turn_id="raro", source="gratis-total"):
+        collector.record_llm_usage(
+            model="m", provider="anthropic", usage={"prompt_tokens": 10, "completion_tokens": 1}
+        )
+
+    assert fake_redis.entries[0][1]["source"] == "channel"
+
+
+async def test_channel_messages_are_channel_source(fake_redis) -> None:
+    """Los salientes entregados se publican fuera de turno y también
+    tienen que quedar del lado facturable."""
+    await collector.record_channel_message(
+        tenant_id=uuid.uuid4(), provider="meta", provider_message_id="wamid.X"
+    )
+    assert fake_redis.entries[0][1]["source"] == "channel"

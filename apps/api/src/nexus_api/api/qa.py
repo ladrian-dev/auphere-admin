@@ -647,7 +647,17 @@ async def _run_in_process(
     LangGraph's ``thread_id`` (the configurable) is the same as
     ``qa_thread_id`` so the in-memory checkpointer keys conversations
     consistently across turns within a single process lifetime.
+
+    Metering (0079): the turn burns real Anthropic tokens, so it opens a
+    ``usage_turn`` exactly like the channel path in ``dispatcher.py``.
+    Without it ``record_usage`` is a no-op and the spend vanishes — the
+    Playground was the only runtime path that cost money and left no
+    trace. ``source='qa'`` keeps it out of the client's cost: it is the
+    operator testing, not the client being served. Dry-run turns are
+    metered too — the side effects are blocked, the LLM calls are not.
     """
+    from nexus_worker.metering.collector import SOURCE_QA, usage_turn
+
     from nexus_api.core.operator_context import qa_thread_context
 
     pipeline = _get_qa_pipeline(live=live)
@@ -670,7 +680,13 @@ async def _run_in_process(
             qa_thread_context(qa_thread_id),
             customer_context(customer_id),
         ):
-            final_state = await pipeline.ainvoke(state, config=config)
+            async with usage_turn(
+                tenant_id=tenant_id,
+                turn_id=str(inbound_id),
+                conversation_id=conversation_id,
+                source=SOURCE_QA,
+            ):
+                final_state = await pipeline.ainvoke(state, config=config)
     finally:
         _current_operator.reset(op_token)
 
@@ -983,30 +999,44 @@ async def start_thread_run(
     graph_config = {"configurable": {"thread_id": str(thread_id)}}
 
     async def _driver(handle: qa_streaming.RunHandle) -> None:
+        from nexus_worker.metering.collector import SOURCE_QA, usage_turn
+
         from nexus_api.core.operator_context import operator_context
 
+        # ``usage_turn`` goes INSIDE the driver for the same reason the
+        # three contextvars above do: asyncio gives each Task a fresh
+        # context, so a scope opened by the request handler would not
+        # reach the graph nodes and every token would be recorded
+        # nowhere. This is the path the current frontend uses — metering
+        # only ``/send`` would have left the real one silent.
         with (
             operator_context(operator_id),
             tenant_context(tenant_id_local),
             qa_thread_context(thread_id),
         ):
-            translator_state = qa_streaming._TranslatorState()
-            async for event in pipeline.astream_events(
-                graph_state, config=graph_config, version="v2"
+            async with usage_turn(
+                tenant_id=tenant_id_local,
+                turn_id=str(inbound_id),
+                conversation_id=conv_id,
+                source=SOURCE_QA,
             ):
-                pending = qa_streaming.translate_event(event, translator_state)
-                for name, data in pending:
-                    if name == "cost.updated":
-                        handle.total_input_tokens += int(data.get("input_tokens") or 0)
-                        handle.total_output_tokens += int(data.get("output_tokens") or 0)
-                    qa_streaming._push_event(
-                        handle,
-                        qa_streaming.SSEEvent(
-                            seq=qa_streaming._next_seq(handle),
-                            event=name,
-                            data=data,
-                        ),
-                    )
+                translator_state = qa_streaming._TranslatorState()
+                async for event in pipeline.astream_events(
+                    graph_state, config=graph_config, version="v2"
+                ):
+                    pending = qa_streaming.translate_event(event, translator_state)
+                    for name, data in pending:
+                        if name == "cost.updated":
+                            handle.total_input_tokens += int(data.get("input_tokens") or 0)
+                            handle.total_output_tokens += int(data.get("output_tokens") or 0)
+                        qa_streaming._push_event(
+                            handle,
+                            qa_streaming.SSEEvent(
+                                seq=qa_streaming._next_seq(handle),
+                                event=name,
+                                data=data,
+                            ),
+                        )
 
     async def _on_complete(handle: qa_streaming.RunHandle) -> None:
         await _finalise_run_row(
