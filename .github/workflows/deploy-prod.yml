@@ -1,0 +1,180 @@
+name: deploy-prod
+
+# main → producción AWS, con la MISMA secuencia que deploy-staging:
+# wait-for-ci → build+push → task de migración (BLOQUEANTE) → rodar los 5
+# servicios. Gemelo deliberado de deploy-staging.yml: dos ficheros que se
+# leen igual se comparan de un vistazo, y una diferencia entre entornos que
+# nadie ve es como se cuelan los incidentes.
+#
+# ── Lo que este workflow NO hace ────────────────────────────────────────────
+#
+# **No manda tráfico a AWS.** api.auphere.com sigue apuntando a Railway por
+# Cloudflare, así que esto despliega y arranca el entorno nuevo sin quitarle
+# una sola petición a producción. El corte es un cambio de DNS aparte, y es
+# decisión de Luis.
+#
+# **No toca Railway.** Los deploys de Railway siguen siendo manuales
+# (deploy.yml, workflow_dispatch). Mientras Railway sea producción, esa
+# palanca no se automatiza: dos caminos automáticos hacia dos produccións
+# distintas es como se despliega sin querer.
+#
+# ── Prerrequisitos (sin ellos el run falla, a propósito) ────────────────────
+#
+# 1. El secreto ``nexus/prod/app`` tiene que tener al menos una versión
+#    (``infra/scripts/populate_app_secret.sh prod``). Sin él la task de
+#    migración no puede ni conectar, y el deploy aborta ANTES de tocar
+#    ningún servicio — que es el orden correcto de fallar.
+# 2. Las task definitions de prod tienen que correr el tag ``prod``. Hoy
+#    corren ``staging`` porque el workspace prod nunca fijó ``image_tag``:
+#    sin ese cambio, este workflow publicaría la imagen de main y prod
+#    seguiría ejecutando la de develop. Ver infra/terraform/20-services/
+#    prod.tfvars.
+#
+# ── Aprobación manual ───────────────────────────────────────────────────────
+#
+# El job usa ``environment: production``. Si ese environment tiene
+# "required reviewers" en GitHub, cada despliegue a prod espera un OK
+# explícito. Es la forma de tener main→prod automático sin perder el "no
+# hasta que yo lo diga".
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-south-2
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+      actions: read # wait-for-ci lee los runs del workflow ci
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: wait for ci on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Mismo contrato que en staging: el deploy no avanza hasta que el
+          # run de ``ci`` del MISMO sha esté verde.
+          for i in $(seq 1 60); do
+            RUN=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=50" \
+              --jq '[.workflow_runs[] | select(.name == "ci")][0] // empty')
+            if [ -n "$RUN" ]; then
+              STATUS=$(echo "$RUN" | jq -r .status)
+              CONCLUSION=$(echo "$RUN" | jq -r .conclusion)
+              echo "ci: status=$STATUS conclusion=$CONCLUSION (intento $i)"
+              if [ "$STATUS" = "completed" ]; then
+                [ "$CONCLUSION" = "success" ] && exit 0
+                echo "::error::ci terminó en '$CONCLUSION' — deploy abortado."
+                exit 1
+              fi
+            else
+              echo "ci: aún sin run para ${{ github.sha }} (intento $i)"
+            fi
+            sleep 30
+          done
+          echo "::error::timeout esperando al workflow ci."
+          exit 1
+
+      - name: configure aws credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: login ecr
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: build and push images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Dos tags: el móvil ``prod`` que corren las task definitions, y el
+          # sha, que es lo que permite volver atrás sin reconstruir nada —
+          # basta apuntar el taskdef a un sha anterior.
+          for image in nexus-api nexus-worker; do
+            case "$image" in
+              nexus-api)    dockerfile=apps/api/Dockerfile ;;
+              nexus-worker) dockerfile=apps/worker/Dockerfile ;;
+            esac
+            docker build -f "$dockerfile" \
+              -t "$REGISTRY/$image:$SHA" \
+              -t "$REGISTRY/$image:prod" \
+              .
+            docker push "$REGISTRY/$image:$SHA"
+            docker push "$REGISTRY/$image:prod"
+          done
+
+      - name: read deploy parameters (SSM)
+        id: params
+        run: |
+          set -euo pipefail
+          get() { aws ssm get-parameter --name "/nexus/prod/deploy/$1" --query Parameter.Value --output text; }
+          {
+            echo "cluster=$(get cluster)"
+            echo "subnets=$(get private_subnet_ids)"
+            echo "migrate_task_def=$(get migrate_task_def)"
+            echo "migrate_sg=$(get migrate_sg_id)"
+            echo "services=$(get services)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: run migration task (blocking)
+        run: |
+          set -euo pipefail
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${{ steps.params.outputs.cluster }}" \
+            --task-definition "${{ steps.params.outputs.migrate_task_def }}" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ steps.params.outputs.subnets }}],securityGroups=[${{ steps.params.outputs.migrate_sg }}],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+          echo "migration task: $TASK_ARN"
+
+          aws ecs wait tasks-stopped \
+            --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN"
+
+          # Índice directo: la task de migración tiene UN contenedor. El
+          # filtro JMESPath [?name==...][0] devuelve vacío (las proyecciones
+          # de filtro no se indexan así) — falso negativo ya visto en
+          # staging con la migración realmente en verde.
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          STOP_REASON=$(aws ecs describe-tasks \
+            --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN" \
+            --query 'tasks[0].stoppedReason' --output text)
+          echo "migration exit code: $EXIT_CODE ($STOP_REASON)"
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::La migración falló — deploy ABORTADO, servicios sin tocar. Logs en /nexus/prod/migrate."
+            exit 1
+          fi
+
+      - name: roll services
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra SERVICES <<< "${{ steps.params.outputs.services }}"
+          for svc in "${SERVICES[@]}"; do
+            aws ecs update-service \
+              --cluster "${{ steps.params.outputs.cluster }}" \
+              --service "$svc" --force-new-deployment >/dev/null
+            echo "rolling: $svc"
+          done
+          # services-stable espera al circuit breaker: si un servicio hace
+          # rollback, el wait falla y el run queda rojo. "Apply complete" no
+          # es verificación; que el servicio se estabilice, sí.
+          aws ecs wait services-stable \
+            --cluster "${{ steps.params.outputs.cluster }}" \
+            --services "${SERVICES[@]}"
