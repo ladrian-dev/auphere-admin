@@ -66,6 +66,14 @@ LLM_METERS: dict[str, str] = {
     "cache_creation_input_tokens": "llm.cache_write",
 }
 
+# Quién originó el consumo. Cerrado a propósito, igual que ``USAGE_METERS``:
+# un origen inventado sobre la marcha es una categoría de facturación
+# fantasma. ``qa`` es gasto real de Anthropic que NO paga el cliente — el
+# operador está probando su agente, no atendiendo a nadie.
+SOURCE_CHANNEL = "channel"
+SOURCE_QA = "qa"
+USAGE_SOURCES: frozenset[str] = frozenset({SOURCE_CHANNEL, SOURCE_QA})
+
 
 def provider_of(model: str) -> str | None:
     """``anthropic/claude-sonnet-4-6`` → ``anthropic``. None si el
@@ -150,6 +158,7 @@ class _TurnScope:
     turn_id: str
     conversation_id: uuid.UUID | None = None
     agent_config_id: uuid.UUID | None = None
+    source: str = SOURCE_CHANNEL
     events: list[UsageEvent] = field(default_factory=list)
     call_seq: int = 0
 
@@ -168,13 +177,22 @@ async def usage_turn(
     turn_id: str,
     conversation_id: uuid.UUID | None = None,
     agent_config_id: uuid.UUID | None = None,
+    source: str = SOURCE_CHANNEL,
 ) -> AsyncIterator[None]:
-    """Abre el buffer del turno y lo publica al salir, pase lo que pase."""
+    """Abre el buffer del turno y lo publica al salir, pase lo que pase.
+
+    ``source`` distingue el turno de un cliente del de un operador
+    probando en el QA Playground. Por defecto ``channel`` para que
+    cualquier camino nuevo que olvide declararlo cuente como tráfico real
+    — es el error que se nota, frente a un consumo que se cuela como
+    interno y desaparece de la factura.
+    """
     scope = _TurnScope(
         tenant_id=tenant_id,
         turn_id=turn_id,
         conversation_id=conversation_id,
         agent_config_id=agent_config_id,
+        source=source if source in USAGE_SOURCES else SOURCE_CHANNEL,
     )
     token = _scope.set(scope)
     try:
@@ -301,6 +319,7 @@ async def _publish(scope: _TurnScope) -> None:
         fields: dict[str, Any] = {
             "tenant_id": str(scope.tenant_id),
             "turn_id": scope.turn_id,
+            "source": scope.source,
             "events": json.dumps([e.as_dict() for e in scope.events]),
         }
         if scope.conversation_id is not None:
@@ -313,6 +332,7 @@ async def _publish(scope: _TurnScope) -> None:
             "usage.published",
             tenant_id=str(scope.tenant_id),
             turn_id=scope.turn_id,
+            source=scope.source,
             events=len(scope.events),
         )
     except Exception as exc:
