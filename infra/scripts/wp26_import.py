@@ -236,13 +236,22 @@ def verify_fernet() -> int:
 
     Se comprueba descifrando de verdad, no comparando claves: la clave
     correcta es la que abre el dato.
+
+    ``convert_from(..., 'UTF8')`` y no la columna a secas: ``BYTEA`` sale
+    de psql en el hexadecimal de Postgres (``\\x676141…``), y descifrar esa
+    cadena falla SIEMPRE — con la clave buena y con la mala. La primera
+    versión de esta función leía así y daba 0/N contra un entorno sano: una
+    comprobación que sólo sabe decir "mal" no comprueba nada. El token
+    Fernet es base64url ASCII, así que convertirlo a texto lo devuelve tal
+    cual se escribió.
     """
     key = os.environ.get("NEXUS_FERNET_KEY")
     if not key:
         print("    [MAL] NEXUS_FERNET_KEY no está en el entorno")
         return 1
     payloads = run_sql(
-        "SELECT encrypted_payload FROM tenant_credentials WHERE encrypted_payload IS NOT NULL",
+        "SELECT convert_from(encrypted_payload, 'UTF8') FROM tenant_credentials "
+        "WHERE encrypted_payload IS NOT NULL",
         maintenance=True,
     ).splitlines()
     if not payloads:
@@ -325,6 +334,8 @@ def main() -> None:
     if "--rollback" in sys.argv:
         rollback(manifest)
         return
+    if "--verify-only" in sys.argv:
+        sys.exit(1 if verify(manifest) else 0)
     import_all(manifest)
     bad = verify(manifest)
     if bad:
