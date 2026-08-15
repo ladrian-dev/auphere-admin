@@ -8,7 +8,7 @@ import structlog
 from fastapi import FastAPI
 
 from nexus_api import __version__
-from nexus_api.api import admin, messages, partners, partners_clients, qa, webhooks
+from nexus_api.api import admin, console, messages, partners, partners_clients, qa, webhooks
 from nexus_api.api import connectors as connectors_public
 from nexus_api.api.versioning import deprecation_middleware, mount_versioned
 from nexus_api.config import settings
@@ -114,6 +114,9 @@ async def _webhook_ack_timing(request, call_next):  # type: ignore[no-untyped-de
 # origin would only widen the attack surface.
 app.include_router(health_router)
 app.include_router(admin.router)
+# PLAN-CONSOLE-V1: partner console, BFF-only, 60 s EdDSA tokens. Unversioned
+# like ``/admin`` — see ``api/console/__init__.py`` for why not ``/v1``.
+app.include_router(console.router)
 app.include_router(webhooks.router)
 app.include_router(connectors_public.router)
 app.include_router(qa.router)
