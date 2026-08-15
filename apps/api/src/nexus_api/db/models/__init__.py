@@ -82,6 +82,15 @@ from nexus_api.db.models.partner import (
     PartnerStatus,
     PartnerTenant,
 )
+from nexus_api.db.models.partner_membership import (
+    INVITATION_TTL,
+    PARTNER_ROLES,
+    InvitationStatus,
+    MembershipStatus,
+    PartnerInvitation,
+    PartnerMembership,
+    PartnerRole,
+)
 from nexus_api.db.models.qa import QAAuditLog, QARun, QASideEffectAudit, QAThread
 from nexus_api.db.models.queue_entry import QueueEntry, QueueEntryStatus
 from nexus_api.db.models.sales import AgentSale
@@ -97,11 +106,13 @@ from nexus_api.db.models.usage_record import USAGE_METERS, UsageRecord
 
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
+    "INVITATION_TTL",
     "MODEL_ROLES",
     "OWNER_COMMAND_KINDS",
     "OWNER_CONSULTATION_EXPECTED_REPLY_KINDS",
     "OWNER_CONSULTATION_STATUSES",
     "OWNER_CONSULTATION_URGENCIES",
+    "PARTNER_ROLES",
     "TENANT_SCOPED_API_KEY_SCOPES",
     "USAGE_METERS",
     "AgentConfig",
@@ -137,6 +148,7 @@ __all__ = [
     "EvalRun",
     "EvalRunResult",
     "EvalRunStatus",
+    "InvitationStatus",
     "Invoice",
     "InvoiceLine",
     "InvoiceStatus",
@@ -145,6 +157,7 @@ __all__ = [
     "KGNode",
     "KGSchema",
     "MediaKind",
+    "MembershipStatus",
     "Message",
     "MessageDirection",
     "MessageStatus",
@@ -155,6 +168,9 @@ __all__ = [
     "OwnerPhoneIndex",
     "Partner",
     "PartnerApiKey",
+    "PartnerInvitation",
+    "PartnerMembership",
+    "PartnerRole",
     "PartnerStatus",
     "PartnerTenant",
     "QAAuditLog",
