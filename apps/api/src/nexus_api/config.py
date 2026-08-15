@@ -325,6 +325,40 @@ class Settings(BaseSettings):
         key = self.resend_api_key
         return bool(key) and not key.startswith("dev-")
 
+    # ── Partner console (PLAN-CONSOLE-V1, CP-03) ────────────────────────
+    #
+    # The console BFF (``apps/console``) never holds a backend credential.
+    # Per request it mints a 60-second EdDSA (Ed25519) JWT with the user's
+    # id, the partner id and a unique ``jti``; the backend verifies the
+    # signature with the PUBLIC key below, checks the membership in
+    # ``partner_memberships`` again, and rejects any replayed ``jti``.
+    #
+    # ``console_enabled`` is the master switch (rule 4 of the plan). It is
+    # OFF by default everywhere; the per-partner switch is
+    # ``partners.console_enabled`` (migration 0080). Both must be on.
+    console_enabled: bool = False
+    # PEM-encoded Ed25519 public key ("-----BEGIN PUBLIC KEY-----"). Empty
+    # means the console cannot authenticate anything — fail closed. Only a
+    # public key lives here; the private half stays in the console.
+    console_jwt_public_key: str = ""
+    console_jwt_issuer: str = "nexus-console"
+    console_jwt_audience: str = "nexus-api"
+    # The longest life a console token may claim (``exp - iat``). The BFF
+    # mints exactly this; anything longer is a forged or misconfigured
+    # token and is rejected regardless of signature.
+    console_jwt_max_ttl_seconds: int = 60
+    # Clock skew tolerated between the BFF and the API, in seconds.
+    console_jwt_leeway_seconds: int = 5
+
+    @field_validator("console_jwt_public_key", mode="before")
+    @classmethod
+    def _pem_newlines(cls, v: object) -> object:
+        # Secret managers and .env files usually cannot carry real newlines;
+        # accept the escaped form so the PEM parses.
+        if isinstance(v, str):
+            return v.replace("\\n", "\n").strip().strip('"')
+        return v
+
     @property
     def is_prod(self) -> bool:
         return self.environment.lower() in {"prod", "production"}
@@ -363,6 +397,11 @@ class Settings(BaseSettings):
                 offenders.append("NEXUS_TIKTOK_APP_ID")
             if "change-me" in self.tiktok_oauth_state_secret:
                 offenders.append("NEXUS_TIKTOK_OAUTH_STATE_SECRET")
+        # The console is fail-closed without a verification key; booting
+        # prod with the switch on and no key would make every console
+        # request a 401 with a misleading cause.
+        if self.console_enabled and not self.console_jwt_public_key.strip():
+            offenders.append("NEXUS_CONSOLE_JWT_PUBLIC_KEY")
         if offenders:
             raise ValueError(
                 "Refusing to boot in production with dev placeholder secrets: "
