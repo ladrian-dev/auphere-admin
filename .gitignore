@@ -60,3 +60,5 @@ CLAUDE.md
 *.tfplan
 infra/terraform/backend.hcl
 .envrc
+storybook-static/
+*.tsbuildinfo

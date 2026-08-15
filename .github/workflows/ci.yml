@@ -133,6 +133,54 @@ jobs:
           NEXUS_ADMIN_DATABASE_URL: postgresql://nexus:nexus@localhost:5432/nexus
         run: pnpm build
 
+  # PLAN-CONSOLE-V1 (CP-01/CP-03): the shared design system and the partner
+  # console live in the ROOT pnpm workspace (apps/admin keeps its own).
+  # The design-system lint (hex / spacing scale / radius enum), the
+  # component tests, the console's tests and the "no admin token" grep all
+  # block here.
+  test-console:
+    name: test-console
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: install (root workspace)
+        run: pnpm install --frozen-lockfile
+      - name: "@nexus/ui — typecheck + lint + test"
+        working-directory: packages/ui
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm test
+      - name: "@nexus/ui — storybook builds (one story per state)"
+        working-directory: packages/ui
+        run: pnpm build-storybook --quiet
+      - name: "console — no static admin token, ever"
+        working-directory: apps/console
+        run: pnpm check:no-admin-token
+      - name: "console — typecheck + lint + test"
+        working-directory: apps/console
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm test
+      - name: "console — next build"
+        working-directory: apps/console
+        env:
+          NEXUS_BACKEND_URL: http://localhost:8000
+          NEXUS_CONSOLE_DATABASE_URL: postgresql://nexus:nexus@localhost:5432/nexus
+          NEXUS_CONSOLE_JWT_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIGVs4kJmY0k7pS8YkK9uWJ2fJx3v9x2h6h1oQ0v0K5m3\n-----END PRIVATE KEY-----"
+          BETTER_AUTH_SECRET: ci-secret-32-chars-padding-padding-padding
+          BETTER_AUTH_URL: http://localhost:3110
+        run: pnpm build
+
   # ADR-017 / migration 0021 — the AgendaPro admin browser MCP (Node
   # subprocess) was removed. The ``test-mcp-node`` job that built +
   # tested it is gone with it. When the new public-link MCP lands a

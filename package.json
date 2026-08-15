@@ -1,0 +1,19 @@
+{
+  "name": "nexus-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.15.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "ui:build": "pnpm --filter @nexus/ui build",
+    "ui:test": "pnpm --filter @nexus/ui test",
+    "ui:lint": "pnpm --filter @nexus/ui lint",
+    "ui:storybook": "pnpm --filter @nexus/ui storybook",
+    "console:dev": "pnpm --filter console dev",
+    "console:build": "pnpm --filter console build",
+    "console:test": "pnpm --filter console test",
+    "console:lint": "pnpm --filter console lint",
+    "console:typecheck": "pnpm --filter console typecheck",
+    "check": "pnpm -r --filter @nexus/ui --filter console run lint && pnpm -r --filter @nexus/ui --filter console run typecheck && pnpm -r --filter @nexus/ui --filter console run test"
+  }
+}

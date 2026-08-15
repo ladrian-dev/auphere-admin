@@ -1,0 +1,35 @@
+/**
+ * The role → permission map, mirrored from ``core/console_auth.py``. The
+ * API is the authority (``GET /console/me`` returns the resolved list);
+ * this copy only decides what to RENDER before the first backend call.
+ * A drift is caught by ``lib/__tests__/permissions.test.ts``.
+ *
+ * Pure module (no server-only) so nav and tests can import it.
+ */
+export type Role = "owner" | "admin" | "builder" | "analyst" | "billing";
+
+export const PERMISSIONS = {
+  "partner:read": ["owner", "admin", "builder", "analyst", "billing"],
+  "clients:read": ["owner", "admin", "builder", "analyst"],
+  "clients:write": ["owner", "admin", "builder"],
+  "clients:delete": ["owner", "admin"],
+  "agents:read": ["owner", "admin", "builder", "analyst"],
+  "agents:write": ["owner", "admin", "builder"],
+  "channels:read": ["owner", "admin", "builder", "analyst"],
+  "channels:write": ["owner", "admin", "builder"],
+  "conversations:read": ["owner", "admin", "builder", "analyst"],
+  "usage:read": ["owner", "admin", "builder", "analyst", "billing"],
+  "audit:read": ["owner", "admin", "analyst"],
+  "team:read": ["owner", "admin", "builder", "analyst", "billing"],
+  "team:manage": ["owner", "admin"],
+  "keys:read": ["owner", "admin", "builder"],
+  "keys:manage": ["owner", "admin"],
+  "billing:read": ["owner", "billing"],
+  "billing:manage": ["owner", "billing"],
+} as const satisfies Record<string, readonly Role[]>;
+
+export type Permission = keyof typeof PERMISSIONS;
+
+export function can(role: Role, permission: Permission): boolean {
+  return (PERMISSIONS[permission] as readonly Role[]).includes(role);
+}

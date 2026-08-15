@@ -1,0 +1,314 @@
+/*
+  @nexus/ui — design tokens (PLAN-CONSOLE-V1 §5, CP-01)
+
+  Single source of truth for colour, spacing, type, radius, shadow and
+  motion, shared by apps/console and (incrementally) apps/admin.
+
+  Layers, in order:
+    1. Brand palette in OKLCH — the Auphere greens, converted from the
+       brand hex values (comment on each line) so nothing shifts visually.
+    2. Semantic roles (bg / fg / border / status) — what components use.
+    3. shadcn bridge (:root + [data-theme="dark"]) — the variables shadcn /
+       Base UI components read (--background, --primary, …).
+    4. `@theme inline` mirror so Tailwind emits `bg-primary`, `text-muted-
+       foreground`, … from the bridge.
+    5. Base rules: focus ring, text-wrap, no horizontal scroll, reduced motion.
+
+  Rules enforced here AND by the ESLint plugin (`@nexus/ui/eslint`):
+    - No hex / rgb / hsl in JSX. Colour comes from a token.
+    - Spacing is a 4 px grid: Tailwind's numeric utilities keep the default
+      0.25rem multiplier (`p-4` = 16 px). We deliberately do NOT define
+      `--spacing-1..9` tokens: naming them hijacks `h-7`, `p-5`, … and is the
+      documented cause of the mismatched control sizes in apps/admin
+      (`h-7` was resolving to 48 px). Half-steps (`gap-1.5`) are lint errors.
+    - Radius is an enum {0, 4, 8, 9999}: `rounded-none | rounded-sm |
+      rounded-md | rounded-full`. lg/xl/2xl/3xl/4xl are removed from the theme
+      so the utilities do not exist.
+
+  Consumers:
+    apps/console/src/app/globals.css
+      @import "tailwindcss";
+      @import "tw-animate-css";
+      @import "@nexus/ui/tokens.css";
+      @source "../../../../packages/ui/src";
+*/
+
+/* ``dark:`` follows the ThemeProvider (data-theme), not the OS alone. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  /* ── 1. Brand palette (OKLCH) ─────────────────────────────────────── */
+  --color-rich-black: oklch(0.161 0.033 115.3); /* #0D0F01 */
+  --color-dark-green: oklch(0.229 0.036 191.9); /* #032221 */
+  --color-bangladesh-green: oklch(0.442 0.086 170.4); /* #03624C */
+  --color-mountain-meadow: oklch(0.727 0.138 167.3); /* #2CC295 — primary */
+  --color-caribbean-green: oklch(0.794 0.196 154.9); /* #00DF81 — bright, sparingly */
+  --color-anti-flash: oklch(0.971 0.006 185.3); /* #F1F7F6 — bone */
+  --color-pine: oklch(0.352 0.06 176.5); /* #0B453A */
+  --color-basil: oklch(0.468 0.083 175.6); /* #116958 */
+  --color-forest: oklch(0.402 0.074 172.5); /* #095544 */
+  --color-frog: oklch(0.558 0.103 172.1); /* #17876D */
+  --color-mint: oklch(0.662 0.114 173); /* #2FA98C */
+  --color-pistachio: oklch(0.816 0.037 181.1); /* #AACBC4 */
+  --color-sand: oklch(0.936 0.009 179.6); /* #E4ECEA */
+  --color-white: oklch(1 0 0);
+
+  /* ── 2. Semantic roles ────────────────────────────────────────────── */
+  --color-primary: var(--color-mountain-meadow);
+  --color-primary-mid: var(--color-mint);
+  --color-primary-deep: var(--color-bangladesh-green);
+  --color-primary-bright: var(--color-caribbean-green);
+  --color-ink: var(--color-rich-black);
+  --color-bone: var(--color-anti-flash);
+
+  --color-bg: var(--color-bone);
+  --color-bg-elevated: var(--color-white);
+  --color-bg-sunken: var(--color-sand);
+  --color-bg-inverse: var(--color-ink);
+
+  --color-fg: var(--color-ink);
+  --color-fg-muted: oklch(0.161 0.033 115.3 / 0.7);
+  --color-fg-subtle: oklch(0.161 0.033 115.3 / 0.5);
+  --color-fg-on-dark: var(--color-bone);
+
+  --color-accent-deep: var(--color-primary-deep);
+  --color-accent-soft: var(--color-pistachio);
+  --color-accent-mid: var(--color-mint);
+  --color-accent-bright: var(--color-primary-bright);
+
+  --color-border: oklch(0.161 0.033 115.3 / 0.12);
+  --color-border-soft: oklch(0.161 0.033 115.3 / 0.06);
+  --color-border-strong: var(--color-primary-deep);
+
+  /* Status — the only four. Everything that says "state" uses one. */
+  --color-status-positive: var(--color-primary);
+  --color-status-warning: oklch(0.655 0.097 72.5); /* #B5874A */
+  --color-status-danger: oklch(0.519 0.134 28.3); /* #A8443A */
+  --color-status-info: var(--color-mint);
+
+  /* ── Typography ───────────────────────────────────────────────────── */
+  /* The app sets --font-inter-tight / --font-jetbrains-mono via next/font;
+     Storybook and tests fall back to the stack. */
+  --font-sans:
+    var(--font-inter-tight, "Inter Tight"), "Helvena", ui-sans-serif, system-ui, sans-serif;
+  --font-display:
+    var(--font-inter-tight, "Inter Tight"), "Helvena", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    var(--font-jetbrains-mono, "JetBrains Mono"), "SF Mono", ui-monospace, Menlo, monospace;
+
+  --text-xs: 12px;
+  --text-xs--line-height: 1.5;
+  --text-sm: 14px;
+  --text-sm--line-height: 1.5;
+  --text-base: 16px;
+  --text-base--line-height: 1.5;
+  --text-md: 18px;
+  --text-md--line-height: 1.4;
+  --text-lg: 20px;
+  --text-lg--line-height: 1.3;
+  --text-xl: 24px;
+  --text-xl--line-height: 1.2;
+  --text-2xl: 32px;
+  --text-2xl--line-height: 1.1;
+  --text-3xl: 44px;
+  --text-3xl--line-height: 1.05;
+
+  --tracking-tightest: -0.04em;
+  --tracking-tighter: -0.03em;
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --tracking-eyebrow: 0.12em;
+
+  /* ── Spacing: 4 px grid via Tailwind's multiplier. See header. ─────── */
+  --spacing: 0.25rem;
+
+  /* ── Radius: the enum. Others are removed. ─────────────────────────── */
+  --radius-none: 0px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-full: 9999px;
+  --radius-xs: initial;
+  --radius-lg: initial;
+  --radius-xl: initial;
+  --radius-2xl: initial;
+  --radius-3xl: initial;
+  --radius-4xl: initial;
+
+  /* ── Elevation ────────────────────────────────────────────────────── */
+  --shadow-1: 0 1px 2px oklch(0.2 0.02 180 / 0.04);
+  --shadow-2: 0 4px 16px oklch(0.2 0.02 180 / 0.06);
+  --shadow-3: 0 16px 48px oklch(0.2 0.02 180 / 0.1);
+
+  /* ── Motion — ≤300 ms for UI transitions ──────────────────────────── */
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-instant: 80ms;
+  --duration-fast: 160ms;
+  --duration-base: 240ms;
+}
+
+/* ── 3. shadcn bridge — light ─────────────────────────────────────────── */
+:root {
+  --background: var(--color-bg);
+  --foreground: var(--color-fg);
+  --card: var(--color-bg-elevated);
+  --card-foreground: var(--color-fg);
+  --popover: var(--color-bg-elevated);
+  --popover-foreground: var(--color-fg);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-rich-black);
+  --secondary: var(--color-bg-sunken);
+  --secondary-foreground: var(--color-fg);
+  --muted: var(--color-bg-sunken);
+  --muted-foreground: var(--color-fg-muted);
+  --accent: var(--color-pistachio);
+  --accent-foreground: var(--color-bangladesh-green);
+  --destructive: var(--color-status-danger);
+  --destructive-foreground: var(--color-bone);
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-primary);
+  --radius: 8px;
+
+  --sidebar: var(--color-bone);
+  --sidebar-foreground: var(--color-fg);
+  --sidebar-primary: var(--color-primary-deep);
+  --sidebar-primary-foreground: var(--color-bone);
+  --sidebar-accent: var(--color-pistachio);
+  --sidebar-accent-foreground: var(--color-bangladesh-green);
+  --sidebar-border: var(--color-border);
+  --sidebar-ring: var(--color-primary);
+
+  color-scheme: light;
+}
+
+/* ── 3. shadcn bridge — dark. Driven by ThemeProvider (data-theme). ───── */
+[data-theme="dark"] {
+  --background: var(--color-dark-green);
+  --foreground: var(--color-bone);
+  --card: var(--color-bangladesh-green);
+  --card-foreground: var(--color-bone);
+  --popover: var(--color-bangladesh-green);
+  --popover-foreground: var(--color-bone);
+  --primary: var(--color-mountain-meadow);
+  --primary-foreground: var(--color-rich-black);
+  --secondary: var(--color-pine);
+  --secondary-foreground: var(--color-bone);
+  --muted: var(--color-pine);
+  --muted-foreground: oklch(0.971 0.006 185.3 / 0.65);
+  --accent: var(--color-mint);
+  --accent-foreground: var(--color-rich-black);
+  --border: oklch(0.971 0.006 185.3 / 0.12);
+  --input: oklch(0.971 0.006 185.3 / 0.12);
+
+  --sidebar: var(--color-dark-green);
+  --sidebar-foreground: var(--color-bone);
+  --sidebar-primary: var(--color-mountain-meadow);
+  --sidebar-primary-foreground: var(--color-rich-black);
+  --sidebar-accent: var(--color-pine);
+  --sidebar-accent-foreground: var(--color-bone);
+  --sidebar-border: oklch(0.971 0.006 185.3 / 0.12);
+
+  color-scheme: dark;
+}
+
+/* ── 4. Tailwind mirror of the bridge ─────────────────────────────────── */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  /*
+    Do NOT mirror --color-primary or --color-border here: the brand block
+    above already declares them, and pointing them at the :root aliases
+    creates a circular var() (--primary → --color-primary → --primary),
+    which CSS treats as invalid → bg-primary renders transparent.
+  */
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ── 5. Base ──────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    /* The body never scrolls horizontally: wide content scrolls inside
+       its own overflow-x:auto container (DataTable, code, diagrams). */
+    overflow-x: hidden;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+    letter-spacing: var(--tracking-tight);
+  }
+
+  p,
+  li,
+  dd,
+  td {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background: var(--color-pistachio);
+    color: var(--color-bangladesh-green);
+  }
+
+  /* One focus ring for everything focusable — WCAG 2.2 focus appearance
+     (≥2 px, ≥3:1 against adjacent colours). Components may add their own
+     inset ring but never remove this. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Reduced motion — non-negotiable. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

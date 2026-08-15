@@ -1,0 +1,18 @@
+# Root pnpm workspace — PLAN-CONSOLE-V1 (CP-01).
+#
+# Covers the partner console and the shared design system. ``apps/admin``
+# keeps its own workspace (``apps/admin/pnpm-workspace.yaml``, with the
+# ``ucm-*`` packages inside it) until it migrates to ``@nexus/ui``; pnpm
+# resolves the NEAREST ``pnpm-workspace.yaml`` walking up from the cwd, so
+# running ``pnpm`` inside ``apps/admin`` is unaffected by this file.
+packages:
+  - "apps/console"
+  - "packages/ui"
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - unrs-resolver
