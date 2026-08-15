@@ -21,7 +21,7 @@ from typing import Any
 import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, scoped_session_from_path
@@ -55,6 +55,7 @@ from nexus_api.schemas.tenant import (
     TenantUpdateIn,
 )
 from nexus_api.services.channel_routing import channel_agent_enabled, channel_role
+from nexus_api.services.tenant_lifecycle import TenantDeleteBlocked, hard_delete_tenant
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -326,112 +327,13 @@ async def delete_tenant(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"tenant {tenant_id} not found",
         )
-    if tenant.status is not TenantStatus.ARCHIVED:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=("tenant must be archived before delete; PATCH status='archived' first"),
-        )
-
-    invoices = await session.scalar(
-        sa.text("SELECT count(*) FROM invoices WHERE tenant_id = :t"),
-        {"t": str(tenant_id)},
-    )
-    if invoices:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"el tenant tiene {invoices} factura(s) y no se puede borrar: la "
-                "conservación de facturación es una obligación legal (RGPD art. "
-                "17.3.b). Anula o traspasa las facturas antes de borrar."
-            ),
-        )
-
-    snapshot = _tenant_to_dict(tenant)
-    log.warning(
-        "tenant.delete.cascade",
-        tenant_id=str(tenant_id),
-        slug=tenant.slug,
-        actor=actor[:8],
-    )
-
-    # Anonimización de la traza: primero se vacían los payloads de las
-    # filas existentes (es donde vive cualquier dato personal), y después
-    # se añade la fila de este borrado ya sin snapshot del tenant. El
-    # ``tenant_id`` lo pone a NULL la FK SET NULL de la 0077 cuando el
-    # tenant se va.
-    anonymised = await session.execute(
-        sa.text(
-            "UPDATE audit_log SET before_json = NULL, after_json = NULL "
-            " WHERE tenant_id = :t AND (before_json IS NOT NULL OR after_json IS NOT NULL)"
-        ),
-        {"t": str(tenant_id)},
-    )
-    session.add(
-        AuditLog(
-            tenant_id=tenant_id,
-            actor=f"admin:{actor[:8]}",
-            action="tenant.delete",
-            target=f"tenant:{tenant_id}",
-            # Solo lo que identifica la acción, no el contenido del
-            # tenant: la fila sobrevive al borrado y no puede llevarse
-            # dentro lo que se acaba de suprimir.
-            before_json={"slug": snapshot.get("slug"), "name": snapshot.get("name")},
-            after_json=None,
-        )
-    )
-    await session.flush()
-
-    # Checkpoints de LangGraph: fuera del alcance de las FKs (ver arriba).
-    # El prefijo del ``thread_id`` es el tenant — el mismo contrato que
-    # usa ``TenantScopedPostgresSaver`` (WP-14b).
-    # Se comprueba la COLUMNA, no solo la tabla. Las crea ``setup()`` de
-    # LangGraph, así que pueden no existir (base recién migrada) o existir
-    # SIN ``tenant_id``: la columna la añade la 0065 a las tablas que hay
-    # en ese momento, y una creada después por la librería nace sin ella
-    # hasta que ``harden_checkpoint_tables()`` corre al arrancar el
-    # worker. Las dos variantes daban un 500 en un endpoint que acababa
-    # de funcionar en dev.
-    checkpoints = 0
-    for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
-        has_column = await session.scalar(
-            sa.text(
-                "SELECT 1 FROM information_schema.columns "
-                " WHERE table_schema = 'public' AND table_name = :t "
-                "   AND column_name = 'tenant_id'"
-            ),
-            {"t": table},
-        )
-        if not has_column:
-            continue
-        result = await session.execute(
-            sa.text(f"DELETE FROM {table} WHERE tenant_id = :t"),
-            {"t": str(tenant_id)},
-        )
-        checkpoints += result.rowcount or 0  # type: ignore[attr-defined]
-
+    # Shared with the partner console (CP-09): ``services/tenant_lifecycle``
+    # holds the archive-first guard, the invoice RESTRICT check, the audit
+    # anonymisation and the LangGraph checkpoint sweep.
     try:
-        await session.delete(tenant)
-        await session.flush()
-    except SQLAlchemyError as exc:
-        # Con la 0077 puesta esto ya no debería dispararse por una FK; se
-        # deja porque un 502 legible sigue siendo mejor que un 500 pelado
-        # el día que aparezca una tabla nueva sin cascada.
-        log.exception(
-            "tenant.delete.failed",
-            tenant_id=str(tenant_id),
-            error_type=type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=(f"no se pudo eliminar el tenant: {type(exc).__name__} — {exc}"),
-        ) from exc
-
-    log.info(
-        "tenant.delete.done",
-        tenant_id=str(tenant_id),
-        audit_rows_anonymised=anonymised.rowcount,  # type: ignore[attr-defined]
-        checkpoint_rows_deleted=checkpoints,
-    )
+        await hard_delete_tenant(session, tenant, actor=f"admin:{actor[:8]}")
+    except TenantDeleteBlocked as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     # The outer dependency commits when the response leaves the handler;
     # an explicit commit here used to clash with that block (it tried to
     # close a transaction the ``async with session.begin():`` in

@@ -611,3 +611,29 @@ case-insensitive matching.
   Doppler-only.
 - **Activar `NEXUS_LANGFUSE_*` con keys de un workspace que no es el
   de producción**. Las trazas de prod no deben mezclarse con dev.
+
+## Consola de partners (PLAN-CONSOLE-V1) — activar un partner
+
+La consola (`apps/console`) habla con la API por `/console/*` con tokens
+EdDSA de 60 s que acuña por petición; la API verifica la firma con la
+clave pública y **vuelve a comprobar la pertenencia** en
+`partner_memberships`. No hay token estático de por medio.
+
+1. **Claves** (una vez por entorno): `cd apps/console && pnpm keys:generate`.
+   La privada → secreto de la consola (`NEXUS_CONSOLE_JWT_PRIVATE_KEY`); la
+   pública → secreto de la API (`NEXUS_CONSOLE_JWT_PUBLIC_KEY`) +
+   `NEXUS_CONSOLE_ENABLED=true`. Con el interruptor encendido y sin clave la
+   API se niega a arrancar en prod.
+2. **Esquema `console_auth`**: `cd apps/console && pnpm db:migrate` (Drizzle;
+   Alembic no lo toca).
+3. **Encender al partner**: `UPDATE partners SET console_enabled = true WHERE
+   slug = '<slug>'`. Comprobar `max_clients` (0081; sembrado real +50 %).
+4. **Primer owner**: `NEXUS_SEED_PARTNER_SLUG=<slug> NEXUS_SEED_OWNER_EMAIL=…
+   NEXUS_SEED_OWNER_PASSWORD=… pnpm seed:owner`. El resto entra por
+   invitación desde `/team` (caduca a los 21 días).
+5. **Apagar**: `console_enabled=false` deja fuera a ese partner al instante
+   (el backend lo comprueba en cada petición); `NEXUS_CONSOLE_ENABLED=false`
+   apaga la superficie entera (503).
+
+Rol de BD recomendado para la consola: `ALL` sobre `console_auth`, `SELECT`
+sobre `public.partner_memberships` y `public.partners`, nada más.
