@@ -30,6 +30,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -122,6 +123,20 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
     auto_activate: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+    # Migration 0080 — per-partner switch for the partner console
+    # (PLAN-CONSOLE-V1 rule 4). False = members exist but cannot enter;
+    # Auphere flips it per partner once the pilot is ready.
+    console_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    # Migration 0081 — provisioning quota (PLAN-CONSOLE-V1 CP-06). Checked
+    # BEFORE anything is created, under a row lock on the partner.
+    max_clients: Mapped[int] = mapped_column(Integer, nullable=False, default=5, server_default="5")
+    max_channels_per_client: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=2, server_default="2"
+    )
+    # Operator-only note ("raised to 30 on 2026-09-01, contract X").
+    quota_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"<Partner {self.slug}>"
