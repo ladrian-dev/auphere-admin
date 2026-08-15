@@ -81,7 +81,9 @@ async def provision_client_blueprint(
     placeholders: dict[str, Any] | None,
     connector_credentials: dict[str, str] | None,
     connector_meta: dict[str, Any] | None,
-    api_key_id: uuid.UUID,
+    # ``None`` when the caller is the partner console (a person, not a
+    # key). Lands as NULL in ``embed_audit_log.api_key_id``.
+    api_key_id: uuid.UUID | None,
     ip: str | None,
 ) -> ProvisioningResult:
     """Execute the partner's blueprint for a freshly-resolved client.
