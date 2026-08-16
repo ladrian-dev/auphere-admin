@@ -125,5 +125,18 @@ USAGE_METERS: frozenset[str] = frozenset(
         "workflow.step",
         "tool.call",
         "storage.gb_month",
+        # Migración 0083 (CP-23): un adjunto = una unidad del medidor de su
+        # tipo; para audio además los segundos, si el proveedor los dio.
+        # Precio unitario en ``meter_prices`` (no en ``model_profiles``: un
+        # adjunto no tiene modelo).
+        "media.image",
+        "media.audio",
+        "media.audio_seconds",
+        "media.document",
+        "media.video",
+        "media.sticker",
     }
 )
+
+#: Los medidores de multimedia, para el emisor y la consola.
+MEDIA_METERS: frozenset[str] = frozenset(m for m in USAGE_METERS if m.startswith("media."))

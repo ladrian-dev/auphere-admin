@@ -6,7 +6,7 @@ import { ThemeProvider, Toaster } from "@nexus/ui";
 
 import { LocaleProvider } from "@/i18n/client";
 import { getLocale } from "@/i18n/server";
-import { getSession } from "@/lib/session";
+import { resolvePrincipal } from "@/lib/principal";
 
 import "./globals.css";
 
@@ -35,9 +35,10 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // Locale precedence: explicit cookie → account → Accept-Language. The
-  // session read is cached by Better Auth's cookie cache.
-  const session = await getSession().catch(() => null);
-  const locale = await getLocale((session?.user as { locale?: string } | undefined)?.locale);
+  // principal read is one API call, memoised per request by React.cache,
+  // and shared with every page that calls requirePrincipal().
+  const resolution = await resolvePrincipal().catch(() => null);
+  const locale = await getLocale(resolution?.kind === "ok" ? resolution.principal.locale : undefined);
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html

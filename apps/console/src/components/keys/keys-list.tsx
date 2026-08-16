@@ -26,7 +26,7 @@ import { createKeyAction, revokeKeyAction, rotateKeyAction } from "@/app/(consol
 import { useLocale, useT } from "@/i18n/client";
 import type { ApiKey, ApiKeyCreated } from "@/lib/backend";
 
-const SCOPES = ["provision", "broadcasts", "widget_sessions"] as const;
+const SCOPES = ["provision", "broadcasts"] as const;
 
 export function KeysList({ keys, manage }: { keys: ApiKey[]; manage: boolean }) {
   const t = useT();

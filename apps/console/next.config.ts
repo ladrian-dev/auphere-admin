@@ -9,8 +9,13 @@ import type { NextConfig } from "next";
  */
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Self-contained server for the container image (apps/console/Dockerfile).
+  output: "standalone",
   reactStrictMode: true,
   transpilePackages: ["@nexus/ui"],
+  // Lane agent-tools (CP-15): knowledge uploads go through a Server Action
+  // as multipart (API caps at 10 MB → 413); the default 1 MB would 413 first.
+  experimental: { serverActions: { bodySizeLimit: "11mb" } },
   async headers() {
     return [
       {

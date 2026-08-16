@@ -20,20 +20,36 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from nexus_api.api.console import (
+    agent_settings,
     agents,
     audit,
+    auth,
     billing,
     channels,
     conversations,
+    diagnostics,
+    home,
     invitations,
     keys,
+    knowledge,
     me,
+    notifications,
+    onboarding,
+    playground,
+    seed_templates,
+    skills,
     team,
+    templates,
     tenants,
+    tools,
     usage,
+    whatsapp,
 )
 
 router = APIRouter(prefix="/console", tags=["console"])
+# Identidad de la consola (login/sesión/logout). Token de SERVICIO, no
+# principal: son las llamadas pre-sesión del BFF.
+router.include_router(auth.router)
 router.include_router(me.router)
 router.include_router(tenants.router)
 router.include_router(agents.router)
@@ -45,3 +61,16 @@ router.include_router(team.router)
 router.include_router(invitations.router)
 router.include_router(keys.router)
 router.include_router(billing.router)
+router.include_router(playground.router)
+router.include_router(whatsapp.router)
+router.include_router(templates.router)
+router.include_router(diagnostics.router)
+# lane agent-tools (CP-11/13/14/15/31)
+router.include_router(agent_settings.router)
+router.include_router(tools.router)
+router.include_router(skills.router)
+router.include_router(knowledge.router)
+router.include_router(seed_templates.router)
+router.include_router(notifications.router)
+router.include_router(onboarding.router)
+router.include_router(home.router)

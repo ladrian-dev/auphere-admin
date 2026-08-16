@@ -53,6 +53,7 @@ ALL_EXPECTED = {
     "checkpoint-retention-cron",
     # WP-29
     "data-retention-cron",
+    "usage-alerts-cron",
 }
 
 

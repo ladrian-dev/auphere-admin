@@ -619,21 +619,72 @@ EdDSA de 60 s que acuña por petición; la API verifica la firma con la
 clave pública y **vuelve a comprobar la pertenencia** en
 `partner_memberships`. No hay token estático de por medio.
 
+**La consola no tiene base de datos** (ADR-032, migración `0088`): las
+cuentas, las contraseñas y las sesiones viven en la API, en el esquema
+`console_auth` (`principals`, `principal_sessions`), y el BFF solo guarda
+una cookie con un token opaco. No hay que crear ningún rol de Postgres
+para ella ni ejecutar migraciones de Drizzle.
+
 1. **Claves** (una vez por entorno): `cd apps/console && pnpm keys:generate`.
    La privada → secreto de la consola (`NEXUS_CONSOLE_JWT_PRIVATE_KEY`); la
    pública → secreto de la API (`NEXUS_CONSOLE_JWT_PUBLIC_KEY`) +
    `NEXUS_CONSOLE_ENABLED=true`. Con el interruptor encendido y sin clave la
    API se niega a arrancar en prod.
-2. **Esquema `console_auth`**: `cd apps/console && pnpm db:migrate` (Drizzle;
-   Alembic no lo toca).
+2. **Esquema `console_auth`**: lo crea `alembic upgrade head` (0088). Nada
+   que hacer aparte de migrar la API.
 3. **Encender al partner**: `UPDATE partners SET console_enabled = true WHERE
    slug = '<slug>'`. Comprobar `max_clients` (0081; sembrado real +50 %).
-4. **Primer owner**: `NEXUS_SEED_PARTNER_SLUG=<slug> NEXUS_SEED_OWNER_EMAIL=…
-   NEXUS_SEED_OWNER_PASSWORD=… pnpm seed:owner`. El resto entra por
-   invitación desde `/team` (caduca a los 21 días).
+4. **Primer owner**: `scripts/seed_console_memberships.py` (siguiente
+   sección). El resto entra por invitación desde `/team` (caduca a los 21
+   días).
 5. **Apagar**: `console_enabled=false` deja fuera a ese partner al instante
    (el backend lo comprueba en cada petición); `NEXUS_CONSOLE_ENABLED=false`
    apaga la superficie entera (503).
 
-Rol de BD recomendado para la consola: `ALL` sobre `console_auth`, `SELECT`
-sobre `public.partner_memberships` y `public.partners`, nada más.
+**Cuenta bloqueada** (10 fallos seguidos → 15 min): se desbloquea sola. Para
+adelantarlo, `UPDATE console_auth.principals SET failed_attempts = 0,
+locked_until = NULL WHERE lower(email) = '<correo>'`. No hay recuperación de
+contraseña en v1: se resuelve con `--set-password` (abajo).
+
+## Consola: alta de partner piloto (CP-33 — Facelad / Amacrux)
+
+Camino recomendado para un partner real (la persona crea su cuenta ella
+misma; nadie teclea contraseñas ajenas):
+
+1. **Migrar la API** (`alembic upgrade head`): la 0088 crea el esquema
+   `console_auth` con `principals` y `principal_sessions`. La consola no
+   necesita rol de Postgres propio — el rol `nexus_console` y
+   `infra/postgres/console_role.sql` se retiraron con ADR-032.
+2. **Invitación de owner + encender la consola** (idempotente):
+   ```bash
+   cd apps/api
+   NEXUS_DATABASE_URL=… uv run python scripts/seed_console_memberships.py \
+     --partner-slug facelad --owner-email maria@facelad.com \
+     --display-name "María" --enable-console \
+     --console-origin https://console.auphere.com [--email] [--reissue]
+   ```
+   Imprime el enlace `/invite/<token>` (caduca a los 21 días). `--email`
+   intenta enviarlo con Brevo/Resend (best-effort; el enlace se imprime
+   siempre). No hace falta que exista un owner previo: la aceptación crea
+   la primera membresía con el rol invitado (owner).
+3. La persona abre el enlace, elige contraseña (mínimo 12 caracteres) y
+   **entra directamente**: la API crea el principal, la membresía y la
+   sesión en la misma llamada. El resto del equipo lo invita ella desde
+   `/team`.
+4. Verificar: `GET /console/onboarding` muestra el checklist; la campana
+   recibe `member.joined` cuando acepte alguien más.
+
+Alternativa sin enlace — **solo desarrollo o desbloqueo**, porque implica
+teclear la contraseña de otra persona:
+
+```bash
+cd apps/api
+NEXUS_DATABASE_URL=… uv run python scripts/seed_console_memberships.py \
+  --partner-slug demo --owner-email owner@demo.test \
+  --enable-console --set-password 'una-contraseña-de-12+'
+```
+
+Crea el principal y la membresía de una vez. Si el correo ya tiene cuenta,
+**no** reescribe la contraseña; si la membresía existía apuntando a otro
+`user_id` (por ejemplo el de better-auth anterior a ADR-032), la reapunta al
+principal nuevo.

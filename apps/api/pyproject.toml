@@ -68,6 +68,9 @@ dependencies = [
     # ADR-028: widget session JWTs for the partner embed surface
     # (``POST /v1/widget-sessions`` mints, ``/v1/embed/*`` verifies).
     "pyjwt>=2.9.0",
+    # CP-15: multipart uploads of knowledge documents from the partner
+    # console (``POST /console/clients/{ref}/knowledge``). Apache-2.0.
+    "python-multipart>=0.0.20",
 ]
 
 [project.optional-dependencies]

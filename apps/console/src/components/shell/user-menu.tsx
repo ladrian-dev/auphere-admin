@@ -16,7 +16,7 @@ import {
 
 import { useLocale, useT } from "@/i18n/client";
 import { roleKey } from "@/i18n/messages";
-import { signOut } from "@/lib/auth-client";
+import { signOutAction } from "@/lib/auth-actions";
 import type { Role } from "@/lib/principal";
 
 type Props = { user: { name: string; email: string }; role: Role; partnerSlug: string; collapsed: boolean };
@@ -80,7 +80,7 @@ export function UserMenu({ user, role, collapsed }: Props) {
           <DropdownMenuItem
             variant="destructive"
             onClick={async () => {
-              await signOut();
+              await signOutAction();
               router.replace("/login");
               router.refresh();
             }}

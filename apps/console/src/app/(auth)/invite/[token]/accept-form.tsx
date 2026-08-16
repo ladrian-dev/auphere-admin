@@ -26,7 +26,11 @@ import { acceptInvitationAction } from "./actions";
 
 type Values = { name: string; password: string };
 
-export function AcceptForm({ token, email, alreadySignedInAs }: { token: string; email: string; alreadySignedInAs: string | null }) {
+/**
+ * The e-mail is fixed by the invitation and shown read-only: it is not an
+ * input, and it is not sent — the API reads it from the invitation row.
+ */
+export function AcceptForm({ token, email }: { token: string; email: string }) {
   const t = useT();
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -39,20 +43,21 @@ export function AcceptForm({ token, email, alreadySignedInAs }: { token: string;
     [t],
   );
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { name: "", password: "" } });
-  const signedInMatches = alreadySignedInAs?.toLowerCase() === email.toLowerCase();
 
-  function submit(values?: Values) {
+  function submit(values: Values) {
     startTransition(async () => {
-      const result = await acceptInvitationAction({ token, name: values?.name, password: values?.password });
+      const result = await acceptInvitationAction({ token, name: values.name, password: values.password });
       if (!result.ok) {
         const msg =
-          result.reason === "email_mismatch"
-            ? t("invite.emailMismatch")
+          result.reason === "account_exists"
+            ? t("invite.accountExists")
             : result.reason === "already_member"
               ? t("invite.alreadyMember")
               : result.reason === "not_found"
                 ? t("invite.invalid")
-                : result.message ?? t("common.error.backend");
+                : result.reason === "rate_limited"
+                  ? t("login.tooMany")
+                  : result.message ?? t("common.error.backend");
         toast.error(msg);
         return;
       }
@@ -61,22 +66,9 @@ export function AcceptForm({ token, email, alreadySignedInAs }: { token: string;
     });
   }
 
-  if (signedInMatches) {
-    return (
-      <div className="flex flex-col gap-4">
-        <p className="text-sm">
-          <span className="font-mono">{email}</span>
-        </p>
-        <Button size="lg" onClick={() => submit()} disabled={pending}>
-          {t("invite.submit")}
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit((v) => submit(v))} noValidate className="flex flex-col gap-4" aria-busy={pending}>
+      <form onSubmit={form.handleSubmit(submit)} noValidate className="flex flex-col gap-4" aria-busy={pending}>
         <div className="grid gap-2">
           <Label htmlFor="invite-email">{t("login.email")}</Label>
           <Input id="invite-email" value={email} readOnly disabled />

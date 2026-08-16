@@ -64,7 +64,12 @@ FORBIDDEN_TABLES: list[str] = [
     "tenant_credentials",
     "tenant_connectors",
     "agent_memories",
-    "audit_log",
+    # ``audit_log`` salió de esta lista en la 0084 (consola de partners,
+    # CP-28): la consola lista la auditoría de TODOS los clientes de un
+    # partner en una consulta y ``audit_log`` es RLS-forzada — se lee bajo
+    # el rol de reporting con ``tenant_id = ANY(partner_tenants)`` construido
+    # desde el principal (``services/console_reporting.py``). SELECT, sin
+    # escritura; ``test_reporting_role_cannot_write`` sigue vigente.
 ]
 
 

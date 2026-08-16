@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "packageManager": "pnpm@10.15.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "ui:build": "pnpm --filter @nexus/ui build",
     "ui:test": "pnpm --filter @nexus/ui test",
@@ -15,5 +17,11 @@
     "console:lint": "pnpm --filter console lint",
     "console:typecheck": "pnpm --filter console typecheck",
     "check": "pnpm -r --filter @nexus/ui --filter console run lint && pnpm -r --filter @nexus/ui --filter console run typecheck && pnpm -r --filter @nexus/ui --filter console run test"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss@<8.5.23": ">=8.5.23",
+      "sharp@<0.35.0": ">=0.35.0"
+    }
   }
 }

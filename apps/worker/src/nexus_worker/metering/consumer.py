@@ -49,7 +49,7 @@ from redis.exceptions import ResponseError
 
 from nexus_worker.metering.budget import add_spend
 from nexus_worker.metering.collector import SOURCE_CHANNEL, SOURCE_QA, USAGE_SOURCES, USAGE_STREAM
-from nexus_worker.metering.pricing import get_catalog, price_row
+from nexus_worker.metering.pricing import get_catalog, get_unit_prices, price_row
 
 log = structlog.get_logger(__name__)
 
@@ -161,16 +161,17 @@ async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) ->
     sent = 0
     try:
         catalog = await get_catalog()
+        unit_prices = await get_unit_prices()
     except Exception as exc:  # pragma: no cover - get_catalog ya traga lo suyo
         log.warning("metering.pricing_unavailable", error=str(exc))
-        catalog = {}
+        catalog, unit_prices = {}, {}
 
     for tenant_id, rows in rows_by_tenant.items():
         if not rows:
             continue
-        if catalog:
+        if catalog or unit_prices:
             for row in rows:
-                row["cost_usd"] = price_row(row, catalog)
+                row["cost_usd"] = price_row(row, catalog, unit_prices)
             # WP-20 — el contador de presupuesto se alimenta AQUÍ, con el
             # precio ya calculado. Va unos segundos por detrás del gasto
             # real (el metering es asíncrono) y es un compromiso asumido:

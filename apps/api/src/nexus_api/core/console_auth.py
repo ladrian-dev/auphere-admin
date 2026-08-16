@@ -111,6 +111,13 @@ PERMISSIONS: dict[str, frozenset[str]] = {
     "keys:manage": frozenset({_O, _A}),
     "billing:read": frozenset({_O, _BI}),
     "billing:manage": frozenset({_O, _BI}),
+    # Playground turns spend the partner's QA cap (0082) — builders may run it.
+    "playground:run": frozenset({_O, _A, _B}),
+    # Usage alert thresholds and recipients (CP-24).
+    "usage:manage": frozenset({_O, _A}),
+    # Knowledge documents/URLs of a client (CP-15).
+    "knowledge:read": frozenset({_O, _A, _B, _AN}),
+    "knowledge:write": frozenset({_O, _A, _B}),
 }
 
 

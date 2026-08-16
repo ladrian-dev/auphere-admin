@@ -209,7 +209,36 @@ export type Invitation = {
 export type InvitationCreated = Invitation & { accept_path: string; email_sent: boolean };
 export type Team = { members: Member[]; invitations: Invitation[] };
 export type InvitationLookup = { partner_name: string; email: string; role: string; expires_at: string };
-export type InvitationAccepted = { membership_id: string; partner: { slug: string; name: string; status: string }; role: string };
+/** Accepting also opens the session (auto-login) — see `api/console/invitations.py`. */
+export type InvitationAccepted = {
+  membership_id: string;
+  partner: { slug: string; name: string; status: string };
+  role: string;
+  token: string;
+  expires_at: string;
+};
+/**
+ * The principal as the API resolves it (`api/console/schemas_auth.py`).
+ * `access` is the whole authorization answer: `ok` renders the console,
+ * anything else renders `/no-access`. It is the API's job, not ours — this
+ * app has no database to check it against.
+ */
+export type ApiPrincipal = {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  locale: string;
+  access: "ok" | "no_membership" | "suspended" | "disabled";
+  membership_id: string | null;
+  partner_id: string | null;
+  partner_slug: string | null;
+  partner_name: string | null;
+  partner_status: string | null;
+  role: string | null;
+  permissions: string[];
+  console_enabled: boolean;
+};
+export type LoginResult = { token: string; expires_at: string; principal: ApiPrincipal };
 export type ApiKey = {
   id: string;
   type: "live" | "test";
@@ -237,22 +266,55 @@ export type Billing = { billing_email: string | null; contact_email: string | nu
 
 // ── client factory ─────────────────────────────────────────────────────
 
-const q = (params: Record<string, string | number | boolean | undefined | null>) => {
+/** Query-string builder shared by every lane module. */
+export const q = (params: Record<string, string | number | boolean | undefined | null>) => {
   const s = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") s.set(k, String(v));
   const out = s.toString();
   return out ? `?${out}` : "";
 };
 
-/** A backend client bound to a principal. Every method mints its own token. */
-export function backendFor(principal: Principal) {
+/** One authenticated call: mints a fresh 60 s token, then requests. */
+export type Call = <T>(path: string, opts?: Opts) => Promise<T>;
+export type { Opts };
+
+/**
+ * Lane modules (``lib/backend/<lane>.ts``) export ``<lane>Api(call)`` and
+ * are spread into ``backendFor`` below. Keeps this file from being the
+ * merge hotspot of every package.
+ */
+import { agentToolsApi } from "./backend/agent-tools";
+import { channelsApi } from "./backend/channels";
+import { homeUsageApi } from "./backend/home-usage";
+import { onboardingApi } from "./backend/onboarding";
+import { playgroundApi } from "./backend/playground";
+
+/** Mint-per-call function for a principal (also used by route handlers that stream). */
+export function callFor(principal: Principal): Call {
   const claims = { userId: principal.userId, partnerId: principal.partnerId, role: principal.role };
-  const call = async <T>(path: string, opts?: Opts): Promise<T> => {
+  return async <T>(path: string, opts?: Opts): Promise<T> => {
     const token = await mintPrincipalToken(claims);
     return (await request<T>(token, path, opts)) as T;
   };
+}
+
+/** Raw token for a principal — ONLY for streaming route handlers that must forward SSE. */
+export async function tokenFor(principal: Principal): Promise<string> {
+  return mintPrincipalToken({ userId: principal.userId, partnerId: principal.partnerId, role: principal.role });
+}
+
+/** A backend client bound to a principal. Every method mints its own token. */
+export function backendFor(principal: Principal) {
+  const call = callFor(principal);
   const enc = encodeURIComponent;
   return {
+    // lane modules — each lane owns its file under lib/backend/
+    ...agentToolsApi(call),
+    ...playgroundApi(call),
+    ...channelsApi(call),
+    ...homeUsageApi(call),
+    ...onboardingApi(call),
+
     me: () => call<Me>("/console/me"),
 
     listClients: (p: { q?: string; status?: string; sort?: string; order?: string; limit?: number; offset?: number } = {}) =>
@@ -305,17 +367,45 @@ export function backendFor(principal: Principal) {
 
 export type Backend = ReturnType<typeof backendFor>;
 
-/** Pre-membership calls (invitation lookup/accept) — service token. */
+/**
+ * Pre-session calls: login, session lookup, logout and the two invitation
+ * endpoints. All authenticated with the BFF's **service token** (`svc:
+ * "console"`), because there is no principal yet — the API mints none of
+ * this from the browser, only from this server.
+ */
 export const consoleService = {
   async lookupInvitation(token: string): Promise<InvitationLookup | null> {
     const t = await mintServiceToken();
     return request<InvitationLookup>(t, `/console/invitations/${encodeURIComponent(token)}`, { optional: true });
   },
-  async acceptInvitation(token: string, body: { user_id: string; email: string; display_name?: string | null }): Promise<InvitationAccepted> {
+  async acceptInvitation(token: string, body: { password: string; display_name?: string | null }): Promise<InvitationAccepted> {
     const t = await mintServiceToken();
     return (await request<InvitationAccepted>(t, `/console/invitations/${encodeURIComponent(token)}/accept`, {
       method: "POST",
       body,
     })) as InvitationAccepted;
+  },
+  /** 401 → wrong credentials (also: locked account). 429 → too many attempts. */
+  async login(body: { email: string; password: string }): Promise<LoginResult> {
+    const t = await mintServiceToken();
+    return (await request<LoginResult>(t, "/console/auth/login", { method: "POST", body })) as LoginResult;
+  },
+  /** `null` when the token is unknown or expired — never an exception. */
+  async session(token: string): Promise<ApiPrincipal | null> {
+    const t = await mintServiceToken();
+    try {
+      const res = await request<{ principal: ApiPrincipal }>(t, "/console/auth/session", {
+        method: "POST",
+        body: { token },
+      });
+      return res?.principal ?? null;
+    } catch (err) {
+      if (err instanceof BackendError && err.status === 401) return null;
+      throw err;
+    }
+  },
+  async logout(token: string): Promise<void> {
+    const t = await mintServiceToken();
+    await request<null>(t, "/console/auth/logout", { method: "POST", body: { token } });
   },
 };

@@ -101,6 +101,10 @@ class ClientCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     timezone: str = Field(default="UTC", max_length=64)
     placeholders: dict[str, Any] | None = None
+    # CP-10: optionally stage a DRAFT agent (version 1) from this seed right
+    # after provisioning — same as calling ``.../agent/from-seed`` next.
+    # Ignored when the partner's blueprint already seeded the agent.
+    seed_template: str | None = Field(default=None, max_length=80, pattern=r"^[a-z0-9_]+$")
 
 
 class ClientCreateOut(BaseModel):
@@ -169,7 +173,6 @@ class AgentDraftIn(BaseModel):
 
     system_prompt: str = Field(min_length=1, max_length=200_000)
     tools: list[str] | None = None
-    policies: dict[str, Any] | None = None
 
 
 # ── channels ───────────────────────────────────────────────────────────
@@ -342,27 +345,25 @@ class InvitationLookupOut(BaseModel):
     expires_at: datetime
 
 
-class InvitationAcceptIn(BaseModel):
-    """What the BFF sends after the invited person authenticated. The
-    BFF is trusted for these (signed service token) — the backend still
-    re-checks the e-mail against the invitation."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    user_id: str = Field(min_length=1, max_length=64)
-    email: EmailStr
-    display_name: str | None = Field(default=None, max_length=255)
-
-
 class InvitationAcceptOut(BaseModel):
+    """Aceptar una invitación crea la cuenta Y abre sesión (auto-login):
+    la persona ya demostró quién es al recibir el enlace y acaba de elegir
+    contraseña, así que mandarla a la pantalla de login sería ceremonia.
+    ``token`` es el mismo token opaco que devuelve ``/console/auth/login``."""
+
     membership_id: uuid.UUID
     partner: PartnerBrief
     role: str
+    token: str
+    expires_at: datetime
 
 
 # ── api keys ───────────────────────────────────────────────────────────
 
-KeyScopeLiteral = Literal["provision", "widget_sessions", "broadcasts"]
+# ``widget_sessions`` is deliberately absent: the embedded widget is out of
+# scope (the embed service was retired from the repo on 2026-08-04 and the
+# integration story is API/MCP). ``messages_send`` needs a tenant-bound key.
+KeyScopeLiteral = Literal["provision", "broadcasts"]
 
 
 class ApiKeyOut(BaseModel):

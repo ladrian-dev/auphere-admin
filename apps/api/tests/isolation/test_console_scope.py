@@ -160,9 +160,16 @@ def _fill(path: str, *, ref: str) -> str:
         path.replace("{ref}", ref)
         .replace("{version}", "1")
         .replace("{key_id}", str(uuid.uuid4()))
+        .replace("{channel_id}", str(uuid.uuid4()))
+        .replace("{name}", "hello_world")
         .replace("{membership_id}", str(uuid.uuid4()))
         .replace("{invitation_id}", str(uuid.uuid4()))
         .replace("{token}", "a" * 43)
+        .replace("{tool_name}", "calendar.list_slots")
+        .replace("{doc_id}", str(uuid.uuid4()))
+        .replace("{thread_id}", str(uuid.uuid4()))
+        .replace("{run_id}", str(uuid.uuid4()))
+        .replace("{notification_id}", str(uuid.uuid4()))
     )
 
 
@@ -174,6 +181,29 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("POST", "/console/clients/{ref}/status"): {"status": "paused"},
         ("DELETE", "/console/clients/{ref}"): {"confirm_name": "x"},
         ("POST", "/console/clients/{ref}/agent/versions"): {"system_prompt": "x"},
+        ("POST", "/console/clients/{ref}/agent/from-seed"): {
+            "seed_template": "generic_v1",
+            "placeholders": {},
+        },
+        ("PUT", "/console/clients/{ref}/agent/settings"): {"settings": {}},
+        ("PUT", "/console/clients/{ref}/tools"): {"tools": []},
+        ("PUT", "/console/clients/{ref}/tools/{tool_name}/mode"): {"mode": "always"},
+        ("PUT", "/console/clients/{ref}/skills"): {"skills": []},
+        ("POST", "/console/clients/{ref}/knowledge/url"): {"url": "https://example.com/x"},
+        ("POST", "/console/clients/{ref}/channels/whatsapp/signup"): {
+            "code": "x",
+            "waba_id": "1",
+            "mode": "cloud_api",
+        },
+        ("POST", "/console/clients/{ref}/channels/whatsapp/templates"): {
+            "name": "x",
+            "body_text": "hi",
+        },
+        ("PATCH", "/console/clients/{ref}/channels/{channel_id}/role"): {"role": "agent"},
+        ("POST", "/console/clients/{ref}/channels/diagnostics/test-send"): {"to": "+34600000000"},
+        ("POST", "/console/clients/{ref}/playground/threads"): {"title": "x"},
+        ("PATCH", "/console/clients/{ref}/playground/threads/{thread_id}"): {"title": "x"},
+        ("POST", "/console/clients/{ref}/playground/threads/{thread_id}/runs"): {"prompt": "x"},
     }
     return bodies.get((sorted(route.methods)[0], route.path))
 

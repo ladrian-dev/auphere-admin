@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
-import { signOut } from "@/lib/auth-client";
+import { signOutAction } from "@/lib/auth-actions";
 
 export function SignOutButton() {
   const t = useT();
@@ -14,7 +14,7 @@ export function SignOutButton() {
     <Button
       variant="ghost"
       onClick={async () => {
-        await signOut();
+        await signOutAction();
         router.replace("/login");
         router.refresh();
       }}
