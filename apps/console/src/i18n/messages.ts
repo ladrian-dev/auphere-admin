@@ -1,0 +1,345 @@
+/**
+ * ES/EN messages (CP-30). Flat keys, both languages side by side so a
+ * missing translation is visible in the diff. Format with ``t(locale,
+ * key, vars)``; every number/date goes through ``@nexus/ui`` Intl helpers,
+ * never through a message.
+ */
+export type Locale = "es" | "en";
+
+import { agentToolsMessages } from "./lanes/agent-tools";
+import { channelsMessages } from "./lanes/channels";
+import { homeUsageMessages } from "./lanes/home-usage";
+import { onboardingMessages } from "./lanes/onboarding";
+import { playgroundMessages } from "./lanes/playground";
+
+const core = {
+  // shell
+  "nav.home": { es: "Inicio", en: "Home" },
+  "nav.clients": { es: "Clientes", en: "Clients" },
+  "nav.usage": { es: "Consumo", en: "Usage" },
+  "nav.audit": { es: "Auditoría", en: "Audit" },
+  "nav.team": { es: "Equipo", en: "Team" },
+  "nav.keys": { es: "Claves de API", en: "API keys" },
+  "nav.billing": { es: "Facturación", en: "Billing" },
+  "nav.group.operate": { es: "Operar", en: "Operate" },
+  "nav.group.account": { es: "Cuenta", en: "Account" },
+  "shell.signOut": { es: "Cerrar sesión", en: "Sign out" },
+  "shell.theme": { es: "Tema", en: "Theme" },
+  "shell.theme.light": { es: "Claro", en: "Light" },
+  "shell.theme.dark": { es: "Oscuro", en: "Dark" },
+  "shell.theme.system": { es: "Sistema", en: "System" },
+  "shell.language": { es: "Idioma", en: "Language" },
+  "shell.skip": { es: "Saltar al contenido", en: "Skip to content" },
+  "shell.partner": { es: "Partner", en: "Partner" },
+  "shell.role": { es: "Rol", en: "Role" },
+
+  // common
+  "common.retry": { es: "Reintentar", en: "Retry" },
+  "common.cancel": { es: "Cancelar", en: "Cancel" },
+  "common.save": { es: "Guardar", en: "Save" },
+  "common.confirm": { es: "Confirmar", en: "Confirm" },
+  "common.close": { es: "Cerrar", en: "Close" },
+  "common.loading": { es: "Cargando…", en: "Loading…" },
+  "common.error.title": { es: "Algo ha fallado", en: "Something went wrong" },
+  "common.error.backend": { es: "No se pudo hablar con el servidor.", en: "Could not reach the server." },
+  "common.actions": { es: "Acciones", en: "Actions" },
+  "common.name": { es: "Nombre", en: "Name" },
+  "common.status": { es: "Estado", en: "Status" },
+  "common.role": { es: "Rol", en: "Role" },
+  "common.email": { es: "Correo", en: "E-mail" },
+  "common.created": { es: "Creado", en: "Created" },
+  "common.updated": { es: "Actualizado", en: "Updated" },
+  "common.of": { es: "de", en: "of" },
+  "common.copy": { es: "Copiar", en: "Copy" },
+  "common.copied": { es: "Copiado", en: "Copied" },
+  "common.forbidden": { es: "Tu rol no permite esta acción.", en: "Your role does not allow this action." },
+
+  // validation
+  "validation.required": { es: "Este campo es obligatorio.", en: "This field is required." },
+  "validation.email": { es: "Introduce un correo válido.", en: "Enter a valid e-mail." },
+  "validation.password12": { es: "Mínimo 12 caracteres.", en: "At least 12 characters." },
+  "validation.refFormat": { es: "Solo letras, números y . _ : -", en: "Only letters, digits and . _ : -" },
+  "validation.tooLong": { es: "Demasiado largo.", en: "Too long." },
+
+  // status
+  "status.active": { es: "Activo", en: "Active" },
+  "status.paused": { es: "Suspendido", en: "Suspended" },
+  "status.archived": { es: "Archivado", en: "Archived" },
+  "status.provisioning": { es: "Aprovisionando", en: "Provisioning" },
+  "status.staged": { es: "Borrador", en: "Draft" },
+  "status.suspended": { es: "Suspendido", en: "Suspended" },
+  "status.pending": { es: "Pendiente", en: "Pending" },
+  "status.open": { es: "Abierta", en: "Open" },
+  "status.closed": { es: "Cerrada", en: "Closed" },
+  "status.escalated": { es: "Escalada", en: "Escalated" },
+  "status.connected": { es: "Conectado", en: "Connected" },
+  "status.disconnected": { es: "Desconectado", en: "Disconnected" },
+  "status.degraded": { es: "Degradado", en: "Degraded" },
+
+  // roles
+  "role.owner": { es: "Propietario", en: "Owner" },
+  "role.admin": { es: "Administrador", en: "Admin" },
+  "role.builder": { es: "Constructor", en: "Builder" },
+  "role.analyst": { es: "Analista", en: "Analyst" },
+  "role.billing": { es: "Facturación", en: "Billing" },
+  "role.owner.desc": { es: "Todo, incluida facturación, equipo y borrar clientes.", en: "Everything, including billing, team and deleting clients." },
+  "role.admin.desc": { es: "Todo salvo facturación.", en: "Everything except billing." },
+  "role.builder.desc": { es: "Clientes, agentes, canales y playground. Sin equipo ni facturación.", en: "Clients, agents, channels and playground. No team, no billing." },
+  "role.analyst.desc": { es: "Solo lectura: consumo, metadatos de conversación y auditoría.", en: "Read-only: usage, conversation metadata and audit." },
+  "role.billing.desc": { es: "Facturación, plan y recibos. Nada operativo.", en: "Billing, plan and receipts. Nothing operational." },
+
+  // auth
+  "login.eyebrow": { es: "Consola de partners", en: "Partner console" },
+  "login.title": { es: "Inicia sesión.", en: "Sign in." },
+  "login.email": { es: "Correo", en: "E-mail" },
+  "login.password": { es: "Contraseña", en: "Password" },
+  "login.submit": { es: "Entrar", en: "Sign in" },
+  "login.invalid": { es: "Correo o contraseña incorrectos.", en: "Wrong e-mail or password." },
+  "login.emailInvalid": { es: "Introduce un correo válido.", en: "Enter a valid e-mail." },
+  "login.tooMany": { es: "Demasiados intentos. Espera un minuto y vuelve a probar.", en: "Too many attempts. Wait a minute and try again." },
+  "login.passwordRequired": { es: "Introduce tu contraseña.", en: "Enter your password." },
+  "noAccess.title": { es: "Tu cuenta no tiene acceso a ningún partner", en: "Your account has no partner access" },
+  "noAccess.body": { es: "Pide a un propietario o administrador de tu partner que te invite, o vuelve a intentarlo con la cuenta correcta.", en: "Ask an owner or admin of your partner to invite you, or try again with the right account." },
+  "noAccess.disabled": { es: "La consola aún no está activada para tu partner. Auphere la enciende partner a partner durante el piloto.", en: "The console is not enabled for your partner yet. Auphere turns it on partner by partner during the pilot." },
+  "invite.title": { es: "Te han invitado a la consola", en: "You've been invited to the console" },
+  "invite.body": { es: "{partner} te invita a entrar como {role}. Crea tu contraseña para aceptar.", en: "{partner} invites you to join as {role}. Create your password to accept." },
+  "invite.expires": { es: "La invitación caduca el {date}.", en: "The invitation expires on {date}." },
+  "invite.name": { es: "Tu nombre", en: "Your name" },
+  "invite.password": { es: "Contraseña (mínimo 12 caracteres)", en: "Password (12 characters minimum)" },
+  "invite.submit": { es: "Aceptar invitación", en: "Accept invitation" },
+  "invite.invalid": { es: "Esta invitación no existe o ha caducado.", en: "This invitation does not exist or has expired." },
+  "invite.invalid.body": { es: "Pide una nueva a quien te invitó.", en: "Ask the person who invited you for a new one." },
+  "invite.emailMismatch": { es: "La invitación fue emitida para otro correo.", en: "The invitation was issued to a different e-mail." },
+  "invite.alreadyMember": { es: "Esta cuenta ya pertenece a un partner.", en: "This account already belongs to a partner." },
+  "invite.accountExists": { es: "Ya existe una cuenta con este correo: escribe su contraseña para aceptar.", en: "An account already exists for this e-mail: type its password to accept." },
+  "invite.signInHint": { es: "Si ya tienes cuenta con este correo, escribe su contraseña actual.", en: "If you already have an account with this e-mail, type its current password." },
+
+  // home
+  "home.title": { es: "Resumen", en: "Overview" },
+  "home.activeClients": { es: "Clientes activos", en: "Active clients" },
+  "home.quota": { es: "Cuota de clientes", en: "Client quota" },
+  "home.conversations30": { es: "Conversaciones (30 días)", en: "Conversations (30 days)" },
+  "home.pending": { es: "Acciones pendientes", en: "Pending actions" },
+  "home.pending.none": { es: "Nada pendiente", en: "Nothing pending" },
+  "home.pending.item": { es: "{count} cliente(s) sin agente o sin canal", en: "{count} client(s) without agent or channel" },
+  "home.team": { es: "Miembros del equipo", en: "Team members" },
+  "home.welcome": { es: "Hola, {name}", en: "Hello, {name}" },
+
+  // clients
+  "clients.title": { es: "Clientes", en: "Clients" },
+  "clients.description": { es: "Cada cliente tiene su agente, sus canales y su consumo. Aislados entre sí.", en: "Each client has its own agent, channels and usage. Isolated from each other." },
+  "clients.new": { es: "Nuevo cliente", en: "New client" },
+  "clients.search": { es: "Buscar por nombre o referencia", en: "Search by name or reference" },
+  "clients.empty.title": { es: "Todavía no hay clientes", en: "No clients yet" },
+  "clients.empty.body": { es: "Crea el primero: en unos minutos tendrás un agente borrador listo para el playground.", en: "Create the first one: in a few minutes you'll have a draft agent ready for the playground." },
+  "clients.empty.filtered": { es: "Ningún cliente coincide con el filtro", en: "No client matches the filter" },
+  "clients.error": { es: "No se pudieron cargar los clientes", en: "Could not load clients" },
+  "clients.ref": { es: "Referencia", en: "Reference" },
+  "clients.timezone": { es: "Zona horaria", en: "Time zone" },
+  "clients.quota": { es: "{used} de {max} clientes", en: "{used} of {max} clients" },
+  "clients.quota.full": { es: "Has alcanzado tu cuota de clientes. Archiva uno o pide a Auphere que la amplíe.", en: "You've reached your client quota. Archive one or ask Auphere to raise it." },
+  "clients.count": { es: "{count} cliente(s)", en: "{count} client(s)" },
+  "clients.filter.all": { es: "Todos", en: "All" },
+  "clients.create.title": { es: "Nuevo cliente", en: "New client" },
+  "clients.create.body": { es: "Datos básicos. El agente borrador y el canal se configuran después, desde la ficha.", en: "Basics. The draft agent and the channel are set up next, from the client page." },
+  "clients.create.refHint": { es: "Tu identificador para este cliente (letras, números, guiones). Se usa en la API y no se puede cambiar.", en: "Your identifier for this client (letters, digits, dashes). Used in the API; cannot be changed." },
+  "clients.create.submit": { es: "Crear cliente", en: "Create client" },
+  "clients.create.done": { es: "Cliente creado", en: "Client created" },
+  "clients.detail.health": { es: "Estado", en: "Health" },
+  "clients.detail.ready": { es: "Listo para atender", en: "Ready to serve" },
+  "clients.detail.missing": { es: "Falta: {items}", en: "Missing: {items}" },
+  "clients.detail.missing.agent": { es: "agente publicado", en: "published agent" },
+  "clients.detail.missing.whatsapp": { es: "WhatsApp conectado", en: "WhatsApp connected" },
+  "clients.detail.missing.activation": { es: "activación", en: "activation" },
+  "clients.detail.whatsapp": { es: "WhatsApp", en: "WhatsApp" },
+  "clients.detail.agent": { es: "Agente", en: "Agent" },
+  "clients.detail.agentVersion": { es: "Versión {v} activa", en: "Version {v} active" },
+  "clients.detail.noAgent": { es: "Sin versión publicada", en: "No published version" },
+  "clients.tabs.overview": { es: "Resumen", en: "Overview" },
+  "clients.tabs.agent": { es: "Agente", en: "Agent" },
+  "clients.tabs.channels": { es: "Canales", en: "Channels" },
+  "clients.tabs.conversations": { es: "Conversaciones", en: "Conversations" },
+  "clients.tabs.settings": { es: "Ajustes", en: "Settings" },
+  "clients.action.pause": { es: "Suspender", en: "Suspend" },
+  "clients.action.resume": { es: "Reactivar", en: "Reactivate" },
+  "clients.action.archive": { es: "Archivar", en: "Archive" },
+  "clients.action.unarchive": { es: "Desarchivar", en: "Unarchive" },
+  "clients.action.delete": { es: "Eliminar", en: "Delete" },
+  "clients.action.activate": { es: "Activar", en: "Activate" },
+  "clients.delete.title": { es: "Eliminar {name}", en: "Delete {name}" },
+  "clients.delete.body": { es: "Se borran agente, canales, conversaciones y consumo. Es irreversible. La auditoría se conserva anonimizada.", en: "Agent, channels, conversations and usage are erased. Irreversible. The audit trail is kept anonymised." },
+  "clients.delete.confirm": { es: "Eliminar definitivamente", en: "Delete permanently" },
+  "clients.delete.mustArchive": { es: "Archiva el cliente antes de eliminarlo.", en: "Archive the client before deleting it." },
+  "clients.settings.title": { es: "Ajustes del cliente", en: "Client settings" },
+  "clients.settings.saved": { es: "Ajustes guardados", en: "Settings saved" },
+  "clients.settings.danger": { es: "Zona de riesgo", en: "Danger zone" },
+  "clients.channels.empty": { es: "Este cliente aún no tiene canales. La conexión de WhatsApp llega en el siguiente paquete (CP-17).", en: "This client has no channels yet. WhatsApp connection ships in the next package (CP-17)." },
+  "clients.channels.number": { es: "Número", en: "Number" },
+  "clients.channels.role": { es: "Rol del canal", en: "Channel role" },
+
+  // agent
+  "agent.title": { es: "Agente", en: "Agent" },
+  "agent.description": { es: "Versiones del prompt. Publicar crea una versión activa; revertir vuelve a cualquier anterior.", en: "Prompt versions. Publishing makes a version active; rollback returns to any earlier one." },
+  "agent.active": { es: "Activa", en: "Active" },
+  "agent.versions": { es: "Versiones", en: "Versions" },
+  "agent.empty": { es: "Este cliente aún no tiene ninguna versión del agente", en: "This client has no agent version yet" },
+  "agent.empty.body": { es: "Escribe el primer prompt y guárdalo como borrador. Publícalo cuando lo hayas probado.", en: "Write the first prompt and save it as a draft. Publish it once tested." },
+  "agent.draft.title": { es: "Nuevo borrador", en: "New draft" },
+  "agent.draft.from": { es: "A partir de la versión {v}", en: "Based on version {v}" },
+  "agent.draft.prompt": { es: "Prompt del sistema", en: "System prompt" },
+  "agent.draft.save": { es: "Guardar borrador", en: "Save draft" },
+  "agent.draft.saved": { es: "Borrador guardado como versión {v}", en: "Draft saved as version {v}" },
+  "agent.publish": { es: "Publicar", en: "Publish" },
+  "agent.publish.title": { es: "Publicar la versión {v}", en: "Publish version {v}" },
+  "agent.publish.body": { es: "Los próximos mensajes de los clientes finales los atenderá esta versión. Puedes revertir en un clic.", en: "Upcoming end-customer messages will be handled by this version. You can roll back in one click." },
+  "agent.published": { es: "Versión {v} publicada", en: "Version {v} published" },
+  "agent.rollback": { es: "Revertir a esta", en: "Roll back to this" },
+  "agent.rolledBack": { es: "Revertido a la versión {v}", en: "Rolled back to version {v}" },
+  "agent.diff": { es: "Diferencias con la activa", en: "Diff against active" },
+  "agent.diff.none": { es: "Idéntica a la versión activa.", en: "Identical to the active version." },
+  "agent.tools": { es: "Herramientas", en: "Tools" },
+  "agent.by": { es: "por {who}", en: "by {who}" },
+  "agent.promptTooShort": { es: "El prompt no puede estar vacío.", en: "The prompt cannot be empty." },
+  "agent.viewPrompt": { es: "Ver prompt", en: "View prompt" },
+
+  // conversations
+  "conv.title": { es: "Conversaciones", en: "Conversations" },
+  "conv.description": { es: "Metadatos: volumen, estado, errores y latencia. El contenido de los mensajes nunca sale del sistema.", en: "Metadata: volume, state, errors and latency. Message content never leaves the system." },
+  "conv.empty": { es: "Sin conversaciones en el periodo", en: "No conversations in the period" },
+  "conv.turns": { es: "Turnos", en: "Turns" },
+  "conv.failed": { es: "Fallidos", en: "Failed" },
+  "conv.latency": { es: "Latencia media", en: "Avg latency" },
+  "conv.started": { es: "Inicio", en: "Started" },
+  "conv.last": { es: "Última actividad", en: "Last activity" },
+  "conv.channel": { es: "Canal", en: "Channel" },
+  "conv.duration": { es: "Duración", en: "Duration" },
+  "conv.filter.errors": { es: "Solo con errores", en: "Only with errors" },
+  "conv.filter.escalated": { es: "Solo escaladas", en: "Only escalated" },
+  "conv.stats.total": { es: "Conversaciones", en: "Conversations" },
+  "conv.stats.escalated": { es: "Escaladas", en: "Escalated" },
+  "conv.stats.failed": { es: "Mensajes fallidos", en: "Failed messages" },
+  "conv.privacy": { es: "Por diseño, la consola no muestra el texto de los mensajes (son datos personales de terceros). Para depurar, usa el playground.", en: "By design the console does not show message text (third-party personal data). Use the playground to debug." },
+
+  // usage
+  "usage.title": { es: "Consumo", en: "Usage" },
+  "usage.description": { es: "Unidades consumidas por cliente y medidor. El consumo de pruebas (playground) se muestra aparte y no se factura.", en: "Units consumed per client and meter. Test usage (playground) is shown separately and is not billed." },
+  "usage.period": { es: "Últimos {days} días", en: "Last {days} days" },
+  "usage.meter": { es: "Medidor", en: "Meter" },
+  "usage.source": { es: "Origen", en: "Source" },
+  "usage.source.channel": { es: "Canal", en: "Channel" },
+  "usage.source.qa": { es: "Pruebas", en: "Tests" },
+  "usage.quantity": { es: "Cantidad", en: "Quantity" },
+  "usage.billable": { es: "Facturable", en: "Billable" },
+  "usage.records": { es: "Registros", en: "Records" },
+  "usage.client": { es: "Cliente", en: "Client" },
+  "usage.empty": { es: "Sin consumo en el periodo", en: "No usage in the period" },
+  "usage.totals": { es: "Totales facturables", en: "Billable totals" },
+  "usage.export": { es: "Exportar CSV", en: "Export CSV" },
+  "usage.all": { es: "Todos los clientes", en: "All clients" },
+
+  // audit
+  "audit.title": { es: "Auditoría", en: "Audit" },
+  "audit.description": { es: "Quién hizo qué, sobre qué cliente y cuándo.", en: "Who did what, on which client, and when." },
+  "audit.empty": { es: "Sin actividad registrada", en: "No activity recorded" },
+  "audit.when": { es: "Cuándo", en: "When" },
+  "audit.what": { es: "Qué", en: "What" },
+  "audit.filter.actor": { es: "Actor", en: "Actor" },
+  "audit.filter.action": { es: "Acción", en: "Action" },
+  "audit.more": { es: "Cargar más", en: "Load more" },
+
+  // team
+  "team.title": { es: "Equipo", en: "Team" },
+  "team.description": { es: "Quién puede entrar en la consola de tu partner y con qué rol.", en: "Who can enter your partner's console and with which role." },
+  "team.invite": { es: "Invitar", en: "Invite" },
+  "team.invite.title": { es: "Invitar a alguien", en: "Invite someone" },
+  "team.invite.body": { es: "Recibirá un enlace que caduca a los 21 días. Elige un rol por su trabajo, no por permisos.", en: "They'll get a link that expires in 21 days. Pick a role by job, not by permission." },
+  "team.invite.sent": { es: "Invitación creada", en: "Invitation created" },
+  "team.invite.link": { es: "Enlace de aceptación (compártelo si el correo no llega):", en: "Accept link (share it if the e-mail doesn't arrive):" },
+  "team.invite.emailSent": { es: "Correo enviado a {email}.", en: "E-mail sent to {email}." },
+  "team.invite.emailNotSent": { es: "El correo no está configurado en este entorno; comparte el enlace.", en: "E-mail is not configured in this environment; share the link." },
+  "team.members": { es: "Miembros", en: "Members" },
+  "team.invitations": { es: "Invitaciones pendientes", en: "Pending invitations" },
+  "team.invitations.empty": { es: "No hay invitaciones pendientes", en: "No pending invitations" },
+  "team.you": { es: "tú", en: "you" },
+  "team.changeRole": { es: "Cambiar rol", en: "Change role" },
+  "team.suspend": { es: "Suspender", en: "Suspend" },
+  "team.reactivate": { es: "Reactivar", en: "Reactivate" },
+  "team.remove": { es: "Quitar del equipo", en: "Remove from team" },
+  "team.remove.title": { es: "Quitar a {email}", en: "Remove {email}" },
+  "team.remove.body": { es: "Perderá el acceso de inmediato. Puedes volver a invitarle.", en: "They lose access immediately. You can invite them again." },
+  "team.revoke": { es: "Revocar", en: "Revoke" },
+  "team.expires": { es: "Caduca", en: "Expires" },
+  "team.lastOwner": { es: "Un partner necesita al menos un propietario activo.", en: "A partner needs at least one active owner." },
+  "team.selfChange": { es: "No puedes cambiar tu propia membresía; pídeselo a otro propietario o administrador.", en: "You cannot change your own membership; ask another owner or admin." },
+  "team.joined": { es: "Se unió", en: "Joined" },
+  "team.updated": { es: "Equipo actualizado", en: "Team updated" },
+
+  // keys
+  "keys.title": { es: "Claves de API", en: "API keys" },
+  "keys.description": { es: "Para integrar tu propio sistema con la API de partners. La clave se muestra una sola vez.", en: "To integrate your own system with the partner API. The key is shown once." },
+  "keys.new": { es: "Nueva clave", en: "New key" },
+  "keys.empty": { es: "Todavía no hay claves", en: "No keys yet" },
+  "keys.empty.body": { es: "Crea una clave para aprovisionar clientes o enviar difusiones desde tu sistema.", en: "Create a key to provision clients or send broadcasts from your system." },
+  "keys.type": { es: "Tipo", en: "Type" },
+  "keys.scopes": { es: "Permisos", en: "Scopes" },
+  "keys.lastUsed": { es: "Último uso", en: "Last used" },
+  "keys.never": { es: "Nunca", en: "Never" },
+  "keys.rotate": { es: "Rotar", en: "Rotate" },
+  "keys.revoke": { es: "Revocar", en: "Revoke" },
+  "keys.revoked": { es: "Revocada", en: "Revoked" },
+  "keys.grace": { es: "En gracia hasta {date}", en: "In grace until {date}" },
+  "keys.created.title": { es: "Guarda esta clave ahora", en: "Save this key now" },
+  "keys.created.body": { es: "No volverá a mostrarse. Si la pierdes, rota la clave.", en: "It will not be shown again. If you lose it, rotate the key." },
+  "keys.create.title": { es: "Nueva clave de API", en: "New API key" },
+  "keys.create.body": { es: "Elige tipo y permisos. Las claves ligadas a un solo cliente (envío de mensajes) se crean desde la ficha del cliente.", en: "Pick type and scopes. Keys bound to a single client (message sending) are created from the client page." },
+  "keys.rotate.title": { es: "Rotar la clave {prefix}", en: "Rotate key {prefix}" },
+  "keys.rotate.body": { es: "Se crea una clave nueva y la actual sigue funcionando 24 h para que despliegues sin corte.", en: "A new key is created; the current one keeps working for 24 h so you can deploy without downtime." },
+  "keys.revoke.title": { es: "Revocar la clave {prefix}", en: "Revoke key {prefix}" },
+  "keys.revoke.body": { es: "Deja de funcionar inmediatamente, sin periodo de gracia.", en: "It stops working immediately, with no grace period." },
+  "keys.scope.provision": { es: "Aprovisionar clientes", en: "Provision clients" },
+  "keys.scope.broadcasts": { es: "Difusiones", en: "Broadcasts" },
+  "keys.type.live": { es: "Producción", en: "Live" },
+  "keys.type.test": { es: "Pruebas", en: "Test" },
+
+  // billing
+  "billing.title": { es: "Facturación", en: "Billing" },
+  "billing.description": { es: "Tus recibos y datos de contacto de facturación. El cobro automático llega en la fase siguiente.", en: "Your receipts and billing contact. Automatic charging arrives in the next phase." },
+  "billing.email": { es: "Correo de facturación", en: "Billing e-mail" },
+  "billing.receipts": { es: "Recibos", en: "Receipts" },
+  "billing.receipts.empty": { es: "Todavía no hay recibos", en: "No receipts yet" },
+  "billing.period": { es: "Periodo", en: "Period" },
+  "billing.total": { es: "Total", en: "Total" },
+  "billing.due": { es: "Vencimiento", en: "Due" },
+  "billing.notSet": { es: "No configurado — escríbenos para actualizarlo.", en: "Not set — contact us to update it." },
+} as const;
+
+/** Lane message modules (``i18n/lanes/<lane>.ts``) — each lane owns its file. */
+const messages = {
+  ...core,
+  ...agentToolsMessages,
+  ...playgroundMessages,
+  ...channelsMessages,
+  ...homeUsageMessages,
+  ...onboardingMessages,
+} as const;
+
+export type MessageKey = keyof typeof messages;
+
+export function t(locale: Locale, key: MessageKey, vars?: Record<string, string | number>): string {
+  const entry = messages[key];
+  let out: string = entry[locale] ?? entry.es;
+  if (vars) for (const [k, v] of Object.entries(vars)) out = out.replaceAll(`{${k}}`, String(v));
+  return out;
+}
+
+export function statusKey(status: string): MessageKey {
+  const key = `status.${status}` as MessageKey;
+  return key in messages ? key : "status.active";
+}
+
+export function roleKey(role: string): MessageKey {
+  const key = `role.${role}` as MessageKey;
+  return key in messages ? key : "role.analyst";
+}
+
+export { messages };

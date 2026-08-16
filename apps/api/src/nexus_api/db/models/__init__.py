@@ -31,6 +31,17 @@ from nexus_api.db.models.connector import (
     TenantConnectorStatus,
     TenantConnectorToolOverride,
 )
+from nexus_api.db.models.console_identity import (
+    CONSOLE_AUTH_SCHEMA,
+    ConsoleAccount,
+    ConsoleSession,
+)
+from nexus_api.db.models.console_notification import (
+    ConsoleNotification,
+    ConsoleNotificationRead,
+    NotificationKind,
+    NotificationSeverity,
+)
 from nexus_api.db.models.conversation import (
     Conversation,
     ConversationStatus,
@@ -53,6 +64,12 @@ from nexus_api.db.models.evals import (
 )
 from nexus_api.db.models.isolation_event import IsolationEvent
 from nexus_api.db.models.kg import KGEdge, KGNode, KGSchema
+from nexus_api.db.models.knowledge import (
+    KnowledgeDocument,
+    KnowledgeDocumentKind,
+    KnowledgeDocumentStatus,
+    KnowledgeErrorCode,
+)
 from nexus_api.db.models.model_profile import (
     MODEL_ROLES,
     ModelProfile,
@@ -82,6 +99,15 @@ from nexus_api.db.models.partner import (
     PartnerStatus,
     PartnerTenant,
 )
+from nexus_api.db.models.partner_membership import (
+    INVITATION_TTL,
+    PARTNER_ROLES,
+    InvitationStatus,
+    MembershipStatus,
+    PartnerInvitation,
+    PartnerMembership,
+    PartnerRole,
+)
 from nexus_api.db.models.qa import QAAuditLog, QARun, QASideEffectAudit, QAThread
 from nexus_api.db.models.queue_entry import QueueEntry, QueueEntryStatus
 from nexus_api.db.models.sales import AgentSale
@@ -97,11 +123,14 @@ from nexus_api.db.models.usage_record import USAGE_METERS, UsageRecord
 
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
+    "CONSOLE_AUTH_SCHEMA",
+    "INVITATION_TTL",
     "MODEL_ROLES",
     "OWNER_COMMAND_KINDS",
     "OWNER_CONSULTATION_EXPECTED_REPLY_KINDS",
     "OWNER_CONSULTATION_STATUSES",
     "OWNER_CONSULTATION_URGENCIES",
+    "PARTNER_ROLES",
     "TENANT_SCOPED_API_KEY_SCOPES",
     "USAGE_METERS",
     "AgentConfig",
@@ -126,6 +155,10 @@ __all__ = [
     "ConnectorAuthKind",
     "ConnectorStatus",
     "ConnectorToolMode",
+    "ConsoleAccount",
+    "ConsoleNotification",
+    "ConsoleNotificationRead",
+    "ConsoleSession",
     "Conversation",
     "ConversationStatus",
     "Customer",
@@ -137,6 +170,7 @@ __all__ = [
     "EvalRun",
     "EvalRunResult",
     "EvalRunStatus",
+    "InvitationStatus",
     "Invoice",
     "InvoiceLine",
     "InvoiceStatus",
@@ -144,17 +178,27 @@ __all__ = [
     "KGEdge",
     "KGNode",
     "KGSchema",
+    "KnowledgeDocument",
+    "KnowledgeDocumentKind",
+    "KnowledgeDocumentStatus",
+    "KnowledgeErrorCode",
     "MediaKind",
+    "MembershipStatus",
     "Message",
     "MessageDirection",
     "MessageStatus",
     "ModelProfile",
+    "NotificationKind",
+    "NotificationSeverity",
     "OperatorNotification",
     "OperatorNotificationStatus",
     "OwnerConsultation",
     "OwnerPhoneIndex",
     "Partner",
     "PartnerApiKey",
+    "PartnerInvitation",
+    "PartnerMembership",
+    "PartnerRole",
     "PartnerStatus",
     "PartnerTenant",
     "QAAuditLog",

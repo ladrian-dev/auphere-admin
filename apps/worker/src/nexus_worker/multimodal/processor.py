@@ -68,6 +68,9 @@ class ProcessedMedia:
     transcript: str | None
     summary: str | None
     error: str | None = None
+    # Seconds of audio reported by the transcription provider (``verbose_json``
+    # ``duration``); None when unknown. Feeds ``media.audio_seconds`` (0083).
+    duration_seconds: float | None = None
 
     @property
     def text(self) -> str | None:
@@ -95,6 +98,11 @@ class MediaProcessor(abc.ABC):
 class LiveMediaProcessor(MediaProcessor):
     """Production processor: LiteLLM-backed audio + vision."""
 
+    # Duration of the last transcription (per call; ``process`` reads it
+    # right after ``_transcribe`` returns). Not shared across tasks: each
+    # ``process`` awaits its own ``_transcribe`` before reading it.
+    _last_duration: float | None = None
+
     async def process(
         self,
         *,
@@ -116,7 +124,12 @@ class LiveMediaProcessor(MediaProcessor):
         try:
             if media_kind == "audio":
                 transcript = await self._transcribe(content, effective_mime)
-                return ProcessedMedia(kind="audio", transcript=transcript, summary=None)
+                return ProcessedMedia(
+                    kind="audio",
+                    transcript=transcript,
+                    summary=None,
+                    duration_seconds=self._last_duration,
+                )
             if media_kind in {"image", "sticker"}:
                 summary = await self._vision(content, effective_mime)
                 return ProcessedMedia(kind=media_kind, transcript=None, summary=summary)
@@ -195,6 +208,7 @@ class LiveMediaProcessor(MediaProcessor):
         # the transcript — and an absent row is findable, whereas a
         # guessed duration is a plausible number nobody would question.
         duration = getattr(response, "duration", None)
+        self._last_duration = float(duration) if isinstance(duration, int | float) else None
         if isinstance(duration, int | float):
             record_voice_minutes(
                 model=settings.llm_transcribe_model,

@@ -78,7 +78,7 @@ from nexus_api.services.media_storage import MediaStorageError, get_media_storag
 from nexus_channels.base import ChannelCapabilityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_worker.metering.collector import record_channel_message
+from nexus_worker.metering.collector import record_channel_message, record_media_unit
 
 if TYPE_CHECKING:
     from nexus_channels.base import SendResult
@@ -631,6 +631,16 @@ async def _send_one(
         provider_message_id=msg.provider_message_id,
         conversation_id=msg.conversation_id,
     )
+    # CP-23 (0083): an outbound attachment accepted by the provider is one
+    # ``media.<kind>`` unit on top of the channel message.
+    if msg.media_kind:
+        await record_media_unit(
+            tenant_id=tenant_id,
+            kind=msg.media_kind,
+            provider="meta",
+            provider_message_id=msg.provider_message_id,
+            conversation_id=msg.conversation_id,
+        )
     log.info(
         "outbound.dispatcher.sent",
         tenant_id=str(tenant_id),

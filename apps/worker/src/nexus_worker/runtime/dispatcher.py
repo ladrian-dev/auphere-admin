@@ -30,7 +30,7 @@ from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 from nexus_api.services.channel_routing import config_agent_enabled, config_role
 
 from nexus_worker.metering.budget import evaluate as evaluate_budget
-from nexus_worker.metering.collector import usage_turn
+from nexus_worker.metering.collector import record_media_unit, usage_turn
 from nexus_worker.multimodal import ProcessedMedia, get_media_processor
 from nexus_worker.multimodal.media_fetch import fetch_inbound_media
 from nexus_worker.observability.tracing import trace_turn, update_trace
@@ -183,13 +183,20 @@ async def process_inbound(
 
     processed_media: ProcessedMedia | None = None
     if event.media_kind and media_s3_key:
+        # CP-23 (0083): the processor's own ``record_*`` calls (vision
+        # tokens, Whisper minutes) only land inside an open usage turn, and
+        # the LLM turn below opens AFTER persistence — so they were no-ops
+        # here. Give the media leg its own turn keyed by the provider
+        # message id (stable across a replay → idempotent rows).
+        media_turn_id = f"media:{event.provider_message_id or uuid.uuid4().hex}"
         try:
-            processed_media = await get_media_processor().process(
-                s3_key=media_s3_key,
-                media_kind=event.media_kind,
-                mime_type=media_mime,
-                filename=event.media_filename,
-            )
+            async with usage_turn(tenant_id=event.tenant_id, turn_id=media_turn_id):
+                processed_media = await get_media_processor().process(
+                    s3_key=media_s3_key,
+                    media_kind=event.media_kind,
+                    mime_type=media_mime,
+                    filename=event.media_filename,
+                )
         except Exception as exc:
             log.warning(
                 "pipeline.media_processor.failed",
@@ -197,6 +204,16 @@ async def process_inbound(
                 media_kind=event.media_kind,
                 error=str(exc),
             )
+        # One inbound attachment = one ``media.<kind>`` unit (+ seconds for
+        # audio when the provider reported them). Emitted whether or not
+        # the processing succeeded: the attachment was received and stored.
+        await record_media_unit(
+            tenant_id=event.tenant_id,
+            kind=event.media_kind,
+            provider=event.provider,
+            provider_message_id=event.provider_message_id,
+            audio_seconds=processed_media.duration_seconds if processed_media else None,
+        )
 
     user_message = event.content
     media_transcript: str | None = None

@@ -10,6 +10,7 @@ def _set_prod_secrets(monkeypatch):
     monkeypatch.setenv("NEXUS_META_WEBHOOK_VERIFY_TOKEN", "real-verify-token")
     monkeypatch.setenv("NEXUS_FERNET_KEY", "prod-fernet-key-override")
     monkeypatch.setenv("NEXUS_EMBED_JWT_SECRET", "real-embed-jwt-secret-32-bytes-long!")
+    monkeypatch.setenv("NEXUS_CONNECTOR_CONSENT_SECRET", "real-consent-secret-at-least-32-chars!!")
 
 
 def test_settings_loads_from_env(monkeypatch):
@@ -69,6 +70,7 @@ def test_prod_rejects_placeholder_meta_app_secret(monkeypatch):
     assert "NEXUS_META_APP_SECRET" in msg
     assert "NEXUS_META_WEBHOOK_VERIFY_TOKEN" in msg
     assert "NEXUS_FERNET_KEY" in msg
+    assert "NEXUS_CONNECTOR_CONSENT_SECRET" in msg
     # ADR-028: the embed JWT secret joined the guard — a prod deploy that
     # forgets it must not silently mint tokens with the public default.
 

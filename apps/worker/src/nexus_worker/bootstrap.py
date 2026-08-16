@@ -86,6 +86,7 @@ from nexus_worker.streams.partner_receipt_cron import run_partner_receipt_cron
 from nexus_worker.streams.platform_watcher import run_platform_watcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
+from nexus_worker.streams.usage_alerts_cron import run_usage_alerts_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
 
 log = structlog.get_logger(__name__)
@@ -139,6 +140,7 @@ SCHEDULER_TASK_NAMES = frozenset(
         "partition-maintenance-cron",
         "checkpoint-retention-cron",
         "data-retention-cron",
+        "usage-alerts-cron",
     }
 )
 
@@ -449,6 +451,8 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         # WP-13: partitions ahead of the calendar + checkpoint pruning.
         _spawn("partition-maintenance-cron", run_partition_maintenance_cron(stop=ctx.stop)),
         _spawn("checkpoint-retention-cron", run_checkpoint_retention_cron(stop=ctx.stop)),
+        # CP-24: partner usage caps — warns at 80 %/100 %, never cuts.
+        _spawn("usage-alerts-cron", run_usage_alerts_cron(stop=ctx.stop)),
         # WP-29: retención por tipo de dato. Va en el scheduler (líder
         # único) porque suelta particiones: dos instancias compitiendo por
         # el mismo DROP no romperían nada, pero el log diría dos veces que

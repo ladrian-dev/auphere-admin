@@ -39,6 +39,33 @@ os.environ.setdefault("NEXUS_WEBHOOK_HMAC_SECRET", "test-hmac-secret")
 os.environ.setdefault("NEXUS_FERNET_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("NEXUS_ISOLATION_ENFORCER_RAISE_IN_DEV", "false")
 
+# ── Partner console (CP-03): one Ed25519 keypair per test session ──────────
+# The API only ever holds the PUBLIC key; tests mint tokens with the private
+# half through the ``mint_console_token`` fixture below, exactly like the
+# BFF does. Generated here (before ``nexus_api`` is imported) so the cached
+# settings pick it up.
+from cryptography.hazmat.primitives import serialization as _ser  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (  # noqa: E402
+    Ed25519PrivateKey as _Ed25519PrivateKey,
+)
+
+CONSOLE_TEST_PRIVATE_KEY = _Ed25519PrivateKey.generate()
+CONSOLE_TEST_PRIVATE_PEM = CONSOLE_TEST_PRIVATE_KEY.private_bytes(
+    encoding=_ser.Encoding.PEM,
+    format=_ser.PrivateFormat.PKCS8,
+    encryption_algorithm=_ser.NoEncryption(),
+).decode()
+CONSOLE_TEST_PUBLIC_PEM = (
+    CONSOLE_TEST_PRIVATE_KEY.public_key()
+    .public_bytes(
+        encoding=_ser.Encoding.PEM,
+        format=_ser.PublicFormat.SubjectPublicKeyInfo,
+    )
+    .decode()
+)
+os.environ.setdefault("NEXUS_CONSOLE_ENABLED", "true")
+os.environ.setdefault("NEXUS_CONSOLE_JWT_PUBLIC_KEY", CONSOLE_TEST_PUBLIC_PEM)
+
 # Importing after env vars set so settings cache picks them up.
 from nexus_api.config import get_settings  # noqa: E402
 from nexus_api.core import redis_client  # noqa: E402
@@ -174,6 +201,10 @@ def _reset_test_db() -> None:
         # so a previous test session's tables don't collide with the
         # fresh ``alembic upgrade head`` below.
         "DROP SCHEMA IF EXISTS qa CASCADE; "
+        # ADR-032: la identidad de la consola vive en ``console_auth``. Sin
+        # esta línea, la segunda sesión de tests choca con las tablas que
+        # dejó la primera y ``alembic upgrade head`` falla en 0088.
+        "DROP SCHEMA IF EXISTS console_auth CASCADE; "
         "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
         "CREATE EXTENSION IF NOT EXISTS vector;"
     )
@@ -325,6 +356,10 @@ _TRUNCATE_TABLES = (
     "embed_audit_log",
     "partner_tenants",
     "api_keys",
+    # Migration 0080 — console principals. Invitations FK memberships
+    # (SET NULL) and both FK partners (CASCADE): clear them first.
+    "partner_invitations",
+    "partner_memberships",
     "partners",
     "kg_edges",
     "kg_nodes",
@@ -397,6 +432,60 @@ async def admin_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {get_settings().admin_token}"}
 
 
+# ── partner console tokens (CP-03) ─────────────────────────────────────────
+
+
+def mint_console_token(
+    *,
+    user_id: str,
+    partner_id: uuid.UUID | str | None,
+    role: str | None = None,
+    ttl: int = 60,
+    jti: str | None = None,
+    service: bool = False,
+    issued_at: int | None = None,
+    private_pem: str = CONSOLE_TEST_PRIVATE_PEM,
+    **extra: Any,
+) -> str:
+    """Mint a console JWT the way ``apps/console`` does. ``service=True``
+    produces the pre-membership service token (``svc: "console"``)."""
+    import time as _time
+
+    import jwt as _jwt
+
+    settings = get_settings()
+    now = issued_at if issued_at is not None else int(_time.time())
+    claims: dict[str, Any] = {
+        "iss": settings.console_jwt_issuer,
+        "aud": settings.console_jwt_audience,
+        "sub": user_id,
+        "iat": now,
+        "exp": now + ttl,
+        "jti": jti or uuid.uuid4().hex,
+    }
+    if service:
+        claims["svc"] = "console"
+    else:
+        claims["partner_id"] = str(partner_id)
+        if role is not None:
+            claims["role"] = role
+    claims.update(extra)
+    return _jwt.encode(claims, private_pem, algorithm="EdDSA")
+
+
+def console_headers(**kwargs: Any) -> dict[str, str]:
+    return {"Authorization": f"Bearer {mint_console_token(**kwargs)}"}
+
+
+@pytest.fixture(autouse=True)
+def _reset_console_replay_cache() -> Iterator[None]:
+    from nexus_api.core.console_auth import reset_replay_cache_for_tests
+
+    reset_replay_cache_for_tests()
+    yield
+    reset_replay_cache_for_tests()
+
+
 # ── HTTP client wired to the FastAPI app ────────────────────────────────────────
 
 
@@ -430,3 +519,122 @@ async def scoped_session_factory(test_engine: Any) -> AsyncIterator[Any]:
         return s
 
     yield _make
+
+
+# ── partner console world (CP-02..CP-06) ───────────────────────────────────
+
+
+@pytest_asyncio.fixture
+async def console_world(db_session: AsyncSession) -> dict[str, Any]:
+    """Two console-enabled partners, each with one client (tenant + mapping)
+    and one active ``owner`` membership. Returns ids plus ready-made auth
+    headers per partner and role.
+
+    Shape::
+
+        {"a": {"partner_id", "slug", "tenant_id", "ref", "user_id",
+               "membership_id", "headers"}, "b": {...}}
+    """
+    from nexus_api.db.models import (
+        MembershipStatus,
+        Partner,
+        PartnerMembership,
+        PartnerTenant,
+        Tenant,
+        TenantPlan,
+        TenantStatus,
+    )
+
+    world: dict[str, Any] = {}
+    for label in ("a", "b"):
+        partner_id = uuid.uuid4()
+        tenant_id = uuid.uuid4()
+        membership_id = uuid.uuid4()
+        slug = f"cp-{label}-{partner_id.hex[:6]}"
+        user_id = f"user_{label}_{partner_id.hex[:8]}"
+        ref = f"client-{label}-1"
+        db_session.add(
+            Partner(
+                id=partner_id,
+                name=f"Console Partner {label.upper()}",
+                slug=slug,
+                console_enabled=True,
+                max_clients=3,
+            )
+        )
+        db_session.add(
+            Tenant(
+                id=tenant_id,
+                name=f"Client {label.upper()} One",
+                slug=f"p-{slug}-one",
+                plan=TenantPlan.PRO,
+                status=TenantStatus.ACTIVE,
+                partner_id=partner_id,
+            )
+        )
+        await db_session.flush()
+        db_session.add(
+            PartnerTenant(
+                partner_id=partner_id,
+                external_client_ref=ref,
+                tenant_id=tenant_id,
+                client_name=f"Client {label.upper()} One",
+            )
+        )
+        db_session.add(
+            PartnerMembership(
+                id=membership_id,
+                partner_id=partner_id,
+                user_id=user_id,
+                email=f"owner-{label}@example.com",
+                display_name=f"Owner {label.upper()}",
+                role="owner",
+                status=MembershipStatus.ACTIVE.value,
+            )
+        )
+        world[label] = {
+            "partner_id": partner_id,
+            "slug": slug,
+            "tenant_id": tenant_id,
+            "ref": ref,
+            "user_id": user_id,
+            "membership_id": membership_id,
+        }
+    await db_session.commit()
+    for label in ("a", "b"):
+        w = world[label]
+        w["headers"] = lambda w=w, **kw: console_headers(
+            user_id=w["user_id"], partner_id=w["partner_id"], **kw
+        )
+    return world
+
+
+async def add_console_member(
+    db_session: AsyncSession,
+    *,
+    partner_id: uuid.UUID,
+    role: str,
+    status: str = "active",
+) -> dict[str, Any]:
+    """Add one more member to a console partner; returns ids + headers factory."""
+    from nexus_api.db.models import PartnerMembership
+
+    membership_id = uuid.uuid4()
+    user_id = f"user_{role}_{membership_id.hex[:8]}"
+    db_session.add(
+        PartnerMembership(
+            id=membership_id,
+            partner_id=partner_id,
+            user_id=user_id,
+            email=f"{role}-{membership_id.hex[:6]}@example.com",
+            display_name=role,
+            role=role,
+            status=status,
+        )
+    )
+    await db_session.commit()
+    return {
+        "membership_id": membership_id,
+        "user_id": user_id,
+        "headers": lambda **kw: console_headers(user_id=user_id, partner_id=partner_id, **kw),
+    }

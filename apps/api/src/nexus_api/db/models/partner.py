@@ -30,6 +30,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -120,6 +121,41 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
     # completes and an active agent_config exists. False = operator
     # reviews and activates by hand.
     auto_activate: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    # Migration 0080 — per-partner switch for the partner console
+    # (PLAN-CONSOLE-V1 rule 4). False = members exist but cannot enter;
+    # Auphere flips it per partner once the pilot is ready.
+    console_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    # Migration 0081 — provisioning quota (PLAN-CONSOLE-V1 CP-06). Checked
+    # BEFORE anything is created, under a row lock on the partner.
+    max_clients: Mapped[int] = mapped_column(Integer, nullable=False, default=5, server_default="5")
+    max_channels_per_client: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=2, server_default="2"
+    )
+    # Operator-only note ("raised to 30 on 2026-09-01, contract X").
+    quota_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Migration 0082 — playground spend cap (CP-16): LLM tokens (in + out)
+    # the partner's console playground may burn per UTC calendar month,
+    # across all its clients and members. Tokens, not USD (C9). Checked
+    # BEFORE every turn; ``qa_cap_notes`` is operator-only.
+    qa_monthly_token_cap: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=2_000_000, server_default="2000000"
+    )
+    qa_cap_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Migration 0086 — activation metric (CP-29): first moment the partner
+    # had an ACTIVE client with a published agent. NULL = not yet.
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Migration 0087 — usage alerts (CP-24). Monthly cap of channel messages
+    # across all the partner's clients (NULL = no cap; v1 only WARNS at 80 %
+    # and 100 %, never cuts service), e-mail recipients, and the switch.
+    usage_cap_messages_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    usage_alert_recipients: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    usage_alerts_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
 
