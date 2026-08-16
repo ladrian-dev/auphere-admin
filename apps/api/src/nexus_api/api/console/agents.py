@@ -23,7 +23,12 @@ from nexus_api.api.deps import get_redis
 from nexus_api.core.errors import AgentConfigConflict
 from nexus_api.db.models import AgentConfig
 from nexus_api.services.agent_config_service import AgentConfigService
+from nexus_api.services.agent_console_policy import (
+    has_disclosure_decision,
+    with_disclosure_default,
+)
 
+from .agent_drafts import copy_runtime_fields
 from .deps import ClientScope, client_scope
 from .schemas import AgentBundleOut, AgentDraftIn, AgentVersionOut
 
@@ -84,24 +89,28 @@ async def stage_version(
     body: AgentDraftIn,
     scope: ClientScope = Depends(client_scope("agents:write")),
 ) -> AgentVersionOut:
-    """Stage a new (non-active) version. Channels and policies are copied
-    from the active version so a partner editing the prompt cannot
-    accidentally drop the runtime wiring."""
+    """Stage a new (non-active) version. Channels, policies and runtime
+    capabilities are copied from the active version so a partner editing
+    the prompt cannot accidentally drop the runtime wiring.
+
+    CP-31: a version staged from the console always carries an explicit
+    AI-disclosure decision — the default (``enabled=true``) is written
+    here, attributed to the actor, unless the policies already have one.
+    """
     service = AgentConfigService(scope.session)
     active = await service.get_active()
+    actor = scope.principal.actor
+    # Policies are never accepted raw from the console (platform keys such
+    # as ``admin_access``/``llm`` live there); the partner edits ONLY
+    # ``policies.console`` through the validated settings endpoint.
+    policies = dict(active.policies) if active else {}
     try:
         cfg = await service.stage_new_version(
-            actor=scope.principal.actor,
+            actor=actor,
             system_prompt_rendered=body.system_prompt,
             channels=list(active.channels) if active else [],
             tools=(body.tools if body.tools is not None else list(active.tools) if active else []),
-            policies=(
-                body.policies
-                if body.policies is not None
-                else dict(active.policies)
-                if active
-                else {}
-            ),
+            policies=with_disclosure_default(policies, actor=actor),
             seed_template_ref=active.seed_template_ref if active else None,
             kg_schema_id=active.kg_schema_id if active else None,
         )
@@ -110,7 +119,16 @@ async def stage_version(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
+    copy_runtime_fields(active, cfg)
     return _version_out(cfg)
+
+
+DISCLOSURE_REQUIRED_DETAIL = (
+    "This version has no AI-disclosure decision (AI Act art. 50). Open the agent "
+    "settings, choose whether the assistant discloses it is an AI (default: yes) "
+    "and save — that creates a draft you can publish."
+)
+EMPTY_PROMPT_DETAIL = "This version has an empty system prompt. Write the prompt before publishing."
 
 
 @router.post(
@@ -123,8 +141,22 @@ async def publish_version(
     scope: ClientScope = Depends(client_scope("agents:write")),
     redis: Redis = Depends(get_redis),
 ) -> AgentVersionOut:
-    """Make ``version`` the active one."""
+    """Make ``version`` the active one.
+
+    CP-31 hard rule: a version without an explicit ``policies.console.
+    ai_disclosure`` decision cannot go live from the console — 409 with an
+    actionable message. Versions staged through the console always have
+    one (default ``enabled=true``); the rule catches versions staged
+    elsewhere (backoffice, seeds) so the partner takes the decision.
+    """
     service = AgentConfigService(scope.session)
+    target = await service.configs.get_by_version(version)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="version not found")
+    if not has_disclosure_decision(target.policies):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=DISCLOSURE_REQUIRED_DETAIL)
+    if not (target.system_prompt_rendered or "").strip():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=EMPTY_PROMPT_DETAIL)
     try:
         cfg = await service.promote(version, actor=scope.principal.actor)
     except AgentConfigConflict as exc:

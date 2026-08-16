@@ -6,9 +6,19 @@ import { Button } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 
-type Props = { days: number; client: string; source: string; clients: { ref: string; name: string }[]; csv: string };
+type Props = {
+  days: number;
+  client: string;
+  source: string;
+  meter: string;
+  clients: { ref: string; name: string }[];
+  /** Server-side CSV (route handler → API streaming). */
+  csvHref: string;
+};
 
-export function UsageControls({ days, client, source, clients, csv }: Props) {
+const METER_OPTIONS = ["channel.message", "llm", "media", "voice"] as const;
+
+export function UsageControls({ days, client, source, meter, clients, csvHref }: Props) {
   const t = useT();
   const router = useRouter();
   const pathname = usePathname();
@@ -20,15 +30,6 @@ export function UsageControls({ days, client, source, clients, csv }: Props) {
       else next.delete(k);
     }
     router.push(`${pathname}?${next.toString()}`);
-  }
-  function download() {
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `usage-${days}d.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
   }
   const selectClass = "h-8 rounded-md border border-input bg-transparent px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
   return (
@@ -55,8 +56,16 @@ export function UsageControls({ days, client, source, clients, csv }: Props) {
         <option value="channel">{t("usage.source.channel")}</option>
         <option value="qa">{t("usage.source.qa")}</option>
       </select>
-      <Button variant="outline" size="sm" className="ml-auto" onClick={download}>
-        {t("usage.export")}
+      <select className={selectClass} value={meter} onChange={(e) => set({ meter: e.target.value || undefined })} aria-label={t("hu.usage.meter.filter")}>
+        <option value="">{t("hu.usage.meter.all")}</option>
+        {METER_OPTIONS.map((m) => (
+          <option key={m} value={m}>
+            {t(`hu.usage.meter.${m}` as "hu.usage.meter.llm")}
+          </option>
+        ))}
+      </select>
+      <Button nativeButton={false} variant="outline" size="sm" className="ml-auto" render={<a href={csvHref} download />}>
+        {t("hu.usage.export.server")}
       </Button>
     </div>
   );

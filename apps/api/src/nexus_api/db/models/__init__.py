@@ -31,6 +31,17 @@ from nexus_api.db.models.connector import (
     TenantConnectorStatus,
     TenantConnectorToolOverride,
 )
+from nexus_api.db.models.console_identity import (
+    CONSOLE_AUTH_SCHEMA,
+    ConsoleAccount,
+    ConsoleSession,
+)
+from nexus_api.db.models.console_notification import (
+    ConsoleNotification,
+    ConsoleNotificationRead,
+    NotificationKind,
+    NotificationSeverity,
+)
 from nexus_api.db.models.conversation import (
     Conversation,
     ConversationStatus,
@@ -53,6 +64,12 @@ from nexus_api.db.models.evals import (
 )
 from nexus_api.db.models.isolation_event import IsolationEvent
 from nexus_api.db.models.kg import KGEdge, KGNode, KGSchema
+from nexus_api.db.models.knowledge import (
+    KnowledgeDocument,
+    KnowledgeDocumentKind,
+    KnowledgeDocumentStatus,
+    KnowledgeErrorCode,
+)
 from nexus_api.db.models.model_profile import (
     MODEL_ROLES,
     ModelProfile,
@@ -106,6 +123,7 @@ from nexus_api.db.models.usage_record import USAGE_METERS, UsageRecord
 
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
+    "CONSOLE_AUTH_SCHEMA",
     "INVITATION_TTL",
     "MODEL_ROLES",
     "OWNER_COMMAND_KINDS",
@@ -137,6 +155,10 @@ __all__ = [
     "ConnectorAuthKind",
     "ConnectorStatus",
     "ConnectorToolMode",
+    "ConsoleAccount",
+    "ConsoleNotification",
+    "ConsoleNotificationRead",
+    "ConsoleSession",
     "Conversation",
     "ConversationStatus",
     "Customer",
@@ -156,12 +178,18 @@ __all__ = [
     "KGEdge",
     "KGNode",
     "KGSchema",
+    "KnowledgeDocument",
+    "KnowledgeDocumentKind",
+    "KnowledgeDocumentStatus",
+    "KnowledgeErrorCode",
     "MediaKind",
     "MembershipStatus",
     "Message",
     "MessageDirection",
     "MessageStatus",
     "ModelProfile",
+    "NotificationKind",
+    "NotificationSeverity",
     "OperatorNotification",
     "OperatorNotificationStatus",
     "OwnerConsultation",

@@ -8,6 +8,10 @@ import { useT } from "@/i18n/client";
 const TABS = [
   { seg: "", key: "clients.tabs.overview" },
   { seg: "agent", key: "clients.tabs.agent" },
+  { seg: "tools", key: "clients.tabs.tools" },
+  { seg: "skills", key: "clients.tabs.skills" },
+  { seg: "knowledge", key: "clients.tabs.knowledge" },
+  { seg: "playground", key: "clients.tabs.playground" },
   { seg: "channels", key: "clients.tabs.channels" },
   { seg: "conversations", key: "clients.tabs.conversations" },
   { seg: "settings", key: "clients.tabs.settings" },

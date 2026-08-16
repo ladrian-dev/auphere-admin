@@ -87,6 +87,49 @@ _cache: dict[str, ModelPrice] | None = None
 _cached_at: float = 0.0
 _lock = asyncio.Lock()
 
+# ── precios por unidad sin modelo (``meter_prices``, migración 0083) ────
+#
+# Un adjunto no tiene modelo: ``media.image`` vale lo mismo lo procese quien
+# lo procese. Su tarifa vive en ``meter_prices`` (meter → USD por unidad) y
+# se cachea con el mismo TTL. Se consulta SOLO cuando el medidor no está en
+# ``_METER_PRICING`` (los de modelo siguen valorándose por ``model_profiles``).
+
+_UNIT_SQL = sa.text("SELECT meter, price_per_unit FROM meter_prices")
+_unit_cache: dict[str, Decimal] | None = None
+_unit_cached_at: float = 0.0
+
+
+async def load_unit_prices() -> dict[str, Decimal]:
+    sm = get_sessionmaker()
+    async with sm() as session:
+        rows = (await session.execute(_UNIT_SQL)).all()
+    return {str(meter): Decimal(str(price)) for meter, price in rows}
+
+
+async def get_unit_prices(*, force: bool = False) -> dict[str, Decimal]:
+    global _unit_cache, _unit_cached_at
+    now = time.monotonic()
+    if not force and _unit_cache is not None and (now - _unit_cached_at) < CATALOG_TTL_S:
+        return _unit_cache
+    async with _lock:
+        if (
+            not force
+            and _unit_cache is not None
+            and (time.monotonic() - _unit_cached_at) < CATALOG_TTL_S
+        ):
+            return _unit_cache
+        try:
+            _unit_cache = await load_unit_prices()
+            _unit_cached_at = time.monotonic()
+            log.info("pricing.unit_prices_loaded", meters=len(_unit_cache))
+        except Exception as exc:
+            log.error(
+                "pricing.unit_prices_load_failed", error=str(exc), stale=_unit_cache is not None
+            )
+            if _unit_cache is None:
+                return {}
+        return _unit_cache
+
 
 async def load_catalog() -> dict[str, ModelPrice]:
     """Lee ``model_profiles`` entero. Sin ámbito de tenant a propósito:
@@ -135,9 +178,11 @@ async def get_catalog(*, force: bool = False) -> dict[str, ModelPrice]:
 
 def invalidate() -> None:
     """Fuerza la relectura en la siguiente valoración."""
-    global _cache, _cached_at
+    global _cache, _cached_at, _unit_cache, _unit_cached_at
     _cache = None
     _cached_at = 0.0
+    _unit_cache = None
+    _unit_cached_at = 0.0
 
 
 async def cheapest_model() -> str | None:
@@ -158,15 +203,27 @@ async def cheapest_model() -> str | None:
     return min(priced, key=lambda p: (p.input_per_mtok, p.model_id)).model_id
 
 
-def price_row(row: dict[str, Any], catalog: dict[str, ModelPrice]) -> Decimal | None:
+def price_row(
+    row: dict[str, Any],
+    catalog: dict[str, ModelPrice],
+    unit_prices: dict[str, Decimal] | None = None,
+) -> Decimal | None:
     """Coste en USD de una fila de consumo, o None si no se puede valorar.
 
-    None cuando: la fila no dice de qué modelo salió, el modelo no está en
-    catálogo, el medidor no tiene tarifa asociada, o el modelo está en
-    catálogo pero sin esa tarifa cargada. En los cuatro casos la fila entra
-    con ``cost_usd NULL`` y se puede reprecificar después; valorarla a cero
-    la haría indistinguible de un evento que de verdad es gratis.
+    Medidores por unidad (``media.*``, 0083): ``quantity x meter_prices``,
+    sin modelo. El resto: None cuando la fila no dice de qué modelo salió,
+    el modelo no está en catálogo, el medidor no tiene tarifa asociada, o el
+    modelo está en catálogo pero sin esa tarifa cargada. En todos esos
+    casos la fila entra con ``cost_usd NULL`` y se puede reprecificar
+    después; valorarla a cero la haría indistinguible de un evento que de
+    verdad es gratis.
     """
+    meter = row["meter"]
+    if meter not in _METER_PRICING and unit_prices is not None and meter in unit_prices:
+        quantity = row["quantity"]
+        if not isinstance(quantity, Decimal):
+            quantity = Decimal(str(quantity))
+        return (quantity * unit_prices[meter]).quantize(_COST_SCALE)
     model = row.get("model")
     if not model:
         return None

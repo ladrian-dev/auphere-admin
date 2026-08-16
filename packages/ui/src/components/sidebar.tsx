@@ -305,9 +305,11 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   )
 }
 
-function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+function SidebarInset({ className, ...props }: React.ComponentProps<"div">) {
+  // A <div>, not a <main>: the page owns its single <main> landmark (skip
+  // link target). Two <main> elements is an axe "landmark-no-duplicate-main".
   return (
-    <main
+    <div
       data-slot="sidebar-inset"
       className={cn(
         "relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-md md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
@@ -317,6 +319,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
     />
   )
 }
+
 
 function SidebarInput({
   className,

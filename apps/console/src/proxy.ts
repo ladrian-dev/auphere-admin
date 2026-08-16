@@ -9,7 +9,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/login", "/invite", "/api/auth", "/no-access", "/healthz"];
+const PUBLIC = ["/login", "/invite", "/no-access", "/healthz"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -17,12 +17,17 @@ export function proxy(request: NextRequest) {
   const isDev = process.env.NODE_ENV !== "production";
   const csp = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    // connect.facebook.net: Meta Embedded Signup SDK (lane channels, CP-17).
+    // Loaded by a nonce'd script via createElement, which 'strict-dynamic'
+    // already trusts; the host is listed for browsers without strict-dynamic.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://connect.facebook.net${isDev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     // Dev only: Next's HMR websocket is a different scheme, so 'self' does not cover it.
-    `connect-src 'self'${isDev ? " ws://localhost:* wss://localhost:*" : ""}`,
+    `connect-src 'self' https://graph.facebook.com https://www.facebook.com${isDev ? " ws://localhost:* wss://localhost:*" : ""}`,
+    // facebook.com → the hidden frame the FB SDK mounts (CP-17).
+    "frame-src 'self' https://www.facebook.com https://web.facebook.com",
     "frame-ancestors 'none'",
     "form-action 'self'",
     "base-uri 'self'",
@@ -33,9 +38,10 @@ export function proxy(request: NextRequest) {
   requestHeaders.set("x-nonce", nonce);
 
   if (!PUBLIC.some((p) => pathname.startsWith(p))) {
-    const hasSession = request.cookies
-      .getAll()
-      .some((c) => c.name.endsWith("nexus-console.session_token"));
+    // Name duplicated from ``lib/session.ts`` on purpose: that module
+    // imports ``next/headers``, which does not exist in this runtime.
+    // Presence only — whether the token is still valid is the API's answer.
+    const hasSession = Boolean(request.cookies.get("nexus-console.session")?.value);
     if (!hasSession) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";

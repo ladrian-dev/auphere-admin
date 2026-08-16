@@ -84,6 +84,12 @@ from nexus_worker.memory import (
 from nexus_worker.metering.pricing import cheapest_model
 from nexus_worker.persistence.messages import persist_outbound_message
 from nexus_worker.runtime.agent_loader import AgentBundle, AgentLoader
+from nexus_worker.runtime.console_context import (
+    forced_escalation,
+    load_gated_tool_names,
+    load_knowledge_block,
+    render_operating_policy_block,
+)
 from nexus_worker.runtime.grading_policy import decide as grading_decide
 from nexus_worker.runtime.grading_policy import load_read_only_tools, turn_writes
 from nexus_worker.runtime.llm import LLMResponse, LLMRouter, ToolCall
@@ -505,7 +511,11 @@ async def _view_with_composio(
     # Materialise a fresh registry view: copy the static tools and add
     # the per-turn proxies. Cheaper than a global registry mutation,
     # which would race with concurrent turns of other tenants.
-    view = MCPRegistry()
+    # The view MUST inherit ``dry_run`` and its audit hook: the QA
+    # Playground relies on the registry gate to block side effects, and a
+    # bare ``MCPRegistry()`` would let a Composio proxy write to the
+    # client's real CRM/calendar from a test conversation.
+    view = MCPRegistry(dry_run=registry.dry_run, dry_run_audit=registry._dry_run_audit)
     for name in registry.names():
         # Re-register the existing instance under the new view.
         view._tools[name] = registry._tools[name]
@@ -573,6 +583,11 @@ def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
             if intent not in VALID_INTENTS:
                 log.info("classify.unknown_label_using_fallback", raw=raw)
                 intent = "fallback"
+            # CP-11: the console's "hand off after N turns" rule is a routing
+            # decision, not a prompt hint — override the classifier.
+            if intent != "escalate" and forced_escalation(bundle.policies, history):
+                log.info("classify.turn_cap_escalation", tenant_id=str(tenant_id), was=intent)
+                intent = "escalate"
             return {"intent": intent, "route": intent, "history": history}
 
     return classify
@@ -627,12 +642,15 @@ def _build_handler_messages(
     *,
     intent: str,
     kg_snapshot: str,
+    knowledge: str = "",
 ) -> list[dict[str, Any]]:
     """Assemble the base message thread for the handler's ReAct loop.
 
-    Order: system prompt → channel note → KG snapshot → owner addendum →
-    a turn directive → conversation history → the user's message. The loop
-    appends assistant/tool messages onto this list as it iterates.
+    Order: system prompt → channel note → operating policy (console,
+    CP-11/31) → KG snapshot → knowledge base (console, CP-15) → owner
+    addendum → a turn directive → conversation history → the user's
+    message. The loop appends assistant/tool messages onto this list as
+    it iterates.
     """
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": bundle.system_prompt},
@@ -642,8 +660,13 @@ def _build_handler_messages(
         },
         {"role": "system", "content": _GENDER_NEUTRAL_NOTE},
     ]
+    operating_policy = render_operating_policy_block(bundle.policies)
+    if operating_policy:
+        messages.append({"role": "system", "content": operating_policy})
     if kg_snapshot:
         messages.append({"role": "system", "content": kg_snapshot})
+    if knowledge:
+        messages.append({"role": "system", "content": knowledge})
     addendum = state.get("system_addendum") or ""
     if addendum:
         messages.append({"role": "system", "content": addendum})
@@ -891,6 +914,12 @@ def make_handler_node(
             # never sees them AND ``registry.dispatch`` refuses them
             # (ToolNotInWhitelist) if the model hallucinates one — real
             # enforcement, not just hiding. ``None``/``full`` = no change.
+            # Console per-tool gating (CP-13): explicit tenant overrides
+            # (blocked / needs_approval) leave the whitelist. Best-effort
+            # read; a DB hiccup keeps the whitelist unchanged.
+            gated = await _load_gated_tools(tenant_id)
+            if gated:
+                available_names = tuple(n for n in available_names if n not in gated)
             admin_role = sender_role(bundle.policies, state.get("user_id"))
             if admin_role == ROLE_READONLY:
                 available_names = tuple(
@@ -898,8 +927,9 @@ def make_handler_node(
                 )
             available_defs = scoped_registry.get_openai_tools(available_names)
             kg_snapshot = await _load_kg_snapshot_text(tenant_id)
+            knowledge = await _load_knowledge_text(tenant_id)
             messages = _build_handler_messages(
-                state, bundle, intent=intent, kg_snapshot=kg_snapshot
+                state, bundle, intent=intent, kg_snapshot=kg_snapshot, knowledge=knowledge
             )
             if admin_role == ROLE_READONLY:
                 # System prompt is messages[0]; keep the note right after it.
@@ -1222,6 +1252,25 @@ def make_handler_node(
             }
 
     return handler
+
+
+async def _load_gated_tools(tenant_id: uuid.UUID) -> frozenset[str]:
+    try:
+        return await load_gated_tool_names(tenant_id)
+    except Exception as exc:
+        log.warning("tool_gating.load_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
+        return frozenset()
+
+
+async def _load_knowledge_text(tenant_id: uuid.UUID) -> str:
+    """CP-15 knowledge block. Best-effort: a failure to read the documents
+    (DB hiccup) degrades to "no knowledge block" and the turn goes on —
+    the customer still gets an answer from the prompt + tools."""
+    try:
+        return await load_knowledge_block(tenant_id)
+    except Exception as exc:
+        log.warning("knowledge.load_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
+        return ""
 
 
 async def _load_kg_snapshot_text(tenant_id: uuid.UUID) -> str:

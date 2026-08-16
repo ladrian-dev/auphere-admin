@@ -201,6 +201,10 @@ def _reset_test_db() -> None:
         # so a previous test session's tables don't collide with the
         # fresh ``alembic upgrade head`` below.
         "DROP SCHEMA IF EXISTS qa CASCADE; "
+        # ADR-032: la identidad de la consola vive en ``console_auth``. Sin
+        # esta línea, la segunda sesión de tests choca con las tablas que
+        # dejó la primera y ``alembic upgrade head`` falla en 0088.
+        "DROP SCHEMA IF EXISTS console_auth CASCADE; "
         "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
         "CREATE EXTENSION IF NOT EXISTS vector;"
     )

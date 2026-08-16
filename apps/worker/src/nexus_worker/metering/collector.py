@@ -308,6 +308,65 @@ async def record_channel_message(
     await _publish(scope)
 
 
+# Medidores de multimedia (0083 / CP-23). Un adjunto = una unidad de su
+# tipo; para audio, además los segundos si el proveedor los dio. Cerrado,
+# como todo lo demás: ``media.gif`` no existe hasta que exista aquí.
+MEDIA_KINDS: frozenset[str] = frozenset({"image", "audio", "document", "video", "sticker"})
+
+
+async def record_media_unit(
+    *,
+    tenant_id: uuid.UUID,
+    kind: str,
+    provider: str,
+    provider_message_id: str | None,
+    conversation_id: uuid.UUID | None = None,
+    audio_seconds: float | None = None,
+    source: str = SOURCE_CHANNEL,
+) -> None:
+    """Un adjunto (entrante procesado o saliente aceptado) = ``media.<kind>``.
+
+    Publica de inmediato, como ``record_channel_message``: el saliente no
+    corre dentro de un turno y el entrante se procesa ANTES de que el turno
+    de LLM abra su buffer. Idempotencia por ``{provider_message_id}:media.
+    {kind}`` — el mismo adjunto reprocesado no suma dos veces; sin id de
+    proveedor no se mide (mejor un hueco que una fila duplicada).
+
+    Para ``audio`` con duración conocida se emite además
+    ``media.audio_seconds`` (misma clave + sufijo). No se estima: una
+    duración inventada es una cifra plausible que nadie cuestiona.
+    """
+    if not provider_message_id or kind not in MEDIA_KINDS:
+        return
+    scope = _TurnScope(
+        tenant_id=tenant_id,
+        turn_id="media",
+        conversation_id=conversation_id,
+        source=source if source in USAGE_SOURCES else SOURCE_CHANNEL,
+    )
+    now = _now()
+    scope.events.append(
+        UsageEvent(
+            meter=f"media.{kind}",
+            quantity=1.0,
+            idempotency_key=f"{provider_message_id}:media.{kind}",
+            occurred_at=now,
+            provider=provider,
+        )
+    )
+    if kind == "audio" and audio_seconds is not None and audio_seconds > 0:
+        scope.events.append(
+            UsageEvent(
+                meter="media.audio_seconds",
+                quantity=float(audio_seconds),
+                idempotency_key=f"{provider_message_id}:media.audio_seconds",
+                occurred_at=now,
+                provider=provider,
+            )
+        )
+    await _publish(scope)
+
+
 async def _publish(scope: _TurnScope) -> None:
     """Un XADD por turno con el lote entero. Nunca lanza."""
     if not scope.events:

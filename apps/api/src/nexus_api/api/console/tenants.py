@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
+from nexus_api.core.tenant_context import _current_tenant, apply_tenant_to_session
 from nexus_api.db.models import (
     AgentConfig,
     AgentConfigStatus,
@@ -32,6 +33,8 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 from nexus_api.schemas.partner import ClientAgentIn, ClientProvisionIn
+from nexus_api.services.agent_config_service import AgentConfigService
+from nexus_api.services.console_notifications import record_client_activation_detached
 from nexus_api.services.partner_clients import (
     ProvisioningFailed,
     ProvisioningQuotaExceeded,
@@ -39,7 +42,7 @@ from nexus_api.services.partner_clients import (
 )
 from nexus_api.services.tenant_lifecycle import TenantDeleteBlocked, hard_delete_tenant
 
-from .deps import ClientScope, client_health, client_scope, health_for_tenant
+from .deps import ClientScope, client_health, client_scope, health_for_tenant, resolve_mapping
 from .me import quota_out
 from .schemas import (
     ClientCreateIn,
@@ -174,10 +177,43 @@ async def create_client(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
+    agent_status: str = out.agent.status
+    if body.seed_template and out.agent.status == "not_configured":
+        # CP-10: stage a draft v1 from the chosen seed, inside the new
+        # client's scope. Idempotent on re-runs: a client that already has
+        # versions is left alone (the wizard's retry of stage 1 must not
+        # duplicate the draft).
+        from .seed_templates import stage_from_seed
+
+        mapping = await resolve_mapping(session, principal, out.external_client_ref)
+        token = _current_tenant.set(mapping.tenant_id)
+        try:
+            async with session.begin():
+                tenant = await session.get(Tenant, mapping.tenant_id)
+                if tenant is None:  # pragma: no cover - FK guarantees the row
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND, detail="Unknown client reference"
+                    )
+                await apply_tenant_to_session(session, mapping.tenant_id)
+                scope = ClientScope(
+                    principal=principal, mapping=mapping, tenant=tenant, session=session
+                )
+                if await AgentConfigService(session).list_versions():
+                    agent_status = "already_provisioned"
+                else:
+                    await stage_from_seed(
+                        session,
+                        scope,
+                        seed_template=body.seed_template,
+                        placeholders=body.placeholders or {},
+                    )
+                    agent_status = "staged"
+        finally:
+            _current_tenant.reset(token)
     return ClientCreateOut(
         external_client_ref=out.external_client_ref,
         status=out.status,
-        agent_status=out.agent.status,
+        agent_status=agent_status,
         whatsapp_connected=out.whatsapp.status == "connected",
         quota=await quota_out(session, principal),
     )
@@ -250,15 +286,14 @@ async def set_client_status(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"cannot move a {current.value} client to {body.status}",
         )
-    if body.status == "active" and current is TenantStatus.PROVISIONING:
-        has_agent = await scope.session.scalar(
-            sa.select(AgentConfig.id).where(AgentConfig.status == AgentConfigStatus.ACTIVE).limit(1)
+    has_agent = await scope.session.scalar(
+        sa.select(AgentConfig.id).where(AgentConfig.status == AgentConfigStatus.ACTIVE).limit(1)
+    )
+    if body.status == "active" and current is TenantStatus.PROVISIONING and has_agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="publish an agent version before activating the client",
         )
-        if has_agent is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="publish an agent version before activating the client",
-            )
     scope.tenant.status = TenantStatus(body.status)
     scope.session.add(
         AuditLog(
@@ -273,6 +308,15 @@ async def set_client_status(
     await scope.session.flush()
     # ``updated_at`` is a server-side ``onupdate``: reload before serialising.
     await scope.session.refresh(scope.tenant)
+    if body.status == "active" and has_agent is not None:
+        # CP-29: an ACTIVE client with a published agent = activation.
+        # Platform tables (partners.activated_at, console_notifications)
+        # are written in a detached session — this transaction runs as
+        # ``nexus_app`` and cannot touch them. Idempotent per client.
+        await record_client_activation_detached(
+            partner_id=scope.principal.partner.id,
+            external_client_ref=scope.ref,
+        )
     health = await client_health(scope.session, scope.tenant)
     return ClientOut(**_summary(scope.mapping, scope.tenant).model_dump(), health=health)
 

@@ -387,6 +387,9 @@ class Settings(BaseSettings):
             offenders.append("NEXUS_META_WEBHOOK_VERIFY_TOKEN")
         if self.fernet_key == _DEV_FERNET_KEY:
             offenders.append("NEXUS_FERNET_KEY")
+        # Signs the Composio consent links partners now open from the console.
+        if "change-me" in self.connector_consent_secret:
+            offenders.append("NEXUS_CONNECTOR_CONSENT_SECRET")
         # Only enforced once the operator flips ``NEXUS_TIKTOK_ENABLED`` on —
         # until TikTok approves the Business Messaging review the channel
         # ships dark and there is nothing real to put here.

@@ -19,7 +19,7 @@ import {
 } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
-import { signIn } from "@/lib/auth-client";
+import { signInAction } from "@/lib/auth-actions";
 
 type Values = { email: string; password: string };
 
@@ -40,12 +40,15 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
 
   async function onSubmit(values: Values) {
     setSubmitting(true);
-    const { error } = await signIn.email({ email: values.email, password: values.password });
+    const result = await signInAction({ email: values.email, password: values.password });
     setSubmitting(false);
-    if (error) {
-      // Never clear the form on error.
-      toast.error(t("login.invalid"));
-      form.setError("password", { message: t("login.invalid") });
+    if (!result.ok) {
+      // Never clear the form on error. "invalid" covers wrong password,
+      // unknown e-mail and locked account — the API does not distinguish
+      // them and neither does this copy.
+      const message = result.reason === "rate_limited" ? t("login.tooMany") : t("login.invalid");
+      toast.error(message);
+      form.setError("password", { message });
       return;
     }
     startTransition(() => {

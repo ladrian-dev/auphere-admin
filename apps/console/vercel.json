@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "pnpm build",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "outputDirectory": ".next",
+  "headers": [
+    {
+      "source": "/api/playground/(.*)",
+      "headers": [
+        { "key": "X-Accel-Buffering", "value": "no" },
+        { "key": "Cache-Control", "value": "no-cache, no-transform" }
+      ]
+    }
+  ],
+  "functions": {
+    "src/app/api/playground/[ref]/threads/[id]/stream/route.ts": { "maxDuration": 300 }
+  }
+}

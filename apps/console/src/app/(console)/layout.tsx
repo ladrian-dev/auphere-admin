@@ -1,6 +1,8 @@
 import { Separator, SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
 
 import { AppSidebar } from "@/components/shell/app-sidebar";
+import { ConsoleCommandPalette } from "@/components/shell/console-command-palette";
+import { NotificationsBell } from "@/components/shell/notifications-bell";
 import { getT } from "@/i18n/server";
 import { requirePrincipal } from "@/lib/principal";
 
@@ -33,6 +35,9 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           <div className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={principal.partnerName}>
             {principal.partnerName}
           </div>
+          {/* lane onboarding: ⌘K + notifications bell (CP-07 / CP-29) */}
+          <ConsoleCommandPalette role={principal.role} />
+          <NotificationsBell initialUnread={null} />
         </header>
         <main id="main" tabIndex={-1} className="mx-auto flex w-full max-w-[1400px] min-w-0 flex-1 flex-col gap-6 px-4 py-6 outline-none md:px-8 md:py-8">
           {children}

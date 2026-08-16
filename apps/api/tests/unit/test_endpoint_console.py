@@ -28,6 +28,7 @@ from nexus_api.db.models import (
     MessageDirection,
     MessageStatus,
     Partner,
+    PartnerMembership,
     PartnerTenant,
     Tenant,
     TenantStatus,
@@ -476,20 +477,24 @@ async def test_team_invite_accept_and_owner_protection(client, console_world, db
     # Lookup via service token
     look = await client.get(f"/console/invitations/{token}", headers=_svc_headers())
     assert look.status_code == 200 and look.json()["partner_name"] == "Console Partner A"
-    # Accept with wrong e-mail → 409
+    # The e-mail is no longer in the body (it comes from the invitation);
+    # a password shorter than the policy is a 422, not an account.
     bad = await client.post(
         f"/console/invitations/{token}/accept",
         headers=_svc_headers(),
-        json={"user_id": "user_new", "email": "other@example.com"},
+        json={"password": "short"},
     )
-    assert bad.status_code == 409 and bad.json()["detail"].startswith("email_mismatch")
+    assert bad.status_code == 422
     ok = await client.post(
         f"/console/invitations/{token}/accept",
         headers=_svc_headers(),
-        json={"user_id": "user_new", "email": "new@example.com", "display_name": "New"},
+        json={"password": "console-dev-2026!!", "display_name": "New"},
     )
     assert ok.status_code == 200, ok.text
     assert ok.json()["role"] == "builder" and ok.json()["partner"]["slug"] == a["slug"]
+    # Auto-login: the API returns a usable session token (CP-02, ADR-032).
+    assert len(ok.json()["token"]) >= 32 and ok.json()["expires_at"]
+    assert "password" not in ok.text and "password_hash" not in ok.text
     # Link is dead now
     assert (
         await client.get(f"/console/invitations/{token}", headers=_svc_headers())
@@ -502,11 +507,18 @@ async def test_team_invite_accept_and_owner_protection(client, console_world, db
     me_flag = next(m for m in team["members"] if m["email"] == "owner-a@example.com")
     assert me_flag["is_you"] is True
 
-    # New user's own token works and carries builder permissions
+    # New user's own token works and carries builder permissions. The
+    # ``user_id`` is now the principal the API created (a uuid), not a
+    # string the BFF invented.
+    new_user_id = await db_session.scalar(
+        sa.select(PartnerMembership.user_id).where(PartnerMembership.email == "new@example.com")
+    )
+    assert new_user_id and uuid.UUID(new_user_id)
+
     def new_headers() -> dict[str, str]:  # fresh jti per call — replay is refused
         return {
             "Authorization": (
-                f"Bearer {mint_console_token(user_id='user_new', partner_id=a['partner_id'])}"
+                f"Bearer {mint_console_token(user_id=new_user_id, partner_id=a['partner_id'])}"
             )
         }
 
@@ -594,7 +606,7 @@ async def test_invitation_revoke_and_expiry(client, console_world, db_session) -
     accept = await client.post(
         f"/console/invitations/{token}/accept",
         headers=_svc_headers(),
-        json={"user_id": "user_late", "email": "late@example.com"},
+        json={"password": "console-dev-2026!!"},
     )
     assert accept.status_code == 404
 

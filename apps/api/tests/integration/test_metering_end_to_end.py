@@ -255,3 +255,51 @@ async def test_a_poison_entry_goes_to_the_dlq_and_stops_blocking(clean_usage_str
     assert await _count_rows(tenant_id) == 2, "la entrada buena debe entrar igual"
     assert await redis.xlen(DLQ_STREAM) == 1
     await redis.delete(DLQ_STREAM)
+
+
+async def test_media_units_are_persisted_and_priced(clean_usage_stream) -> None:
+    """CP-23 (0083): imagen + audio + documento → ≥ 3 filas ``media.*`` con
+    ``cost_usd`` puesto por ``meter_prices`` (precio por unidad, sin modelo)."""
+    from nexus_worker.metering import pricing
+
+    pricing.invalidate()
+    tenant_id = uuid.uuid4()
+    sm = get_sessionmaker()
+    async with sm() as session:
+        await _seed_tenant(session, tenant_id)
+
+    for kind, wamid, seconds in (
+        ("image", "wamid.MEDIA.IMG", None),
+        ("audio", "wamid.MEDIA.AUD", 12.5),
+        ("document", "wamid.MEDIA.DOC", None),
+    ):
+        await collector.record_media_unit(
+            tenant_id=tenant_id,
+            kind=kind,
+            provider="meta",
+            provider_message_id=f"{wamid}.{tenant_id.hex[:6]}",
+            audio_seconds=seconds,
+        )
+    processed = await drain_once(clean_usage_stream, consumer_name="test-media")
+    assert processed == 3
+
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        rows = (
+            await session.execute(
+                sa.text(
+                    "SELECT meter, quantity, cost_usd, source FROM usage_records "
+                    "WHERE tenant_id = :t ORDER BY meter"
+                ),
+                {"t": str(tenant_id)},
+            )
+        ).all()
+    by_meter = {r[0]: r for r in rows}
+    assert {"media.audio", "media.audio_seconds", "media.document", "media.image"} == set(by_meter)
+    priced_media = [
+        m for m in ("media.image", "media.audio", "media.document") if by_meter[m][2] is not None
+    ]
+    assert len(priced_media) == 3, by_meter
+    assert all(by_meter[m][2] > 0 for m in priced_media)
+    assert by_meter["media.audio_seconds"][1] == Decimal("12.5")
+    assert by_meter["media.audio_seconds"][2] == Decimal("0")  # coste ya en voice.minutes
+    assert {r[3] for r in rows} == {"channel"}

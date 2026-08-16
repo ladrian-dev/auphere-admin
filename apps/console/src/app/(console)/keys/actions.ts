@@ -8,7 +8,7 @@ import { backendFor, type ApiKey, type ApiKeyCreated } from "@/lib/backend";
 import { requirePrincipal } from "@/lib/principal";
 
 const id = z.string().uuid();
-const scope = z.enum(["provision", "broadcasts", "widget_sessions"]);
+const scope = z.enum(["provision", "broadcasts"]);
 
 export async function createKeyAction(raw: unknown): Promise<ActionResult<ApiKeyCreated>> {
   const body = z.object({ type: z.enum(["live", "test"]), scopes: z.array(scope).min(1) }).parse(raw);

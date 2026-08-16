@@ -163,7 +163,8 @@
   --muted: var(--color-bg-sunken);
   --muted-foreground: var(--color-fg-muted);
   --accent: var(--color-pistachio);
-  --accent-foreground: var(--color-bangladesh-green);
+  /* pine, not bangladesh-green: 6.25:1 on pistachio (bangladesh-green is 4.22:1, below AA 4.5). */
+  --accent-foreground: var(--color-pine);
   --destructive: var(--color-status-danger);
   --destructive-foreground: var(--color-bone);
   --border: var(--color-border);
@@ -176,7 +177,7 @@
   --sidebar-primary: var(--color-primary-deep);
   --sidebar-primary-foreground: var(--color-bone);
   --sidebar-accent: var(--color-pistachio);
-  --sidebar-accent-foreground: var(--color-bangladesh-green);
+  --sidebar-accent-foreground: var(--color-pine); /* 6.25:1, see --accent-foreground */
   --sidebar-border: var(--color-border);
   --sidebar-ring: var(--color-primary);
 

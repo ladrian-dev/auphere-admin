@@ -6,7 +6,13 @@
  */
 export type Locale = "es" | "en";
 
-const messages = {
+import { agentToolsMessages } from "./lanes/agent-tools";
+import { channelsMessages } from "./lanes/channels";
+import { homeUsageMessages } from "./lanes/home-usage";
+import { onboardingMessages } from "./lanes/onboarding";
+import { playgroundMessages } from "./lanes/playground";
+
+const core = {
   // shell
   "nav.home": { es: "Inicio", en: "Home" },
   "nav.clients": { es: "Clientes", en: "Clients" },
@@ -90,6 +96,7 @@ const messages = {
   "login.submit": { es: "Entrar", en: "Sign in" },
   "login.invalid": { es: "Correo o contraseña incorrectos.", en: "Wrong e-mail or password." },
   "login.emailInvalid": { es: "Introduce un correo válido.", en: "Enter a valid e-mail." },
+  "login.tooMany": { es: "Demasiados intentos. Espera un minuto y vuelve a probar.", en: "Too many attempts. Wait a minute and try again." },
   "login.passwordRequired": { es: "Introduce tu contraseña.", en: "Enter your password." },
   "noAccess.title": { es: "Tu cuenta no tiene acceso a ningún partner", en: "Your account has no partner access" },
   "noAccess.body": { es: "Pide a un propietario o administrador de tu partner que te invite, o vuelve a intentarlo con la cuenta correcta.", en: "Ask an owner or admin of your partner to invite you, or try again with the right account." },
@@ -104,7 +111,8 @@ const messages = {
   "invite.invalid.body": { es: "Pide una nueva a quien te invitó.", en: "Ask the person who invited you for a new one." },
   "invite.emailMismatch": { es: "La invitación fue emitida para otro correo.", en: "The invitation was issued to a different e-mail." },
   "invite.alreadyMember": { es: "Esta cuenta ya pertenece a un partner.", en: "This account already belongs to a partner." },
-  "invite.signInHint": { es: "¿Ya tienes cuenta con este correo? Inicia sesión y vuelve a abrir el enlace.", en: "Already have an account with this e-mail? Sign in and open the link again." },
+  "invite.accountExists": { es: "Ya existe una cuenta con este correo: escribe su contraseña para aceptar.", en: "An account already exists for this e-mail: type its password to accept." },
+  "invite.signInHint": { es: "Si ya tienes cuenta con este correo, escribe su contraseña actual.", en: "If you already have an account with this e-mail, type its current password." },
 
   // home
   "home.title": { es: "Resumen", en: "Overview" },
@@ -290,7 +298,6 @@ const messages = {
   "keys.revoke.body": { es: "Deja de funcionar inmediatamente, sin periodo de gracia.", en: "It stops working immediately, with no grace period." },
   "keys.scope.provision": { es: "Aprovisionar clientes", en: "Provision clients" },
   "keys.scope.broadcasts": { es: "Difusiones", en: "Broadcasts" },
-  "keys.scope.widget_sessions": { es: "Sesiones del widget", en: "Widget sessions" },
   "keys.type.live": { es: "Producción", en: "Live" },
   "keys.type.test": { es: "Pruebas", en: "Test" },
 
@@ -304,6 +311,16 @@ const messages = {
   "billing.total": { es: "Total", en: "Total" },
   "billing.due": { es: "Vencimiento", en: "Due" },
   "billing.notSet": { es: "No configurado — escríbenos para actualizarlo.", en: "Not set — contact us to update it." },
+} as const;
+
+/** Lane message modules (``i18n/lanes/<lane>.ts``) — each lane owns its file. */
+const messages = {
+  ...core,
+  ...agentToolsMessages,
+  ...playgroundMessages,
+  ...channelsMessages,
+  ...homeUsageMessages,
+  ...onboardingMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

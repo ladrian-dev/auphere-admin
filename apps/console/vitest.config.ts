@@ -11,7 +11,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
-    exclude: ["node_modules", ".next", "drizzle"],
+    exclude: ["node_modules", ".next"],
     env: {
       NEXUS_CONSOLE_JWT_PRIVATE_KEY: "test",
     },

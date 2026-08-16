@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
+import { Button, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
 
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
@@ -35,6 +35,9 @@ export default async function BillingPage() {
                   <th className="h-10 px-2 font-medium">{t("common.status")}</th>
                   <th className="h-10 px-2 text-right font-medium">{t("billing.total")}</th>
                   <th className="h-10 px-2 font-medium">{t("billing.due")}</th>
+                  <th className="h-10 px-2 text-right font-medium">
+                    <span className="sr-only">{t("common.actions")}</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -48,6 +51,11 @@ export default async function BillingPage() {
                     </td>
                     <td className="p-2 text-right tabular-nums">{formatCurrency(r.total_usd, r.currency, locale)}</td>
                     <td className="p-2 tabular-nums">{formatDate(r.due_date, locale)}</td>
+                    <td className="p-2 text-right">
+                      <Button nativeButton={false} variant="outline" size="xs" render={<a href={`/api/billing/receipts/${r.invoice_id}`} download title={t("hu.billing.download.title")} />}>
+                        {t("hu.billing.download")}
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
