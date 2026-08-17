@@ -154,6 +154,14 @@ async def main() -> int:
     if not url:
         print("NEXUS_DATABASE_URL is not set", file=sys.stderr)
         return 2
+    # Secret managers store the plain ``postgresql://`` form (that is what
+    # psql and pgbouncer want); the async stack needs the driver spelled
+    # out or SQLAlchemy reaches for psycopg2, which is not in the runtime
+    # image. ``config.py`` does the same normalisation.
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
     engine = create_async_engine(url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     email = args.owner_email.strip().lower()
