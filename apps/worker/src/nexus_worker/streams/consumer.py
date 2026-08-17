@@ -27,51 +27,20 @@ from nexus_api.core.streams import xadd_capped
 from opentelemetry import trace as otel_trace
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
-from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 
 from nexus_worker.observability.otel import TRACE_FIELDS, extract_trace_context, get_tracer
 from nexus_worker.runtime.dispatcher import InboundEvent, process_inbound
 
 log = structlog.get_logger(__name__)
 
-# Inline retry for transient DB-connection errors. The managed Postgres / proxy
-# drops connections (idle cutoff, restarts, network blips), surfacing as
-# "the connection is closed" / "SSL error: unexpected eof while reading". Before
-# this, such a failure left the entry pending forever — there is no reclaim
-# loop wired yet, so a "pending" message is effectively lost and the customer
-# never got a reply (barbersupply outage 2026-08-14). Retrying in-place with a
-# fresh session lets the turn succeed once the connection recovers.
-_MAX_DISPATCH_ATTEMPTS = 4
-_DISPATCH_RETRY_BASE_DELAY = 0.5  # seconds; doubles each attempt (0.5, 1, 2)
-
-# Substrings that identify a dropped/broken DB connection across asyncpg +
-# SQLAlchemy wrapping. Matched case-insensitively against ``str(exc)``.
-_TRANSIENT_DB_ERROR_SUBSTRINGS = (
-    "connection is closed",
-    "connection was closed",
-    "server closed the connection",
-    "terminating connection",
-    "connection reset",
-    "unexpected eof",
-    "consuming input failed",
-    "ssl error",
-    "cannot perform operation: another operation is in progress",
-)
-
-
-def _is_transient_db_error(exc: BaseException) -> bool:
-    """True when ``exc`` is a dropped/broken DB connection worth retrying.
-
-    Uses SQLAlchemy's ``connection_invalidated`` flag (set when the driver
-    connection died) and the driver exception types, with a message-substring
-    fallback for cases the flag doesn't cover (raw asyncpg surfaced through
-    other layers)."""
-    if isinstance(exc, DBAPIError) and getattr(exc, "connection_invalidated", False):
-        return True
-    if isinstance(exc, (InterfaceError, OperationalError)):
-        return True
-    message = str(exc).lower()
-    return any(sub in message for sub in _TRANSIENT_DB_ERROR_SUBSTRINGS)
+# Transient DB-connection errors (idle cutoff, restart, network blip:
+# "the connection is closed", "SSL error: unexpected eof") are NOT retried in
+# place any more. The entry simply stays pending and ``claimer.py``
+# (``XAUTOCLAIM``) redelivers it to a live replica; after
+# ``MAX_DELIVERY_ATTEMPTS`` it lands in the DLQ. That path also survives the
+# replica dying mid-turn, which an in-process loop never could — it replaced
+# the inline retry added after the barbersupply outage (2026-08-14).
+# ``pool_recycle`` in ``db/base.py`` keeps most of these from happening at all.
 
 # WP-04: after this many failed deliveries an entry is moved to the DLQ
 # instead of retrying forever (V6 — poison messages used to sit in the PEL

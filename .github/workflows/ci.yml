@@ -85,6 +85,11 @@ jobs:
       - name: pytest — apps/api (unit + isolation + integration)
         working-directory: apps/api
         run: pytest -x --tb=short
+      - name: pytest — apps/worker
+        # Faltaba: el paquete tiene 351 tests y ninguno corría en CI, así que
+        # una regresión suya (retry del consumer, 2026-08) pasó desapercibida.
+        working-directory: apps/worker
+        run: pytest tests/unit -x --tb=short
       - name: pytest — apps/channels
         working-directory: apps/channels
         run: pytest -x --tb=short

@@ -68,6 +68,32 @@ en algún sitio, es de antes de ADR-032 y sobra.
   la persona no tiene membership activo.
 - Si todo da 401: la pública de la API no es la pareja de la privada de Vercel.
 
+## Producción (pendiente del corte de DNS)
+
+Proyecto de Vercel **`auphere-console`** (rama de producción `main`, dominio
+`console.auphere.com`) creado el 2026-08-17 con su propia pareja de claves.
+**Un proyecto por entorno**, no uno con dos ramas: cada uno tiene su URL de
+API, su clave privada y su dominio, y así un despliegue de vista previa no
+hereda variables de producción.
+
+⚠️ **Antes de aplicar Terraform en el workspace `prod`**: la lista
+`app_secret_keys` ya incluye `NEXUS_CONSOLE_JWT_PUBLIC_KEY`, y ECS **no
+arranca la tarea** si esa clave no existe en `nexus/prod/app`. Añádela
+primero. Comando verificado (el `prod.tfvars` NO fija `https_enabled`, y sin
+esa variable el plan **destruye el listener HTTPS**):
+
+```bash
+terraform init -backend-config=../backend.hcl -reconfigure
+terraform workspace select prod
+terraform apply -var-file=prod.tfvars -var state_bucket=nexus-terraform-state-793033583982 -var https_enabled=true
+```
+
+Plan esperado: **6 to add, 6 to change, 6 to destroy** — las seis
+definiciones de tarea se sustituyen por revisiones con las variables nuevas y
+los servicios pasan a apuntarlas. Si el plan menciona
+`aws_lb_listener.https[0] will be destroyed`, **falta `https_enabled=true`**:
+no lo apliques.
+
 ## Alternativa (ECS, no vigente)
 
 Si más adelante se quiere la consola dentro de la VPC: `apps/console/Dockerfile`
