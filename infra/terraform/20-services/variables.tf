@@ -58,6 +58,14 @@ variable "app_secret_keys" {
     "NEXUS_MEDIA_S3_ACCESS_KEY_ID",
     "NEXUS_MEDIA_S3_SECRET_ACCESS_KEY",
     "ANTHROPIC_API_KEY",
+    # Consola de partners (PLAN-CONSOLE-V1). El interruptor global y la
+    # clave PÚBLICA con la que la API verifica los JWT de 60 s del BFF; la
+    # privada vive solo en Vercel. ``NEXUS_CONNECTOR_CONSENT_SECRET`` firma
+    # los enlaces de consentimiento OAuth de conectores y desde 2026-08-16
+    # la API se niega a arrancar en prod si lleva el valor de desarrollo.
+    "NEXUS_CONSOLE_ENABLED",
+    "NEXUS_CONSOLE_JWT_PUBLIC_KEY",
+    "NEXUS_CONNECTOR_CONSENT_SECRET",
   ]
 }
 
