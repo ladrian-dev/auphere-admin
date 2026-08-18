@@ -145,6 +145,14 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
         BigInteger, nullable=False, default=2_000_000, server_default="2000000"
     )
     qa_cap_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Migration 0090 — the Companion's OWN monthly token cap (CO-01). Kept
+    # apart from the playground's on purpose: sharing one cap would make
+    # testing an agent and asking the Companion for help steal budget from
+    # each other. Conservative default (500k ≈ 300-500 Companion turns).
+    companion_monthly_token_cap: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=500_000, server_default="500000"
+    )
+    companion_cap_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Migration 0086 — activation metric (CP-29): first moment the partner
     # had an ACTIVE client with a published agent. NULL = not yet.
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

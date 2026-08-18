@@ -248,6 +248,23 @@ class Settings(BaseSettings):
     improve_prompt_max_input_chars: int = 20_000
     improve_prompt_max_output_tokens: int = 4_000
 
+    # CO-01: el Companion de la consola. Modelo propio (rol ``companion``,
+    # migración 0090) y no compartido con los agentes de cliente: el
+    # Companion es la cara de Auphere ante el partner y aquí no se ahorra.
+    # El techo de duración corta un run desbocado; el tope mensual por
+    # partner es lo que impide que el gasto dependa de la buena fe.
+    llm_companion_model: str = "anthropic/claude-sonnet-4-6"
+    # Techo de duración de un run. Además de cortar un turno desbocado es el
+    # corte del reaper Y del lector: un run más viejo que esto está muerto lo
+    # ejecute quien lo ejecute, que es lo único que un proceso puede afirmar
+    # sin saber qué réplica lo lanzó. Alineado con el ``maxDuration`` del
+    # proxy SSE de la consola.
+    companion_run_max_seconds: float = 300.0
+    # Turnos por miembro y minuto. El tope mensual se mide sobre runs
+    # TERMINADOS, así que sin esto una ráfaga de POST paralelos lo pasa de
+    # largo antes de que ninguno cierre su fila.
+    companion_runs_per_minute: int = 15
+
     # ── Block N: WhatsApp media + multimodal ────────────────────────────────
     # S3 (or S3-compatible — Cloudflare R2, MinIO) for media storage. All
     # inbound media (audio/image/document/video/sticker) goes into the bucket

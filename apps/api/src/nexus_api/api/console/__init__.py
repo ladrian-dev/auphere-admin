@@ -26,6 +26,7 @@ from nexus_api.api.console import (
     auth,
     billing,
     channels,
+    companion,
     conversations,
     diagnostics,
     home,
@@ -62,6 +63,9 @@ router.include_router(invitations.router)
 router.include_router(keys.router)
 router.include_router(billing.router)
 router.include_router(playground.router)
+# CO-01: el Companion. Log de runs durable en Redis; el run no muere con la
+# conexión del navegador.
+router.include_router(companion.router)
 router.include_router(whatsapp.router)
 router.include_router(templates.router)
 router.include_router(diagnostics.router)

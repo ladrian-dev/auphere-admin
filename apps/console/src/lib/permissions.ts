@@ -30,6 +30,11 @@ export const PERMISSIONS = {
   "usage:manage": ["owner", "admin"],
   "knowledge:read": ["owner", "admin", "builder", "analyst"],
   "knowledge:write": ["owner", "admin", "builder"],
+  // The console Companion (CO-01). Same three roles as `playground:run`:
+  // it spends the partner's LLM budget and, from CO-04, it writes — through
+  // the very same `/console/*` routers, so an analyst still gets the
+  // router's 403 for anything it may not do.
+  "companion:use": ["owner", "admin", "builder"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

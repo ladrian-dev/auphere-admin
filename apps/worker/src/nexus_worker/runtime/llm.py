@@ -33,7 +33,7 @@ import json
 import os
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar
 
@@ -259,6 +259,16 @@ class LLMProvider(Protocol):
         extra: dict[str, Any] | None = ...,
     ) -> LLMResponse: ...
 
+    def astream_complete(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra: dict[str, Any] | None = ...,
+    ) -> AsyncIterator[tuple[str, str]]: ...
+
 
 # ── in-memory provider ───────────────────────────────────────────────────────
 
@@ -280,6 +290,12 @@ class InMemoryProvider:
     calls: list[LLMCall] = field(default_factory=list)
     responder: Callable[[LLMCall], str] | None = None
     tool_caller: Callable[[LLMCall], list[ToolCall]] | None = None
+    # Scripted extras for ``astream_complete``: what the summarised
+    # thinking looks like, and the usage the provider would report.
+    thinking_text: str = ""
+    stream_usage: dict[str, int] = field(
+        default_factory=lambda: {"prompt_tokens": 100, "completion_tokens": 20}
+    )
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     async def acomplete(
@@ -322,6 +338,34 @@ class InMemoryProvider:
             emitted = list(self.tool_caller(call))
         text = self.responder(call) if self.responder else f"[{role}:{model}] ok"
         return LLMResponse(text=text, tool_calls=tuple(emitted))
+
+    async def astream_complete(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
+    ) -> AsyncIterator[tuple[str, str]]:
+        """Streaming stand-in: records the call (``extra`` included, so a
+        test can assert the ``thinking`` parameter is really being sent) and
+        chops the canned answer into word-sized deltas."""
+        call = LLMCall(
+            tenant_id=tenant_id,
+            role=role,
+            model=model,
+            messages=list(messages),
+            extra=dict(extra) if extra else {},
+        )
+        async with self._lock:
+            self.calls.append(call)
+        if self.thinking_text:
+            yield ("thinking", self.thinking_text)
+        text = self.responder(call) if self.responder else f"[{role}:{model}] ok"
+        for i, word in enumerate(text.split(" ")):
+            yield ("text", word if i == 0 else f" {word}")
+        yield ("usage", json.dumps(self.stream_usage))
 
 
 # ── litellm provider ─────────────────────────────────────────────────────────
@@ -488,14 +532,121 @@ class LiteLLMProvider:
         started = time.perf_counter()
         response = await litellm.acompletion(**kwargs)
         elapsed_ms = round((time.perf_counter() - started) * 1000)
-        usage_counts = usage_fields(response)
+        await self._record_call(
+            tenant_id=tenant_id,
+            role=role,
+            model=model,
+            elapsed_ms=elapsed_ms,
+            has_tools=bool(tools),
+            usage_counts=usage_fields(response),
+        )
+        return response
+
+    async def astream_complete(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
+    ) -> AsyncIterator[tuple[str, str]]:
+        """Streaming completion — yields ``(kind, text)`` with ``kind`` in
+        ``{"text", "thinking"}``, then a final ``("usage", json)`` chunk.
+
+        Built for the Companion (CO-01): its drawer has to show words
+        appearing, and the honest context-window meter needs the
+        ``input_tokens`` the provider reports for THIS call — an estimate
+        from characters would miss the system prompt, the tool definitions
+        and the tool results, which are most of the prefix in this agent.
+
+        The post-call telemetry is the SAME ``_record_call`` the buffered
+        path uses. That matters more than it looks: ``record_llm_usage`` is
+        the single choke point every LLM call in the system flows through,
+        and a second streaming path with its own copy would silently stop
+        billing the Companion the first time one of the two drifted.
+        """
+        import litellm  # local import — heavy dep
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": _with_prompt_caching(messages),
+            "metadata": {"tenant_id": str(tenant_id), "role": role},
+            "timeout": self.timeout_s,
+            "stream": True,
+            # Without this the final chunk carries no usage and both the
+            # cost meter and the context-window meter go blind.
+            "stream_options": {"include_usage": True},
+        }
+        for key, value in (extra or {}).items():
+            kwargs[key] = value
+
+        started = time.perf_counter()
+        usage_counts: dict[str, int] = {}
+        try:
+            stream = await litellm.acompletion(**kwargs)
+            async for chunk in stream:
+                chunk_usage = usage_fields(chunk)
+                if any(chunk_usage.values()):
+                    usage_counts = chunk_usage
+                for choice in getattr(chunk, "choices", None) or []:
+                    delta = getattr(choice, "delta", None)
+                    if delta is None:
+                        continue
+                    thinking = getattr(delta, "thinking_blocks", None) or getattr(
+                        delta, "reasoning_content", None
+                    )
+                    if isinstance(thinking, str) and thinking:
+                        yield ("thinking", thinking)
+                    elif isinstance(thinking, list):
+                        for block in thinking:
+                            piece = (
+                                block.get("thinking") or block.get("text") or ""
+                                if isinstance(block, dict)
+                                else ""
+                            )
+                            if piece:
+                                yield ("thinking", str(piece))
+                    content = getattr(delta, "content", None)
+                    if isinstance(content, str) and content:
+                        yield ("text", content)
+        finally:
+            elapsed_ms = round((time.perf_counter() - started) * 1000)
+            await self._record_call(
+                tenant_id=tenant_id,
+                role=role,
+                model=model,
+                elapsed_ms=elapsed_ms,
+                has_tools=False,
+                usage_counts=usage_counts,
+            )
+        yield ("usage", json.dumps(usage_counts))
+
+    async def _record_call(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        elapsed_ms: int,
+        has_tools: bool,
+        usage_counts: dict[str, int],
+    ) -> None:
+        """Telemetry + metering of one provider invocation.
+
+        Shared by the buffered and the streaming path. One INFO event here
+        gives the whole latency picture — where turn time goes and whether
+        the Anthropic prompt cache is actually hitting (``cache_read`` > 0;
+        if it is always zero, caching is not working and that alone
+        explains slow turns).
+        """
         log.info(
             "llm.call_complete",
             tenant_id=str(tenant_id),
             role=role,
             model=model,
             elapsed_ms=elapsed_ms,
-            has_tools=bool(tools),
+            has_tools=has_tools,
             **usage_counts,
         )
         # WP-05: llm_call_ms + llm_tokens_total (the cache-read ratio panel
@@ -536,7 +687,6 @@ class LiteLLMProvider:
             usage=usage_counts,
             latency_ms=elapsed_ms,
         )
-        return response
 
 
 # ── Router ────────────────────────────────────────────────────────────────────

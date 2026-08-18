@@ -1,0 +1,217 @@
+"""El grafo del Companion — prompt, pensamiento y ventana de contexto (CO-01).
+
+Cada prueba de aquí defiende una de las cinco correcciones de la Parte II
+de la investigación, o la regla del §12.3. Ninguna toca la red: el
+proveedor es ``InMemoryProvider``.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from langgraph.checkpoint.memory import MemorySaver
+from nexus_worker.runtime.companion import build_companion_graph
+from nexus_worker.runtime.companion.prompt import (
+    COMPANION_THINKING,
+    SYSTEM_PROMPT,
+    build_messages,
+    page_context_message,
+)
+from nexus_worker.runtime.llm import InMemoryProvider
+
+# ``asyncio_mode = "auto"``: los tests async se recogen solos y este módulo
+# mezcla síncronos (el prompt es una constante) con asíncronos.
+PAGE_CONTEXT = {"route": "/clients/boreal/agent", "client_ref": "boreal", "tab": "prompt"}
+
+
+async def _run(provider: InMemoryProvider, **state):
+    graph = build_companion_graph(
+        provider=provider, model="anthropic/claude-sonnet-4-6", checkpointer=MemorySaver()
+    )
+    events: list[tuple[str, dict]] = []
+    async for ev in graph.astream_events(
+        {"user_message": "hola", "history": [], **state},
+        config={"configurable": {"thread_id": str(uuid.uuid4())}},
+        version="v2",
+    ):
+        if ev.get("event") == "on_custom_event":
+            events.append((str(ev.get("name")), dict(ev.get("data") or {})))
+    return events
+
+
+# ── C4 · el page_context no puede tocar el prefijo cacheado ────────────
+
+
+def test_the_system_prompt_is_a_constant_with_no_interpolation() -> None:
+    """El caché de Anthropic es un encaje de prefijo: un byte que cambie al
+    principio tira todo lo que viene detrás."""
+    assert "{" not in SYSTEM_PROMPT and "}" not in SYSTEM_PROMPT
+    assert (
+        build_messages(history=[], user_message="a", page_context=PAGE_CONTEXT)[0]
+        == (build_messages(history=[], user_message="b", page_context=None)[0])
+    )
+
+
+def test_page_context_travels_as_a_mid_conversation_system_message() -> None:
+    messages = build_messages(
+        history=[], user_message="hazlo más formal", page_context=PAGE_CONTEXT
+    )
+    ctx = [m for m in messages if m["role"] == "system" and "boreal" in str(m["content"])]
+    assert len(ctx) == 1, "el contexto de página no viaja como mensaje de sistema"
+    # Después del prefijo estable y ANTES del turno del usuario: es una
+    # instrucción con autoridad de operador, no algo que el usuario escribió.
+    assert messages.index(ctx[0]) > 0
+    assert messages[-1]["role"] == "user"
+    assert "boreal" not in SYSTEM_PROMPT
+
+
+def test_no_page_context_means_no_extra_message() -> None:
+    assert page_context_message(None) is None
+    assert page_context_message({}) is None
+    assert len(build_messages(history=[], user_message="x", page_context=None)) == 2
+
+
+def test_the_same_page_context_renders_the_same_text() -> None:
+    """Dos representaciones distintas del mismo estado serían dos entradas
+    de caché distintas para nada."""
+    a = page_context_message({"route": "/x", "tab": "y"})
+    b = page_context_message({"tab": "y", "route": "/x"})
+    assert a == b
+
+
+# ── C3 · el pensamiento se pide explícitamente ─────────────────────────
+
+
+def test_thinking_is_summarised_and_never_disabled() -> None:
+    """Con ``display`` por defecto (``omitted``) los bloques llegan vacíos.
+    Y con ``disabled``, Opus 5 escribe a veces la llamada a herramienta como
+    texto visible: el turno termina bien, la herramienta nunca se ejecuta y
+    no hay error que capturar."""
+    assert COMPANION_THINKING == {"type": "adaptive", "display": "summarized"}
+    assert COMPANION_THINKING.get("type") != "disabled"
+
+
+async def test_the_provider_really_receives_the_thinking_parameter() -> None:
+    provider = InMemoryProvider(responder=lambda c: "listo")
+    await _run(provider)
+    assert provider.calls[0].extra["thinking"] == COMPANION_THINKING
+
+
+async def test_reasoning_is_streamed_but_never_returned_as_state() -> None:
+    """El razonamiento sale por el stream y muere con la sesión: es caro de
+    guardar y sus divagaciones se leen luego como compromisos (§8.2)."""
+    provider = InMemoryProvider(responder=lambda c: "respuesta", thinking_text="dudando")
+    events = await _run(provider)
+    reasoning = [d for n, d in events if n == "reasoning.delta"]
+    assert reasoning and reasoning[0]["text"] == "dudando"
+
+
+# ── C5 · la verificación es código, no una instrucción al modelo ───────
+
+
+def test_the_prompt_never_asks_the_model_to_check_its_own_work() -> None:
+    """La guía de migración a Opus 5 va contra el consejo habitual: borrar
+    las instrucciones de auto-verificación. El modelo ya verifica solo."""
+    lowered = SYSTEM_PROMPT.lower()
+    for banned in (
+        "verifica tu",
+        "revisa tu trabajo",
+        "double-check",
+        "comprueba tu respuesta",
+        "subagente",
+        "paso final de verificación",
+    ):
+        assert banned not in lowered, f"el prompt pide auto-verificación: {banned!r}"
+
+
+def test_the_prompt_admits_it_has_no_tools_yet() -> None:
+    """Una capacidad inventada es una promesa rota con el cliente del
+    partner. En CO-01 no hay herramientas y el prompt lo dice."""
+    assert "no puedes consultar el estado real" in SYSTEM_PROMPT.lower()
+
+
+# ── fases y medidores ──────────────────────────────────────────────────
+
+
+async def test_the_three_phases_are_announced_in_order() -> None:
+    provider = InMemoryProvider(responder=lambda c: "ok")
+    events = await _run(provider)
+    phases = [d["phase"] for n, d in events if n == "phase.changed"]
+    assert phases == ["understand", "investigate", "respond"]
+
+
+async def test_cost_comes_from_the_provider_not_from_a_guess() -> None:
+    provider = InMemoryProvider(
+        responder=lambda c: "ok", stream_usage={"prompt_tokens": 1234, "completion_tokens": 56}
+    )
+    events = await _run(provider)
+    cost = next(d for n, d in events if n == "cost.updated")
+    assert cost["input_tokens"] == 1234
+    assert cost["output_tokens"] == 56
+
+
+async def test_the_context_meter_is_input_tokens_over_max_context() -> None:
+    """Estimar la ventana por caracteres en el navegador dejaría fuera el
+    prompt de sistema, las definiciones de herramientas y sus resultados —
+    que en este agente son la mayor parte. Es mentira y se nota (§12.3)."""
+    provider = InMemoryProvider(
+        responder=lambda c: "ok", stream_usage={"prompt_tokens": 5000, "completion_tokens": 10}
+    )
+    events = await _run(provider)
+    ctx = next(d for n, d in events if n == "context.updated")
+    assert ctx["input_tokens"] == 5000
+    assert ctx["max_context"] > 0
+    assert ctx["percent"] == pytest.approx(5000 * 100.0 / ctx["max_context"], rel=1e-3)
+    assert ctx["compacted"] is False
+
+
+async def test_an_unknown_model_emits_no_context_bar_at_all() -> None:
+    """Una barra al 0% sería peor que ninguna barra: la gente la creería."""
+    provider = InMemoryProvider(responder=lambda c: "ok")
+    graph = build_companion_graph(
+        provider=provider,
+        model="proveedor/modelo-que-no-esta-en-el-catalogo",
+        checkpointer=MemorySaver(),
+    )
+    names = [
+        str(ev.get("name"))
+        async for ev in graph.astream_events(
+            {"user_message": "hola", "history": []},
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
+            version="v2",
+        )
+        if ev.get("event") == "on_custom_event"
+    ]
+    assert "cost.updated" in names
+    assert "context.updated" not in names
+
+
+# ── C2 · el hueco del interrupt() está preparado, no cableado ──────────
+
+
+def test_the_confirmation_node_exists_and_is_not_wired() -> None:
+    """Cuando CO-04 lo enchufe, el nodo debe contener SOLO el
+    ``interrupt()``: LangGraph reanuda re-ejecutando el nodo desde la
+    primera línea, y cualquier escritura anterior se aplicaría dos veces."""
+    from nexus_worker.runtime.companion import graph as companion_graph
+
+    assert hasattr(companion_graph, "await_confirmation")
+    compiled = build_companion_graph(
+        provider=InMemoryProvider(), model="m", checkpointer=MemorySaver()
+    )
+    assert "await_confirmation" not in compiled.get_graph().nodes
+
+
+async def test_history_reaches_the_provider_so_the_thread_survives_a_refresh() -> None:
+    provider = InMemoryProvider(responder=lambda c: "ok")
+    await _run(
+        provider,
+        history=[
+            {"role": "user", "content": "lo de antes"},
+            {"role": "assistant", "content": "ya te contesté"},
+        ],
+    )
+    contents = [str(m.get("content")) for m in provider.calls[0].messages]
+    assert "lo de antes" in contents
+    assert "ya te contesté" in contents

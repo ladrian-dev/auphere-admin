@@ -48,7 +48,7 @@ from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
 from nexus_worker.metering.budget import add_spend
-from nexus_worker.metering.collector import SOURCE_CHANNEL, SOURCE_QA, USAGE_SOURCES, USAGE_STREAM
+from nexus_worker.metering.collector import SOURCE_CHANNEL, USAGE_SOURCES, USAGE_STREAM
 from nexus_worker.metering.pricing import get_catalog, get_unit_prices, price_row
 
 log = structlog.get_logger(__name__)
@@ -211,19 +211,25 @@ async def _partner_for(tenant_id: uuid.UUID) -> uuid.UUID | None:
 async def _bump_budget(tenant_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
     """Suma el coste de este lote a los contadores de tenant y partner.
 
-    **El consumo de QA no cuenta.** El contador de WP-20 existe para
-    degradar o cortar el servicio cuando un tenant se pasa de gasto; si
-    las pruebas del operador lo alimentasen, revisar un agente a fondo
-    apagaría el grader del cliente en producción — un daño causado por
-    quien estaba intentando mejorarle el servicio. El gasto queda medido
-    en ``usage_records`` con ``source='qa'``, que es donde se ve; lo que
-    no hace es disparar una política pensada para otra cosa.
+    **Solo cuenta el tráfico de canal.** El contador de WP-20 existe para
+    degradar o cortar el servicio cuando un tenant se pasa de gasto; si las
+    pruebas del operador lo alimentasen, revisar un agente a fondo apagaría
+    el grader del cliente en producción — un daño causado por quien estaba
+    intentando mejorarle el servicio. Lo mismo, y con más motivo, para el
+    Companion (CO-01): ese gasto es de una persona del partner operando la
+    consola, no del cliente final, y hacerlo pesar sobre el presupuesto del
+    cliente sería cobrarle por una conversación en la que no estuvo.
+
+    Ambos quedan medidos en ``usage_records`` con su ``source``, que es
+    donde se ven; lo que no hacen es disparar una política pensada para
+    otra cosa. El filtro es por lista blanca — un ``source`` nuevo no entra
+    en el presupuesto de nadie por omisión.
     """
     total = sum(
         (
             r["cost_usd"]
             for r in rows
-            if r.get("cost_usd") is not None and r.get("source") != SOURCE_QA
+            if r.get("cost_usd") is not None and r.get("source") == SOURCE_CHANNEL
         ),
         Decimal(0),
     )

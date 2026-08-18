@@ -29,6 +29,7 @@ const API_MAP: Record<string, string[]> = {
   "usage:manage": ["owner", "admin"],
   "knowledge:read": ["owner", "admin", "builder", "analyst"],
   "knowledge:write": ["owner", "admin", "builder"],
+  "companion:use": ["owner", "admin", "builder"],
 };
 
 describe("permission map", () => {

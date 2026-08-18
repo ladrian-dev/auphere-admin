@@ -58,6 +58,24 @@ FORBIDDEN_RESPONSE_FIELDS = {
     "tenantid",
 }
 # Allowed on the exact models that legitimately own them.
+#
+# Deliberately TINY, and it stays tiny: this set is subtracted from the
+# offenders of EVERY console route, so widening it to unblock one lane
+# blinds the check on the other ~60 endpoints.
+#
+# The Companion (CO-01) is the one lane that legitimately serves a
+# transcript over REST — its own, never an end customer's: what Auphere
+# said to the partner and what the partner said back. It does NOT get an
+# entry here. ``GET /console/companion/runs/{id}/events`` answers
+# ``{seq, event, data}`` with ``data`` as an untyped object, which is the
+# honest shape (the payloads are heterogeneous by design) and therefore
+# carries no property name for the walk below to inspect. That is not a
+# guarantee — an opaque dict can hold anything — so the guarantee is built
+# where the events are WRITTEN: ``api/companion_streaming.py`` publishes
+# against a closed catalogue of event → allowed payload keys, and
+# ``test_companion_no_customer_bodies.py`` proves no key in it can carry an
+# end customer's message body. Any Companion tool added in CO-02+ has to
+# pass that test, not this one.
 ALLOWED_RESPONSE_FIELDS = {"system_prompt", "summary", "detail"}
 
 

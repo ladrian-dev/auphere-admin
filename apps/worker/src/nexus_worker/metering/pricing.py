@@ -58,6 +58,12 @@ class ModelPrice:
     cache_write_per_mtok: Decimal | None = None
     per_minute: Decimal | None = None
     cache_min_tokens: int | None = None
+    # Ventana de contexto del modelo. No es un precio, pero vive en la
+    # misma fila y en el mismo catálogo cacheado: el medidor de contexto
+    # del Companion (CO-01) lo necesita en cada llamada, y abrir una
+    # consulta por turno para leer un entero que cambia una vez al año
+    # sería pagar latencia por nada.
+    max_context: int | None = None
 
 
 # Medidor → (atributo de tarifa, unidad). ``mtok`` divide entre un millón;
@@ -78,7 +84,8 @@ _CATALOG_SQL = sa.text(
            price_cache_read_per_mtok,
            price_cache_write_per_mtok,
            price_per_minute,
-           cache_min_tokens
+           cache_min_tokens,
+           max_context
       FROM model_profiles
     """
 )
@@ -139,7 +146,7 @@ async def load_catalog() -> dict[str, ModelPrice]:
         rows = (await session.execute(_CATALOG_SQL)).all()
 
     catalog: dict[str, ModelPrice] = {}
-    for model_id, inp, out, cread, cwrite, per_min, cache_min in rows:
+    for model_id, inp, out, cread, cwrite, per_min, cache_min, max_ctx in rows:
         catalog[model_id] = ModelPrice(
             model_id=model_id,
             input_per_mtok=inp,
@@ -148,6 +155,7 @@ async def load_catalog() -> dict[str, ModelPrice]:
             cache_write_per_mtok=cwrite,
             per_minute=per_min,
             cache_min_tokens=cache_min,
+            max_context=max_ctx,
         )
     return catalog
 

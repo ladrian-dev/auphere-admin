@@ -52,6 +52,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         log.exception("qa.checkpointer.init_failed")
 
+    # CO-01: cerrar los runs del Companion que quedaron en ``running`` de un
+    # proceso que ya no existe. Sin esto, un despliegue a mitad de turno deja
+    # el hilo "trabajando" para siempre: el cajón que reconecta espera
+    # eventos que nadie va a escribir y el tope mensual no cuenta esos
+    # tokens. Best-effort — que la API arranque manda sobre la limpieza.
+    try:
+        from nexus_api.api.console.companion import reap_stale_runs
+
+        await reap_stale_runs()
+    except Exception:
+        log.exception("companion.reaper.failed")
+
     log.info("api.startup", env=settings.environment, version=__version__)
     try:
         yield

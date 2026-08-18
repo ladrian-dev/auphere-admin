@@ -205,6 +205,9 @@ def _reset_test_db() -> None:
         # esta línea, la segunda sesión de tests choca con las tablas que
         # dejó la primera y ``alembic upgrade head`` falla en 0088.
         "DROP SCHEMA IF EXISTS console_auth CASCADE; "
+        # CO-01: lo mismo para el Companion — sus cuatro tablas viven en el
+        # esquema ``companion`` (0090) y sobrevivirían al DROP de ``public``.
+        "DROP SCHEMA IF EXISTS companion CASCADE; "
         "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
         "CREATE EXTENSION IF NOT EXISTS vector;"
     )

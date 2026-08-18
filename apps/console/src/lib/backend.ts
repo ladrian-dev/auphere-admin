@@ -285,6 +285,7 @@ export type { Opts };
  */
 import { agentToolsApi } from "./backend/agent-tools";
 import { channelsApi } from "./backend/channels";
+import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
@@ -312,6 +313,7 @@ export function backendFor(principal: Principal) {
     ...agentToolsApi(call),
     ...playgroundApi(call),
     ...channelsApi(call),
+    ...companionApi(call),
     ...homeUsageApi(call),
     ...onboardingApi(call),
 

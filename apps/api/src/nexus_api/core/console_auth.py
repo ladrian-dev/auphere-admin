@@ -118,6 +118,12 @@ PERMISSIONS: dict[str, frozenset[str]] = {
     # Knowledge documents/URLs of a client (CP-15).
     "knowledge:read": frozenset({_O, _A, _B, _AN}),
     "knowledge:write": frozenset({_O, _A, _B}),
+    # The console Companion (CO-01). Same three roles as ``playground:run``
+    # and for the same two reasons: it spends the partner's LLM budget, and
+    # from CO-04 it writes — through the very same ``/console/*`` routers,
+    # so an ``analyst`` still gets the router's 403 for anything it may not
+    # do. This permission gates the DOOR, not the actions behind it.
+    "companion:use": frozenset({_O, _A, _B}),
 }
 
 

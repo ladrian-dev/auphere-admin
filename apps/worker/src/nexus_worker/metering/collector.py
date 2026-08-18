@@ -72,7 +72,12 @@ LLM_METERS: dict[str, str] = {
 # operador está probando su agente, no atendiendo a nadie.
 SOURCE_CHANNEL = "channel"
 SOURCE_QA = "qa"
-USAGE_SOURCES: frozenset[str] = frozenset({SOURCE_CHANNEL, SOURCE_QA})
+# CO-01: el Companion de la consola. Gasto real de Anthropic que **tampoco**
+# paga el cliente final, y que además no puede compartir tope con ``qa``: si
+# lo compartiera, probar el agente y pedirle ayuda al Companion se robarían
+# presupuesto entre sí.
+SOURCE_COMPANION = "companion"
+USAGE_SOURCES: frozenset[str] = frozenset({SOURCE_CHANNEL, SOURCE_QA, SOURCE_COMPANION})
 
 
 def provider_of(model: str) -> str | None:
