@@ -125,10 +125,23 @@ def test_the_prompt_never_asks_the_model_to_check_its_own_work() -> None:
         assert banned not in lowered, f"el prompt pide auto-verificación: {banned!r}"
 
 
-def test_the_prompt_admits_it_has_no_tools_yet() -> None:
+def test_the_prompt_says_it_reads_but_does_not_write() -> None:
     """Una capacidad inventada es una promesa rota con el cliente del
-    partner. En CO-01 no hay herramientas y el prompt lo dice."""
-    assert "no puedes consultar el estado real" in SYSTEM_PROMPT.lower()
+    partner, y una capacidad NEGADA que sí existe hace que el agente se
+    niegue a usar sus herramientas. En CO-02 hay lectura y no hay
+    escritura, y el prompt dice exactamente eso."""
+    lowered = SYSTEM_PROMPT.lower()
+    assert "herramientas de **lectura**" in lowered
+    assert "no puedes cambiar nada" in lowered
+    # El párrafo de CO-01 tiene que haberse ido: dejarlo con el catálogo
+    # puesto habría hecho que el agente se negara a consultar.
+    assert "no puedes consultar el estado real" not in lowered
+
+
+def test_the_prompt_never_mentions_subagents() -> None:
+    """Opus 5 delega con demasiada facilidad; el Companion v1 no tiene
+    subagentes y nombrarlos solo invita a intentarlo."""
+    assert "subagente" not in SYSTEM_PROMPT.lower()
 
 
 # ── fases y medidores ──────────────────────────────────────────────────

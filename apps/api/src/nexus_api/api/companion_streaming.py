@@ -86,7 +86,11 @@ log = structlog.get_logger(__name__)
 COMPANION_EVENTS: dict[str, frozenset[str]] = {
     # ciclo de vida
     "run.started": frozenset({"run_id", "thread_id", "started_at"}),
-    "run.completed": frozenset({"run_id", "ended_at", "status", "error"}),
+    # ``unsupported`` es el veredicto de la regla R1 (sin lectura no hay
+    # afirmación). Va aquí y no en un evento propio por dos motivos: solo se
+    # conoce al cerrar el turno, y este evento se emite SIEMPRE, incluso si
+    # el run falla — así la métrica no tiene agujeros.
+    "run.completed": frozenset({"run_id", "ended_at", "status", "error", "unsupported"}),
     # ``gap_kind`` y no ``reason``: el playground llama ``reason`` a este
     # campo, pero ``reason`` está en la lista de nombres que podrían llevar
     # el texto de un cliente final (un motivo de rechazo de Meta, por
@@ -100,6 +104,19 @@ COMPANION_EVENTS: dict[str, frozenset[str]] = {
     # transcripción — redactada POR EL COMPANION, nunca por un cliente final
     "text.delta": frozenset({"message_id", "text"}),
     "reasoning.delta": frozenset({"message_id", "text"}),
+    # herramientas (CO-02). ``args`` lleva SOLO lo que el modelo escribió
+    # —una referencia de cliente, unos días—, nunca contenido leído: el
+    # resultado de la herramienta no viaja por el stream, va al contexto del
+    # modelo. Por eso ninguna clave de aquí puede llevar el cuerpo de un
+    # mensaje de un cliente final.
+    "tool.call.started": frozenset({"tool_call_id", "name", "label", "args"}),
+    "tool.call.completed": frozenset(
+        {"tool_call_id", "name", "ok", "latency_ms", "error", "citation_id"}
+    ),
+    # La cita es lo que sostiene R1: un dato con su procedencia. ``claim`` es
+    # la etiqueta de lo que se leyó ("Consumo del partner (client_ref=boreal)"),
+    # redactada por el catálogo del Companion — no texto de nadie más.
+    "citation": frozenset({"citation_id", "claim", "source", "fetched_at"}),
     # medidores
     "cost.updated": frozenset({"input_tokens", "output_tokens", "model"}),
     "context.updated": frozenset({"input_tokens", "max_context", "percent", "compacted", "model"}),
@@ -198,6 +215,20 @@ async def publish(
     await redis.expire(key, RUN_LOG_TTL_SECONDS)
 
 
+#: Una entrada del stream: ``(id, campos)``. Los stubs de redis-py declaran
+#: claves y valores como ``bytes | str`` porque el cliente puede estar
+#: configurado sin decodificación; el nuestro decodifica (``decode_responses``),
+#: así que se estrecha en un solo sitio en vez de repartir ``cast`` por todo
+#: el módulo.
+StreamEntry = tuple[str, dict[str, str]]
+
+
+def _entries(raw: Any) -> list[StreamEntry]:
+    return [
+        (str(entry_id), {str(k): str(v) for k, v in fields.items()}) for entry_id, fields in raw
+    ]
+
+
 def _decode(fields: dict[str, str]) -> SSEEvent:
     try:
         data = json.loads(fields.get("data") or "{}")
@@ -224,7 +255,7 @@ async def read_events(
     entonces sabe que hay un hueco y de dónde puede seguir, en vez de
     quedarse con un ``resume.gap`` sin salida.
     """
-    raw = await redis.xrange(run_key(run_id), "-", "+")
+    raw = _entries(await redis.xrange(run_key(run_id), "-", "+"))
     if not raw:
         return [], None
     events = [_decode(fields) for _entry_id, fields in raw]
@@ -256,7 +287,7 @@ async def subscribe(
     delivered = since_seq
     last_id = "0-0"
 
-    raw = await redis.xrange(key, "-", "+")
+    raw = _entries(await redis.xrange(key, "-", "+"))
     if not raw:
         # Ni log ni run: expiró, nunca existió, o el id es de otro. El
         # endpoint ya comprobó la propiedad, así que aquí solo puede ser lo
@@ -283,7 +314,7 @@ async def subscribe(
 
     block_ms = int(PING_INTERVAL_SECONDS * 1000)
     while True:
-        batch = await redis.xread({key: last_id}, block=block_ms, count=200)
+        batch: Any = await redis.xread({key: last_id}, block=block_ms, count=200) or []
         if not batch:
             # Sin novedades: heartbeat para que ningún proxy cierre (el ALB
             # cierra las conexiones ociosas a los 60 s por defecto).
@@ -299,7 +330,7 @@ async def subscribe(
                     return
             continue
         for _stream, items in batch:
-            for entry_id, fields in items:
+            for entry_id, fields in _entries(items):
                 last_id = entry_id
                 ev = _decode(fields)
                 if ev.seq <= delivered:
@@ -438,6 +469,10 @@ async def _run_with_lifecycle(
                     "run_id": str(handle.run_id),
                     "ended_at": time.time(),
                     "status": status,
+                    # Veredicto de R1. Va en el evento terminal porque este
+                    # se emite SIEMPRE — también si el turno falló—, así que
+                    # la métrica no tiene agujeros.
+                    "unsupported": bool(handle.extras.get("unsupported")),
                     **({"error": error} if error else {}),
                 },
             )
@@ -479,7 +514,7 @@ async def append_terminal_event(
     reconectado con ``since_seq`` tiene que ver este evento como el
     siguiente y no como un duplicado del principio.
     """
-    raw = await redis.xrange(run_key(run_id), "-", "+")
+    raw = _entries(await redis.xrange(run_key(run_id), "-", "+"))
     last_seq = int(raw[-1][1].get("seq") or 0) if raw else 0
     await publish(
         redis,

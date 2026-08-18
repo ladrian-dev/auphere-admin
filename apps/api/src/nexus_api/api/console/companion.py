@@ -40,7 +40,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 import sqlalchemy as sa
@@ -168,12 +168,13 @@ async def _client_ref_of(session: AsyncSession, thread: CompanionThread) -> str 
     """
     if thread.tenant_id is None:
         return None
-    return await session.scalar(
+    ref = await session.scalar(
         sa.select(PartnerTenant.external_client_ref).where(
             PartnerTenant.partner_id == thread.partner_id,
             PartnerTenant.tenant_id == thread.tenant_id,
         )
     )
+    return str(ref) if ref is not None else None
 
 
 def _thread_out(thread: CompanionThread, client_ref: str | None) -> CompanionThreadOut:
@@ -378,6 +379,62 @@ async def patch_thread(
 # ── runs ───────────────────────────────────────────────────────────────
 
 
+async def _guard_concurrency(session: AsyncSession, principal_id: str) -> None:
+    """Rechaza el turno si el miembro ya tiene demasiados runs EN VUELO.
+
+    Por qué existe además del límite por minuto: son cosas distintas. El
+    limitador de ráfaga acota cuántos turnos se *arrancan*; el techo mensual
+    acota cuánto se *gasta* y se mide sobre runs ya cerrados. Ninguno de los
+    dos acota el trabajo simultáneo, y un run del Companion dura minutos:
+    con 15 arranques por minuto y un techo de 300 s, un solo miembro podía
+    tener del orden de 75 tareas vivas a la vez —cada una con su conexión,
+    su tarea de asyncio y su gasto en vuelo— sin cruzar ningún límite.
+
+    El recuento sale de ``companion.runs`` y no de un contador en Redis por
+    una razón concreta: un contador que se incrementa al arrancar y se
+    decrementa al terminar se queda **alto para siempre** si el proceso
+    muere entre las dos cosas, y entonces el miembro se queda bloqueado sin
+    que nadie sepa por qué. La tabla se cura sola: el reaper cierra los
+    huérfanos y, mientras tanto, esta consulta ya descarta los que pasaron
+    su propio techo de duración.
+
+    El ``pg_advisory_xact_lock`` por miembro es lo que hace exacto el tope.
+    Sin él, dos POST simultáneos leen el mismo recuento y los dos pasan; con
+    él, el segundo espera al COMMIT del primero. El bloqueo es por
+    principal, dura lo que la transacción de arranque (milisegundos) y no
+    toca a ningún otro miembro.
+    """
+    settings = get_settings()
+    cap = settings.companion_max_concurrent_runs
+    if cap <= 0:  # pragma: no cover - configuración de emergencia
+        return
+    await session.execute(
+        sa.text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"companion:concurrency:{principal_id}"},
+    )
+    cutoff = datetime.now(UTC) - timedelta(seconds=settings.companion_run_max_seconds)
+    live = int(
+        await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(CompanionRun)
+            .where(
+                CompanionRun.status == RUN_RUNNING,
+                CompanionRun.started_at >= cutoff,
+            )
+        )
+        or 0
+    )
+    if live >= cap:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"You already have {live} Companion turns running (limit {cap}). "
+                "Wait for one to finish, or stop it with "
+                "DELETE /console/companion/runs/{run_id}."
+            ),
+        )
+
+
 async def _next_message_seq(session: AsyncSession, thread_id: uuid.UUID) -> int:
     current = await session.scalar(
         sa.select(sa.func.coalesce(sa.func.max(CompanionMessage.seq), 0)).where(
@@ -392,7 +449,12 @@ async def _next_message_seq(session: AsyncSession, thread_id: uuid.UUID) -> int:
     response_model=CompanionRunStartOut,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
-        429: {"description": "Monthly Companion token cap reached (Retry-After set)."},
+        429: {
+            "description": (
+                "Monthly Companion token cap reached (Retry-After set), too many "
+                "turns per minute, or too many turns already running."
+            )
+        },
         409: {"description": "Thread is archived."},
     },
 )
@@ -448,6 +510,7 @@ async def start_run(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT, detail="Thread is archived"
                 )
+            await _guard_concurrency(session, principal_id)
             run = CompanionRun(thread_id=thread.id, principal_id=principal_id, status=RUN_RUNNING)
             session.add(run)
             await session.flush()
@@ -543,7 +606,22 @@ def _make_driver(
 
         from nexus_worker.metering.collector import SOURCE_COMPANION, usage_turn
 
-        graph = _get_companion_graph()
+        from nexus_api.companion.tools import CompanionToolbelt
+        from nexus_api.core.console_auth import InProcessActor
+
+        settings = get_settings()
+        # Un juego de herramientas POR TURNO: lleva el sujeto de las
+        # llamadas y el contador de consultas. Compartirlo entre runs sería
+        # compartir la identidad de una persona con otra.
+        toolbelt = CompanionToolbelt(
+            actor=InProcessActor(
+                user_id=principal.user_id,
+                partner_id=principal.partner.id,
+                jti=f"companion:{run_id}",
+            ),
+            max_calls=settings.companion_max_tool_calls_per_turn,
+            timeout_s=settings.companion_tool_timeout_s,
+        )
         state = {
             "thread_id": str(thread_id),
             "principal": {
@@ -560,6 +638,8 @@ def _make_driver(
         config = {"configurable": {"thread_id": str(thread_id)}}
 
         async with _contextlib.AsyncExitStack() as stack:
+            await stack.enter_async_context(toolbelt)
+            graph = _get_companion_graph(toolbelt)
             # ``usage_records`` exige ``tenant_id``, así que un hilo sin
             # cliente no deja fila ahí. No es un olvido: el tope se mide en
             # ``companion.runs``, que siempre existe, y relajar la columna a
@@ -574,6 +654,16 @@ def _make_driver(
                     )
                 )
             async for event in graph.astream_events(state, config=config, version="v2"):
+                if event.get("event") == "on_chain_end" and event.get("name") == "respond":
+                    # El veredicto de R1 lo calcula el grafo (una sola vez,
+                    # con el estado completo) y viaja en la salida del nodo
+                    # de cierre. El driver solo lo recoge para meterlo en el
+                    # evento terminal: así la métrica se toma en un punto
+                    # que se ejecuta siempre.
+                    output = (event.get("data") or {}).get("output")
+                    if isinstance(output, dict):
+                        handle.extras["unsupported"] = bool(output.get("unsupported"))
+                    continue
                 if event.get("event") != "on_custom_event":
                     continue
                 name = str(event.get("name") or "")
@@ -702,43 +792,75 @@ async def _finalise_run(
 # ── grafo (cacheado por proceso) ───────────────────────────────────────
 
 _graph: Any = None
+_provider: Any = None
 
 
-def _get_companion_graph() -> Any:
-    """Compila el grafo una vez por proceso y lo reutiliza.
+def _get_provider() -> Any:
+    """El proveedor del proceso. Uno solo: no tiene estado por run y
+    construirlo por turno solo añadiría trabajo."""
+    global _provider
+    if _provider is None:
+        from nexus_worker.runtime.llm import LiteLLMProvider
 
-    El grafo compilado no tiene estado: cada ``astream_events`` trae el
-    suyo. Comparte el ``AsyncPostgresSaver`` del proceso para que la
-    reanudación siga siendo durable entre reinicios. Los imports viven
-    dentro para que el arranque del módulo no pague LiteLLM ni LangGraph.
+        _provider = LiteLLMProvider(timeout_s=get_settings().llm_improve_timeout_s)
+    return _provider
+
+
+def _get_companion_graph(toolbelt: Any = None) -> Any:
+    """El grafo del turno.
+
+    **Se compila por run cuando hay herramientas**, y no se cachea: el
+    juego de herramientas lleva el sujeto de las llamadas y el contador de
+    consultas del turno, así que compartirlo entre runs sería compartir la
+    identidad de una persona con otra. Compilar es construir un objeto en
+    memoria — microsegundos —, no un coste que valga la pena optimizar a
+    ese precio.
+
+    Sin herramientas se cachea, que es el camino de CO-01 y el de los tests
+    que solo ejercitan el prompt. Los imports viven dentro para que el
+    arranque del módulo no pague LiteLLM ni LangGraph.
     """
     global _graph
     if _graph is not None:
+        # Inyección de test: gana siempre.
         return _graph
 
     from nexus_worker.runtime.companion import build_companion_graph
-    from nexus_worker.runtime.llm import LiteLLMProvider
 
     from nexus_api.core.qa_checkpointer import get_qa_checkpointer
 
     settings = get_settings()
-    _graph = build_companion_graph(
-        provider=LiteLLMProvider(timeout_s=settings.llm_improve_timeout_s),
+    compiled = build_companion_graph(
+        provider=_get_provider(),
         model=settings.llm_companion_model,
         checkpointer=get_qa_checkpointer(),
+        toolbelt=toolbelt,
     )
-    return _graph
+    if toolbelt is None:
+        _graph = compiled
+    return compiled
 
 
 def reset_graph_cache_for_tests() -> None:
-    global _graph
+    global _graph, _provider
     _graph = None
+    _provider = None
 
 
 def set_graph_for_tests(graph: Any) -> None:
-    """Inyecta un grafo compilado (proveedor en memoria) sin tocar red."""
+    """Inyecta un grafo YA compilado. Útil cuando el turno no usa
+    herramientas; con herramientas usa :func:`set_provider_for_tests`, que
+    deja que cada run compile el suyo con su propio juego."""
     global _graph
     _graph = graph
+
+
+def set_provider_for_tests(provider: Any) -> None:
+    """Inyecta el proveedor (en memoria) y deja el resto del camino real:
+    el grafo se compila por run, con su toolbelt."""
+    global _provider, _graph
+    _provider = provider
+    _graph = None
 
 
 # ── historial, stream y cancelación ────────────────────────────────────

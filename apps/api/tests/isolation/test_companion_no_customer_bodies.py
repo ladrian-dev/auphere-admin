@@ -32,7 +32,10 @@ catálogo cerrado de evento → claves permitidas, aplicado por el publicador,
 y esto lo prueba.
 
 Cualquier herramienta que CO-02 añada tiene que pasar por aquí, no por el
-recorrido genérico.
+recorrido genérico. La segunda mitad del archivo es justo eso: las claves
+de los eventos del bucle de herramientas, y la comprobación de que toda
+herramienta lee un endpoint ``/console/*` real — que es lo que la devuelve
+a la red del guardián genérico.
 """
 
 from __future__ import annotations
@@ -118,3 +121,80 @@ async def test_a_smuggled_body_never_reaches_the_durable_log(fake_redis) -> None
     )
     events, _gap = await read_events(fake_redis, run_id)
     assert set(events[0].data) == {"message_id", "text"}
+
+
+# ── C3 · las herramientas de CO-02 ─────────────────────────────────────
+#
+# Las herramientas no devuelven su resultado por el stream —eso va al
+# contexto del modelo—, pero sí anuncian qué se llamó y qué se leyó. Dos
+# frentes, y los dos se cierran aquí: las claves de los eventos nuevos (que
+# ya cubre el recorrido del catálogo de arriba) y el catálogo de
+# herramientas, que es lo que decide a qué endpoints puede llegar el
+# Companion.
+
+
+def test_the_new_tool_events_are_in_the_closed_catalogue() -> None:
+    """Un evento del bucle de herramientas que no esté declarado no se
+    publica: :func:`sanitise_payload` lanza."""
+    for event in ("tool.call.started", "tool.call.completed", "citation"):
+        assert event in COMPANION_EVENTS, f"{event} no está en el catálogo cerrado"
+
+
+def test_no_tool_event_can_carry_a_read_body() -> None:
+    """El resultado de una lectura NUNCA viaja por el stream. Si alguien
+    añadiera una clave ``result``/``content`` a ``tool.call.completed``, la
+    transcripción del Companion pasaría a llevar datos de negocio de un
+    cliente del partner sin que nadie lo decidiera."""
+    for event in ("tool.call.started", "tool.call.completed", "citation"):
+        assert not (COMPANION_EVENTS[event] & FORBIDDEN_RESPONSE_FIELDS)
+        assert "result" not in COMPANION_EVENTS[event]
+
+
+def test_every_tool_reads_a_console_route_and_nothing_else() -> None:
+    """Toda herramienta apunta a una ruta ``/console/*`` que existe y que es
+    un ``GET``.
+
+    Es lo que ata la garantía C3 al guardián genérico: una respuesta que
+    sale por un endpoint de la consola ya pasó por el recorrido del OpenAPI
+    de ``test_console_scope.py``, que prohíbe los cuerpos de mensaje. Una
+    herramienta que apuntara a otra parte quedaría fuera de esa red.
+    """
+    from nexus_api.companion.tools.catalog import READ_TOOLS
+    from nexus_api.main import app
+
+    routes = {
+        (getattr(r, "path", None), method)
+        for r in app.routes
+        for method in (getattr(r, "methods", None) or set())
+    }
+    missing = []
+    for tool in READ_TOOLS:
+        assert tool.method == "GET", f"{tool.name} no es de lectura"
+        assert tool.path.startswith("/console/"), f"{tool.name} sale de /console/*"
+        # El catálogo nombra el parámetro ``client_ref``; la ruta de FastAPI
+        # lo llama ``{ref}``. Se normaliza para comparar.
+        declared = tool.path.replace("{client_ref}", "{ref}")
+        if (declared, "GET") not in routes:
+            missing.append((tool.name, declared))
+    assert not missing, f"herramientas que apuntan a rutas inexistentes: {missing}"
+
+
+def test_conversation_stats_reads_metadata_and_never_the_list() -> None:
+    """Decisión C8, la explícita: el Companion puede saber CUÁNTAS
+    conversaciones hubo y cuántas se escalaron, y no puede leer ni una."""
+    from nexus_api.companion.tools.catalog import TOOLS_BY_NAME
+
+    stats = TOOLS_BY_NAME["console.conversation_stats"]
+    assert stats.path.endswith("/conversations/stats")
+    listing = {t.path for t in TOOLS_BY_NAME.values()}
+    assert "/console/clients/{client_ref}/conversations" not in listing
+
+
+def test_no_tool_accepts_a_tenant_or_partner_id() -> None:
+    """La regla CP-04, heredada tal cual: el cliente se nombra por su
+    referencia y lo resuelve el router bajo el principal."""
+    from nexus_api.companion.tools.catalog import READ_TOOLS
+
+    for tool in READ_TOOLS:
+        names = {p.name for p in tool.params}
+        assert not (names & {"tenant_id", "partner_id", "tenant", "partner"}), tool.name

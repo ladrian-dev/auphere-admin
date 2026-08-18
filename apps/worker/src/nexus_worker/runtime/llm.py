@@ -269,6 +269,17 @@ class LLMProvider(Protocol):
         extra: dict[str, Any] | None = ...,
     ) -> AsyncIterator[tuple[str, str]]: ...
 
+    def astream_with_tools(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = ...,
+    ) -> AsyncIterator[tuple[str, str]]: ...
+
 
 # ── in-memory provider ───────────────────────────────────────────────────────
 
@@ -366,6 +377,135 @@ class InMemoryProvider:
         for i, word in enumerate(text.split(" ")):
             yield ("text", word if i == 0 else f" {word}")
         yield ("usage", json.dumps(self.stream_usage))
+
+    async def astream_with_tools(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
+    ) -> AsyncIterator[tuple[str, str]]:
+        """Doble del bucle de herramientas: ``tool_caller`` guiona lo que
+        el modelo pide en cada paso, y ``responder`` lo que escribe.
+
+        Recibe el número de paso en ``LLMCall`` a través de la longitud de
+        ``messages``, así que un ``tool_caller`` puede devolver llamadas en
+        el primer paso y ninguna en el segundo — que es exactamente la
+        forma de un bucle real.
+        """
+        call = LLMCall(
+            tenant_id=tenant_id,
+            role=role,
+            model=model,
+            messages=list(messages),
+            tools=tuple(tools),
+            extra=dict(extra) if extra else {},
+        )
+        async with self._lock:
+            self.calls.append(call)
+        if self.thinking_text:
+            yield ("thinking", self.thinking_text)
+
+        emitted = list(self.tool_caller(call)) if self.tool_caller else []
+        text = (
+            "" if emitted else (self.responder(call) if self.responder else f"[{role}:{model}] ok")
+        )
+        for i, word in enumerate(text.split(" ")) if text else ():
+            yield ("text", word if i == 0 else f" {word}")
+        for tc in emitted:
+            yield (
+                "tool_call",
+                json.dumps({"id": tc.id, "name": tc.name, "arguments": tc.arguments}),
+            )
+        yield (
+            "assistant",
+            json.dumps(
+                {
+                    "role": "assistant",
+                    "content": text or None,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": json.dumps(tc.arguments),
+                            },
+                        }
+                        for tc in emitted
+                    ]
+                    or None,
+                }
+            ),
+        )
+        yield ("usage", json.dumps(self.stream_usage))
+
+
+def _thinking_pieces(delta: Any) -> list[tuple[str, dict[str, Any] | None]]:
+    """Trozos de pensamiento de un ``delta``, con su bloque crudo si lo hay.
+
+    LiteLLM entrega el pensamiento de dos formas según el proveedor y la
+    versión: como cadena en ``reasoning_content`` o como lista de bloques en
+    ``thinking_blocks``. El bloque crudo importa porque lleva la ``signature``
+    que Anthropic exige de vuelta.
+    """
+    out: list[tuple[str, dict[str, Any] | None]] = []
+    blocks = getattr(delta, "thinking_blocks", None)
+    if isinstance(blocks, list):
+        for block in blocks:
+            if isinstance(block, dict):
+                piece = block.get("thinking") or block.get("text") or ""
+                out.append((str(piece), block))
+    reasoning = getattr(delta, "reasoning_content", None)
+    if isinstance(reasoning, str) and reasoning and not out:
+        out.append((reasoning, None))
+    return out
+
+
+def _accumulate_tool_call(pending: dict[int, dict[str, Any]], raw: Any) -> None:
+    """Junta los fragmentos de una llamada a herramienta.
+
+    El proveedor manda el ``id`` y el nombre en el primer fragmento y los
+    argumentos a cachos de JSON en los siguientes. El único identificador
+    estable entre ellos es el ``index``.
+    """
+    index = getattr(raw, "index", None)
+    if index is None:
+        index = len(pending)
+    slot = pending.setdefault(int(index), {"id": "", "name": "", "arguments": ""})
+    call_id = getattr(raw, "id", None)
+    if call_id:
+        slot["id"] = str(call_id)
+    function = getattr(raw, "function", None)
+    if function is None:
+        return
+    name = getattr(function, "name", None)
+    if name:
+        slot["name"] = str(slot["name"]) + str(name)
+    args = getattr(function, "arguments", None)
+    if args:
+        slot["arguments"] = str(slot["arguments"]) + str(args)
+
+
+def _finish_tool_call(slot: dict[str, Any]) -> dict[str, Any]:
+    """Cierra una llamada acumulada. Unos argumentos que no parsean se
+    entregan vacíos: el ejecutor los rechazará con un mensaje que el modelo
+    puede corregir, que es mejor que tirar el turno entero."""
+    raw = str(slot.get("arguments") or "")
+    try:
+        arguments = json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError:
+        arguments = {}
+    if not isinstance(arguments, dict):
+        arguments = {}
+    return {
+        "id": str(slot.get("id") or uuid.uuid4().hex[:12]),
+        "name": str(slot.get("name") or ""),
+        "arguments": arguments,
+    }
 
 
 # ── litellm provider ─────────────────────────────────────────────────────────
@@ -620,6 +760,110 @@ class LiteLLMProvider:
                 has_tools=False,
                 usage_counts=usage_counts,
             )
+        yield ("usage", json.dumps(usage_counts))
+
+    async def astream_with_tools(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
+    ) -> AsyncIterator[tuple[str, str]]:
+        """Un paso del bucle de herramientas del Companion, en streaming.
+
+        Hermano de :meth:`astream_complete` y con la misma telemetría —el
+        mismo ``_record_call``—, porque el punto de estrangulamiento del
+        consumo tiene que seguir siendo uno solo. Un tercer camino con su
+        propia copia dejaría de facturar el Companion en cuanto uno de los
+        tres se moviera, y sin error que lo delate.
+
+        Cede ``(kind, payload)``:
+
+        - ``text`` / ``thinking`` — trozos, tal cual llegan;
+        - ``tool_call`` — una llamada YA COMPLETA (``{id, name,
+          arguments}``), no fragmentos: el proveedor manda los argumentos a
+          cachos de JSON y entregarlos a medias no le sirve a nadie;
+        - ``assistant`` — el mensaje del asistente reconstruido, listo para
+          volver a ``messages``. Lleva los ``thinking_blocks`` con su firma:
+          con pensamiento activo, Anthropic **exige** que vuelvan tal cual
+          junto a los resultados de herramienta, y perderlos es un 400, no
+          un detalle estético;
+        - ``usage`` — el recuento final del proveedor.
+        """
+        import litellm  # local import — heavy dep
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": _with_prompt_caching(messages),
+            "tools": tools,
+            "metadata": {"tenant_id": str(tenant_id), "role": role},
+            "timeout": self.timeout_s,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        for key, value in (extra or {}).items():
+            kwargs[key] = value
+
+        started = time.perf_counter()
+        usage_counts: dict[str, int] = {}
+        text_parts: list[str] = []
+        thinking_blocks: list[dict[str, Any]] = []
+        # índice del proveedor → llamada a medio montar. El índice es el
+        # único identificador estable entre fragmentos: el ``id`` llega solo
+        # en el primero y el nombre puede llegar troceado.
+        pending: dict[int, dict[str, Any]] = {}
+        try:
+            stream = await litellm.acompletion(**kwargs)
+            async for chunk in stream:
+                chunk_usage = usage_fields(chunk)
+                if any(chunk_usage.values()):
+                    usage_counts = chunk_usage
+                for choice in getattr(chunk, "choices", None) or []:
+                    delta = getattr(choice, "delta", None)
+                    if delta is None:
+                        continue
+                    for piece, block in _thinking_pieces(delta):
+                        if block is not None:
+                            thinking_blocks.append(block)
+                        if piece:
+                            yield ("thinking", piece)
+                    content = getattr(delta, "content", None)
+                    if isinstance(content, str) and content:
+                        text_parts.append(content)
+                        yield ("text", content)
+                    for raw in getattr(delta, "tool_calls", None) or []:
+                        _accumulate_tool_call(pending, raw)
+        finally:
+            elapsed_ms = round((time.perf_counter() - started) * 1000)
+            await self._record_call(
+                tenant_id=tenant_id,
+                role=role,
+                model=model,
+                elapsed_ms=elapsed_ms,
+                has_tools=True,
+                usage_counts=usage_counts,
+            )
+
+        emitted = [_finish_tool_call(c) for _idx, c in sorted(pending.items())]
+        for call in emitted:
+            yield ("tool_call", json.dumps(call))
+        text = "".join(text_parts)
+        assistant: dict[str, Any] = {"role": "assistant", "content": text or None}
+        if thinking_blocks:
+            assistant["thinking_blocks"] = thinking_blocks
+        if emitted:
+            assistant["tool_calls"] = [
+                {
+                    "id": c["id"],
+                    "type": "function",
+                    "function": {"name": c["name"], "arguments": json.dumps(c["arguments"])},
+                }
+                for c in emitted
+            ]
+        yield ("assistant", json.dumps(assistant))
         yield ("usage", json.dumps(usage_counts))
 
     async def _record_call(

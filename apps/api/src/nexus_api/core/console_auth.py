@@ -51,7 +51,9 @@ from __future__ import annotations
 import threading
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
@@ -164,6 +166,74 @@ class ConsoleService:
     """A verified BFF call with no partner context (invitation flows)."""
 
     jti: str
+
+
+# ── in-process actor (Companion, CO-02) ────────────────────────────────
+#
+# Las herramientas del Companion llaman a los MISMOS routers ``/console/*``
+# que la interfaz, por HTTP en proceso (``ASGITransport``). Lo que no
+# pueden llevar es el Bearer del navegador: el token de consola vive 60
+# segundos y su ``jti`` se quema en la primera presentación
+# (:func:`consume_jti`), mientras que un run del Companion dura minutos y
+# hace decenas de llamadas. Y minar uno nuevo exigiría meter la clave
+# PRIVADA de la consola en la API, que hoy solo tiene la pública — una
+# capacidad nueva (fabricar la identidad de cualquier miembro de cualquier
+# partner) a cambio de nada, porque el llamante y el llamado son el mismo
+# proceso.
+#
+# Lo que se propaga es el sujeto, no una credencial. Y **solo** se salta la
+# verificación criptográfica y el anti-replay, que son exactamente los dos
+# controles cuya razón de ser es el tramo BFF→API por red. Todo lo demás
+# corre igual, y eso es lo que hace que esto no sea autorización nueva:
+#
+#   - la membresía se RELEE de la base de datos en cada llamada, así que un
+#     miembro expulsado a mitad de run deja de poder leer;
+#   - el partner tiene que seguir activo y con la consola habilitada;
+#   - el rol sale de la fila, nunca de un claim;
+#   - el permiso que declara la ruta se comprueba igual, así que un
+#     ``analyst`` recibe el mismo 403 que recibiría desde el navegador.
+#
+# Por qué una cabecera forjada no lo enciende: uvicorn crea una tarea por
+# petición a partir del contexto RAÍZ del servidor, no del de otra
+# petición. La variable solo la fija :func:`acting_as`, dentro de la tarea
+# del run y después de que un principal real se haya verificado.
+# ``tests/isolation/test_companion_tool_scope.py`` lo fija como garantía.
+
+
+@dataclass(frozen=True)
+class InProcessActor:
+    """Quién actúa en una llamada interna. No es una credencial: es el
+    sujeto que la petición externa ya verificó."""
+
+    user_id: str
+    partner_id: uuid.UUID
+    #: Correlación de auditoría. Se distingue a simple vista de un ``jti``
+    #: de token real porque lleva prefijo.
+    jti: str
+
+
+_in_process_actor: ContextVar[InProcessActor | None] = ContextVar(
+    "console_in_process_actor", default=None
+)
+
+
+def current_in_process_actor() -> InProcessActor | None:
+    return _in_process_actor.get()
+
+
+@contextmanager
+def acting_as(actor: InProcessActor) -> Iterator[InProcessActor]:
+    """Ejecuta lo de dentro como ``actor`` para las llamadas en proceso.
+
+    Se restaura SIEMPRE, incluso si la llamada lanza: una variable de
+    contexto que sobrevive a su bloque es exactamente el fallo que haría
+    peligroso este mecanismo.
+    """
+    token = _in_process_actor.set(actor)
+    try:
+        yield actor
+    finally:
+        _in_process_actor.reset(token)
 
 
 # ── token decoding ─────────────────────────────────────────────────────
@@ -313,15 +383,25 @@ def require_console_principal(
         session: AsyncSession = Depends(get_db_session),
         redis: Redis = Depends(get_redis),
     ) -> ConsolePrincipal:
-        payload = await _verify_bearer(authorization, redis)
-        if payload.get("svc") == _SERVICE_CLAIM:
-            raise _forbidden("Service token cannot act as a principal")
-        raw_partner = payload.get("partner_id")
-        try:
-            partner_id = uuid.UUID(str(raw_partner))
-        except (ValueError, TypeError, AttributeError):
-            raise _unauthorized() from None
-        user_id: str = payload["sub"]
+        actor = _in_process_actor.get()
+        if actor is not None:
+            # Llamada de una herramienta del Companion contra su propio
+            # proceso. Se salta la firma y el anti-replay (ver arriba); la
+            # membresía, el estado del partner, el rol y el permiso siguen
+            # comprobándose abajo, con el mismo código.
+            _require_console_switch()
+            partner_id, user_id, jti = actor.partner_id, actor.user_id, actor.jti
+        else:
+            payload = await _verify_bearer(authorization, redis)
+            if payload.get("svc") == _SERVICE_CLAIM:
+                raise _forbidden("Service token cannot act as a principal")
+            raw_partner = payload.get("partner_id")
+            try:
+                partner_id = uuid.UUID(str(raw_partner))
+            except (ValueError, TypeError, AttributeError):
+                raise _unauthorized() from None
+            user_id = payload["sub"]
+            jti = payload["jti"]
 
         async with session.begin():
             membership = await PartnerMembershipRepository(session).get_active(partner_id, user_id)
@@ -335,7 +415,7 @@ def require_console_principal(
             raise _forbidden("Console is not enabled for this partner")
 
         role = membership.role
-        if payload.get("role") not in (None, role):
+        if actor is None and payload.get("role") not in (None, role):
             # Stale claim (role changed since the session resolved it).
             # The DB wins; log so a busy loop of these is visible.
             log.info("console_auth.role_claim_stale", claimed=payload.get("role"), actual=role)
@@ -352,7 +432,7 @@ def require_console_principal(
             partner=partner,
             membership=membership,
             role=role,
-            jti=payload["jti"],
+            jti=jti,
         )
 
     return _dependency
@@ -380,7 +460,10 @@ __all__ = [
     "PERMISSIONS",
     "ConsolePrincipal",
     "ConsoleService",
+    "InProcessActor",
+    "acting_as",
     "consume_jti",
+    "current_in_process_actor",
     "decode_console_token",
     "permissions_for",
     "require_console_principal",

@@ -24,6 +24,7 @@ from nexus_worker.runtime.companion import build_companion_graph
 from nexus_worker.runtime.llm import InMemoryProvider
 
 from nexus_api.api.console import companion as companion_api
+from nexus_api.config import get_settings
 from nexus_api.core.principal_context import apply_principal_to_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models.companion import CompanionMessage, CompanionRun
@@ -512,3 +513,104 @@ async def test_the_user_message_is_persisted_before_the_run_starts(client, conso
         ).all()
     assert rows[0] == ("user", "una pregunta")
     await _finished(uuid.UUID(run_id), a["user_id"])
+
+
+# ── tope de turnos simultáneos por miembro ─────────────────────────────
+
+
+async def _open_runs(thread_id: str, principal_id: str, count: int) -> None:
+    """Deja ``count`` filas en ``running`` sin ejecutar nada. Es el estado
+    en el que queda un miembro que lanzó varios turnos largos a la vez."""
+    sm = get_sessionmaker()
+    async with sm() as session, session.begin():
+        await apply_principal_to_session(session, principal_id)
+        for _ in range(count):
+            session.add(
+                CompanionRun(
+                    thread_id=uuid.UUID(thread_id),
+                    principal_id=principal_id,
+                    status="running",
+                )
+            )
+
+
+async def test_a_member_cannot_keep_more_turns_running_than_the_cap(client, console_world):
+    """El hueco que el límite por minuto no tapa: 15 arranques/min con un
+    techo de 300 s permitían decenas de runs vivos a la vez."""
+    a = console_world["a"]
+    created = await client.post(
+        "/console/companion/threads", headers=a["headers"](), json={"title": "t"}
+    )
+    thread_id = created.json()["id"]
+
+    cap = get_settings().companion_max_concurrent_runs
+    await _open_runs(thread_id, a["user_id"], cap)
+
+    refused = await client.post(
+        f"/console/companion/threads/{thread_id}/runs",
+        headers=a["headers"](),
+        json={"prompt": "otro más"},
+    )
+    assert refused.status_code == 429, refused.text
+    detail = refused.json()["detail"]
+    assert str(cap) in detail and "running" in detail
+
+
+async def test_a_run_past_its_own_ceiling_no_longer_blocks_the_member(
+    client, console_world, monkeypatch
+):
+    """Un huérfano de un proceso muerto no puede dejar a nadie bloqueado.
+
+    Es la razón de contar sobre ``companion.runs`` y no sobre un contador de
+    Redis: un contador que se incrementa al arrancar se queda alto para
+    siempre si el proceso muere antes de decrementarlo.
+    """
+    a = console_world["a"]
+    created = await client.post(
+        "/console/companion/threads", headers=a["headers"](), json={"title": "t"}
+    )
+    thread_id = created.json()["id"]
+    await _open_runs(thread_id, a["user_id"], get_settings().companion_max_concurrent_runs)
+
+    # El techo de duración pasa a ser cero: todos los abiertos están caducados.
+    settings = get_settings()
+    monkeypatch.setattr(settings, "companion_run_max_seconds", 0.0)
+    accepted = await client.post(
+        f"/console/companion/threads/{thread_id}/runs",
+        headers=a["headers"](),
+        json={"prompt": "sigo trabajando"},
+    )
+    assert accepted.status_code == 202, accepted.text
+
+
+async def test_the_cap_is_per_member_not_per_partner(client, console_world, db_session):
+    """Dos personas del mismo partner no se estorban: el sujeto del tope es
+    el principal, igual que el de la RLS."""
+    from tests.conftest import add_console_member
+
+    a = console_world["a"]
+    other = await add_console_member(db_session, partner_id=a["partner_id"], role="builder")
+
+    created = await client.post(
+        "/console/companion/threads", headers=a["headers"](), json={"title": "t"}
+    )
+    thread_id = created.json()["id"]
+    await _open_runs(thread_id, a["user_id"], get_settings().companion_max_concurrent_runs)
+
+    mine = await client.post(
+        f"/console/companion/threads/{thread_id}/runs",
+        headers=a["headers"](),
+        json={"prompt": "x"},
+    )
+    assert mine.status_code == 429
+
+    theirs_thread = await client.post(
+        "/console/companion/threads", headers=other["headers"](), json={"title": "t"}
+    )
+    assert theirs_thread.status_code == 201
+    theirs = await client.post(
+        f"/console/companion/threads/{theirs_thread.json()['id']}/runs",
+        headers=other["headers"](),
+        json={"prompt": "x"},
+    )
+    assert theirs.status_code == 202, theirs.text

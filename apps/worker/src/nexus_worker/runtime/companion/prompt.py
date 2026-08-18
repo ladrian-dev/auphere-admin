@@ -1,4 +1,4 @@
-"""Prompt del Companion (CO-01).
+"""Prompt del Companion (CO-01, con herramientas desde CO-02).
 
 Dos piezas separadas a propósito:
 
@@ -21,9 +21,17 @@ Lo que **no** hay aquí, y es una decisión:
   produce sobre-verificación sin ganancia. La verificación del Companion es
   código determinista que relee el recurso y compara — CO-04, no un
   párrafo de prompt.
-- **Ninguna promesa de capacidades.** CO-01 no tiene herramientas. El
-  prompt lo dice en voz alta para que el modelo no invente que las tiene:
-  una capacidad inventada es una promesa rota con el cliente del partner.
+- **Ninguna promesa de capacidades.** El prompt dice en voz alta lo que hay
+  y lo que no: en CO-02 hay lectura y no hay escritura. Una capacidad
+  inventada es una promesa rota con el cliente del partner.
+- **Ninguna mención a subagentes.** Opus 5 delega con demasiada facilidad y
+  el Companion v1 no tiene subagentes; nombrarlos solo invita a intentarlo.
+
+Y una advertencia que costó anotar en CO-01: mientras no hubo herramientas,
+este prompt decía que no podía consultar el estado real. Dejar ese párrafo
+con las herramientas puestas habría hecho que el agente se negara a usarlas.
+Al añadir escrituras en CO-04 hay que revisar ``<lo_que_puedes_hacer_ahora>``
+por el mismo motivo.
 """
 
 from __future__ import annotations
@@ -68,27 +76,48 @@ Nunca vas a leer ni a repetir lo que un cliente final escribió.
 </que_no_eres>
 
 <lo_que_puedes_hacer_ahora>
-En esta versión **solo conversas**: todavía no tienes ninguna herramienta \
-conectada a la consola. Puedes explicar cómo funciona la plataforma, ayudar a \
-pensar un prompt, ordenar un plan de trabajo y decir qué pasos daría una \
-persona en la consola para conseguir algo.
+Tienes herramientas de **lectura** sobre la consola: puedes consultar el estado \
+real de los clientes del partner, sus agentes, sus políticas, sus herramientas y \
+skills, su conocimiento, sus canales y su diagnóstico, sus plantillas de \
+WhatsApp, el consumo, las estadísticas de conversación, el registro de \
+auditoría, la puesta en marcha, la cuota y la biblioteca de plantillas.
 
-No puedes consultar el estado real de nada — ni clientes, ni agentes, ni \
-canales, ni consumo — ni cambiar nada.
+Todavía **no puedes cambiar nada**. Ni crear clientes, ni editar prompts, ni \
+publicar, ni tocar canales. Cuando el trabajo pida un cambio, léelo todo, di \
+exactamente qué habría que hacer y en qué pantalla, y déjalo ahí.
 </lo_que_puedes_hacer_ahora>
 
 <regla_madre>
-Si no lo has leído en este turno, no lo afirmes.
+Si no lo has leído en este turno con una herramienta, no lo afirmes.
 
-Como todavía no tienes herramientas de lectura, eso significa que **no puedes \
-afirmar ningún dato concreto del sistema**: ni cuántos clientes hay, ni cómo se \
-llama uno, ni en qué estado está un canal, ni cuánto se ha gastado, ni qué \
-versión está publicada. Cuando te pregunten algo así, dilo claramente y explica \
-en qué pantalla de la consola se ve, o qué necesitarías para poder mirarlo.
+No vale acordarte de un turno anterior ni deducirlo: los datos cambian. Cuando \
+te pregunten cuántos clientes hay, cómo se llama uno, en qué estado está un \
+canal, cuánto se ha gastado o qué versión está publicada, **léelo primero**. Si \
+la lectura falla o no está disponible, dilo tal cual y explica en qué pantalla \
+de la consola se ve.
 
 Inventar un dato plausible es el peor fallo que puedes cometer aquí: quien te \
 lee toma decisiones sobre el negocio de un cliente real.
 </regla_madre>
+
+<herramientas>
+Lee antes de opinar. Una respuesta sobre el estado del sistema que no venga de \
+una lectura de este turno no vale, por segura que suene.
+
+Cuando el usuario nombre a un cliente de forma aproximada, resuelve la \
+referencia con console.list_clients antes de nada. Si no queda **una sola** \
+coincidencia, pregunta cuál — nunca elijas la más probable.
+
+No repitas una consulta idéntica en el mismo turno: el resultado no va a \
+cambiar y gastas espacio que te hará falta después.
+
+Encadena cuando el trabajo lo pida —diagnosticar un "no funciona" son canales, \
+diagnóstico, plantillas y auditoría, en ese orden— y para en cuanto tengas la \
+causa. Leer de más también cuesta.
+
+Si una herramienta devuelve un error, léelo: te dice qué hacer. Un 404 de \
+cliente significa que la referencia no es esa, no que el cliente no exista.
+</herramientas>
 
 <ambiguedad>
 Si la petición se puede entender de dos maneras que llevan a trabajos distintos, \
@@ -125,6 +154,36 @@ Si tienes que corregir algo que dijiste antes, corrígelo en una frase y sigue. 
 No narres el proceso de haberte corregido.
 </tone_preference>
 """
+
+
+def budget_note(*, calls_left: int, tokens_left: int, tokens_total: int) -> dict[str, Any] | None:
+    """Cuenta atrás que el modelo VE, para que cierre con elegancia.
+
+    Distinto de un techo duro, que el modelo no conoce y que corta a mitad
+    de frase. Un agente que dice "con lo que me queda llego a leer el
+    diagnóstico pero no la auditoría, ¿sigo?" es infinitamente mejor que uno
+    al que cortan en seco.
+
+    Dos decisiones de forma:
+
+    - **Solo al cruzar un umbral**, no en cada paso: una nota por paso es
+      ruido, y el modelo deja de leerla.
+    - **Se AÑADE al final de ``messages``**, nunca se reescribe una anterior
+      ni se toca el prompt de sistema. El prefijo crece de forma monótona y
+      el caché sigue encajando (C4).
+    """
+    warn_calls = calls_left <= 5
+    warn_tokens = tokens_total > 0 and tokens_left <= tokens_total * 0.25
+    if not warn_calls and not warn_tokens:
+        return None
+    parts = [f"Te quedan {calls_left} consultas en este turno."]
+    if warn_tokens:
+        parts.append(f"Y unos {max(tokens_left, 0):,} tokens de presupuesto.")
+    parts.append(
+        "Prioriza: termina con lo que ya tienes y di qué te faltó mirar, en vez "
+        "de quedarte a medias."
+    )
+    return {"role": "system", "content": " ".join(parts)}
 
 
 def page_context_message(page_context: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -173,6 +232,7 @@ def build_messages(
 __all__ = [
     "COMPANION_THINKING",
     "SYSTEM_PROMPT",
+    "budget_note",
     "build_messages",
     "page_context_message",
 ]

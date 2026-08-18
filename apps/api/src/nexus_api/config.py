@@ -264,6 +264,20 @@ class Settings(BaseSettings):
     # TERMINADOS, así que sin esto una ráfaga de POST paralelos lo pasa de
     # largo antes de que ninguno cierre su fila.
     companion_runs_per_minute: int = 15
+    # Turnos SIMULTÁNEOS por miembro. El límite por minuto no acota el
+    # trabajo en vuelo cuando cada run dura minutos: con 15/min y un techo
+    # de 300 s, un solo miembro puede tener ~75 runs vivos a la vez, cada
+    # uno con su tarea, su conexión y su gasto. Esto sí lo acota, y se
+    # cuenta sobre ``companion.runs`` en ``running`` que aún no han
+    # cumplido su techo de duración — los huérfanos de un proceso muerto no
+    # bloquean a nadie.
+    companion_max_concurrent_runs: int = 3
+    # CO-02. Tope DURO de consultas por turno; el modelo además ve una
+    # cuenta atrás (``budget_note``) para poder cerrar con elegancia en vez
+    # de que lo corten a mitad. Y techo por consulta: una herramienta que
+    # tarda más ya rompió la conversación, porque el usuario está mirando.
+    companion_max_tool_calls_per_turn: int = 25
+    companion_tool_timeout_s: float = 10.0
 
     # ── Block N: WhatsApp media + multimodal ────────────────────────────────
     # S3 (or S3-compatible — Cloudflare R2, MinIO) for media storage. All

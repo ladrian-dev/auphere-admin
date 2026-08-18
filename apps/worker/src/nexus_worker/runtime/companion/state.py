@@ -66,6 +66,20 @@ class CompanionState(TypedDict, total=False):
     total_input_tokens: int
     total_output_tokens: int
 
+    # ── CO-02 ──────────────────────────────────────────────────────────
+    # Mensajes acumulados del bucle de herramientas: el mensaje del
+    # asistente de cada paso y los resultados de las herramientas. Se
+    # guardan porque el checkpointer tiene que poder reanudar el turno a
+    # mitad del bucle, no solo entre turnos.
+    tool_messages: list[dict[str, Any]]
+    # Llamadas ejecutadas y lecturas con éxito en ESTE turno. La segunda es
+    # el numerador de la regla R1 (sin lectura no hay afirmación).
+    tool_calls_made: int
+    reads_done: int
+    # Veredicto de R1, calculado por el motor al cerrar el turno. Viaja al
+    # cajón dentro de ``run.completed``.
+    unsupported: bool
+
 
 __all__ = [
     "PHASE_AWAITING",
