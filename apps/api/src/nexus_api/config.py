@@ -405,6 +405,27 @@ class Settings(BaseSettings):
         # request a 401 with a misleading cause.
         if self.console_enabled and not self.console_jwt_public_key.strip():
             offenders.append("NEXUS_CONSOLE_JWT_PUBLIC_KEY")
+        # Añadidas tras el corte a AWS (2026-08-19). Estas cuatro faltaban en
+        # la lista de secretos de ECS y NADA falló al arrancar: cada una tiene
+        # un default cómodo y la API se levantó con el catálogo de conectores
+        # vacío y el callback de OAuth apuntando a localhost. El fallo
+        # silencioso es lo que las mete aquí — un arranque en rojo se ve, una
+        # funcionalidad que desaparece sin ruido tarda días.
+        #
+        # ``composio_api_key`` vacía no es "Composio caído" (eso el catálogo
+        # sí lo tolera y lo registra): es Composio SIN CONFIGURAR, y entonces
+        # ``runtime.get_composio_client`` devuelve el cliente FALSO. En
+        # producción eso no puede pasar en silencio.
+        if not self.composio_api_key.strip():
+            offenders.append("NEXUS_COMPOSIO_API_KEY")
+        if "change-me" in self.composio_webhook_secret:
+            offenders.append("NEXUS_COMPOSIO_WEBHOOK_SECRET")
+        # Con localhost aquí el enlace de consentimiento que recibe el partner
+        # vuelve a su propia máquina: el OAuth no cierra nunca.
+        if "localhost" in self.public_api_base_url:
+            offenders.append("NEXUS_PUBLIC_API_BASE_URL")
+        if "localhost" in self.admin_panel_base_url:
+            offenders.append("NEXUS_ADMIN_PANEL_BASE_URL")
         if offenders:
             raise ValueError(
                 "Refusing to boot in production with dev placeholder secrets: "

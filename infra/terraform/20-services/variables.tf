@@ -82,6 +82,31 @@ variable "app_secret_keys" {
     "NEXUS_CONSOLE_ENABLED",
     "NEXUS_CONSOLE_JWT_PUBLIC_KEY",
     "NEXUS_CONNECTOR_CONSENT_SECRET",
+    # ── Las 14 que se quedaron en Railway (2026-08-19) ────────────────────
+    #
+    # Ninguna de estas dio un error al faltar: ``config.py`` tiene default
+    # para todas, así que la API arrancó y las funcionalidades se cayeron en
+    # silencio. Es el modo de fallo más caro que hay, y por eso están aquí
+    # explícitas en vez de confiar en los defaults.
+    #
+    # Las pobló ``infra/scripts/migrate_doppler_secrets.sh`` desde el config
+    # ``prd`` de Doppler. Añadir una clave a esta lista sin que exista en
+    # ``nexus/<ws>/app`` impide arrancar la task ("did not contain json
+    # key"): primero el script, después el apply.
+    "NEXUS_COMPOSIO_API_KEY",        # sin ella el catálogo va con cliente FALSO
+    "NEXUS_COMPOSIO_WEBHOOK_SECRET", # default ``change-me``
+    "NEXUS_PUBLIC_API_BASE_URL",     # callback OAuth; default ``localhost:8000``
+    "NEXUS_ADMIN_PANEL_BASE_URL",    # default ``localhost:3000``
+    "NEXUS_META_APP_ID",
+    "NEXUS_META_BUSINESS_MANAGER_ID",
+    "NEXUS_META_CONFIG_ID_WA_CLOUD_API",
+    "NEXUS_META_CONFIG_ID_WA_COEXISTENCE",
+    "NEXUS_META_WEBHOOK_CALLBACK_URL",
+    "NEXUS_EMBED_JWT_SECRET",
+    "NEXUS_LANGFUSE_HOST", # el host sí; las claves siguen vacías (WP-30b)
+    "OPENAI_API_KEY",      # whisper para notas de voz + fallback del router
+    "BROWSERBASE_API_KEY", # MCP público de AgendaPro (Stagehand)
+    "BROWSERBASE_PROJECT_ID",
   ]
 }
 
