@@ -85,6 +85,16 @@ jobs:
       - name: pytest — apps/api (unit + isolation + integration)
         working-directory: apps/api
         run: pytest -x --tb=short
+      # CO-07. Corre por segunda vez a propósito: el paso de arriba es la
+      # barrera (ya rompe el build), y este deja el reparto del dataset y
+      # los dos números de R1 —falsos positivos y recall— en su propio
+      # bloque de salida. Sin él la cifra del §17 queda enterrada en un log
+      # de 1.500 líneas, que es como una métrica deja de mirarse. El modo
+      # live NO se enciende aquí: depende de un proveedor externo, y un
+      # rojo por un incidente ajeno enseña al equipo a ignorar los rojos.
+      - name: "companion — evals CO-07 (gate R1 · R2 · §6.5)"
+        working-directory: apps/api
+        run: python scripts/companion_evals.py
       - name: pytest — apps/channels
         working-directory: apps/channels
         run: pytest -x --tb=short

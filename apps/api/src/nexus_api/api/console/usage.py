@@ -30,7 +30,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -92,7 +92,22 @@ def _window(days: int) -> tuple[datetime, datetime]:
 def _scope(
     mappings: Sequence[PartnerTenant], client: str | None
 ) -> tuple[list[PartnerTenant], dict[uuid.UUID, PartnerTenant]]:
+    """Restringe a un cliente del partner. Un ``client_ref`` que no sea suyo
+    da **404**, igual que en el resto de la consola.
+
+    Antes devolvía el agregado en cero, que para la interfaz daba igual —el
+    cliente se elige de una lista, así que el ref siempre existe— pero para
+    el Companion no: el modelo SÍ puede inventarse una referencia, y un cero
+    con 200 le deja decir "ese cliente no ha consumido nada" sobre algo que
+    no existe. Eso es una afirmación falsa **con respaldo**, así que R1 no la
+    marca — es peor que una alucinación, porque parece verificada.
+
+    Sigue siendo opaco: el ref de otro partner y el inexistente dan el mismo
+    404, porque ninguno de los dos está en ``mappings``.
+    """
     chosen = [m for m in mappings if client is None or m.external_client_ref == client]
+    if client is not None and not chosen:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown client")
     return chosen, {m.tenant_id: m for m in chosen}
 
 

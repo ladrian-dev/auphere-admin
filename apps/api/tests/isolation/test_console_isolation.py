@@ -222,8 +222,18 @@ async def test_by_filter_search_cannot_surface_other_partner(client, console_wor
             assert refs == [a["ref"]]
     resp = await client.get("/console/audit?client=client-b-1", headers=a["headers"]())
     assert resp.status_code == 200 and resp.json()["items"] == []
-    resp = await client.get("/console/usage?client=client-b-1", headers=a["headers"]())
-    assert resp.status_code == 200 and resp.json()["buckets"] == []
+    # ``usage`` devolvía 200 con el agregado en cero para un ref ajeno.
+    # Aislaba —no salía ni un dato de B— pero le decía al llamante "ese
+    # cliente no ha consumido nada" sobre algo que no es suyo. Para la
+    # interfaz da igual (el cliente se elige de una lista); para el Companion
+    # no, porque el modelo SÍ puede inventarse una referencia, y un cero con
+    # 200 es una afirmación falsa CON respaldo — la que R1 no marca, porque
+    # sí hubo lectura. Ahora es 404, y lo que se prueba aquí es que sea el
+    # MISMO 404 que el de un ref inexistente.
+    ajeno = await client.get("/console/usage?client=client-b-1", headers=a["headers"]())
+    inexistente = await client.get("/console/usage?client=no-existe", headers=a["headers"]())
+    assert ajeno.status_code == 404
+    assert (ajeno.status_code, ajeno.json()) == (inexistente.status_code, inexistente.json())
 
 
 # ── 5. by timing ───────────────────────────────────────────────────────

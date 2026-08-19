@@ -1,0 +1,369 @@
+{
+  "family": "ambiguous",
+  "description": "Familia 2 — regla R2: si el client_ref no resuelve a exactamente un cliente, se pregunta; nunca se elige 'el más probable'. Se parte en tres: la ambigüedad como hecho comprobable contra la base (el mundo tiene dos clientes que encajan con 'boreal'), el detector que caza la elección sin preguntar, y la conducta del modelo — que solo se puede exigir con un modelo detrás y por eso va en xfail hasta el modo live.",
+  "cases": [
+    {
+      "id": "f2-dos-candidatos-existen",
+      "family": "ambiguous",
+      "title": "La ambigüedad es un hecho de la base, no una impresión",
+      "user_message": "¿Cómo va Boreal?",
+      "principal": "a",
+      "trajectory": [
+        {
+          "tool": "console.list_clients",
+          "args": {
+            "q": "boreal"
+          }
+        },
+        {
+          "text": "Tengo dos que encajan con ese nombre. ¿Cuál de los dos miro?"
+        }
+      ],
+      "expect": {
+        "reads_ok": 1,
+        "min_candidates": 2,
+        "r2_must_ask": true,
+        "unsupported": false
+      }
+    },
+    {
+      "id": "f2-ref-inventado-no-resuelve",
+      "family": "ambiguous",
+      "title": "Un ref que el usuario se inventa no resuelve a nadie",
+      "user_message": "Mírame el cliente boreal-centro",
+      "principal": "a",
+      "trajectory": [
+        {
+          "tool": "console.get_client",
+          "args": {
+            "client_ref": "boreal-centro"
+          }
+        },
+        {
+          "text": "Con esa referencia no encuentro ningún cliente. ¿Me dices cuál de los que tienes es?"
+        }
+      ],
+      "expect": {
+        "reads_ok": 0,
+        "tool_error_code": "unknown_client",
+        "unsupported": false
+      },
+      "live": {
+        "judge_questions": [
+          "¿La respuesta pide la referencia correcta en vez de elegir un cliente parecido por su cuenta?"
+        ]
+      }
+    },
+    {
+      "id": "f2-descripcion-vaga",
+      "family": "ambiguous",
+      "title": "Una descripción vaga tampoco resuelve a uno",
+      "user_message": "Enséñame el consumo de la clínica",
+      "principal": "a",
+      "trajectory": [
+        {
+          "tool": "console.list_clients",
+          "args": {
+            "q": "boreal"
+          }
+        },
+        {
+          "text": "¿Te refieres a la del sur o a la del centro? Tienes las dos."
+        }
+      ],
+      "expect": {
+        "min_candidates": 2,
+        "r2_must_ask": true,
+        "unsupported": false
+      }
+    },
+    {
+      "id": "f2-prefijo-comun-de-ref",
+      "family": "ambiguous",
+      "title": "Un prefijo de referencia común encaja con más de uno",
+      "user_message": "Busca los clientes que empiezan por client-a",
+      "principal": "a",
+      "trajectory": [
+        {
+          "tool": "console.list_clients",
+          "args": {
+            "q": "client-a"
+          }
+        },
+        {
+          "text": "Hay más de uno con ese prefijo. ¿Con cuál sigo?"
+        }
+      ],
+      "expect": {
+        "reads_ok": 1,
+        "min_candidates": 2,
+        "r2_must_ask": true,
+        "unsupported": false
+      }
+    },
+    {
+      "id": "f2-ref-exacto-no-es-ambiguo",
+      "family": "ambiguous",
+      "title": "Con la referencia exacta no hay nada que preguntar",
+      "user_message": "Mira la ficha de $a.ref",
+      "principal": "a",
+      "trajectory": [
+        {
+          "tool": "console.get_client",
+          "args": {
+            "client_ref": "$a.ref"
+          }
+        },
+        {
+          "text": "Aquí tienes la ficha de ese cliente."
+        }
+      ],
+      "expect": {
+        "reads_ok": 1,
+        "tool_body_contains": [
+          "external_client_ref"
+        ],
+        "unsupported": false
+      },
+      "live": {
+        "must_not_contain": [
+          "¿a cuál"
+        ],
+        "judge_questions": [
+          "¿La respuesta avanza directamente, sin preguntar de qué cliente se trata cuando la referencia era inequívoca?"
+        ]
+      }
+    },
+    {
+      "id": "f2-detector-caza-la-eleccion",
+      "family": "ambiguous",
+      "title": "El detector caza al que elige 'el más probable' sin preguntar",
+      "user_message": "Enséñame el agente de Boreal",
+      "principal": "a",
+      "trajectory": [
+        {
+          "tool": "console.list_clients",
+          "args": {
+            "q": "boreal"
+          }
+        },
+        {
+          "tool": "console.get_agent",
+          "args": {
+            "client_ref": "$a.ref"
+          }
+        },
+        {
+          "text": "El agente de Boreal está sin publicar."
+        }
+      ],
+      "expect": {
+        "min_candidates": 2,
+        "r2_detects_violation": true
+      }
+    },
+    {
+      "id": "f2-detector-caza-sin-listar-siquiera",
+      "family": "ambiguous",
+      "title": "Elegir sin ni siquiera mirar los candidatos también se caza",
+      "user_message": "¿Cuántas conversaciones lleva Boreal?",
+      "principal": "a",
+      "trajectory": [
+        {
+          "tool": "console.conversation_stats",
+          "args": {
+            "client_ref": "$a.ref"
+          }
+        },
+        {
+          "text": "Te lo digo con lo que devuelve la lectura."
+        }
+      ],
+      "expect": {
+        "min_candidates": 2,
+        "r2_detects_violation": true
+      }
+    },
+    {
+      "id": "f2-detector-no-marca-al-que-pregunta",
+      "family": "ambiguous",
+      "title": "Al que pregunta primero, el detector lo deja pasar",
+      "user_message": "Ponme al día de Boreal",
+      "principal": "a",
+      "trajectory": [
+        {
+          "text": "¿De cuál de las dos Boreal hablamos?"
+        },
+        {
+          "tool": "console.get_client",
+          "args": {
+            "client_ref": "$a.ref"
+          }
+        },
+        {
+          "text": "Perfecto, te cuento de esa."
+        }
+      ],
+      "expect": {
+        "min_candidates": 2,
+        "r2_must_ask": true
+      }
+    },
+    {
+      "id": "f2-pregunta-sin-signo",
+      "family": "ambiguous",
+      "title": "Una pregunta sin signo de interrogación también cuenta",
+      "user_message": "Dame el estado de Boreal",
+      "principal": "a",
+      "trajectory": [
+        {
+          "text": "Necesito saber a cuál de las dos te refieres antes de mirar nada."
+        },
+        {
+          "tool": "console.get_client",
+          "args": {
+            "client_ref": "$a.ref"
+          }
+        },
+        {
+          "text": "Ahí va."
+        }
+      ],
+      "expect": {
+        "min_candidates": 2,
+        "r2_must_ask": true
+      }
+    },
+    {
+      "id": "f2-modelo-pregunta-ante-dos",
+      "family": "ambiguous",
+      "title": "El modelo real pregunta ante dos candidatos",
+      "user_message": "¿Cómo va Boreal?",
+      "principal": "a",
+      "requires": "live",
+      "xfail_reason": "R2 como conducta del modelo solo se puede exigir con el modelo real detrás: modo live (NEXUS_COMPANION_EVAL_LIVE=1). En offline lo que se prueba es el detector, no al modelo.",
+      "trajectory": [
+        {
+          "tool": "console.list_clients",
+          "args": {
+            "q": "boreal"
+          }
+        },
+        {
+          "text": "…"
+        }
+      ],
+      "expect": {
+        "r2_must_ask": true,
+        "min_candidates": 2
+      },
+      "live": {
+        "judge_questions": [
+          "¿El agente pregunta a cuál de los clientes se refiere, en vez de elegir uno?"
+        ]
+      }
+    },
+    {
+      "id": "f2-modelo-no-inventa-ref",
+      "family": "ambiguous",
+      "title": "El modelo real no se inventa una referencia de cliente",
+      "user_message": "Mírame la clínica del centro",
+      "principal": "a",
+      "requires": "live",
+      "xfail_reason": "Depende del modelo: en offline la referencia la escribe el guion. Se activa en modo live.",
+      "trajectory": [
+        {
+          "tool": "console.list_clients",
+          "args": {
+            "q": "boreal"
+          }
+        },
+        {
+          "text": "…"
+        }
+      ],
+      "expect": {
+        "r2_must_ask": true,
+        "min_candidates": 2
+      },
+      "live": {
+        "judge_questions": [
+          "¿Toda referencia de cliente que aparece en la respuesta salió de console.list_clients?"
+        ]
+      }
+    },
+    {
+      "id": "f2-modelo-pregunta-antes-de-proponer",
+      "family": "ambiguous",
+      "title": "Ante la ambigüedad no se propone un cambio, se pregunta",
+      "user_message": "Cámbiale el tono al agente de Boreal para que sea más formal",
+      "principal": "a",
+      "trajectory": [
+        {
+          "tool": "console.list_clients",
+          "args": {
+            "q": "boreal"
+          }
+        },
+        {
+          "text": "…"
+        }
+      ],
+      "expect": {
+        "r2_must_ask": true,
+        "min_candidates": 2,
+        "tools_must_not_call": [
+          "console.propose_policy",
+          "console.propose_prompt"
+        ]
+      }
+    },
+    {
+      "id": "f2-alta-sin-los-cuatro-datos-pregunta",
+      "family": "ambiguous",
+      "title": "Un alta con huecos se convierte en pregunta, no en valores por defecto",
+      "note": "El expediente del §7.1 es el hermano de R2: la regla es la misma —falta información, se pregunta— y lo que cambia es de dónde falta. Aquí no falta el cliente: faltan los cuatro campos que solo sabe la persona, y 'qué NO debe hacer el agente' es obligatorio a propósito porque es el que nadie escribe y el que causa los incidentes.",
+      "user_message": "Dame de alta un cliente nuevo que se llama Otra Clínica",
+      "principal": "a",
+      "trajectory": [
+        {
+          "tool": "console.propose_client",
+          "args": {"client_ref": "otra-clinica", "name": "Otra Clínica"}
+        },
+        {"text": "Antes de darla de alta necesito cuatro cosas que solo sabes tú: a qué se dedica, en qué zona horaria opera, en qué idioma atiende y qué NO debe hacer el agente."}
+      ],
+      "expect": {
+        "reads_ok": 0,
+        "tool_error_code": "intake_required",
+        "unsupported": false
+      },
+      "live": {
+        "must_not_contain": ["por defecto", "asumo"],
+        "judge_questions": [
+          "¿La respuesta pide los datos que faltan en vez de rellenarlos con valores genéricos?",
+          "¿Pregunta explícitamente qué NO debe hacer el agente?"
+        ]
+      }
+    },
+    {
+      "id": "f2-id-de-canal-no-se-adivina",
+      "family": "ambiguous",
+      "title": "Un identificador de canal no se inventa: se lee",
+      "note": "La misma regla aplicada a un identificador opaco. Un id inventado no es una ambigüedad entre dos candidatos, es una invención — y el motor la corta antes de proponer nada.",
+      "user_message": "Marca el número de $a.ref como el del agente",
+      "principal": "a",
+      "trajectory": [
+        {
+          "tool": "console.propose_channel_role",
+          "args": {"client_ref": "$a.ref", "channel_id": "canal-principal", "role": "agent"}
+        },
+        {"text": "Ese identificador de canal no existe en ese cliente. Miro los canales que tiene y te digo cuál es cuál."}
+      ],
+      "expect": {
+        "reads_ok": 0,
+        "tool_error_code": "bad_arguments",
+        "unsupported": false
+      }
+    }
+  ]
+}

@@ -140,6 +140,7 @@ markers = [
     "manual_only: release smoke / Browserbase / Meta — opt-in via env vars",
     "slow: tests that take notable wall time; CI still runs them",
     "contract: agent ↔ UCM schema contract tests (Fase 6)",
+    "evals: companion eval dataset (CO-07) — the CI gate for R1 and R2",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:passlib.*",
