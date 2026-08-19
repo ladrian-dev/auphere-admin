@@ -201,7 +201,7 @@ def _asyncpg_dsn() -> str:
     Medido en producción el 2026-08-19, primer turno real tras el corte: el
     mensaje se creó a las 09:50:16.174 y se recogió a las 09:50:22.032 —
     5,86 s, y justo en la cadencia del barrido (arranque 09:45:21.95 +
-    5×30 s). Con el LISTEN funcionando la recogida es inmediata; sin él la
+    5 x 30 s). Con el LISTEN funcionando la recogida es inmediata; sin él la
     latencia de salida es uniforme entre 0 y 30 s, ~15 s de media.
 
     Mismo idioma que el resto de lo que necesita sesión (``alembic/env.py``,
