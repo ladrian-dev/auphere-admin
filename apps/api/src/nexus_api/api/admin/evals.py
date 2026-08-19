@@ -561,18 +561,40 @@ async def trigger_run(
         actor=f"admin:{actor[:8]}",
         started_at=datetime.now(UTC),
     )
-    session.add(run)
-    await session.flush()
-    await session.refresh(run)
+    # El row se crea en su PROPIA transacción, no en la del request.
+    #
+    # Antes se hacía ``session.add`` + ``flush`` sobre la sesión del
+    # endpoint, que vive dentro del ``session.begin()`` de la dependencia y
+    # NO commitea hasta que el handler retorna. ``asyncio.create_task``
+    # arranca la corrutina en cuanto el handler cede el control, así que su
+    # primer ``scalar_one()`` podía ejecutarse ANTES del COMMIT y no ver la
+    # fila: ``NoResultFound`` → ``evals.run.background_aborted`` y el run
+    # muerto sin resultados. Carrera real, no artefacto de test: en CI
+    # (2026-08-19) tumbó ``test_run_judge_error_marks_case_error`` y con
+    # ella todos los despliegues a producción.
+    #
+    # ``BackgroundTasks`` de FastAPI no lo arregla: en 0.136 corren ANTES
+    # del teardown de las dependencias con ``yield``, o sea antes del
+    # commit. Comprobado, no deducido.
+    #
+    # Commitear aquí garantiza la visibilidad pase lo que pase con el orden
+    # del framework. ``expire_on_commit=False`` en el sessionmaker deja los
+    # atributos cargados utilizables tras cerrar la sesión, y el ``refresh``
+    # trae los server-defaults antes de que el objeto quede desasociado.
+    run_session_factory = get_sessionmaker()
+    async with (
+        run_session_factory() as run_session,
+        tenant_scoped_session(run_session, tenant_id),
+    ):
+        run_session.add(run)
+        await run_session.flush()
+        await run_session.refresh(run)
 
     run_id = run.id
     agent_config_id = agent_config.id
 
-    # Persist the pending row so the background task can read it.
-    # The dependency commits at exit — but we explicitly flush here so
-    # ``run_id`` is stable. The background coroutine is scheduled on the
-    # main loop; it'll re-open its own session under tenant_scoped_session
-    # once the request handler returns.
+    # Con la fila ya commiteada, la corrutina puede abrir su propia sesión
+    # bajo ``tenant_scoped_session`` y encontrarla siempre.
     task = asyncio.create_task(
         _run_eval_background(
             tenant_id=tenant_id,
