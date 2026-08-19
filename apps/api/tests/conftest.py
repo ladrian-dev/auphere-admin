@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+import sys
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
@@ -25,6 +26,7 @@ import pytest
 import pytest_asyncio
 from cryptography.fernet import Fernet
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # ── env: configure BEFORE importing nexus_api ───────────────────────────────────
@@ -373,6 +375,89 @@ _TRUNCATE_TABLES = (
 )
 
 
+async def _truncate_with_diagnosis(engine: Any, statement: str) -> None:
+    """Vacía la base y, si hay deadlock, **dice contra quién**.
+
+    CI falla de forma intermitente con ``DeadlockDetectedError`` en este
+    ``TRUNCATE``: otra conexión sostiene un lock sobre una de las tablas y
+    el vaciado sostiene otra. El mensaje de Postgres da los PID pero no las
+    consultas ("See server log for query details"), y el log del contenedor
+    de Postgres de CI no se recoge — así que el rojo llega sin la mitad que
+    hace falta para arreglarlo.
+
+    En vez de adivinar quién es, se pregunta: al detectar el deadlock se lee
+    ``pg_stat_activity`` y se imprime qué estaba haciendo cada conexión viva.
+    Después se reintenta una vez, porque un deadlock aborta **una** de las
+    dos transacciones y la otra ya terminó.
+
+    Esto NO es el arreglo del rojo: es lo que permite escribirlo con la causa
+    delante en vez de con una hipótesis.
+    """
+    for intento in (1, 2):
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(statement))
+            return
+        except DBAPIError as exc:
+            if "DeadlockDetected" not in repr(exc.orig) or intento == 2:
+                raise
+            try:
+                async with engine.connect() as diag:
+                    rows = (
+                        await diag.execute(
+                            text(
+                                "SELECT pid, state, wait_event_type, wait_event, "
+                                "left(query, 200) AS query FROM pg_stat_activity "
+                                "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+                            )
+                        )
+                    ).fetchall()
+                print("[deadlock en el TRUNCATE de tests] conexiones vivas:", file=sys.stderr)
+                for row in rows:
+                    print(
+                        f"  pid={row.pid} {row.state} {row.wait_event_type}/{row.wait_event} :: {row.query}",
+                        file=sys.stderr,
+                    )
+            except Exception as diag_exc:  # pragma: no cover - diagnóstico best-effort
+                print(f"[deadlock] no se pudo leer pg_stat_activity: {diag_exc}", file=sys.stderr)
+            await asyncio.sleep(0.5)
+
+
+async def _drain_companion_runs(timeout: float = 15.0) -> None:
+    """Espera a que mueran los runs del Companion antes de vaciar la base.
+
+    ``POST /console/companion/runs/{id}/resume`` responde **202 y sigue
+    trabajando**: el run de continuación es una tarea de asyncio que escribe
+    en la misma base. Un test que asserta el 202 y vuelve deja esa tarea
+    viva, y el ``TRUNCATE`` de aquí abajo pide ``AccessExclusiveLock`` sobre
+    tablas que la tarea tiene tomadas con ``AccessShareLock``: **deadlock
+    detectado**, en un test que ya había pasado.
+
+    Se drena aquí y no test a test a propósito. Añadir un ``await`` en cada
+    llamada a ``resume`` arregla las de hoy y no las que alguien escriba
+    mañana; drenar en el desmontaje lo hace estructuralmente imposible.
+
+    Vaciar ``_local_runs`` además evita que un handle de un test se cuele en
+    el tope de concurrencia del siguiente.
+    """
+    try:
+        from nexus_api.api.companion_streaming import _local_runs
+    except Exception:  # pragma: no cover - la app puede no estar importada
+        return
+
+    tasks = [h.task for h in list(_local_runs.values()) if h.task is not None and not h.task.done()]
+    _local_runs.clear()
+    if not tasks:
+        return
+    _, pending = await asyncio.wait(tasks, timeout=timeout)
+    for task in pending:
+        task.cancel()
+    if pending:
+        # Se espera también a las canceladas: una tarea cancelada sigue
+        # dentro de su transacción hasta que el ``CancelledError` sube.
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
 @pytest_asyncio.fixture
 async def db_session(test_engine: Any) -> AsyncIterator[AsyncSession]:
     """Real session against the test DB. After each test we TRUNCATE all
@@ -388,11 +473,14 @@ async def db_session(test_engine: Any) -> AsyncIterator[AsyncSession]:
         yield session
     finally:
         await session.close()
+        # Antes de vaciar: que no quede ninguna tarea del Companion escribiendo.
+        await _drain_companion_runs()
         # Truncate via a fresh connection so we ignore any RLS state.
+        await _truncate_with_diagnosis(
+            test_engine,
+            "TRUNCATE TABLE " + ", ".join(_TRUNCATE_TABLES) + " RESTART IDENTITY CASCADE",
+        )
         async with test_engine.begin() as conn:
-            await conn.execute(
-                text("TRUNCATE TABLE " + ", ".join(_TRUNCATE_TABLES) + " RESTART IDENTITY CASCADE")
-            )
             # Block L — clean test-inserted tool_catalog rows. The baseline
             # rows are seeded by migrations 0003 (21 LLM-facing) + 0009 (6
             # agendapro internal) and must survive. Connector-derived rows
