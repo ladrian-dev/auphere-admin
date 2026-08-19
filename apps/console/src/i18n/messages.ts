@@ -8,6 +8,7 @@ export type Locale = "es" | "en";
 
 import { agentToolsMessages } from "./lanes/agent-tools";
 import { channelsMessages } from "./lanes/channels";
+import { companionMessages } from "./lanes/companion";
 import { homeUsageMessages } from "./lanes/home-usage";
 import { onboardingMessages } from "./lanes/onboarding";
 import { playgroundMessages } from "./lanes/playground";
@@ -321,6 +322,7 @@ const messages = {
   ...channelsMessages,
   ...homeUsageMessages,
   ...onboardingMessages,
+  ...companionMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

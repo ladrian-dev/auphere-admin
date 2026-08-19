@@ -1,5 +1,6 @@
 import { Separator, SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
 
+import { CompanionLauncher } from "@/components/companion/companion-launcher";
 import { AppSidebar } from "@/components/shell/app-sidebar";
 import { ConsoleCommandPalette } from "@/components/shell/console-command-palette";
 import { NotificationsBell } from "@/components/shell/notifications-bell";
@@ -42,6 +43,11 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
         <main id="main" tabIndex={-1} className="mx-auto flex w-full max-w-[1400px] min-w-0 flex-1 flex-col gap-6 px-4 py-6 outline-none md:px-8 md:py-8">
           {children}
         </main>
+        {/* The Companion (CO-03): present across the console, never under
+            `(auth)`. It is mounted here rather than per page so the drawer
+            survives navigation — a run keeps going while the user moves
+            around, which is the whole point of the durable run log. */}
+        <CompanionLauncher role={principal.role} userId={principal.userId} />
       </SidebarInset>
     </SidebarProvider>
   );

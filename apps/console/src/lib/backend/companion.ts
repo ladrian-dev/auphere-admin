@@ -33,6 +33,28 @@ export type CompanionThread = {
 
 export type CompanionRunStarted = { run_id: string; thread_id: string; status: string };
 
+/**
+ * The runs of one thread (§5.2 of the contract, added in v1.1).
+ *
+ * This is what makes the timeline belong to the THREAD rather than to a
+ * run, and therefore what makes `?companion=<thread>` shareable inside the
+ * team: without it the browser cannot enumerate a thread's runs, so
+ * opening a shared link on another machine would show an empty
+ * conversation. A `localStorage` index was the stopgap; the server is the
+ * source.
+ *
+ * Ascending by `started_at`, no pagination in Ola 1, opaque 404 when the
+ * thread is not the principal's.
+ */
+export type CompanionRunSummary = {
+  run_id: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+};
+
+export type CompanionThreadRuns = { thread_id: string; runs: CompanionRunSummary[] };
+
 /** One event of the durable run log. `data` is deliberately untyped: the
  *  payload shape depends on `event`, and the backend publishes against a
  *  closed catalogue that guarantees what may appear in it. */
@@ -56,6 +78,54 @@ export type CompanionBudget = {
   resets_at: string;
 };
 
+/**
+ * One proposed write awaiting a human (CO-04). Mirrors
+ * `CompanionActionOut` of §5 of `docs/companion/CONTRACT-V1.md`.
+ *
+ * **Nothing emits this yet** — CO-04 builds the write path in parallel.
+ * It is typed against the frozen contract and doubled in tests; Phase 2
+ * validates the real integration.
+ *
+ * Note the names: `preview` (not `payload`) and `note` (not `notes` /
+ * `reason` / `message`). Those four are forbidden response property names
+ * in every `/console/*` route — see §1.1 of the contract.
+ */
+export type CompanionAction = {
+  action_id: string;
+  thread_id: string;
+  run_id: string | null;
+  kind: string;
+  title: string;
+  preview: Record<string, unknown>;
+  diff: Array<Record<string, unknown>> | null;
+  impact: Array<Record<string, unknown>>;
+  risk: "low" | "medium" | "high";
+  reversible: boolean;
+  status: string;
+  state_hash: string;
+  proposed_at: string;
+  expires_at: string;
+  decided_at: string | null;
+  decided_by: string | null;
+  applied_at: string | null;
+  ok: boolean | null;
+};
+
+/**
+ * 202 of `POST …/runs/{run_id}/resume`. **`run_id` is a NEW run** that
+ * continues the same thread (§4.3): the paused run publishes nothing more,
+ * so the drawer has to attach to the one returned here. `hitl.resolved`
+ * is the first event of that new run.
+ */
+export type CompanionResumed = {
+  run_id: string;
+  thread_id: string;
+  action_id: string;
+  status: string;
+};
+
+export type CompanionDecision = "confirm" | "edit" | "cancel";
+
 const enc = encodeURIComponent;
 const base = "/console/companion";
 
@@ -78,9 +148,23 @@ export function companionApi(call: Call) {
         method: "POST",
         body: { prompt, page_context: pageContext ?? null },
       }),
+    /** Runs of a thread, ascending by `started_at` (§5.2). The source of
+     *  the timeline's run index — `localStorage` is only a cache. */
+    listCompanionThreadRuns: (threadId: string) =>
+      call<CompanionThreadRuns>(`${base}/threads/${enc(threadId)}/runs`),
     getCompanionRunEvents: (runId: string, sinceSeq = 0) =>
       call<CompanionEvents>(`${base}/runs/${enc(runId)}/events?since_seq=${sinceSeq}`),
     cancelCompanionRun: (runId: string) => call<null>(`${base}/runs/${enc(runId)}`, { method: "DELETE" }),
     getCompanionBudget: () => call<CompanionBudget>(`${base}/budget`),
+    /** Answer a pending confirmation (§4). 202 → attach to the NEW run.
+     *  `note` is singular: `notes` is a forbidden property name (§1.1),
+     *  and with `edit`/`cancel` it travels back to the model as the
+     *  user's reason, so the plan can be adjusted rather than just refused. */
+    resumeCompanionRun: (runId: string, body: { action_id: string; decision: CompanionDecision; note?: string }) =>
+      call<CompanionResumed>(`${base}/runs/${enc(runId)}/resume`, { method: "POST", body }),
+    /** Read one action. Exists for the PARTIAL state (§5.1): reloading
+     *  with a confirmation pending must paint the card without depending
+     *  on the Redis log still being alive. */
+    getCompanionAction: (actionId: string) => call<CompanionAction>(`${base}/actions/${enc(actionId)}`),
   };
 }
