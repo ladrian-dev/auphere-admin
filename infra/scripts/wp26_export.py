@@ -19,8 +19,14 @@ Un ``pg_dump --data-only`` emite ``COPY tabla FROM stdin`` **sin lista de
 columnas**, que casa por posición — con una columna nueva en medio del
 destino, los valores se desplazan y entran en la columna equivocada sin
 error. Aquí la lista de columnas es explícita y es la INTERSECCIÓN
-origen ∩ destino, calculada contra la base local (que ya está en 0079 y
-es el mismo esquema que tendrá AWS tras alembic).
+origen ∩ destino, calculada contra la base local, que hace de **espejo
+del destino** porque Aurora no es alcanzable desde fuera del VPC.
+
+Ese espejo es la debilidad del método: si la local va por detrás del
+destino se exportan menos columnas de las que hay y el dato que falta
+entra como default, sin error y sin que nadie se entere. Por eso
+``--expect-head`` es **obligatorio**: se pasa la cabeza de alembic del
+destino REAL y el script se planta si la local no coincide.
 
 Las columnas que sólo existen en el destino se dejan a su default a
 propósito, y son inofensivas — se comprobó una a una: ``tenants.tier``,
@@ -157,29 +163,17 @@ def psql(sql: str, *, tuples_only: bool = True) -> str:
     return out.stdout
 
 
-def local_columns() -> dict[str, list[str]]:
-    """Columnas del DESTINO, leídas de la base local en 0079."""
+def local_psql(sql: str) -> str:
+    """Consulta la base local, que hace de espejo del esquema destino."""
     env = {**os.environ, "PGPASSWORD": os.environ.get("LOCAL_PGPASSWORD", "nexus")}
-    sql = """
-        SELECT table_schema||'.'||table_name||':'||column_name
-          FROM information_schema.columns
-         WHERE table_schema IN ('public','auth')
-         ORDER BY table_schema, table_name, ordinal_position
-    """
     out = subprocess.run(
         [
             "psql",
-            "-h",
-            os.environ.get("LOCAL_PGHOST", "localhost"),
-            "-p",
-            os.environ.get("LOCAL_PGPORT", "5433"),
-            "-U",
-            "nexus",
-            "-d",
-            "nexus",
-            "-At",
-            "-c",
-            sql,
+            "-h", os.environ.get("LOCAL_PGHOST", "localhost"),
+            "-p", os.environ.get("LOCAL_PGPORT", "5433"),
+            "-U", os.environ.get("LOCAL_PGUSER", "nexus"),
+            "-d", os.environ.get("LOCAL_PGDATABASE", "nexus"),
+            "-At", "-c", sql,
         ],
         capture_output=True,
         text=True,
@@ -191,8 +185,51 @@ def local_columns() -> dict[str, list[str]]:
             "Levanta `docker compose up -d postgres` y aplica `alembic upgrade head`.\n"
             + out.stderr
         )
+    return out.stdout
+
+
+def assert_head_matches(expected: str) -> None:
+    """La salvaguarda del §0 del plan de corte.
+
+    El exportador usa la base LOCAL como espejo del destino. Si la local va
+    por DETRÁS, la intersección de columnas sale corta y el import mete
+    defaults en silencio — el fallo caro, porque no da error. Si va por
+    DELANTE el import falla con estruendo, que es recuperable.
+
+    Aquí no se puede preguntar a Aurora (fuera del VPC), así que la cabeza
+    del destino la aporta quien ejecuta:
+
+        aws ecs run-task ... --overrides '... "command":["sh","-c",
+          "psql \"$DATABASE_URL\" -tAc \"select version_num from alembic_version\""]'
+    """
+    local = local_psql("SELECT version_num FROM alembic_version").strip()
+    if not local:
+        sys.exit("ERROR: la base local no tiene alembic_version. ¿Está migrada?")
+    if local != expected:
+        sys.exit(
+            "ERROR: la base local NO es espejo del destino.\n"
+            f"    local   : {local}\n"
+            f"    destino : {expected}\n"
+            "Las columnas se calculan contra la local: si va por detrás del\n"
+            "destino, se exportan de menos y los huecos entran como default\n"
+            "SIN dar error. Aplica `alembic upgrade head` (o corrige\n"
+            "--expect-head) y repite."
+        )
+    print(f"    esquema espejo verificado: alembic {local}")
+
+
+def local_columns() -> dict[str, list[str]]:
+    """Columnas del DESTINO, leídas de la base local (ver assert_head_matches)."""
+    out = local_psql(
+        """
+        SELECT table_schema||'.'||table_name||':'||column_name
+          FROM information_schema.columns
+         WHERE table_schema IN ('public','auth')
+         ORDER BY table_schema, table_name, ordinal_position
+        """
+    )
     cols: dict[str, list[str]] = {}
-    for line in out.stdout.splitlines():
+    for line in out.splitlines():
         if ":" not in line:
             continue
         table, col = line.rsplit(":", 1)
@@ -210,10 +247,37 @@ def source_columns(table: str) -> list[str]:
     return [r for r in rows.splitlines() if r]
 
 
+USAGE = (
+    "uso: wp26_export.py prod|staging --expect-head <rev_alembic_del_destino>\n"
+    "\n"
+    "La cabeza del destino se lee así (Aurora no es alcanzable desde fuera):\n"
+    "  aws ecs run-task --cluster nexus-<env> --task-definition nexus-<env>-migrate \\\n"
+    "    --overrides '{\"containerOverrides\":[{\"name\":\"migrate\",\"command\":\n"
+    "      [\"sh\",\"-c\",\"psql \\\"$DATABASE_URL\\\" -tAc \\\"select version_num\n"
+    "       from alembic_version\\\"\"]}]}'"
+)
+
+
 def main() -> None:
-    target = sys.argv[1] if len(sys.argv) > 1 else ""
+    args = sys.argv[1:]
+    target = args[0] if args else ""
     if target not in PLANS:
-        sys.exit(f"uso: {sys.argv[0]} prod|staging")
+        sys.exit(USAGE)
+
+    expected_head = ""
+    if "--expect-head" in args:
+        i = args.index("--expect-head")
+        if i + 1 < len(args):
+            expected_head = args[i + 1]
+    if not expected_head:
+        sys.exit(
+            "ERROR: falta --expect-head.\n"
+            "El esquema del destino se calcula contra la base LOCAL, así que\n"
+            "exportar sin comprobar que van a la par es exportar a ciegas.\n\n"
+            + USAGE
+        )
+    assert_head_matches(expected_head)
+
     plan = PLANS[target]
     slugs: list[str] = plan["tenants"]  # type: ignore[assignment]
     emails: list[str] = plan["auth_emails"]  # type: ignore[assignment]
