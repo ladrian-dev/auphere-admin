@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 from nexus_worker.runtime.companion import build_companion_graph
 from nexus_worker.runtime.companion.graph import MAX_MODEL_STEPS
 from nexus_worker.runtime.companion.grounding import factual_claims, is_unsupported
@@ -110,6 +111,10 @@ def _steps(*scripts: list[ToolCall]):
     return _caller
 
 
+def _tool_choice(call: Any) -> Any:
+    return (call.extra or {}).get("tool_choice")
+
+
 async def _run(provider: InMemoryProvider, belt: Any, **state):
     graph = build_companion_graph(
         provider=provider, model=MODEL, checkpointer=MemorySaver(), toolbelt=belt
@@ -196,6 +201,47 @@ async def test_the_assistant_message_and_the_tool_result_go_back_to_the_provider
     assert json.loads(tool_msg["content"])["tokens"] == 1200
 
 
+async def test_the_thinking_blocks_survive_the_notes_and_the_closing_step() -> None:
+    """Perder los bloques de pensamiento al reordenar el estado es un 400 de
+    Anthropic en producción y en ningún test.
+
+    Las notas de CO-06 (presupuesto y expediente) se **añaden** al final y
+    no reordenan nada; el paso de cierre reenvía ``messages`` tal cual. Aquí
+    se mide justo eso: el mensaje del asistente sigue llevando sus bloques,
+    y los resultados de herramienta siguen inmediatamente detrás del suyo.
+    """
+    belt = FakeBelt(max_calls=2)
+    thinking = [{"type": "thinking", "thinking": "…", "signature": "sig"}]
+    provider = InMemoryProvider(
+        responder=lambda c: "",
+        tool_caller=lambda c: [
+            ToolCall(id=uuid.uuid4().hex[:8], name="console.get_usage", arguments={})
+        ],
+    )
+    original = provider.astream_with_tools
+
+    async def with_thinking(**kwargs: Any) -> Any:
+        async for kind, piece in original(**kwargs):
+            if kind == "assistant":
+                message = json.loads(piece)
+                message["thinking_blocks"] = thinking
+                yield ("assistant", json.dumps(message))
+            else:
+                yield (kind, piece)
+
+    provider.astream_with_tools = with_thinking  # type: ignore[method-assign]
+    await _run(provider, belt)
+
+    last = provider.calls[-1].messages
+    assistants = [m for m in last if m["role"] == "assistant"]
+    assert assistants, "el mensaje del asistente desapareció"
+    assert all(m.get("thinking_blocks") == thinking for m in assistants)
+    for i, message in enumerate(last):
+        if message["role"] == "tool":
+            previous = last[i - 1]
+            assert previous["role"] in {"assistant", "tool"}
+
+
 async def test_the_tools_are_offered_on_every_step() -> None:
     belt = FakeBelt()
     provider = InMemoryProvider(
@@ -221,7 +267,11 @@ async def test_two_rounds_of_tools_both_run() -> None:
 
 async def test_the_step_ceiling_stops_a_model_that_never_finishes() -> None:
     """Un modelo que se atasca alternando dos lecturas no se detiene solo, y
-    a la doceava llamada el usuario ya se fue."""
+    a la doceava llamada el usuario ya se fue.
+
+    Doce pasos con catálogo, y **una más sin él**: el paso de cierre de R6
+    (garantía E3). Un turno que se corta en seco es peor que uno que cuesta
+    una llamada más y dice dónde quedó."""
     belt = FakeBelt(max_calls=999)
     provider = InMemoryProvider(
         responder=lambda c: "",
@@ -230,7 +280,11 @@ async def test_the_step_ceiling_stops_a_model_that_never_finishes() -> None:
         ],
     )
     await _run(provider, belt)
-    assert len(provider.calls) == MAX_MODEL_STEPS
+    # Todas declaran el catálogo (§19.1); lo que separa los pasos de trabajo
+    # del cierre es ``tool_choice``, no la ausencia de herramientas.
+    working = [c for c in provider.calls if _tool_choice(c) is None]
+    assert len(working) == MAX_MODEL_STEPS
+    assert len(provider.calls) == MAX_MODEL_STEPS + 1
 
 
 # ── fases ──────────────────────────────────────────────────────────────
@@ -321,6 +375,240 @@ def test_the_six_factual_patterns_fire(answer: str) -> None:
 )
 def test_ordinary_prose_does_not_fire(answer: str) -> None:
     assert not factual_claims(answer)
+
+
+# ── §19.1 · la última llamada declara las herramientas ─────────────────
+
+
+async def test_the_closing_call_declares_tools_and_forbids_using_them() -> None:
+    """Tercer 400 del mismo camino: ``messages`` lleva mensajes de asistente
+    con ``tool_calls``, y Anthropic exige que la declaración de herramientas
+    siga presente —
+
+        Anthropic doesn't support tool calling without `tools=` param specified
+
+    Quitar las herramientas no es la forma de decir "ya no llames a nada":
+    la forma es ``tool_choice``. Y hace falta por sí misma, porque sin él el
+    modelo puede volver a llamar y el paso de cierre deja de serlo."""
+    belt = FakeBelt(max_calls=999)
+    provider = InMemoryProvider(
+        responder=lambda c: "",
+        tool_caller=lambda c: [
+            ToolCall(id=uuid.uuid4().hex[:8], name="console.get_usage", arguments={})
+        ],
+    )
+    await _run(provider, belt)
+
+    closing = provider.calls[-1]
+    # El historial que se reenvía SÍ lleva uso de herramientas: es lo que
+    # hace obligatoria la declaración.
+    assert any(m.get("tool_calls") for m in closing.messages)
+    assert closing.tools, "la llamada de cierre fue sin `tools`: 400 garantizado"
+    assert _tool_choice(closing) == "none"
+
+
+async def test_the_answer_after_an_action_declares_tools_too() -> None:
+    """El 400 apareció justo aquí: en el turno de respuesta, después de
+    aplicar y verificar. Es la misma llamada final con otro nombre."""
+    from tests.unit.test_companion_action_graph import (
+        FakeActionBelt,
+        FakeProposal,
+        base_state,
+    )
+
+    belt = FakeActionBelt(proposals=[FakeProposal()])
+    provider = InMemoryProvider(responder=lambda c: "hecho")
+    graph = build_companion_graph(
+        provider=provider, model=MODEL, checkpointer=MemorySaver(), toolbelt=belt
+    )
+    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+    async for _ in graph.astream_events(base_state(), config=config, version="v2"):
+        pass
+    async for _ in graph.astream_events(
+        Command(resume={"decision": "confirm", "note": None, "by": "u1", "at": "x"}),
+        config=config,
+        version="v2",
+    ):
+        pass
+
+    final = provider.calls[-1]
+    assert final.tools, "el turno de respuesta fue sin `tools`"
+    assert _tool_choice(final) == "none"
+
+
+async def test_without_a_catalogue_the_simple_path_is_kept() -> None:
+    """Un grafo sin juego de herramientas (CO-01) no tiene nada que declarar
+    y tampoco tiene historial de herramientas: no se le inventa un `tools`
+    vacío, que es otro cuerpo de petición sin probar."""
+    provider = InMemoryProvider(responder=lambda c: "no necesito leer nada")
+    graph = build_companion_graph(provider=provider, model=MODEL, checkpointer=MemorySaver())
+    async for _ in graph.astream_events(
+        {"user_message": "hola", "history": []},
+        config={"configurable": {"thread_id": str(uuid.uuid4())}},
+        version="v2",
+    ):
+        pass
+
+    assert provider.calls
+    assert all(not call.tools for call in provider.calls)
+    assert all(_tool_choice(call) is None for call in provider.calls)
+
+
+# ── §18 · el pensamiento que no se puede devolver ──────────────────────
+
+
+def test_summary_thinking_blocks_never_go_back_to_the_provider() -> None:
+    """Con ``display: "summarized"`` el proveedor devuelve bloques de
+    *resumen*: firma vacía y texto vacío. Anthropic los rechaza al recibirlos
+    de vuelta —``Invalid signature in thinking block``— y ese 400 vive en la
+    intersección de pensamiento activo + herramientas + segundo paso, que es
+    la casilla que ningún proveedor guionizado ocupa."""
+    from nexus_worker.runtime.companion.graph import _reproducible
+
+    assistant = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{"id": "t1"}],
+        "thinking_blocks": [
+            {"type": "thinking", "thinking": "", "signature": ""},
+            {"type": "thinking", "thinking": "", "signature": ""},
+        ],
+    }
+    ready = _reproducible(assistant)
+
+    assert "thinking_blocks" not in ready, "una lista vacía no es lo mismo que ausencia"
+    assert ready["tool_calls"] == assistant["tool_calls"]
+    assert assistant["thinking_blocks"], "no se muta el mensaje original"
+
+
+def test_signed_thinking_blocks_come_back_verbatim() -> None:
+    """La otra mitad, y es la que evita el 400 contrario: perderlos."""
+    from nexus_worker.runtime.companion.graph import _reproducible
+
+    signed = {"type": "thinking", "thinking": "primero leo el consumo", "signature": "AbC123=="}
+    assistant = {"role": "assistant", "content": None, "thinking_blocks": [signed]}
+
+    ready = _reproducible(assistant)
+
+    assert ready["thinking_blocks"] == [signed]
+    assert ready["thinking_blocks"][0] is signed, "byte a byte: el bloque no se reconstruye"
+
+
+def test_a_mixed_message_keeps_only_what_is_reproducible() -> None:
+    from nexus_worker.runtime.companion.graph import _reproducible
+
+    signed = {"type": "thinking", "thinking": "…", "signature": "sig"}
+    summary = {"type": "thinking", "thinking": "", "signature": ""}
+    ready = _reproducible(
+        {"role": "assistant", "content": None, "thinking_blocks": [summary, signed, summary]}
+    )
+    assert ready["thinking_blocks"] == [signed]
+
+
+async def test_the_loop_sends_back_an_assistant_the_provider_accepts() -> None:
+    """El filtro va donde se arma el mensaje que vuelve a ``messages``."""
+    belt = FakeBelt()
+    provider = InMemoryProvider(
+        responder=lambda c: "ok",
+        tool_caller=_steps([ToolCall(id="t1", name="console.get_usage", arguments={})]),
+    )
+    original = provider.astream_with_tools
+
+    async def summarised(**kwargs: Any) -> Any:
+        async for kind, piece in original(**kwargs):
+            if kind == "assistant":
+                message = json.loads(piece)
+                message["thinking_blocks"] = [{"type": "thinking", "thinking": "", "signature": ""}]
+                yield ("assistant", json.dumps(message))
+            else:
+                yield (kind, piece)
+
+    provider.astream_with_tools = summarised  # type: ignore[method-assign]
+    events, _final = await _run(provider, belt)
+
+    second = provider.calls[1].messages
+    assistant = next(m for m in second if m["role"] == "assistant")
+    assert "thinking_blocks" not in assistant
+    # Y el pensamiento que se pinta no depende de esto: sale del stream.
+    assert [n for n, _ in events if n == "tool.call.started"]
+
+
+# ── §17 · el nombre de cable ───────────────────────────────────────────
+
+
+def test_every_catalogue_tool_has_a_wire_name_the_provider_accepts() -> None:
+    """Anthropic rechaza el punto en ``tools[].name``, y las 28 herramientas
+    del catálogo lo llevan. Sin la traducción, **ningún turno con
+    herramientas funciona contra el proveedor real** — y no lo ve ninguna
+    suite, porque el proveedor guionizado acepta cualquier nombre."""
+    from nexus_worker.runtime.companion.tools import WIRE_NAME_PATTERN, wire_tools
+
+    from nexus_api.companion.tools.catalog import tool_specs
+
+    specs = tool_specs(mode="build")
+    assert specs, "el catálogo no puede estar vacío"
+    # El punto es justamente lo que rompe: si un día desaparece del catálogo,
+    # este test deja de medir nada y hay que enterarse.
+    assert any("." in s["function"]["name"] for s in specs)
+
+    translated, back = wire_tools(specs)
+    for original, wired in zip(specs, translated, strict=True):
+        wire = wired["function"]["name"]
+        assert WIRE_NAME_PATTERN.match(wire), f"el proveedor rechazaría {wire!r}"
+        assert back[wire] == original["function"]["name"], "la vuelta atrás no es exacta"
+    assert len(back) == len(specs), "dos herramientas caen en el mismo nombre de cable"
+
+
+def test_a_collision_breaks_when_the_table_is_built() -> None:
+    """Al arrancar el turno, no en producción con una llamada despachada a
+    la herramienta equivocada."""
+    from nexus_worker.runtime.companion.tools import WireNameCollision, wire_tools
+
+    def spec(name: str) -> dict[str, Any]:
+        return {"type": "function", "function": {"name": name, "description": "", "parameters": {}}}
+
+    with pytest.raises(WireNameCollision):
+        wire_tools([spec("console.get_usage"), spec("console__get_usage")])
+
+
+async def test_the_provider_sees_wire_names_and_the_drawer_sees_catalogue_names() -> None:
+    """Los dos sentidos, y de forma consistente. El resto del sistema —los
+    eventos, la cita, el ejecutor— nunca ve el nombre de cable."""
+    belt = FakeBelt()
+    provider = InMemoryProvider(
+        responder=lambda c: "listo",
+        tool_caller=_steps([ToolCall(id="t1", name="console__get_usage", arguments={})]),
+    )
+    events, _final = await _run(provider, belt)
+
+    # Lo que se declara al proveedor.
+    offered = {t["function"]["name"] for call in provider.calls for t in (call.tools or ())}
+    assert offered == {"console__get_usage"}
+
+    # Lo que ve el ejecutor y lo que ve el cajón: el nombre del catálogo.
+    assert [name for name, _ in belt.calls] == ["console.get_usage"]
+    started = next(d for n, d in events if n == "tool.call.started")
+    assert started["name"] == "console.get_usage"
+    completed = next(d for n, d in events if n == "tool.call.completed")
+    assert completed["name"] == "console.get_usage"
+
+
+async def test_the_tool_result_matches_the_name_the_model_emitted() -> None:
+    """Un mensaje de asistente cuyo ``tool_use.name`` no coincida con su
+    ``tool_result`` correlativo es otro 400 — y de los que no salen en
+    ningún test con proveedor guionizado."""
+    belt = FakeBelt()
+    provider = InMemoryProvider(
+        responder=lambda c: "ok",
+        tool_caller=_steps([ToolCall(id="t1", name="console__get_usage", arguments={})]),
+    )
+    await _run(provider, belt)
+
+    second = provider.calls[1].messages
+    assistant = next(m for m in second if m["role"] == "assistant")
+    tool_msg = next(m for m in second if m["role"] == "tool")
+    assert assistant["tool_calls"][0]["function"]["name"] == tool_msg["name"]
+    assert "." not in tool_msg["name"]
 
 
 # ── presupuesto visible ────────────────────────────────────────────────

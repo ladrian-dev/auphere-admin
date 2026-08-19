@@ -110,6 +110,14 @@ COPY --from=builder /build/packages /app/packages
 # override — p. ej. ``python /app/scripts/seed_synthetic.py --wipe``.
 COPY scripts /app/scripts
 
+# El documento de capacidades y límites del Companion (CO-08, §5 de
+# CONTRACT-V2). Es la fuente que sirve ``GET /console/capabilities``, así
+# que tiene que viajar en la imagen: sin él la herramienta falla y el
+# Companion —correctamente— no afirma qué existe y qué no. Vive en
+# ``docs/`` porque es un documento que se edita a mano y se revisa como
+# documentación, no como código.
+COPY docs/companion/capabilities.yaml /app/docs/companion/capabilities.yaml
+
 WORKDIR /app/apps/api
 
 ENV PYTHONPATH=/app/apps/api/src:/app/apps/channels/src:/app/apps/worker/src:/app/apps/mcp/src:/app/packages/ucm-schema/py/src

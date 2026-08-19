@@ -127,7 +127,11 @@ describe("Timeline — the intake is chips, not a form", () => {
     const user = userEvent.setup();
     const props = renderTimeline({ state: build("run-a", [f.intakeMissing(1)]) });
     expect(document.querySelector("form")).toBeNull();
-    const chip = screen.getByRole("button", { name: /Responder «Qué NO debe hacer el agente»/ });
+    // Matched on the stem: the wording of this particular slot is ours and
+    // grew in the Ola 2 lane (v2 §3.3). What the test is about is that the
+    // chip is a BUTTON that hands the slot to the composer, not the exact
+    // sentence — pinning the sentence makes copy edits look like defects.
+    const chip = screen.getByRole("button", { name: /Responder «Qué NO debe hacer el agente/ });
     await user.click(chip);
     expect(props.onAnswerSlot).toHaveBeenCalledWith(expect.objectContaining({ key: "forbidden_behaviour" }));
     expect(screen.getByText(/No dar precios por WhatsApp/)).toBeInTheDocument();

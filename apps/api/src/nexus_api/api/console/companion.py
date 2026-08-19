@@ -55,13 +55,16 @@ from nexus_api.api import companion_streaming as streaming
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.companion.tools.actions import (
     DECISION_STATUS,
+    STATUS_APPLIED,
     STATUS_EXPIRED,
     STATUS_PROPOSED,
     expires_at_of,
     load_action,
 )
+from nexus_api.companion.tools.support import SUPPORT_KINDS
 from nexus_api.config import get_settings
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
+from nexus_api.core.otel_metrics import record_companion
 from nexus_api.core.principal_context import (
     apply_principal_to_session,
     principal_context,
@@ -72,6 +75,7 @@ from nexus_api.db.models.companion import (
     RUN_COMPLETED,
     RUN_ERROR,
     RUN_INTERRUPTED,
+    RUN_PAUSED,
     RUN_RUNNING,
     TERMINAL_RUN_STATUSES,
     CompanionAction,
@@ -85,7 +89,7 @@ from nexus_api.db.models.console_notification import (
 )
 
 from .deps import resolve_mapping
-from .playground import MonthWindow, month_window, retry_after_seconds
+from .playground import MonthWindow, month_window
 from .schemas_companion import (
     CompanionActionOut,
     CompanionBudgetOut,
@@ -152,15 +156,48 @@ class CompanionCaller:
         return self.principal.partner
 
 
-def companion_caller() -> Callable[..., Awaitable[CompanionCaller]]:
+def _companion_disabled() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "companion_disabled",
+            "detail": (
+                "The Companion is not enabled for this partner yet. Ask Auphere to turn it on."
+            ),
+        },
+    )
+
+
+def companion_caller(*, write: bool = True) -> Callable[..., Awaitable[CompanionCaller]]:
+    """La puerta del Companion: ``companion:use`` **Y** la bandera (§10).
+
+    Con ``write=False`` solo se exige el permiso. Es lo que hace que apagar
+    la bandera **no borre la historia**: un hilo que ya existe se sigue
+    leyendo, con sus runs y sus eventos, porque lo que pasó pasó y esconderlo
+    sería peor que no haberlo permitido. Lo que se cierra es empezar trabajo
+    nuevo.
+
+    ``DELETE …/runs/{id}`` va también sin bandera, y es deliberado: si el
+    interruptor se apaga con un turno en vuelo, el botón *Detener* tiene que
+    seguir funcionando. Un freno de emergencia que no se puede pisar es peor
+    que no tenerlo.
+    """
     principal_dep = require_console_principal("companion:use")
 
     async def _dependency(
         principal: ConsolePrincipal = Depends(principal_dep),
     ) -> CompanionCaller:
+        if write and not principal.partner.companion_enabled:
+            raise _companion_disabled()
         return CompanionCaller(principal=principal)
 
     return _dependency
+
+
+#: Azúcar para las rutas de lectura. Se nombra aparte para que en cada
+#: endpoint se lea de un vistazo de qué lado de la bandera está.
+def companion_reader() -> Callable[..., Awaitable[CompanionCaller]]:
+    return companion_caller(write=False)
 
 
 async def _thread_row(
@@ -292,9 +329,35 @@ async def notify_cap_reached(partner_id: uuid.UUID, window: MonthWindow) -> None
         log.exception("console.companion.cap_notify_failed", partner_id=str(partner_id))
 
 
+def _budget_paused(used: int, cap: int, window: MonthWindow) -> HTTPException:
+    """El tope mensual alcanzado: **409, no 429** (§6.2 de CONTRACT-V2).
+
+    429 significa *vuelve a intentarlo*, y aquí reintentar no sirve de nada:
+    no pasa el tiempo, pasa que alguien sube el tope. Un ``Retry-After``
+    sería mentira — le diría al navegador que espere un mes.
+
+    El cuerpo lleva la instantánea del presupuesto para que la interfaz
+    pinte la explicación sin una segunda petición, y para que lo que pinte
+    sea un **estado de tope alcanzado y no un error**: el hilo sigue ahí, la
+    historia sigue ahí y la confirmación pendiente —si la había— sigue
+    siendo respondible. Rojo de error para algo que se resuelve subiendo un
+    número enseña a temer la herramienta.
+    """
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "budget_paused",
+            "used": used,
+            "cap": cap,
+            "period": window.period,
+            "resets_at": window.next_start.isoformat(),
+        },
+    )
+
+
 @router.get("/companion/budget", response_model=CompanionBudgetOut)
 async def get_budget(
-    caller: CompanionCaller = Depends(companion_caller()),
+    caller: CompanionCaller = Depends(companion_reader()),
     session: AsyncSession = Depends(get_db_session),
 ) -> CompanionBudgetOut:
     """Gasto del Companion del partner en el mes en curso, en tokens (C9)."""
@@ -308,7 +371,7 @@ async def get_budget(
 
 @router.get("/companion/threads", response_model=list[CompanionThreadOut])
 async def list_threads(
-    caller: CompanionCaller = Depends(companion_caller()),
+    caller: CompanionCaller = Depends(companion_reader()),
     session: AsyncSession = Depends(get_db_session),
     include_archived: bool = Query(default=False),
     limit: int = Query(default=50, ge=1, le=200),
@@ -352,6 +415,9 @@ async def create_thread(
         session.add(thread)
         await session.flush()
         await session.refresh(thread)
+        # Denominador de la primera razón del §17 ("tareas completadas sin
+        # salir del cajón / hilos abiertos").
+        record_companion("companion.thread.opened")
         return _thread_out(thread, body.client_ref)
 
 
@@ -489,13 +555,15 @@ async def _next_message_seq(session: AsyncSession, thread_id: uuid.UUID) -> int:
     response_model=CompanionRunStartOut,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
-        429: {
+        429: {"description": "Too many turns per minute, or too many already running."},
+        409: {
             "description": (
-                "Monthly Companion token cap reached (Retry-After set), too many "
-                "turns per minute, or too many turns already running."
+                "Thread is archived, or the partner is over its monthly Companion "
+                "token cap (``detail.code = 'budget_paused'``). The pause is derived: "
+                "raising the cap resumes every thread of the partner at once."
             )
         },
-        409: {"description": "Thread is archived."},
+        403: {"description": "The Companion is not enabled for this partner."},
     },
 )
 async def start_run(
@@ -531,15 +599,7 @@ async def start_run(
     cap = partner.companion_monthly_token_cap
     if used_before >= cap:
         await notify_cap_reached(partner.id, window)
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=(
-                f"Companion token cap reached for {window.period}: {used_before:,} of "
-                f"{cap:,} tokens used. The cap resets on "
-                f"{window.next_start:%Y-%m-%d} (UTC); contact Auphere to raise it."
-            ),
-            headers={"Retry-After": str(retry_after_seconds(window))},
-        )
+        raise _budget_paused(used_before, cap, window)
 
     principal_id = caller.principal_id
     with principal_context(principal_id):
@@ -628,6 +688,98 @@ async def _thread_history(
     return [{"role": role, "content": content} for role, content in rows if content]
 
 
+async def _budget_gate(
+    handle: streaming.CompanionRunHandle,
+    *,
+    used_before: int,
+    cap: int,
+    window: MonthWindow,
+) -> bool:
+    """¿Ha cruzado este turno el tope mensual del partner? (§6.3)
+
+    Devuelve ``True`` una sola vez: la marca en ``extras`` es lo que impide
+    que un turno con varias llamadas al modelo emita dos ``budget.paused``.
+
+    Al tripar se emite el evento y el turno se corta, pero **no se pierde
+    nada**: la respuesta parcial ya está acumulada en ``extras['answer']``,
+    los tokens en el ``handle`` y la historia en la base. Un hilo pausado
+    que pierde la historia no es una pausa, es un fallo con otro nombre.
+    """
+    if handle.extras.get("budget_paused"):
+        return True
+    used = used_before + handle.total_input_tokens + handle.total_output_tokens
+    if used < cap:
+        return False
+    handle.extras["budget_paused"] = True
+    await handle.emit(
+        "budget.paused",
+        {
+            "used": used,
+            "cap": cap,
+            "period": window.period,
+            "resets_at": window.next_start.isoformat(),
+            # Único valor hoy; el enum queda abierto porque el día que haya
+            # tope por miembro habrá que distinguirlos, y añadir la clave
+            # entonces sería un cambio de contrato en caliente.
+            "scope": "partner",
+        },
+    )
+    log.info(
+        "companion.budget.paused",
+        run_id=str(handle.run_id),
+        thread_id=str(handle.thread_id),
+        used=used,
+        cap=cap,
+        period=window.period,
+    )
+    return True
+
+
+async def _emit_support_ticket(
+    handle: streaming.CompanionRunHandle,
+    action_id: uuid.UUID | None,
+) -> None:
+    """``support.ticket`` (§4.5), si esta continuación aplicó un ticket.
+
+    ``action_id`` solo llega cuando el ``resume`` confirmó una acción de
+    soporte, así que un turno normal no paga ni una consulta. El
+    identificador y la expectativa salen de ``companion.actions.result``,
+    donde los dejó la lista blanca ``APPLY_ECHO`` al aplicar: nacen en la
+    respuesta del endpoint y sin este rodeo no habría de dónde sacarlos
+    para pintar la tarjeta.
+
+    Nunca rompe el turno: si la fila no se pudo leer, el ticket existe
+    igual —está en la auditoría, en la notificación y en el log— y lo único
+    que falta es el adorno de la tarjeta.
+    """
+    if action_id is None or handle.extras.get("support_emitted"):
+        return
+    handle.extras["support_emitted"] = True
+    try:
+        from nexus_api.db.base import get_sessionmaker
+
+        sm = get_sessionmaker()
+        async with sm() as session, session.begin():
+            await apply_principal_to_session(session, handle.principal_id)
+            action = await session.get(CompanionAction, action_id)
+            if action is None or action.status != STATUS_APPLIED:
+                return
+            result = dict(action.result or {})
+            ticket_ref = str(result.get("ticket_ref") or "")
+            if not ticket_ref:
+                return
+            payload = {
+                "action_id": str(action_id),
+                "ticket_ref": ticket_ref,
+                "category": str(result.get("category") or ""),
+                "topic": str(result.get("topic") or ""),
+                "sla": str(result.get("sla") or ""),
+            }
+        await handle.emit("support.ticket", payload)
+    except Exception:  # pragma: no cover - un adorno no tumba un turno
+        log.exception("companion.support_ticket_event_failed", action_id=str(action_id))
+
+
 def _make_driver(
     *,
     principal: ConsolePrincipal,
@@ -642,6 +794,7 @@ def _make_driver(
     window: MonthWindow,
     mode: str = "build",
     resume: dict[str, Any] | None = None,
+    support_action: uuid.UUID | None = None,
 ) -> streaming.CompanionDriver:
     """El driver: mueve el grafo y vuelca sus eventos al log durable.
 
@@ -723,45 +876,97 @@ def _make_driver(
                         source=SOURCE_COMPANION,
                     )
                 )
-            async for event in graph.astream_events(entry, config=config, version="v2"):
-                if event.get("event") == "on_chain_end" and event.get("name") == "respond":
-                    # El veredicto de R1 lo calcula el grafo (una sola vez,
-                    # con el estado completo) y viaja en la salida del nodo
-                    # de cierre. El driver solo lo recoge para meterlo en el
-                    # evento terminal: así la métrica se toma en un punto
-                    # que se ejecuta siempre.
-                    output = (event.get("data") or {}).get("output")
-                    if isinstance(output, dict):
-                        handle.extras["unsupported"] = bool(output.get("unsupported"))
-                    continue
-                if event.get("event") != "on_custom_event":
-                    continue
-                name = str(event.get("name") or "")
-                data = event.get("data")
-                if not isinstance(data, dict):
-                    continue
-                if name == "cost.updated":
-                    handle.total_input_tokens += int(data.get("input_tokens") or 0)
-                    handle.total_output_tokens += int(data.get("output_tokens") or 0)
-                    handle.model = data.get("model") or handle.model
-                if name == "context.updated":
-                    handle.last_input_tokens = int(data.get("input_tokens") or 0)
-                if name == "text.delta":
-                    handle.extras.setdefault("answer", []).append(str(data.get("text") or ""))
-                if name == "hitl.requested":
-                    # El grafo va a parar en el ``interrupt()`` justo después
-                    # de esto. Se marca aquí y no leyendo la base al terminar
-                    # porque es el único punto donde consta sin ambigüedad, y
-                    # porque una consulta más por turno para saber algo que
-                    # acaba de pasar delante es trabajo regalado.
-                    handle.extras["awaiting_action"] = str(data.get("action_id") or "")
-                try:
-                    await handle.emit(name, data)
-                except streaming.UnknownCompanionEvent:
-                    # El grafo emitió algo fuera del catálogo. Se registra y
-                    # se sigue: el turno del usuario no se tira por un
-                    # evento de telemetría que nadie declaró.
-                    log.warning("companion.event.unknown", sse_event=name, run_id=str(run_id))
+            # ``aclosing`` y no un ``async for`` a secas: al tripar la puerta
+            # del presupuesto se sale del bucle, y un generador que solo se
+            # cierra cuando le toca al recolector es un turno que sigue
+            # gastando un rato más.
+            stream = graph.astream_events(entry, config=config, version="v2")
+            async with _contextlib.aclosing(stream):
+                async for event in stream:
+                    if event.get("event") == "on_chain_end" and event.get("name") == "respond":
+                        # El veredicto de R1 lo calcula el grafo (una sola vez,
+                        # con el estado completo) y viaja en la salida del nodo
+                        # de cierre. El driver solo lo recoge para meterlo en el
+                        # evento terminal: así la métrica se toma en un punto
+                        # que se ejecuta siempre.
+                        output = (event.get("data") or {}).get("output")
+                        if isinstance(output, dict):
+                            handle.extras["unsupported"] = bool(output.get("unsupported"))
+                        continue
+                    if event.get("event") != "on_custom_event":
+                        continue
+                    name = str(event.get("name") or "")
+                    data = event.get("data")
+                    if not isinstance(data, dict):
+                        continue
+                    if name == "cost.updated":
+                        handle.total_input_tokens += int(data.get("input_tokens") or 0)
+                        handle.total_output_tokens += int(data.get("output_tokens") or 0)
+                        handle.model = data.get("model") or handle.model
+                    if name == "context.updated":
+                        handle.last_input_tokens = int(data.get("input_tokens") or 0)
+                    if name == "text.delta":
+                        handle.extras.setdefault("answer", []).append(str(data.get("text") or ""))
+                    if name == "hitl.requested":
+                        # El grafo va a parar en el ``interrupt()`` justo después
+                        # de esto. Se marca aquí y no leyendo la base al terminar
+                        # porque es el único punto donde consta sin ambigüedad, y
+                        # porque una consulta más por turno para saber algo que
+                        # acaba de pasar delante es trabajo regalado.
+                        handle.extras["awaiting_action"] = str(data.get("action_id") or "")
+                        record_companion("companion.hitl.proposed")
+                    if name == "hitl.resolved" and data.get("decision") == "cancel":
+                        # La razón que MANDA del §17: por encima del 15 % el
+                        # Companion propone mal, y proponer mal enseña a
+                        # desconfiar de él.
+                        record_companion("companion.hitl.cancelled")
+                    if name == "verify.result":
+                        record_companion("companion.verify.total")
+                        if data.get("ok"):
+                            record_companion("companion.task.completed")
+                        else:
+                            record_companion("companion.verify.failed")
+                        # §4.5: el evento del ticket va DESPUÉS del 2xx de
+                        # ``console.apply`` y ANTES de ``verify.result``. Como
+                        # este bucle es secuencial, emitirlo aquí —antes de
+                        # relanzar el que estamos mirando— cumple el orden por
+                        # construcción y no por suerte.
+                        await _emit_support_ticket(handle, support_action)
+                    try:
+                        await handle.emit(name, data)
+                    except streaming.UnknownCompanionEvent:
+                        # El grafo emitió algo fuera del catálogo. Se registra y
+                        # se sigue: el turno del usuario no se tira por un
+                        # evento de telemetría que nadie declaró.
+                        log.warning("companion.event.unknown", sse_event=name, run_id=str(run_id))
+                    if name == "cost.updated" and await _budget_gate(
+                        handle,
+                        used_before=used_before,
+                        cap=cap,
+                        window=window,
+                    ):
+                        # La puerta se comprueba cada vez que el turno reporta
+                        # su gasto, y al tripar se sale del bucle: el
+                        # generador se cierra y el grafo no vuelve a llamar al
+                        # proveedor.
+                        #
+                        # **Hoy eso es una vez por turno, no una por llamada
+                        # al modelo.** ``cost.updated`` lo emite el nodo
+                        # ``respond`` con los totales acumulados
+                        # (``runtime/companion/graph.py``), así que el corte
+                        # llega al final del turno que cruza el tope, no en
+                        # mitad de él. El efecto observable del §6.2 se cumple
+                        # entero —409 al trabajo nuevo, 202 al cierre, la
+                        # historia y los tokens conservados—; lo que no se
+                        # cumple es el "como mucho una llamada de más" del
+                        # §6.3: el exceso puede ser un turno entero.
+                        #
+                        # La puerta por llamada tiene que vivir donde se llama
+                        # al modelo, que es la zona del grafo. Este bucle ya
+                        # está escrito para aprovecharla el día que
+                        # ``cost.updated`` se emita por llamada: la condición
+                        # no cambia, solo se dispara antes.
+                        break
 
         # La barra del partner se mueve sin polling: lo gastado antes + este
         # turno. Va ANTES del evento terminal para que el cajón lo pinte en
@@ -795,17 +1000,22 @@ def _make_on_complete(
 ) -> streaming.OnComplete:
     async def _on_complete(handle: streaming.CompanionRunHandle) -> None:
         answer = "".join(handle.extras.get("answer") or [])
+        # La pausa por presupuesto MANDA sobre el aparcado del HITL: si el
+        # turno se paró de verdad, no está esperando a nadie. Son dos
+        # esperas distintas y confundirlas dejaría la fila en ``running``
+        # para siempre, con un run que ya no va a continuar.
+        paused = bool(handle.extras.get("budget_paused"))
         await _finalise_run(
             principal_id=principal_id,
             run_id=handle.run_id,
             thread_id=handle.thread_id,
-            status=handle.final_status or RUN_ERROR,
+            status=RUN_PAUSED if paused else (handle.final_status or RUN_ERROR),
             error=handle.final_error,
             input_tokens=handle.total_input_tokens,
             output_tokens=handle.total_output_tokens,
             model=handle.model,
             answer=answer,
-            parked=bool(handle.extras.get("awaiting_action")),
+            parked=(not paused) and bool(handle.extras.get("awaiting_action")),
         )
         if used_before + handle.total_input_tokens + handle.total_output_tokens >= cap:
             await notify_cap_reached(partner_id, window)
@@ -985,7 +1195,7 @@ async def _owned_run(session: AsyncSession, run_id: uuid.UUID, principal_id: str
 )
 async def list_thread_runs(
     thread_id: Annotated[uuid.UUID, Path(...)],
-    caller: CompanionCaller = Depends(companion_caller()),
+    caller: CompanionCaller = Depends(companion_reader()),
     session: AsyncSession = Depends(get_db_session),
 ) -> CompanionThreadRunsOut:
     """Los runs de un hilo, del más viejo al más nuevo (contrato v1.1, §5.2).
@@ -1036,7 +1246,7 @@ async def list_thread_runs(
 @router.get("/companion/runs/{run_id}/events", response_model=CompanionEventsOut)
 async def get_run_events(
     run_id: Annotated[uuid.UUID, Path(...)],
-    caller: CompanionCaller = Depends(companion_caller()),
+    caller: CompanionCaller = Depends(companion_reader()),
     session: AsyncSession = Depends(get_db_session),
     redis: Redis = Depends(get_redis),
     since_seq: int = Query(default=0, ge=0),
@@ -1065,7 +1275,7 @@ async def get_run_events(
 @router.get("/companion/runs/{run_id}/stream")
 async def stream_run(
     run_id: Annotated[uuid.UUID, Path(...)],
-    caller: CompanionCaller = Depends(companion_caller()),
+    caller: CompanionCaller = Depends(companion_reader()),
     session: AsyncSession = Depends(get_db_session),
     redis: Redis = Depends(get_redis),
     since_seq: int = Query(default=0, ge=0),
@@ -1132,7 +1342,7 @@ async def stream_run(
 @router.delete("/companion/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_run(
     run_id: Annotated[uuid.UUID, Path(...)],
-    caller: CompanionCaller = Depends(companion_caller()),
+    caller: CompanionCaller = Depends(companion_reader()),
     session: AsyncSession = Depends(get_db_session),
     redis: Redis = Depends(get_redis),
 ) -> None:
@@ -1191,6 +1401,12 @@ def _action_out(action: CompanionAction, ttl: float) -> CompanionActionOut:
         decided_by=action.decided_by,
         applied_at=action.applied_at,
         ok=result.get("verified") if isinstance(result.get("verified"), bool) else None,
+        # §19.4. Salen de ``companion.actions.result``, donde los dejó la
+        # lista blanca ``APPLY_ECHO`` al aplicar. Nulos hasta que se aplica,
+        # y nulos para siempre en los ``kind`` que no son de soporte: el
+        # mapa no tiene entrada para ellos.
+        ticket_ref=str(result["ticket_ref"]) if result.get("ticket_ref") else None,
+        sla=str(result["sla"]) if result.get("sla") else None,
     )
 
 
@@ -1201,7 +1417,7 @@ def _action_out(action: CompanionAction, ttl: float) -> CompanionActionOut:
 )
 async def get_action(
     action_id: Annotated[uuid.UUID, Path(...)],
-    caller: CompanionCaller = Depends(companion_caller()),
+    caller: CompanionCaller = Depends(companion_reader()),
     session: AsyncSession = Depends(get_db_session),
 ) -> CompanionActionOut:
     """Una acción propia, con la caducidad aplicada al leer.
@@ -1363,6 +1579,11 @@ async def resume_run(
         cap=cap,
         window=window,
         mode=mode,
+        # Solo cuando la acción confirmada ES de soporte. Así un turno
+        # normal no paga ni una consulta extra por una función que no usa.
+        support_action=(
+            action.id if body.decision == "confirm" and action.kind in SUPPORT_KINDS else None
+        ),
         resume={
             "decision": body.decision,
             "note": body.note,
@@ -1446,7 +1667,16 @@ async def _revalidate_state_hash(
     )
     drifted = True
     async with belt:
-        builder = ProposalBuilder(read=belt.read)
+        # ``checked`` (CO-08) es parte de la propuesta ORIGINAL, no del
+        # estado fresco: son las lecturas de aquel turno. Sin devolvérselo
+        # al constructor, rehacer un ticket de soporte fallaría por falta de
+        # expediente y toda confirmación de soporte saldría 412.
+        builder = ProposalBuilder(
+            read=belt.read,
+            checked=tuple(
+                str(c) for c in (dict(payload.get("preview") or {}).get("checked") or [])
+            ),
+        )
         try:
             fresh = await builder.build(action.kind, args)
         except ProposalRefused:

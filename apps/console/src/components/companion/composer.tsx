@@ -1,11 +1,13 @@
 "use client";
 
-import { Send, Square } from "lucide-react";
+import { PauseCircle, Send, Square } from "lucide-react";
 import * as React from "react";
 
-import { Button, Textarea } from "@nexus/ui";
+import { Button, Textarea, formatDate, formatNumber } from "@nexus/ui";
 
-import { useT } from "@/i18n/client";
+import { useLocale, useT } from "@/i18n/client";
+
+import type { BudgetPause } from "./types";
 
 export const MAX_PROMPT = 8000;
 
@@ -19,12 +21,25 @@ export const MAX_PROMPT = 8000;
  *
  * Consult vs Build is an act of the USER, never of the model (§4.2).
  * Consult is the default because it is safe by omission: read-only tools.
+ *
+ * **The cap is a pause, not an error** (§6 of CONTRACT-V2). When it is
+ * reached, only this box goes quiet: the thread stays, the history stays,
+ * and a pending confirmation stays answerable, because answering one does
+ * not start new work. The explanation says what unblocks it — raising the
+ * cap — because a disabled control with no way out is a wall. And none of
+ * it is red: red for something that is fixed by raising a number teaches
+ * people to fear the tool.
  */
 type Props = {
   value: string;
   mode: "consult" | "build";
   busy: boolean;
   blocked: boolean;
+  /** The budget snapshot of §6.4, when we have it (the `budget.paused`
+   *  event, or the body of the 409). Carries the numbers. */
+  paused: BudgetPause | null;
+  /** The degenerate case: `budget.updated.exhausted` told us the cap was
+   *  reached but we have no snapshot. Same state, fewer specifics. */
   exhausted: boolean;
   onChange: (v: string) => void;
   onSend: () => void;
@@ -33,12 +48,14 @@ type Props = {
 };
 
 export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Composer(
-  { value, mode, busy, blocked, exhausted, onChange, onSend, onStop, onMode },
+  { value, mode, busy, blocked, paused, exhausted, onChange, onSend, onStop, onMode },
   ref,
 ) {
   const t = useT();
+  const locale = useLocale();
   const tooLong = value.length > MAX_PROMPT;
-  const canSend = value.trim().length > 0 && !tooLong && !busy && !blocked && !exhausted;
+  const halted = paused !== null || exhausted;
+  const canSend = value.trim().length > 0 && !tooLong && !busy && !blocked && !halted;
   const hintId = React.useId();
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -87,7 +104,7 @@ export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Co
           rows={2}
           value={value}
           maxLength={MAX_PROMPT + 1}
-          disabled={exhausted}
+          disabled={halted}
           aria-label={t("companion.composer.label")}
           aria-invalid={tooLong || undefined}
           placeholder={t("companion.composer.placeholder")}
@@ -112,8 +129,34 @@ export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Co
         </p>
       ) : null}
       {blocked ? <p className="mt-1 text-xs text-pretty text-muted-foreground">{t("companion.composer.blocked")}</p> : null}
-      {exhausted ? (
-        <p className="mt-1 text-xs text-pretty text-status-danger">{t("companion.meter.exhausted.body")}</p>
+
+      {/* A change in what you CAN DO, not only in what you see, so it is
+          announced. Polite: `assertive` belongs to `hitl.requested` alone
+          (§14), and this can wait for a gap in the speech. */}
+      {halted ? (
+        <div role="status" aria-live="polite" className="mt-2 min-w-0 rounded-sm border border-border bg-muted px-3 py-2">
+          <p className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
+            <PauseCircle aria-hidden="true" className="mt-px size-4 shrink-0" />
+            <span className="min-w-0 text-pretty">
+              <span className="font-medium text-foreground">{t("companion.paused.title")}</span>{" "}
+              {paused
+                ? t("companion.paused.body", {
+                    used: formatNumber(paused.used, locale),
+                    cap: formatNumber(paused.cap, locale),
+                  })
+                : t("companion.meter.exhausted.body")}
+            </span>
+          </p>
+          {/* Without the way out, a disabled box is just a wall. */}
+          <p className="mt-1 pl-5 text-xs text-pretty text-muted-foreground">{t("companion.paused.unblock")}</p>
+          {paused?.resetsAt ? (
+            <p className="mt-px pl-5 text-xs text-muted-foreground">
+              {t("companion.meter.month.resets", { date: formatDate(paused.resetsAt, locale) })}
+            </p>
+          ) : null}
+          {/* The thread is not gone and neither is anything owed. */}
+          <p className="mt-1 pl-5 text-xs text-pretty text-muted-foreground">{t("companion.paused.kept")}</p>
+        </div>
       ) : null}
     </div>
   );

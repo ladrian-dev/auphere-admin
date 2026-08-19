@@ -117,6 +117,10 @@ class CompanionToolbelt:
     #: Lo que falta para poder proponer, si algo falta. El grafo lo emite
     #: como ``intake.missing`` al cerrar el turno.
     missing_slots: list[dict[str, Any]] = field(default_factory=list)
+    #: Pruebas hechas en este turno, por referencia de cliente (CO-05). El
+    #: grafo las mete en ``verify.result.trial`` y ``propose_publish`` las lee
+    #: para avisar —nunca para prohibir— si nadie probó.
+    trials: dict[str, Any] = field(default_factory=dict)
     #: Firmas de llamadas ya hechas en este turno. Repetir una lectura
     #: idéntica no aporta nada y gasta ventana de contexto.
     _seen: dict[str, str] = field(default_factory=dict)
@@ -207,6 +211,9 @@ class CompanionToolbelt:
         if spec.tool_class == "mutates":
             self.calls_made += 1
             return await self._apply_by_id(spec, arguments, started)
+        if spec.tool_class == "trial":
+            self.calls_made += 1
+            return await self._trial(spec, arguments, started)
 
         signature = f"{name}:{json.dumps(arguments, sort_keys=True, default=str)}"
         if signature in self._seen:
@@ -307,6 +314,60 @@ class CompanionToolbelt:
 
     # ── propuesta ──────────────────────────────────────────────────────
 
+    async def _trial(
+        self, spec: ToolSpec, arguments: dict[str, Any], started: float
+    ) -> ToolOutcome:
+        """Prueba el agente del cliente por el playground (CO-05).
+
+        No escribe nada del cliente y por eso no pasa por
+        ``propose → confirm → apply``. Lo que deja es un **hecho del turno**
+        —se probó, con estos mensajes, con este resultado— que el grafo mete
+        en ``verify.result.trial`` y que ``propose_publish`` lee para avisar.
+
+        El resultado que vuelve al modelo lleva si respondió y cuánto tardó,
+        **nunca el texto de la respuesta del agente** (§7 del contrato).
+        """
+        from nexus_api.companion.tools.playground import parse_probes, run_trial
+
+        ref = str(arguments.get("client_ref") or "")
+        probes = parse_probes(str(arguments.get("probes") or ""))
+        if self._client is None:  # pragma: no cover - uso fuera del ``async with``
+            raise RuntimeError("CompanionToolbelt se usa dentro de 'async with'")
+        # El sujeto va puesto durante TODA la prueba, no solo en la primera
+        # petición: crear el hilo, arrancar cada turno y seguir su stream son
+        # llamadas distintas y las tres tienen que ir a nombre de la persona.
+        with acting_as(self.actor):
+            record, error = await run_trial(self._client, ref=ref, probes=probes)
+        if error is not None or record is None:
+            return self._failed(
+                spec.name,
+                spec.label,
+                error or ToolError("unavailable", "La prueba no se pudo ejecutar."),
+                started,
+            )
+
+        self.trials[ref] = record
+        payload = record.as_payload()
+        citation = Citation(
+            citation_id=uuid.uuid4().hex[:12],
+            claim=(
+                f"Prueba del agente de {ref} "
+                f"({len(record.turns)} mensajes, "
+                f"{'todos pasaron' if record.ok else 'alguno falló'})"
+            ),
+            source=f"playground:{record.thread_id}",
+            fetched_at=datetime.now(UTC).isoformat(),
+        )
+        self.citations.append(citation)
+        return ToolOutcome(
+            name=spec.name,
+            label=spec.label,
+            ok=True,
+            content=json.dumps(payload, ensure_ascii=False),
+            latency_ms=_elapsed(started),
+            citation=citation,
+        )
+
     async def _propose(
         self, spec: ToolSpec, arguments: dict[str, Any], started: float
     ) -> ToolOutcome:
@@ -323,7 +384,16 @@ class CompanionToolbelt:
             ProposalRefused,
         )
 
-        builder = ProposalBuilder(read=self.read)
+        # ``checked`` (CO-08 §4.2): las etiquetas del catálogo de las
+        # lecturas YA hechas en este turno. Va del ejecutor al constructor y
+        # nunca del modelo — es lo que hace que el expediente de un ticket
+        # de soporte sea verificable, con la misma procedencia que sostiene
+        # R1. Los nueve ``kind`` de CO-04 lo ignoran.
+        builder = ProposalBuilder(
+            read=self.read,
+            checked=tuple(c.claim for c in self.citations),
+            trials=dict(self.trials),
+        )
         try:
             proposal = await builder.build(str(spec.kind), arguments)
         except IntakeRequired as intake:
@@ -338,9 +408,16 @@ class CompanionToolbelt:
                 ToolError(
                     "intake_required",
                     "Faltan datos que solo sabe la persona: "
-                    + ", ".join(s["label"] for s in intake.slots)
+                    # Con su CLAVE, no solo la etiqueta: hay campos que se
+                    # devuelven por ``template_fields`` como ``clave=valor``, y
+                    # sin la clave el modelo tiene que adivinarla. Adivinarla
+                    # significa volver a fallar con lo mismo turno tras turno
+                    # — que es exactamente el bucle que esto evita.
+                    + ", ".join(f"{s['label']} (clave: {s['key']})" for s in intake.slots)
                     + ". Pregúntaselos en una frase corta, sin listas ni "
-                    "formulario, y no propongas nada hasta tenerlos.",
+                    "formulario, y no propongas nada hasta tenerlos. Los que "
+                    "lleven clave con punto van en 'template_fields', una "
+                    "línea por dato con la forma clave=valor.",
                 ),
                 started,
             )
@@ -531,7 +608,20 @@ class CompanionToolbelt:
             )
         if action is None:
             return None
-        return await verify_action(self.read, action)
+        result = await verify_action(self.read, action)
+        # ``trial`` (CO-05, §7 del contrato v2). Tres valores distintos y no
+        # dos: ``None`` es "esta acción no admite prueba" (un ``invite``, unas
+        # alertas de consumo); ``{"ran": False}`` es "la admite y no se hizo",
+        # que es justo lo que el aviso de publicación quiere decir. Colapsarlos
+        # borraría el aviso.
+        payload = action.payload if isinstance(action.payload, dict) else {}
+        ref = payload.get("client_ref")
+        if ref is None:
+            result["trial"] = None
+        else:
+            record = self.trials.get(str(ref))
+            result["trial"] = record.as_payload() if record is not None else {"ran": False}
+        return result
 
     async def apply_confirmed(self, action_id: uuid.UUID) -> Any:
         """Lo que llama el nodo ``execute``. Va por :meth:`call` para que los

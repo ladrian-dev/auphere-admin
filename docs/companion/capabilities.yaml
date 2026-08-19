@@ -1,0 +1,241 @@
+# El documento versionado de capacidades y límites del Companion.
+#
+# §25.3 de la investigación y §5 de docs/companion/CONTRACT-V2.md.
+#
+# REGLA DURA: si algo no está en el catálogo leído en este turno, no existe.
+# Es R1 aplicada a las capacidades — y por eso este documento se **lee con
+# una herramienta** (``console.get_capabilities`` → ``GET /console/capabilities``)
+# y no se hornea en el prompt de sistema. Un límite en el prompt no deja
+# cita, no deja ``tool.call.started`` y no se puede versionar sin invalidar
+# el caché; leerlo deja las tres cosas.
+#
+# LO MANTENEMOS NOSOTROS. No se infiere del código ni de la base de datos:
+# una capacidad inventada es una promesa rota con el cliente de un partner.
+# Al editar, sube `version` — es la fecha ISO y es monótona.
+#
+# `key` vive en el MISMO espacio de nombres que `topic` de los tickets de
+# soporte (§4.2), y eso es lo que permite cruzar "qué pidieron" con "qué
+# dijimos que había".
+#
+# Qué autoriza a decir cada `status`:
+#   available   → usarlo y afirmarlo
+#   planned     → decir que llega, CON `eta`, y ofrecer request_capability
+#   absent      → decir que no está y ofrecer request_help / request_capability
+#   out_of_scope→ decir que no está Y POR QUÉ, y NO ofrecer ticket de capacidad
+#   retired     → decir que se retiró y redirigir a `replaced_by`
+
+version: "2026-08-19"
+
+entries:
+  # ── conectores ───────────────────────────────────────────────────────
+  # Los cinco `available` son los cinco sembrados de verdad en
+  # apps/api/src/nexus_api/services/connectors/seeds/. Leídos del código, no
+  # de memoria.
+  - key: connector.whatsapp_meta
+    family: connector
+    status: available
+    label: "WhatsApp (Meta)"
+    note: "Cloud API de Meta con alta guiada desde la consola. Es el canal principal."
+    eta: null
+    replaced_by: []
+
+  - key: connector.woocommerce
+    family: connector
+    status: available
+    label: "WooCommerce"
+    note: "Catálogo y pedidos de una tienda WooCommerce."
+    eta: null
+    replaced_by: []
+
+  - key: connector.agendapro
+    family: connector
+    status: available
+    label: "AgendaPro"
+    note: "Agenda y reservas para clínicas y centros de servicio."
+    eta: null
+    replaced_by: []
+
+  - key: connector.amigable_cobro
+    family: connector
+    status: available
+    label: "Amigable Cobro"
+    note: "Cobros y enlaces de pago."
+    eta: null
+    replaced_by: []
+
+  - key: connector.tiktok_bm
+    family: connector
+    status: out_of_scope
+    label: "TikTok (mensajes directos)"
+    note: >-
+      El backend existe, pero la consola de partners no lo expone (decisión C7
+      de PLAN-CONSOLE-V1). Los canales de la consola son WhatsApp y la
+      integración por API o MCP. No abras ticket de capacidad por esto: no es
+      un hueco, es una decisión.
+    eta: null
+    replaced_by: []
+
+  - key: connector.shopify
+    family: connector
+    status: absent
+    label: "Shopify"
+    note: >-
+      No hay conector nativo. Sincronizar pedidos o catálogo requiere
+      desarrollo; no hay camino por API pública que lo cubra sin exponer
+      credenciales del cliente.
+    eta: null
+    replaced_by: []
+
+  - key: connector.stripe
+    family: connector
+    status: planned
+    label: "Stripe"
+    note: >-
+      Cobro y facturación. Está en la hoja de ruta de la plataforma; hoy la
+      facturación del partner se lleva fuera de la consola.
+    eta: "Fase 2 de la plataforma v2"
+    replaced_by: []
+
+  - key: connector.google_calendar
+    family: connector
+    status: absent
+    label: "Google Calendar"
+    note: >-
+      No hay conector nativo. Para agenda hay AgendaPro; si el cliente usa
+      Google Calendar, hoy hace falta desarrollo.
+    eta: null
+    replaced_by: []
+
+  # ── canales ──────────────────────────────────────────────────────────
+  - key: channel.whatsapp
+    family: channel
+    status: available
+    label: "WhatsApp"
+    note: >-
+      Hasta dos números por cliente. Con más de un canal activo hay que
+      etiquetar el rol de cada uno ANTES de conectar el segundo: sin rol
+      asignado el envío se rechaza en vez de adivinar.
+    eta: null
+    replaced_by: []
+
+  - key: channel.tiktok
+    family: channel
+    status: out_of_scope
+    label: "TikTok"
+    note: >-
+      Fuera del alcance de la consola (C7). Mismo motivo que
+      connector.tiktok_bm: el backend está, la consola no lo expone.
+    eta: null
+    replaced_by: []
+
+  - key: channel.instagram
+    family: channel
+    status: absent
+    label: "Instagram"
+    note: "No hay canal de Instagram. Requiere desarrollo y aprobación de Meta."
+    eta: null
+    replaced_by: []
+
+  - key: channel.voice
+    family: channel
+    status: planned
+    label: "Voz (llamada entrante)"
+    note: "Voz PSTN entrante, decidida en el plan técnico de la plataforma v2."
+    eta: "Sin fecha comprometida"
+    replaced_by: []
+
+  - key: channel.email
+    family: channel
+    status: absent
+    label: "Correo electrónico"
+    note: "El agente no atiende correo. Sí se manda correo de avisos y de invitaciones."
+    eta: null
+    replaced_by: []
+
+  # ── capacidades de la plataforma ─────────────────────────────────────
+  - key: capability.embed_widget
+    family: capability
+    status: retired
+    label: "Widget embebido"
+    note: >-
+      Se retiró (CP-20). La integración de un partner con Auphere es por API
+      REST y por MCP; no hay guion que embeber en una página.
+    eta: null
+    replaced_by: [api, mcp]
+
+  - key: capability.evals_console
+    family: capability
+    status: planned
+    label: "Evaluaciones desde la consola"
+    note: >-
+      Hoy los conjuntos de evaluación se ejecutan desde el backend, no desde
+      la consola. Publicar sin evaluar está permitido y se avisa.
+    eta: "Fase 2 de la consola"
+    replaced_by: []
+
+  - key: capability.node_canvas
+    family: capability
+    status: out_of_scope
+    label: "Lienzo de nodos para montar el agente"
+    note: >-
+      No lo habrá. El agente se define con prompt, política, herramientas y
+      conocimiento; el lienzo de nodos es una interfaz que el propio mercado
+      está retirando. Si lo que hace falta es ver el flujo, mira el
+      playground y la traza del turno.
+    eta: null
+    replaced_by: []
+
+  - key: capability.playground
+    family: capability
+    status: available
+    label: "Playground de pruebas"
+    note: "Probar el agente borrador en un hilo de la consola antes de publicar."
+    eta: null
+    replaced_by: []
+
+  - key: capability.audit_export
+    family: capability
+    status: available
+    label: "Exportación de la auditoría"
+    note: "La actividad del partner en CSV, en español o inglés."
+    eta: null
+    replaced_by: []
+
+  - key: capability.custom_reports
+    family: capability
+    status: absent
+    label: "Informes a medida"
+    note: >-
+      La consola trae consumo, conversaciones y auditoría con sus filtros.
+      Un informe distinto requiere desarrollo.
+    eta: null
+    replaced_by: []
+
+  - key: capability.client_delete
+    family: capability
+    status: out_of_scope
+    label: "Borrar un cliente desde el Companion"
+    note: >-
+      El Companion no borra clientes, no toca facturación, no rota ni enseña
+      claves de API y no desactiva la revelación de IA. Es una lista cerrada y
+      no se amplía. Borrar un cliente se pide a Auphere, con una persona
+      delante.
+    eta: null
+    replaced_by: []
+
+  # ── plataforma ───────────────────────────────────────────────────────
+  - key: platform.self_serve_signup
+    family: platform
+    status: planned
+    label: "Alta de partners en autoservicio"
+    note: "Hoy Auphere da de alta al partner y enciende la consola a mano."
+    eta: "Sin fecha comprometida"
+    replaced_by: []
+
+  - key: platform.sso
+    family: platform
+    status: absent
+    label: "Inicio de sesión con SSO corporativo"
+    note: "La consola usa su propia identidad; no hay SAML ni OIDC de empresa."
+    eta: null
+    replaced_by: []

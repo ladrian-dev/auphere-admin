@@ -220,8 +220,20 @@ async def test_by_filter_search_cannot_surface_other_partner(client, console_wor
             )
             refs = [c["external_client_ref"] for c in resp.json()["items"]]
             assert refs == [a["ref"]]
-    resp = await client.get("/console/audit?client=client-b-1", headers=a["headers"]())
-    assert resp.status_code == 200 and resp.json()["items"] == []
+    # ``audit`` devolvía 200 con la lista vacía para un ref ajeno, igual que
+    # ``usage`` devolvía el agregado en cero. Aislaba —no salía ni un dato de
+    # B— pero le decía al llamante "ese cliente no tiene actividad" sobre
+    # algo que no es suyo. El razonamiento y el arreglo son los mismos en las
+    # dos, y se refuerza la opacidad en vez de fijar el 200 vacío: ahora es
+    # 404, y lo que se prueba es que sea el MISMO 404 que el de un ref
+    # inexistente. (CO-08, cabo 2 de la Ola 1.)
+    ajeno_audit = await client.get("/console/audit?client=client-b-1", headers=a["headers"]())
+    inexistente_audit = await client.get("/console/audit?client=no-existe", headers=a["headers"]())
+    assert ajeno_audit.status_code == 404
+    assert (ajeno_audit.status_code, ajeno_audit.json()) == (
+        inexistente_audit.status_code,
+        inexistente_audit.json(),
+    )
     # ``usage`` devolvía 200 con el agregado en cero para un ref ajeno.
     # Aislaba —no salía ni un dato de B— pero le decía al llamante "ese
     # cliente no ha consumido nada" sobre algo que no es suyo. Para la

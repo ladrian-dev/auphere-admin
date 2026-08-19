@@ -311,7 +311,12 @@ async def test_the_resume_run_emits_the_contract_sequence(
     assert "@" not in resolved["by"]
 
     verify = next(e["data"] for e in events.json()["events"] if e["event"] == "verify.result")
-    assert set(verify) == {"action_id", "checks", "ok"}
+    # ``trial`` es del contrato v2 §7 (CO-05). Tres valores y no dos:
+    # ``None`` = esta acción no admite prueba; ``{"ran": False}`` = la
+    # admite y nadie probó — que es lo que el aviso de publicación
+    # necesita distinguir.
+    assert set(verify) == {"action_id", "checks", "ok", "trial"}
+    assert verify["trial"] is None or verify["trial"]["ran"] is False
     assert verify["ok"] is True, verify
     for check in verify["checks"]:
         assert isinstance(check["expected"], str) and isinstance(check["actual"], str)
@@ -545,13 +550,16 @@ async def test_the_monthly_cap_does_not_block_a_resume(
     partner.companion_monthly_token_cap = 0
     await db_session.commit()
 
-    # Un turno nuevo SÍ está cortado…
+    # Un turno nuevo SÍ está cortado… con **409 ``budget_paused``** desde
+    # CO-08 (§6.2 de CONTRACT-V2): el tope pausa en vez de matar, y 429
+    # sería mentira porque reintentar no lo desbloquea.
     blocked = await client.post(
         f"/console/companion/threads/{_t}/runs",
         headers=a["headers"](),
         json={"prompt": "otra cosa"},
     )
-    assert blocked.status_code == 429
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["detail"]["code"] == "budget_paused"
 
     # …pero cerrar el que estaba abierto, no.
     resumed = await client.post(

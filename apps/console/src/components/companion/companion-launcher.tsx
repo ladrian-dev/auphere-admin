@@ -55,11 +55,41 @@ function getUrlThreadServer(): string | null {
  * Rendering nothing for a role without `companion:use` would be the easy
  * choice and the wrong one — a builder-less analyst would wonder where the
  * feature went. The bubble stays and explains itself.
+ *
+ * **The per-partner flag is the opposite case** (§10 of CONTRACT-V2).
+ * `companion_enabled === false` means the partner does not have the
+ * Companion at all, and then the bubble is **not mounted**: an off bubble
+ * is absence, not a disabled button with a tooltip, because a disabled
+ * button advertises something you cannot have. The two questions are
+ * genuinely different and get genuinely different answers.
+ *
+ * While the flag is unknown, nothing is mounted either — a bubble that
+ * appears and then vanishes is worse than one that arrives a beat late.
+ * And a failed lookup stays closed: if we cannot show the partner has the
+ * feature, we do not advertise it.
  */
 export function CompanionLauncher({ role, userId }: { role: Role; userId: string | null }) {
   const t = useT();
   const pathname = usePathname();
   const allowed = can(role, "companion:use");
+
+  // `null` = not asked yet. Distinct from `false` only in intent — both
+  // render nothing — but keeping them apart is what makes the "loading"
+  // and "empty" states of this component separately reachable and
+  // separately testable.
+  const [enabled, setEnabled] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const res = await companionClient.enabled();
+      if (!alive) return;
+      setEnabled(res.ok ? res.data.companion_enabled === true : false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // The URL is an external system too. Reading `?companion=` through a
   // store instead of an effect is what lets a pasted link open the drawer
@@ -83,7 +113,9 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
 
   // ⌘J / Ctrl+J. ⌘K is already the command palette (CP-07).
   React.useEffect(() => {
-    if (!allowed) return;
+    // A shortcut for a feature the partner does not have would be a
+    // keypress that does nothing visible — worse than no shortcut.
+    if (!allowed || enabled !== true) return;
     function onKey(e: KeyboardEvent) {
       if (e.key.toLowerCase() === "j" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -92,7 +124,7 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [allowed]);
+  }, [allowed, enabled]);
 
   React.useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 5000);
@@ -104,7 +136,7 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
   // "the most recent thread".
   const loadedRef = React.useRef(false);
   React.useEffect(() => {
-    if (!open || !allowed || loadedRef.current) return;
+    if (!open || !allowed || enabled !== true || loadedRef.current) return;
     loadedRef.current = true;
     void (async () => {
       const [threads, budget] = await Promise.all([refreshThreads(), companionClient.budget()]);
@@ -113,7 +145,7 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
       const target = wanted && threads.some((th) => th.id === wanted) ? wanted : null;
       if (target) await openThread(target);
     })();
-  }, [allowed, open, openThread, refreshThreads]);
+  }, [allowed, enabled, open, openThread, refreshThreads]);
 
   // Shallow URL sync — no server re-render, no `useSearchParams` Suspense.
   React.useEffect(() => {
@@ -127,6 +159,15 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
     window.history.replaceState(window.history.state, "", url.toString());
     window.dispatchEvent(new Event(URL_EVENT));
   }, [controller.threadId, open]);
+
+  // §10 of CONTRACT-V2. AFTER every hook, so the hook order never varies
+  // between renders — and after the URL effect, so a pasted
+  // `?companion=<thread>` on a partner without the feature does not leave
+  // a parameter behind that nothing will ever consume.
+  //
+  // `null` (not asked yet) and `false` (the partner does not have it) both
+  // render nothing. Absence, not a disabled button.
+  if (enabled !== true) return null;
 
   const pending = pendingAction(state, now);
   const busy = state.runStatus === "running";

@@ -347,9 +347,16 @@ async def test_cancelling_is_an_explicit_call_not_a_closed_socket(client, consol
 # ── tope de gasto ──────────────────────────────────────────────────────
 
 
-async def test_the_cap_is_the_companions_own_and_returns_429(client, console_world, db_session):
+async def test_the_cap_is_the_companions_own_and_pauses_with_409(client, console_world, db_session):
     """Compartir tope con el playground haría que probar el agente y pedirle
-    ayuda al Companion se robaran presupuesto entre sí."""
+    ayuda al Companion se robaran presupuesto entre sí.
+
+    Desde CO-08 el tope **pausa en vez de matar** (§6.2 de CONTRACT-V2): el
+    trabajo nuevo se rechaza con **409 ``budget_paused``** y no con 429. El
+    cambio no es cosmético — 429 significa "vuelve a intentarlo", y aquí
+    reintentar no sirve de nada: no pasa el tiempo, pasa que alguien sube el
+    tope. Un ``Retry-After`` sería mentira.
+    """
     import sqlalchemy as sa
 
     from nexus_api.db.models import Partner
@@ -374,7 +381,11 @@ async def test_the_cap_is_the_companions_own_and_returns_429(client, console_wor
         json={"prompt": "hola"},
     )
     assert first.status_code == 202
-    await _finished(uuid.UUID(first.json()["run_id"]), a["user_id"])
+    # Arranca (0 < 1) y cruza el tope al reportar su gasto: termina
+    # ``paused``, no ``completed``. Es la pausa del §6.3, y conserva
+    # historia, respuesta parcial y tokens.
+    first_run = await _finished(uuid.UUID(first.json()["run_id"]), a["user_id"])
+    assert first_run.status == "paused", first_run.status
 
     # Segundo: el tope de 1 token ya está pasado.
     second = await client.post(
@@ -382,9 +393,14 @@ async def test_the_cap_is_the_companions_own_and_returns_429(client, console_wor
         headers=a["headers"](),
         json={"prompt": "otra"},
     )
-    assert second.status_code == 429
-    assert second.headers["Retry-After"]
-    assert "Companion token cap" in second.json()["detail"]
+    assert second.status_code == 409, second.text
+    assert "Retry-After" not in second.headers
+    detail = second.json()["detail"]
+    assert detail["code"] == "budget_paused"
+    # La instantánea del presupuesto viaja en el cuerpo para que la interfaz
+    # pinte la explicación sin una segunda petición.
+    assert set(detail) == {"code", "used", "cap", "period", "resets_at"}
+    assert detail["used"] >= detail["cap"] == 1
 
     # El del playground sigue intacto: son dos presupuestos distintos.
     playground = await client.get("/console/playground/budget", headers=a["headers"]())

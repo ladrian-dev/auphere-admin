@@ -79,6 +79,24 @@ export type CompanionBudget = {
 };
 
 /**
+ * The per-partner flag of §10 of `docs/companion/CONTRACT-V2.md`.
+ *
+ * `partners.companion_enabled` defaults to **false** — the pilot is
+ * internal — and `GET /console/me` gained the field. The console reads it
+ * to decide whether to mount the bubble at all: an off bubble is ABSENCE,
+ * not a disabled button with a tooltip, because a disabled button is an
+ * advert for something you cannot have.
+ *
+ * It is served through its own BFF route rather than by widening the
+ * shared `Me` type, for two reasons. That type lives in `lib/backend.ts`,
+ * outside this agent's zone; and reading it defensively here
+ * (`companion_enabled !== true` ⟹ off) is exactly the behaviour we want
+ * while the API field does not exist yet: no field, no bubble, which is
+ * the contract's own default.
+ */
+export type CompanionEnabled = { companion_enabled: boolean };
+
+/**
  * One proposed write awaiting a human (CO-04). Mirrors
  * `CompanionActionOut` of §5 of `docs/companion/CONTRACT-V1.md`.
  *
@@ -156,6 +174,18 @@ export function companionApi(call: Call) {
       call<CompanionEvents>(`${base}/runs/${enc(runId)}/events?since_seq=${sinceSeq}`),
     cancelCompanionRun: (runId: string) => call<null>(`${base}/runs/${enc(runId)}`, { method: "DELETE" }),
     getCompanionBudget: () => call<CompanionBudget>(`${base}/budget`),
+    /**
+     * The flag, off `GET /console/me` (§10 of CONTRACT-V2).
+     *
+     * Narrowed rather than asserted: anything that is not literally `true`
+     * — an older API without the field included — reads as off. That is
+     * the contract's default (`false`) and the safe direction: we would
+     * rather hide a feature a partner has than advertise one it has not.
+     */
+    getCompanionEnabled: async (): Promise<CompanionEnabled> => {
+      const me = await call<Record<string, unknown>>("/console/me");
+      return { companion_enabled: me.companion_enabled === true };
+    },
     /** Answer a pending confirmation (§4). 202 → attach to the NEW run.
      *  `note` is singular: `notes` is a forbidden property name (§1.1),
      *  and with `edit`/`cancel` it travels back to the model as the

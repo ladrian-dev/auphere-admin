@@ -1,5 +1,9 @@
 # CONTRACT-V1 · El contrato congelado del Companion (Ola 1)
 
+> **Ola 2 (desde 2026-08-19): este documento sigue vigente, pero
+> [`CONTRACT-V2.md`](CONTRACT-V2.md) lo extiende.** Donde la v2 diga algo
+> distinto, manda la v2. Todo lo que la v2 no toque se lee aquí.
+
 > **Estado: CONGELADO** (v1.1, 2026-08-19) para toda la Fase 1 de la Ola 1 (CO-03, CO-04, CO-07).
 >
 > Derivado de §19 y §23 de
@@ -721,3 +725,4 @@ fuera de las tres zonas. Se listan aquí para que nadie las improvise.
 |---|---|---|
 | 2026-08-18 | v1 — congelado para la Fase 1 de la Ola 1 | — |
 | 2026-08-19 | **v1.1** — `GET /console/companion/threads/{thread_id}/runs` pasa de opcional a **requerido** (§5.2) | Sin él, el timeline no puede ser del hilo y la URL compartible de §14 no funciona en otra máquina. Lo levantó el Agente A al cerrar CO-03; decisión del orquestador, notificada a A y B |
+| 2026-08-19 | La Ola 2 se rige por [`CONTRACT-V2.md`](CONTRACT-V2.md) v2.0, que extiende este documento | Ver §0 de la v2 |

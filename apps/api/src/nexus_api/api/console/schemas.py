@@ -50,6 +50,10 @@ class MeOut(BaseModel):
     membership_id: uuid.UUID
     partner: PartnerBrief
     quota: QuotaOut
+    #: CO-08 §10 — la bandera por partner del Companion. La puerta real es
+    #: ``companion:use`` **Y** esta bandera, comprobadas en el backend; esto
+    #: es solo lo que la consola mira para montar o no la burbuja.
+    companion_enabled: bool = False
 
 
 # ── clients ────────────────────────────────────────────────────────────

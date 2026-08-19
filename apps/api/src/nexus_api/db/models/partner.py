@@ -153,6 +153,16 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
         BigInteger, nullable=False, default=500_000, server_default="500000"
     )
     companion_cap_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Migration 0092 — the Companion's per-partner switch (CO-08, §10 of
+    # CONTRACT-V2). The door is ``companion:use`` AND this flag; without it
+    # every write to ``/console/companion/*`` answers 403
+    # ``companion_disabled``, while reads of an existing thread keep
+    # answering 200 — turning the flag off must not make the history of
+    # what already happened disappear. Default false because the pilot is
+    # internal: Auphere first, two weeks, then Facelad and Amacrux.
+    companion_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     # Migration 0086 — activation metric (CP-29): first moment the partner
     # had an ACTIVE client with a published agent. NULL = not yet.
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

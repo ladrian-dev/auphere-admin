@@ -8,7 +8,7 @@ import { SseParser } from "../playground/sse";
 import { cacheRunIds, companionClient, loadRunIds, rememberRunId } from "./client";
 import type { PageContext } from "./page-context";
 import { type CompanionState, companionReducer, emptyCompanionState } from "./state";
-import type { Decision } from "./types";
+import { type Decision, readBudgetPause } from "./types";
 
 /**
  * The connection loop of the drawer — correction C1, implemented.
@@ -228,6 +228,23 @@ export function useCompanion() {
 
       const res = await companionClient.startRun(id, text, pageContext);
       if (!res.ok) {
+        /**
+         * 409 `budget_paused` — §6.2 of CONTRACT-V2. **Not an error.**
+         *
+         * 409 and not 429 on purpose: 429 means "try again", and retrying
+         * changes nothing here — time does not pass, somebody raises the
+         * cap. So this must not go down the `stream_failed` path, which
+         * paints a red notice and sets `runStatus: "error"`.
+         *
+         * The body carries the snapshot, which is why no `GET /budget`
+         * follows: the contract put it there so the drawer could explain
+         * the pause with one round trip.
+         */
+        if (res.status === 409 && res.code === "budget_paused") {
+          const pause = readBudgetPause(res.body);
+          if (pause) dispatch({ type: "budget_paused", pause });
+          return;
+        }
         dispatch({ type: "stream_failed", runId: id, detail: res.detail, now: Date.now() });
         return;
       }

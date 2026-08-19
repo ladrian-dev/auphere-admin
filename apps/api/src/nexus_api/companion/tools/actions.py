@@ -32,6 +32,7 @@ Cuatro reglas del motor, no del prompt
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -240,6 +241,38 @@ async def set_status(
 # ── aplicación ─────────────────────────────────────────────────────────
 
 
+#: Qué se queda de la RESPUESTA de aplicar, por ``kind``. Lista blanca
+#: cerrada, nunca el cuerpo entero.
+#:
+#: Existe porque el identificador de un ticket de soporte **nace al aplicar**
+#: (CO-08 §4.4) y el evento ``support.ticket`` tiene que poder decirlo: sin
+#: esto habría que reabrir la respuesta HTTP desde otro sitio, o inventar un
+#: segundo camino de lectura.
+#:
+#: Que sea una lista blanca **por clave y por kind** es lo que la hace segura
+#: (C8): estas cuatro son un identificador y tres enums, y ninguna puede
+#: llevar texto de un cliente final. Añadir un ``kind`` aquí es una decisión
+#: consciente, no un efecto colateral de que un endpoint devuelva más campos.
+APPLY_ECHO: dict[str, tuple[str, ...]] = {
+    "support_help": ("ticket_ref", "sla", "category", "topic"),
+    "support_capability": ("ticket_ref", "sla", "category", "topic"),
+}
+
+
+def apply_echo(kind: str, body: str) -> dict[str, str]:
+    """Las claves declaradas de la respuesta, como cadenas. Nunca lanza."""
+    allowed = APPLY_ECHO.get(kind)
+    if not allowed:
+        return {}
+    try:
+        parsed = json.loads(body or "{}")
+    except ValueError:  # pragma: no cover - el router siempre da JSON
+        return {}
+    if not isinstance(parsed, dict):  # pragma: no cover - defensivo
+        return {}
+    return {k: str(parsed[k]) for k in allowed if isinstance(parsed.get(k), str | int | float)}
+
+
 @dataclass(frozen=True)
 class ApplyOutcome:
     ok: bool
@@ -316,7 +349,7 @@ async def apply_action(
         action.id,
         principal_id=principal_id,
         status=STATUS_APPLIED,
-        result={"status": response.status_code},
+        result={"status": response.status_code, **apply_echo(action.kind, body)},
         applied=True,
     )
     return ApplyOutcome(ok=True, status_code=response.status_code, body=body)
@@ -340,6 +373,14 @@ VERIFY_READS: dict[str, str] = {
     "channel_role": "/console/clients/{client_ref}/channels",
     "usage_alerts": "/console/usage/alerts",
     "invite": "/console/team",
+    # CO-08. No hay sistema de tickets que releer —§25.1 es explícito en que
+    # no se crea uno—, así que lo que se verifica es lo que SÍ se prometió:
+    # que el ticket aterrizó en la tubería que ya existe y que el partner lo
+    # ve en su centro de notificaciones. Declarar aquí un ``kind`` sin
+    # comprobación dejaría la tabla vacía en verde, que es peor que no
+    # verificar: parece verificado.
+    "support_help": "/console/notifications",
+    "support_capability": "/console/notifications",
 }
 
 
@@ -373,7 +414,15 @@ async def verify_action(read: Any, action: CompanionAction) -> dict[str, Any]:
         ]
         return {"action_id": str(action.id), "checks": checks, "ok": False}
 
-    actual = _observed(action.kind, fresh, payload)
+    # ``result`` entra en lo que ve el observador porque hay ``kind`` cuya
+    # comprobación depende de algo que nació AL APLICAR —el ``ticket_ref``—
+    # y no de lo que se prometió al proponer.
+    # ``getattr`` y no ``action.result``: los dobles de los unitarios son
+    # objetos mínimos con ``kind`` y ``payload``, y obligarles a crecer una
+    # columna para una rama que no ejercitan sería acoplarlos de balde.
+    actual = _observed(
+        action.kind, fresh, {**payload, "result": dict(getattr(action, "result", None) or {})}
+    )
     checks = [
         {
             "name": name,
@@ -420,6 +469,13 @@ def _observed(kind: str, fresh: Any, payload: dict[str, Any]) -> dict[str, str]:
             "alerts_cap": str(cap) if cap is not None else "null",
             "alerts_recipients": str(len((fresh or {}).get("recipients") or [])),
         }
+    if kind in ("support_help", "support_capability"):
+        ref = str((payload.get("result") or {}).get("ticket_ref") or "")
+        seen = {
+            str(((item or {}).get("data") or {}).get("ticket_ref") or "")
+            for item in ((fresh or {}).get("items") or [])
+        }
+        return {"ticket_visible": "true" if ref and ref in seen else "false"}
     if kind == "invite":
         body = (payload.get("apply") or {}).get("body") or {}
         email = str(body.get("email") or "").lower()
@@ -443,6 +499,7 @@ def _staged_or_active(bundle: Any) -> dict[str, Any] | None:
 
 
 __all__ = [
+    "APPLY_ECHO",
     "DECISIONS",
     "DECISION_STATUS",
     "NAMESPACE_COMPANION_ACTION",
@@ -460,6 +517,7 @@ __all__ = [
     "StagedAction",
     "action_id_for",
     "apply_action",
+    "apply_echo",
     "expires_at_of",
     "is_stale",
     "load_action",

@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
-from nexus_api.db.models import AuditLog, PartnerTenant
+from nexus_api.db.models import AuditLog, PartnerMembership, PartnerTenant
 from nexus_api.services.console_reporting import csv_safe, partner_mappings, reporting_transaction
 
 from .schemas import AuditEntryOut, AuditPageOut
@@ -110,18 +110,57 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
         ) from None
 
 
-def _human_actor(actor: str) -> str:
+COMPANION_ACTOR = "Companion"
+
+
+async def partner_member_emails(session: AsyncSession, partner_id: uuid.UUID) -> dict[str, str]:
+    """``user_id`` → correo, **solo del partner del llamante** (cabo 3).
+
+    Una consulta por petición, no una por fila: el equipo de un partner es
+    pequeño y acotado, así que traerlo entero es más barato que resolver
+    uno a uno y evita el N+1 en la exportación en flujo.
+
+    Por qué por membresía y no por ``companion.actions.decided_by``, que es
+    lo que decía §12 de ``CONTRACT-V2.md``: esa tabla tiene **RLS por
+    principal**, así que una consulta desde la sesión de quien mira la
+    auditoría solo vería sus PROPIAS acciones — y la escritura que hizo el
+    Companion de un compañero se seguiría pintando *Companion* a secas, que
+    es justo lo que el cabo pide arreglar. Resolver contra
+    ``partner_memberships`` cumple la intención y la restricción: por
+    construcción no puede devolver el correo de otro partner.
+    """
+    # Transacción propia y corta, como ``partner_mappings`` y
+    # ``load_vocabulary``: sin ella la sesión queda con una transacción
+    # implícita abierta y ``reporting_transaction`` no puede abrir la suya.
+    async with session.begin():
+        rows = (
+            await session.execute(
+                sa.select(PartnerMembership.user_id, PartnerMembership.email).where(
+                    PartnerMembership.partner_id == partner_id
+                )
+            )
+        ).all()
+    return {str(user_id): str(email) for user_id, email in rows if email}
+
+
+def _human_actor(actor: str, emails: dict[str, str] | None = None) -> str:
     # ``console:maria@x.com`` → ``maria@x.com``; ``admin:1a2b3c4d`` → ``Auphere``.
     if actor.startswith("console:"):
         return actor.removeprefix("console:")
     if actor.startswith("companion:"):
         # El Companion escribe como ``companion:<user_id>`` (CONTRACT-V1 §10.1):
         # el identificador, y no el correo, porque quien lo fija es el ejecutor
-        # de herramientas y ahí no hay membresía cargada. Se pinta sin el
-        # identificador porque un uuid en una página de auditoría no le dice
-        # nada a nadie; QUIÉN decidió está en ``companion.actions.decided_by``,
-        # que guarda ese mismo ``user_id`` junto a la acción y su diff.
-        return "Companion"
+        # de herramientas y ahí no hay membresía cargada.
+        #
+        # Aquí sí la hay, así que se resuelve (cabo 3 de la Ola 2): "Companion
+        # · maria@facelad.com" dice qué pasó Y quién lo autorizó, que son dos
+        # datos distintos y los dos hacen falta. Sin resolución posible —un
+        # miembro que ya no está— cae a *Companion* a secas, **nunca al uuid
+        # crudo**: un identificador en una página de auditoría no le dice nada
+        # a nadie y solo ensucia la línea.
+        user_id = actor.removeprefix("companion:")
+        email = (emails or {}).get(user_id)
+        return f"{COMPANION_ACTOR} · {email}" if email else COMPANION_ACTOR
     if actor.startswith("admin:"):
         return "Auphere"
     if actor.startswith("partner:"):
@@ -138,12 +177,16 @@ class _Safe(dict[str, Any]):
 
 
 def summarise(
-    row: AuditLog, client_name: str | None, vocab: dict[str, VocabEntry], lang: str = "en"
+    row: AuditLog,
+    client_name: str | None,
+    vocab: dict[str, VocabEntry],
+    lang: str = "en",
+    emails: dict[str, str] | None = None,
 ) -> str:
     after = row.after_json or {}
     before = row.before_json or {}
     values = _Safe(
-        actor=_human_actor(row.actor),
+        actor=_human_actor(row.actor, emails),
         client=client_name or ("un cliente" if lang == "es" else "a client"),
         v=after.get("version", before.get("version", "?")),
         status=after.get("status", "?"),
@@ -155,6 +198,11 @@ def summarise(
         document=after.get("filename", after.get("title", before.get("filename", "?"))),
         cap=after.get("cap", "?"),
         percent=after.get("percent", "?"),
+        # CO-08: los tickets de soporte. ``_Safe`` pinta ``?`` para un
+        # marcador que no exista, así que añadirlos aquí no puede romper
+        # ninguna plantilla anterior.
+        ticket=after.get("ticket_ref", "?"),
+        topic=after.get("topic", "?"),
     )
     entry = vocab.get(row.action)
     if entry is None:
@@ -165,10 +213,26 @@ def summarise(
 def _scope_filter(
     partner_id: uuid.UUID, mappings: list[PartnerTenant], client: str | None
 ) -> sa.ColumnElement[bool]:
+    """El ámbito de la consulta. Un ``client`` que no sea del partner da 404.
+
+    Antes devolvía la lista vacía con un 200, y para la interfaz daba igual
+    —el cliente se elige de una lista, así que el ref siempre existe—; para
+    el Companion no, porque el modelo SÍ puede inventarse una referencia, y
+    una lista vacía con 200 le deja decir "ese cliente no tiene actividad"
+    sobre algo que no existe. Eso es una afirmación falsa **con respaldo**,
+    así que R1 no la marca: es peor que una alucinación, porque parece
+    verificada. Es exactamente el mismo razonamiento —y el mismo arreglo—
+    que en ``usage.py:_scope``.
+
+    Sigue siendo opaco: el ref de otro partner y el inexistente dan el
+    **mismo** 404, porque ninguno de los dos está en ``mappings``.
+    """
     tenant_ids = [m.tenant_id for m in mappings]
     if client is not None:
-        tenant_ids = [m.tenant_id for m in mappings if m.external_client_ref == client]
-        return AuditLog.tenant_id.in_(tenant_ids)
+        chosen = [m.tenant_id for m in mappings if m.external_client_ref == client]
+        if not chosen:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown client")
+        return AuditLog.tenant_id.in_(chosen)
     return sa.or_(
         AuditLog.tenant_id.in_(tenant_ids),
         sa.and_(AuditLog.tenant_id.is_(None), AuditLog.target == f"partner:{partner_id}"),
@@ -230,6 +294,7 @@ async def list_audit(
     mappings = await partner_mappings(session, partner_id)
     by_tenant = {m.tenant_id: m for m in mappings}
     vocab = await load_vocabulary(session)
+    emails = await partner_member_emails(session, partner_id)
     stmt = _base_stmt(
         _scope_filter(partner_id, mappings, client),
         actor=actor,
@@ -266,12 +331,12 @@ async def list_audit(
             AuditEntryOut(
                 id=row.id,
                 at=row.created_at,
-                actor=_human_actor(row.actor),
+                actor=_human_actor(row.actor, emails),
                 action=row.action,
                 target=row.target,
                 external_client_ref=mapping.external_client_ref if mapping else None,
                 client_name=client_name,
-                summary=summarise(row, client_name, vocab, lang),
+                summary=summarise(row, client_name, vocab, lang, emails),
             )
         )
     next_cursor = _encode_cursor(rows[-1].created_at, rows[-1].id) if has_more and rows else None
@@ -300,6 +365,10 @@ async def export_audit_csv(
     mappings = await partner_mappings(session, partner_id)
     by_tenant = {m.tenant_id: m for m in mappings}
     vocab = await load_vocabulary(session)
+    # Se carga ENTERO antes de abrir el flujo: dentro del generador no hay
+    # sesión libre para una consulta más, y resolver fila a fila sería un
+    # N+1 sobre una exportación de hasta cien mil filas.
+    emails = await partner_member_emails(session, partner_id)
     stmt = (
         _base_stmt(
             _scope_filter(partner_id, mappings, client),
@@ -329,12 +398,12 @@ async def export_audit_csv(
                         csv_safe(v)
                         for v in [
                             row.created_at.isoformat(),
-                            _human_actor(row.actor),
+                            _human_actor(row.actor, emails),
                             row.action,
                             mapping.external_client_ref if mapping else "",
                             client_name or "",
                             row.target,
-                            summarise(row, client_name, vocab, lang),
+                            summarise(row, client_name, vocab, lang, emails),
                         ]
                     ]
                 )

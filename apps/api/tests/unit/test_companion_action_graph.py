@@ -72,7 +72,28 @@ class FakeActionBelt:
         return 1
 
     def specs(self) -> list[dict[str, Any]]:
-        return []
+        """Un catálogo con forma de catálogo.
+
+        Devolvía ``[]``, y eso hacía invisible el 400 del §19.1: sin nada que
+        declarar, la última llamada del turno caía por el camino simple y el
+        test medía otra cosa. El de verdad nunca está vacío.
+        """
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "console.propose_prompt",
+                    "description": "…",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "client_ref": {"type": "string"},
+                            "system_prompt": {"type": "string"},
+                        },
+                    },
+                },
+            }
+        ]
 
     async def call(self, name: str, arguments: dict[str, Any]) -> Any:  # pragma: no cover
         raise AssertionError("el nodo execute usa apply_confirmed, no call")
@@ -345,10 +366,10 @@ async def test_a_read_only_toolbelt_compiles_the_co_02_graph_unchanged() -> None
 
 
 def test_the_four_new_phases_have_a_label() -> None:
-    """El enum del §2.8 del contrato, cerrado. La interfaz mantiene su
-    propia tabla de traducción, pero un ``phase`` sin entrada aquí es un
-    identificador que nadie declaró."""
-    for phase in ("intake", "plan", "execute", "verify"):
+    """El enum del §2 del contrato v2, cerrado y con ``publish``. La
+    interfaz mantiene su propia tabla de traducción, pero un ``phase`` sin
+    entrada aquí es un identificador que nadie declaró."""
+    for phase in ("intake", "plan", "execute", "verify", "publish"):
         assert phase in PHASE_LABELS
     assert set(PHASE_LABELS) == {
         "understand",
@@ -358,6 +379,8 @@ def test_the_four_new_phases_have_a_label() -> None:
         "awaiting",
         "execute",
         "verify",
+        "publish",
         "respond",
         "done",
     }
+    assert PHASE_LABELS["publish"] == "Publicando"

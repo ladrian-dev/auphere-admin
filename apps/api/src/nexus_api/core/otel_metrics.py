@@ -253,6 +253,49 @@ def record_meta_send_failure(*, code: str) -> None:
         _instrument("meta_send_failures_total", "counter").add(1, {"code": code})
 
 
+# ── el Companion (CO-08, §11 de CONTRACT-V2 / §17 de la investigación) ──
+#
+# Los nombres los FIJA el contrato para que no se renombren a mitad del
+# piloto y la serie se parta en dos. Son contadores crudos y las razones se
+# derivan en la consulta, igual que ``llm_cache_read_ratio``: guardar el
+# ratio perdería los numeradores, que sirven para otras preguntas.
+#
+# **Sin etiquetas, a propósito.** Ni partner, ni rol, ni ``kind``. La
+# campaña de carga WP-15 dejó la lección escrita: una dimensión de más en
+# CloudWatch parte la serie y deja ciega la alarma que la usaba. El corte
+# por partner sale de ``scripts/companion_pilot_metrics.py``, que es donde
+# tiene sentido mirarlo — una vez, al cerrar el piloto.
+#
+# La razón que MANDA es cancelled/proposed, con objetivo < 15 %: un
+# Companion que propone cosas que la gente cancela es peor que no tener
+# Companion, porque enseña a desconfiar.
+
+COMPANION_COUNTERS: tuple[str, ...] = (
+    "companion.thread.opened",
+    "companion.task.completed",
+    "companion.hitl.proposed",
+    "companion.hitl.cancelled",
+    "companion.turn.total",
+    "companion.turn.unsupported",
+    "companion.verify.total",
+    "companion.verify.failed",
+)
+
+
+def record_companion(name: str, *, value: int = 1) -> None:
+    """Suma uno a un contador del Companion. Nunca lanza.
+
+    ``name`` tiene que estar en :data:`COMPANION_COUNTERS`: un nombre suelto
+    crearía una serie que ningún panel busca, y el fallo sería silencioso.
+    Aquí se registra y se sigue — la instrumentación no tumba un turno.
+    """
+    if name not in COMPANION_COUNTERS:  # pragma: no cover - error de programación
+        log.warning("otel.companion_counter_unknown", counter=name)
+        return
+    with contextlib.suppress(Exception):
+        _instrument(name, "counter").add(value)
+
+
 def record_rate_limit_rejection(*, surface: str, degraded: bool) -> None:
     """Una petición de partner rechazada por el limitador.
 

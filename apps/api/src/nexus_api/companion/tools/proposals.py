@@ -68,6 +68,11 @@ APPLY_ROUTES: dict[str, tuple[ApplyMethod, str]] = {
     "channel_role": ("PATCH", "/console/clients/{client_ref}/channels/{channel_id}/role"),
     "usage_alerts": ("PUT", "/console/usage/alerts"),
     "invite": ("POST", "/console/team/invitations"),
+    # CO-08 (§4.1 de CONTRACT-V2). Los dos ``kind`` de soporte aplican por el
+    # MISMO endpoint; lo que los distingue es ``category`` dentro del cuerpo,
+    # que la propuesta fija y el modelo no puede cambiar después.
+    "support_help": ("POST", "/console/support/tickets"),
+    "support_capability": ("POST", "/console/support/tickets"),
 }
 
 #: Acciones que no se pueden deshacer desde la consola. Viaja al cajón dentro
@@ -335,6 +340,75 @@ CLIENT_INTAKE_SLOTS: tuple[dict[str, Any], ...] = (
 # ── el constructor por ``kind`` ────────────────────────────────────────
 
 
+def _parse_fields(raw: Any) -> dict[str, str]:
+    """``address=Av. Principal 123`` por línea → ``{"address": "…"}``.
+
+    Se parte por el PRIMER ``=`` a propósito: una dirección puede llevar
+    signos de igual y partir por todos convertiría el valor en basura.
+    """
+    fields: dict[str, str] = {}
+    for line in str(raw or "").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key.strip() and value.strip():
+            fields[key.strip()] = value.strip()
+    return fields
+
+
+def _field_value(args: dict[str, Any], placeholder_key: str) -> str:
+    """El valor de un placeholder, se haya escrito con clave completa o corta.
+
+    El modelo ve ``tenant.address`` en el mensaje de intake y es lo que suele
+    devolver; pero también escribe ``address`` a secas. Aceptar las dos formas
+    cuesta una línea y evita un bucle en el que la propuesta pide siempre lo
+    mismo porque la clave no coincide por un prefijo.
+    """
+    for candidate in (placeholder_key, _arg_name(placeholder_key)):
+        value = str(args.get(candidate) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _arg_name(placeholder_key: str) -> str:
+    """``tenant.address`` → ``address``.
+
+    El modelo escribe argumentos planos; la plantilla los nombra con espacio
+    de nombres. Traducir aquí evita pedirle al modelo que adivine un punto en
+    medio del nombre de un parámetro.
+    """
+    return placeholder_key.rsplit(".", 1)[-1]
+
+
+def _trial_warning(trial: Any, target_version: int) -> dict[str, Any]:
+    """Las tres claves de aviso del §7.1 del contrato (CO-05).
+
+    **Avisan, no prohíben.** El usuario puede publicar sin probar: se le dice,
+    queda en la fila de la acción y en la auditoría, y se publica. Prohibirlo
+    convertiría la prueba en un peaje que la gente aprende a rodear — y quien
+    lo rodea deja de leer el aviso.
+
+    Tres estados distintos y tres avisos distintos, porque la diferencia
+    importa:
+
+    - ``not_tried`` — nadie probó nada en esta conversación.
+    - ``trial_failed`` — se probó y algún mensaje no obtuvo respuesta.
+    - ``tried_active_only`` — se probó, pero lo que corrió fue la versión ya
+      activa, **no la que se va a publicar**. Es el estado honesto por
+      defecto mientras el playground no sepa correr un borrador: decir
+      "probado" a secas sería exactamente la afirmación sin respaldo que R1
+      existe para impedir.
+    """
+    if trial is None:
+        return {"trial_ran": False, "trial_ok": None, "warning_key": "not_tried"}
+    ok = bool(getattr(trial, "ok", False))
+    tested = getattr(trial, "tested_version", None)
+    if not ok:
+        return {"trial_ran": True, "trial_ok": False, "warning_key": "trial_failed"}
+    if tested is None or int(tested) != int(target_version):
+        return {"trial_ran": True, "trial_ok": True, "warning_key": "tried_active_only"}
+    return {"trial_ran": True, "trial_ok": True, "warning_key": None}
+
+
 @dataclass
 class ProposalBuilder:
     """Lee por HTTP en proceso y construye la propuesta.
@@ -345,6 +419,16 @@ class ProposalBuilder:
     """
 
     read: Any  # Callable[[str, dict], Awaitable[httpx.Response]]
+    #: Las etiquetas del catálogo de herramientas de las lecturas YA hechas
+    #: en este turno. Las pone el ejecutor, no el modelo (CO-08 §4.2): es lo
+    #: que convierte el expediente de un ticket en algo verificable, con la
+    #: misma procedencia que sostiene R1. Vacío para los nueve ``kind`` de
+    #: CO-04, que no lo usan.
+    checked: tuple[str, ...] = ()
+    #: Pruebas hechas en este turno, por referencia de cliente (CO-05). Las
+    #: pone el ejecutor. Solo las lee ``_publish``, y solo para **avisar**:
+    #: publicar sin haber probado sigue siendo posible a propósito.
+    trials: dict[str, Any] = field(default_factory=dict)
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         response: httpx.Response = await self.read(path, params or {})
@@ -368,6 +452,56 @@ class ProposalBuilder:
         return replace(proposal, propose_args=dict(args))
 
     # ── client ─────────────────────────────────────────────────────────
+
+    async def _template_placeholders(self, vertical: str) -> list[dict[str, Any]]:
+        """Los placeholders que declara la plantilla del vertical.
+
+        Se leen del mismo endpoint que ya usa ``console.get_prompt_library``,
+        así que no hay superficie nueva y la lectura va con el sujeto puesto.
+        Si la plantilla no está, se devuelve vacío: el alta sin plantilla es
+        válida y no debe bloquearse por no encontrar una lista.
+        """
+        try:
+            listing = await self._get("/console/seed-templates")
+        except ProposalRefused:
+            return []
+        for template in listing if isinstance(listing, list) else []:
+            if str(template.get("name")) == vertical:
+                placeholders = template.get("placeholders") or []
+                return [p for p in placeholders if isinstance(p, dict)]
+        return []
+
+    async def _template_keys(self, vertical: str) -> list[str]:
+        return [str(p.get("key")) for p in await self._template_placeholders(vertical)]
+
+    async def _template_slots(self, vertical: str, args: dict[str, Any]) -> list[dict[str, Any]]:
+        """Lo que la plantilla exige y el modelo todavía no ha dado.
+
+        Los ``key`` son los de la plantilla (``tenant.address``), no los cinco
+        fijos del §3.3 del contrato. La interfaz cae a ``label``/``why`` para
+        una clave que no conoce, que es exactamente el caso previsto.
+        """
+        slots: list[dict[str, Any]] = []
+        for placeholder in await self._template_placeholders(vertical):
+            if not placeholder.get("required"):
+                continue
+            key = str(placeholder.get("key") or "")
+            if not key or _field_value(args, key):
+                continue
+            example = placeholder.get("example")
+            slots.append(
+                {
+                    "key": key,
+                    "label": str(placeholder.get("label") or key),
+                    "why": (
+                        "La plantilla de este vertical lo necesita para redactar "
+                        "el prompt. Sin este dato el alta falla al aplicarse."
+                    ),
+                    "examples": [str(example)] if example else [],
+                    "required": True,
+                }
+            )
+        return slots
 
     async def _client(self, args: dict[str, Any]) -> Proposal:
         ref = str(args["client_ref"]).strip()
@@ -428,6 +562,21 @@ class ProposalBuilder:
             # persona lo vea en la tarjeta y el alta va sin plantilla, en vez
             # de fallar con un 422 que nadie pidió.
             body["seed_template"] = vertical
+            # Y cada plantilla pide LO SUYO además de los cinco campos fijos
+            # del §7.1: la de clínica estética quiere la dirección, otra
+            # querrá otra cosa. Se pregunta ANTES de proponer, porque el
+            # camino contrario ya se probó y termina en un 422
+            # ``missing placeholder: tenant.address`` **después** de que la
+            # persona haya confirmado un alta irreversible. Preguntar es
+            # barato; confirmar algo que va a fallar, no.
+            args = {**args, **_parse_fields(args.get("template_fields"))}
+            extra = await self._template_slots(vertical, args)
+            if extra:
+                raise IntakeRequired(extra)
+            for slot_key in await self._template_keys(vertical):
+                value = _field_value(args, slot_key)
+                if value:
+                    body["placeholders"][slot_key] = value
 
         return Proposal(
             kind="client",
@@ -697,6 +846,7 @@ class ProposalBuilder:
                 # sería prometer una garantía que no hay.
                 "evals_run": False,
                 "evals_warning": "No se ejecutó ninguna evaluación sobre esta versión.",
+                **_trial_warning(self.trials.get(ref), target_version),
             },
             diff=line_diff(before, after),
             impact=[
@@ -917,6 +1067,98 @@ class ProposalBuilder:
             apply_path=APPLY_ROUTES["invite"][1],
             apply_body={"email": email, "role": role},
             expectations={"invitation_pending": "true"},
+        )
+
+    # ── soporte (CO-08, §4) ────────────────────────────────────────────
+
+    async def _support_help(self, args: dict[str, Any]) -> Proposal:
+        return await self._support("support_help", args)
+
+    async def _support_capability(self, args: dict[str, Any]) -> Proposal:
+        return await self._support("support_capability", args)
+
+    async def _support(self, kind: str, args: dict[str, Any]) -> Proposal:
+        """El ticket, calculado y no abierto.
+
+        Lo que aquí se LEE es el documento de capacidades: es lo que impide
+        pedir como funcionalidad algo que ya existe o que se decidió no
+        hacer (§5.2), y es lo que hace que este ``kind`` tenga una lectura
+        que verificar como cualquier otro.
+
+        Si además hay ``client_ref``, se resuelve por el router: un ref
+        ajeno y uno inexistente dan el mismo 404 opaco, así que un ticket no
+        puede servir para averiguar la cartera de otro partner.
+        """
+        from nexus_api.companion.tools.support import (
+            CapabilitiesUnavailable,
+            SupportRefused,
+            build_support_draft,
+            load_capabilities,
+            ticket_impact,
+            ticket_title,
+        )
+
+        try:
+            document = load_capabilities()
+        except CapabilitiesUnavailable as exc:
+            raise ProposalRefused(
+                ToolError(
+                    "unavailable",
+                    "No se pudo leer el documento de capacidades, así que no sé "
+                    "si esto ya existe. Dilo tal cual y no abras el ticket a "
+                    "ciegas.",
+                )
+            ) from exc
+
+        ref = str(args.get("client_ref") or "").strip() or None
+        if ref is not None:
+            # Se lee la ficha para confirmar que el cliente es de este
+            # partner. Vale por sí misma: un ticket con un ref inventado
+            # manda a soporte a buscar algo que no existe.
+            await self._get(f"/console/clients/{ref}")
+
+        try:
+            draft = build_support_draft(
+                kind,
+                args,
+                checked=self.checked,
+                document=document,
+                client_ref=ref,
+            )
+        except SupportRefused as refused:
+            raise ProposalRefused(refused.error) from refused
+
+        return Proposal(
+            kind=kind,
+            title=ticket_title(draft),
+            preview=draft.as_preview(),
+            # No hay diff: un ticket no cambia un estado que se pueda
+            # comparar línea a línea. Inventar uno sería decorado.
+            diff=None,
+            impact=ticket_impact(draft),
+            risk="low",
+            reversible=True,
+            # El hash cuelga de la VERSIÓN del documento de capacidades: si
+            # alguien publica una versión nueva entre la propuesta y el sí,
+            # lo que el Companion afirmó sobre qué existe puede haber dejado
+            # de ser cierto, y la propuesta tiene que rehacerse.
+            state_hash=canonical_hash(
+                {
+                    "capabilities_version": document.version,
+                    "topic": draft.topic,
+                    "category": draft.category,
+                }
+            ),
+            apply_method=APPLY_ROUTES[kind][0],
+            apply_path=APPLY_ROUTES[kind][1],
+            apply_body=draft.as_body(),
+            # No hay ticket que releer (§25.1: no se crea un sistema de
+            # tickets), pero sí hay algo que prometimos y se puede
+            # comprobar: que la fila aterrizó en el centro de
+            # notificaciones del partner. Es la verificación honesta de lo
+            # que este ``kind`` hace de verdad.
+            expectations={"ticket_visible": "true"},
+            client_ref=ref,
         )
 
 

@@ -85,6 +85,10 @@ export type Me = {
   membership_id: string;
   partner: { slug: string; name: string; status: string };
   quota: Quota;
+  // CO-08 §10 — la bandera del Companion por partner. La puerta real está en
+  // el backend (`companion:use` Y la bandera); esto es solo lo que decide si
+  // se monta la burbuja. Apagada es AUSENCIA, no un botón gris con tooltip.
+  companion_enabled: boolean;
 };
 export type ClientSummary = {
   external_client_ref: string;

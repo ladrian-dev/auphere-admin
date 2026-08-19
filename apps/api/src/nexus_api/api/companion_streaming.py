@@ -66,11 +66,13 @@ import structlog
 from redis.asyncio import Redis
 
 from nexus_api.api.qa_streaming import PING_INTERVAL_SECONDS, SSEEvent, _json_default
+from nexus_api.core.otel_metrics import record_companion
 from nexus_api.core.streams import xadd_capped
 from nexus_api.db.models.companion import (
     RUN_CANCELLED,
     RUN_COMPLETED,
     RUN_ERROR,
+    RUN_PAUSED,
 )
 
 log = structlog.get_logger(__name__)
@@ -125,7 +127,14 @@ COMPANION_EVENTS: dict[str, frozenset[str]] = {
     # Lo que falta y solo sabe el cliente. ``slots`` es una lista de
     # ``{key, label, why, examples, required}``; ``key`` es un identificador
     # estable y la interfaz puede tener copy propio por cada uno.
-    "intake.missing": frozenset({"slots"}),
+    #
+    # ``work_kind`` es de la v2 (§3.1 de ``CONTRACT-V2.md``) y lo emite el
+    # nodo del expediente (CO-06). Existe porque la interfaz titula el grupo
+    # de chips ("Para crear el cliente me faltan…") y sin él tendría que
+    # deducir el tipo de trabajo parseando prefijos de ``key``, que es
+    # adivinar. Enum cerrado: create_client · connect_whatsapp ·
+    # change_prompt · enable_connector · publish.
+    "intake.missing": frozenset({"slots", "work_kind"}),
     # ``preview`` y no ``payload``: ``payload`` está en la lista de nombres
     # prohibidos del recorrido de OpenAPI, y aunque este catálogo sea otro
     # guardián, usar el mismo vocabulario en los dos evita que alguien
@@ -140,13 +149,42 @@ COMPANION_EVENTS: dict[str, frozenset[str]] = {
     "hitl.resolved": frozenset({"action_id", "decision", "by", "at", "note"}),
     # Lo produce código determinista que relee y compara (C5). Ni un
     # subagente ni una instrucción de "revisa tu trabajo".
-    "verify.result": frozenset({"action_id", "checks", "ok"}),
+    #
+    # ``trial`` es de la v2 (§7 de ``CONTRACT-V2.md``) y lo emite CO-05: el
+    # resultado de haber probado la acción en un hilo de playground antes de
+    # publicar. Tres reglas duras que valen aunque el emisor aún no exista:
+    # ``null`` es "esta acción no admite prueba" y ``{"ran": false}`` es
+    # "admite prueba y no se hizo" —no son lo mismo—, y **nunca lleva la
+    # respuesta del agente borrador**: lleva la sonda que redacta el
+    # Companion, aserciones con nombre estable y el ``thread_id`` del
+    # playground, donde ya hay autorización para leer la conversación.
+    "verify.result": frozenset({"action_id", "checks", "ok", "trial"}),
+    # escalado a soporte (CO-08, §4.5). Hace falta porque el identificador
+    # NACE al aplicar: sin evento, la interfaz no tiene de dónde sacarlo
+    # para pintar la tarjeta. Se emite en ``execute``, después del 2xx de
+    # ``console.apply`` y antes de ``verify.result``, y la interfaz lo ata a
+    # la tarjeta de ``hitl.requested`` por ``action_id`` —igual que hace con
+    # ``hitl.resolved``—, no añade una tarjeta suelta.
+    #
+    # ``category``, ``topic`` y ``sla`` son identificadores estables; la
+    # frase que ve el usuario ("te respondemos en horario laboral") la
+    # escribe la interfaz. Ninguna clave de aquí puede llevar texto de un
+    # cliente final: ``topic`` es un slug y el resto son enums y un
+    # identificador.
+    "support.ticket": frozenset({"action_id", "ticket_ref", "category", "topic", "sla"}),
     # medidores
     "cost.updated": frozenset({"input_tokens", "output_tokens", "model"}),
     "context.updated": frozenset({"input_tokens", "max_context", "percent", "compacted", "model"}),
     "budget.updated": frozenset(
         {"used", "cap", "remaining", "percent", "exhausted", "period", "resets_at"}
     ),
+    # El CORTE por presupuesto (CO-08, §6.4). Separado de ``budget.updated``
+    # a propósito: aquel sigue emitiéndose en cada turno y sigue llevando
+    # ``exhausted``, pero la interfaz tiene que poder distinguir "vas por el
+    # 98 %" de "aquí se paró el trabajo". Son dos mensajes distintos y se
+    # pintan distinto — y el segundo NO es un error: el hilo sigue ahí, la
+    # historia sigue ahí, y lo desbloquea subir un número.
+    "budget.paused": frozenset({"used", "cap", "period", "resets_at", "scope"}),
 }
 
 #: Los dos únicos eventos donde ``text`` es legítimo: son las palabras del
@@ -502,7 +540,17 @@ async def _run_with_lifecycle(
         # ``on_complete`` sí corre: aparca la fila con los tokens y la
         # respuesta parcial, para que el gasto de este turno cuente contra el
         # tope aunque la confirmación no llegue nunca.
-        parked = bool(handle.extras.get("awaiting_action")) and status == RUN_COMPLETED
+        # CO-08 §6.3: un turno cortado por el tope mensual SÍ cierra, y
+        # cierra con ``status="paused"``. Manda sobre el aparcado: si el
+        # trabajo se paró de verdad, no está esperando a una persona.
+        if handle.extras.get("budget_paused") and status == RUN_COMPLETED:
+            status = RUN_PAUSED
+            handle.final_status = status
+        parked = (
+            bool(handle.extras.get("awaiting_action"))
+            and status == RUN_COMPLETED
+            and not handle.extras.get("budget_paused")
+        )
         if not parked:
             with contextlib.suppress(Exception):
                 await publish(
@@ -522,6 +570,15 @@ async def _run_with_lifecycle(
                     },
                 )
                 handle.seq += 1
+            # Los contadores del turno (§11 de CONTRACT-V2) van justo aquí y
+            # no en el driver: este bloque se ejecuta SIEMPRE —también si el
+            # turno falló—, así que la razón no tiene agujeros. Un run
+            # aparcado no cuenta: su turno todavía no ha terminado, y
+            # contarlo dos veces (aquí y al reanudar) inflaría el
+            # denominador de R1.
+            record_companion("companion.turn.total")
+            if handle.extras.get("unsupported"):
+                record_companion("companion.turn.unsupported")
         if on_complete is not None:
             try:
                 await on_complete(handle)

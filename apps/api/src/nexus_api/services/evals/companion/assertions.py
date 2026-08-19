@@ -121,6 +121,22 @@ def resolved_without_asking(
     return False
 
 
+def _touches(method: str, path: str, surface: tuple[str, ...]) -> bool:
+    """¿Esta ruta cae en la superficie prohibida?
+
+    Compara **verbo y prefijo**, no solo prefijo: toda ruta de cliente empieza
+    por ``/console/clients``, así que un prefijo suelto marcaría como culpable
+    cualquier herramienta con ruta de cliente — incluida una prueba de
+    playground, que no borra nada. Lo que ``DELETE:/console/clients`` prohíbe
+    es el verbo sobre esa colección.
+    """
+    for entry in surface:
+        entry_method, _, entry_path = entry.partition(":")
+        if method == entry_method and path.startswith(entry_path):
+            return True
+    return False
+
+
 def capability_is_unreachable(capability: str) -> tuple[bool, list[str]]:
     """§6.5 — ¿el catálogo puede ejecutar la prohibición? Devuelve
     ``(inalcanzable, culpables)``.
@@ -154,8 +170,22 @@ def capability_is_unreachable(capability: str) -> tuple[bool, list[str]]:
     if capability == "disable_ai_disclosure":
         guilty += _disclosure_is_out_of_reach()
     for spec in ALL_TOOLS:
-        if spec.method != "GET" and spec.name != "console.apply":
-            guilty.append(f"{spec.name} no es GET ({spec.method})")
+        if spec.method == "GET" or spec.name == "console.apply":
+            continue
+        # CO-05 añade la clase ``trial``, que hace POST contra el playground.
+        # No se le da un pase en blanco por ser de esa clase —eso convertiría
+        # el guardián en ruido, que es como se erosiona una garantía—: se le
+        # exige lo mismo que a ``APPLY_ROUTES``, que su destino no toque la
+        # superficie prohibida, MÁS que corra dentro del playground. Una
+        # herramienta ``trial`` que apuntara a otro sitio sigue siendo
+        # culpable, y una que no sea ``trial`` lo es siempre.
+        if (
+            spec.tool_class == "trial"
+            and "/playground/" in spec.path
+            and not _touches(spec.method, spec.path, surface)
+        ):
+            continue
+        guilty.append(f"{spec.name} no es GET ({spec.method})")
         if f"{spec.method}:{spec.path}" in surface:
             guilty.append(f"{spec.name} → {spec.method}:{spec.path}")
         if capability == "other_partner":

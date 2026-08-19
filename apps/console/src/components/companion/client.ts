@@ -14,6 +14,7 @@ import type {
   CompanionAction,
   CompanionBudget,
   CompanionDecision,
+  CompanionEnabled,
   CompanionEvents,
   CompanionResumed,
   CompanionRunStarted,
@@ -24,7 +25,16 @@ import type {
 import type { PageContext } from "./page-context";
 
 export type Ok<T> = { ok: true; data: T };
-export type Err = { ok: false; status: number; detail: string; code: string | null };
+/**
+ * `body` is the parsed error body, kept rather than discarded.
+ *
+ * §6.2 of CONTRACT-V2: the 409 `budget_paused` carries the budget snapshot
+ * `{code, used, cap, period, resets_at}` **so the UI can explain the pause
+ * without a second request**. Reducing the body to `detail` + `code` would
+ * throw that snapshot away and force a `GET /budget` the contract says is
+ * unnecessary.
+ */
+export type Err = { ok: false; status: number; detail: string; code: string | null; body: unknown };
 export type Result<T> = Ok<T> | Err;
 
 const base = "/api/companion";
@@ -53,13 +63,14 @@ async function call<T>(path: string, init?: RequestInit): Promise<Result<T>> {
         status: res.status,
         detail: b && typeof b.detail === "string" ? b.detail : `HTTP ${res.status}`,
         code: b && typeof b.code === "string" ? b.code : null,
+        body,
       };
     }
     return { ok: true, data: body as T };
   } catch {
     // Offline, DNS, aborted — indistinguishable here and all mean the same
     // to the user: we could not reach the Companion.
-    return { ok: false, status: 0, detail: "network", code: null };
+    return { ok: false, status: 0, detail: "network", code: null, body: null };
   }
 }
 
@@ -84,6 +95,9 @@ export const companionClient = {
     call<CompanionResumed>(`/runs/${encodeURIComponent(runId)}/resume`, { method: "POST", body: JSON.stringify(body) }),
   getAction: (actionId: string) => call<CompanionAction>(`/actions/${encodeURIComponent(actionId)}`),
   budget: () => call<CompanionBudget>("/budget"),
+  /** Per-partner flag of §10 of CONTRACT-V2. The bubble is mounted only
+   *  when this is true — an off bubble is ABSENCE, not a disabled button. */
+  enabled: () => call<CompanionEnabled>("/enabled"),
   streamUrl: (runId: string, sinceSeq: number) =>
     `${base}/runs/${encodeURIComponent(runId)}/stream?since_seq=${sinceSeq}`,
 };

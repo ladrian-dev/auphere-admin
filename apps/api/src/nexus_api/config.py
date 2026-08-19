@@ -286,6 +286,17 @@ class Settings(BaseSettings):
     # sin cron: un proceso más que puede fallar en silencio es peor que una
     # comparación de fechas en el sitio donde importa.
     companion_action_ttl_seconds: float = 900.0
+    # CO-08. Dónde avisa Auphere de un ticket de soporte abierto desde la
+    # consola. Vacío = no se manda correo, y **no pasa nada**: el ticket
+    # existe igual, con su fila de auditoría, su notificación al partner y
+    # su línea de log estructurada (``console.support.ticket_opened``), que
+    # es la que alimenta la agregación por ``topic``. Lo que falta sin esto
+    # es el empujón, no el registro.
+    support_alert_email: str = ""
+    # Tickets de soporte por persona y minuto. Bajo a propósito: abrir un
+    # ticket es un acto deliberado y con confirmación humana delante, así
+    # que una ráfaga solo puede ser un bucle.
+    console_support_tickets_per_minute: int = 6
 
     # ── Block N: WhatsApp media + multimodal ────────────────────────────────
     # S3 (or S3-compatible — Cloudflare R2, MinIO) for media storage. All

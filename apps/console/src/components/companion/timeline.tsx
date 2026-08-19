@@ -10,7 +10,7 @@ import { useT } from "@/i18n/client";
 import { ConfirmCard } from "./confirm-card";
 import { IntakeCard } from "./intake-card";
 import { PlanCard } from "./plan-card";
-import { type CompanionState, thinkingToolCount } from "./state";
+import { type CompanionState, thinkingToolCount, trialClientRef } from "./state";
 import { Thinking } from "./thinking";
 import { ToolCard } from "./tool-card";
 import type { Decision, IntakeSlot } from "./types";
@@ -175,7 +175,9 @@ export function Timeline({
                 />
               ) : null}
 
-              {item.kind === "intake" ? <IntakeCard slots={item.slots} onAnswer={onAnswerSlot} /> : null}
+              {item.kind === "intake" ? (
+                <IntakeCard slots={item.slots} workKind={item.workKind} onAnswer={onAnswerSlot} />
+              ) : null}
 
               {item.kind === "action" ? (
                 <ConfirmCard
@@ -187,7 +189,18 @@ export function Timeline({
                 />
               ) : null}
 
-              {item.kind === "verify" ? <VerifyTable checks={item.checks} ok={item.ok} /> : null}
+              {item.kind === "verify" ? (
+                <VerifyTable
+                  checks={item.checks}
+                  ok={item.ok}
+                  trial={item.trial}
+                  // `verify.result` carries no `client_ref`, so the
+                  // playground link is correlated back through
+                  // `action_id`. Null when it cannot be — the panel then
+                  // shows the thread id instead of a dead link.
+                  trialClientRef={trialClientRef(state, item.actionId)}
+                />
+              ) : null}
 
               {item.kind === "notice" ? (
                 <p

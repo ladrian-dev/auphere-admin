@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Clock, ShieldAlert, ShieldCheck, TriangleAlert } from "lucide-react";
 import * as React from "react";
 
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Textarea } from "@nexus/ui";
@@ -9,7 +9,15 @@ import { useT } from "@/i18n/client";
 
 import { optionalKey } from "./i18n";
 import type { ActionItem } from "./state";
-import type { Decision, DiffLine, ImpactItem } from "./types";
+import { SupportProposal, TicketRef } from "./support";
+import {
+  type Decision,
+  type DiffLine,
+  type ImpactItem,
+  type PublishNotice,
+  readPublishNotice,
+  readSupportPreview,
+} from "./types";
 
 /**
  * The confirmation card (§2.3 / §2.4 of the contract) — the one thing in
@@ -74,6 +82,14 @@ export function ConfirmCard({ item, currentUserId, busy, failure, onDecide }: Pr
   const kindKey = optionalKey(`companion.kind.${item.actionKind}`);
   const kindLabel = kindKey ? t(kindKey) : t("companion.kind.unknown");
 
+  // The two support kinds get their own preview (v2 §4.2): the generic
+  // key/value view would render `checked` with `JSON.stringify`.
+  const isSupport = item.actionKind === "support_help" || item.actionKind === "support_capability";
+  const support = isSupport ? readSupportPreview(item.preview) : null;
+
+  // v2 §7.1. A WARNING, never a block — the buttons below stay enabled.
+  const publishNotice = item.actionKind === "publish" ? readPublishNotice(item.preview) : null;
+
   return (
     <section
       aria-label={t("companion.confirm.title")}
@@ -93,9 +109,18 @@ export function ConfirmCard({ item, currentUserId, busy, failure, onDecide }: Pr
         </Badge>
       </div>
 
-      {item.preview && Object.keys(item.preview).length > 0 ? <Preview preview={item.preview} /> : null}
+      {support ? (
+        <SupportProposal preview={support} />
+      ) : item.preview && Object.keys(item.preview).length > 0 ? (
+        <Preview preview={item.preview} />
+      ) : null}
       {item.diff && item.diff.length > 0 ? <Diff lines={item.diff} /> : null}
       {item.impact.length > 0 ? <Impact items={item.impact} /> : null}
+
+      {/* The ticket, once `support.ticket` sealed this card by
+          `action_id` (v2 §4.5). It attaches here — it is never a loose
+          card of its own. */}
+      {item.ticket ? <TicketRef ticket={item.ticket} /> : null}
 
       {/* ── resolved: the card is sealed, never duplicated ─────────── */}
       {item.state === "resolved" ? (
@@ -107,6 +132,7 @@ export function ConfirmCard({ item, currentUserId, busy, failure, onDecide }: Pr
         </Alert>
       ) : (
         <div className="mt-3 min-w-0 space-y-2 border-t border-border pt-3">
+          {publishNotice?.warning ? <PublishWarning warning={publishNotice.warning} /> : null}
           {failure ? <Failure failure={failure} /> : null}
 
           {left !== null ? (
@@ -157,6 +183,29 @@ export function ConfirmCard({ item, currentUserId, busy, failure, onDecide }: Pr
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Publishing without having tried it (v2 §7.1).
+ *
+ * **This is an advisory and Confirm stays enabled.** The user may publish
+ * without a trial: they are told, it is recorded on the action row and in
+ * the audit trail, and it goes out. Forbidding it would turn the trial
+ * into a toll people learn to route around — §7.1 says so in as many
+ * words.
+ *
+ * Hence the warning token and not the danger one. Red for something you
+ * are allowed to do teaches people to ignore red.
+ */
+function PublishWarning({ warning }: { warning: NonNullable<PublishNotice["warning"]> }) {
+  const t = useT();
+  return (
+    <Alert className="border-status-warning/50">
+      <TriangleAlert aria-hidden="true" className="size-4 text-status-warning" />
+      <AlertTitle>{t(`companion.publish.warning.${warning}` as const)}</AlertTitle>
+      <AlertDescription>{t(`companion.publish.warning.${warning}.body` as const)}</AlertDescription>
+    </Alert>
   );
 }
 

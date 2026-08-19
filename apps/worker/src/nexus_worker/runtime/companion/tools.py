@@ -13,6 +13,7 @@ consola.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -79,6 +80,75 @@ class ActionPort(Protocol):
     async def verify(self, action_id: Any) -> dict[str, Any] | None: ...
 
 
+# ── el nombre de cable (§17 del contrato v2.1) ─────────────────────────
+#
+# Anthropic rechaza el punto en ``tools[].name``:
+#
+#     tools.0.custom.name: String should match pattern '^[a-zA-Z0-9_-]{1,128}$'
+#
+# Las 28 herramientas del catálogo se llaman con punto (``console.get_usage``),
+# así que **ningún turno que ofreciera herramientas funcionó nunca contra el
+# proveedor real**; un proveedor guionizado acepta cualquier nombre y por eso
+# ninguna suite lo vio.
+#
+# El catálogo **no se renombra**: el nombre con punto ya es contrato en los
+# eventos que pinta la interfaz, en la línea de i18n de la consola, en el
+# dataset de evals, en las claves de ``APPLY_ROUTES`` y en el ``kind`` de cada
+# ``propose_*``. La restricción es del transporte y se resuelve en el
+# transporte.
+
+#: Punto → doble guion bajo. Biyectivo por construcción: ningún nombre del
+#: catálogo contiene ``__`` (son ``console.`` más snake_case con guiones bajos
+#: simples), y :func:`wire_tools` lo comprueba al construir la tabla.
+WIRE_SEPARATOR = "__"
+
+#: Lo que el proveedor admite. Se comprueba, no se supone.
+WIRE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
+
+
+class WireNameCollision(RuntimeError):
+    """Dos herramientas del catálogo caerían en el mismo nombre de cable.
+
+    Rompe **al construir la tabla**, que es al arrancar el turno, y no en
+    producción con un 400 del proveedor o —peor— con una llamada
+    despachada a la herramienta equivocada.
+    """
+
+
+def to_wire(name: str) -> str:
+    """Nombre de catálogo → nombre de cable."""
+    return name.replace(".", WIRE_SEPARATOR)
+
+
+def wire_tools(specs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """El catálogo listo para el proveedor, y cómo deshacer la traducción.
+
+    Devuelve ``(specs, catálogo_por_nombre_de_cable)``. La tabla de vuelta se
+    construye **desde el catálogo** —no se recalcula invirtiendo la cadena—
+    para que la vuelta atrás sea exacta aunque un nombre futuro traiga algo
+    raro.
+    """
+    translated: list[dict[str, Any]] = []
+    back: dict[str, str] = {}
+    for spec in specs:
+        function = spec.get("function")
+        if not isinstance(function, dict):  # pragma: no cover - defensivo
+            translated.append(spec)
+            continue
+        name = str(function.get("name") or "")
+        wire = to_wire(name)
+        if not WIRE_NAME_PATTERN.match(wire):
+            raise WireNameCollision(
+                f"el nombre de cable de {name!r} sigue sin ser válido para el proveedor: {wire!r}"
+            )
+        if back.setdefault(wire, name) != name:
+            raise WireNameCollision(
+                f"{name!r} y {back[wire]!r} caen en el mismo nombre de cable {wire!r}"
+            )
+        translated.append({**spec, "function": {**function, "name": wire}})
+    return translated, back
+
+
 def supports_actions(toolbelt: Any) -> bool:
     """¿Este juego de herramientas sabe escribir?
 
@@ -92,4 +162,14 @@ def supports_actions(toolbelt: Any) -> bool:
     )
 
 
-__all__ = ["ActionPort", "ToolResult", "Toolbelt", "supports_actions"]
+__all__ = [
+    "WIRE_NAME_PATTERN",
+    "WIRE_SEPARATOR",
+    "ActionPort",
+    "ToolResult",
+    "Toolbelt",
+    "WireNameCollision",
+    "supports_actions",
+    "to_wire",
+    "wire_tools",
+]

@@ -220,6 +220,40 @@ def budget_note(*, calls_left: int, tokens_left: int, tokens_total: int) -> dict
     return {"role": "system", "content": " ".join(parts)}
 
 
+#: Qué se agotó, dicho para el modelo. Identificadores estables dentro; la
+#: frase la escribe el motor porque no sale por el stream: es una instrucción,
+#: no algo que la persona vaya a leer.
+_CLOSING_REASON: dict[str, str] = {
+    "tokens": "Te has quedado sin presupuesto de tokens en este turno.",
+    "steps": "Has agotado los pasos de este turno sin llegar a responder.",
+    "calls": "Te has quedado sin consultas en este turno.",
+}
+
+
+def closing_note(reason: str) -> dict[str, Any]:
+    """La nota del paso de cierre (R6, garantía E3).
+
+    El turno se acabó sin respuesta. En vez de devolver un turno mudo —que
+    es lo que hace un techo duro que el modelo no ve—, se le pide que cierre
+    diciendo dónde quedó el trabajo. Un agente que dice "llegué a leer el
+    diagnóstico pero no la auditoría, ¿sigo?" es infinitamente mejor que uno
+    al que cortan en seco.
+
+    Va **al final** de ``messages``, como todas las notas del turno: el
+    prefijo cacheado sigue encajando.
+    """
+    return {
+        "role": "system",
+        "content": (
+            _CLOSING_REASON.get(reason, _CLOSING_REASON["tokens"])
+            + " Cierra ahora, en dos o tres frases: di qué llegaste a mirar, qué "
+            "te faltó y qué harías si sigues. No empieces nada nuevo, no pidas "
+            "más herramientas y no des por hecho nada que no hayas leído. Si no "
+            "cambiaste nada, dilo — es lo primero que la persona necesita saber."
+        ),
+    }
+
+
 def page_context_message(page_context: dict[str, Any] | None) -> dict[str, Any] | None:
     """El mensaje de sistema a mitad de conversación con la página actual.
 
@@ -268,5 +302,6 @@ __all__ = [
     "SYSTEM_PROMPT",
     "budget_note",
     "build_messages",
+    "closing_note",
     "page_context_message",
 ]

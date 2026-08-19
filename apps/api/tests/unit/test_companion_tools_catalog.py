@@ -39,6 +39,10 @@ EXPECTED = {
     "console.get_onboarding",
     "console.get_quota",
     "console.get_prompt_library",
+    # CO-08 §5: el documento de capacidades se LEE, no se hornea en el
+    # prompt. Que sea una herramienta más es lo que hace que dejar cita y
+    # dejar ``tool.call.started`` salga gratis.
+    "console.get_capabilities",
 }
 
 

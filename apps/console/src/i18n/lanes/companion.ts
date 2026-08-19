@@ -61,6 +61,9 @@ export const companionMessages = {
   "companion.phase.awaiting": { es: "Esperándote", en: "Waiting for you" },
   "companion.phase.execute": { es: "Ejecutando", en: "Executing" },
   "companion.phase.verify": { es: "Verificando", en: "Verifying" },
+  // New in CONTRACT-V2 §2: step 8 of the process. NOT "applying a
+  // `kind: publish`" — that happens in `execute` like every other write.
+  "companion.phase.publish": { es: "Publicando", en: "Publishing" },
   "companion.phase.respond": { es: "Respondiendo", en: "Answering" },
   "companion.phase.done": { es: "Listo", en: "Done" },
   "companion.working": { es: "Trabajando…", en: "Working…" },
@@ -99,6 +102,13 @@ export const companionMessages = {
   "companion.notice.unsupported": {
     es: "No pude responder esto con datos que haya leído, así que prefiero no afirmarlo.",
     en: "I could not answer this from data I actually read, so I would rather not assert it.",
+  },
+  // v2 §6.3: the run ended CLEANLY at the cap. It kept its partial answer,
+  // its tokens and its history — so this says where it got to, not that
+  // something broke.
+  "companion.notice.paused": {
+    es: "Aquí se paró: se alcanzó el tope mensual de tokens. Lo hecho hasta ahora está arriba y no se pierde.",
+    en: "It stopped here: the monthly token cap was reached. What was done so far is above and is not lost.",
   },
 
   // ── thinking (§8.2) ──────────────────────────────────────────────────
@@ -154,6 +164,23 @@ export const companionMessages = {
   "companion.tool.name.console.get_prompt_library": { es: "Consultando la biblioteca de prompts", en: "Checking the prompt library" },
   "companion.tool.name.console.apply": { es: "Aplicando el cambio confirmado", en: "Applying the confirmed change" },
 
+  // The three tools of the Ola 2 (v2 §4.1 and §5.1).
+  //
+  // **They keep the dot.** §17 of the contract (v2.1) found that Anthropic
+  // rejects `.` in `tools[].name`, but the fix translates `.` → `__` only
+  // at the provider boundary, inside the engine. The catalogue names do not
+  // change, and `tool.call.started.name` still reaches this app with the
+  // dot — so these keys carry it, and the wire form never appears here.
+  "companion.tool.name.console.get_capabilities": {
+    es: "Consultando qué se puede y qué no",
+    en: "Checking what is and is not possible",
+  },
+  "companion.tool.name.support.request_help": { es: "Preparando una incidencia", en: "Drafting a support ticket" },
+  "companion.tool.name.support.request_capability": {
+    es: "Preparando una petición de funcionalidad",
+    en: "Drafting a capability request",
+  },
+
   // ── plan card (§2.1) ─────────────────────────────────────────────────
   "companion.plan.title": { es: "Plan propuesto", en: "Proposed plan" },
   "companion.plan.note": {
@@ -181,13 +208,78 @@ export const companionMessages = {
   "companion.intake.optional": { es: "opcional", en: "optional" },
   "companion.intake.examples": { es: "Por ejemplo", en: "For example" },
   "companion.intake.answer": { es: "Responder «{label}»", en: "Answer “{label}”" },
-  // Copy of our own for the stable slot keys we know. Anything else falls
-  // back to the backend's `label` / `why`.
-  "companion.intake.slot.forbidden_behaviour": { es: "Qué NO debe hacer el agente", en: "What the agent must NOT do" },
-  "companion.intake.slot.business_hours": { es: "Horario de atención", en: "Opening hours" },
+  // The badge of `forbidden_behaviour`. "Required" would be true and
+  // useless: every field in that list is required. This says why it is the
+  // one that matters.
+  // Short on purpose. `Badge` is `whitespace-nowrap` and `shrink-0`, so a
+  // long badge cannot give width back to the label beside it — at 320 px
+  // the label would be squeezed into a one-word-per-line column. The
+  // reasoning lives in the `why` line below the chip, which does wrap.
+  "companion.intake.keyField": { es: "evita incidentes", en: "prevents incidents" },
+
+  // `work_kind` (v2 §3.2) titles the group. Five closed values; anything
+  // else falls back to the generic `companion.intake.title`, never to the
+  // identifier.
+  "companion.intake.title.create_client": {
+    es: "Para dar de alta el cliente me falta saber",
+    en: "To set the client up I still need to know",
+  },
+  "companion.intake.title.connect_whatsapp": {
+    es: "Para conectar el WhatsApp me falta saber",
+    en: "To connect WhatsApp I still need to know",
+  },
+  "companion.intake.title.change_prompt": {
+    es: "Para cambiar el prompt me falta saber",
+    en: "To change the prompt I still need to know",
+  },
+  "companion.intake.title.enable_connector": {
+    es: "Para activar el conector me falta saber",
+    en: "To enable the connector I still need to know",
+  },
+  "companion.intake.title.publish": {
+    es: "Para publicar me falta saber",
+    en: "To publish I still need to know",
+  },
+
+  // Copy of our own for the closed catalogue of `key` (v2 §3.3), plus
+  // three of CO-03 that fell outside it — kept as free spare copy, so a
+  // key the engine emits off-catalogue still gets a human name.
+  // Anything else falls back to the backend's `label` / `why`.
+  "companion.intake.slot.name": { es: "Nombre del cliente", en: "Client name" },
+  "companion.intake.slot.vertical": { es: "Sector", en: "Sector" },
   "companion.intake.slot.timezone": { es: "Zona horaria", en: "Time zone" },
+  "companion.intake.slot.language": { es: "Idioma principal", en: "Main language" },
+  "companion.intake.slot.forbidden_behaviour": {
+    es: "Qué NO debe hacer el agente, pase lo que pase",
+    en: "What the agent must NOT do, no matter what",
+  },
+  "companion.intake.slot.phone_number": { es: "Número de teléfono", en: "Phone number" },
+  "companion.intake.slot.number_owner": { es: "De quién es el número", en: "Who owns the number" },
+  "companion.intake.slot.channel_role": { es: "Para qué se usa este canal", en: "What this channel is for" },
+  "companion.intake.slot.failing_behaviour": { es: "Qué está fallando exactamente", en: "What exactly is going wrong" },
+  "companion.intake.slot.real_example": { es: "Un caso real que lo enseñe", en: "A real case that shows it" },
+  "companion.intake.slot.connector_consent": {
+    es: "Permiso del cliente para conectar su cuenta",
+    en: "The client's consent to connect their account",
+  },
+  "companion.intake.slot.ai_disclosure_decision": {
+    es: "Si el agente dice que es una IA",
+    en: "Whether the agent says it is an AI",
+  },
+  "companion.intake.slot.business_hours": { es: "Horario de atención", en: "Opening hours" },
   "companion.intake.slot.legal_name": { es: "Nombre fiscal", en: "Registered name" },
   "companion.intake.slot.escalation": { es: "Cuándo pasar a una persona", en: "When to hand over to a person" },
+
+  // The "why" of the one field that earns its own wording. On the other
+  // rows the backend's `why` is enough; here the argument IS the point.
+  "companion.intake.why.forbidden_behaviour": {
+    es: "Es el campo que casi nadie escribe y el que acaba causando los incidentes. Cuesta un minuto y evita la llamada del cliente enfadado.",
+    en: "It is the field almost nobody writes and the one that ends up causing the incidents. It costs a minute and saves the angry-client call.",
+  },
+  "companion.intake.why.channel_role": {
+    es: "Con más de un canal activo y ningún rol asignado, el envío se rechaza. Etiquetarlo ahora evita descubrirlo con un mensaje sin salir.",
+    en: "With more than one active channel and no role assigned, sending is refused. Labelling it now avoids finding out through a message that never left.",
+  },
 
   // ── confirmation card (§2.3, §2.4) ───────────────────────────────────
   "companion.confirm.title": { es: "Necesito tu confirmación", en: "I need your confirmation" },
@@ -242,7 +334,44 @@ export const companionMessages = {
   "companion.kind.channel_role": { es: "Cambiar el rol de un canal", en: "Change a channel's role" },
   "companion.kind.usage_alerts": { es: "Cambiar los avisos de consumo", en: "Change the usage alerts" },
   "companion.kind.invite": { es: "Invitar a alguien al equipo", en: "Invite someone to the team" },
+  // v2 §4.1. Both PROPOSE — `console.apply` is still the only `mutates`.
+  "companion.kind.support_help": { es: "Abrir una incidencia", en: "Open a support ticket" },
+  "companion.kind.support_capability": { es: "Pedir una funcionalidad", en: "Request a capability" },
   "companion.kind.unknown": { es: "Cambio propuesto", en: "Proposed change" },
+
+  // ── support (v2 §4 · investigación §25) ──────────────────────────────
+  //
+  // The Companion never closes with a "no"; it closes with a path.
+  "companion.support.category.help": { es: "Incidencia", en: "Support ticket" },
+  "companion.support.category.capability": { es: "Petición de funcionalidad", en: "Capability request" },
+  "companion.support.need": { es: "Qué necesitas", en: "What you need" },
+  "companion.support.checked": { es: "Ya comprobado", en: "Already checked" },
+  "companion.support.alternative": { es: "Alternativa", en: "Alternative" },
+  "companion.support.bridge": { es: "Solución puente", en: "Bridge solution" },
+  "companion.support.bridge.body": {
+    es: "El puente resuelve el caso ahora, pero no sustituye a la solución nativa: abrimos el ticket igualmente para que entre en la cola.",
+    en: "The bridge solves it now but does not replace the native solution: we open the ticket anyway so it enters the queue.",
+  },
+  // `topic` is a stable aggregation slug, never prose — it is what makes
+  // "seven partners asked for Shopify this quarter" answerable.
+  "companion.support.topic": { es: "Tema", en: "Topic" },
+  "companion.support.opened": { es: "Ticket abierto", en: "Ticket opened" },
+  "companion.support.copyRef": { es: "Copiar la referencia del ticket", en: "Copy the ticket reference" },
+  "companion.support.copied": { es: "Referencia {ref} copiada", en: "Reference {ref} copied" },
+  // `sla` is an identifier; the sentence is ours (§4.4). Without an
+  // expectation the ticket is a black hole.
+  "companion.support.sla.business_hours": {
+    es: "Te respondemos en horario laboral.",
+    en: "We reply during business hours.",
+  },
+  "companion.support.sla.next_business_day": {
+    es: "Te respondemos el siguiente día laborable.",
+    en: "We reply the next business day.",
+  },
+  "companion.support.sla.best_effort": {
+    es: "Lo miramos en cuanto podamos. Sin plazo comprometido.",
+    en: "We will look at it as soon as we can. No committed deadline.",
+  },
 
   // `preview` fields we know how to name (§3.4)
   "companion.preview.client_ref": { es: "Cliente", en: "Client" },
@@ -286,6 +415,58 @@ export const companionMessages = {
   "companion.verify.check.channel_role": { es: "Rol del canal", en: "Channel role" },
   "companion.verify.check.draft_saved": { es: "Borrador guardado", en: "Draft saved" },
 
+  // ── playground trial (v2 §7) ─────────────────────────────────────────
+  //
+  // `ran: false` is NOT "no trial": it is "this action admits one and none
+  // was run". `trial: null` is the other case and paints nothing at all.
+  "companion.trial.notRun.title": { es: "No lo probé", en: "I did not try it" },
+  "companion.trial.notRun.body": {
+    es: "Este cambio se puede probar en el playground antes de publicarlo, y no lo hice.",
+    en: "This change can be tried in the playground before publishing, and I did not do it.",
+  },
+  "companion.trial.title": { es: "Lo que probé en el playground", en: "What I tried in the playground" },
+  "companion.trial.ok": { es: "La prueba pasó", en: "The trial passed" },
+  "companion.trial.failed": { es: "La prueba falló", en: "The trial failed" },
+  "companion.trial.summary": { es: "{turns} turnos · {tokens} tokens", en: "{turns} turns · {tokens} tokens" },
+  "companion.trial.turn.ok": { es: "el turno pasó", en: "the turn passed" },
+  "companion.trial.turn.failed": { es: "el turno falló", en: "the turn failed" },
+  "companion.trial.latency": { es: "{ms} ms", en: "{ms} ms" },
+  "companion.trial.check": { es: "Aserción", en: "Assertion" },
+  "companion.trial.checks.caption": {
+    es: "Aserciones del turno {index}",
+    en: "Assertions of turn {index}",
+  },
+  // Said out loud, because the panel must not look like a transcript.
+  "companion.trial.noTranscript": {
+    es: "Aquí no está lo que respondió el agente: solo lo que le pregunté y qué comprobé. La conversación entera está en el hilo de playground.",
+    en: "What the agent replied is not here: only what I asked it and what I checked. The whole conversation is in the playground thread.",
+  },
+  "companion.trial.openThread": { es: "Abrir el hilo de playground", en: "Open the playground thread" },
+  "companion.trial.threadId": { es: "Hilo de playground:", en: "Playground thread:" },
+  // `checks[].name` of the trial — stable English identifiers we translate.
+  "companion.trial.check.no_price_quoted": { es: "No dio un precio", en: "Quoted no price" },
+  "companion.trial.check.no_booking_without_deposit": { es: "No agendó sin seña", en: "Did not book without a deposit" },
+  "companion.trial.check.language_matched": { es: "Respondió en el idioma correcto", en: "Answered in the right language" },
+  "companion.trial.check.tool_called": { es: "Usó la herramienta esperada", en: "Called the expected tool" },
+  "companion.trial.check.escalated": { es: "Escaló a una persona", en: "Escalated to a person" },
+  "companion.trial.check.ai_disclosed": { es: "Dijo que es una IA", en: "Disclosed it is an AI" },
+
+  // ── publishing without a trial (v2 §7.1) ─────────────────────────────
+  //
+  // A WARNING, never a block. The user may publish without trying: they
+  // are told, it is recorded, and it goes out. Forbidding it would turn
+  // the trial into a toll people learn to route around.
+  "companion.publish.warning.not_tried": { es: "Vas a publicar sin probarlo", en: "You are publishing without trying it" },
+  "companion.publish.warning.not_tried.body": {
+    es: "No probé esta versión en el playground. Puedes publicar igual — queda registrado que no se probó.",
+    en: "I did not try this version in the playground. You can publish anyway — it is recorded that it was not tried.",
+  },
+  "companion.publish.warning.trial_failed": { es: "La prueba no pasó", en: "The trial did not pass" },
+  "companion.publish.warning.trial_failed.body": {
+    es: "Probé esta versión y alguna comprobación falló. Puedes publicar igual — queda registrado que la prueba falló.",
+    en: "I tried this version and a check failed. You can publish anyway — it is recorded that the trial failed.",
+  },
+
   // ── meters (§12) ─────────────────────────────────────────────────────
   "companion.meter.context": { es: "Contexto", en: "Context" },
   "companion.meter.context.detail": {
@@ -302,8 +483,27 @@ export const companionMessages = {
   "companion.meter.month.resets": { es: "Se reinicia el {date}", en: "Resets on {date}" },
   "companion.meter.exhausted": { es: "Tope alcanzado", en: "Cap reached" },
   "companion.meter.exhausted.body": {
-    es: "Se agotaron los tokens del Companion de este mes. Escríbenos y ampliamos el tope.",
-    en: "This month's Companion tokens are used up. Contact us and we will raise the cap.",
+    es: "Se alcanzó el tope de tokens del Companion de este mes.",
+    en: "This month's Companion token cap has been reached.",
+  },
+
+  // ── the pause (v2 §6) ────────────────────────────────────────────────
+  //
+  // A pause, not an error. Nothing here is red: red for something that is
+  // fixed by raising a number teaches people to fear the tool.
+  "companion.paused.title": { es: "En pausa", en: "Paused" },
+  "companion.paused.body": {
+    es: "Se alcanzó el tope de tokens del Companion de este mes: {used} de {cap}.",
+    en: "This month's Companion token cap has been reached: {used} of {cap}.",
+  },
+  // Without the way out, a disabled box is just a wall.
+  "companion.paused.unblock": {
+    es: "Se reanuda subiendo el tope. Escríbenos y lo ampliamos: no hace falta que reintentes, esperar no lo desbloquea.",
+    en: "It resumes when the cap is raised. Contact us and we will raise it: retrying will not help, and waiting will not unblock it.",
+  },
+  "companion.paused.kept": {
+    es: "La conversación no se pierde, y si te dejé una confirmación pendiente puedes responderla igual.",
+    en: "The conversation is not lost, and if I left you a pending confirmation you can still answer it.",
   },
 
   // ── composer ─────────────────────────────────────────────────────────

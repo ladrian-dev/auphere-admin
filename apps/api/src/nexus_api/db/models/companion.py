@@ -44,16 +44,28 @@ RUN_COMPLETED = "completed"
 RUN_CANCELLED = "cancelled"
 RUN_ERROR = "error"
 RUN_INTERRUPTED = "interrupted"
+#: CO-08 (§6.3 de ``CONTRACT-V2.md``). El partner cruzó su tope mensual de
+#: tokens a mitad de turno: el run **termina limpio y conserva todo** —la
+#: historia, la respuesta parcial y los tokens—, y solo se reanuda cuando
+#: alguien sube el tope. Un hilo pausado que pierde la historia no es una
+#: pausa, es un fallo con otro nombre.
+#:
+#: Es terminal, y **no se confunde con el run aparcado del HITL**: aquel
+#: sigue en ``running`` porque su turno no ha acabado, solo está quieto
+#: esperando a una persona (PLAN-CO-04 §D4). Son dos esperas distintas y se
+#: pintan distinto.
+RUN_PAUSED = "paused"
 RUN_STATUSES: tuple[str, ...] = (
     RUN_RUNNING,
     RUN_COMPLETED,
     RUN_CANCELLED,
     RUN_ERROR,
     RUN_INTERRUPTED,
+    RUN_PAUSED,
 )
 #: Un run en cualquiera de estos ya no produce eventos nuevos.
 TERMINAL_RUN_STATUSES: frozenset[str] = frozenset(
-    {RUN_COMPLETED, RUN_CANCELLED, RUN_ERROR, RUN_INTERRUPTED}
+    {RUN_COMPLETED, RUN_CANCELLED, RUN_ERROR, RUN_INTERRUPTED, RUN_PAUSED}
 )
 
 # ── modos del hilo ─────────────────────────────────────────────────────
@@ -205,6 +217,7 @@ __all__ = [
     "RUN_COMPLETED",
     "RUN_ERROR",
     "RUN_INTERRUPTED",
+    "RUN_PAUSED",
     "RUN_RUNNING",
     "RUN_STATUSES",
     "TERMINAL_RUN_STATUSES",

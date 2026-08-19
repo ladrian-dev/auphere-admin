@@ -243,6 +243,21 @@ class CompanionActionOut(BaseModel):
     #: "verified and wrong" are different things and the drawer paints them
     #: differently.
     ok: bool | None
+    #: CO-08 §19.4 — el identificador del ticket y su expectativa, ``None``
+    #: para todo ``kind`` que no sea de soporte.
+    #:
+    #: Existen porque ``support.ticket`` viaja por el log de Redis y el log
+    #: **rota**. Si ``hitl.requested`` rotó y el evento del ticket no, la
+    #: interfaz se queda sin tarjeta a la que atar el ``ticket_ref`` y el
+    #: usuario pierde en silencio el identificador del ticket que acaba de
+    #: abrir. Es el mismo agujero que la v1.1 cerró para la tarjeta
+    #: pendiente, y se cierra igual: por este endpoint, que lee de Postgres.
+    #:
+    #: ``sla`` es un identificador estable (``business_hours`` ·
+    #: ``next_business_day`` · ``best_effort``); la frase que ve el usuario
+    #: la escribe la interfaz.
+    ticket_ref: str | None = None
+    sla: str | None = None
 
 
 __all__ = [

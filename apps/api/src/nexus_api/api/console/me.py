@@ -47,4 +47,9 @@ async def me(
             status=principal.partner.status,
         ),
         quota=await quota_out(session, principal),
+        # CO-08 §10. Es lo que decide si la consola monta la burbuja del
+        # Companion. La burbuja apagada es **ausencia**, no un botón gris
+        # con un tooltip: prometer una función que el partner todavía no
+        # tiene solo produce una pregunta que nadie quiere responder.
+        companion_enabled=principal.partner.companion_enabled,
     )

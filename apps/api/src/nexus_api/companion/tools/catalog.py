@@ -53,7 +53,14 @@ class ToolParam:
 #: - ``propose``  — calcula un cambio y devuelve previsualización, diff e
 #:                  impacto. **Tampoco cambia nada**: solo lee.
 #: - ``mutates``  — escribe. Hay exactamente una en todo el catálogo.
-ToolClass = Literal["read", "propose", "mutates"]
+#: - ``trial``    — prueba el agente BORRADOR en el playground (CO-05). No
+#:                  toca la configuración del cliente, no llega a ningún
+#:                  cliente final y no cambia qué está publicado: por eso no
+#:                  pasa por ``propose → confirm → apply``. Exigir una
+#:                  confirmación para *probar* convierte la prueba en
+#:                  fricción, y la fricción es justo lo que hace que la gente
+#:                  publique sin probar.
+ToolClass = Literal["read", "propose", "mutates", "trial"]
 
 #: Política de permiso, copiada de Managed Agents. Es un **dato por
 #: herramienta que lee el motor**, no una instrucción de prompt: el modelo no
@@ -80,7 +87,7 @@ class ToolSpec:
     #: todas: las ``propose`` leen para calcular el diff, y la única que
     #: escribe (``console.apply``) no sale por aquí — su petición la arma el
     #: mapa de aplicación por ``kind``, desde el payload ya confirmado.
-    method: Literal["GET"] = "GET"
+    method: Literal["GET", "POST"] = "GET"
     tool_class: ToolClass = "read"
     permission_policy: PermissionPolicy = "always_allow"
     #: Solo para ``propose``: el ``kind`` de acción que produce (§3.1 del
@@ -107,6 +114,16 @@ class ToolSpec:
             raise ValueError(f"{self.name}: una lectura no pide permiso; es 'always_allow'.")
         if (self.tool_class == "propose") != (self.kind is not None):
             raise ValueError(f"{self.name}: 'kind' es exactamente de las herramientas 'propose'.")
+        if self.tool_class == "trial" and self.permission_policy != "always_allow":
+            raise ValueError(
+                f"{self.name}: probar no pide permiso. Una prueba que exige "
+                "confirmación es una prueba que nadie hace."
+            )
+        if self.method != "GET" and self.tool_class != "trial":
+            raise ValueError(
+                f"{self.name}: solo una herramienta 'trial' puede no ser GET, y "
+                "aun así no escribe nada del cliente."
+            )
 
     @property
     def needs_client(self) -> bool:
@@ -522,6 +539,29 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
         ),
         max_chars=12_000,
     ),
+    # CO-08, §5 de CONTRACT-V2. Es R1 aplicada a las capacidades: **si algo
+    # no está en el catálogo leído en este turno, no existe**. Vive aquí y
+    # no en el prompt de sistema a propósito — un límite horneado en el
+    # prompt no deja cita, no deja ``tool.call.started`` y no se puede
+    # versionar sin invalidar el caché del prompt estable. Leerlo deja las
+    # tres cosas, y por eso el Companion puede decir "esto no está" con la
+    # misma procedencia con la que dice "tu agente va por la v7".
+    ToolSpec(
+        name="console.get_capabilities",
+        path="/console/capabilities",
+        label="Qué existe y qué no en Auphere",
+        description=(
+            "Devuelve el documento versionado de capacidades y límites de la "
+            "plataforma: qué conectores y canales hay, qué está planificado, qué "
+            "no existe, qué está fuera de alcance y por qué, y qué se retiró y a "
+            "favor de qué. Llama a esto ANTES de decir que algo no se puede, "
+            "antes de prometer que algo llega, y antes de ofrecer un ticket de "
+            "soporte — sin haberlo leído no sabes si estás mandando a la persona "
+            "contra un muro que no existe. Lo que no esté aquí no existe: no lo "
+            "deduzcas del nombre de una herramienta ni de lo que sabías de antes."
+        ),
+        max_chars=16_000,
+    ),
 )
 
 # ── propuesta (CO-04, §6.2) ────────────────────────────────────────────
@@ -612,6 +652,24 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
                     "palabras. Pregúntalo: es el dato que nadie da por su "
                     "cuenta y el que causa los incidentes. No lo inventes ni "
                     "lo rellenes con un valor genérico."
+                ),
+            ),
+            # Cada plantilla de vertical pide LO SUYO además de los cinco
+            # campos fijos: la de clínica estética quiere la dirección. No se
+            # pueden declarar todos aquí —dependen de la plantilla elegida—,
+            # así que entran por una sola puerta y el motor comprueba cuáles
+            # faltan leyendo la plantilla. Sin esto, el alta se confirma y
+            # falla después con un 422, que es el peor momento posible para
+            # descubrirlo: la persona ya dijo que sí a algo irreversible.
+            ToolParam(
+                name="template_fields",
+                type="string",
+                description=(
+                    "Los datos extra que pida la plantilla del vertical, uno "
+                    "por línea con la forma clave=valor (por ejemplo "
+                    "address=Av. Principal 123, Caracas). Déjalo vacío la "
+                    "primera vez: si la plantilla necesita algo, te lo diré y "
+                    "se lo preguntas a la persona. No inventes ninguno."
                 ),
             ),
         ),
@@ -879,15 +937,160 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
             ),
         ),
     ),
+    # ── CO-08, §4 de CONTRACT-V2 ───────────────────────────────────────
+    #
+    # El Companion nunca cierra una conversación con un "no". La cierra con
+    # un camino: o lo hace, o abre el camino para que alguien lo haga.
+    #
+    # Son ``propose`` como las nueve de arriba, y por el mismo motivo: nadie
+    # manda un ticket a nombre del partner sin que el partner lo vea. La
+    # única ``mutates`` del catálogo sigue siendo ``console.apply``
+    # (garantía E4). ``path`` es lo que la propuesta LEE para componer el
+    # expediente; el destino lo fija ``APPLY_ROUTES`` por el ``kind``.
+    ToolSpec(
+        name="support.request_help",
+        kind="support_help",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/capabilities",
+        label="Ofrecer abrir un ticket de soporte",
+        description=(
+            "Prepara un ticket para Auphere con el expediente que YA has leído "
+            "en este turno: qué necesita la persona, qué comprobaste y qué "
+            "alternativa hay. Llama a esto cuando topes con un límite real —una "
+            "capacidad que no existe, un permiso que el rol no tiene, una cuota "
+            "agotada, algo de la plataforma que falla— en vez de cerrar con un "
+            "'no se puede': un 'no' deja a la persona igual de bloqueada que "
+            "antes. Léete console.get_capabilities primero; sin ninguna lectura "
+            "previa el ticket va sin expediente y se rechaza. No lo uses para "
+            "pedir funcionalidad nueva: eso es support.request_capability."
+        ),
+        params=(
+            ToolParam(
+                name="topic",
+                type="string",
+                description=(
+                    "Etiqueta estable del asunto, con familia: connector.*, "
+                    "channel.*, capability.*, platform.*, quota.* o permission.* "
+                    "(ej. connector.shopify, quota.clients). Es lo que permite "
+                    "contar cuántos partners piden lo mismo; no escribas una "
+                    "frase. Si usas la clave de una entrada de "
+                    "console.get_capabilities, mejor: son el mismo espacio."
+                ),
+                required=True,
+            ),
+            ToolParam(
+                name="need",
+                type="string",
+                description=(
+                    "Qué necesita CONSEGUIR la persona, en una o dos frases y "
+                    "con sus palabras. No lo que falla: soporte tiene que poder "
+                    "leerlo sin conocer la conversación."
+                ),
+                required=True,
+            ),
+            ToolParam(
+                name="client_ref",
+                type="string",
+                description=(
+                    "Referencia del cliente afectado, si lo hay. Déjalo vacío "
+                    "cuando el ticket sea del partner entero."
+                ),
+            ),
+            ToolParam(
+                name="alternative",
+                type="string",
+                description=(
+                    "El camino intermedio que propones, con sus limitaciones, o "
+                    "vacío si no hay ninguno. Di 'ninguna sin desarrollo' antes "
+                    "que inventarte una."
+                ),
+            ),
+            ToolParam(
+                name="bridge",
+                type="boolean",
+                description=(
+                    "true si 'alternative' es una solución puente que la persona "
+                    "puede usar ya. El puente NO sustituye al ticket: se etiqueta "
+                    "y el ticket se abre igual, porque un puente que nadie "
+                    "registra se convierte en deuda invisible."
+                ),
+            ),
+        ),
+        max_chars=4_000,
+    ),
+    ToolSpec(
+        name="support.request_capability",
+        kind="support_capability",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/capabilities",
+        label="Pedir una capacidad que no existe",
+        description=(
+            "Prepara una petición de funcionalidad para la hoja de ruta de "
+            "Auphere. Llama a esto cuando lo que falta no es una incidencia sino "
+            "algo que la plataforma no hace todavía —un conector, un canal, una "
+            "capacidad— y quieras que cuente: se agregan por asunto, así que "
+            "siete partners pidiendo lo mismo se ven. Comprueba antes con "
+            "console.get_capabilities: si ya existe, ayúdale a usarlo, y si está "
+            "fuera de alcance dile por qué en vez de abrir la petición. No hay "
+            "compromiso de fecha y no lo insinúes."
+        ),
+        params=(
+            ToolParam(
+                name="topic",
+                type="string",
+                description=(
+                    "Etiqueta estable de la capacidad pedida, con familia "
+                    "(connector.shopify, channel.instagram, "
+                    "capability.custom_reports). Es la clave con la que se "
+                    "agregan las peticiones; no escribas una frase."
+                ),
+                required=True,
+            ),
+            ToolParam(
+                name="need",
+                type="string",
+                description=(
+                    "Para qué la quiere, en una o dos frases. El caso de uso "
+                    "concreto vale más que el nombre del producto."
+                ),
+                required=True,
+            ),
+            ToolParam(
+                name="client_ref",
+                type="string",
+                description=(
+                    "Referencia del cliente que la necesita, si es de uno en "
+                    "concreto. Vacío si es del partner."
+                ),
+            ),
+            ToolParam(
+                name="alternative",
+                type="string",
+                description=("Con qué se apaña mientras tanto, o vacío si no hay nada."),
+            ),
+            ToolParam(
+                name="bridge",
+                type="boolean",
+                description=(
+                    "true si 'alternative' es una solución puente usable ya. Se "
+                    "etiqueta y la petición se abre igual."
+                ),
+            ),
+        ),
+        max_chars=4_000,
+    ),
 )
 
 
 # ── ejecución (CO-04, §6.3) ────────────────────────────────────────────
 #
 # **Una sola puerta de escritura en todo el Companion.** Que sea una y no
-# nueve es lo que hace verificable la garantía C4: no hay forma de añadir un
-# camino de escritura por descuido, porque cualquier herramienta nueva que
-# escribiera tendría que declararse ``mutates`` y el test la vería.
+# once es lo que hace verificable la garantía C4 (E4 en la Ola 2): no hay
+# forma de añadir un camino de escritura por descuido, porque cualquier
+# herramienta nueva que escribiera tendría que declararse ``mutates`` y el
+# test la vería. Las dos de soporte de CO-08 no son la excepción: proponen.
 #
 # ``path`` es ``/console/companion/actions/{action_id}`` —el endpoint de
 # lectura de la acción— y no el destino de la escritura: el destino lo decide
@@ -921,13 +1124,73 @@ APPLY_TOOLS: tuple[ToolSpec, ...] = (
 )
 
 
-ALL_TOOLS: tuple[ToolSpec, ...] = (*READ_TOOLS, *PROPOSE_TOOLS, *APPLY_TOOLS)
+# ── prueba (CO-05, §7 de CONTRACT-V2) ──────────────────────────────────
+#
+# "Testear antes de disponibilizar". Un turno en seco contra el agente
+# **borrador** —la versión ``staged``—, midiendo contra el tope del
+# PLAYGROUND y no contra el del Companion: el gasto de probar lo consume el
+# agente del cliente, no el Companion, y mezclar los dos medidores haría que
+# probar mucho apagara el Companion.
+#
+# No es ``read`` porque hace un POST, y no es ``propose`` ni ``mutates``
+# porque no cambia absolutamente nada del cliente. Tiene clase propia para
+# que eso quede dicho en el dato y no en un comentario.
+TRIAL_TOOLS: tuple[ToolSpec, ...] = (
+    ToolSpec(
+        name="companion.run_playground_turn",
+        path="/console/clients/{client_ref}/playground/threads/{thread_id}/runs",
+        method="POST",
+        label="Probando el borrador en el playground",
+        description=(
+            "Prueba el agente BORRADOR de un cliente mandándole uno o varios "
+            "mensajes de prueba y devuelve, por cada uno, si respondió y cuánto "
+            "tardó. Llama a esto ANTES de proponer una publicación, y siempre "
+            "que acabes de cambiar el prompt, la política, las herramientas o "
+            "las habilidades: es la única forma de saber si el cambio hace lo "
+            "que la persona te pidió. No devuelve el texto de la respuesta del "
+            "agente —para leerla hay que abrir el playground—, así que no cites "
+            "lo que 'contestó': cita si pasó o no pasó cada comprobación. No lo "
+            "uses para probar el agente ACTIVO: prueba siempre el borrador."
+        ),
+        params=(
+            ToolParam(
+                name=CLIENT_REF,
+                type="string",
+                description=(
+                    "Referencia del cliente cuyo borrador quieres probar. La que "
+                    "devuelve console.list_clients."
+                ),
+                required=True,
+                in_path=True,
+            ),
+            ToolParam(
+                name="probes",
+                type="string",
+                description=(
+                    "Los mensajes de prueba, uno por línea, como se los escribiría "
+                    "un cliente final. Máximo cinco. Escríbelos tú a partir de lo "
+                    "que la persona quiere arreglar: si te pidió que no dé precios "
+                    "por WhatsApp, pregunta un precio. Un mensaje de prueba que no "
+                    "ejercita el cambio no prueba nada."
+                ),
+                required=True,
+            ),
+        ),
+        tool_class="trial",
+        max_chars=6_000,
+    ),
+)
+
+ALL_TOOLS: tuple[ToolSpec, ...] = (*READ_TOOLS, *PROPOSE_TOOLS, *TRIAL_TOOLS, *APPLY_TOOLS)
 
 TOOLS_BY_NAME: dict[str, ToolSpec] = {t.name: t for t in ALL_TOOLS}
 
-#: Los nueve ``kind`` del §3.1 del contrato, derivados del catálogo y no
-#: escritos a mano: una herramienta ``propose`` sin ``kind`` no se puede
-#: construir, así que la lista no puede desincronizarse.
+#: Los ``kind`` del §3.1 del contrato —nueve en la v1.1, **once** desde la
+#: v2 con los dos de soporte—, derivados del catálogo y no escritos a mano:
+#: una herramienta ``propose`` sin ``kind`` no se puede construir, así que
+#: la lista no puede desincronizarse. La lista de PROHIBIDOS del §6.5 no
+#: cambia: no hay ``kind`` para borrar clientes, tocar facturación, rotar
+#: claves ni desactivar la revelación de IA, y no se añade uno.
 ACTION_KINDS: tuple[str, ...] = tuple(t.kind for t in PROPOSE_TOOLS if t.kind is not None)
 
 

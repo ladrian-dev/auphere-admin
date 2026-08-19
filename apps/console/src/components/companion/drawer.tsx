@@ -26,7 +26,7 @@ import type { PageContext } from "./page-context";
 import { pendingAction } from "./state";
 import { Timeline } from "./timeline";
 import type { CompanionController } from "./use-companion";
-import type { Decision, IntakeSlot } from "./types";
+import type { BudgetPause, Decision, IntakeSlot } from "./types";
 
 /**
  * The drawer (§4.2 / §14).
@@ -92,6 +92,26 @@ export function CompanionDrawer({
 
   const pending = pendingAction(state, now);
   const busy = state.runStatus === "running";
+
+  /**
+   * The pause of §6 of CONTRACT-V2, from whichever source we have.
+   *
+   * `budget.paused` and the 409 body both carry the snapshot with numbers.
+   * `budget.updated.exhausted` is the same condition (`used >= cap`, §6.1)
+   * seen through the gauge, so it is promoted to a pause with the figures
+   * the gauge already has rather than treated as a different state.
+   */
+  const paused: BudgetPause | null =
+    state.paused ??
+    (state.budget?.exhausted
+      ? {
+          used: state.budget.used,
+          cap: state.budget.cap,
+          period: state.budget.period,
+          resetsAt: state.budget.resetsAt,
+          scope: "partner",
+        }
+      : null);
 
   const onModeChange = React.useCallback(
     (next: "consult" | "build") => {
@@ -281,6 +301,11 @@ export function CompanionDrawer({
           mode={mode}
           busy={busy}
           blocked={!!pending}
+          // The pause quiets THIS box and nothing else. The confirmation
+          // card above stays answerable: `resume` starts no new work, and
+          // letting a cap bin the very work already paid for would be the
+          // worst version of a cap (§6.2).
+          paused={paused}
           exhausted={exhausted}
           onChange={setText}
           onSend={onSend}

@@ -562,6 +562,12 @@ async def console_world(db_session: AsyncSession) -> dict[str, Any]:
                 name=f"Console Partner {label.upper()}",
                 slug=slug,
                 console_enabled=True,
+                # CO-08 §10: la bandera del Companion es ``false`` por
+                # defecto en producción (el piloto es interno). Aquí se
+                # enciende para que las suites del Companion prueben el
+                # camino normal; el test de la garantía E8 la apaga a mano
+                # sobre la fila para probar el camino apagado.
+                companion_enabled=True,
                 max_clients=3,
             )
         )

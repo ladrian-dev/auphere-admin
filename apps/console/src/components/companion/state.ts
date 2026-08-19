@@ -28,6 +28,7 @@
  * object make the reducer genuinely idempotent.
  */
 import {
+  type BudgetPause,
   type Decision,
   type DiffLine,
   type ImpactItem,
@@ -35,11 +36,15 @@ import {
   type Phase,
   type PlanStep,
   type Risk,
+  type SupportTicket,
+  type Trial,
   type VerifyCheck,
+  type WorkKind,
   bool,
   num,
   optNum,
   optStr,
+  readBudgetPause,
   readChecks,
   readDecision,
   readDiff,
@@ -49,6 +54,9 @@ import {
   readPreview,
   readRisk,
   readSlots,
+  readTicket,
+  readTrial,
+  readWorkKind,
   str,
 } from "./types";
 
@@ -84,6 +92,13 @@ export type ActionItem = {
   by: string | null;
   at: string | null;
   note: string | null;
+  /**
+   * The ticket, once `support.ticket` seals this card (v2 §4.5). It is
+   * tied by `action_id` exactly like `hitl.resolved`: found and attached,
+   * never appended as a loose card — the ticket without its proposal
+   * would be a reference with no story behind it.
+   */
+  ticket: SupportTicket | null;
 };
 
 export type TimelineItem =
@@ -92,13 +107,24 @@ export type TimelineItem =
   | { kind: "thinking"; id: string; runId: string; text: string; startedAt: number; endedAt: number | null }
   | ToolItem
   | { kind: "plan"; id: string; runId: string; steps: PlanStep[]; risk: Risk; reversible: boolean; estimatedTokens: number }
-  | { kind: "intake"; id: string; runId: string; slots: IntakeSlot[] }
+  | { kind: "intake"; id: string; runId: string; slots: IntakeSlot[]; workKind: WorkKind | null }
   | ActionItem
-  | { kind: "verify"; id: string; runId: string; actionId: string | null; checks: VerifyCheck[]; ok: boolean }
+  | {
+      kind: "verify";
+      id: string;
+      runId: string;
+      actionId: string | null;
+      checks: VerifyCheck[];
+      ok: boolean;
+      /** v2 §7. `null` ⟹ this action admits no trial and nothing is
+       *  painted; `{ran:false}` ⟹ it does and none was run, which IS the
+       *  notice. Collapsing the two would erase the notice. */
+      trial: Trial | null;
+    }
   | { kind: "notice"; id: string; runId: string; code: NoticeCode; detail: string | null };
 
 /** Closed set: every notice has copy in the i18n lane. */
-export type NoticeCode = "gap" | "cancelled" | "error" | "interrupted" | "unsupported";
+export type NoticeCode = "gap" | "cancelled" | "error" | "interrupted" | "unsupported" | "paused";
 
 export type Citation = { id: string; claim: string; source: string; fetchedAt: string | null };
 
@@ -114,7 +140,16 @@ export type BudgetMeter = {
   resetsAt: string | null;
 };
 
-export type RunStatus = "idle" | "running" | "completed" | "cancelled" | "error" | "interrupted";
+/**
+ * `paused` is new in v2 §6.3: a run cut by the monthly cap ends CLEANLY —
+ * it keeps its partial answer, its tokens and its history — and reports
+ * `status: "paused"`. It is terminal and it is NOT an error.
+ *
+ * It is also not the parked HITL run, which stays `running` and publishes
+ * no `run.completed` at all (PLAN-CO-04 D4). Two different waits, painted
+ * differently on purpose.
+ */
+export type RunStatus = "idle" | "running" | "completed" | "cancelled" | "error" | "interrupted" | "paused";
 
 export type CompanionState = {
   items: TimelineItem[];
@@ -126,6 +161,15 @@ export type CompanionState = {
   cost: CostMeter | null;
   context: ContextMeter | null;
   budget: BudgetMeter | null;
+  /**
+   * The cap has been reached and new work is refused (v2 §6). Derived
+   * state on the server, so nothing here has to be "unpaused": raising
+   * the cap resumes every thread of the partner at once.
+   *
+   * Distinct from `budget.exhausted`, which means "you are at 98 %".
+   * This one means "the work stopped here" — the reason v2 split them.
+   */
+  paused: BudgetPause | null;
   citations: Record<string, Citation>;
   /** R1 verdict of the last closed run: it answered without reading. */
   unsupported: boolean;
@@ -141,6 +185,7 @@ export const emptyCompanionState: CompanionState = {
   cost: null,
   context: null,
   budget: null,
+  paused: null,
   citations: {},
   unsupported: false,
   error: null,
@@ -152,6 +197,19 @@ export type CompanionAction =
   | { type: "prompt"; runId: string; text: string; now: number }
   | { type: "run_started"; runId: string }
   | { type: "stream_failed"; runId: string; detail: string; now: number }
+  /**
+   * The 409 `budget_paused` of `POST …/threads/{id}/runs` (v2 §6.2). Its
+   * body carries the budget snapshot precisely so no second request is
+   * needed.
+   *
+   * It sets the state and adds NO timeline entry: nothing happened in the
+   * conversation — the turn never started, so the user's own text was
+   * never echoed either. The composer carries the explanation. The
+   * `budget.paused` EVENT is the opposite case and does leave a mark,
+   * because there the work stopped mid-turn and the thread would
+   * otherwise end mid-sentence.
+   */
+  | { type: "budget_paused"; pause: BudgetPause }
   | { type: "reset" };
 
 // ── helpers ────────────────────────────────────────────────────────────
@@ -178,7 +236,29 @@ function terminal(status: string): RunStatus {
   if (status === "cancelled") return "cancelled";
   if (status === "error" || status === "failed") return "error";
   if (status === "interrupted") return "interrupted";
+  // v2 §6.3. Without this branch `paused` would fall through to
+  // `completed` and the cut would be invisible: a turn that stops halfway
+  // would look like one that finished.
+  if (status === "paused") return "paused";
   return "completed";
+}
+
+/** Which notice a terminal status leaves behind. `paused` is deliberately
+ *  NOT the error notice: it is a pause, and painting it as a failure is
+ *  what teaches people to fear a cap they can simply raise. */
+function noticeFor(status: RunStatus): NoticeCode | null {
+  switch (status) {
+    case "cancelled":
+      return "cancelled";
+    case "interrupted":
+      return "interrupted";
+    case "error":
+      return "error";
+    case "paused":
+      return "paused";
+    default:
+      return null;
+  }
 }
 
 // ── the reducer ────────────────────────────────────────────────────────
@@ -186,7 +266,13 @@ function terminal(status: string): RunStatus {
 export function companionReducer(state: CompanionState, action: CompanionAction): CompanionState {
   switch (action.type) {
     case "reset":
-      return emptyCompanionState;
+      // The pause survives: it belongs to the PARTNER, not to the thread
+      // (v2 §6.1). Clearing it on thread switch would re-enable a composer
+      // that is only going to be refused again with the same 409.
+      return { ...emptyCompanionState, paused: state.paused };
+
+    case "budget_paused":
+      return { ...state, paused: action.pause };
 
     case "run_started":
       return { ...state, activeRun: action.runId, runStatus: "running", error: null };
@@ -234,8 +320,9 @@ function applyEvent(state: CompanionState, runId: string, ev: WireEvent, now: nu
       const err = optStr(d.error);
       const unsupported = bool(d.unsupported);
       let items = closeThinking(base.items, runId, now);
-      if (status !== "completed") {
-        items = [...items, { kind: "notice", id: `n:${status}:${runId}`, runId, code: status === "cancelled" ? "cancelled" : status === "interrupted" ? "interrupted" : "error", detail: err }];
+      const notice = noticeFor(status);
+      if (notice) {
+        items = [...items, { kind: "notice", id: `n:${status}:${runId}`, runId, code: notice, detail: err }];
       } else if (unsupported) {
         items = [...items, { kind: "notice", id: `n:uns:${runId}`, runId, code: "unsupported", detail: null }];
       }
@@ -358,6 +445,27 @@ function applyEvent(state: CompanionState, runId: string, ev: WireEvent, now: nu
         },
       };
 
+    /**
+     * v2 §6.4 — the CUT, as opposed to `budget.updated`, which is the
+     * gauge. Both keep existing because the drawer has to tell "you are
+     * at 98 %" from "the work stopped here".
+     *
+     * This one DOES leave a mark in the timeline: the turn ended mid-work,
+     * and a thread that just stops without saying why reads like a bug.
+     */
+    case "budget.paused": {
+      const pause = readBudgetPause(d);
+      if (!pause) return base;
+      const items = closeThinking(base.items, runId, now);
+      const id = `n:paused:${runId}:${ev.seq}`;
+      if (items.some((i) => i.kind === "notice" && i.id === id)) return { ...base, items, paused: pause };
+      return {
+        ...base,
+        paused: pause,
+        items: [...items, { kind: "notice", id, runId, code: "paused", detail: null }],
+      };
+    }
+
     // ── CO-04 events. Nothing emits these yet; built against the contract
     //    and doubled in tests. See §1 of PLAN-CO-03.
 
@@ -383,11 +491,20 @@ function applyEvent(state: CompanionState, runId: string, ev: WireEvent, now: nu
       };
     }
 
+    // v2 §3.1 adds `work_kind`, which titles the chip group. A value
+    // outside the closed enum reads as `null` and the card falls back to
+    // its generic title — never to the raw identifier.
     case "intake.missing": {
       const slots = readSlots(d.slots);
       if (slots.length === 0) return base;
       const items = closeThinking(base.items, runId, now);
-      return { ...base, items: [...items, { kind: "intake", id: `i:${runId}:${ev.seq}`, runId, slots }] };
+      return {
+        ...base,
+        items: [
+          ...items,
+          { kind: "intake", id: `i:${runId}:${ev.seq}`, runId, slots, workKind: readWorkKind(d.work_kind) },
+        ],
+      };
     }
 
     case "hitl.requested": {
@@ -416,6 +533,7 @@ function applyEvent(state: CompanionState, runId: string, ev: WireEvent, now: nu
             by: null,
             at: null,
             note: null,
+            ticket: null,
           },
         ],
       };
@@ -442,6 +560,31 @@ function applyEvent(state: CompanionState, runId: string, ev: WireEvent, now: nu
       };
     }
 
+    /**
+     * v2 §4.5 — the ticket. Same rule as `hitl.resolved`: it FINDS the
+     * card by `action_id` and marks it. A ticket whose card is not here
+     * is dropped rather than appended loose, because a reference with no
+     * proposal behind it is exactly the "black hole" §25.1 exists to
+     * avoid, only on our side of the screen.
+     *
+     * It arrives in `execute`, after `console.apply` returns 2xx and
+     * before `verify.result`, so the card is already in the timeline.
+     */
+    case "support.ticket": {
+      const ticket = readTicket(d);
+      if (!ticket) return base;
+      const id = str(d.action_id);
+      const idx = base.items.findIndex((i) => i.kind === "action" && i.id === id);
+      if (idx === -1) return base;
+      const prev = base.items[idx];
+      if (prev?.kind !== "action") return base;
+      return { ...base, items: replace(base.items, idx, { ...prev, ticket }) };
+    }
+
+    // v2 §7 adds `trial`. `readTrial` returns `null` for a wire `null`
+    // ("this action admits no trial") and an object for `{"ran": false}`
+    // ("it does and none was run") — collapsing the two would erase the
+    // notice that publishing depends on.
     case "verify.result": {
       const actionId = optStr(d.action_id);
       const items = closeThinking(base.items, runId, now);
@@ -449,7 +592,10 @@ function applyEvent(state: CompanionState, runId: string, ev: WireEvent, now: nu
       if (items.some((i) => i.kind === "verify" && i.id === id)) return { ...base, items };
       return {
         ...base,
-        items: [...items, { kind: "verify", id, runId, actionId, checks: readChecks(d.checks), ok: bool(d.ok) }],
+        items: [
+          ...items,
+          { kind: "verify", id, runId, actionId, checks: readChecks(d.checks), ok: bool(d.ok), trial: readTrial(d.trial) },
+        ],
       };
     }
 
@@ -493,4 +639,26 @@ export function thinkingToolCount(state: CompanionState, thinkingId: string): nu
 
 export function isBusy(state: CompanionState): boolean {
   return state.runStatus === "running" && state.activeRun !== null;
+}
+
+/**
+ * The client the trial belongs to, for the link into the playground.
+ *
+ * **This is a gap in the contract and the workaround for it.**
+ * `verify.result` carries `trial.thread_id` but no `client_ref`, and the
+ * playground lives at `/clients/{ref}/playground` — so `thread_id` alone
+ * cannot build a URL. The only correlation available is `action_id` back
+ * to the `hitl.requested` card, whose `preview.client_ref` §3.4 gives for
+ * seven of the nine kinds. `preview` is a free object, so this is a best
+ * effort by construction and returns `null` when it cannot be sure.
+ *
+ * The caller must degrade to showing the thread id rather than emitting a
+ * dead link: a link that goes nowhere is worse than no link.
+ */
+export function trialClientRef(state: CompanionState, actionId: string | null): string | null {
+  if (!actionId) return null;
+  const card = state.items.find((i) => i.kind === "action" && i.id === actionId);
+  if (card?.kind !== "action") return null;
+  const ref = card.preview.client_ref;
+  return typeof ref === "string" && ref.length > 0 ? ref : null;
 }

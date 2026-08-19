@@ -5,7 +5,8 @@ import { Check, X } from "lucide-react";
 import { useT } from "@/i18n/client";
 
 import { optionalKey } from "./i18n";
-import type { VerifyCheck } from "./types";
+import { TrialPanel } from "./trial-panel";
+import type { Trial, VerifyCheck } from "./types";
 
 /**
  * The verification table (§2.5 of the contract).
@@ -21,10 +22,29 @@ import type { VerifyCheck } from "./types";
  *
  * `name` is a stable English identifier translated here; anything we do
  * not recognise falls back to the raw identifier rather than a blank cell.
+ *
+ * §7 of CONTRACT-V2 hangs the playground trial off the same event. It is
+ * rendered below the table by `TrialPanel`, and `trial === null` renders
+ * nothing at all — that is "this action admits no trial", which is a
+ * different thing from "it admits one and none was run".
  */
-export function VerifyTable({ checks, ok }: { checks: VerifyCheck[]; ok: boolean }) {
+export function VerifyTable({
+  checks,
+  ok,
+  trial,
+  trialClientRef,
+}: {
+  checks: VerifyCheck[];
+  ok: boolean;
+  trial: Trial | null;
+  trialClientRef: string | null;
+}) {
   const t = useT();
-  if (checks.length === 0) return null;
+  // A `verify.result` with no checks but WITH a trial is legitimate, so
+  // the early return has to account for both halves or the trial would
+  // disappear with the empty table.
+  if (checks.length === 0 && !trial) return null;
+  if (checks.length === 0 && trial) return <TrialPanel trial={trial} clientRef={trialClientRef} />;
 
   return (
     <section
@@ -82,6 +102,8 @@ export function VerifyTable({ checks, ok }: { checks: VerifyCheck[]; ok: boolean
       </div>
 
       {!ok ? <p className="mt-2 text-xs text-pretty text-muted-foreground">{t("companion.verify.failedBody")}</p> : null}
+
+      {trial ? <TrialPanel trial={trial} clientRef={trialClientRef} /> : null}
     </section>
   );
 }

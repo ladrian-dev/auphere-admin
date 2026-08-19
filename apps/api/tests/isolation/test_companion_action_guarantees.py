@@ -113,7 +113,10 @@ def test_the_permission_policy_is_data_and_not_a_prompt_instruction() -> None:
         assert token not in SYSTEM_PROMPT
 
 
-def test_the_nine_kinds_are_the_nine_of_the_contract() -> None:
+def test_the_eleven_kinds_are_the_eleven_of_the_contract() -> None:
+    """Nueve en la v1.1 §3.1, **once** desde la v2 §4.1 con los dos de
+    soporte. Escrito a mano a propósito: si alguien añade un ``kind``, este
+    test se pone rojo en vez de encogerse en silencio."""
     assert set(ACTION_KINDS) == {
         "client",
         "prompt",
@@ -124,6 +127,8 @@ def test_the_nine_kinds_are_the_nine_of_the_contract() -> None:
         "channel_role",
         "usage_alerts",
         "invite",
+        "support_help",
+        "support_capability",
     }
     assert set(APPLY_ROUTES) == set(ACTION_KINDS)
 
@@ -136,8 +141,26 @@ def test_no_write_route_touches_the_forbidden_list() -> None:
         assert method in {"POST", "PUT", "PATCH"}, f"{kind} borra algo"
         for forbidden in ("/keys", "/billing", "/status", "/connectors"):
             assert forbidden not in path, f"{kind} llega a {forbidden}"
-    # Y ningún DELETE en todo el catálogo, ni siquiera preparado.
-    assert not any(t.method != "GET" for t in ALL_TOOLS)
+    # Y ningún verbo destructivo en todo el catálogo, ni siquiera preparado.
+    #
+    # Se comprueba por lista blanca y no por "todo es GET": CO-05 añade la
+    # clase ``trial``, que hace POST contra el playground. Esa es la ÚNICA
+    # excepción admitida, y se exige explícitamente —clase y política— en vez
+    # de ensanchar la regla, para que una herramienta nueva que escriba con
+    # POST siga rompiendo aquí.
+    for tool in ALL_TOOLS:
+        if tool.method == "GET":
+            continue
+        assert tool.method == "POST", f"{tool.name} usa un verbo destructivo"
+        assert tool.tool_class == "trial", (
+            f"{tool.name} no es GET y no es una prueba: la única puerta de "
+            "escritura sigue siendo console.apply"
+        )
+        assert tool.permission_policy == "always_allow", tool.name
+        assert tool.kind is None, f"{tool.name} no propone ninguna acción"
+        # Y una prueba no toca la configuración del cliente: su ruta es la del
+        # playground, que corre en seco y no llega a ningún cliente final.
+        assert "/playground/" in tool.path, tool.name
 
 
 def test_every_write_route_exists_in_the_application() -> None:
