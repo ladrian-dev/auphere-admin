@@ -12,7 +12,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from nexus_api.services.identity import PASSWORD_MAX_LENGTH
-from nexus_api.services.operator_identity import OperatorAccess
+from nexus_api.services.operator_identity import OperatorAccess, OperatorRole
 
 #: Los dos estados que el panel sabe pintar. ``ok`` = panel; ``disabled`` =
 #: página "sin acceso". Son dos y no cuatro porque el panel no tiene
@@ -34,6 +34,9 @@ class OperatorOut(BaseModel):
     display_name: str | None
     locale: str
     access: OperatorAccessLiteral
+    #: Portado de ``auth.user.role``. El BFF lo usa para gatear el QA
+    #: Playground, que es lo único que el rol decide.
+    role: OperatorRole
 
 
 class OperatorLoginIn(BaseModel):

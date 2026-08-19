@@ -35,7 +35,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { signOut } from "@/lib/auth-client";
+import { logoutAction } from "@/app/(auth)/login/actions";
 import { cn } from "@/lib/utils";
 
 type Item = { href: string; label: string; icon: LucideIcon };
@@ -56,7 +56,7 @@ const NAV: Item[] = [
  *
  * Collapse behaviour follows the Vercel / Linear pattern: in icon mode
  * we keep only the brand mark and the menu icons; the user menu turns
- * into a single avatar-shaped row with a popover so signOut stays one
+ * into a single avatar-shaped row with a popover so el cierre de sesión queda a un
  * click away regardless of state.
  */
 export function AppSidebar({
@@ -236,7 +236,7 @@ function UserMenu({
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={async () => {
-              await signOut();
+              await logoutAction();
               router.replace("/login");
               router.refresh();
             }}

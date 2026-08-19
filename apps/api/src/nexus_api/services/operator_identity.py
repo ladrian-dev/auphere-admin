@@ -67,6 +67,13 @@ OperatorAccess = Literal["ok", "disabled"]
 ACCESS_OK: OperatorAccess = "ok"
 ACCESS_DISABLED: OperatorAccess = "disabled"
 
+#: Los tres roles que ya existían en ``auth.user.role``. Sólo gatean el QA
+#: Playground; NO deciden qué se puede tocar en ``/admin/*``.
+OperatorRole = Literal["admin", "qa_operator", "viewer"]
+#: Los que el Playground admite (``apps/admin/src/lib/qa-access.ts``).
+QA_ROLES: frozenset[str] = frozenset({"admin", "qa_operator"})
+DEFAULT_ROLE: OperatorRole = "qa_operator"
+
 
 @dataclass(frozen=True)
 class OperatorView:
@@ -110,6 +117,7 @@ async def create_account(
     password: str,
     display_name: str | None = None,
     locale: str = "es",
+    role: OperatorRole = DEFAULT_ROLE,
     account_id: uuid.UUID | None = None,
 ) -> OperatorAccount:
     account: OperatorAccount = await _STORE.create_account(
@@ -119,6 +127,7 @@ async def create_account(
         display_name=display_name,
         locale=locale,
         account_id=account_id,
+        role=role,
     )
     return account
 
@@ -158,12 +167,15 @@ async def end_session(session: AsyncSession, token: str) -> None:
 __all__ = [
     "ACCESS_DISABLED",
     "ACCESS_OK",
+    "DEFAULT_ROLE",
     "LOCKOUT_DURATION",
     "MAX_FAILED_ATTEMPTS",
     "PASSWORD_MAX_LENGTH",
     "PASSWORD_MIN_LENGTH",
+    "QA_ROLES",
     "SESSION_TTL",
     "OperatorAccess",
+    "OperatorRole",
     "OperatorView",
     "PasswordPolicyError",
     "authenticate",

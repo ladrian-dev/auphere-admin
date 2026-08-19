@@ -1,122 +1,85 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { toast } from "sonner";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useActionState, useEffect, useState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { signIn } from "@/lib/auth-client";
+import { Label } from "@/components/ui/label";
 
-const schema = z.object({
-  email: z.string().email("Ingresa un email válido"),
-  password: z.string().min(1, "Ingresa tu contraseña"),
-});
+import { loginAction, type LoginState } from "./actions";
 
-type FormValues = z.infer<typeof schema>;
+const INITIAL: LoginState = { error: null };
+
+function SubmitButton() {
+  // ``useFormStatus`` tiene que leerse DENTRO del <form>, por eso es un
+  // componente aparte y no una variable del padre.
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" size="default" disabled={pending} className="w-full cursor-pointer">
+      {pending ? "Iniciando sesión…" : "Entrar"}
+    </Button>
+  );
+}
 
 export function LoginForm({ redirectTo }: { redirectTo: string }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [submitting, setSubmitting] = useState(false);
+  const [state, formAction] = useActionState(loginAction, INITIAL);
+  // El correo es CONTROLADO y la contraseña no, a propósito. Una acción de
+  // servidor hace ``form.reset()`` al terminar, que vacía los campos no
+  // controlados: dejar el correo así obligaría a reescribirlo en cada
+  // intento fallido, justo lo que prohíbe la regla 6 del CLAUDE.md del
+  // panel. La contraseña sí debe vaciarse — es un secreto y volver a
+  // teclearla es lo que se espera tras un fallo.
+  const [email, setEmail] = useState("");
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { email: "", password: "" },
-  });
-
-  async function onSubmit(values: FormValues) {
-    setSubmitting(true);
-    try {
-      const { error } = await signIn.email({
-        email: values.email,
-        password: values.password,
-        callbackURL: redirectTo,
-      });
-      if (error) {
-        toast.error("No se pudo iniciar sesión", {
-          description:
-            error.message ?? "Revisa tu email y contraseña e intenta de nuevo.",
-        });
-        return;
-      }
-      startTransition(() => {
-        router.replace(redirectTo);
-        router.refresh();
-      });
-    } catch (err) {
-      toast.error("Error inesperado", {
-        description: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setSubmitting(false);
+  // La acción no redirige ella misma: si lo hiciera, ``useActionState`` no
+  // podría devolver el error del intento fallido. El cliente navega cuando
+  // la acción vuelve sin error, y refresca para que el layout vea la cookie.
+  useEffect(() => {
+    if (state === INITIAL) return;
+    if (state.error === null) {
+      router.replace(redirectTo);
+      router.refresh();
     }
-  }
+  }, [state, redirectTo, router]);
 
   return (
-    <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="flex flex-col gap-5"
-        noValidate
-      >
-        <FormField
-          control={form.control}
+    <form action={formAction} className="flex flex-col gap-5" noValidate>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="email">Email</Label>
+        <Input
+          id="email"
           name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="email"
-                  autoComplete="email"
-                  inputMode="email"
-                  placeholder="lee@auphere.com"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+          type="email"
+          autoComplete="email"
+          inputMode="email"
+          placeholder="contacto@auphere.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
         />
-        <FormField
-          control={form.control}
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="password">Contraseña</Label>
+        <Input
+          id="password"
           name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Contraseña</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder="••••••••••"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+          type="password"
+          autoComplete="current-password"
+          placeholder="••••••••••"
+          required
         />
-        <Button
-          type="submit"
-          size="default"
-          disabled={submitting || pending}
-          className="w-full cursor-pointer"
-        >
-          {submitting || pending ? "Iniciando sesión…" : "Entrar"}
-        </Button>
-      </form>
-    </Form>
+      </div>
+
+      {state.error ? (
+        <p role="alert" aria-live="polite" className="text-sm text-[color:var(--color-danger)]">
+          {state.error}
+        </p>
+      ) : null}
+
+      <SubmitButton />
+    </form>
   );
 }

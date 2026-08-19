@@ -12,7 +12,7 @@ import {
 import { backend } from "@/lib/backend";
 import { fullDateTime, relativeTime } from "@/lib/format";
 import { qaApi, type QAThread } from "@/lib/qa-api";
-import { requireSession } from "@/lib/session";
+import { requireOperator } from "@/lib/session";
 
 export default async function TenantOverview({
   params,
@@ -20,8 +20,8 @@ export default async function TenantOverview({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const session = await requireSession();
-  const operatorId = session.user.id;
+  const operator = await requireOperator();
+  const operatorId = operator.id;
 
   const [tenant, agentBundle, recentThreads, readiness] = await Promise.all([
     backend.getTenant(id),

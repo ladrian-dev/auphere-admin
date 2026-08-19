@@ -41,6 +41,7 @@ Respuestas de error, a propósito indistinguibles:
 from __future__ import annotations
 
 import hashlib
+from typing import cast
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -58,6 +59,7 @@ from nexus_api.schemas.admin_auth import (
     OperatorSessionOut,
 )
 from nexus_api.services import operator_identity
+from nexus_api.services.operator_identity import OperatorRole
 
 log = structlog.get_logger(__name__)
 
@@ -78,6 +80,7 @@ def operator_out(view: operator_identity.OperatorView) -> OperatorOut:
         display_name=account.display_name,
         locale=account.locale,
         access=view.access,
+        role=cast(OperatorRole, account.role),
     )
 
 

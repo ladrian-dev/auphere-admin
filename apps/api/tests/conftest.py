@@ -191,27 +191,40 @@ def _run_migrations() -> None:
     )
 
 
+#: Esquemas que el reset borra ADEMÁS de ``public``. Cada migración que crea
+#: uno tiene que añadirlo aquí: el reset **solo borra lo que esté NOMBRADO**,
+#: y olvidarlo hace que la SEGUNDA sesión de tests muera con un
+#: ``DuplicateTableError`` dentro de la migración — un fallo que no parece de
+#: fixtures y que ya ha costado dos veces (``console_auth`` en 0088,
+#: ``operator_auth`` en 0089).
+#:
+#: **Si esto te da un conflicto de merge, la resolución es CONSERVAR TODAS las
+#: entradas de las dos ramas, nunca quedarse con un lado.** ``main`` y
+#: ``develop`` están creando esquemas en paralelo —``operator_auth`` aquí,
+#: ``companion`` allí— y quedarse con la mitad deja el reset incompleto sin que
+#: nada lo diga hasta la segunda pasada. Es una lista, no una cadena, justo
+#: para que "conservar las dos" sea lo obvio al resolver.
+#:
+#: ``langgraph`` NO está a propósito: lo crea el checkpointer en tiempo de
+#: ejecución, no Alembic, así que borrarlo entre sesiones no lo repondría nadie.
+_RESET_SCHEMAS = (
+    # Phase 3 (ADR-020): qa.* vive en su propio esquema.
+    "qa",
+    # ADR-032: la identidad de la consola.
+    "console_auth",
+    # ADR-034: la del panel de operador.
+    "operator_auth",
+)
+
+
 def _reset_test_db() -> None:
     """Drop & re-apply the schema before the session starts. Cheaper than dropping
     the database; idempotent with the migrations we have."""
     test_db = _parse_dsn(TEST_DB_URL)["database"]
     reset_sql = (
         "DROP SCHEMA public CASCADE; CREATE SCHEMA public; "
-        # Phase 3 (ADR-020): qa.* lives in its own schema; drop it too
-        # so a previous test session's tables don't collide with the
-        # fresh ``alembic upgrade head`` below.
-        "DROP SCHEMA IF EXISTS qa CASCADE; "
-        # ADR-032: la identidad de la consola vive en ``console_auth``. Sin
-        # esta línea, la segunda sesión de tests choca con las tablas que
-        # dejó la primera y ``alembic upgrade head`` falla en 0088.
-        "DROP SCHEMA IF EXISTS console_auth CASCADE; "
-        # ADR-034: y la del panel de operador en ``operator_auth``. Misma
-        # trampa que con console_auth, y por eso la nota se repite: el reset
-        # solo borra los esquemas que estén NOMBRADOS aquí, así que cada
-        # esquema nuevo tiene que añadirse o la segunda sesión de tests
-        # muere con ``DuplicateTableError`` en su migración.
-        "DROP SCHEMA IF EXISTS operator_auth CASCADE; "
-        "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
+        + "".join(f"DROP SCHEMA IF EXISTS {name} CASCADE; " for name in _RESET_SCHEMAS)
+        + "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
         "CREATE EXTENSION IF NOT EXISTS vector;"
     )
     if os.environ.get("CI"):

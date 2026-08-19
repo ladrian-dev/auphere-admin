@@ -127,15 +127,17 @@ jobs:
       - name: vitest
         working-directory: apps/admin
         run: pnpm test
+      # ADR-034: el panel perdió Better Auth y Drizzle. Este grep es lo que
+      # impide que vuelva a coger una dependencia de Postgres sin querer —
+      # que es exactamente como llegó el 500 del 2026-08-19.
+      - name: "admin — no database, ever"
+        working-directory: apps/admin
+        run: pnpm check:no-database
       - name: next build
         working-directory: apps/admin
         env:
           NEXUS_BACKEND_URL: http://localhost:8000
           NEXUS_ADMIN_TOKEN: ci-token
-          BETTER_AUTH_SECRET: ci-secret-32-chars-padding-padding-padding
-          BETTER_AUTH_URL: http://localhost:3000
-          DATABASE_URL: postgresql://nexus:nexus@localhost:5432/nexus
-          NEXUS_ADMIN_DATABASE_URL: postgresql://nexus:nexus@localhost:5432/nexus
         run: pnpm build
 
   # PLAN-CONSOLE-V1 (CP-01/CP-03): the shared design system and the partner

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { Eyebrow } from "@/components/brand/eyebrow";
 import { Wordmark } from "@/components/brand/wordmark";
-import { getSession } from "@/lib/session";
+import { getOperator } from "@/lib/session";
 
 import { LoginForm } from "./login-form";
 
@@ -13,8 +13,8 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ from?: string }>;
 }) {
-  const session = await getSession();
-  if (session) redirect("/tenants");
+  const operator = await getOperator();
+  if (operator) redirect("/tenants");
   const { from } = await searchParams;
 
   return (

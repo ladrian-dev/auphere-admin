@@ -1,30 +1,30 @@
 /**
- * Edge middleware — gates everything outside ``/login`` and the auth
- * API behind a Better Auth session cookie.
+ * Edge middleware — deja pasar ``/login`` y manda al login todo lo demás
+ * sin cookie de sesión.
  *
- * We do a cheap cookie-presence check (no DB hit). Server Components
- * and Server Actions still call ``auth.api.getSession`` for the real
- * verification; the middleware just bounces unauthenticated visitors
- * before they pull any layout.
+ * Comprobación barata, sin llamar a la API: sólo mira que la cookie EXISTA.
+ * La verificación de verdad la hacen los Server Components y las Server
+ * Actions con ``getOperator()`` / ``requireOperator()``, que preguntan a
+ * ``/admin/auth/session``. Aquí sólo se trata de no montar un layout entero
+ * para alguien que ni siquiera trae credencial.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/api/auth"];
+const PUBLIC_PATHS = ["/login"];
+
+/** Los dos nombres posibles según entorno (ver ``lib/session.ts``). El
+ *  middleware corre en el edge y no puede importar ``server-only``, así que
+ *  la lista se repite aquí a propósito. */
+const SESSION_COOKIES = ["__Host-nexus_operator", "nexus_operator"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
-  // Better Auth prepends ``__Secure-`` to the cookie name when
-  // ``defaultCookieAttributes.secure`` is true (production HTTPS), so the
-  // actual cookie ends up as ``__Secure-nexus.session_token``. Match by
-  // suffix to handle both the dev (no prefix) and prod (prefix) shapes.
-  const sessionCookie = request.cookies
-    .getAll()
-    .find((c) => c.name === "nexus.session_token" || c.name.endsWith(".nexus.session_token") || c.name.endsWith("-nexus.session_token"));
-  if (!sessionCookie) {
+  const hasSession = SESSION_COOKIES.some((name) => request.cookies.has(name));
+  if (!hasSession) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("from", pathname);

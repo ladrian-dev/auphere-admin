@@ -22,7 +22,7 @@ import type {
   WhatsAppTemplateCreateResult,
   WhatsAppTemplateList,
 } from "@/lib/backend";
-import { requireSession } from "@/lib/session";
+import { requireOperator } from "@/lib/session";
 
 export type ActionResult<T> =
   | { ok: true; data: T }
@@ -59,7 +59,7 @@ export async function connectMetaWhatsAppSetupAction(
   tenantId: string,
   body: MetaSignupInput,
 ): Promise<ActionResult<MetaSignupResult>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.metaSignup(tenantId, body);
     if (!result) {
@@ -91,7 +91,7 @@ export async function connectMetaOwnedNumberAction(
   tenantId: string,
   body: MetaConnectOwnedInput,
 ): Promise<ActionResult<MetaSignupResult>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.metaConnectOwned(tenantId, body);
     if (!result) {
@@ -117,7 +117,7 @@ export async function metaTestSendAction(
   tenantId: string,
   body: MetaTestSendInput,
 ): Promise<ActionResult<MetaTestSendResult>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.metaTestSend(tenantId, body);
     if (!result) {
@@ -144,7 +144,7 @@ export async function metaTestSendAction(
 export async function tiktokAuthorizeUrlAction(
   tenantId: string,
 ): Promise<ActionResult<{ authorize_url: string }>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.tiktokAuthorizeUrl(tenantId);
     if (!result) {
@@ -164,7 +164,7 @@ export async function tiktokAuthorizeUrlAction(
 export async function tiktokDisconnectAction(
   tenantId: string,
 ): Promise<ActionResult<{ status: string }>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.tiktokDisconnect(tenantId);
     if (!result) {
@@ -194,7 +194,7 @@ export async function connectWooCommerceSetupAction(
     consumer_secret: string;
   },
 ): Promise<ActionResult<{ store_url: string }>> {
-  await requireSession();
+  await requireOperator();
   try {
     const storeUrl = body.store_url.trim().replace(/\/+$/, "");
     if (!storeUrl.startsWith("https://")) {
@@ -233,7 +233,7 @@ export async function agendaProSetPublicUrlAction(
   tenantId: string,
   publicUrl: string | null,
 ): Promise<ActionResult<{ public_url: string | null }>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.setAgendaProPublicUrl(tenantId, publicUrl);
     if (!result) {
@@ -252,7 +252,7 @@ export async function agendaProSetPublicUrlAction(
 export async function listWhatsAppTemplatesAction(
   tenantId: string,
 ): Promise<ActionResult<WhatsAppTemplateList>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.listWhatsAppTemplates(tenantId);
     if (!result) {
@@ -268,7 +268,7 @@ export async function createWhatsAppTemplateAction(
   tenantId: string,
   body: WhatsAppTemplateCreateInput,
 ): Promise<ActionResult<WhatsAppTemplateCreateResult>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.createWhatsAppTemplate(tenantId, body);
     if (!result) {
@@ -284,7 +284,7 @@ export async function deleteWhatsAppTemplateAction(
   tenantId: string,
   name: string,
 ): Promise<ActionResult<{ name: string; deleted: boolean }>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.deleteWhatsAppTemplate(tenantId, name);
     if (!result) {

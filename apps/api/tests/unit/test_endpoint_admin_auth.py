@@ -14,7 +14,9 @@ seguridad:
    distinguirla en el login sería otra forma de enumerar;
 5. **un principal de la consola NO resuelve aquí** — son dos esquemas, no
    dos filas con un flag;
-6. ni ``password`` ni ``password_hash`` ni el hash del token aparecen jamás
+6. el ``role`` que gatea el QA Playground viaja en la respuesta, con
+   ``qa_operator`` por defecto y sin admitir valores inventados;
+7. ni ``password`` ni ``password_hash`` ni el hash del token aparecen jamás
    en una respuesta.
 """
 
@@ -34,10 +36,12 @@ PASSWORD = "operator-password-1"
 EMAIL = "ops@auphere.test"
 
 
-async def _make_operator(db_session, *, email: str = EMAIL, disabled: bool = False):
+async def _make_operator(
+    db_session, *, email: str = EMAIL, disabled: bool = False, role: str = "qa_operator"
+):
     async with db_session.begin():
         account = await operator_identity.create_account(
-            db_session, email=email, password=PASSWORD, display_name="Ops"
+            db_session, email=email, password=PASSWORD, display_name="Ops", role=role
         )
         if disabled:
             account.disabled_at = datetime.now(UTC) - timedelta(minutes=1)
@@ -257,3 +261,29 @@ async def test_no_response_ever_carries_a_secret(client, admin_headers, db_sessi
         assert "password" not in raw
         assert "scrypt$" not in raw
         assert operator_identity.hash_session_token(token) not in raw
+
+
+# ── el rol, portado de better-auth ────────────────────────────────────
+
+
+async def test_the_role_travels_and_defaults_to_qa_operator(
+    client, admin_headers, db_session
+) -> None:
+    """El rol NO es una rejilla nueva: es la que ``auth.user.role`` ya tenía
+    y que ``qa-access.ts`` usa para dejar entrar al Playground. Si dejara de
+    viajar, el panel abriría el Playground a todo el mundo."""
+    await _make_operator(db_session)
+    assert (await _login(client, admin_headers)).json()["operator"]["role"] == "qa_operator"
+
+    await _make_operator(db_session, email="jefe@auphere.test", role="admin")
+    r = await _login(client, admin_headers, email="jefe@auphere.test")
+    assert r.json()["operator"]["role"] == "admin"
+
+
+async def test_an_invented_role_never_reaches_the_table(client, admin_headers, db_session) -> None:
+    """La CHECK es la red: sin ella, un typo en un script de alta crea una
+    cuenta con un rol que ``qa-access.ts`` no reconoce y que se comporta
+    como ``viewer`` sin que nadie lo haya decidido."""
+    with pytest.raises(Exception) as exc:
+        await _make_operator(db_session, email="raro@auphere.test", role="superadmin")
+    assert "ck_operator_principals_role" in str(exc.value)

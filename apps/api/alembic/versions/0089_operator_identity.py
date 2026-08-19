@@ -21,13 +21,21 @@ equivocado— en una escalada de privilegios. Con dos esquemas, el
 verificador de cada superficie consulta el suyo y la confusión no es
 improbable: es imposible.
 
+Sobre ``role``: **no es una rejilla de permisos nueva, es la que ya
+existía**. ``auth.user.role`` (better-auth) gatea hoy el QA Playground —
+``apps/admin/src/lib/qa-access.ts`` deja pasar sólo a ``admin`` y
+``qa_operator``, y devuelve 403 a ``viewer``. Perder esa columna al mudar
+la identidad habría sido quitar un control de acceso de tapadillo, así que
+viaja tal cual, con los mismos tres valores y el mismo default. Para todo
+lo demás el panel sigue siendo god-mode por ADR-009: el rol NO decide qué
+se puede tocar en ``/admin/*``.
+
+``disabled_at`` es otra cosa y por eso es otra columna: revoca a quien se
+va, sin borrar la fila, para que el rastro de ``audit_log`` siga apuntando
+a un principal que existe.
+
 Lo que esta migración NO trae, a propósito:
 
-- **No hay roles.** El panel es god-mode por ADR-009: quien entra puede
-  todo. Inventar una rejilla de permisos sin un caso que la exija sería
-  complejidad especulativa. ``disabled_at`` cubre lo único que sí hace
-  falta hoy — revocar a alguien que se va — sin borrar la fila, para que
-  el rastro de ``audit_log`` siga apuntando a un principal que existe.
 - **No se migran las contraseñas.** Better Auth y scrypt derivan distinto;
   no hay conversión posible. Las cuentas se recrean por invitación o con
   ``--set-password``, y todo el mundo entra de nuevo. Las filas de
@@ -87,6 +95,14 @@ def upgrade() -> None:
         ),
         sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("failed_attempts", sa.Integer(), nullable=False, server_default="0"),
+        # El rol que hoy vive en ``auth.user.role``. CHECK y no ENUM: añadir
+        # un valor a un ENUM de Postgres es una migración con bloqueo, y esta
+        # lista se va a mover.
+        sa.Column("role", sa.String(32), nullable=False, server_default="qa_operator"),
+        sa.CheckConstraint(
+            "role IN ('admin', 'qa_operator', 'viewer')",
+            name="ck_operator_principals_role",
+        ),
         sa.Column("locked_until", sa.DateTime(timezone=True), nullable=True),
         # Revocación sin borrado: la fila sobrevive para que el rastro de
         # auditoría siga resolviendo, pero no abre sesión ni la mantiene.
