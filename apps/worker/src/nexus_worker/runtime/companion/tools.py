@@ -47,4 +47,49 @@ class Toolbelt(Protocol):
     async def call(self, name: str, arguments: dict[str, Any]) -> ToolResult: ...
 
 
-__all__ = ["ToolResult", "Toolbelt"]
+@runtime_checkable
+class ActionPort(Protocol):
+    """El camino de escritura, visto desde el grafo (CO-04).
+
+    El grafo **no sabe** que detrás hay HTTP ni Postgres: pide poner una
+    acción en espera, aplicarla y verificarla. Lo implementa
+    ``nexus_api.companion.tools.CompanionToolbelt``; los tests pasan un
+    doble.
+
+    La asimetría es la misma que la de :class:`Toolbelt` y por la misma
+    razón: ``apps/worker`` no importa ``nexus_api`` en ninguna parte, y el
+    worker es el runtime de los agentes de cliente — no tiene por qué
+    conocer la superficie HTTP de la consola.
+    """
+
+    #: Propuestas calculadas en este turno y todavía sin persistir.
+    pending: list[Any]
+    #: Lo que falta para poder proponer (§7.1). El grafo lo emite como
+    #: ``intake.missing`` y el turno termina preguntando.
+    missing_slots: list[dict[str, Any]]
+
+    def plan_steps(self) -> list[dict[str, Any]]: ...
+
+    def plan_risk(self) -> str: ...
+
+    async def stage(self, step_index: int) -> dict[str, Any] | None: ...
+
+    async def apply_confirmed(self, action_id: Any) -> ToolResult: ...
+
+    async def verify(self, action_id: Any) -> dict[str, Any] | None: ...
+
+
+def supports_actions(toolbelt: Any) -> bool:
+    """¿Este juego de herramientas sabe escribir?
+
+    Se comprueba por capacidad y no por tipo: en CO-01 y CO-02 el grafo se
+    compila con juegos que solo leen, y esos tienen que seguir funcionando
+    exactamente igual — sin nodos de HITL y sin un ``interrupt()`` que
+    nadie va a reanudar.
+    """
+    return all(
+        hasattr(toolbelt, attr) for attr in ("pending", "stage", "apply_confirmed", "verify")
+    )
+
+
+__all__ = ["ActionPort", "ToolResult", "Toolbelt", "supports_actions"]

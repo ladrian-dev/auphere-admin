@@ -117,6 +117,30 @@ COMPANION_EVENTS: dict[str, frozenset[str]] = {
     # la etiqueta de lo que se leyó ("Consumo del partner (client_ref=boreal)"),
     # redactada por el catálogo del Companion — no texto de nadie más.
     "citation": frozenset({"citation_id", "claim", "source", "fetched_at"}),
+    # proceso y confirmación humana (CO-04). Las claves son LITERALES del §2
+    # de ``docs/companion/CONTRACT-V1.md`` y no se tocan: el catálogo elimina
+    # en silencio lo que no declara, así que una clave con otro nombre no
+    # llega al navegador y no hay error que lo delate.
+    "plan.proposed": frozenset({"plan_id", "steps", "risk", "reversible", "estimated_tokens"}),
+    # Lo que falta y solo sabe el cliente. ``slots`` es una lista de
+    # ``{key, label, why, examples, required}``; ``key`` es un identificador
+    # estable y la interfaz puede tener copy propio por cada uno.
+    "intake.missing": frozenset({"slots"}),
+    # ``preview`` y no ``payload``: ``payload`` está en la lista de nombres
+    # prohibidos del recorrido de OpenAPI, y aunque este catálogo sea otro
+    # guardián, usar el mismo vocabulario en los dos evita que alguien
+    # "arregle" uno rompiendo el otro.
+    "hitl.requested": frozenset(
+        {"action_id", "kind", "title", "preview", "diff", "impact", "expires_at"}
+    ),
+    # ``note`` en singular: ``notes`` está prohibido y ``reason`` también.
+    # No es cosmética — el motivo de un rechazo VUELVE al modelo, así que
+    # esta clave lleva texto escrito por la persona del partner (nunca por un
+    # cliente final del partner, que es lo que el guardián protege).
+    "hitl.resolved": frozenset({"action_id", "decision", "by", "at", "note"}),
+    # Lo produce código determinista que relee y compara (C5). Ni un
+    # subagente ni una instrucción de "revisa tu trabajo".
+    "verify.result": frozenset({"action_id", "checks", "ok"}),
     # medidores
     "cost.updated": frozenset({"input_tokens", "output_tokens", "model"}),
     "context.updated": frozenset({"input_tokens", "max_context", "percent", "compacted", "model"}),
@@ -431,9 +455,14 @@ async def _run_with_lifecycle(
     driver: CompanionDriver,
     on_complete: OnComplete | None,
 ) -> None:
-    """Abre con ``run.started``, corre el driver y cierra SIEMPRE con
+    """Abre con ``run.started``, corre el driver y cierra con
     ``run.completed``. El evento terminal es lo que hace que un lector sepa
-    que puede irse; sin él, cada cajón abierto se queda colgado."""
+    que puede irse; sin él, cada cajón abierto se queda colgado.
+
+    La **única** vez que no se cierra es cuando el grafo se paró en un
+    ``interrupt()`` esperando a una persona (CO-04): ese turno no ha
+    terminado, solo está quieto. Ver el ``finally``.
+    """
     await handle.emit(
         "run.started",
         {
@@ -459,24 +488,40 @@ async def _run_with_lifecycle(
     finally:
         handle.final_status = status
         handle.final_error = error
-        with contextlib.suppress(Exception):
-            await publish(
-                handle.redis,
-                handle.run_id,
-                seq=handle.seq + 1,
-                event="run.completed",
-                data={
-                    "run_id": str(handle.run_id),
-                    "ended_at": time.time(),
-                    "status": status,
-                    # Veredicto de R1. Va en el evento terminal porque este
-                    # se emite SIEMPRE — también si el turno falló—, así que
-                    # la métrica no tiene agujeros.
-                    "unsupported": bool(handle.extras.get("unsupported")),
-                    **({"error": error} if error else {}),
-                },
-            )
-            handle.seq += 1
+        # **La única excepción al "cierra SIEMPRE".** Si el grafo se detuvo en
+        # un ``interrupt()``, la tarea termina pero el TURNO no: hay una
+        # persona mirando una tarjeta de confirmación. Publicar aquí
+        # ``run.completed`` cerraría su stream y le diría que el trabajo
+        # acabó, que es justo lo contrario de lo que pasa.
+        #
+        # El evento terminal lo escribe el ``resume``, en la otra punta de la
+        # espera. Si nadie decide, la acción caduca a los quince minutos, el
+        # run deja de estar aparcado y el reaper lo cierra solo — se cura sin
+        # cron y sin dejar la fila abierta para siempre.
+        #
+        # ``on_complete`` sí corre: aparca la fila con los tokens y la
+        # respuesta parcial, para que el gasto de este turno cuente contra el
+        # tope aunque la confirmación no llegue nunca.
+        parked = bool(handle.extras.get("awaiting_action")) and status == RUN_COMPLETED
+        if not parked:
+            with contextlib.suppress(Exception):
+                await publish(
+                    handle.redis,
+                    handle.run_id,
+                    seq=handle.seq + 1,
+                    event="run.completed",
+                    data={
+                        "run_id": str(handle.run_id),
+                        "ended_at": time.time(),
+                        "status": status,
+                        # Veredicto de R1. Va en el evento terminal porque
+                        # este se emite SIEMPRE — también si el turno falló—,
+                        # así que la métrica no tiene agujeros.
+                        "unsupported": bool(handle.extras.get("unsupported")),
+                        **({"error": error} if error else {}),
+                    },
+                )
+                handle.seq += 1
         if on_complete is not None:
             try:
                 await on_complete(handle)

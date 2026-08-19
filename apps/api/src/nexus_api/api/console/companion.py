@@ -53,6 +53,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api import companion_streaming as streaming
 from nexus_api.api.deps import get_db_session, get_redis
+from nexus_api.companion.tools.actions import (
+    DECISION_STATUS,
+    STATUS_EXPIRED,
+    STATUS_PROPOSED,
+    expires_at_of,
+    load_action,
+)
 from nexus_api.config import get_settings
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.core.principal_context import (
@@ -62,10 +69,12 @@ from nexus_api.core.principal_context import (
 from nexus_api.core.rate_limit import allow
 from nexus_api.db.models import Partner, PartnerMembership, PartnerTenant
 from nexus_api.db.models.companion import (
+    RUN_COMPLETED,
     RUN_ERROR,
     RUN_INTERRUPTED,
     RUN_RUNNING,
     TERMINAL_RUN_STATUSES,
+    CompanionAction,
     CompanionMessage,
     CompanionRun,
     CompanionThread,
@@ -78,14 +87,19 @@ from nexus_api.db.models.console_notification import (
 from .deps import resolve_mapping
 from .playground import MonthWindow, month_window, retry_after_seconds
 from .schemas_companion import (
+    CompanionActionOut,
     CompanionBudgetOut,
     CompanionEventOut,
     CompanionEventsOut,
+    CompanionResumeIn,
+    CompanionResumeOut,
     CompanionRunStartIn,
     CompanionRunStartOut,
+    CompanionRunSummaryOut,
     CompanionThreadCreateIn,
     CompanionThreadOut,
     CompanionThreadPatchIn,
+    CompanionThreadRunsOut,
 )
 
 log = structlog.get_logger(__name__)
@@ -379,6 +393,31 @@ async def patch_thread(
 # ── runs ───────────────────────────────────────────────────────────────
 
 
+def _is_parked() -> Any:
+    """Predicado SQL: «este run está esperando a que una persona decida».
+
+    Un run aparcado sigue en ``running`` porque el grafo no ha terminado —
+    está parado en un ``interrupt()`` y la fila es lo que lo dice—, pero **no
+    está trabajando**: no consume una tarea, no gasta y no puede fallar.
+    Contarlo como trabajo en vuelo tendría dos consecuencias, las dos
+    absurdas: el tercer hilo pendiente de confirmación bloquearía al miembro
+    entero, y el techo de duración (300 s) mataría cada espera humana mucho
+    antes de que la propuesta caducara a los quince minutos.
+
+    Es una subconsulta y no una columna nueva a propósito: el estado de la
+    espera lo define la acción, y duplicarlo en el run crearía la
+    posibilidad de que las dos filas discrepen.
+    """
+    return sa.exists(
+        sa.select(sa.literal(1))
+        .select_from(CompanionAction)
+        .where(
+            CompanionAction.run_id == CompanionRun.id,
+            CompanionAction.status == STATUS_PROPOSED,
+        )
+    )
+
+
 async def _guard_concurrency(session: AsyncSession, principal_id: str) -> None:
     """Rechaza el turno si el miembro ya tiene demasiados runs EN VUELO.
 
@@ -420,6 +459,7 @@ async def _guard_concurrency(session: AsyncSession, principal_id: str) -> None:
             .where(
                 CompanionRun.status == RUN_RUNNING,
                 CompanionRun.started_at >= cutoff,
+                sa.not_(_is_parked()),
             )
         )
         or 0
@@ -529,6 +569,7 @@ async def start_run(
             await session.refresh(run)
             run_id = run.id
             tenant_id = thread.tenant_id
+            mode = thread.mode
             history = await _thread_history(session, thread.id, exclude_run=run_id)
 
     driver = _make_driver(
@@ -542,6 +583,7 @@ async def start_run(
         used_before=used_before,
         cap=cap,
         window=window,
+        mode=mode,
     )
     await streaming.start_run(
         redis=redis,
@@ -598,8 +640,17 @@ def _make_driver(
     used_before: int,
     cap: int,
     window: MonthWindow,
+    mode: str = "build",
+    resume: dict[str, Any] | None = None,
 ) -> streaming.CompanionDriver:
-    """El driver: mueve el grafo y vuelca sus eventos al log durable."""
+    """El driver: mueve el grafo y vuelca sus eventos al log durable.
+
+    Con ``resume`` puesto no arranca un turno: **reanuda** el grafo parado en
+    el ``interrupt()`` de este hilo, con el valor de la decisión. Es el mismo
+    código porque es el mismo trabajo — lo único que cambia es lo que se le
+    entrega a LangGraph, y unificar los dos caminos evita que la medición del
+    gasto o el cierre de la fila se hagan de dos maneras distintas.
+    """
 
     async def _driver(handle: streaming.CompanionRunHandle) -> None:
         import contextlib as _contextlib
@@ -621,6 +672,15 @@ def _make_driver(
             ),
             max_calls=settings.companion_max_tool_calls_per_turn,
             timeout_s=settings.companion_tool_timeout_s,
+            # El modo es del HILO y lo cambia la persona con un PATCH, nunca
+            # el modelo: en ``consult`` el catálogo publicado son solo las
+            # lecturas, así que no hay forma de que un texto convenza al
+            # agente de proponer un cambio.
+            mode=mode,
+            principal_id=companion_principal_id(principal),
+            thread_id=thread_id,
+            run_id=run_id,
+            action_ttl_seconds=settings.companion_action_ttl_seconds,
         )
         state = {
             "thread_id": str(thread_id),
@@ -636,6 +696,16 @@ def _make_driver(
             "total_output_tokens": 0,
         }
         config = {"configurable": {"thread_id": str(thread_id)}}
+        if resume is not None:
+            from langgraph.types import Command
+
+            # El estado no se reenvía: lo tiene el checkpoint. Mandarlo otra
+            # vez sobrescribiría lo que el turno pausado había acumulado
+            # —``tool_messages``, ``reads_done``, los contadores— y el nodo
+            # de cierre respondería sin saber qué se leyó.
+            entry: Any = Command(resume=resume)
+        else:
+            entry = state
 
         async with _contextlib.AsyncExitStack() as stack:
             await stack.enter_async_context(toolbelt)
@@ -653,7 +723,7 @@ def _make_driver(
                         source=SOURCE_COMPANION,
                     )
                 )
-            async for event in graph.astream_events(state, config=config, version="v2"):
+            async for event in graph.astream_events(entry, config=config, version="v2"):
                 if event.get("event") == "on_chain_end" and event.get("name") == "respond":
                     # El veredicto de R1 lo calcula el grafo (una sola vez,
                     # con el estado completo) y viaja en la salida del nodo
@@ -678,6 +748,13 @@ def _make_driver(
                     handle.last_input_tokens = int(data.get("input_tokens") or 0)
                 if name == "text.delta":
                     handle.extras.setdefault("answer", []).append(str(data.get("text") or ""))
+                if name == "hitl.requested":
+                    # El grafo va a parar en el ``interrupt()`` justo después
+                    # de esto. Se marca aquí y no leyendo la base al terminar
+                    # porque es el único punto donde consta sin ambigüedad, y
+                    # porque una consulta más por turno para saber algo que
+                    # acaba de pasar delante es trabajo regalado.
+                    handle.extras["awaiting_action"] = str(data.get("action_id") or "")
                 try:
                     await handle.emit(name, data)
                 except streaming.UnknownCompanionEvent:
@@ -728,6 +805,7 @@ def _make_on_complete(
             output_tokens=handle.total_output_tokens,
             model=handle.model,
             answer=answer,
+            parked=bool(handle.extras.get("awaiting_action")),
         )
         if used_before + handle.total_input_tokens + handle.total_output_tokens >= cap:
             await notify_cap_reached(partner_id, window)
@@ -746,8 +824,15 @@ async def _finalise_run(
     output_tokens: int,
     model: str | None,
     answer: str,
+    parked: bool = False,
 ) -> None:
     """Cierra la fila del run y persiste la respuesta.
+
+    Con ``parked`` el run **no se cierra**: se guardan los tokens y lo que el
+    Companion alcanzó a decir, y la fila sigue en ``running`` sin
+    ``ended_at``. Es un turno que espera a una persona, no un turno
+    terminado, y esa diferencia es la que hace que el cajón siga mostrando la
+    tarjeta de confirmación en vez de dar el trabajo por hecho.
 
     Corre FUERA de cualquier transacción de petición: el 202 se devolvió
     hace rato. Abre su propia sesión y aplica el ámbito del principal para
@@ -767,9 +852,10 @@ async def _finalise_run(
             if run is None:
                 log.warning("companion.run.finalise_missing", run_id=str(run_id))
                 return
-            run.status = status
-            run.error = error
-            run.ended_at = sa.func.now()
+            if not parked:
+                run.status = status
+                run.error = error
+                run.ended_at = sa.func.now()
             run.input_tokens = input_tokens
             run.output_tokens = output_tokens
             if answer:
@@ -892,6 +978,61 @@ async def _owned_run(session: AsyncSession, run_id: uuid.UUID, principal_id: str
         return run
 
 
+@router.get(
+    "/companion/threads/{thread_id}/runs",
+    response_model=CompanionThreadRunsOut,
+    responses={404: {"description": "No such thread for this member."}},
+)
+async def list_thread_runs(
+    thread_id: Annotated[uuid.UUID, Path(...)],
+    caller: CompanionCaller = Depends(companion_caller()),
+    session: AsyncSession = Depends(get_db_session),
+) -> CompanionThreadRunsOut:
+    """Los runs de un hilo, del más viejo al más nuevo (contrato v1.1, §5.2).
+
+    El timeline del cajón es del **hilo**, no del run: una conversación son
+    el turno, la pausa para confirmar y el run que continúa después.
+    Reconstruir esa vista es concatenar los eventos de cada run en orden —
+    y sin este endpoint el navegador no puede ni saber qué runs tiene el
+    hilo.
+
+    La alternativa era un índice en ``localStorage``, y eso rompe que la URL
+    del hilo se pueda compartir con el equipo: quien la abriera en otra
+    máquina vería una conversación vacía. Un índice local no es un atajo de
+    la interfaz, es un dato que faltaba en el servidor.
+
+    Sin paginación a propósito: un hilo con cientos de runs es un problema
+    de CO-06, y meter un cursor hoy sería resolver un caso que no existe con
+    una interfaz que habría que rehacer igual.
+    """
+    async with session.begin():
+        await apply_principal_to_session(session, caller.principal_id)
+        # El 404 opaco sale de aquí: un hilo de otro miembro no se
+        # distingue de uno que no existe.
+        await _thread_row(session, thread_id, caller.principal_id)
+        rows = (
+            await session.execute(
+                sa.select(
+                    CompanionRun.id,
+                    CompanionRun.status,
+                    CompanionRun.started_at,
+                    CompanionRun.ended_at,
+                )
+                .where(CompanionRun.thread_id == thread_id)
+                .order_by(CompanionRun.started_at.asc())
+            )
+        ).all()
+    return CompanionThreadRunsOut(
+        thread_id=thread_id,
+        runs=[
+            CompanionRunSummaryOut(
+                run_id=run_id, status=status_, started_at=started_at, ended_at=ended_at
+            )
+            for run_id, status_, started_at, ended_at in rows
+        ],
+    )
+
+
 @router.get("/companion/runs/{run_id}/events", response_model=CompanionEventsOut)
 async def get_run_events(
     run_id: Annotated[uuid.UUID, Path(...)],
@@ -958,6 +1099,19 @@ async def stream_run(
                     return None
                 if row.status in TERMINAL_RUN_STATUSES:
                     return str(row.status)
+                waiting = await s.scalar(
+                    sa.select(sa.func.count())
+                    .select_from(CompanionAction)
+                    .where(
+                        CompanionAction.run_id == run_id,
+                        CompanionAction.status == STATUS_PROPOSED,
+                    )
+                )
+                if waiting:
+                    # Esperando a una persona. No es un run huérfano y no se
+                    # cierra: el cajón tiene que seguir con el stream abierto
+                    # mientras la tarjeta de confirmación está en pantalla.
+                    return None
                 if _is_expired(row):
                     return RUN_INTERRUPTED
         except Exception:  # pragma: no cover - defensivo
@@ -990,6 +1144,349 @@ async def cancel_run(
     """
     await _owned_run(session, run_id, caller.principal_id)
     await streaming.cancel(redis, run_id)
+
+
+# ── acciones y reanudación (CO-04) ─────────────────────────────────────
+
+
+def _unknown_action() -> HTTPException:
+    """Opaco a propósito, y **antes** que cualquier 409.
+
+    Se comprueba la pertenencia primero: si un tercero pudiera distinguir
+    "no existe" de "existe y ya está aplicada", el endpoint sería un oráculo
+    para saber qué está haciendo otro partner con sus clientes.
+    """
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown action")
+
+
+def _conflict(code: str, detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT, detail={"code": code, "detail": detail}
+    )
+
+
+def _action_out(action: CompanionAction, ttl: float) -> CompanionActionOut:
+    payload = dict(action.payload or {})
+    raw_diff = action.diff or {}
+    result = action.result or {}
+    return CompanionActionOut(
+        action_id=action.id,
+        thread_id=action.thread_id,
+        run_id=action.run_id,
+        kind=action.kind,
+        title=str(payload.get("title") or ""),
+        preview=dict(payload.get("preview") or {}),
+        # Se guarda envuelto (``{"lines": [...]}``) porque la columna está
+        # tipada ``dict`` en un archivo que no es de este carril; se sirve
+        # como lista, que es lo que el contrato declara.
+        diff=list(raw_diff.get("lines") or []) if raw_diff.get("lines") is not None else None,
+        impact=list(payload.get("impact") or []),
+        risk=str(payload.get("risk") or "low"),
+        reversible=bool(payload.get("reversible", True)),
+        status=action.status,
+        state_hash=str(action.state_hash or ""),
+        proposed_at=action.proposed_at,
+        expires_at=expires_at_of(action.proposed_at, ttl),
+        decided_at=action.decided_at,
+        decided_by=action.decided_by,
+        applied_at=action.applied_at,
+        ok=result.get("verified") if isinstance(result.get("verified"), bool) else None,
+    )
+
+
+@router.get(
+    "/companion/actions/{action_id}",
+    response_model=CompanionActionOut,
+    responses={404: {"description": "No such action for this member."}},
+)
+async def get_action(
+    action_id: Annotated[uuid.UUID, Path(...)],
+    caller: CompanionCaller = Depends(companion_caller()),
+    session: AsyncSession = Depends(get_db_session),
+) -> CompanionActionOut:
+    """Una acción propia, con la caducidad aplicada al leer.
+
+    Existe para el estado *parcial* de la interfaz: recargar con una
+    confirmación pendiente tiene que pintar la tarjeta aunque el log de Redis
+    ya haya expirado. Sin esto, cerrar el portátil quince minutos y volver
+    dejaría al usuario mirando un hilo que dice que está esperando algo que
+    no se puede ver.
+    """
+    ttl = get_settings().companion_action_ttl_seconds
+    action = await load_action(
+        session, action_id, principal_id=caller.principal_id, ttl_seconds=ttl
+    )
+    if action is None:
+        raise _unknown_action()
+    return _action_out(action, ttl)
+
+
+@router.post(
+    "/companion/runs/{run_id}/resume",
+    response_model=CompanionResumeOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        404: {"description": "No such run or action for this member."},
+        409: {"description": "The action was already decided, or it expired."},
+        412: {"description": "The underlying state changed since it was proposed."},
+        429: {"description": "Too many Companion turns running, or too many per minute."},
+    },
+)
+async def resume_run(
+    body: CompanionResumeIn,
+    run_id: Annotated[uuid.UUID, Path(...)],
+    response: Response,
+    caller: CompanionCaller = Depends(companion_caller()),
+    session: AsyncSession = Depends(get_db_session),
+    redis: Redis = Depends(get_redis),
+) -> CompanionResumeOut:
+    """La decisión de una persona sobre una acción propuesta.
+
+    Tres cosas que este endpoint decide y el resto del sistema obedece:
+
+    - **412 es exclusivamente la deriva de estado**, y la caducidad por
+      tiempo es 409 con ``action_expired``. La salida es la misma —volver a
+      proponer— pero la causa no, y la interfaz las cuenta distinto:
+      «alguien cambió esto mientras decidías» no es «se te pasó el plazo».
+    - **El tope mensual de tokens NO se comprueba aquí.** Responder una
+      confirmación no arranca trabajo nuevo, así que un hilo esperando
+      decisión no puede quedarse atrapado porque el partner haya gastado su
+      presupuesto entre la propuesta y el sí. El 429 de aquí es solo por
+      runs simultáneos y por ráfaga.
+    - **``edit`` y ``cancel`` también devuelven 202 y arrancan un run.** El
+      modelo tiene que reaccionar al motivo del rechazo; un "no" que no
+      vuelve al agente deja al usuario repitiéndose.
+    """
+    settings = get_settings()
+    ttl = settings.companion_action_ttl_seconds
+    principal_id = caller.principal_id
+
+    if not await allow(
+        redis,
+        key=f"console:companion_run:{caller.principal.user_id}",
+        per_minute=settings.companion_runs_per_minute,
+        surface="console",
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many Companion turns — slow down for a minute.",
+        )
+
+    # 404 antes que nada: pertenencia primero, estado después.
+    parked_run = await _owned_run(session, run_id, principal_id)
+    action = await load_action(session, body.action_id, principal_id=principal_id, ttl_seconds=ttl)
+    if action is None or action.run_id != run_id:
+        raise _unknown_action()
+
+    if action.status == STATUS_EXPIRED:
+        raise _conflict(
+            "action_expired",
+            "This proposal expired without a decision. The Companion will propose "
+            "it again with fresh data.",
+        )
+    if action.status != STATUS_PROPOSED:
+        raise _conflict(
+            "action_already_decided",
+            f"This action is already {action.status}; it cannot be decided again.",
+        )
+
+    if body.decision == "confirm":
+        await _revalidate_state_hash(caller, action, principal_id=principal_id, ttl=ttl)
+
+    decided_status = DECISION_STATUS[body.decision]
+    decided_at = datetime.now(UTC)
+    with principal_context(principal_id):
+        async with session.begin():
+            await apply_principal_to_session(session, principal_id)
+            await session.execute(
+                sa.update(CompanionAction)
+                .where(CompanionAction.id == action.id)
+                .values(
+                    status=decided_status,
+                    decided_at=decided_at,
+                    decided_by=principal_id,
+                )
+            )
+            # El run que esperaba ya cumplió: la persona decidió y el trabajo
+            # continúa en OTRO run. Cerrarlo aquí, y no dejarlo al reaper, es
+            # lo que hace que el hilo no se quede con dos runs "vivos".
+            parked = await session.get(CompanionRun, run_id)
+            if parked is not None and parked.status == RUN_RUNNING:
+                parked.status = RUN_COMPLETED
+                parked.ended_at = sa.func.now()
+            thread = await _thread_row(session, action.thread_id, principal_id)
+            if thread.archived_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail="Thread is archived"
+                )
+            await _guard_concurrency(session, principal_id)
+            new_run = CompanionRun(
+                thread_id=thread.id, principal_id=principal_id, status=RUN_RUNNING
+            )
+            session.add(new_run)
+            await session.flush()
+            if body.note:
+                # El motivo entra en el hilo como texto de la persona: es lo
+                # que le dijo a Auphere, y tiene que sobrevivir al turno para
+                # que el siguiente sepa por qué se descartó lo anterior.
+                session.add(
+                    CompanionMessage(
+                        thread_id=thread.id,
+                        run_id=new_run.id,
+                        seq=await _next_message_seq(session, thread.id),
+                        role="user",
+                        content=body.note,
+                    )
+                )
+            thread.last_run_at = sa.func.now()
+            thread.updated_at = sa.func.now()
+            await session.flush()
+            await session.refresh(new_run)
+            new_run_id = new_run.id
+            tenant_id = thread.tenant_id
+            mode = thread.mode
+            history = await _thread_history(session, thread.id, exclude_run=new_run_id)
+
+    window = month_window()
+    used_before = await partner_companion_tokens_used(session, caller.partner.id, window)
+    cap = caller.partner.companion_monthly_token_cap
+
+    driver = _make_driver(
+        principal=caller.principal,
+        thread_id=action.thread_id,
+        run_id=new_run_id,
+        tenant_id=tenant_id,
+        user_message=body.note or "",
+        page_context=None,
+        history=history,
+        used_before=used_before,
+        cap=cap,
+        window=window,
+        mode=mode,
+        resume={
+            "decision": body.decision,
+            "note": body.note,
+            # El ``principal_id``, no el correo: la interfaz ya sabe quién es
+            # el usuario en sesión, y para otro miembro pinta el
+            # identificador. Correos completos de terceros en el chat, nunca.
+            "by": principal_id,
+            "at": decided_at.isoformat(),
+        },
+    )
+    await streaming.start_run(
+        redis=redis,
+        run_id=new_run_id,
+        thread_id=action.thread_id,
+        principal_id=principal_id,
+        driver=driver,
+        on_complete=_make_on_complete(
+            principal_id=principal_id,
+            partner_id=caller.partner.id,
+            used_before=used_before,
+            cap=cap,
+            window=window,
+        ),
+    )
+    log.info(
+        "companion.action.decided",
+        action_id=str(action.id),
+        decision=body.decision,
+        paused_run=str(parked_run.id),
+        run_id=str(new_run_id),
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return CompanionResumeOut(
+        run_id=new_run_id,
+        thread_id=action.thread_id,
+        action_id=action.id,
+        status=decided_status,
+    )
+
+
+async def _revalidate_state_hash(
+    caller: CompanionCaller,
+    action: CompanionAction,
+    *,
+    principal_id: str,
+    ttl: float,
+) -> None:
+    """Recalcula la huella del estado leído y compara. **412 si cambió.**
+
+    Es el CAS del Companion, y vive entero aquí: los endpoints ``/console/*``
+    de debajo no tienen comparación-e-intercambio y hoy no la van a tener.
+    Se recalcula por el mismo camino que la propuesta —los mismos routers,
+    con el mismo sujeto— porque un hash calculado de otra forma no compara
+    nada.
+
+    Un fallo de lectura **no** bloquea la confirmación: se registra y se deja
+    pasar. Negarse a aplicar porque una comprobación auxiliar no respondió
+    convertiría una caída de un endpoint de lectura en un bloqueo total de la
+    escritura, y el 409/422 del router de destino sigue estando detrás.
+    """
+    from nexus_api.companion.tools import CompanionToolbelt
+    from nexus_api.companion.tools.actions import set_status
+    from nexus_api.companion.tools.proposals import ProposalBuilder, ProposalRefused
+    from nexus_api.core.console_auth import InProcessActor
+
+    payload = dict(action.payload or {})
+    args = dict(payload.get("propose_args") or {})
+    if not args:  # pragma: no cover - toda propuesta guarda sus argumentos
+        # Sin argumentos no hay nada que rehacer. Se deja pasar: el hash
+        # existe para detectar deriva, no para inventar motivos de bloqueo.
+        return
+
+    belt = CompanionToolbelt(
+        actor=InProcessActor(
+            user_id=caller.principal.user_id,
+            partner_id=caller.partner.id,
+            jti=f"companion:revalidate:{action.id}",
+        ),
+        principal_id=principal_id,
+        action_ttl_seconds=ttl,
+    )
+    drifted = True
+    async with belt:
+        builder = ProposalBuilder(read=belt.read)
+        try:
+            fresh = await builder.build(action.kind, args)
+        except ProposalRefused:
+            # La propuesta ya no se puede construir (el cliente cambió, la
+            # versión desapareció, el rol bajó): eso ES deriva de estado, y
+            # es de los casos donde más importa no aplicar lo viejo.
+            drifted = True
+        except Exception as exc:
+            # La comprobación auxiliar no respondió. NO se bloquea: negarse a
+            # aplicar porque un endpoint de lectura tuvo un mal momento
+            # convertiría una caída parcial en un bloqueo total de la
+            # escritura, y el 409/422 del router de destino sigue detrás.
+            log.warning(
+                "companion.action.revalidate_failed",
+                action_id=str(action.id),
+                error=str(exc),
+            )
+            return
+        else:
+            drifted = fresh.state_hash != action.state_hash
+
+    if not drifted:
+        return
+
+    from nexus_api.db.base import get_sessionmaker
+
+    sm = get_sessionmaker()
+    async with sm() as fresh_session:
+        await set_status(fresh_session, action.id, principal_id=principal_id, status=STATUS_EXPIRED)
+    raise HTTPException(
+        status_code=status.HTTP_412_PRECONDITION_FAILED,
+        detail={
+            "code": "state_changed",
+            "detail": (
+                "Someone changed this while the proposal was pending, so the diff "
+                "shown is no longer accurate. The Companion will propose again "
+                "with fresh data."
+            ),
+        },
+    )
 
 
 # ── reaper de arranque ─────────────────────────────────────────────────
@@ -1037,6 +1534,13 @@ async def reap_stale_runs(*, older_than_seconds: float | None = None) -> int:
                 sa.select(CompanionRun.id).where(
                     CompanionRun.status == RUN_RUNNING,
                     CompanionRun.started_at < cutoff_dt,
+                    # Un run aparcado esperando confirmación NO está muerto:
+                    # está parado a propósito, y su propuesta vive quince
+                    # minutos, más que el techo de duración de un run. Sin
+                    # esta exclusión el reaper mataría cada espera humana a
+                    # los cinco minutos y el usuario vería «el turno se
+                    # interrumpió» con la tarjeta todavía en pantalla.
+                    sa.not_(_is_parked()),
                 )
             )
         ).scalars()

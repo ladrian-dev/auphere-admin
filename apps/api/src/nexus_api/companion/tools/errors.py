@@ -80,4 +80,48 @@ TIMEOUT = ToolError(
 )
 
 
-__all__ = ["TIMEOUT", "UNKNOWN_CLIENT", "ToolError", "translate_status"]
+# ── CO-04 · errores del camino de escritura ────────────────────────────
+#
+# Los tres son "el motor dijo que no", y los tres tienen que llegarle al
+# modelo como una instrucción de qué hacer a continuación. Un modelo que lee
+# "not_confirmed" a secas se lo toma como un fallo transitorio y reintenta.
+
+NOT_CONFIRMED = ToolError(
+    "not_confirmed",
+    "Esa acción no está confirmada, así que no se aplica. Entre proponer y "
+    "aplicar hay una persona que tiene que decir que sí, y no ha dicho nada "
+    "todavía. No vuelvas a intentarlo: espera, o explícale qué le estás "
+    "pidiendo que confirme.",
+)
+
+ACTION_EXPIRED = ToolError(
+    "action_expired",
+    "La propuesta caducó (quince minutos sin decisión). Vuelve a proponerla "
+    "con datos frescos: el estado puede haber cambiado desde entonces.",
+)
+
+STATE_CHANGED = ToolError(
+    "state_changed",
+    "Alguien cambió esto mientras la propuesta estaba pendiente, así que el "
+    "diff que se enseñó ya no describe la realidad. Lee otra vez y vuelve a "
+    "proponer sobre lo nuevo; no apliques lo viejo.",
+)
+
+APPLY_FAILED = ToolError(
+    "apply_failed",
+    "La escritura fue rechazada por la plataforma. Di exactamente qué falló y "
+    "en qué quedó el estado; no lo reintentes a ciegas ni des el cambio por "
+    "hecho.",
+)
+
+
+__all__ = [
+    "ACTION_EXPIRED",
+    "APPLY_FAILED",
+    "NOT_CONFIRMED",
+    "STATE_CHANGED",
+    "TIMEOUT",
+    "UNKNOWN_CLIENT",
+    "ToolError",
+    "translate_status",
+]

@@ -278,6 +278,14 @@ class Settings(BaseSettings):
     # tarda más ya rompió la conversación, porque el usuario está mirando.
     companion_max_tool_calls_per_turn: int = 25
     companion_tool_timeout_s: float = 10.0
+    # CO-04. Cuánto vive una propuesta sin decidir. Quince minutos es lo que
+    # fija la investigación (§10) y es **la única fuente de la cuenta atrás**:
+    # el backend manda ``expires_at`` en ``hitl.requested`` y la interfaz no
+    # recalcula el plazo por su cuenta, así que subirlo o bajarlo aquí mueve
+    # también lo que la persona ve. La caducidad se aplica al LEER la acción,
+    # sin cron: un proceso más que puede fallar en silencio es peor que una
+    # comparación de fechas en el sitio donde importa.
+    companion_action_ttl_seconds: float = 900.0
 
     # ── Block N: WhatsApp media + multimodal ────────────────────────────────
     # S3 (or S3-compatible — Cloudflare R2, MinIO) for media storage. All

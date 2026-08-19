@@ -114,6 +114,14 @@ def _human_actor(actor: str) -> str:
     # ``console:maria@x.com`` → ``maria@x.com``; ``admin:1a2b3c4d`` → ``Auphere``.
     if actor.startswith("console:"):
         return actor.removeprefix("console:")
+    if actor.startswith("companion:"):
+        # El Companion escribe como ``companion:<user_id>`` (CONTRACT-V1 §10.1):
+        # el identificador, y no el correo, porque quien lo fija es el ejecutor
+        # de herramientas y ahí no hay membresía cargada. Se pinta sin el
+        # identificador porque un uuid en una página de auditoría no le dice
+        # nada a nadie; QUIÉN decidió está en ``companion.actions.decided_by``,
+        # que guarda ese mismo ``user_id`` junto a la acción y su diff.
+        return "Companion"
     if actor.startswith("admin:"):
         return "Auphere"
     if actor.startswith("partner:"):

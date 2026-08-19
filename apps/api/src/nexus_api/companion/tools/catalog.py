@@ -47,9 +47,23 @@ class ToolParam:
     in_path: bool = False
 
 
+#: Clase de la herramienta (§23.1 de la investigación, §6 del contrato).
+#:
+#: - ``read``     — consulta el estado. No cambia nada.
+#: - ``propose``  — calcula un cambio y devuelve previsualización, diff e
+#:                  impacto. **Tampoco cambia nada**: solo lee.
+#: - ``mutates``  — escribe. Hay exactamente una en todo el catálogo.
+ToolClass = Literal["read", "propose", "mutates"]
+
+#: Política de permiso, copiada de Managed Agents. Es un **dato por
+#: herramienta que lee el motor**, no una instrucción de prompt: el modelo no
+#: decide nada de esto y no puede convencerse a sí mismo de lo contrario.
+PermissionPolicy = Literal["always_allow", "always_ask"]
+
+
 @dataclass(frozen=True)
 class ToolSpec:
-    """Una herramienta = un endpoint ``/console/*`` de lectura."""
+    """Una herramienta = un endpoint ``/console/*``."""
 
     name: str
     path: str
@@ -62,10 +76,37 @@ class ToolSpec:
     #: llamadas a ``get_audit`` llenan la ventana y el resto del turno
     #: responde a ciegas.
     max_chars: int = 8_000
-    #: Todas las de CO-02 son ``GET``. El campo existe para que el test que
-    #: lo comprueba tenga algo que leer, no por si acaso.
+    #: El método con el que la herramienta **lee**. Sigue siendo ``GET`` en
+    #: todas: las ``propose`` leen para calcular el diff, y la única que
+    #: escribe (``console.apply``) no sale por aquí — su petición la arma el
+    #: mapa de aplicación por ``kind``, desde el payload ya confirmado.
     method: Literal["GET"] = "GET"
+    tool_class: ToolClass = "read"
+    permission_policy: PermissionPolicy = "always_allow"
+    #: Solo para ``propose``: el ``kind`` de acción que produce (§3.1 del
+    #: contrato). Es lo que ata la herramienta con el endpoint de aplicación.
+    kind: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Las invariantes del §6 del contrato, comprobadas al CONSTRUIR.
+
+        Un ``mutates`` con ``always_allow`` no es que rompa un test: no se
+        puede llegar a existir. Es la diferencia entre una regla y una
+        convención — y la razón de que la garantía C4 se pueda afirmar sobre
+        el catálogo entero en vez de sobre las filas que alguien recordó
+        revisar.
+        """
+        if self.tool_class == "mutates" and self.permission_policy != "always_ask":
+            raise ValueError(
+                f"{self.name}: una herramienta 'mutates' exige 'always_ask'. "
+                "Escribir sin registro de confirmación es exactamente lo que "
+                "la garantía C4 prohíbe."
+            )
+        if self.tool_class == "read" and self.permission_policy != "always_allow":
+            raise ValueError(f"{self.name}: una lectura no pide permiso; es 'always_allow'.")
+        if (self.tool_class == "propose") != (self.kind is not None):
+            raise ValueError(f"{self.name}: 'kind' es exactamente de las herramientas 'propose'.")
 
     @property
     def needs_client(self) -> bool:
@@ -483,11 +524,422 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
     ),
 )
 
-TOOLS_BY_NAME: dict[str, ToolSpec] = {t.name: t for t in READ_TOOLS}
+# ── propuesta (CO-04, §6.2) ────────────────────────────────────────────
+#
+# Nueve herramientas que **calculan** un cambio y devuelven previsualización,
+# diff e impacto. Ninguna escribe: leen por ``/console/*`` igual que las de
+# arriba y hacen el resto en Python. Lo que producen se guarda en
+# ``companion.actions`` y no se aplica hasta que una persona lo confirma.
+#
+# ``path`` es el endpoint que la propuesta LEE para calcular el diff, no el
+# que la aplicaría — ese vive en ``APPLY_ROUTES`` de ``proposals.py`` y está
+# atado por el ``kind``. Separarlos es lo que permite que la propuesta corra
+# con permisos de lectura y solo la aplicación pida los de escritura.
 
 
-def tool_specs() -> list[dict[str, Any]]:
-    """El catálogo en el formato de herramientas del proveedor."""
+def _propose_ref(what: str) -> ToolParam:
+    """La referencia del cliente, en la ruta de LECTURA de la propuesta."""
+    return ToolParam(
+        name=CLIENT_REF,
+        type="string",
+        description=(
+            f"Referencia del cliente ({what}). La que devuelve "
+            "console.list_clients. Si el usuario lo nombra de otra forma, "
+            "resuélvela antes; no la adivines."
+        ),
+        required=True,
+        in_path=True,
+    )
+
+
+PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
+    ToolSpec(
+        name="console.propose_client",
+        kind="client",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/me",
+        label="Proponer un cliente nuevo",
+        description=(
+            "Prepara el alta de un cliente nuevo y comprueba la cuota ANTES de "
+            "proponer nada. Devuelve la ficha completa a crear y cuánta cuota "
+            "queda; no crea nada. Llama a esto cuando el usuario quiera dar de "
+            "alta un cliente y tengas ya el nombre, el vertical, la zona "
+            "horaria y qué NO debe hacer el agente — si te falta alguno de "
+            "esos cuatro, pregúntalo primero, no lo inventes. El alta es "
+            "IRREVERSIBLE: no hay forma de deshacerla desde aquí."
+        ),
+        params=(
+            ToolParam(
+                name="client_ref",
+                type="string",
+                description=(
+                    "La referencia que el partner usará para este cliente. "
+                    "Letras, números, punto, guion, guion bajo y dos puntos."
+                ),
+                required=True,
+            ),
+            ToolParam(
+                name="name",
+                type="string",
+                description="Nombre comercial del cliente, tal y como lo dice el usuario.",
+                required=True,
+            ),
+            ToolParam(
+                name="timezone",
+                type="string",
+                description="Zona horaria IANA del cliente (ej. America/Caracas). Por defecto UTC.",
+            ),
+            ToolParam(
+                name="language",
+                type="string",
+                description="Idioma principal de atención, código ISO corto (es, en, pt).",
+            ),
+            ToolParam(
+                name="vertical",
+                type="string",
+                description=(
+                    "A qué se dedica el cliente. Si encaja con una plantilla "
+                    "de console.get_prompt_library, usa su referencia exacta; "
+                    "si no, describe el sector en dos palabras."
+                ),
+            ),
+            ToolParam(
+                name="forbidden_behaviour",
+                type="string",
+                description=(
+                    "Qué NO debe hacer el agente de este cliente, con sus "
+                    "palabras. Pregúntalo: es el dato que nadie da por su "
+                    "cuenta y el que causa los incidentes. No lo inventes ni "
+                    "lo rellenes con un valor genérico."
+                ),
+            ),
+        ),
+    ),
+    ToolSpec(
+        name="console.propose_prompt",
+        kind="prompt",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/clients/{client_ref}/agent",
+        label="Proponer un cambio de prompt",
+        description=(
+            "Calcula el diff línea a línea entre el prompt actual del agente y "
+            "el que propones, y lo deja pendiente de confirmación. Escribe el "
+            "prompt COMPLETO, no un fragmento ni un parche: lo que mandes "
+            "sustituye al anterior entero. Llama a esto cuando el usuario "
+            "describa un comportamiento que falla y tengas un ejemplo real; si "
+            "no lo tienes, pídelo — un prompt cambiado a ciegas rompe lo que "
+            "funcionaba. Esto crea un BORRADOR: no publica nada."
+        ),
+        params=(
+            _propose_ref("cuyo prompt vas a cambiar"),
+            ToolParam(
+                name="system_prompt",
+                type="string",
+                description="El prompt completo que sustituye al actual.",
+                required=True,
+            ),
+        ),
+        max_chars=12_000,
+    ),
+    ToolSpec(
+        name="console.propose_policy",
+        kind="policy",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/clients/{client_ref}/agent/settings",
+        label="Proponer un cambio de política",
+        description=(
+            "Cambia campos concretos de la política del agente (objetivo, "
+            "idioma, zona horaria, mensaje de cierre, escalado a humano) sobre "
+            "el borrador. Solo se tocan los campos que pases; el resto queda "
+            "como está. Llama a esto cuando el cambio sea de configuración y "
+            "no de redacción — si lo que hay que cambiar es CÓMO habla el "
+            "agente, eso es console.propose_prompt. La revelación de IA no se "
+            "toca desde aquí y no se puede desactivar."
+        ),
+        params=(
+            _propose_ref("cuya política vas a cambiar"),
+            ToolParam(
+                name="objective",
+                type="string",
+                description="Para qué existe el agente, en una o dos frases.",
+            ),
+            ToolParam(
+                name="primary_language",
+                type="string",
+                description="Idioma principal de atención (es, en, pt…).",
+            ),
+            ToolParam(
+                name="timezone",
+                type="string",
+                description="Zona horaria IANA del horario de atención.",
+            ),
+            ToolParam(
+                name="closed_message",
+                type="string",
+                description="Qué responde el agente fuera del horario de atención.",
+            ),
+            ToolParam(
+                name="escalation_enabled",
+                type="boolean",
+                description="Si el agente puede pasar la conversación a una persona.",
+            ),
+            ToolParam(
+                name="handoff_message",
+                type="string",
+                description="Qué dice el agente justo antes de pasar a una persona.",
+            ),
+        ),
+    ),
+    ToolSpec(
+        name="console.propose_tools",
+        kind="tools",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/clients/{client_ref}/tools",
+        label="Proponer un cambio de herramientas",
+        description=(
+            "Activa o desactiva herramientas del agente sobre el borrador. "
+            "Pasa la lista COMPLETA de las que deben quedar activas, separadas "
+            "por comas: lo que no esté en la lista se desactiva. Llama a "
+            "console.list_tools antes para saber qué hay y cuáles están ya "
+            "activas — proponer una lista sin haberla leído desactiva cosas "
+            "que nadie pidió desactivar. Una herramienta con conector necesita "
+            "que el conector esté conectado; si no lo está, dilo."
+        ),
+        params=(
+            _propose_ref("cuyas herramientas vas a cambiar"),
+            ToolParam(
+                name="tools",
+                type="string",
+                description=(
+                    "Nombres de herramienta separados por comas, la lista "
+                    "completa que debe quedar activa. Cadena vacía = ninguna."
+                ),
+                required=True,
+            ),
+        ),
+    ),
+    ToolSpec(
+        name="console.propose_skills",
+        kind="skills",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/clients/{client_ref}/skills",
+        label="Proponer un cambio de skills",
+        description=(
+            "Igual que console.propose_tools pero para las skills de vertical: "
+            "pasa la lista completa que debe quedar activa. Lee "
+            "console.list_skills antes. Una skill que no sea activable no se "
+            "puede encender y la propuesta la rechazará."
+        ),
+        params=(
+            _propose_ref("cuyas skills vas a cambiar"),
+            ToolParam(
+                name="skills",
+                type="string",
+                description=(
+                    "Nombres de skill separados por comas, la lista completa "
+                    "que debe quedar activa. Cadena vacía = ninguna."
+                ),
+                required=True,
+            ),
+        ),
+    ),
+    ToolSpec(
+        name="console.propose_publish",
+        kind="publish",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/clients/{client_ref}/agent",
+        label="Proponer publicar una versión",
+        description=(
+            "Prepara la publicación de una versión concreta del agente y "
+            "devuelve el diff contra la que está activa ahora. Publicar es un "
+            "acto APARTE: crear o editar un borrador nunca lo publica, aunque "
+            "el usuario diga «hazlo ya». Llama a esto solo cuando lo pida "
+            "explícitamente, y avisa si no se ha probado nada en el "
+            "playground: publicar es lo que pone el cambio delante de los "
+            "clientes finales del partner."
+        ),
+        params=(
+            _propose_ref("cuya versión vas a publicar"),
+            ToolParam(
+                name="version",
+                type="integer",
+                description=(
+                    "Número de versión a publicar. Léelo de console.get_agent; "
+                    "no supongas que es la última."
+                ),
+                required=True,
+                minimum=1,
+            ),
+        ),
+    ),
+    ToolSpec(
+        name="console.propose_channel_role",
+        kind="channel_role",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/clients/{client_ref}/channels",
+        label="Proponer el rol de un canal",
+        description=(
+            "Etiqueta un canal de WhatsApp como el del agente o el de "
+            "notificaciones. Importa cuando el cliente tiene más de un número: "
+            "con varios canales activos y ninguno etiquetado, la plataforma "
+            "RECHAZA el envío en vez de adivinar. Llama a console.list_channels "
+            "antes para leer los ids y los roles actuales."
+        ),
+        params=(
+            _propose_ref("cuyo canal vas a etiquetar"),
+            ToolParam(
+                name="channel_id",
+                type="string",
+                description="Id del canal, tal y como lo devuelve console.list_channels.",
+                required=True,
+            ),
+            ToolParam(
+                name="role",
+                type="string",
+                description=(
+                    "'agent' para el número por el que atiende el agente, "
+                    "'notifications' para el de avisos salientes, cadena vacía "
+                    "para quitarle el rol que tenga."
+                ),
+                required=True,
+                enum=("agent", "notifications", ""),
+            ),
+        ),
+    ),
+    ToolSpec(
+        name="console.propose_usage_alerts",
+        kind="usage_alerts",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/usage/alerts",
+        label="Proponer los avisos de consumo",
+        description=(
+            "Cambia el tope mensual de mensajes del partner y a quién se avisa "
+            "al acercarse. Es del PARTNER entero, no de un cliente. Lee el "
+            "estado actual antes: la lista de destinatarios que mandes "
+            "sustituye a la anterior."
+        ),
+        params=(
+            ToolParam(
+                name="cap_messages_month",
+                type="integer",
+                description="Tope de mensajes al mes. 0 para quitar el tope.",
+                minimum=0,
+                maximum=1_000_000_000,
+            ),
+            ToolParam(
+                name="recipients",
+                type="string",
+                description=(
+                    "Correos separados por comas que reciben el aviso. La lista "
+                    "completa: lo que no esté deja de recibirlo."
+                ),
+            ),
+            ToolParam(
+                name="enabled",
+                type="boolean",
+                description="Si los avisos están encendidos.",
+            ),
+        ),
+    ),
+    ToolSpec(
+        name="console.propose_invite",
+        kind="invite",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/team",
+        label="Proponer invitar a alguien",
+        description=(
+            "Prepara la invitación de una persona al equipo del partner con un "
+            "rol. NUNCA por encima del rol de quien te habla: si te piden "
+            "invitar a alguien con más permisos que el propio usuario, dilo y "
+            "no lo propongas. El correo se muestra enmascarado en la tarjeta "
+            "de confirmación; eso es deliberado."
+        ),
+        params=(
+            ToolParam(
+                name="email",
+                type="string",
+                description="Correo de la persona a invitar.",
+                required=True,
+            ),
+            ToolParam(
+                name="role",
+                type="string",
+                description="Rol dentro del partner.",
+                required=True,
+                enum=("owner", "admin", "builder", "analyst", "billing"),
+            ),
+        ),
+    ),
+)
+
+
+# ── ejecución (CO-04, §6.3) ────────────────────────────────────────────
+#
+# **Una sola puerta de escritura en todo el Companion.** Que sea una y no
+# nueve es lo que hace verificable la garantía C4: no hay forma de añadir un
+# camino de escritura por descuido, porque cualquier herramienta nueva que
+# escribiera tendría que declararse ``mutates`` y el test la vería.
+#
+# ``path`` es ``/console/companion/actions/{action_id}`` —el endpoint de
+# lectura de la acción— y no el destino de la escritura: el destino lo decide
+# el ``kind`` de la fila confirmada, no el modelo. El modelo no puede
+# redirigir una acción a otro endpoint ni cambiando los argumentos.
+
+APPLY_TOOLS: tuple[ToolSpec, ...] = (
+    ToolSpec(
+        name="console.apply",
+        tool_class="mutates",
+        permission_policy="always_ask",
+        path="/console/companion/actions/{action_id}",
+        label="Aplicar una acción confirmada",
+        description=(
+            "Aplica una acción que la persona YA confirmó. Solo funciona con "
+            "una acción en estado 'confirmed': con cualquier otra falla, y "
+            "falla en el motor, no porque tú decidas no llamarla. No la uses "
+            "para intentar aplicar algo que acabas de proponer — proponer no "
+            "es confirmar, y entre las dos cosas hay una persona."
+        ),
+        params=(
+            ToolParam(
+                name="action_id",
+                type="string",
+                description="Identificador de la acción confirmada.",
+                required=True,
+            ),
+        ),
+        max_chars=4_000,
+    ),
+)
+
+
+ALL_TOOLS: tuple[ToolSpec, ...] = (*READ_TOOLS, *PROPOSE_TOOLS, *APPLY_TOOLS)
+
+TOOLS_BY_NAME: dict[str, ToolSpec] = {t.name: t for t in ALL_TOOLS}
+
+#: Los nueve ``kind`` del §3.1 del contrato, derivados del catálogo y no
+#: escritos a mano: una herramienta ``propose`` sin ``kind`` no se puede
+#: construir, así que la lista no puede desincronizarse.
+ACTION_KINDS: tuple[str, ...] = tuple(t.kind for t in PROPOSE_TOOLS if t.kind is not None)
+
+
+def tool_specs(*, mode: str = "build") -> list[dict[str, Any]]:
+    """El catálogo en el formato de herramientas del proveedor.
+
+    ``mode`` es el del hilo (``consult`` / ``build``), y es del usuario, no
+    del modelo: en *Consultar* se publican solo las lecturas, así que el
+    modelo no puede proponer un cambio ni por descuido ni porque alguien se
+    lo pida dentro de un texto. En *Construir* se publican las tres clases.
+    """
+    tools = READ_TOOLS if mode == "consult" else ALL_TOOLS
     return [
         {
             "type": "function",
@@ -497,14 +949,20 @@ def tool_specs() -> list[dict[str, Any]]:
                 "parameters": t.json_schema(),
             },
         }
-        for t in READ_TOOLS
+        for t in tools
     ]
 
 
 __all__ = [
+    "ACTION_KINDS",
+    "ALL_TOOLS",
+    "APPLY_TOOLS",
     "CLIENT_REF",
+    "PROPOSE_TOOLS",
     "READ_TOOLS",
     "TOOLS_BY_NAME",
+    "PermissionPolicy",
+    "ToolClass",
     "ToolParam",
     "ToolSpec",
     "tool_specs",

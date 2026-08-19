@@ -16,17 +16,33 @@ from typing import Any, TypedDict
 # el grafo. CO-01 cablea las tres primeras; el resto llega con CO-04.
 PHASE_UNDERSTAND = "understand"
 PHASE_INVESTIGATE = "investigate"
+#: CO-04. Las cuatro que faltaban del §2.8 del contrato. ``intake`` se declara
+#: aunque el expediente completo sea CO-06: la fase existe en cuanto se emite
+#: ``intake.missing``, y el enum tiene que estar cerrado desde el principio o
+#: la interfaz acaba con una tabla distinta a la del backend.
+PHASE_INTAKE = "intake"
+PHASE_PLAN = "plan"
+PHASE_EXECUTE = "execute"
+PHASE_VERIFY = "verify"
 PHASE_RESPOND = "respond"
 PHASE_AWAITING = "awaiting"
 PHASE_DONE = "done"
 
-#: Etiqueta humana de cada fase. Vive aquí y no en el frontend porque es
-#: parte del protocolo de eventos: el cajón pinta lo que le llega.
+#: Etiqueta humana de cada fase.
+#:
+#: Está en español y no pasa por i18n, y eso es deliberado: **la interfaz no
+#: pinta ``label``**, pinta ``phase`` traducido por su propia línea. Esto
+#: sobrevive por compatibilidad con CO-01 y porque es lo que hace legibles
+#: los logs de un turno sin tener que abrir el frontend.
 PHASE_LABELS: dict[str, str] = {
     PHASE_UNDERSTAND: "Entendiendo",
     PHASE_INVESTIGATE: "Investigando",
-    PHASE_RESPOND: "Respondiendo",
+    PHASE_INTAKE: "Preguntando",
+    PHASE_PLAN: "Planificando",
     PHASE_AWAITING: "Esperándote",
+    PHASE_EXECUTE: "Ejecutando",
+    PHASE_VERIFY: "Verificando",
+    PHASE_RESPOND: "Respondiendo",
     PHASE_DONE: "Listo",
 }
 
@@ -80,13 +96,33 @@ class CompanionState(TypedDict, total=False):
     # cajón dentro de ``run.completed``.
     unsupported: bool
 
+    # ── CO-04 ──────────────────────────────────────────────────────────
+    # La acción puesta en ``proposed`` por el nodo ``plan``, si la hubo. Va
+    # en el estado —y no solo en la base— porque el checkpointer tiene que
+    # poder reanudar el turno en otro proceso: la tarea que emitió el
+    # ``hitl.requested`` puede llevar quince minutos muerta cuando llegue la
+    # confirmación.
+    action_id: str
+    action_kind: str
+    # Lo que devolvió el ``interrupt()``: ``{decision, note, by, at}``. La
+    # decisión la escribe la API en la fila ANTES de reanudar; esto es lo que
+    # el modelo necesita ver para reaccionar al motivo de un rechazo.
+    hitl: dict[str, Any]
+    # Resultado de la verificación determinista. El nodo ``respond`` lo lee
+    # para no afirmar que algo quedó hecho cuando la relectura dice que no.
+    verify: dict[str, Any]
+
 
 __all__ = [
     "PHASE_AWAITING",
     "PHASE_DONE",
+    "PHASE_EXECUTE",
+    "PHASE_INTAKE",
     "PHASE_INVESTIGATE",
     "PHASE_LABELS",
+    "PHASE_PLAN",
     "PHASE_RESPOND",
     "PHASE_UNDERSTAND",
+    "PHASE_VERIFY",
     "CompanionState",
 ]

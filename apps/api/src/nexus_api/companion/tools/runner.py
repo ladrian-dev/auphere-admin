@@ -83,6 +83,11 @@ class CompanionToolbelt:
     ``actor`` es el sujeto de todas las llamadas: la persona del partner que
     está hablando. No es una credencial y no se puede fabricar desde fuera
     del proceso — ver ``core/console_auth.py``.
+
+    Desde CO-04 es además el **puerto de acciones** del grafo: el grafo pide
+    ``stage`` / ``apply`` / ``verify`` sin saber que detrás hay HTTP ni
+    Postgres. Esa asimetría es deliberada — ``apps/worker`` no importa
+    ``nexus_api`` en ninguna parte y conviene que siga siendo así.
     """
 
     actor: InProcessActor
@@ -91,9 +96,27 @@ class CompanionToolbelt:
     max_calls: int = 25
     app: Any = None
     timeout_s: float = 10.0
+    #: Modo del HILO, que es del usuario y nunca del modelo. En ``consult``
+    #: el catálogo publicado son solo las lecturas: el modelo no puede
+    #: proponer un cambio ni porque alguien se lo pida dentro de un texto.
+    mode: str = "build"
+    #: Contexto de la acción. Lo pone el driver del run; sin él, ``stage`` no
+    #: tiene dónde escribir y falla en vez de inventarse un hilo.
+    principal_id: str | None = None
+    thread_id: uuid.UUID | None = None
+    run_id: uuid.UUID | None = None
+    #: Plazo de una propuesta sin decidir. Es lo único que fija ``expires_at``,
+    #: y por eso la interfaz no calcula quince minutos por su cuenta.
+    action_ttl_seconds: float = 900.0
 
     calls_made: int = 0
     citations: list[Citation] = field(default_factory=list)
+    #: Propuestas calculadas en este turno y todavía sin persistir. El grafo
+    #: las recoge en el nodo ``plan``.
+    pending: list[Any] = field(default_factory=list)
+    #: Lo que falta para poder proponer, si algo falta. El grafo lo emite
+    #: como ``intake.missing`` al cerrar el turno.
+    missing_slots: list[dict[str, Any]] = field(default_factory=list)
     #: Firmas de llamadas ya hechas en este turno. Repetir una lectura
     #: idéntica no aporta nada y gasta ventana de contexto.
     _seen: dict[str, str] = field(default_factory=dict)
@@ -115,7 +138,7 @@ class CompanionToolbelt:
     def specs(self) -> list[dict[str, Any]]:
         from nexus_api.companion.tools.catalog import tool_specs
 
-        return tool_specs()
+        return tool_specs(mode=self.mode)
 
     @property
     def calls_left(self) -> int:
@@ -157,9 +180,33 @@ class CompanionToolbelt:
                 started,
             )
 
+        if self.mode == "consult" and spec.tool_class != "read":
+            # El modo recorta el catálogo publicado, pero eso solo cambia lo
+            # que el modelo VE. Un modelo que se invente el nombre de una
+            # herramienta que no le dieron —y pasa— la ejecutaría igual si
+            # el gate viviera solo en ``specs()``. Vive aquí, en el motor.
+            return self._failed(
+                name,
+                spec.label,
+                ToolError(
+                    "read_only_mode",
+                    "Este hilo está en modo Consultar, donde no se cambia nada. "
+                    "Dile a la persona que cambie el hilo a Construir si quiere "
+                    "que prepares el cambio; no lo hagas por tu cuenta.",
+                ),
+                started,
+            )
+
         invalid = _validate(spec, arguments)
         if invalid is not None:
             return self._failed(name, spec.label, invalid, started)
+
+        if spec.tool_class == "propose":
+            self.calls_made += 1
+            return await self._propose(spec, arguments, started)
+        if spec.tool_class == "mutates":
+            self.calls_made += 1
+            return await self._apply_by_id(spec, arguments, started)
 
         signature = f"{name}:{json.dumps(arguments, sort_keys=True, default=str)}"
         if signature in self._seen:
@@ -235,6 +282,263 @@ class CompanionToolbelt:
         with acting_as(self.actor):
             return await self._client.get(path, params=query)
 
+    async def read(self, path: str, query: dict[str, Any] | None = None) -> httpx.Response:
+        """Una lectura cruda, con el sujeto puesto y sin contar contra el
+        tope del turno.
+
+        La usan el constructor de propuestas y la revalidación del hash: no
+        son consultas del modelo, son trabajo del motor, y gastarle al
+        usuario su presupuesto de consultas por ellas sería cobrarle dos
+        veces la misma pregunta.
+        """
+        return await self._request(path, query or {})
+
+    async def _write(self, method: str, path: str, body: Any) -> httpx.Response:
+        """La ÚNICA escritura del Companion, y también por el router.
+
+        Misma vía que las lecturas: enrutado, Pydantic, ``client_scope``
+        (RLS), limitador, cuota de aprovisionamiento y auditoría. El actor
+        se propaga igual y se restaura igual.
+        """
+        if self._client is None:  # pragma: no cover - uso fuera del ``async with``
+            raise RuntimeError("CompanionToolbelt se usa dentro de 'async with'")
+        with acting_as(self.actor):
+            return await self._client.request(method, path, json=body)
+
+    # ── propuesta ──────────────────────────────────────────────────────
+
+    async def _propose(
+        self, spec: ToolSpec, arguments: dict[str, Any], started: float
+    ) -> ToolOutcome:
+        """Calcula la propuesta y la deja pendiente. **No persiste nada.**
+
+        Persistir aquí sería el fallo C2 con otro disfraz: el bucle de
+        herramientas puede correr varias veces si el modelo se corrige, y
+        cada pasada dejaría una fila. La escritura la hace el nodo ``plan``,
+        una vez, con id determinista y UPSERT.
+        """
+        from nexus_api.companion.tools.proposals import (
+            IntakeRequired,
+            ProposalBuilder,
+            ProposalRefused,
+        )
+
+        builder = ProposalBuilder(read=self.read)
+        try:
+            proposal = await builder.build(str(spec.kind), arguments)
+        except IntakeRequired as intake:
+            # No hay nada que corregir: falta información que solo tiene el
+            # cliente. Sale por su propio evento —el cajón lo pinta como
+            # chips respondibles, no como un error rojo— y el turno termina
+            # preguntando en vez de proponiendo con huecos rellenados a ojo.
+            self.missing_slots = intake.slots
+            return self._failed(
+                spec.name,
+                spec.label,
+                ToolError(
+                    "intake_required",
+                    "Faltan datos que solo sabe la persona: "
+                    + ", ".join(s["label"] for s in intake.slots)
+                    + ". Pregúntaselos en una frase corta, sin listas ni "
+                    "formulario, y no propongas nada hasta tenerlos.",
+                ),
+                started,
+            )
+        except ProposalRefused as refused:
+            return self._failed(spec.name, spec.label, refused.error, started)
+        except httpx.TimeoutException:
+            return self._failed(spec.name, spec.label, TIMEOUT, started)
+
+        # Una propuesta por turno (PLAN-CO-04 §D3): es lo que permite que el
+        # nodo del ``interrupt()`` tenga UNA llamada incondicional. La
+        # segunda sustituye a la primera en vez de acumularse — si el modelo
+        # se corrige, lo que vale es lo último que dijo.
+        self.pending = [proposal]
+
+        citation = Citation(
+            citation_id=uuid.uuid4().hex[:12],
+            claim=f"{spec.label} ({proposal.title})",
+            source=spec.path.replace("{client_ref}", str(proposal.client_ref or "")),
+            fetched_at=datetime.now(UTC).isoformat(),
+        )
+        self.citations.append(citation)
+        body = json.dumps(
+            {
+                "staged": True,
+                "kind": proposal.kind,
+                "title": proposal.title,
+                "preview": proposal.preview,
+                "impact": proposal.impact,
+                "risk": proposal.risk,
+                "reversible": proposal.reversible,
+                "note": (
+                    "Propuesta preparada. NO está aplicada: la persona tiene que "
+                    "confirmarla. Explícale en una frase qué va a cambiar y espera; "
+                    "no llames a console.apply."
+                ),
+            },
+            ensure_ascii=False,
+            default=str,
+        )
+        return ToolOutcome(
+            name=spec.name,
+            label=spec.label,
+            ok=True,
+            content=_truncate(body, spec.max_chars),
+            latency_ms=_elapsed(started),
+            citation=citation,
+        )
+
+    # ── ejecución ──────────────────────────────────────────────────────
+
+    async def _apply_by_id(
+        self, spec: ToolSpec, arguments: dict[str, Any], started: float
+    ) -> ToolOutcome:
+        """``console.apply``. Falla en el MOTOR si la acción no está
+        confirmada — garantía C4."""
+        from nexus_api.companion.tools.errors import (
+            ACTION_EXPIRED,
+            APPLY_FAILED,
+            NOT_CONFIRMED,
+        )
+
+        try:
+            action_id = uuid.UUID(str(arguments.get("action_id")))
+        except (ValueError, TypeError):
+            return self._failed(
+                spec.name,
+                spec.label,
+                ToolError(
+                    "bad_arguments", "action_id tiene que ser el identificador de una acción."
+                ),
+                started,
+            )
+        outcome = await self._apply(action_id)
+        if outcome is None:
+            return self._failed(
+                spec.name,
+                spec.label,
+                ToolError(
+                    "unknown_action",
+                    "No hay ninguna acción con ese identificador en este hilo.",
+                ),
+                started,
+            )
+        if outcome.ok:
+            return ToolOutcome(
+                name=spec.name,
+                label=spec.label,
+                ok=True,
+                content=_truncate(outcome.body or "{}", spec.max_chars),
+                latency_ms=_elapsed(started),
+            )
+        error = {
+            "not_confirmed": NOT_CONFIRMED,
+            "action_expired": ACTION_EXPIRED,
+        }.get(outcome.error_code or "", APPLY_FAILED)
+        return self._failed(spec.name, spec.label, error, started)
+
+    # ── el puerto de acciones que usa el grafo ─────────────────────────
+    #
+    # El grafo llama a estos tres y no sabe que detrás hay HTTP ni Postgres.
+    # Es lo que mantiene ``apps/worker`` libre de ``nexus_api``.
+
+    async def stage(self, step_index: int) -> dict[str, Any] | None:
+        """Persiste la propuesta pendiente y devuelve el payload de
+        ``hitl.requested``. ``None`` si no hay nada que confirmar."""
+        from nexus_api.companion.tools.actions import stage_action
+
+        if not self.pending:
+            return None
+        if self.principal_id is None or self.thread_id is None or self.run_id is None:
+            # Sin contexto no se escribe a ciegas: es un error de montaje del
+            # run, no algo que el usuario deba pagar con una fila huérfana.
+            log.warning("companion.action.stage_without_context")
+            return None
+        proposal = self.pending[0]
+        async with _session() as session:
+            staged = await stage_action(
+                session,
+                principal_id=self.principal_id,
+                thread_id=self.thread_id,
+                run_id=self.run_id,
+                step_index=step_index,
+                proposal=proposal,
+                ttl_seconds=self.action_ttl_seconds,
+            )
+        return staged.as_event()
+
+    def plan_steps(self) -> list[dict[str, Any]]:
+        """Los pasos del plan, en la forma del §2.1 del contrato."""
+        from nexus_api.companion.tools.catalog import PROPOSE_TOOLS
+        from nexus_api.companion.tools.proposals import IRREVERSIBLE_KINDS
+
+        by_kind = {t.kind: t.name for t in PROPOSE_TOOLS}
+        return [
+            {
+                "index": i + 1,
+                "kind": p.kind,
+                "tool": by_kind.get(p.kind, ""),
+                "title": p.title,
+                "client_ref": p.client_ref,
+                "reversible": p.kind not in IRREVERSIBLE_KINDS,
+            }
+            for i, p in enumerate(self.pending)
+        ]
+
+    def plan_risk(self) -> str:
+        """El riesgo del plan es el del paso más arriesgado, no la media."""
+        order = {"low": 0, "medium": 1, "high": 2}
+        worst = max((order.get(p.risk, 0) for p in self.pending), default=0)
+        return ("low", "medium", "high")[worst]
+
+    async def _apply(self, action_id: uuid.UUID) -> Any:
+        from nexus_api.companion.tools.actions import (
+            STATUS_EXPIRED,
+            ApplyOutcome,
+            apply_action,
+            load_action,
+        )
+
+        if self.principal_id is None:  # pragma: no cover - montaje del run
+            return None
+        async with _session() as session:
+            action = await load_action(
+                session,
+                action_id,
+                principal_id=self.principal_id,
+                ttl_seconds=self.action_ttl_seconds,
+            )
+            if action is None:
+                return None
+            if action.status == STATUS_EXPIRED:
+                return ApplyOutcome(ok=False, status_code=409, body="", error_code="action_expired")
+            return await apply_action(session, self._write, action, principal_id=self.principal_id)
+
+    async def verify(self, action_id: uuid.UUID) -> dict[str, Any] | None:
+        """El payload de ``verify.result``. Código determinista: relee y
+        compara. Nunca el modelo (C5)."""
+        from nexus_api.companion.tools.actions import load_action, verify_action
+
+        if self.principal_id is None:  # pragma: no cover - montaje del run
+            return None
+        async with _session() as session:
+            action = await load_action(
+                session,
+                action_id,
+                principal_id=self.principal_id,
+                ttl_seconds=self.action_ttl_seconds,
+            )
+        if action is None:
+            return None
+        return await verify_action(self.read, action)
+
+    async def apply_confirmed(self, action_id: uuid.UUID) -> Any:
+        """Lo que llama el nodo ``execute``. Va por :meth:`call` para que los
+        eventos ``tool.call.*`` salgan solos y la secuencia del §4.3 del
+        contrato se cumpla sin código especial."""
+        return await self.call("console.apply", {"action_id": str(action_id)})
+
     def _failed(self, name: str, label: str, error: ToolError, started: float) -> ToolOutcome:
         return ToolOutcome(
             name=name,
@@ -247,6 +551,20 @@ class CompanionToolbelt:
 
 
 # ── helpers ────────────────────────────────────────────────────────────
+
+
+def _session() -> Any:
+    """Una sesión propia para el camino de escritura.
+
+    Propia y no la de la petición: el turno corre en una tarea de fondo que
+    empezó cuando el ``POST …/runs`` ya había devuelto 202, así que no hay
+    ninguna transacción de petición viva a la que engancharse. Import
+    perezoso porque ``db.base`` arrastra la configuración del motor y este
+    módulo se importa al construir el catálogo.
+    """
+    from nexus_api.db.base import get_sessionmaker
+
+    return get_sessionmaker()()
 
 
 def _elapsed(started: float) -> int:

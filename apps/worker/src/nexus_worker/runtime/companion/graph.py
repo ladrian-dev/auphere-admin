@@ -39,18 +39,24 @@ from nexus_worker.runtime.companion.prompt import (
     build_messages,
 )
 from nexus_worker.runtime.companion.state import (
+    PHASE_AWAITING,
     PHASE_DONE,
+    PHASE_EXECUTE,
+    PHASE_INTAKE,
     PHASE_INVESTIGATE,
     PHASE_LABELS,
+    PHASE_PLAN,
     PHASE_RESPOND,
     PHASE_UNDERSTAND,
+    PHASE_VERIFY,
     CompanionState,
 )
+from nexus_worker.runtime.companion.tools import supports_actions
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.base import BaseCheckpointSaver
 
-    from nexus_worker.runtime.companion.tools import Toolbelt
+    from nexus_worker.runtime.companion.tools import ActionPort, Toolbelt
     from nexus_worker.runtime.llm import LLMProvider
 
 log = structlog.get_logger(__name__)
@@ -364,7 +370,15 @@ def make_respond(
 
     async def respond(state: CompanionState) -> dict[str, Any]:
         updates: dict[str, Any] = {}
-        if not state.get("tool_messages") and not state.get("answer"):
+        if state.get("hitl"):
+            # Run de continuación (CO-04): la persona ya decidió y hay que
+            # contarle qué pasó. Es una llamada nueva y no un texto armado
+            # en Python a propósito: "se aplicó, versión 8 activa" lo puede
+            # escribir una plantilla, pero "se aplicó y la verificación dice
+            # que solo hay 2 de las 3 herramientas" necesita una frase, y
+            # esa frase es el trabajo del modelo.
+            updates = await _answer_after_action(provider, model=model, state=state)
+        elif not state.get("tool_messages") and not state.get("answer"):
             # Grafo sin herramientas: el camino de CO-01.
             updates = await _answer_without_tools(provider, model=model, state=state)
         elif state.get("phase") != PHASE_RESPOND:
@@ -417,6 +431,93 @@ def make_respond(
     return respond
 
 
+#: Qué se le cuenta al modelo al reanudar, por decisión. Es el
+#: ``deny_message`` de Managed Agents: el motivo vuelve al agente para que
+#: ajuste el plan, no solo para que diga "vale".
+_RESUME_BRIEF: dict[str, str] = {
+    "confirm": (
+        "La persona CONFIRMÓ la acción y ya se aplicó. Cuéntale en una o dos "
+        "frases qué quedó hecho y qué dice la verificación. Si la verificación "
+        "falló en algo, dilo primero y sin adornos: puede ser un fallo real de "
+        "la plataforma y hay que mirarlo, no darlo por bueno."
+    ),
+    "edit": (
+        "La persona pidió EDITAR la propuesta en vez de aplicarla. No se aplicó "
+        "nada. Lee su motivo, ajústate a él y propón de nuevo si tienes claro "
+        "qué cambiar; si no lo tienes claro, pregunta una sola cosa concreta."
+    ),
+    "cancel": (
+        "La persona CANCELÓ la acción. No se aplicó nada. Acúsalo en una frase "
+        "corta y pregúntale qué prefiere hacer. No insistas ni vuelvas a "
+        "proponer lo mismo."
+    ),
+}
+
+
+async def _answer_after_action(
+    provider: LLMProvider, *, model: str, state: CompanionState
+) -> dict[str, Any]:
+    """Cierra el turno de continuación con una llamada al modelo.
+
+    El resultado de la verificación entra como mensaje de ``role: system``,
+    no dentro de un turno de usuario: es un hecho del motor y no algo que
+    nadie pueda falsificar escribiendo en la entrada (Parte II, C4).
+    """
+    await _phase(PHASE_RESPOND)
+    hitl = dict(state.get("hitl") or {})
+    decision = str(hitl.get("decision") or "cancel")
+    verify = dict(state.get("verify") or {})
+
+    brief = [_RESUME_BRIEF.get(decision, _RESUME_BRIEF["cancel"])]
+    note = hitl.get("note")
+    if note:
+        brief.append(f"Lo que dijo al decidir: «{note}»")
+    if verify.get("checks"):
+        brief.append(
+            "Verificación (releída de la plataforma, no de lo que tú creías): "
+            + json.dumps(verify, ensure_ascii=False, sort_keys=True)
+        )
+    elif decision == "confirm":
+        brief.append("No se pudo verificar el resultado. Dilo; no des el cambio por bueno.")
+
+    messages: list[dict[str, Any]] = [
+        *build_messages(
+            history=state.get("history"),
+            user_message=state.get("user_message", ""),
+            page_context=state.get("page_context"),
+        ),
+        *(state.get("tool_messages") or []),
+        {"role": "system", "content": "\n".join(brief)},
+    ]
+
+    message_id = str(uuid.uuid4())
+    chunks: list[str] = []
+    usage: dict[str, Any] = {}
+    async for kind, piece in provider.astream_complete(
+        tenant_id=COMPANION_TENANT_ID,
+        role=COMPANION_ROLE,
+        model=model,
+        messages=messages,
+        extra={"thinking": COMPANION_THINKING},
+    ):
+        if kind == "text":
+            chunks.append(piece)
+            await _emit("text.delta", {"message_id": message_id, "text": piece})
+        elif kind == "thinking":
+            await _emit("reasoning.delta", {"message_id": message_id, "text": piece})
+        elif kind == "usage":
+            usage = _usage(piece)
+    input_tokens = int(usage.get("prompt_tokens") or 0)
+    output_tokens = int(usage.get("completion_tokens") or 0)
+    return {
+        "answer": "".join(chunks),
+        "model": model,
+        "last_input_tokens": input_tokens,
+        "total_input_tokens": int(state.get("total_input_tokens") or 0) + input_tokens,
+        "total_output_tokens": int(state.get("total_output_tokens") or 0) + output_tokens,
+    }
+
+
 async def _answer_without_tools(
     provider: LLMProvider, *, model: str, state: CompanionState
 ) -> dict[str, Any]:
@@ -455,26 +556,152 @@ async def _answer_without_tools(
     }
 
 
-async def await_confirmation(state: CompanionState) -> dict[str, Any]:  # pragma: no cover
-    """RESERVADO para CO-04. No cableado.
+# ── CO-04 · planificar, confirmar, ejecutar, verificar ─────────────────
 
-    Cuando se enchufe, este nodo contendrá **una sola línea**: la llamada a
-    ``interrupt()``. Nada de persistir la acción ni de emitir el evento
-    aquí — LangGraph reanuda re-ejecutando el nodo desde la primera línea,
-    y ese diseño (el de la Parte I §10) inserta la fila de
-    ``companion.actions`` dos veces y emite ``hitl.requested`` dos veces por
-    cada confirmación.
 
-    Reglas que van con él, todas de la Parte II C2:
-      - la persistencia va en el nodo ANTERIOR, con ``action_id``
-        determinista (hash de ``run_id`` + índice de paso) y UPSERT;
-      - ``interrupt()`` **nunca** dentro de un ``try/except`` genérico:
-        pausa lanzando una excepción y un ``except Exception`` se la traga;
-      - las llamadas a ``interrupt()`` deben ser incondicionales y en orden
-        estable — la correspondencia con los valores de reanudación es por
-        índice, y saltarse una según una condición desalinea todo.
+def make_plan(toolbelt: ActionPort) -> Callable[[CompanionState], Awaitable[dict[str, Any]]]:
+    """Persiste la acción y anuncia lo que se va a hacer.
+
+    **Este es el nodo "anterior" de la corrección C2.** Todo lo que tiene
+    efecto —escribir la fila, emitir ``plan.proposed`` y
+    ``hitl.requested``— pasa aquí, y aquí no hay ningún ``interrupt()``.
+    LangGraph reanuda re-ejecutando el nodo interrumpido desde su primera
+    línea; poniendo las dos cosas juntas, cada confirmación duplicaría la
+    fila y emitiría el evento dos veces.
+
+    Y aun así, defensa en profundidad barata: el ``action_id`` es
+    determinista (``uuid5`` de ``run_id`` + índice del paso) y la escritura
+    es un UPSERT. Si algún día alguien reordena los nodos, lo peor que puede
+    pasar es que la fila se sobrescriba consigo misma.
     """
-    raise NotImplementedError("HITL llega en CO-04; ver docs/companion/PLAN-CO-01.md")
+
+    async def plan(state: CompanionState) -> dict[str, Any]:
+        await _phase(PHASE_PLAN)
+        steps = toolbelt.plan_steps()
+        await _emit(
+            "plan.proposed",
+            {
+                "plan_id": str(uuid.uuid4()),
+                "steps": steps,
+                "risk": toolbelt.plan_risk(),
+                # AND lógico: un plan es reversible solo si TODOS sus pasos
+                # lo son. El paso irreversible manda sobre la media.
+                "reversible": all(bool(s.get("reversible")) for s in steps),
+                "estimated_tokens": int(state.get("total_input_tokens") or 0)
+                + int(state.get("total_output_tokens") or 0),
+            },
+        )
+
+        # Índice del paso dentro del run. Una acción por run (PLAN-CO-04
+        # §D3), así que es 1; la fórmula se mantiene general porque el
+        # ``action_id`` depende de ella y cambiarla más tarde dejaría
+        # huérfanas las confirmaciones pendientes.
+        staged = await toolbelt.stage(1)
+        if staged is None:  # pragma: no cover - ``plan`` solo corre con propuesta
+            return {"phase": PHASE_PLAN}
+
+        await _phase(PHASE_AWAITING)
+        await _emit("hitl.requested", staged)
+        return {
+            "phase": PHASE_AWAITING,
+            "action_id": staged["action_id"],
+            "action_kind": staged["kind"],
+        }
+
+    return plan
+
+
+async def await_confirmation(state: CompanionState) -> dict[str, Any]:
+    """El nodo del ``interrupt()``. **No hace nada más, y es el punto.**
+
+    Tres reglas, todas de la corrección C2 y todas visibles en estas líneas:
+
+    - **una sola llamada, incondicional.** La correspondencia entre los
+      valores de reanudación y los ``interrupt()`` es por índice; saltarse
+      uno según una condición desalinea todo lo que venga detrás;
+    - **ningún ``try/except`` alrededor.** ``interrupt()`` pausa *lanzando*
+      una excepción, y un ``except Exception`` se la traga: el grafo
+      seguiría de largo como si le hubieran dicho que sí;
+    - **ninguna escritura antes.** Reanudar re-ejecuta este nodo desde la
+      primera línea. Lo que persiste está en el nodo ``plan``.
+
+    El valor que devuelve es lo que la API pasó en ``Command(resume=…)``:
+    ``{decision, note, by, at}``. La decisión ya está escrita en la fila
+    antes de llegar aquí — este nodo no decide nada, solo espera.
+    """
+    from langgraph.types import interrupt
+
+    decision = interrupt({"action_id": state.get("action_id")})
+    return {"hitl": decision if isinstance(decision, dict) else {"decision": str(decision)}}
+
+
+def make_execute(toolbelt: ActionPort) -> Callable[[CompanionState], Awaitable[dict[str, Any]]]:
+    """Aplica la acción confirmada, o recoge el motivo del rechazo.
+
+    ``hitl.resolved`` se emite aquí y es el **primer** evento del run de
+    continuación: el run anterior está parado y ya no publica nada.
+
+    Con ``edit`` o ``cancel`` no se aplica nada y el motivo (``note``)
+    vuelve al modelo dentro del estado. Es el ``deny_message`` de Managed
+    Agents: un rechazo con razón deja que el modelo ajuste el plan; un "no"
+    a secas solo le deja repetir la misma propuesta.
+    """
+
+    async def execute(state: CompanionState) -> dict[str, Any]:
+        hitl = dict(state.get("hitl") or {})
+        decision = str(hitl.get("decision") or "cancel")
+        action_id = state.get("action_id")
+
+        await _emit(
+            "hitl.resolved",
+            {
+                "action_id": action_id,
+                "decision": decision,
+                "by": hitl.get("by"),
+                "at": hitl.get("at"),
+                "note": hitl.get("note"),
+            },
+        )
+        if decision != "confirm" or not action_id:
+            # Nada que ejecutar. Se salta también la verificación: verificar
+            # algo que nadie aplicó daría una tabla en rojo que no significa
+            # nada, y el rojo tiene que seguir queriendo decir algo.
+            return {"phase": PHASE_RESPOND, "verify": {}}
+
+        await _phase(PHASE_EXECUTE)
+        result = await toolbelt.apply_confirmed(action_id)
+        return {
+            "phase": PHASE_EXECUTE,
+            # R4: parar al primer fallo. Con una acción por run es
+            # automático — no hay un paso 2 que pudiera correr a ciegas.
+            "verify": {} if not getattr(result, "ok", False) else {"pending": True},
+        }
+
+    return execute
+
+
+def make_verify(toolbelt: ActionPort) -> Callable[[CompanionState], Awaitable[dict[str, Any]]]:
+    """Relee y compara. **Código determinista, corrección C5.**
+
+    Ni un subagente ni una instrucción de "revisa tu trabajo" en ningún
+    prompt: la guía de migración a Opus 5 mide que eso produce
+    sobre-verificación sin ganancia, y un verificador que es el mismo modelo
+    que acaba de actuar no verifica nada — repite su propia confianza.
+    """
+
+    async def verify(state: CompanionState) -> dict[str, Any]:
+        pending = dict(state.get("verify") or {})
+        action_id = state.get("action_id")
+        if not pending.get("pending") or not action_id:
+            return {"verify": {}}
+        await _phase(PHASE_VERIFY)
+        result = await toolbelt.verify(action_id)
+        if result is None:  # pragma: no cover - la acción existe si se aplicó
+            return {"verify": {}}
+        await _emit("verify.result", result)
+        return {"verify": result}
+
+    return verify
 
 
 # ── compilación ────────────────────────────────────────────────────────
@@ -511,9 +738,79 @@ def build_companion_graph(
     graph.add_node("respond", make_respond(provider, model=model))
     graph.add_edge(START, "understand")
     graph.add_edge("understand", "investigate")
-    graph.add_edge("investigate", "respond")
+
+    if toolbelt is not None and supports_actions(toolbelt):
+        # El carril de escritura solo existe cuando el juego de herramientas
+        # sabe escribir. Con uno de solo lectura —CO-01, CO-02, y los tests
+        # del prompt— el grafo es exactamente el de antes: sin nodos de HITL
+        # y, sobre todo, sin un ``interrupt()`` que nadie va a reanudar.
+        port: ActionPort = toolbelt  # type: ignore[assignment]
+        graph.add_node("intake", make_intake(port))
+        graph.add_node("plan", make_plan(port))
+        graph.add_node("confirm", await_confirmation)
+        graph.add_node("execute", make_execute(port))
+        graph.add_node("verify", make_verify(port))
+        graph.add_conditional_edges(
+            "investigate",
+            _needs_confirmation(port),
+            {"plan": "plan", "intake": "intake", "respond": "respond"},
+        )
+        graph.add_edge("intake", "respond")
+        graph.add_edge("plan", "confirm")
+        graph.add_edge("confirm", "execute")
+        graph.add_edge("execute", "verify")
+        graph.add_edge("verify", "respond")
+    else:
+        graph.add_edge("investigate", "respond")
+
     graph.add_edge("respond", END)
     return graph.compile(checkpointer=checkpointer)
+
+
+def _needs_confirmation(toolbelt: ActionPort) -> Callable[[CompanionState], str]:
+    """¿El turno produjo algo que escribir?
+
+    Lo decide el MOTOR mirando si hay una propuesta calculada, no el modelo
+    diciendo "y ahora confírmamelo". Un turno que solo leyó va derecho a
+    responder y no ve una tarjeta de confirmación vacía.
+    """
+
+    def route(state: CompanionState) -> str:
+        if toolbelt.pending:
+            return "plan"
+        # Preguntar gana a responder a secas, pero pierde contra una
+        # propuesta ya calculada: si el modelo consiguió los datos en una
+        # segunda llamada dentro del mismo turno, lo que falta ya no falta.
+        if getattr(toolbelt, "missing_slots", None):
+            return "intake"
+        return "respond"
+
+    return route
+
+
+def make_intake(toolbelt: ActionPort) -> Callable[[CompanionState], Awaitable[dict[str, Any]]]:
+    """Anuncia lo que falta para poder proponer (§7.1).
+
+    Va **antes** de responder y no en lugar de responder: el modelo escribe
+    la pregunta con sus palabras y el cajón pinta además los huecos como
+    chips respondibles. Los dos canales dicen lo mismo, y eso es
+    deliberado — quien lee rápido ve los chips, quien lee la frase entiende
+    por qué se los piden.
+
+    Responder un hueco **no** es un endpoint nuevo: es un turno más en el
+    mismo hilo. El expediente es contexto de la conversación, no estado de
+    servidor (eso es CO-06).
+    """
+
+    async def intake(state: CompanionState) -> dict[str, Any]:
+        slots = list(getattr(toolbelt, "missing_slots", []) or [])
+        if not slots:
+            return {}
+        await _phase(PHASE_INTAKE)
+        await _emit("intake.missing", {"slots": slots})
+        return {"phase": PHASE_INTAKE}
+
+    return intake
 
 
 __all__ = [
@@ -524,7 +821,11 @@ __all__ = [
     "await_confirmation",
     "build_companion_graph",
     "investigate",
+    "make_execute",
+    "make_intake",
     "make_investigate",
+    "make_plan",
     "make_respond",
+    "make_verify",
     "understand",
 ]

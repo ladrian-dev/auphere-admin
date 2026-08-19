@@ -156,8 +156,28 @@ class ConsolePrincipal:
 
     @property
     def actor(self) -> str:
-        """Audit-log actor string. The e-mail is what a human reads in the
-        audit page ("maria@facelad.com published v7")."""
+        """Audit-log actor string.
+
+        Normally ``console:<e-mail>`` — the e-mail is what a human reads in
+        the audit page ("maria@facelad.com published v7").
+
+        **When the call comes from the Companion it is ``companion:<user_id>``
+        instead** (CO-04). A write the agent made must not look, in the audit
+        log, exactly like one the person made by hand: they are different
+        events even when the same person is behind both. The person stays
+        recoverable — ``companion.actions.decided_by`` holds whoever
+        confirmed it, and that row is what the audit page joins against.
+
+        The branch reads the in-process actor rather than a flag on the
+        principal because that variable is the *only* thing that can tell a
+        Companion call apart, and it is set exclusively by the tool runner,
+        inside the run's task, after a real principal has been verified. The
+        identity check (``user_id``) is what stops a stale outer actor from
+        relabelling an unrelated request.
+        """
+        actor = _in_process_actor.get()
+        if actor is not None and actor.user_id == self.user_id:
+            return f"companion:{self.user_id}"
         return f"console:{self.membership.email}"
 
 

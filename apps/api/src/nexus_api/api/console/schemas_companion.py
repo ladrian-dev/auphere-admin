@@ -30,9 +30,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # ── threads ────────────────────────────────────────────────────────────
 
@@ -99,6 +99,41 @@ class CompanionEventOut(BaseModel):
     data: dict[str, Any]
 
 
+class CompanionRunSummaryOut(BaseModel):
+    """One run of a thread, as the drawer needs it to rebuild the timeline.
+
+    Metadata only — no tokens, no answer, no error text. Everything a
+    reader could want beyond this is one ``…/runs/{id}/events`` away, and
+    keeping it thin means a thread with fifty runs is still one small
+    response.
+    """
+
+    run_id: uuid.UUID
+    status: str
+    started_at: datetime
+    ended_at: datetime | None
+
+
+class CompanionThreadRunsOut(BaseModel):
+    """The runs of one thread, oldest first (contract v1.1, §5.2).
+
+    The drawer's timeline belongs to the **thread**, not to a run: one
+    conversation spans a turn, a pause for confirmation, and the run that
+    continues after it. Rebuilding that view means concatenating each run's
+    events in order — and without this endpoint the browser cannot even
+    enumerate which runs a thread has.
+
+    The alternative was an index in ``localStorage``, which breaks the
+    requirement that a ``?companion=<thread>`` URL be shareable inside the
+    team: whoever opens the link on another machine would see an empty
+    thread. A local index is not a frontend shortcut, it is a missing
+    server-side fact.
+    """
+
+    thread_id: uuid.UUID
+    runs: list[CompanionRunSummaryOut]
+
+
 class CompanionEventsOut(BaseModel):
     """History of a run, oldest first.
 
@@ -132,13 +167,96 @@ class CompanionBudgetOut(BaseModel):
     resets_at: datetime
 
 
+# ── actions (CO-04) ────────────────────────────────────────────────────
+
+
+class CompanionResumeIn(BaseModel):
+    """The human's decision on a pending action.
+
+    ``note`` is singular on purpose: ``notes`` (plural) is in the forbidden
+    property list of ``test_console_scope.py``, and so are ``reason`` and
+    ``message`` — the three names this field would naturally have. It is not
+    cosmetic either: the note is written by a **partner's own team member**
+    about their own work, never by an end customer, which is what the C8
+    guard protects.
+
+    With ``edit`` or ``cancel`` the note travels back to the model as the
+    reason for the refusal (Managed Agents' ``deny_message``), so it changes
+    the next proposal instead of merely stopping this one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    action_id: uuid.UUID
+    decision: Literal["confirm", "edit", "cancel"]
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class CompanionResumeOut(BaseModel):
+    """202: the decision is recorded and a NEW run continues the thread.
+
+    ``run_id`` is that new run — not the one that paused. The thread is
+    continuous for the person; the runs are not, and the drawer has to
+    follow the one returned here.
+    """
+
+    run_id: uuid.UUID
+    thread_id: uuid.UUID
+    action_id: uuid.UUID
+    status: str
+
+
+class CompanionActionOut(BaseModel):
+    """A proposed change and where its decision stands.
+
+    Reconstructible from ``hitl.requested`` too — this endpoint exists so a
+    reload with a pending confirmation can paint the card without depending
+    on the Redis run log still being alive.
+
+    No property here is named ``payload``, ``notes``, ``reason``,
+    ``message``, ``content``, ``text``, ``body`` or ``tool_calls``.
+    ``preview``, ``diff`` and ``impact`` are untyped objects/lists, so the
+    OpenAPI walk finds nothing inside — the same honest shape as
+    ``CompanionEventOut``, and for the same reason: the contents are
+    heterogeneous by design, one shape per action kind.
+    """
+
+    action_id: uuid.UUID
+    thread_id: uuid.UUID
+    run_id: uuid.UUID | None
+    kind: str
+    title: str
+    preview: dict[str, Any]
+    diff: list[dict[str, Any]] | None
+    impact: list[dict[str, Any]]
+    risk: str
+    reversible: bool
+    status: str
+    state_hash: str
+    proposed_at: datetime
+    expires_at: datetime
+    decided_at: datetime | None
+    decided_by: str | None
+    applied_at: datetime | None
+    #: Verification outcome; ``None`` when it has not run. Deliberately
+    #: nullable rather than defaulting to ``False`` — "not verified" and
+    #: "verified and wrong" are different things and the drawer paints them
+    #: differently.
+    ok: bool | None
+
+
 __all__ = [
+    "CompanionActionOut",
     "CompanionBudgetOut",
     "CompanionEventOut",
     "CompanionEventsOut",
+    "CompanionResumeIn",
+    "CompanionResumeOut",
     "CompanionRunStartIn",
     "CompanionRunStartOut",
+    "CompanionRunSummaryOut",
     "CompanionThreadCreateIn",
     "CompanionThreadOut",
     "CompanionThreadPatchIn",
+    "CompanionThreadRunsOut",
 ]

@@ -43,7 +43,11 @@ EXPECTED = {
 
 
 def test_the_catalogue_is_exactly_the_read_surface_of_6_1() -> None:
-    assert set(TOOLS_BY_NAME) == EXPECTED
+    """CO-04 amplió ``TOOLS_BY_NAME`` con propuesta y ejecución, así que la
+    comprobación se hace sobre ``READ_TOOLS``, que es de quien habla el §6.1.
+    El resto del catálogo tiene su propia lista escrita a mano en
+    ``tests/isolation/test_companion_action_guarantees.py``."""
+    assert {t.name for t in READ_TOOLS} == EXPECTED
 
 
 def test_every_tool_is_read_only() -> None:
@@ -122,7 +126,10 @@ def test_the_description_is_long_enough_to_be_useful(tool) -> None:
 
 
 def test_the_provider_schema_is_well_formed() -> None:
-    specs = tool_specs()
+    # En modo *Consultar* se publican SOLO las lecturas: es el catálogo de
+    # CO-02 intacto, y comprobarlo aquí fija de paso que el modo del hilo
+    # recorta de verdad lo que el modelo puede pedir.
+    specs = tool_specs(mode="consult")
     assert len(specs) == len(READ_TOOLS)
     for spec in specs:
         fn = spec["function"]

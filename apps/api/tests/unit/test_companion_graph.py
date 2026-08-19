@@ -125,17 +125,36 @@ def test_the_prompt_never_asks_the_model_to_check_its_own_work() -> None:
         assert banned not in lowered, f"el prompt pide auto-verificación: {banned!r}"
 
 
-def test_the_prompt_says_it_reads_but_does_not_write() -> None:
+def test_the_prompt_says_it_proposes_but_does_not_apply() -> None:
     """Una capacidad inventada es una promesa rota con el cliente del
     partner, y una capacidad NEGADA que sí existe hace que el agente se
-    niegue a usar sus herramientas. En CO-02 hay lectura y no hay
-    escritura, y el prompt dice exactamente eso."""
+    niegue a usar sus herramientas.
+
+    Desde CO-04 la verdad cambió: hay lectura **y** propuesta, y lo que no
+    hay es aplicar por su cuenta. El "todavía no puedes cambiar nada" de
+    CO-02 tenía que irse por el mismo motivo por el que se fue el "no puedes
+    consultar el estado real" de CO-01 — con las nueve ``propose_*`` puestas
+    habría hecho que el agente se negara a usarlas.
+    """
     lowered = SYSTEM_PROMPT.lower()
     assert "herramientas de **lectura**" in lowered
-    assert "no puedes cambiar nada" in lowered
-    # El párrafo de CO-01 tiene que haberse ido: dejarlo con el catálogo
-    # puesto habría hecho que el agente se negara a consultar.
+    assert "herramientas de **propuesta**" in lowered
+    # No aplica: entre proponer y aplicar hay una persona, y el prompt lo
+    # dice en voz alta.
+    assert "una propuesta **no cambia nada todavía**" in lowered
+    assert "no llames a console.apply por" in lowered
+    # Y los dos párrafos que ya no son ciertos no pueden volver.
     assert "no puedes consultar el estado real" not in lowered
+    assert "todavía **no puedes cambiar nada**" not in lowered
+
+
+def test_the_prompt_names_the_closed_list_of_what_it_cannot_do() -> None:
+    """§6.5. Decirlo en voz alta es más barato que dejar que lo descubra
+    chocándose: un "no se puede" tras dos lecturas es una conversación
+    perdida."""
+    lowered = SYSTEM_PROMPT.lower()
+    for forbidden in ("borrar clientes", "facturación", "claves de api", "revelación de ia"):
+        assert forbidden in lowered, forbidden
 
 
 def test_the_prompt_never_mentions_subagents() -> None:
