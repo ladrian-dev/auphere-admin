@@ -205,6 +205,12 @@ def _reset_test_db() -> None:
         # esta línea, la segunda sesión de tests choca con las tablas que
         # dejó la primera y ``alembic upgrade head`` falla en 0088.
         "DROP SCHEMA IF EXISTS console_auth CASCADE; "
+        # ADR-034: y la del panel de operador en ``operator_auth``. Misma
+        # trampa que con console_auth, y por eso la nota se repite: el reset
+        # solo borra los esquemas que estén NOMBRADOS aquí, así que cada
+        # esquema nuevo tiene que añadirse o la segunda sesión de tests
+        # muere con ``DuplicateTableError`` en su migración.
+        "DROP SCHEMA IF EXISTS operator_auth CASCADE; "
         "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
         "CREATE EXTENSION IF NOT EXISTS vector;"
     )
@@ -361,6 +367,11 @@ _TRUNCATE_TABLES = (
     "partner_invitations",
     "partner_memberships",
     "partners",
+    # ADR-034 — identidad del panel de operador. Va aquí y no en el reset de
+    # esquemas porque las cuentas tienen que morir ENTRE tests, no entre
+    # sesiones: el correo es único y dos tests que creen "ops@auphere.test"
+    # chocarían. ``principal_sessions`` cae sola por el FK CASCADE.
+    "operator_auth.principals",
     "kg_edges",
     "kg_nodes",
     "tenant_credentials",
