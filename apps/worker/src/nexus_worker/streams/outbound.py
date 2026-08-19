@@ -188,9 +188,30 @@ class OutboundWorkSet:
 
 
 def _asyncpg_dsn() -> str:
+    """DSN para la conexión de LISTEN — **directa, no por el pooler**.
+
+    ``LISTEN`` es estado de SESIÓN, y PgBouncer corre en ``pool_mode =
+    transaction`` (WP-15): la conexión al servidor vuelve al pool al cerrar
+    cada transacción, así que el registro del LISTEN no sobrevive y las
+    notificaciones no llegan a nadie. Lo peor es que **no da error**:
+    ``add_listener`` completa, se registra ``outbound.listener.connected``, no
+    hay reconexiones, y el dispatcher queda viviendo del barrido de
+    seguridad de 30 s sin que nada lo diga.
+
+    Medido en producción el 2026-08-19, primer turno real tras el corte: el
+    mensaje se creó a las 09:50:16.174 y se recogió a las 09:50:22.032 —
+    5,86 s, y justo en la cadencia del barrido (arranque 09:45:21.95 +
+    5×30 s). Con el LISTEN funcionando la recogida es inmediata; sin él la
+    latencia de salida es uniforme entre 0 y 30 s, ~15 s de media.
+
+    Mismo idioma que el resto de lo que necesita sesión (``alembic/env.py``,
+    ``qa_checkpointer``, ``bootstrap`` del worker): directa si está definida,
+    y si no la de siempre — en dev no hay pooler delante.
+    """
     from nexus_api.config import get_settings
 
-    url: str = get_settings().database_url
+    settings = get_settings()
+    url: str = settings.database_url_direct or settings.database_url
     return url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 

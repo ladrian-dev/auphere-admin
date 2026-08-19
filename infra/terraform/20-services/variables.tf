@@ -8,6 +8,22 @@ variable "certificate_arn" {
   default     = ""
 }
 
+variable "extra_certificate_arns" {
+  description = <<-EOT
+    Certificados ACM adicionales que el listener 443 sirve por SNI, aparte
+    del por defecto. Para nombres que entran al MISMO ALB pero no están en
+    el cert principal — en prod, ``webhooks.auphere.com``, que es por donde
+    Meta entrega y que va sin proxy de Cloudflare.
+
+    Deben estar ya ``ISSUED``: esto sólo los ata al listener. Se usa un
+    cert aparte en vez de un SAN en el principal porque cambiar los SAN de
+    un cert ACM lo reemplaza, y el reemplazo nace PENDING_VALIDATION — con
+    un listener sirviendo tráfico real, la peor secuencia posible.
+  EOT
+  type        = list(string)
+  default     = []
+}
+
 variable "https_enabled" {
   description = <<-EOT
     Crea el listener 443 y convierte el 80 en redirect. Requiere que el
