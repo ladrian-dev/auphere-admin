@@ -10,10 +10,12 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
 from nexus_api.api import companion_streaming as streaming
+from nexus_api.config import get_settings
 
 pytestmark = pytest.mark.asyncio
 
@@ -297,3 +299,128 @@ async def test_append_terminal_event_continues_the_sequence(fake_redis) -> None:
     assert len(events) == 1
     assert events[0].seq == 4
     assert events[0].data["status"] == "interrupted"
+
+
+# ── el coste del turno (P5) ────────────────────────────────────────────
+
+
+async def test_the_turn_is_priced_component_by_component(monkeypatch) -> None:
+    """Las cuatro componentes se valoran con SU tarifa, no con una media.
+
+    La lectura de caché cuesta una décima parte de la entrada y la escritura
+    un 25 % más. Sumar los tokens antes de valorarlos —que es lo que hacía la
+    cuota— es lo que convertía un turno de 25.000 tokens en uno de 135.000.
+    """
+    from decimal import Decimal
+
+    from nexus_api.api.console.companion import _turn_cost_usd
+
+    class _Row:
+        input_per_mtok = Decimal("3")
+        output_per_mtok = Decimal("15")
+        cache_read_per_mtok = Decimal("0.30")
+        cache_write_per_mtok = Decimal("3.75")
+
+    async def _catalog(*a, **k):
+        return {"anthropic/claude-sonnet-4-6": _Row()}
+
+    monkeypatch.setattr("nexus_worker.metering.pricing.get_catalog", _catalog)
+
+    handle = SimpleNamespace(
+        model="anthropic/claude-sonnet-4-6",
+        total_input_tokens=1_000_000,
+        total_output_tokens=1_000_000,
+        total_cache_read=1_000_000,
+        total_cache_write=1_000_000,
+    )
+    cost = await _turn_cost_usd(handle)
+    assert cost == pytest.approx(3 + 15 + 0.30 + 3.75)
+
+
+async def test_an_unpriced_model_reports_no_cost_instead_of_zero(monkeypatch) -> None:
+    """``None`` y no cero: un cero es indistinguible de un turno gratis y se
+    suma en silencio en cualquier panel de margen."""
+    from nexus_api.api.console.companion import _turn_cost_usd
+
+    async def _empty(*a, **k):
+        return {}
+
+    monkeypatch.setattr("nexus_worker.metering.pricing.get_catalog", _empty)
+
+    handle = SimpleNamespace(
+        model="modelo/que-no-existe",
+        total_input_tokens=10,
+        total_output_tokens=10,
+        total_cache_read=0,
+        total_cache_write=0,
+    )
+    assert await _turn_cost_usd(handle) is None
+
+
+async def test_a_turn_without_a_model_is_not_priced() -> None:
+    from nexus_api.api.console.companion import _turn_cost_usd
+
+    handle = SimpleNamespace(
+        model=None,
+        total_input_tokens=10,
+        total_output_tokens=10,
+        total_cache_read=0,
+        total_cache_write=0,
+    )
+    assert await _turn_cost_usd(handle) is None
+
+
+# ── el freno de proceso (P8 · H7) ──────────────────────────────────────
+
+
+async def test_the_process_slot_caps_concurrent_turns() -> None:
+    """El tope por miembro no acota nada global; este sí.
+
+    Con tres turnos por persona y ningún freno de proceso, once personas
+    trabajando a la vez agotan las 10+20 conexiones del pool — que la API
+    **comparte con el webhook de WhatsApp**. El fallo no se vería en el
+    Companion: se vería en los mensajes de clientes finales que dejan de
+    entrar.
+    """
+    streaming.reset_process_semaphore_for_tests()
+    settings = get_settings()
+    limit = settings.companion_max_process_runs
+    assert limit > 0
+
+    release = asyncio.Event()
+    holding = asyncio.Semaphore(0)
+
+    async def hold() -> None:
+        async with streaming._process_slot():
+            holding.release()
+            await release.wait()
+
+    tasks = [asyncio.create_task(hold()) for _ in range(limit)]
+    for _ in range(limit):
+        await holding.acquire()  # los `limit` huecos están ocupados
+
+    object.__setattr__(settings, "companion_queue_timeout_s", 0.05)
+    try:
+        with pytest.raises(streaming.CompanionBusy):
+            async with streaming._process_slot():
+                pass  # pragma: no cover - no debería entrar
+    finally:
+        object.__setattr__(settings, "companion_queue_timeout_s", 30.0)
+        release.set()
+        await asyncio.gather(*tasks)
+        streaming.reset_process_semaphore_for_tests()
+
+
+async def test_a_freed_slot_lets_the_next_turn_in() -> None:
+    """El freno serializa, no rechaza para siempre."""
+    streaming.reset_process_semaphore_for_tests()
+    entered: list[int] = []
+
+    async def work(n: int) -> None:
+        async with streaming._process_slot():
+            entered.append(n)
+            await asyncio.sleep(0)
+
+    await asyncio.gather(*(work(i) for i in range(30)))
+    assert len(entered) == 30, "todos entran; lo que se limita es la simultaneidad"
+    streaming.reset_process_semaphore_for_tests()

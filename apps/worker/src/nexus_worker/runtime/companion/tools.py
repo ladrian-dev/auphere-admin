@@ -5,10 +5,15 @@ nombres. La implementación real vive en ``nexus_api.companion.tools``,
 donde llama a los routers ``/console/*`` por ASGI en proceso; los tests
 pasan un doble.
 
-Esa asimetría es deliberada: ``apps/worker`` no importa ``nexus_api`` en
-ninguna parte, y conviene que siga siendo así — el worker es el runtime de
-los agentes de cliente y no tiene por qué conocer la superficie HTTP de la
-consola.
+Esa asimetría es deliberada: el runtime no conoce la CAPA HTTP de la API y
+conviene que siga siendo así — el worker ejecuta los agentes de cliente y no
+tiene por qué saber de la superficie de la consola.
+
+(Ojo: ``apps/worker`` **sí** depende de ``nexus_api`` —es su primera
+dependencia declarada en ``pyproject.toml``, y ``bootstrap.py`` importa de
+ella—. La regla que existe y se aplica es más estrecha: el paquete de
+herramientas no importa ``services`` ni ``repositories``, con test de AST en
+``test_companion_tools_imports.py``.)
 """
 
 from __future__ import annotations
@@ -58,7 +63,7 @@ class ActionPort(Protocol):
     doble.
 
     La asimetría es la misma que la de :class:`Toolbelt` y por la misma
-    razón: ``apps/worker`` no importa ``nexus_api`` en ninguna parte, y el
+    razón: el runtime no conoce la capa HTTP de la API, y el
     worker es el runtime de los agentes de cliente — no tiene por qué
     conocer la superficie HTTP de la consola.
     """

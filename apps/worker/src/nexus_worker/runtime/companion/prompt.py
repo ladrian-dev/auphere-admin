@@ -61,6 +61,28 @@ from nexus_api.core.guardrails.untrusted import TAG_PAGE_CONTEXT, fence_only
 COMPANION_THINKING: dict[str, str] = {"type": "adaptive", "display": "summarized"}
 
 
+def thinking_extra(effort: str | None = None, **more: Any) -> dict[str, Any]:
+    """Los parámetros de razonamiento de una llamada del Companion.
+
+    Existe para que el ``effort`` no haya que acordarse de ponerlo en los tres
+    sitios donde el grafo llama al proveedor — olvidarlo en uno dejaría una
+    palanca de coste a medias, que es peor que no tenerla porque el panel
+    diría que está encendida.
+
+    Va como ``output_config`` y **no** como ``reasoning_effort``: ese segundo
+    lo traduce LiteLLM inyectando su propio bloque ``thinking``, y por el
+    camino se pierde ``display: "summarized"``, que es justo lo que el cajón
+    pinta. Comprobado contra Anthropic: con ``output_config`` el pensamiento
+    sigue llegando (más corto), con ``reasoning_effort`` se pierde el
+    resumen.
+    """
+    extra: dict[str, Any] = {"thinking": COMPANION_THINKING}
+    if effort:
+        extra["output_config"] = {"effort": effort}
+    extra.update(more)
+    return extra
+
+
 SYSTEM_PROMPT = """\
 Eres el Companion de Auphere: el asistente que acompaña a las personas de un \
 partner mientras trabajan en la consola de Auphere.

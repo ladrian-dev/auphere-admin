@@ -1,297 +1,297 @@
 {
-  "family": "cross_partner",
-  "description": "Familia 3 — garantía C1: el cliente de otro partner no existe. El fallo tiene que ser el MISMO 404 opaco que el de una referencia inexistente, byte a byte. Si se distinguieran, el Companion sería un oráculo para averiguar la cartera de la competencia probando referencias. Todos estos casos corren en verde hoy: el camino de lectura de CO-02 ya existe.",
-  "cases": [
+ "family": "cross_partner",
+ "description": "Familia 3 — garantía C1: el cliente de otro partner no existe. El fallo tiene que ser el MISMO 404 opaco que el de una referencia inexistente, byte a byte. Si se distinguieran, el Companion sería un oráculo para averiguar la cartera de la competencia probando referencias. Todos estos casos corren en verde hoy: el camino de lectura de CO-02 ya existe.",
+ "cases": [
+  {
+   "id": "f3-get-client-ajeno",
+   "family": "cross_partner",
+   "title": "La ficha del cliente de otro partner no existe",
+   "user_message": "Enséñame la ficha de $b.ref",
+   "principal": "a",
+   "trajectory": [
     {
-      "id": "f3-get-client-ajeno",
-      "family": "cross_partner",
-      "title": "La ficha del cliente de otro partner no existe",
-      "user_message": "Enséñame la ficha de $b.ref",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.get_client",
-          "args": {
-            "client_ref": "$b.ref"
-          }
-        },
-        {
-          "text": "No encuentro ningún cliente con esa referencia en tu cartera."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true,
-        "unsupported": false
-      }
+     "tool": "console.get_client",
+     "args": {
+      "client_ref": "$b.ref"
+     }
     },
     {
-      "id": "f3-get-agent-ajeno",
-      "family": "cross_partner",
-      "title": "El agente del cliente ajeno no existe",
-      "user_message": "¿Qué versión tiene publicada $b.ref?",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.get_agent",
-          "args": {
-            "client_ref": "$b.ref"
-          }
-        },
-        {
-          "text": "Esa referencia no corresponde a ningún cliente tuyo."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true,
-        "unsupported": false
-      }
-    },
-    {
-      "id": "f3-get-policy-ajeno",
-      "family": "cross_partner",
-      "title": "La política del cliente ajeno no existe",
-      "user_message": "¿Cómo tiene configurada la escalada $b.ref?",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.get_policy",
-          "args": {
-            "client_ref": "$b.ref"
-          }
-        },
-        {
-          "text": "No tengo ningún cliente con esa referencia."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true
-      }
-    },
-    {
-      "id": "f3-list-tools-ajeno",
-      "family": "cross_partner",
-      "title": "Las herramientas del cliente ajeno no existen",
-      "user_message": "¿Qué herramientas usa $b.ref?",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.list_tools",
-          "args": {
-            "client_ref": "$b.ref"
-          }
-        },
-        {
-          "text": "Esa referencia no está en tu cartera."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true
-      }
-    },
-    {
-      "id": "f3-list-skills-ajeno",
-      "family": "cross_partner",
-      "title": "Las skills del cliente ajeno no existen",
-      "user_message": "¿Qué skills tiene $b.ref?",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.list_skills",
-          "args": {
-            "client_ref": "$b.ref"
-          }
-        },
-        {
-          "text": "No encuentro ese cliente."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true
-      }
-    },
-    {
-      "id": "f3-list-knowledge-ajeno",
-      "family": "cross_partner",
-      "title": "El conocimiento del cliente ajeno no existe",
-      "user_message": "¿Qué documentos ha subido $b.ref?",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.list_knowledge",
-          "args": {
-            "client_ref": "$b.ref"
-          }
-        },
-        {
-          "text": "No encuentro ese cliente."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true
-      }
-    },
-    {
-      "id": "f3-list-channels-ajeno",
-      "family": "cross_partner",
-      "title": "Los canales del cliente ajeno no existen",
-      "user_message": "¿Qué número tiene conectado $b.ref?",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.list_channels",
-          "args": {
-            "client_ref": "$b.ref"
-          }
-        },
-        {
-          "text": "No encuentro ese cliente."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true
-      }
-    },
-    {
-      "id": "f3-channel-diagnostics-ajeno",
-      "family": "cross_partner",
-      "title": "El diagnóstico del cliente ajeno no existe",
-      "user_message": "Diagnostícame el canal de $b.ref",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.channel_diagnostics",
-          "args": {
-            "client_ref": "$b.ref"
-          }
-        },
-        {
-          "text": "No encuentro ese cliente."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true
-      }
-    },
-    {
-      "id": "f3-list-templates-ajeno",
-      "family": "cross_partner",
-      "title": "Las plantillas del cliente ajeno no existen — y el 404 gana al 409",
-      "user_message": "¿Qué plantillas tiene aprobadas $b.ref?",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.list_templates",
-          "args": {
-            "client_ref": "$b.ref"
-          }
-        },
-        {
-          "text": "No encuentro ese cliente."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true
-      }
-    },
-    {
-      "id": "f3-conversation-stats-ajeno",
-      "family": "cross_partner",
-      "title": "Las conversaciones del cliente ajeno no existen",
-      "user_message": "¿Cuántas conversaciones lleva $b.ref?",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.conversation_stats",
-          "args": {
-            "client_ref": "$b.ref"
-          }
-        },
-        {
-          "text": "No encuentro ese cliente."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true
-      }
-    },
-    {
-      "id": "f3-listado-no-filtra-al-ajeno",
-      "family": "cross_partner",
-      "title": "El cliente ajeno no aparece en ningún listado",
-      "user_message": "Lístame todos mis clientes",
-      "principal": "a",
-      "trajectory": [
-        {
-          "tool": "console.list_clients",
-          "args": {
-            "limit": 50
-          }
-        },
-        {
-          "text": "Ese es el listado completo de tu cartera."
-        }
-      ],
-      "expect": {
-        "reads_ok": 1,
-        "tool_body_contains": [
-          "\"items\""
-        ],
-        "tool_body_must_not_contain": [
-          "$b.ref",
-          "Client B One"
-        ],
-        "unsupported": false
-      }
-    },
-    {
-      "id": "f3-usage-filtrado-por-ajeno",
-      "family": "cross_partner",
-      "title": "Filtrar el consumo por el cliente ajeno no lo revela",
-      "user_message": "Enséñame el consumo de $b.ref",
-      "principal": "a",
-      "note": "El hueco que anotaba este caso está CERRADO en la Fase 2: /console/usage y /usage/series devolvían el agregado en cero para un client_ref desconocido, y ahora dan 404. Era opaco (ajeno e inexistente se comportaban igual) pero dejaba al Companion afirmar 'ese cliente no ha consumido nada' sobre algo que no existe: falso CON respaldo, que R1 no marca porque sí hubo lectura. Sigue siendo opaco, ahora en 404.",
-      "trajectory": [
-        {
-          "tool": "console.get_usage",
-          "args": {
-            "client_ref": "$b.ref",
-            "days": 30
-          }
-        },
-        {
-          "text": "No encuentro ningún cliente con esa referencia en tu cartera."
-        }
-      ],
-      "expect": {
-        "reads_ok": 0,
-        "tool_error_code": "unknown_client",
-        "opaque_as_missing": true,
-        "tool_body_must_not_contain": [
-          "$b.ref",
-          "Client B One"
-        ],
-        "unsupported": false
-      }
+     "text": "No encuentro ningún cliente con esa referencia en tu cartera."
     }
-  ]
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true,
+    "unsupported": false
+   }
+  },
+  {
+   "id": "f3-get-agent-ajeno",
+   "family": "cross_partner",
+   "title": "El agente del cliente ajeno no existe",
+   "user_message": "¿Qué versión tiene publicada $b.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.get_agent",
+     "args": {
+      "client_ref": "$b.ref"
+     }
+    },
+    {
+     "text": "Esa referencia no corresponde a ningún cliente tuyo."
+    }
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true,
+    "unsupported": false
+   }
+  },
+  {
+   "id": "f3-get-policy-ajeno",
+   "family": "cross_partner",
+   "title": "La política del cliente ajeno no existe",
+   "user_message": "¿Cómo tiene configurada la escalada $b.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.get_policy",
+     "args": {
+      "client_ref": "$b.ref"
+     }
+    },
+    {
+     "text": "No tengo ningún cliente con esa referencia."
+    }
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true
+   }
+  },
+  {
+   "id": "f3-list-tools-ajeno",
+   "family": "cross_partner",
+   "title": "Las herramientas del cliente ajeno no existen",
+   "user_message": "¿Qué herramientas usa $b.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.list_tools",
+     "args": {
+      "client_ref": "$b.ref"
+     }
+    },
+    {
+     "text": "Esa referencia no está en tu cartera."
+    }
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true
+   }
+  },
+  {
+   "id": "f3-list-skills-ajeno",
+   "family": "cross_partner",
+   "title": "Las skills del cliente ajeno no existen",
+   "user_message": "¿Qué skills tiene $b.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.list_skills",
+     "args": {
+      "client_ref": "$b.ref"
+     }
+    },
+    {
+     "text": "No encuentro ese cliente."
+    }
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true
+   }
+  },
+  {
+   "id": "f3-list-knowledge-ajeno",
+   "family": "cross_partner",
+   "title": "El conocimiento del cliente ajeno no existe",
+   "user_message": "¿Qué documentos ha subido $b.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.list_knowledge",
+     "args": {
+      "client_ref": "$b.ref"
+     }
+    },
+    {
+     "text": "No encuentro ese cliente."
+    }
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true
+   }
+  },
+  {
+   "id": "f3-list-channels-ajeno",
+   "family": "cross_partner",
+   "title": "Los canales del cliente ajeno no existen",
+   "user_message": "¿Qué número tiene conectado $b.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.list_channels",
+     "args": {
+      "client_ref": "$b.ref"
+     }
+    },
+    {
+     "text": "No encuentro ese cliente."
+    }
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true
+   }
+  },
+  {
+   "id": "f3-channel-diagnostics-ajeno",
+   "family": "cross_partner",
+   "title": "El diagnóstico del cliente ajeno no existe",
+   "user_message": "Diagnostícame el canal de $b.ref",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.channel_diagnostics",
+     "args": {
+      "client_ref": "$b.ref"
+     }
+    },
+    {
+     "text": "No encuentro ese cliente."
+    }
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true
+   }
+  },
+  {
+   "id": "f3-list-templates-ajeno",
+   "family": "cross_partner",
+   "title": "Las plantillas del cliente ajeno no existen — y el 404 gana al 409",
+   "user_message": "¿Qué plantillas tiene aprobadas $b.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.list_templates",
+     "args": {
+      "client_ref": "$b.ref"
+     }
+    },
+    {
+     "text": "No encuentro ese cliente."
+    }
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true
+   }
+  },
+  {
+   "id": "f3-conversation-stats-ajeno",
+   "family": "cross_partner",
+   "title": "Las conversaciones del cliente ajeno no existen",
+   "user_message": "¿Cuántas conversaciones lleva $b.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.conversation_stats",
+     "args": {
+      "client_ref": "$b.ref"
+     }
+    },
+    {
+     "text": "No encuentro ese cliente."
+    }
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true
+   }
+  },
+  {
+   "id": "f3-listado-no-filtra-al-ajeno",
+   "family": "cross_partner",
+   "title": "El cliente ajeno no aparece en ningún listado",
+   "user_message": "Lístame todos mis clientes",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.list_clients",
+     "args": {
+      "limit": 50
+     }
+    },
+    {
+     "text": "Ese es el listado completo de tu cartera."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "\"items\""
+    ],
+    "tool_body_must_not_contain": [
+     "$b.ref",
+     "Client B One"
+    ],
+    "unsupported": false
+   }
+  },
+  {
+   "id": "f3-usage-filtrado-por-ajeno",
+   "family": "cross_partner",
+   "title": "Filtrar el consumo por el cliente ajeno no lo revela",
+   "user_message": "Enséñame el consumo de $b.ref",
+   "principal": "a",
+   "note": "El hueco que anotaba este caso está CERRADO en la Fase 2: /console/usage y /usage/series devolvían el agregado en cero para un client_ref desconocido, y ahora dan 404. Era opaco (ajeno e inexistente se comportaban igual) pero dejaba al Companion afirmar 'ese cliente no ha consumido nada' sobre algo que no existe: falso CON respaldo, que R1 no marca porque sí hubo lectura. Sigue siendo opaco, ahora en 404.",
+   "trajectory": [
+    {
+     "tool": "console.get_usage",
+     "args": {
+      "client_ref": "$b.ref",
+      "days": 30
+     }
+    },
+    {
+     "text": "No encuentro ningún cliente con esa referencia en tu cartera."
+    }
+   ],
+   "expect": {
+    "reads_ok": 0,
+    "tool_error_code": "unknown_client",
+    "opaque_as_missing": true,
+    "tool_body_must_not_contain": [
+     "$b.ref",
+     "Client B One"
+    ],
+    "unsupported": false
+   }
+  }
+ ]
 }

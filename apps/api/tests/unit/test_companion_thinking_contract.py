@@ -69,3 +69,56 @@ def test_the_parameter_reaches_the_request_body() -> None:
         headers={},
     )
     assert body["thinking"] == {"type": "adaptive", "display": "summarized"}
+
+
+# ── la palanca de coste (P10 · D6 del ADR-033) ─────────────────────────
+
+
+def test_effort_travels_as_output_config_and_keeps_the_summary() -> None:
+    """``effort`` va en ``output_config``, NO en ``reasoning_effort``.
+
+    La diferencia no es de estilo. LiteLLM traduce ``reasoning_effort``
+    inyectando su **propio** bloque ``thinking``, y por el camino se pierde
+    ``display: "summarized"`` — que es exactamente lo que el cajón pinta como
+    razonamiento. Con ``output_config`` el bloque que escribimos sobrevive
+    intacto.
+
+    Medido contra Anthropic (2026-08-21, sonnet-4-6): sin effort, 484 tokens
+    de salida; con ``effort: "low"``, 58. Ocho veces menos — y ocho veces
+    menos pensamiento, que es la razón por la que el defecto sigue siendo
+    ``None``.
+    """
+    from nexus_worker.runtime.companion.prompt import thinking_extra
+
+    plain = thinking_extra()
+    assert plain == {"thinking": COMPANION_THINKING}
+    assert "output_config" not in plain, "sin effort no se manda output_config"
+
+    tuned = thinking_extra("medium")
+    assert tuned["output_config"] == {"effort": "medium"}
+    assert tuned["thinking"] == COMPANION_THINKING, "el display no se puede perder"
+    assert "reasoning_effort" not in tuned
+
+
+def test_effort_composes_with_the_closing_tool_choice() -> None:
+    """La llamada de cierre lleva las dos cosas.
+
+    ``tool_choice: "none"`` es lo único que cierra la puerta en la última
+    llamada (§19.1, el tercer 400 del D12), y el effort no puede desplazarlo.
+    """
+    from nexus_worker.runtime.companion.prompt import thinking_extra
+
+    closing = thinking_extra("low", tool_choice="none")
+    assert closing["tool_choice"] == "none"
+    assert closing["output_config"] == {"effort": "low"}
+    assert closing["thinking"] == COMPANION_THINKING
+
+
+def test_the_default_changes_nothing() -> None:
+    """El defecto de ``companion_effort`` es ``None``: la palanca existe,
+    está medida y está apagada. Encenderla se decide con evals contra el
+    modelo real delante (P6), porque hoy no hay forma de ver la degradación
+    que provoca en la elección de herramienta."""
+    from nexus_api.config import Settings
+
+    assert Settings().companion_effort is None

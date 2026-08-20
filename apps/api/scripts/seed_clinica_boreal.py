@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sys
 import uuid
 from decimal import Decimal
@@ -320,9 +319,8 @@ async def _amain() -> int:
     # the dataset + cases writes. ``tenant_scoped_session`` opens its
     # own transaction, applies both, commits on success, rolls back
     # on exception.
-    async with Session() as session:
-        async with tenant_scoped_session(session, tenant_id):
-            await _seed_eval_dataset(session, tenant_id)
+    async with Session() as session, tenant_scoped_session(session, tenant_id):
+        await _seed_eval_dataset(session, tenant_id)
 
     print(f"boreal: ok slug={BOREAL_SLUG} id={tenant_id}")
     print()

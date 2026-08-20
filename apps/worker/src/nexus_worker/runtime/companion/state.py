@@ -190,8 +190,21 @@ class CompanionState(TypedDict, total=False):
     # alimenta el medidor de contexto; estimarlo por caracteres sería
     # mentira y se nota (§12.3).
     last_input_tokens: int
+    #: Entrada **facturable** acumulada del turno: ``prompt_tokens`` menos lo
+    #: que vino de caché. No es lo mismo que la ventana (ver arriba) y no
+    #: debe usarse para medirla.
     total_input_tokens: int
     total_output_tokens: int
+    # Desglose de caché del turno. Existe para poder valorar el turno en
+    # dólares con las tarifas de ``model_profiles`` —donde la lectura de
+    # caché cuesta una décima parte de la entrada— sin volver a llamar al
+    # proveedor ni recomponerlo desde los logs.
+    total_cache_read: int
+    total_cache_write: int
+    #: Pasadas del bucle de modelo consumidas en el turno. Es el numerador de
+    #: "cuánto trabajo costó esto" y lo que delata un turno que se atasca
+    #: alternando dos lecturas.
+    total_steps: int
 
     # ── CO-02 ──────────────────────────────────────────────────────────
     # Mensajes acumulados del bucle de herramientas: el mensaje del

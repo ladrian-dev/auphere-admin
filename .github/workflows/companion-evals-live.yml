@@ -1,0 +1,109 @@
+# Evals del Companion contra el proveedor REAL (P6 · hallazgo H2).
+#
+# Por qué existe un workflow aparte y no un paso más en ``ci.yml``: el gate de
+# CI corre 75 casos guionizados y es determinista a propósito —son tests de
+# contrato del motor y ahí el determinismo es la virtud—. Pero eso significa
+# que **el gate no evalúa al modelo**: no mide si elige bien la herramienta, si
+# afirma cosas que no leyó, ni si cede ante un texto hostil.
+#
+# Un gate que depende de Anthropic no puede bloquear un PR: un incidente ajeno
+# pondría el build en rojo y enseñaría al equipo a ignorar los rojos. Así que
+# corre de noche, avisa, y no bloquea a nadie.
+#
+# Coste: cuatro casos por pase, del orden de un dólar. El dataset completo
+# rondaría los 18 $ y se reserva para antes de una release.
+
+name: companion-evals-live
+
+on:
+  schedule:
+    # 03:15 UTC — después del último merge del día y antes de la mañana.
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+    inputs:
+      full_dataset:
+        description: "Correr los 79 casos, no solo los marcados live (~18 $)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: companion-evals-live
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  evals-live:
+    name: evals contra el modelo real
+    runs-on: ubuntu-latest
+    # Sin la clave no hay nada que correr, y fallar por eso sería ruido: el
+    # secreto se declara en el entorno ``companion-evals`` para que su acceso
+    # quede auditado y no lo herede cualquier workflow del repo.
+    environment: companion-evals
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus
+          POSTGRES_DB: nexus
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexus -d nexus"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      NEXUS_ENVIRONMENT: ci
+      NEXUS_DATABASE_URL: postgresql+asyncpg://nexus:nexus@localhost:5432/nexus
+      NEXUS_REDIS_URL: redis://localhost:6379/0
+      NEXUS_LANGFUSE_PUBLIC_KEY: ""
+      NEXUS_LANGFUSE_SECRET_KEY: ""
+      NEXUS_COMPANION_EVAL_LIVE: "1"
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: install uv
+        run: pip install uv
+      - name: install api + worker (desde uv.lock)
+        run: |
+          set -euo pipefail
+          for pkg in api worker; do
+            ( cd "apps/$pkg" \
+              && uv export --frozen --extra dev --no-emit-project --no-hashes \
+                   > "/tmp/ci-$pkg-requirements.txt" \
+              && uv pip install --system -r "/tmp/ci-$pkg-requirements.txt" )
+          done
+          uv pip install --system --no-deps ./apps/api ./apps/worker
+      - name: alembic upgrade head
+        working-directory: apps/api
+        run: alembic upgrade head
+      - name: "evals live — los casos marcados requires: live"
+        working-directory: apps/api
+        run: pytest tests/evals/ -m evals --tb=short
+      - name: "dataset completo contra el modelo (manual, ~18 $)"
+        if: ${{ inputs.full_dataset }}
+        working-directory: apps/api
+        # ``NEXUS_COMPANION_EVAL_ALL_LIVE`` no existe todavía: promover el
+        # dataset entero exige que las familias dejen de asertar sobre la
+        # TRAYECTORIA (ver el §6 del plan). Hasta entonces esto corre el mismo
+        # conjunto y sirve como recordatorio con nombre.
+        run: pytest tests/evals/ -m evals --tb=short
+      - name: informe del reparto
+        if: always()
+        working-directory: apps/api
+        run: python scripts/companion_evals.py --report

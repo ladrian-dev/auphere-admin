@@ -60,11 +60,53 @@ class TestPromptCaching:
         )
         assert out[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
 
+    def test_cache_tail_marks_the_last_message(self) -> None:
+        """Con ``cache_tail`` el último mensaje gana el segundo punto de corte.
+
+        Como un punto cachea *todo lo anterior a él*, ponerlo en la cola
+        convierte el historial de la pasada N en prefijo cacheado de la N+1.
+        Medido contra Anthropic: con la misma cola, la tercera llamada leyó
+        13.148 de 13.151 tokens desde caché.
+        """
+        messages = [
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "prev"},
+            {"role": "tool", "tool_call_id": "t1", "name": "x", "content": "resultado"},
+        ]
+        out = _with_prompt_caching(messages, cache_tail=True)
+        assert out[0]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+        assert out[-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+        # Dos y solo dos: Anthropic admite cuatro por petición, y gastarlos
+        # sin motivo deja sin sitio a quien los necesite después.
+        assert _count_breakpoints(out) == 2
+
+    def test_cache_tail_leaves_non_text_content_alone(self) -> None:
+        """Un mensaje sin bloque de texto final no es sitio para un corte, y
+        forzarlo es un 400."""
+        messages = [
+            {"role": "system", "content": "S"},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "t1"}]},
+        ]
+        out = _with_prompt_caching(messages, cache_tail=True)
+        assert out[-1]["content"] == ""
+        assert _count_breakpoints(out) == 1
+
+    def test_cache_tail_without_leading_system_still_marks_the_tail(self) -> None:
+        messages = [{"role": "user", "content": "hola"}]
+        out = _with_prompt_caching(messages, cache_tail=True)
+        assert out[-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+
     def test_noop_without_leading_system(self) -> None:
         messages = [{"role": "user", "content": "hola"}]
         assert _with_prompt_caching(messages) == messages
 
     def test_history_after_system_stays_uncached(self) -> None:
+        """Sin ``cache_tail`` el historial NO gana punto de corte.
+
+        Es el comportamiento del agente de cliente y de los dos playgrounds,
+        que son carga viva: encender el segundo corte para todos, para
+        arreglar un problema del Companion, es como se rompe algo que
+        funcionaba."""
         messages = [
             {"role": "system", "content": "S"},
             {"role": "user", "content": "prev"},
@@ -498,3 +540,10 @@ class TestUsageFields:
         an empty dict, not an exception."""
         assert _usage_fields({"choices": []}) == {}
         assert _usage_fields(None) == {}
+
+
+def _count_breakpoints(messages: list[dict[str, Any]]) -> int:
+    """Puntos de corte de caché en una petición. Anthropic admite cuatro."""
+    import json
+
+    return json.dumps(messages).count("cache_control")

@@ -58,7 +58,7 @@ import contextlib
 import json
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -66,6 +66,7 @@ import structlog
 from redis.asyncio import Redis
 
 from nexus_api.api.qa_streaming import PING_INTERVAL_SECONDS, SSEEvent, _json_default
+from nexus_api.config import get_settings
 from nexus_api.core.otel_metrics import record_companion
 from nexus_api.core.streams import xadd_capped
 from nexus_api.db.models.companion import (
@@ -173,7 +174,14 @@ COMPANION_EVENTS: dict[str, frozenset[str]] = {
     # identificador.
     "support.ticket": frozenset({"action_id", "ticket_ref", "category", "topic", "sla"}),
     # medidores
-    "cost.updated": frozenset({"input_tokens", "output_tokens", "model"}),
+    # ``input_tokens`` es la entrada **facturable** del turno —``prompt_tokens``
+    # menos lo servido de caché—, no la ventana: esa va en ``context.updated``
+    # y es el prefijo entero. El desglose de caché y las pasadas viajan aquí
+    # porque son lo que permite valorar el turno en dólares y ver si el caché
+    # está funcionando; sin ellos, el panel solo puede decir "gastó algo".
+    "cost.updated": frozenset(
+        {"input_tokens", "output_tokens", "cache_read", "cache_write", "steps", "model"}
+    ),
     "context.updated": frozenset({"input_tokens", "max_context", "percent", "compacted", "model"}),
     "budget.updated": frozenset(
         {"used", "cap", "remaining", "percent", "exhausted", "period", "resets_at"}
@@ -425,6 +433,12 @@ class CompanionRunHandle:
     events_since_cancel_poll: int = 0
     total_input_tokens: int = 0
     total_output_tokens: int = 0
+    #: Desglose de caché y pasadas del turno. Sirven para valorar el turno en
+    #: dólares al cerrarlo y para ver si el prefijo se está cacheando de
+    #: verdad — con ``cache_read`` a cero en todas las llamadas, no lo está.
+    total_cache_read: int = 0
+    total_cache_write: int = 0
+    total_steps: int = 0
     last_input_tokens: int = 0
     model: str | None = None
     final_status: str | None = None
@@ -488,6 +502,57 @@ async def start_run(
     return handle
 
 
+#: Turnos que corren A LA VEZ en este proceso, sea de quien sea. El semáforo
+#: se crea perezosamente porque tiene que atarse al event loop que ya está
+#: corriendo: construirlo al importar lo ataría al de importación, que en los
+#: tests no es el mismo.
+_process_semaphore: asyncio.Semaphore | None = None
+
+
+class CompanionBusy(RuntimeError):
+    """No hubo hueco en el proceso dentro del plazo."""
+
+
+@contextlib.asynccontextmanager
+async def _process_slot() -> AsyncGenerator[None]:
+    """Un hueco de ejecución, con plazo.
+
+    Si no lo hay dentro de ``companion_queue_timeout_s`` se lanza
+    :class:`CompanionBusy` y el turno cierra con un error que dice qué pasó.
+    Esperar sin plazo sería peor: el cajón se queda quieto sin explicación y
+    el reaper acaba matando el run igual cuando cumple su techo de duración,
+    con lo que la persona habría esperado para nada.
+    """
+    global _process_semaphore
+    settings = get_settings()
+    limit = settings.companion_max_process_runs
+    if limit <= 0:  # pragma: no cover - configuración de emergencia
+        yield
+        return
+    if _process_semaphore is None or _process_semaphore._value > limit:
+        _process_semaphore = asyncio.Semaphore(limit)
+    sem = _process_semaphore
+    try:
+        await asyncio.wait_for(sem.acquire(), timeout=settings.companion_queue_timeout_s)
+    except TimeoutError:
+        log.warning("companion.process_slot_timeout", limit=limit)
+        raise CompanionBusy(
+            "El Companion está atendiendo demasiados turnos a la vez. "
+            "Vuelve a intentarlo en unos segundos."
+        ) from None
+    try:
+        yield
+    finally:
+        sem.release()
+
+
+def reset_process_semaphore_for_tests() -> None:
+    """Suelta el semáforo entre tests: cada uno trae su propio event loop y
+    un semáforo atado al anterior bloquearía para siempre."""
+    global _process_semaphore
+    _process_semaphore = None
+
+
 async def _run_with_lifecycle(
     handle: CompanionRunHandle,
     driver: CompanionDriver,
@@ -513,7 +578,20 @@ async def _run_with_lifecycle(
     status = RUN_COMPLETED
     error: str | None = None
     try:
-        await driver(handle)
+        # Freno de proceso. El tope de tres turnos por miembro no acota nada
+        # global: con N personas trabajando son 3·N tareas en ESTE proceso,
+        # cada una con hasta 25 llamadas de herramienta que abren su propia
+        # transacción. El pool son 10+20 conexiones por réplica y lo comparte
+        # el webhook de WhatsApp — o sea, once personas a la vez bastan para
+        # que el camino que gana el dinero espere por una conexión.
+        #
+        # Se adquiere DENTRO de la tarea y no antes del 202: el turno ya está
+        # aceptado y con su fila escrita; lo que se serializa es el trabajo,
+        # no la aceptación. Y con plazo, porque un run que espera indefinido
+        # es un cajón parado sin explicación — y el reaper lo mataría igual
+        # al cumplir su techo de duración.
+        async with _process_slot():
+            await driver(handle)
     except asyncio.CancelledError:
         status = RUN_CANCELLED
         # No se re-lanza: queremos que el ``finally`` escriba el evento

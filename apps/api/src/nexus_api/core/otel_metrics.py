@@ -281,6 +281,66 @@ COMPANION_COUNTERS: tuple[str, ...] = (
     "companion.verify.failed",
 )
 
+#: Contadores de **salud operativa**, fuera del contrato del piloto.
+#:
+#: Van en su propia tupla y no mezclados con los de arriba a propósito. Los del
+#: §11 son el vocabulario que se congeló para que las razones del piloto no se
+#: renombren a mitad y la serie se parta en dos; ``test_companion_pilot_guarantees``
+#: comprueba esa lista por igualdad exacta. Meter aquí una métrica de salud
+#: convertiría ese guardián en un test que hay que editar cada vez que se
+#: instrumenta algo — y un guardián que se edita por rutina deja de guardar.
+COMPANION_OPS_COUNTERS: tuple[str, ...] = (
+    # El compare-and-swap que se apaga solo. Cuando la relectura del
+    # ``state_hash`` falla, la confirmación **sigue adelante** —es una decisión
+    # de disponibilidad: convertir una caída parcial en un bloqueo total de la
+    # escritura sería peor, y el 409/422 del router de destino sigue detrás—.
+    # Pero eso deja el control anti-deriva desactivado para todo el mundo, y
+    # hasta ahora solo lo decía un ``log.warning``, que no despierta a nadie.
+    # Un guardarraíl que se apaga solo tiene que hacer ruido al hacerlo.
+    "companion.cas.revalidate_failed",
+)
+
+
+#: Histogramas del turno. Contestan la pregunta que los contadores de arriba
+#: no pueden: **cuánto cuesta un turno del Companion**.
+#:
+#: No duplican ``llm_tokens_total``. Aquel cuenta tokens por LLAMADA, con
+#: etiqueta de modelo y rol, y sirve para vigilar el proveedor. Estos miden el
+#: TURNO completo —la unidad que el partner consume y sobre la que se fija la
+#: cuota—, y su distribución es lo que dice si 500.000 tokens al mes son
+#: trescientos turnos o son cuatro. Con los contadores solos esa pregunta se
+#: responde dividiendo dos series y suponiendo la correlación.
+#:
+#: Sin etiquetas, por la misma razón que los contadores: WP-15 dejó escrito
+#: que una dimensión de más parte la serie en CloudWatch y ciega la alarma que
+#: la usaba. El corte por partner sale de ``companion_pilot_metrics.py``.
+COMPANION_HISTOGRAMS: dict[str, str] = {
+    "companion_turn_tokens": "tokens",
+    "companion_turn_cost_usd": "usd",
+    "companion_turn_steps": "steps",
+}
+
+
+def record_companion_turn(
+    *,
+    billable_tokens: int,
+    cost_usd: float | None,
+    steps: int,
+) -> None:
+    """Cierra la medición de un turno. Nunca lanza.
+
+    ``cost_usd`` es ``None`` cuando el modelo no está en ``model_profiles`` o
+    la fila no trae tarifa: entonces **no se emite**, en vez de emitir cero.
+    Un cero aquí sería indistinguible de un turno que de verdad salió gratis, y
+    se sumaría en silencio en cualquier panel de margen — el mismo criterio que
+    ``usage_records.cost_usd``, que deja NULL antes que mentir.
+    """
+    with contextlib.suppress(Exception):
+        _instrument("companion_turn_tokens", "histogram", unit="tokens").record(billable_tokens)
+        _instrument("companion_turn_steps", "histogram", unit="steps").record(steps)
+        if cost_usd is not None:
+            _instrument("companion_turn_cost_usd", "histogram", unit="usd").record(cost_usd)
+
 
 def record_companion(name: str, *, value: int = 1) -> None:
     """Suma uno a un contador del Companion. Nunca lanza.
@@ -289,7 +349,8 @@ def record_companion(name: str, *, value: int = 1) -> None:
     crearía una serie que ningún panel busca, y el fallo sería silencioso.
     Aquí se registra y se sigue — la instrumentación no tumba un turno.
     """
-    if name not in COMPANION_COUNTERS:  # pragma: no cover - error de programación
+    if name not in COMPANION_COUNTERS and name not in COMPANION_OPS_COUNTERS:
+        # pragma: no cover - error de programación
         log.warning("otel.companion_counter_unknown", counter=name)
         return
     with contextlib.suppress(Exception):

@@ -64,7 +64,7 @@ from nexus_api.companion.tools.actions import (
 from nexus_api.companion.tools.support import SUPPORT_KINDS
 from nexus_api.config import get_settings
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
-from nexus_api.core.otel_metrics import record_companion
+from nexus_api.core.otel_metrics import record_companion, record_companion_turn
 from nexus_api.core.principal_context import (
     apply_principal_to_session,
     principal_context,
@@ -902,6 +902,9 @@ def _make_driver(
                     if name == "cost.updated":
                         handle.total_input_tokens += int(data.get("input_tokens") or 0)
                         handle.total_output_tokens += int(data.get("output_tokens") or 0)
+                        handle.total_cache_read += int(data.get("cache_read") or 0)
+                        handle.total_cache_write += int(data.get("cache_write") or 0)
+                        handle.total_steps += int(data.get("steps") or 0)
                         handle.model = data.get("model") or handle.model
                     if name == "context.updated":
                         handle.last_input_tokens = int(data.get("input_tokens") or 0)
@@ -1017,10 +1020,63 @@ def _make_on_complete(
             answer=answer,
             parked=(not paused) and bool(handle.extras.get("awaiting_action")),
         )
+        # La medida del TURNO, que es la unidad sobre la que se fija la cuota.
+        # Va después de ``_finalise_run`` a propósito: si la fila no se cerró,
+        # el turno no se cuenta, y así el panel y la base no pueden discrepar.
+        record_companion_turn(
+            billable_tokens=handle.total_input_tokens + handle.total_output_tokens,
+            cost_usd=await _turn_cost_usd(handle),
+            steps=handle.total_steps,
+        )
         if used_before + handle.total_input_tokens + handle.total_output_tokens >= cap:
             await notify_cap_reached(partner_id, window)
 
     return _on_complete
+
+
+async def _turn_cost_usd(handle: streaming.CompanionRunHandle) -> float | None:
+    """Lo que costó el turno, en dólares, o ``None`` si no se puede valorar.
+
+    Las tarifas salen de ``model_profiles`` por el mismo catálogo cacheado que
+    ya usa el medidor de ventana (``pricing.get_catalog``), así que no añade
+    una consulta por turno ni una tabla de precios que mantener aparte — la
+    que hay ya se mantiene, porque es con la que se factura a los clientes.
+
+    Las cuatro componentes se valoran por separado **porque tienen precios
+    distintos**: la lectura de caché cuesta una décima parte de la entrada y
+    la escritura un 25 % más. Sumarlas antes de valorar —que es lo que hacía
+    la cuota— es exactamente el error que convertía un turno de 25.000 tokens
+    en uno de 135.000.
+
+    Devuelve ``None`` y no cero cuando falta el modelo o la tarifa: un cero
+    sería indistinguible de un turno gratis.
+    """
+    model = handle.model
+    if not model:
+        return None
+    try:
+        from nexus_worker.metering.pricing import get_catalog
+
+        row = (await get_catalog()).get(model)
+    except Exception as exc:  # pragma: no cover - defensivo
+        log.warning("companion.turn_cost_unavailable", model=model, error=str(exc))
+        return None
+    if row is None:
+        return None
+
+    total = 0.0
+    seen_any = False
+    for tokens, rate in (
+        (handle.total_input_tokens, row.input_per_mtok),
+        (handle.total_output_tokens, row.output_per_mtok),
+        (handle.total_cache_read, row.cache_read_per_mtok),
+        (handle.total_cache_write, row.cache_write_per_mtok),
+    ):
+        if rate is None:
+            continue
+        seen_any = True
+        total += float(rate) * tokens / 1_000_000
+    return total if seen_any else None
 
 
 async def _finalise_run(
@@ -1098,7 +1154,15 @@ def _get_provider() -> Any:
     if _provider is None:
         from nexus_worker.runtime.llm import LiteLLMProvider
 
-        _provider = LiteLLMProvider(timeout_s=get_settings().llm_improve_timeout_s)
+        # ``cache_tail`` encendido SOLO aquí. El Companion es el único bucle
+        # agéntico largo de la plataforma —hasta doce pasadas, con resultados
+        # de herramienta de miles de tokens— y es donde el historial sin
+        # cachear crece de forma cuadrática. El agente de cliente y los
+        # playgrounds comparten la clase pero construyen su propio proveedor,
+        # así que su comportamiento no cambia.
+        _provider = LiteLLMProvider(
+            timeout_s=get_settings().llm_improve_timeout_s, cache_tail=True
+        )
     return _provider
 
 
@@ -1131,6 +1195,7 @@ def _get_companion_graph(toolbelt: Any = None) -> Any:
         model=settings.llm_companion_model,
         checkpointer=get_qa_checkpointer(),
         toolbelt=toolbelt,
+        effort=settings.companion_effort,
     )
     if toolbelt is None:
         _graph = compiled
@@ -1694,6 +1759,11 @@ async def _revalidate_state_hash(
                 action_id=str(action.id),
                 error=str(exc),
             )
+            # El fail-open se mantiene, pero deja de ser silencioso: sin esta
+            # serie, una relectura que empieza a fallar apaga el compare-and-swap
+            # para todos los partners y lo único que queda es una línea de log
+            # que nadie mira.
+            record_companion("companion.cas.revalidate_failed")
             return
         else:
             drifted = fresh.state_hash != action.state_hash

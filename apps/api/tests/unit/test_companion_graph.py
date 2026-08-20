@@ -230,6 +230,40 @@ async def test_the_cache_is_not_billed_but_still_fills_the_window() -> None:
     assert ctx["input_tokens"] == 10_000, "la ventana la llena el prefijo entero"
 
 
+async def test_the_cost_event_carries_the_cache_breakdown_and_the_steps() -> None:
+    """``cost.updated`` lleva lo que hace falta para valorar el turno.
+
+    Y tiene que sobrevivir al **catálogo cerrado** de eventos: el publicador
+    elimina cualquier clave no declarada en ``COMPANION_EVENTS``, en silencio.
+    Añadir el desglose al grafo sin declararlo allí dejaría los campos a cero
+    sin un solo error — y el panel diría que el caché no funciona.
+    """
+    from nexus_api.api.companion_streaming import COMPANION_EVENTS
+
+    provider = InMemoryProvider(
+        responder=lambda c: "ok",
+        stream_usage={
+            "prompt_tokens": 9_000,
+            "completion_tokens": 300,
+            "cache_read_input_tokens": 8_000,
+            "cache_creation_input_tokens": 500,
+        },
+    )
+    events = await _run(provider)
+    cost = next(d for d in (d for n, d in events if n == "cost.updated"))
+
+    assert cost["cache_read"] == 8_000
+    assert cost["cache_write"] == 500
+    assert cost["steps"] >= 1
+    assert cost["input_tokens"] == 1_000
+
+    # El guardián real: lo que el grafo emite tiene que estar declarado.
+    assert set(cost) <= COMPANION_EVENTS["cost.updated"], (
+        "el publicador borraría estas claves: "
+        f"{sorted(set(cost) - COMPANION_EVENTS['cost.updated'])}"
+    )
+
+
 async def test_a_provider_that_reports_cache_apart_never_bills_negative() -> None:
     """Si un proveedor reportara la caché fuera de ``prompt_tokens``, la resta
     daría negativo. Una cuota que baja al gastar es peor que una que

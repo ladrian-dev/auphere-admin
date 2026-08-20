@@ -51,10 +51,10 @@ from nexus_worker.runtime.companion.intake import (
     record_asked,
 )
 from nexus_worker.runtime.companion.prompt import (
-    COMPANION_THINKING,
     budget_note,
     build_messages,
     closing_note,
+    thinking_extra,
 )
 from nexus_worker.runtime.companion.state import (
     PHASE_AWAITING,
@@ -200,7 +200,7 @@ async def investigate(state: CompanionState) -> dict[str, Any]:
 
 
 def make_investigate(
-    provider: LLMProvider, *, model: str, toolbelt: Toolbelt
+    provider: LLMProvider, *, model: str, toolbelt: Toolbelt, effort: str | None = None
 ) -> Callable[[CompanionState], Awaitable[dict[str, Any]]]:
     """El bucle de herramientas: leer el estado REAL antes de opinar.
 
@@ -257,6 +257,9 @@ def make_investigate(
         input_tokens = 0
         output_tokens = 0
         last_input_tokens = 0
+        cache_read = 0
+        cache_write = 0
+        steps_used = 0
         #: Por qué paró el bucle: ``None`` = escribió la respuesta.
         exhausted: str | None = None
         #: La última nota de expediente puesta. Se vuelve a poner solo si
@@ -295,7 +298,7 @@ def make_investigate(
                 model=model,
                 messages=messages,
                 tools=specs,
-                extra={"thinking": COMPANION_THINKING},
+                extra=thinking_extra(effort),
             ):
                 if kind == "text":
                     step_text.append(piece)
@@ -314,6 +317,9 @@ def make_investigate(
                     last_input_tokens = int(usage.get("prompt_tokens") or 0)
                     input_tokens += _billable_input(usage)
                     output_tokens += int(usage.get("completion_tokens") or 0)
+                    cache_read += int(usage.get("cache_read_input_tokens") or 0)
+                    cache_write += int(usage.get("cache_creation_input_tokens") or 0)
+                    steps_used += 1
 
             chunks.extend(step_text)
 
@@ -347,11 +353,15 @@ def make_investigate(
                 specs=specs,
                 message_id=message_id,
                 reason=exhausted,
+                effort=effort,
             )
             chunks.append(closing)
             input_tokens += _billable_input(closing_usage)
             output_tokens += int(closing_usage.get("completion_tokens") or 0)
             last_input_tokens = int(closing_usage.get("prompt_tokens") or last_input_tokens)
+            cache_read += int(closing_usage.get("cache_read_input_tokens") or 0)
+            cache_write += int(closing_usage.get("cache_creation_input_tokens") or 0)
+            steps_used += 1
 
         return {
             # La fase REAL en la que terminó el bucle. Si nunca llegó a
@@ -368,6 +378,9 @@ def make_investigate(
             "last_input_tokens": last_input_tokens,
             "total_input_tokens": state.get("total_input_tokens", 0) + input_tokens,
             "total_output_tokens": state.get("total_output_tokens", 0) + output_tokens,
+            "total_cache_read": state.get("total_cache_read", 0) + cache_read,
+            "total_cache_write": state.get("total_cache_write", 0) + cache_write,
+            "total_steps": state.get("total_steps", 0) + steps_used,
         }
 
     return _investigate
@@ -409,6 +422,7 @@ async def _close_the_turn(
     specs: list[dict[str, Any]],
     message_id: str,
     reason: str,
+    effort: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """El paso de cierre de R6 (garantía E3).
 
@@ -442,6 +456,8 @@ async def _close_the_turn(
             messages=closing,
             specs=specs,
             message_id=message_id,
+
+            effort=effort,
         )
         text = answer.strip()
     except Exception as exc:
@@ -632,7 +648,11 @@ async def _run_tool(
 
 
 def make_respond(
-    provider: LLMProvider, *, model: str, toolbelt: Toolbelt | None = None
+    provider: LLMProvider,
+    *,
+    model: str,
+    toolbelt: Toolbelt | None = None,
+    effort: str | None = None,
 ) -> Callable[[CompanionState], Awaitable[dict[str, Any]]]:
     """Cierra el turno: medidores y regla R1.
 
@@ -663,10 +683,10 @@ def make_respond(
             # escribir una plantilla, pero "se aplicó y la verificación dice
             # que solo hay 2 de las 3 herramientas" necesita una frase, y
             # esa frase es el trabajo del modelo.
-            updates = await _answer_after_action(provider, model=model, state=state, specs=specs)
+            updates = await _answer_after_action(provider, model=model, state=state, specs=specs, effort=effort)
         elif not state.get("tool_messages") and not state.get("answer"):
             # Grafo sin herramientas: el camino de CO-01.
-            updates = await _answer_without_tools(provider, model=model, state=state, specs=specs)
+            updates = await _answer_without_tools(provider, model=model, state=state, specs=specs, effort=effort)
         else:
             # El bucle terminó sin llegar a escribir (un último paso que
             # solo pidió herramientas, por ejemplo). El tracker lo anuncia
@@ -681,6 +701,12 @@ def make_respond(
             {
                 "input_tokens": int(merged.get("total_input_tokens") or 0),
                 "output_tokens": int(merged.get("total_output_tokens") or 0),
+                # El desglose viaja con el gasto y no en un evento aparte: es
+                # la misma pregunta ("¿cuánto costó este turno?") y separarlos
+                # obligaría a correlacionar dos eventos para responderla.
+                "cache_read": int(merged.get("total_cache_read") or 0),
+                "cache_write": int(merged.get("total_cache_write") or 0),
+                "steps": int(merged.get("total_steps") or 0),
                 "model": model,
             },
         )
@@ -751,6 +777,7 @@ async def _stream_final_answer(
     messages: list[dict[str, Any]],
     specs: list[dict[str, Any]],
     message_id: str,
+    effort: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """La ÚLTIMA llamada del turno: no abre trabajo nuevo, pero **declara las
     herramientas igual que las demás**.
@@ -786,7 +813,7 @@ async def _stream_final_answer(
             model=model,
             messages=messages,
             tools=specs,
-            extra={"thinking": COMPANION_THINKING, "tool_choice": TOOL_CHOICE_NONE},
+            extra=thinking_extra(effort, tool_choice=TOOL_CHOICE_NONE),
         )
     else:
         stream = provider.astream_complete(
@@ -794,7 +821,7 @@ async def _stream_final_answer(
             role=COMPANION_ROLE,
             model=model,
             messages=messages,
-            extra={"thinking": COMPANION_THINKING},
+            extra=thinking_extra(effort),
         )
 
     async for kind, piece in stream:
@@ -818,6 +845,7 @@ async def _answer_after_action(
     model: str,
     state: CompanionState,
     specs: list[dict[str, Any]],
+    effort: str | None = None,
 ) -> dict[str, Any]:
     """Cierra el turno de continuación con una llamada al modelo.
 
@@ -877,6 +905,8 @@ async def _answer_after_action(
         messages=messages,
         specs=specs,
         message_id=str(uuid.uuid4()),
+
+        effort=effort,
     )
     input_tokens = int(usage.get("prompt_tokens") or 0)
     output_tokens = int(usage.get("completion_tokens") or 0)
@@ -886,11 +916,21 @@ async def _answer_after_action(
         "last_input_tokens": input_tokens,
         "total_input_tokens": int(state.get("total_input_tokens") or 0) + _billable_input(usage),
         "total_output_tokens": int(state.get("total_output_tokens") or 0) + output_tokens,
+        "total_cache_read": int(state.get("total_cache_read") or 0)
+        + int(usage.get("cache_read_input_tokens") or 0),
+        "total_cache_write": int(state.get("total_cache_write") or 0)
+        + int(usage.get("cache_creation_input_tokens") or 0),
+        "total_steps": int(state.get("total_steps") or 0) + 1,
     }
 
 
 async def _answer_without_tools(
-    provider: LLMProvider, *, model: str, state: CompanionState, specs: list[dict[str, Any]]
+    provider: LLMProvider,
+    *,
+    model: str,
+    state: CompanionState,
+    specs: list[dict[str, Any]],
+    effort: str | None = None,
 ) -> dict[str, Any]:
     """El camino de CO-01: una sola llamada en streaming.
 
@@ -912,6 +952,8 @@ async def _answer_without_tools(
         messages=messages,
         specs=specs,
         message_id=str(uuid.uuid4()),
+
+        effort=effort,
     )
     input_tokens = int(usage.get("prompt_tokens") or 0)
     output_tokens = int(usage.get("completion_tokens") or 0)
@@ -921,6 +963,11 @@ async def _answer_without_tools(
         "last_input_tokens": input_tokens,
         "total_input_tokens": state.get("total_input_tokens", 0) + _billable_input(usage),
         "total_output_tokens": state.get("total_output_tokens", 0) + output_tokens,
+        "total_cache_read": state.get("total_cache_read", 0)
+        + int(usage.get("cache_read_input_tokens") or 0),
+        "total_cache_write": state.get("total_cache_write", 0)
+        + int(usage.get("cache_creation_input_tokens") or 0),
+        "total_steps": state.get("total_steps", 0) + 1,
     }
 
 
@@ -1122,6 +1169,10 @@ def build_companion_graph(
     model: str,
     checkpointer: BaseCheckpointSaver[Any] | None = None,
     toolbelt: Toolbelt | None = None,
+    #: Profundidad de razonamiento (``output_config.effort``). ``None`` = la
+    #: del proveedor. Es la palanca de coste del D6, y se pasa aquí para que
+    #: el runtime no tenga que leer los ajustes de la API.
+    effort: str | None = None,
 ) -> Any:
     """Compila el grafo del Companion.
 
@@ -1142,9 +1193,11 @@ def build_companion_graph(
         "investigate",
         investigate
         if toolbelt is None
-        else make_investigate(provider, model=model, toolbelt=toolbelt),
+        else make_investigate(provider, model=model, toolbelt=toolbelt, effort=effort),
     )
-    graph.add_node("respond", make_respond(provider, model=model, toolbelt=toolbelt))
+    graph.add_node(
+        "respond", make_respond(provider, model=model, toolbelt=toolbelt, effort=effort)
+    )
     graph.add_edge(START, "understand")
     graph.add_edge("understand", "investigate")
 

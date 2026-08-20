@@ -140,6 +140,26 @@ def test_the_pilot_counters_have_the_names_the_contract_fixed() -> None:
     record_companion("no.existe")
 
 
+def test_operational_counters_live_outside_the_frozen_contract() -> None:
+    """Las metricas de SALUD no entran en el vocabulario del piloto.
+
+    Si entraran, el test de arriba habria que editarlo cada vez que se
+    instrumenta algo — y un guardian que se edita por rutina deja de guardar.
+    La separacion es lo que permite anadir observabilidad sin tocar el
+    contrato congelado del §11.
+    """
+    from nexus_api.core.otel_metrics import (
+        COMPANION_COUNTERS,
+        COMPANION_OPS_COUNTERS,
+        record_companion,
+    )
+
+    assert "companion.cas.revalidate_failed" in COMPANION_OPS_COUNTERS
+    assert not set(COMPANION_COUNTERS) & set(COMPANION_OPS_COUNTERS)
+    # Y el registrador acepta las dos familias.
+    record_companion("companion.cas.revalidate_failed")
+
+
 # ── el documento de capacidades como código ────────────────────────────
 
 

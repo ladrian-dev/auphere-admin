@@ -20,6 +20,37 @@ from nexus_api.services.evals.companion.driver import candidates_for, run_case
 LIVE = os.getenv("NEXUS_COMPANION_EVAL_LIVE") == "1"
 
 
+def live_provider() -> Any:
+    """El proveedor real, para los casos marcados ``requires: live``.
+
+    El hueco ya estaba: ``run_case`` acepta un ``provider`` y con uno real
+    dentro ignora la trayectoria, porque nadie llama a ``tool_caller`` y las
+    herramientas las elige el modelo. Lo que faltaba era **pasárselo** — sin
+    esto, ``NEXUS_COMPANION_EVAL_LIVE=1`` quitaba el ``xfail`` y el caso
+    seguía corriendo guionizado, que es la peor de las dos opciones: parece
+    que mide al modelo y mide al guion.
+
+    ``cache_tail`` encendido, igual que en producción: si el eval corriera
+    con otra configuración de caché mediría un agente que no existe.
+    """
+    from nexus_worker.runtime.llm import LiteLLMProvider
+
+    return LiteLLMProvider(timeout_s=90.0, cache_tail=True)
+
+
+def provider_for(case: CompanionCase) -> Any:
+    """El proveedor de un caso: real solo si el caso lo pide **y** el modo
+    live está encendido.
+
+    Los otros casos siguen guionizados a propósito. Son tests de contrato del
+    motor —que el gate rechaza una escritura sin confirmar, que los errores
+    son opacos entre partners— y ahí el determinismo es la virtud, no el
+    defecto. Correrlos todos contra el proveedor costaría unos 18 $ por pase
+    y cambiaría un gate estable por uno que parpadea.
+    """
+    return live_provider() if (LIVE and case.requires == "live") else None
+
+
 def belt_kwargs(case: CompanionCase) -> dict[str, Any]:
     """Lo que el caso cambia del juego de herramientas de producción.
 
@@ -71,7 +102,7 @@ async def run_and_check(
     side = world[case.principal]
     belt = await belt_for(side, **belt_kwargs(case))
 
-    result = await run_case(case, belt=belt)
+    result = await run_case(case, belt=belt, provider=provider_for(case))
 
     if candidates is None and case.expect.min_candidates is not None:
         # Juego aparte: el ejecutor rechaza repetir una consulta dentro del
@@ -96,8 +127,17 @@ async def run_and_check(
         candidates=candidates,
     )
     assert results, f"{case.id}: el caso no produjo ninguna comprobación"
+
+    # En live, la trayectoria la elige el modelo y no el dataset, así que un
+    # fallo sin ella es indescifrable: "esperaba 0 lecturas y hubo 1" no dice
+    # cuál fue, y sin saber cuál no se puede distinguir una fuga de un modelo
+    # que hizo lo correcto de una forma que el guion no preveía.
+    trace = ""
+    if provider_for(case) is not None:
+        trace = f"\n  trayectoria real: {[c.get('name') for c in result.tool_calls]}"
+
     for outcome in results:
-        assert outcome.passed, f"{case.id} · {outcome.kind}: {outcome.detail}"
+        assert outcome.passed, f"{case.id} · {outcome.kind}: {outcome.detail}{trace}"
 
 
 def ids(cases: list[CompanionCase]) -> list[str]:

@@ -272,6 +272,23 @@ class Settings(BaseSettings):
     # cumplido su techo de duración — los huérfanos de un proceso muerto no
     # bloquean a nadie.
     companion_max_concurrent_runs: int = 3
+    # Turnos que corren A LA VEZ en este proceso, sumando todos los miembros
+    # de todos los partners. El tope de arriba es por persona y no acota nada
+    # global: con N personas trabajando son 3·N tareas en el mismo event loop,
+    # cada una con hasta 25 llamadas de herramienta que abren su propia
+    # transacción contra un pool de 10+20 conexiones **compartido con el
+    # webhook de WhatsApp**. Once personas a la vez bastan para que el camino
+    # que gana el dinero espere por una conexión.
+    #
+    # Doce deja holgura para ~4 personas trabajando en paralelo sin que el
+    # pool se acerque al límite, y es un número que se sube cuando el runtime
+    # se mueva al worker y deje de compartir proceso.
+    companion_max_process_runs: int = 12
+    # Cuánto espera un turno por su hueco antes de rendirse. Sin plazo, el
+    # cajón se queda quieto sin explicación y el reaper acaba matando el run
+    # igual al cumplir su techo de duración — o sea, la persona habría
+    # esperado para nada. Con plazo, el turno cierra diciendo qué pasó.
+    companion_queue_timeout_s: float = 30.0
     # CO-02. Tope DURO de consultas por turno; el modelo además ve una
     # cuenta atrás (``budget_note``) para poder cerrar con elegancia en vez
     # de que lo corten a mitad. Y techo por consulta: una herramienta que
@@ -286,6 +303,25 @@ class Settings(BaseSettings):
     # sin cron: un proceso más que puede fallar en silencio es peor que una
     # comparación de fechas en el sitio donde importa.
     companion_action_ttl_seconds: float = 900.0
+    # La palanca de coste que el D6 del ADR-033 nombra y que no existía:
+    # "para bajar coste se baja ``effort``, no se apaga el pensamiento".
+    # Viaja como ``output_config: {"effort": …}`` y NO como
+    # ``reasoning_effort``: ese segundo lo traduce LiteLLM inyectando su
+    # propio ``thinking``, y por el camino se pierde
+    # ``display: "summarized"`` — que es justo lo que el cajón pinta.
+    #
+    # Medido contra Anthropic (2026-08-21, sonnet-4-6, misma pregunta):
+    #   sin effort → 484 tokens de salida · 1.208 chars de pensamiento
+    #   effort low →  58 tokens de salida ·    12 chars de pensamiento
+    # Ocho veces menos salida. Y ocho veces menos pensamiento, que es
+    # exactamente el riesgo: con menos razonamiento el modelo también elige
+    # peor la herramienta.
+    #
+    # Por eso el defecto es ``None`` = sin cambio. La palanca existe, está
+    # medida y está documentada; encenderla es una decisión que se toma
+    # **después** de tener evals contra el modelo real (P6), porque hoy no
+    # hay forma de ver la degradación que provoca.
+    companion_effort: str | None = None
     # CO-08. Dónde avisa Auphere de un ticket de soporte abierto desde la
     # consola. Vacío = no se manda correo, y **no pasa nada**: el ticket
     # existe igual, con su fila de auditoría, su notificación al partner y

@@ -155,7 +155,47 @@ def default_context_management_from_env() -> dict[str, Any] | None:
     return DEFAULT_CONTEXT_MANAGEMENT
 
 
-def _with_prompt_caching(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _cache_the_tail(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Segundo punto de corte, móvil, sobre el último mensaje.
+
+    El corte del prefijo cachea el prompt de sistema y las definiciones de
+    herramientas. Todo lo que viene después —historial, mensajes del asistente
+    y resultados de herramientas— se reenvía **entero y sin cachear** en cada
+    pasada del bucle, y en un agente que da doce pasadas eso crece de forma
+    cuadrática: medido en el Companion, 42.000 tokens de entrada no cacheada en
+    un turno de ocho pasadas frente a los 12.000 que costaría con este corte.
+
+    Anthropic admite cuatro puntos por petición y el prefijo usa uno; este es
+    el segundo. Se mueve con la conversación: como cachea *todo lo anterior a
+    él*, ponerlo en el último mensaje convierte el historial de la pasada N en
+    prefijo cacheado de la pasada N+1.
+
+    Los bloques de texto se convierten a la forma canónica de Anthropic porque
+    ``cache_control`` vive en el bloque, no en el mensaje. Un mensaje cuyo
+    contenido no sea texto se deja intacto: no es sitio para un punto de corte
+    y forzarlo es un 400.
+    """
+    if not messages:
+        return messages
+    tail = messages[-1]
+    content = tail.get("content")
+    if isinstance(content, str):
+        if not content:
+            return messages
+        blocks: list[dict[str, Any]] = [{"type": "text", "text": content}]
+    elif isinstance(content, list) and content:
+        blocks = [dict(b) for b in content if isinstance(b, dict)]
+        if not blocks or blocks[-1].get("type") != "text":
+            return messages
+    else:
+        return messages
+    blocks[-1] = {**blocks[-1], "cache_control": {"type": "ephemeral"}}
+    return [*messages[:-1], {**tail, "content": blocks}]
+
+
+def _with_prompt_caching(
+    messages: list[dict[str, Any]], *, cache_tail: bool = False
+) -> list[dict[str, Any]]:
     """Mark the leading system prefix as an Anthropic cache breakpoint.
 
     Anthropic prompt caching: a ``cache_control`` block caches the entire
@@ -180,7 +220,7 @@ def _with_prompt_caching(messages: list[dict[str, Any]]) -> list[dict[str, Any]]
         else:
             break
     if not leading:
-        return messages
+        return _cache_the_tail(messages) if cache_tail else messages
 
     blocks: list[dict[str, Any]] = []
     for m in leading:
@@ -194,7 +234,10 @@ def _with_prompt_caching(messages: list[dict[str, Any]]) -> list[dict[str, Any]]
 
     blocks[-1] = {**blocks[-1], "cache_control": {"type": "ephemeral"}}
     merged = {"role": "system", "content": blocks}
-    return [merged, *messages[rest_start:]]
+    rest = messages[rest_start:]
+    if cache_tail:
+        rest = _cache_the_tail(rest)
+    return [merged, *rest]
 
 
 # ── data shapes ──────────────────────────────────────────────────────────────
@@ -537,6 +580,16 @@ class LiteLLMProvider:
     context_management: dict[str, Any] | None = field(
         default_factory=default_context_management_from_env
     )
+    #: Segundo punto de corte de caché, móvil, sobre el último mensaje
+    #: (:func:`_cache_the_tail`). **Apagado por defecto**: el agente de cliente
+    #: y los dos playgrounds usan este mismo proveedor y son carga viva, así
+    #: que cambiarles el comportamiento para arreglar un problema del Companion
+    #: es exactamente cómo se rompe algo que funcionaba.
+    #:
+    #: Lo enciende quien tenga un bucle agéntico largo, que es donde el
+    #: historial sin cachear crece de forma cuadrática. Se generaliza —o no—
+    #: cuando haya semanas de ``cache_read`` medido en producción.
+    cache_tail: bool = False
 
     def __post_init__(self) -> None:
         # Pre-import litellm so the first acomplete() doesn't pay the
@@ -620,7 +673,7 @@ class LiteLLMProvider:
             "model": model,
             # Prompt caching: mark the stable system prefix as a cache
             # breakpoint so repeated turns / loop iterations reuse it.
-            "messages": _with_prompt_caching(messages),
+            "messages": _with_prompt_caching(messages, cache_tail=self.cache_tail),
             "metadata": {"tenant_id": str(tenant_id), "role": role},
             "timeout": self.timeout_s,
         }
@@ -710,7 +763,7 @@ class LiteLLMProvider:
 
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _with_prompt_caching(messages),
+            "messages": _with_prompt_caching(messages, cache_tail=self.cache_tail),
             "metadata": {"tenant_id": str(tenant_id), "role": role},
             "timeout": self.timeout_s,
             "stream": True,
@@ -797,7 +850,7 @@ class LiteLLMProvider:
 
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _with_prompt_caching(messages),
+            "messages": _with_prompt_caching(messages, cache_tail=self.cache_tail),
             "tools": tools,
             "metadata": {"tenant_id": str(tenant_id), "role": role},
             "timeout": self.timeout_s,
