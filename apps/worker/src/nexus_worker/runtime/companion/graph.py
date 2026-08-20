@@ -32,6 +32,14 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+# ``nexus_api`` es la primera dependencia declarada del worker
+# (``apps/worker/pyproject.toml``), y ``guardrails.untrusted`` es un módulo
+# puro —su único import es ``__future__``—, así que traerlo no arrastra la
+# API. Vive allí y no aquí para que el vallado del Companion y el del bloque
+# de conocimiento del agente de cliente sigan siendo el MISMO tratamiento,
+# que es lo que el test de paridad comprueba.
+from nexus_api.core.guardrails.untrusted import TAG_TOOL_RESULT, fence_only
+
 from nexus_worker.runtime.companion.grounding import is_unsupported
 from nexus_worker.runtime.companion.intake import (
     TOOL_BY_WORK_KIND,
@@ -300,8 +308,11 @@ def make_investigate(
                     assistant = json.loads(piece)
                 elif kind == "usage":
                     usage = _usage(piece)
+                    # Dos números distintos a propósito: el bruto mide la
+                    # VENTANA (lo que el modelo tuvo delante) y el facturable
+                    # mide el GASTO (lo que no vino de caché).
                     last_input_tokens = int(usage.get("prompt_tokens") or 0)
-                    input_tokens += last_input_tokens
+                    input_tokens += _billable_input(usage)
                     output_tokens += int(usage.get("completion_tokens") or 0)
 
             chunks.extend(step_text)
@@ -338,7 +349,7 @@ def make_investigate(
                 reason=exhausted,
             )
             chunks.append(closing)
-            input_tokens += int(closing_usage.get("prompt_tokens") or 0)
+            input_tokens += _billable_input(closing_usage)
             output_tokens += int(closing_usage.get("completion_tokens") or 0)
             last_input_tokens = int(closing_usage.get("prompt_tokens") or last_input_tokens)
 
@@ -454,6 +465,35 @@ def _usage(piece: str) -> dict[str, Any]:
     except ValueError:  # pragma: no cover - defensivo
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _billable_input(usage: dict[str, Any]) -> int:
+    """Entrada que de verdad se paga: la que NO vino de caché.
+
+    ``prompt_tokens`` es el prefijo entero que vio el modelo, y en este agente
+    el prefijo —prompt de sistema más 32 definiciones de herramientas, del
+    orden de 7.000 tokens— viaja en **cada** una de las hasta 12 pasadas del
+    bucle. Contarlo a precio pleno doce veces es lo que hacía que la cuota
+    mensual se agotara en unos pocos turnos de trabajo real, muy lejos de los
+    "300-500 turnos" que promete el defecto de 500.000.
+
+    Anthropic cobra los tokens leídos de caché a una décima parte. Restarlos
+    no es una estimación: ``usage_fields()`` extrae ``cache_read_input_tokens``
+    del proveedor —con respaldo en ``prompt_tokens_details.cached_tokens``, que
+    es como Anthropic lo reporta a veces— y el dato ya viajaba hasta aquí sin
+    que nadie lo mirase.
+
+    **Esto no cambia el medidor de ventana de contexto.** Lo que llena la
+    ventana es el prefijo entero, venga de caché o no, así que ese sigue
+    usando ``prompt_tokens`` bruto. Son dos preguntas distintas y tienen dos
+    números distintos a propósito.
+    """
+    prompt = int(usage.get("prompt_tokens") or 0)
+    cached = int(usage.get("cache_read_input_tokens") or 0)
+    # ``max(0, …)`` porque un proveedor que reporte la caché por separado en
+    # vez de incluirla en ``prompt_tokens`` daría negativo, y una cuota que
+    # baja al gastar es peor que una que sobreestima.
+    return max(0, prompt - cached)
 
 
 def _reproducible(assistant: dict[str, Any]) -> dict[str, Any]:
@@ -575,7 +615,19 @@ async def _run_tool(
         "role": "tool",
         "tool_call_id": call_id,
         "name": wire_name or to_wire(name),
-        "content": result.content,
+        # El cuerpo entra VALLADO, y este es el único sitio del runtime donde
+        # un resultado de herramienta se convierte en contexto del modelo —
+        # por eso el vallado vive aquí y no en el ejecutor: ``ToolOutcome
+        # .content`` es el dato estructurado, que el driver de evals y media
+        # docena de tests parsean con ``json.loads``. Envolverlo en origen
+        # rompería a sus consumidores legítimos; envolverlo aquí no toca a
+        # ninguno.
+        #
+        # El preámbulo no viaja con cada resultado: vive una vez en
+        # ``<datos_de_terceros>`` del prompt de sistema, dentro del prefijo
+        # que sí se cachea. Lo que impide que un documento se salga de su
+        # caja es la neutralización de etiquetas que hace ``fence_only``.
+        "content": fence_only(result.content, tag=TAG_TOOL_RESULT),
     }
 
 
@@ -832,7 +884,7 @@ async def _answer_after_action(
         "answer": answer,
         "model": model,
         "last_input_tokens": input_tokens,
-        "total_input_tokens": int(state.get("total_input_tokens") or 0) + input_tokens,
+        "total_input_tokens": int(state.get("total_input_tokens") or 0) + _billable_input(usage),
         "total_output_tokens": int(state.get("total_output_tokens") or 0) + output_tokens,
     }
 
@@ -867,7 +919,7 @@ async def _answer_without_tools(
         "answer": answer,
         "model": model,
         "last_input_tokens": input_tokens,
-        "total_input_tokens": state.get("total_input_tokens", 0) + input_tokens,
+        "total_input_tokens": state.get("total_input_tokens", 0) + _billable_input(usage),
         "total_output_tokens": state.get("total_output_tokens", 0) + output_tokens,
     }
 

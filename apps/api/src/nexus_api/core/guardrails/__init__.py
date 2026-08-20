@@ -35,6 +35,7 @@ from nexus_api.core.guardrails.untrusted import (
     TAG_TOOL_RESULT,
     UNTRUSTED_PREAMBLE,
     fence,
+    fence_only,
     fenced_block,
     neutralise_tags,
 )
@@ -48,6 +49,7 @@ __all__ = [
     "UNTRUSTED_PREAMBLE",
     "contains_pii",
     "fence",
+    "fence_only",
     "fenced_block",
     "mask_email",
     "mask_person_name",

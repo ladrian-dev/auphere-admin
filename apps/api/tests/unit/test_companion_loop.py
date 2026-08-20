@@ -26,6 +26,8 @@ from nexus_worker.runtime.companion.graph import MAX_MODEL_STEPS
 from nexus_worker.runtime.companion.grounding import factual_claims, is_unsupported
 from nexus_worker.runtime.llm import InMemoryProvider, ToolCall
 
+from nexus_api.core.guardrails.untrusted import TAG_TOOL_RESULT
+
 pytestmark = pytest.mark.unit
 
 MODEL = "anthropic/claude-sonnet-4-6"
@@ -198,7 +200,14 @@ async def test_the_assistant_message_and_the_tool_result_go_back_to_the_provider
     assert assistant["tool_calls"][0]["function"]["name"] == "console.get_usage"
     tool_msg = next(m for m in second if m["role"] == "tool")
     assert tool_msg["tool_call_id"] == "t1"
-    assert json.loads(tool_msg["content"])["tokens"] == 1200
+    # El cuerpo viaja VALLADO —es texto que el cliente del partner controla—
+    # y el dato sigue entero dentro de su caja. Lo segundo importa tanto como
+    # lo primero: un vallado que rompiera la lectura dejaría al modelo
+    # respondiendo a ciegas. La garantía completa vive en
+    # ``tests/isolation/test_companion_untrusted_fencing.py``.
+    assert tool_msg["content"].startswith(f"<{TAG_TOOL_RESULT}>")
+    assert tool_msg["content"].endswith(f"</{TAG_TOOL_RESULT}>")
+    assert '"tokens": 1200' in tool_msg["content"]
 
 
 async def test_the_thinking_blocks_survive_the_notes_and_the_closing_step() -> None:

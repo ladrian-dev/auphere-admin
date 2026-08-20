@@ -35,6 +35,8 @@ no la otra, ese test señala cuál.
 
 from __future__ import annotations
 
+import re
+
 #: La instrucción que acompaña a todo bloque vallado. En el idioma del
 #: prompt del Companion (español), porque va pegada al contenido y un
 #: cambio de idioma a mitad del contexto es una costura que el modelo nota.
@@ -60,15 +62,41 @@ TAG_CLIENT_NAME = "client_name"
 def neutralise_tags(text: str, tag: str) -> str:
     """Impide que ``text`` cierre o abra el delimitador ``<tag>``.
 
-    Mismo tratamiento que ``console_context._strip_tags``, parametrizado:
-    el cierre se **borra** y la apertura se **desactiva** cambiando el guion
+    El cierre se **borra** y la apertura se **desactiva** cambiando el guion
     bajo por un guion, de modo que el texto sigue siendo legible para el
     modelo pero deja de ser marcado nuestro.
 
+    Por qué no basta ``str.replace``
+    --------------------------------
+    La primera versión de esto comparaba la etiqueta **literal**, y eso deja
+    seis evasiones triviales que se comprobaron una por una: ``</TOOL_RESULT>``,
+    ``</Tool_Result>``, ``</tool_result >``, ``</ tool_result>``, y las
+    variantes con salto de línea o tabulador dentro. Ninguna coincidía con el
+    literal, y **todas** las lee un modelo como cierre de etiqueta: los LLM son
+    deliberadamente tolerantes con el XML mal formado, que es justo lo que un
+    atacante necesita.
+
+    De ahí la expresión regular: insensible a mayúsculas y tolerante con el
+    espacio en blanco, en las dos direcciones. La segunda pasada barre además
+    los restos con barra (``</tag`` sin cerrar), que sobreviven a la primera y
+    que un modelo sigue leyendo como intención de cierre.
+
     No es un saneador de HTML y no pretende serlo: el objetivo es que un
-    documento no pueda salirse de su caja, no que no contenga ángulos.
+    documento no pueda salirse de su caja, no que no contenga ángulos. Y sigue
+    siendo la capa débil — la barrera de verdad es R3.
     """
-    return text.replace(f"</{tag}>", "").replace(f"<{tag}", f"<{tag.replace('_', '-')}")
+    safe = tag.replace("_", "-")
+    escaped = re.escape(tag)
+    # 1) Cierres completos: fuera.
+    text = re.sub(rf"<\s*/\s*{escaped}\s*>", "", text, flags=re.IGNORECASE)
+    # 2) Cualquier resto que abra o intente cerrar: desactivado. Se conserva
+    #    la barra para que el texto siga leyéndose igual de natural.
+    return re.sub(
+        rf"<\s*(/?)\s*{escaped}",
+        lambda m: f"<{m.group(1)}{safe}",
+        text,
+        flags=re.IGNORECASE,
+    )
 
 
 def fence(text: str, *, tag: str, title: str | None = None) -> str:
@@ -89,6 +117,30 @@ def fence(text: str, *, tag: str, title: str | None = None) -> str:
     else:
         open_tag = f"<{tag}>"
     return f"{open_tag}\n{body}\n</{tag}>"
+
+
+def fence_only(text: str, *, tag: str, title: str | None = None) -> str:
+    """:func:`fence` para cuando el preámbulo ya está en el prompt de sistema.
+
+    Existe por una razón de coste y una de caché. :data:`UNTRUSTED_PREAMBLE`
+    son unos 90 tokens; el Companion mete hasta 25 resultados de herramienta
+    en un turno, así que repetirlo son ~2.250 tokens por turno pagados para
+    decir lo mismo veinticinco veces. Y el prefijo estable —prompt de sistema
+    más definiciones de herramientas— es lo único que Anthropic cachea con
+    descuento: la advertencia vive ahí una vez, y cada resultado viaja solo
+    con su etiqueta.
+
+    El vallado en sí no se debilita. Lo que evita que un documento se salga de
+    su caja es :func:`neutralise_tags`, que sigue corriendo igual — la
+    literatura sobre *spotlighting* (Hines et al., 2024) mide que el
+    delimitador solo baja la tasa de éxito a la mitad, y que lo que lo rompe
+    es un atacante que inserta su propio cierre. Eso es exactamente lo que se
+    neutraliza aquí, y la barrera de verdad sigue siendo R3.
+
+    Úsala **solo** donde el preámbulo esté garantizado aguas arriba. Si no lo
+    está, :func:`fenced_block` es la correcta.
+    """
+    return fence(text, tag=tag, title=title)
 
 
 def fenced_block(
@@ -116,6 +168,7 @@ __all__ = [
     "TAG_TOOL_RESULT",
     "UNTRUSTED_PREAMBLE",
     "fence",
+    "fence_only",
     "fenced_block",
     "neutralise_tags",
 ]

@@ -57,10 +57,19 @@ def render_operating_policy_block(policies: dict[str, Any] | None) -> str:
 
 
 def _strip_tags(text: str) -> str:
-    """Neutralise a document that tries to close/open our delimiter tags."""
-    return text.replace("</knowledge_document>", "").replace(
-        "<knowledge_document", "<knowledge-document"
-    )
+    """Neutralise a document that tries to close/open our delimiter tags.
+
+    Delegates instead of duplicating. The literal ``str.replace`` this used to
+    do missed six trivial escapes —upper case, mixed case, and stray
+    whitespace inside the tag— and a model reads every one of them as a
+    closing tag. Two copies of a guardrail is one copy that silently rots:
+    ``neutralise_tags`` is now the only implementation, and the parity test in
+    ``tests/evals/companion/test_guardrails_untrusted.py`` holds by
+    construction rather than by discipline.
+    """
+    from nexus_api.core.guardrails.untrusted import TAG_KNOWLEDGE, neutralise_tags
+
+    return neutralise_tags(text, TAG_KNOWLEDGE)
 
 
 def render_knowledge_block(docs: list[tuple[str, str]], *, cap: int = KNOWLEDGE_CHAR_CAP) -> str:

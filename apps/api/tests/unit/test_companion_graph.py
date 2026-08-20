@@ -198,6 +198,55 @@ async def test_the_context_meter_is_input_tokens_over_max_context() -> None:
     assert ctx["compacted"] is False
 
 
+async def test_the_cache_is_not_billed_but_still_fills_the_window() -> None:
+    """El gasto descuenta la caché; la ventana no. Dos números a propósito.
+
+    El prefijo del Companion —prompt de sistema más 32 definiciones de
+    herramientas— ronda los 7.000 tokens y viaja en cada una de las hasta 12
+    pasadas del bucle. Anthropic lo cobra a una décima parte cuando viene de
+    caché, así que contarlo entero doce veces agotaba la cuota mensual en unos
+    pocos turnos de trabajo real.
+
+    Pero la ventana de contexto sí se llena con el prefijo entero, venga de
+    donde venga: si el medidor descontara la caché, diría que queda sitio
+    donde no queda. De ahí que ``cost.updated`` y ``context.updated`` tengan
+    que discrepar, y que discrepen exactamente en los tokens cacheados.
+    """
+    provider = InMemoryProvider(
+        responder=lambda c: "ok",
+        stream_usage={
+            "prompt_tokens": 10_000,
+            "completion_tokens": 100,
+            "cache_read_input_tokens": 9_000,
+        },
+    )
+    events = await _run(provider)
+
+    cost = next(d for n, d in events if n == "cost.updated")
+    assert cost["input_tokens"] == 1_000, "el gasto tiene que descontar la caché"
+    assert cost["output_tokens"] == 100
+
+    ctx = next(d for n, d in events if n == "context.updated")
+    assert ctx["input_tokens"] == 10_000, "la ventana la llena el prefijo entero"
+
+
+async def test_a_provider_that_reports_cache_apart_never_bills_negative() -> None:
+    """Si un proveedor reportara la caché fuera de ``prompt_tokens``, la resta
+    daría negativo. Una cuota que baja al gastar es peor que una que
+    sobreestima, así que el suelo es cero."""
+    provider = InMemoryProvider(
+        responder=lambda c: "ok",
+        stream_usage={
+            "prompt_tokens": 500,
+            "completion_tokens": 10,
+            "cache_read_input_tokens": 4_000,
+        },
+    )
+    events = await _run(provider)
+    cost = next(d for n, d in events if n == "cost.updated")
+    assert cost["input_tokens"] == 0
+
+
 async def test_an_unknown_model_emits_no_context_bar_at_all() -> None:
     """Una barra al 0% sería peor que ninguna barra: la gente la creería."""
     provider = InMemoryProvider(responder=lambda c: "ok")

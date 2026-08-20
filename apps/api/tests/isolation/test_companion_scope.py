@@ -196,3 +196,54 @@ async def test_messages_inherit_the_isolation_of_their_thread(client, console_wo
             )
         ).all()
     assert rows == []
+
+
+# ── el invariante del que depende toda la dimensión 2 ──────────────────
+
+
+async def test_cross_partner_isolation_rests_on_a_declared_invariant(db_session) -> None:
+    """La RLS del Companion filtra por ``principal_id`` **y nada más**.
+
+    Eso aísla bien hoy, pero no por sí solo: aísla porque ``principal_id`` es
+    el ``user_id`` a secas y la migración 0080 impone ``UNIQUE (user_id)`` en
+    ``partner_memberships`` — "en v1 un usuario pertenece a exactamente un
+    partner". Las dos piezas están a seis migraciones de distancia y nada las
+    ata.
+
+    El día que se admita multi-membresía —lo natural para agencias y
+    revendedores, y lo que el plan de la app v2 ya contempla— los hilos de un
+    partner aparecerían en la sesión del otro **sin que nada falle ni avise**:
+    misma persona, mismo ``principal_id``, política satisfecha. La tabla ya
+    guarda ``partner_id``; simplemente no se usa para filtrar.
+
+    Este test es el hilo que ata las dos piezas. Acepta cualquiera de las dos
+    defensas —el índice único, o una política que mire el partner— y solo
+    falla si desaparecen las dos. Así no estorba a quien haga el cambio bien:
+    quien añada multi-membresía y arregle la política a la vez lo verá seguir
+    en verde.
+    """
+    unique_user = await db_session.scalar(
+        sa.text("SELECT count(*) FROM pg_indexes WHERE indexname = :name"),
+        {"name": "uq_partner_memberships_user"},
+    )
+
+    # ``qual`` es el USING de la política, tal y como Postgres lo reescribe.
+    quals = (
+        await db_session.execute(
+            sa.text(
+                "SELECT qual FROM pg_policies "
+                "WHERE schemaname = 'companion' AND tablename = 'threads'"
+            )
+        )
+    ).scalars().all()
+    policy_scopes_partner = any("partner_id" in (q or "") for q in quals)
+
+    assert unique_user == 1 or policy_scopes_partner, (
+        "El aislamiento entre partners del Companion se quedó sin suelo.\n"
+        "La política RLS de companion.threads filtra solo por principal_id, y el "
+        "índice único uq_partner_memberships_user ya no está — así que un usuario "
+        "puede pertenecer a dos partners y ver en uno los hilos que creó en el otro.\n"
+        "Arréglalo por cualquiera de los dos lados: devuelve el índice único, o "
+        "añade partner_id a la política (USING y WITH CHECK) de las cuatro tablas "
+        "del esquema companion."
+    )
