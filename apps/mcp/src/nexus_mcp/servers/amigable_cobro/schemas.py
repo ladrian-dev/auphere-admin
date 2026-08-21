@@ -56,9 +56,7 @@ class ListOverdueOutput(OutputModel):
             "sin filtrar por saldo). No es dinero."
         )
     )
-    page_count: int = Field(
-        description="Cuentas en ESTA página después de aplicar filtros."
-    )
+    page_count: int = Field(description="Cuentas en ESTA página después de aplicar filtros.")
     page_balance: float = Field(
         description=(
             "Suma de saldos de ESTA página (dinero). Positivo = se debe; "
