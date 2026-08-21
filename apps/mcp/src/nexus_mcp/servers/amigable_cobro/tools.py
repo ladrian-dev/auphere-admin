@@ -361,11 +361,13 @@ class ListOverdue(_AmigableTool):
         current = int(meta.get("current_page") or payload.page)
         last = int(meta.get("last_page") or current)
         return ListOverdueOutput(
-            items=records,
             total=int(meta.get("total") or len(records)),
+            page_count=len(records),
+            page_balance=round(sum(r.balance for r in records), 2),
             current_page=current,
             last_page=last,
             has_more=current < last,
+            items=records,
         )
 
 

@@ -222,6 +222,19 @@ async def test_list_overdue_status_filter(tenant_ctx: Any) -> None:
     assert {d.id for d in out.items} == {2}
 
 
+async def test_list_overdue_page_totals_survive_before_items(tenant_ctx: Any) -> None:
+    # Paid account is filtered out; money + count must still be on the
+    # scalars that the 8k truncation cannot cut if they lead the JSON.
+    _use([[_account(id=1, total_amount=100, paid_amount=40), _account(id=2, paid_amount=100)]])
+    out = await ListOverdue().run(ListOverdueInput(page=1, only_with_balance=True))
+    assert out.page_count == 1
+    assert out.page_balance == 60.0
+    keys = list(out.model_dump())
+    assert keys[0] == "total"
+    assert keys[-1] == "items"
+    assert keys.index("page_balance") < keys.index("items")
+
+
 # ── get_debtor_by_phone (admin tool) ─────────────────────────────────────
 
 

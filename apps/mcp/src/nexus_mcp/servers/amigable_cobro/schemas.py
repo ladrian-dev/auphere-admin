@@ -47,11 +47,28 @@ class ListOverdueInput(InputModel):
 
 
 class ListOverdueOutput(OutputModel):
-    items: list[DebtRecord] = Field(description="Cuentas por cobrar de esta página.")
-    total: int = Field(description="Total de cuentas reportadas por el negocio.")
+    # Scalars FIRST. The worker truncates tool JSON at 8_000 chars
+    # (``_TOOL_RESULT_CHAR_CAP``); if ``items`` lead, ``total`` never
+    # reaches the model on a fat page.
+    total: int = Field(
+        description=(
+            "Cuentas que reporta el negocio en total (todas las páginas, "
+            "sin filtrar por saldo). No es dinero."
+        )
+    )
+    page_count: int = Field(
+        description="Cuentas en ESTA página después de aplicar filtros."
+    )
+    page_balance: float = Field(
+        description=(
+            "Suma de saldos de ESTA página (dinero). Positivo = se debe; "
+            "negativo = a favor del cliente."
+        )
+    )
     current_page: int = Field(description="Página actual.")
     last_page: int = Field(description="Última página disponible.")
     has_more: bool = Field(description="True si hay más páginas por consultar.")
+    items: list[DebtRecord] = Field(description="Cuentas por cobrar de esta página.")
 
 
 class GetDebtorByPhoneInput(InputModel):
