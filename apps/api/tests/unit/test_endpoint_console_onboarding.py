@@ -54,10 +54,16 @@ def test_describe_placeholders_barbershop_and_cobranza() -> None:
     assert all(barber[k].required for k in keys[:first_optional])
 
     cobranza = {p.key: p for p in describe_placeholders(load_seed_template("cobranza_v1"))}
-    bank = cobranza["policies.payment.transferencia.numero_cuenta"]
-    assert bank.required and bank.secret and bank.example is None
     phones = cobranza["policies.admin_access.admin_phones"]
     assert phones.required and phones.secret and phones.kind == "list"
+    # The vertical no longer carries the business's bank details. They used to
+    # be rendered straight into the system prompt, which meant (a) a seed
+    # shared by every Amigable Cobro client and (b) the placeholder examples
+    # reaching production verbatim — Muna's agent was quoting "Banesco …
+    # J-40123456-7" to admins as if it were real. Amigable Cobro does not
+    # store payment data, so there is nowhere legitimate to read it from and
+    # the agent now says so instead of guessing.
+    assert not any(k.startswith("policies.payment") for k in cobranza)
 
 
 async def test_list_seed_templates_has_no_prompt(client, console_world, db_session) -> None:

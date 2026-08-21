@@ -18,6 +18,7 @@ Graph API:
 
 from __future__ import annotations
 
+import re
 import uuid
 
 import pytest
@@ -147,18 +148,6 @@ def _auth(key: str) -> dict[str, str]:
 #: Every ``<<… pendiente>>`` default cobranza_v1 ships. Provisioning
 #: refuses to promote an agent that still carries any of them, so a
 #: realistic body fills them all.
-_PAYMENT_PLACEHOLDERS = {
-    "policies.payment.pago_movil.banco": "0134 - Banesco",
-    "policies.payment.pago_movil.telefono": "0424-4095716",
-    "policies.payment.pago_movil.cedula": "V-12.345.678",
-    "policies.payment.transferencia.banco": "Banesco",
-    "policies.payment.transferencia.numero_cuenta": "0134 0000 11 2222222222",
-    "policies.payment.transferencia.titular": "Bodegón El Ávila, C.A.",
-    "policies.payment.transferencia.cedula_rif": "J-40000000-1",
-    "policies.payment.binance.pay_id": "pagos@elavila.test",
-}
-
-
 def _provision_body(ref: str = "negocio-42") -> dict:
     return {
         "external_client_ref": ref,
@@ -168,7 +157,6 @@ def _provision_body(ref: str = "negocio-42") -> dict:
             "placeholders": {
                 "agent.name": "Mouna",
                 "policies.admin_access.admin_phones": ["+584244095716"],
-                **_PAYMENT_PLACEHOLDERS,
             }
         },
         "connector": {
@@ -277,22 +265,65 @@ async def test_provision_without_blueprint_stays_bare(client, db_session) -> Non
 
 
 async def test_provision_rejects_unfilled_business_data(client, db_session) -> None:
-    """A seed's own ``<<… pendiente>>`` defaults render fine — and would
-    put an agent in production quoting them as if they were the client's
-    real bank details. Provisioning must refuse and name what's missing."""
+    """A ``<<… pendiente>>`` marker renders fine — and would put an agent in
+    production quoting the placeholder as if it were the client's real data.
+    Provisioning must refuse and name what's missing.
+
+    (This used to leave a bank-detail placeholder unresolved. ``cobranza_v1``
+    no longer carries payment data at all — see
+    ``test_cobranza_seed_has_no_payment_data`` — so the marker now comes in
+    through a placeholder the caller controls, which is the invariant the
+    guard actually protects.)
+    """
     world = await _blueprint_partner(db_session)
     body = _provision_body()
-    body["agent"]["placeholders"].pop("policies.payment.transferencia.numero_cuenta")
+    body["agent"]["placeholders"]["agent.name"] = "<<nombre del agente — pendiente>>"
     r = await client.post("/v1/partners/clients", json=body, headers=_auth(world["key"]))
     assert r.status_code == 422, r.text
     detail = r.json()["detail"]
-    assert "transferencia número de cuenta" in detail
+    assert "nombre del agente" in detail
 
     tenant_id = await _mapped_tenant_id(db_session, world["partner_id"], "negocio-42")
     config = await db_session.scalar(
         sa.select(AgentConfig).where(AgentConfig.tenant_id == tenant_id)
     )
     assert config is None  # nothing promoted
+
+
+async def test_cobranza_seed_has_no_payment_data(client, db_session) -> None:
+    """The rendered agent must not carry the business's bank details.
+
+    They lived in the seed's ``policies.payment`` and were interpolated into
+    the system prompt. Two things were wrong with that: the seed is shared by
+    every Amigable Cobro client, and the fictional example values reached
+    production verbatim — Muna's live agent quoted "Banesco … J-40123456-7"
+    to admins as real. Amigable Cobro stores no payment data, so there is no
+    source of truth to read; the agent says it does not have them instead.
+    """
+    world = await _blueprint_partner(db_session)
+    r = await client.post(
+        "/v1/partners/clients", json=_provision_body(), headers=_auth(world["key"])
+    )
+    assert r.status_code == 200, r.text
+
+    tenant_id = await _mapped_tenant_id(db_session, world["partner_id"], "negocio-42")
+    config = await db_session.scalar(
+        sa.select(AgentConfig).where(AgentConfig.tenant_id == tenant_id)
+    )
+    assert config is not None
+    assert "payment" not in (config.policies or {})
+    prompt = config.system_prompt_rendered
+    # Look for the SHAPE of payment data, not the words: the prompt still
+    # names these instruments in order to refuse them.
+    assert "Banesco" not in prompt
+    assert not re.search(r"[JVEG]-\d{5,}", prompt), "a RIF/cédula reached the prompt"
+    assert not re.search(r"\b\d{4}[ -]?\d{4}[ -]?\d{2}[ -]?\d{10}\b", prompt), (
+        "a bank account number reached the prompt"
+    )
+    assert "<<" not in prompt, "an unresolved placeholder reached the prompt"
+    # The prompt is wrapped, so compare against a whitespace-collapsed copy.
+    flat = " ".join(prompt.lower().split())
+    assert "no tengo los datos de pago del negocio cargados" in flat
 
 
 async def test_provision_rejects_empty_admin_whitelist(client, db_session) -> None:

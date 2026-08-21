@@ -34,6 +34,8 @@ ALL_EXPECTED = {
     "grade-consumer",
     "platform-watcher",
     "reminder-cron",
+    # ADR-035 — barrido diario de cobranza a hora local del tenant
+    "cobranza-reminder-cron",
     "agent-sales-poll-cron",
     "partner-receipt-cron",
     "isolation-event-drainer",

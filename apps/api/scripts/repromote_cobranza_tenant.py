@@ -7,11 +7,20 @@ Why this exists: tenants seeded before ``billing.find_client`` /
 vertical stayed on an older config that lacks those tools. This stages a
 fresh version from the current template and promotes it.
 
-Data safety: the tenant's REAL ``admin_access.admin_phones`` and
-``policies.payment.*`` are read from the CURRENT active config and fed back
-in as placeholders, so the whitelist and bank data are preserved verbatim.
-The script ASSERTS the whitelist survived before promoting — it would
-rather abort than silently drop the admins the gate depends on.
+Data safety: the tenant's REAL ``admin_access.admin_phones`` are read from
+the CURRENT active config and fed back in as placeholders, so the whitelist
+is preserved verbatim. The script ASSERTS it survived before promoting — it
+would rather abort than silently drop the admins the gate depends on.
+
+It deliberately does NOT carry ``policies.payment.*`` forward. ADR-035
+removed payment data from the vertical: it was rendered into the shared
+seed's prompt, so the placeholder examples reached production as if they
+were the client's real bank details, and every future Amigable Cobro client
+would have inherited the same ones. Re-promoting is how a tenant sheds them.
+
+``policies.reminders`` from the current config IS carried forward when
+present, so re-promoting never silently re-enables (or disables) a tenant's
+daily sweep.
 
 Usage (dry-run by default — prints the diff, writes NOTHING):
 
@@ -52,24 +61,19 @@ from nexus_api.services.templating.seed_templates import (
 SEED = "cobranza_v1"
 
 
-def _flatten_payment(payment: dict[str, Any]) -> dict[str, Any]:
-    """``{"pago_movil": {"banco": "x"}}`` → ``{"policies.payment.pago_movil.banco": "x"}``."""
-    out: dict[str, Any] = {}
-    for method, fields in (payment or {}).items():
-        if isinstance(fields, dict):
-            for field, val in fields.items():
-                out[f"policies.payment.{method}.{field}"] = val
-    return out
-
-
 def _placeholders_from_current(tenant: Tenant, policies: dict[str, Any]) -> dict[str, Any]:
+    """Only the data the tenant genuinely owns. ``policies.payment.*`` is NOT
+    among it any more — see the module docstring."""
     access = (policies or {}).get("admin_access") or {}
     ph: dict[str, Any] = {
         "tenant.name": tenant.name,
         "tenant.timezone": tenant.timezone,
         "policies.admin_access.admin_phones": list(access.get("admin_phones") or []),
     }
-    ph.update(_flatten_payment((policies or {}).get("payment") or {}))
+    reminders = (policies or {}).get("reminders")
+    if isinstance(reminders, dict):
+        for field, val in reminders.items():
+            ph[f"policies.reminders.{field}"] = val
     return ph
 
 

@@ -32,10 +32,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+import sqlalchemy as sa
 import structlog
 from nexus_api.core.errors import IsolationViolation
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models import Tenant
 from nexus_api.repositories import AgentConfigRepository
 
 from nexus_worker.runtime.model_resolver import ModelBinding, load_bindings
@@ -66,6 +68,20 @@ class AgentBundle:
     # + the mcp-client beta header entirely. The auth token is resolved
     # per-turn from tenant_credentials by ``credential_key``.
     runtime_mcp_servers: tuple[dict[str, Any], ...] = ()
+
+    # IANA timezone of the business (``tenants.timezone``). Carried on the
+    # bundle — not on the state — because EVERY entry point (dispatcher, QA
+    # playground, eval runner, owner fanout) already loads a bundle, while
+    # the state dict is built inline in half a dozen places. It is what
+    # ``_build_handler_messages`` renders "today" with: without it the model
+    # has no idea what day it is and falls back to its training prior, which
+    # in production meant an agent proposing 2025 dates in August 2026 and a
+    # real account created a year overdue (Muna, 2026-08-19).
+    #
+    # Cache note: the loader caches per tenant with explicit invalidation, so
+    # ``PATCH /admin/tenants/{id}`` publishes on the promote channel when the
+    # timezone changes.
+    timezone: str = "UTC"
 
     # Per-config runtime feature flags (migration 0035). Travel with the
     # config through STAGED → ACTIVE so activation is auditable and
@@ -169,8 +185,12 @@ class AgentLoader:
             # Misma sesión scopeada: la RLS de ``tenant_model_bindings``
             # es lo que impide ver la elección de otro tenant.
             model_bindings = await load_bindings(session, tenant_id)
+            tenant_tz = await session.scalar(
+                sa.select(Tenant.timezone).where(Tenant.id == tenant_id)
+            )
             return AgentBundle(
                 tenant_id=tenant_id,
+                timezone=str(tenant_tz or "UTC"),
                 version=cfg.version,
                 version_id=cfg.id,
                 system_prompt=cfg.system_prompt_rendered,

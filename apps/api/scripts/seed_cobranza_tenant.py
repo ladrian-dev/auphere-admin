@@ -8,7 +8,6 @@ var, so onboarding a new Amigable Cobro client needs **no code change**:
     NEXUS_COBRANZA_TIMEZONE        # e.g. "America/Caracas"
     NEXUS_COBRANZA_MARKET          # e.g. "VE"
     NEXUS_COBRANZA_ADMIN_PHONES    # comma-separated E.164 admin whitelist
-    NEXUS_COBRANZA_PAYMENT_JSON    # {"policies.payment.pago_movil.banco": "...", ...}
 
 (The legacy ``NEXUS_MOUNA_*`` names still work for the first tenant.)
 
@@ -20,8 +19,13 @@ Full onboarding checklist for a NEW business:
  4. Approve the two reminder templates in THAT line's WABA
     (``recordatorio_pago_proximo`` / ``recordatorio_pago_vencido``,
     category UTILITY, named vars: cliente, negocio, monto, fecha).
- 5. Done — the cobranza due-date sweep picks the tenant up automatically and
-    starts sending reminders; ``{{negocio}}`` is filled with the tenant name.
+ 5. Done — the daily cobranza sweep (ADR-035) picks the tenant up on its next
+    pass and sends reminders at ``policies.reminders.hour_local`` in the
+    business's timezone; ``{{negocio}}`` is filled with the tenant name.
+
+    Before switching a NEGLECTED portfolio on, look at how many reminders the
+    first sweep would send. Everything 7+ days overdue and inside
+    ``max_overdue_days`` goes out at once, capped by ``max_per_run``.
 
 Idempotent: re-running picks up the existing tenant by ``slug`` and only
 creates the agent_config if there isn't an ACTIVE one yet.
@@ -32,9 +36,11 @@ Phase A scope (this script):
     notification.*/escalate.* tools. The billing.* tools (Mouna API) land
     in Phase B and get added to a new config version then.
 
-The bank details below are PLACEHOLDERS until Mouna provides the real
-account. They live in ``policies.payment.*`` so the rendered system_prompt
-and the runtime both read them from one place.
+This script does NOT seed payment/bank data, and the vertical no longer has
+a place for it (ADR-035). It used to ship hardcoded PLACEHOLDER bank details
+as a default, which is how "Banesco / Mouna, C.A. / J-40123456-7" ended up
+in the live production prompt being quoted to admins as real. Amigable Cobro
+does not store payment data, so there is no source of truth to seed from.
 
 Usage:
 
@@ -45,7 +51,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sys
 import uuid
@@ -74,40 +79,6 @@ MOUNA_NAME = os.environ.get("NEXUS_COBRANZA_NAME") or os.environ.get("NEXUS_MOUN
 MOUNA_TIMEZONE = os.environ.get("NEXUS_COBRANZA_TIMEZONE") or os.environ.get("NEXUS_MOUNA_TIMEZONE", "America/Caracas")
 MOUNA_MARKET = os.environ.get("NEXUS_COBRANZA_MARKET") or os.environ.get("NEXUS_MOUNA_MARKET", "VE")
 
-# Datos bancarios de Mouna — PLACEHOLDER hasta tener los reales.
-# Overridean policies.payment.* del seed cobranza_v1.
-# Datos de pago reales de Mouna — overridean policies.payment.<metodo>.<campo>
-# del seed cobranza_v1. Rellenar cuando Mouna los provea; lo vacío usa el
-# default placeholder del YAML. Claves esperadas (ver cobranza_v1.yaml):
-#   pago_movil.{banco,telefono,cedula}
-#   transferencia.{banco,numero_cuenta,tipo,titular,cedula_rif}
-#   binance.{pay_id}
-#   zelle.{email,titular,banco}
-# NOTA: datos de EJEMPLO (Venezuela). Reemplazar por los reales de Mouna.
-_DEFAULT_PAYMENT_DATA: dict[str, str] = {
-    # Pago móvil
-    "policies.payment.pago_movil.banco": "0134 - Banesco",
-    "policies.payment.pago_movil.telefono": "0414-1234567",
-    "policies.payment.pago_movil.cedula": "V-12.345.678",
-    # Transferencia bancaria
-    "policies.payment.transferencia.banco": "Banesco",
-    "policies.payment.transferencia.numero_cuenta": "0134 0123 45 6789012345",
-    "policies.payment.transferencia.tipo": "corriente",
-    "policies.payment.transferencia.titular": "Mouna, C.A.",
-    "policies.payment.transferencia.cedula_rif": "J-40123456-7",
-    # Binance
-    "policies.payment.binance.pay_id": "pagos.mouna@gmail.com",
-}
-
-
-def _env_json(name: str, default: dict[str, str]) -> dict[str, str]:
-    """Per-business payment data as a JSON env var (keys = policy paths)."""
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
-    return {str(k): str(v) for k, v in json.loads(raw).items()}
-
-
 def _env_list(name: str, default: list[str]) -> list[str]:
     raw = os.environ.get(name, "").strip()
     if not raw:
@@ -115,7 +86,6 @@ def _env_list(name: str, default: list[str]) -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
-PAYMENT_DATA: dict[str, str] = _env_json("NEXUS_COBRANZA_PAYMENT_JSON", _DEFAULT_PAYMENT_DATA)
 
 # Teléfonos ADMIN de Mouna (E.164) — los ÚNICOS números a los que el
 # agente responde (gate en el dispatcher: policies.admin_access). Todo
@@ -147,7 +117,6 @@ async def _amain() -> int:
         placeholders={
             "tenant.name": MOUNA_NAME,
             "tenant.timezone": MOUNA_TIMEZONE,
-            **PAYMENT_DATA,
             # Whitelist admin — se mergea en policies.admin_access.admin_phones.
             "policies.admin_access.admin_phones": ADMIN_PHONES,
         },

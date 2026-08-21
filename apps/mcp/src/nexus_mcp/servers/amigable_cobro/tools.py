@@ -608,8 +608,7 @@ class CreateAccount(_AmigableWriteTool):
             fields["client_phone"] = payload.client_phone
         if payload.client_document:
             fields["client_document"] = payload.client_document
-        if payload.due_date:
-            fields["due_date"] = payload.due_date
+        fields["due_date"] = payload.due_date
         raw = await client.create_cuenta(fields)
         return self._shape(raw, "Cuenta creada")
 
@@ -699,12 +698,14 @@ async def _tenant_name(tenant_id: uuid.UUID) -> str:
 class SendReminders(_AmigableTool):
     name = "billing.send_reminders"
     description = (
-        "Envía los recordatorios de vencimiento de pago a los DEUDORES del negocio "
-        "(faltan 3 días, vence hoy, o 7 días vencido). Es una acción bajo demanda: "
-        "úsala SOLO cuando un admin te pida explícitamente enviar los recordatorios, "
-        "y llama con confirm=true únicamente después de que confirme. NUNCA la "
-        "ejecutes por iniciativa propia ni de forma programada. Es idempotente: si un "
-        "recordatorio ya se envió hoy para una cuenta/etapa, no se reenvía."
+        "Envía AHORA los recordatorios de vencimiento a los DEUDORES del negocio "
+        "(vence hoy, vence en 1-3 días, o lleva 7+ días vencida). El sistema ya hace "
+        "este barrido solo una vez al día; esta herramienta es el adelanto manual, "
+        "para cuando el admin no quiere esperar al barrido. Úsala SOLO si un admin te "
+        "lo pide explícitamente, y con confirm=true únicamente después de que "
+        "confirme. Es idempotente: un recordatorio ya enviado para esa cuenta, etapa "
+        "y fecha de vencimiento no se reenvía, así que no duplica lo que ya mandó el "
+        "barrido automático."
     )
     input_model = SendRemindersInput
     output_model = SendRemindersOutput
@@ -727,13 +728,25 @@ class SendReminders(_AmigableTool):
         result = await send_due_reminders_for_tenant(tenant_id, tenant_name)
         recipients = [ReminderRecipient(**r) for r in result.get("recipients", [])]
         queued = int(result.get("queued") or 0)
+        deferred = int(result.get("deferred") or 0)
         status = str(result.get("status") or "ok")
         if status == "ok":
             message = f"Encolé {queued} recordatorio(s) de vencimiento."
         else:
             message = _REMINDER_STATUS_MESSAGE.get(status, "No se enviaron recordatorios.")
+        if deferred:
+            # Say it out loud. A cap that goes unmentioned reads to the admin
+            # as "that was everybody".
+            message += (
+                f" Quedaron {deferred} fuera por el tope de este envío; "
+                "salen en el barrido siguiente."
+            )
         return SendRemindersOutput(
-            status=status, queued=queued, recipients=recipients, message=message
+            status=status,
+            queued=queued,
+            deferred=deferred,
+            recipients=recipients,
+            message=message,
         )
 
 

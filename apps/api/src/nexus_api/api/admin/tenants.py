@@ -250,6 +250,23 @@ async def update_tenant(
         tenant.market = payload["market"]
     if "timezone" in payload:
         tenant.timezone = payload["timezone"]
+        # The worker caches the tenant's timezone on the AgentBundle (it is
+        # what renders "today" into every turn) and that cache is invalidated
+        # only by the promote channel. Without this publish the agent would
+        # keep resolving "hoy" in the OLD timezone until the next promote or
+        # restart — silently, which is the failure mode this whole change
+        # exists to remove.
+        from nexus_api.api.admin.agent_configs import PROMOTE_CHANNEL
+        from nexus_api.core.redis_client import get_redis
+
+        try:
+            await get_redis().publish(PROMOTE_CHANNEL, str(tenant_id))
+        except Exception as exc:  # stale-cache risk only, never fail the write
+            log.warning(
+                "tenant.timezone_invalidate_failed",
+                tenant_id=str(tenant_id),
+                error=str(exc),
+            )
     if "owner_email" in payload:
         tenant.owner_email = payload["owner_email"]
     if "owner_phone" in payload:

@@ -308,7 +308,7 @@ async def test_apply_discount_batch(tenant_ctx: Any) -> None:
 async def test_create_account_returns_new_record(tenant_ctx: Any) -> None:
     _use([[]])
     out = await CreateAccount().run(
-        CreateAccountInput(client_name="Ana Prueba", total_amount=120.0)
+        CreateAccountInput(client_name="Ana Prueba", total_amount=120.0, due_date="2026-09-01")
     )
     assert out.ok is True
     assert out.account is not None and out.account.id == 99
@@ -335,7 +335,12 @@ async def test_add_charge_reads_fresh_and_sums(tenant_ctx: Any) -> None:
 async def test_create_account_blocks_duplicate_by_phone(tenant_ctx: Any) -> None:
     c = _use([[_account(id=7, client_name="Leo Morales", client_phone="+584241234567")]])
     out = await CreateAccount().run(
-        CreateAccountInput(client_name="Otro Nombre", total_amount=50.0, client_phone="04241234567")
+        CreateAccountInput(
+            client_name="Otro Nombre",
+            total_amount=50.0,
+            client_phone="04241234567",
+            due_date="2026-09-01",
+        )
     )
     assert out.ok is False
     assert "duplicado" in out.message.lower()
@@ -348,7 +353,11 @@ async def test_create_account_force_bypasses_dedup(tenant_ctx: Any) -> None:
     c = _use([[_account(id=7, client_phone="+584241234567")]])
     out = await CreateAccount().run(
         CreateAccountInput(
-            client_name="Leo", total_amount=50.0, client_phone="04241234567", force=True
+            client_name="Leo",
+            total_amount=50.0,
+            client_phone="04241234567",
+            due_date="2026-09-01",
+            force=True,
         )
     )
     assert out.ok is True
@@ -374,3 +383,21 @@ async def test_find_client_by_fuzzy_name(tenant_ctx: Any) -> None:
 )
 def test_name_matches(a: str, b: str, expected: bool) -> None:
     assert _name_matches(a, b) is expected
+
+
+# ── due_date is not optional ─────────────────────────────────────────────
+#
+# The Amigable Cobro API rejects a create without it
+# (``{'due_date': ['The due date field is required.']}``). While the schema
+# declared it optional the tool fired anyway, failed, and the agent then
+# invented a date to retry with — which on 2026-08-19 put a real account a
+# year in the past. Making it required means the model has to ask first.
+
+
+def test_create_account_requires_a_due_date() -> None:
+    import pytest as _pytest
+    from pydantic import ValidationError
+
+    with _pytest.raises(ValidationError) as excinfo:
+        CreateAccountInput(client_name="Sin Fecha", total_amount=10.0)
+    assert "due_date" in str(excinfo.value)

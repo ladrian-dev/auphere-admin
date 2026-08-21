@@ -98,7 +98,7 @@ def test_handler_messages_include_policy_and_knowledge_blocks() -> None:
     contents = [m["content"] for m in msgs if m["role"] == "system"]
     policy_idx = next(i for i, c in enumerate(contents) if c.startswith("Operating policy"))
     kb_idx = next(i for i, c in enumerate(contents) if c.startswith("Knowledge base"))
-    assert policy_idx == 3  # prompt, channel note, gender note, policy
+    assert policy_idx == 4  # prompt, channel note, date note, gender note, policy
     assert kb_idx > policy_idx
     assert (
         '<knowledge_document title="Horario">\nLunes a viernes 9-18.\n</knowledge_document>'

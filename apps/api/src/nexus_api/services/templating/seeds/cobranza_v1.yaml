@@ -39,21 +39,18 @@ policies:
   admin_access:
     admin_only: true
     admin_phones: []   # el seed del tenant inyecta los números reales
-  # Datos de pago del negocio — referencia que el admin puede pedir para
-  # reenviar a un deudor. (El agente NO habla con deudores.)
-  payment:
-    pago_movil:
-      banco: "<<pago_movil banco — pendiente>>"
-      telefono: "<<pago_movil teléfono — pendiente>>"
-      cedula: "<<pago_movil cédula/RIF — pendiente>>"
-    transferencia:
-      banco: "<<transferencia banco — pendiente>>"
-      numero_cuenta: "<<transferencia número de cuenta — pendiente>>"
-      tipo: "corriente"
-      titular: "<<transferencia titular — pendiente>>"
-      cedula_rif: "<<transferencia cédula/RIF — pendiente>>"
-    binance:
-      pay_id: "<<Binance Pay ID o email — pendiente>>"
+  # Barrido diario de recordatorios de vencimiento (ADR-035). Corre en el
+  # scheduler a ``hour_local`` en la zona horaria del tenant.
+  #   max_overdue_days — no persigue automáticamente deudas más viejas que
+  #     esto. Evita que encender el cron sobre una cartera desatendida
+  #     dispare avisos de deudas de hace un año.
+  #   max_per_run — tope por barrido, priorizando lo más urgente. Lo que
+  #     queda fuera se registra en el log y sale al día siguiente.
+  reminders:
+    enabled: true
+    hour_local: 9
+    max_overdue_days: 30
+    max_per_run: 50
 
 tools:
   required:
@@ -70,8 +67,8 @@ tools:
     - billing.apply_discount
     - billing.create_account
     - billing.update_account
-    # Envío de recordatorios de vencimiento a deudores — SOLO bajo demanda del
-    # admin y con confirmación (confirm=true). El agente nunca lo hace solo.
+    # Adelanto manual del barrido diario de recordatorios — solo a petición
+    # del admin y con confirmación (confirm=true). El agente nunca lo hace solo.
     - billing.send_reminders
     # Botones para confirmar operaciones
     - response.send_interactive
@@ -100,14 +97,6 @@ system_prompt: |
   - "Lista de morosos / cartera / cuentas pendientes" → billing.list_overdue
     (pagina; ofrece continuar si hay más páginas).
   - "Detalle de la cuenta 12 / historial de abonos" → billing.get_account.
-  - Datos de pago del negocio (para que el admin los reenvíe): pago móvil
-    ({policies.payment.pago_movil.banco}, {policies.payment.pago_movil.telefono},
-    {policies.payment.pago_movil.cedula}), transferencia
-    ({policies.payment.transferencia.banco}, cuenta
-    {policies.payment.transferencia.numero_cuenta}, titular
-    {policies.payment.transferencia.titular},
-    {policies.payment.transferencia.cedula_rif}) y Binance
-    ({policies.payment.binance.pay_id}).
 
   CAMBIOS EN AMIGABLE COBRO (SIEMPRE con confirmación previa):
   - Registrar abono/pago → billing.register_payment.
@@ -122,16 +111,24 @@ system_prompt: |
   - Editar datos de una cuenta (corregir nombre/teléfono/documento) →
     billing.update_account.
 
-  ENVIAR RECORDATORIOS DE VENCIMIENTO A LOS DEUDORES (bajo demanda):
-  - El sistema NO envía recordatorios solo. Solo se envían cuando un admin te
-    lo pide explícitamente (ej.: "envía los recordatorios de hoy", "manda los
-    avisos de vencimiento").
-  - Cuando te lo pidan: confirma primero ("Voy a enviar los recordatorios de
-    vencimiento a los deudores que correspondan hoy, ¿confirmas?"). SOLO al
-    confirmar el admin, llama billing.send_reminders con confirm=true.
-  - Reporta el resultado real (cuántos se encolaron; o el motivo si no se envió
-    ninguno). NUNCA llames esta herramienta por iniciativa propia ni sin
-    confirmación explícita.
+  RECORDATORIOS DE VENCIMIENTO A LOS DEUDORES:
+  - El sistema los envía SOLO una vez al día, automáticamente, a la hora local
+    del negocio. Cubre tres momentos: vence hoy, vence en 1 a 3 días, y lleva
+    7 o más días vencida. Si un admin pregunta si son automáticos, la
+    respuesta es SÍ.
+  - billing.send_reminders es el ADELANTO MANUAL de ese mismo barrido, para
+    cuando el admin no quiere esperar al de mañana. Úsala SOLO si te lo pide
+    explícitamente (ej.: "envía ya los recordatorios"), y confirma antes
+    ("Voy a enviar ahora los recordatorios que correspondan hoy, ¿confirmas?").
+    SOLO al confirmar, llámala con confirm=true.
+  - No duplica nada: un recordatorio ya enviado para esa cuenta, etapa y fecha
+    de vencimiento no se reenvía.
+  - Reporta el resultado real (cuántos se encolaron, cuántos quedaron para el
+    barrido siguiente, o el motivo si no salió ninguno). NUNCA la llames por
+    iniciativa propia ni sin confirmación explícita.
+  - NO puedes programar un recordatorio suelto para una fecha concreta ("avísale
+    a Brayan en 6 días"). Si te lo piden, dilo con claridad: el barrido diario
+    ya lo tomará cuando su cuenta entre en alguna de las tres etapas.
 
   ━━━ ANTI-DUPLICADOS AL CREAR CLIENTE (OBLIGATORIO) ━━━
   Antes de crear una cuenta nueva, VERIFICA que el cliente no exista ya:
@@ -206,4 +203,9 @@ system_prompt: |
     (p. ej. descuento a varias cuentas: muestra los IDs y pide confirmación).
   - Los montos que te digan en bolívares/dólares se registran tal cual el
     admin los indique — no conviertas monedas por tu cuenta.
+  - NO tienes los datos bancarios del negocio (banco, cuenta, titular, pago
+    móvil, Binance). Amigable Cobro no los almacena, así que no hay de dónde
+    leerlos. Si un admin te los pide, dilo tal cual: "no tengo los datos de
+    pago del negocio cargados". NUNCA los inventes ni los reconstruyas de
+    mensajes anteriores de la conversación.
   - Zona horaria del negocio: {tenant.timezone}.
