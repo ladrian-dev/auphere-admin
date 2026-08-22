@@ -456,7 +456,6 @@ async def _close_the_turn(
             messages=closing,
             specs=specs,
             message_id=message_id,
-
             effort=effort,
         )
         text = answer.strip()
@@ -683,10 +682,14 @@ def make_respond(
             # escribir una plantilla, pero "se aplicó y la verificación dice
             # que solo hay 2 de las 3 herramientas" necesita una frase, y
             # esa frase es el trabajo del modelo.
-            updates = await _answer_after_action(provider, model=model, state=state, specs=specs, effort=effort)
+            updates = await _answer_after_action(
+                provider, model=model, state=state, specs=specs, effort=effort
+            )
         elif not state.get("tool_messages") and not state.get("answer"):
             # Grafo sin herramientas: el camino de CO-01.
-            updates = await _answer_without_tools(provider, model=model, state=state, specs=specs, effort=effort)
+            updates = await _answer_without_tools(
+                provider, model=model, state=state, specs=specs, effort=effort
+            )
         else:
             # El bucle terminó sin llegar a escribir (un último paso que
             # solo pidió herramientas, por ejemplo). El tracker lo anuncia
@@ -905,7 +908,6 @@ async def _answer_after_action(
         messages=messages,
         specs=specs,
         message_id=str(uuid.uuid4()),
-
         effort=effort,
     )
     input_tokens = int(usage.get("prompt_tokens") or 0)
@@ -952,7 +954,6 @@ async def _answer_without_tools(
         messages=messages,
         specs=specs,
         message_id=str(uuid.uuid4()),
-
         effort=effort,
     )
     input_tokens = int(usage.get("prompt_tokens") or 0)
@@ -1195,9 +1196,7 @@ def build_companion_graph(
         if toolbelt is None
         else make_investigate(provider, model=model, toolbelt=toolbelt, effort=effort),
     )
-    graph.add_node(
-        "respond", make_respond(provider, model=model, toolbelt=toolbelt, effort=effort)
-    )
+    graph.add_node("respond", make_respond(provider, model=model, toolbelt=toolbelt, effort=effort))
     graph.add_edge(START, "understand")
     graph.add_edge("understand", "investigate")
 
