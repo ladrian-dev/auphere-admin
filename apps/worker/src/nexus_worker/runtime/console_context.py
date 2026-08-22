@@ -22,7 +22,7 @@ off after N turns" the classifier's verdict is overridden to
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
@@ -69,7 +69,7 @@ def _strip_tags(text: str) -> str:
     """
     from nexus_api.core.guardrails.untrusted import TAG_KNOWLEDGE, neutralise_tags
 
-    return neutralise_tags(text, TAG_KNOWLEDGE)
+    return cast(str, neutralise_tags(text, TAG_KNOWLEDGE))
 
 
 def render_knowledge_block(docs: list[tuple[str, str]], *, cap: int = KNOWLEDGE_CHAR_CAP) -> str:
