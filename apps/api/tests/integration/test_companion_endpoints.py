@@ -152,6 +152,67 @@ async def test_a_turn_streams_text_cost_and_context(client, console_world):
     assert budget["cap"] > 0 and budget["used"] > 0
 
 
+async def test_a_cached_turn_lands_on_otel_and_the_run_row(client, console_world):
+    """C5: cache_read > 0 sale en ``llm_tokens_total`` Y en ``companion.runs``.
+
+    Quitar ``record_llm_call`` del doble (o las columnas) pone este test
+    en rojo. C3 no se toca: ``input_tokens`` de la fila sigue siendo cuota.
+    """
+    from nexus_worker.runtime.companion.graph import COMPANION_ROLE
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+    from nexus_api.core import otel_metrics
+
+    provider = InMemoryProvider(
+        responder=_answer_and_meter,
+        thinking_text="pensando",
+        stream_usage={
+            "prompt_tokens": 10_000,
+            "completion_tokens": 100,
+            "cache_read_input_tokens": 8_000,
+            "cache_creation_input_tokens": 500,
+        },
+    )
+    graph = build_companion_graph(
+        provider=provider,
+        model="anthropic/claude-sonnet-4-6",
+        checkpointer=MemorySaver(),
+    )
+    companion_api.set_graph_for_tests(graph)
+
+    reader = InMemoryMetricReader()
+    otel_metrics.reset_for_tests()
+    otel_metrics.install_metrics("nexus-test-companion-c5-e2e", extra_reader=reader)
+
+    a = console_world["a"]
+    _thread_id, run_id = await _start(client, a)
+    run = await _finished(uuid.UUID(run_id), a["user_id"])
+    assert run.cache_read == 8_000
+    assert run.cache_write == 500
+    # Cuota C3: uncached 2000 + 0.1 * 8000 = 2800. No cambiar.
+    assert run.input_tokens == 2_800
+    assert run.output_tokens == 100
+
+    data = reader.get_metrics_data()
+    assert data is not None
+    token_points = []
+    roles: set[str] = set()
+    for rm in data.resource_metrics:
+        for sm in rm.scope_metrics:
+            for metric in sm.metrics:
+                if metric.name == "llm_tokens_total":
+                    token_points.extend(metric.data.data_points)
+                if metric.name == "llm_call_ms":
+                    for pt in metric.data.data_points:
+                        roles.add(str(pt.attributes.get("role")))
+    by_type = {pt.attributes["type"]: pt.value for pt in token_points}
+    assert by_type.get("cache_read") == 8_000
+    assert by_type.get("cache_write") == 500
+    assert COMPANION_ROLE in roles
+    for pt in token_points:
+        assert "partner" not in (pt.attributes or {})
+
+
 async def test_the_202_comes_back_before_the_work_is_done(client, console_world):
     """El punto entero de C1: la petición no espera al turno."""
     a = console_world["a"]

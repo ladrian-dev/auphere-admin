@@ -230,6 +230,56 @@ async def test_the_cache_is_not_billed_but_still_fills_the_window() -> None:
     assert ctx["input_tokens"] == 10_000, "la ventana la llena el prefijo entero"
 
 
+async def test_a_cached_turn_records_native_tokens_on_llm_tokens_total() -> None:
+    """P5 / C5: cada llamada del Companion entra en ``record_llm_call``.
+
+    El ratio ``cache_read / (input + cache_read)`` se deriva de
+    ``llm_tokens_total``. Si el Companion solo cerrara el turno con
+    ``record_companion_turn`` (sin nativos, sin rol), el panel del canal
+    diría que el caché no existe. ``role`` es la dimensión que ya tiene
+    el instrumento (``companion``); WP-15 prohíbe añadir partner.
+    """
+    from nexus_worker.runtime.companion.graph import COMPANION_ROLE
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+    from nexus_api.core import otel_metrics
+
+    reader = InMemoryMetricReader()
+    otel_metrics.reset_for_tests()
+    otel_metrics.install_metrics("nexus-test-companion-c5", extra_reader=reader)
+
+    provider = InMemoryProvider(
+        responder=lambda c: "ok",
+        stream_usage={
+            "prompt_tokens": 10_000,
+            "completion_tokens": 100,
+            "cache_read_input_tokens": 9_000,
+            "cache_creation_input_tokens": 400,
+        },
+    )
+    await _run(provider)
+
+    data = reader.get_metrics_data()
+    assert data is not None
+    points: list = []
+    roles: set[str] = set()
+    for rm in data.resource_metrics:
+        for sm in rm.scope_metrics:
+            for metric in sm.metrics:
+                if metric.name == "llm_tokens_total":
+                    points.extend(metric.data.data_points)
+                if metric.name == "llm_call_ms":
+                    for p in metric.data.data_points:
+                        roles.add(str(p.attributes.get("role")))
+    by_type = {p.attributes["type"]: p.value for p in points}
+    assert by_type.get("cache_read") == 9_000
+    assert by_type.get("cache_write") == 400
+    assert by_type.get("input") == 10_000
+    assert by_type.get("output") == 100
+    assert COMPANION_ROLE in roles
+    assert "partner" not in {k for p in points for k in (p.attributes or {})}
+
+
 async def test_the_cost_event_carries_the_cache_breakdown_and_the_steps() -> None:
     """``cost.updated`` lleva lo que hace falta para valorar el turno.
 

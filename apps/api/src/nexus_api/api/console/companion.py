@@ -1017,6 +1017,8 @@ def _make_on_complete(
             error=handle.final_error,
             input_tokens=handle.total_input_tokens,
             output_tokens=handle.total_output_tokens,
+            cache_read=handle.total_cache_read,
+            cache_write=handle.total_cache_write,
             model=handle.model,
             answer=answer,
             parked=(not paused) and bool(handle.extras.get("awaiting_action")),
@@ -1095,6 +1097,8 @@ async def _finalise_run(
     error: str | None,
     input_tokens: int,
     output_tokens: int,
+    cache_read: int = 0,
+    cache_write: int = 0,
     model: str | None,
     answer: str,
     parked: bool = False,
@@ -1131,6 +1135,8 @@ async def _finalise_run(
                 run.ended_at = sa.func.now()
             run.input_tokens = input_tokens
             run.output_tokens = output_tokens
+            run.cache_read = cache_read
+            run.cache_write = cache_write
             if answer:
                 session.add(
                     CompanionMessage(

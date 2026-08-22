@@ -352,6 +352,20 @@ class InMemoryProvider:
     )
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
+    def _record_like_the_canal(self, *, role: str, model: str) -> dict[str, int]:
+        """Same choke point as ``LiteLLMProvider._record_call`` for OTel.
+
+        The Companion graph (and every other caller) talks to this double in
+        tests. Without this, ``record_llm_call`` only ran on the real
+        provider and a Companion turn with ``cache_read > 0`` never appeared
+        on ``llm_tokens_total`` — the P5 ratio would look like the cache
+        was dead. Native keys, existing ``role`` label (``companion`` when
+        the graph asks for it). No partner dimension (WP-15).
+        """
+        usage = {k: int(v) for k, v in dict(self.stream_usage).items()}
+        record_llm_call(model=model, role=role, duration_ms=0.0, usage=usage)
+        return usage
+
     async def acomplete(
         self,
         *,
@@ -419,7 +433,7 @@ class InMemoryProvider:
         text = self.responder(call) if self.responder else f"[{role}:{model}] ok"
         for i, word in enumerate(text.split(" ")):
             yield ("text", word if i == 0 else f" {word}")
-        yield ("usage", json.dumps(self.stream_usage))
+        yield ("usage", json.dumps(self._record_like_the_canal(role=role, model=model)))
 
     async def astream_with_tools(
         self,
@@ -484,7 +498,7 @@ class InMemoryProvider:
                 }
             ),
         )
-        yield ("usage", json.dumps(self.stream_usage))
+        yield ("usage", json.dumps(self._record_like_the_canal(role=role, model=model)))
 
 
 def _thinking_pieces(delta: Any) -> list[tuple[str, dict[str, Any] | None]]:

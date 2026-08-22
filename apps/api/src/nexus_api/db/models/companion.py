@@ -132,6 +132,11 @@ class CompanionRun(UUIDPrimaryKey, Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Nativos del proveedor (P5). ``input_tokens`` sigue siendo la CUOTA
+    # (uncached + 0.1 x cache_read); estos dos son lo que el panel de
+    # cache_read / (input + cache_read) necesita. Sin ellos el panel miente.
+    cache_read: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_write: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
