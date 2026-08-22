@@ -6,10 +6,14 @@ import { Alert, AlertDescription, Button, EmptyState, Metric, PageHeader, format
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import type { Allocation, Wallet } from "@/lib/backend/home-usage";
+import { env } from "@/lib/env";
 import { can, requirePrincipal } from "@/lib/principal";
 import { barsFromSeries, cumulativeWithProjection, topMeters } from "@/lib/usage-projection";
 
 import { AllocationCapForm } from "./allocation-cap";
+import { AssignAllocationForm } from "./assign-allocation";
+import { MoveAllocationForm } from "./move-allocation";
+import { RechargePurchasedForm } from "./recharge-purchased";
 import { UsageCharts } from "./charts";
 import { UsageControls } from "./controls";
 
@@ -32,6 +36,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
   const principal = await requirePrincipal("/usage");
   if (!can(principal.role, "usage:read")) redirect("/");
   const canWrite = can(principal.role, "usage:write");
+  const canRecharge = canWrite && env().NODE_ENV !== "production";
   const { t, locale } = await getT(principal.locale);
   const sp = await searchParams;
   const days = [7, 30, 90].includes(Number(sp.days)) ? Number(sp.days) : 30;
@@ -58,6 +63,21 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
 
   const csvHref = `/api/usage/export?days=${days}${sp.client ? `&client=${encodeURIComponent(sp.client)}` : ""}${sp.source ? `&source=${sp.source}` : ""}&lang=${locale}`;
   const bannerKey = month.percent != null && month.percent >= 100 ? "hu.usage.banner.100" : month.percent != null && month.percent >= 80 ? "hu.usage.banner.80" : null;
+  const allocatedRefs = new Set(allocations.map((row) => row.client_ref));
+  const listedClients = (clients?.items ?? []).map((c) => ({
+    ref: c.external_client_ref,
+    name: c.name,
+    cap: allocations.find((row) => row.client_ref === c.external_client_ref)?.cap ?? 0,
+  }));
+  const unassignedClients = listedClients.filter((c) => !allocatedRefs.has(c.ref));
+  const allocatedClients = listedClients.length
+    ? listedClients.filter((c) => allocatedRefs.has(c.ref))
+    : allocations.map((row) => ({
+        ref: row.client_ref,
+        name: names.get(row.client_ref) ?? row.client_ref,
+        cap: row.cap,
+      }));
+  const moveDestinations = listedClients.length ? listedClients : allocatedClients;
 
   return (
     <>
@@ -94,6 +114,12 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
         <Metric label={t("hu.usage.wallet.purchased")} value={n(wallet.purchased_remaining)} hint={t("hu.usage.wallet.tokens")} />
         <Metric label={t("hu.usage.wallet.reserve")} value={n(wallet.reserve)} hint={t("hu.usage.wallet.reserve.hint")} />
       </section>
+      {canRecharge ? (
+        <section className="space-y-2" aria-label={t("hu.usage.wallet.recharge")}>
+          <p className="text-sm font-medium">{t("hu.usage.wallet.recharge")}</p>
+          <RechargePurchasedForm />
+        </section>
+      ) : null}
       <div className="min-w-0 overflow-x-auto rounded-md ring-1 ring-foreground/10">
         <table className="w-full text-sm">
           <caption className="sr-only">{t("hu.usage.allocations")}</caption>
@@ -118,7 +144,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
                     {names.get(row.client_ref) ?? row.client_ref}
                   </td>
                   <td className="p-2 text-right tabular-nums">
-                    {canWrite ? <AllocationCapForm clientRef={row.client_ref} cap={row.cap} /> : n(row.cap)}
+                    {canWrite ? <AllocationCapForm key={`${row.client_ref}-${row.cap}`} clientRef={row.client_ref} cap={row.cap} /> : n(row.cap)}
                   </td>
                   <td className="p-2 text-right tabular-nums">{n(row.remaining)}</td>
                 </tr>
@@ -127,6 +153,23 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
           </tbody>
         </table>
       </div>
+      {canWrite ? (
+        <section className="space-y-4" aria-label={t("hu.usage.allocations.manage")}>
+          {unassignedClients.length ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("hu.usage.allocations.assign")}</p>
+              <AssignAllocationForm clients={unassignedClients} />
+            </div>
+          ) : null}
+          {allocatedClients.length > 0 && listedClients.length > 1 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("hu.usage.allocations.move")}</p>
+              <p className="text-xs text-muted-foreground">{t("hu.usage.allocations.move.hint")}</p>
+              <MoveAllocationForm sources={allocatedClients} destinations={moveDestinations} />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <UsageControls
         days={days}
         client={sp.client ?? ""}

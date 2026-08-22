@@ -525,6 +525,37 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
         max_chars=4_000,
     ),
     ToolSpec(
+        name="console.get_wallet",
+        path="/console/wallet",
+        label="Cuota del partner",
+        description=(
+            "Devuelve el libro de cuota del partner: tokens incluidos restantes, "
+            "tokens comprados restantes, disponible, reserva (disponible menos la "
+            "suma de topes) y si el libro está agotado. Llama a esto cuando el "
+            "usuario pregunte por tokens, cupo, reserva, recarga o si queda "
+            "saldo para asignar a un cliente. Las cifras son tokens de cuota, "
+            "nunca euros. No lo uses para el consumo del mes ni para la "
+            "proyección: eso es console.get_usage. Tampoco para el tope de un "
+            "cliente: eso es console.list_allocations."
+        ),
+        max_chars=3_000,
+    ),
+    ToolSpec(
+        name="console.list_allocations",
+        path="/console/wallet/allocations",
+        label="Asignaciones de cuota",
+        description=(
+            "Lista las asignaciones de cuota del partner: cada fila es un "
+            "client_ref con su tope y lo que le queda. Nunca trae tenant_id. "
+            "Llama a esto cuando el usuario pregunte cuánto cupo tiene un "
+            "cliente, a quién se le asignó, o antes de proponer un cambio de "
+            "tope. Si un cliente no aparece, aún no tiene fila de asignación. "
+            "No lo uses para el saldo del partner entero: eso es "
+            "console.get_wallet. No inventes un tenant_id."
+        ),
+        max_chars=8_000,
+    ),
+    ToolSpec(
         name="console.get_prompt_library",
         path="/console/seed-templates",
         label="Biblioteca de plantillas de agente",
@@ -908,6 +939,35 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
         ),
     ),
     ToolSpec(
+        name="console.propose_allocation",
+        kind="allocation",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/wallet",
+        label="Proponer el cupo de un cliente",
+        description=(
+            "Calcula el cambio de tope (cupo) de un cliente y lo deja pendiente "
+            "de confirmación. No escribe: aplicar usa set_allocation bajo el "
+            "partner del principal. Llama a esto cuando el usuario quiera "
+            "asignar cupo por primera vez o cambiar el tope de un cliente que "
+            "ya lo tiene; lee console.get_wallet y console.list_allocations "
+            "antes para no proponer una suma que supere lo disponible. El "
+            "cuerpo de aplicación solo lleva cap: el partner no viaja. No lo "
+            "uses para recargar el cubo purchased ni para avisos de mensajes."
+        ),
+        params=(
+            _propose_ref("cuyo cupo vas a cambiar"),
+            ToolParam(
+                name="cap",
+                type="integer",
+                description="Tope nuevo en tokens de cuota. Entero ≥ 0.",
+                required=True,
+                minimum=0,
+            ),
+        ),
+        max_chars=4_000,
+    ),
+    ToolSpec(
         name="console.propose_invite",
         kind="invite",
         tool_class="propose",
@@ -1185,8 +1245,8 @@ ALL_TOOLS: tuple[ToolSpec, ...] = (*READ_TOOLS, *PROPOSE_TOOLS, *TRIAL_TOOLS, *A
 
 TOOLS_BY_NAME: dict[str, ToolSpec] = {t.name: t for t in ALL_TOOLS}
 
-#: Los ``kind`` del §3.1 del contrato —nueve en la v1.1, **once** desde la
-#: v2 con los dos de soporte—, derivados del catálogo y no escritos a mano:
+#: Los ``kind`` del §3.1 del contrato —nueve en la v1.1, **doce** desde el
+#: cupo, más los dos de soporte—, derivados del catálogo y no escritos a mano:
 #: una herramienta ``propose`` sin ``kind`` no se puede construir, así que
 #: la lista no puede desincronizarse. La lista de PROHIBIDOS del §6.5 no
 #: cambia: no hay ``kind`` para borrar clientes, tocar facturación, rotar

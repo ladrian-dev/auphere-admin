@@ -67,6 +67,7 @@ APPLY_ROUTES: dict[str, tuple[ApplyMethod, str]] = {
     "publish": ("POST", "/console/clients/{client_ref}/agent/versions/{version}/publish"),
     "channel_role": ("PATCH", "/console/clients/{client_ref}/channels/{channel_id}/role"),
     "usage_alerts": ("PUT", "/console/usage/alerts"),
+    "allocation": ("PUT", "/console/clients/{client_ref}/allocation"),
     "invite": ("POST", "/console/team/invitations"),
     # CO-08 (§4.1 de CONTRACT-V2). Los dos ``kind`` de soporte aplican por el
     # MISMO endpoint; lo que los distingue es ``category`` dentro del cuerpo,
@@ -1067,6 +1068,75 @@ class ProposalBuilder:
             apply_path=APPLY_ROUTES["invite"][1],
             apply_body={"email": email, "role": role},
             expectations={"invitation_pending": "true"},
+        )
+
+    # ── allocation ──────────────────────────────────────────────────────
+
+    async def _allocation(self, args: dict[str, Any]) -> Proposal:
+        ref = str(args["client_ref"]).strip()
+        cap = int(args["cap"])
+        if cap < 0:
+            raise ProposalRefused(
+                ToolError(
+                    "bad_arguments",
+                    "El tope tiene que ser un entero ≥ 0. Manda el número nuevo, no un delta.",
+                )
+            )
+        # C1: un ref ajeno y uno inexistente son el mismo 404 opaco.
+        await self._get(f"/console/clients/{ref}")
+        wallet = await self._get("/console/wallet")
+        rows = await self._get("/console/wallet/allocations")
+        if not isinstance(rows, list):  # pragma: no cover - el router da lista
+            rows = []
+        current = next((r for r in rows if str(r.get("client_ref")) == ref), None)
+        before_cap = int((current or {}).get("cap") or 0)
+        if current is not None and before_cap == cap:
+            raise ProposalRefused(
+                ToolError(
+                    "no_change",
+                    f"El cliente {ref} ya tiene tope {cap}. Nada que cambiar.",
+                )
+            )
+        available = int(wallet.get("available") or 0)
+        others = sum(int(r.get("cap") or 0) for r in rows if str(r.get("client_ref")) != ref)
+        if others + cap > available:
+            raise ProposalRefused(
+                ToolError(
+                    "over_allocated",
+                    f"La suma de topes ({others + cap}) superaría lo disponible "
+                    f"({available}). Baja otro tope o recarga tokens antes de "
+                    "proponer este.",
+                )
+            )
+
+        return Proposal(
+            kind="allocation",
+            title=f"Fijar el cupo de {ref} a {cap}",
+            preview={
+                "client_ref": ref,
+                "summary": f"{before_cap} → {cap}",
+                "before_cap": before_cap,
+                "after_cap": cap,
+            },
+            diff=[
+                {"op": "del", "line": 1, "before": f"cap: {before_cap}"},
+                {"op": "add", "line": 1, "after": f"cap: {cap}"},
+            ],
+            impact=[
+                _impact("allocation_cap", cap),
+                _impact("others_caps", others),
+                _impact("wallet_available", available),
+            ],
+            risk="medium" if cap > before_cap else "low",
+            reversible=True,
+            state_hash=canonical_hash(
+                {"client_ref": ref, "cap_actual": before_cap, "available": available, "suma_otros_caps": others}
+            ),
+            apply_method=APPLY_ROUTES["allocation"][0],
+            apply_path=APPLY_ROUTES["allocation"][1].format(client_ref=ref),
+            apply_body={"cap": cap},
+            expectations={"allocation_cap": str(cap)},
+            client_ref=ref,
         )
 
     # ── soporte (CO-08, §4) ────────────────────────────────────────────

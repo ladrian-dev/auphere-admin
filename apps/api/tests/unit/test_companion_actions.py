@@ -547,3 +547,103 @@ def test_every_kind_has_a_verification_read() -> None:
     from nexus_api.companion.tools.catalog import ACTION_KINDS
 
     assert set(VERIFY_READS) == set(ACTION_KINDS) == set(APPLY_ROUTES)
+
+
+async def test_a_allocation_proposal_does_not_apply_and_sets_put() -> None:
+    build = ProposalBuilder(
+        read=reader(
+            {
+                "/console/clients/boreal": {"external_client_ref": "boreal"},
+                "/console/wallet": {"available": 500_000, "purchased_remaining": 0},
+                "/console/wallet/allocations": [
+                    {"client_ref": "boreal", "cap": 400_000, "remaining": 400_000}
+                ],
+            }
+        )
+    )
+    proposal = await build.build("allocation", {"client_ref": "boreal", "cap": 450_000})
+    assert proposal.kind == "allocation"
+    assert proposal.apply_method == "PUT"
+    assert proposal.apply_path == "/console/clients/boreal/allocation"
+    assert proposal.apply_body == {"cap": 450_000}
+    assert proposal.expectations == {"allocation_cap": "450000"}
+
+    assert "partner_id" not in (proposal.apply_body or {})
+    assert proposal.state_hash == canonical_hash(
+        {
+            "client_ref": "boreal",
+            "cap_actual": 400_000,
+            "available": 500_000,
+            "suma_otros_caps": 0,
+        }
+    )
+
+
+async def test_a_allocation_over_available_is_refused() -> None:
+    build = ProposalBuilder(
+        read=reader(
+            {
+                "/console/clients/boreal": {"external_client_ref": "boreal"},
+                "/console/wallet": {"available": 500_000},
+                "/console/wallet/allocations": [
+                    {"client_ref": "boreal", "cap": 500_000, "remaining": 500_000}
+                ],
+            }
+        )
+    )
+    with pytest.raises(ProposalRefused) as refused:
+        await build.build("allocation", {"client_ref": "boreal", "cap": 500_001})
+    assert refused.value.error.code == "over_allocated"
+
+
+async def test_a_allocation_for_a_missing_client_is_the_same_404() -> None:
+    build = ProposalBuilder(read=reader({}))
+    with pytest.raises(ProposalRefused) as refused:
+        await build.build("allocation", {"client_ref": "ajeno", "cap": 1})
+    assert refused.value.error.code == "unknown_client"
+
+
+async def test_an_allocation_without_a_row_is_alta_from_zero() -> None:
+    build = ProposalBuilder(
+        read=reader(
+            {
+                "/console/clients/nuevo": {"external_client_ref": "nuevo"},
+                "/console/wallet": {"available": 500_000},
+                "/console/wallet/allocations": [
+                    {"client_ref": "otro", "cap": 100_000, "remaining": 100_000}
+                ],
+            }
+        )
+    )
+    proposal = await build.build("allocation", {"client_ref": "nuevo", "cap": 50_000})
+    assert proposal.kind == "allocation"
+    assert proposal.apply_body == {"cap": 50_000}
+    assert proposal.preview["before_cap"] == 0
+    assert proposal.state_hash == canonical_hash(
+        {
+            "client_ref": "nuevo",
+            "cap_actual": 0,
+            "available": 500_000,
+            "suma_otros_caps": 100_000,
+        }
+    )
+
+
+async def test_allocation_hash_changes_when_cap_actual_moves() -> None:
+    base = {
+        "/console/clients/boreal": {"external_client_ref": "boreal"},
+        "/console/wallet": {"available": 500_000},
+        "/console/wallet/allocations": [
+            {"client_ref": "boreal", "cap": 400_000, "remaining": 400_000}
+        ],
+    }
+    moved = {
+        **base,
+        "/console/wallet/allocations": [
+            {"client_ref": "boreal", "cap": 300_000, "remaining": 300_000}
+        ],
+    }
+    args = {"client_ref": "boreal", "cap": 350_000}
+    first = await ProposalBuilder(read=reader(base)).build("allocation", args)
+    second = await ProposalBuilder(read=reader(moved)).build("allocation", args)
+    assert first.state_hash != second.state_hash

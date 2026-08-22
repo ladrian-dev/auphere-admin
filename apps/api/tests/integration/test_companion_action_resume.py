@@ -705,3 +705,40 @@ async def test_the_write_is_audited_as_the_companion(client, console_world, comp
     async with sm() as session, session.begin():
         actors = list((await session.execute(sa.select(AuditLog.actor).distinct())).scalars())
     assert f"companion:{a['user_id']}" in actors, actors
+
+
+async def test_allocation_drift_is_412_and_does_not_mutate(
+    client, console_world, companion_provider
+):
+    a = console_world["a"]
+    companion_provider(
+        [("console.propose_allocation", {"client_ref": a["ref"], "cap": 400_000})]
+    )
+    thread_id = await _thread(client, a)
+    run_id = await _turn(client, a, thread_id, prompt="baja el cupo")
+    action = await _wait_for_action(a["user_id"])
+    assert action.kind == "allocation"
+    assert action.status == "proposed"
+
+    changed = await client.put(
+        f"/console/clients/{a['ref']}/allocation",
+        headers=a["headers"](),
+        json={"cap": 300_000},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["cap"] == 300_000
+
+    drifted = await client.post(
+        f"/console/companion/runs/{run_id}/resume",
+        headers=a["headers"](),
+        json={"action_id": str(action.id), "decision": "confirm"},
+    )
+    assert drifted.status_code == 412, drifted.text
+    assert drifted.json()["detail"]["code"] == "state_changed"
+    assert (await _action_row(action.id, a["user_id"])).status == "expired"
+
+    still = await client.get(
+        f"/console/clients/{a['ref']}/allocation", headers=a["headers"]()
+    )
+    assert still.status_code == 200, still.text
+    assert still.json()["cap"] == 300_000

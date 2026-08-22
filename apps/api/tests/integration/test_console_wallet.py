@@ -325,3 +325,163 @@ async def test_put_allocation_rejects_partner_id_in_body(client, console_world) 
         json={"cap": 1, "partner_id": str(a["partner_id"])},
     )
     assert resp.status_code == 422, resp.text
+
+
+async def test_recharge_purchased_adds_tokens_for_the_caller(client, console_world) -> None:
+    a = console_world["a"]
+    before = await client.get("/console/wallet", headers=a["headers"]())
+    assert before.status_code == 200, before.text
+    purchased = before.json()["purchased_remaining"]
+    resp = await client.post(
+        "/console/wallet/purchased",
+        headers=a["headers"](),
+        json={"qty": 250},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["purchased_remaining"] == purchased + 250
+    assert "partner_id" not in body
+    again = await client.get("/console/wallet", headers=a["headers"]())
+    assert again.json()["purchased_remaining"] == purchased + 250
+
+
+async def test_recharge_rejects_bad_qty_and_partner_id_in_body(client, console_world) -> None:
+    a = console_world["a"]
+    zero = await client.post("/console/wallet/purchased", headers=a["headers"](), json={"qty": 0})
+    extra = await client.post(
+        "/console/wallet/purchased",
+        headers=a["headers"](),
+        json={"qty": 1, "partner_id": str(a["partner_id"])},
+    )
+    assert zero.status_code == 422, zero.text
+    assert extra.status_code == 422, extra.text
+
+
+async def test_recharge_of_a_never_credits_b(client, console_world) -> None:
+    a, b = console_world["a"], console_world["b"]
+    before_b = await client.get("/console/wallet", headers=b["headers"]())
+    assert before_b.status_code == 200, before_b.text
+    resp = await client.post(
+        "/console/wallet/purchased",
+        headers=a["headers"](),
+        json={"qty": 77},
+    )
+    assert resp.status_code == 200, resp.text
+    after_b = await client.get("/console/wallet", headers=b["headers"]())
+    assert after_b.status_code == 200, after_b.text
+    assert after_b.json()["purchased_remaining"] == before_b.json()["purchased_remaining"]
+    assert after_b.json()["available"] == before_b.json()["available"]
+
+
+async def test_recharge_in_prod_is_opaque_404_and_does_not_credit(
+    client, console_world, monkeypatch
+) -> None:
+    from nexus_api.config import Settings
+
+    monkeypatch.setattr(Settings, "is_prod", property(lambda self: True))
+    a = console_world["a"]
+    before = await client.get("/console/wallet", headers=a["headers"]())
+    assert before.status_code == 200, before.text
+    purchased = before.json()["purchased_remaining"]
+    missing = await client.get("/console/clients/no-such-client/allocation", headers=a["headers"]())
+    resp = await client.post(
+        "/console/wallet/purchased",
+        headers=a["headers"](),
+        json={"qty": 1},
+    )
+    assert resp.status_code == 404, resp.text
+    assert resp.json() == missing.json()
+    after = await client.get("/console/wallet", headers=a["headers"]())
+    assert after.status_code == 200, after.text
+    assert after.json()["purchased_remaining"] == purchased
+
+
+async def test_recharge_forbidden_without_usage_write(client, console_world, db_session) -> None:
+    from tests.conftest import add_console_member
+
+    a = console_world["a"]
+    analyst = await add_console_member(db_session, partner_id=a["partner_id"], role="analyst")
+    resp = await client.post(
+        "/console/wallet/purchased",
+        headers=analyst["headers"](),
+        json={"qty": 1},
+    )
+    assert resp.status_code == 403, resp.text
+
+
+async def _add_unallocated_client(db_session, *, partner_id, ref: str):
+    import uuid
+
+    from nexus_api.db.models import PartnerTenant, Tenant, TenantPlan, TenantStatus
+
+    tenant_id = uuid.uuid4()
+    db_session.add(
+        Tenant(
+            id=tenant_id,
+            name=f"Unallocated {ref}",
+            slug=f"p-unalloc-{tenant_id.hex[:8]}",
+            plan=TenantPlan.PRO,
+            status=TenantStatus.ACTIVE,
+            partner_id=partner_id,
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        PartnerTenant(
+            partner_id=partner_id,
+            external_client_ref=ref,
+            tenant_id=tenant_id,
+            client_name=f"Unallocated {ref}",
+        )
+    )
+    await db_session.commit()
+    return tenant_id
+
+
+async def test_put_creates_allocation_for_client_without_row(
+    client, console_world, db_session
+) -> None:
+    a = console_world["a"]
+    ref = "client-a-unalloc"
+    await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=ref)
+
+    missing = await client.get(f"/console/clients/{ref}/allocation", headers=a["headers"]())
+    assert missing.status_code == 404, missing.text
+
+    lowered = await client.put(
+        "/console/clients/{}/allocation".format(a["ref"]),
+        headers=a["headers"](),
+        json={"cap": 400_000},
+    )
+    assert lowered.status_code == 200, lowered.text
+
+    created = await client.put(
+        f"/console/clients/{ref}/allocation",
+        headers=a["headers"](),
+        json={"cap": 100_000},
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert body["client_ref"] == ref
+    assert body["cap"] == 100_000
+    assert body["remaining"] == 100_000
+    assert "tenant_id" not in body
+    assert "partner_id" not in body
+
+
+async def test_put_first_allocation_409_when_sum_exceeds_available(
+    client, console_world, db_session
+) -> None:
+    a = console_world["a"]
+    ref = "client-a-over"
+    await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=ref)
+    resp = await client.put(
+        f"/console/clients/{ref}/allocation",
+        headers=a["headers"](),
+        json={"cap": 1},
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["code"] == "over_allocated"
+    still = await client.get(f"/console/clients/{ref}/allocation", headers=a["headers"]())
+    assert still.status_code == 404, still.text
+

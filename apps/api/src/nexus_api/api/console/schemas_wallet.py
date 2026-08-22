@@ -28,3 +28,11 @@ class AllocationIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cap: int = Field(ge=0)
+
+
+class PurchasedIn(BaseModel):
+    """Recarga del cubo purchased. El partner sale del principal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    qty: int = Field(gt=0)

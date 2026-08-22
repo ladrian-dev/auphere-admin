@@ -121,6 +121,8 @@ export function homeUsageApi(call: Call) {
     usageV2: (p: UsageQuery = {}) => call<UsageReportV2>(`/console/usage${q(p)}`),
     getWallet: () => call<Wallet>("/console/wallet"),
     listAllocations: () => call<Allocation[]>("/console/wallet/allocations"),
+    addPurchased: (qty: number) =>
+      call<Wallet>("/console/wallet/purchased", { method: "POST", body: { qty } }),
     setAllocation: (ref: string, cap: number) =>
       call<Allocation>(`/console/clients/${encodeURIComponent(ref)}/allocation`, {
         method: "PUT",

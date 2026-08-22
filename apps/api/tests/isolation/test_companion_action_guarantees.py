@@ -113,8 +113,8 @@ def test_the_permission_policy_is_data_and_not_a_prompt_instruction() -> None:
         assert token not in SYSTEM_PROMPT
 
 
-def test_the_eleven_kinds_are_the_eleven_of_the_contract() -> None:
-    """Nueve en la v1.1 §3.1, **once** desde la v2 §4.1 con los dos de
+def test_the_twelve_kinds_are_the_twelve_of_the_contract() -> None:
+    """Nueve en la v1.1 §3.1, **doce** con el cupo y los dos de
     soporte. Escrito a mano a propósito: si alguien añade un ``kind``, este
     test se pone rojo en vez de encogerse en silencio."""
     assert set(ACTION_KINDS) == {
@@ -126,6 +126,7 @@ def test_the_eleven_kinds_are_the_eleven_of_the_contract() -> None:
         "publish",
         "channel_role",
         "usage_alerts",
+        "allocation",
         "invite",
         "support_help",
         "support_capability",
@@ -418,3 +419,28 @@ def test_the_verifier_is_a_pure_comparison() -> None:
     assert params == ["read", "action"]
     source = inspect.getsource(verify_action)
     assert "provider" not in source and "llm" not in source.lower()
+
+
+async def test_a_allocation_proposal_writes_nothing(belt_for, console_world):
+    a = console_world["a"]
+    belt = await belt_for(_actor(a), principal_id=a["user_id"])
+    before = await belt.call("console.list_allocations", {})
+    out = await belt.call("console.propose_allocation", {"client_ref": a["ref"], "cap": 1})
+    # Over-allocated (wallet already fully assigned) still must not write.
+    other = await belt_for(_actor(a), principal_id=a["user_id"])
+    after = await other.call("console.list_allocations", {})
+    assert after.content == before.content
+    if out.ok:
+        assert not any('"status": "applied"' in (out.content or "") for _ in (0,))
+
+
+async def test_allocation_for_another_partners_client_is_the_opaque_404(belt_for, console_world):
+    a, b = console_world["a"], console_world["b"]
+    belt = await belt_for(_actor(a), principal_id=a["user_id"])
+    foreign = await belt.call("console.propose_allocation", {"client_ref": b["ref"], "cap": 1})
+    missing = await belt.call(
+        "console.propose_allocation", {"client_ref": "no-existe-jamas", "cap": 1}
+    )
+    assert foreign.ok is False and missing.ok is False
+    assert foreign.content == missing.content
+    assert not belt.pending

@@ -1007,6 +1007,83 @@
     "tool_error_code": "bad_arguments",
     "unsupported": false
    }
+  },
+  {
+   "id": "f1-get-wallet",
+   "family": "known_answer",
+   "title": "El libro de cuota se lee, no se recuerda",
+   "user_message": "¿Cuántos tokens de cuota me quedan?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.get_wallet",
+     "args": {}
+    },
+    {
+     "text": "Te digo el saldo que acaba de devolver el libro: tokens, no euros."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "included_remaining",
+     "purchased_remaining",
+     "available"
+    ],
+    "unsupported": false
+   }
+  },
+  {
+   "id": "f1-list-allocations",
+   "family": "known_answer",
+   "title": "Las asignaciones se listan por client_ref",
+   "user_message": "¿Qué cupo tiene cada cliente?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.list_allocations",
+     "args": {}
+    },
+    {
+     "text": "Estas son las asignaciones que acabo de leer."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "client_ref",
+     "cap",
+     "remaining"
+    ],
+    "unsupported": false
+   }
+  },
+  {
+   "id": "f1-propose-quota-cap-no-aplica",
+   "family": "known_answer",
+   "title": "Proponer un cupo no lo aplica",
+   "user_message": "Baja el cupo de $a.ref a mil tokens",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.propose_allocation",
+     "args": {
+      "client_ref": "$a.ref",
+      "cap": 1000
+     }
+    },
+    {
+     "text": "Te dejo preparado el cambio de cupo. No he tocado nada: confírmalo y se aplica."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "\"staged\": true",
+     "\"kind\": \"allocation\""
+    ],
+    "unsupported": false
+   }
   }
  ]
 }

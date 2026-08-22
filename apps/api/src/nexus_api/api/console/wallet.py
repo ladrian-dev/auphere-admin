@@ -15,15 +15,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
+from nexus_api.config import get_settings
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import PartnerTenant
 from nexus_api.db.models.partner_wallet import PartnerAllocation
-from nexus_api.metering.wallet import OverAllocation, read_wallet, set_allocation
+from nexus_api.metering.wallet import OverAllocation, add_purchased, read_wallet, set_allocation
 
 from .deps import ClientRef, resolve_mapping, unknown_client
-from .schemas_wallet import AllocationIn, AllocationOut, WalletOut
+from .schemas_wallet import AllocationIn, AllocationOut, PurchasedIn, WalletOut
 
 router = APIRouter()
 log = structlog.get_logger(__name__)
@@ -178,3 +179,51 @@ async def put_client_allocation(
             detail={"code": "over_allocated"},
         ) from None
     return AllocationOut(client_ref=ref, cap=int(row.cap), remaining=int(row.remaining))
+
+
+@router.post(
+    "/wallet/purchased",
+    response_model=WalletOut,
+    responses={
+        409: {"description": "qty inválido o el libro no se puede escribir."},
+        422: {"description": "qty no es un entero > 0, o el cuerpo trae campos extra."},
+    },
+)
+async def add_purchased_tokens(
+    body: PurchasedIn,
+    principal: ConsolePrincipal = Depends(require_console_principal("usage:write")),
+) -> WalletOut:
+    """Suma tokens al cubo purchased del partner que llama.
+
+    El partner sale del principal. El cuerpo solo admite ``qty`` (entero > 0).
+    No hay Stripe. Fail-closed: si el libro no se escribe, 409.
+    En prod el endpoint no existe (404 opaco): nadie se recarga solo.
+    """
+    if get_settings().is_prod:
+        raise unknown_client()
+    try:
+        snap = await add_purchased(principal.partner.id, body.qty)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "invalid_qty"},
+        ) from None
+    except Exception as exc:
+        log.warning(
+            "wallet.purchased_unwritable",
+            partner_id=str(principal.partner.id),
+            error=str(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "wallet_unwritable"},
+        ) from None
+    caps = await _sum_caps(principal.partner.id)
+    return WalletOut(
+        included_remaining=snap.included_remaining,
+        purchased_remaining=snap.purchased_remaining,
+        available=snap.available,
+        reserve=snap.available - caps,
+        included_expires_at=snap.included_expires_at,
+        exhausted=snap.empty,
+    )
