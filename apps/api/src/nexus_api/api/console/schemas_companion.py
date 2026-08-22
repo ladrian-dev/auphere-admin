@@ -68,13 +68,30 @@ class CompanionThreadOut(BaseModel):
 # ── runs ───────────────────────────────────────────────────────────────
 
 
+class CompanionPageContext(BaseModel):
+    """Where the drawer says the partner is standing (CO-03).
+
+    Closed shape: the same four keys ``page-context.ts`` serialises. Extra
+    keys are rejected — they are client-controlled and must not reach the
+    model as a raw blob. Lengths match the BFF Zod schema.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    route: str = Field(max_length=512)
+    client_ref: str | None = Field(default=None, max_length=255)
+    tab: str | None = Field(default=None, max_length=128)
+    selection: str | None = Field(default=None, max_length=512)
+
+
 class CompanionRunStartIn(BaseModel):
     prompt: str = Field(min_length=1, max_length=8000)
     # What the drawer knows about where the user is standing (route, tab,
     # selection). Travels to the model as a mid-conversation SYSTEM message,
     # never inside the cached system prefix (Parte II, C4). Bounded so a
-    # crafted client cannot push a novel through it.
-    page_context: dict[str, Any] | None = None
+    # crafted client cannot push a novel through it. Schema-validated —
+    # unknown keys are rejected before the run starts.
+    page_context: CompanionPageContext | None = None
 
 
 class CompanionRunStartOut(BaseModel):
@@ -265,6 +282,7 @@ __all__ = [
     "CompanionBudgetOut",
     "CompanionEventOut",
     "CompanionEventsOut",
+    "CompanionPageContext",
     "CompanionResumeIn",
     "CompanionResumeOut",
     "CompanionRunStartIn",

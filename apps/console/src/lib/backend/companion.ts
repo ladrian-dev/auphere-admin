@@ -1,3 +1,4 @@
+import type { PageContext } from "@/components/companion/page-context";
 import type { Call } from "../backend";
 
 /**
@@ -161,7 +162,7 @@ export function companionApi(call: Call) {
       call<CompanionThread>(`${base}/threads`, { method: "POST", body }),
     patchCompanionThread: (threadId: string, body: { title?: string; archived?: boolean; mode?: "consult" | "build" }) =>
       call<CompanionThread>(`${base}/threads/${enc(threadId)}`, { method: "PATCH", body }),
-    startCompanionRun: (threadId: string, prompt: string, pageContext?: Record<string, unknown>) =>
+    startCompanionRun: (threadId: string, prompt: string, pageContext?: PageContext) =>
       call<CompanionRunStarted>(`${base}/threads/${enc(threadId)}/runs`, {
         method: "POST",
         body: { prompt, page_context: pageContext ?? null },

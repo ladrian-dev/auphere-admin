@@ -179,7 +179,13 @@ async def run_case(
         "principal": {"role": "owner"},
     }
     if case.untrusted_text:
-        state["page_context"] = {"untrusted": _fenced(case.untrusted_text)}
+        # ``selection`` is a real schema key. A fabricated ``untrusted``
+        # field is dropped by the page_context allowlist (C1) and the
+        # attack would never reach the model.
+        state["page_context"] = {
+            "route": "/evals",
+            "selection": _fenced(case.untrusted_text),
+        }
 
     async for event in graph.astream_events(
         state,
