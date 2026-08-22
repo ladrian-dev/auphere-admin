@@ -1130,7 +1130,12 @@ class ProposalBuilder:
             risk="medium" if cap > before_cap else "low",
             reversible=True,
             state_hash=canonical_hash(
-                {"client_ref": ref, "cap_actual": before_cap, "available": available, "suma_otros_caps": others}
+                {
+                    "client_ref": ref,
+                    "cap_actual": before_cap,
+                    "available": available,
+                    "suma_otros_caps": others,
+                }
             ),
             apply_method=APPLY_ROUTES["allocation"][0],
             apply_path=APPLY_ROUTES["allocation"][1].format(client_ref=ref),

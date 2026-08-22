@@ -484,4 +484,3 @@ async def test_put_first_allocation_409_when_sum_exceeds_available(
     assert resp.json()["detail"]["code"] == "over_allocated"
     still = await client.get(f"/console/clients/{ref}/allocation", headers=a["headers"]())
     assert still.status_code == 404, still.text
-

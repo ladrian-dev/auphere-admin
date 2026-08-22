@@ -156,5 +156,11 @@ def test_a_required_client_ref_is_required_in_the_schema() -> None:
 def test_partner_wide_tools_take_no_client():
     """``whoami``, ``onboarding`` y la cuota son del PARTNER. Pedirles un
     cliente sería inventarse un ámbito que no tienen."""
-    for name in ("console.whoami", "console.get_onboarding", "console.get_quota", "console.get_wallet", "console.list_allocations"):
+    for name in (
+        "console.whoami",
+        "console.get_onboarding",
+        "console.get_quota",
+        "console.get_wallet",
+        "console.list_allocations",
+    ):
         assert TOOLS_BY_NAME[name].params == (), name
