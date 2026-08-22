@@ -6,7 +6,7 @@
  * backend already emits SSE (block B); the panel hits this route
  * which:
  *
- *  1. Validates the Better Auth session (server-side only).
+ *  1. Valida la sesión del operador contra la API (server-side only).
  *  2. Forwards to the FastAPI URL with the static admin Bearer token.
  *  3. Streams the response body back to the browser unchanged so
  *     ``EventSource`` parses ``event:`` + ``data:`` lines as-is.
@@ -23,7 +23,7 @@
 
 import { NextRequest } from "next/server";
 
-import { auth } from "@/lib/auth";
+import { getOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,8 +33,8 @@ const ADMIN_TOKEN = process.env.NEXUS_ADMIN_TOKEN ?? "dev-admin-token-change-me"
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(request: NextRequest) {
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session) {
+  const operator = await getOperator();
+  if (!operator) {
     return new Response("unauthorized", { status: 401 });
   }
 

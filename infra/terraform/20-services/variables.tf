@@ -8,6 +8,22 @@ variable "certificate_arn" {
   default     = ""
 }
 
+variable "extra_certificate_arns" {
+  description = <<-EOT
+    Certificados ACM adicionales que el listener 443 sirve por SNI, aparte
+    del por defecto. Para nombres que entran al MISMO ALB pero no están en
+    el cert principal — en prod, ``webhooks.auphere.com``, que es por donde
+    Meta entrega y que va sin proxy de Cloudflare.
+
+    Deben estar ya ``ISSUED``: esto sólo los ata al listener. Se usa un
+    cert aparte en vez de un SAN en el principal porque cambiar los SAN de
+    un cert ACM lo reemplaza, y el reemplazo nace PENDING_VALIDATION — con
+    un listener sirviendo tráfico real, la peor secuencia posible.
+  EOT
+  type        = list(string)
+  default     = []
+}
+
 variable "https_enabled" {
   description = <<-EOT
     Crea el listener 443 y convierte el 80 en redirect. Requiere que el
@@ -66,6 +82,20 @@ variable "app_secret_keys" {
     "NEXUS_CONSOLE_ENABLED",
     "NEXUS_CONSOLE_JWT_PUBLIC_KEY",
     "NEXUS_CONNECTOR_CONSENT_SECRET",
+    "NEXUS_COMPOSIO_API_KEY",
+    "NEXUS_COMPOSIO_WEBHOOK_SECRET",
+    "NEXUS_PUBLIC_API_BASE_URL",
+    "NEXUS_ADMIN_PANEL_BASE_URL",
+    "NEXUS_META_APP_ID",
+    "NEXUS_META_BUSINESS_MANAGER_ID",
+    "NEXUS_META_CONFIG_ID_WA_CLOUD_API",
+    "NEXUS_META_CONFIG_ID_WA_COEXISTENCE",
+    "NEXUS_META_WEBHOOK_CALLBACK_URL",
+    "NEXUS_EMBED_JWT_SECRET",
+    "NEXUS_LANGFUSE_HOST",
+    "OPENAI_API_KEY",
+    "BROWSERBASE_API_KEY",
+    "BROWSERBASE_PROJECT_ID",
   ]
 }
 

@@ -9,7 +9,7 @@ no client-facing UI.
 - React 19.2 + TypeScript strict
 - Tailwind 4 with `@theme` reading the brand-system tokens
 - shadcn/ui v4 (Base UI variant)
-- Better Auth + Drizzle (schema `auth`)
+- Sin base de datos: la identidad vive en la API (`/admin/auth/*`, ADR-034)
 - React Hook Form + Zod
 - pnpm
 
@@ -22,16 +22,11 @@ docker compose up -d postgres redis
 # 2. Run Alembic migrations (from apps/api)
 (cd ../api && uv run alembic upgrade head)
 
-# 3. Apply the Drizzle migration once
-docker exec -i nexus-postgres psql -U nexus -d nexus \
-  < drizzle/0000_known_robbie_robertson.sql
+# 3. Alta del primer operador (en la API — aquí ya no hay base de datos)
+(cd ../api && python scripts/seed_operator.py \
+   --email contacto@auphere.com --display-name "Auphere" --role admin)
 
-# 4. Bootstrap the first admin user
-NEXUS_BOOTSTRAP_ADMIN_EMAIL=lee@auphere.com \
-NEXUS_BOOTSTRAP_ADMIN_PASSWORD='choose-a-good-one' \
-pnpm seed:admin
-
-# 5. Start the panel
+# 4. Start the panel
 pnpm dev
 # → http://localhost:3000
 ```
@@ -48,27 +43,23 @@ The backend (`apps/api`) must be reachable at `NEXUS_BACKEND_URL`
 | `pnpm typecheck` | `tsc --noEmit`                                   |
 | `pnpm lint`      | ESLint                                           |
 | `pnpm test`      | Vitest (jsdom)                                   |
-| `pnpm db:generate` | Drizzle Kit — emit SQL migration               |
-| `pnpm db:push`   | Drizzle Kit — apply (interactive)                |
-| `pnpm seed:admin` | One-shot bootstrap of the first admin user      |
+| `pnpm check:no-database` | ADR-034 — falla si el panel recupera una dependencia de Postgres |
 
 ## Layout
 
 ```
 src/
   app/
-    (auth)/login/             public — Better Auth sign-in
+    (auth)/login/             public — login contra /admin/auth/*
     (dashboard)/              gated by middleware
       layout.tsx              sidebar shell + session check
       tenants/                list
       tenants/[id]/           overview · agent · conversations · integrations · isolation
       tool-catalog/           global read of the tool registry
-    api/auth/[...all]/        Better Auth route handler
   components/
     brand/                    Eyebrow · StatusDot · PageHeader · Wordmark
     shell/                    AppSidebar
     ui/                       shadcn primitives
-  db/                         Drizzle schema + client (auth schema only)
   lib/                        auth · session · backend client · format helpers
 ```
 

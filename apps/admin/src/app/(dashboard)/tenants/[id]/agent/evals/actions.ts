@@ -19,7 +19,7 @@ import {
   type EvalDataset,
   type EvalRunDetail,
 } from "@/lib/backend";
-import { requireSession } from "@/lib/session";
+import { requireOperator } from "@/lib/session";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -37,7 +37,7 @@ export async function createDatasetAction(
   tenantId: string,
   body: { name: string; description?: string | null },
 ): Promise<Result<EvalDataset>> {
-  await requireSession();
+  await requireOperator();
   try {
     const r = await backend.createEvalDataset(tenantId, body);
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -56,7 +56,7 @@ export async function createCaseAction(
     assertions: EvalCaseAssertions;
   },
 ): Promise<Result<EvalCase>> {
-  await requireSession();
+  await requireOperator();
   try {
     const r = await backend.createEvalCase(tenantId, datasetId, body);
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -70,7 +70,7 @@ export async function deleteCaseAction(
   tenantId: string,
   caseId: string,
 ): Promise<Result<null>> {
-  await requireSession();
+  await requireOperator();
   try {
     await backend.deleteEvalCase(tenantId, caseId);
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -85,7 +85,7 @@ export async function triggerRunAction(
   datasetId: string,
   body: { agent_config_version?: number },
 ): Promise<Result<EvalRunDetail>> {
-  await requireSession();
+  await requireOperator();
   try {
     const r = await backend.triggerEvalRun(tenantId, datasetId, body);
     // The endpoint returns 202 with status=pending; the real result
@@ -102,7 +102,7 @@ export async function getRunAction(
   tenantId: string,
   runId: string,
 ): Promise<Result<EvalRunDetail>> {
-  await requireSession();
+  await requireOperator();
   try {
     const r = await backend.getEvalRun(tenantId, runId);
     return { ok: true, data: r! };

@@ -13,7 +13,7 @@
 
 import { NextRequest } from "next/server";
 
-import { auth } from "@/lib/auth";
+import { getOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,8 +26,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ conv_id: string }> },
 ) {
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session) {
+  const operator = await getOperator();
+  if (!operator) {
     return new Response("unauthorized", { status: 401 });
   }
 

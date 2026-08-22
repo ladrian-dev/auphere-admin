@@ -190,7 +190,8 @@ class OutboundWorkSet:
 def _asyncpg_dsn() -> str:
     from nexus_api.config import get_settings
 
-    url: str = get_settings().database_url
+    settings = get_settings()
+    url: str = settings.database_url_direct or settings.database_url
     return url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 

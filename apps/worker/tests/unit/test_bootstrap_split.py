@@ -34,6 +34,7 @@ ALL_EXPECTED = {
     "grade-consumer",
     "platform-watcher",
     "reminder-cron",
+    "cobranza-reminder-cron",
     "agent-sales-poll-cron",
     "partner-receipt-cron",
     "isolation-event-drainer",

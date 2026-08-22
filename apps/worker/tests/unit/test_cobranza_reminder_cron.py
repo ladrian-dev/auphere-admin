@@ -15,9 +15,12 @@ import pytest
 from nexus_worker.streams.cobranza_reminder_cron import (
     TEMPLATE_PROXIMO,
     TEMPLATE_VENCIDO,
+    ReminderConfig,
     _fmt_amount,
     _parse_due,
+    _plan_reminders,
     _reminder_for,
+    local_today,
 )
 
 pytestmark = [pytest.mark.unit]
@@ -41,15 +44,28 @@ def _account(**over: Any) -> dict[str, Any]:
 
 
 class TestCadence:
+    """Windows are RANGES, not exact days.
+
+    They used to be equalities (``delta == 3``). Against Muna's real
+    portfolio on 2026-08-20 that matched **zero** of 58 accounts with a
+    balance, and 55 of them had passed all three windows for good. A stage
+    you can only hit on one specific calendar day is a stage that never
+    fires.
+    """
+
     @pytest.mark.parametrize(
         ("due", "expected_stage", "expected_template"),
         [
-            ("2026-07-23", "T-3", TEMPLATE_PROXIMO),  # 3 days before
+            ("2026-07-23", "T-3", TEMPLATE_PROXIMO),  # 3 days out — window edge
+            ("2026-07-22", "T-3", TEMPLATE_PROXIMO),  # 2 days out — was silent before
+            ("2026-07-21", "T-3", TEMPLATE_PROXIMO),  # tomorrow — was silent before
             ("2026-07-20", "T0", TEMPLATE_PROXIMO),  # due today
-            ("2026-07-13", "T+7", TEMPLATE_VENCIDO),  # 7 days overdue
+            ("2026-07-13", "T+7", TEMPLATE_VENCIDO),  # exactly 7 days overdue
+            ("2026-07-10", "T+7", TEMPLATE_VENCIDO),  # 10 days — was silent before
+            ("2026-06-25", "T+7", TEMPLATE_VENCIDO),  # 25 days, still inside the age cap
         ],
     )
-    def test_sends_on_the_three_configured_days(
+    def test_covers_the_whole_window(
         self, due: str, expected_stage: str, expected_template: str
     ) -> None:
         plan = _reminder_for(_account(due_date=due), today=_TODAY, approved=_APPROVED)
@@ -57,10 +73,102 @@ class TestCadence:
         stage, template, _due = plan
         assert (stage, template) == (expected_stage, expected_template)
 
-    @pytest.mark.parametrize("due", ["2026-07-24", "2026-07-22", "2026-07-19", "2026-07-01"])
-    def test_silent_on_every_other_day(self, due: str) -> None:
-        """No reminder on days outside the cadence — debtors are not spammed."""
+    @pytest.mark.parametrize(
+        "due",
+        [
+            "2026-07-24",  # 4 days out — too early to chase
+            "2026-07-19",  # 1 day overdue — inside the grace gap before T+7
+            "2026-07-15",  # 5 days overdue — still inside the gap
+        ],
+    )
+    def test_silent_between_windows(self, due: str) -> None:
+        """The gaps are deliberate: 4+ days out is too early, and days 1-6
+        overdue are the grace period before the first chase."""
         assert _reminder_for(_account(due_date=due), today=_TODAY, approved=_APPROVED) is None
+
+    def test_age_cap_leaves_ancient_debt_alone(self) -> None:
+        """Switching the daily sweep on over a neglected portfolio must not
+        fire a year-old debt at someone. Muna had a live account dated
+        2025-08-31 — created by the agent itself when it guessed the year."""
+        ancient = _account(due_date="2025-07-13")  # ~372 days overdue
+        assert _reminder_for(ancient, today=_TODAY, approved=_APPROVED) is None
+
+    def test_age_cap_is_configurable(self) -> None:
+        ancient = _account(due_date="2026-06-01")  # 49 days overdue
+        assert _reminder_for(ancient, today=_TODAY, approved=_APPROVED) is None
+        generous = ReminderConfig({"max_overdue_days": 90})
+        assert _reminder_for(ancient, today=_TODAY, approved=_APPROVED, config=generous) is not None
+
+
+class TestRunPlan:
+    def test_orders_by_urgency_and_respects_the_cap(self) -> None:
+        """The cap truncates the tail, so ordering decides who gets dropped.
+        'Vence hoy' must never lose its slot to a three-week-old debt."""
+        accounts = [
+            _account(id=1, due_date="2026-07-10"),  # T+7
+            _account(id=2, due_date="2026-07-23"),  # T-3
+            _account(id=3, due_date="2026-07-20"),  # T0
+            _account(id=4, due_date="2026-07-21"),  # T-3, closer
+        ]
+        plans = _plan_reminders(
+            accounts, today=_TODAY, approved=_APPROVED, config=ReminderConfig({})
+        )
+        assert [p[0]["id"] for p in plans] == [3, 4, 2, 1]
+        assert [p[1] for p in plans] == ["T0", "T-3", "T-3", "T+7"]
+
+    def test_skips_ineligible_accounts(self) -> None:
+        accounts = [
+            _account(id=1, due_date="2026-07-20"),
+            _account(id=2, due_date="2026-07-20", status="CANCELLED"),
+            _account(id=3, due_date="2026-07-20", client_phone=""),
+            _account(id=4, due_date="2026-07-24"),
+        ]
+        plans = _plan_reminders(
+            accounts, today=_TODAY, approved=_APPROVED, config=ReminderConfig({})
+        )
+        assert [p[0]["id"] for p in plans] == [1]
+
+
+class TestLocalToday:
+    """ "Today" is the business's calendar day, never UTC's.
+
+    Muna is America/Caracas (UTC-4): from 20:00 local onwards, UTC has
+    already rolled over. Computing the windows off the UTC date shifted
+    every evening run by a full stage.
+    """
+
+    def test_evening_in_caracas_is_still_the_same_local_day(self) -> None:
+        from datetime import UTC, datetime
+
+        # 2026-08-21 01:00 UTC == 2026-08-20 21:00 in Caracas.
+        now = datetime(2026, 8, 21, 1, 0, tzinfo=UTC)
+        assert local_today("America/Caracas", now=now) == date(2026, 8, 20)
+        assert local_today("UTC", now=now) == date(2026, 8, 21)
+
+    def test_unknown_timezone_falls_back_to_utc(self) -> None:
+        from datetime import UTC, datetime
+
+        now = datetime(2026, 8, 21, 1, 0, tzinfo=UTC)
+        assert local_today("Mars/Olympus_Mons", now=now) == date(2026, 8, 21)
+
+
+class TestReminderConfig:
+    def test_defaults_are_off_until_a_tenant_opts_in(self) -> None:
+        assert ReminderConfig(None).enabled is False
+        assert ReminderConfig({}).enabled is False
+
+    def test_reads_and_clamps(self) -> None:
+        cfg = ReminderConfig(
+            {"enabled": True, "hour_local": 99, "max_overdue_days": 1, "max_per_run": 0}
+        )
+        assert cfg.enabled is True
+        assert cfg.hour_local == 23
+        assert cfg.max_overdue_days == 7
+        assert cfg.max_per_run == 1
+
+    def test_junk_falls_back_to_defaults(self) -> None:
+        cfg = ReminderConfig({"enabled": True, "hour_local": "nueve"})
+        assert cfg.hour_local == 9
 
 
 class TestSkips:

@@ -685,3 +685,96 @@ async def test_promote_unchanged_when_eval_required_false(
         headers=admin_headers,
     )
     assert r.status_code == 200
+
+
+async def test_run_row_is_committed_before_the_background_task_starts(
+    client, admin_headers, seed_tenants, db_session, eval_router, fake_judge, monkeypatch
+) -> None:
+    """Regresión (2026-08-19): la fila de ``EvalRun`` tiene que estar
+    COMMITEADA cuando arranca la corrutina de fondo.
+
+    El endpoint la creaba con ``flush`` sobre la sesión del request, que no
+    commitea hasta el teardown de la dependencia. ``asyncio.create_task``
+    corre ANTES de ese teardown (comprobado con FastAPI 0.136), así que el
+    primer ``scalar_one()`` de la tarea podía no ver nada:
+    ``NoResultFound`` → ``evals.run.background_aborted`` y el run muerto.
+
+    Aquí se sustituye la tarea de fondo por una sonda que hace exactamente
+    lo mismo que hacía la real —abrir su propia sesión y leer la fila— y se
+    exige que la encuentre. Con el código anterior, no la encontraba.
+    """
+    import sqlalchemy as sa
+    from fastapi import Depends, Path
+
+    from nexus_api.api.admin import evals as evals_module
+    from nexus_api.api.deps import _tenant_scoped, get_db_session, scoped_session_from_path
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.db.models import EvalRun
+    from nexus_api.main import app
+
+    # La carrera sólo se ve si el COMMIT del request llega tarde. En una
+    # base local el commit gana siempre y el test pasaría con o sin el
+    # arreglo — inútil como regresión. Este override retrasa 300 ms el
+    # cierre de ``session.begin()``, que es exactamente la ventana en la
+    # que el bug vivía.
+    async def _late_commit_scope(
+        tenant_id: uuid.UUID = Path(...),
+        session: Any = Depends(get_db_session),
+    ) -> AsyncIterator[Any]:
+        async for scoped in _tenant_scoped(tenant_id, session):
+            try:
+                yield scoped
+            finally:
+                await asyncio.sleep(0.3)
+
+    # ``setitem`` y no asignación directa: monkeypatch lo revierte aunque
+    # el test reviente a mitad, y el override es global al app.
+    monkeypatch.setitem(app.dependency_overrides, scoped_session_from_path, _late_commit_scope)
+
+    seen: dict[str, object] = {}
+
+    async def _probe(*, tenant_id, run_id, **_kw) -> None:
+        factory = get_sessionmaker()
+        async with factory() as s, tenant_scoped_session(s, tenant_id):
+            row = (
+                await s.execute(sa.select(EvalRun).where(EvalRun.id == run_id))
+            ).scalar_one_or_none()
+        seen["found"] = row is not None
+
+    monkeypatch.setattr(evals_module, "_run_eval_background", _probe)
+
+    tid = seed_tenants["a"]
+    async with db_session.begin():
+        await _seed_active_config(db_session, tid)
+
+    ds = (
+        await client.post(
+            f"/admin/tenants/{tid}/eval-datasets",
+            headers=admin_headers,
+            json={"name": "commit-order"},
+        )
+    ).json()
+    await client.post(
+        f"/admin/tenants/{tid}/eval-datasets/{ds['id']}/cases",
+        headers=admin_headers,
+        json={
+            "name": "c",
+            "user_message": "?",
+            "assertions": {"judge_questions": ["¿hizo X?"]},
+        },
+    )
+
+    r = await client.post(
+        f"/admin/tenants/{tid}/eval-datasets/{ds['id']}/run",
+        headers=admin_headers,
+        json={},
+    )
+    assert r.status_code == 202, r.text
+
+    for _ in range(100):
+        if "found" in seen:
+            break
+        await asyncio.sleep(0.01)
+
+    assert seen.get("found") is True, "la tarea de fondo no vio la fila del run"

@@ -14,7 +14,7 @@ import {
   type TestAgentHistoryMessage,
   type TestTurnOut,
 } from "@/lib/backend";
-import { requireSession } from "@/lib/session";
+import { requireOperator } from "@/lib/session";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -40,7 +40,7 @@ export async function stageAgentConfigAction(
     kg_schema_id?: string | null;
   },
 ): Promise<Result<AgentConfig>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.stageAgentConfig(tenantId, body);
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -55,7 +55,7 @@ export async function promoteAgentConfigAction(
   tenantId: string,
   version: number,
 ): Promise<Result<AgentConfig>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.promoteAgentConfig(tenantId, version);
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -70,7 +70,7 @@ export async function rollbackAgentConfigAction(
   tenantId: string,
   version: number,
 ): Promise<Result<AgentConfig>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.rollbackAgentConfig(tenantId, version);
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -90,7 +90,7 @@ export async function updateRuntimeCapabilitiesAction(
   version: number,
   body: RuntimeCapabilitiesInput,
 ): Promise<Result<AgentConfig>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.updateRuntimeCapabilities(
       tenantId,
@@ -113,7 +113,7 @@ export async function improveAgentPromptAction(
     feedback?: string | null;
   },
 ): Promise<Result<ImprovePromptOut>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.improveAgentPrompt(tenantId, body);
     // We deliberately do NOT revalidatePath here: the improver returns
@@ -134,7 +134,7 @@ export async function testAgentTurnAction(
     version?: number;
   },
 ): Promise<Result<TestTurnOut>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.testAgentTurn(tenantId, body);
     // The sandbox doesn't mutate any persistent state — no
@@ -150,7 +150,7 @@ export async function applySeedTemplateAction(
   tenantId: string,
   body: { seed_template_ref: string; placeholders: Record<string, unknown> },
 ): Promise<Result<AgentConfig>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.applyAgentConfigSeed(tenantId, body);
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -173,7 +173,7 @@ export async function applySeedTemplateAction(
 export async function getSeedMetricsAction(
   templateName: string,
 ): Promise<Result<SeedTemplateMetrics | null>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.getSeedTemplateMetrics(templateName);
     return { ok: true, data: result };
@@ -185,7 +185,7 @@ export async function getSeedMetricsAction(
 export async function listPromptLibraryAction(
   opts: { vertical?: string; category?: string } = {},
 ): Promise<Result<PromptSnippet[]>> {
-  await requireSession();
+  await requireOperator();
   try {
     const result = await backend.listPromptLibrary(opts);
     return { ok: true, data: result };

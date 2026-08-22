@@ -56,6 +56,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from langgraph.graph import END, START, StateGraph
@@ -625,6 +626,53 @@ def _channel_format_note(channel: str) -> str:
 # on Clínica Boreal. We never know the customer's gender from a phone number
 # or an opening "Hola", so the agent must stay neutral until the customer
 # reveals it.
+# The current date/time, in the BUSINESS's timezone, injected on every turn
+# like the channel note.
+#
+# Without this the model has no idea what day it is and answers date questions
+# from its training prior. In production that was not theoretical: on
+# 2026-08-19 the cobranza agent offered "(ejemplo: 2025-08-30)" as the due-date
+# format, the admin copied the example, and a real account was created a year
+# overdue — which also put its reminder windows permanently in the past.
+#
+# The tenant's timezone (not UTC) is the only one that makes "hoy", "mañana"
+# or "el viernes" mean what the person typing them meant. For a business in
+# America/Caracas the UTC date is already tomorrow after 20:00 local.
+_WEEKDAYS_ES = (
+    "lunes",
+    "martes",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sábado",
+    "domingo",
+)
+
+
+def _now_note(timezone_name: str, *, now: datetime | None = None) -> str:
+    """A system instruction stating the current date and time for the business."""
+    try:
+        tz = ZoneInfo(timezone_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        # A malformed tenant timezone must not kill the turn. UTC and a
+        # visible marker beat silently pretending we know the local date.
+        log.warning("pipeline.now_note.unknown_timezone", timezone=timezone_name)
+        tz = ZoneInfo("UTC")
+        timezone_name = "UTC"
+    local = (now or datetime.now(UTC)).astimezone(tz)
+    weekday = _WEEKDAYS_ES[local.weekday()]
+    return (
+        "Fecha y hora actuales en la zona horaria del negocio "
+        f"({timezone_name}): {weekday} {local.strftime('%d/%m/%Y')}, "
+        f"{local.strftime('%H:%M')}. En formato ISO, hoy es "
+        f"{local.date().isoformat()}.\n"
+        "Usa SIEMPRE esta fecha para resolver referencias relativas ('hoy', "
+        "'mañana', 'el viernes', 'fin de mes', 'en 15 días') y para decidir si "
+        "algo está vencido. NUNCA deduzcas el año ni la fecha de tu propio "
+        "conocimiento: la de arriba es la única correcta."
+    )
+
+
 _GENDER_NEUTRAL_NOTE = (
     "Never assume the customer's gender. You do not know it from their "
     "phone number, name, or an opening greeting. Until the customer makes "
@@ -658,6 +706,7 @@ def _build_handler_messages(
             "role": "system",
             "content": _channel_format_note(state.get("channel_type") or "whatsapp"),
         },
+        {"role": "system", "content": _now_note(bundle.timezone)},
         {"role": "system", "content": _GENDER_NEUTRAL_NOTE},
     ]
     operating_policy = render_operating_policy_block(bundle.policies)

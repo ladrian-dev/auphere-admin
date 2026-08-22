@@ -4,6 +4,7 @@ from nexus_api.api.admin import (
     agent_configs,
     audit,
     auphere_channels,
+    auth,
     backchannel_owners,
     billing,
     budget_policies,
@@ -27,6 +28,8 @@ from nexus_api.api.admin import (
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+# Primero la identidad: es lo único que un panel sin sesión puede llamar.
+router.include_router(auth.router)
 router.include_router(tenants.router)
 router.include_router(agent_configs.router)
 router.include_router(conversations.router)

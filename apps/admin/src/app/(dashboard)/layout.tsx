@@ -5,19 +5,19 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/shell/app-sidebar";
-import { requireSession } from "@/lib/session";
+import { requireOperator } from "@/lib/session";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await requireSession();
+  const operator = await requireOperator();
 
   return (
     <SidebarProvider defaultOpen>
       <AppSidebar
-        user={{ name: session.user.name, email: session.user.email }}
+        user={{ name: operator.display_name ?? operator.email, email: operator.email }}
       />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-[color:var(--color-bg)]/85 backdrop-blur supports-[backdrop-filter]:bg-[color:var(--color-bg)]/60 px-4">

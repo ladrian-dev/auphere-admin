@@ -11,6 +11,10 @@ def _set_prod_secrets(monkeypatch):
     monkeypatch.setenv("NEXUS_FERNET_KEY", "prod-fernet-key-override")
     monkeypatch.setenv("NEXUS_EMBED_JWT_SECRET", "real-embed-jwt-secret-32-bytes-long!")
     monkeypatch.setenv("NEXUS_CONNECTOR_CONSENT_SECRET", "real-consent-secret-at-least-32-chars!!")
+    monkeypatch.setenv("NEXUS_COMPOSIO_API_KEY", "real-composio-key")
+    monkeypatch.setenv("NEXUS_COMPOSIO_WEBHOOK_SECRET", "real-composio-webhook-secret")
+    monkeypatch.setenv("NEXUS_PUBLIC_API_BASE_URL", "https://api.auphere.com")
+    monkeypatch.setenv("NEXUS_ADMIN_PANEL_BASE_URL", "https://admin.auphere.com")
 
 
 def test_settings_loads_from_env(monkeypatch):
@@ -87,3 +91,28 @@ def test_dev_tolerates_placeholder_secrets(monkeypatch):
     monkeypatch.setenv("NEXUS_ENVIRONMENT", "dev")
     s = Settings()
     assert "change-me" in s.meta_app_secret
+def test_prod_rejects_the_silent_defaults_from_the_aws_cutover(monkeypatch):
+    """Regresión del 2026-08-19.
+
+    Las cuatro claves de abajo no llegaron a las task definitions de AWS. La
+    API arrancó igual —todas tienen default— y se llevó por delante el
+    catálogo de conectores (cliente Composio falso) y el cierre del OAuth
+    (callback a localhost). Sin un solo error. El guard existe para que ese
+    despliegue no vuelva a arrancar.
+    """
+    monkeypatch.setenv("NEXUS_ENVIRONMENT", "production")
+    _set_prod_secrets(monkeypatch)
+    for k in (
+        "NEXUS_COMPOSIO_API_KEY",
+        "NEXUS_COMPOSIO_WEBHOOK_SECRET",
+        "NEXUS_PUBLIC_API_BASE_URL",
+        "NEXUS_ADMIN_PANEL_BASE_URL",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    with pytest.raises(ValueError) as exc:
+        Settings()
+    msg = str(exc.value)
+    assert "NEXUS_COMPOSIO_API_KEY" in msg
+    assert "NEXUS_COMPOSIO_WEBHOOK_SECRET" in msg
+    assert "NEXUS_PUBLIC_API_BASE_URL" in msg
+    assert "NEXUS_ADMIN_PANEL_BASE_URL" in msg

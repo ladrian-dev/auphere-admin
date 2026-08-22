@@ -25,6 +25,20 @@
 #   2. ./populate_app_secret.sh prod
 #
 # El script NO imprime ningún valor: sólo qué claves quedaron puestas.
+#
+# ⚠️  ESTO ES EL PRIMER LLENADO, Y **SOBREESCRIBE**. Compone el JSON desde
+#     cero con la lista fija de abajo, así que se lleva por delante
+#     cualquier clave que se haya añadido después a las definiciones de
+#     tarea. Y una task cuya definición pide una clave que no está en el
+#     secreto **no arranca**.
+#
+#     Pasó el 2026-08-19: la rotación de Aurora obligó a repoblar y el
+#     repoblado se llevó las 3 claves de la consola.
+#
+#     Para refrescar un secreto que YA existe —una rotación de Aurora— usa
+#     **refresh_app_secret.sh**: parte de lo que hay, reescribe sólo las
+#     URLs de base de datos y comprueba contra las definiciones de tarea
+#     que no falta ninguna clave.
 
 set -euo pipefail
 

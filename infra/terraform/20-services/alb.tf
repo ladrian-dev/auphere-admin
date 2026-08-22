@@ -44,6 +44,35 @@ resource "aws_lb_listener" "https" {
   }
 }
 
+# Certificados ADICIONALES del listener, servidos por SNI.
+#
+# El de arriba es el POR DEFECTO y cubre ``api.auphere.com``. Pero el
+# webhook de Meta no entra por ese nombre: entra por
+# ``webhooks.auphere.com`` (default de ``meta_webhook_callback_url``, y lo
+# que el panel de Meta tiene configurado), y ese host va **sin proxy de
+# Cloudflare** a propósito — Meta desactiva webhooks que responden lento y
+# un salto de CDN con WAF en la ruta de entrada es riesgo sin beneficio.
+# Sin un cert que cubra ese nombre, el ALB presenta el de api y Meta corta
+# el TLS.
+#
+# Se declara aquí porque el 2026-08-19, en el corte a AWS, este cert se
+# añadió con ``aws elbv2 add-listener-certificates`` para desbloquear la
+# ventana. Un ``apply`` no se lo llevaría —no es un recurso declarado— pero
+# eso es justo el problema: infraestructura que sostiene la entrada de
+# producción y no está en el código.
+#
+# Por qué un cert aparte y no un SAN en el de arriba: cambiar los
+# ``subject_alternative_names`` de un cert ACM lo **reemplaza**, y el nuevo
+# nace ``PENDING_VALIDATION``. Con un listener sirviendo tráfico real eso es
+# la peor secuencia posible. El extra ya está ``ISSUED`` y cubre los dos
+# nombres, así que atarlo por SNI no cambia nada en caliente.
+resource "aws_lb_listener_certificate" "extra" {
+  for_each = local.https_enabled ? toset(var.extra_certificate_arns) : toset([])
+
+  listener_arn    = aws_lb_listener.https[0].arn
+  certificate_arn = each.value
+}
+
 # Con HTTPS activo: 80 redirige a 443. Sin él (cert aún sin emitir): 80
 # forwardea directo — suficiente para humo, nunca para webhooks de Meta.
 resource "aws_lb_listener" "http" {

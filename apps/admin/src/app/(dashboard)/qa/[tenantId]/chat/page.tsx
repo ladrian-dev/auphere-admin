@@ -8,8 +8,8 @@
  *
  * URL shape: ``/qa/[tenantId]/chat?thread=[threadId?]``.
  *
- * Access: gated by the (dashboard) layout's ``requireSession()``. The
- * operator id is the Better Auth session.user.id; the same id is
+ * Access: gated by the (dashboard) layout's ``requireOperator()``. The
+ * operator id is the Better Auth operator.id; the same id is
  * stamped into ``qa.threads.operator_id`` so RLS keeps two operators
  * inspecting the same tenant from seeing each other's threads.
  */
@@ -18,7 +18,7 @@ import { notFound } from "next/navigation";
 import { PlaygroundShell } from "@/components/qa/playground-shell";
 import { backend } from "@/lib/backend";
 import { qaApi, type QAThread } from "@/lib/qa-api";
-import { requireSession } from "@/lib/session";
+import { requireOperator } from "@/lib/session";
 
 export const metadata = { title: "QA Playground" };
 
@@ -31,8 +31,8 @@ export default async function PlaygroundPage({
 }) {
   const { tenantId } = await params;
   const { thread: activeThreadId } = await searchParams;
-  const session = await requireSession();
-  const operatorId = session.user.id;
+  const operator = await requireOperator();
+  const operatorId = operator.id;
 
   const [tenant, agentBundle, threads] = await Promise.all([
     backend.getTenant(tenantId),
@@ -56,7 +56,7 @@ export default async function PlaygroundPage({
       }}
       agentVersion={agentBundle.active?.version ?? null}
       operatorId={operatorId}
-      operatorEmail={session.user.email ?? null}
+      operatorEmail={operator.email ?? null}
       initialThreads={threads}
       initialActiveThread={activeThread}
     />

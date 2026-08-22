@@ -62,6 +62,7 @@ from nexus_worker.streams.agent_sales_poll_cron import run_agent_sales_poll_cron
 from nexus_worker.streams.async_booking_cron import run_async_booking_cron
 from nexus_worker.streams.checkpoint_retention_cron import run_checkpoint_retention_cron
 from nexus_worker.streams.claimer import run_stream_claimer
+from nexus_worker.streams.cobranza_reminder_cron import run_cobranza_reminder_cron
 from nexus_worker.streams.connector_reconcile_cron import run_connector_reconcile_cron
 from nexus_worker.streams.consumer import run_inbound_consumer
 from nexus_worker.streams.continuous_eval_cron import run_continuous_eval_cron
@@ -123,6 +124,7 @@ SCHEDULER_TASK_NAMES = frozenset(
         "grade-consumer",
         "platform-watcher",
         "reminder-cron",
+        "cobranza-reminder-cron",
         "agent-sales-poll-cron",
         "partner-receipt-cron",
         "isolation-event-drainer",
@@ -410,6 +412,10 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         ),
         _spawn("platform-watcher", run_platform_watcher(ctx.redis, stop=ctx.stop)),
         _spawn("reminder-cron", run_reminder_cron(stop=ctx.stop)),
+        _spawn(
+            "cobranza-reminder-cron",
+            run_cobranza_reminder_cron(stop=ctx.stop, redis=ctx.redis),
+        ),
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         _spawn("isolation-event-drainer", isolation_event_drainer(ctx.stop)),

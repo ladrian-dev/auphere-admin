@@ -210,6 +210,7 @@ def _reset_test_db() -> None:
         # CO-01: lo mismo para el Companion — sus cuatro tablas viven en el
         # esquema ``companion`` (0090) y sobrevivirían al DROP de ``public``.
         "DROP SCHEMA IF EXISTS companion CASCADE; "
+        "DROP SCHEMA IF EXISTS operator_auth CASCADE; "
         "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
         "CREATE EXTENSION IF NOT EXISTS vector;"
     )
@@ -366,6 +367,7 @@ _TRUNCATE_TABLES = (
     "partner_invitations",
     "partner_memberships",
     "partners",
+    "operator_auth.principals",
     "kg_edges",
     "kg_nodes",
     "tenant_credentials",

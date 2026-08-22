@@ -47,11 +47,26 @@ class ListOverdueInput(InputModel):
 
 
 class ListOverdueOutput(OutputModel):
-    items: list[DebtRecord] = Field(description="Cuentas por cobrar de esta página.")
-    total: int = Field(description="Total de cuentas reportadas por el negocio.")
+    # Scalars FIRST. The worker truncates tool JSON at 8_000 chars
+    # (``_TOOL_RESULT_CHAR_CAP``); if ``items`` lead, ``total`` never
+    # reaches the model on a fat page.
+    total: int = Field(
+        description=(
+            "Cuentas que reporta el negocio en total (todas las páginas, "
+            "sin filtrar por saldo). No es dinero."
+        )
+    )
+    page_count: int = Field(description="Cuentas en ESTA página después de aplicar filtros.")
+    page_balance: float = Field(
+        description=(
+            "Suma de saldos de ESTA página (dinero). Positivo = se debe; "
+            "negativo = a favor del cliente."
+        )
+    )
     current_page: int = Field(description="Página actual.")
     last_page: int = Field(description="Última página disponible.")
     has_more: bool = Field(description="True si hay más páginas por consultar.")
+    items: list[DebtRecord] = Field(description="Cuentas por cobrar de esta página.")
 
 
 class GetDebtorByPhoneInput(InputModel):
@@ -174,8 +189,20 @@ class CreateAccountInput(InputModel):
     client_document: str | None = Field(
         default=None, max_length=40, description="Cédula o RIF del deudor."
     )
-    due_date: str | None = Field(
-        default=None, description="Fecha de vencimiento (ISO 8601), opcional."
+    # Required, and not because the model should be nagged into it: the
+    # Amigable Cobro API rejects a create without it
+    # (``{'due_date': ['The due date field is required.']}``). Declaring it
+    # optional meant the tool fired, failed, and the agent then improvised a
+    # date to retry with — which on 2026-08-19 produced a real account dated
+    # a year in the past.
+    due_date: str = Field(
+        min_length=8,
+        max_length=32,
+        description=(
+            "Fecha de vencimiento en ISO 8601 (AAAA-MM-DD). OBLIGATORIA: la "
+            "plataforma rechaza la cuenta sin ella. Pídesela al admin y "
+            "confírmala; nunca la deduzcas."
+        ),
     )
     force: bool = Field(
         default=False,
@@ -237,6 +264,13 @@ class SendRemindersOutput(OutputModel):
         )
     )
     queued: int = Field(description="Cantidad de recordatorios encolados en este envío.")
+    deferred: int = Field(
+        default=0,
+        description=(
+            "Recordatorios que correspondían hoy pero quedaron fuera por el tope "
+            "por envío; saldrán en el barrido siguiente."
+        ),
+    )
     recipients: list[ReminderRecipient] = Field(
         default_factory=list, description="Detalle de los recordatorios encolados."
     )

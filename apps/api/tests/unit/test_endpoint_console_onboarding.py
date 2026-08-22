@@ -54,10 +54,9 @@ def test_describe_placeholders_barbershop_and_cobranza() -> None:
     assert all(barber[k].required for k in keys[:first_optional])
 
     cobranza = {p.key: p for p in describe_placeholders(load_seed_template("cobranza_v1"))}
-    bank = cobranza["policies.payment.transferencia.numero_cuenta"]
-    assert bank.required and bank.secret and bank.example is None
     phones = cobranza["policies.admin_access.admin_phones"]
     assert phones.required and phones.secret and phones.kind == "list"
+    assert not any(k.startswith("policies.payment") for k in cobranza)
 
 
 async def test_list_seed_templates_has_no_prompt(client, console_world, db_session) -> None:

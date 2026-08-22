@@ -91,6 +91,11 @@ from nexus_api.db.models.model_profile import (
     ModelProfile,
     TenantModelBinding,
 )
+from nexus_api.db.models.operator_identity import (
+    OPERATOR_AUTH_SCHEMA,
+    OperatorAccount,
+    OperatorSession,
+)
 from nexus_api.db.models.operator_notification import (
     OperatorNotification,
     OperatorNotificationStatus,
@@ -142,6 +147,7 @@ __all__ = [
     "CONSOLE_AUTH_SCHEMA",
     "INVITATION_TTL",
     "MODEL_ROLES",
+    "OPERATOR_AUTH_SCHEMA",
     "MODE_BUILD",
     "MODE_CONSULT",
     "OWNER_COMMAND_KINDS",
@@ -220,8 +226,10 @@ __all__ = [
     "ModelProfile",
     "NotificationKind",
     "NotificationSeverity",
+    "OperatorAccount",
     "OperatorNotification",
     "OperatorNotificationStatus",
+    "OperatorSession",
     "OwnerConsultation",
     "OwnerPhoneIndex",
     "Partner",

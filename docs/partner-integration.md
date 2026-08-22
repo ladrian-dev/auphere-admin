@@ -175,13 +175,39 @@ Placeholders obligatorios de `cobranza_v1`:
 
 ```
 policies.admin_access.admin_phones          ["+584241234567", …]
-policies.payment.pago_movil.banco           policies.payment.pago_movil.telefono
-policies.payment.pago_movil.cedula          policies.payment.transferencia.banco
-policies.payment.transferencia.numero_cuenta  policies.payment.transferencia.titular
-policies.payment.transferencia.cedula_rif   policies.payment.binance.pay_id
 ```
 
 (`agent.name` es opcional — por defecto "Sofía".)
+
+> **Cambio (ADR-035, 2026-08-21):** los placeholders `policies.payment.*`
+> **ya no existen**. Vivían en el prompt del vertical, que es compartido por
+> todos los negocios, y los valores de ejemplo del seed llegaron a producción
+> tal cual. Si los sigues mandando se ignoran; no hace falta que los quites,
+> pero tampoco sirven de nada.
+>
+> El agente ahora responde que no tiene los datos de pago del negocio. Si
+> necesitáis que los dicte, el camino es exponerlos en vuestra API y añadir
+> una tool que los lea — no volver a meterlos en el prompt.
+
+### 3.1.b Recordatorios de vencimiento
+
+El barrido es **diario y automático** desde ADR-035: una pasada al día a
+`policies.reminders.hour_local` (por defecto las 9) en la zona horaria del
+negocio. Etapas: vence hoy, vence en 1-3 días, y 7+ días vencida.
+
+Ajustes por negocio en `policies.reminders`:
+
+| Campo | Default | Qué hace |
+|---|---|---|
+| `enabled` | `true` | interruptor del barrido |
+| `hour_local` | `9` | hora local a la que corre |
+| `max_overdue_days` | `30` | no persigue deudas más viejas |
+| `max_per_run` | `50` | tope por barrido; lo excluido sale al día siguiente |
+
+Requiere las dos plantillas (`recordatorio_pago_proximo`,
+`recordatorio_pago_vencido`) APPROVED **en la WABA del negocio**, y que esa
+WABA tenga método de pago en su Meta Business: sin él Meta acepta el envío y
+luego lo falla con `131042` *Business eligibility payment issue*.
 
 ### 3.2 Enviar plantillas (campañas)
 

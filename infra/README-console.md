@@ -68,6 +68,21 @@ en algún sitio, es de antes de ADR-032 y sobra.
   la persona no tiene membership activo.
 - Si todo da 401: la pública de la API no es la pareja de la privada de Vercel.
 
+## Producción (corte AWS 2026-08-19)
+
+Proyecto de Vercel **`auphere-console`** (rama de producción `main`, dominio
+`console.auphere.com`). **Un proyecto por entorno**.
+
+`prod.tfvars` ahora fija `https_enabled = true` y `extra_certificate_arns`
+(webhooks.auphere.com). Un apply **sin** ese tfvars sigue planeando destruir
+el listener HTTPS — no lo apliques así.
+
+Antes de apply en `prod`: las claves de `app_secret_keys` (incluida
+`NEXUS_CONSOLE_JWT_PUBLIC_KEY`) tienen que existir en `nexus/prod/app`.
+
+La cabeza de Alembic en develop ya no es solo `0088_console_identity`:
+tras este merge la cadena es 0088 → 0089_operator_identity → 0090_companion → 0091 → 0092.
+
 ## Alternativa (ECS, no vigente)
 
 Si más adelante se quiere la consola dentro de la VPC: `apps/console/Dockerfile`

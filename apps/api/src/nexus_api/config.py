@@ -491,6 +491,14 @@ class Settings(BaseSettings):
         # request a 401 with a misleading cause.
         if self.console_enabled and not self.console_jwt_public_key.strip():
             offenders.append("NEXUS_CONSOLE_JWT_PUBLIC_KEY")
+        if not self.composio_api_key.strip():
+            offenders.append("NEXUS_COMPOSIO_API_KEY")
+        if "change-me" in self.composio_webhook_secret:
+            offenders.append("NEXUS_COMPOSIO_WEBHOOK_SECRET")
+        if "localhost" in self.public_api_base_url:
+            offenders.append("NEXUS_PUBLIC_API_BASE_URL")
+        if "localhost" in self.admin_panel_base_url:
+            offenders.append("NEXUS_ADMIN_PANEL_BASE_URL")
         if offenders:
             raise ValueError(
                 "Refusing to boot in production with dev placeholder secrets: "

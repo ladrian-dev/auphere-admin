@@ -1,37 +1,28 @@
 /**
- * QA access guard — Better Auth ``user.role`` validation for ``/qa/*``.
+ * Guardia del QA Playground — ``role`` del operador (ADR-034).
  *
- * Resolves the current session, loads the user's ``role`` from the
- * ``auth.user`` table, and gates the QA Playground BFF proxies:
+ * Antes esto hacía un SELECT con Drizzle sobre ``auth.user`` para leer el
+ * rol. Ya no hay Drizzle ni ``auth.user``: el rol viaja en la respuesta de
+ * ``/admin/auth/session``, que es la misma llamada que ya resuelve la
+ * sesión. Cero consultas extra.
  *
- *   - 401 if no session.
- *   - 403 if the user exists but the role isn't in ``QA_ROLES``
- *     (``admin`` / ``qa_operator``).
- *   - returns ``{ operatorId, role, email }`` otherwise.
+ * Lo que gatea, y por qué sigue existiendo:
  *
- * Why a separate role check (vs trusting the Bearer + ``X-Operator-Id``
- * the backend accepts):
+ *   - 401 si no hay sesión.
+ *   - 403 si el rol no está en ``QA_ROLES`` (``admin`` / ``qa_operator``).
+ *   - 403 si la cuenta está deshabilitada.
+ *   - ``{ operatorId, role, email }`` en cualquier otro caso.
  *
- *   - The backend's ``require_qa_operator`` dependency only verifies
- *     the Bearer + that the header is a non-empty opaque string. Any
- *     authenticated admin-panel user — even one whose role is later
- *     downgraded to ``viewer`` — could otherwise reach the Playground.
- *   - This guard runs at the BFF layer, so the operator id forwarded
- *     to the backend is provably a user with the right role at the
- *     time of the request. The backend stays a thin RLS enforcer.
- *
- * Block G (eventual full Better Auth integration) will move this
- * validation into the FastAPI dependency itself. Until then, the BFF
- * is the gate.
+ * ``require_qa_operator`` en el backend sólo comprueba el bearer y que
+ * ``X-Operator-Id`` sea una cadena no vacía: sin esta guardia, cualquier
+ * usuario del panel —incluido uno degradado a ``viewer``— llegaría al
+ * Playground. El backend sigue siendo el que aplica RLS; el BFF es quien
+ * decide qué operador se le anuncia.
  */
 import "server-only";
 
-import { eq } from "drizzle-orm";
-
-import { db, schema } from "@/db/client";
-import { QA_ROLES, type Role } from "@/db/schema";
-
-import { getSession } from "./session";
+import { QA_ROLES, type Role } from "./operator-auth";
+import { getOperator } from "./session";
 
 export type QAAccess = {
   operatorId: string;
@@ -50,33 +41,22 @@ export class QAForbidden extends Error {
 }
 
 /**
- * Use inside a BFF route handler to gate ``/api/qa/*``. Throws
- * ``QAForbidden`` with the right HTTP status when the caller isn't
- * allowed. Callers catch it and return ``NextResponse.json(...)``.
- *
- * Cheap: one indexed SELECT on ``auth.user`` per request. Better Auth
- * already hits the DB to resolve the session, so we're paying one
- * extra round-trip — negligible vs the LLM cost of any QA turn.
+ * Se usa dentro de un route handler del BFF para gatear ``/api/qa/*``.
+ * Lanza ``QAForbidden`` con el estado correcto; el llamante lo captura y
+ * responde con ``NextResponse.json(...)``.
  */
 export async function requireQAOperator(): Promise<QAAccess> {
-  const session = await getSession();
-  if (!session) throw new QAForbidden("no-session", 401);
-
-  const row = await db
-    .select({ role: schema.user.role, email: schema.user.email })
-    .from(schema.user)
-    .where(eq(schema.user.id, session.user.id))
-    .limit(1);
-  if (row.length === 0) {
-    throw new QAForbidden("no-user", 401);
-  }
-  const role = row[0].role as Role;
-  if (!(QA_ROLES as readonly string[]).includes(role)) {
-    throw new QAForbidden("wrong-role", 403, role);
+  const operator = await getOperator();
+  if (!operator) throw new QAForbidden("no-session", 401);
+  // Una cuenta revocada conserva su fila y su rol; lo que pierde es el
+  // derecho a operar. Sin esta línea seguiría entrando al Playground.
+  if (operator.access !== "ok") throw new QAForbidden("wrong-role", 403, operator.role);
+  if (!(QA_ROLES as readonly string[]).includes(operator.role)) {
+    throw new QAForbidden("wrong-role", 403, operator.role);
   }
   return {
-    operatorId: session.user.id,
-    email: row[0].email,
-    role,
+    operatorId: operator.id,
+    email: operator.email,
+    role: operator.role,
   };
 }

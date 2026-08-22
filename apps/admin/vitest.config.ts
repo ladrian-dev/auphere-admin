@@ -15,6 +15,6 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}", "tests/**/*.{test,spec}.{ts,tsx}"],
-    exclude: ["node_modules", ".next", "drizzle"],
+    exclude: ["node_modules", ".next"],
   },
 });
