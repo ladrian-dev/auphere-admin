@@ -87,7 +87,8 @@ from nexus_api.db.models.console_notification import (
     ConsoleNotification,
     NotificationSeverity,
 )
-from nexus_api.metering.quota import cache_read_quota_tokens
+from nexus_api.metering.quota import cache_read_quota_tokens, quota_tokens
+from nexus_api.metering.wallet import companion_wallet_remaining, debit_wallet
 
 from .deps import resolve_mapping
 from .playground import MonthWindow, month_window
@@ -328,6 +329,20 @@ async def notify_cap_reached(partner_id: uuid.UUID, window: MonthWindow) -> None
         pass  # ya avisado este mes
     except Exception:  # pragma: no cover - un aviso no puede tumbar un turno
         log.exception("console.companion.cap_notify_failed", partner_id=str(partner_id))
+
+
+async def _require_wallet(partner_id: uuid.UUID) -> None:
+    """409 si el cubo reserva del partner está a 0. Antes del LLM.
+
+    El Companion gasta ``partner_wallets`` (included, luego purchased).
+    ``partner_allocations`` es canal: vacío no bloquea el turno.
+    """
+    remaining = await companion_wallet_remaining(partner_id)
+    if remaining <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "wallet_empty", "remaining": remaining},
+        )
 
 
 def _budget_paused(used: int, cap: int, window: MonthWindow) -> HTTPException:
@@ -611,6 +626,7 @@ async def start_run(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT, detail="Thread is archived"
                 )
+            await _require_wallet(partner.id)
             await _guard_concurrency(session, principal_id)
             run = CompanionRun(thread_id=thread.id, principal_id=principal_id, status=RUN_RUNNING)
             session.add(run)
@@ -655,6 +671,7 @@ async def start_run(
         on_complete=_make_on_complete(
             principal_id=principal_id,
             partner_id=partner.id,
+            tenant_id=tenant_id,
             used_before=used_before,
             cap=cap,
             window=window,
@@ -998,6 +1015,7 @@ def _make_on_complete(
     *,
     principal_id: str,
     partner_id: uuid.UUID,
+    tenant_id: uuid.UUID | None,
     used_before: int,
     cap: int,
     window: MonthWindow,
@@ -1031,6 +1049,27 @@ def _make_on_complete(
             cost_usd=await _turn_cost_usd(handle),
             steps=handle.total_steps,
         )
+        uncached = max(
+            0, int(handle.total_input_tokens) - cache_read_quota_tokens(handle.total_cache_read)
+        )
+        qty = quota_tokens(
+            prompt_tokens=uncached + int(handle.total_cache_read),
+            cache_read=int(handle.total_cache_read),
+            output_tokens=int(handle.total_output_tokens),
+            cache_write=int(handle.total_cache_write),
+        )
+        try:
+            await debit_wallet(
+                partner_id=partner_id,
+                qty=qty,
+                idempotency_key=f"companion:{handle.run_id}",
+                companion_run_id=handle.run_id,
+            )
+        except Exception:
+            log.exception(
+                "console.companion.wallet_debit_failed",
+                partner_id=str(partner_id),
+            )
         if used_before + handle.total_input_tokens + handle.total_output_tokens >= cap:
             await notify_cap_reached(partner_id, window)
 
@@ -1611,6 +1650,7 @@ async def resume_run(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT, detail="Thread is archived"
                 )
+            await _require_wallet(caller.partner.id)
             await _guard_concurrency(session, principal_id)
             new_run = CompanionRun(
                 thread_id=thread.id, principal_id=principal_id, status=RUN_RUNNING
@@ -1679,6 +1719,7 @@ async def resume_run(
         on_complete=_make_on_complete(
             principal_id=principal_id,
             partner_id=caller.partner.id,
+            tenant_id=tenant_id,
             used_before=used_before,
             cap=cap,
             window=window,

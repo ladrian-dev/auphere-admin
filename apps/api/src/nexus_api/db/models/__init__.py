@@ -129,6 +129,12 @@ from nexus_api.db.models.partner_membership import (
     PartnerMembership,
     PartnerRole,
 )
+from nexus_api.db.models.partner_wallet import (
+    LEDGER_BUCKETS,
+    PartnerAllocation,
+    PartnerWallet,
+    UsageLedger,
+)
 from nexus_api.db.models.qa import QAAuditLog, QARun, QASideEffectAudit, QAThread
 from nexus_api.db.models.queue_entry import QueueEntry, QueueEntryStatus
 from nexus_api.db.models.sales import AgentSale
@@ -146,6 +152,7 @@ __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
     "CONSOLE_AUTH_SCHEMA",
     "INVITATION_TTL",
+    "LEDGER_BUCKETS",
     "MODEL_ROLES",
     "MODE_BUILD",
     "MODE_CONSULT",
@@ -233,12 +240,14 @@ __all__ = [
     "OwnerConsultation",
     "OwnerPhoneIndex",
     "Partner",
+    "PartnerAllocation",
     "PartnerApiKey",
     "PartnerInvitation",
     "PartnerMembership",
     "PartnerRole",
     "PartnerStatus",
     "PartnerTenant",
+    "PartnerWallet",
     "QAAuditLog",
     "QARun",
     "QASideEffectAudit",
@@ -260,6 +269,8 @@ __all__ = [
     "ToolCatalog",
     "ToolStatus",
     "UsageEvent",
+    "UsageLedger",
+    "UsageLedger",
     "UsageRecord",
     "WhatsAppOptOut",
     "WhatsAppTemplateStatus",

@@ -360,6 +360,9 @@ _TRUNCATE_TABLES = (
     "broadcast_recipients",
     "broadcasts",
     "embed_audit_log",
+    "usage_ledger",
+    "partner_allocations",
+    "partner_wallets",
     "partner_tenants",
     "api_keys",
     # Migration 0080 — console principals. Invitations FK memberships
@@ -631,6 +634,7 @@ async def console_world(db_session: AsyncSession) -> dict[str, Any]:
     from nexus_api.db.models import (
         MembershipStatus,
         Partner,
+        PartnerAllocation,
         PartnerMembership,
         PartnerTenant,
         Tenant,
@@ -689,6 +693,14 @@ async def console_world(db_session: AsyncSession) -> dict[str, Any]:
                 display_name=f"Owner {label.upper()}",
                 role="owner",
                 status=MembershipStatus.ACTIVE.value,
+            )
+        )
+        db_session.add(
+            PartnerAllocation(
+                partner_id=partner_id,
+                tenant_id=tenant_id,
+                cap=500_000,
+                remaining=500_000,
             )
         )
         world[label] = {

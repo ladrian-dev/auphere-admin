@@ -154,6 +154,12 @@ async def process_inbound(
             wamid=event.provider_message_id,
         )
 
+    from nexus_api.metering.wallet import allow_channel_turn
+
+    if not await allow_channel_turn(event.tenant_id):
+        log.info("pipeline.skipped.wallet_empty", tenant_id=str(event.tenant_id))
+        return {"skipped": "wallet_empty"}
+
     # Block N: multimodal media processing. Run BEFORE persistence so
     # the transcript / vision summary can be stored on the inbound
     # message row alongside the S3 key. Failures are non-fatal — they

@@ -44,7 +44,7 @@ import structlog
 from nexus_api.core.streams import xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.metering.quota import billable_qty_for_meter
+from nexus_api.metering.quota import billable_qty_for_meter, quota_tokens
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
@@ -188,6 +188,59 @@ _INSERT_SQL = sa.text(
 )
 
 
+def _turn_quota(rows: list[dict[str, Any]]) -> dict[str, int]:
+    """turn_id -> quota_tokens() C3, agrupando por llamada."""
+    calls: dict[str, dict[str, int]] = {}
+    for row in rows:
+        meter = str(row.get("meter") or "")
+        if not meter.startswith("llm."):
+            continue
+        call = _llm_call_key(row)
+        g = calls.setdefault(call, {"prompt": 0, "cache": 0, "output": 0})
+        qty = int(row.get("quantity") or 0)
+        if meter == "llm.input_tokens":
+            g["prompt"] = qty
+        elif meter == "llm.cache_read":
+            g["cache"] = qty
+        elif meter == "llm.output_tokens":
+            g["output"] = qty
+    turns: dict[str, int] = {}
+    for call, g in calls.items():
+        turn = call.rsplit(":", 1)[0] if ":" in call else call
+        turns[turn] = turns.get(turn, 0) + quota_tokens(
+            prompt_tokens=g["prompt"], cache_read=g["cache"], output_tokens=g["output"]
+        )
+    return turns
+
+
+async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
+    source = str((rows[0] or {}).get("source") or SOURCE_CHANNEL) if rows else SOURCE_CHANNEL
+    if source != SOURCE_CHANNEL:
+        return
+    partner_id = await _partner_for(tenant_id)
+    if partner_id is None:
+        return
+    from nexus_api.metering.wallet import debit_wallet
+
+    for turn, qty in _turn_quota(rows).items():
+        if qty <= 0:
+            continue
+        try:
+            await debit_wallet(
+                partner_id=partner_id,
+                tenant_id=tenant_id,
+                qty=qty,
+                idempotency_key=f"channel:{turn}",
+            )
+        except Exception as exc:
+            log.warning(
+                "metering.wallet_debit_failed",
+                tenant_id=str(tenant_id),
+                turn=turn,
+                error=str(exc),
+            )
+
+
 async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) -> int:
     """Inserta agrupando por tenant. Devuelve filas ENVIADAS (no insertadas:
     las que chocan con la clave de idempotencia se descartan en la base).
@@ -224,6 +277,7 @@ async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) ->
                 chunk = rows[start : start + INSERT_CHUNK]
                 await session.execute(_INSERT_SQL, chunk)
                 sent += len(chunk)
+        await _debit_channel_wallet(tenant_id, rows)
     return sent
 
 

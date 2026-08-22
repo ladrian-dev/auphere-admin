@@ -62,6 +62,14 @@ PRE_TENANT_TABLES: dict[str, str] = {
 #   ENABLE → el rol dueño la lee a propósito por encima del tenant
 #            (facturación de partner, paneles de admin cross-tenant);
 #            ``nexus_app`` sigue filtrado, que es la garantía que importa.
+# Libro Fase 3: RLS por partner_id, FORCE. Sin GUC, cero filas.
+PARTNER_FORCE_TABLES: dict[str, str] = {
+    "partner_wallets": "Saldo included+purchased. FORCE por partner_id.",
+    "partner_allocations": "Cap por tenant. FORCE por partner_id.",
+    "usage_ledger": "Asientos. FORCE por partner_id; fx NULL v1.",
+}
+
+
 ENABLE_ONLY_TABLES: dict[str, str] = {
     "invoices": "``partner_receipt`` emite facturas de partner leyendo varios tenants.",
     "invoice_lines": "El panel de recibos lista líneas de todos los tenants de un partner.",

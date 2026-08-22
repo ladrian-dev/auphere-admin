@@ -46,6 +46,7 @@ from nexus_api.api.console import (
     tenants,
     tools,
     usage,
+    wallet,
     whatsapp,
 )
 
@@ -59,6 +60,7 @@ router.include_router(agents.router)
 router.include_router(channels.router)
 router.include_router(conversations.router)
 router.include_router(usage.router)
+router.include_router(wallet.router)
 router.include_router(audit.router)
 router.include_router(team.router)
 router.include_router(invitations.router)

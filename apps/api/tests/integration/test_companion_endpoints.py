@@ -691,3 +691,35 @@ async def test_the_cap_is_per_member_not_per_partner(client, console_world, db_s
         json={"prompt": "x"},
     )
     assert theirs.status_code == 202, theirs.text
+
+
+async def test_a_turn_debits_the_partner_wallet(client, console_world, db_session):
+    """Companion gasta ``partner_wallets``; la asignación del cliente no se toca."""
+    import asyncio
+
+    import sqlalchemy as sa
+
+    from nexus_api.db.models.partner_wallet import PartnerWallet
+
+    a = console_world["a"]
+    _thread_id, run_id = await _start(client, a)
+    await _finished(uuid.UUID(run_id), a["user_id"])
+
+    remaining = None
+    for _ in range(80):
+        db_session.expire_all()
+        wallet = await db_session.get(PartnerWallet, a["partner_id"])
+        assert wallet is not None
+        remaining = int(wallet.included_remaining) + int(wallet.purchased_remaining)
+        if remaining < 500_000:
+            break
+        await asyncio.sleep(0.05)
+    assert remaining is not None and remaining < 500_000
+
+    alloc = await db_session.scalar(
+        sa.text(
+            "SELECT remaining FROM partner_allocations WHERE partner_id = :p AND tenant_id = :t"
+        ),
+        {"p": str(a["partner_id"]), "t": str(a["tenant_id"])},
+    )
+    assert int(alloc) == 500_000
