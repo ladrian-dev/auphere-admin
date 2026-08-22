@@ -88,6 +88,16 @@ export type UsageAlertsInput = { cap_messages_month: number | null; recipients: 
 export type AuditVocabularyEntry = { action: string; category: string; severity: string; summary: string };
 export type AuditVocabulary = { lang: string; entries: AuditVocabularyEntry[] };
 
+export type Wallet = {
+  included_remaining: number;
+  purchased_remaining: number;
+  available: number;
+  reserve: number;
+  included_expires_at: string | null;
+  exhausted: boolean;
+};
+export type Allocation = { client_ref: string; cap: number; remaining: number };
+
 export type UsageQuery = { days?: number; client?: string; source?: string };
 export type AuditQuery = {
   limit?: number;
@@ -109,6 +119,8 @@ export function homeUsageApi(call: Call) {
   return {
     home: () => call<Home>("/console/home"),
     usageV2: (p: UsageQuery = {}) => call<UsageReportV2>(`/console/usage${q(p)}`),
+    getWallet: () => call<Wallet>("/console/wallet"),
+    listAllocations: () => call<Allocation[]>("/console/wallet/allocations"),
     usageSeries: (p: UsageQuery & { meter?: string } = {}) => call<UsageSeries>(`/console/usage/series${q(p)}`),
     usageAlerts: () => call<UsageAlerts>("/console/usage/alerts"),
     setUsageAlerts: (body: UsageAlertsInput) => call<UsageAlerts>("/console/usage/alerts", { method: "PUT", body }),

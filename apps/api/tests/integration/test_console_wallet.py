@@ -65,6 +65,7 @@ async def test_wallet_is_the_caller_partners(client, console_world) -> None:
     assert body["included_remaining"] == 500_000
     assert body["purchased_remaining"] == 0
     assert body["available"] == 500_000
+    assert body["reserve"] == 0
     assert body["exhausted"] is False
     assert "partner_id" not in body
 
@@ -182,3 +183,50 @@ async def test_empty_allocation_does_not_block_companion(client, console_world, 
     )
     assert resp.status_code == 202, resp.text
     assert resp.json().get("detail", {}).get("code") != "allocation_empty"
+
+
+async def test_allocations_list_is_only_the_caller_partners(client, console_world) -> None:
+    a, b = console_world["a"], console_world["b"]
+    resp = await client.get("/console/wallet/allocations", headers=a["headers"]())
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    refs = [row["client_ref"] for row in body]
+    assert a["ref"] in refs
+    assert b["ref"] not in refs
+    for row in body:
+        assert "partner_id" not in row
+        assert "tenant_id" not in row
+        assert set(row) == {"client_ref", "cap", "remaining"}
+
+
+async def test_unreadable_book_is_zeros_and_empty_allocations(
+    client, console_world, monkeypatch
+) -> None:
+    async def gone(_partner_id):
+        return None
+
+    monkeypatch.setattr("nexus_api.api.console.wallet.read_wallet", gone)
+    a = console_world["a"]
+    wallet = await client.get("/console/wallet", headers=a["headers"]())
+    allocs = await client.get("/console/wallet/allocations", headers=a["headers"]())
+    assert wallet.status_code == 200, wallet.text
+    body = wallet.json()
+    assert body["included_remaining"] == 0
+    assert body["purchased_remaining"] == 0
+    assert body["available"] == 0
+    assert body["reserve"] == 0
+    assert body["exhausted"] is True
+    assert "partner_id" not in body
+    assert allocs.status_code == 200, allocs.text
+    assert allocs.json() == []
+
+
+async def test_unreadable_allocations_list_is_empty(client, console_world, monkeypatch) -> None:
+    async def boom(_partner_id):
+        raise RuntimeError("allocations down")
+
+    monkeypatch.setattr("nexus_api.api.console.wallet._list_allocations", boom)
+    a = console_world["a"]
+    resp = await client.get("/console/wallet/allocations", headers=a["headers"]())
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == []

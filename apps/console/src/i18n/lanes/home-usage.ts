@@ -52,6 +52,18 @@ export const homeUsageMessages = {
   "hu.usage.meter.voice": { es: "Voz", en: "Voice" },
   "hu.usage.export.server": { es: "Descargar CSV", en: "Download CSV" },
   "hu.usage.alerts.link": { es: "Alertas de consumo", en: "Usage alerts" },
+  "hu.usage.wallet": { es: "Cuota", en: "Quota" },
+  "hu.usage.wallet.included": { es: "Incluido restante", en: "Included remaining" },
+  "hu.usage.wallet.purchased": { es: "Comprado restante", en: "Purchased remaining" },
+  "hu.usage.wallet.reserve": { es: "Reserva", en: "Reserve" },
+  "hu.usage.wallet.tokens": { es: "Tokens de cuota (C3)", en: "Quota tokens (C3)" },
+  "hu.usage.wallet.expires": { es: "Caduca {date}", en: "Expires {date}" },
+  "hu.usage.wallet.expires.none": { es: "Sin fecha de caducidad", en: "No expiry date" },
+  "hu.usage.wallet.reserve.hint": { es: "Disponible menos la suma de topes", en: "Available minus the sum of caps" },
+  "hu.usage.allocations": { es: "Asignaciones", en: "Allocations" },
+  "hu.usage.allocations.cap": { es: "Tope", en: "Cap" },
+  "hu.usage.allocations.remaining": { es: "Restante", en: "Remaining" },
+  "hu.usage.allocations.empty": { es: "Ningún cliente tiene asignación", en: "No client has an allocation" },
 
   // ── usage alerts (CP-24) ─────────────────────────────────────────
   "hu.alerts.title": { es: "Alertas de consumo", en: "Usage alerts" },

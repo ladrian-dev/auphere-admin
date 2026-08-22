@@ -11,6 +11,7 @@ class WalletOut(BaseModel):
     included_remaining: int
     purchased_remaining: int
     available: int
+    reserve: int
     included_expires_at: datetime | None
     exhausted: bool
 

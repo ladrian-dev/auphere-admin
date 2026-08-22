@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert, AlertDescription, Button, EmptyState, Metric, PageHeader, formatNumber } from "@nexus/ui";
+import { Alert, AlertDescription, Button, EmptyState, Metric, PageHeader, formatDateTime, formatNumber } from "@nexus/ui";
 
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
+import type { Allocation, Wallet } from "@/lib/backend/home-usage";
 import { can, requirePrincipal } from "@/lib/principal";
 import { barsFromSeries, cumulativeWithProjection, topMeters } from "@/lib/usage-projection";
 
@@ -17,6 +18,15 @@ type Search = { days?: string; client?: string; source?: string; meter?: string 
 
 const METER_GROUPS: Record<string, string> = { "channel.message": "channel.message", llm: "llm.", media: "media.", voice: "voice." };
 
+const EMPTY_WALLET: Wallet = {
+  included_remaining: 0,
+  purchased_remaining: 0,
+  available: 0,
+  reserve: 0,
+  included_expires_at: null,
+  exhausted: true,
+};
+
 export default async function UsagePage({ searchParams }: { searchParams: Promise<Search> }) {
   const principal = await requirePrincipal("/usage");
   if (!can(principal.role, "usage:read")) redirect("/");
@@ -25,16 +35,19 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
   const days = [7, 30, 90].includes(Number(sp.days)) ? Number(sp.days) : 30;
   const meterPrefix = sp.meter && METER_GROUPS[sp.meter] ? METER_GROUPS[sp.meter] : undefined;
   const api = backendFor(principal);
-  const [report, series, monthSeries, clients] = await Promise.all([
+  const [report, series, monthSeries, clients, wallet, allocations] = await Promise.all([
     api.usageV2({ days, client: sp.client, source: sp.source }),
     api.usageSeries({ days, client: sp.client, source: sp.source || "channel", meter: meterPrefix }).catch(() => null),
     api.usageSeries({ days: 31, client: sp.client, source: "channel", meter: "channel.message" }).catch(() => null),
     can(principal.role, "clients:read") ? api.listClients({ limit: 200 }).catch(() => null) : null,
+    api.getWallet().catch((): Wallet => EMPTY_WALLET),
+    api.listAllocations().catch((): Allocation[] => []),
   ]);
   const n = (v: number) => formatNumber(v, locale);
   const totals = Object.entries(report.totals_by_meter);
   const month = report.month;
   const today = new Date().toISOString().slice(0, 10);
+  const names = new Map((clients?.items ?? []).map((c) => [c.external_client_ref, c.name]));
 
   const { keys, hasOther } = series ? topMeters(series.points) : { keys: [], hasOther: false };
   const bars = series ? barsFromSeries(series.points, keys) : [];
@@ -66,6 +79,50 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
           </AlertDescription>
         </Alert>
       ) : null}
+      <section className="grid gap-4 md:grid-cols-3" aria-label={t("hu.usage.wallet")}>
+        <Metric
+          label={t("hu.usage.wallet.included")}
+          value={n(wallet.included_remaining)}
+          hint={
+            wallet.included_expires_at
+              ? t("hu.usage.wallet.expires", { date: formatDateTime(wallet.included_expires_at, locale) })
+              : t("hu.usage.wallet.expires.none")
+          }
+        />
+        <Metric label={t("hu.usage.wallet.purchased")} value={n(wallet.purchased_remaining)} hint={t("hu.usage.wallet.tokens")} />
+        <Metric label={t("hu.usage.wallet.reserve")} value={n(wallet.reserve)} hint={t("hu.usage.wallet.reserve.hint")} />
+      </section>
+      <div className="min-w-0 overflow-x-auto rounded-md ring-1 ring-foreground/10">
+        <table className="w-full text-sm">
+          <caption className="sr-only">{t("hu.usage.allocations")}</caption>
+          <thead>
+            <tr className="border-b text-left">
+              <th className="h-10 px-2 font-medium">{t("usage.client")}</th>
+              <th className="h-10 px-2 text-right font-medium">{t("hu.usage.allocations.cap")}</th>
+              <th className="h-10 px-2 text-right font-medium">{t("hu.usage.allocations.remaining")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allocations.length === 0 ? (
+              <tr>
+                <td className="p-2 text-muted-foreground" colSpan={3}>
+                  {t("hu.usage.allocations.empty")}
+                </td>
+              </tr>
+            ) : (
+              allocations.map((row) => (
+                <tr key={row.client_ref} className="border-b last:border-0">
+                  <td className="max-w-64 truncate p-2" title={names.get(row.client_ref) ?? row.client_ref}>
+                    {names.get(row.client_ref) ?? row.client_ref}
+                  </td>
+                  <td className="p-2 text-right tabular-nums">{n(row.cap)}</td>
+                  <td className="p-2 text-right tabular-nums">{n(row.remaining)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
       <UsageControls
         days={days}
         client={sp.client ?? ""}
