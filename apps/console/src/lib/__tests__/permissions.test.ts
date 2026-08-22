@@ -27,6 +27,7 @@ const API_MAP: Record<string, string[]> = {
   "billing:manage": ["owner", "billing"],
   "playground:run": ["owner", "admin", "builder"],
   "usage:manage": ["owner", "admin"],
+  "usage:write": ["owner", "admin"],
   "knowledge:read": ["owner", "admin", "builder", "analyst"],
   "knowledge:write": ["owner", "admin", "builder"],
   "companion:use": ["owner", "admin", "builder"],

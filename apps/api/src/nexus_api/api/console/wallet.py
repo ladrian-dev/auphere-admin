@@ -11,7 +11,7 @@ import uuid
 
 import sqlalchemy as sa
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
@@ -20,10 +20,10 @@ from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import PartnerTenant
 from nexus_api.db.models.partner_wallet import PartnerAllocation
-from nexus_api.metering.wallet import read_wallet
+from nexus_api.metering.wallet import OverAllocation, read_wallet, set_allocation
 
 from .deps import ClientRef, resolve_mapping, unknown_client
-from .schemas_wallet import AllocationOut, WalletOut
+from .schemas_wallet import AllocationIn, AllocationOut, WalletOut
 
 router = APIRouter()
 log = structlog.get_logger(__name__)
@@ -149,3 +149,32 @@ async def get_client_allocation(
     if row is None:
         raise unknown_client()
     return AllocationOut(client_ref=ref, cap=row.cap, remaining=row.remaining)
+
+
+@router.put(
+    "/clients/{ref}/allocation",
+    response_model=AllocationOut,
+    responses={
+        404: {"description": "Unknown client reference."},
+        409: {"description": "Sum of caps would exceed wallet available."},
+    },
+)
+async def put_client_allocation(
+    body: AllocationIn,
+    ref: str = ClientRef,
+    principal: ConsolePrincipal = Depends(require_console_principal("usage:write")),
+    session: AsyncSession = Depends(get_db_session),
+) -> AllocationOut:
+    """Fija el cap de un cliente propio. El de otro partner es 404 opaco.
+
+    Mover cuota es dos PUT (bajar uno, subir el otro). No hay endpoint de move.
+    """
+    mapping = await resolve_mapping(session, principal, ref)
+    try:
+        row = await set_allocation(principal.partner.id, mapping.tenant_id, body.cap)
+    except OverAllocation:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "over_allocated"},
+        ) from None
+    return AllocationOut(client_ref=ref, cap=int(row.cap), remaining=int(row.remaining))

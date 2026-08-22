@@ -230,3 +230,98 @@ async def test_unreadable_allocations_list_is_empty(client, console_world, monke
     resp = await client.get("/console/wallet/allocations", headers=a["headers"]())
     assert resp.status_code == 200, resp.text
     assert resp.json() == []
+
+
+async def test_put_allocation_of_other_partner_is_opaque_404(client, console_world) -> None:
+    a, b = console_world["a"], console_world["b"]
+    missing = await client.put(
+        "/console/clients/no-such-client/allocation",
+        headers=a["headers"](),
+        json={"cap": 1},
+    )
+    other = await client.put(
+        "/console/clients/{}/allocation".format(b["ref"]),
+        headers=a["headers"](),
+        json={"cap": 1},
+    )
+    assert missing.status_code == 404
+    assert other.status_code == 404
+    assert missing.json() == other.json()
+
+
+async def test_put_own_allocation_raises_cap(client, console_world, db_session) -> None:
+    import sqlalchemy as sa
+
+    a = console_world["a"]
+    await db_session.execute(
+        sa.text("UPDATE partner_wallets SET purchased_remaining = 100000 WHERE partner_id = :p"),
+        {"p": str(a["partner_id"])},
+    )
+    await db_session.commit()
+
+    resp = await client.put(
+        "/console/clients/{}/allocation".format(a["ref"]),
+        headers=a["headers"](),
+        json={"cap": 600_000},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["client_ref"] == a["ref"]
+    assert body["cap"] == 600_000
+    assert body["remaining"] == 600_000
+    assert "partner_id" not in body
+    assert "tenant_id" not in body
+
+    again = await client.get(
+        "/console/clients/{}/allocation".format(a["ref"]), headers=a["headers"]()
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["cap"] == 600_000
+    assert again.json()["remaining"] == 600_000
+
+
+async def test_put_allocation_409_when_sum_exceeds_available(client, console_world) -> None:
+    a = console_world["a"]
+    resp = await client.put(
+        "/console/clients/{}/allocation".format(a["ref"]),
+        headers=a["headers"](),
+        json={"cap": 500_001},
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["code"] == "over_allocated"
+
+    own = await client.get(
+        "/console/clients/{}/allocation".format(a["ref"]), headers=a["headers"]()
+    )
+    assert own.status_code == 200, own.text
+    assert own.json()["cap"] == 500_000
+    assert own.json()["remaining"] == 500_000
+
+
+async def test_put_allocation_forbidden_without_usage_write(
+    client, console_world, db_session
+) -> None:
+    from tests.conftest import add_console_member
+
+    a = console_world["a"]
+    analyst = await add_console_member(db_session, partner_id=a["partner_id"], role="analyst")
+    resp = await client.put(
+        "/console/clients/{}/allocation".format(a["ref"]),
+        headers=analyst["headers"](),
+        json={"cap": 1},
+    )
+    assert resp.status_code == 403, resp.text
+    readable = await client.get(
+        "/console/clients/{}/allocation".format(a["ref"]), headers=analyst["headers"]()
+    )
+    assert readable.status_code == 200, readable.text
+
+
+async def test_put_allocation_rejects_partner_id_in_body(client, console_world) -> None:
+    a = console_world["a"]
+    resp = await client.put(
+        "/console/clients/{}/allocation".format(a["ref"]),
+        headers=a["headers"](),
+        json={"cap": 1, "partner_id": str(a["partner_id"])},
+    )
+    assert resp.status_code == 422, resp.text

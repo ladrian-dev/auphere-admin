@@ -121,6 +121,11 @@ export function homeUsageApi(call: Call) {
     usageV2: (p: UsageQuery = {}) => call<UsageReportV2>(`/console/usage${q(p)}`),
     getWallet: () => call<Wallet>("/console/wallet"),
     listAllocations: () => call<Allocation[]>("/console/wallet/allocations"),
+    setAllocation: (ref: string, cap: number) =>
+      call<Allocation>(`/console/clients/${encodeURIComponent(ref)}/allocation`, {
+        method: "PUT",
+        body: { cap },
+      }),
     usageSeries: (p: UsageQuery & { meter?: string } = {}) => call<UsageSeries>(`/console/usage/series${q(p)}`),
     usageAlerts: () => call<UsageAlerts>("/console/usage/alerts"),
     setUsageAlerts: (body: UsageAlertsInput) => call<UsageAlerts>("/console/usage/alerts", { method: "PUT", body }),

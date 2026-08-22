@@ -9,6 +9,7 @@ import type { Allocation, Wallet } from "@/lib/backend/home-usage";
 import { can, requirePrincipal } from "@/lib/principal";
 import { barsFromSeries, cumulativeWithProjection, topMeters } from "@/lib/usage-projection";
 
+import { AllocationCapForm } from "./allocation-cap";
 import { UsageCharts } from "./charts";
 import { UsageControls } from "./controls";
 
@@ -30,6 +31,7 @@ const EMPTY_WALLET: Wallet = {
 export default async function UsagePage({ searchParams }: { searchParams: Promise<Search> }) {
   const principal = await requirePrincipal("/usage");
   if (!can(principal.role, "usage:read")) redirect("/");
+  const canWrite = can(principal.role, "usage:write");
   const { t, locale } = await getT(principal.locale);
   const sp = await searchParams;
   const days = [7, 30, 90].includes(Number(sp.days)) ? Number(sp.days) : 30;
@@ -115,7 +117,9 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
                   <td className="max-w-64 truncate p-2" title={names.get(row.client_ref) ?? row.client_ref}>
                     {names.get(row.client_ref) ?? row.client_ref}
                   </td>
-                  <td className="p-2 text-right tabular-nums">{n(row.cap)}</td>
+                  <td className="p-2 text-right tabular-nums">
+                    {canWrite ? <AllocationCapForm clientRef={row.client_ref} cap={row.cap} /> : n(row.cap)}
+                  </td>
                   <td className="p-2 text-right tabular-nums">{n(row.remaining)}</td>
                 </tr>
               ))

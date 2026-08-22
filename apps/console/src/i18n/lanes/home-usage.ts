@@ -64,6 +64,10 @@ export const homeUsageMessages = {
   "hu.usage.allocations.cap": { es: "Tope", en: "Cap" },
   "hu.usage.allocations.remaining": { es: "Restante", en: "Remaining" },
   "hu.usage.allocations.empty": { es: "Ningún cliente tiene asignación", en: "No client has an allocation" },
+  "hu.usage.allocations.save": { es: "Guardar tope", en: "Save cap" },
+  "hu.usage.allocations.saved": { es: "Tope actualizado.", en: "Cap updated." },
+  "hu.usage.allocations.over": { es: "La suma de topes superaría la cuota disponible.", en: "The sum of caps would exceed available quota." },
+  "hu.usage.allocations.invalidCap": { es: "El tope debe ser un entero ≥ 0.", en: "The cap must be an integer ≥ 0." },
 
   // ── usage alerts (CP-24) ─────────────────────────────────────────
   "hu.alerts.title": { es: "Alertas de consumo", en: "Usage alerts" },

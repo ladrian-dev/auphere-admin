@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WalletOut(BaseModel):
@@ -20,3 +20,11 @@ class AllocationOut(BaseModel):
     client_ref: str
     cap: int
     remaining: int
+
+
+class AllocationIn(BaseModel):
+    """Solo el tope. El cliente es ``{ref}``; el partner sale del principal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cap: int = Field(ge=0)

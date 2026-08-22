@@ -28,6 +28,7 @@ export const PERMISSIONS = {
   "billing:manage": ["owner", "billing"],
   "playground:run": ["owner", "admin", "builder"],
   "usage:manage": ["owner", "admin"],
+  "usage:write": ["owner", "admin"],
   "knowledge:read": ["owner", "admin", "builder", "analyst"],
   "knowledge:write": ["owner", "admin", "builder"],
   // The console Companion (CO-01). Same three roles as `playground:run`:
