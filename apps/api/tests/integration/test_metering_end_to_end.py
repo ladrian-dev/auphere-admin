@@ -148,8 +148,15 @@ async def test_a_turn_becomes_usage_rows(clean_usage_stream) -> None:
 
     total = sum(c for c in costs.values() if c is not None)
     assert total == Decimal("0.02156000"), "coste real del turno, en dólares"
-    # Lo facturable, mientras no haya política de precios, es lo medido.
-    assert all(r[4] == r[1] for r in rows)
+    # C3: quantity es el nativo; billable_qty es la cuota (uncached / 0.1x / 0).
+    billable = {}
+    for meter, quantity, _model, _cost, bq, *_ in rows:
+        billable[meter] = billable.get(meter, 0) + float(bq)
+        if meter == "llm.cache_read":
+            assert float(bq) != float(quantity)
+    assert billable["llm.input_tokens"] == 700 + 800
+    assert billable["llm.cache_read"] == 420
+    assert billable["llm.output_tokens"] == 20 + 300
     # El contexto del turno viaja con cada fila.
     assert all(r[5] == conversation_id for r in rows)
 

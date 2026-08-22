@@ -44,6 +44,7 @@ import structlog
 from nexus_api.core.streams import xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.metering.quota import billable_qty_for_meter
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
@@ -114,10 +115,8 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
                 "occurred_at": datetime.fromisoformat(event["occurred_at"]),
                 "meter": event["meter"],
                 "quantity": event["quantity"],
-                # Sin política de precios todavía, lo facturable es lo
-                # medido. El precio lo pone ``persist_rows`` contra el
-                # catálogo; aquí se deja el hueco para que la fila esté
-                # completa aunque nadie la valore.
+                # Placeholder: C3 aplica la cuota por llamada mas abajo,
+                # cuando ya estan juntos los nativos del mismo call_seq.
                 "billable_qty": event["quantity"],
                 "cost_usd": None,
                 "provider": event.get("provider"),
@@ -128,7 +127,49 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
                 "source": source,
             }
         )
+    _apply_quota_billable(rows)
     return tenant_id, rows
+
+
+def _llm_call_key(row: dict[str, Any]) -> str:
+    """Agrupa las filas nativas de UNA llamada: ``{turn}:{seq}:{meter}``."""
+    key = str(row.get("idempotency_key") or "")
+    meter = str(row.get("meter") or "")
+    suffix = f":{meter}"
+    if meter and key.endswith(suffix):
+        return key[: -len(suffix)]
+    return key
+
+
+def _apply_quota_billable(rows: list[dict[str, Any]]) -> None:
+    """billable_qty = politica C3; quantity sigue siendo el nativo.
+
+    El colector emite una fila por campo (input bruto, output, cache_read,
+    cache_write). Si billable_qty copiara quantity en input, un libro que
+    sume input + cache_read doble-cuenta. La cuota de input es el uncached;
+    la de cache_read es 0.1x; cache_write no come tope. cost_usd sigue
+    saliendo de quantity x tarifa (ADR-007).
+    """
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        meter = str(row.get("meter") or "")
+        if meter.startswith("llm."):
+            groups.setdefault(_llm_call_key(row), []).append(row)
+    for group in groups.values():
+        cache_read = 0
+        prompt = 0
+        for row in group:
+            if row["meter"] == "llm.cache_read":
+                cache_read = int(row["quantity"] or 0)
+            elif row["meter"] == "llm.input_tokens":
+                prompt = int(row["quantity"] or 0)
+        for row in group:
+            row["billable_qty"] = billable_qty_for_meter(
+                str(row["meter"]),
+                row["quantity"],
+                prompt_tokens=prompt,
+                cache_read=cache_read,
+            )
 
 
 _INSERT_SQL = sa.text(

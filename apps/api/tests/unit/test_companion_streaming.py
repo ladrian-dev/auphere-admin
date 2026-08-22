@@ -328,7 +328,7 @@ async def test_the_turn_is_priced_component_by_component(monkeypatch) -> None:
 
     handle = SimpleNamespace(
         model="anthropic/claude-sonnet-4-6",
-        total_input_tokens=1_000_000,
+        total_input_tokens=1_100_000,
         total_output_tokens=1_000_000,
         total_cache_read=1_000_000,
         total_cache_write=1_000_000,

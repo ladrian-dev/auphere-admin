@@ -174,8 +174,8 @@ COMPANION_EVENTS: dict[str, frozenset[str]] = {
     # identificador.
     "support.ticket": frozenset({"action_id", "ticket_ref", "category", "topic", "sla"}),
     # medidores
-    # ``input_tokens`` es la entrada **facturable** del turno —``prompt_tokens``
-    # menos lo servido de caché—, no la ventana: esa va en ``context.updated``
+    # ``input_tokens`` es la entrada de **cuota** del turno —uncached +
+    # 0.1 x cache_read, C3—, no la ventana: esa va en ``context.updated``
     # y es el prefijo entero. El desglose de caché y las pasadas viajan aquí
     # porque son lo que permite valorar el turno en dólares y ver si el caché
     # está funcionando; sin ellos, el panel solo puede decir "gastó algo".

@@ -199,7 +199,7 @@ async def test_the_context_meter_is_input_tokens_over_max_context() -> None:
 
 
 async def test_the_cache_is_not_billed_but_still_fills_the_window() -> None:
-    """El gasto descuenta la caché; la ventana no. Dos números a propósito.
+    """La cuota cuenta cache_read al 0.1; la ventana no. Dos números a propósito.
 
     El prefijo del Companion —prompt de sistema más 32 definiciones de
     herramientas— ronda los 7.000 tokens y viaja en cada una de las hasta 12
@@ -223,7 +223,7 @@ async def test_the_cache_is_not_billed_but_still_fills_the_window() -> None:
     events = await _run(provider)
 
     cost = next(d for n, d in events if n == "cost.updated")
-    assert cost["input_tokens"] == 1_000, "el gasto tiene que descontar la caché"
+    assert cost["input_tokens"] == 1_900, "cuota = uncached + 0.1 x cache_read"
     assert cost["output_tokens"] == 100
 
     ctx = next(d for n, d in events if n == "context.updated")
@@ -255,7 +255,7 @@ async def test_the_cost_event_carries_the_cache_breakdown_and_the_steps() -> Non
     assert cost["cache_read"] == 8_000
     assert cost["cache_write"] == 500
     assert cost["steps"] >= 1
-    assert cost["input_tokens"] == 1_000
+    assert cost["input_tokens"] == 1_800
 
     # El guardián real: lo que el grafo emite tiene que estar declarado.
     assert set(cost) <= COMPANION_EVENTS["cost.updated"], (
@@ -266,8 +266,8 @@ async def test_the_cost_event_carries_the_cache_breakdown_and_the_steps() -> Non
 
 async def test_a_provider_that_reports_cache_apart_never_bills_negative() -> None:
     """Si un proveedor reportara la caché fuera de ``prompt_tokens``, la resta
-    daría negativo. Una cuota que baja al gastar es peor que una que
-    sobreestima, así que el suelo es cero."""
+    daría negativo. El uncached tiene suelo cero; cache_read sigue
+    contando al 0.1 (400 de 4_000)."""
     provider = InMemoryProvider(
         responder=lambda c: "ok",
         stream_usage={
@@ -278,7 +278,7 @@ async def test_a_provider_that_reports_cache_apart_never_bills_negative() -> Non
     )
     events = await _run(provider)
     cost = next(d for n, d in events if n == "cost.updated")
-    assert cost["input_tokens"] == 0
+    assert cost["input_tokens"] == 400
 
 
 async def test_an_unknown_model_emits_no_context_bar_at_all() -> None:

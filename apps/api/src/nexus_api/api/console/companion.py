@@ -87,6 +87,7 @@ from nexus_api.db.models.console_notification import (
     ConsoleNotification,
     NotificationSeverity,
 )
+from nexus_api.metering.quota import cache_read_quota_tokens
 
 from .deps import resolve_mapping
 from .playground import MonthWindow, month_window
@@ -1064,10 +1065,16 @@ async def _turn_cost_usd(handle: streaming.CompanionRunHandle) -> float | None:
     if row is None:
         return None
 
+    # total_input_tokens es la CUOTA (uncached + 0.1*cache). El USD valora
+    # nativos: se recupera el uncached restando el 0.1 del cache del turno.
+    # Redondeo a nivel de turno, no por llamada: un token de holgura posible.
+    uncached = max(
+        0, int(handle.total_input_tokens) - cache_read_quota_tokens(handle.total_cache_read)
+    )
     total = 0.0
     seen_any = False
     for tokens, rate in (
-        (handle.total_input_tokens, row.input_per_mtok),
+        (uncached, row.input_per_mtok),
         (handle.total_output_tokens, row.output_per_mtok),
         (handle.total_cache_read, row.cache_read_per_mtok),
         (handle.total_cache_write, row.cache_write_per_mtok),

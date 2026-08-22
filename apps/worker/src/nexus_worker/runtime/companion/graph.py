@@ -39,6 +39,7 @@ import structlog
 # de conocimiento del agente de cliente sigan siendo el MISMO tratamiento,
 # que es lo que el test de paridad comprueba.
 from nexus_api.core.guardrails.untrusted import TAG_TOOL_RESULT, fence_only
+from nexus_api.metering.quota import quota_input_tokens
 
 from nexus_worker.runtime.companion.grounding import is_unsupported
 from nexus_worker.runtime.companion.intake import (
@@ -313,7 +314,7 @@ def make_investigate(
                     usage = _usage(piece)
                     # Dos números distintos a propósito: el bruto mide la
                     # VENTANA (lo que el modelo tuvo delante) y el facturable
-                    # mide el GASTO (lo que no vino de caché).
+                    # mide la CUOTA (uncached + 0.1 x cache_read).
                     last_input_tokens = int(usage.get("prompt_tokens") or 0)
                     input_tokens += _billable_input(usage)
                     output_tokens += int(usage.get("completion_tokens") or 0)
@@ -483,32 +484,31 @@ def _usage(piece: str) -> dict[str, Any]:
 
 
 def _billable_input(usage: dict[str, Any]) -> int:
-    """Entrada que de verdad se paga: la que NO vino de caché.
+    """Entrada que come el tope: uncached + 0.1 x cache_read (C3).
 
     ``prompt_tokens`` es el prefijo entero que vio el modelo, y en este agente
     el prefijo —prompt de sistema más 32 definiciones de herramientas, del
     orden de 7.000 tokens— viaja en **cada** una de las hasta 12 pasadas del
     bucle. Contarlo a precio pleno doce veces es lo que hacía que la cuota
-    mensual se agotara en unos pocos turnos de trabajo real, muy lejos de los
-    "300-500 turnos" que promete el defecto de 500.000.
+    mensual se agotara en unos pocos turnos de trabajo real.
 
-    Anthropic cobra los tokens leídos de caché a una décima parte. Restarlos
-    no es una estimación: ``usage_fields()`` extrae ``cache_read_input_tokens``
-    del proveedor —con respaldo en ``prompt_tokens_details.cached_tokens``, que
-    es como Anthropic lo reporta a veces— y el dato ya viajaba hasta aquí sin
-    que nadie lo mirase.
+    Anthropic cobra los tokens leídos de caché a una décima parte. La
+    política de cuota es esa misma: no restarlos al 100 % (subcuenta frente
+    a la factura) ni sumar el bruto + cache_read (doble-cuenta). La función
+    única es ``nexus_api.metering.quota.quota_input_tokens`` — el canal
+    usa la misma.
 
     **Esto no cambia el medidor de ventana de contexto.** Lo que llena la
     ventana es el prefijo entero, venga de caché o no, así que ese sigue
     usando ``prompt_tokens`` bruto. Son dos preguntas distintas y tienen dos
     números distintos a propósito.
     """
-    prompt = int(usage.get("prompt_tokens") or 0)
-    cached = int(usage.get("cache_read_input_tokens") or 0)
-    # ``max(0, …)`` porque un proveedor que reporte la caché por separado en
-    # vez de incluirla en ``prompt_tokens`` daría negativo, y una cuota que
-    # baja al gastar es peor que una que sobreestima.
-    return max(0, prompt - cached)
+    return int(
+        quota_input_tokens(
+            prompt_tokens=int(usage.get("prompt_tokens") or 0),
+            cache_read=int(usage.get("cache_read_input_tokens") or 0),
+        )
+    )
 
 
 def _reproducible(assistant: dict[str, Any]) -> dict[str, Any]:
