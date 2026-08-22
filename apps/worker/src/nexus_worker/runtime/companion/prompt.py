@@ -295,6 +295,21 @@ def closing_note(reason: str) -> dict[str, Any]:
     }
 
 
+#: Las únicas claves que el modelo puede ver. Es el mismo recorte que
+#: ``CompanionPageContext`` en la API: si alguien construye el estado a
+#: mano (evals, un test, un resume) un campo extra no se cuela como
+#: instrucción de sistema.
+PAGE_CONTEXT_KEYS: frozenset[str] = frozenset({"route", "client_ref", "tab", "selection"})
+
+
+def _canonical_page_context(page_context: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Quita claves ajenas al esquema. Un dict vacío o solo basura → ``None``."""
+    if not page_context:
+        return None
+    payload = {key: page_context[key] for key in PAGE_CONTEXT_KEYS if key in page_context}
+    return payload or None
+
+
 def page_context_message(page_context: dict[str, Any] | None) -> dict[str, Any] | None:
     """El mensaje de sistema a mitad de conversación con la página actual.
 
@@ -304,8 +319,12 @@ def page_context_message(page_context: dict[str, Any] | None) -> dict[str, Any] 
     Se serializa con claves ordenadas para que el mismo contexto produzca
     siempre el mismo texto: dos representaciones distintas del mismo estado
     serían dos entradas de caché distintas para nada.
+
+    Solo viajan las claves del esquema. El JSON resultante entra por
+    ``fence_only`` (el preámbulo vive una vez en ``SYSTEM_PROMPT``).
     """
-    if not page_context:
+    page_context = _canonical_page_context(page_context)
+    if page_context is None:
         return None
     body = json.dumps(page_context, ensure_ascii=False, sort_keys=True, separators=(", ", ": "))
     return {
@@ -347,6 +366,7 @@ def build_messages(
 
 __all__ = [
     "COMPANION_THINKING",
+    "PAGE_CONTEXT_KEYS",
     "SYSTEM_PROMPT",
     "budget_note",
     "build_messages",

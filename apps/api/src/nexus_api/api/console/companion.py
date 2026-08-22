@@ -638,7 +638,7 @@ async def start_run(
         run_id=run_id,
         tenant_id=tenant_id,
         user_message=body.prompt,
-        page_context=body.page_context,
+        page_context=body.page_context.model_dump() if body.page_context is not None else None,
         history=history,
         used_before=used_before,
         cap=cap,

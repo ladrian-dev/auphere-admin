@@ -7,9 +7,7 @@
 # uses the same root via ``railway.toml``).
 #
 # Block F made ``apps/api`` depend on ``apps/channels`` for the YCloud
-# webhook adapter. Block I bundles ``apps/admin/drizzle/*.sql`` so the
-# Railway release command can apply the auth-schema migration alongside
-# Alembic without needing the admin image to be reachable.
+# webhook adapter.
 
 # ──────────────────────────────────────────────────────────────────────
 # Stage 1 — builder
@@ -60,11 +58,6 @@ COPY apps/api/src /build/apps/api/src
 COPY apps/api/alembic.ini /build/apps/api/alembic.ini
 COPY apps/api/alembic /build/apps/api/alembic
 COPY apps/api/scripts /build/apps/api/scripts
-
-# Drizzle SQL migrations live alongside the API image so the Railway
-# release command can run them. Block G owns the schema; the API
-# release command applies them after Alembic head.
-COPY apps/admin/drizzle /build/apps/admin/drizzle
 
 WORKDIR /build/apps/api
 # ``--no-editable`` forces the path-source deps (nexus-worker, nexus-mcp,
