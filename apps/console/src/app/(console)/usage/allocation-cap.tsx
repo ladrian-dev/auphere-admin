@@ -14,9 +14,6 @@ export function AllocationCapForm({ clientRef, cap }: { clientRef: string; cap: 
   const [value, setValue] = React.useState(String(cap));
   const [pending, start] = React.useTransition();
 
-  React.useEffect(() => {
-    setValue(String(cap));
-  }, [cap]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();

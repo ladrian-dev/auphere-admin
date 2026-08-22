@@ -207,6 +207,7 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("PUT", "/console/clients/{ref}/tools"): {"tools": []},
         ("PUT", "/console/clients/{ref}/tools/{tool_name}/mode"): {"mode": "always"},
         ("PUT", "/console/clients/{ref}/skills"): {"skills": []},
+        ("PUT", "/console/clients/{ref}/allocation"): {"cap": 1},
         ("POST", "/console/clients/{ref}/knowledge/url"): {"url": "https://example.com/x"},
         ("POST", "/console/clients/{ref}/channels/whatsapp/signup"): {
             "code": "x",
