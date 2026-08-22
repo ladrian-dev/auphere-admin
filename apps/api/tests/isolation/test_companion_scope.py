@@ -229,13 +229,17 @@ async def test_cross_partner_isolation_rests_on_a_declared_invariant(db_session)
 
     # ``qual`` es el USING de la política, tal y como Postgres lo reescribe.
     quals = (
-        await db_session.execute(
-            sa.text(
-                "SELECT qual FROM pg_policies "
-                "WHERE schemaname = 'companion' AND tablename = 'threads'"
+        (
+            await db_session.execute(
+                sa.text(
+                    "SELECT qual FROM pg_policies "
+                    "WHERE schemaname = 'companion' AND tablename = 'threads'"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     policy_scopes_partner = any("partner_id" in (q or "") for q in quals)
 
     assert unique_user == 1 or policy_scopes_partner, (

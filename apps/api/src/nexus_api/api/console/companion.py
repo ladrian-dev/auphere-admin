@@ -1160,9 +1160,7 @@ def _get_provider() -> Any:
         # cachear crece de forma cuadrática. El agente de cliente y los
         # playgrounds comparten la clase pero construyen su propio proveedor,
         # así que su comportamiento no cambia.
-        _provider = LiteLLMProvider(
-            timeout_s=get_settings().llm_improve_timeout_s, cache_tail=True
-        )
+        _provider = LiteLLMProvider(timeout_s=get_settings().llm_improve_timeout_s, cache_tail=True)
     return _provider
 
 

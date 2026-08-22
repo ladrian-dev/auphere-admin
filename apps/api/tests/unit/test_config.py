@@ -91,6 +91,8 @@ def test_dev_tolerates_placeholder_secrets(monkeypatch):
     monkeypatch.setenv("NEXUS_ENVIRONMENT", "dev")
     s = Settings()
     assert "change-me" in s.meta_app_secret
+
+
 def test_prod_rejects_the_silent_defaults_from_the_aws_cutover(monkeypatch):
     """Regresión del 2026-08-19.
 
