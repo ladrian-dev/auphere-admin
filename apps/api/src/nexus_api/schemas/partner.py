@@ -88,12 +88,16 @@ class WidgetSessionOut(BaseModel):
 
 
 class PartnerCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=255)
     slug: str = Field(min_length=2, max_length=80, pattern=r"^[a-z0-9][a-z0-9-]*$")
     contact_email: EmailStr | None = None
 
 
 class PartnerUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=255)
     status: Literal["active", "suspended"] | None = None
     contact_email: EmailStr | None = None
@@ -126,6 +130,8 @@ class PartnerOut(BaseModel):
 
 
 class ApiKeyCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     type: Literal["live", "test"] = "live"
     # Validated against the vocabulary: a typo used to mint a key that
     # silently authorises nothing (or, worse, reads as authorising more
@@ -166,6 +172,8 @@ class OriginsUpdateIn(BaseModel):
 
 
 class PartnerTenantLinkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     external_client_ref: str = Field(min_length=1, max_length=255)
     tenant_id: uuid.UUID
     client_name: str | None = Field(default=None, max_length=255)

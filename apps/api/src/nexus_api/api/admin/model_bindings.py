@@ -26,7 +26,7 @@ import uuid
 import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,6 +71,8 @@ class ModelBindingOut(BaseModel):
 
 
 class ModelBindingIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     model_id: str
     fallback_chain: list[str] = Field(default_factory=list)
     max_cost_per_turn_usd: float | None = None

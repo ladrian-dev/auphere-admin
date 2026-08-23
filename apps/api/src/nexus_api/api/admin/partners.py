@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -20,6 +21,7 @@ from nexus_api.api.deps import get_db_session
 from nexus_api.core.partner_keys import generate_api_key
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import Partner, PartnerApiKey, PartnerTenant, Tenant
+from nexus_api.repositories import AuditRepository
 from nexus_api.repositories.partner import (
     EmbedAuditRepository,
     PartnerApiKeyRepository,
@@ -55,6 +57,20 @@ async def _get_partner_or_404(session: AsyncSession, partner_id: uuid.UUID) -> P
     return partner
 
 
+def _admin_actor(token: str) -> str:
+    """Platform audit actor. First 8 of the bearer only — never the secret."""
+    return f"admin:{token[:8]}"
+
+
+def _partner_snapshot(partner: Partner) -> dict[str, Any]:
+    return PartnerOut.model_validate(partner).model_dump(mode="json")
+
+
+def _key_snapshot(key: PartnerApiKey) -> dict[str, Any]:
+    """Public key metadata only. No plaintext, hash, or raw secret."""
+    return ApiKeyOut.model_validate(key).model_dump(mode="json")
+
+
 @router.get("", response_model=list[PartnerOut])
 async def list_partners(session: AsyncSession = Depends(get_db_session)) -> list[PartnerOut]:
     partners = await PartnerRepository(session).list_all()
@@ -65,6 +81,7 @@ async def list_partners(session: AsyncSession = Depends(get_db_session)) -> list
 async def create_partner(
     body: PartnerCreateIn,
     session: AsyncSession = Depends(get_db_session),
+    actor: str = Depends(require_admin_token),
 ) -> PartnerOut:
     try:
         async with session.begin():
@@ -76,10 +93,19 @@ async def create_partner(
                     contact_email=body.contact_email,
                 )
             )
+            await session.refresh(partner)
             await EmbedAuditRepository(session).record(
                 event="partner.created",
                 partner_id=partner.id,
                 payload={"slug": body.slug},
+            )
+            await AuditRepository(session).record(
+                actor=_admin_actor(actor),
+                action="partner.create",
+                target=f"partner:{partner.id}",
+                before=None,
+                after=_partner_snapshot(partner),
+                platform=True,
             )
     except IntegrityError as exc:
         raise HTTPException(
@@ -102,9 +128,11 @@ async def update_partner(
     partner_id: uuid.UUID,
     body: PartnerUpdateIn,
     session: AsyncSession = Depends(get_db_session),
+    actor: str = Depends(require_admin_token),
 ) -> PartnerOut:
     async with session.begin():
         partner = await _get_partner_or_404(session, partner_id)
+        before = _partner_snapshot(partner)
         changes = body.model_dump(exclude_unset=True, exclude_none=True)
         # Blueprint refs (Fase 2b): empty string clears; a non-empty value
         # must exist so a typo doesn't surface later as a broken provision.
@@ -137,18 +165,26 @@ async def update_partner(
                     )
         for field, value in changes.items():
             setattr(partner, field, value)
-        if changes:
-            await EmbedAuditRepository(session).record(
-                event="partner.updated",
-                partner_id=partner.id,
-                payload={"fields": sorted(changes)},
-            )
         # ``updated_at`` is server-side ``onupdate``: the flush expires it,
         # and reading it after the block (outside the async context) raises
         # MissingGreenlet — a 500 on a request that already committed. Load
         # it here, while there is still a greenlet to do the IO.
         await session.flush()
         await session.refresh(partner)
+        if changes:
+            await EmbedAuditRepository(session).record(
+                event="partner.updated",
+                partner_id=partner.id,
+                payload={"fields": sorted(changes)},
+            )
+            await AuditRepository(session).record(
+                actor=_admin_actor(actor),
+                action="partner.update",
+                target=f"partner:{partner.id}",
+                before=before,
+                after=_partner_snapshot(partner),
+                platform=True,
+            )
     return PartnerOut.model_validate(partner)
 
 
@@ -211,6 +247,7 @@ async def rotate_key(
     key_id: uuid.UUID,
     body: ApiKeyRotateIn,
     session: AsyncSession = Depends(get_db_session),
+    actor: str = Depends(require_admin_token),
 ) -> ApiKeyCreatedOut:
     """Create a replacement key and put the old one on a grace timer.
     The old key keeps authenticating until ``grace_expires_at`` so the
@@ -225,6 +262,7 @@ async def rotate_key(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="key is already revoked",
             )
+        before = _key_snapshot(old)
         now = datetime.now(UTC)
         old.revoked_at = now
         old.grace_expires_at = now + timedelta(hours=body.grace_hours)
@@ -248,6 +286,18 @@ async def rotate_key(
             api_key_id=new.id,
             payload={"replaces": str(key_id), "grace_hours": body.grace_hours},
         )
+        await AuditRepository(session).record(
+            actor=_admin_actor(actor),
+            action="key.rotate",
+            target=f"key:{key_id}",
+            before=before,
+            after={
+                **_key_snapshot(new),
+                "replaces": str(key_id),
+                "grace_hours": body.grace_hours,
+            },
+            platform=True,
+        )
     return ApiKeyCreatedOut(
         plaintext=generated.plaintext, **ApiKeyOut.model_validate(new).model_dump()
     )
@@ -258,6 +308,7 @@ async def revoke_key(
     partner_id: uuid.UUID,
     key_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
+    actor: str = Depends(require_admin_token),
 ) -> ApiKeyOut:
     """Immediate, no grace: the key (and every live session token minted
     with it — the embed verifier re-checks per request) dies now."""
@@ -265,12 +316,21 @@ async def revoke_key(
         key = await PartnerApiKeyRepository(session).get(key_id)
         if key is None or key.partner_id != partner_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="key not found")
+        before = _key_snapshot(key)
         key.revoked_at = datetime.now(UTC)
         key.grace_expires_at = None
         await EmbedAuditRepository(session).record(
             event="key.revoked",
             partner_id=partner_id,
             api_key_id=key.id,
+        )
+        await AuditRepository(session).record(
+            actor=_admin_actor(actor),
+            action="key.revoke",
+            target=f"key:{key.id}",
+            before=before,
+            after=_key_snapshot(key),
+            platform=True,
         )
     return ApiKeyOut.model_validate(key)
 

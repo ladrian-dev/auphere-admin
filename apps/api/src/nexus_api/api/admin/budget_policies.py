@@ -42,7 +42,7 @@ from typing import Literal
 import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
@@ -64,6 +64,8 @@ _SCOPE_TABLES = {"tenant": "tenants", "partner": "partners"}
 
 
 class BudgetPolicyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     scope: Literal["tenant", "partner"]
     scope_id: uuid.UUID
     meter: str = "cost_usd"

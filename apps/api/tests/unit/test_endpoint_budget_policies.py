@@ -21,6 +21,10 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from sqlalchemy import select
+
+from nexus_api.config import get_settings
+from nexus_api.db.models import AuditLog
 
 pytestmark = pytest.mark.asyncio
 
@@ -165,3 +169,38 @@ async def test_the_endpoint_needs_an_admin_token(client, seed_tenants) -> None:
     assert (
         await client.put("/admin/budget-policies", json=_policy(seed_tenants["a"]))
     ).status_code in (401, 403)
+
+
+async def test_extra_field_or_partner_id_in_body_is_422(
+    client, admin_headers, seed_tenants
+) -> None:
+    """Unknown keys (and partner_id) are refused — they are not in the path."""
+    extra = await client.put(
+        "/admin/budget-policies",
+        headers=admin_headers,
+        json=_policy(seed_tenants["a"], ghost_field="nope"),
+    )
+    assert extra.status_code == 422
+    partner_id = await client.put(
+        "/admin/budget-policies",
+        headers=admin_headers,
+        json=_policy(seed_tenants["a"], partner_id=str(seed_tenants["a"])),
+    )
+    assert partner_id.status_code == 422
+
+
+async def test_upsert_writes_a_platform_audit_row(
+    client, admin_headers, seed_tenants, db_session
+) -> None:
+    tenant = seed_tenants["a"]
+    r = await client.put("/admin/budget-policies", headers=admin_headers, json=_policy(tenant))
+    assert r.status_code == 200, r.text
+    token = get_settings().admin_token
+    audit = (
+        await db_session.execute(select(AuditLog).where(AuditLog.action == "budget_policy.upsert"))
+    ).scalar_one()
+    assert audit.tenant_id is None
+    assert audit.actor == f"admin:{token[:8]}"
+    assert token not in audit.actor
+    assert audit.after_json is not None
+    assert audit.after_json["scope_id"] == str(tenant)

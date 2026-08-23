@@ -130,3 +130,23 @@ async def test_an_unknown_tenant_is_a_404_not_an_empty_list(client, admin_header
     el resto del panel."""
     r = await client.get(f"/admin/tenants/{uuid.uuid4()}/model-bindings", headers=admin_headers)
     assert r.status_code == 404
+
+
+async def test_extra_field_or_partner_id_in_body_is_422(
+    client, admin_headers, seed_tenants
+) -> None:
+    extra = await client.put(
+        f"/admin/tenants/{seed_tenants['a']}/model-bindings/respond",
+        headers=admin_headers,
+        json={"model_id": "anthropic/claude-haiku-4-5", "ghost_field": "nope"},
+    )
+    assert extra.status_code == 422
+    partner_id = await client.put(
+        f"/admin/tenants/{seed_tenants['a']}/model-bindings/respond",
+        headers=admin_headers,
+        json={
+            "model_id": "anthropic/claude-haiku-4-5",
+            "partner_id": str(seed_tenants["a"]),
+        },
+    )
+    assert partner_id.status_code == 422

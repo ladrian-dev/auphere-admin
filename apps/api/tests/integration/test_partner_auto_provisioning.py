@@ -26,10 +26,12 @@ import respx
 import sqlalchemy as sa
 from nexus_channels.whatsapp_meta.meta_client import META_GRAPH_BASE_URL
 
+from nexus_api.config import get_settings
 from nexus_api.core.partner_keys import generate_api_key
 from nexus_api.db.models import (
     AgentConfig,
     AgentConfigStatus,
+    AuditLog,
     Channel,
     EmbedAuditLog,
     Partner,
@@ -572,6 +574,22 @@ async def test_admin_patch_partner_blueprint_returns_200(client, db_session, adm
     assert body["default_connector_slug"] == CONNECTOR
     assert body["auto_activate"] is True
 
+    token = get_settings().admin_token
+    audit = (
+        await db_session.execute(
+            sa.select(AuditLog).where(
+                AuditLog.action == "partner.update",
+                AuditLog.target == f"partner:{world['partner_id']}",
+            )
+        )
+    ).scalar_one()
+    assert audit.tenant_id is None
+    assert audit.actor == f"admin:{token[:8]}"
+    assert token not in audit.actor
+    assert audit.after_json is not None
+    assert "plaintext" not in audit.after_json
+    assert audit.after_json["default_seed_template"] == SEED
+
 
 async def test_partner_client_status_unknown_ref_is_404(client, db_session) -> None:
     world = await _blueprint_partner(db_session)
@@ -700,3 +718,151 @@ async def test_partner_admin_role_defaults_full(client, db_session) -> None:
     )
     assert r.status_code == 200, r.text
     assert r.json()["admins"][0]["role"] == "full"
+
+
+def _assert_platform_audit(row: AuditLog, *, action: str, token: str) -> None:
+    assert row.tenant_id is None
+    assert row.action == action
+    assert row.actor == f"admin:{token[:8]}"
+    assert token not in row.actor
+    if row.after_json is not None:
+        assert "plaintext" not in row.after_json
+        assert "key_hash" not in row.after_json
+
+
+async def test_admin_partner_bodies_reject_extra_or_partner_id(
+    client, db_session, admin_headers
+) -> None:
+    created = await client.post(
+        "/admin/partners",
+        headers=admin_headers,
+        json={"name": "Agencia Extra", "slug": "agencia-extra", "ghost_field": "nope"},
+    )
+    assert created.status_code == 422
+
+    created_pid = await client.post(
+        "/admin/partners",
+        headers=admin_headers,
+        json={
+            "name": "Agencia Extra",
+            "slug": "agencia-extra",
+            "partner_id": str(uuid.uuid4()),
+        },
+    )
+    assert created_pid.status_code == 422
+
+    world = await _blueprint_partner(db_session, seed=None, connector=None)
+    pid = world["partner_id"]
+    extra = await client.patch(
+        f"/admin/partners/{pid}",
+        headers=admin_headers,
+        json={"name": "Nuevo", "ghost_field": "nope"},
+    )
+    assert extra.status_code == 422
+    partner_id_body = await client.patch(
+        f"/admin/partners/{pid}",
+        headers=admin_headers,
+        json={"name": "Nuevo", "partner_id": str(pid)},
+    )
+    assert partner_id_body.status_code == 422
+
+    key_extra = await client.post(
+        f"/admin/partners/{pid}/keys",
+        headers=admin_headers,
+        json={"type": "live", "partner_id": str(pid)},
+    )
+    assert key_extra.status_code == 422
+
+    link_extra = await client.post(
+        f"/admin/partners/{pid}/tenants",
+        headers=admin_headers,
+        json={
+            "external_client_ref": "c1",
+            "tenant_id": str(uuid.uuid4()),
+            "partner_id": str(pid),
+        },
+    )
+    assert link_extra.status_code == 422
+
+
+async def test_admin_partner_create_update_and_keys_write_audit_log(
+    client, admin_headers, db_session
+) -> None:
+    token = get_settings().admin_token
+    created = await client.post(
+        "/admin/partners",
+        headers=admin_headers,
+        json={"name": "Audit Agency", "slug": "audit-agency"},
+    )
+    assert created.status_code == 201, created.text
+    partner_id = created.json()["id"]
+
+    create_audit = (
+        await db_session.execute(
+            sa.select(AuditLog).where(
+                AuditLog.action == "partner.create",
+                AuditLog.target == f"partner:{partner_id}",
+            )
+        )
+    ).scalar_one()
+    _assert_platform_audit(create_audit, action="partner.create", token=token)
+    assert create_audit.after_json is not None
+    assert create_audit.after_json["slug"] == "audit-agency"
+
+    patched = await client.patch(
+        f"/admin/partners/{partner_id}",
+        headers=admin_headers,
+        json={"name": "Audit Agency 2"},
+    )
+    assert patched.status_code == 200, patched.text
+    update_audit = (
+        await db_session.execute(
+            sa.select(AuditLog).where(
+                AuditLog.action == "partner.update",
+                AuditLog.target == f"partner:{partner_id}",
+            )
+        )
+    ).scalar_one()
+    _assert_platform_audit(update_audit, action="partner.update", token=token)
+    assert update_audit.before_json is not None
+    assert update_audit.before_json["name"] == "Audit Agency"
+    assert update_audit.after_json is not None
+    assert update_audit.after_json["name"] == "Audit Agency 2"
+
+    minted = await client.post(
+        f"/admin/partners/{partner_id}/keys",
+        headers=admin_headers,
+        json={"type": "live"},
+    )
+    assert minted.status_code == 201, minted.text
+    key_id = minted.json()["id"]
+    plaintext = minted.json()["plaintext"]
+
+    rotated = await client.post(
+        f"/admin/partners/{partner_id}/keys/{key_id}/rotate",
+        headers=admin_headers,
+        json={"grace_hours": 2},
+    )
+    assert rotated.status_code == 201, rotated.text
+    new_key_id = rotated.json()["id"]
+    rotate_audit = (
+        await db_session.execute(sa.select(AuditLog).where(AuditLog.action == "key.rotate"))
+    ).scalar_one()
+    _assert_platform_audit(rotate_audit, action="key.rotate", token=token)
+    assert rotate_audit.after_json is not None
+    assert rotate_audit.after_json["id"] == new_key_id
+    assert plaintext not in str(rotate_audit.after_json)
+    assert rotated.json()["plaintext"] not in str(rotate_audit.after_json)
+
+    revoked = await client.post(
+        f"/admin/partners/{partner_id}/keys/{new_key_id}/revoke",
+        headers=admin_headers,
+        json={},
+    )
+    assert revoked.status_code == 200, revoked.text
+    revoke_audit = (
+        await db_session.execute(sa.select(AuditLog).where(AuditLog.action == "key.revoke"))
+    ).scalar_one()
+    _assert_platform_audit(revoke_audit, action="key.revoke", token=token)
+    assert revoke_audit.after_json is not None
+    assert revoke_audit.after_json["revoked_at"] is not None
