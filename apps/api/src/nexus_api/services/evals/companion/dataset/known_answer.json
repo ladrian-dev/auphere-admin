@@ -1084,6 +1084,85 @@
     ],
     "unsupported": false
    }
+  },
+  {
+   "id": "f1-list-models",
+   "family": "known_answer",
+   "title": "El catálogo de modelos se lee, no se recuerda",
+   "user_message": "¿Qué modelos puedo asignar a un cliente?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.list_models",
+     "args": {}
+    },
+    {
+     "text": "Estos son los tres modelos del catálogo cerrado que acabo de leer."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "model_id",
+     "display_name",
+     "openai/gpt-5.6-sol"
+    ],
+    "unsupported": false
+   }
+  },
+  {
+   "id": "f1-get-client-model",
+   "family": "known_answer",
+   "title": "El modelo de un cliente se lee por client_ref",
+   "user_message": "¿En qué modelo corre $a.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.get_client_model",
+     "args": {
+      "client_ref": "$a.ref"
+     }
+    },
+    {
+     "text": "Te digo el modelo de respuesta que acaba de devolver la ficha."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "client_ref",
+     "is_bound",
+     "respond"
+    ],
+    "unsupported": false
+   }
+  },
+  {
+   "id": "f1-propose-model-no-aplica",
+   "family": "known_answer",
+   "title": "Proponer un modelo no lo aplica",
+   "user_message": "Pon el modelo de $a.ref en Sol",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.propose_model",
+     "args": {
+      "client_ref": "$a.ref",
+      "model_id": "openai/gpt-5.6-sol"
+     }
+    },
+    {
+     "text": "Te dejo preparado el cambio de modelo. No he tocado nada: confírmalo y se aplica."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "\"staged\": true",
+     "\"kind\": \"model\""
+    ],
+    "unsupported": false
+   }
   }
  ]
 }
