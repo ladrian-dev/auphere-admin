@@ -19,13 +19,22 @@ la facturación) y sin duración en la respuesta no se inventa una.
 
 from __future__ import annotations
 
+import json
+import os
 import uuid
 from typing import Any
 
 import pytest
+from nexus_api.core.llm_proxy import llm_proxy_partner_scope
 
 from nexus_worker.metering import collector
 from nexus_worker.multimodal.processor import LiveMediaProcessor, MediaProcessorError
+
+PARTNER = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1")
+KEY = "sk-vk-partner-a"
+BASE = "http://litellm.proxy.test"
+VENDOR_ANTHROPIC = "sk-ant-should-never-be-used"
+VENDOR_OPENAI = "sk-openai-should-never-be-used"
 
 pytestmark = pytest.mark.asyncio
 
@@ -46,7 +55,27 @@ class _FakeCompletion:
 
 
 @pytest.fixture
-def litellm_stub(monkeypatch):
+def proxy_map(monkeypatch: pytest.MonkeyPatch) -> None:
+    keys = json.dumps({str(PARTNER): KEY})
+    monkeypatch.setenv("LITELLM_PROXY_API_BASE", BASE)
+    monkeypatch.setenv("LITELLM_PROXY_VIRTUAL_KEYS", keys)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", VENDOR_ANTHROPIC)
+    monkeypatch.setenv("OPENAI_API_KEY", VENDOR_OPENAI)
+    monkeypatch.setattr(
+        "nexus_api.core.llm_proxy._settings_base_and_keys",
+        lambda: (BASE, keys),
+    )
+
+
+def _assert_proxy_not_vendor(kwargs: dict[str, Any]) -> None:
+    assert kwargs["api_base"] == BASE
+    assert kwargs["api_key"] == KEY
+    assert kwargs["api_key"] != os.environ["ANTHROPIC_API_KEY"]
+    assert kwargs["api_key"] != os.environ["OPENAI_API_KEY"]
+
+
+@pytest.fixture
+def litellm_stub(monkeypatch, proxy_map):
     """Sustituye el módulo ``litellm`` que el procesador importa dentro de
     la función. Guarda los kwargs para poder afirmar sobre ellos."""
     import sys
@@ -72,13 +101,20 @@ def litellm_stub(monkeypatch):
     return module
 
 
-async def test_a_voice_note_is_metered_in_minutes(litellm_stub) -> None:
+@pytest.fixture
+def partner_scope(proxy_map):
+    with llm_proxy_partner_scope(PARTNER):
+        yield PARTNER
+
+
+async def test_a_voice_note_is_metered_in_minutes(litellm_stub, partner_scope) -> None:
     processor = LiveMediaProcessor()
     async with collector.usage_turn(tenant_id=uuid.uuid4(), turn_id=str(uuid.uuid4())):
         text = await processor._transcribe(b"fake-ogg", "audio/ogg")
         events = collector.drain_for_tests()
 
     assert text == "hola quiero un turno"
+    _assert_proxy_not_vendor(litellm_stub.calls["transcription"])
     # Whisper se factura por minuto: 42 s son 0,7 min. El medidor tiene que
     # ser ``voice.minutes`` y no un medidor de tokens, porque es el único
     # que ``pricing.py`` resuelve contra ``price_per_minute``.
@@ -90,6 +126,7 @@ async def test_a_voice_note_is_metered_in_minutes(litellm_stub) -> None:
 
 async def test_transcription_asks_for_the_only_format_that_carries_duration(
     litellm_stub,
+    partner_scope,
 ) -> None:
     """Control del cableado con el proveedor: sin ``verbose_json`` la
     respuesta no trae ``duration`` y la medición desaparece sin ruido."""
@@ -103,6 +140,7 @@ async def test_transcription_asks_for_the_only_format_that_carries_duration(
 
 async def test_a_response_without_duration_measures_nothing_rather_than_guessing(
     litellm_stub,
+    partner_scope,
 ) -> None:
     litellm_stub.transcription_response = _FakeTranscription(duration=None)
     processor = LiveMediaProcessor()
@@ -118,6 +156,7 @@ async def test_a_response_without_duration_measures_nothing_rather_than_guessing
 
 async def test_two_voice_notes_in_one_turn_get_distinct_idempotency_keys(
     litellm_stub,
+    partner_scope,
 ) -> None:
     """Sin bump de ``call_seq`` las dos comparten clave y el consumidor
     descarta la segunda en su ``ON CONFLICT`` — se cobraría la mitad."""
@@ -130,13 +169,14 @@ async def test_two_voice_notes_in_one_turn_get_distinct_idempotency_keys(
     assert len({e.idempotency_key for e in events}) == 2
 
 
-async def test_vision_tokens_are_metered(litellm_stub) -> None:
+async def test_vision_tokens_are_metered(litellm_stub, partner_scope) -> None:
     processor = LiveMediaProcessor()
     async with collector.usage_turn(tenant_id=uuid.uuid4(), turn_id=str(uuid.uuid4())):
         summary = await processor._vision(b"fake-jpeg", "image/jpeg")
         events = collector.drain_for_tests()
 
     assert summary == "una foto de un corte de pelo"
+    _assert_proxy_not_vendor(litellm_stub.calls["completion"])
     by_meter = {e.meter: e.quantity for e in events}
     assert by_meter == {"llm.input_tokens": 1_500.0, "llm.output_tokens": 40.0}
     assert {e.model for e in events} == {"anthropic/claude-sonnet-4-6"}
@@ -144,6 +184,7 @@ async def test_vision_tokens_are_metered(litellm_stub) -> None:
 
 async def test_vision_is_metered_even_when_the_response_is_unreadable(
     litellm_stub,
+    partner_scope,
 ) -> None:
     """Los tokens se gastaron aunque la respuesta venga malformada. Medir
     después de parsear regalaría justo los turnos que peor van."""
@@ -163,7 +204,7 @@ async def test_vision_is_metered_even_when_the_response_is_unreadable(
     assert [e.meter for e in events] == ["llm.input_tokens"]
 
 
-async def test_outside_a_turn_nothing_is_metered(litellm_stub) -> None:
+async def test_outside_a_turn_nothing_is_metered(litellm_stub, partner_scope) -> None:
     """Evals y scripts usan el mismo procesador. Si midieran, meterían
     consumo sin tenant en la facturación de alguien."""
     processor = LiveMediaProcessor()
