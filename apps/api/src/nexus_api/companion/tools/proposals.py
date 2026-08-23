@@ -69,6 +69,7 @@ APPLY_ROUTES: dict[str, tuple[ApplyMethod, str]] = {
     "usage_alerts": ("PUT", "/console/usage/alerts"),
     "allocation": ("PUT", "/console/clients/{client_ref}/allocation"),
     "model": ("PUT", "/console/clients/{client_ref}/model"),
+    "knowledge": ("POST", "/console/knowledge/url"),
     "invite": ("POST", "/console/team/invitations"),
     # CO-08 (§4.1 de CONTRACT-V2). Los dos ``kind`` de soporte aplican por el
     # MISMO endpoint; lo que los distingue es ``category`` dentro del cuerpo,
@@ -1204,6 +1205,71 @@ class ProposalBuilder:
         )
 
     # ── soporte (CO-08, §4) ────────────────────────────────────────────
+
+
+    async def _knowledge(self, args: dict[str, Any]) -> Proposal:
+        scope = str(args.get("scope") or "").strip()
+        if scope not in {"partner", "client"}:
+            raise ProposalRefused(
+                ToolError(
+                    "bad_arguments",
+                    "scope es obligatorio y solo admite partner o client.",
+                )
+            )
+        url = str(args.get("url") or "").strip()
+        if not url.startswith("http://") and not url.startswith("https://"):
+            raise ProposalRefused(
+                ToolError("bad_arguments", "Manda una URL http(s) pública para indexar.")
+            )
+        title = str(args.get("title") or "").strip() or None
+        ref: str | None = None
+        if scope == "client":
+            ref = str(args.get("client_ref") or "").strip() or None
+            if not ref:
+                raise ProposalRefused(
+                    ToolError(
+                        "bad_arguments",
+                        "Si el alcance es client, client_ref es obligatorio.",
+                    )
+                )
+            listing = await self._get(f"/console/clients/{ref}/knowledge")
+            apply_path = f"/console/clients/{ref}/knowledge/url"
+            headline = f"Añadir al conocimiento del cliente {ref}"
+        else:
+            listing = await self._get("/console/knowledge")
+            apply_path = APPLY_ROUTES["knowledge"][1]
+            headline = "Añadir al playbook del partner"
+        items = listing.get("items") if isinstance(listing, dict) else []
+        if any(str((row or {}).get("source_url") or "") == url for row in (items or [])):
+            raise ProposalRefused(
+                ToolError("no_change", "Esa URL ya está en el alcance. Nada que añadir.")
+            )
+        body: dict[str, Any] = {"url": url}
+        if title:
+            body["title"] = title
+        return Proposal(
+            kind="knowledge",
+            title=headline,
+            preview={
+                "scope": scope,
+                "summary": headline,
+                "url": url,
+                "title": title,
+                "client_ref": ref,
+            },
+            diff=[
+                {"op": "add", "line": 1, "after": f"url: {url}"},
+            ],
+            impact=[_impact("knowledge_scope", scope), _impact("knowledge_url", url)],
+            risk="low",
+            reversible=True,
+            state_hash=canonical_hash({"scope": scope, "url": url, "client_ref": ref}),
+            apply_method=APPLY_ROUTES["knowledge"][0],
+            apply_path=apply_path,
+            apply_body=body,
+            expectations={"knowledge_url": url},
+            client_ref=ref,
+        )
 
     async def _support_help(self, args: dict[str, Any]) -> Proposal:
         return await self._support("support_help", args)

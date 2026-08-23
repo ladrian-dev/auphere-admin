@@ -85,6 +85,7 @@ from nexus_api.db.models.knowledge import (
     KnowledgeDocumentKind,
     KnowledgeDocumentStatus,
     KnowledgeErrorCode,
+    PartnerKnowledgeDocument,
 )
 from nexus_api.db.models.model_profile import (
     MODEL_ROLES,
@@ -243,6 +244,7 @@ __all__ = [
     "PartnerAllocation",
     "PartnerApiKey",
     "PartnerInvitation",
+    "PartnerKnowledgeDocument",
     "PartnerMembership",
     "PartnerRole",
     "PartnerStatus",

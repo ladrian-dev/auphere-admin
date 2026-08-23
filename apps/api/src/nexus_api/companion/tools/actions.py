@@ -374,6 +374,7 @@ VERIFY_READS: dict[str, str] = {
     "usage_alerts": "/console/usage/alerts",
     "allocation": "/console/clients/{client_ref}/allocation",
     "model": "/console/clients/{client_ref}/model",
+    "knowledge": "/console/knowledge",
     "invite": "/console/team",
     # CO-08. No hay sistema de tickets que releer —§25.1 es explícito en que
     # no se crea uno—, así que lo que se verifica es lo que SÍ se prometió:
@@ -398,6 +399,8 @@ async def verify_action(read: Any, action: CompanionAction) -> dict[str, Any]:
     expectations: dict[str, str] = dict(payload.get("expectations") or {})
     client_ref = payload.get("client_ref")
     template = VERIFY_READS.get(action.kind)
+    if action.kind == "knowledge" and client_ref:
+        template = "/console/clients/{client_ref}/knowledge"
     if template is None or not expectations:  # pragma: no cover - todo kind tiene ambos
         return {"action_id": str(action.id), "checks": [], "ok": True}
 
@@ -477,6 +480,13 @@ def _observed(kind: str, fresh: Any, payload: dict[str, Any]) -> dict[str, str]:
     if kind == "model":
         mid = (fresh or {}).get("model_id")
         return {"model_id": str(mid) if mid else ""}
+    if kind == "knowledge":
+        wanted = str(((payload.get("apply") or {}).get("body") or {}).get("url") or "")
+        urls = {
+            str((row or {}).get("source_url") or "")
+            for row in ((fresh or {}).get("items") or [])
+        }
+        return {"knowledge_url": wanted if wanted and wanted in urls else "missing"}
     if kind in ("support_help", "support_capability"):
         ref = str((payload.get("result") or {}).get("ticket_ref") or "")
         seen = {

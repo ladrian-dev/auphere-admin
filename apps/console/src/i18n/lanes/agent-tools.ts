@@ -197,4 +197,6 @@ export const agentToolsMessages = {
   "knowledge.delete.title": { es: "Eliminar «{title}»", en: "Delete \"{title}\"" },
   "knowledge.delete.body": { es: "El agente dejará de consultar este documento de inmediato. No se puede deshacer.", en: "The agent stops consulting this document immediately. This cannot be undone." },
   "knowledge.deleted": { es: "«{title}» eliminado.", en: "\"{title}\" deleted." },
+  "playbook.title": { es: "Playbook del partner", en: "Partner playbook" },
+  "playbook.description": { es: "Reglas y documentos comunes a todos tus clientes. El agente de WhatsApp de un cliente no ve este playbook; el Companion sí. El texto extraído no sale de aquí.", en: "Rules and documents shared across your clients. A client WhatsApp agent does not see this playbook; the Companion does. Extracted text never leaves this page." },
 } as const;

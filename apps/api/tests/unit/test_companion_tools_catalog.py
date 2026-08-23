@@ -29,6 +29,7 @@ EXPECTED = {
     "console.list_tools",
     "console.list_skills",
     "console.list_knowledge",
+    "console.list_playbook",
     "console.list_channels",
     "console.channel_diagnostics",
     "console.list_templates",
@@ -165,5 +166,6 @@ def test_partner_wide_tools_take_no_client():
         "console.get_wallet",
         "console.list_allocations",
         "console.list_models",
+        "console.list_playbook",
     ):
         assert TOOLS_BY_NAME[name].params == (), name

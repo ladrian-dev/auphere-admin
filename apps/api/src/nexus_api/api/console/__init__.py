@@ -38,6 +38,7 @@ from nexus_api.api.console import (
     models,
     notifications,
     onboarding,
+    playbook,
     playground,
     seed_templates,
     skills,
@@ -85,6 +86,7 @@ router.include_router(agent_settings.router)
 router.include_router(tools.router)
 router.include_router(skills.router)
 router.include_router(knowledge.router)
+router.include_router(playbook.router)
 router.include_router(seed_templates.router)
 router.include_router(notifications.router)
 router.include_router(onboarding.router)

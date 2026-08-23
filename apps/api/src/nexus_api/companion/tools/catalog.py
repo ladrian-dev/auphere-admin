@@ -326,6 +326,20 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
         max_chars=8_000,
     ),
     ToolSpec(
+        name="console.list_playbook",
+        path="/console/knowledge",
+        label="Playbook del partner",
+        description=(
+            "Lista los documentos del playbook del partner (metadatos: título, "
+            "estado, fecha). Llama a esto cuando pregunten por el playbook, las "
+            "reglas comunes a todos los clientes, o qué sabe la consola a nivel "
+            "de partner. Devuelve metadatos, no el contenido: no cites párrafos "
+            "de aquí. No lo confundas con console.list_knowledge, que es el KB "
+            "de UN cliente."
+        ),
+        max_chars=8_000,
+    ),
+    ToolSpec(
         name="console.list_channels",
         path="/console/clients/{client_ref}/channels",
         label="Canales del cliente",
@@ -1034,6 +1048,52 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
                 ),
                 required=True,
                 enum=RESPOND_MODEL_IDS,
+            ),
+        ),
+        max_chars=4_000,
+    ),
+    ToolSpec(
+        name="console.propose_knowledge",
+        kind="knowledge",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/knowledge",
+        label="Proponer un documento de conocimiento",
+        description=(
+            "Prepara añadir una URL al playbook del partner o al conocimiento de "
+            "un cliente. scope es obligatorio: partner o client. Si es client, "
+            "manda también client_ref. No escribe: aplicar usa POST /url del "
+            "alcance (el archivo solo se sube desde la consola). El interrupt "
+            "nombra el alcance. El cuerpo de aplicación nunca lleva partner_id. "
+            "No lo uses para buscar en un índice: no hay kb.search."
+        ),
+        params=(
+            ToolParam(
+                name="scope",
+                type="string",
+                description="Alcance: partner (playbook) o client (KB de un cliente).",
+                required=True,
+                enum=("partner", "client"),
+            ),
+            ToolParam(
+                name="url",
+                type="string",
+                description="URL http(s) pública a indexar.",
+                required=True,
+            ),
+            ToolParam(
+                name="title",
+                type="string",
+                description="Título opcional. Si falta, se usa la URL o el título de la página.",
+            ),
+            ToolParam(
+                name="client_ref",
+                type="string",
+                description=(
+                    "Referencia del cliente. Obligatoria si scope=client. La que "
+                    "devuelve console.list_clients. Un ref ajeno es el mismo 404 "
+                    "opaco que uno inexistente."
+                ),
             ),
         ),
         max_chars=4_000,

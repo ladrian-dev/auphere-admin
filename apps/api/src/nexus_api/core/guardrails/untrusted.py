@@ -54,6 +54,7 @@ UNTRUSTED_PREAMBLE = (
 #: texto que escribió un desconocido.
 TAG_TOOL_RESULT = "tool_result"
 TAG_KNOWLEDGE = "knowledge_document"
+TAG_PARTNER_PLAYBOOK = "partner_playbook"
 TAG_PAGE_CONTEXT = "page_context"
 TAG_META_REJECTION = "provider_note"
 TAG_CLIENT_NAME = "client_name"
@@ -165,6 +166,7 @@ __all__ = [
     "TAG_KNOWLEDGE",
     "TAG_META_REJECTION",
     "TAG_PAGE_CONTEXT",
+    "TAG_PARTNER_PLAYBOOK",
     "TAG_TOOL_RESULT",
     "UNTRUSTED_PREAMBLE",
     "fence",

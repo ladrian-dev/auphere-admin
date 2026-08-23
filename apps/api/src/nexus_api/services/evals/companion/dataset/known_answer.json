@@ -1163,6 +1163,59 @@
     ],
     "unsupported": false
    }
+  },
+  {
+   "id": "f1-list-playbook",
+   "family": "known_answer",
+   "title": "El playbook del partner se lista por metadatos",
+   "user_message": "¿Qué hay en el playbook del partner?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.list_playbook",
+     "args": {}
+    },
+    {
+     "text": "Te listo el playbook con lo que acaba de devolver la lectura."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "prompt_char_cap",
+     "indexed_chars",
+     "items"
+    ],
+    "unsupported": false
+   }
+  },
+  {
+   "id": "f1-propose-knowledge-no-aplica",
+   "family": "known_answer",
+   "title": "Proponer conocimiento nombra el alcance y no aplica",
+   "user_message": "Añade https://example.com/playbook.md al playbook del partner",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.propose_knowledge",
+     "args": {
+      "scope": "partner",
+      "url": "https://example.com/playbook.md"
+     }
+    },
+    {
+     "text": "Te dejo preparada la URL en el playbook del partner. No he tocado nada: confírmalo y se aplica."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "\"staged\": true",
+     "\"kind\": \"knowledge\"",
+     "playbook"
+    ],
+    "unsupported": false
+   }
   }
  ]
 }

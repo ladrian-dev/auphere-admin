@@ -33,7 +33,16 @@ import { KNOWLEDGE_MAX_UPLOAD_BYTES, type KnowledgeDocumentOut, type KnowledgeLi
 
 import { knowledgeErrorKey, knowledgeStatusTone, knowledgeUsageRatio, usageWidthClass } from "./lib";
 
-type Props = { refId: string; data: KnowledgeListOut; canWrite: boolean };
+type ActionResult<T> = { ok: true; data: T } | { ok: false; status: number; message: string };
+
+export type KnowledgeTableActions = {
+  upload: (formData: FormData) => Promise<ActionResult<KnowledgeDocumentOut>>;
+  addUrl: (body: { url: string; title?: string; ref?: string }) => Promise<ActionResult<KnowledgeDocumentOut>>;
+  remove: (body: { id: string; ref?: string }) => Promise<ActionResult<null>>;
+  reindex: (body: { id: string; ref?: string }) => Promise<ActionResult<KnowledgeDocumentOut>>;
+};
+
+type Props = { refId: string; data: KnowledgeListOut; canWrite: boolean; actions?: KnowledgeTableActions };
 
 const ACCEPT = ".pdf,.txt,.md,.html,.htm,application/pdf,text/plain,text/markdown,text/html";
 
@@ -41,7 +50,7 @@ const ACCEPT = ".pdf,.txt,.md,.html,.htm,application/pdf,text/plain,text/markdow
  * Knowledge (CP-15): upload + URL forms, prompt-budget meter and the
  * document table (metadata only). Delete asks; reindex is one click.
  */
-export function KnowledgeTable({ refId, data, canWrite }: Props) {
+export function KnowledgeTable({ refId, data, canWrite, actions }: Props) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
@@ -52,7 +61,9 @@ export function KnowledgeTable({ refId, data, canWrite }: Props) {
 
   function reindex(doc: KnowledgeDocumentOut) {
     startTransition(async () => {
-      const res = await reindexKnowledgeAction({ ref: refId, id: doc.id });
+      const res = await (actions?.reindex ?? ((b) => reindexKnowledgeAction({ ref: refId, id: b.id })))(
+        { ref: refId, id: doc.id },
+      );
       if (!res.ok) return void toast.error(res.message);
       toast.success(t("knowledge.reindexed", { title: doc.title }));
       router.refresh();
@@ -61,7 +72,9 @@ export function KnowledgeTable({ refId, data, canWrite }: Props) {
   async function confirmDelete() {
     if (!deleting) return;
     const doc = deleting;
-    const res = await deleteKnowledgeAction({ ref: refId, id: doc.id });
+    const res = await (actions?.remove ?? ((b) => deleteKnowledgeAction({ ref: refId, id: b.id })))(
+      { ref: refId, id: doc.id },
+    );
     if (!res.ok) return void toast.error(res.message);
     toast.success(t("knowledge.deleted", { title: doc.title }));
     setDeleting(null);
@@ -70,8 +83,8 @@ export function KnowledgeTable({ refId, data, canWrite }: Props) {
 
   const forms = canWrite ? (
     <div className="grid gap-3 md:grid-cols-2">
-      <UploadForm refId={refId} />
-      <UrlForm refId={refId} />
+      <UploadForm refId={refId} upload={actions?.upload} />
+      <UrlForm refId={refId} addUrl={actions?.addUrl} />
     </div>
   ) : null;
 
@@ -178,7 +191,7 @@ export function KnowledgeTable({ refId, data, canWrite }: Props) {
   );
 }
 
-function UploadForm({ refId }: { refId: string }) {
+function UploadForm({ refId, upload }: { refId: string; upload?: KnowledgeTableActions["upload"] }) {
   const t = useT();
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -194,7 +207,7 @@ function UploadForm({ refId }: { refId: string }) {
     setError(null);
     fd.set("ref", refId);
     startTransition(async () => {
-      const res = await uploadKnowledgeAction(fd);
+      const res = await (upload ?? uploadKnowledgeAction)(fd);
       if (!res.ok) return void toast.error(res.status === 413 ? t("knowledge.upload.tooLarge") : res.message);
       toast.success(t("knowledge.upload.done", { title: res.data.title }));
       formRef.current?.reset();
@@ -233,7 +246,7 @@ function UploadForm({ refId }: { refId: string }) {
   );
 }
 
-function UrlForm({ refId }: { refId: string }) {
+function UrlForm({ refId, addUrl }: { refId: string; addUrl?: KnowledgeTableActions["addUrl"] }) {
   const t = useT();
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -246,7 +259,7 @@ function UrlForm({ refId }: { refId: string }) {
     if (!/^https?:\/\/\S{3,}$/.test(url.trim())) return void setError(t("knowledge.url.invalid"));
     setError(null);
     startTransition(async () => {
-      const res = await addKnowledgeUrlAction({ ref: refId, url: url.trim(), title: title.trim() || undefined });
+      const res = await (addUrl ?? addKnowledgeUrlAction)({ ref: refId, url: url.trim(), title: title.trim() || undefined });
       if (!res.ok) return void toast.error(res.message);
       toast.success(t("knowledge.url.done", { title: res.data.title }));
       setUrl("");

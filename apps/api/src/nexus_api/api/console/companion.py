@@ -880,6 +880,20 @@ def _make_driver(
             run_id=run_id,
             action_ttl_seconds=settings.companion_action_ttl_seconds,
         )
+        knowledge_context = ""
+        try:
+            from nexus_api.services.knowledge_retrieve import (
+                load_companion_knowledge_blocks,
+            )
+
+            raw_ref = (page_context or {}).get("client_ref") if page_context else None
+            knowledge_context = await load_companion_knowledge_blocks(
+                principal.partner.id,
+                client_ref=str(raw_ref) if raw_ref else None,
+            )
+        except Exception as exc:
+            log.warning("companion.knowledge_load_failed", error=type(exc).__name__)
+            knowledge_context = ""
         state = {
             "thread_id": str(thread_id),
             "principal": {
@@ -888,6 +902,7 @@ def _make_driver(
                 "permissions": sorted(principal.permissions),
             },
             "page_context": page_context,
+            "knowledge_context": knowledge_context,
             "history": history,
             "user_message": user_message,
             "total_input_tokens": 0,

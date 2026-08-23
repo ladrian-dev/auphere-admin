@@ -19,6 +19,7 @@ const core = {
   "nav.clients": { es: "Clientes", en: "Clients" },
   "nav.usage": { es: "Consumo", en: "Usage" },
   "nav.audit": { es: "Auditoría", en: "Audit" },
+  "nav.knowledge": { es: "Playbook", en: "Playbook" },
   "nav.team": { es: "Equipo", en: "Team" },
   "nav.keys": { es: "Claves de API", en: "API keys" },
   "nav.billing": { es: "Facturación", en: "Billing" },

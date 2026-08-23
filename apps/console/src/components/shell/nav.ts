@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { BarChart3, Bell, Building2, KeyRound, LayoutDashboard, Receipt, ScrollText, Users } from "lucide-react";
+import { BarChart3, Bell, BookOpen, Building2, KeyRound, LayoutDashboard, Receipt, ScrollText, Users } from "lucide-react";
 
 import type { MessageKey } from "@/i18n/messages";
 import { can, type Permission, type Role } from "@/lib/permissions";
@@ -14,6 +14,7 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/", labelKey: "nav.home", icon: LayoutDashboard, exact: true },
       { href: "/clients", labelKey: "nav.clients", icon: Building2, permission: "clients:read" },
+      { href: "/knowledge", labelKey: "nav.knowledge", icon: BookOpen, permission: "playbook:read" },
       { href: "/usage", labelKey: "nav.usage", icon: BarChart3, permission: "usage:read" },
       { href: "/audit", labelKey: "nav.audit", icon: ScrollText, permission: "audit:read" },
       { href: "/notifications", labelKey: "nav.notifications", icon: Bell, permission: "partner:read" },

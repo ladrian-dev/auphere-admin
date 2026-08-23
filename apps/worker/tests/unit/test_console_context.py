@@ -143,3 +143,12 @@ def test_turn_cap_forces_escalation() -> None:
     off = {"console": {**POLICIES["console"], "escalation": {"enabled": False}}}
     assert forced_escalation(off, history) is False
     assert forced_escalation({}, history) is False
+
+
+def test_channel_knowledge_block_never_uses_playbook_tag() -> None:
+    """WhatsApp inject is the client KB fence only — no partner playbook."""
+    out = render_knowledge_block([("Doc", "facts about the clinic")])
+    assert "<knowledge_document" in out
+    assert "partner_playbook" not in out
+    assert "PLAYBOOK" not in out
+

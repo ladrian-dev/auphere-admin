@@ -1,22 +1,13 @@
-"""``/console/clients/{ref}/knowledge`` — the client's documents and URLs
-(CP-15).
+"""``/console/knowledge`` — the partner playbook (Fase 3 RAG).
 
-v1 pipeline, synchronous in the request: receive → extract text
-(``services/knowledge_indexer.py``) → store ``content_text`` → status
-``indexed`` (or ``failed`` + ``error_code``). The worker injects the
-indexed texts into the system prompt (``knowledge_context``), so a
-document uploaded here shows up in the next answer without a vector
-store. Only ``content_text`` is stored — no binary, no S3 in v1
-(``s3_key`` reserved); a re-index of a file re-parses nothing new, it
-re-counts chunks from the stored text; a re-index of a URL re-fetches.
-
-Permission family ``knowledge:*``. Responses never carry the text.
+Permission family ``playbook:*``. The client's KB stays at
+``/console/clients/{ref}/knowledge`` with ``knowledge:*``. Responses
+never carry ``content_text``. The body never carries ``partner_id``.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -24,69 +15,50 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 
 from nexus_api.db.models import (
     AuditLog,
-    KnowledgeDocument,
     KnowledgeDocumentKind,
     KnowledgeDocumentStatus,
     KnowledgeErrorCode,
+    PartnerKnowledgeDocument,
 )
 from nexus_api.services import knowledge_indexer as indexer
 from nexus_api.services.knowledge_indexer import IndexingError
 
-from .deps import ClientScope, client_scope
+from .deps import PartnerScope, partner_scope
+from .knowledge import PROMPT_CHAR_CAP, _mark
 from .schemas_agent_tools import KnowledgeDocumentOut, KnowledgeListOut, KnowledgeUrlIn
 
-router = APIRouter(prefix="/clients/{ref}/knowledge")
-
-#: What the worker injects at most (characters, over all indexed docs).
-PROMPT_CHAR_CAP = 20_000
+router = APIRouter(prefix="/knowledge")
 
 
-def _out(doc: KnowledgeDocument) -> KnowledgeDocumentOut:
+def _out(doc: PartnerKnowledgeDocument) -> KnowledgeDocumentOut:
     return KnowledgeDocumentOut.model_validate(doc, from_attributes=True)
 
 
-def _mark(
-    doc: Any, extracted: indexer.Extracted | None, error: KnowledgeErrorCode | None
-) -> None:
-    if extracted is not None:
-        doc.content_text = extracted.text
-        doc.mime = extracted.mime
-        doc.size_bytes = extracted.size_bytes
-        doc.chunk_count = extracted.chunk_count
-        doc.status = KnowledgeDocumentStatus.INDEXED.value
-        doc.error_code = None
-        doc.indexed_at = datetime.now(UTC)
-    else:
-        doc.status = KnowledgeDocumentStatus.FAILED.value
-        doc.error_code = error.value if error else KnowledgeErrorCode.FETCH_FAILED.value
-        doc.chunk_count = 0
-
-
-def _audit(scope: ClientScope, action: str, doc: KnowledgeDocument, after: dict[str, Any]) -> None:
+def _audit(scope: PartnerScope, action: str, doc: PartnerKnowledgeDocument, after: dict[str, Any]) -> None:
     scope.session.add(
         AuditLog(
-            tenant_id=scope.tenant.id,
+            tenant_id=None,
             actor=scope.principal.actor,
             action=action,
-            target=f"knowledge_document:{doc.id}",
+            target=f"partner_knowledge_document:{doc.id}",
             after_json={"title": doc.title, "kind": doc.kind, **after},
         )
     )
 
 
 @router.get("", response_model=KnowledgeListOut)
-async def list_documents(
-    scope: ClientScope = Depends(client_scope("knowledge:read")),
+async def list_playbook(
+    scope: PartnerScope = Depends(partner_scope("playbook:read")),
 ) -> KnowledgeListOut:
     rows = (
         await scope.session.scalars(
-            sa.select(KnowledgeDocument).order_by(KnowledgeDocument.created_at.desc())
+            sa.select(PartnerKnowledgeDocument).order_by(PartnerKnowledgeDocument.created_at.desc())
         )
     ).all()
     indexed_chars = await scope.session.scalar(
         sa.select(
-            sa.func.coalesce(sa.func.sum(sa.func.length(KnowledgeDocument.content_text)), 0)
-        ).where(KnowledgeDocument.status == KnowledgeDocumentStatus.INDEXED.value)
+            sa.func.coalesce(sa.func.sum(sa.func.length(PartnerKnowledgeDocument.content_text)), 0)
+        ).where(PartnerKnowledgeDocument.status == KnowledgeDocumentStatus.INDEXED.value)
     )
     return KnowledgeListOut(
         items=[_out(r) for r in rows],
@@ -102,12 +74,11 @@ async def list_documents(
     status_code=status.HTTP_201_CREATED,
     responses={413: {"description": "File larger than 10 MB."}},
 )
-async def upload_document(
+async def upload_playbook(
     file: UploadFile = File(...),
     title: str | None = Form(default=None, max_length=255),
-    scope: ClientScope = Depends(client_scope("knowledge:write")),
+    scope: PartnerScope = Depends(partner_scope("playbook:write")),
 ) -> KnowledgeDocumentOut:
-    """Multipart upload (PDF / TXT / MD / HTML, ≤ 10 MB). Indexed inline."""
     data = await file.read(indexer.MAX_UPLOAD_BYTES + 1)
     if len(data) > indexer.MAX_UPLOAD_BYTES:
         raise HTTPException(
@@ -115,8 +86,8 @@ async def upload_document(
         )
     filename = (file.filename or "document").strip()[:255] or "document"
     mime = indexer.guess_mime(filename, file.content_type)
-    doc = KnowledgeDocument(
-        tenant_id=scope.tenant.id,
+    doc = PartnerKnowledgeDocument(
+        partner_id=scope.principal.partner.id,
         kind=KnowledgeDocumentKind.FILE.value,
         title=(title or filename).strip()[:255] or filename,
         source_url=None,
@@ -133,21 +104,18 @@ async def upload_document(
     _mark(doc, extracted, error)
     scope.session.add(doc)
     await scope.session.flush()
-    _audit(scope, "knowledge.upload", doc, {"status": doc.status, "error_code": doc.error_code})
+    _audit(scope, "playbook.upload", doc, {"status": doc.status, "error_code": doc.error_code})
     await scope.session.refresh(doc)
     return _out(doc)
 
 
 @router.post("/url", response_model=KnowledgeDocumentOut, status_code=status.HTTP_201_CREATED)
-async def add_url(
+async def add_playbook_url(
     body: KnowledgeUrlIn,
-    scope: ClientScope = Depends(client_scope("knowledge:write")),
+    scope: PartnerScope = Depends(partner_scope("playbook:write")),
 ) -> KnowledgeDocumentOut:
-    """Fetch a public http(s) URL and index its text. A failed fetch is
-    a ``failed`` document with an explainable ``error_code`` (201, not an
-    error): the partner sees it in the table and can re-index later."""
-    doc = KnowledgeDocument(
-        tenant_id=scope.tenant.id,
+    doc = PartnerKnowledgeDocument(
+        partner_id=scope.principal.partner.id,
         kind=KnowledgeDocumentKind.URL.value,
         title=(body.title or body.url).strip()[:255],
         source_url=body.url,
@@ -159,12 +127,14 @@ async def add_url(
     await _index_url(doc, body.url, title_override=body.title)
     scope.session.add(doc)
     await scope.session.flush()
-    _audit(scope, "knowledge.add_url", doc, {"status": doc.status, "error_code": doc.error_code})
+    _audit(scope, "playbook.add_url", doc, {"status": doc.status, "error_code": doc.error_code})
     await scope.session.refresh(doc)
     return _out(doc)
 
 
-async def _index_url(doc: KnowledgeDocument, url: str, *, title_override: str | None) -> None:
+async def _index_url(
+    doc: PartnerKnowledgeDocument, url: str, *, title_override: str | None
+) -> None:
     try:
         fetched = await indexer.fetch_url(url)
     except IndexingError as exc:
@@ -175,31 +145,29 @@ async def _index_url(doc: KnowledgeDocument, url: str, *, title_override: str | 
         doc.title = fetched.title[:255]
 
 
-async def _get(scope: ClientScope, doc_id: uuid.UUID) -> KnowledgeDocument:
-    doc = await scope.session.get(KnowledgeDocument, doc_id)
-    if doc is None:  # RLS: another tenant's id is simply not there
+async def _get(scope: PartnerScope, doc_id: uuid.UUID) -> PartnerKnowledgeDocument:
+    doc = await scope.session.get(PartnerKnowledgeDocument, doc_id)
+    if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
     return doc
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_document(
+async def delete_playbook(
     doc_id: uuid.UUID,
-    scope: ClientScope = Depends(client_scope("knowledge:write")),
+    scope: PartnerScope = Depends(partner_scope("playbook:write")),
 ) -> None:
     doc = await _get(scope, doc_id)
-    _audit(scope, "knowledge.delete", doc, {})
+    _audit(scope, "playbook.delete", doc, {})
     await scope.session.delete(doc)
     await scope.session.flush()
 
 
 @router.post("/{doc_id}/reindex", response_model=KnowledgeDocumentOut)
-async def reindex_document(
+async def reindex_playbook(
     doc_id: uuid.UUID,
-    scope: ClientScope = Depends(client_scope("knowledge:write")),
+    scope: PartnerScope = Depends(partner_scope("playbook:write")),
 ) -> KnowledgeDocumentOut:
-    """URL: re-fetch. File: re-derive from the stored text (no binary is
-    kept in v1), so a failed file needs a re-upload — reported as-is."""
     doc = await _get(scope, doc_id)
     if doc.kind == KnowledgeDocumentKind.URL.value and doc.source_url:
         await _index_url(doc, doc.source_url, title_override=doc.title)
@@ -212,9 +180,9 @@ async def reindex_document(
     else:
         _mark(doc, None, KnowledgeErrorCode(doc.error_code or "empty"))
     await scope.session.flush()
-    _audit(scope, "knowledge.reindex", doc, {"status": doc.status, "error_code": doc.error_code})
+    _audit(scope, "playbook.reindex", doc, {"status": doc.status, "error_code": doc.error_code})
     await scope.session.refresh(doc)
     return _out(doc)
 
 
-__all__ = ["PROMPT_CHAR_CAP", "router"]
+__all__ = ["router"]

@@ -67,6 +67,7 @@ PARTNER_FORCE_TABLES: dict[str, str] = {
     "partner_wallets": "Saldo included+purchased. FORCE por partner_id.",
     "partner_allocations": "Cap por tenant. FORCE por partner_id.",
     "usage_ledger": "Asientos. FORCE por partner_id; fx NULL v1.",
+    "partner_knowledge_documents": "Playbook. FORCE por partner_id. CASCADE al partner.",
 }
 
 

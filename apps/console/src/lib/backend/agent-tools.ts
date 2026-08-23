@@ -63,6 +63,13 @@ export function agentToolsApi(call: Call) {
     deleteKnowledge: (ref: string, docId: string) => call<null>(`${base(ref)}/knowledge/${enc(docId)}`, { method: "DELETE" }),
     reindexKnowledge: (ref: string, docId: string) =>
       call<KnowledgeDocumentOut>(`${base(ref)}/knowledge/${enc(docId)}/reindex`, { method: "POST" }),
+
+    listPlaybook: () => call<KnowledgeListOut>("/console/knowledge"),
+    addPlaybookUrl: (body: { url: string; title?: string }) =>
+      call<KnowledgeDocumentOut>("/console/knowledge/url", { method: "POST", body }),
+    deletePlaybook: (docId: string) => call<null>(`/console/knowledge/${enc(docId)}`, { method: "DELETE" }),
+    reindexPlaybook: (docId: string) =>
+      call<KnowledgeDocumentOut>(`/console/knowledge/${enc(docId)}/reindex`, { method: "POST" }),
   };
 }
 
@@ -75,6 +82,28 @@ export function agentToolsApi(call: Call) {
 export async function uploadKnowledgeFile(principal: Principal, ref: string, formData: FormData): Promise<KnowledgeDocumentOut> {
   const token = await tokenFor(principal);
   const url = `${env().NEXUS_BACKEND_URL}/console/clients/${encodeURIComponent(ref)}/knowledge`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    body: formData,
+    cache: "no-store",
+  });
+  const text = await res.text();
+  let parsed: unknown = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+  if (!res.ok) throw new BackendError(res.status, url, parsed);
+  return parsed as KnowledgeDocumentOut;
+}
+
+export async function uploadPlaybookFile(principal: Principal, formData: FormData): Promise<KnowledgeDocumentOut> {
+  const token = await tokenFor(principal);
+  const url = `${env().NEXUS_BACKEND_URL}/console/knowledge`;
   const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },

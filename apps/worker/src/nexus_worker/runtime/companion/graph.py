@@ -245,6 +245,7 @@ def make_investigate(
             history=state.get("history"),
             user_message=state.get("user_message", ""),
             page_context=state.get("page_context"),
+            knowledge_context=state.get("knowledge_context"),
         )
         messages: list[dict[str, Any]] = [*base, *(state.get("tool_messages") or [])]
         # §17 del contrato v2.1: el proveedor no admite el punto en el nombre
@@ -897,6 +898,7 @@ async def _answer_after_action(
             history=state.get("history"),
             user_message=state.get("user_message", ""),
             page_context=state.get("page_context"),
+            knowledge_context=state.get("knowledge_context"),
         ),
         *(state.get("tool_messages") or []),
         {"role": "system", "content": "\n".join(brief)},
@@ -947,6 +949,7 @@ async def _answer_without_tools(
         history=state.get("history"),
         user_message=state.get("user_message", ""),
         page_context=state.get("page_context"),
+        knowledge_context=state.get("knowledge_context"),
     )
     answer, usage = await _stream_final_answer(
         provider,

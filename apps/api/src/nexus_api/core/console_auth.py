@@ -122,6 +122,9 @@ PERMISSIONS: dict[str, frozenset[str]] = {
     # Knowledge documents/URLs of a client (CP-15).
     "knowledge:read": frozenset({_O, _A, _B, _AN}),
     "knowledge:write": frozenset({_O, _A, _B}),
+    # Partner playbook (Fase 3 RAG). Write is owner/admin only.
+    "playbook:read": frozenset({_O, _A, _B, _AN}),
+    "playbook:write": frozenset({_O, _A}),
     # The console Companion (CO-01). Same three roles as ``playground:run``
     # and for the same two reasons: it spends the partner's LLM budget, and
     # from CO-04 it writes — through the very same ``/console/*`` routers,

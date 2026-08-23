@@ -349,8 +349,9 @@ def build_messages(
     history: list[dict[str, Any]] | None,
     user_message: str,
     page_context: dict[str, Any] | None,
+    knowledge_context: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Prompt de sistema estable → historia → contexto de página → turno.
+    """Prompt de sistema estable → historia → página → playbook/KB → turno.
 
     El orden importa y no es estético: todo lo que cambia por turno tiene
     que ir DESPUÉS del prefijo que se quiere cachear.
@@ -360,6 +361,8 @@ def build_messages(
     ctx = page_context_message(page_context)
     if ctx is not None:
         messages.append(ctx)
+    if knowledge_context:
+        messages.append({"role": "system", "content": knowledge_context})
     messages.append({"role": "user", "content": user_message})
     return messages
 

@@ -210,6 +210,7 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("PUT", "/console/clients/{ref}/allocation"): {"cap": 1},
         ("PUT", "/console/clients/{ref}/model"): {"model_id": "openai/gpt-5.6-sol"},
         ("POST", "/console/clients/{ref}/knowledge/url"): {"url": "https://example.com/x"},
+        ("POST", "/console/knowledge/url"): {"url": "https://example.com/x"},
         ("POST", "/console/clients/{ref}/channels/whatsapp/signup"): {
             "code": "x",
             "waba_id": "1",

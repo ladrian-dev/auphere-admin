@@ -31,6 +31,8 @@ export const PERMISSIONS = {
   "usage:write": ["owner", "admin"],
   "knowledge:read": ["owner", "admin", "builder", "analyst"],
   "knowledge:write": ["owner", "admin", "builder"],
+  "playbook:read": ["owner", "admin", "builder", "analyst"],
+  "playbook:write": ["owner", "admin"],
   // The console Companion (CO-01). Same three roles as `playground:run`:
   // it spends the partner's LLM budget and, from CO-04, it writes — through
   // the very same `/console/*` routers, so an analyst still gets the

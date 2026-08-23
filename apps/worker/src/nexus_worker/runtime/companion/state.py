@@ -177,6 +177,7 @@ class CompanionState(TypedDict, total=False):
     # quien autoriza es el router ``/console/*`` que la herramienta llama.
     principal: dict[str, Any]
     page_context: dict[str, Any] | None
+    knowledge_context: str
     # Turnos anteriores del hilo, en forma de mensajes de proveedor.
     history: list[dict[str, Any]]
     user_message: str

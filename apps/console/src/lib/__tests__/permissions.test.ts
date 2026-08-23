@@ -30,6 +30,8 @@ const API_MAP: Record<string, string[]> = {
   "usage:write": ["owner", "admin"],
   "knowledge:read": ["owner", "admin", "builder", "analyst"],
   "knowledge:write": ["owner", "admin", "builder"],
+  "playbook:read": ["owner", "admin", "builder", "analyst"],
+  "playbook:write": ["owner", "admin"],
   "companion:use": ["owner", "admin", "builder"],
 };
 

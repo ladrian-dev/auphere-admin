@@ -1,4 +1,4 @@
-"""``knowledge_documents`` — the client's knowledge base (CP-15).
+"""``knowledge_documents`` (client KB) and ``partner_knowledge_documents`` (playbook).
 
 v1 is deliberately **not** a vector store: a document is fetched/parsed
 once, its plain text is kept in ``content_text`` and the worker injects
@@ -77,9 +77,44 @@ class KnowledgeDocument(UUIDPrimaryKey, TimestampMixin, Base):
     indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class PartnerKnowledgeDocument(UUIDPrimaryKey, TimestampMixin, Base):
+    """Partner playbook. Same shape as ``KnowledgeDocument``, RLS by partner."""
+
+    __tablename__ = "partner_knowledge_documents"
+    __table_args__ = (
+        CheckConstraint("kind IN ('file','url')", name="ck_pkd_kind"),
+        CheckConstraint("status IN ('pending','indexed','failed')", name="ck_pkd_status"),
+        CheckConstraint("size_bytes >= 0", name="ck_pkd_size"),
+        CheckConstraint("chunk_count >= 0", name="ck_pkd_chunks"),
+    )
+
+    partner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("partners.id", ondelete="CASCADE", name="fk_pkd_partner"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    s3_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    mime: Mapped[str] = mapped_column(String(120), nullable=False, default="text/plain")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(
+        String(10), nullable=False, default=KnowledgeDocumentStatus.PENDING.value
+    )
+    error_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 __all__ = [
     "KnowledgeDocument",
     "KnowledgeDocumentKind",
     "KnowledgeDocumentStatus",
     "KnowledgeErrorCode",
+    "PartnerKnowledgeDocument",
 ]
+

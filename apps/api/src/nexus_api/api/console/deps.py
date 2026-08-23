@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.core.logging_context import bind_tenant
+from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.core.tenant_context import _current_tenant, apply_tenant_to_session
 from nexus_api.db.models import (
     AgentConfig,
@@ -111,6 +112,29 @@ def client_scope(*required: str) -> Callable[..., AsyncIterator[ClientScope]]:
     return _dependency
 
 
+@dataclass(frozen=True)
+class PartnerScope:
+    """Open transaction with ``app.partner_id`` set (playbook / wallet)."""
+
+    principal: ConsolePrincipal
+    session: AsyncSession
+
+
+def partner_scope(*required: str) -> Callable[..., AsyncIterator[PartnerScope]]:
+    """Partner-scoped transaction. Body never carries ``partner_id``."""
+    principal_dep = require_console_principal(*required)
+
+    async def _dependency(
+        principal: ConsolePrincipal = Depends(principal_dep),
+        session: AsyncSession = Depends(get_db_session),
+    ) -> AsyncIterator[PartnerScope]:
+        async with session.begin():
+            await apply_partner_to_session(session, principal.partner.id)
+            yield PartnerScope(principal=principal, session=session)
+
+    return _dependency
+
+
 # ── health (used by list, detail and create) ───────────────────────────
 
 
@@ -158,9 +182,11 @@ async def health_for_tenant(session: AsyncSession, tenant: Tenant) -> ClientHeal
 __all__ = [
     "ClientRef",
     "ClientScope",
+    "PartnerScope",
     "client_health",
     "client_scope",
     "health_for_tenant",
+    "partner_scope",
     "resolve_mapping",
     "unknown_client",
 ]
