@@ -114,6 +114,15 @@ locals {
     }
   ]
 
+  # Mapping VK: solo api/runner en staging. El JSON entero del secreto
+  # (no una clave dentro). Prod y el resto de servicios no lo ven.
+  partner_keys_secret = terraform.workspace == "staging" ? [
+    {
+      name      = "LITELLM_PROXY_VIRTUAL_KEYS"
+      valueFrom = aws_secretsmanager_secret.litellm_partner_keys[0].arn
+    },
+  ] : []
+
   # OTLP → EMF. dimension_rollup NoDimensionRollup: queremos exactamente
   # las series con dimensión ``stream`` que usan autoescalado y alarmas,
   # no el producto cartesiano de rollups.
@@ -225,7 +234,7 @@ locals {
       image       = local.images[svc]
       essential   = true
       environment = local.common_env
-      secrets     = local.secrets
+      secrets     = concat(local.secrets, contains(["api", "runner"], svc) ? local.partner_keys_secret : [])
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -319,8 +328,12 @@ resource "aws_ecs_task_definition" "service" {
   network_mode             = "awsvpc"
   cpu                      = local.cfg.cpu[each.key]
   memory                   = local.cfg.memory[each.key]
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task[each.key].arn
+  execution_role_arn = (
+    terraform.workspace == "staging" && contains(["api", "runner"], each.key)
+    ? aws_iam_role.execution_proxy[0].arn
+    : aws_iam_role.execution.arn
+  )
+  task_role_arn = aws_iam_role.task[each.key].arn
 
   container_definitions = jsonencode(local.container_definitions[each.key])
 

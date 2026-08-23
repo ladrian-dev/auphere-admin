@@ -148,8 +148,9 @@ terraform apply -target=aws_secretsmanager_secret.litellm -var litellm_enabled=t
 # Rellenar a mano (valores NO van en este repo): LITELLM_MASTER_KEY (sk-…),
 # LITELLM_SALT_KEY, DATABASE_URL (postgres DIRECTO a la base `litellm`,
 # no PgBouncer), ANTHROPIC_API_KEY, OPENAI_API_KEY.
-# Opcional VIRTUAL_KEYS (partner_id→sk) para proxy_admin; no se inyecta
-# al contenedor.
+# Mapping partner→VK: secreto aparte nexus/staging/litellm-partner-keys
+# (JSON {partner_id: sk-…}). No va aquí ni en app. Luis rellena tras
+# /key/generate. No apply de api/runner hasta entonces.
 
 # 4. El resto de 20-services.
 terraform apply -var litellm_enabled=true
