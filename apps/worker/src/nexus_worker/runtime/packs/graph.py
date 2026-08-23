@@ -41,8 +41,8 @@ def _get_sender() -> Any:
 
 async def node_send_template(state: PackState) -> dict[str, Any]:
     """Art. 50 first outbound. Receipt is written BEFORE wait_reply."""
-    from nexus_api.db.base import get_sessionmaker  # type: ignore[import-untyped]
-    from nexus_api.packs.send import send_if_new  # type: ignore[import-untyped]
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.packs.send import send_if_new
 
     sm = get_sessionmaker()
     async with sm() as session, session.begin():

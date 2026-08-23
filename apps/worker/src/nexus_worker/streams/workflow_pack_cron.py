@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 
 import structlog
-from nexus_api.packs.cron import process_due_workflow_crons  # type: ignore[import-untyped]
+from nexus_api.packs.cron import process_due_workflow_crons
 
 log = structlog.get_logger(__name__)
 
