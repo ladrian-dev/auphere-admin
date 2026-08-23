@@ -375,6 +375,7 @@ VERIFY_READS: dict[str, str] = {
     "allocation": "/console/clients/{client_ref}/allocation",
     "model": "/console/clients/{client_ref}/model",
     "knowledge": "/console/knowledge",
+    "pack": "/console/clients/{client_ref}/workflow",
     "invite": "/console/team",
     # CO-08. No hay sistema de tickets que releer —§25.1 es explícito en que
     # no se crea uno—, así que lo que se verifica es lo que SÍ se prometió:
@@ -480,6 +481,9 @@ def _observed(kind: str, fresh: Any, payload: dict[str, Any]) -> dict[str, str]:
     if kind == "model":
         mid = (fresh or {}).get("model_id")
         return {"model_id": str(mid) if mid else ""}
+    if kind == "pack":
+        steps = (fresh or {}).get("steps") or []
+        return {"pack_steps": ",".join(str(s) for s in steps)}
     if kind == "knowledge":
         wanted = str(((payload.get("apply") or {}).get("body") or {}).get("url") or "")
         urls = {

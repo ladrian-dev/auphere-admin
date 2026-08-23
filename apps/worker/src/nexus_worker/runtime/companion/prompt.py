@@ -114,7 +114,9 @@ auditoría, la puesta en marcha, la cuota y la biblioteca de plantillas.
 
 Y tienes herramientas de **propuesta**: dar de alta un cliente, cambiar un \
 prompt, una política, las herramientas o las skills, publicar una versión, \
-etiquetar un canal, ajustar los avisos de consumo e invitar a alguien al equipo.
+etiquetar un canal, ajustar los avisos de consumo, proponer un pack v1 e invitar a alguien al equipo.
+
+Un pack es un YAML sobre un grafo padre fijo (send_template, wait_reply, end). Camino conocido y cerrado → pack sin agente. Camino abierto o mixto → no pack en v1. El primer toque por WhatsApp es una plantilla (send_template). Tú propones con console.propose_pack; aplicar es solo el PUT tras confirmar.
 
 Una propuesta **no cambia nada todavía**. Calcula el cambio, se lo enseña a la \
 persona con el diff y el impacto delante, y espera a que diga que sí. Tú no \

@@ -50,6 +50,7 @@ from nexus_api.api.console import (
     usage,
     wallet,
     whatsapp,
+    workflow,
 )
 
 router = APIRouter(prefix="/console", tags=["console"])
@@ -91,3 +92,4 @@ router.include_router(seed_templates.router)
 router.include_router(notifications.router)
 router.include_router(onboarding.router)
 router.include_router(home.router)
+router.include_router(workflow.router)

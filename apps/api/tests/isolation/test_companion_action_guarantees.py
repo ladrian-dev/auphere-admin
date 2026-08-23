@@ -129,6 +129,7 @@ def test_the_twelve_kinds_are_the_twelve_of_the_contract() -> None:
         "allocation",
         "model",
         "knowledge",
+        "pack",
         "invite",
         "support_help",
         "support_capability",

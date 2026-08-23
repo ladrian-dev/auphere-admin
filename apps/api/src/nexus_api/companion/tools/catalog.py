@@ -627,6 +627,35 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
     # tres cosas, y por eso el Companion puede decir "esto no está" con la
     # misma procedencia con la que dice "tu agente va por la v7".
     ToolSpec(
+        name="console.get_workflow",
+        path="/console/clients/{client_ref}/workflow",
+        label="Pack del cliente",
+        description=(
+            "Devuelve el pack v1 de un cliente: trigger, steps cerrados "
+            "(send_template, wait_reply, end), plantilla, cron (hora en zona "
+            "del partner) y si está activo. Llama a esto antes de proponer "
+            "un pack y cuando pregunten qué automatización tiene un cliente. "
+            "Un ref ajeno es el mismo 404 opaco que uno inexistente. No lo "
+            "uses para el agente ni para el playground. No hay chip Workflow "
+            "en el chat del cliente final."
+        ),
+        params=(_ref_param("el cliente cuyo pack quieres leer"),),
+        max_chars=4_000,
+    ),
+    ToolSpec(
+        name="console.list_workflow_runs",
+        path="/console/clients/{client_ref}/workflow/runs",
+        label="Runs del pack",
+        description=(
+            "Lista los runs del pack de un cliente: thread_id y status. "
+            "interrupted no es un error: el pack está esperando respuesta. "
+            "Llama a esto cuando pregunten si corrió el pack o cómo va. "
+            "No expongas LangSmith ni LiteLLM. Un ref ajeno es 404 opaco."
+        ),
+        params=(_ref_param("el cliente cuyos runs quieres listar"),),
+        max_chars=6_000,
+    ),
+    ToolSpec(
         name="console.get_capabilities",
         path="/console/capabilities",
         label="Qué existe y qué no en Auphere",
@@ -1094,6 +1123,74 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
                     "devuelve console.list_clients. Un ref ajeno es el mismo 404 "
                     "opaco que uno inexistente."
                 ),
+            ),
+        ),
+        max_chars=4_000,
+    ),
+    ToolSpec(
+        name="console.propose_pack",
+        kind="pack",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/clients/{client_ref}/workflow",
+        label="Proponer un pack",
+        description=(
+            "Entrevista y propone un pack v1 (YAML): trigger cron o event, "
+            "steps solo send_template, wait_reply, end, plantilla WhatsApp "
+            "y hora en zona del partner. No escribe: aplicar usa PUT "
+            "/console/clients/{ref}/workflow. Tú NUNCA aplicas solo. "
+            "Camino conocido y cerrado → pack sin agente; abierto o mixto "
+            "→ no pack en v1. El primer toque de WhatsApp es send_template "
+            "(Art. 50), no un nodo extra. Lee console.get_workflow y "
+            "console.list_templates antes. El cuerpo no lleva partner_id."
+        ),
+        params=(
+            _propose_ref("cuyo pack vas a proponer"),
+            ToolParam(
+                name="trigger",
+                type="string",
+                description="cron (hora fija) o event.",
+                required=True,
+                enum=("cron", "event"),
+            ),
+            ToolParam(
+                name="steps",
+                type="string",
+                description=(
+                    "IDs cerrados separados por comas. Solo "
+                    "send_template, wait_reply, end. El primero que envíe "
+                    "tiene que ser send_template."
+                ),
+                required=True,
+            ),
+            ToolParam(
+                name="template_id",
+                type="string",
+                description="Plantilla de WhatsApp si hay send_template.",
+            ),
+            ToolParam(
+                name="hour",
+                type="integer",
+                description="Hora local del partner (0-23) si trigger=cron.",
+                minimum=0,
+                maximum=23,
+            ),
+            ToolParam(
+                name="minute",
+                type="integer",
+                description="Minuto local (0-59) si trigger=cron.",
+                minimum=0,
+                maximum=59,
+            ),
+            ToolParam(
+                name="timezone",
+                type="string",
+                description="Zona IANA para la UI. Se persiste UTC.",
+            ),
+            ToolParam(
+                name="enabled",
+                type="boolean",
+                description="Si el pack queda activo.",
             ),
         ),
         max_chars=4_000,

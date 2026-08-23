@@ -148,6 +148,12 @@ from nexus_api.db.models.tenant import Tenant, TenantPlan, TenantStatus, TenantT
 from nexus_api.db.models.tool import ToolCatalog, ToolStatus
 from nexus_api.db.models.usage import UsageEvent
 from nexus_api.db.models.usage_record import USAGE_METERS, UsageRecord
+from nexus_api.db.models.workflow import (
+    WorkflowCron,
+    WorkflowPack,
+    WorkflowRun,
+    WorkflowSendReceipt,
+)
 
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
@@ -276,4 +282,8 @@ __all__ = [
     "UsageRecord",
     "WhatsAppOptOut",
     "WhatsAppTemplateStatus",
+    "WorkflowCron",
+    "WorkflowPack",
+    "WorkflowRun",
+    "WorkflowSendReceipt",
 ]

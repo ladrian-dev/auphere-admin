@@ -1217,5 +1217,89 @@
     "unsupported": false
    }
   }
+,
+  {
+   "id": "f1-get-workflow",
+   "family": "known_answer",
+   "title": "El pack se lee por client_ref",
+   "user_message": "¿Qué pack tiene $a.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.get_workflow",
+     "args": {
+      "client_ref": "$a.ref"
+     }
+    },
+    {
+     "text": "Te digo el pack que acaba de devolver la ficha."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "client_ref",
+     "is_set"
+    ],
+    "unsupported": false
+   }
+  },
+  {
+   "id": "f1-list-workflow-runs",
+   "family": "known_answer",
+   "title": "Los runs del pack se listan; interrupted no es error",
+   "user_message": "¿Cómo van los runs del pack de $a.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.list_workflow_runs",
+     "args": {
+      "client_ref": "$a.ref"
+     }
+    },
+    {
+     "text": "Te listo los runs. interrupted significa que espera respuesta, no es un error."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "items"
+    ],
+    "unsupported": false
+   }
+  },
+  {
+   "id": "f1-propose-pack-no-aplica",
+   "family": "known_answer",
+   "title": "Proponer un pack no lo aplica",
+   "user_message": "Ponle a $a.ref un recordatorio por plantilla hello_world a las 9 en Madrid",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.propose_pack",
+     "args": {
+      "client_ref": "$a.ref",
+      "trigger": "cron",
+      "steps": "send_template,wait_reply,end",
+      "template_id": "hello_world",
+      "hour": 9,
+      "minute": 0,
+      "timezone": "Europe/Madrid"
+     }
+    },
+    {
+     "text": "Te dejo preparado el pack. No he tocado nada: confírmalo y se aplica."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "\"staged\": true",
+     "\"kind\": \"pack\""
+    ],
+    "unsupported": false
+   }
+  }
  ]
 }

@@ -68,6 +68,10 @@ PARTNER_FORCE_TABLES: dict[str, str] = {
     "partner_allocations": "Cap por tenant. FORCE por partner_id.",
     "usage_ledger": "Asientos. FORCE por partner_id; fx NULL v1.",
     "partner_knowledge_documents": "Playbook. FORCE por partner_id. CASCADE al partner.",
+    "workflow_packs": "Packs v1. FORCE por partner_id.",
+    "workflow_runs": "Runs de pack. FORCE por partner_id.",
+    "workflow_crons": "Crons de pack. FORCE por partner_id.",
+    "workflow_send_receipts": "Idempotencia send. FORCE por partner_id.",
 }
 
 

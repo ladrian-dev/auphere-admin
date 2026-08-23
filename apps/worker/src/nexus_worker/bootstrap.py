@@ -89,6 +89,7 @@ from nexus_worker.streams.reminder_cron import run_reminder_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.usage_alerts_cron import run_usage_alerts_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
+from nexus_worker.streams.workflow_pack_cron import run_workflow_pack_cron
 
 log = structlog.get_logger(__name__)
 
@@ -143,6 +144,7 @@ SCHEDULER_TASK_NAMES = frozenset(
         "checkpoint-retention-cron",
         "data-retention-cron",
         "usage-alerts-cron",
+        "workflow-pack-cron",
     }
 )
 
@@ -412,6 +414,7 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         ),
         _spawn("platform-watcher", run_platform_watcher(ctx.redis, stop=ctx.stop)),
         _spawn("reminder-cron", run_reminder_cron(stop=ctx.stop)),
+        _spawn("workflow-pack-cron", run_workflow_pack_cron(stop=ctx.stop)),
         _spawn(
             "cobranza-reminder-cron",
             run_cobranza_reminder_cron(stop=ctx.stop, redis=ctx.redis),

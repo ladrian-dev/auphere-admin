@@ -55,6 +55,7 @@ ALL_EXPECTED = {
     # WP-29
     "data-retention-cron",
     "usage-alerts-cron",
+    "workflow-pack-cron",
 }
 
 

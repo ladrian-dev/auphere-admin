@@ -70,6 +70,7 @@ APPLY_ROUTES: dict[str, tuple[ApplyMethod, str]] = {
     "allocation": ("PUT", "/console/clients/{client_ref}/allocation"),
     "model": ("PUT", "/console/clients/{client_ref}/model"),
     "knowledge": ("POST", "/console/knowledge/url"),
+    "pack": ("PUT", "/console/clients/{client_ref}/workflow"),
     "invite": ("POST", "/console/team/invitations"),
     # CO-08 (§4.1 de CONTRACT-V2). Los dos ``kind`` de soporte aplican por el
     # MISMO endpoint; lo que los distingue es ``category`` dentro del cuerpo,
@@ -1267,6 +1268,104 @@ class ProposalBuilder:
             apply_path=apply_path,
             apply_body=body,
             expectations={"knowledge_url": url},
+            client_ref=ref,
+        )
+
+    async def _pack(self, args: dict[str, Any]) -> Proposal:
+        from nexus_api.packs.schema import WorkflowPackIn, parse_workflow_body
+
+        ref = str(args["client_ref"]).strip()
+        current = await self._get(f"/console/clients/{ref}/workflow")
+        steps = split_list(args.get("steps"))
+        trigger = str(args.get("trigger") or "").strip()
+        template_id = str(args.get("template_id") or "").strip() or None
+        hour = args.get("hour")
+        minute = args.get("minute")
+        timezone = str(args.get("timezone") or "").strip() or None
+        enabled = True if args.get("enabled") is None else bool(args["enabled"])
+        payload: dict[str, Any] = {
+            "client_ref": ref,
+            "trigger": trigger,
+            "steps": steps,
+            "enabled": enabled,
+            "stop": "end",
+        }
+        if template_id:
+            payload["template_id"] = template_id
+        if trigger == "cron":
+            missing: list[dict[str, Any]] = []
+            if hour is None:
+                missing.append(
+                    {
+                        "key": "hour",
+                        "label": "Hora local",
+                        "why": "El cron se persiste en UTC; la UI usa tu zona.",
+                        "examples": ["9"],
+                        "required": True,
+                    }
+                )
+            if minute is None:
+                missing.append(
+                    {
+                        "key": "minute",
+                        "label": "Minuto",
+                        "why": "Sin minuto no hay hora de envío.",
+                        "examples": ["0"],
+                        "required": True,
+                    }
+                )
+            if not timezone:
+                missing.append(
+                    {
+                        "key": "timezone",
+                        "label": "Zona horaria",
+                        "why": "Solo para la UI; se guarda UTC.",
+                        "examples": ["Europe/Madrid"],
+                        "required": True,
+                    }
+                )
+            if missing:
+                raise IntakeRequired(missing)
+            payload["cron"] = {
+                "hour": int(hour),
+                "minute": int(minute),
+                "timezone": timezone,
+            }
+        try:
+            spec = parse_workflow_body(WorkflowPackIn.model_validate(payload))
+        except Exception as exc:
+            raise ProposalRefused(ToolError("bad_arguments", str(exc))) from exc
+        apply_body = spec.model_dump(mode="json", exclude_none=True)
+        apply_body.pop("partner_id", None)
+        before_steps = list((current or {}).get("steps") or [])
+        after_steps = list(spec.steps)
+        return Proposal(
+            kind="pack",
+            title=f"Aplicar pack de {ref}",
+            preview={
+                "client_ref": ref,
+                "summary": f"{spec.trigger}: {', '.join(spec.steps)}",
+                "trigger": spec.trigger,
+                "steps": spec.steps,
+                "template_id": spec.template_id,
+            },
+            diff=[
+                {"op": "del", "line": 1, "before": f"steps: {before_steps}"},
+                {"op": "add", "line": 1, "after": f"steps: {after_steps}"},
+            ],
+            impact=[
+                _impact("pack_trigger", spec.trigger),
+                _impact("pack_steps", ",".join(spec.steps)),
+            ],
+            risk="medium",
+            reversible=True,
+            state_hash=canonical_hash(
+                {"client_ref": ref, "version": (current or {}).get("version")}
+            ),
+            apply_method=APPLY_ROUTES["pack"][0],
+            apply_path=APPLY_ROUTES["pack"][1].format(client_ref=ref),
+            apply_body=apply_body,
+            expectations={"pack_steps": ",".join(spec.steps)},
             client_ref=ref,
         )
 
