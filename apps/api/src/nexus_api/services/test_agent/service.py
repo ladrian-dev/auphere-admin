@@ -29,6 +29,13 @@ from typing import Any, Protocol
 
 import structlog
 
+from nexus_api.core.llm_proxy import (
+    LLMProxyUnavailable,
+    apply_litellm_proxy_kwargs,
+    raise_mapped_proxy_failure,
+    require_current_llm_proxy_partner,
+)
+
 log = structlog.get_logger(__name__)
 
 
@@ -137,12 +144,18 @@ class LiteLLMTestAgentProvider:
             "messages": messages,
             "max_tokens": max_output_tokens,
             "timeout": timeout_s,
-            "metadata": {"tenant_id": str(tenant_id), "role": "test_agent"},
+            "metadata": {"role": "test_agent"},
         }
         if tools:
             kwargs["tools"] = tools
-
-        response = await litellm.acompletion(**kwargs)
+        apply_litellm_proxy_kwargs(kwargs, partner_id=require_current_llm_proxy_partner())
+        try:
+            response = await litellm.acompletion(**kwargs)
+        except LLMProxyUnavailable:
+            raise
+        except Exception as exc:
+            raise_mapped_proxy_failure(exc)
+            raise
         choice = response.choices[0]
         text = getattr(choice.message, "content", None) or ""
         raw_tool_calls = getattr(choice.message, "tool_calls", None) or []

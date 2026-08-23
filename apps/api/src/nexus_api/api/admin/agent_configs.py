@@ -540,6 +540,28 @@ class ImprovePromptOut(BaseModel):
 _improver_singleton: PromptImproverProvider | None = None
 
 
+async def _bind_operator_proxy(session: Any, tenant_id: uuid.UUID, provider: Any) -> Any:
+    """503 if the live LiteLLM hop cannot resolve the partner virtual key."""
+    if not type(provider).__name__.startswith("LiteLLM"):
+        return None
+    from nexus_api.core.llm_proxy import (
+        LLMProxyUnavailable,
+        llm_proxy_partner_scope,
+        require_litellm_proxy,
+    )
+    from nexus_api.metering.wallet import partner_id_for_tenant
+
+    partner_id = await partner_id_for_tenant(session, tenant_id)
+    try:
+        target = require_litellm_proxy(partner_id)
+    except LLMProxyUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "llm_proxy_unavailable"},
+        ) from exc
+    return llm_proxy_partner_scope(target.partner_id)
+
+
 def get_prompt_improver_provider() -> PromptImproverProvider:
     global _improver_singleton
     if _improver_singleton is None:
@@ -699,19 +721,42 @@ async def improve_agent_prompt(
     finally:
         _current_tenant.reset(token)
 
+    from nexus_api.core.llm_proxy import LLMProxyUnavailable
+
+    scope = await _bind_operator_proxy(session, tenant_id, provider)
     try:
-        result: ImproveResult = await improve_prompt(
-            tenant_id=tenant_id,
-            draft_prompt=body.prompt,
-            mode=body.mode,
-            feedback=body.feedback,
-            context=context,
-            provider=provider,
-            model=settings.llm_improve_model,
-            timeout_s=settings.llm_improve_timeout_s,
-            max_input_chars=settings.improve_prompt_max_input_chars,
-            max_output_tokens=settings.improve_prompt_max_output_tokens,
-        )
+        if scope is not None:
+            with scope:
+                result: ImproveResult = await improve_prompt(
+                    tenant_id=tenant_id,
+                    draft_prompt=body.prompt,
+                    mode=body.mode,
+                    feedback=body.feedback,
+                    context=context,
+                    provider=provider,
+                    model=settings.llm_improve_model,
+                    timeout_s=settings.llm_improve_timeout_s,
+                    max_input_chars=settings.improve_prompt_max_input_chars,
+                    max_output_tokens=settings.improve_prompt_max_output_tokens,
+                )
+        else:
+            result = await improve_prompt(
+                tenant_id=tenant_id,
+                draft_prompt=body.prompt,
+                mode=body.mode,
+                feedback=body.feedback,
+                context=context,
+                provider=provider,
+                model=settings.llm_improve_model,
+                timeout_s=settings.llm_improve_timeout_s,
+                max_input_chars=settings.improve_prompt_max_input_chars,
+                max_output_tokens=settings.improve_prompt_max_output_tokens,
+            )
+    except LLMProxyUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "llm_proxy_unavailable"},
+        ) from exc
     except PromptTooLongError as exc:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
@@ -929,18 +974,40 @@ async def test_agent_turn(
         tool_catalog_rows = list(result_rows.scalars())
     tool_defs = _build_tool_defs(config.tools, tool_catalog_rows)
 
+    from nexus_api.core.llm_proxy import LLMProxyUnavailable
+
+    scope = await _bind_operator_proxy(session, tenant_id, provider)
     try:
-        result: TestTurnResult = await run_test_turn(
-            tenant_id=tenant_id,
-            system_prompt=config.system_prompt_rendered,
-            history=history,
-            user_message=body.user_message,
-            tool_defs=tool_defs,
-            provider=provider,
-            model=settings.llm_improve_model,
-            timeout_s=settings.llm_improve_timeout_s,
-            max_output_tokens=settings.improve_prompt_max_output_tokens,
-        )
+        if scope is not None:
+            with scope:
+                result: TestTurnResult = await run_test_turn(
+                    tenant_id=tenant_id,
+                    system_prompt=config.system_prompt_rendered,
+                    history=history,
+                    user_message=body.user_message,
+                    tool_defs=tool_defs,
+                    provider=provider,
+                    model=settings.llm_improve_model,
+                    timeout_s=settings.llm_improve_timeout_s,
+                    max_output_tokens=settings.improve_prompt_max_output_tokens,
+                )
+        else:
+            result = await run_test_turn(
+                tenant_id=tenant_id,
+                system_prompt=config.system_prompt_rendered,
+                history=history,
+                user_message=body.user_message,
+                tool_defs=tool_defs,
+                provider=provider,
+                model=settings.llm_improve_model,
+                timeout_s=settings.llm_improve_timeout_s,
+                max_output_tokens=settings.improve_prompt_max_output_tokens,
+            )
+    except LLMProxyUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "llm_proxy_unavailable"},
+        ) from exc
     except TestAgentError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

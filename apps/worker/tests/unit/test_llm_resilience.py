@@ -367,6 +367,10 @@ def patched_litellm(monkeypatch: pytest.MonkeyPatch) -> _RecordingAcompletion:
 
 
 class TestContextEditing:
+    @pytest.fixture(autouse=True)
+    def _proxy(self, litellm_proxy_partner: uuid.UUID) -> uuid.UUID:
+        return litellm_proxy_partner
+
     async def test_context_management_emitted_with_tools(
         self, patched_litellm: _RecordingAcompletion
     ) -> None:

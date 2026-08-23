@@ -44,6 +44,11 @@ import logging
 from dataclasses import dataclass
 
 from nexus_api.config import get_settings
+from nexus_api.core.llm_proxy import (
+    apply_litellm_proxy_kwargs,
+    raise_mapped_proxy_failure,
+    require_current_llm_proxy_partner,
+)
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
 
 from nexus_worker.metering import (
@@ -184,18 +189,30 @@ class LiveMediaProcessor(MediaProcessor):
         try:
             file_like = io.BytesIO(content)
             file_like.name = filename
-            response = await asyncio.wait_for(
-                litellm.atranscription(
-                    model=settings.llm_transcribe_model,
-                    file=file_like,
+            transcribe_kwargs = apply_litellm_proxy_kwargs(
+                {
+                    "model": settings.llm_transcribe_model,
+                    "file": file_like,
                     # ``verbose_json`` is the only response format that
                     # carries ``duration``, and duration is the billable
                     # unit for Whisper. It still returns ``text``, so the
                     # happy path below is unchanged.
-                    response_format="verbose_json",
-                ),
-                timeout=settings.llm_transcribe_timeout_s,
+                    "response_format": "verbose_json",
+                },
+                partner_id=require_current_llm_proxy_partner(),
             )
+            try:
+                response = await asyncio.wait_for(
+                    litellm.atranscription(**transcribe_kwargs),
+                    timeout=settings.llm_transcribe_timeout_s,
+                )
+            except Exception as exc:
+                from nexus_api.core.llm_proxy import LLMProxyUnavailable
+
+                if isinstance(exc, LLMProxyUnavailable):
+                    raise
+                raise_mapped_proxy_failure(exc)
+                raise
         except TimeoutError as exc:
             raise MediaProcessorError("transcription timeout") from exc
         except Exception as exc:
@@ -252,13 +269,25 @@ class LiveMediaProcessor(MediaProcessor):
             }
         ]
         try:
-            response = await asyncio.wait_for(
-                litellm.acompletion(
-                    model=settings.llm_vision_model,
-                    messages=messages,
-                ),
-                timeout=settings.llm_vision_timeout_s,
+            vision_kwargs = apply_litellm_proxy_kwargs(
+                {
+                    "model": settings.llm_vision_model,
+                    "messages": messages,
+                },
+                partner_id=require_current_llm_proxy_partner(),
             )
+            try:
+                response = await asyncio.wait_for(
+                    litellm.acompletion(**vision_kwargs),
+                    timeout=settings.llm_vision_timeout_s,
+                )
+            except Exception as exc:
+                from nexus_api.core.llm_proxy import LLMProxyUnavailable
+
+                if isinstance(exc, LLMProxyUnavailable):
+                    raise
+                raise_mapped_proxy_failure(exc)
+                raise
         except TimeoutError as exc:
             raise MediaProcessorError("vision timeout") from exc
         except Exception as exc:

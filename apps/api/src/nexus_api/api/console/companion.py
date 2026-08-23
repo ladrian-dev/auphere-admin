@@ -331,6 +331,32 @@ async def notify_cap_reached(partner_id: uuid.UUID, window: MonthWindow) -> None
         log.exception("console.companion.cap_notify_failed", partner_id=str(partner_id))
 
 
+def _uses_live_litellm() -> bool:
+    """Preflight only when this process will call LiteLLM for real.
+
+    Tests inject ``InMemoryProvider`` or a compiled graph; those paths
+    must not 409 for a missing proxy. Production builds ``LiteLLMProvider``.
+    """
+    if _provider is not None:
+        return type(_provider).__name__ == "LiteLLMProvider"
+    return _graph is None
+
+
+def _require_proxy(partner_id: uuid.UUID) -> None:
+    """409 ``llm_proxy_unavailable`` — distinct from ``wallet_empty``."""
+    if not _uses_live_litellm():
+        return
+    from nexus_api.core.llm_proxy import LLMProxyUnavailable, require_litellm_proxy
+
+    try:
+        require_litellm_proxy(partner_id)
+    except LLMProxyUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "llm_proxy_unavailable"},
+        ) from exc
+
+
 async def _require_wallet(partner_id: uuid.UUID) -> None:
     """409 si el cubo reserva del partner está a 0. Antes del LLM.
 
@@ -627,6 +653,7 @@ async def start_run(
                     status_code=status.HTTP_409_CONFLICT, detail="Thread is archived"
                 )
             await _require_wallet(partner.id)
+            _require_proxy(partner.id)
             await _guard_concurrency(session, principal_id)
             run = CompanionRun(thread_id=thread.id, principal_id=principal_id, status=RUN_RUNNING)
             session.add(run)
@@ -878,116 +905,123 @@ def _make_driver(
         else:
             entry = state
 
-        async with _contextlib.AsyncExitStack() as stack:
-            await stack.enter_async_context(toolbelt)
-            graph = _get_companion_graph(toolbelt)
-            # ``usage_records`` exige ``tenant_id``, así que un hilo sin
-            # cliente no deja fila ahí. No es un olvido: el tope se mide en
-            # ``companion.runs``, que siempre existe, y relajar la columna a
-            # NULL rompería la policy RLS de una tabla particionada de alta
-            # escritura para alimentar un desglose de panel.
-            if tenant_id is not None:
-                await stack.enter_async_context(
-                    usage_turn(
-                        tenant_id=tenant_id,
-                        turn_id=str(run_id),
-                        source=SOURCE_COMPANION,
+        from nexus_api.core.llm_proxy import llm_proxy_partner_scope
+
+        with llm_proxy_partner_scope(principal.partner.id):
+            async with _contextlib.AsyncExitStack() as stack:
+                await stack.enter_async_context(toolbelt)
+                graph = _get_companion_graph(toolbelt)
+                # ``usage_records`` exige ``tenant_id``, así que un hilo sin
+                # cliente no deja fila ahí. No es un olvido: el tope se mide en
+                # ``companion.runs``, que siempre existe, y relajar la columna a
+                # NULL rompería la policy RLS de una tabla particionada de alta
+                # escritura para alimentar un desglose de panel.
+                if tenant_id is not None:
+                    await stack.enter_async_context(
+                        usage_turn(
+                            tenant_id=tenant_id,
+                            turn_id=str(run_id),
+                            source=SOURCE_COMPANION,
+                        )
                     )
-                )
-            # ``aclosing`` y no un ``async for`` a secas: al tripar la puerta
-            # del presupuesto se sale del bucle, y un generador que solo se
-            # cierra cuando le toca al recolector es un turno que sigue
-            # gastando un rato más.
-            stream = graph.astream_events(entry, config=config, version="v2")
-            async with _contextlib.aclosing(stream):
-                async for event in stream:
-                    if event.get("event") == "on_chain_end" and event.get("name") == "respond":
-                        # El veredicto de R1 lo calcula el grafo (una sola vez,
-                        # con el estado completo) y viaja en la salida del nodo
-                        # de cierre. El driver solo lo recoge para meterlo en el
-                        # evento terminal: así la métrica se toma en un punto
-                        # que se ejecuta siempre.
-                        output = (event.get("data") or {}).get("output")
-                        if isinstance(output, dict):
-                            handle.extras["unsupported"] = bool(output.get("unsupported"))
-                        continue
-                    if event.get("event") != "on_custom_event":
-                        continue
-                    name = str(event.get("name") or "")
-                    data = event.get("data")
-                    if not isinstance(data, dict):
-                        continue
-                    if name == "cost.updated":
-                        handle.total_input_tokens += int(data.get("input_tokens") or 0)
-                        handle.total_output_tokens += int(data.get("output_tokens") or 0)
-                        handle.total_cache_read += int(data.get("cache_read") or 0)
-                        handle.total_cache_write += int(data.get("cache_write") or 0)
-                        handle.total_steps += int(data.get("steps") or 0)
-                        handle.model = data.get("model") or handle.model
-                    if name == "context.updated":
-                        handle.last_input_tokens = int(data.get("input_tokens") or 0)
-                    if name == "text.delta":
-                        handle.extras.setdefault("answer", []).append(str(data.get("text") or ""))
-                    if name == "hitl.requested":
-                        # El grafo va a parar en el ``interrupt()`` justo después
-                        # de esto. Se marca aquí y no leyendo la base al terminar
-                        # porque es el único punto donde consta sin ambigüedad, y
-                        # porque una consulta más por turno para saber algo que
-                        # acaba de pasar delante es trabajo regalado.
-                        handle.extras["awaiting_action"] = str(data.get("action_id") or "")
-                        record_companion("companion.hitl.proposed")
-                    if name == "hitl.resolved" and data.get("decision") == "cancel":
-                        # La razón que MANDA del §17: por encima del 15 % el
-                        # Companion propone mal, y proponer mal enseña a
-                        # desconfiar de él.
-                        record_companion("companion.hitl.cancelled")
-                    if name == "verify.result":
-                        record_companion("companion.verify.total")
-                        if data.get("ok"):
-                            record_companion("companion.task.completed")
-                        else:
-                            record_companion("companion.verify.failed")
-                        # §4.5: el evento del ticket va DESPUÉS del 2xx de
-                        # ``console.apply`` y ANTES de ``verify.result``. Como
-                        # este bucle es secuencial, emitirlo aquí —antes de
-                        # relanzar el que estamos mirando— cumple el orden por
-                        # construcción y no por suerte.
-                        await _emit_support_ticket(handle, support_action)
-                    try:
-                        await handle.emit(name, data)
-                    except streaming.UnknownCompanionEvent:
-                        # El grafo emitió algo fuera del catálogo. Se registra y
-                        # se sigue: el turno del usuario no se tira por un
-                        # evento de telemetría que nadie declaró.
-                        log.warning("companion.event.unknown", sse_event=name, run_id=str(run_id))
-                    if name == "cost.updated" and await _budget_gate(
-                        handle,
-                        used_before=used_before,
-                        cap=cap,
-                        window=window,
-                    ):
-                        # La puerta se comprueba cada vez que el turno reporta
-                        # su gasto, y al tripar se sale del bucle: el
-                        # generador se cierra y el grafo no vuelve a llamar al
-                        # proveedor.
-                        #
-                        # **Hoy eso es una vez por turno, no una por llamada
-                        # al modelo.** ``cost.updated`` lo emite el nodo
-                        # ``respond`` con los totales acumulados
-                        # (``runtime/companion/graph.py``), así que el corte
-                        # llega al final del turno que cruza el tope, no en
-                        # mitad de él. El efecto observable del §6.2 se cumple
-                        # entero —409 al trabajo nuevo, 202 al cierre, la
-                        # historia y los tokens conservados—; lo que no se
-                        # cumple es el "como mucho una llamada de más" del
-                        # §6.3: el exceso puede ser un turno entero.
-                        #
-                        # La puerta por llamada tiene que vivir donde se llama
-                        # al modelo, que es la zona del grafo. Este bucle ya
-                        # está escrito para aprovecharla el día que
-                        # ``cost.updated`` se emita por llamada: la condición
-                        # no cambia, solo se dispara antes.
-                        break
+                # ``aclosing`` y no un ``async for`` a secas: al tripar la puerta
+                # del presupuesto se sale del bucle, y un generador que solo se
+                # cierra cuando le toca al recolector es un turno que sigue
+                # gastando un rato más.
+                stream = graph.astream_events(entry, config=config, version="v2")
+                async with _contextlib.aclosing(stream):
+                    async for event in stream:
+                        if event.get("event") == "on_chain_end" and event.get("name") == "respond":
+                            # El veredicto de R1 lo calcula el grafo (una sola vez,
+                            # con el estado completo) y viaja en la salida del nodo
+                            # de cierre. El driver solo lo recoge para meterlo en el
+                            # evento terminal: así la métrica se toma en un punto
+                            # que se ejecuta siempre.
+                            output = (event.get("data") or {}).get("output")
+                            if isinstance(output, dict):
+                                handle.extras["unsupported"] = bool(output.get("unsupported"))
+                            continue
+                        if event.get("event") != "on_custom_event":
+                            continue
+                        name = str(event.get("name") or "")
+                        data = event.get("data")
+                        if not isinstance(data, dict):
+                            continue
+                        if name == "cost.updated":
+                            handle.total_input_tokens += int(data.get("input_tokens") or 0)
+                            handle.total_output_tokens += int(data.get("output_tokens") or 0)
+                            handle.total_cache_read += int(data.get("cache_read") or 0)
+                            handle.total_cache_write += int(data.get("cache_write") or 0)
+                            handle.total_steps += int(data.get("steps") or 0)
+                            handle.model = data.get("model") or handle.model
+                        if name == "context.updated":
+                            handle.last_input_tokens = int(data.get("input_tokens") or 0)
+                        if name == "text.delta":
+                            handle.extras.setdefault("answer", []).append(
+                                str(data.get("text") or "")
+                            )
+                        if name == "hitl.requested":
+                            # El grafo va a parar en el ``interrupt()`` justo después
+                            # de esto. Se marca aquí y no leyendo la base al terminar
+                            # porque es el único punto donde consta sin ambigüedad, y
+                            # porque una consulta más por turno para saber algo que
+                            # acaba de pasar delante es trabajo regalado.
+                            handle.extras["awaiting_action"] = str(data.get("action_id") or "")
+                            record_companion("companion.hitl.proposed")
+                        if name == "hitl.resolved" and data.get("decision") == "cancel":
+                            # La razón que MANDA del §17: por encima del 15 % el
+                            # Companion propone mal, y proponer mal enseña a
+                            # desconfiar de él.
+                            record_companion("companion.hitl.cancelled")
+                        if name == "verify.result":
+                            record_companion("companion.verify.total")
+                            if data.get("ok"):
+                                record_companion("companion.task.completed")
+                            else:
+                                record_companion("companion.verify.failed")
+                            # §4.5: el evento del ticket va DESPUÉS del 2xx de
+                            # ``console.apply`` y ANTES de ``verify.result``. Como
+                            # este bucle es secuencial, emitirlo aquí —antes de
+                            # relanzar el que estamos mirando— cumple el orden por
+                            # construcción y no por suerte.
+                            await _emit_support_ticket(handle, support_action)
+                        try:
+                            await handle.emit(name, data)
+                        except streaming.UnknownCompanionEvent:
+                            # El grafo emitió algo fuera del catálogo. Se registra y
+                            # se sigue: el turno del usuario no se tira por un
+                            # evento de telemetría que nadie declaró.
+                            log.warning(
+                                "companion.event.unknown", sse_event=name, run_id=str(run_id)
+                            )
+                        if name == "cost.updated" and await _budget_gate(
+                            handle,
+                            used_before=used_before,
+                            cap=cap,
+                            window=window,
+                        ):
+                            # La puerta se comprueba cada vez que el turno reporta
+                            # su gasto, y al tripar se sale del bucle: el
+                            # generador se cierra y el grafo no vuelve a llamar al
+                            # proveedor.
+                            #
+                            # **Hoy eso es una vez por turno, no una por llamada
+                            # al modelo.** ``cost.updated`` lo emite el nodo
+                            # ``respond`` con los totales acumulados
+                            # (``runtime/companion/graph.py``), así que el corte
+                            # llega al final del turno que cruza el tope, no en
+                            # mitad de él. El efecto observable del §6.2 se cumple
+                            # entero —409 al trabajo nuevo, 202 al cierre, la
+                            # historia y los tokens conservados—; lo que no se
+                            # cumple es el "como mucho una llamada de más" del
+                            # §6.3: el exceso puede ser un turno entero.
+                            #
+                            # La puerta por llamada tiene que vivir donde se llama
+                            # al modelo, que es la zona del grafo. Este bucle ya
+                            # está escrito para aprovecharla el día que
+                            # ``cost.updated`` se emita por llamada: la condición
+                            # no cambia, solo se dispara antes.
+                            break
 
         # La barra del partner se mueve sin polling: lo gastado antes + este
         # turno. Va ANTES del evento terminal para que el cajón lo pinte en
@@ -1651,6 +1685,7 @@ async def resume_run(
                     status_code=status.HTTP_409_CONFLICT, detail="Thread is archived"
                 )
             await _require_wallet(caller.partner.id)
+            _require_proxy(caller.partner.id)
             await _guard_concurrency(session, principal_id)
             new_run = CompanionRun(
                 thread_id=thread.id, principal_id=principal_id, status=RUN_RUNNING

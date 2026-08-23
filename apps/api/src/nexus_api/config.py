@@ -241,6 +241,13 @@ class Settings(BaseSettings):
     # but called inline from the API because the operation is
     # operator-interactive.
     llm_improve_model: str = "anthropic/claude-sonnet-4-6"
+
+    # LiteLLM OSS proxy (Fase 1). Env names match the SDK docs
+    # (``LITELLM_PROXY_API_BASE``) and also accept the ``NEXUS_`` prefix.
+    # Virtual keys are a JSON map partner_id → sk-… — never the master key,
+    # never ANTHROPIC/OPENAI vendor keys.
+    litellm_proxy_api_base: str = ""
+    litellm_proxy_virtual_keys: str = ""
     llm_improve_timeout_s: float = 30.0
     # Token budget guardrails so a runaway prompt doesn't bill us 100k
     # input tokens. ``max_input_chars`` is a cheap pre-LLM check; the

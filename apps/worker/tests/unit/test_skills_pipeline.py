@@ -120,6 +120,10 @@ def patched_litellm(monkeypatch: pytest.MonkeyPatch) -> _LiteLLMStub:
 
 
 class TestLiteLLMExtraMerge:
+    @pytest.fixture(autouse=True)
+    def _proxy(self, litellm_proxy_partner: uuid.UUID) -> uuid.UUID:
+        return litellm_proxy_partner
+
     async def test_container_and_headers_land_in_kwargs(
         self, patched_litellm: _LiteLLMStub
     ) -> None:

@@ -18,6 +18,12 @@ from typing import Any, Protocol
 
 import structlog
 
+from nexus_api.core.llm_proxy import (
+    LLMProxyUnavailable,
+    apply_litellm_proxy_kwargs,
+    raise_mapped_proxy_failure,
+    require_current_llm_proxy_partner,
+)
 from nexus_api.services.prompt_improver.meta_prompt import (
     META_PROMPT_VERSION,
     SUPPORTED_MODES,
@@ -140,13 +146,23 @@ class LiteLLMPromptImproverProvider:
     ) -> _LLMReply:
         import litellm  # local import — heavy dep
 
-        response = await litellm.acompletion(
-            model=model,
-            messages=messages,
-            max_tokens=max_output_tokens,
-            timeout=timeout_s,
-            metadata={"tenant_id": str(tenant_id), "role": "improve_prompt"},
+        kwargs = apply_litellm_proxy_kwargs(
+            {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_output_tokens,
+                "timeout": timeout_s,
+                "metadata": {"role": "improve_prompt"},
+            },
+            partner_id=require_current_llm_proxy_partner(),
         )
+        try:
+            response = await litellm.acompletion(**kwargs)
+        except LLMProxyUnavailable:
+            raise
+        except Exception as exc:
+            raise_mapped_proxy_failure(exc)
+            raise
         # LiteLLM normalises Anthropic + OpenAI usage into the OpenAI
         # shape: ``choices[0].message.content`` + ``usage.prompt_tokens``
         # + ``usage.completion_tokens``. For Anthropic, cached input

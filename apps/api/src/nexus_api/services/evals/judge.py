@@ -40,6 +40,13 @@ from typing import Any, Protocol
 
 import structlog
 
+from nexus_api.core.llm_proxy import (
+    LLMProxyUnavailable,
+    apply_litellm_proxy_kwargs,
+    raise_mapped_proxy_failure,
+    require_current_llm_proxy_partner,
+)
+
 log = structlog.get_logger(__name__)
 
 
@@ -138,29 +145,33 @@ class LiteLLMJudgeProvider:
             f"</tool_calls>"
         )
         try:
-            response = await litellm.acompletion(
-                model=self._model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": _SYSTEM_PROMPT,
-                                "cache_control": {"type": "ephemeral"},
-                            }
-                        ],
-                    },
-                    {"role": "user", "content": user_block},
-                ],
-                max_tokens=400,
-                timeout=timeout_s,
-                metadata={
-                    "tenant_id": str(tenant_id),
-                    "role": "eval_judge",
+            kwargs = apply_litellm_proxy_kwargs(
+                {
+                    "model": self._model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": _SYSTEM_PROMPT,
+                                    "cache_control": {"type": "ephemeral"},
+                                }
+                            ],
+                        },
+                        {"role": "user", "content": user_block},
+                    ],
+                    "max_tokens": 400,
+                    "timeout": timeout_s,
+                    "metadata": {"role": "eval_judge"},
                 },
+                partner_id=require_current_llm_proxy_partner(),
             )
+            response = await litellm.acompletion(**kwargs)
+        except LLMProxyUnavailable:
+            raise
         except Exception as exc:  # network / quota / etc.
+            raise_mapped_proxy_failure(exc)
             raise JudgeError(f"judge call failed: {exc}") from exc
 
         choice = response.choices[0]

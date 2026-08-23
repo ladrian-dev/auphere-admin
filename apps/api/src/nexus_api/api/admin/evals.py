@@ -471,15 +471,29 @@ async def _run_eval_background(
                 )
             ).scalar_one()
 
-            await run_eval(
-                session,
-                tenant_id=tenant_id,
-                run=run,
-                dataset=dataset,
-                cases=list(cases),
-                agent_config=agent_config,
-                judge_provider=judge_provider,
+            from nexus_api.core.llm_proxy import (
+                llm_proxy_partner_scope,
+                partner_id_for_tenant_standalone,
             )
+
+            partner_id = await partner_id_for_tenant_standalone(tenant_id)
+
+            async def _drive() -> None:
+                await run_eval(
+                    session,
+                    tenant_id=tenant_id,
+                    run=run,
+                    dataset=dataset,
+                    cases=list(cases),
+                    agent_config=agent_config,
+                    judge_provider=judge_provider,
+                )
+
+            if partner_id is not None:
+                with llm_proxy_partner_scope(partner_id):
+                    await _drive()
+            else:
+                await _drive()
     except Exception as exc:  # pragma: no cover — defensive top-level
         log.exception(
             "evals.run.background_aborted",
@@ -530,6 +544,19 @@ async def trigger_run(
     other half of this fix.
     """
     dataset = await _get_dataset(session, tenant_id=tenant_id, dataset_id=dataset_id)
+
+    if type(judge_provider).__name__.startswith("LiteLLM"):
+        from nexus_api.core.llm_proxy import LLMProxyUnavailable, require_litellm_proxy
+        from nexus_api.metering.wallet import partner_id_for_tenant
+
+        partner_id = await partner_id_for_tenant(session, tenant_id)
+        try:
+            require_litellm_proxy(partner_id)
+        except LLMProxyUnavailable as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": "llm_proxy_unavailable"},
+            ) from exc
 
     cases = (
         (

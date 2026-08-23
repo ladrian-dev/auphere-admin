@@ -38,6 +38,11 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar
 
 import structlog
+from nexus_api.core.llm_proxy import (
+    apply_litellm_proxy_kwargs,
+    raise_mapped_proxy_failure,
+    require_current_llm_proxy_partner,
+)
 from nexus_api.core.metrics import (
     ISOLATION_LLM_BATCH_CROSS_TENANT,
     record_isolation_event,
@@ -565,6 +570,23 @@ def _finish_tool_call(slot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _proxy_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Stamp the partner virtual key. Console-injected auth is dropped."""
+    require_current_llm_proxy_partner()
+    apply_litellm_proxy_kwargs(kwargs)
+    return kwargs
+
+
+async def _proxied_acompletion(litellm: Any, kwargs: dict[str, Any]) -> Any:
+    """Single hop: same api_base, no vendor fallback."""
+    _proxy_kwargs(kwargs)
+    try:
+        return await litellm.acompletion(**kwargs)
+    except Exception as exc:
+        raise_mapped_proxy_failure(exc)
+        raise
+
+
 # ── litellm provider ─────────────────────────────────────────────────────────
 
 
@@ -737,7 +759,7 @@ class LiteLLMProvider:
         # latency picture we were missing — where turn time goes and whether
         # the Anthropic prompt cache is actually hitting (cache_read > 0).
         started = time.perf_counter()
-        response = await litellm.acompletion(**kwargs)
+        response = await _proxied_acompletion(litellm, kwargs)
         elapsed_ms = round((time.perf_counter() - started) * 1000)
         await self._record_call(
             tenant_id=tenant_id,
@@ -791,7 +813,7 @@ class LiteLLMProvider:
         started = time.perf_counter()
         usage_counts: dict[str, int] = {}
         try:
-            stream = await litellm.acompletion(**kwargs)
+            stream = await _proxied_acompletion(litellm, kwargs)
             async for chunk in stream:
                 chunk_usage = usage_fields(chunk)
                 if any(chunk_usage.values()):
@@ -883,7 +905,7 @@ class LiteLLMProvider:
         # en el primero y el nombre puede llegar troceado.
         pending: dict[int, dict[str, Any]] = {}
         try:
-            stream = await litellm.acompletion(**kwargs)
+            stream = await _proxied_acompletion(litellm, kwargs)
             async for chunk in stream:
                 chunk_usage = usage_fields(chunk)
                 if any(chunk_usage.values()):

@@ -141,8 +141,14 @@ async def process_inbound(
     *,
     pipeline: Any,
 ) -> dict[str, Any]:
-    sm = get_sessionmaker()
+    return await _process_inbound(event, pipeline=pipeline)
 
+
+async def _process_inbound(
+    event: InboundEvent,
+    *,
+    pipeline: Any,
+) -> dict[str, Any]:
     # Lo primero del turno: el acuse de lectura es cortesía y cuanto antes
     # llegue, mejor. Best-effort por contrato — no lanza, y un acuse
     # perdido nunca cuesta un turno.
@@ -159,6 +165,35 @@ async def process_inbound(
     if not await allow_channel_turn(event.tenant_id):
         log.info("pipeline.skipped.wallet_empty", tenant_id=str(event.tenant_id))
         return {"skipped": "wallet_empty"}
+
+    from nexus_api.core.llm_proxy import (
+        LLMProxyUnavailable,
+        llm_proxy_partner_scope,
+        partner_id_for_tenant_standalone,
+        require_litellm_proxy,
+    )
+
+    partner_id = await partner_id_for_tenant_standalone(event.tenant_id)
+    if partner_id is not None:
+        try:
+            require_litellm_proxy(partner_id)
+        except LLMProxyUnavailable:
+            log.info(
+                "pipeline.skipped.llm_proxy_unavailable",
+                tenant_id=str(event.tenant_id),
+            )
+            return {"skipped": "llm_proxy_unavailable"}
+        with llm_proxy_partner_scope(partner_id):
+            return await _process_inbound_after_gates(event, pipeline=pipeline)
+    return await _process_inbound_after_gates(event, pipeline=pipeline)
+
+
+async def _process_inbound_after_gates(
+    event: InboundEvent,
+    *,
+    pipeline: Any,
+) -> dict[str, Any]:
+    sm = get_sessionmaker()
 
     # Block N: multimodal media processing. Run BEFORE persistence so
     # the transcript / vision summary can be stored on the inbound
