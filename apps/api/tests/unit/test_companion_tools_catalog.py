@@ -43,6 +43,8 @@ EXPECTED = {
     "console.list_allocations",
     "console.list_models",
     "console.get_client_model",
+    "console.get_workflow",
+    "console.list_workflow_runs",
     "console.get_prompt_library",
     # CO-08 §5: el documento de capacidades se LEE, no se hornea en el
     # prompt. Que sea una herramienta más es lo que hace que dejar cita y

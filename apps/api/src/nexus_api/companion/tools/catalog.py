@@ -650,6 +650,7 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
             "Lista los runs del pack de un cliente: thread_id y status. "
             "interrupted no es un error: el pack está esperando respuesta. "
             "Llama a esto cuando pregunten si corrió el pack o cómo va. "
+            "No lo uses para leer el pack — eso es console.get_workflow. "
             "No expongas LangSmith ni LiteLLM. Un ref ajeno es 404 opaco."
         ),
         params=(_ref_param("el cliente cuyos runs quieres listar"),),

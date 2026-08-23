@@ -1326,6 +1326,8 @@ class ProposalBuilder:
                 )
             if missing:
                 raise IntakeRequired(missing)
+            assert hour is not None
+            assert minute is not None
             payload["cron"] = {
                 "hour": int(hour),
                 "minute": int(minute),
