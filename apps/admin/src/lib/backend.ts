@@ -870,6 +870,23 @@ export type PartnerClientUsage = {
   cost_usd: number;
 };
 
+export type PartnerWalletOut = {
+  included_remaining: number;
+  purchased_remaining: number;
+  available: number;
+  reserve: number;
+  included_expires_at: string | null;
+  exhausted: boolean;
+};
+
+export type PartnerLedgerOut = {
+  id: string;
+  bucket: string;
+  qty: number;
+  reason: string;
+  created_at: string;
+};
+
 export type PartnerUsageOut = {
   partner_id: string;
   window_days: number;
@@ -1706,6 +1723,22 @@ export const backend = {
     call<EmbedAuditEntryOut[]>(
       `/admin/partners/${partnerId}/audit?limit=${limit}`,
     ).then((r) => r ?? []),
+
+  getPartnerWallet: (partnerId: string) =>
+    call<PartnerWalletOut>(`/admin/partners/${partnerId}/wallet`, {
+      optional: true,
+    }),
+
+  listPartnerWalletLedger: (partnerId: string, limit = 50) =>
+    call<PartnerLedgerOut[]>(
+      `/admin/partners/${partnerId}/wallet/ledger?limit=${limit}`,
+    ).then((r) => r ?? []),
+
+  rechargePartnerWallet: (partnerId: string, qty: number) =>
+    call<PartnerWalletOut>(`/admin/partners/${partnerId}/wallet/purchased`, {
+      method: "POST",
+      body: { qty },
+    }),
 
   getPartnerUsage: (partnerId: string, windowDays = 30) =>
     call<PartnerUsageOut>(

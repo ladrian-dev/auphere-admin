@@ -26,6 +26,7 @@ import type {
   PartnerTenantLinkInput,
   PartnerTenantOut,
   PartnerUpdateInput,
+  PartnerWalletOut,
   ReceiptGenerateInput,
   ReceiptOut,
   ReceiptSendOut,
@@ -165,6 +166,22 @@ export async function sendReceiptAction(
     const r = await backend.sendPartnerReceipt(partnerId, invoiceId);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath(`/partners/${partnerId}/receipts`);
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+// ── C3 wallet (admin recharge) ───────────────────────────────────────────────
+
+export async function rechargePartnerWallet(
+  partnerId: string,
+  qty: number,
+): Promise<ActionResult<PartnerWalletOut>> {
+  try {
+    const r = await backend.rechargePartnerWallet(partnerId, qty);
+    if (!r) return { ok: false, error: "Respuesta vacía del backend" };
+    revalidatePath(`/partners/${partnerId}/wallet`);
     return { ok: true, data: r };
   } catch (e) {
     return err(e);

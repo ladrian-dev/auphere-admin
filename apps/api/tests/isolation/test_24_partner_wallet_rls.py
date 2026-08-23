@@ -324,3 +324,36 @@ async def test_debit_allocation_does_not_touch_wallet_or_other_client(db_session
         )
         assert rem[t1] == 55
         assert rem[t2] == 60
+
+
+async def test_admin_unscoped_without_guc_is_zero_path_guc_is_only_that_partner(
+    db_session,
+) -> None:
+    """Admin without GUC still sees 0 partner_wallets; path GUC is that partner."""
+    a, b = uuid.uuid4(), uuid.uuid4()
+    sm = get_sessionmaker()
+    async with sm() as session:
+        await _seed_partner(session, a, f"adm-a-{a.hex[:8]}")
+        await _seed_partner(session, b, f"adm-b-{b.hex[:8]}")
+        await _seed_wallet(session, a, included=100, purchased=10)
+        await _seed_wallet(session, b, included=999, purchased=20)
+        await session.commit()
+
+    async with sm() as session:
+        await _as_app(session, None)
+        wallets = await session.scalar(sa.text("SELECT count(*) FROM partner_wallets"))
+        assert wallets == 0
+
+    async with sm() as session:
+        await _as_app(session, a)
+        visible = (
+            (await session.execute(sa.text("SELECT partner_id FROM partner_wallets")))
+            .scalars()
+            .all()
+        )
+        assert visible == [a]
+        other = await session.scalar(
+            sa.text("SELECT purchased_remaining FROM partner_wallets WHERE partner_id = :b"),
+            {"b": str(b)},
+        )
+        assert other is None

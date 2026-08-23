@@ -171,3 +171,18 @@ def test_partner_wide_tools_take_no_client():
         "console.list_playbook",
     ):
         assert TOOLS_BY_NAME[name].params == (), name
+
+
+def test_companion_has_no_purchased_recharge_tool() -> None:
+    """F1: recarga purchased es admin-only. Companion no gana kind ni tool."""
+    from nexus_api.companion.tools.catalog import ACTION_KINDS, TOOLS_BY_NAME
+    from nexus_api.companion.tools.proposals import APPLY_ROUTES
+
+    names = set(TOOLS_BY_NAME)
+    kinds = set(ACTION_KINDS)
+    routes = set(APPLY_ROUTES)
+    assert "purchased" not in kinds
+    assert "purchased" not in routes
+    assert not any("purchased" in name for name in names)
+    assert not any("recharge" in name for name in names)
+    assert not any("purchased" in kind for kind in routes)
