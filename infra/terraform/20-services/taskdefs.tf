@@ -61,7 +61,7 @@ locals {
   # ``container_definitions`` más abajo — un ternario sobre objetos con
   # atributos distintos no tipa en Terraform)
 
-  common_env = [
+  common_env_base = [
     { name = "NEXUS_ENVIRONMENT", value = local.nexus_environment },
     # WP-15: NEXUS_DATABASE_URL atraviesa PgBouncer en modo transaction —
     # sin prepared statements compartidos. Inofensivo si la URL fuera
@@ -96,6 +96,16 @@ locals {
     # guardaba en memoria en vez de en S3, sin un solo error.
     { name = "NEXUS_MEDIA_S3_USE_DEFAULT_CREDENTIALS", value = "true" },
   ]
+
+  # LiteLLM OSS solo en staging. Prod NO lleva esta variable: el Builder
+  # falla cerrado si falta. El hostname es el Cloud Map de litellm.tf,
+  # no un ALB.
+  common_env = concat(
+    local.common_env_base,
+    terraform.workspace == "staging" ? [
+      { name = "LITELLM_PROXY_API_BASE", value = "http://litellm.nexus-staging.internal:4000" },
+    ] : [],
+  )
 
   secrets = [
     for key in var.app_secret_keys : {

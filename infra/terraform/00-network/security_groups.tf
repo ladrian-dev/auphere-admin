@@ -205,3 +205,50 @@ resource "aws_security_group_rule" "valkey_from_services" {
   security_group_id        = aws_security_group.valkey.id
   source_security_group_id = aws_security_group.service[each.key].id
 }
+
+# LiteLLM OSS: solo workspace staging. En prod no hay task ni SG.
+# :4000 solo desde api y runner (worker). Sin ALB, sin Valkey.
+resource "aws_security_group" "litellm" {
+  count = terraform.workspace == "staging" ? 1 : 0
+
+  name_prefix = "${local.name}-litellm-"
+  description = "LiteLLM: 4000 desde api/runner; sale hacia Aurora y vendors"
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = { Name = "${local.name}-litellm" }
+}
+
+resource "aws_security_group_rule" "litellm_from_api_runner" {
+  for_each = terraform.workspace == "staging" ? toset(["api", "runner"]) : toset([])
+
+  type                     = "ingress"
+  description              = "litellm :4000 desde nexus-${each.key}"
+  from_port                = 4000
+  to_port                  = 4000
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.litellm[0].id
+  source_security_group_id = aws_security_group.service[each.key].id
+}
+
+resource "aws_security_group_rule" "aurora_from_litellm" {
+  count = terraform.workspace == "staging" ? 1 : 0
+
+  type                     = "ingress"
+  description              = "postgres desde litellm (writer; DATABASE_URL ya en SM)"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.aurora.id
+  source_security_group_id = aws_security_group.litellm[0].id
+}

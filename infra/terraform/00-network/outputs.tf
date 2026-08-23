@@ -34,3 +34,9 @@ output "valkey_security_group_id" {
 output "grafana_security_group_id" {
   value = aws_security_group.grafana.id
 }
+
+output "litellm_security_group_id" {
+  description = "Null fuera de staging: alli no hay SG ni task."
+  value       = terraform.workspace == "staging" ? aws_security_group.litellm[0].id : null
+}
+

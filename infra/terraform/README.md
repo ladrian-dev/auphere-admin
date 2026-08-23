@@ -114,6 +114,51 @@ El DNS es manual (auphere.com no vive en esta cuenta): `CNAME`
 `grafana.<ws>.auphere.com` → el `alb_dns_name` de `20-services`. El cert
 comodín `*.staging.auphere.com` ya lo cubre; **no** hace falta pedir uno.
 
+
+## LiteLLM OSS (staging only, `20-services`)
+
+Apagado por defecto (`litellm_enabled = false`) para que un `apply` de
+`20-services` no levante el proxy sin pedirlo. **Solo staging**: aunque
+el flag se pase en el workspace `prod`, el `count` es 0. No aplicar este
+servicio en prod. No reutilizar Valkey. No poner las keys en
+`nexus/staging/app` — van al secreto propio `nexus/staging/litellm`.
+
+Encenderlo la primera vez son tres pasos, y el orden importa porque ECS
+**aborta el arranque de la task si un `valueFrom` no resuelve**.
+
+```bash
+# 0. Workspace. Nunca prod.
+terraform workspace select staging
+
+# 1. La base `litellm` en el Aurora que ya existe (Aurora no es alcanzable
+#    desde fuera del VPC; va por task efímera con la task definition de
+#    migración). Mismo estilo que Grafana.
+aws ecs run-task --cluster nexus-<ws> --task-definition nexus-<ws>-migrate ... \
+  --overrides '{"containerOverrides":[{"name":"migrate","command":["sh","-lc",
+    "psql \"$DATABASE_URL\" -c '\''CREATE DATABASE litellm'\''"]}]}'
+
+# 2. SG en 00-network ANTES de planear 20-services: el stack lee
+#    litellm_security_group_id del remote state.
+cd 00-network
+terraform apply
+
+# 3. El secreto, ANTES del servicio.
+cd ../20-services
+terraform apply -target=aws_secretsmanager_secret.litellm -var litellm_enabled=true
+# Rellenar a mano (valores NO van en este repo): LITELLM_MASTER_KEY (sk-…),
+# LITELLM_SALT_KEY, DATABASE_URL (postgres DIRECTO a la base `litellm`,
+# no PgBouncer), ANTHROPIC_API_KEY, OPENAI_API_KEY.
+# Opcional VIRTUAL_KEYS (partner_id→sk) para proxy_admin; no se inyecta
+# al contenedor.
+
+# 4. El resto de 20-services.
+terraform apply -var litellm_enabled=true
+```
+
+Sin ALB: el DNS interno es `litellm.nexus-staging.internal:4000` (Cloud
+Map). Las tasks de staging reciben `LITELLM_PROXY_API_BASE`; las de prod
+no.
+
 ## Secretos
 
 `10-data` crea el secreto `nexus/<workspace>/app` VACÍO. Los valores se cargan
@@ -130,3 +175,33 @@ tras el workflow `ci` verde): build+push de imágenes, task de migración
 (bloqueante), `update-service --force-new-deployment` de los 4 servicios.
 Los parámetros de red que CI necesita (cluster, subredes, SG) los publica
 `20-services` en SSM bajo `/nexus/<workspace>/deploy/*`.
+
+
+## LiteLLM OSS proxy (staging)
+
+Apagado por defecto (`litellm_enabled = false`). `count` es 0 fuera de
+staging: un apply de prod con el flag no crea el servicio. Sin ALB. Sin
+Valkey (el de streams es `noeviction`). Secreto propio
+`nexus/staging/litellm`, no `nexus/staging/app`.
+
+```bash
+# Solo: terraform workspace select staging
+
+# 1. SG (00-network) — ingress 4000 desde los servicios, 5432 hacia Aurora.
+# 2. Base propia en el Aurora que ya hay (no tablas Nexus, no PgBouncer).
+aws ecs run-task --cluster nexus-staging --task-definition nexus-staging-migrate ... \
+  --overrides '{"containerOverrides":[{"name":"migrate","command":["sh","-lc",
+    "psql \"$NEXUS_DATABASE_URL_DIRECT\" -c '\''CREATE DATABASE litellm'\''"]}]}'
+
+# 3. Secreto ANTES del servicio.
+terraform apply -target=aws_secretsmanager_secret.litellm -var litellm_enabled=true
+# Rellenar a mano (valores no van en git): LITELLM_MASTER_KEY (sk-),
+# LITELLM_SALT_KEY, DATABASE_URL (db litellm, host del cluster, no pgbouncer),
+# ANTHROPIC_API_KEY, OPENAI_API_KEY.
+
+# 4. Servicio.
+terraform apply -var litellm_enabled=true
+```
+
+DNS interno: `litellm.nexus-staging.internal:4000`. Partner no ve la UI.
+Vendor keys salen del task del proxy, no de api/worker.
