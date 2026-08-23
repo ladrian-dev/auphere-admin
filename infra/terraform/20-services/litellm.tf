@@ -9,8 +9,8 @@ variable "litellm_enabled" {
     Crea el proxy LiteLLM OSS. Apagado por defecto. Solo tiene efecto en
     el workspace staging: un apply de prod con el flag no crea nada.
   EOT
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 }
 
 variable "litellm_image" {
