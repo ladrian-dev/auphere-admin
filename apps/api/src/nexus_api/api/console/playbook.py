@@ -34,7 +34,9 @@ def _out(doc: PartnerKnowledgeDocument) -> KnowledgeDocumentOut:
     return KnowledgeDocumentOut.model_validate(doc, from_attributes=True)
 
 
-def _audit(scope: PartnerScope, action: str, doc: PartnerKnowledgeDocument, after: dict[str, Any]) -> None:
+def _audit(
+    scope: PartnerScope, action: str, doc: PartnerKnowledgeDocument, after: dict[str, Any]
+) -> None:
     scope.session.add(
         AuditLog(
             tenant_id=None,

@@ -1206,7 +1206,6 @@ class ProposalBuilder:
 
     # ── soporte (CO-08, §4) ────────────────────────────────────────────
 
-
     async def _knowledge(self, args: dict[str, Any]) -> Proposal:
         scope = str(args.get("scope") or "").strip()
         if scope not in {"partner", "client"}:

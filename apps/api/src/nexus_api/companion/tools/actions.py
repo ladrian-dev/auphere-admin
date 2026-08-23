@@ -483,8 +483,7 @@ def _observed(kind: str, fresh: Any, payload: dict[str, Any]) -> dict[str, str]:
     if kind == "knowledge":
         wanted = str(((payload.get("apply") or {}).get("body") or {}).get("url") or "")
         urls = {
-            str((row or {}).get("source_url") or "")
-            for row in ((fresh or {}).get("items") or [])
+            str((row or {}).get("source_url") or "") for row in ((fresh or {}).get("items") or [])
         }
         return {"knowledge_url": wanted if wanted and wanted in urls else "missing"}
     if kind in ("support_help", "support_capability"):

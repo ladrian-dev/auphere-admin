@@ -45,9 +45,7 @@ def _out(doc: KnowledgeDocument) -> KnowledgeDocumentOut:
     return KnowledgeDocumentOut.model_validate(doc, from_attributes=True)
 
 
-def _mark(
-    doc: Any, extracted: indexer.Extracted | None, error: KnowledgeErrorCode | None
-) -> None:
+def _mark(doc: Any, extracted: indexer.Extracted | None, error: KnowledgeErrorCode | None) -> None:
     if extracted is not None:
         doc.content_text = extracted.text
         doc.mime = extracted.mime

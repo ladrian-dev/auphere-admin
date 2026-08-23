@@ -220,9 +220,7 @@ async def test_partner_delete_cascades_playbook() -> None:
             )
         )
     async with sm() as session, session.begin():
-        await session.execute(
-            sa.text("DELETE FROM partners WHERE id = :p"), {"p": str(partner_id)}
-        )
+        await session.execute(sa.text("DELETE FROM partners WHERE id = :p"), {"p": str(partner_id)})
     async with sm() as session:
         assert await session.get(PartnerKnowledgeDocument, playbook_id) is None
 
@@ -249,4 +247,3 @@ async def test_propose_knowledge_apply_body_has_no_partner_id() -> None:
     assert proposal.apply_body == {"url": "https://example.com/playbook.md"}
     assert "partner_id" not in (proposal.apply_body or {})
     assert proposal.apply_path == "/console/knowledge/url"
-
