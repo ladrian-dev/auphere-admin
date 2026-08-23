@@ -151,4 +151,3 @@ def test_channel_knowledge_block_never_uses_playbook_tag() -> None:
     assert "<knowledge_document" in out
     assert "partner_playbook" not in out
     assert "PLAYBOOK" not in out
-
