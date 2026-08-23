@@ -68,6 +68,7 @@ APPLY_ROUTES: dict[str, tuple[ApplyMethod, str]] = {
     "channel_role": ("PATCH", "/console/clients/{client_ref}/channels/{channel_id}/role"),
     "usage_alerts": ("PUT", "/console/usage/alerts"),
     "allocation": ("PUT", "/console/clients/{client_ref}/allocation"),
+    "model": ("PUT", "/console/clients/{client_ref}/model"),
     "invite": ("POST", "/console/team/invitations"),
     # CO-08 (§4.1 de CONTRACT-V2). Los dos ``kind`` de soporte aplican por el
     # MISMO endpoint; lo que los distingue es ``category`` dentro del cuerpo,
@@ -1141,6 +1142,64 @@ class ProposalBuilder:
             apply_path=APPLY_ROUTES["allocation"][1].format(client_ref=ref),
             apply_body={"cap": cap},
             expectations={"allocation_cap": str(cap)},
+            client_ref=ref,
+        )
+
+    async def _model(self, args: dict[str, Any]) -> Proposal:
+        from nexus_api.core.respond_catalog import RESPOND_MODEL_ID_SET
+
+        ref = str(args["client_ref"]).strip()
+        model_id = str(args["model_id"]).strip()
+        if model_id not in RESPOND_MODEL_ID_SET:
+            raise ProposalRefused(
+                ToolError(
+                    "unknown_model",
+                    "Ese model_id no está en el catálogo cerrado. Usa uno de "
+                    "openai/gpt-5.6-sol, openai/gpt-5.6-terra o "
+                    "openai/gpt-5.6-luna. No existe el alias gpt-5.6 aquí.",
+                )
+            )
+        catalog = await self._get("/console/models")
+        ids = {str(row.get("model_id")) for row in (catalog if isinstance(catalog, list) else [])}
+        if model_id not in ids:
+            raise ProposalRefused(
+                ToolError(
+                    "unknown_model",
+                    "Ese model_id no está en el catálogo cerrado. "
+                    "Lee console.list_models y elige uno de los tres.",
+                )
+            )
+        current = await self._get(f"/console/clients/{ref}/model")
+        before = str((current or {}).get("model_id") or "")
+        if before == model_id:
+            raise ProposalRefused(
+                ToolError(
+                    "no_change",
+                    f"El cliente {ref} ya responde con {model_id}. Nada que cambiar.",
+                )
+            )
+
+        return Proposal(
+            kind="model",
+            title=f"Fijar el modelo de {ref} a {model_id}",
+            preview={
+                "client_ref": ref,
+                "summary": f"{before or '(vacío)'} → {model_id}",
+                "before_model_id": before,
+                "after_model_id": model_id,
+            },
+            diff=[
+                {"op": "del", "line": 1, "before": f"model_id: {before or '(vacío)'}"},
+                {"op": "add", "line": 1, "after": f"model_id: {model_id}"},
+            ],
+            impact=[_impact("model_id", model_id)],
+            risk="medium",
+            reversible=True,
+            state_hash=canonical_hash({"client_ref": ref, "model_id": before}),
+            apply_method=APPLY_ROUTES["model"][0],
+            apply_path=APPLY_ROUTES["model"][1].format(client_ref=ref),
+            apply_body={"model_id": model_id},
+            expectations={"model_id": model_id},
             client_ref=ref,
         )
 

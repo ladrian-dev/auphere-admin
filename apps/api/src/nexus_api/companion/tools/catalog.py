@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from nexus_api.core.respond_catalog import RESPOND_MODEL_IDS
+
 #: Referencia del cliente. Es el ``external_client_ref`` del partner —su
 #: propio nombre para el cliente—, **jamás** un ``tenant_id``. Lo resuelve
 #: el router bajo el principal, y un ref de otro partner devuelve el mismo
@@ -556,6 +558,39 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
         max_chars=8_000,
     ),
     ToolSpec(
+        name="console.list_models",
+        path="/console/models",
+        label="Catálogo de modelos",
+        description=(
+            "Lista los tres modelos con los que un cliente puede responder: "
+            "openai/gpt-5.6-sol (Sol), openai/gpt-5.6-terra (Terra) y "
+            "openai/gpt-5.6-luna (Luna). Llama a esto cuando el usuario "
+            "pregunte qué modelos hay, cuál usar, o antes de proponer un "
+            "cambio de modelo. Es un catálogo cerrado: no hay alias "
+            "gpt-5.6 y no aparecen classify, Companion ni whisper. No lo "
+            "uses para el modelo actual de un cliente — eso es "
+            "console.get_client_model — ni para el cupo."
+        ),
+        max_chars=2_000,
+    ),
+    ToolSpec(
+        name="console.get_client_model",
+        path="/console/clients/{client_ref}/model",
+        label="Modelo del cliente",
+        description=(
+            "Devuelve el modelo de respuesta (rol respond) de un cliente: "
+            "el model_id, el nombre y si hay fila de binding. Llama a esto "
+            "cuando el usuario pregunte en qué modelo corre un cliente, "
+            "antes de proponer un cambio, y para enseñar el antes y el "
+            "después. Si no hay fila, before queda vacío: el cliente aún "
+            "no tiene binding. Un ref de otro partner es el mismo 404 "
+            "opaco que uno inexistente. No lo uses para listar el catálogo "
+            "— eso es console.list_models — ni para classify o whisper."
+        ),
+        params=(_ref_param("el cliente cuyo modelo quieres leer"),),
+        max_chars=2_000,
+    ),
+    ToolSpec(
         name="console.get_prompt_library",
         path="/console/seed-templates",
         label="Biblioteca de plantillas de agente",
@@ -968,6 +1003,42 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
         max_chars=4_000,
     ),
     ToolSpec(
+        name="console.propose_model",
+        kind="model",
+        tool_class="propose",
+        permission_policy="always_ask",
+        path="/console/clients/{client_ref}/model",
+        label="Proponer el modelo de un cliente",
+        description=(
+            "Calcula el cambio de modelo de respuesta de un cliente "
+            "(Sol, Terra o Luna) y lo deja pendiente de confirmación. No "
+            "escribe: aplicar usa PUT /console/clients/{ref}/model con "
+            "solo model_id, bajo el partner del principal. Llama a esto "
+            "cuando el usuario quiera elegir o cambiar el modelo con el "
+            "que responde el agente. Lee console.list_models y "
+            "console.get_client_model antes. El cuerpo de aplicación solo "
+            "lleva model_id: el partner no viaja. No lo uses para "
+            "classify, Companion, whisper, el cupo ni el prompt. No "
+            "aceptes gpt-5.6 suelto: no es una fila del catálogo. Guía: "
+            "Sol es el más capaz, Terra el día a día, Luna volumen."
+        ),
+        params=(
+            _propose_ref("cuyo modelo vas a cambiar"),
+            ToolParam(
+                name="model_id",
+                type="string",
+                description=(
+                    "Id LiteLLM verbatim del catálogo cerrado. Uno de "
+                    "openai/gpt-5.6-sol, openai/gpt-5.6-terra, "
+                    "openai/gpt-5.6-luna. No gpt-5.6."
+                ),
+                required=True,
+                enum=RESPOND_MODEL_IDS,
+            ),
+        ),
+        max_chars=4_000,
+    ),
+    ToolSpec(
         name="console.propose_invite",
         kind="invite",
         tool_class="propose",
@@ -1245,8 +1316,8 @@ ALL_TOOLS: tuple[ToolSpec, ...] = (*READ_TOOLS, *PROPOSE_TOOLS, *TRIAL_TOOLS, *A
 
 TOOLS_BY_NAME: dict[str, ToolSpec] = {t.name: t for t in ALL_TOOLS}
 
-#: Los ``kind`` del §3.1 del contrato —nueve en la v1.1, **doce** desde el
-#: cupo, más los dos de soporte—, derivados del catálogo y no escritos a mano:
+#: Los ``kind`` del §3.1 del contrato —más ``allocation`` y ``model``—,
+#: derivados del catálogo y no escritos a mano:
 #: una herramienta ``propose`` sin ``kind`` no se puede construir, así que
 #: la lista no puede desincronizarse. La lista de PROHIBIDOS del §6.5 no
 #: cambia: no hay ``kind`` para borrar clientes, tocar facturación, rotar

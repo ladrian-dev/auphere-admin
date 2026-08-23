@@ -40,6 +40,8 @@ EXPECTED = {
     "console.get_quota",
     "console.get_wallet",
     "console.list_allocations",
+    "console.list_models",
+    "console.get_client_model",
     "console.get_prompt_library",
     # CO-08 §5: el documento de capacidades se LEE, no se hornea en el
     # prompt. Que sea una herramienta más es lo que hace que dejar cita y
@@ -162,5 +164,6 @@ def test_partner_wide_tools_take_no_client():
         "console.get_quota",
         "console.get_wallet",
         "console.list_allocations",
+        "console.list_models",
     ):
         assert TOOLS_BY_NAME[name].params == (), name

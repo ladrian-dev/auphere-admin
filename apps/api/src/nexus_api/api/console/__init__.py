@@ -35,6 +35,7 @@ from nexus_api.api.console import (
     keys,
     knowledge,
     me,
+    models,
     notifications,
     onboarding,
     playground,
@@ -61,6 +62,7 @@ router.include_router(channels.router)
 router.include_router(conversations.router)
 router.include_router(usage.router)
 router.include_router(wallet.router)
+router.include_router(models.router)
 router.include_router(audit.router)
 router.include_router(team.router)
 router.include_router(invitations.router)

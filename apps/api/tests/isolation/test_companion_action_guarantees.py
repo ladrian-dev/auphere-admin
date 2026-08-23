@@ -127,6 +127,7 @@ def test_the_twelve_kinds_are_the_twelve_of_the_contract() -> None:
         "channel_role",
         "usage_alerts",
         "allocation",
+        "model",
         "invite",
         "support_help",
         "support_capability",
@@ -440,6 +441,38 @@ async def test_allocation_for_another_partners_client_is_the_opaque_404(belt_for
     foreign = await belt.call("console.propose_allocation", {"client_ref": b["ref"], "cap": 1})
     missing = await belt.call(
         "console.propose_allocation", {"client_ref": "no-existe-jamas", "cap": 1}
+    )
+    assert foreign.ok is False and missing.ok is False
+    assert foreign.content == missing.content
+    assert not belt.pending
+
+
+async def test_a_model_proposal_writes_nothing(belt_for, console_world):
+    a = console_world["a"]
+    belt = await belt_for(_actor(a), principal_id=a["user_id"])
+    before = await belt.call("console.get_client_model", {"client_ref": a["ref"]})
+    out = await belt.call(
+        "console.propose_model",
+        {"client_ref": a["ref"], "model_id": "openai/gpt-5.6-sol"},
+    )
+    other = await belt_for(_actor(a), principal_id=a["user_id"])
+    after = await other.call("console.get_client_model", {"client_ref": a["ref"]})
+    assert after.content == before.content
+    if out.ok:
+        assert "litellm" not in (out.content or "").lower()
+        assert "/key/update" not in (out.content or "")
+
+
+async def test_model_for_another_partners_client_is_the_opaque_404(belt_for, console_world):
+    a, b = console_world["a"], console_world["b"]
+    belt = await belt_for(_actor(a), principal_id=a["user_id"])
+    foreign = await belt.call(
+        "console.propose_model",
+        {"client_ref": b["ref"], "model_id": "openai/gpt-5.6-sol"},
+    )
+    missing = await belt.call(
+        "console.propose_model",
+        {"client_ref": "no-existe-jamas", "model_id": "openai/gpt-5.6-sol"},
     )
     assert foreign.ok is False and missing.ok is False
     assert foreign.content == missing.content

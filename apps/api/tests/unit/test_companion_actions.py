@@ -647,3 +647,56 @@ async def test_allocation_hash_changes_when_cap_actual_moves() -> None:
     first = await ProposalBuilder(read=reader(base)).build("allocation", args)
     second = await ProposalBuilder(read=reader(moved)).build("allocation", args)
     assert first.state_hash != second.state_hash
+
+
+async def test_a_model_proposal_does_not_apply_and_sets_put() -> None:
+    build = ProposalBuilder(
+        read=reader(
+            {
+                "/console/models": [
+                    {"model_id": "openai/gpt-5.6-sol", "display_name": "Sol"},
+                    {"model_id": "openai/gpt-5.6-terra", "display_name": "Terra"},
+                    {"model_id": "openai/gpt-5.6-luna", "display_name": "Luna"},
+                ],
+                "/console/clients/boreal/model": {
+                    "client_ref": "boreal",
+                    "role": "respond",
+                    "model_id": None,
+                    "is_bound": False,
+                },
+            }
+        )
+    )
+    proposal = await build.build(
+        "model", {"client_ref": "boreal", "model_id": "openai/gpt-5.6-sol"}
+    )
+    assert proposal.kind == "model"
+    assert proposal.apply_method == "PUT"
+    assert proposal.apply_path == "/console/clients/boreal/model"
+    assert proposal.apply_body == {"model_id": "openai/gpt-5.6-sol"}
+    assert "partner_id" not in (proposal.apply_body or {})
+    assert "/key/update" not in proposal.apply_path
+    assert proposal.expectations == {"model_id": "openai/gpt-5.6-sol"}
+    assert proposal.state_hash == canonical_hash({"client_ref": "boreal", "model_id": ""})
+
+
+async def test_a_model_for_a_missing_client_is_the_same_404() -> None:
+    build = ProposalBuilder(
+        read=reader(
+            {
+                "/console/models": [
+                    {"model_id": "openai/gpt-5.6-sol", "display_name": "Sol"},
+                ]
+            }
+        )
+    )
+    with pytest.raises(ProposalRefused) as refused:
+        await build.build("model", {"client_ref": "ajeno", "model_id": "openai/gpt-5.6-sol"})
+    assert refused.value.error.code == "unknown_client"
+
+
+async def test_a_loose_gpt56_model_is_refused() -> None:
+    build = ProposalBuilder(read=reader({}))
+    with pytest.raises(ProposalRefused) as refused:
+        await build.build("model", {"client_ref": "boreal", "model_id": "gpt-5.6"})
+    assert refused.value.error.code == "unknown_model"

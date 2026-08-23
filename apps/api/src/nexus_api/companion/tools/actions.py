@@ -373,6 +373,7 @@ VERIFY_READS: dict[str, str] = {
     "channel_role": "/console/clients/{client_ref}/channels",
     "usage_alerts": "/console/usage/alerts",
     "allocation": "/console/clients/{client_ref}/allocation",
+    "model": "/console/clients/{client_ref}/model",
     "invite": "/console/team",
     # CO-08. No hay sistema de tickets que releer —§25.1 es explícito en que
     # no se crea uno—, así que lo que se verifica es lo que SÍ se prometió:
@@ -473,6 +474,9 @@ def _observed(kind: str, fresh: Any, payload: dict[str, Any]) -> dict[str, str]:
     if kind == "allocation":
         cap = (fresh or {}).get("cap")
         return {"allocation_cap": str(cap) if cap is not None else "missing"}
+    if kind == "model":
+        mid = (fresh or {}).get("model_id")
+        return {"model_id": str(mid) if mid else ""}
     if kind in ("support_help", "support_capability"):
         ref = str((payload.get("result") or {}).get("ticket_ref") or "")
         seen = {

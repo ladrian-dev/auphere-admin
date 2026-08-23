@@ -245,3 +245,25 @@ async def test_reads_done_counts_only_successes() -> None:
     assert belt.reads_done == 0
     await belt.call("console.whoami", {})
     assert belt.reads_done == 1
+
+
+async def test_propose_model_rejects_extra_keys_and_oversize() -> None:
+    belt = await _belt(_stub_app())
+    extra = await belt.call(
+        "console.propose_model",
+        {
+            "client_ref": "boreal",
+            "model_id": "openai/gpt-5.6-sol",
+            "partner_id": "x",
+        },
+    )
+    assert extra.ok is False
+    assert json.loads(extra.content)["error"] == "bad_arguments"
+    assert "partner_id" in json.loads(extra.content)["message"]
+
+    oversize = await belt.call(
+        "console.propose_model",
+        {"client_ref": "boreal", "model_id": "gpt-5.6" + ("x" * 200)},
+    )
+    assert oversize.ok is False
+    assert json.loads(oversize.content)["error"] == "bad_arguments"
