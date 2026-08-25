@@ -147,7 +147,7 @@ class TestLiteLLMExtraMerge:
         await provider.acomplete_with_tools(
             tenant_id=uuid.uuid4(),
             role="book",
-            model="anthropic/claude-sonnet-4-6",
+            model="openai/gpt-5.6-sol",
             messages=[{"role": "user", "content": "hola"}],
             tools=tools,
             extra=extra,
@@ -167,7 +167,7 @@ class TestLiteLLMExtraMerge:
         await provider.acomplete_with_tools(
             tenant_id=uuid.uuid4(),
             role="info",
-            model="anthropic/claude-sonnet-4-6",
+            model="openai/gpt-5.6-sol",
             messages=[{"role": "user", "content": "u"}],
             tools=[{"type": "function", "function": {"name": "noop", "parameters": {}}}],
             extra=None,
@@ -192,7 +192,7 @@ class TestLiteLLMExtraMerge:
         await provider.acomplete_with_tools(
             tenant_id=uuid.uuid4(),
             role="book",
-            model="anthropic/claude-sonnet-4-6",
+            model="openai/gpt-5.6-sol",
             messages=[{"role": "user", "content": "u"}],
             tools=[{"type": "function", "function": {"name": "x", "parameters": {}}}],
             extra={"extra_headers": {"x-custom-tag": "auphere"}},

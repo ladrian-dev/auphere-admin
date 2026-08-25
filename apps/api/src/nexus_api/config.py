@@ -260,7 +260,7 @@ class Settings(BaseSettings):
     # Companion es la cara de Auphere ante el partner y aquí no se ahorra.
     # El techo de duración corta un run desbocado; el tope mensual por
     # partner es lo que impide que el gasto dependa de la buena fe.
-    llm_companion_model: str = "anthropic/claude-sonnet-4-6"
+    llm_companion_model: str = "openai/gpt-5.6-sol"
     # Techo de duración de un run. Además de cortar un turno desbocado es el
     # corte del reaper Y del lector: un run más viejo que esto está muerto lo
     # ejecute quien lo ejecute, que es lo único que un proceso puede afirmar

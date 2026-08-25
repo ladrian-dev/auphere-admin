@@ -13,7 +13,7 @@ export const channelsMessages = {
   "ch.connect.start": { es: "Abrir Meta", en: "Open Meta" },
   "ch.connect.working": { es: "Conectando…", en: "Connecting…" },
   "ch.connect.done": { es: "Número {phone} conectado.", en: "Number {phone} connected." },
-  "ch.connect.notConfigured": { es: "Este entorno no tiene configurado el Embedded Signup de Meta (faltan NEXUS_META_APP_ID / config id).", en: "This environment has no Meta Embedded Signup configured (NEXUS_META_APP_ID / config id missing)." },
+  "ch.connect.notConfigured": { es: "El registro de WhatsApp no está disponible en este entorno. Escríbenos si lo necesitas.", en: "WhatsApp signup is not available in this environment. Contact us if you need it." },
   "ch.connect.sdkFailed": { es: "No se pudo cargar el SDK de Facebook. Revisa bloqueadores o la política CSP.", en: "Could not load the Facebook SDK. Check blockers or the CSP policy." },
   "ch.connect.cancelled": { es: "La conexión se canceló antes de terminar.", en: "The connection was cancelled before finishing." },
   "ch.connect.timeout": { es: "Meta no respondió a tiempo. Vuelve a intentarlo.", en: "Meta did not answer in time. Try again." },

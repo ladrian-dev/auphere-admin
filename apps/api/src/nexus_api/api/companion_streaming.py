@@ -68,6 +68,7 @@ from redis.asyncio import Redis
 from nexus_api.api.qa_streaming import PING_INTERVAL_SECONDS, SSEEvent, _json_default
 from nexus_api.config import get_settings
 from nexus_api.core.otel_metrics import record_companion
+from nexus_api.core.respond_catalog import HUMAN_TURN_ERROR
 from nexus_api.core.streams import xadd_capped
 from nexus_api.db.models.companion import (
     RUN_CANCELLED,
@@ -597,9 +598,13 @@ async def _run_with_lifecycle(
         # No se re-lanza: queremos que el ``finally`` escriba el evento
         # terminal y cierre la fila antes de que la tarea se dé por
         # cancelada. La intención ya la registró ``cancel()``.
-    except Exception as exc:
+    except CompanionBusy as exc:
         status = RUN_ERROR
         error = str(exc)
+        log.warning("companion.run_busy", run_id=str(handle.run_id))
+    except Exception:
+        status = RUN_ERROR
+        error = HUMAN_TURN_ERROR
         log.exception("companion.run_failed", run_id=str(handle.run_id))
     finally:
         handle.final_status = status

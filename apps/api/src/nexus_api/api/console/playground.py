@@ -65,6 +65,7 @@ from nexus_api.core.operator_context import (
     qa_thread_context,
 )
 from nexus_api.core.rate_limit import allow
+from nexus_api.core.respond_catalog import HUMAN_TURN_ERROR, hop_models_in_catalog
 from nexus_api.core.tenant_context import (
     _current_tenant,
     apply_tenant_to_session,
@@ -454,6 +455,12 @@ async def start_run(
     window = month_window()
     used_before = await partner_qa_tokens_used(session, partner.id, window)
     cap = partner.qa_monthly_token_cap
+    if not hop_models_in_catalog(qa_api.QA_CLASSIFY_MODEL, qa_api.QA_RESPOND_MODEL):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=HUMAN_TURN_ERROR,
+        )
+
     if used_before >= cap:
         await notify_cap_reached(partner.id, window)
         retry = retry_after_seconds(window)
@@ -610,7 +617,7 @@ _ERROR_LINE = re.compile(r'^(data: .*"event"?)', re.M)
 async def _scrub_stream(source: AsyncIterator[str]) -> AsyncIterator[str]:
     """The backoffice stream carries ``run.completed.error = str(exc)``
     (DB/provider/host details for operators). A partner only gets a
-    generic code — the detail is in our logs, not on their screen."""
+    human phrase — the stack stays in our logs, not on their screen."""
     async for frame in source:
         if "event: run.completed" in frame and '"error"' in frame:
             head, _, data_line = frame.partition("data: ")
@@ -621,7 +628,7 @@ async def _scrub_stream(source: AsyncIterator[str]) -> AsyncIterator[str]:
                 yield frame
                 continue
             if payload.get("error"):
-                payload["error"] = "run_failed"
+                payload["error"] = HUMAN_TURN_ERROR
             yield f"{head}data: {json.dumps(payload, separators=(',', ':'))}\n{tail}"
         else:
             yield frame

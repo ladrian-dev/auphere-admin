@@ -75,7 +75,7 @@ class TestPartnerKeyIsolation:
         assert b.api_key == KEY_B
         assert a.api_key != b.api_key
         with llm_proxy_partner_scope(PARTNER_A):
-            kwargs = apply_litellm_proxy_kwargs({"model": "anthropic/claude-sonnet-4-6"})
+            kwargs = apply_litellm_proxy_kwargs({"model": "openai/gpt-5.6-sol"})
         assert kwargs["api_key"] == KEY_A
         assert kwargs["api_key"] != KEY_B
 
@@ -96,7 +96,7 @@ class TestNoVendorFallback:
             await provider.acomplete(
                 tenant_id=uuid.uuid4(),
                 role="respond",
-                model="anthropic/claude-sonnet-4-6",
+                model="openai/gpt-5.6-sol",
                 messages=[{"role": "user", "content": "hola"}],
             )
         assert stub.calls == []
@@ -116,7 +116,7 @@ class TestNoVendorFallback:
             await provider.acomplete(
                 tenant_id=uuid.uuid4(),
                 role="respond",
-                model="anthropic/claude-sonnet-4-6",
+                model="openai/gpt-5.6-sol",
                 messages=[{"role": "user", "content": "hola"}],
             )
         assert stub.calls
@@ -135,7 +135,7 @@ class TestConsoleCannotInjectAuth:
             await provider.acomplete_with_tools(
                 tenant_id=uuid.uuid4(),
                 role="companion",
-                model="anthropic/claude-sonnet-4-6",
+                model="openai/gpt-5.6-sol",
                 messages=[{"role": "user", "content": "hola"}],
                 tools=[],
                 extra={
@@ -153,7 +153,7 @@ class TestConsoleCannotInjectAuth:
         with llm_proxy_partner_scope(PARTNER_A):
             kwargs = apply_litellm_proxy_kwargs(
                 {
-                    "model": "anthropic/claude-sonnet-4-6",
+                    "model": "openai/gpt-5.6-sol",
                     "partner_id": str(PARTNER_B),
                     "api_key": KEY_B,
                     "api_base": "https://api.anthropic.com",
@@ -190,7 +190,7 @@ class TestNoTenantMetadata:
             await provider.acomplete(
                 tenant_id=tenant,
                 role="respond",
-                model="anthropic/claude-sonnet-4-6",
+                model="openai/gpt-5.6-sol",
                 messages=[{"role": "user", "content": "hola"}],
             )
         meta = patched_litellm.calls[0].get("metadata") or {}
@@ -205,7 +205,7 @@ class TestInMemoryUnchanged:
         text = await provider.acomplete(
             tenant_id=tenant,
             role="respond",
-            model="anthropic/claude-sonnet-4-6",
+            model="openai/gpt-5.6-sol",
             messages=[{"role": "user", "content": "hola"}],
         )
         assert text

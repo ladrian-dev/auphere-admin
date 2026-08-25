@@ -34,8 +34,8 @@ class WorkerSettings(BaseSettings):
     # explicitly through fixtures.
     #
     # The fallback model lives hardcoded in ``main.py`` — see comment there.
-    llm_classify_model: str = "anthropic/claude-haiku-4-5"
-    llm_respond_model: str = "anthropic/claude-sonnet-4-6"
+    llm_classify_model: str = "openai/gpt-5.6-sol"
+    llm_respond_model: str = "openai/gpt-5.6-sol"
     llm_use_inmemory: bool = False
 
     # Redis Stream names.

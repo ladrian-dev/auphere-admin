@@ -383,7 +383,7 @@ class TestContextEditing:
         await provider.acomplete_with_tools(
             tenant_id=uuid.uuid4(),
             role="book",
-            model="anthropic/claude-sonnet-4-6",
+            model="openai/gpt-5.6-sol",
             messages=[
                 {"role": "system", "content": "S"},
                 {"role": "user", "content": "u"},
@@ -411,7 +411,7 @@ class TestContextEditing:
         await provider.acomplete(
             tenant_id=uuid.uuid4(),
             role="classify",
-            model="anthropic/claude-haiku-4-5",
+            model="openai/gpt-5.6-sol",
             messages=[
                 {"role": "system", "content": "S"},
                 {"role": "user", "content": "u"},
@@ -432,7 +432,7 @@ class TestContextEditing:
         await provider.acomplete_with_tools(
             tenant_id=uuid.uuid4(),
             role="book",
-            model="anthropic/claude-sonnet-4-6",
+            model="openai/gpt-5.6-sol",
             messages=[{"role": "user", "content": "u"}],
             tools=tools,
         )
@@ -463,7 +463,7 @@ class TestContextEditing:
             await provider.acomplete_with_tools(
                 tenant_id=uuid.uuid4(),
                 role="book",
-                model="anthropic/claude-sonnet-4-6",
+                model="openai/gpt-5.6-sol",
                 messages=messages,
                 tools=tools,
             )
