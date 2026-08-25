@@ -22,6 +22,8 @@ import type {
   PartnerApiKeyCreateInput,
   PartnerApiKeyOut,
   PartnerCreateInput,
+  PartnerLlmOut,
+  PartnerModelsOut,
   PartnerOut,
   PartnerTenantLinkInput,
   PartnerTenantOut,
@@ -182,6 +184,36 @@ export async function rechargePartnerWallet(
     const r = await backend.rechargePartnerWallet(partnerId, qty);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath(`/partners/${partnerId}/wallet`);
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+// ── F2 models + LiteLLM block ───────────────────────────────────────────────
+
+export async function setPartnerModels(
+  partnerId: string,
+  modelIds: string[],
+): Promise<ActionResult<PartnerModelsOut>> {
+  try {
+    const r = await backend.putPartnerModels(partnerId, modelIds);
+    if (!r) return { ok: false, error: "Respuesta vacía del backend" };
+    revalidatePath(`/partners/${partnerId}/models`);
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function blockPartnerLlm(
+  partnerId: string,
+  blocked: boolean,
+): Promise<ActionResult<PartnerLlmOut>> {
+  try {
+    const r = await backend.blockPartnerLlm(partnerId, blocked);
+    if (!r) return { ok: false, error: "Respuesta vacía del backend" };
+    revalidatePath(`/partners/${partnerId}/models`);
     return { ok: true, data: r };
   } catch (e) {
     return err(e);

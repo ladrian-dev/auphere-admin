@@ -363,6 +363,7 @@ _TRUNCATE_TABLES = (
     "usage_ledger",
     "partner_allocations",
     "partner_wallets",
+    "partner_model_allowlist",
     "partner_tenants",
     "api_keys",
     # Migration 0080 — console principals. Invitations FK memberships

@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.api.admin.agent_configs import PROMOTE_CHANNEL
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
+from nexus_api.core.partner_allowlist import read_allowlist
+from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.core.respond_catalog import (
     RESPOND_MODEL_ID_SET,
     RESPOND_MODELS,
@@ -42,12 +44,17 @@ def _unknown_model(model_id: str) -> HTTPException:
 
 @router.get("/models", response_model=list[ConsoleModelOut])
 async def list_console_models(
-    _: ConsolePrincipal = Depends(require_console_principal("agents:read")),
+    principal: ConsolePrincipal = Depends(require_console_principal("agents:read")),
+    session: AsyncSession = Depends(get_db_session),
 ) -> list[ConsoleModelOut]:
-    """Los tres ids del catálogo cerrado. Sin ``partner_id`` ni tarifas."""
+    """Catálogo cerrado ∩ allowlist del partner. Terra off → no Terra."""
+    async with session.begin():
+        await apply_partner_to_session(session, principal.partner.id)
+        allowed = await read_allowlist(session, principal.partner.id)
     return [
         ConsoleModelOut(model_id=model_id, display_name=display)
         for model_id, display in RESPOND_MODELS
+        if model_id in allowed
     ]
 
 
@@ -113,6 +120,10 @@ async def put_client_model(
         raise _unknown_model(body.model_id)
     mapping = await resolve_mapping(session, principal, ref)
     async with session.begin():
+        await apply_partner_to_session(session, principal.partner.id)
+        allowed = await read_allowlist(session, principal.partner.id)
+        if body.model_id not in allowed:
+            raise _unknown_model(body.model_id)
         await apply_tenant_to_session(session, mapping.tenant_id)
         profile = (
             (

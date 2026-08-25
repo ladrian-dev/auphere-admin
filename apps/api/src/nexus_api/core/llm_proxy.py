@@ -11,6 +11,7 @@ Retries stay on the same ``api_base``; there is no vendor fallback.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
@@ -20,6 +21,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 import structlog
 
 log = structlog.get_logger(__name__)
@@ -244,3 +246,137 @@ async def partner_id_for_tenant_standalone(tenant_id: uuid.UUID) -> uuid.UUID | 
             error=str(exc),
         )
         return None
+
+
+_ADMIN_TIMEOUT_S = 10.0
+
+
+def _admin_secret_arn() -> str:
+    """ARN string only. Cloud injects ``LITELLM_ADMIN_SECRET_ARN``, not the master."""
+    return _env("LITELLM_ADMIN_SECRET_ARN", "NEXUS_LITELLM_ADMIN_SECRET_ARN")
+
+
+def _parse_master_secret(raw: str) -> str:
+    """SecretString is ``{"LITELLM_MASTER_KEY": "..."}``. Never log."""
+    stripped = raw.strip()
+    if not stripped:
+        return ""
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+    value = parsed.get("LITELLM_MASTER_KEY")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return ""
+
+
+def _fetch_litellm_admin_secret() -> str:
+    """GetSecretValue of ``LITELLM_ADMIN_SECRET_ARN``. Request-time. Not for tests."""
+    arn = _admin_secret_arn()
+    if not arn:
+        return ""
+    try:
+        import boto3
+    except Exception:
+        return ""
+    try:
+        region = _env("AWS_REGION", "AWS_DEFAULT_REGION")
+        kwargs: dict[str, Any] = {}
+        if region:
+            kwargs["region_name"] = region
+        client = boto3.client("secretsmanager", **kwargs)
+        resp = client.get_secret_value(SecretId=arn)
+    except Exception as exc:
+        log.warning("llm_proxy.admin_secret_unreadable", error=type(exc).__name__)
+        return ""
+    secret = resp.get("SecretString")
+    if not isinstance(secret, str):
+        return ""
+    return _parse_master_secret(secret)
+
+
+def litellm_admin_master() -> str:
+    """Master for ``/key/block`` / ``/key/unblock``. Tests mock this helper.
+
+    ``LITELLM_ADMIN_SECRET_ARN`` is the ARN. The process calls GetSecretValue
+    at request time. The master is never read from env (no valueFrom).
+    """
+    return _fetch_litellm_admin_secret()
+
+
+async def litellm_admin_call(
+    method: str,
+    path: str,
+    *,
+    json_body: dict[str, Any] | None = None,
+    params: dict[str, str] | None = None,
+) -> httpx.Response:
+    """Internal hop to the proxy. Master never leaves this process."""
+    master = await asyncio.to_thread(litellm_admin_master)
+    if not master:
+        raise LLMProxyUnavailable("missing litellm admin master")
+    base = proxy_api_base()
+    if not base:
+        raise LLMProxyUnavailable("missing LITELLM_PROXY_API_BASE")
+    url = f"{base}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=_ADMIN_TIMEOUT_S) as client:
+            resp = await client.request(
+                method,
+                url,
+                headers={
+                    "Authorization": f"Bearer {master}",
+                    "Content-Type": "application/json",
+                },
+                json=json_body,
+                params=params,
+            )
+    except (httpx.HTTPError, TimeoutError, OSError) as exc:
+        raise LLMProxyUnavailable("proxy unreachable", retryable=True) from exc
+    if resp.status_code == 401:
+        raise LLMProxyUnavailable("proxy unauthorized")
+    return resp
+
+
+def _blocked_from_info(payload: object) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    info = payload.get("info")
+    if isinstance(info, dict) and isinstance(info.get("blocked"), bool):
+        return bool(info["blocked"])
+    if isinstance(payload.get("blocked"), bool):
+        return bool(payload["blocked"])
+    return False
+
+
+async def partner_key_is_blocked(partner_id: uuid.UUID) -> bool:
+    """``/key/info`` for this partner's VK. Missing VK → unavailable."""
+    key = virtual_key_for(partner_id)
+    if not key:
+        raise LLMProxyUnavailable("missing partner virtual key")
+    resp = await litellm_admin_call("GET", "/key/info", params={"key": key})
+    if resp.status_code >= 400:
+        raise LLMProxyUnavailable(
+            "proxy unauthorized" if resp.status_code == 401 else "proxy rejected"
+        )
+    try:
+        payload: object = resp.json()
+    except ValueError as exc:
+        raise LLMProxyUnavailable("proxy rejected") from exc
+    return _blocked_from_info(payload)
+
+
+async def partner_key_set_blocked(partner_id: uuid.UUID, blocked: bool) -> None:
+    """``/key/block`` or ``/key/unblock`` for this partner's VK only."""
+    key = virtual_key_for(partner_id)
+    if not key:
+        raise LLMProxyUnavailable("missing partner virtual key")
+    path = "/key/block" if blocked else "/key/unblock"
+    resp = await litellm_admin_call("POST", path, json_body={"key": key})
+    if resp.status_code >= 400:
+        raise LLMProxyUnavailable(
+            "proxy unauthorized" if resp.status_code == 401 else "proxy rejected"
+        )

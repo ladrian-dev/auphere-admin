@@ -130,6 +130,7 @@ from nexus_api.db.models.partner_membership import (
     PartnerMembership,
     PartnerRole,
 )
+from nexus_api.db.models.partner_model_allowlist import PartnerModelAllowlist
 from nexus_api.db.models.partner_wallet import (
     LEDGER_BUCKETS,
     PartnerAllocation,
@@ -252,6 +253,7 @@ __all__ = [
     "PartnerInvitation",
     "PartnerKnowledgeDocument",
     "PartnerMembership",
+    "PartnerModelAllowlist",
     "PartnerRole",
     "PartnerStatus",
     "PartnerTenant",

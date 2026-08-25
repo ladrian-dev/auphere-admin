@@ -186,3 +186,19 @@ def test_companion_has_no_purchased_recharge_tool() -> None:
     assert not any("purchased" in name for name in names)
     assert not any("recharge" in name for name in names)
     assert not any("purchased" in kind for kind in routes)
+
+
+def test_companion_has_no_llm_block_tool() -> None:
+    """F2: block/unblock LiteLLM es admin-only. Companion no gana tool."""
+    from nexus_api.companion.tools.catalog import ACTION_KINDS, TOOLS_BY_NAME
+    from nexus_api.companion.tools.proposals import APPLY_ROUTES
+
+    names = set(TOOLS_BY_NAME)
+    kinds = set(ACTION_KINDS)
+    routes = set(APPLY_ROUTES)
+    assert not any("block" in name for name in names)
+    assert not any("unblock" in name for name in names)
+    assert "block" not in kinds
+    assert "unblock" not in kinds
+    assert not any("block" in str(kind) for kind in routes)
+    assert not any("llm" in name and "block" in name for name in names)

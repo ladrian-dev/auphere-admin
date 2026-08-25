@@ -887,6 +887,20 @@ export type PartnerLedgerOut = {
   created_at: string;
 };
 
+export type PartnerModelItemOut = {
+  model_id: string;
+  display_name: string;
+  allowed: boolean;
+};
+
+export type PartnerModelsOut = {
+  items: PartnerModelItemOut[];
+};
+
+export type PartnerLlmOut = {
+  blocked: boolean;
+};
+
 export type PartnerUsageOut = {
   partner_id: string;
   window_days: number;
@@ -1738,6 +1752,26 @@ export const backend = {
     call<PartnerWalletOut>(`/admin/partners/${partnerId}/wallet/purchased`, {
       method: "POST",
       body: { qty },
+    }),
+
+  getPartnerModels: (partnerId: string) =>
+    call<PartnerModelsOut>(`/admin/partners/${partnerId}/models`, {
+      optional: true,
+    }),
+
+  putPartnerModels: (partnerId: string, modelIds: string[]) =>
+    call<PartnerModelsOut>(`/admin/partners/${partnerId}/models`, {
+      method: "PUT",
+      body: { model_ids: modelIds },
+    }),
+
+  getPartnerLlm: (partnerId: string) =>
+    call<PartnerLlmOut>(`/admin/partners/${partnerId}/llm`),
+
+  blockPartnerLlm: (partnerId: string, blocked: boolean) =>
+    call<PartnerLlmOut>(`/admin/partners/${partnerId}/llm/block`, {
+      method: "POST",
+      body: { blocked },
     }),
 
   getPartnerUsage: (partnerId: string, windowDays = 30) =>
