@@ -206,3 +206,44 @@ async def test_dead_cron_does_not_fire(console_world) -> None:
     n = await process_due_workflow_crons(now=datetime.now(UTC), start_run=start_run)
     assert n == 0
     assert fired == []
+
+
+async def test_admin_foreign_client_workflow_is_opaque_404(
+    client, console_world, admin_headers
+) -> None:
+    a, b = console_world["a"], console_world["b"]
+    missing_id = uuid.uuid4()
+    for path_tpl in (
+        "/admin/partners/{pid}/clients/{ref}/workflow",
+        "/admin/partners/{pid}/clients/{ref}/workflow/runs",
+    ):
+        foreign = await client.get(
+            path_tpl.format(pid=a["partner_id"], ref=b["ref"]),
+            headers=admin_headers,
+        )
+        missing = await client.get(
+            path_tpl.format(pid=a["partner_id"], ref="does-not-exist"),
+            headers=admin_headers,
+        )
+        assert foreign.status_code == 404, f"{path_tpl}: {foreign.text}"
+        assert missing.status_code == 404
+        assert foreign.json() == missing.json() == {"detail": "Unknown client reference"}
+        assert foreign.status_code != 403
+        assert "sk-" not in foreign.text
+        assert "sk-" not in missing.text
+
+        unknown_partner = await client.get(
+            path_tpl.format(pid=missing_id, ref=a["ref"]),
+            headers=admin_headers,
+        )
+        assert unknown_partner.status_code == 404
+        assert unknown_partner.json() == {"detail": f"partner {missing_id} not found"}
+
+
+async def test_admin_workflow_has_no_put(client, console_world, admin_headers) -> None:
+    a = console_world["a"]
+    path = f"/admin/partners/{a['partner_id']}/clients/{a['ref']}/workflow"
+    put = await client.put(path, headers=admin_headers, json=VALID)
+    delete = await client.delete(path, headers=admin_headers)
+    assert put.status_code == 405, put.text
+    assert delete.status_code == 405, delete.text

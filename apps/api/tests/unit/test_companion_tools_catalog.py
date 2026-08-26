@@ -202,3 +202,17 @@ def test_companion_has_no_llm_block_tool() -> None:
     assert "unblock" not in kinds
     assert not any("block" in str(kind) for kind in routes)
     assert not any("llm" in name and "block" in name for name in names)
+
+
+def test_companion_has_no_admin_knowledge_or_pack_write_tool() -> None:
+    """F3: admin knowledge/packs is GET-only. Companion keeps console propose/apply."""
+    from nexus_api.companion.tools.catalog import ALL_TOOLS, TOOLS_BY_NAME
+    from nexus_api.companion.tools.proposals import APPLY_ROUTES
+
+    names = set(TOOLS_BY_NAME)
+    assert not any("/admin/" in tool.path for tool in ALL_TOOLS)
+    assert not any(path.startswith("/admin/") for path in (p for _, p in APPLY_ROUTES.values()))
+    assert not any("admin" in name for name in names)
+    knowledge_path, pack_path = APPLY_ROUTES["knowledge"][1], APPLY_ROUTES["pack"][1]
+    assert knowledge_path.startswith("/console/")
+    assert pack_path.startswith("/console/")

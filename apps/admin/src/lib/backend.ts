@@ -27,6 +27,16 @@ import type { ChannelRole } from "@/lib/channels";
 
 const BACKEND_URL = process.env.NEXUS_BACKEND_URL ?? "http://localhost:8000";
 const ADMIN_TOKEN = process.env.NEXUS_ADMIN_TOKEN ?? "dev-admin-token-change-me";
+const CONSOLE_URL = (process.env.NEXUS_CONSOLE_URL ?? "http://localhost:3110").replace(
+  /\/$/,
+  "",
+);
+
+/** Deep-link into the partner console. Operator does not enter with a partner session. */
+export function consoleHref(path: string): string {
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return `${CONSOLE_URL}${suffix}`;
+}
 
 export class BackendError extends Error {
   constructor(
@@ -901,6 +911,69 @@ export type PartnerLlmOut = {
   blocked: boolean;
 };
 
+export type KnowledgeKind = "file" | "url";
+export type KnowledgeStatus = "pending" | "indexed" | "failed";
+export type KnowledgeErrorCode =
+  | "fetch_failed"
+  | "unsupported_type"
+  | "too_large"
+  | "empty";
+
+/** Mirror of console ``KnowledgeDocumentOut``. Never ``content_text``. */
+export type KnowledgeDocumentOut = {
+  id: string;
+  kind: KnowledgeKind;
+  title: string;
+  source_url: string | null;
+  mime: string;
+  size_bytes: number;
+  status: KnowledgeStatus;
+  error_code: KnowledgeErrorCode | null;
+  chunk_count: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  indexed_at: string | null;
+};
+
+/** Mirror of console ``KnowledgeListOut``. */
+export type KnowledgeListOut = {
+  items: KnowledgeDocumentOut[];
+  total: number;
+  indexed_chars: number;
+  prompt_char_cap: number;
+};
+
+export type WorkflowCronOut = {
+  hour: number;
+  minute: number;
+  timezone: string;
+};
+
+/** Mirror of console ``WorkflowPackOut``. */
+export type WorkflowPackOut = {
+  client_ref: string;
+  is_set: boolean;
+  version: number | null;
+  trigger: "cron" | "event" | null;
+  steps: string[];
+  template_id: string | null;
+  cron: WorkflowCronOut | null;
+  enabled: boolean | null;
+  end_time: string | null;
+  stop: string | null;
+};
+
+export type WorkflowRunOut = {
+  thread_id: string;
+  status: string;
+};
+
+/** Mirror of console ``WorkflowRunsOut``. */
+export type WorkflowRunsOut = {
+  items: WorkflowRunOut[];
+};
+
 export type PartnerUsageOut = {
   partner_id: string;
   window_days: number;
@@ -1773,6 +1846,23 @@ export const backend = {
       method: "POST",
       body: { blocked },
     }),
+
+  getPartnerKnowledge: (partnerId: string) =>
+    call<KnowledgeListOut>(`/admin/partners/${partnerId}/knowledge`, {
+      optional: true,
+    }),
+
+  getPartnerClientWorkflow: (partnerId: string, ref: string) =>
+    call<WorkflowPackOut>(
+      `/admin/partners/${partnerId}/clients/${encodeURIComponent(ref)}/workflow`,
+      { optional: true },
+    ),
+
+  getPartnerClientWorkflowRuns: (partnerId: string, ref: string) =>
+    call<WorkflowRunsOut>(
+      `/admin/partners/${partnerId}/clients/${encodeURIComponent(ref)}/workflow/runs`,
+      { optional: true },
+    ).then((r) => r ?? { items: [] }),
 
   getPartnerUsage: (partnerId: string, windowDays = 30) =>
     call<PartnerUsageOut>(
