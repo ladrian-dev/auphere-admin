@@ -12,7 +12,6 @@ export const PARTNER_COOKIE_NAMES = [
   "nexus-console.session",
   "nexus_console",
   "__Host-nexus_console",
-  "better-auth.session_token",
 ] as const;
 
 export type ImpersonationSession = {

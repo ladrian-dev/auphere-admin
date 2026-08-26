@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.admin.partners import _admin_actor
 from nexus_api.api.deps import get_db_session
+from nexus_api.core.partner_context import apply_admin_to_session
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import AuditLog, Partner
 from nexus_api.db.models.support_ticket import (
@@ -122,6 +123,7 @@ async def list_tickets(
     if partner_id is not None:
         stmt = stmt.where(SupportTicket.partner_id == partner_id)
     async with session.begin():
+        await apply_admin_to_session(session)
         rows = (await session.execute(stmt)).all()
         items = [_out(ticket, partner) for ticket, partner in rows]
     return items
@@ -137,6 +139,7 @@ async def get_ticket(
     session: AsyncSession = Depends(get_db_session),
 ) -> AdminTicketDetailOut:
     async with session.begin():
+        await apply_admin_to_session(session)
         ticket = await session.get(SupportTicket, ticket_id)
         if ticket is None:
             raise _unknown_ticket()
@@ -175,6 +178,7 @@ async def patch_ticket(
         )
     actor = _admin_actor(token)
     async with session.begin():
+        await apply_admin_to_session(session)
         ticket = await session.get(SupportTicket, ticket_id)
         if ticket is None:
             raise _unknown_ticket()

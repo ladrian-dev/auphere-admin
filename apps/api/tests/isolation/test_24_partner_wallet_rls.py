@@ -413,3 +413,31 @@ async def test_tickets_force_rls_a_cannot_see_b(db_session) -> None:
             (await session.execute(sa.text("SELECT ticket_id FROM ticket_events"))).scalars().all()
         )
         assert events == [ticket_a]
+
+
+async def test_tickets_admin_unscoped_sees_a_and_b(db_session) -> None:
+    """After admin_unscoped: empty GUC still 0; apply_admin sees A and B."""
+    from nexus_api.core.partner_context import apply_admin_to_session
+
+    a, b = uuid.uuid4(), uuid.uuid4()
+    ref_a, ref_b = f"AU-A-{a.hex[:6]}", f"AU-B-{b.hex[:6]}"
+    sm = get_sessionmaker()
+    async with sm() as session:
+        await _seed_partner(session, a, f"tka-{a.hex[:8]}")
+        await _seed_partner(session, b, f"tkb-{b.hex[:8]}")
+        await _seed_ticket(session, a, ref_a, "need-a")
+        await _seed_ticket(session, b, ref_b, "need-b")
+        await session.commit()
+
+    async with sm() as session:
+        await _as_app(session, None)
+        assert await session.scalar(sa.text("SELECT count(*) FROM tickets")) == 0
+        assert await session.scalar(sa.text("SELECT count(*) FROM ticket_events")) == 0
+
+    async with sm() as session:
+        async with session.begin():
+            await apply_admin_to_session(session)
+            visible = set(
+                (await session.execute(sa.text("SELECT ticket_ref FROM tickets"))).scalars().all()
+            )
+            assert {ref_a, ref_b} <= visible

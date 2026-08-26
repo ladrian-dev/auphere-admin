@@ -65,15 +65,11 @@ class SupportTicket(UUIDPrimaryKey, Base):
 
 class SupportTicketEvent(UUIDPrimaryKey, Base):
     __tablename__ = "ticket_events"
-    __table_args__ = (
-        CheckConstraint("kind IN ('open','status')", name="ck_ticket_events_kind"),
-    )
+    __table_args__ = (CheckConstraint("kind IN ('open','status')", name="ck_ticket_events_kind"),)
 
     ticket_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            "tickets.id", ondelete="CASCADE", name="fk_ticket_events_ticket"
-        ),
+        ForeignKey("tickets.id", ondelete="CASCADE", name="fk_ticket_events_ticket"),
         nullable=False,
         index=True,
     )

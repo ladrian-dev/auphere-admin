@@ -240,8 +240,10 @@ async def test_is_admin_guc_unscopes_without_it_zero(client, console_world) -> N
     async with sm() as session:
         await session.execute(sa.text("SELECT set_config('app.is_admin', '', true)"))
         await session.execute(sa.text("SET ROLE nexus_app"))
-        n = await session.scalar(sa.text("SELECT count(*) FROM support_tickets"))
+        n = await session.scalar(sa.text("SELECT count(*) FROM tickets"))
+        ev = await session.scalar(sa.text("SELECT count(*) FROM ticket_events"))
         assert n == 0
+        assert ev == 0
         await session.execute(sa.text("RESET ROLE"))
 
     async with sm() as session:
@@ -250,6 +252,6 @@ async def test_is_admin_guc_unscopes_without_it_zero(client, console_world) -> N
         async with session.begin():
             await apply_admin_to_session(session)
             visible = set(
-                (await session.execute(sa.text("SELECT ticket_ref FROM support_tickets"))).scalars().all()
+                (await session.execute(sa.text("SELECT ticket_ref FROM tickets"))).scalars().all()
             )
             assert refs <= visible
