@@ -434,10 +434,9 @@ async def test_tickets_admin_unscoped_sees_a_and_b(db_session) -> None:
         assert await session.scalar(sa.text("SELECT count(*) FROM tickets")) == 0
         assert await session.scalar(sa.text("SELECT count(*) FROM ticket_events")) == 0
 
-    async with sm() as session:
-        async with session.begin():
-            await apply_admin_to_session(session)
-            visible = set(
-                (await session.execute(sa.text("SELECT ticket_ref FROM tickets"))).scalars().all()
-            )
-            assert {ref_a, ref_b} <= visible
+    async with sm() as session, session.begin():
+        await apply_admin_to_session(session)
+        visible = set(
+            (await session.execute(sa.text("SELECT ticket_ref FROM tickets"))).scalars().all()
+        )
+        assert {ref_a, ref_b} <= visible
