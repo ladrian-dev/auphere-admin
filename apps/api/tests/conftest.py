@@ -368,6 +368,7 @@ _TRUNCATE_TABLES = (
     "api_keys",
     # Migration 0080 — console principals. Invitations FK memberships
     # (SET NULL) and both FK partners (CASCADE): clear them first.
+    "admin_impersonation_sessions",
     "partner_invitations",
     "partner_memberships",
     "partners",

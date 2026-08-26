@@ -6,8 +6,12 @@ import { Eyebrow } from "@/components/brand/eyebrow";
 import { StatusDot } from "@/components/brand/status-dot";
 import { Separator } from "@/components/ui/separator";
 import { backend } from "@/lib/backend";
+import { getImpersonateSessionId } from "@/lib/impersonate";
+import { matchImpersonationBanner } from "@/lib/impersonate-cookie";
+import { getOperator } from "@/lib/session";
 import { statusLabel } from "@/lib/format";
 
+import { ImpersonateBannerView } from "./impersonate-banner";
 import { PartnerTabs } from "./tabs";
 
 const STATUS_TONE = {
@@ -38,8 +42,23 @@ export default async function PartnerLayout({
   const partner = await backend.getPartner(id);
   if (!partner) notFound();
 
+  const operator = await getOperator();
+  const cookieId = await getImpersonateSessionId();
+  const active = operator
+    ? await backend.listActiveImpersonations(operator.id)
+    : [];
+  const live = matchImpersonationBanner(cookieId, partner.id, active);
+
   return (
     <div className="flex flex-col gap-6">
+      {live ? (
+        <ImpersonateBannerView
+          partnerName={partner.name}
+          sessionId={live.id}
+          reason={live.reason}
+          expiresAt={live.expires_at}
+        />
+      ) : null}
       <div className="flex flex-col gap-2">
         <nav
           aria-label="Migas"

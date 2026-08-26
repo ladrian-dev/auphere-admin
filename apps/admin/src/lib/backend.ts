@@ -911,6 +911,22 @@ export type PartnerLlmOut = {
   blocked: boolean;
 };
 
+export type AdminImpersonateOut = {
+  id: string;
+  partner_id: string;
+  operator_id: string;
+  reason: string;
+  ttl_seconds: number;
+  expires_at: string;
+  revoked_at: string | null;
+  created_at: string;
+};
+
+export type AdminImpersonateIn = {
+  reason: string;
+  ttl_seconds?: number;
+};
+
 export type TicketStatus = "open" | "pending" | "closed";
 
 export type AdminTicketOut = {
@@ -1953,6 +1969,29 @@ export const backend = {
       method: "PATCH",
       body: { status },
     }),
+
+  startImpersonation: (
+    partnerId: string,
+    body: AdminImpersonateIn,
+    operatorId: string,
+  ) =>
+    call<AdminImpersonateOut>(`/admin/partners/${partnerId}/impersonate`, {
+      method: "POST",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  revokeImpersonation: (sessionId: string, operatorId: string) =>
+    call<AdminImpersonateOut>(`/admin/impersonate/${sessionId}/revoke`, {
+      method: "POST",
+      body: {},
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  listActiveImpersonations: (operatorId: string) =>
+    call<AdminImpersonateOut[]>("/admin/impersonate/active", {
+      headers: { "X-Operator-Id": operatorId },
+    }).then((r) => r ?? []),
 
   // ── billing plans + per-tenant billing ────────────────────────────────
   listBillingPlans: () =>

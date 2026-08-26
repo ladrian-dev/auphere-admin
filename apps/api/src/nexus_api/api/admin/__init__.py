@@ -12,6 +12,7 @@ from nexus_api.api.admin import (
     conversations,
     cost,
     evals,
+    impersonate,
     integrations,
     isolation,
     meta_signup,
@@ -54,6 +55,7 @@ router.include_router(backchannel_owners.router)
 router.include_router(whatsapp_templates.router)
 router.include_router(partners.router)
 router.include_router(tickets.router)
+router.include_router(impersonate.router)
 router.include_router(partner_wallet.router)
 router.include_router(partner_models.router)
 router.include_router(partner_knowledge.router)

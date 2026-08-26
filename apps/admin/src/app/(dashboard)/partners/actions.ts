@@ -17,6 +17,8 @@
 import { revalidatePath } from "next/cache";
 
 import { BackendError, backend } from "@/lib/backend";
+import { clearImpersonateCookie, setImpersonateCookie } from "@/lib/impersonate";
+import { requireOperator } from "@/lib/session";
 import type {
   PartnerApiKeyCreatedOut,
   PartnerApiKeyCreateInput,
@@ -31,6 +33,7 @@ import type {
   PartnerWalletOut,
   TicketStatus,
   AdminTicketDetailOut,
+  AdminImpersonateOut,
   ReceiptGenerateInput,
   ReceiptOut,
   ReceiptSendOut,
@@ -232,6 +235,45 @@ export async function patchTicketStatus(
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath("/tickets");
     revalidatePath(`/tickets/${ticketId}`);
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+
+// ── F5 impersonation (admin cookie only) ───────────────────────────────────
+
+export async function startImpersonationAction(
+  partnerId: string,
+  reason: string,
+  ttlSeconds: number,
+): Promise<ActionResult<AdminImpersonateOut>> {
+  try {
+    const operator = await requireOperator();
+    const r = await backend.startImpersonation(
+      partnerId,
+      { reason, ttl_seconds: ttlSeconds },
+      operator.id,
+    );
+    if (!r) return { ok: false, error: "Respuesta vacía del backend" };
+    await setImpersonateCookie(r.id, r.ttl_seconds);
+    revalidatePath(`/partners/${partnerId}`);
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function revokeImpersonationAction(
+  sessionId: string,
+): Promise<ActionResult<AdminImpersonateOut>> {
+  try {
+    const operator = await requireOperator();
+    const r = await backend.revokeImpersonation(sessionId, operator.id);
+    if (!r) return { ok: false, error: "Respuesta vacía del backend" };
+    await clearImpersonateCookie();
+    revalidatePath(`/partners/${r.partner_id}`);
     return { ok: true, data: r };
   } catch (e) {
     return err(e);

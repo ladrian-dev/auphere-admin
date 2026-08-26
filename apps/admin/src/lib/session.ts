@@ -14,6 +14,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { clearImpersonateCookie } from "./impersonate";
 import { endSession, login as apiLogin, resolveSession, type Operator } from "./operator-auth";
 
 /** Nombre propio, no el de Better Auth: una cookie vieja no debe parecer
@@ -71,5 +72,6 @@ export async function closeSession(): Promise<void> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   jar.delete(SESSION_COOKIE);
+  await clearImpersonateCookie();
   if (token) await endSession(token);
 }

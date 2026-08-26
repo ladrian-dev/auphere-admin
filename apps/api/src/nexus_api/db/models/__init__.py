@@ -1,5 +1,12 @@
 """Aggregate import for ORM models. Alembic autogenerate reads metadata from here."""
 
+from nexus_api.db.models.admin_impersonation import (
+    REASON_MIN_LEN,
+    TTL_DEFAULT_SECONDS,
+    TTL_MAX_SECONDS,
+    TTL_MIN_SECONDS,
+    AdminImpersonationSession,
+)
 from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 from nexus_api.db.models.agent_memory import AgentMemory
 from nexus_api.db.models.appointment import Appointment, AppointmentStatus
@@ -183,6 +190,7 @@ __all__ = [
     "OWNER_CONSULTATION_STATUSES",
     "OWNER_CONSULTATION_URGENCIES",
     "PARTNER_ROLES",
+    "REASON_MIN_LEN",
     "RUN_CANCELLED",
     "RUN_COMPLETED",
     "RUN_ERROR",
@@ -195,7 +203,11 @@ __all__ = [
     "THREAD_MODES",
     "TICKET_CATEGORIES",
     "TICKET_STATUSES",
+    "TTL_DEFAULT_SECONDS",
+    "TTL_MAX_SECONDS",
+    "TTL_MIN_SECONDS",
     "USAGE_METERS",
+    "AdminImpersonationSession",
     "AgentConfig",
     "AgentConfigStatus",
     "AgentMemory",
