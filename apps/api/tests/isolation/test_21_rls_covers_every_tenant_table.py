@@ -73,6 +73,8 @@ PARTNER_FORCE_TABLES: dict[str, str] = {
     "workflow_crons": "Crons de pack. FORCE por partner_id.",
     "workflow_send_receipts": "Idempotencia send. FORCE por partner_id.",
     "partner_model_allowlist": "Allowlist F2. FORCE por partner_id.",
+    "tickets": "Tickets F4. FORCE por partner_id.",
+    "ticket_events": "Eventos F4. FORCE por partner_id.",
 }
 
 

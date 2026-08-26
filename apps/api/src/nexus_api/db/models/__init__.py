@@ -145,6 +145,16 @@ from nexus_api.db.models.scheduled_job import (
     ScheduledJobKind,
     ScheduledJobStatus,
 )
+from nexus_api.db.models.support_ticket import (
+    EVENT_KINDS,
+    EVENT_OPEN,
+    EVENT_STATUS,
+    STATUS_OPEN,
+    TICKET_CATEGORIES,
+    TICKET_STATUSES,
+    SupportTicket,
+    SupportTicketEvent,
+)
 from nexus_api.db.models.tenant import Tenant, TenantPlan, TenantStatus, TenantTier
 from nexus_api.db.models.tool import ToolCatalog, ToolStatus
 from nexus_api.db.models.usage import UsageEvent
@@ -159,6 +169,9 @@ from nexus_api.db.models.workflow import (
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
     "CONSOLE_AUTH_SCHEMA",
+    "EVENT_KINDS",
+    "EVENT_OPEN",
+    "EVENT_STATUS",
     "INVITATION_TTL",
     "LEDGER_BUCKETS",
     "MODEL_ROLES",
@@ -176,9 +189,12 @@ __all__ = [
     "RUN_INTERRUPTED",
     "RUN_RUNNING",
     "RUN_STATUSES",
+    "STATUS_OPEN",
     "TENANT_SCOPED_API_KEY_SCOPES",
     "TERMINAL_RUN_STATUSES",
     "THREAD_MODES",
+    "TICKET_CATEGORIES",
+    "TICKET_STATUSES",
     "USAGE_METERS",
     "AgentConfig",
     "AgentConfigStatus",
@@ -267,6 +283,8 @@ __all__ = [
     "ScheduledJob",
     "ScheduledJobKind",
     "ScheduledJobStatus",
+    "SupportTicket",
+    "SupportTicketEvent",
     "Tenant",
     "TenantConnector",
     "TenantConnectorStatus",

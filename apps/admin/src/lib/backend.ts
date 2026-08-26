@@ -911,6 +911,47 @@ export type PartnerLlmOut = {
   blocked: boolean;
 };
 
+export type TicketStatus = "open" | "pending" | "closed";
+
+export type AdminTicketOut = {
+  id: string;
+  ticket_ref: string;
+  partner_id: string;
+  partner_name: string;
+  partner_slug: string;
+  category: string;
+  topic: string;
+  sla: string;
+  status: TicketStatus;
+  client_ref: string | null;
+  need: string;
+  checked: string[];
+  alternative: string | null;
+  bridge: boolean;
+  opened_by: string;
+  created_at?: string;
+  opened_at: string;
+  updated_at: string;
+};
+
+export type AdminTicketEventOut = {
+  id: string;
+  kind: string;
+  from_status: string | null;
+  to_status: string;
+  actor: string;
+  created_at: string;
+};
+
+export type AdminTicketDetailOut = AdminTicketOut & {
+  events: AdminTicketEventOut[];
+  links: {
+    consumo: string;
+    modelos: string;
+    conocimiento: string;
+  };
+};
+
 export type KnowledgeKind = "file" | "url";
 export type KnowledgeStatus = "pending" | "indexed" | "failed";
 export type KnowledgeErrorCode =
@@ -1892,6 +1933,26 @@ export const backend = {
       `/admin/partners/${partnerId}/receipts/${invoiceId}/send`,
       { method: "POST", body: {} },
     ),
+
+  // ── F4 support tickets inbox ──────────────────────────────────────
+  listTickets: (opts?: { status?: TicketStatus; partnerId?: string }) => {
+    const qs = new URLSearchParams();
+    if (opts?.status) qs.set("status", opts.status);
+    if (opts?.partnerId) qs.set("partner_id", opts.partnerId);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return call<AdminTicketOut[]>(`/admin/tickets${suffix}`).then((r) => r ?? []);
+  },
+
+  getTicket: (ticketId: string) =>
+    call<AdminTicketDetailOut>(`/admin/tickets/${ticketId}`, {
+      optional: true,
+    }),
+
+  patchTicketStatus: (ticketId: string, status: TicketStatus) =>
+    call<AdminTicketDetailOut>(`/admin/tickets/${ticketId}`, {
+      method: "PATCH",
+      body: { status },
+    }),
 
   // ── billing plans + per-tenant billing ────────────────────────────────
   listBillingPlans: () =>

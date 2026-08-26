@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from nexus_api.companion.tools.catalog import READ_TOOLS, TOOLS_BY_NAME, tool_specs
+from nexus_api.companion.tools.catalog import ALL_TOOLS, READ_TOOLS, TOOLS_BY_NAME, tool_specs
 
 pytestmark = pytest.mark.unit
 
@@ -216,3 +216,11 @@ def test_companion_has_no_admin_knowledge_or_pack_write_tool() -> None:
     knowledge_path, pack_path = APPLY_ROUTES["knowledge"][1], APPLY_ROUTES["pack"][1]
     assert knowledge_path.startswith("/console/")
     assert pack_path.startswith("/console/")
+
+
+def test_catalog_has_no_ticket_status_tool() -> None:
+    """F4 no añade una herramienta de estado de ticket al Companion."""
+    names = {t.name for t in ALL_TOOLS}
+    kinds = {getattr(t, "kind", None) for t in ALL_TOOLS}
+    assert not any("ticket_status" in name or "ticket-status" in name for name in names)
+    assert "ticket_status" not in kinds

@@ -29,6 +29,8 @@ import type {
   PartnerTenantOut,
   PartnerUpdateInput,
   PartnerWalletOut,
+  TicketStatus,
+  AdminTicketDetailOut,
   ReceiptGenerateInput,
   ReceiptOut,
   ReceiptSendOut,
@@ -214,6 +216,22 @@ export async function blockPartnerLlm(
     const r = await backend.blockPartnerLlm(partnerId, blocked);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath(`/partners/${partnerId}/models`);
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+
+export async function patchTicketStatus(
+  ticketId: string,
+  status: TicketStatus,
+): Promise<ActionResult<AdminTicketDetailOut>> {
+  try {
+    const r = await backend.patchTicketStatus(ticketId, status);
+    if (!r) return { ok: false, error: "Respuesta vacía del backend" };
+    revalidatePath("/tickets");
+    revalidatePath(`/tickets/${ticketId}`);
     return { ok: true, data: r };
   } catch (e) {
     return err(e);

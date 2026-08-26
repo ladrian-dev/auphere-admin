@@ -357,3 +357,59 @@ async def test_admin_unscoped_without_guc_is_zero_path_guc_is_only_that_partner(
             {"b": str(b)},
         )
         assert other is None
+
+
+async def _seed_ticket(session, partner_id: uuid.UUID, ref: str, need: str) -> uuid.UUID:
+    ticket_id = uuid.uuid4()
+    await session.execute(
+        sa.text(
+            "INSERT INTO tickets "
+            "(id, partner_id, ticket_ref, category, topic, sla, status, need, checked, opened_by) "
+            "VALUES (:id, :p, :r, 'help', 'platform.test', 'best_effort', 'open', :n, '[]'::jsonb, 'test')"
+        ),
+        {"id": str(ticket_id), "p": str(partner_id), "r": ref, "n": need},
+    )
+    await session.execute(
+        sa.text(
+            "INSERT INTO ticket_events "
+            "(ticket_id, partner_id, kind, to_status, actor) "
+            "VALUES (:id, :p, 'open', 'open', 'test')"
+        ),
+        {"id": str(ticket_id), "p": str(partner_id)},
+    )
+    return ticket_id
+
+
+async def test_tickets_force_rls_a_cannot_see_b(db_session) -> None:
+    a, b = uuid.uuid4(), uuid.uuid4()
+    sm = get_sessionmaker()
+    async with sm() as session:
+        await _seed_partner(session, a, f"tka-{a.hex[:8]}")
+        await _seed_partner(session, b, f"tkb-{b.hex[:8]}")
+        ticket_a = await _seed_ticket(session, a, f"AU-A-{a.hex[:6]}", "need-a")
+        ticket_b = await _seed_ticket(session, b, f"AU-B-{b.hex[:6]}", "need-b")
+        await session.commit()
+
+    async with sm() as session:
+        await _as_app(session, None)
+        assert await session.scalar(sa.text("SELECT count(*) FROM tickets")) == 0
+        assert await session.scalar(sa.text("SELECT count(*) FROM ticket_events")) == 0
+
+    async with sm() as session:
+        await _as_app(session, a)
+        visible = (await session.execute(sa.text("SELECT id FROM tickets"))).scalars().all()
+        assert visible == [ticket_a]
+        other = await session.scalar(
+            sa.text("SELECT id FROM tickets WHERE id = :id"),
+            {"id": str(ticket_b)},
+        )
+        missing = await session.scalar(
+            sa.text("SELECT id FROM tickets WHERE id = :id"),
+            {"id": str(uuid.uuid4())},
+        )
+        assert other is None
+        assert missing is None
+        events = (
+            (await session.execute(sa.text("SELECT ticket_id FROM ticket_events"))).scalars().all()
+        )
+        assert events == [ticket_a]
