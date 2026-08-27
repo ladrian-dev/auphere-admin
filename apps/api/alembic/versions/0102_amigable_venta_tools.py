@@ -1,7 +1,7 @@
 """seed tool_catalog with the inventory.* (Amigable Venta) tools + connector
 
-Revision ID: 0098_amigable_venta_tools
-Revises: 0097_workflow_packs
+Revision ID: 0102_amigable_venta_tools
+Revises: 0101_tickets_admin_unscoped
 Create Date: 2026-08-24
 
 Amigable Venta is an ``api_key`` connector (a single ``amk_…`` Bearer key,
@@ -36,8 +36,8 @@ from sqlalchemy import text
 
 from alembic import op
 
-revision: str = "0098_amigable_venta_tools"
-down_revision: str | Sequence[str] | None = "0097_workflow_packs"
+revision: str = "0102_amigable_venta_tools"
+down_revision: str | Sequence[str] | None = "0101_tickets_admin_unscoped"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -45,7 +45,7 @@ depends_on: str | Sequence[str] | None = None
 SNAPSHOT_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     "data",
-    "0098_amigable_venta_tools.json",
+    "0102_amigable_venta_tools.json",
 )
 
 _CAPABILITY_TAGS_BY_TOOL: dict[str, list[str]] = {

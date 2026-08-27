@@ -1,7 +1,7 @@
 """local_catalog_products — catálogo importado de una hoja de cálculo
 
-Revision ID: 0099_local_catalog_products
-Revises: 0098_amigable_venta_tools
+Revision ID: 0103_local_catalog_products
+Revises: 0102_amigable_venta_tools
 Create Date: 2026-08-25
 
 Un catálogo de productos que vive en Nexus en vez de en un POS externo. Lo
@@ -29,8 +29,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0099_local_catalog_products"
-down_revision: str | Sequence[str] | None = "0098_amigable_venta_tools"
+revision: str = "0103_local_catalog_products"
+down_revision: str | Sequence[str] | None = "0102_amigable_venta_tools"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
