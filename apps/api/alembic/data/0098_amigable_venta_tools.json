@@ -1,0 +1,650 @@
+{
+ "inventory.check_stock": {
+  "description": "Valida cuántas unidades hay de un producto, sumando todas sus variantes y desglosando por SKU. Úsala para '¿cuántos X tenemos?', '¿queda X?' o '¿hay que reponer X?'. Acepta nombre o SKU. Responde con el total y señala las variantes agotadas o por debajo de su mínimo.",
+  "destructive": false,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "query": {
+     "description": "Nombre o SKU del producto cuyo stock se quiere validar.",
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "CheckStockInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "ProductVariant": {
+     "additionalProperties": false,
+     "description": "One concrete SKU. In this catalogue several SKUs share a name and\ndiffer in price and stock — that is what \"variante\" means here.",
+     "properties": {
+      "agotado": {
+       "description": "True si stock_actual es 0.",
+       "title": "Agotado",
+       "type": "boolean"
+      },
+      "bajo_minimo": {
+       "description": "True si stock_actual <= stock_minimo (toca reponer).",
+       "title": "Bajo Minimo",
+       "type": "boolean"
+      },
+      "categoria": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Categoría del producto.",
+       "title": "Categoria"
+      },
+      "nombre": {
+       "description": "Nombre del producto.",
+       "title": "Nombre",
+       "type": "string"
+      },
+      "precio_usd": {
+       "description": "Precio de venta en USD de ESTA variante.",
+       "title": "Precio Usd",
+       "type": "number"
+      },
+      "sku": {
+       "description": "Código SKU único de esta variante.",
+       "title": "Sku",
+       "type": "string"
+      },
+      "stock_actual": {
+       "description": "Unidades disponibles de ESTA variante.",
+       "title": "Stock Actual",
+       "type": "integer"
+      },
+      "stock_minimo": {
+       "description": "Umbral de reposición de ESTA variante.",
+       "title": "Stock Minimo",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "sku",
+      "nombre",
+      "precio_usd",
+      "stock_actual",
+      "stock_minimo",
+      "bajo_minimo",
+      "agotado"
+     ],
+     "title": "ProductVariant",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "detalle": {
+     "description": "Stock por SKU, de mayor a menor.",
+     "items": {
+      "$ref": "#/$defs/ProductVariant"
+     },
+     "title": "Detalle",
+     "type": "array"
+    },
+    "encontrado": {
+     "description": "False si no coincidió ningún producto.",
+     "title": "Encontrado",
+     "type": "boolean"
+    },
+    "hay_stock": {
+     "default": false,
+     "description": "True si stock_total > 0.",
+     "title": "Hay Stock",
+     "type": "boolean"
+    },
+    "nombre": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Producto resuelto.",
+     "title": "Nombre"
+    },
+    "query": {
+     "description": "Término buscado.",
+     "title": "Query",
+     "type": "string"
+    },
+    "stock_total": {
+     "default": 0,
+     "description": "Unidades disponibles en total.",
+     "title": "Stock Total",
+     "type": "integer"
+    },
+    "variantes": {
+     "default": 0,
+     "description": "SKUs distintos de este producto.",
+     "title": "Variantes",
+     "type": "integer"
+    },
+    "variantes_agotadas": {
+     "default": 0,
+     "description": "SKUs con 0 unidades.",
+     "title": "Variantes Agotadas",
+     "type": "integer"
+    },
+    "variantes_bajo_minimo": {
+     "default": 0,
+     "description": "SKUs en o por debajo de su stock mínimo.",
+     "title": "Variantes Bajo Minimo",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "encontrado",
+    "query"
+   ],
+   "title": "CheckStockOutput",
+   "type": "object"
+  },
+  "read_only": true,
+  "side_effects": []
+ },
+ "inventory.get_product": {
+  "description": "Devuelve el detalle COMPLETO de un producto: todas sus variantes con SKU, precio, stock y umbral de reposición. Úsala cuando pregunten por las variantes, las presentaciones o los precios de un producto concreto. Acepta nombre o SKU. Si ambiguo=true, la búsqueda coincidió con varios productos: di cuál elegiste y ofrece otros_candidatos antes de dar el dato por bueno.",
+  "destructive": false,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "query": {
+     "description": "Nombre exacto o aproximado del producto, o su SKU. Devuelve TODAS las variantes del producto que mejor coincida.",
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "GetProductInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "ProductVariant": {
+     "additionalProperties": false,
+     "description": "One concrete SKU. In this catalogue several SKUs share a name and\ndiffer in price and stock — that is what \"variante\" means here.",
+     "properties": {
+      "agotado": {
+       "description": "True si stock_actual es 0.",
+       "title": "Agotado",
+       "type": "boolean"
+      },
+      "bajo_minimo": {
+       "description": "True si stock_actual <= stock_minimo (toca reponer).",
+       "title": "Bajo Minimo",
+       "type": "boolean"
+      },
+      "categoria": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Categoría del producto.",
+       "title": "Categoria"
+      },
+      "nombre": {
+       "description": "Nombre del producto.",
+       "title": "Nombre",
+       "type": "string"
+      },
+      "precio_usd": {
+       "description": "Precio de venta en USD de ESTA variante.",
+       "title": "Precio Usd",
+       "type": "number"
+      },
+      "sku": {
+       "description": "Código SKU único de esta variante.",
+       "title": "Sku",
+       "type": "string"
+      },
+      "stock_actual": {
+       "description": "Unidades disponibles de ESTA variante.",
+       "title": "Stock Actual",
+       "type": "integer"
+      },
+      "stock_minimo": {
+       "description": "Umbral de reposición de ESTA variante.",
+       "title": "Stock Minimo",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "sku",
+      "nombre",
+      "precio_usd",
+      "stock_actual",
+      "stock_minimo",
+      "bajo_minimo",
+      "agotado"
+     ],
+     "title": "ProductVariant",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "ambiguo": {
+     "default": false,
+     "description": "True si la búsqueda coincidió con varios productos distintos y se resolvió el más parecido. Confirma con el usuario antes de dar el dato por bueno y ofrécele otros_candidatos.",
+     "title": "Ambiguo",
+     "type": "boolean"
+    },
+    "categoria": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Categoría del producto.",
+     "title": "Categoria"
+    },
+    "detalle": {
+     "description": "Todas las variantes, de menor a mayor precio.",
+     "items": {
+      "$ref": "#/$defs/ProductVariant"
+     },
+     "title": "Detalle",
+     "type": "array"
+    },
+    "encontrado": {
+     "description": "False si no coincidió ningún producto.",
+     "title": "Encontrado",
+     "type": "boolean"
+    },
+    "nombre": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Nombre del producto resuelto.",
+     "title": "Nombre"
+    },
+    "otros_candidatos": {
+     "description": "Otros nombres de producto que también coincidieron (máx. 8).",
+     "items": {
+      "type": "string"
+     },
+     "title": "Otros Candidatos",
+     "type": "array"
+    },
+    "precio_max": {
+     "default": 0.0,
+     "description": "Precio más alto (USD).",
+     "title": "Precio Max",
+     "type": "number"
+    },
+    "precio_min": {
+     "default": 0.0,
+     "description": "Precio más bajo (USD).",
+     "title": "Precio Min",
+     "type": "number"
+    },
+    "query": {
+     "description": "Término buscado.",
+     "title": "Query",
+     "type": "string"
+    },
+    "stock_total": {
+     "default": 0,
+     "description": "Unidades sumando todas las variantes.",
+     "title": "Stock Total",
+     "type": "integer"
+    },
+    "variantes": {
+     "default": 0,
+     "description": "Número de SKUs de este producto.",
+     "title": "Variantes",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "encontrado",
+    "query"
+   ],
+   "title": "GetProductOutput",
+   "type": "object"
+  },
+  "read_only": true,
+  "side_effects": []
+ },
+ "inventory.low_stock": {
+  "description": "Lista las variantes que hay que REPONER dentro de una familia de productos: las que están en o por debajo de su stock mínimo, las más críticas primero. Requiere un término de búsqueda porque el API no permite recorrer el catálogo entero, solo buscar. Si truncado=true la revisión no cubrió todo: acota el término.",
+  "destructive": false,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "incluir_agotados": {
+     "default": true,
+     "description": "Si false, omite las variantes con 0 unidades.",
+     "title": "Incluir Agotados",
+     "type": "boolean"
+    },
+    "limit": {
+     "default": 20,
+     "description": "Máximo de variantes a devolver.",
+     "maximum": 50,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    },
+    "query": {
+     "description": "Familia de productos a revisar por NOMBRE o SKU (ej. 'jarabe', 'ibuprofeno', 'FARM-002'). Es obligatorio: el API no permite listar el catálogo completo, solo buscar.",
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "LowStockInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "ProductVariant": {
+     "additionalProperties": false,
+     "description": "One concrete SKU. In this catalogue several SKUs share a name and\ndiffer in price and stock — that is what \"variante\" means here.",
+     "properties": {
+      "agotado": {
+       "description": "True si stock_actual es 0.",
+       "title": "Agotado",
+       "type": "boolean"
+      },
+      "bajo_minimo": {
+       "description": "True si stock_actual <= stock_minimo (toca reponer).",
+       "title": "Bajo Minimo",
+       "type": "boolean"
+      },
+      "categoria": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Categoría del producto.",
+       "title": "Categoria"
+      },
+      "nombre": {
+       "description": "Nombre del producto.",
+       "title": "Nombre",
+       "type": "string"
+      },
+      "precio_usd": {
+       "description": "Precio de venta en USD de ESTA variante.",
+       "title": "Precio Usd",
+       "type": "number"
+      },
+      "sku": {
+       "description": "Código SKU único de esta variante.",
+       "title": "Sku",
+       "type": "string"
+      },
+      "stock_actual": {
+       "description": "Unidades disponibles de ESTA variante.",
+       "title": "Stock Actual",
+       "type": "integer"
+      },
+      "stock_minimo": {
+       "description": "Umbral de reposición de ESTA variante.",
+       "title": "Stock Minimo",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "sku",
+      "nombre",
+      "precio_usd",
+      "stock_actual",
+      "stock_minimo",
+      "bajo_minimo",
+      "agotado"
+     ],
+     "title": "ProductVariant",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "agotadas": {
+     "description": "Variantes con 0 unidades.",
+     "title": "Agotadas",
+     "type": "integer"
+    },
+    "bajo_minimo": {
+     "description": "Variantes en o por debajo de su stock mínimo.",
+     "title": "Bajo Minimo",
+     "type": "integer"
+    },
+    "devueltas": {
+     "description": "Variantes incluidas en items (tras aplicar limit).",
+     "title": "Devueltas",
+     "type": "integer"
+    },
+    "items": {
+     "description": "Variantes a reponer, las más críticas primero.",
+     "items": {
+      "$ref": "#/$defs/ProductVariant"
+     },
+     "title": "Items",
+     "type": "array"
+    },
+    "query": {
+     "description": "Término buscado.",
+     "title": "Query",
+     "type": "string"
+    },
+    "revisadas": {
+     "description": "Variantes que se revisaron.",
+     "title": "Revisadas",
+     "type": "integer"
+    },
+    "truncado": {
+     "description": "True si el API llegó a su tope de 1000 filas. Si es True, la revisión NO cubrió todo: acota la búsqueda.",
+     "title": "Truncado",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "query",
+    "revisadas",
+    "bajo_minimo",
+    "agotadas",
+    "devueltas",
+    "truncado",
+    "items"
+   ],
+   "title": "LowStockOutput",
+   "type": "object"
+  },
+  "read_only": true,
+  "side_effects": []
+ },
+ "inventory.search_products": {
+  "description": "Busca productos del inventario por NOMBRE o SKU y los devuelve AGRUPADOS por producto, con cuántas variantes tiene cada uno, el stock sumado y el rango de precios. Úsala para '¿tenemos X?', '¿qué jarabes hay?' o para ubicar un producto antes de pedir su detalle. No busca por categoría ni por tipo. Si truncado=true hay coincidencias que no se ven: pide un término más específico en vez de afirmar que eso es todo.",
+  "destructive": false,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "limit": {
+     "default": 12,
+     "description": "Máximo de productos (agrupados por nombre) a devolver.",
+     "maximum": 50,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    },
+    "query": {
+     "description": "Texto a buscar en el NOMBRE o el SKU del producto (ej. 'ibuprofeno', 'jarabe', 'FARM-00001'). No busca por categoría ni por tipo. Ignora mayúsculas y tildes y busca por coincidencia parcial.",
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "SearchProductsInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "$defs": {
+    "ProductGroup": {
+     "additionalProperties": false,
+     "description": "Un producto agrupado por nombre, con todas sus variantes sumadas.",
+     "properties": {
+      "categoria": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Categoría del producto.",
+       "title": "Categoria"
+      },
+      "nombre": {
+       "description": "Nombre del producto.",
+       "title": "Nombre",
+       "type": "string"
+      },
+      "precio_max": {
+       "description": "Precio más alto entre las variantes (USD).",
+       "title": "Precio Max",
+       "type": "number"
+      },
+      "precio_min": {
+       "description": "Precio más bajo entre las variantes (USD).",
+       "title": "Precio Min",
+       "type": "number"
+      },
+      "skus": {
+       "description": "SKUs de las variantes, para consultar el detalle.",
+       "items": {
+        "type": "string"
+       },
+       "title": "Skus",
+       "type": "array"
+      },
+      "stock_total": {
+       "description": "Suma de unidades de todas las variantes.",
+       "title": "Stock Total",
+       "type": "integer"
+      },
+      "variantes": {
+       "description": "Cuántos SKUs distintos existen con este nombre.",
+       "title": "Variantes",
+       "type": "integer"
+      },
+      "variantes_bajo_minimo": {
+       "description": "Cuántas variantes están en o por debajo de su stock mínimo.",
+       "title": "Variantes Bajo Minimo",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "nombre",
+      "variantes",
+      "stock_total",
+      "precio_min",
+      "precio_max",
+      "variantes_bajo_minimo",
+      "skus"
+     ],
+     "title": "ProductGroup",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "devueltos": {
+     "description": "Productos incluidos en items (tras aplicar limit).",
+     "title": "Devueltos",
+     "type": "integer"
+    },
+    "items": {
+     "description": "Productos agrupados, mayor stock primero.",
+     "items": {
+      "$ref": "#/$defs/ProductGroup"
+     },
+     "title": "Items",
+     "type": "array"
+    },
+    "productos_encontrados": {
+     "description": "Productos distintos (por nombre) que coinciden, antes de aplicar limit.",
+     "title": "Productos Encontrados",
+     "type": "integer"
+    },
+    "query": {
+     "description": "Término buscado.",
+     "title": "Query",
+     "type": "string"
+    },
+    "truncado": {
+     "description": "True si el API llegó a su tope de 1000 filas y hay coincidencias que NO se ven. Si es True, NO afirmes que la lista está completa: pide un término de búsqueda más específico.",
+     "title": "Truncado",
+     "type": "boolean"
+    },
+    "variantes_encontradas": {
+     "description": "Filas/SKUs totales que coinciden.",
+     "title": "Variantes Encontradas",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "query",
+    "productos_encontrados",
+    "variantes_encontradas",
+    "devueltos",
+    "truncado",
+    "items"
+   ],
+   "title": "SearchProductsOutput",
+   "type": "object"
+  },
+  "read_only": true,
+  "side_effects": []
+ }
+}

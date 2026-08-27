@@ -1,0 +1,44 @@
+# Connector seed — Amigable Venta (POS catalogue / stock API).
+#
+# auth_kind=api_key: the platform issues ONE API key per business
+# (`amk_…`). Unlike Amigable Cobro there is no entity-id and no
+# business_uuid — the key alone scopes the catalogue to a business, so the
+# admin wizard asks for a single field.
+#
+# tenant_connectors.credentials_ref shape:
+#   {
+#     "tenant_credentials_id": "<uuid>",     # FK to tenant_credentials
+#     "endpoint_meta": {}                     # + optional "base_url"
+#   }
+# tenant_credentials.encrypted_payload (Fernet) decrypts to JSON:
+#   {"token": "amk_…"}
+# tenant_credentials.integration = "amigable_venta"
+#
+# Setup flow: the operator pastes the API key in the admin wizard. All
+# tools are read-only, so they're enabled on connect.
+slug: amigable_venta
+display_name: Amigable Venta
+vendor: Amacrux Lab
+category: catalog
+capabilities:
+  - read
+auth_kind: api_key
+mcp_server_ref: internal:amigable_venta
+provider_meta:
+  vendor_url: https://venta.amigable.app
+  docs_url: https://venta.amigable.app/admin/api
+  brand_color: "#0EA5E9"
+  # api_key shape advertised to the admin wizard. secret=true masks the
+  # input and routes the value to the Fernet-encrypted payload; secret=false
+  # fields land in endpoint_meta.
+  credentials_form:
+    - field: token
+      label: API Key
+      placeholder: amk_...
+      secret: true
+      required: true
+auto_enable_on_connect: true
+# Read-only connector — no destructive tools to gate.
+auto_enable_destructive: false
+consent_link_template_name: null
+status: available

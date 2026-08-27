@@ -1,7 +1,8 @@
 """Admin catalog endpoints — list + detail.
 
 The catalog merges custom seeds (whatsapp_meta,
-agendapro, woocommerce, amigable_cobro) with the dynamic auth_configs
+agendapro, woocommerce, amigable_cobro, amigable_venta) with the dynamic
+auth_configs
 that Composio surfaces. The ``fake_composio`` fixture pre-registers
 googlecalendar / calendly / notion in the fake Composio project.
 """
@@ -22,6 +23,7 @@ async def test_list_catalog_merges_seeds_and_composio(
     assert slugs == {
         "agendapro",
         "amigable_cobro",
+        "amigable_venta",
         "calendly",
         "googlecalendar",
         "notion",
@@ -43,6 +45,7 @@ async def test_list_catalog_without_composio_falls_back_to_seeds(
         assert slugs == {
             "agendapro",
             "amigable_cobro",
+            "amigable_venta",
             "tiktok_bm",
             "whatsapp_meta",
             "woocommerce",
