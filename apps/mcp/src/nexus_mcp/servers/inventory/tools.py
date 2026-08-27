@@ -117,8 +117,7 @@ async def _has_local_catalog(tenant_id: uuid.UUID) -> bool:
         row = (
             await session.execute(
                 sa_text(
-                    "SELECT 1 FROM local_catalog_products "
-                    "WHERE tenant_id = :tenant_id LIMIT 1"
+                    "SELECT 1 FROM local_catalog_products WHERE tenant_id = :tenant_id LIMIT 1"
                 ),
                 {"tenant_id": str(tenant_id)},
             )
@@ -295,10 +294,7 @@ def _best_group(
         chosen_key = folded_query
     else:
         containing = [k for k in buckets if folded_query in k]
-        if containing:
-            chosen_key = min(containing, key=len)
-        else:
-            chosen_key = next(iter(buckets))
+        chosen_key = min(containing, key=len) if containing else next(iter(buckets))
 
     members = buckets[chosen_key]
     others = _other_names(variants, members[0].nombre)
