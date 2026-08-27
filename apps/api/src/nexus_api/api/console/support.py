@@ -5,37 +5,16 @@ lo llama ``console.apply`` con el cuerpo que la propuesta guardó, después
 de que una persona del partner haya dicho que sí. Un humano puede llamarlo
 igual desde la consola; es el mismo trabajo.
 
-No hay sistema de tickets nuevo
--------------------------------
-§25.1 de la investigación lo dice explícitamente, y aquí se cumple: el
-ticket aterriza donde ya hay tubería.
-
-1. una fila de ``console_notifications`` para el partner — su acuse de que
-   esto quedó registrado, severidad ``info`` porque un ticket que tú mismo
-   abriste no es una advertencia;
-2. el **aviso interno**, que es otra cosa y va por otro camino: una línea
-   de log estructurada (siempre) y un correo a Auphere (si hay dirección
-   configurada). Mandarlo por el camino del partner obligaría a subir la
-   severidad, y entonces quien pidió ayuda vería una alerta roja en su
-   consola;
-3. una fila de ``audit_log`` como cualquier escritura del Companion, con
-   actor ``companion:<user_id>`` cuando viene por ahí.
-
-El identificador y la expectativa
----------------------------------
-``AU-<n>`` de una secuencia de Postgres: monótono, corto y decible por
-teléfono. Un uuid en un correo de soporte no lo repite nadie. Y ``sla`` es
-uno de tres identificadores estables — la frase que ve el usuario la
-escribe la interfaz, no el backend (§1.4 de CONTRACT-V1).
-
-Nada de aquí lleva el cuerpo de un mensaje de un cliente final (C8):
-``need`` y ``checked`` los redacta el Companion, ``topic`` es un slug y el
-cliente se nombra por su ``external_client_ref``.
+F4 persiste en ``support_tickets`` + ``support_ticket_events`` (FORCE RLS
+``app.partner_id``) **desde este mismo POST**. Siguen existiendo el acuse
+en ``console_notifications``, la auditoría y el correo interno. No hay
+un segundo POST ni un GET de consola.
 """
 
 from __future__ import annotations
 
 import html
+import uuid
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
@@ -48,9 +27,16 @@ from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.companion.tools.support import normalise_topic, sla_for
 from nexus_api.config import get_settings
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
+from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.core.rate_limit import allow
 from nexus_api.db.models import AuditLog
 from nexus_api.db.models.console_notification import NotificationSeverity
+from nexus_api.db.models.support_ticket import (
+    EVENT_OPEN,
+    STATUS_OPEN,
+    SupportTicket,
+    SupportTicketEvent,
+)
 from nexus_api.services import console_notifications
 from nexus_api.services.email import send_email
 
@@ -185,6 +171,7 @@ async def open_support_ticket(
     sla = sla_for(body.category, topic)
     notification_kind, audit_action = _CATEGORY_ROUTING[body.category]
     opened_at = datetime.now(UTC)
+    opened_by = principal.actor
 
     async with session.begin():
         ticket_ref = await _next_ticket_ref(session)
@@ -211,7 +198,7 @@ async def open_support_ticket(
                 # El cliente queda nombrado en ``after_json.client_ref``,
                 # que es la referencia del partner y no un id interno.
                 tenant_id=None,
-                actor=principal.actor,
+                actor=opened_by,
                 action=audit_action,
                 target=f"partner:{principal.partner.id}",
                 after_json={
@@ -225,6 +212,54 @@ async def open_support_ticket(
                 },
             )
         )
+        session.add(
+            AuditLog(
+                tenant_id=None,
+                actor=opened_by,
+                action="ticket.open",
+                target=f"ticket:{ticket_ref}",
+                after_json={
+                    "ticket_ref": ticket_ref,
+                    "category": body.category,
+                    "topic": topic,
+                    "sla": sla,
+                    "status": STATUS_OPEN,
+                },
+            )
+        )
+        # Flush como dueño (notificación + auditorías) ANTES de bajar a
+        # ``nexus_app``: emit de plataforma no corre bajo el GUC.
+        await session.flush()
+        await apply_partner_to_session(session, principal.partner.id)
+        ticket_id = uuid.uuid4()
+        session.add(
+            SupportTicket(
+                id=ticket_id,
+                partner_id=principal.partner.id,
+                ticket_ref=ticket_ref,
+                category=body.category,
+                topic=topic,
+                client_ref=body.client_ref,
+                need=body.need,
+                checked=list(body.checked),
+                alternative=body.alternative,
+                bridge=body.bridge,
+                sla=sla,
+                status=STATUS_OPEN,
+                opened_by=opened_by,
+                opened_at=opened_at,
+            )
+        )
+        session.add(
+            SupportTicketEvent(
+                ticket_id=ticket_id,
+                partner_id=principal.partner.id,
+                kind=EVENT_OPEN,
+                from_status=None,
+                to_status=STATUS_OPEN,
+                actor=opened_by,
+            )
+        )
 
     await _alert_auphere(
         ticket_ref=ticket_ref,
@@ -232,7 +267,7 @@ async def open_support_ticket(
         topic=topic,
         sla=sla,
         partner_slug=principal.partner.slug,
-        opened_by=principal.actor,
+        opened_by=opened_by,
     )
     return SupportTicketOut(
         ticket_ref=ticket_ref,

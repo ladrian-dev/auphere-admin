@@ -44,9 +44,10 @@ Important constraints
   refetch full history.
 
 - **Cancel semantics**. ``cancel(run_id)`` calls ``Task.cancel()``.
-  The driver coroutine catches ``CancelledError``, marks the
-  ``qa.runs`` row as ``cancelled``, emits ``run.completed`` with status
-  ``cancelled``, then exits. The in-flight LLM call is left to complete
+  The driver coroutine catches ``CancelledError``, awaits
+  ``on_complete`` (which marks the ``qa.runs`` row as ``cancelled``),
+  then emits ``run.completed`` with status ``cancelled``. The in-flight
+  LLM call is left to complete
   on its own (we don't have a way to cancel an in-flight Anthropic
   call from here without burning the connection); we just stop relaying
   its tokens to the client.
@@ -373,8 +374,11 @@ async def start_run(
     tests can plug a fake driver without faking LangGraph internals.
 
     ``on_complete`` runs once after the driver exits (success, error or
-    cancel). It receives the handle with ``final_status`` and
-    ``final_error`` populated, so callers can finalise the DB row.
+    cancel) and is awaited BEFORE ``run.completed`` is pushed. It
+    receives the handle with ``final_status`` and ``final_error``
+    populated, so callers can commit the ``qa.runs`` row first. The SSE
+    must not lie: a client that sees ``run.completed`` can trust the
+    row is already finalised.
     """
     loop = asyncio.get_running_loop()
     # Build the task and the handle together, registering the handle
@@ -418,9 +422,9 @@ async def _run_with_lifecycle(
 ) -> None:
     """Wrap a driver with start/completion/cancel lifecycle bookkeeping.
 
-    Emits ``run.started`` first, runs the driver, and on exit emits the
-    appropriate ``run.completed`` event. Always signals subscribers via
-    sentinel so they don't hang.
+    Emits ``run.started`` first, runs the driver, awaits ``on_complete``
+    (so the ``qa.runs`` row is committed), then emits ``run.completed``.
+    Always signals subscribers via sentinel so they don't hang.
     """
     handle = _runs.get(run_id)
     if handle is None:
@@ -448,11 +452,11 @@ async def _run_with_lifecycle(
         await driver(handle)
     except asyncio.CancelledError:
         status = "cancelled"
-        # Don't re-raise: we want the finally block to emit the
-        # completion event and run the on_complete hook before the
-        # task is observed as cancelled. The task ends in DONE state
-        # with no exception, which is fine — ``cancel()`` already
-        # signalled the intent.
+        # Don't re-raise: we want the finally block to run the
+        # on_complete hook and then emit the completion event before
+        # the task is observed as cancelled. The task ends in DONE
+        # state with no exception, which is fine — ``cancel()``
+        # already signalled the intent.
     except Exception as exc:
         status = "error"
         error = str(exc)
@@ -460,6 +464,14 @@ async def _run_with_lifecycle(
     finally:
         handle.final_status = status
         handle.final_error = error
+        # Commit the qa.runs row (and any other on_complete work)
+        # BEFORE the client can observe run.completed. A subscriber
+        # that sees the SSE can trust the row is already closed.
+        if on_complete is not None:
+            try:
+                await on_complete(handle)
+            except Exception:
+                log.exception("qa.streaming.on_complete_failed", run_id=str(run_id))
         completed = SSEEvent(
             seq=_next_seq(handle),
             event="run.completed",
@@ -479,11 +491,6 @@ async def _run_with_lifecycle(
             except Exception:
                 pass
         handle.done = True
-        if on_complete is not None:
-            try:
-                await on_complete(handle)
-            except Exception:
-                log.exception("qa.streaming.on_complete_failed", run_id=str(run_id))
         # Schedule cleanup after the retention window.
         loop = asyncio.get_running_loop()
         loop.call_later(_RETENTION_SECONDS, _drop_run, run_id)

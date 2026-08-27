@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CapabilityOut(BaseModel):
@@ -50,7 +50,10 @@ class SupportTicketIn(BaseModel):
 
     Lo compone la propuesta ya confirmada, no el modelo: entre lo que el
     Companion propuso y esta petición hay una persona que dijo que sí.
+    ``partner_id`` no existe aquí: sale de la sesión.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     category: str = Field(pattern="^(help|capability)$")
     #: Slug estable con espacio de nombres por familia. Es la clave de

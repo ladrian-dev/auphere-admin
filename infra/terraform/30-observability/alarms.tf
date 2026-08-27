@@ -21,7 +21,6 @@ resource "aws_cloudwatch_metric_alarm" "api_5xx" {
   }
 
   alarm_actions = local.alarm_actions
-  ok_actions    = local.alarm_actions
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_unhealthy_hosts" {
@@ -42,7 +41,6 @@ resource "aws_cloudwatch_metric_alarm" "api_unhealthy_hosts" {
   }
 
   alarm_actions = local.alarm_actions
-  ok_actions    = local.alarm_actions
 }
 
 # ── Runner: cola envejeciendo pese al autoescalado ─────────────────────
@@ -51,9 +49,9 @@ resource "aws_cloudwatch_metric_alarm" "api_unhealthy_hosts" {
 
 resource "aws_cloudwatch_metric_alarm" "runner_queue_stalled" {
   alarm_name          = "${local.name}-runner-queue-stalled"
-  alarm_description   = "El pending más viejo de cualquier stream de entrada supera 120 s durante 10 min."
+  alarm_description   = "El pending más viejo de cualquier stream de entrada supera 120 s durante 20 min (4×300s). Mail solo ALARM e INSUFFICIENT, no OK."
   threshold           = 120
-  evaluation_periods  = 2
+  evaluation_periods  = 4
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
 
@@ -95,7 +93,6 @@ resource "aws_cloudwatch_metric_alarm" "runner_queue_stalled" {
   }
 
   alarm_actions = local.alarm_actions
-  ok_actions    = local.alarm_actions
 
   # Verificado el 2026-08-12 contra CloudWatch: `m0` publica un punto cada
   # 300 s incluso con la cola a cero, y `m1` (stream priority) no existe
@@ -128,7 +125,6 @@ resource "aws_cloudwatch_metric_alarm" "aurora_acu_ceiling" {
   }
 
   alarm_actions = local.alarm_actions
-  ok_actions    = local.alarm_actions
 }
 
 resource "aws_cloudwatch_metric_alarm" "aurora_connections" {
@@ -148,7 +144,6 @@ resource "aws_cloudwatch_metric_alarm" "aurora_connections" {
   }
 
   alarm_actions = local.alarm_actions
-  ok_actions    = local.alarm_actions
 }
 
 # ── Valkey ─────────────────────────────────────────────────────────────
@@ -172,7 +167,6 @@ resource "aws_cloudwatch_metric_alarm" "valkey_memory" {
   }
 
   alarm_actions = local.alarm_actions
-  ok_actions    = local.alarm_actions
 }
 
 output "alerts_topic_arn" {

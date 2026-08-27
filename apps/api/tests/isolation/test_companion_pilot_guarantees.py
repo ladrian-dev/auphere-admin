@@ -80,6 +80,15 @@ def test_the_support_endpoint_exists_and_is_a_post() -> None:
     }
     assert ("/console/support/tickets", "POST") in routes
     assert ("/console/capabilities", "GET") in routes
+    support = {
+        (path, method) for path, method in routes if path and path.startswith("/console/support")
+    }
+    assert support == {("/console/support/tickets", "POST")}
+    assert ("/console/support/tickets", "GET") not in routes
+    assert ("/admin/tickets", "GET") in routes
+    assert ("/admin/tickets/{ticket_id}", "GET") in routes
+    assert ("/admin/tickets/{ticket_id}", "PATCH") in routes
+    assert ("/admin/tickets", "POST") not in routes
 
 
 def test_the_support_tools_accept_no_tenant_or_partner_id() -> None:
@@ -363,3 +372,10 @@ async def test_me_publishes_the_flag(client, console_world, db_session) -> None:
     me = await client.get("/console/me", headers=a["headers"]())
     assert me.json()["companion_enabled"] is False
     await _set_flag(db_session, a["partner_id"], True)
+
+
+def test_no_support_read_or_write_scopes() -> None:
+    from nexus_api.core.console_auth import PERMISSIONS
+
+    assert "support:read" not in PERMISSIONS
+    assert "support:write" not in PERMISSIONS

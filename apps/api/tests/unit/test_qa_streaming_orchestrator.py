@@ -222,7 +222,7 @@ async def test_cancel_marks_run_cancelled_and_completes() -> None:
 
 
 async def test_on_complete_callback_receives_handle() -> None:
-    """The ``on_complete`` hook fires AFTER ``run.completed`` with
+    """The ``on_complete`` hook fires BEFORE ``run.completed`` with
     ``final_status`` and totals populated."""
     captured: dict[str, object] = {}
 
@@ -231,6 +231,7 @@ async def test_on_complete_callback_receives_handle() -> None:
         captured["error"] = h.final_error
         captured["input"] = h.total_input_tokens
         captured["output"] = h.total_output_tokens
+        captured["completed_already"] = any(ev.event == "run.completed" for ev in h.buffer)
 
     async def driver(handle: RunHandle) -> None:
         # Push a cost.updated event by hand (the default driver does
@@ -255,6 +256,8 @@ async def test_on_complete_callback_receives_handle() -> None:
     assert captured["error"] is None
     assert captured["input"] == 100
     assert captured["output"] == 30
+    assert captured["completed_already"] is False
+    assert any(ev.event == "run.completed" for ev in handle.buffer)
 
 
 async def test_error_status_when_driver_raises() -> None:

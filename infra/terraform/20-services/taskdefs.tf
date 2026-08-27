@@ -270,6 +270,17 @@ locals {
   container_definitions = {
     api = [
       merge(local.app_base["api"], {
+        # ARN only (not the master). API GetSecretValue via task role.
+        # Staging only; runner / Next / app secret never get this.
+        environment = concat(
+          local.common_env,
+          terraform.workspace == "staging" ? [
+            {
+              name  = "LITELLM_ADMIN_SECRET_ARN"
+              value = aws_secretsmanager_secret.litellm_admin[0].arn
+            },
+          ] : [],
+        )
         portMappings = [{ containerPort = 8000, protocol = "tcp" }]
         healthCheck = {
           command     = ["CMD-SHELL", "curl --silent --fail http://127.0.0.1:8000/health/live || exit 1"]

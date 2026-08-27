@@ -59,13 +59,31 @@ async def apply_partner_to_session(session: AsyncSession, partner_id: object) ->
     await session.execute(
         text(
             "SELECT set_config('app.partner_id', :pid, true), "
+            "       set_config('app.is_admin', '', true), "
             "       set_config('role', 'nexus_app', true)"
         ),
         {"pid": str(partner_id)},
     )
 
 
+async def apply_admin_to_session(session: AsyncSession) -> None:
+    """Fija ``app.is_admin`` para esta transacción. Sin BYPASSRLS.
+
+    FORCE + policy ``app.is_admin``. No baja a ``nexus_app``: ese rol no
+    tiene ``operator_auth`` ni escribe ``audit_log`` de plataforma
+    (tenant_id NULL). El GUC basta para que FORCE deje ver las filas.
+    ``app.partner_id`` se vacía: la cookie de overlay no es un GUC de partner.
+    """
+    await session.execute(
+        text(
+            "SELECT set_config('app.is_admin', 'true', true), "
+            "       set_config('app.partner_id', '', true)"
+        )
+    )
+
+
 __all__ = [
+    "apply_admin_to_session",
     "apply_partner_to_session",
     "get_current_partner",
     "partner_context",

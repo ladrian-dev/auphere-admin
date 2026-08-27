@@ -563,6 +563,11 @@ async def _ensure_qa_conversation(
 _qa_pipeline_dry: Any | None = None
 _qa_pipeline_live: Any | None = None
 
+# Playground hops (classify + respond). Closed catalog ids only — G1 has
+# Sol, not Haiku/Sonnet. Empty fallback = no vendor acompletion hop.
+QA_CLASSIFY_MODEL = "openai/gpt-5.6-sol"
+QA_RESPOND_MODEL = "openai/gpt-5.6-sol"
+
 
 def _get_qa_pipeline(*, live: bool) -> Any:
     """Build the QA pipeline once per process per mode and reuse it.
@@ -598,9 +603,9 @@ def _get_qa_pipeline(*, live: bool) -> Any:
     provider = LiteLLMProvider()
     llm_router = LLMRouter(
         provider=provider,
-        classify_model="anthropic/claude-haiku-4-5-20251001",
-        respond_model="anthropic/claude-sonnet-4-6",
-        fallback_model="openai/gpt-4o",
+        classify_model=QA_CLASSIFY_MODEL,
+        respond_model=QA_RESPOND_MODEL,
+        fallback_model="",
     )
     pipeline = build_qa_pipeline(
         agent_loader=AgentLoader(),

@@ -48,6 +48,7 @@ from nexus_api.core.metrics import (
     record_isolation_event,
 )
 from nexus_api.core.otel_metrics import record_llm_call
+from nexus_api.core.respond_catalog import require_hop_model
 
 from nexus_worker.metering.collector import provider_of, record_llm_usage, usage_fields
 from nexus_worker.observability.tracing import record_generation
@@ -578,7 +579,9 @@ def _proxy_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _proxied_acompletion(litellm: Any, kwargs: dict[str, Any]) -> Any:
-    """Single hop: same api_base, no vendor fallback."""
+    """Single hop: catalog id, same api_base, no vendor fallback."""
+    model = kwargs.get("model")
+    require_hop_model(model if isinstance(model, str) else "")
     _proxy_kwargs(kwargs)
     try:
         return await litellm.acompletion(**kwargs)

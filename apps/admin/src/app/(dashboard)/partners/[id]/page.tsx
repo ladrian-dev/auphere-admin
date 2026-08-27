@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { backend } from "@/lib/backend";
 
+import { ImpersonateForm } from "./impersonate-form";
 import { KeysPanel } from "./keys-panel";
 
 /**
@@ -43,6 +44,21 @@ export default async function PartnerKeysPage({
         </CardHeader>
         <CardContent>
           <KeysPanel partnerId={partner.id} keys={keys} />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <Eyebrow>Impersonación</Eyebrow>
+          <CardTitle>Overlay de admin</CardTitle>
+          <CardDescription>
+            No te convierte en el partner. Abre un alcance admin con
+            auditoría. La recarga de wallet y el bloqueo LLM siguen
+            actuando como admin. Cookie httpOnly en este host, nunca un
+            JWT de partner ni una cookie de consola.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ImpersonateForm partnerId={partner.id} />
         </CardContent>
       </Card>
     </div>

@@ -188,13 +188,12 @@ def build_context(service_name: str) -> WorkerContext:
     ensure_queue_gauges()
 
     loader = AgentLoader(max_size=worker_settings.agent_cache_size)
-    # Fallback model is hardcoded same-vendor (Anthropic Haiku) — cross-
-    # provider fallback was unworkable (Anthropic-only params in the
-    # payload). See incident 2026-05-28.
+    # Fallback stays inside the closed Sol|Terra|Luna catalog. A miss
+    # would raise before acompletion (F0). Deduped when it equals respond.
     router = build_default_router(
         classify_model=worker_settings.llm_classify_model,
         respond_model=worker_settings.llm_respond_model,
-        fallback_model="anthropic/claude-haiku-4-5",
+        fallback_model=worker_settings.llm_respond_model,
         use_inmemory=worker_settings.llm_use_inmemory,
     )
     redis = get_redis()

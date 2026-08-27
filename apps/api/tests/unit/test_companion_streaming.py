@@ -16,6 +16,7 @@ import pytest
 
 from nexus_api.api import companion_streaming as streaming
 from nexus_api.config import get_settings
+from nexus_api.core.respond_catalog import HUMAN_TURN_ERROR
 
 pytestmark = pytest.mark.asyncio
 
@@ -229,6 +230,36 @@ async def test_a_failing_driver_closes_as_error_not_as_silence(fake_redis) -> No
     events, _ = await streaming.read_events(fake_redis, run_id)
     assert events[-1].event == "run.completed"
     assert events[-1].data["status"] == "error"
+    assert events[-1].data["error"] == HUMAN_TURN_ERROR
+
+
+async def test_a_mocked_400_reaches_the_ui_without_vendor_leaks(fake_redis) -> None:
+    run_id = uuid.uuid4()
+    leak = (
+        "litellm.BadRequestError: AnthropicException — model claude-sonnet-4-6 "
+        "not found. NEXUS_LLM_COMPANION_MODEL LITELLM_PROXY_API_BASE sk-ant-secret"
+    )
+
+    async def _driver(handle: streaming.CompanionRunHandle) -> None:
+        raise RuntimeError(leak)
+
+    handle = await streaming.start_run(
+        redis=fake_redis,
+        run_id=run_id,
+        thread_id=uuid.uuid4(),
+        principal_id="user_1",
+        driver=_driver,
+    )
+    await handle.task
+    events, _ = await streaming.read_events(fake_redis, run_id)
+    terminal = events[-1]
+    assert terminal.event == "run.completed"
+    assert terminal.data["status"] == "error"
+    assert terminal.data["error"] == HUMAN_TURN_ERROR
+    assert handle.final_error == HUMAN_TURN_ERROR
+    blob = json.dumps(terminal.data)
+    for needle in ("litellm", "Anthropic", "claude-", "NEXUS_", "LITELLM_", "sk-"):
+        assert needle.lower() not in blob.lower()
 
 
 async def test_cancel_stops_a_local_run(fake_redis) -> None:

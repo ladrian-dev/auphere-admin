@@ -11,6 +11,8 @@ const TABS = [
   { slug: "limits", label: "Límites" },
   { slug: "usage", label: "Uso" },
   { slug: "wallet", label: "Consumo" },
+  { slug: "models", label: "Modelos" },
+  { slug: "knowledge", label: "Conocimiento" },
   { slug: "receipts", label: "Recibos" },
   { slug: "audit", label: "Auditoría" },
 ] as const;

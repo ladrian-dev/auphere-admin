@@ -233,3 +233,93 @@ async def test_improver_invoke_strips_tenant_and_never_sends_partner_id(
     assert captured[0]["api_base"] == BASE
     assert "tenant_id" not in (captured[0].get("metadata") or {})
     assert "partner_id" not in captured[0]
+
+
+async def test_block_a_does_not_call_b_key(
+    monkeypatch: pytest.MonkeyPatch, proxy_map: None
+) -> None:
+    """Block A posts only A's VK. Response helper never returns sk-."""
+    from nexus_api.core.llm_proxy import partner_key_set_blocked
+
+    seen: list[dict[str, Any]] = []
+
+    async def fake_call(
+        method: str,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, str] | None = None,
+    ) -> Any:
+        seen.append({"method": method, "path": path, "json_body": json_body, "params": params})
+
+        class _Resp:
+            status_code = 200
+
+            def json(self) -> dict[str, Any]:
+                return {"key": KEY_A, "blocked": True}
+
+        return _Resp()
+
+    monkeypatch.setattr("nexus_api.core.llm_proxy.litellm_admin_master", lambda: "test-master")
+    monkeypatch.setattr("nexus_api.core.llm_proxy.litellm_admin_call", fake_call)
+    await partner_key_set_blocked(PARTNER_A, True)
+    assert seen
+    assert seen[0]["path"] == "/key/block"
+    assert seen[0]["json_body"] == {"key": KEY_A}
+    assert KEY_B not in str(seen)
+    assert all((c.get("json_body") or {}).get("key") != KEY_B for c in seen)
+
+
+def test_litellm_admin_master_is_mockable(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nexus_api.core.llm_proxy as proxy
+
+    def _boom() -> str:
+        raise AssertionError("GetSecretValue must not run in tests")
+
+    monkeypatch.delenv("LITELLM_MASTER_KEY", raising=False)
+    monkeypatch.delenv("LITELLM_ADMIN_SECRET_ARN", raising=False)
+    monkeypatch.setattr(proxy, "_fetch_litellm_admin_secret", _boom)
+    monkeypatch.setattr(proxy, "litellm_admin_master", lambda: "test-master")
+    assert proxy.litellm_admin_master() == "test-master"
+
+
+def test_admin_master_ignores_env_master_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    """IAM hop: env is the ARN, never the master valueFrom."""
+    import nexus_api.core.llm_proxy as proxy
+
+    monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-env-must-never-win")
+    monkeypatch.delenv("LITELLM_ADMIN_SECRET_ARN", raising=False)
+    monkeypatch.delenv("NEXUS_LITELLM_ADMIN_SECRET_ARN", raising=False)
+    assert proxy.litellm_admin_master() == ""
+    assert proxy.litellm_admin_master() != "sk-env-must-never-win"
+
+
+def test_fetch_admin_secret_uses_arn(monkeypatch: pytest.MonkeyPatch) -> None:
+    import boto3
+
+    import nexus_api.core.llm_proxy as proxy
+
+    arn = "arn:aws:secretsmanager:eu-west-1:1:secret:nexus/staging/litellm-admin"
+    seen: dict[str, str] = {}
+
+    class _Client:
+        def get_secret_value(self, **kwargs: object) -> dict[str, str]:
+            secret_id = kwargs.get("SecretId")
+            assert isinstance(secret_id, str)
+            seen["id"] = secret_id
+            return {"SecretString": json.dumps({"LITELLM_MASTER_KEY": "from-sm"})}
+
+    monkeypatch.setenv("LITELLM_ADMIN_SECRET_ARN", arn)
+    monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-env-forbidden")
+    monkeypatch.setattr(boto3, "client", lambda *_a, **_k: _Client())
+    assert proxy._fetch_litellm_admin_secret() == "from-sm"
+    assert seen["id"] == arn
+    assert seen["id"] != "litellm-admin"
+
+
+def test_blocked_from_info_does_not_need_key() -> None:
+    from nexus_api.core.llm_proxy import _blocked_from_info
+
+    assert _blocked_from_info({"info": {"blocked": True, "key": "sk-hidden"}}) is True
+    assert _blocked_from_info({"blocked": False}) is False
+    assert _blocked_from_info("sk-nope") is False

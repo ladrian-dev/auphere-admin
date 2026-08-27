@@ -9,9 +9,10 @@
     "start": "next start -p 3110",
     "lint": "eslint --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && node scripts/check-no-env-leaks.mjs",
     "test:watch": "vitest",
     "check:no-admin-token": "node scripts/check-no-admin-token.mjs",
+    "check:no-env-leaks": "node scripts/check-no-env-leaks.mjs",
     "keys:generate": "node scripts/generate-console-keys.mjs",
     "test:e2e": "playwright test"
   },

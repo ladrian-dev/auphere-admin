@@ -70,6 +70,7 @@ from nexus_api.core.principal_context import (
     principal_context,
 )
 from nexus_api.core.rate_limit import allow
+from nexus_api.core.respond_catalog import HUMAN_TURN_ERROR, RESPOND_MODEL_ID_SET
 from nexus_api.db.models import Partner, PartnerMembership, PartnerTenant
 from nexus_api.db.models.companion import (
     RUN_COMPLETED,
@@ -355,6 +356,21 @@ def _require_proxy(partner_id: uuid.UUID) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "llm_proxy_unavailable"},
         ) from exc
+
+
+def _require_catalog_model() -> None:
+    """Human 409 if the Companion hop id is outside Sol|Terra|Luna.
+
+    Companion does not read ``tenant_model_bindings``. The hop uses
+    ``settings.llm_companion_model`` only. A miss here is a 400 from the
+    G1 proxy — fail before that hop, with the same phrase as the channel.
+    """
+    model = get_settings().llm_companion_model
+    if model not in RESPOND_MODEL_ID_SET:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=HUMAN_TURN_ERROR,
+        )
 
 
 async def _require_wallet(partner_id: uuid.UUID) -> None:
@@ -654,6 +670,7 @@ async def start_run(
                 )
             await _require_wallet(partner.id)
             _require_proxy(partner.id)
+            _require_catalog_model()
             await _guard_concurrency(session, principal_id)
             run = CompanionRun(thread_id=thread.id, principal_id=principal_id, status=RUN_RUNNING)
             session.add(run)
@@ -1701,6 +1718,7 @@ async def resume_run(
                 )
             await _require_wallet(caller.partner.id)
             _require_proxy(caller.partner.id)
+            _require_catalog_model()
             await _guard_concurrency(session, principal_id)
             new_run = CompanionRun(
                 thread_id=thread.id, principal_id=principal_id, status=RUN_RUNNING

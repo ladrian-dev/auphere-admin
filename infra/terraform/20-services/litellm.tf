@@ -88,6 +88,33 @@ resource "aws_iam_role" "litellm_task" {
   assume_role_policy = data.aws_iam_policy_document.litellm_ecs_assume[0].json
 }
 
+# SSM port-forward (AWS-StartPortForwardingSession). Sin bastión, $0.
+# Hace falta enable_execute_command para que exista el target SSM.
+# No documentamos ecs execute-command (shell).
+# https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html#ecs-exec-required-iam-permissions
+data "aws_iam_policy_document" "litellm_task_ssm" {
+  count = local.litellm_count
+
+  statement {
+    sid = "SsmMessagesPortForward"
+    actions = [
+      "ssmmessages:CreateControlChannel",
+      "ssmmessages:CreateDataChannel",
+      "ssmmessages:OpenControlChannel",
+      "ssmmessages:OpenDataChannel",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "litellm_task_ssm" {
+  count = local.litellm_count
+
+  name   = "ssm-port-forward"
+  role   = aws_iam_role.litellm_task[0].id
+  policy = data.aws_iam_policy_document.litellm_task_ssm[0].json
+}
+
 resource "aws_service_discovery_service" "litellm" {
   count = local.litellm_count
 
@@ -161,6 +188,10 @@ resource "aws_ecs_task_definition" "litellm" {
         },
       ]
 
+      linuxParameters = {
+        initProcessEnabled = true
+      }
+
       healthCheck = {
         command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')\""]
         interval    = 30
@@ -214,6 +245,10 @@ resource "aws_ecs_service" "litellm" {
 
   deployment_maximum_percent         = 100
   deployment_minimum_healthy_percent = 0
+
+  # Target SSM para port-forward. Requiere redeploy. Sin ALB.
+  # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-exec.html
+  enable_execute_command = true
 }
 
 output "litellm_dns" {

@@ -247,3 +247,38 @@ async def test_propose_knowledge_apply_body_has_no_partner_id() -> None:
     assert proposal.apply_body == {"url": "https://example.com/playbook.md"}
     assert "partner_id" not in (proposal.apply_body or {})
     assert proposal.apply_path == "/console/knowledge/url"
+
+
+async def test_admin_partner_a_cannot_list_bs_playbook(
+    client, console_world, admin_headers
+) -> None:
+    a, b = console_world["a"], console_world["b"]
+    await _seed_playbook(b["partner_id"], "Playbook B", PLAYBOOK_MARK)
+    await _seed_playbook(a["partner_id"], "Playbook A", "A_PLAYBOOK_MARK")
+
+    listed = await client.get(f"/admin/partners/{a['partner_id']}/knowledge", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    assert body["total"] == 1
+    assert body["prompt_char_cap"] == 20000
+    assert body["items"][0]["title"] == "Playbook A"
+    assert "content_text" not in body
+    assert not any("content_text" in item for item in body["items"])
+    assert PLAYBOOK_MARK not in listed.text
+    assert "A_PLAYBOOK_MARK" not in listed.text
+    assert "sk-" not in listed.text
+
+    b_list = await client.get(f"/admin/partners/{b['partner_id']}/knowledge", headers=admin_headers)
+    assert b_list.status_code == 200, b_list.text
+    assert b_list.json()["total"] == 1
+    assert b_list.json()["items"][0]["title"] == "Playbook B"
+    assert "content_text" not in b_list.json()["items"][0]
+    assert PLAYBOOK_MARK not in b_list.text
+    assert "sk-" not in b_list.text
+
+
+async def test_admin_unknown_partner_knowledge_is_404(client, admin_headers) -> None:
+    missing = uuid.uuid4()
+    resp = await client.get(f"/admin/partners/{missing}/knowledge", headers=admin_headers)
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": f"partner {missing} not found"}

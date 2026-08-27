@@ -363,10 +363,12 @@ _TRUNCATE_TABLES = (
     "usage_ledger",
     "partner_allocations",
     "partner_wallets",
+    "partner_model_allowlist",
     "partner_tenants",
     "api_keys",
     # Migration 0080 — console principals. Invitations FK memberships
     # (SET NULL) and both FK partners (CASCADE): clear them first.
+    "admin_impersonation_sessions",
     "partner_invitations",
     "partner_memberships",
     "partners",

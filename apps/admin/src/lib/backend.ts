@@ -27,6 +27,16 @@ import type { ChannelRole } from "@/lib/channels";
 
 const BACKEND_URL = process.env.NEXUS_BACKEND_URL ?? "http://localhost:8000";
 const ADMIN_TOKEN = process.env.NEXUS_ADMIN_TOKEN ?? "dev-admin-token-change-me";
+const CONSOLE_URL = (process.env.NEXUS_CONSOLE_URL ?? "http://localhost:3110").replace(
+  /\/$/,
+  "",
+);
+
+/** Deep-link into the partner console. Operator does not enter with a partner session. */
+export function consoleHref(path: string): string {
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return `${CONSOLE_URL}${suffix}`;
+}
 
 export class BackendError extends Error {
   constructor(
@@ -887,6 +897,140 @@ export type PartnerLedgerOut = {
   created_at: string;
 };
 
+export type PartnerModelItemOut = {
+  model_id: string;
+  display_name: string;
+  allowed: boolean;
+};
+
+export type PartnerModelsOut = {
+  items: PartnerModelItemOut[];
+};
+
+export type PartnerLlmOut = {
+  blocked: boolean;
+};
+
+export type AdminImpersonateOut = {
+  id: string;
+  partner_id: string;
+  operator_id: string;
+  reason: string;
+  ttl_seconds: number;
+  expires_at: string;
+  revoked_at: string | null;
+  created_at: string;
+};
+
+export type AdminImpersonateIn = {
+  reason: string;
+  ttl_seconds?: number;
+};
+
+export type TicketStatus = "open" | "pending" | "closed";
+
+export type AdminTicketOut = {
+  id: string;
+  ticket_ref: string;
+  partner_id: string;
+  partner_name: string;
+  partner_slug: string;
+  category: string;
+  topic: string;
+  sla: string;
+  status: TicketStatus;
+  client_ref: string | null;
+  need: string;
+  checked: string[];
+  alternative: string | null;
+  bridge: boolean;
+  opened_by: string;
+  created_at?: string;
+  opened_at: string;
+  updated_at: string;
+};
+
+export type AdminTicketEventOut = {
+  id: string;
+  kind: string;
+  from_status: string | null;
+  to_status: string;
+  actor: string;
+  created_at: string;
+};
+
+export type AdminTicketDetailOut = AdminTicketOut & {
+  events: AdminTicketEventOut[];
+  links: {
+    consumo: string;
+    modelos: string;
+    conocimiento: string;
+  };
+};
+
+export type KnowledgeKind = "file" | "url";
+export type KnowledgeStatus = "pending" | "indexed" | "failed";
+export type KnowledgeErrorCode =
+  | "fetch_failed"
+  | "unsupported_type"
+  | "too_large"
+  | "empty";
+
+/** Mirror of console ``KnowledgeDocumentOut``. Never ``content_text``. */
+export type KnowledgeDocumentOut = {
+  id: string;
+  kind: KnowledgeKind;
+  title: string;
+  source_url: string | null;
+  mime: string;
+  size_bytes: number;
+  status: KnowledgeStatus;
+  error_code: KnowledgeErrorCode | null;
+  chunk_count: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  indexed_at: string | null;
+};
+
+/** Mirror of console ``KnowledgeListOut``. */
+export type KnowledgeListOut = {
+  items: KnowledgeDocumentOut[];
+  total: number;
+  indexed_chars: number;
+  prompt_char_cap: number;
+};
+
+export type WorkflowCronOut = {
+  hour: number;
+  minute: number;
+  timezone: string;
+};
+
+/** Mirror of console ``WorkflowPackOut``. */
+export type WorkflowPackOut = {
+  client_ref: string;
+  is_set: boolean;
+  version: number | null;
+  trigger: "cron" | "event" | null;
+  steps: string[];
+  template_id: string | null;
+  cron: WorkflowCronOut | null;
+  enabled: boolean | null;
+  end_time: string | null;
+  stop: string | null;
+};
+
+export type WorkflowRunOut = {
+  thread_id: string;
+  status: string;
+};
+
+/** Mirror of console ``WorkflowRunsOut``. */
+export type WorkflowRunsOut = {
+  items: WorkflowRunOut[];
+};
+
 export type PartnerUsageOut = {
   partner_id: string;
   window_days: number;
@@ -1740,6 +1884,43 @@ export const backend = {
       body: { qty },
     }),
 
+  getPartnerModels: (partnerId: string) =>
+    call<PartnerModelsOut>(`/admin/partners/${partnerId}/models`, {
+      optional: true,
+    }),
+
+  putPartnerModels: (partnerId: string, modelIds: string[]) =>
+    call<PartnerModelsOut>(`/admin/partners/${partnerId}/models`, {
+      method: "PUT",
+      body: { model_ids: modelIds },
+    }),
+
+  getPartnerLlm: (partnerId: string) =>
+    call<PartnerLlmOut>(`/admin/partners/${partnerId}/llm`),
+
+  blockPartnerLlm: (partnerId: string, blocked: boolean) =>
+    call<PartnerLlmOut>(`/admin/partners/${partnerId}/llm/block`, {
+      method: "POST",
+      body: { blocked },
+    }),
+
+  getPartnerKnowledge: (partnerId: string) =>
+    call<KnowledgeListOut>(`/admin/partners/${partnerId}/knowledge`, {
+      optional: true,
+    }),
+
+  getPartnerClientWorkflow: (partnerId: string, ref: string) =>
+    call<WorkflowPackOut>(
+      `/admin/partners/${partnerId}/clients/${encodeURIComponent(ref)}/workflow`,
+      { optional: true },
+    ),
+
+  getPartnerClientWorkflowRuns: (partnerId: string, ref: string) =>
+    call<WorkflowRunsOut>(
+      `/admin/partners/${partnerId}/clients/${encodeURIComponent(ref)}/workflow/runs`,
+      { optional: true },
+    ).then((r) => r ?? { items: [] }),
+
   getPartnerUsage: (partnerId: string, windowDays = 30) =>
     call<PartnerUsageOut>(
       `/admin/partners/${partnerId}/usage?window_days=${windowDays}`,
@@ -1768,6 +1949,49 @@ export const backend = {
       `/admin/partners/${partnerId}/receipts/${invoiceId}/send`,
       { method: "POST", body: {} },
     ),
+
+  // ── F4 support tickets inbox ──────────────────────────────────────
+  listTickets: (opts?: { status?: TicketStatus; partnerId?: string }) => {
+    const qs = new URLSearchParams();
+    if (opts?.status) qs.set("status", opts.status);
+    if (opts?.partnerId) qs.set("partner_id", opts.partnerId);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return call<AdminTicketOut[]>(`/admin/tickets${suffix}`).then((r) => r ?? []);
+  },
+
+  getTicket: (ticketId: string) =>
+    call<AdminTicketDetailOut>(`/admin/tickets/${ticketId}`, {
+      optional: true,
+    }),
+
+  patchTicketStatus: (ticketId: string, status: TicketStatus) =>
+    call<AdminTicketDetailOut>(`/admin/tickets/${ticketId}`, {
+      method: "PATCH",
+      body: { status },
+    }),
+
+  startImpersonation: (
+    partnerId: string,
+    body: AdminImpersonateIn,
+    operatorId: string,
+  ) =>
+    call<AdminImpersonateOut>(`/admin/partners/${partnerId}/impersonate`, {
+      method: "POST",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  revokeImpersonation: (sessionId: string, operatorId: string) =>
+    call<AdminImpersonateOut>(`/admin/impersonate/${sessionId}/revoke`, {
+      method: "POST",
+      body: {},
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  listActiveImpersonations: (operatorId: string) =>
+    call<AdminImpersonateOut[]>("/admin/impersonate/active", {
+      headers: { "X-Operator-Id": operatorId },
+    }).then((r) => r ?? []),
 
   // ── billing plans + per-tenant billing ────────────────────────────────
   listBillingPlans: () =>
