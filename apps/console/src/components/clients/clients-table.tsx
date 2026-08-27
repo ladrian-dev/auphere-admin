@@ -31,7 +31,7 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
   const [q, setQ] = React.useState(query.q);
-  const debounceRef = React.useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const debounceRef = React.useRef<number | null>(null);
 
   const push = React.useCallback(
     (patch: Record<string, string | undefined>) => {
