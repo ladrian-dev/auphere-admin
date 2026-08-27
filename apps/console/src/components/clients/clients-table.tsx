@@ -44,6 +44,19 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
     [params, pathname, router],
   );
 
+  React.useEffect(() => {
+    setQ(query.q);
+  }, [query.q]);
+
+  React.useEffect(() => {
+    const handle = window.setTimeout(() => {
+      const next = q.trim();
+      if (next === (query.q || "").trim()) return;
+      push({ q: next || undefined });
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [q, query.q, push]);
+
   const columns = React.useMemo<ColumnDef<ClientSummary, unknown>[]>(
     () => [
       {
@@ -82,7 +95,7 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
         className="flex flex-wrap items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          push({ q: q || undefined });
+          push({ q: q.trim() || undefined });
         }}
         role="search"
       >

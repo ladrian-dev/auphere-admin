@@ -58,6 +58,10 @@ export const onboardingMessages = {
   "wizard.done.partial": { es: "El cliente existe pero alguna etapa falló. Reintenta o termina desde su ficha.", en: "The client exists but a stage failed. Retry or finish from its page." },
   "wizard.quota.blocked": { es: "No puedes crear más clientes: {used} de {max} en uso.", en: "You cannot create more clients: {used} of {max} in use." },
   "wizard.leave": { es: "Cancelar", en: "Cancel" },
+  "wizard.dirty.title": { es: "¿Salir sin terminar?", en: "Leave without finishing?" },
+  "wizard.dirty.body": { es: "Si sales ahora, se pierden los datos que has escrito.", en: "If you leave now, the details you entered will be lost." },
+  "wizard.dirty.confirm": { es: "Salir", en: "Leave" },
+  "wizard.dirty.back": { es: "Volver", en: "Go back" },
 
   // ── placeholder labels (seed keys) ────────────────────────────────
   "ph.agent.name": { es: "Nombre del agente", en: "Agent name" },
@@ -92,6 +96,8 @@ export const onboardingMessages = {
   "ph.policies.minor.consent_required": { es: "Consentimiento para menores", en: "Consent required for minors" },
   "ph.policies.surgery.deposit_pct": { es: "Depósito de cirugía (%)", en: "Surgery deposit (%)" },
   "ph.policies.store.currency": { es: "Moneda de la tienda", en: "Store currency" },
+  "ph.policies.store.shipping_info": { es: "Política de envío", en: "Shipping policy" },
+  "ph.policies.store.returns_info": { es: "Política de devoluciones", en: "Returns policy" },
   "ph.policies.wholesale.contact_name": { es: "Contacto mayorista", en: "Wholesale contact" },
   "ph.policies.wholesale.contact_phone": { es: "Teléfono mayorista", en: "Wholesale phone" },
   "ph.policies.admin_access.admin_phones": { es: "Teléfonos de administradores (E.164)", en: "Admin phone numbers (E.164)" },

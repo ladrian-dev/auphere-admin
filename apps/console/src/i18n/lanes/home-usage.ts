@@ -68,6 +68,7 @@ export const homeUsageMessages = {
   "hu.usage.allocations.saved": { es: "Tope actualizado.", en: "Cap updated." },
   "hu.usage.allocations.over": { es: "La suma de topes superaría la cuota disponible.", en: "The sum of caps would exceed available quota." },
   "hu.usage.allocations.invalidCap": { es: "El tope debe ser un entero ≥ 0.", en: "The cap must be an integer ≥ 0." },
+  "hu.usage.allocations.emptyCap": { es: "Sin tope. No se guardó nada.", en: "No cap. Nothing was saved." },
   "hu.usage.allocations.manage": { es: "Gestionar cupos", en: "Manage quotas" },
   "hu.usage.allocations.assign": { es: "Asignar cupo", en: "Assign quota" },
   "hu.usage.allocations.assign.client": { es: "Cliente sin asignación", en: "Client without allocation" },
