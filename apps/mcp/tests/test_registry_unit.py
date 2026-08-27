@@ -15,7 +15,9 @@ def test_default_registry_has_all_block_d_tools():
     notification tools (migration 0020) + 12 woocommerce.* tools
     (migration 0024) + ``response.send_interactive`` (migration 0036)
     + 12 billing.* Amigable Cobro tools (5 reads + 6 admin writes + the
-    on-demand ``billing.send_reminders`` from migration 0058) = 54 LLM-facing.
+    on-demand ``billing.send_reminders`` from migration 0058)
+    + 4 inventory.* tools (search_products, get_product, check_stock,
+    low_stock) = 58 LLM-facing.
 
     Block O (ADR-017) registers 2 INTERNAL tools (``agendapro_public.
     check_availability`` and ``.create_appointment``) that the booking
@@ -25,7 +27,7 @@ def test_default_registry_has_all_block_d_tools():
     reset_default_registry()
     reg = build_default_registry()
     names = set(reg.names())
-    assert len(names) == 54
+    assert len(names) == 58
     assert "operator.consult_owner" in names
     assert "response.send_interactive" in names
     # Block O internal tools — not LLM-facing.
@@ -63,6 +65,13 @@ def test_default_registry_has_all_block_d_tools():
         "billing.create_account",
         "billing.update_account",
         "billing.send_reminders",
+    }.issubset(names)
+    assert any(n.startswith("inventory.") for n in names)
+    assert {
+        "inventory.search_products",
+        "inventory.get_product",
+        "inventory.check_stock",
+        "inventory.low_stock",
     }.issubset(names)
 
 
