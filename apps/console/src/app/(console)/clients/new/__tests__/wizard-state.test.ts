@@ -15,6 +15,7 @@ import {
   slugify,
   stageReducer,
   wizardIsDirty,
+  wizardShouldBlockLeave,
 } from "../wizard-state";
 
 describe("wizard-state", () => {
@@ -114,3 +115,13 @@ describe("resolvePlaceholderLabel (QA-03)", () => {
   });
 });
 
+
+describe("wizardShouldBlockLeave (QA-04)", () => {
+  it("blocks only when dirty and not done", () => {
+    expect(wizardShouldBlockLeave(true, "idle")).toBe(true);
+    expect(wizardShouldBlockLeave(true, "running")).toBe(true);
+    expect(wizardShouldBlockLeave(true, "partial")).toBe(true);
+    expect(wizardShouldBlockLeave(true, "done")).toBe(false);
+    expect(wizardShouldBlockLeave(false, "idle")).toBe(false);
+  });
+});

@@ -118,6 +118,11 @@ export function wizardIsDirty(values: Pick<WizardValues, "name" | "external_clie
   return Object.values(values.placeholders).some((v) => (v ?? "").trim() !== "");
 }
 
+/** Dirty + unfinished run → Back / nav / browser back must confirm (QA-04). */
+export function wizardShouldBlockLeave(dirty: boolean, outcome: ReturnType<typeof runOutcome>): boolean {
+  return dirty && outcome !== "done";
+}
+
 /**
  * Seed keys the wizard asks for (describe_placeholders minus tenant.name /
  * tenant.timezone, plus pending policy keys). Used by QA-03 to guarantee
