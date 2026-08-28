@@ -27,10 +27,17 @@ def _build_llm_router() -> LLMRouter:
     from nexus_worker.runtime.llm import LiteLLMProvider
 
     provider = LiteLLMProvider()
+    # Los tres identificadores van PINEADOS y verificados contra el
+    # proveedor. ``anthropic/claude-sonnet-4-6`` estuvo aquí hasta el
+    # 2026-08-28 y no existe: Anthropic responde
+    # ``Invalid model name``, así que el playground fallaba para TODOS
+    # los tenants — clasificaba bien y reventaba al responder. Un alias
+    # sin pinear caduca en silencio; el fallo aparece en producción, no
+    # en un test.
     return LLMRouter(
         provider=provider,
         classify_model="anthropic/claude-haiku-4-5-20251001",
-        respond_model="anthropic/claude-sonnet-4-6",
+        respond_model="anthropic/claude-haiku-4-5-20251001",
         fallback_model="openai/gpt-4o",
     )
 
