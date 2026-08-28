@@ -22,6 +22,7 @@ type Props = {
 };
 
 const STATUSES = ["", "active", "provisioning", "paused", "archived"] as const;
+const SEARCH_DEBOUNCE_MS = 300;
 
 export function ClientsTable({ items, total, page, limit, query }: Props) {
   const t = useT();
@@ -30,6 +31,7 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
   const [q, setQ] = React.useState(query.q);
+  const debounceRef = React.useRef<number | null>(null);
 
   const push = React.useCallback(
     (patch: Record<string, string | undefined>) => {
@@ -42,6 +44,25 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
       router.push(`${pathname}?${next.toString()}`);
     },
     [params, pathname, router],
+  );
+
+  const scheduleSearch = React.useCallback(
+    (value: string) => {
+      setQ(value);
+      if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+      debounceRef.current = window.setTimeout(() => {
+        const next = value.trim();
+        push({ q: next || undefined });
+      }, SEARCH_DEBOUNCE_MS);
+    },
+    [push],
+  );
+
+  React.useEffect(
+    () => () => {
+      if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+    },
+    [],
   );
 
   const columns = React.useMemo<ColumnDef<ClientSummary, unknown>[]>(
@@ -82,14 +103,15 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
         className="flex flex-wrap items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          push({ q: q || undefined });
+          if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+          push({ q: q.trim() || undefined });
         }}
         role="search"
       >
         <Input
           type="search"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => scheduleSearch(e.target.value)}
           placeholder={t("clients.search")}
           aria-label={t("clients.search")}
           className="w-64 max-w-full"
@@ -114,7 +136,23 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
         columns={columns}
         data={items}
         label={t("clients.title")}
-        empty={<EmptyState title={t("clients.empty.filtered")} action={<Button variant="outline" onClick={() => push({ q: undefined, status: undefined })}>{t("clients.filter.all")}</Button>} />}
+        empty={
+          <EmptyState
+            title={t("clients.empty.filtered")}
+            action={
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setQ("");
+                  if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+                  push({ q: undefined, status: undefined });
+                }}
+              >
+                {t("clients.filter.all")}
+              </Button>
+            }
+          />
+        }
       />
       {pages > 1 ? (
         <nav className="flex items-center justify-end gap-2" aria-label="Pagination">

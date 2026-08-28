@@ -110,3 +110,99 @@ export function elapsedSeconds(stages: Stage[]): number | null {
   if (!starts.length || !ends.length) return null;
   return Math.max(0, Math.round((Math.max(...ends) - Math.min(...starts)) / 100) / 10);
 }
+
+/** Empty / whitespace-only defaults are clean; any typed field is dirty (QA-04). */
+export function wizardIsDirty(values: Pick<WizardValues, "name" | "external_client_ref" | "placeholders">): boolean {
+  if (values.name.trim() !== "") return true;
+  if (values.external_client_ref.trim() !== "") return true;
+  return Object.values(values.placeholders).some((v) => (v ?? "").trim() !== "");
+}
+
+/** Dirty + unfinished run → Back / nav / browser back must confirm (QA-04). */
+export function wizardShouldBlockLeave(dirty: boolean, outcome: ReturnType<typeof runOutcome>): boolean {
+  return dirty && outcome !== "done";
+}
+
+/**
+ * Seed keys the wizard asks for (describe_placeholders minus tenant.name /
+ * tenant.timezone, plus pending policy keys). Used by QA-03 to guarantee
+ * every label resolves to a message, never the raw key.
+ */
+export const SEED_PLACEHOLDER_KEYS = [
+  "agent.name",
+  "agent.tone",
+  "agent.language",
+  "owner.first_name",
+  "tenant.address",
+  "tenant.business_hours_label",
+  "tenant.front_desk_phone_label",
+  "tenant.instagram_handle",
+  "tenant.consultation_price_label",
+  "tenant.payment_methods_label",
+  "tenant.pricing_table_label",
+  "tenant.saturday_label",
+  "tenant.surgery_referral_hospital",
+  "tenant.surgery_referral_phone",
+  "clinical.titular_name",
+  "clinical.titular_credential",
+  "policies.cancellation.free_hours_before",
+  "policies.cancellation.late_fee_pct",
+  "policies.no_show.grace_min",
+  "policies.no_show.fee_pct",
+  "policies.booking.max_advance_days",
+  "policies.booking.min_advance_hours",
+  "policies.walk_in.max_wait_min",
+  "policies.deposit.nail_art_pct",
+  "policies.deposit.required_for_party_above",
+  "policies.party_size.min",
+  "policies.party_size.max",
+  "policies.membership.package_validity_days",
+  "policies.color.duration_hours_label",
+  "policies.minor.consent_required",
+  "policies.surgery.deposit_pct",
+  "policies.store.currency",
+  "policies.store.shipping_info",
+  "policies.store.returns_info",
+  "policies.wholesale.contact_name",
+  "policies.wholesale.contact_phone",
+  "policies.admin_access.admin_phones",
+  "policies.payment.pago_movil.banco",
+  "policies.payment.pago_movil.telefono",
+  "policies.payment.pago_movil.cedula",
+  "policies.payment.transferencia.banco",
+  "policies.payment.transferencia.numero_cuenta",
+  "policies.payment.transferencia.titular",
+  "policies.payment.transferencia.cedula_rif",
+  "policies.payment.binance.pay_id",
+] as const;
+
+/** Resolve ``ph.${key}`` via a message table; never return the raw seed key. */
+export function resolvePlaceholderLabel(
+  key: string,
+  table: Record<string, unknown>,
+  translate: (phKey: string) => string,
+): string {
+  const k = `ph.${key}`;
+  if (k in table) return translate(k);
+  return key.split(".").pop()!.replace(/_/g, " ");
+}
+
+export type WizardRefLookup = { found: true } | { found: false; status: number; message: string };
+
+export type WizardRefDecision =
+  | { allowNext: true }
+  | { allowNext: false; result: { ok: false; status: number; message: string } };
+
+/**
+ * Preflight decision for wizard step 1 (QA-02). Existing ref in this
+ * partner → 409 stay. Missing (404) → allow next. Other errors stay.
+ * Does not fetch.
+ */
+export function decideWizardRefCheck(lookup: WizardRefLookup, duplicateMessage: string): WizardRefDecision {
+  if (lookup.found) {
+    return { allowNext: false, result: { ok: false, status: 409, message: duplicateMessage } };
+  }
+  if (lookup.status === 404) return { allowNext: true };
+  return { allowNext: false, result: { ok: false, status: lookup.status, message: lookup.message } };
+}
+

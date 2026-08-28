@@ -10,7 +10,10 @@ import { useT } from "@/i18n/client";
 
 import { deleteClientAction, setClientStatusAction } from "@/app/(console)/clients/actions";
 
+import { statusActionNeedsConfirm } from "./lifecycle-status";
+
 type Props = { refId: string; status: string; name: string; canDelete: boolean };
+type StatusNext = "active" | "paused" | "archived";
 
 export function ClientLifecycleActions({ refId, status, name, canDelete }: Props) {
   const t = useT();
@@ -18,44 +21,71 @@ export function ClientLifecycleActions({ refId, status, name, canDelete }: Props
   const [pending, startTransition] = React.useTransition();
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
+  const [confirmStatus, setConfirmStatus] = React.useState<StatusNext | null>(null);
 
-  function setStatus(next: "active" | "paused" | "archived") {
+  function applyStatus(next: StatusNext) {
     startTransition(async () => {
       const res = await setClientStatusAction({ ref: refId, status: next });
       if (!res.ok) {
         toast.error(res.message);
         return;
       }
+      setConfirmStatus(null);
       router.refresh();
     });
+  }
+
+  function requestStatus(next: StatusNext) {
+    if (statusActionNeedsConfirm(next)) {
+      setConfirmStatus(next);
+      return;
+    }
+    applyStatus(next);
   }
 
   return (
     <div className="flex flex-wrap gap-2" aria-busy={pending}>
       {status === "active" ? (
-        <Button variant="outline" size="sm" onClick={() => setStatus("paused")} disabled={pending}>
+        <Button variant="outline" size="sm" onClick={() => requestStatus("paused")} disabled={pending}>
           {t("clients.action.pause")}
         </Button>
       ) : null}
       {status === "paused" ? (
-        <Button variant="outline" size="sm" onClick={() => setStatus("active")} disabled={pending}>
+        <Button variant="outline" size="sm" onClick={() => requestStatus("active")} disabled={pending}>
           {t("clients.action.resume")}
         </Button>
       ) : null}
       {status === "provisioning" ? (
-        <Button variant="outline" size="sm" onClick={() => setStatus("active")} disabled={pending}>
+        <Button variant="outline" size="sm" onClick={() => requestStatus("active")} disabled={pending}>
           {t("clients.action.activate")}
         </Button>
       ) : null}
       {status !== "archived" ? (
-        <Button variant="ghost" size="sm" onClick={() => setStatus("archived")} disabled={pending}>
+        <Button variant="ghost" size="sm" onClick={() => requestStatus("archived")} disabled={pending}>
           {t("clients.action.archive")}
         </Button>
       ) : (
-        <Button variant="outline" size="sm" onClick={() => setStatus("active")} disabled={pending}>
+        <Button variant="outline" size="sm" onClick={() => requestStatus("active")} disabled={pending}>
           {t("clients.action.unarchive")}
         </Button>
       )}
+      <ConfirmDialog
+        open={confirmStatus !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmStatus(null);
+        }}
+        title={
+          confirmStatus === "paused"
+            ? t("clients.pause.title", { name })
+            : t("clients.archive.title", { name })
+        }
+        description={confirmStatus === "paused" ? t("clients.pause.body") : t("clients.archive.body")}
+        confirmLabel={confirmStatus === "paused" ? t("clients.pause.confirm") : t("clients.archive.confirm")}
+        cancelLabel={t("common.cancel")}
+        onConfirm={async () => {
+          if (confirmStatus) applyStatus(confirmStatus);
+        }}
+      />
       {canDelete ? (
         <>
           <Button

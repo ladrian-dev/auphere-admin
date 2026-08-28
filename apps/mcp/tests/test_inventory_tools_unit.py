@@ -21,24 +21,24 @@ import pytest
 from nexus_api.core.tenant_context import tenant_context
 
 from nexus_mcp.servers.amigable_venta.client import RESULT_CAP, AmigableVentaClient
+from nexus_mcp.servers.catalogo_local.client import LocalCatalogClient
+from nexus_mcp.servers.catalogo_local.client import fold as local_fold
+from nexus_mcp.servers.inventory import tools as inventory_tools
 from nexus_mcp.servers.inventory.schemas import (
     CheckStockInput,
     GetProductInput,
     LowStockInput,
     SearchProductsInput,
 )
-from nexus_mcp.servers.catalogo_local.client import LocalCatalogClient
-from nexus_mcp.servers.catalogo_local.client import fold as local_fold
-from nexus_mcp.servers.inventory import tools as inventory_tools
 from nexus_mcp.servers.inventory.tools import (
     INVENTORY_TOOLS,
-    InventoryNotConfigured,
-    _resolve_backend,
     CheckStock,
     GetProduct,
+    InventoryNotConfigured,
     LowStock,
     SearchProducts,
     _fold,
+    _resolve_backend,
     set_test_client,
 )
 
@@ -220,7 +220,7 @@ async def test_get_product_resolves_exact_sku_without_ambiguity(
 async def test_get_product_prefers_the_base_product_and_flags_ambiguity(
     tenant: uuid.UUID,
 ) -> None:
-    """"ibuprofeno" matches the base product and every presentation. The
+    """ "ibuprofeno" matches the base product and every presentation. The
     shortest name is the base product; the rest are offered, not hidden."""
     _use(IBUPROFENO + IBUPROFENO_GEL)
     out = await GetProduct().run(GetProductInput(query="ibuprofeno"))
@@ -312,9 +312,7 @@ async def test_low_stock_ranks_the_most_critical_first(tenant: uuid.UUID) -> Non
 @pytest.mark.asyncio
 async def test_low_stock_can_exclude_sold_out_variants(tenant: uuid.UUID) -> None:
     _use([_row("L-1", "Jarabe A", 3.00, 9, 10), _row("L-2", "Jarabe B", 3.00, 0, 30)])
-    out = await LowStock().run(
-        LowStockInput(query="jarabe", incluir_agotados=False)
-    )
+    out = await LowStock().run(LowStockInput(query="jarabe", incluir_agotados=False))
 
     assert [v.sku for v in out.items] == ["L-1"]
     assert out.agotadas == 1  # still counted, just not listed
@@ -360,9 +358,7 @@ async def test_amigable_wins_when_connected(monkeypatch: pytest.MonkeyPatch) -> 
     sentinel = FakeVentaClient([])
     monkeypatch.setattr(inventory_tools, "_amigable_is_connected", _async_true)
     monkeypatch.setattr(inventory_tools, "_has_local_catalog", _async_true)
-    monkeypatch.setattr(
-        inventory_tools, "_load_amigable_venta_client", _returning(sentinel)
-    )
+    monkeypatch.setattr(inventory_tools, "_load_amigable_venta_client", _returning(sentinel))
 
     assert await _resolve_backend(_TENANT) is sentinel
 

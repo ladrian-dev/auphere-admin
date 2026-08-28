@@ -6,14 +6,14 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Checkbox, Input, Label, cn } from "@nexus/ui";
+import { Button, Checkbox, ConfirmDialog, Input, Label, cn } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 import { messages, type MessageKey } from "@/i18n/messages";
 import type { Quota } from "@/lib/backend";
 import type { SeedPlaceholder, SeedTemplate } from "@/lib/backend/onboarding";
 
-import { wizardCreateClientAction, wizardPublishAndActivateAction, wizardSeedAgentAction } from "./actions";
+import { wizardCheckRefAction, wizardCreateClientAction, wizardPublishAndActivateAction, wizardSeedAgentAction } from "./actions";
 import {
   STEPS,
   cleanPlaceholders,
@@ -21,9 +21,12 @@ import {
   missingPlaceholders,
   nextStage,
   planStages,
+  resolvePlaceholderLabel,
   runOutcome,
   slugify,
   stageReducer,
+  wizardIsDirty,
+  wizardShouldBlockLeave,
   type ChannelChoice,
   type Stage,
   type StageKey,
@@ -47,10 +50,7 @@ const STAGE_LABEL: Record<StageKey, MessageKey> = {
 };
 
 function placeholderLabel(t: ReturnType<typeof useT>, key: string): string {
-  const k = `ph.${key}`;
-  if (k in messages) return t(k as MessageKey);
-  // Unknown seed key → humanise the last segment.
-  return key.split(".").pop()!.replace(/_/g, " ");
+  return resolvePlaceholderLabel(key, messages, (k) => t(k as MessageKey));
 }
 
 export function NewClientWizard({ quota, templates, canPublish }: Props) {
@@ -72,14 +72,74 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [stages, setStages] = React.useState<Stage[]>(() => planStages(values));
   const [running, setRunning] = React.useState(false);
+  const [checkingRef, setCheckingRef] = React.useState(false);
+  const [leaveOpen, setLeaveOpen] = React.useState(false);
+  const [leaveKind, setLeaveKind] = React.useState<"back" | "leave">("leave");
+  const allowLeaveRef = React.useRef(false);
+  const pendingHrefRef = React.useRef<string | null>(null);
   const stepIndex = STEPS.indexOf(step);
   const template = templates?.find((x) => x.name === values.seed_template) ?? null;
   const outcome = runOutcome(stages);
+  const dirty = wizardIsDirty(values);
+  const blockLeave = wizardShouldBlockLeave(dirty, outcome);
   const headingRef = React.useRef<HTMLHeadingElement>(null);
 
   React.useEffect(() => {
     headingRef.current?.focus();
   }, [step]);
+
+  React.useEffect(() => {
+    if (!blockLeave) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [blockLeave]);
+
+  // Browser Back is a popstate, not beforeunload — that was the silent leave QA saw.
+  React.useEffect(() => {
+    if (!blockLeave) return;
+    window.history.pushState({ wizardGuard: 1 }, "");
+    const onPopState = () => {
+      if (allowLeaveRef.current) return;
+      pendingHrefRef.current = "/clients";
+      setLeaveKind("leave");
+      setLeaveOpen(true);
+      window.history.pushState({ wizardGuard: 1 }, "");
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [blockLeave]);
+
+  React.useEffect(() => {
+    if (!blockLeave) return;
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const el = e.target instanceof Element ? e.target.closest("a[href]") : null;
+      if (!el) return;
+      const href = el.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
+      if (el.getAttribute("target") === "_blank") return;
+      let next = href;
+      try {
+        const u = new URL(href, window.location.origin);
+        if (u.origin !== window.location.origin) return;
+        if (u.pathname.startsWith("/clients/new")) return;
+        next = `${u.pathname}${u.search}`;
+      } catch {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      pendingHrefRef.current = next;
+      setLeaveKind("leave");
+      setLeaveOpen(true);
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [blockLeave]);
 
   function set<K extends keyof WizardValues>(k: K, v: WizardValues[K]) {
     setValues((prev) => ({ ...prev, [k]: v }));
@@ -101,17 +161,50 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
     return Object.keys(e).length === 0;
   }
 
-  function goNext() {
+  async function goNext() {
     if (!validateStep()) return;
+    if (step === "details") {
+      setCheckingRef(true);
+      try {
+        const res = await wizardCheckRefAction({ ref: values.external_client_ref });
+        if (!res.ok) {
+          setErrors((e) => ({
+            ...e,
+            external_client_ref: res.status === 409 ? t("clients.create.duplicate") : res.message,
+          }));
+          return;
+        }
+      } finally {
+        setCheckingRef(false);
+      }
+    }
     const next = STEPS[stepIndex + 1];
     if (next) {
       setStep(next);
       setStages(planStages({ ...values }));
     }
   }
-  function goBack() {
+  function performLeave(kind: "back" | "leave") {
+    if (kind === "leave") {
+      allowLeaveRef.current = true;
+      const href = pendingHrefRef.current;
+      pendingHrefRef.current = null;
+      router.push(href || "/clients");
+      return;
+    }
     const prev = STEPS[stepIndex - 1];
     if (prev) setStep(prev);
+  }
+  function requestLeave(kind: "back" | "leave") {
+    if (wizardShouldBlockLeave(dirty, outcome)) {
+      setLeaveKind(kind);
+      setLeaveOpen(true);
+      return;
+    }
+    performLeave(kind);
+  }
+  function goBack() {
+    requestLeave("back");
   }
 
   // ── run: real calls, one per stage, individually retryable ──────────
@@ -170,8 +263,8 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
     }
     setRunning(false);
     if (runOutcome(st) === "done") {
-      toast.success(t("wizard.done.title"));
-      router.refresh();
+      toast.success(t("clients.create.done"));
+      router.push(`/clients/${encodeURIComponent(values.external_client_ref)}`);
     }
   }
 
@@ -492,7 +585,7 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
       {/* nav */}
       <div className="flex flex-wrap items-center gap-2">
         {stepIndex === 0 ? (
-          <Button type="button" variant="outline" onClick={() => router.back()}>
+          <Button type="button" variant="outline" onClick={() => requestLeave("leave")}>
             {t("wizard.leave")}
           </Button>
         ) : (
@@ -501,7 +594,8 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
           </Button>
         )}
         {step !== "review" ? (
-          <Button type="button" onClick={goNext} disabled={full}>
+          <Button type="button" onClick={() => void goNext()} disabled={full || checkingRef}>
+            {checkingRef ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
             {t("wizard.next")}
           </Button>
         ) : outcome === "idle" ? (
@@ -511,6 +605,21 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
           </Button>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={leaveOpen}
+        onOpenChange={(open) => {
+          setLeaveOpen(open);
+          if (!open) pendingHrefRef.current = null;
+        }}
+        title={t("wizard.dirty.title")}
+        description={t("wizard.dirty.body")}
+        confirmLabel={leaveKind === "leave" ? t("wizard.dirty.confirm") : t("wizard.dirty.back")}
+        cancelLabel={t("common.cancel")}
+        onConfirm={() => {
+          setLeaveOpen(false);
+          performLeave(leaveKind);
+        }}
+      />
     </div>
   );
 }
@@ -537,7 +646,7 @@ function PlaceholderField({ ph, value, error, onChange }: { ph: SeedPlaceholder;
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <Label htmlFor={id} className="min-w-0">
-        <span className="min-w-0 truncate" title={ph.key}>
+        <span className="min-w-0 truncate" title={label}>
           {label}
         </span>
         {!ph.required ? <span className="ml-1 font-normal text-muted-foreground">({t("wizard.placeholders.optional")})</span> : null}
@@ -556,8 +665,12 @@ function PlaceholderField({ ph, value, error, onChange }: { ph: SeedPlaceholder;
         placeholder={ph.example ?? undefined}
         onChange={(e) => onChange(e.target.value)}
       />
-      <p id={hintId} className="min-w-0 truncate text-xs text-muted-foreground" title={ph.key}>
-        {ph.kind === "list" ? t("wizard.placeholders.list") : ph.example ? t("wizard.placeholders.default", { value: ph.example }) : ph.key}
+      <p id={hintId} className="min-w-0 truncate text-xs text-muted-foreground" title={label}>
+        {ph.kind === "list"
+          ? t("wizard.placeholders.list")
+          : ph.example
+            ? t("wizard.placeholders.default", { value: ph.example })
+            : placeholderLabel(t, ph.key)}
       </p>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>

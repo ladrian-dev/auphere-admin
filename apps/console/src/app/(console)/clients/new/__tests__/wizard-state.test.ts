@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
 
+import { messages, t, type MessageKey } from "@/i18n/messages";
+
 import {
+  SEED_PLACEHOLDER_KEYS,
   cleanPlaceholders,
+  decideWizardRefCheck,
   elapsedSeconds,
   missingPlaceholders,
   nextStage,
   planStages,
+  resolvePlaceholderLabel,
   runOutcome,
   slugify,
   stageReducer,
+  wizardIsDirty,
+  wizardShouldBlockLeave,
 } from "../wizard-state";
 
 describe("wizard-state", () => {
@@ -62,5 +69,59 @@ describe("wizard-state", () => {
 
   it("slugifies names into refs", () => {
     expect(slugify("Clínica Boreal — Caracas")).toBe("clinica-boreal-caracas");
+  });
+});
+
+describe("wizardIsDirty (QA-04)", () => {
+  const clean = { name: "", external_client_ref: "", placeholders: {} };
+  it("empty defaults are clean", () => {
+    expect(wizardIsDirty(clean)).toBe(false);
+    expect(wizardIsDirty({ ...clean, placeholders: { "tenant.address": "  " } })).toBe(false);
+  });
+  it("any filled field is dirty", () => {
+    expect(wizardIsDirty({ ...clean, name: "Demo" })).toBe(true);
+    expect(wizardIsDirty({ ...clean, external_client_ref: "demo" })).toBe(true);
+    expect(wizardIsDirty({ ...clean, placeholders: { "tenant.address": "x" } })).toBe(true);
+  });
+});
+
+describe("decideWizardRefCheck (QA-02)", () => {
+  const msg = "A client with this reference already exists.";
+  it("existing ref → 409 stay on details", () => {
+    expect(decideWizardRefCheck({ found: true }, msg)).toEqual({
+      allowNext: false,
+      result: { ok: false, status: 409, message: msg },
+    });
+  });
+  it("missing ref (404) → allow next", () => {
+    expect(decideWizardRefCheck({ found: false, status: 404, message: "Unknown client reference" }, msg)).toEqual({
+      allowNext: true,
+    });
+  });
+});
+
+describe("resolvePlaceholderLabel (QA-03)", () => {
+  it("every known seed placeholder key resolves and never returns the raw key", () => {
+    for (const key of SEED_PLACEHOLDER_KEYS) {
+      const ph = `ph.${key}`;
+      expect(ph in messages, ph).toBe(true);
+      const es = resolvePlaceholderLabel(key, messages, (k) => t("es", k as MessageKey));
+      const en = resolvePlaceholderLabel(key, messages, (k) => t("en", k as MessageKey));
+      expect(es).not.toBe(key);
+      expect(en).not.toBe(key);
+      expect(es).not.toBe(ph);
+      expect(en).not.toBe(ph);
+    }
+  });
+});
+
+
+describe("wizardShouldBlockLeave (QA-04)", () => {
+  it("blocks only when dirty and not done", () => {
+    expect(wizardShouldBlockLeave(true, "idle")).toBe(true);
+    expect(wizardShouldBlockLeave(true, "running")).toBe(true);
+    expect(wizardShouldBlockLeave(true, "partial")).toBe(true);
+    expect(wizardShouldBlockLeave(true, "done")).toBe(false);
+    expect(wizardShouldBlockLeave(false, "idle")).toBe(false);
   });
 });

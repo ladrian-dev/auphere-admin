@@ -8,6 +8,7 @@ import { Button, Input } from "@nexus/ui";
 import { useT } from "@/i18n/client";
 
 import { saveAllocationAction } from "./actions";
+import { parseCapInput } from "./parse-cap-input";
 
 export function AllocationCapForm({ clientRef, cap }: { clientRef: string; cap: number }) {
   const t = useT();
@@ -17,13 +18,17 @@ export function AllocationCapForm({ clientRef, cap }: { clientRef: string; cap: 
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 0) {
+    const parsed = parseCapInput(value);
+    if (parsed.kind === "empty") {
+      toast.info(t("hu.usage.allocations.emptyCap"));
+      return;
+    }
+    if (parsed.kind === "invalid") {
       toast.error(t("hu.usage.allocations.invalidCap"));
       return;
     }
     start(async () => {
-      const res = await saveAllocationAction({ client_ref: clientRef, cap: parsed });
+      const res = await saveAllocationAction({ client_ref: clientRef, cap: parsed.n });
       if (!res.ok) {
         if (res.status === 409) return void toast.error(t("hu.usage.allocations.over"));
         return void toast.error(res.status === 403 ? t("common.forbidden") : res.message);

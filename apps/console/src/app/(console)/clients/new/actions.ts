@@ -76,3 +76,23 @@ export async function wizardPublishAndActivateAction(raw: unknown): Promise<Acti
   }
   return res;
 }
+
+const checkRefSchema = z.object({ ref });
+/** Step 1 preflight — 409 if the ref already exists in this partner (QA-02). */
+export async function wizardCheckRefAction(raw: unknown): Promise<ActionResult<null>> {
+  const { ref: r } = checkRefSchema.parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "clients:read") && !can(principal.role, "clients:write")) return forbidden;
+  return run(async () => {
+    try {
+      await backendFor(principal).getClient(r);
+    } catch (err) {
+      if (err instanceof BackendError && err.status === 404) return null;
+      throw err;
+    }
+    throw new BackendError(409, `/console/clients/${encodeURIComponent(r)}`, {
+      detail: "A client with this reference already exists.",
+    });
+  });
+}
+

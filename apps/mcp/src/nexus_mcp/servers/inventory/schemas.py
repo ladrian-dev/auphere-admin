@@ -33,9 +33,7 @@ class ProductVariant(OutputModel):
     precio_usd: float = Field(description="Precio de venta en USD de ESTA variante.")
     stock_actual: int = Field(description="Unidades disponibles de ESTA variante.")
     stock_minimo: int = Field(description="Umbral de reposición de ESTA variante.")
-    bajo_minimo: bool = Field(
-        description="True si stock_actual <= stock_minimo (toca reponer)."
-    )
+    bajo_minimo: bool = Field(description="True si stock_actual <= stock_minimo (toca reponer).")
     agotado: bool = Field(description="True si stock_actual es 0.")
 
 
@@ -167,9 +165,7 @@ class LowStockInput(InputModel):
             "el catálogo completo, solo buscar."
         ),
     )
-    limit: int = Field(
-        default=20, ge=1, le=50, description="Máximo de variantes a devolver."
-    )
+    limit: int = Field(default=20, ge=1, le=50, description="Máximo de variantes a devolver.")
     incluir_agotados: bool = Field(
         default=True, description="Si false, omite las variantes con 0 unidades."
     )
