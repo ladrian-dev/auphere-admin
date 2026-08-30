@@ -571,6 +571,22 @@ def _finish_tool_call(slot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_ANTHROPIC_ONLY_ON_OPENAI = ("thinking", "context_management")
+
+
+def _drop_openai_unsupported(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """LiteLLM 1.83 raises UnsupportedParamsError in-process for Anthropic-only
+    kwargs on openai hops (drop_params=False). Companion always sends thinking;
+    the handler also sends context_management when there are tools. Strip them
+    here so the hop reaches the proxy.
+    """
+    model = kwargs.get("model")
+    if isinstance(model, str) and model.startswith("openai/"):
+        for key in _ANTHROPIC_ONLY_ON_OPENAI:
+            kwargs.pop(key, None)
+    return kwargs
+
+
 def _proxy_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     """Stamp the partner virtual key. Console-injected auth is dropped."""
     require_current_llm_proxy_partner()
@@ -583,6 +599,7 @@ async def _proxied_acompletion(litellm: Any, kwargs: dict[str, Any]) -> Any:
     model = kwargs.get("model")
     require_hop_model(model if isinstance(model, str) else "")
     _proxy_kwargs(kwargs)
+    _drop_openai_unsupported(kwargs)
     try:
         return await litellm.acompletion(**kwargs)
     except Exception as exc:
