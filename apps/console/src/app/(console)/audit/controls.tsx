@@ -5,12 +5,22 @@ import * as React from "react";
 
 import { Button, Input } from "@nexus/ui";
 
-import { useT } from "@/i18n/client";
+import { auditActionOptions, type AuditActionOption } from "@/components/audit/audit-actions";
+import { useLocale, useT } from "@/i18n/client";
 
-type Props = { actor: string; action: string; after: string; before: string; nextCursor: string | null; csvHref: string };
+type Props = {
+  actor: string;
+  action: string;
+  after: string;
+  before: string;
+  nextCursor: string | null;
+  csvHref: string;
+  vocabulary: { action: string; summary: string }[];
+};
 
-export function AuditControls({ actor, action, after, before, nextCursor, csvHref }: Props) {
+export function AuditControls({ actor, action, after, before, nextCursor, csvHref, vocabulary }: Props) {
   const t = useT();
+  const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -18,6 +28,8 @@ export function AuditControls({ actor, action, after, before, nextCursor, csvHre
   const [act, setAct] = React.useState(action);
   const [from, setFrom] = React.useState(after);
   const [to, setTo] = React.useState(before);
+  const options: AuditActionOption[] = React.useMemo(() => auditActionOptions(vocabulary), [vocabulary]);
+  const dateLang = locale === "es" ? "es-ES" : "en-GB";
   function set(patch: Record<string, string | undefined>) {
     const next = new URLSearchParams(params.toString());
     for (const [k, v] of Object.entries(patch)) {
@@ -35,9 +47,21 @@ export function AuditControls({ actor, action, after, before, nextCursor, csvHre
       }}
     >
       <Input value={a} onChange={(e) => setA(e.target.value)} placeholder={t("audit.filter.actor")} aria-label={t("audit.filter.actor")} className="w-56" />
-      <Input value={act} onChange={(e) => setAct(e.target.value)} placeholder={t("audit.filter.action")} aria-label={t("audit.filter.action")} className="w-56 font-mono" />
-      <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={t("hu.audit.after")} className="w-40" />
-      <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={t("hu.audit.before")} className="w-40" />
+      <select
+        value={act}
+        onChange={(e) => setAct(e.target.value)}
+        aria-label={t("audit.filter.action")}
+        className="h-8 max-w-xs rounded-md border border-input bg-transparent px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <option value="">{t("audit.filter.action.all")}</option>
+        {options.map((o) => (
+          <option key={o.action} value={o.action}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <Input type="date" lang={dateLang} value={from} onChange={(e) => setFrom(e.target.value)} aria-label={t("hu.audit.after")} className="w-40" />
+      <Input type="date" lang={dateLang} value={to} onChange={(e) => setTo(e.target.value)} aria-label={t("hu.audit.before")} className="w-40" />
       <Button type="submit" variant="outline" size="sm">
         OK
       </Button>

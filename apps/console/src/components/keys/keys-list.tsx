@@ -23,6 +23,7 @@ import {
 } from "@nexus/ui";
 
 import { createKeyAction, revokeKeyAction, rotateKeyAction } from "@/app/(console)/keys/actions";
+import { defaultNewKeyForm } from "@/components/keys/key-defaults";
 import { useLocale, useT } from "@/i18n/client";
 import type { ApiKey, ApiKeyCreated } from "@/lib/backend";
 
@@ -34,8 +35,8 @@ export function KeysList({ keys, manage }: { keys: ApiKey[]; manage: boolean }) 
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [createOpen, setCreateOpen] = React.useState(false);
-  const [type, setType] = React.useState<"live" | "test">("live");
-  const [scopes, setScopes] = React.useState<string[]>(["provision", "broadcasts"]);
+  const [type, setType] = React.useState<"live" | "test">(defaultNewKeyForm().type);
+  const [scopes, setScopes] = React.useState<string[]>(() => defaultNewKeyForm().scopes);
   const [created, setCreated] = React.useState<ApiKeyCreated | null>(null);
   const [rotating, setRotating] = React.useState<ApiKey | null>(null);
   const [revoking, setRevoking] = React.useState<ApiKey | null>(null);
@@ -57,11 +58,29 @@ export function KeysList({ keys, manage }: { keys: ApiKey[]; manage: boolean }) 
     <div className="flex min-w-0 flex-col gap-4" aria-busy={pending}>
       {manage ? (
         <div>
-          <Button onClick={() => setCreateOpen(true)}>{t("keys.new")}</Button>
+          <Button
+            onClick={() => {
+              const d = defaultNewKeyForm();
+              setType(d.type);
+              setScopes(d.scopes);
+              setCreateOpen(true);
+            }}
+          >
+            {t("keys.new")}
+          </Button>
         </div>
       ) : null}
       {keys.length === 0 ? (
-        <EmptyState icon={KeyRound} title={t("keys.empty")} description={t("keys.empty.body")} action={manage ? <Button onClick={() => setCreateOpen(true)}>{t("keys.new")}</Button> : undefined} readonly={!manage} />
+        <EmptyState icon={KeyRound} title={t("keys.empty")} description={t("keys.empty.body")} action={manage ? <Button
+            onClick={() => {
+              const d = defaultNewKeyForm();
+              setType(d.type);
+              setScopes(d.scopes);
+              setCreateOpen(true);
+            }}
+          >
+            {t("keys.new")}
+          </Button> : undefined} readonly={!manage} />
       ) : (
         <ul className="divide-y divide-border rounded-md ring-1 ring-foreground/10">
           {[...live, ...dead].map((k) => {

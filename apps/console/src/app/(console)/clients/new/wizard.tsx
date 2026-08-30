@@ -15,6 +15,11 @@ import type { SeedPlaceholder, SeedTemplate } from "@/lib/backend/onboarding";
 
 import { wizardCheckRefAction, wizardCreateClientAction, wizardPublishAndActivateAction, wizardSeedAgentAction } from "./actions";
 import {
+  WIZARD_TIMEZONE_INITIAL,
+  browserIanaTimeZone,
+  isIanaTimeZone,
+  pickWizardTimezone,
+  wizardTimezoneOptions,
   STEPS,
   cleanPlaceholders,
   elapsedSeconds,
@@ -62,7 +67,7 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
   const [values, setValues] = React.useState<WizardValues>({
     name: "",
     external_client_ref: "",
-    timezone: (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC",
+    timezone: WIZARD_TIMEZONE_INITIAL,
     seed_template: templates?.[0]?.name ?? null,
     placeholders: {},
     channel: "whatsapp",
@@ -75,6 +80,7 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
   const [checkingRef, setCheckingRef] = React.useState(false);
   const [leaveOpen, setLeaveOpen] = React.useState(false);
   const [leaveKind, setLeaveKind] = React.useState<"back" | "leave">("leave");
+  const [browserTz, setBrowserTz] = React.useState("");
   const allowLeaveRef = React.useRef(false);
   const pendingHrefRef = React.useRef<string | null>(null);
   const stepIndex = STEPS.indexOf(step);
@@ -87,6 +93,17 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
   React.useEffect(() => {
     headingRef.current?.focus();
   }, [step]);
+
+  React.useEffect(() => {
+    const tz = browserIanaTimeZone();
+    setBrowserTz(tz);
+    setValues((prev) => {
+      if (prev.timezone.trim()) return prev;
+      const opts = wizardTimezoneOptions(tz);
+      const picked = pickWizardTimezone(tz, opts);
+      return picked ? { ...prev, timezone: picked } : prev;
+    });
+  }, []);
 
   React.useEffect(() => {
     if (!blockLeave) return;
@@ -153,6 +170,7 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
       if (!values.external_client_ref.trim()) e.external_client_ref = t("validation.required");
       else if (!/^[A-Za-z0-9._:-]+$/.test(values.external_client_ref)) e.external_client_ref = t("validation.refFormat");
       if (!values.timezone.trim()) e.timezone = t("validation.required");
+      else if (!isIanaTimeZone(values.timezone)) e.timezone = t("validation.timezone");
     }
     if (step === "template" && template) {
       for (const k of missingPlaceholders(template.placeholders, values.placeholders)) e[`ph:${k}`] = t("validation.required");
@@ -360,7 +378,20 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="wz-tz">{t("clients.timezone")}</Label>
-              <Input id="wz-tz" className="font-mono" value={values.timezone} aria-invalid={!!errors.timezone} onChange={(e) => set("timezone", e.target.value)} />
+              <select
+                id="wz-tz"
+                className="h-8 w-full rounded-md border border-input bg-transparent px-3 font-mono text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                value={values.timezone}
+                aria-invalid={!!errors.timezone}
+                onChange={(e) => set("timezone", e.target.value)}
+              >
+                <option value="">{t("clients.timezone.placeholder")}</option>
+                {wizardTimezoneOptions(browserTz).map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
+              </select>
               {errors.timezone ? <p className="text-sm text-destructive">{errors.timezone}</p> : null}
             </div>
           </div>

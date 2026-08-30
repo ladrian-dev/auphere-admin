@@ -6,6 +6,67 @@
 import type { SeedPlaceholder } from "@/lib/backend/onboarding";
 
 export const STEPS = ["details", "template", "channel", "review"] as const;
+
+/** QA-06: empty until the browser IANA is known and is on the select list. */
+export const WIZARD_TIMEZONE_INITIAL = "";
+
+/** Common IANA zones for the select. Browser zone is appended if missing. */
+export const COMMON_IANA_TIMEZONES = [
+  "UTC",
+  "Europe/Madrid",
+  "Atlantic/Canary",
+  "Europe/Lisbon",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Europe/Rome",
+  "America/Mexico_City",
+  "America/Bogota",
+  "America/Lima",
+  "America/Santiago",
+  "America/Argentina/Buenos_Aires",
+  "America/Caracas",
+  "America/Sao_Paulo",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Toronto",
+  "America/Panama",
+] as const;
+
+export function isIanaTimeZone(raw: string): boolean {
+  const tz = raw.trim();
+  if (!tz) return false;
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function browserIanaTimeZone(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+    return isIanaTimeZone(tz) ? tz : "";
+  } catch {
+    return "";
+  }
+}
+
+export function wizardTimezoneOptions(...extra: string[]): string[] {
+  const out = new Set<string>(COMMON_IANA_TIMEZONES);
+  for (const tz of extra) {
+    if (isIanaTimeZone(tz)) out.add(tz.trim());
+  }
+  return [...out].sort((a, b) => a.localeCompare(b));
+}
+
+/** Select value after mount: browser IANA if it is on the list, else empty. */
+export function pickWizardTimezone(browserTz: string, options: string[]): string {
+  return options.includes(browserTz) ? browserTz : "";
+}
 export type StepKey = (typeof STEPS)[number];
 
 export type ChannelChoice = "whatsapp" | "later";

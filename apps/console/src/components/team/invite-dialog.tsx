@@ -27,6 +27,7 @@ import {
 } from "@nexus/ui";
 
 import { inviteAction } from "@/app/(console)/team/actions";
+import { inviteConflictMessage } from "@/components/team/invite-conflict";
 import { useT } from "@/i18n/client";
 import { roleKey } from "@/i18n/messages";
 import type { InvitationCreated } from "@/lib/backend";
@@ -46,7 +47,12 @@ export function InviteButton({ origin }: { origin: string }) {
   function submit(values: Values) {
     startTransition(async () => {
       const res = await inviteAction(values);
-      if (!res.ok) return void toast.error(res.message);
+      if (!res.ok) {
+        const message = inviteConflictMessage(res.status, res.message, t("team.invite.alreadyMember"));
+        form.setError("email", { message });
+        toast.error(message);
+        return;
+      }
       setCreated(res.data);
       toast.success(t("team.invite.sent"));
       router.refresh();

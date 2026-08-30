@@ -62,6 +62,7 @@ const core = {
   "validation.password12": { es: "Mínimo 12 caracteres.", en: "At least 12 characters." },
   "validation.refFormat": { es: "Solo letras, números y . _ : -", en: "Only letters, digits and . _ : -" },
   "validation.tooLong": { es: "Demasiado largo.", en: "Too long." },
+  "validation.timezone": { es: "Usa una zona IANA (por ejemplo Europe/Madrid).", en: "Use an IANA time zone (for example Europe/Madrid)." },
 
   // status
   "status.active": { es: "Activo", en: "Active" },
@@ -100,6 +101,8 @@ const core = {
   "login.emailInvalid": { es: "Introduce un correo válido.", en: "Enter a valid e-mail." },
   "login.tooMany": { es: "Demasiados intentos. Espera un minuto y vuelve a probar.", en: "Too many attempts. Wait a minute and try again." },
   "login.passwordRequired": { es: "Introduce tu contraseña.", en: "Enter your password." },
+  "login.forgot": { es: "¿Has olvidado la contraseña? Escríbenos.", en: "Forgot your password? Contact us." },
+  "login.footer": { es: "Auphere", en: "Auphere" },
   "noAccess.title": { es: "Tu cuenta no tiene acceso a ningún partner", en: "Your account has no partner access" },
   "noAccess.body": { es: "Pide a un propietario o administrador de tu partner que te invite, o vuelve a intentarlo con la cuenta correcta.", en: "Ask an owner or admin of your partner to invite you, or try again with the right account." },
   "noAccess.disabled": { es: "La consola aún no está activada para tu partner. Auphere la enciende partner a partner durante el piloto.", en: "The console is not enabled for your partner yet. Auphere turns it on partner by partner during the pilot." },
@@ -138,6 +141,7 @@ const core = {
   "clients.error": { es: "No se pudieron cargar los clientes", en: "Could not load clients" },
   "clients.ref": { es: "Referencia", en: "Reference" },
   "clients.timezone": { es: "Zona horaria", en: "Time zone" },
+  "clients.timezone.placeholder": { es: "Elige una zona horaria", en: "Pick a time zone" },
   "clients.quota": { es: "{used} de {max} clientes", en: "{used} of {max} clients" },
   "clients.quota.full": { es: "Has alcanzado tu cuota de clientes. Archiva uno o pide a Auphere que la amplíe.", en: "You've reached your client quota. Archive one or ask Auphere to raise it." },
   "clients.count": { es: "{count} cliente(s)", en: "{count} client(s)" },
@@ -254,6 +258,7 @@ const core = {
   "audit.what": { es: "Qué", en: "What" },
   "audit.filter.actor": { es: "Actor", en: "Actor" },
   "audit.filter.action": { es: "Acción", en: "Action" },
+  "audit.filter.action.all": { es: "Todas las acciones", en: "All actions" },
   "audit.more": { es: "Cargar más", en: "Load more" },
 
   // team
@@ -266,6 +271,7 @@ const core = {
   "team.invite.link": { es: "Enlace de aceptación (compártelo si el correo no llega):", en: "Accept link (share it if the e-mail doesn't arrive):" },
   "team.invite.emailSent": { es: "Correo enviado a {email}.", en: "E-mail sent to {email}." },
   "team.invite.emailNotSent": { es: "El correo no está configurado en este entorno; comparte el enlace.", en: "E-mail is not configured in this environment; share the link." },
+  "team.invite.alreadyMember": { es: "Ese correo ya es miembro de este partner.", en: "That e-mail is already a member of this partner." },
   "team.members": { es: "Miembros", en: "Members" },
   "team.invitations": { es: "Invitaciones pendientes", en: "Pending invitations" },
   "team.invitations.empty": { es: "No hay invitaciones pendientes", en: "No pending invitations" },
