@@ -375,8 +375,7 @@ class TestContextEditing:
         self, patched_litellm: _RecordingAcompletion
     ) -> None:
         """Provider attached to a default config emits ``context_management``
-        in the litellm payload whenever the call carries tools. LiteLLM then
-        auto-injects the ``context-management-2025-06-27`` beta header."""
+        on Anthropic hops. On openai/G1 hops the gate strips it so LiteLLM 1.83 does not raise UnsupportedParamsError."""
         provider = LiteLLMProvider(context_management=DEFAULT_CONTEXT_MANAGEMENT)
         tools = [{"type": "function", "function": {"name": "noop", "parameters": {}}}]
 
@@ -393,12 +392,9 @@ class TestContextEditing:
 
         assert len(patched_litellm.calls) == 1
         kw = patched_litellm.calls[0]
-        assert "context_management" in kw, (
-            "tools call must carry context_management for clear_tool_uses_20250919"
-        )
-        assert kw["context_management"] == DEFAULT_CONTEXT_MANAGEMENT
-        edit = kw["context_management"]["edits"][0]
-        assert edit["type"] == "clear_tool_uses_20250919"
+        # G1 hops are openai/*; LiteLLM 1.83 raises UnsupportedParamsError
+        # for Anthropic context_management on that prefix. The hop gate strips it.
+        assert "context_management" not in kw
 
     async def test_context_management_omitted_without_tools(
         self, patched_litellm: _RecordingAcompletion
@@ -484,8 +480,9 @@ class TestContextEditing:
 
         assert len(patched_litellm.calls) == 4
         for idx, call in enumerate(patched_litellm.calls):
-            assert "context_management" in call, f"iteration {idx} dropped context_management"
-            assert call["context_management"]["edits"][0]["type"] == "clear_tool_uses_20250919"
+            assert "context_management" not in call, (
+                f"iteration {idx} leaked context_management on openai hop"
+            )
 
 
 class TestDefaultContextManagementFromEnv:
