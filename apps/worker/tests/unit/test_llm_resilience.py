@@ -395,7 +395,10 @@ class TestContextEditing:
         kw = patched_litellm.calls[0]
         # G1 hops are openai/*; LiteLLM 1.83 raises UnsupportedParamsError
         # for Anthropic context_management on that prefix. The hop gate strips it.
+        # Function tools on GPT-5.6 Chat Completions require reasoning_effort=none.
         assert "context_management" not in kw
+        assert "thinking" not in kw
+        assert kw["reasoning_effort"] == "none"
 
     async def test_context_management_omitted_without_tools(
         self, patched_litellm: _RecordingAcompletion
@@ -417,6 +420,7 @@ class TestContextEditing:
 
         assert len(patched_litellm.calls) == 1
         assert "context_management" not in patched_litellm.calls[0]
+        assert "reasoning_effort" not in patched_litellm.calls[0]
 
     async def test_context_management_disabled_per_provider(
         self, patched_litellm: _RecordingAcompletion
@@ -436,6 +440,7 @@ class TestContextEditing:
 
         assert len(patched_litellm.calls) == 1
         assert "context_management" not in patched_litellm.calls[0]
+        assert patched_litellm.calls[0]["reasoning_effort"] == "none"
 
     async def test_context_management_persists_across_loop_iterations(
         self, patched_litellm: _RecordingAcompletion
@@ -484,6 +489,8 @@ class TestContextEditing:
             assert "context_management" not in call, (
                 f"iteration {idx} leaked context_management on openai hop"
             )
+            assert "thinking" not in call
+            assert call["reasoning_effort"] == "none"
 
 
 class TestDropOpenaiUnsupported:
@@ -496,7 +503,23 @@ class TestDropOpenaiUnsupported:
         out = _drop_openai_unsupported(kw)
         assert "thinking" not in out
         assert "context_management" not in out
+        assert "reasoning_effort" not in out
         assert out["model"] == "openai/gpt-5.6-terra"
+
+    def test_openai_hops_with_tools_set_reasoning_effort_none(self) -> None:
+        """GPT-5.6 Chat Completions 400 unless reasoning_effort is exactly none
+        when function tools are present. Omitting the field is not none."""
+        kw = {
+            "model": "openai/gpt-5.6-luna",
+            "thinking": {"type": "adaptive", "display": "summarized"},
+            "context_management": DEFAULT_CONTEXT_MANAGEMENT,
+            "tools": [{"type": "function", "function": {"name": "noop", "parameters": {}}}],
+            "reasoning_effort": "medium",
+        }
+        out = _drop_openai_unsupported(kw)
+        assert "thinking" not in out
+        assert "context_management" not in out
+        assert out["reasoning_effort"] == "none"
 
     def test_anthropic_hops_keep_context_management_with_tools(self) -> None:
         """Catalog hops are openai/* today; the gate must still leave the
@@ -506,11 +529,13 @@ class TestDropOpenaiUnsupported:
             "model": "anthropic/claude-sonnet-4-6",
             "thinking": {"type": "adaptive", "display": "summarized"},
             "context_management": DEFAULT_CONTEXT_MANAGEMENT,
+            "tools": [{"type": "function", "function": {"name": "noop", "parameters": {}}}],
         }
         out = _drop_openai_unsupported(kw)
         assert out["thinking"]["type"] == "adaptive"
         assert out["context_management"] == DEFAULT_CONTEXT_MANAGEMENT
         assert out["context_management"]["edits"][0]["type"] == ("clear_tool_uses_20250919")
+        assert "reasoning_effort" not in out
 
 
 class TestDefaultContextManagementFromEnv:

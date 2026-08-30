@@ -162,6 +162,7 @@ class TestLiteLLMExtraMerge:
         # for Anthropic-only kwargs on that prefix. The hop gate strips them.
         assert "context_management" not in kw
         assert "thinking" not in kw
+        assert kw["reasoning_effort"] == "none"
 
     async def test_extra_omitted_when_none(self, patched_litellm: _LiteLLMStub) -> None:
         provider = LiteLLMProvider()

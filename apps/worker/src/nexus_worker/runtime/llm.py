@@ -579,11 +579,19 @@ def _drop_openai_unsupported(kwargs: dict[str, Any]) -> dict[str, Any]:
     kwargs on openai hops (drop_params=False). Companion always sends thinking;
     the handler also sends context_management when there are tools. Strip them
     here so the hop reaches the proxy.
+
+    GPT-5.4+/5.6 Chat Completions reject function tools unless
+    ``reasoning_effort`` is exactly ``none``. Sol/Terra/Luna default is
+    ``medium``; omitting the field is still not none. Set it explicitly
+    when tools are present. Stay on ``acompletion`` — no Responses API.
     """
     model = kwargs.get("model")
     if isinstance(model, str) and model.startswith("openai/"):
         for key in _ANTHROPIC_ONLY_ON_OPENAI:
             kwargs.pop(key, None)
+        tools = kwargs.get("tools")
+        if isinstance(tools, list) and tools:
+            kwargs["reasoning_effort"] = "none"
     return kwargs
 
 

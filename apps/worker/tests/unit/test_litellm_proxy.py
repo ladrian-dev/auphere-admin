@@ -312,3 +312,30 @@ async def test_openai_hop_drops_anthropic_thinking_before_http(
     assert kw["model"] == "openai/gpt-5.6-sol"
     assert kw["api_base"] == BASE
     assert kw["api_key"] == KEY_A
+
+
+@pytest.mark.asyncio
+async def test_openai_hop_with_tools_sets_reasoning_effort_none(
+    patched_litellm: _RecordingAcompletion,
+) -> None:
+    """GPT-5.6 function tools on Chat Completions 400 unless reasoning_effort
+    is exactly none. Stay on acompletion — no Responses API."""
+    import litellm
+
+    with llm_proxy_partner_scope(PARTNER_A):
+        await _proxied_acompletion(
+            litellm,
+            {
+                "model": "openai/gpt-5.6-sol",
+                "thinking": {"type": "adaptive", "display": "summarized"},
+                "context_management": {"edits": []},
+                "tools": [{"type": "function", "function": {"name": "noop", "parameters": {}}}],
+                "messages": [{"role": "user", "content": "hola"}],
+            },
+        )
+    assert patched_litellm.calls
+    kw = patched_litellm.calls[0]
+    assert "thinking" not in kw
+    assert "context_management" not in kw
+    assert kw["reasoning_effort"] == "none"
+    assert kw["model"] == "openai/gpt-5.6-sol"
