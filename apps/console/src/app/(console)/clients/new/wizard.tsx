@@ -15,7 +15,6 @@ import type { SeedPlaceholder, SeedTemplate } from "@/lib/backend/onboarding";
 
 import { wizardCheckRefAction, wizardCreateClientAction, wizardPublishAndActivateAction, wizardSeedAgentAction } from "./actions";
 import {
-  WIZARD_TIMEZONE_INITIAL,
   browserIanaTimeZone,
   isIanaTimeZone,
   pickWizardTimezone,
@@ -64,14 +63,18 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
   const full = quota.remaining_clients === 0;
 
   const [step, setStep] = React.useState<StepKey>("details");
-  const [values, setValues] = React.useState<WizardValues>({
-    name: "",
-    external_client_ref: "",
-    timezone: WIZARD_TIMEZONE_INITIAL,
-    seed_template: templates?.[0]?.name ?? null,
-    placeholders: {},
-    channel: "whatsapp",
-    publish_now: canPublish,
+  const [browserTz] = React.useState(() => browserIanaTimeZone());
+  const [values, setValues] = React.useState<WizardValues>(() => {
+    const tz = browserIanaTimeZone();
+    return {
+      name: "",
+      external_client_ref: "",
+      timezone: pickWizardTimezone(tz, wizardTimezoneOptions(tz)),
+      seed_template: templates?.[0]?.name ?? null,
+      placeholders: {},
+      channel: "whatsapp",
+      publish_now: canPublish,
+    };
   });
   const [refTouched, setRefTouched] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -80,7 +83,6 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
   const [checkingRef, setCheckingRef] = React.useState(false);
   const [leaveOpen, setLeaveOpen] = React.useState(false);
   const [leaveKind, setLeaveKind] = React.useState<"back" | "leave">("leave");
-  const [browserTz, setBrowserTz] = React.useState("");
   const allowLeaveRef = React.useRef(false);
   const pendingHrefRef = React.useRef<string | null>(null);
   const stepIndex = STEPS.indexOf(step);
@@ -93,17 +95,6 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
   React.useEffect(() => {
     headingRef.current?.focus();
   }, [step]);
-
-  React.useEffect(() => {
-    const tz = browserIanaTimeZone();
-    setBrowserTz(tz);
-    setValues((prev) => {
-      if (prev.timezone.trim()) return prev;
-      const opts = wizardTimezoneOptions(tz);
-      const picked = pickWizardTimezone(tz, opts);
-      return picked ? { ...prev, timezone: picked } : prev;
-    });
-  }, []);
 
   React.useEffect(() => {
     if (!blockLeave) return;

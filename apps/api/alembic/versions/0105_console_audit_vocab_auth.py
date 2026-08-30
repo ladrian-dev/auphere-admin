@@ -58,9 +58,14 @@ def upgrade() -> None:
                 INSERT INTO console_audit_vocabulary
                     (action, category, severity, summary_es, summary_en)
                 SELECT
-                    :action, :category, :severity, :summary_es, :summary_en
+                    CAST(:action AS VARCHAR(80)),
+                    CAST(:category AS VARCHAR(40)),
+                    CAST(:severity AS VARCHAR(10)),
+                    CAST(:summary_es AS TEXT),
+                    CAST(:summary_en AS TEXT)
                 WHERE NOT EXISTS (
-                    SELECT 1 FROM console_audit_vocabulary WHERE action = :action
+                    SELECT 1 FROM console_audit_vocabulary
+                    WHERE action = CAST(:action AS VARCHAR(80))
                 )
                 """
             ),

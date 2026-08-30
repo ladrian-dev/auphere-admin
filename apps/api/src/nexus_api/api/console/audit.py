@@ -113,14 +113,17 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
 
 COMPANION_ACTOR = "Companion"
 
-_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
-)
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
 def _human_document(after: dict[str, Any], before: dict[str, Any], *, lang: str) -> str:
     """QA-21: knowledge rows must not show a raw uuid as the document name."""
-    raw = after.get("filename") or after.get("title") or before.get("filename") or after.get("document_id")
+    raw = (
+        after.get("filename")
+        or after.get("title")
+        or before.get("filename")
+        or after.get("document_id")
+    )
     if raw is None or _UUID_RE.match(str(raw).strip()):
         return "un documento" if lang == "es" else "a document"
     return str(raw)
