@@ -25,6 +25,7 @@ from nexus_worker.runtime.llm import (
     LiteLLMProvider,
     LLMResponse,
     LLMRouter,
+    _drop_openai_unsupported,
     _usage_fields,
     _with_prompt_caching,
     default_context_management_from_env,
@@ -483,6 +484,35 @@ class TestContextEditing:
             assert "context_management" not in call, (
                 f"iteration {idx} leaked context_management on openai hop"
             )
+
+
+class TestDropOpenaiUnsupported:
+    def test_openai_hops_drop_thinking_and_context_management(self) -> None:
+        kw = {
+            "model": "openai/gpt-5.6-terra",
+            "thinking": {"type": "adaptive", "display": "summarized"},
+            "context_management": DEFAULT_CONTEXT_MANAGEMENT,
+        }
+        out = _drop_openai_unsupported(kw)
+        assert "thinking" not in out
+        assert "context_management" not in out
+        assert out["model"] == "openai/gpt-5.6-terra"
+
+    def test_anthropic_hops_keep_context_management_with_tools(self) -> None:
+        """Catalog hops are openai/* today; the gate must still leave the
+        Anthropic payload intact so a future Anthropic id keeps
+        ``clear_tool_uses_20250919``."""
+        kw = {
+            "model": "anthropic/claude-sonnet-4-6",
+            "thinking": {"type": "adaptive", "display": "summarized"},
+            "context_management": DEFAULT_CONTEXT_MANAGEMENT,
+        }
+        out = _drop_openai_unsupported(kw)
+        assert out["thinking"]["type"] == "adaptive"
+        assert out["context_management"] == DEFAULT_CONTEXT_MANAGEMENT
+        assert out["context_management"]["edits"][0]["type"] == (
+            "clear_tool_uses_20250919"
+        )
 
 
 class TestDefaultContextManagementFromEnv:
