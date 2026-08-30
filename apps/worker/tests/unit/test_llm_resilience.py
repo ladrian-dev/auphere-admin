@@ -510,9 +510,7 @@ class TestDropOpenaiUnsupported:
         out = _drop_openai_unsupported(kw)
         assert out["thinking"]["type"] == "adaptive"
         assert out["context_management"] == DEFAULT_CONTEXT_MANAGEMENT
-        assert out["context_management"]["edits"][0]["type"] == (
-            "clear_tool_uses_20250919"
-        )
+        assert out["context_management"]["edits"][0]["type"] == ("clear_tool_uses_20250919")
 
 
 class TestDefaultContextManagementFromEnv:
