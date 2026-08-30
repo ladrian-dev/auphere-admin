@@ -162,7 +162,21 @@ async def process_owner_fanout(
         consultation_id=str(consultation_id),
         thread_id=thread_id,
     )
-    final = await pipeline.ainvoke(state, config=config)
+    # Same gate as ``dispatcher._process_inbound``: the proxy resolver is
+    # fail-closed, so re-entering the pipeline without the partner
+    # virtual-key scope kills every hop with "missing partner virtual
+    # key" and the owner's answer never reaches the customer.
+    from nexus_api.core.llm_proxy import (
+        llm_proxy_partner_scope,
+        partner_id_for_tenant_standalone,
+    )
+
+    partner_id = await partner_id_for_tenant_standalone(tenant_uuid)
+    if partner_id is not None:
+        with llm_proxy_partner_scope(partner_id):
+            final = await pipeline.ainvoke(state, config=config)
+    else:
+        final = await pipeline.ainvoke(state, config=config)
 
     # Phase 2 — record successful fanout application so the sweep cron
     # doesn't re-publish this entry. We do the write in a fresh scoped

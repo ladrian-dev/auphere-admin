@@ -337,5 +337,11 @@ async def test_openai_hop_with_tools_sets_reasoning_effort_none(
     kw = patched_litellm.calls[0]
     assert "thinking" not in kw
     assert "context_management" not in kw
-    assert kw["reasoning_effort"] == "none"
+    # Both keys ride in extra_body so the OpenAI SDK merges them into the
+    # TOP-LEVEL HTTP body without litellm's kwarg handling seeing them:
+    # as kwargs, reasoning_effort + tools on gpt-5.4+ triggers the
+    # /responses bridge and allowed_openai_params never leaves the client.
+    assert "reasoning_effort" not in kw
+    assert kw["extra_body"]["reasoning_effort"] == "none"
+    assert kw["extra_body"]["allowed_openai_params"] == ["reasoning_effort"]
     assert kw["model"] == "openai/gpt-5.6-sol"

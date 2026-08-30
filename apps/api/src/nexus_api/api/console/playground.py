@@ -537,12 +537,18 @@ async def start_run(
     async def _driver(handle: qa_streaming.RunHandle) -> None:
         from nexus_worker.metering.collector import SOURCE_QA, usage_turn
 
+        from nexus_api.core.llm_proxy import llm_proxy_partner_scope
+
         # Contextvars + usage scope live INSIDE the task (fresh context per
         # asyncio Task) — same reasoning as ``api/qa.py::start_thread_run``.
+        # The partner virtual-key scope included: the proxy resolver is
+        # fail-closed, so without it every hop dies with "missing partner
+        # virtual key" before leaving the process.
         with (
             operator_context(operator_id),
             tenant_context(tenant_id),
             qa_thread_context(thread_id),
+            llm_proxy_partner_scope(partner_id),
         ):
             async with usage_turn(
                 tenant_id=tenant_id,

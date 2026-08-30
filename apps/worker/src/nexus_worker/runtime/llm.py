@@ -584,6 +584,22 @@ def _drop_openai_unsupported(kwargs: dict[str, Any]) -> dict[str, Any]:
     ``reasoning_effort`` is exactly ``none``. Sol/Terra/Luna default is
     ``medium``; omitting the field is still not none. Set it explicitly
     when tools are present. Stay on ``acompletion`` — no Responses API.
+
+    The staging proxy (LiteLLM 1.74.15) registers Sol/Terra/Luna as bare
+    OpenAI aliases, so its param validator 400s ``reasoning_effort``
+    unless the TOP-LEVEL HTTP body also carries
+    ``allowed_openai_params=["reasoning_effort"]`` (probed 2026-08-30:
+    both keys top-level → 200 with tool_calls).
+
+    Both keys go through ``extra_body``, NOT as litellm kwargs, on
+    purpose: the OpenAI SDK merges ``extra_body`` into the top level of
+    the outgoing JSON, which reproduces the verified probe exactly. As
+    kwargs, litellm ≥1.83 does two different things instead
+    (``responses_api_bridge_check``): ``reasoning_effort`` + tools on a
+    gpt-5.4+ model silently reroutes the call to ``/responses``, and
+    ``allowed_openai_params`` is consumed client-side and never
+    forwarded. Verified against this venv's litellm with an HTTP echo
+    server (2026-08-30).
     """
     model = kwargs.get("model")
     if isinstance(model, str) and model.startswith("openai/"):
@@ -591,7 +607,14 @@ def _drop_openai_unsupported(kwargs: dict[str, Any]) -> dict[str, Any]:
             kwargs.pop(key, None)
         tools = kwargs.get("tools")
         if isinstance(tools, list) and tools:
-            kwargs["reasoning_effort"] = "none"
+            # A top-level kwarg would trigger the Responses-API bridge.
+            kwargs.pop("reasoning_effort", None)
+            extra_body = kwargs.get("extra_body")
+            if not isinstance(extra_body, dict):
+                extra_body = {}
+                kwargs["extra_body"] = extra_body
+            extra_body["reasoning_effort"] = "none"
+            extra_body["allowed_openai_params"] = ["reasoning_effort"]
     return kwargs
 
 

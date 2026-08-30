@@ -395,10 +395,12 @@ class TestContextEditing:
         kw = patched_litellm.calls[0]
         # G1 hops are openai/*; LiteLLM 1.83 raises UnsupportedParamsError
         # for Anthropic context_management on that prefix. The hop gate strips it.
-        # Function tools on GPT-5.6 Chat Completions require reasoning_effort=none.
+        # Function tools on GPT-5.6 Chat Completions require reasoning_effort=none,
+        # sent via extra_body so litellm's /responses bridge never triggers.
         assert "context_management" not in kw
         assert "thinking" not in kw
-        assert kw["reasoning_effort"] == "none"
+        assert "reasoning_effort" not in kw
+        assert kw["extra_body"]["reasoning_effort"] == "none"
 
     async def test_context_management_omitted_without_tools(
         self, patched_litellm: _RecordingAcompletion
@@ -440,7 +442,7 @@ class TestContextEditing:
 
         assert len(patched_litellm.calls) == 1
         assert "context_management" not in patched_litellm.calls[0]
-        assert patched_litellm.calls[0]["reasoning_effort"] == "none"
+        assert patched_litellm.calls[0]["extra_body"]["reasoning_effort"] == "none"
 
     async def test_context_management_persists_across_loop_iterations(
         self, patched_litellm: _RecordingAcompletion
@@ -490,7 +492,8 @@ class TestContextEditing:
                 f"iteration {idx} leaked context_management on openai hop"
             )
             assert "thinking" not in call
-            assert call["reasoning_effort"] == "none"
+            assert "reasoning_effort" not in call
+            assert call["extra_body"]["reasoning_effort"] == "none"
 
 
 class TestDropOpenaiUnsupported:
@@ -504,11 +507,18 @@ class TestDropOpenaiUnsupported:
         assert "thinking" not in out
         assert "context_management" not in out
         assert "reasoning_effort" not in out
+        assert "allowed_openai_params" not in out
         assert out["model"] == "openai/gpt-5.6-terra"
 
     def test_openai_hops_with_tools_set_reasoning_effort_none(self) -> None:
         """GPT-5.6 Chat Completions 400 unless reasoning_effort is exactly none
-        when function tools are present. Omitting the field is not none."""
+        when function tools are present. Omitting the field is not none.
+
+        Both keys go via extra_body (the OpenAI SDK merges it into the
+        top-level HTTP body): as litellm kwargs, reasoning_effort + tools
+        on gpt-5.4+ triggers the /responses bridge and
+        allowed_openai_params is consumed client-side, never forwarded to
+        the proxy — whose 1.74.15 validator needs it to accept the param."""
         kw = {
             "model": "openai/gpt-5.6-luna",
             "thinking": {"type": "adaptive", "display": "summarized"},
@@ -519,7 +529,22 @@ class TestDropOpenaiUnsupported:
         out = _drop_openai_unsupported(kw)
         assert "thinking" not in out
         assert "context_management" not in out
-        assert out["reasoning_effort"] == "none"
+        # The stray top-level kwarg is removed so the bridge cannot fire.
+        assert "reasoning_effort" not in out
+        assert "allowed_openai_params" not in out
+        assert out["extra_body"]["reasoning_effort"] == "none"
+        assert out["extra_body"]["allowed_openai_params"] == ["reasoning_effort"]
+
+    def test_openai_hops_with_tools_merge_existing_extra_body(self) -> None:
+        kw = {
+            "model": "openai/gpt-5.6-luna",
+            "tools": [{"type": "function", "function": {"name": "noop", "parameters": {}}}],
+            "extra_body": {"custom": 1},
+        }
+        out = _drop_openai_unsupported(kw)
+        assert out["extra_body"]["custom"] == 1
+        assert out["extra_body"]["reasoning_effort"] == "none"
+        assert out["extra_body"]["allowed_openai_params"] == ["reasoning_effort"]
 
     def test_anthropic_hops_keep_context_management_with_tools(self) -> None:
         """Catalog hops are openai/* today; the gate must still leave the
@@ -536,6 +561,7 @@ class TestDropOpenaiUnsupported:
         assert out["context_management"] == DEFAULT_CONTEXT_MANAGEMENT
         assert out["context_management"]["edits"][0]["type"] == ("clear_tool_uses_20250919")
         assert "reasoning_effort" not in out
+        assert "allowed_openai_params" not in out
 
 
 class TestDefaultContextManagementFromEnv:
