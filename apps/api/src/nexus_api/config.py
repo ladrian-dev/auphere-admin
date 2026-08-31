@@ -240,7 +240,7 @@ class Settings(BaseSettings):
     # worker uses for the agent runtime — Claude Sonnet 4.6 via LiteLLM —
     # but called inline from the API because the operation is
     # operator-interactive.
-    llm_improve_model: str = "anthropic/claude-haiku-4-5-20251001"
+    llm_improve_model: str = "anthropic/claude-sonnet-4-6"
 
     # LiteLLM OSS proxy (Fase 1). Env names match the SDK docs
     # (``LITELLM_PROXY_API_BASE``) and also accept the ``NEXUS_`` prefix.
@@ -373,7 +373,7 @@ class Settings(BaseSettings):
     # may bill differently. All run through the LiteLLM gateway so the
     # interface is the same.
     llm_transcribe_model: str = "openai/whisper-1"
-    llm_vision_model: str = "anthropic/claude-haiku-4-5-20251001"
+    llm_vision_model: str = "anthropic/claude-sonnet-4-6"
     # Per-turn timeouts. The pipeline awaits these in parallel for a single
     # multimodal turn so the worst case is the slowest leg.
     llm_transcribe_timeout_s: float = 25.0
