@@ -158,9 +158,12 @@ class TestLiteLLMExtraMerge:
         assert kw["extra_headers"]["anthropic-beta"] == (
             "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
         )
-        # The Fase A context_management beta is still on the kwargs
-        # (the call has tools — provider attaches it automatically).
-        assert "context_management" in kw
+        # G1 hops are openai/*; LiteLLM 1.83 raises UnsupportedParamsError
+        # for Anthropic-only kwargs on that prefix. The hop gate strips them.
+        assert "context_management" not in kw
+        assert "thinking" not in kw
+        assert "reasoning_effort" not in kw
+        assert kw["extra_body"]["reasoning_effort"] == "none"
 
     async def test_extra_omitted_when_none(self, patched_litellm: _LiteLLMStub) -> None:
         provider = LiteLLMProvider()

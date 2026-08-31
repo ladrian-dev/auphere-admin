@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import csv
 import io
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -112,6 +113,21 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
 
 COMPANION_ACTOR = "Companion"
 
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+def _human_document(after: dict[str, Any], before: dict[str, Any], *, lang: str) -> str:
+    """QA-21: knowledge rows must not show a raw uuid as the document name."""
+    raw = (
+        after.get("filename")
+        or after.get("title")
+        or before.get("filename")
+        or after.get("document_id")
+    )
+    if raw is None or _UUID_RE.match(str(raw).strip()):
+        return "un documento" if lang == "es" else "a document"
+    return str(raw)
+
 
 async def partner_member_emails(session: AsyncSession, partner_id: uuid.UUID) -> dict[str, str]:
     """``user_id`` → correo, **solo del partner del llamante** (cabo 3).
@@ -195,7 +211,7 @@ def summarise(
         key=after.get("prefix_snippet", before.get("prefix_snippet", "?")),
         channel=after.get("channel", after.get("provider_identifier", before.get("channel", "?"))),
         template=after.get("name", after.get("template", before.get("name", "?"))),
-        document=after.get("filename", after.get("title", before.get("filename", "?"))),
+        document=_human_document(after, before, lang=lang),
         cap=after.get("cap", "?"),
         percent=after.get("percent", "?"),
         # CO-08: los tickets de soporte. ``_Safe`` pinta ``?`` para un
@@ -206,7 +222,10 @@ def summarise(
     )
     entry = vocab.get(row.action)
     if entry is None:
-        return f"{values['actor']} · {row.action} · {row.target}"
+        target = row.target or ""
+        if _UUID_RE.search(target):
+            target = str(values["client"])
+        return f"{values['actor']} · {row.action} · {target}"
     return entry.summary(lang).format_map(values)
 
 

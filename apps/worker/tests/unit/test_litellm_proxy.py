@@ -18,7 +18,12 @@ from nexus_api.core.llm_proxy import (
 )
 
 from nexus_worker.runtime.dispatcher import InboundEvent, process_inbound
-from nexus_worker.runtime.llm import InMemoryProvider, LiteLLMProvider, LLMCall
+from nexus_worker.runtime.llm import (
+    InMemoryProvider,
+    LiteLLMProvider,
+    LLMCall,
+    _proxied_acompletion,
+)
 
 PARTNER_A = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1")
 PARTNER_B = uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2")
@@ -280,3 +285,63 @@ class TestWalletVsProxySkip:
         assert result["skipped"] == LLM_PROXY_UNAVAILABLE
         assert result["skipped"] != "wallet_empty"
         assert pipeline.called is False
+
+
+@pytest.mark.asyncio
+async def test_openai_hop_drops_anthropic_thinking_before_http(
+    patched_litellm: _RecordingAcompletion,
+) -> None:
+    """Companion always sends thinking; LiteLLM 1.83 rejects it on openai hops
+    before any HTTP. Strip it so the request actually reaches the proxy."""
+    import litellm
+
+    with llm_proxy_partner_scope(PARTNER_A):
+        await _proxied_acompletion(
+            litellm,
+            {
+                "model": "openai/gpt-5.6-sol",
+                "thinking": {"type": "adaptive", "display": "summarized"},
+                "context_management": {"edits": []},
+                "messages": [{"role": "user", "content": "hola"}],
+            },
+        )
+    assert patched_litellm.calls
+    kw = patched_litellm.calls[0]
+    assert "thinking" not in kw
+    assert "context_management" not in kw
+    assert kw["model"] == "openai/gpt-5.6-sol"
+    assert kw["api_base"] == BASE
+    assert kw["api_key"] == KEY_A
+
+
+@pytest.mark.asyncio
+async def test_openai_hop_with_tools_sets_reasoning_effort_none(
+    patched_litellm: _RecordingAcompletion,
+) -> None:
+    """GPT-5.6 function tools on Chat Completions 400 unless reasoning_effort
+    is exactly none. Stay on acompletion — no Responses API."""
+    import litellm
+
+    with llm_proxy_partner_scope(PARTNER_A):
+        await _proxied_acompletion(
+            litellm,
+            {
+                "model": "openai/gpt-5.6-sol",
+                "thinking": {"type": "adaptive", "display": "summarized"},
+                "context_management": {"edits": []},
+                "tools": [{"type": "function", "function": {"name": "noop", "parameters": {}}}],
+                "messages": [{"role": "user", "content": "hola"}],
+            },
+        )
+    assert patched_litellm.calls
+    kw = patched_litellm.calls[0]
+    assert "thinking" not in kw
+    assert "context_management" not in kw
+    # Both keys ride in extra_body so the OpenAI SDK merges them into the
+    # TOP-LEVEL HTTP body without litellm's kwarg handling seeing them:
+    # as kwargs, reasoning_effort + tools on gpt-5.4+ triggers the
+    # /responses bridge and allowed_openai_params never leaves the client.
+    assert "reasoning_effort" not in kw
+    assert kw["extra_body"]["reasoning_effort"] == "none"
+    assert kw["extra_body"]["allowed_openai_params"] == ["reasoning_effort"]
+    assert kw["model"] == "openai/gpt-5.6-sol"

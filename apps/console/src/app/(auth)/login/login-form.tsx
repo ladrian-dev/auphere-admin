@@ -90,6 +90,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         <Button type="submit" size="lg" disabled={busy}>
           {t("login.submit")}
         </Button>
+        <p className="text-xs text-muted-foreground text-pretty">{t("login.forgot")}</p>
       </form>
     </Form>
   );

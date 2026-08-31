@@ -17,6 +17,7 @@ when the body carries it) so RLS holds.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -663,7 +664,19 @@ async def _run_in_process(
     """
     from nexus_worker.metering.collector import SOURCE_QA, usage_turn
 
+    from nexus_api.core.llm_proxy import (
+        llm_proxy_partner_scope,
+        partner_id_for_tenant_standalone,
+    )
     from nexus_api.core.operator_context import qa_thread_context
+
+    # Same fail-closed proxy resolver as everywhere else: without the
+    # partner virtual-key scope every hop dies with "missing partner
+    # virtual key". A tenant with no partner keeps today's behavior.
+    partner_id = await partner_id_for_tenant_standalone(tenant_id)
+    proxy_scope = (
+        llm_proxy_partner_scope(partner_id) if partner_id is not None else contextlib.nullcontext()
+    )
 
     pipeline = _get_qa_pipeline(live=live)
     state = {
@@ -684,6 +697,7 @@ async def _run_in_process(
             tenant_context(tenant_id),
             qa_thread_context(qa_thread_id),
             customer_context(customer_id),
+            proxy_scope,
         ):
             async with usage_turn(
                 tenant_id=tenant_id,
@@ -990,6 +1004,13 @@ async def start_thread_run(
     # (asyncio creates a fresh context for each Task), so the driver
     # wraps the astream_events loop in the three context managers.
     # ADR-024: the dry/live cache slot is chosen by ``thread.dry_run``.
+    # The partner of the tenant is resolved HERE (async lookup) and the
+    # virtual-key scope opens inside the driver, dispatcher-style: the
+    # proxy resolver is fail-closed, so a hop without the scope dies
+    # with "missing partner virtual key" before leaving the process.
+    from nexus_api.core.llm_proxy import partner_id_for_tenant_standalone
+
+    partner_id = await partner_id_for_tenant_standalone(tenant_id_local)
     pipeline = _get_qa_pipeline(live=thread_live)
     graph_state = {
         "tenant_id": str(tenant_id_local),
@@ -1006,6 +1027,7 @@ async def start_thread_run(
     async def _driver(handle: qa_streaming.RunHandle) -> None:
         from nexus_worker.metering.collector import SOURCE_QA, usage_turn
 
+        from nexus_api.core.llm_proxy import llm_proxy_partner_scope
         from nexus_api.core.operator_context import operator_context
 
         # ``usage_turn`` goes INSIDE the driver for the same reason the
@@ -1014,10 +1036,19 @@ async def start_thread_run(
         # reach the graph nodes and every token would be recorded
         # nowhere. This is the path the current frontend uses — metering
         # only ``/send`` would have left the real one silent.
+        # ``llm_proxy_partner_scope`` rides along for the same reason:
+        # without it every hop dies fail-closed. A tenant with no partner
+        # keeps today's behavior (the hop itself raises).
+        scope = (
+            llm_proxy_partner_scope(partner_id)
+            if partner_id is not None
+            else contextlib.nullcontext()
+        )
         with (
             operator_context(operator_id),
             tenant_context(tenant_id_local),
             qa_thread_context(thread_id),
+            scope,
         ):
             async with usage_turn(
                 tenant_id=tenant_id_local,

@@ -127,7 +127,10 @@ async def invite(
     email = str(body.email).strip().lower()
     async with session.begin():
         members = PartnerMembershipRepository(session)
-        if any(m.email == email for m in await members.list_for_partner(principal.partner.id)):
+        if any(
+            (m.email or "").lower() == email
+            for m in await members.list_for_partner(principal.partner.id)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail="already a member of this partner"
             )

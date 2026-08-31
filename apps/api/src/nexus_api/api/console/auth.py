@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.core.console_auth import ConsoleService, permissions_for, require_console_service
 from nexus_api.core.rate_limit import allow
+from nexus_api.db.models import AuditLog
 from nexus_api.services import console_identity
 from nexus_api.services.console_identity import PrincipalView
 
@@ -172,6 +173,16 @@ async def login(
             user_agent=request.headers.get("user-agent"),
         )
         view = await console_identity.load_principal_view(session, account)
+        if view.ok and view.partner is not None:
+            session.add(
+                AuditLog(
+                    tenant_id=None,
+                    actor=f"console:{account.email}",
+                    action="console.auth.login",
+                    target=f"partner:{view.partner.id}",
+                    after_json={"email": account.email},
+                )
+            )
         out = LoginOut(token=token, expires_at=expires_at, principal=principal_out(view))
     log.info("console_auth.login", account_id=str(account.id), access=view.access)
     return out
@@ -206,5 +217,18 @@ async def logout(
 ) -> Response:
     """Idempotente: cerrar una sesión que ya no existe devuelve 204."""
     async with session.begin():
+        account = await console_identity.resolve_session(session, body.token)
+        if account is not None:
+            view = await console_identity.load_principal_view(session, account)
+            if view.ok and view.partner is not None:
+                session.add(
+                    AuditLog(
+                        tenant_id=None,
+                        actor=f"console:{account.email}",
+                        action="console.auth.logout",
+                        target=f"partner:{view.partner.id}",
+                        after_json={"email": account.email},
+                    )
+                )
         await console_identity.end_session(session, body.token)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

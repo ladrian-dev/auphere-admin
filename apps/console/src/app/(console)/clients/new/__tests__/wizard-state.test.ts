@@ -16,6 +16,10 @@ import {
   stageReducer,
   wizardIsDirty,
   wizardShouldBlockLeave,
+  WIZARD_TIMEZONE_INITIAL,
+  isIanaTimeZone,
+  pickWizardTimezone,
+  wizardTimezoneOptions,
 } from "../wizard-state";
 
 describe("wizard-state", () => {
@@ -123,5 +127,23 @@ describe("wizardShouldBlockLeave (QA-04)", () => {
     expect(wizardShouldBlockLeave(true, "partial")).toBe(true);
     expect(wizardShouldBlockLeave(true, "done")).toBe(false);
     expect(wizardShouldBlockLeave(false, "idle")).toBe(false);
+  });
+});
+
+describe("wizard timezone (QA-06)", () => {
+  it("starts empty — no Europe/Madrid default", () => {
+    expect(WIZARD_TIMEZONE_INITIAL).toBe("");
+  });
+  it("select options are IANA and include the browser zone", () => {
+    const opts = wizardTimezoneOptions("Pacific/Honolulu");
+    expect(opts).toContain("Pacific/Honolulu");
+    expect(opts).not.toContain("Caracas Venezuela");
+    expect(pickWizardTimezone("Pacific/Honolulu", opts)).toBe("Pacific/Honolulu");
+    expect(pickWizardTimezone("Not/AZone", opts)).toBe("");
+  });
+  it("accepts real IANA and rejects labels", () => {
+    expect(isIanaTimeZone("America/Los_Angeles")).toBe(true);
+    expect(isIanaTimeZone("")).toBe(false);
+    expect(isIanaTimeZone("Caracas Venezuela")).toBe(false);
   });
 });
