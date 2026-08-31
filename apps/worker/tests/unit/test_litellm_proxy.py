@@ -345,3 +345,123 @@ async def test_openai_hop_with_tools_sets_reasoning_effort_none(
     assert kw["extra_body"]["reasoning_effort"] == "none"
     assert kw["extra_body"]["allowed_openai_params"] == ["reasoning_effort"]
     assert kw["model"] == "openai/gpt-5.6-sol"
+
+
+class _RecordingToolCallAcompletion:
+    """Stub that returns a tool call using the WIRE name it received."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def __call__(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        tools = kwargs.get("tools") or []
+        name = tools[0]["function"]["name"] if tools else ""
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {"name": name, "arguments": "{}"},
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+
+
+@pytest.mark.asyncio
+async def test_openai_hop_wires_dotted_tool_names_and_maps_back(
+    monkeypatch: pytest.MonkeyPatch, proxy_map: None
+) -> None:
+    """GPT-5.6 rejects dots in function names (probed 2026-08-31). The hop
+    rewrites catalog names to their `__` wire form — in tools[] AND in the
+    assistant tool_calls history — and maps the response back, so the rest
+    of the runtime only ever sees catalog names."""
+    import litellm
+
+    from nexus_worker.runtime.llm import _proxied_acompletion as proxied
+
+    stub = _RecordingToolCallAcompletion()
+    monkeypatch.setattr(litellm, "acompletion", stub)
+    with llm_proxy_partner_scope(PARTNER_A):
+        response = await proxied(
+            litellm,
+            {
+                "model": "openai/gpt-5.6-sol",
+                "messages": [
+                    {"role": "user", "content": "reserva"},
+                    {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call_0",
+                                "type": "function",
+                                "function": {
+                                    "name": "booking.check_availability",
+                                    "arguments": "{}",
+                                },
+                            }
+                        ],
+                    },
+                    {"role": "tool", "tool_call_id": "call_0", "content": "{}"},
+                ],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "booking.create_appointment",
+                            "parameters": {"type": "object", "properties": {}},
+                        },
+                    }
+                ],
+            },
+        )
+    kw = stub.calls[0]
+    assert kw["tools"][0]["function"]["name"] == "booking__create_appointment"
+    assert kw["messages"][1]["tool_calls"][0]["function"]["name"] == ("booking__check_availability")
+    # The response the runtime sees carries the CATALOG name again.
+    emitted = response["choices"][0]["message"]["tool_calls"][0]["function"]["name"]
+    assert emitted == "booking.create_appointment"
+
+
+def test_anthropic_hop_keeps_dotted_tool_names() -> None:
+    """Anthropic accepts dotted names; the wire rewrite is openai/-only.
+    (Tested at the helper level: the catalog gate rejects anthropic ids
+    before ``_proxied_acompletion`` even builds kwargs — N5/F1.)"""
+    from nexus_worker.runtime.llm import _wire_openai_tool_names
+
+    kwargs = {
+        "model": "anthropic/claude-sonnet-4-6",
+        "messages": [],
+        "tools": [
+            {
+                "type": "function",
+                "function": {"name": "booking.check_availability", "parameters": {}},
+            }
+        ],
+    }
+    back = _wire_openai_tool_names(kwargs)
+    assert back == {}
+    assert kwargs["tools"][0]["function"]["name"] == "booking.check_availability"
+
+
+def test_wire_openai_tool_names_collision_raises() -> None:
+    from nexus_worker.runtime.llm import _wire_openai_tool_names
+
+    kwargs = {
+        "model": "openai/gpt-5.6-sol",
+        "messages": [],
+        "tools": [
+            {"type": "function", "function": {"name": "a.b", "parameters": {}}},
+            {"type": "function", "function": {"name": "a__b", "parameters": {}}},
+        ],
+    }
+    with pytest.raises(RuntimeError, match="collide"):
+        _wire_openai_tool_names(kwargs)

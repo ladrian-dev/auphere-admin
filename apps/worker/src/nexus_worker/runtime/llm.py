@@ -31,6 +31,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
@@ -625,17 +626,127 @@ def _proxy_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     return kwargs
 
 
+#: Dot → double underscore, same transport contract as
+#: ``runtime/companion/tools.py``. GPT-5.6 rejects dots in function names
+#: (``Invalid 'tools[0].function.name': string does not match pattern`` —
+#: probed 2026-08-31 against the staging proxy), and the whole tool catalog
+#: uses dotted names (``booking.check_availability``). The catalog is NOT
+#: renamed — dotted names are contract in the UI, evals and audit — so the
+#: restriction is solved at the transport, exactly like the Companion does.
+_WIRE_SEPARATOR = "__"
+_OPENAI_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+
+def _wire_openai_tool_names(kwargs: dict[str, Any]) -> dict[str, str]:
+    """Rewrite dotted tool names to their wire form for openai/ hops.
+
+    Touches ``tools[]`` and the assistant ``tool_calls`` echoes in the
+    message history (OpenAI validates those against the same pattern, and
+    the tool-free final iteration still carries the history). Non-streaming
+    only: the streaming paths are Companion-only and already send wire
+    names. Returns the wire→catalog back-map; empty when nothing changed.
+    """
+    model = kwargs.get("model")
+    if not (isinstance(model, str) and model.startswith("openai/")) or kwargs.get("stream"):
+        return {}
+
+    back: dict[str, str] = {}
+    tools = kwargs.get("tools")
+    if isinstance(tools, list) and tools:
+        seen: dict[str, str] = {}
+        wired_tools: list[Any] = []
+        for spec in tools:
+            function = spec.get("function") if isinstance(spec, dict) else None
+            if isinstance(function, dict):
+                name = str(function.get("name") or "")
+                wire = name.replace(".", _WIRE_SEPARATOR)
+                if seen.setdefault(wire, name) != name:
+                    raise RuntimeError(f"{name!r} and {seen[wire]!r} collide on wire name {wire!r}")
+                if wire != name:
+                    if not _OPENAI_TOOL_NAME.match(wire):
+                        raise RuntimeError(
+                            f"tool name {name!r} is invalid on the wire even as {wire!r}"
+                        )
+                    back[wire] = name
+                    spec = {**spec, "function": {**function, "name": wire}}
+            wired_tools.append(spec)
+        if back:
+            kwargs["tools"] = wired_tools
+
+    messages = kwargs.get("messages")
+    if isinstance(messages, list):
+        rewritten: list[Any] = []
+        changed = False
+        for message in messages:
+            calls = message.get("tool_calls") if isinstance(message, dict) else None
+            if isinstance(calls, list) and calls:
+                new_calls: list[Any] = []
+                for call in calls:
+                    function = call.get("function") if isinstance(call, dict) else None
+                    if isinstance(function, dict):
+                        name = str(function.get("name") or "")
+                        wire = name.replace(".", _WIRE_SEPARATOR)
+                        if wire != name:
+                            call = {**call, "function": {**function, "name": wire}}
+                            changed = True
+                    new_calls.append(call)
+                message = {**message, "tool_calls": new_calls}
+            rewritten.append(message)
+        if changed:
+            kwargs["messages"] = rewritten
+
+    return back
+
+
+def _unwire_response_tool_calls(response: Any, back: dict[str, str]) -> None:
+    """Map the provider's wire tool names back to catalog names, in place.
+    Handles both dict-shaped responses (tests) and litellm ModelResponse."""
+    try:
+        choices = response["choices"]
+    except (TypeError, KeyError, IndexError):
+        choices = getattr(response, "choices", None)
+    for choice in choices or []:
+        message = (
+            choice.get("message") if isinstance(choice, dict) else getattr(choice, "message", None)
+        )
+        calls = (
+            message.get("tool_calls")
+            if isinstance(message, dict)
+            else getattr(message, "tool_calls", None)
+        )
+        for call in calls or []:
+            function = (
+                call.get("function") if isinstance(call, dict) else getattr(call, "function", None)
+            )
+            if function is None:
+                continue
+            name = (
+                function.get("name")
+                if isinstance(function, dict)
+                else getattr(function, "name", None)
+            )
+            if isinstance(name, str) and name in back:
+                if isinstance(function, dict):
+                    function["name"] = back[name]
+                else:
+                    function.name = back[name]
+
+
 async def _proxied_acompletion(litellm: Any, kwargs: dict[str, Any]) -> Any:
     """Single hop: catalog id, same api_base, no vendor fallback."""
     model = kwargs.get("model")
     require_hop_model(model if isinstance(model, str) else "")
     _proxy_kwargs(kwargs)
     _drop_openai_unsupported(kwargs)
+    back = _wire_openai_tool_names(kwargs)
     try:
-        return await litellm.acompletion(**kwargs)
+        response = await litellm.acompletion(**kwargs)
     except Exception as exc:
         raise_mapped_proxy_failure(exc)
         raise
+    if back:
+        _unwire_response_tool_calls(response, back)
+    return response
 
 
 # ── litellm provider ─────────────────────────────────────────────────────────
