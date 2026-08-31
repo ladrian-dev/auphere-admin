@@ -18,6 +18,7 @@ from nexus_api.api.admin.agent_configs import (
     get_prompt_improver_provider,
     set_prompt_improver_provider,
 )
+from nexus_api.config import get_settings
 from nexus_api.services.prompt_improver import FakePromptImproverProvider
 
 pytestmark = pytest.mark.asyncio
@@ -83,14 +84,19 @@ async def test_improve_prompt_happy_path(
     assert isinstance(body["summary_of_changes"], list)
     assert body["mode"] == "general"
     assert body["meta_prompt_version"] == "n.v1"
-    assert body["model"] == "anthropic/claude-sonnet-4-6"
+    # Contra el AJUSTE, no contra una cadena. La versión anterior fijaba
+    # ``anthropic/claude-sonnet-4-6`` a mano y por eso este test seguía en
+    # verde mientras el modelo dejaba de existir: afirmaba como correcto un
+    # identificador que el proveedor rechaza. Un test que copia el valor por
+    # escrito no verifica nada, solo lo repite.
+    assert body["model"] == get_settings().llm_improve_model
     assert body["latency_ms"] >= 0
     # The fake provider records the call so we can inspect the
     # tenant_id + model that the endpoint passed down.
     assert len(fake_improver.calls) == 1
     call = fake_improver.calls[0]
     assert call["tenant_id"] == tid
-    assert call["model"] == "anthropic/claude-sonnet-4-6"
+    assert call["model"] == get_settings().llm_improve_model
 
 
 async def test_improve_prompt_injects_tenant_context_into_metaprompt(
