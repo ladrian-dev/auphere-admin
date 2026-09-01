@@ -347,10 +347,10 @@ def _require_proxy(partner_id: uuid.UUID) -> None:
     """409 ``llm_proxy_unavailable`` — distinct from ``wallet_empty``."""
     if not _uses_live_litellm():
         return
-    from nexus_api.core.llm_proxy import LLMProxyUnavailable, require_litellm_proxy
+    from nexus_api.core.llm_proxy import LLMProxyUnavailable, resolve_litellm_proxy_optional
 
     try:
-        require_litellm_proxy(partner_id)
+        resolve_litellm_proxy_optional(partner_id)
     except LLMProxyUnavailable as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

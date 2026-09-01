@@ -40,6 +40,12 @@ resource "aws_ecs_service" "service" {
 
   health_check_grace_period_seconds = each.key == "api" ? 60 : null
 
+  # Solo donde el task role lleva la policy ``ecs-exec`` (staging, api).
+  # Declararlo aquí evita la deriva: el 2026-09-01 se habilitó por CLI para
+  # sacar el inventario de modelos del proxy y el siguiente apply lo habría
+  # devuelto a ``false`` sin que nadie lo notara hasta necesitarlo.
+  enable_execute_command = contains(local.ecs_exec_services, each.key)
+
   # Un rollout que no estabiliza vuelve solo a la revisión anterior — el
   # equivalente ECS del restartPolicy de Railway, pero con rollback.
   deployment_circuit_breaker {

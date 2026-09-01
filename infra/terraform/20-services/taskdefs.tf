@@ -100,10 +100,19 @@ locals {
   # LiteLLM OSS solo en staging. Prod NO lleva esta variable: el Builder
   # falla cerrado si falta. El hostname es el Cloud Map de litellm.tf,
   # no un ALB.
+  #
+  # ``NEXUS_LLM_PROXY_REQUIRED`` (ADR-036) va aquí y NO en el secreto de
+  # aplicación a propósito: no es una credencial, y ``app_secret_keys`` es
+  # una lista compartida por los dos workspaces — añadirla ahí obligaría a
+  # crearla también en ``nexus/prod/app`` o ECS abortaría el arranque de
+  # producción por un ``valueFrom`` que no resuelve. Como env por workspace,
+  # staging la lleva a ``true`` y prod simplemente no la lleva: el defecto
+  # del código es ``False``, que es ir al vendor directo.
   common_env = concat(
     local.common_env_base,
     terraform.workspace == "staging" ? [
       { name = "LITELLM_PROXY_API_BASE", value = "http://litellm.nexus-staging.internal:4000" },
+      { name = "NEXUS_LLM_PROXY_REQUIRED", value = "true" },
     ] : [],
   )
 

@@ -518,9 +518,14 @@ class TestDropOpenaiUnsupported:
         top-level HTTP body): as litellm kwargs, reasoning_effort + tools
         on gpt-5.4+ triggers the /responses bridge and
         allowed_openai_params is consumed client-side, never forwarded to
-        the proxy — whose 1.74.15 validator needs it to accept the param."""
+        the proxy — whose 1.74.15 validator needs it to accept the param.
+
+        ``api_base`` presente = este hop va al proxy, que es el único que
+        entiende ``allowed_openai_params``.
+        """
         kw = {
             "model": "openai/gpt-5.6-luna",
+            "api_base": "http://litellm.internal:4000",
             "thinking": {"type": "adaptive", "display": "summarized"},
             "context_management": DEFAULT_CONTEXT_MANAGEMENT,
             "tools": [{"type": "function", "function": {"name": "noop", "parameters": {}}}],
@@ -535,9 +540,36 @@ class TestDropOpenaiUnsupported:
         assert out["extra_body"]["reasoning_effort"] == "none"
         assert out["extra_body"]["allowed_openai_params"] == ["reasoning_effort"]
 
+    def test_openai_hops_sin_proxy_no_llevan_allowed_openai_params(self) -> None:
+        """ADR-036: sin ``api_base`` el hop va al vendor, y el vendor no
+        conoce ``allowed_openai_params`` — 400 ``Unknown parameter``,
+        sondeado contra api.openai.com el 2026-09-01. ``reasoning_effort``
+        sí es suyo y se queda: sin él, tools en gpt-5.6-* también es 400.
+        """
+        kw = {
+            "model": "openai/gpt-5.6-luna",
+            "tools": [{"type": "function", "function": {"name": "noop", "parameters": {}}}],
+            "reasoning_effort": "medium",
+        }
+        out = _drop_openai_unsupported(kw)
+        assert out["extra_body"]["reasoning_effort"] == "none"
+        assert "allowed_openai_params" not in out["extra_body"]
+
+    def test_openai_hops_sin_proxy_limpian_un_allowed_heredado(self) -> None:
+        """Un ``extra_body`` que ya traía la clave no puede colarla al vendor."""
+        kw = {
+            "model": "openai/gpt-5.6-luna",
+            "tools": [{"type": "function", "function": {"name": "noop", "parameters": {}}}],
+            "extra_body": {"allowed_openai_params": ["reasoning_effort"], "custom": 1},
+        }
+        out = _drop_openai_unsupported(kw)
+        assert out["extra_body"]["custom"] == 1
+        assert "allowed_openai_params" not in out["extra_body"]
+
     def test_openai_hops_with_tools_merge_existing_extra_body(self) -> None:
         kw = {
             "model": "openai/gpt-5.6-luna",
+            "api_base": "http://litellm.internal:4000",
             "tools": [{"type": "function", "function": {"name": "noop", "parameters": {}}}],
             "extra_body": {"custom": 1},
         }

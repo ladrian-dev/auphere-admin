@@ -248,6 +248,16 @@ class Settings(BaseSettings):
     # never ANTHROPIC/OPENAI vendor keys.
     litellm_proxy_api_base: str = ""
     litellm_proxy_virtual_keys: str = ""
+    # ¿El proxy es un requisito para responder? (ADR-036)
+    #
+    # ``False`` = si no hay proxy configurado, el hop va al vendor directo.
+    # ``True``  = su ausencia es un error ruidoso y el turno se descarta.
+    #
+    # El defecto es ``False`` a propósito: producción no lleva proxy
+    # (``litellm.tf:23`` lo fija a staging) y antes de esta bandera la
+    # ausencia enmudecía a todo tenant con partner sin error ni alarma —
+    # el corte de 2 h 37 del 31-ago-2026. Staging lo pone a ``True``.
+    llm_proxy_required: bool = False
     llm_improve_timeout_s: float = 30.0
     # Token budget guardrails so a runaway prompt doesn't bill us 100k
     # input tokens. ``max_input_chars`` is a cheap pre-LLM check; the

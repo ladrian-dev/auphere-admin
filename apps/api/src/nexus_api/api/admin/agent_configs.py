@@ -547,19 +547,24 @@ async def _bind_operator_proxy(session: Any, tenant_id: uuid.UUID, provider: Any
     from nexus_api.core.llm_proxy import (
         LLMProxyUnavailable,
         llm_proxy_partner_scope,
-        require_litellm_proxy,
+        resolve_litellm_proxy_optional,
     )
     from nexus_api.metering.wallet import partner_id_for_tenant
 
     partner_id = await partner_id_for_tenant(session, tenant_id)
     try:
-        target = require_litellm_proxy(partner_id)
+        target = resolve_litellm_proxy_optional(partner_id)
     except LLMProxyUnavailable as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "llm_proxy_unavailable"},
         ) from exc
-    return llm_proxy_partner_scope(target.partner_id)
+    # Sin proxy el scope sigue abriéndose: identifica al partner para el
+    # metering y para el resto de la cadena, no solo para elegir la clave.
+    scoped = target.partner_id if target is not None else partner_id
+    if scoped is None:
+        return None
+    return llm_proxy_partner_scope(scoped)
 
 
 def get_prompt_improver_provider() -> PromptImproverProvider:

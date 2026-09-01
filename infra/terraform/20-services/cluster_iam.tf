@@ -101,6 +101,41 @@ resource "aws_iam_role_policy" "task_adot" {
   policy = data.aws_iam_policy_document.adot.json
 }
 
+# ── ECS Exec en staging ────────────────────────────────────────────────
+#
+# Aurora es privada y no hay bastión: sin esto, consultar la BD o inspeccionar
+# un servicio exige levantar una task efímera cada vez. ``litellm.tf`` ya
+# tenía el mismo patrón para el proxy; esto lo extiende a ``api``, que es el
+# contenedor con la ``DATABASE_URL`` de la aplicación.
+#
+# **Solo staging.** En producción el acceso a un shell dentro del contenedor
+# que sirve los webhooks no se abre por comodidad: allí se sigue usando la
+# task efímera de ``migrate`` con ``containerOverrides``.
+locals {
+  ecs_exec_services = terraform.workspace == "staging" ? ["api"] : []
+}
+
+data "aws_iam_policy_document" "task_ecs_exec" {
+  statement {
+    sid = "EcsExecChannels"
+    actions = [
+      "ssmmessages:CreateControlChannel",
+      "ssmmessages:CreateDataChannel",
+      "ssmmessages:OpenControlChannel",
+      "ssmmessages:OpenDataChannel",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "task_ecs_exec" {
+  for_each = toset(local.ecs_exec_services)
+
+  name   = "ecs-exec"
+  role   = aws_iam_role.task[each.key].id
+  policy = data.aws_iam_policy_document.task_ecs_exec.json
+}
+
 data "aws_iam_policy_document" "s3_media" {
   statement {
     sid = "MediaBuckets"

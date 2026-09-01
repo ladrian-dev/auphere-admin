@@ -110,6 +110,9 @@ def test_companion_http_is_409_llm_proxy_unavailable_not_wallet_empty(
 ) -> None:
     from nexus_api.api.console import companion as companion_api
 
+    # ADR-036: el 409 existe bajo ``llm_proxy_required``. Sin la bandera, la
+    # ausencia de proxy no es un fallo — el hop sale al vendor.
+    monkeypatch.setenv("LITELLM_PROXY_REQUIRED", "1")
     monkeypatch.delenv("LITELLM_PROXY_API_BASE", raising=False)
     monkeypatch.delenv("NEXUS_LITELLM_PROXY_API_BASE", raising=False)
     monkeypatch.setattr("nexus_api.core.llm_proxy._settings_base_and_keys", lambda: ("", ""))
@@ -143,7 +146,12 @@ def _patch_acompletion(monkeypatch: pytest.MonkeyPatch, impl: Any) -> Any:
 async def test_missing_api_base_does_not_call_vendor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Veto 2 — missing api_base: acompletion never runs, vendor env unused."""
+    """Veto 2 — missing api_base: acompletion never runs, vendor env unused.
+
+    ADR-036: el veto sigue vigente **bajo ``llm_proxy_required``**. Sin la
+    bandera, la ausencia de proxy es una decisión de despliegue y el hop sale
+    al vendor a propósito.
+    """
     import litellm
 
     called: list[dict[str, Any]] = []
@@ -152,6 +160,7 @@ async def test_missing_api_base_does_not_call_vendor(
         called.append(kwargs)
         raise AssertionError("vendor must not be called")
 
+    monkeypatch.setenv("LITELLM_PROXY_REQUIRED", "1")
     monkeypatch.delenv("LITELLM_PROXY_API_BASE", raising=False)
     monkeypatch.delenv("NEXUS_LITELLM_PROXY_API_BASE", raising=False)
     monkeypatch.setenv("LITELLM_PROXY_VIRTUAL_KEYS", json.dumps({str(PARTNER_A): KEY_A}))

@@ -1,4 +1,4 @@
-"""F0: closed catalog, Sol defaults, hop gate, human errors."""
+"""F0: oferta cerrada, catálogo ejecutable, defaults Sol, errores humanos."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from nexus_api.api.console import playground as playground_api
 from nexus_api.api.qa import QA_CLASSIFY_MODEL, QA_RESPOND_MODEL
 from nexus_api.config import Settings
 from nexus_api.core.respond_catalog import (
+    HOP_MODEL_ID_SET,
     HUMAN_TURN_ERROR,
     RESPOND_MODEL_ID_SET,
     SOL_MODEL_ID,
@@ -22,8 +23,12 @@ from nexus_api.core.respond_catalog import (
     require_hop_model,
 )
 
+#: Un id con forma verosímil que no existe en ningún sitio. ``gpt-5.6`` a
+#: secas es 404 en OpenAI (probado el 2026-09-01) y no está en el catálogo.
+UNKNOWN_MODEL_ID = "openai/gpt-5.6"
 
-def test_sol_terra_luna_are_the_closed_catalog() -> None:
+
+def test_sol_terra_luna_son_la_oferta_al_partner() -> None:
     assert SOL_MODEL_ID == "openai/gpt-5.6-sol"
     assert {
         "openai/gpt-5.6-sol",
@@ -31,8 +36,32 @@ def test_sol_terra_luna_are_the_closed_catalog() -> None:
         "openai/gpt-5.6-luna",
     } == RESPOND_MODEL_ID_SET
     assert hop_models_in_catalog(SOL_MODEL_ID, "openai/gpt-5.6-terra")
-    assert not hop_models_in_catalog("anthropic/claude-sonnet-4-6")
     assert hop_models_in_catalog("")  # empty ids are ignored
+
+
+def test_anthropic_es_ejecutable_aunque_no_se_ofrezca() -> None:
+    """El caso que costó un corte.
+
+    Demo Farmacia tiene binding a ``anthropic/claude-sonnet-4-6`` en
+    staging y en producción, y prod responde con ese modelo a diario.
+    Validar el hop contra la *oferta* mataba su turno con un
+    ``UnknownCatalogModel`` que nadie captura. Ofrecer y poder ejecutar
+    son dos cosas distintas.
+    """
+    anthropic = "anthropic/claude-sonnet-4-6"
+    assert anthropic not in RESPOND_MODEL_ID_SET  # no se ofrece
+    assert anthropic in HOP_MODEL_ID_SET  # pero se ejecuta
+    assert hop_models_in_catalog(anthropic)
+    assert require_hop_model(anthropic) == anthropic
+    # La oferta es un subconjunto del catálogo ejecutable, nunca al revés.
+    assert RESPOND_MODEL_ID_SET <= HOP_MODEL_ID_SET
+
+
+def test_un_id_inventado_sigue_siendo_un_error_humano() -> None:
+    assert UNKNOWN_MODEL_ID not in HOP_MODEL_ID_SET
+    assert not hop_models_in_catalog(UNKNOWN_MODEL_ID)
+    with pytest.raises(UnknownCatalogModel):
+        require_hop_model(UNKNOWN_MODEL_ID)
 
 
 def test_companion_respond_and_classify_defaults_are_sol() -> None:
@@ -86,18 +115,18 @@ async def test_unknown_id_never_calls_acompletion() -> None:
             raise AssertionError("vendor acompletion must not run")
 
     with pytest.raises(UnknownCatalogModel):
-        require_hop_model("anthropic/claude-sonnet-4-6")
+        require_hop_model(UNKNOWN_MODEL_ID)
 
     with pytest.raises(UnknownCatalogModel):
-        await _proxied_acompletion(_Litellm(), {"model": "anthropic/claude-sonnet-4-6"})
+        await _proxied_acompletion(_Litellm(), {"model": UNKNOWN_MODEL_ID})
     assert called == []
 
 
 def test_env_override_does_not_skip_the_catalog(monkeypatch) -> None:
-    monkeypatch.setenv("NEXUS_LLM_COMPANION_MODEL", "anthropic/claude-sonnet-4-6")
-    assert "anthropic/claude-sonnet-4-6" not in RESPOND_MODEL_ID_SET
+    monkeypatch.setenv("NEXUS_LLM_COMPANION_MODEL", UNKNOWN_MODEL_ID)
+    assert UNKNOWN_MODEL_ID not in RESPOND_MODEL_ID_SET
     with pytest.raises(UnknownCatalogModel):
-        require_hop_model("anthropic/claude-sonnet-4-6")
+        require_hop_model(UNKNOWN_MODEL_ID)
 
 
 def test_companion_does_not_read_tenant_model_bindings() -> None:

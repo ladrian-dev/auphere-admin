@@ -87,8 +87,11 @@ class TestPartnerKeyIsolation:
 
 class TestNoVendorFallback:
     async def test_missing_base_does_not_call_vendor(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Bajo ``llm_proxy_required`` la garantía de Fase 1 sigue en pie:
+        sin proxy no se cae al vendor, se falla. Ver ADR-036."""
         import litellm
 
+        monkeypatch.setenv("LITELLM_PROXY_REQUIRED", "1")
         monkeypatch.delenv("LITELLM_PROXY_API_BASE", raising=False)
         monkeypatch.delenv("NEXUS_LITELLM_PROXY_API_BASE", raising=False)
         monkeypatch.setenv("LITELLM_PROXY_VIRTUAL_KEYS", _keys(**{str(PARTNER_A): KEY_A}))
@@ -105,6 +108,35 @@ class TestNoVendorFallback:
                 messages=[{"role": "user", "content": "hola"}],
             )
         assert stub.calls == []
+
+    async def test_without_required_missing_base_goes_to_vendor(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ADR-036: sin ``llm_proxy_required`` la ausencia de proxy es una
+        decisión de despliegue — el hop sale al vendor y NO lleva estampados
+        ``api_base`` / ``api_key`` del proxy."""
+        import litellm
+
+        monkeypatch.delenv("LITELLM_PROXY_REQUIRED", raising=False)
+        monkeypatch.delenv("NEXUS_LLM_PROXY_REQUIRED", raising=False)
+        monkeypatch.delenv("LITELLM_PROXY_API_BASE", raising=False)
+        monkeypatch.delenv("NEXUS_LITELLM_PROXY_API_BASE", raising=False)
+        monkeypatch.setattr("nexus_api.core.llm_proxy._settings_base_and_keys", lambda: ("", ""))
+        monkeypatch.setattr("nexus_api.core.llm_proxy.proxy_required", lambda: False)
+        stub = _RecordingAcompletion()
+        monkeypatch.setattr(litellm, "acompletion", stub)
+        provider = LiteLLMProvider(context_management=None)
+        with llm_proxy_partner_scope(PARTNER_A):
+            await provider.acomplete(
+                tenant_id=uuid.uuid4(),
+                role="respond",
+                model="openai/gpt-5.6-sol",
+                messages=[{"role": "user", "content": "hola"}],
+            )
+        assert stub.calls, "sin proxy el hop tiene que llegar al vendor"
+        for kw in stub.calls:
+            assert "api_base" not in kw
+            assert "api_key" not in kw
 
     async def test_timeout_retries_same_base_never_vendor_key(
         self, monkeypatch: pytest.MonkeyPatch, proxy_map: None
@@ -260,6 +292,8 @@ class TestWalletVsProxySkip:
     async def test_proxy_unavailable_is_distinct_skip(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Con ``llm_proxy_required`` el skip existe y es distinto del wallet."""
+        monkeypatch.setenv("LITELLM_PROXY_REQUIRED", "1")
         monkeypatch.setattr(
             "nexus_api.metering.wallet.allow_channel_turn",
             AsyncMock(return_value=True),
@@ -285,6 +319,43 @@ class TestWalletVsProxySkip:
         assert result["skipped"] == LLM_PROXY_UNAVAILABLE
         assert result["skipped"] != "wallet_empty"
         assert pipeline.called is False
+
+    async def test_without_required_missing_proxy_does_not_skip_the_turn(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """El corte del 31-ago-2026 en una línea.
+
+        Sin proxy y sin ``llm_proxy_required``, el turno **no** se descarta:
+        el despliegue va a vendor directo. Antes de ADR-036 esto devolvía
+        ``llm_proxy_unavailable`` y dejaba mudo a todo tenant con partner,
+        sin error ni alarma.
+        """
+        monkeypatch.delenv("LITELLM_PROXY_REQUIRED", raising=False)
+        monkeypatch.delenv("NEXUS_LLM_PROXY_REQUIRED", raising=False)
+        monkeypatch.setattr("nexus_api.core.llm_proxy.proxy_required", lambda: False)
+        monkeypatch.setattr(
+            "nexus_api.metering.wallet.allow_channel_turn",
+            AsyncMock(return_value=True),
+        )
+        monkeypatch.setattr(
+            "nexus_api.core.llm_proxy.partner_id_for_tenant_standalone",
+            AsyncMock(return_value=PARTNER_A),
+        )
+        monkeypatch.delenv("LITELLM_PROXY_API_BASE", raising=False)
+        monkeypatch.delenv("NEXUS_LITELLM_PROXY_API_BASE", raising=False)
+        monkeypatch.setattr("nexus_api.core.llm_proxy._settings_base_and_keys", lambda: ("", ""))
+        pipeline = _Pipeline()
+        result = await process_inbound(
+            InboundEvent(
+                tenant_id=uuid.uuid4(),
+                channel_id=uuid.uuid4(),
+                user_id="u1",
+                content="hola",
+                provider="whatsapp",
+            ),
+            pipeline=pipeline,
+        )
+        assert result.get("skipped") != LLM_PROXY_UNAVAILABLE
 
 
 @pytest.mark.asyncio
@@ -345,6 +416,106 @@ async def test_openai_hop_with_tools_sets_reasoning_effort_none(
     assert kw["extra_body"]["reasoning_effort"] == "none"
     assert kw["extra_body"]["allowed_openai_params"] == ["reasoning_effort"]
     assert kw["model"] == "openai/gpt-5.6-sol"
+
+
+@pytest.mark.asyncio
+async def test_openai_hop_sin_proxy_no_manda_allowed_openai_params(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-036: ``allowed_openai_params`` es del proxy y solo el proxy lo entiende.
+
+    Sondeado contra api.openai.com el 2026-09-01: enviarlo al vendor es un
+    400 ``Unknown parameter: 'allowed_openai_params'``, con tools y sin
+    tools. Producción va a vendor directo, así que estamparlo siempre
+    —como hacía el fix A1— habría dejado mudo a todo el mundo al
+    desplegar. ``reasoning_effort`` sí es del vendor y se queda: sin él,
+    tools en gpt-5.6-* también es 400 (mismo sondeo).
+    """
+    import litellm
+
+    monkeypatch.delenv("LITELLM_PROXY_REQUIRED", raising=False)
+    monkeypatch.delenv("NEXUS_LLM_PROXY_REQUIRED", raising=False)
+    monkeypatch.delenv("LITELLM_PROXY_API_BASE", raising=False)
+    monkeypatch.delenv("NEXUS_LITELLM_PROXY_API_BASE", raising=False)
+    monkeypatch.setattr("nexus_api.core.llm_proxy._settings_base_and_keys", lambda: ("", ""))
+    monkeypatch.setattr("nexus_api.core.llm_proxy.proxy_required", lambda: False)
+    stub = _RecordingAcompletion()
+    monkeypatch.setattr(litellm, "acompletion", stub)
+
+    with llm_proxy_partner_scope(PARTNER_A):
+        await _proxied_acompletion(
+            litellm,
+            {
+                "model": "openai/gpt-5.6-sol",
+                "tools": [{"type": "function", "function": {"name": "noop", "parameters": {}}}],
+                "messages": [{"role": "user", "content": "hola"}],
+            },
+        )
+
+    assert stub.calls
+    kw = stub.calls[0]
+    assert "api_base" not in kw
+    assert kw["extra_body"]["reasoning_effort"] == "none"
+    assert "allowed_openai_params" not in kw["extra_body"]
+
+
+@pytest.mark.asyncio
+async def test_tenant_sin_partner_responde_cuando_el_proxy_no_es_requisito(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-036: sin proxy, un tenant sin partner es legítimo.
+
+    Demo Farmacia tiene ``partner_id`` NULL en staging y en producción, así
+    que el dispatcher no abre scope para él. Exigir la clave virtual del
+    partner en el hop lo mataba con ``missing partner virtual key`` — el
+    mismo silencio del corte del 31-ago, una capa más abajo. Con el proxy
+    como requisito la exigencia se mantiene.
+    """
+    import litellm
+
+    monkeypatch.delenv("LITELLM_PROXY_REQUIRED", raising=False)
+    monkeypatch.delenv("NEXUS_LLM_PROXY_REQUIRED", raising=False)
+    monkeypatch.delenv("LITELLM_PROXY_API_BASE", raising=False)
+    monkeypatch.delenv("NEXUS_LITELLM_PROXY_API_BASE", raising=False)
+    monkeypatch.setattr("nexus_api.core.llm_proxy._settings_base_and_keys", lambda: ("", ""))
+    monkeypatch.setattr("nexus_api.core.llm_proxy.proxy_required", lambda: False)
+    monkeypatch.setattr("nexus_worker.runtime.llm.proxy_required", lambda: False)
+    stub = _RecordingAcompletion()
+    monkeypatch.setattr(litellm, "acompletion", stub)
+
+    # Sin ``llm_proxy_partner_scope``: eso es un tenant sin partner.
+    await _proxied_acompletion(
+        litellm,
+        {
+            "model": "anthropic/claude-sonnet-4-6",
+            "messages": [{"role": "user", "content": "hola"}],
+        },
+    )
+
+    assert stub.calls, "un tenant sin partner tiene que llegar al vendor"
+    assert "api_base" not in stub.calls[0]
+    assert "api_key" not in stub.calls[0]
+
+
+@pytest.mark.asyncio
+async def test_tenant_sin_partner_sigue_bloqueado_si_el_proxy_es_requisito(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import litellm
+
+    monkeypatch.setattr("nexus_worker.runtime.llm.proxy_required", lambda: True)
+    stub = _RecordingAcompletion()
+    monkeypatch.setattr(litellm, "acompletion", stub)
+
+    with pytest.raises(LLMProxyUnavailable):
+        await _proxied_acompletion(
+            litellm,
+            {
+                "model": "anthropic/claude-sonnet-4-6",
+                "messages": [{"role": "user", "content": "hola"}],
+            },
+        )
+    assert stub.calls == []
 
 
 class _RecordingToolCallAcompletion:

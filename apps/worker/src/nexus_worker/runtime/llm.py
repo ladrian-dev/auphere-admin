@@ -41,6 +41,7 @@ from typing import Any, Protocol, TypeVar
 import structlog
 from nexus_api.core.llm_proxy import (
     apply_litellm_proxy_kwargs,
+    proxy_required,
     raise_mapped_proxy_failure,
     require_current_llm_proxy_partner,
 )
@@ -592,6 +593,17 @@ def _drop_openai_unsupported(kwargs: dict[str, Any]) -> dict[str, Any]:
     ``allowed_openai_params=["reasoning_effort"]`` (probed 2026-08-30:
     both keys top-level → 200 with tool_calls).
 
+    ``allowed_openai_params`` is a LiteLLM-proxy parameter and ONLY the
+    proxy knows it. Sent to the vendor it is a 400 ``Unknown parameter:
+    'allowed_openai_params'`` — probed against api.openai.com on
+    2026-09-01, with and without tools. So it is stamped only when the
+    hop actually goes through the proxy, which after ADR-036 is not a
+    given: ``api_base`` is set by ``apply_litellm_proxy_kwargs`` right
+    before this function and is empty on a direct-to-vendor deploy,
+    which is what production runs. ``reasoning_effort`` itself IS a
+    vendor parameter and stays either way: without it, tools on
+    gpt-5.6-* are a 400 from OpenAI too (same probe).
+
     Both keys go through ``extra_body``, NOT as litellm kwargs, on
     purpose: the OpenAI SDK merges ``extra_body`` into the top level of
     the outgoing JSON, which reproduces the verified probe exactly. As
@@ -615,13 +627,28 @@ def _drop_openai_unsupported(kwargs: dict[str, Any]) -> dict[str, Any]:
                 extra_body = {}
                 kwargs["extra_body"] = extra_body
             extra_body["reasoning_effort"] = "none"
-            extra_body["allowed_openai_params"] = ["reasoning_effort"]
+            if kwargs.get("api_base"):
+                extra_body["allowed_openai_params"] = ["reasoning_effort"]
+            else:
+                extra_body.pop("allowed_openai_params", None)
     return kwargs
 
 
 def _proxy_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Stamp the partner virtual key. Console-injected auth is dropped."""
-    require_current_llm_proxy_partner()
+    """Stamp the partner virtual key. Console-injected auth is dropped.
+
+    Con ``llm_proxy_required`` el partner es obligatorio: sin él no hay clave
+    virtual que estampar y el hop no puede salir — se queda como el error
+    ruidoso que es.
+
+    Sin la bandera (ADR-036) el hop va al vendor, y entonces un tenant **sin
+    partner** es un caso legítimo, no un fallo. Demo Farmacia lo es, en
+    staging y en producción: exigir aquí el partner mataba su turno con
+    ``missing partner virtual key``. La limpieza de la auth inyectada por la
+    consola sigue siendo incondicional — la hace ``apply_litellm_proxy_kwargs``.
+    """
+    if proxy_required():
+        require_current_llm_proxy_partner()
     apply_litellm_proxy_kwargs(kwargs)
     return kwargs
 

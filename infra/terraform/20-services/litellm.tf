@@ -21,8 +21,15 @@ variable "litellm_image" {
 
 locals {
   litellm_count  = var.litellm_enabled && terraform.workspace == "staging" ? 1 : 0
-  litellm_cpu    = 256
-  litellm_memory = 512
+  litellm_cpu = 256
+  # 512 MiB se quedaba corto: el 2026-09-01 la task murió con
+  # ``OutOfMemoryError: container killed due to memory usage`` (exit 137)
+  # al levantar el agente de ECS Exec junto al proxy. Con la bandera
+  # ``llm_proxy_required`` de ADR-036, staging descarta turnos a nivel
+  # ``error`` si el proxy no está: su OOM deja de ser ruido y pasa a ser
+  # una caída de servicio. 1024 es el siguiente escalón válido de Fargate
+  # con 256 de CPU.
+  litellm_memory = 1024
   litellm_dns    = "litellm.${aws_service_discovery_private_dns_namespace.internal.name}"
 }
 

@@ -546,12 +546,15 @@ async def trigger_run(
     dataset = await _get_dataset(session, tenant_id=tenant_id, dataset_id=dataset_id)
 
     if type(judge_provider).__name__.startswith("LiteLLM"):
-        from nexus_api.core.llm_proxy import LLMProxyUnavailable, require_litellm_proxy
+        from nexus_api.core.llm_proxy import (
+            LLMProxyUnavailable,
+            resolve_litellm_proxy_optional,
+        )
         from nexus_api.metering.wallet import partner_id_for_tenant
 
         partner_id = await partner_id_for_tenant(session, tenant_id)
         try:
-            require_litellm_proxy(partner_id)
+            resolve_litellm_proxy_optional(partner_id)
         except LLMProxyUnavailable as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

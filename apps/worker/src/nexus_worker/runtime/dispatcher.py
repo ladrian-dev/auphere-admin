@@ -170,17 +170,21 @@ async def _process_inbound(
         LLMProxyUnavailable,
         llm_proxy_partner_scope,
         partner_id_for_tenant_standalone,
-        require_litellm_proxy,
+        resolve_litellm_proxy_optional,
     )
 
     partner_id = await partner_id_for_tenant_standalone(event.tenant_id)
     if partner_id is not None:
         try:
-            require_litellm_proxy(partner_id)
-        except LLMProxyUnavailable:
-            log.info(
+            resolve_litellm_proxy_optional(partner_id)
+        except LLMProxyUnavailable as exc:
+            # Solo se llega aquí con ``llm_proxy_required``. Es un error de
+            # configuración del despliegue, no información: descarta el turno
+            # de un cliente y tiene que verse en el log y en las alarmas.
+            log.error(
                 "pipeline.skipped.llm_proxy_unavailable",
                 tenant_id=str(event.tenant_id),
+                reason=exc.reason,
             )
             return {"skipped": "llm_proxy_unavailable"}
         with llm_proxy_partner_scope(partner_id):

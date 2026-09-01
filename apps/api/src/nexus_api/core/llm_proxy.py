@@ -151,6 +151,40 @@ def require_litellm_proxy(partner_id: uuid.UUID | None) -> LiteLLMProxyTarget:
     return resolve_litellm_proxy(partner_id)
 
 
+def proxy_required() -> bool:
+    """¿El proxy es un requisito para responder? (ADR-036)
+
+    Env primero, igual que el resto del módulo; luego settings. Por defecto
+    **no**: la ausencia de proxy es una decisión de despliegue, no un fallo.
+    """
+    raw = _env("LITELLM_PROXY_REQUIRED", "NEXUS_LLM_PROXY_REQUIRED")
+    if raw:
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    try:
+        from nexus_api.config import get_settings
+
+        return bool(getattr(get_settings(), "llm_proxy_required", False))
+    except Exception:
+        return False
+
+
+def resolve_litellm_proxy_optional(partner_id: uuid.UUID | None) -> LiteLLMProxyTarget | None:
+    """Target del proxy, o ``None`` si este despliegue va a vendor directo.
+
+    Con ``llm_proxy_required`` la ausencia sigue siendo ``LLMProxyUnavailable``
+    — ruidosa, y el llamador la trata como el error de configuración que es.
+    Sin él, ``None`` significa «sin salto»: el hop sale al vendor con las
+    claves del entorno, que es lo que producción lleva haciendo desde el
+    rollback del 31-ago.
+    """
+    if proxy_required():
+        return resolve_litellm_proxy(partner_id)
+    try:
+        return resolve_litellm_proxy(partner_id)
+    except LLMProxyUnavailable:
+        return None
+
+
 def _strip_injected(payload: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in payload.items() if k not in _CLIENT_INJECTED}
 
@@ -158,8 +192,15 @@ def _strip_injected(payload: dict[str, Any]) -> dict[str, Any]:
 def apply_litellm_proxy_kwargs(
     kwargs: dict[str, Any], *, partner_id: uuid.UUID | None = None
 ) -> dict[str, Any]:
-    """Stamp proxy auth and drop console-injected / tenant metadata."""
-    target = resolve_litellm_proxy(
+    """Stamp proxy auth and drop console-injected / tenant metadata.
+
+    La limpieza es incondicional: ni ``partner_id``/``api_key``/``api_base``
+    inyectados por el cliente ni ``metadata.tenant_id`` pueden salir de aquí,
+    vaya el hop al proxy o al vendor. Lo único condicional es el estampado:
+    sin proxy (ADR-036) no se toca ``api_base``/``api_key`` y litellm usa las
+    credenciales de vendor del entorno.
+    """
+    target = resolve_litellm_proxy_optional(
         partner_id if partner_id is not None else current_llm_proxy_partner()
     )
     for injected in _CLIENT_INJECTED:
@@ -172,6 +213,8 @@ def apply_litellm_proxy_kwargs(
         cleaned = _strip_injected(metadata)
         cleaned.pop("tenant_id", None)
         kwargs["metadata"] = cleaned
+    if target is None:
+        return kwargs
     kwargs["api_base"] = target.api_base
     kwargs["api_key"] = target.api_key
     return kwargs
