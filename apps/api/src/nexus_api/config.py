@@ -440,6 +440,16 @@ class Settings(BaseSettings):
     # OFF by default everywhere; the per-partner switch is
     # ``partners.console_enabled`` (migration 0080). Both must be on.
     console_enabled: bool = False
+    # D1 — cuota que recibe un cliente al crearse, en tokens de cuota C3.
+    #
+    # Antes de esto el único escritor de ``partner_allocations`` era
+    # ``PUT /console/clients/{ref}/allocation``, a mano: todo cliente nuevo
+    # nacía MUDO, sin error y sin aviso, porque ``allow_channel_turn`` exige
+    # esa fila. Un mínimo fijo y no un reparto del included a propósito: no
+    # se recalcula al dar de alta a otro cliente, así que el cap de uno no
+    # baja solo cuando el partner añade otro. Caben 10 clientes en el
+    # included de 500k; a partir de ahí el partner reparte desde Consumo.
+    partner_default_client_allocation_tokens: int = 50_000
     # PEM-encoded Ed25519 public key ("-----BEGIN PUBLIC KEY-----"). Empty
     # means the console cannot authenticate anything — fail closed. Only a
     # public key lives here; the private half stays in the console.

@@ -27,6 +27,7 @@ from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.config import get_settings
 from nexus_api.core.tenant_context import _current_tenant, apply_tenant_to_session
 from nexus_api.db.models import (
     Channel,
@@ -37,6 +38,7 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
+from nexus_api.metering.wallet import seed_default_allocation
 from nexus_api.repositories.partner import EmbedAuditRepository, PartnerTenantRepository
 from nexus_api.schemas.partner import (
     ClientAgentOut,
@@ -201,12 +203,26 @@ async def provision_partner_client(
                         client_name=body.name,
                     )
                 )
+                # D1 — la cuota nace con el cliente, en esta misma
+                # transacción. Sin esto ``allow_channel_turn`` lo deja mudo
+                # desde el primer mensaje: la fila de ``partner_allocations``
+                # no la creaba nadie, ni el wizard ni esta función ni la 0094.
+                granted = await seed_default_allocation(
+                    session,
+                    partner_id=partner.id,
+                    tenant_id=tenant.id,
+                    default_cap=get_settings().partner_default_client_allocation_tokens,
+                )
                 await EmbedAuditRepository(session).record(
                     event="client.provisioned",
                     partner_id=partner.id,
                     api_key_id=api_key_id,
                     tenant_id=tenant.id,
-                    payload={"external_client_ref": body.external_client_ref, "actor": actor},
+                    payload={
+                        "external_client_ref": body.external_client_ref,
+                        "actor": actor,
+                        "allocation_tokens": granted,
+                    },
                     ip=ip,
                 )
         except IntegrityError:

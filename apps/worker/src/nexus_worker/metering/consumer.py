@@ -220,21 +220,47 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
     partner_id = await _partner_for(tenant_id)
     if partner_id is None:
         return
-    from nexus_api.metering.wallet import debit_wallet
+    from nexus_api.metering.wallet import debit_allocation, debit_wallet
 
     for turn, qty in _turn_quota(rows).items():
         if qty <= 0:
             continue
+        key = f"channel:{turn}"
         try:
             await debit_wallet(
                 partner_id=partner_id,
                 tenant_id=tenant_id,
                 qty=qty,
-                idempotency_key=f"channel:{turn}",
+                idempotency_key=key,
             )
         except Exception as exc:
             log.warning(
                 "metering.wallet_debit_failed",
+                tenant_id=str(tenant_id),
+                turn=turn,
+                error=str(exc),
+            )
+        # Dos libros, y los dos hacen falta (D6). ``partner_wallets`` es el
+        # saldo del partner; ``partner_allocations.remaining`` es el techo
+        # POR CLIENTE que el partner fija en Consumo. Hasta hoy solo se
+        # debitaba el primero: ``remaining`` no bajaba nunca, la columna
+        # "Restante" de la consola enseñaba siempre el cap y el tope por
+        # cliente era un on/off, no un límite.
+        #
+        # Va en su propio try: un fallo aquí no puede hacer parecer que
+        # falló el débito del wallet, que ya está hecho. La idempotencia la
+        # pone ``debit_allocation`` sufijando la misma clave, así que un
+        # reintento del stream no dobla ninguno de los dos.
+        try:
+            await debit_allocation(
+                partner_id=partner_id,
+                tenant_id=tenant_id,
+                qty=qty,
+                idempotency_key=key,
+            )
+        except Exception as exc:
+            log.warning(
+                "metering.allocation_debit_failed",
                 tenant_id=str(tenant_id),
                 turn=turn,
                 error=str(exc),

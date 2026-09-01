@@ -245,6 +245,85 @@ async def add_purchased(partner_id: uuid.UUID, qty: int) -> WalletSnapshot:
         return _snapshot(row)
 
 
+async def allocatable_for(
+    session: AsyncSession, partner_id: uuid.UUID, tenant_id: uuid.UUID
+) -> int:
+    """Cuánto cap se le puede dar a este tenant sin sobreasignar.
+
+    ``available`` del wallet menos lo ya comprometido en los **otros**
+    clientes. Cero si no hay wallet o si el included caducó y no hay
+    purchased — que es exactamente el estado en el que ``set_allocation``
+    falla con ``OverAllocation`` y parece un bug del panel.
+    """
+    wallet = await session.get(PartnerWallet, partner_id)
+    if wallet is None:
+        return 0
+    others = _as_int(
+        await session.scalar(
+            sa.select(sa.func.coalesce(sa.func.sum(PartnerAllocation.cap), 0)).where(
+                PartnerAllocation.partner_id == partner_id,
+                PartnerAllocation.tenant_id != tenant_id,
+            )
+        )
+    )
+    return max(0, _snapshot(wallet).available - others)
+
+
+async def seed_default_allocation(
+    session: AsyncSession,
+    *,
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    default_cap: int,
+) -> int:
+    """Siembra la cuota inicial de un cliente recién creado (D1).
+
+    Corre **en la sesión de quien crea el tenant**, no en una propia: la
+    cuota y el cliente nacen en la misma transacción o no nace ninguno. Ese
+    era el agujero — el wizard, ``provision_partner_client`` y la migración
+    0094 creaban clientes y ninguno escribía en ``partner_allocations``, así
+    que ``allow_channel_turn`` los dejaba mudos sin error ni aviso.
+
+    Nunca falla la creación del cliente:
+
+    - si ya hay fila, no la toca (idempotente, como el resto del provisioning);
+    - si el partner no tiene disponible para el defecto, siembra lo que quede,
+      que puede ser 0. Una fila con cap 0 es visible en Consumo y explicable;
+      la ausencia de fila es el silencio que costó el corte del 31-ago.
+
+    Devuelve el cap sembrado.
+    """
+    if default_cap < 0:
+        raise ValueError("default cap must be >= 0")
+    existing = await session.scalar(
+        sa.select(PartnerAllocation).where(
+            PartnerAllocation.partner_id == partner_id,
+            PartnerAllocation.tenant_id == tenant_id,
+        )
+    )
+    if existing is not None:
+        return _as_int(existing.cap)
+    cap = min(default_cap, await allocatable_for(session, partner_id, tenant_id))
+    session.add(
+        PartnerAllocation(
+            partner_id=partner_id,
+            tenant_id=tenant_id,
+            cap=cap,
+            remaining=cap,
+        )
+    )
+    await session.flush()
+    if cap < default_cap:
+        log.warning(
+            "wallet.default_allocation_capped",
+            partner_id=str(partner_id),
+            tenant_id=str(tenant_id),
+            wanted=default_cap,
+            granted=cap,
+        )
+    return cap
+
+
 async def set_allocation(
     partner_id: uuid.UUID, tenant_id: uuid.UUID, cap: int
 ) -> PartnerAllocation:
