@@ -96,6 +96,12 @@ variable "app_secret_keys" {
     "OPENAI_API_KEY",
     "BROWSERBASE_API_KEY",
     "BROWSERBASE_PROJECT_ID",
+    # Correo transaccional (Resend). Sin estas dos, ``email_enabled`` es False
+    # y ``operator_alert_email`` es None: los recibos mensuales de partner se
+    # generan pero no se envían, y las ``platform_alert`` del platform-watcher
+    # (DLQ, ráfagas de error) no salen de CloudWatch — nadie se entera.
+    "NEXUS_RESEND_API_KEY",
+    "NEXUS_OPERATOR_ALERT_EMAIL",
   ]
 }
 
