@@ -20,8 +20,8 @@ variable "litellm_image" {
 }
 
 locals {
-  litellm_count  = var.litellm_enabled && terraform.workspace == "staging" ? 1 : 0
-  litellm_cpu = 256
+  litellm_count = var.litellm_enabled && terraform.workspace == "staging" ? 1 : 0
+  litellm_cpu   = 256
   # 512 MiB se quedaba corto: el 2026-09-01 la task murió con
   # ``OutOfMemoryError: container killed due to memory usage`` (exit 137)
   # al levantar el agente de ECS Exec junto al proxy. Con la bandera
