@@ -88,6 +88,7 @@ from nexus_worker.streams.platform_watcher import run_platform_watcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.usage_alerts_cron import run_usage_alerts_cron
+from nexus_worker.streams.wallet_renewal_cron import run_wallet_renewal_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
 from nexus_worker.streams.workflow_pack_cron import run_workflow_pack_cron
 
@@ -128,6 +129,7 @@ SCHEDULER_TASK_NAMES = frozenset(
         "cobranza-reminder-cron",
         "agent-sales-poll-cron",
         "partner-receipt-cron",
+        "wallet-renewal-cron",
         "isolation-event-drainer",
         "no-show-scrape-cron",
         "cost-rollup-cron",
@@ -420,6 +422,7 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         ),
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
+        _spawn("wallet-renewal-cron", run_wallet_renewal_cron(stop=ctx.stop)),
         _spawn("isolation-event-drainer", isolation_event_drainer(ctx.stop)),
         _spawn(
             "no-show-scrape-cron",

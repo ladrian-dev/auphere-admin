@@ -141,6 +141,60 @@ def _expire_included(row: PartnerWallet, *, now: datetime | None = None) -> None
         row.updated_at = stamp
 
 
+def next_period_end(*, now: datetime | None = None) -> datetime:
+    """00:00 UTC del día 1 del mes siguiente al de ``now``.
+
+    Misma política que el trigger que siembra el wallet al crear el partner:
+    el included vive el mes natural y caduca al empezar el siguiente.
+    """
+    stamp = now or _now()
+    year, month = (stamp.year + 1, 1) if stamp.month == 12 else (stamp.year, stamp.month + 1)
+    return datetime(year, month, 1, tzinfo=UTC)
+
+
+async def renew_included_if_expired(
+    session: AsyncSession,
+    *,
+    partner_id: uuid.UUID,
+    monthly_cap: int,
+    now: datetime | None = None,
+) -> bool:
+    """Repone el included del mes si ya caducó (D3). ``True`` si renovó.
+
+    Hasta esto, ``included_expires_at`` nacía a fin de mes y **nada lo
+    renovaba**: el día 1 el saldo efectivo pasaba a 0 y con él se cerraba
+    ``allow_channel_turn`` para todos los clientes del partner, sin error y
+    sin aviso. En staging y en producción caducó el 2026-09-01.
+
+    Se dispara por **caducidad, no por calendario**: si el scheduler estuvo
+    caído el día 1, renueva en cuanto vuelve, en vez de esperar un mes. Y es
+    idempotente — con el included vigente no toca nada, así que el tick
+    horario solo hace trabajo una vez.
+
+    Deuda conocida: ``monthly_cap`` sale de ``partners.companion_monthly_token_cap``,
+    que es el mismo número que gasta el Companion. Separar los dos bolsillos
+    es D5; mientras tanto se conserva la fuente que ya usaba el trigger para
+    no inventar una segunda verdad.
+    """
+    stamp = now or _now()
+    row = await _load_wallet_for_update(session, partner_id)
+    if row is None:
+        return False
+    if effective_included(row.included_remaining, row.included_expires_at, now=stamp) > 0:
+        return False
+    row.included_remaining = max(0, monthly_cap)
+    row.included_expires_at = next_period_end(now=stamp)
+    row.updated_at = stamp
+    await session.flush()
+    log.info(
+        "wallet.included_renewed",
+        partner_id=str(partner_id),
+        granted=row.included_remaining,
+        expires_at=row.included_expires_at.isoformat(),
+    )
+    return True
+
+
 async def read_wallet(partner_id: uuid.UUID) -> WalletSnapshot | None:
     """Saldo bajo RLS. None si no hay fila. None (y log) si el libro no se lee."""
     try:

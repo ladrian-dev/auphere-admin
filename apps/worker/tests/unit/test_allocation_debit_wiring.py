@@ -107,3 +107,14 @@ async def test_qa_source_debits_neither_book(monkeypatch: pytest.MonkeyPatch) ->
 
     assert wallet.await_count == 0
     assert allocation.await_count == 0
+
+
+def test_wallet_renewal_cron_is_registered_in_the_scheduler() -> None:
+    """D3 solo sirve si el scheduler lo arranca.
+
+    Guardián barato: el cron existía, estaba probado y no corría nadie es
+    exactamente lo que pasó con ``debit_allocation``.
+    """
+    from nexus_worker.bootstrap import SCHEDULER_TASK_NAMES
+
+    assert "wallet-renewal-cron" in SCHEDULER_TASK_NAMES

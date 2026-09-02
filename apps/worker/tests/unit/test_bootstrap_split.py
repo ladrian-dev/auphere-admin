@@ -37,6 +37,7 @@ ALL_EXPECTED = {
     "cobranza-reminder-cron",
     "agent-sales-poll-cron",
     "partner-receipt-cron",
+    "wallet-renewal-cron",
     "isolation-event-drainer",
     "no-show-scrape-cron",
     "cost-rollup-cron",
