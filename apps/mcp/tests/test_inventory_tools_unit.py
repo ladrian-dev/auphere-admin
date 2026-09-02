@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 from nexus_api.core.tenant_context import tenant_context
 
+from nexus_mcp.base import ToolError
 from nexus_mcp.servers.amigable_venta.client import RESULT_CAP, AmigableVentaClient
 from nexus_mcp.servers.catalogo_local.client import LocalCatalogClient
 from nexus_mcp.servers.catalogo_local.client import fold as local_fold
@@ -28,6 +29,7 @@ from nexus_mcp.servers.inventory.schemas import (
     CheckStockInput,
     GetProductInput,
     LowStockInput,
+    RegisterSaleInput,
     SearchProductsInput,
 )
 from nexus_mcp.servers.inventory.tools import (
@@ -36,6 +38,7 @@ from nexus_mcp.servers.inventory.tools import (
     GetProduct,
     InventoryNotConfigured,
     LowStock,
+    RegisterSale,
     SearchProducts,
     _fold,
     _resolve_backend,
@@ -336,12 +339,20 @@ async def test_cost_price_never_reaches_the_model(tenant: uuid.UUID) -> None:
         assert "precio_costo" not in output.model_dump_json()
 
 
-def test_every_tool_is_read_only() -> None:
-    """This connector may only read. A write tool appearing here would be
-    executed for real by the QA Playground's dry_run."""
+def test_side_effects_split_reads_from_the_sale() -> None:
+    """Las cuatro consultas NO tienen side effects (el QA Playground las corre
+    en dry_run tal cual). ``inventory.register_sale`` SÍ los declara: eso es
+    justo lo que hace que el registry la SALTE en dry_run en vez de descontar
+    stock de verdad durante una prueba."""
     for tool_cls in INVENTORY_TOOLS:
-        assert tool_cls.side_effects == ()
         assert tool_cls.name.startswith("inventory.")
+    read_only = {SearchProducts, GetProduct, CheckStock, LowStock}
+    for tool_cls in read_only:
+        assert tool_cls.side_effects == (), tool_cls.name
+    assert RegisterSale.side_effects == ("mutates_db",)
+    # La única tool con efecto de escritura es la venta.
+    writers = [t for t in INVENTORY_TOOLS if t.side_effects]
+    assert writers == [RegisterSale]
 
 
 def test_result_cap_matches_the_documented_api_limit() -> None:
@@ -414,3 +425,111 @@ def test_the_two_folds_agree() -> None:
     tilde queda inbuscable."""
     for raw in ("Acetaminofén", "ÁCIDO ascórbico", "  Ibuprofeno  ", "Niño"):
         assert local_fold(raw) == _fold(raw)
+
+
+# ── inventory.register_sale (venta simulada) ──────────────────────────────
+
+
+class FakeLocalClient(LocalCatalogClient):
+    """Catálogo local en memoria (sin DB) para probar la venta simulada.
+
+    Replica el contrato de ``decrement_stock``: guardia de stock, distinción
+    entre SKU inexistente y stock insuficiente, y el descuento real sobre la
+    fila. Deja ver el mapeo que hace la tool (importe, stock restante)."""
+
+    def __init__(self, rows: dict[str, dict[str, Any]]) -> None:
+        self._tenant_id = _TENANT
+        self._rows = rows  # sku -> {"nombre", "precio_usd", "stock_actual"}
+        self.calls: list[tuple[str, int]] = []
+
+    async def decrement_stock(self, sku: str, cantidad: int) -> dict[str, Any]:  # type: ignore[override]
+        self.calls.append((sku, cantidad))
+        row = self._rows.get(sku)
+        if row is None:
+            return {
+                "encontrado": False,
+                "vendido": False,
+                "sku": sku,
+                "nombre": None,
+                "precio_usd": None,
+                "stock_anterior": None,
+                "stock_actual": None,
+                "motivo": "sku_no_encontrado",
+            }
+        if row["stock_actual"] < cantidad:
+            return {
+                "encontrado": True,
+                "vendido": False,
+                "sku": sku,
+                "nombre": row["nombre"],
+                "precio_usd": row["precio_usd"],
+                "stock_anterior": row["stock_actual"],
+                "stock_actual": row["stock_actual"],
+                "motivo": "stock_insuficiente",
+            }
+        prev = row["stock_actual"]
+        row["stock_actual"] = prev - cantidad
+        return {
+            "encontrado": True,
+            "vendido": True,
+            "sku": sku,
+            "nombre": row["nombre"],
+            "precio_usd": row["precio_usd"],
+            "stock_anterior": prev,
+            "stock_actual": row["stock_actual"],
+            "motivo": None,
+        }
+
+
+def _use_local(rows: dict[str, dict[str, Any]]) -> FakeLocalClient:
+    client = FakeLocalClient(rows)
+    set_test_client(client)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_register_sale_decrements_and_reports(tenant: uuid.UUID) -> None:
+    client = _use_local(
+        {"FARM-00005": {"nombre": "Ibuprofeno", "precio_usd": 1.35, "stock_actual": 293}}
+    )
+    out = await RegisterSale().run(RegisterSaleInput(sku="FARM-00005", cantidad=2))
+    assert out.vendido is True
+    assert out.encontrado is True
+    assert out.sku == "FARM-00005"
+    assert out.nombre == "Ibuprofeno"
+    assert out.cantidad == 2
+    assert out.precio_usd == 1.35
+    assert out.importe_usd == 2.70  # 1.35 * 2
+    assert out.stock_anterior == 293
+    assert out.stock_actual == 291
+    assert out.motivo is None
+    # El stock quedó efectivamente descontado en el backend.
+    assert client._rows["FARM-00005"]["stock_actual"] == 291
+
+
+@pytest.mark.asyncio
+async def test_register_sale_insufficient_stock_does_not_sell(tenant: uuid.UUID) -> None:
+    _use_local({"FARM-00006": {"nombre": "Ibuprofeno", "precio_usd": 4.19, "stock_actual": 1}})
+    out = await RegisterSale().run(RegisterSaleInput(sku="FARM-00006", cantidad=5))
+    assert out.vendido is False
+    assert out.motivo == "stock_insuficiente"
+    assert out.stock_actual == 1  # sin cambios
+    assert out.importe_usd is None
+
+
+@pytest.mark.asyncio
+async def test_register_sale_unknown_sku(tenant: uuid.UUID) -> None:
+    _use_local({})
+    out = await RegisterSale().run(RegisterSaleInput(sku="NO-EXISTE", cantidad=1))
+    assert out.vendido is False
+    assert out.encontrado is False
+    assert out.motivo == "sku_no_encontrado"
+
+
+@pytest.mark.asyncio
+async def test_register_sale_refuses_amigable_backend(tenant: uuid.UUID) -> None:
+    """El POS real de Amigable Venta es de solo lectura: no se puede vender
+    contra él. La tool debe rechazarlo antes de intentar nada."""
+    _use(IBUPROFENO)  # FakeVentaClient (subclase de AmigableVentaClient)
+    with pytest.raises(ToolError):
+        await RegisterSale().run(RegisterSaleInput(sku="FARM-00005", cantidad=1))

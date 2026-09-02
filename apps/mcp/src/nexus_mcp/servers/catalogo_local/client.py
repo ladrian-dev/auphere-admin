@@ -102,3 +102,103 @@ class LocalCatalogClient:
             for r in rows
         ]
         return out, len(out) >= RESULT_CAP
+
+    async def decrement_stock(self, sku: str, cantidad: int) -> dict[str, Any]:
+        """Descuenta ``cantidad`` unidades de un SKU — la VENTA SIMULADA de la demo.
+
+        Solo el backend local soporta esto: escribe en ``local_catalog_products``,
+        la tabla propia de Nexus. NO es una venta real en un POS; el API de
+        Amigable Venta es de solo lectura y por eso la tool que llama aquí
+        rechaza ese backend antes de llegar a este método.
+
+        El descuento es atómico y RLS-scoped: el ``UPDATE`` lleva la guardia
+        ``stock_actual >= :n`` en el mismo statement, así que dos ventas
+        concurrentes nunca dejan el stock por debajo de cero (la segunda no
+        afecta filas y se reporta como ``stock_insuficiente``).
+
+        Stock insuficiente o SKU inexistente son RESULTADOS, no errores: se
+        devuelven en el dict. Solo se lanza por argumentos inválidos.
+        """
+        sku_norm = (sku or "").strip()
+        if not sku_norm:
+            raise ValueError("sku es obligatorio")
+        if cantidad < 1:
+            raise ValueError("cantidad debe ser >= 1")
+
+        sm = get_sessionmaker()
+        async with sm() as session, tenant_scoped_session(session, self._tenant_id):
+            updated = (
+                (
+                    await session.execute(
+                        text(
+                            """
+                        UPDATE local_catalog_products
+                           SET stock_actual = stock_actual - :n,
+                               updated_at = now()
+                         WHERE tenant_id = :tenant_id
+                           AND sku = :sku
+                           AND stock_actual >= :n
+                        RETURNING nombre, precio_usd, stock_actual
+                        """
+                        ),
+                        {"tenant_id": str(self._tenant_id), "sku": sku_norm, "n": cantidad},
+                    )
+                )
+                .mappings()
+                .first()
+            )
+
+            if updated is not None:
+                # tenant_scoped_session hace commit al salir limpio del bloque.
+                new_stock = int(updated["stock_actual"] or 0)
+                return {
+                    "encontrado": True,
+                    "vendido": True,
+                    "sku": sku_norm,
+                    "nombre": updated["nombre"],
+                    "precio_usd": float(updated["precio_usd"] or 0),
+                    "stock_anterior": new_stock + cantidad,
+                    "stock_actual": new_stock,
+                    "motivo": None,
+                }
+
+            # No se descontó: distinguir "no existe" de "no alcanza el stock".
+            current = (
+                (
+                    await session.execute(
+                        text(
+                            """
+                        SELECT nombre, precio_usd, stock_actual
+                          FROM local_catalog_products
+                         WHERE tenant_id = :tenant_id AND sku = :sku
+                        """
+                        ),
+                        {"tenant_id": str(self._tenant_id), "sku": sku_norm},
+                    )
+                )
+                .mappings()
+                .first()
+            )
+
+            if current is None:
+                return {
+                    "encontrado": False,
+                    "vendido": False,
+                    "sku": sku_norm,
+                    "nombre": None,
+                    "precio_usd": None,
+                    "stock_anterior": None,
+                    "stock_actual": None,
+                    "motivo": "sku_no_encontrado",
+                }
+            stock = int(current["stock_actual"] or 0)
+            return {
+                "encontrado": True,
+                "vendido": False,
+                "sku": sku_norm,
+                "nombre": current["nombre"],
+                "precio_usd": float(current["precio_usd"] or 0),
+                "stock_anterior": stock,
+                "stock_actual": stock,
+                "motivo": "stock_insuficiente",
+            }
