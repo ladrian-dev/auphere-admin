@@ -16,8 +16,8 @@ def test_default_registry_has_all_block_d_tools():
     (migration 0024) + ``response.send_interactive`` (migration 0036)
     + 12 billing.* Amigable Cobro tools (5 reads + 6 admin writes + the
     on-demand ``billing.send_reminders`` from migration 0058)
-    + 4 inventory.* tools (search_products, get_product, check_stock,
-    low_stock) = 58 LLM-facing.
+    + 5 inventory.* tools (search_products, get_product, check_stock,
+    low_stock + the write register_sale) = 59 LLM-facing.
 
     Block O (ADR-017) registers 2 INTERNAL tools (``agendapro_public.
     check_availability`` and ``.create_appointment``) that the booking
@@ -27,7 +27,7 @@ def test_default_registry_has_all_block_d_tools():
     reset_default_registry()
     reg = build_default_registry()
     names = set(reg.names())
-    assert len(names) == 58
+    assert len(names) == 59
     assert "operator.consult_owner" in names
     assert "response.send_interactive" in names
     # Block O internal tools — not LLM-facing.
@@ -72,6 +72,7 @@ def test_default_registry_has_all_block_d_tools():
         "inventory.get_product",
         "inventory.check_stock",
         "inventory.low_stock",
+        "inventory.register_sale",
     }.issubset(names)
 
 
@@ -80,9 +81,20 @@ def test_is_side_effecting_reads_vs_writes():
     effecting, reads are not, unknown names are False (safe default)."""
     reset_default_registry()
     reg = build_default_registry()
-    for write in ("billing.register_payment", "billing.add_charge", "billing.send_reminders"):
+    for write in (
+        "billing.register_payment",
+        "billing.add_charge",
+        "billing.send_reminders",
+        "inventory.register_sale",
+    ):
         assert reg.is_side_effecting(write) is True, write
-    for read in ("billing.list_overdue", "billing.get_account", "billing.find_client"):
+    for read in (
+        "billing.list_overdue",
+        "billing.get_account",
+        "billing.find_client",
+        "inventory.search_products",
+        "inventory.check_stock",
+    ):
         assert reg.is_side_effecting(read) is False, read
     assert reg.is_side_effecting("does.not.exist") is False
 

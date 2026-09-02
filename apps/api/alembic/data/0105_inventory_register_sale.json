@@ -1,0 +1,144 @@
+{
+ "inventory.register_sale": {
+  "description": "Registra la VENTA de unidades de un producto y DESCUENTA su stock. Úsala solo cuando el usuario CONFIRME que quiere vender/descontar una cantidad concreta de un SKU (ej. 'vende 2 de FARM-00005'). Es una ESCRITURA: pide y confirma el SKU exacto y la cantidad antes de llamarla. Cada variante tiene su propio stock, por eso se vende por SKU y no por nombre. Si el SKU no existe o no hay stock suficiente NO vende y lo indica en 'motivo'.",
+  "destructive": true,
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cantidad": {
+     "description": "Número de unidades a vender. Debe ser 1 o más.",
+     "minimum": 1,
+     "title": "Cantidad",
+     "type": "integer"
+    },
+    "sku": {
+     "description": "SKU EXACTO de la variante que se vende (ej. 'FARM-00005'), tal como aparece en el catálogo. Cada variante tiene su propio precio y stock, por eso la venta se registra por SKU y no por nombre de producto.",
+     "minLength": 1,
+     "title": "Sku",
+     "type": "string"
+    }
+   },
+   "required": [
+    "sku",
+    "cantidad"
+   ],
+   "title": "RegisterSaleInput",
+   "type": "object"
+  },
+  "output_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cantidad": {
+     "default": 0,
+     "description": "Unidades solicitadas.",
+     "title": "Cantidad",
+     "type": "integer"
+    },
+    "encontrado": {
+     "description": "False si el SKU no existe en el catálogo.",
+     "title": "Encontrado",
+     "type": "boolean"
+    },
+    "importe_usd": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Importe total de la venta (precio_usd por cantidad).",
+     "title": "Importe Usd"
+    },
+    "motivo": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Por qué NO se vendió, cuando vendido=false: 'sku_no_encontrado' o 'stock_insuficiente'. Null si la venta se hizo.",
+     "title": "Motivo"
+    },
+    "nombre": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Nombre del producto vendido.",
+     "title": "Nombre"
+    },
+    "precio_usd": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Precio unitario de venta (USD) de esta variante.",
+     "title": "Precio Usd"
+    },
+    "sku": {
+     "description": "SKU consultado.",
+     "title": "Sku",
+     "type": "string"
+    },
+    "stock_actual": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Unidades que quedan después de la venta.",
+     "title": "Stock Actual"
+    },
+    "stock_anterior": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Unidades que había antes de la venta.",
+     "title": "Stock Anterior"
+    },
+    "vendido": {
+     "description": "True solo si la venta se registró y el stock se descontó.",
+     "title": "Vendido",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "vendido",
+    "encontrado",
+    "sku"
+   ],
+   "title": "RegisterSaleOutput",
+   "type": "object"
+  },
+  "read_only": false,
+  "side_effects": [
+   "mutates_db"
+  ]
+ }
+}
