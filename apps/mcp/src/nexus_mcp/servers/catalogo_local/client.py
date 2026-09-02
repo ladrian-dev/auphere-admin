@@ -6,17 +6,21 @@ keys the Amigable API returns, so the ``inventory.*`` tools cannot tell the
 two backends apart — which is the whole point: swapping the source is an
 operator action, not a code change.
 
-**Search is deliberately identical to the upstream API's**, quirks included:
+**Search matching mirrors the upstream API's quirks**:
 
 - matches ``nombre`` and ``sku`` only — never ``categoria`` or ``tipo``;
-- case- and accent-insensitive, substring-based;
-- capped at the same :data:`RESULT_CAP` rows, reporting ``truncated`` the
-  same way.
+- case- and accent-insensitive, substring-based.
 
-Mirroring the cap on a database that could return everything looks
-gratuitous until the swap happens: if the local backend answered more
-generously, the agent's behaviour would change the day the real API came
-back, and the demo would stop matching production.
+**The row cap does NOT.** The Amigable client caps a search at 1000 rows
+because the upstream API does and gives no way to page past it. This backend
+is our own database serving a real, possibly large catalogue (a pharmacy
+carries thousands of SKUs), and for the ``inventario_v1`` demo it is the
+source of truth — the simulated sale writes here and no swap to the upstream
+API is planned. So it is NOT bound to the API's 1000: it uses its own, higher
+:data:`RESULT_CAP` and still reports ``truncated`` if a single search exceeds
+even that, so the agent never presents a truncated list as complete. The
+LLM-facing ``limit`` (≤50 groups) is what actually bounds what reaches the
+model; this cap only bounds the internal fetch that gets aggregated.
 
 Accent-insensitivity is precomputed, not computed at query time: the
 loader stores a folded ``search_text`` column, so matching is a plain
@@ -36,8 +40,13 @@ from sqlalchemy import text
 
 log = structlog.get_logger(__name__)
 
-# Same cap as the Amigable Venta API. See the module docstring.
-RESULT_CAP = 1000
+# Per-search fetch cap for the LOCAL backend. Deliberately higher than the
+# Amigable Venta API's 1000 (see module docstring): a pharmacy's catalogue is
+# large and this backend has no upstream page limit to respect. Aggregation
+# and context cost are bounded by the tool's ``limit`` (≤50 groups), not by
+# this number, so a generous cap is cheap. Raise it further if a real
+# catalogue ever makes a single search legitimately exceed it.
+RESULT_CAP = 5000
 
 
 def fold(value: str) -> str:

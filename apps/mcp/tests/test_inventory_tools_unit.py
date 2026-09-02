@@ -411,12 +411,15 @@ async def test_an_empty_local_catalogue_is_not_a_backend(
         await _resolve_backend(_TENANT)
 
 
-def test_both_backends_cap_results_identically() -> None:
-    """Si el backend local fuera más generoso, el comportamiento del agente
-    cambiaría el día que vuelva el API real."""
+def test_local_backend_cap_is_higher_than_the_upstream_api() -> None:
+    """El backend local sirve un catálogo propio y grande (una farmacia lleva
+    miles de SKUs) y es la fuente de verdad de la demo inventario_v1, así que
+    NO está atado al tope de 1000 del API de Amigable: usa uno mayor. Lo que
+    de verdad acota lo que ve el modelo es el ``limit`` (≤50) de las tools."""
     from nexus_mcp.servers.catalogo_local.client import RESULT_CAP as LOCAL_CAP
 
-    assert LOCAL_CAP == RESULT_CAP
+    assert LOCAL_CAP > RESULT_CAP  # RESULT_CAP aquí es el del API de Amigable (1000)
+    assert LOCAL_CAP >= 5000
 
 
 def test_the_two_folds_agree() -> None:
