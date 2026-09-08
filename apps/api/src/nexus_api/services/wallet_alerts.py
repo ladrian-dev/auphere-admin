@@ -28,8 +28,6 @@ reinicio no vuelven a avisar.
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -53,24 +51,6 @@ log = structlog.get_logger(__name__)
 
 #: 80 % avisa con margen; 100 % es que ya no se atiende.
 THRESHOLDS: tuple[int, ...] = (80, 100)
-
-
-@asynccontextmanager
-async def _tx(session: AsyncSession) -> AsyncIterator[None]:
-    """Transacción propia, o la del llamador si ya tiene una abierta.
-
-    Sin esto la función solo funciona con una sesión recién abierta: basta
-    un ``execute`` previo del llamador —o leer un atributo de un objeto ORM
-    expirado tras commit, que dispara un refresh— para que SQLAlchemy tenga
-    ya una transacción implícita y ``session.begin()`` estalle con «A
-    transaction is already begun». Es un contrato implícito y frágil; esto
-    lo quita de en medio.
-    """
-    if session.in_transaction():
-        yield
-    else:
-        async with session.begin():
-            yield
 
 
 @dataclass
@@ -120,9 +100,20 @@ async def evaluate_partner_wallet_alerts(
 ) -> WalletAlertEvaluation:
     """Evalúa el saldo del partner y avisa una vez por umbral y mes.
 
-    Gestiona sus propias transacciones cortas. Un fallo de correo nunca
-    tumba la evaluación: la notificación en la consola es el registro
-    durable.
+    **Espera una ``session`` sin transacción abierta** y gestiona sus propias
+    transacciones cortas, igual que ``usage_alerts``. El sessionmaker va con
+    ``expire_on_commit=False``, así que leer atributos del ``partner`` tras un
+    commit previo del llamador no dispara refresh y la sesión sigue limpia —
+    que es como la deja ``usage_alerts_cron``.
+
+    Si llega con una transacción ya abierta, SQLAlchemy lo dirá en voz alta
+    («A transaction is already begun»). Se dejó así a propósito: la variante
+    tolerante que se probó el 2026-09-08 no comiteaba cuando la transacción
+    era del llamador, y las notificaciones se perdían en el rollback **sin un
+    solo error**. Un fallo que se ve es mejor que un aviso que no sale.
+
+    Un fallo de correo nunca tumba la evaluación: la notificación en la
+    consola es el registro durable.
     """
     since, _until, _elapsed, _days = month_bounds(now)
     cap = int(partner.companion_monthly_token_cap or 0)
@@ -137,7 +128,7 @@ async def evaluate_partner_wallet_alerts(
     if snap is None or cap <= 0 or result.percent_used is None:
         return result
 
-    async with _tx(session):
+    async with session.begin():
         result.clients_out = await clients_without_quota(session, partner.id)
 
     for threshold in THRESHOLDS:
@@ -166,7 +157,7 @@ async def evaluate_partner_wallet_alerts(
                 index_elements=["dedupe_key"], index_where=sa.text("dedupe_key IS NOT NULL")
             )
         )
-        async with _tx(session):
+        async with session.begin():
             inserted = await session.execute(stmt.returning(ConsoleNotification.id))
             if inserted.scalar_one_or_none() is not None:
                 result.created.append(threshold)

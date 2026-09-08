@@ -189,22 +189,43 @@ async def test_activation_says_when_the_client_cannot_serve(db_session) -> None:
     assert row.severity == NotificationSeverity.WARNING.value
 
 
-async def test_works_when_the_caller_already_has_a_transaction(db_session) -> None:
-    """El fallo que apareció verificando en staging, no en los tests.
+async def test_the_alert_is_actually_persisted(db_session) -> None:
+    """Lo que de verdad importa: que el aviso sobreviva a la llamada.
 
-    Basta que quien llama haya hecho un ``execute`` antes —o que lea un
-    atributo de un objeto ORM expirado, que dispara un refresh— para que la
-    sesión tenga ya una transacción implícita. La evaluación no puede exigir
-    una sesión recién abierta: es un contrato que nadie ve hasta que
-    revienta en producción, y el cron lo habría tragado con su ``except``.
+    Probando en staging el 2026-09-08 se ensayó una variante «tolerante» que
+    reutilizaba la transacción del llamador cuando ya había una. Parecía más
+    robusta y era peor: no comiteaba, y las notificaciones se perdían en el
+    rollback **sin un solo error**. El cron se lo habría tragado con su
+    ``except`` y los avisos no habrían salido nunca.
     """
     partner = await _partner(db_session, available=0)
-    # Deja la sesión con transacción implícita abierta, como el llamador real.
+    ev = await evaluate_partner_wallet_alerts(db_session, partner)
+    assert ev.created == [80, 100]
+
+    # Leído desde una sesión nueva: si solo viviera en la transacción de la
+    # llamada, aquí no habría nada.
+    from nexus_api.db.base import get_sessionmaker
+
+    async with get_sessionmaker()() as fresh:
+        rows = await fresh.execute(
+            sa.select(ConsoleNotification.kind).where(
+                ConsoleNotification.partner_id == partner.id,
+                ConsoleNotification.kind.like("wallet.%"),
+            )
+        )
+        kinds = {r[0] for r in rows.all()}
+    assert kinds == {"wallet.low", "wallet.empty"}
+
+
+async def test_a_caller_with_an_open_transaction_fails_loudly(db_session) -> None:
+    """El contrato es «sesión limpia», igual que ``usage_alerts``.
+
+    Se deja que reviente a propósito. La alternativa —seguir adelante sin
+    comitear— es la que perdía los avisos en silencio.
+    """
+    partner = await _partner(db_session, available=0)
     await db_session.execute(sa.select(sa.literal(1)))
     assert db_session.in_transaction()
 
-    ev = await evaluate_partner_wallet_alerts(db_session, partner)
-
-    assert ev.created == [80, 100]
-    kinds = await _kinds(db_session, partner.id)
-    assert kinds["wallet.empty"] == NotificationSeverity.CRITICAL.value
+    with pytest.raises(Exception, match="already begun"):
+        await evaluate_partner_wallet_alerts(db_session, partner)
