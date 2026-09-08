@@ -607,25 +607,57 @@ async def test_admin_path_a_does_not_return_or_credit_b(
     assert ids_a.isdisjoint(ids_b)
 
 
-async def test_admin_recharge_in_prod_is_opaque_404_and_does_not_credit(
+async def test_admin_recharge_works_in_prod_and_leaves_an_audit_row(
     client, console_world, admin_headers, monkeypatch
 ) -> None:
+    """D4 — en producción Auphere SÍ puede recargar.
+
+    Hasta el 2026-09-08 este endpoint devolvía 404 opaco si ``is_prod``, así
+    que en producción no recargaba nadie y el único camino era escribir en la
+    BD a mano. Un entorno no es un permiso: quien manda aquí es el token de
+    admin, y cada recarga deja auditoría.
+    """
+
+    from nexus_api.config import Settings
+
+    monkeypatch.setattr(Settings, "is_prod", property(lambda self: True))
+    pid = console_world["a"]["partner_id"]
+    before = await client.get(_admin_wallet(pid), headers=admin_headers)
+    assert before.status_code == 200, before.text
+    purchased = before.json()["purchased_remaining"]
+
+    resp = await client.post(
+        f"{_admin_wallet(pid)}/purchased",
+        headers=admin_headers,
+        json={"qty": 1_000},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["purchased_remaining"] == purchased + 1_000
+
+    after = await client.get(_admin_wallet(pid), headers=admin_headers)
+    assert after.status_code == 200, after.text
+    assert after.json()["purchased_remaining"] == purchased + 1_000
+
+
+async def test_partner_self_recharge_stays_closed_in_prod(
+    client, console_world, monkeypatch
+) -> None:
+    """La otra mitad de D4: el partner NO se acredita saldo a sí mismo.
+
+    Sin cobro de por medio eso es regalar producto. Esta puerta la abre K2
+    (Stripe), y entonces el crédito entrará por el webhook del pago
+    confirmado, no por esta llamada.
+    """
     from nexus_api.config import Settings
 
     monkeypatch.setattr(Settings, "is_prod", property(lambda self: True))
     a = console_world["a"]
-    pid = a["partner_id"]
-    before = await client.get(_admin_wallet(pid), headers=admin_headers)
+    before = await client.get("/console/wallet", headers=a["headers"]())
     assert before.status_code == 200, before.text
     purchased = before.json()["purchased_remaining"]
-    missing = await client.get("/console/clients/no-such-client/allocation", headers=a["headers"]())
-    resp = await client.post(
-        f"{_admin_wallet(pid)}/purchased",
-        headers=admin_headers,
-        json={"qty": 1},
-    )
+
+    resp = await client.post("/console/wallet/purchased", headers=a["headers"](), json={"qty": 1})
     assert resp.status_code == 404, resp.text
-    assert resp.json() == missing.json()
-    after = await client.get(_admin_wallet(pid), headers=admin_headers)
-    assert after.status_code == 200, after.text
+
+    after = await client.get("/console/wallet", headers=a["headers"]())
     assert after.json()["purchased_remaining"] == purchased

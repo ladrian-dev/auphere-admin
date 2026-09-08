@@ -15,9 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.admin.partners import _admin_actor, _get_partner_or_404
-from nexus_api.api.console.deps import unknown_client
 from nexus_api.api.deps import get_db_session
-from nexus_api.config import get_settings
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.base import get_sessionmaker
@@ -162,11 +160,21 @@ async def add_partner_purchased(
     session: AsyncSession = Depends(get_db_session),
     actor: str = Depends(require_admin_token),
 ) -> AdminWalletOut:
-    """Suma tokens purchased al partner del path. En prod: 404 opaco, no acredita."""
+    """Suma tokens purchased al partner del path. Auditado, también en prod.
+
+    D4 — hasta el 2026-09-08 esto devolvía **404 opaco si ``is_prod``**, así
+    que en producción no podía recargar nadie: ni el partner ni Auphere. El
+    único camino era escribir en la BD a mano. Un entorno no es un permiso;
+    quien manda aquí es ``require_admin_token``, que es la puerta de Auphere,
+    y cada recarga deja fila de auditoría con ``before``/``after``.
+
+    El gemelo de consola (``POST /console/wallet/purchased``) **sigue cerrado
+    en producción a propósito**: ahí se recargaría el propio partner y todavía
+    no hay cobro. Esa puerta la abre K2 (Stripe), y cuando se abra el crédito
+    lo hará el webhook del pago confirmado, no una llamada directa.
+    """
     async with session.begin():
         await _get_partner_or_404(session, partner_id)
-    if get_settings().is_prod:
-        raise unknown_client()
 
     before = await read_wallet(partner_id)
     before_available = before.available if before is not None else 0

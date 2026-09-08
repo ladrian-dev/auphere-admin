@@ -197,7 +197,16 @@ async def add_purchased_tokens(
 
     El partner sale del principal. El cuerpo solo admite ``qty`` (entero > 0).
     No hay Stripe. Fail-closed: si el libro no se escribe, 409.
-    En prod el endpoint no existe (404 opaco): nadie se recarga solo.
+
+    **En producción sigue siendo 404 opaco, y es deliberado** (D4): aquí quien
+    se acredita saldo es el propio partner, y sin cobro de por medio eso es
+    regalar producto. La recarga de Auphere sí está abierta en prod desde el
+    2026-09-08 (``POST /admin/partners/{id}/wallet/purchased``), que va con
+    token de admin y deja auditoría.
+
+    Esta puerta la abre **K2**: cuando exista Stripe, el crédito entrará por
+    el webhook del pago confirmado — idempotente por ``event.id`` — y no por
+    esta llamada, que entonces sobra.
     """
     if get_settings().is_prod:
         raise unknown_client()

@@ -152,7 +152,12 @@ export const onboardingMessages = {
   "notif.kind.usage.threshold": { es: "Consumo al {percent} % del límite ({period})", en: "Usage at {percent}% of the cap ({period})" },
   "notif.kind.usage.cap_reached": { es: "Límite de consumo alcanzado ({period})", en: "Usage cap reached ({period})" },
   "notif.kind.qa.cap_reached": { es: "Límite del playground alcanzado ({period})", en: "Playground cap reached ({period})" },
+  // D7 — saldo, no tope comercial: al agotarse los agentes dejan de responder,
+  // así que el texto lo dice en vez de hablar de «límites».
+  "notif.kind.wallet.low": { es: "Saldo al {percent} % consumido: cuando se agote, tus agentes dejarán de responder", en: "{percent}% of your balance used — when it runs out your agents stop replying" },
+  "notif.kind.wallet.empty": { es: "Saldo agotado ({period}): tus agentes han dejado de responder", en: "Balance exhausted ({period}) — your agents have stopped replying" },
   "notif.kind.client.activated": { es: "Cliente {client} activado con agente publicado", en: "Client {client} activated with a published agent" },
+  "notif.kind.client.activated.cannot_serve": { es: "Cliente {client} activado, pero sin cuota asignada: todavía no puede responder", en: "Client {client} activated, but with no quota assigned — it cannot reply yet" },
   "notif.kind.client.activated.first": { es: "¡Tu primer cliente activo!", en: "Your first active client!" },
   "notif.kind.channel.degraded": { es: "Canal de {client} degradado ({channel_status})", en: "Channel of {client} degraded ({channel_status})" },
   "notif.kind.template.rejected": { es: "Meta rechazó la plantilla {template_name} de {client}", en: "Meta rejected template {template_name} of {client}" },

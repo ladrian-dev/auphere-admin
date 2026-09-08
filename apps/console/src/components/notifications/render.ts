@@ -19,6 +19,10 @@ export function notificationText(locale: Locale, n: Pick<Notification, "kind" | 
     vars[k] = typeof v === "number" || typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : JSON.stringify(v);
   }
   if (!("client" in vars)) vars.client = n.external_client_ref ?? (typeof vars.external_client_ref === "string" ? vars.external_client_ref : "—");
+  // D8 — una activación que no puede atender no se anuncia como un éxito.
+  if (n.kind === "client.activated" && n.data?.can_serve === false) {
+    return translate(locale, "notif.kind.client.activated.cannot_serve", vars);
+  }
   if (n.kind === "client.activated" && n.data?.first === true) {
     return `${translate(locale, "notif.kind.client.activated.first")} ${translate(locale, "notif.kind.client.activated", vars)}`;
   }

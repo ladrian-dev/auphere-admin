@@ -44,6 +44,11 @@ class NotificationKind(str, enum.Enum):
     CLIENT_ACTIVATED = "client.activated"  # payload: {external_client_ref}
     CHANNEL_DEGRADED = "channel.degraded"  # payload: {external_client_ref, channel_status}
     TEMPLATE_REJECTED = "template.rejected"  # payload: {external_client_ref, template_name}
+    # D7 — saldo, no tope comercial. ``usage.*`` avisa de un tope que no
+    # corta; ``wallet.*`` avisa de que los agentes se callan o se han
+    # callado ya. payload: {percent, cap, available, period, clients_out}
+    WALLET_LOW = "wallet.low"
+    WALLET_EMPTY = "wallet.empty"
     MEMBER_JOINED = "member.joined"  # payload: {email, role}
     ONBOARDING_STEP = "onboarding.step"  # payload: {step}
 

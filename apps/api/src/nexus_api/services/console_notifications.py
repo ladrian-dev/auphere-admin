@@ -162,15 +162,64 @@ async def record_client_activation(
         .values(activated_at=ts)
     )
     first = (getattr(result, "rowcount", 0) or 0) > 0
+
+    # D8 — «activado» no puede significar «ya atiende» si no atiende.
+    #
+    # ``allow_channel_turn`` es la misma puerta que abre o cierra el
+    # dispatcher, así que preguntarle aquí es preguntar por lo único que
+    # importa: si llega un mensaje ahora, ¿contesta? Cuando la respuesta es
+    # no, la notificación lo dice (``can_serve``) y sube a ``warning``, que
+    # es lo que la hace visible en la consola en vez de pasar por un
+    # «todo bien» más.
+    can_serve = await _client_can_serve(session, partner_id, external_client_ref)
     await emit(
         session,
         partner_id=partner_id,
         kind=NotificationKind.CLIENT_ACTIVATED,
-        data={"external_client_ref": external_client_ref, "first": first},
+        data={
+            "external_client_ref": external_client_ref,
+            "first": first,
+            "can_serve": can_serve,
+        },
+        severity=(
+            NotificationSeverity.INFO if can_serve else NotificationSeverity.WARNING
+        ),
         external_client_ref=external_client_ref,
         dedupe_key=f"partner:{partner_id}:client.activated:{external_client_ref}",
     )
     return first
+
+
+async def _client_can_serve(
+    session: AsyncSession, partner_id: uuid.UUID, external_client_ref: str
+) -> bool:
+    """¿Contestaría este cliente a un mensaje que llegase ahora?
+
+    No lanza: un fallo leyendo el libro no puede tumbar una activación. En
+    la duda devuelve ``False`` y la notificación avisa de más, que es el
+    lado seguro — el otro es el silencio del 31-ago.
+    """
+    from nexus_api.db.models import PartnerTenant
+    from nexus_api.metering.wallet import allow_channel_turn
+
+    try:
+        tenant_id = await session.scalar(
+            sa.select(PartnerTenant.tenant_id).where(
+                PartnerTenant.partner_id == partner_id,
+                PartnerTenant.external_client_ref == external_client_ref,
+            )
+        )
+        if tenant_id is None:
+            return False
+        return await allow_channel_turn(tenant_id)
+    except Exception as exc:
+        log.warning(
+            "notifications.can_serve_unreadable",
+            partner_id=str(partner_id),
+            client=external_client_ref,
+            error=str(exc),
+        )
+        return False
 
 
 async def record_client_activation_detached(**kwargs: Any) -> bool:
