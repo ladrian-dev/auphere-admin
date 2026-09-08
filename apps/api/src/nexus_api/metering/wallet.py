@@ -217,7 +217,11 @@ async def replenish_allocations(session: AsyncSession, *, partner_id: uuid.UUID)
         )
         .values(remaining=PartnerAllocation.cap, updated_at=_now())
     )
-    touched = int(result.rowcount or 0)
+    # ``getattr`` y no ``result.rowcount``: el tipo estático de ``execute``
+    # es ``Result``, que no declara ``rowcount`` — solo lo tiene el
+    # ``CursorResult`` que devuelve un UPDATE en tiempo de ejecución. Mismo
+    # patrón que ``console_notifications`` y ``webhooks/meta``.
+    touched = int(getattr(result, "rowcount", 0) or 0)
     if touched:
         log.info("wallet.allocations_replenished", partner_id=str(partner_id), rows=touched)
     return touched
