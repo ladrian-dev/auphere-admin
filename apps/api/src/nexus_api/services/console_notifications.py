@@ -181,9 +181,7 @@ async def record_client_activation(
             "first": first,
             "can_serve": can_serve,
         },
-        severity=(
-            NotificationSeverity.INFO if can_serve else NotificationSeverity.WARNING
-        ),
+        severity=(NotificationSeverity.INFO if can_serve else NotificationSeverity.WARNING),
         external_client_ref=external_client_ref,
         dedupe_key=f"partner:{partner_id}:client.activated:{external_client_ref}",
     )

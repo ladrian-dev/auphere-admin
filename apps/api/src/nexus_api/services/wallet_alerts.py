@@ -126,11 +126,7 @@ async def evaluate_partner_wallet_alerts(
     for threshold in THRESHOLDS:
         if result.percent_used < threshold:
             continue
-        kind = (
-            NotificationKind.WALLET_EMPTY
-            if threshold >= 100
-            else NotificationKind.WALLET_LOW
-        )
+        kind = NotificationKind.WALLET_EMPTY if threshold >= 100 else NotificationKind.WALLET_LOW
         severity = (
             NotificationSeverity.CRITICAL if threshold >= 100 else NotificationSeverity.WARNING
         )
@@ -163,9 +159,7 @@ async def evaluate_partner_wallet_alerts(
     return result
 
 
-async def _notify_by_email(
-    partner: Partner, ev: WalletAlertEvaluation, since: datetime
-) -> bool:
+async def _notify_by_email(partner: Partner, ev: WalletAlertEvaluation, since: datetime) -> bool:
     recipients = [r for r in (partner.usage_alert_recipients or []) if isinstance(r, str) and r]
     if not recipients:
         return False
@@ -193,8 +187,8 @@ async def _notify_by_email(
             "aunque quede saldo general.</p>"
         )
     html = (
-        "<div style=\"font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"
-        "max-width:560px;margin:0 auto;color:#111\">"
+        '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
+        'max-width:560px;margin:0 auto;color:#111">'
         f"<p style='font-size:16px;margin:0 0 8px'><strong>{headline}</strong></p>"
         f"<p style='margin:0'>{note}</p>{extra}"
         f"<p style='color:#666;font-size:13px;margin:20px 0 0'>Periodo {period}.</p></div>"
