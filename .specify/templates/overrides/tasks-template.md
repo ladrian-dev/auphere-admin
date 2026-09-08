@@ -9,7 +9,10 @@ description: "Task list template for feature implementation"
 
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
+**Tests**: NO son opcionales en este repo. La constitución §VII dice que cada
+criterio de aceptación nace como test y que el rojo se ve antes de la
+implementación. La redacción de Spec Kit que los hacía opcionales está
+deliberadamente retirada de esta plantilla.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -88,6 +91,26 @@ Examples of foundational tasks (adjust based on your project):
 
 ---
 
+## Phase 2b: Las puertas de la constitución
+
+**Propósito**: las tres comprobaciones que `/speckit-tasks` no puede dejar pasar.
+Se borra la que no aplique — pero borrarla es una decisión, no un descuido, y la
+razón se escribe en la línea.
+
+- [ ] T00X Test de aislamiento para [garantía tocada] en `tests/isolation/test_[nombre].py`
+      — una tarea por garantía declarada en la spec. En rojo bloquea el merge (§I).
+      _Requisitos: N.m_
+- [ ] T00X Dejar escrita la licencia de [dependencia nueva] en el plan, con el
+      párrafo citado que permite el uso multi-tenant como servicio (§VIII).
+      _Requisitos: N.m_
+- [ ] T00X Conectar [lo que gasta: modelo · reloj de máquina · herramienta de pago]
+      al medidor que ve el partner, y decir en qué pantalla lo ve.
+      _Requisitos: N.m_
+
+**Checkpoint**: las puertas tienen dueño. Sin esto, `/speckit-analyze` no da verde.
+
+---
+
 ## Phase 3: User Story 1 - [Title] (Priority: P1) 🎯 MVP
 
 **Goal**: [Brief description of what this story delivers]
@@ -98,17 +121,17 @@ Examples of foundational tasks (adjust based on your project):
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py _Requisitos: 1.1_
+- [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py _Requisitos: 1.2_
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Create [Entity1] model in src/models/[entity1].py
-- [ ] T013 [P] [US1] Create [Entity2] model in src/models/[entity2].py
-- [ ] T014 [US1] Implement [Service] in src/services/[service].py (depends on T012, T013)
-- [ ] T015 [US1] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T016 [US1] Add validation and error handling
-- [ ] T017 [US1] Add logging for user story 1 operations
+- [ ] T012 [P] [US1] Create [Entity1] model in src/models/[entity1].py _Requisitos: 1.1_
+- [ ] T013 [P] [US1] Create [Entity2] model in src/models/[entity2].py _Requisitos: 1.1_
+- [ ] T014 [US1] Implement [Service] in src/services/[service].py (depends on T012, T013) _Requisitos: 1.2_
+- [ ] T015 [US1] Implement [endpoint/feature] in src/[location]/[file].py _Requisitos: 1.2_
+- [ ] T016 [US1] Add validation and error handling _Requisitos: 1.3_
+- [ ] T017 [US1] Add logging for user story 1 operations _Requisitos: 1.3_
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -122,8 +145,8 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Tests for User Story 2 (OBLIGATORIO — constitución §VII: el test se escribe y se ve en rojo antes de la implementación) ⚠️
 
-- [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py _Requisitos: 2.1_
+- [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py _Requisitos: 2.1_
 
 ### Implementation for User Story 2
 
@@ -144,8 +167,8 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Tests for User Story 3 (OBLIGATORIO — constitución §VII: el test se escribe y se ve en rojo antes de la implementación) ⚠️
 
-- [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py _Requisitos: 3.1_
+- [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py _Requisitos: 3.1_
 
 ### Implementation for User Story 3
 
@@ -168,7 +191,7 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] TXXX [P] Documentation updates in docs/
 - [ ] TXXX Code cleanup and refactoring
 - [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
+- [ ] TXXX [P] Unit tests adicionales en tests/unit/
 - [ ] TXXX Security hardening
 - [ ] TXXX Run quickstart.md validation
 
@@ -193,7 +216,7 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Within Each User Story
 
-- Tests (if included) MUST be written and FAIL before implementation
+- Los tests se escriben y se ven FALLAR antes de la implementación (§VII)
 - Models before services
 - Services before endpoints
 - Core implementation before integration
@@ -261,6 +284,6 @@ With multiple developers:
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - Verify tests fail before implementing
-- Commit after each task or logical group
+- Los commits los ejecuta la persona: el agente entrega el mensaje y para
 - Stop at any checkpoint to validate story independently
 - Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence
