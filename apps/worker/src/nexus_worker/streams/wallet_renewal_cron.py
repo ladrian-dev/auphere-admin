@@ -34,7 +34,11 @@ from nexus_api.config import get_settings
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Partner, PartnerStatus, Tenant, TenantStatus
-from nexus_api.metering.wallet import renew_included_if_expired, seed_default_allocation
+from nexus_api.metering.wallet import (
+    renew_included_if_expired,
+    replenish_allocations,
+    seed_default_allocation,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -73,6 +77,7 @@ async def sweep_once(sm: object) -> dict[str, int]:
     settings = get_settings()
     default_cap = settings.partner_default_client_allocation_tokens
     renewed = 0
+    replenished = 0
     seeded = 0
 
     for partner_id, monthly_cap in await _partner_ids(sm):
@@ -83,6 +88,10 @@ async def sweep_once(sm: object) -> dict[str, int]:
                     session, partner_id=partner_id, monthly_cap=monthly_cap
                 ):
                     renewed += 1
+                    # Periodo nuevo: lo gastado el mes pasado se repone. Sin
+                    # esto el wallet vuelve a 500k y un cliente que agotó su
+                    # cuota sigue mudo el mes entero con saldo de sobra.
+                    replenished += await replenish_allocations(session, partner_id=partner_id)
         except Exception as exc:
             # Un partner que falla no puede dejar sin saldo a los demás.
             log.error(
@@ -118,9 +127,14 @@ async def sweep_once(sm: object) -> dict[str, int]:
                     error=str(exc),
                 )
 
-    if renewed or seeded:
-        log.info("wallet_renewal_cron.swept", renewed=renewed, seeded=seeded)
-    return {"renewed": renewed, "seeded": seeded}
+    if renewed or seeded or replenished:
+        log.info(
+            "wallet_renewal_cron.swept",
+            renewed=renewed,
+            replenished=replenished,
+            seeded=seeded,
+        )
+    return {"renewed": renewed, "replenished": replenished, "seeded": seeded}
 
 
 async def run_wallet_renewal_cron(

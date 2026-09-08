@@ -195,6 +195,34 @@ async def renew_included_if_expired(
     return True
 
 
+async def replenish_allocations(session: AsyncSession, *, partner_id: uuid.UUID) -> int:
+    """Devuelve ``remaining`` a ``cap`` en las cuotas del partner. Filas tocadas.
+
+    El compañero obligatorio de ``renew_included_if_expired``. El included es
+    mensual y las asignaciones por cliente son porciones de ese included: si
+    el wallet se repone y ``remaining`` no, un cliente que gastó su cuota en
+    septiembre sigue con 0 en octubre y ``allow_channel_turn`` lo deja mudo el
+    mes entero **teniendo el partner saldo de sobra**. Es el mismo modo de
+    fallo del corte del 31-ago: silencio con saldo.
+
+    Solo sube, nunca baja: la cláusula ``remaining < cap`` deja intactas las
+    filas ya llenas y hace la operación idempotente. Cambiar el cap sigue
+    siendo decisión del partner desde Consumo; esto solo repone lo gastado.
+    """
+    result = await session.execute(
+        sa.update(PartnerAllocation)
+        .where(
+            PartnerAllocation.partner_id == partner_id,
+            PartnerAllocation.remaining < PartnerAllocation.cap,
+        )
+        .values(remaining=PartnerAllocation.cap, updated_at=_now())
+    )
+    touched = int(result.rowcount or 0)
+    if touched:
+        log.info("wallet.allocations_replenished", partner_id=str(partner_id), rows=touched)
+    return touched
+
+
 async def read_wallet(partner_id: uuid.UUID) -> WalletSnapshot | None:
     """Saldo bajo RLS. None si no hay fila. None (y log) si el libro no se lee."""
     try:

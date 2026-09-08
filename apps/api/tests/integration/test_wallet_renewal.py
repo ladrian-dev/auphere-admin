@@ -26,6 +26,7 @@ from nexus_api.metering.wallet import (
     allocatable_for,
     next_period_end,
     renew_included_if_expired,
+    replenish_allocations,
     seed_default_allocation,
 )
 
@@ -174,3 +175,47 @@ async def test_seed_does_not_touch_an_existing_allocation(db_session) -> None:
     )
     assert row is not None
     assert int(row.remaining) == 7, "una cuota ya gastada no se repone sola"
+
+
+async def test_new_period_replenishes_a_spent_quota(db_session) -> None:
+    """El agujero que destapó la verificación en vivo del 2-sep.
+
+    Renovar el wallet sin reponer ``remaining`` deja al cliente que gastó su
+    cuota mudo el mes entero **con el partner lleno de saldo** — el mismo
+    silencio con saldo del corte del 31-ago, un mes más tarde.
+    """
+    partner_id = await _partner_with_expired_wallet(db_session)
+    tenant_id = await _tenant(db_session, partner_id)
+    await renew_included_if_expired(db_session, partner_id=partner_id, monthly_cap=MONTHLY_CAP)
+    await seed_default_allocation(
+        db_session, partner_id=partner_id, tenant_id=tenant_id, default_cap=DEFAULT_CAP
+    )
+
+    # El cliente se gasta casi toda su cuota durante el mes.
+    row = await db_session.scalar(
+        sa.select(PartnerAllocation).where(PartnerAllocation.tenant_id == tenant_id)
+    )
+    assert row is not None
+    row.remaining = 3
+    await db_session.flush()
+
+    touched = await replenish_allocations(db_session, partner_id=partner_id)
+    assert touched == 1
+    await db_session.refresh(row)
+    assert int(row.remaining) == DEFAULT_CAP
+
+
+async def test_replenish_is_idempotent_and_never_lowers(db_session) -> None:
+    partner_id = await _partner_with_expired_wallet(db_session)
+    tenant_id = await _tenant(db_session, partner_id)
+    await renew_included_if_expired(db_session, partner_id=partner_id, monthly_cap=MONTHLY_CAP)
+    await seed_default_allocation(
+        db_session, partner_id=partner_id, tenant_id=tenant_id, default_cap=DEFAULT_CAP
+    )
+    assert await replenish_allocations(db_session, partner_id=partner_id) == 0
+
+    row = await db_session.scalar(
+        sa.select(PartnerAllocation).where(PartnerAllocation.tenant_id == tenant_id)
+    )
+    assert row is not None
+    assert int(row.remaining) == DEFAULT_CAP
