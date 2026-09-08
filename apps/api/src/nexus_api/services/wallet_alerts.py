@@ -28,6 +28,8 @@ reinicio no vuelven a avisar.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -51,6 +53,24 @@ log = structlog.get_logger(__name__)
 
 #: 80 % avisa con margen; 100 % es que ya no se atiende.
 THRESHOLDS: tuple[int, ...] = (80, 100)
+
+
+@asynccontextmanager
+async def _tx(session: AsyncSession) -> AsyncIterator[None]:
+    """Transacción propia, o la del llamador si ya tiene una abierta.
+
+    Sin esto la función solo funciona con una sesión recién abierta: basta
+    un ``execute`` previo del llamador —o leer un atributo de un objeto ORM
+    expirado tras commit, que dispara un refresh— para que SQLAlchemy tenga
+    ya una transacción implícita y ``session.begin()`` estalle con «A
+    transaction is already begun». Es un contrato implícito y frágil; esto
+    lo quita de en medio.
+    """
+    if session.in_transaction():
+        yield
+    else:
+        async with session.begin():
+            yield
 
 
 @dataclass
@@ -117,10 +137,7 @@ async def evaluate_partner_wallet_alerts(
     if snap is None or cap <= 0 or result.percent_used is None:
         return result
 
-    # En su propia transacción corta: un ``execute`` suelto deja la sesión
-    # con transacción implícita abierta y el ``session.begin()`` de abajo
-    # estallaría con «A transaction is already begun».
-    async with session.begin():
+    async with _tx(session):
         result.clients_out = await clients_without_quota(session, partner.id)
 
     for threshold in THRESHOLDS:
@@ -149,7 +166,7 @@ async def evaluate_partner_wallet_alerts(
                 index_elements=["dedupe_key"], index_where=sa.text("dedupe_key IS NOT NULL")
             )
         )
-        async with session.begin():
+        async with _tx(session):
             inserted = await session.execute(stmt.returning(ConsoleNotification.id))
             if inserted.scalar_one_or_none() is not None:
                 result.created.append(threshold)

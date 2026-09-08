@@ -187,3 +187,24 @@ async def test_activation_says_when_the_client_cannot_serve(db_session) -> None:
     assert row is not None
     assert row.payload["can_serve"] is False
     assert row.severity == NotificationSeverity.WARNING.value
+
+
+async def test_works_when_the_caller_already_has_a_transaction(db_session) -> None:
+    """El fallo que apareció verificando en staging, no en los tests.
+
+    Basta que quien llama haya hecho un ``execute`` antes —o que lea un
+    atributo de un objeto ORM expirado, que dispara un refresh— para que la
+    sesión tenga ya una transacción implícita. La evaluación no puede exigir
+    una sesión recién abierta: es un contrato que nadie ve hasta que
+    revienta en producción, y el cron lo habría tragado con su ``except``.
+    """
+    partner = await _partner(db_session, available=0)
+    # Deja la sesión con transacción implícita abierta, como el llamador real.
+    await db_session.execute(sa.select(sa.literal(1)))
+    assert db_session.in_transaction()
+
+    ev = await evaluate_partner_wallet_alerts(db_session, partner)
+
+    assert ev.created == [80, 100]
+    kinds = await _kinds(db_session, partner.id)
+    assert kinds["wallet.empty"] == NotificationSeverity.CRITICAL.value
