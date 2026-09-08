@@ -36,9 +36,10 @@ Tres excepciones, y son las únicas:
 |---|---|---|
 | **Hotfix P0** | Producción caída o datos en riesgo | Se arregla primero. La spec retroactiva se escribe **en las 48 h siguientes**, o se revierte |
 | **Cambio trivial** | Typo, versión de dependencia sin cambio de comportamiento, formato, comentario | Nada. No es un cambio de comportamiento |
-| **Spike acotado** | Investigación con tiempo tasado y una pregunta escrita | Va por el flujo `assess` (§4) y **no puede fusionarse a `develop`**: el spike responde una pregunta, no entrega producto |
+| **Spike acotado** | Investigación con tiempo tasado y una pregunta escrita | Va por el flujo `assess` (§4). **Su código no se fusiona a `develop`**: el spike responde una pregunta, no entrega producto. Lo que sí viaja es el documento — `.specify/assessments/<slug>/` es la memoria de por qué se dijo que sí o que no |
 
-Un bug **no** es excepción: tiene su propio flujo (`/speckit.bug`), que es una
+Un bug **no** es excepción: tiene su propio flujo
+(`/speckit-bug-assess` → `/speckit-bug-test` → `/speckit-bug-fix`), que es una
 spec con menos ceremonia.
 
 ---
@@ -65,7 +66,7 @@ no toca su documento se devuelve.
 
 ```
               ¿se construye?                    ¿qué y cómo?                     ejecutar
-   idea ──► /speckit.assess.* ──► go ──► /speckit-specify ──► /speckit-clarify ──► /speckit-plan
+   idea ──► /speckit-assess-* ──► go ──► /speckit-specify ──► /speckit-clarify ──► /speckit-plan
                     │                                                                  │
                    kill                                                     /speckit-tasks
               (cerrado con                                                             │
@@ -85,6 +86,15 @@ no toca su documento se devuelve.
 | `/speckit-implement` | Código | Ejecuta las tareas en orden |
 | `/speckit-checklist` | Checklist de calidad | Opcional, útil en specs grandes |
 | `/speckit-converge` | Tareas que faltan | Cuando el código se ha desviado de la spec |
+
+Los comandos de las tres extensiones instaladas (§8) se escriben igual, con
+guiones — no con puntos, aunque los archivos que los definen usen puntos:
+
+| Extensión | Comandos | Para qué |
+|---|---|---|
+| `assess` | `/speckit-assess-intake` · `-research` · `-define` · `-shape` · `-decide` | Decidir si una idea se construye. Termina en *go* o *kill* |
+| `bug` | `/speckit-bug-assess` · `-test` · `-fix` | El flujo de un bug: reproducir, fijar el test, arreglar |
+| `git` | `/speckit-git-feature` · `-commit` · `-validate` · `-remote` · `-initialize` | Ramas y validación. **`-commit` no commitea nada aquí** (§8) |
 
 ### Las puertas que no se saltan
 
@@ -196,8 +206,16 @@ specify extension add bug
 se conservan; lo que instala el comando son las skills locales bajo `.claude/`.
 
 **Auto-commit está desactivado** en `.specify/extensions/git/git-config.yml`
-(`auto_commit.default: false`) y debe quedarse así: en este equipo los commits
-los ejecuta la persona, nunca la herramienta.
+(`auto_commit.default: false`, y las dieciséis claves por comando también en
+`false`) y debe quedarse así: en este equipo los commits los ejecuta la persona,
+nunca la herramienta.
+
+`.specify/extensions.yml` sí trae los ganchos `before_*`/`after_*` en `enabled:
+true`, y eso confunde a primera vista. No commitean: el gancho invoca
+`speckit.git.commit`, que antes de hacer nada lee `git-config.yml` y se
+encuentra todo apagado. **La llave está en `git-config.yml`, no en
+`extensions.yml`** — que además lo regenera la CLI al reinstalar la extensión, así
+que apagarlo ahí no duraría.
 
 ---
 

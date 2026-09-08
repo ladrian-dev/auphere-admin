@@ -7,3 +7,8 @@ feature.json
 
 # Per-machine extension config overrides.
 extensions/*/local-config.yml
+
+# Catálogo de extensiones descargado por la CLI. Es caché reconstruible y con
+# marca de tiempo: versionarlo produce un diff en cada `specify extension` que
+# alguien ejecute, y no describe nada del proceso.
+extensions/.cache/

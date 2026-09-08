@@ -53,6 +53,17 @@ Una fila en rojo detiene el plan: se corrige el diseño o se enmienda la constit
 | VIII | Licencias leídas enteras; AGPL no; "Apache modificada" se lee completa | ☐ | dependencias nuevas: `…` |
 | IX | La KB es dueña del porqué; la spec enlaza a su nota | ☐ | `[[nota]]` |
 
+### Las tres puertas que `/speckit-tasks` comprueba
+
+Se rellenan aquí porque es aquí donde se sabe la respuesta; `/speckit-tasks`
+solo verifica que existan y que cada una tenga su tarea.
+
+| Puerta | Respuesta | Tarea que la cubre |
+|---|---|---|
+| **Aislamiento** — ¿qué garantías de `architecture/agent-isolation.md` toca? | [ninguna / la lista] | `T…` en `tests/isolation/` |
+| **Licencias** — ¿qué dependencia nueva entra? | [ninguna / nombre + licencia + párrafo citado] | `T…` |
+| **Medidor** — ¿qué gasta y dónde lo ve el partner? | [nada / modelo · reloj · herramienta de pago] | `T…` |
+
 **Complejidad que hay que justificar:** cualquier cosa que este plan añada y que
 la spec no pedía va abajo, en Complexity Tracking, con la razón.
 
