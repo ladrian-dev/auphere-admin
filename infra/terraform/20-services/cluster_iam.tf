@@ -4,9 +4,16 @@
 resource "aws_ecs_cluster" "main" {
   name = local.name
 
+  # Apagado el 2026-09-08. Generaba 396 de las 423 series de métricas custom
+  # (~106 USD/mes) y NINGUNA de las 26 alarmas ni ninguna política de
+  # autoescalado la consultaba: esas leen de AWS/ECS (gratis) y del namespace
+  # Nexus que emite el sidecar ADOT. Tampoco había ningún dashboard.
+  # Ver Auphere/nexus/PLAN-COSTES-AWS-2026-09-01.md en el vault.
+  # Reactivar solo si alguien va a construir algo que de verdad lo lea; para
+  # redimensionar servicios, encenderlo una semana, medir y volver a apagarlo.
   setting {
     name  = "containerInsights"
-    value = "enabled"
+    value = "disabled"
   }
 
   lifecycle {
