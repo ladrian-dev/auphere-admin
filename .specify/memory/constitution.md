@@ -156,12 +156,14 @@ evaluación (`intake → research → define → shape → decide`) de la extens
 `assess`. Un veredicto *go* entrega a `/speckit-specify`; un *kill* cierra el
 asunto con su razón escrita.
 
-**Puertas que no se saltan:**
+**Puertas que no se saltan.** Esta tabla es la única: `docs/spec-driven-development.md`
+la cita, nunca la copia. Si una puerta cambia, cambia aquí.
 
 | Puerta | Antes de | Qué comprueba |
 |---|---|---|
 | Cero `[NEEDS CLARIFICATION]` | `/speckit-plan` | No queda ninguna suposición sin decidir |
 | Superficie declarada | `/speckit-plan` | La spec dice qué frontera de confianza toca (§II) |
+| Constitution Check completo | `/speckit-tasks` | Las nueve filas de arriba, cada una con su prueba |
 | Aislamiento | `/speckit-tasks` | Hay test de aislamiento para cada garantía tocada (§I) |
 | Licencias | `/speckit-tasks` | Toda dependencia nueva trae su licencia leída y citada (§VIII) |
 | Medidor | `/speckit-tasks` | Todo lo que gasta declara dónde se mide |
@@ -184,4 +186,4 @@ La versión sigue `MAYOR.MENOR.PARCHE`: mayor si se retira o se redefine un
 principio, menor si se añade uno o se amplía materialmente, parche para
 redacción.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-08 | **Last Amended**: 2026-09-08
+**Version**: 1.0.1 | **Ratified**: 2026-09-08 | **Last Amended**: 2026-09-09

@@ -98,15 +98,18 @@ guiones — no con puntos, aunque los archivos que los definen usen puntos:
 
 ### Las puertas que no se saltan
 
-| Puerta | Antes de | Qué comprueba |
-|---|---|---|
-| Cero `[NEEDS CLARIFICATION]` | `/speckit-plan` | Ninguna suposición sin decidir |
-| Superficie declarada | `/speckit-plan` | La spec dice qué frontera de confianza toca |
-| Constitution Check completo | `/speckit-tasks` | Las nueve filas, con su prueba |
-| Aislamiento | `/speckit-tasks` | Una tarea de test por garantía tocada |
-| Licencias | `/speckit-tasks` | Toda dependencia nueva con su licencia leída y citada |
-| Medidor | `/speckit-tasks` | Todo lo que gasta declara dónde se mide |
-| `/speckit-analyze` en verde | `/speckit-implement` | Consistencia entre los tres artefactos |
+Son siete y **las define la constitución**, en su §Flujo de trabajo:
+[`.specify/memory/constitution.md`](../.specify/memory/constitution.md). Ahí está
+la tabla con lo que comprueba cada una y el principio del que sale.
+
+En corto: antes de `/speckit-plan`, cero `[NEEDS CLARIFICATION]` y superficie
+declarada. Antes de `/speckit-tasks`, el Constitution Check completo, el
+aislamiento, las licencias y el medidor. Antes de `/speckit-implement`,
+`/speckit-analyze` en verde.
+
+> Este documento **cita** esa tabla, no la copia. Dos copias de una lista de
+> puertas divergen — de hecho estas dos ya habían divergido en una fila el mismo
+> día que se escribieron. Si una puerta cambia, cambia en la constitución.
 
 ---
 
