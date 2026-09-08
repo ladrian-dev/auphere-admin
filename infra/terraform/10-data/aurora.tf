@@ -9,7 +9,19 @@ locals {
   aurora_sizing = {
     staging = {
       # WP-25: mínimos. 0.5 ACU idle ≈ 43 USD/mes.
-      min_acu        = 0.5
+      #
+      # 2026-09-08: min_acu = 0 activa el auto-pause (Fase 5 del plan de
+      # costes). Staging consumía MÁS ACU que producción —0,737 frente a
+      # 0,501 de media— porque nunca bajaba de 16 conexiones.
+      #
+      # ⚠️ ESTO SOLO AHORRA SI staging_parking.tf (20-services) APAGA LOS
+      # SIETE SERVICIOS. Cualquier conexión de usuario viva impide la pausa,
+      # y pgbouncer mantiene el pool abierto. Si alguien desactiva el
+      # apagado nocturno, esto se queda en cero ahorro y encima añade ~15 s
+      # de arranque en frío a la primera conexión. Van juntos o no van.
+      #
+      # Aurora PostgreSQL 16.13 ≥ 16.3, que es el mínimo para min = 0.
+      min_acu        = 0
       max_acu        = 2
       instance_count = 1 # sin réplica de lectura en staging
       # max_connections fijo y DOCUMENTADO (WP-23). El default de Aurora
@@ -98,6 +110,11 @@ resource "aws_rds_cluster" "main" {
   serverlessv2_scaling_configuration {
     min_capacity = local.aurora.min_acu
     max_capacity = local.aurora.max_acu
+
+    # Solo tiene efecto con min_capacity = 0. 300 s es el mínimo que admite
+    # AWS y es el valor correcto para una ventana corta: con los 900 s por
+    # defecto se perderían 15 de los 360 minutos de pausa cada noche.
+    seconds_until_auto_pause = local.aurora.min_acu == 0 ? 300 : null
   }
 
   storage_encrypted               = true

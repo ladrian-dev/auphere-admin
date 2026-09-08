@@ -159,6 +159,15 @@ resource "aws_ecs_service" "pgbouncer" {
 
   deployment_maximum_percent         = 200
   deployment_minimum_healthy_percent = 100
+
+  # Application Auto Scaling es dueño de desired_count desde que el apagado
+  # nocturno de staging registra su target (staging_parking.tf). Sin esto, un
+  # apply dentro de la ventana 03:00-09:00 lo devolvería a 1 y pelearía con
+  # la acción programada.
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
+
 }
 
 output "pgbouncer_dns" {
