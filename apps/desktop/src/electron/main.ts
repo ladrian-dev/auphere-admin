@@ -21,11 +21,20 @@ import { BrowserWindow, app } from "electron";
 
 import { AppRuntime } from "../app-runtime.js";
 import { GatewayApprovals } from "../approvals-client.js";
+import { HttpTransport } from "../http-transport.js";
 import { HEARTBEAT_INTERVAL_MS } from "../presence.js";
 import { HUMAN_PARTITION, assertPartitionsAreSeparate } from "../session-isolation.js";
 
 const CONSOLE_URL = process.env.AUPHERE_CONSOLE_URL ?? "https://console.auphere.com";
+const API_URL = process.env.AUPHERE_API_URL ?? "https://api.auphere.com";
 const GATEWAY_URL = process.env.AUPHERE_GATEWAY_URL ?? "http://localhost:5476";
+
+/**
+ * La credencial que el alta entregó una sola vez. Sin ella la app no puede
+ * hablar con la plataforma — y **no arranca el puente** en vez de latir contra
+ * un 401 en bucle, que llenaría los logs sin decir nada útil.
+ */
+const DEVICE_TOKEN = process.env.AUPHERE_DEVICE_TOKEN ?? "";
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -53,16 +62,19 @@ export async function bootstrap(): Promise<void> {
   const runtime = new AppRuntime({
     consoleUrl: CONSOLE_URL,
     workdir: process.env.AUPHERE_WORKDIR ?? app.getPath("home"),
-    transport: {
-      // El transporte real se inyecta aquí; el puente es saliente por contrato.
-      send: async () => undefined,
-      poll: async () => [],
-    },
+    transport: new HttpTransport({ baseUrl: API_URL, token: DEVICE_TOKEN }),
     approvals: new GatewayApprovals({
       baseUrl: GATEWAY_URL,
       token: process.env.AUPHERE_GATEWAY_TOKEN ?? "",
     }),
   });
+
+  if (!DEVICE_TOKEN) {
+    // La ventana se abre igual: la consola es útil sin puente. Lo que no se hace
+    // es fingir que hay dispositivo — sin credencial no hay herramientas locales.
+    window.on("closed", () => undefined);
+    return;
+  }
 
   await runtime.start();
   const timer = setInterval(() => void runtime.tick(), HEARTBEAT_INTERVAL_MS);

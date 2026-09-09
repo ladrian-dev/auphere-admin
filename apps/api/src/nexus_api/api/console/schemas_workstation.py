@@ -30,6 +30,18 @@ class DeviceOut(BaseModel):
     enrolled_at: datetime
 
 
+class DeviceCreatedOut(DeviceOut):
+    """El alta, y **solo el alta**, devuelve la credencial del dispositivo.
+
+    Mismo patrón que las claves de API de la consola: se enseña una vez y no se
+    puede volver a leer. Si se pierde, se revoca el dispositivo y se da de alta
+    otro — que es más barato que tener un sitio donde una credencial viva
+    consultable.
+    """
+
+    pairing_token: str
+
+
 class DeviceIn(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
     platform: str = Field(pattern="^(macos|windows)$")

@@ -23,9 +23,11 @@ from nexus_api.repositories.local_workstation import (
     LocalExecutionRepository,
     PartnerDeviceRepository,
 )
+from nexus_api.services.device_credential import issue_device_token
 
 from .deps import ClientScope, client_scope
 from .schemas_workstation import (
+    DeviceCreatedOut,
     DeviceIn,
     DeviceOut,
     ExecutableIn,
@@ -72,11 +74,12 @@ async def list_devices(
     return [_device_out(d) for d in devices]
 
 
-@router.post("/devices", response_model=DeviceOut, status_code=status.HTTP_201_CREATED)
+@router.post("/devices", response_model=DeviceCreatedOut, status_code=status.HTTP_201_CREATED)
 async def enrol_device(
     payload: DeviceIn,
     scope: ClientScope = Depends(client_scope("workstation:write")),
-) -> DeviceOut:
+) -> DeviceCreatedOut:
+    """Da de alta la máquina y devuelve su credencial **una sola vez**."""
     device = await PartnerDeviceRepository(scope.session).enrol(
         principal_id=scope.principal.user_id,
         display_name=payload.display_name,
@@ -84,7 +87,8 @@ async def enrol_device(
         workdir=payload.workdir,
         app_version=payload.app_version,
     )
-    return _device_out(device)
+    token = issue_device_token(device_id=device.id, tenant_id=device.tenant_id)
+    return DeviceCreatedOut(**_device_out(device).model_dump(), pairing_token=token)
 
 
 @router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)

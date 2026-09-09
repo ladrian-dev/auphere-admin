@@ -258,6 +258,17 @@ máquina, para que instalar esto no abra un puerto en mi casa ni en mi oficina.
    plataforma, y NO DEBE aceptar conexiones entrantes hacia esa máquina.
 2. WHEN la conexión se pierde THEN el dispositivo DEBE reintentar desde su lado, y
    la interfaz DEBE mostrar `reconectando` mientras tanto.
+3. WHEN un dispositivo se da de alta THEN el sistema DEBE emitirle una credencial
+   **propia de ese dispositivo**: acotada a su tenant, revocable por sí sola, y que
+   solo autoriza latir, sondear trabajo y devolver resultados.
+
+   No contradice el Requisito 15.2. Lo que aquel prohíbe es una **credencial de
+   backend** —una llave de la cuenta, que abre todo—; ésta abre exactamente cuatro
+   operaciones de una máquina concreta. La diferencia importa: sin credencial
+   propia el dispositivo tendría que llevar la de la persona, que es peor.
+4. IF una credencial de dispositivo se usa para pedir trabajo de **otro**
+   dispositivo o de otro tenant THEN el sistema DEBE denegarlo, y el intento DEBE
+   quedar registrado.
 
 ### Requisito 7 — Dos escaleras de aprobación, y una frontera clara
 

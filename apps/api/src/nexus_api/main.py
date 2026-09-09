@@ -8,7 +8,16 @@ import structlog
 from fastapi import FastAPI
 
 from nexus_api import __version__
-from nexus_api.api import admin, console, messages, partners, partners_clients, qa, webhooks
+from nexus_api.api import (
+    admin,
+    console,
+    device_bridge,
+    messages,
+    partners,
+    partners_clients,
+    qa,
+    webhooks,
+)
 from nexus_api.api import connectors as connectors_public
 from nexus_api.api.versioning import deprecation_middleware, mount_versioned
 from nexus_api.config import settings
@@ -132,6 +141,7 @@ app.include_router(console.router)
 app.include_router(webhooks.router)
 app.include_router(connectors_public.router)
 app.include_router(qa.router)
+app.include_router(device_bridge.router)
 # ADR-028 + WP-28: superficie pública de partners (clave secreta,
 # servidor a servidor), montada una vez por versión viva. `/v1` está
 # congelada y responde con cabeceras de obsolescencia; `/v2` es la

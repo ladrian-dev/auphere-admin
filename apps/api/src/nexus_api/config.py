@@ -453,6 +453,11 @@ class Settings(BaseSettings):
     # PEM-encoded Ed25519 public key ("-----BEGIN PUBLIC KEY-----"). Empty
     # means the console cannot authenticate anything — fail closed. Only a
     # public key lives here; the private half stays in the console.
+    #: Secreto de las credenciales de dispositivo (Requisito 6.3). La API es
+    #: emisora **y** verificadora aquí —a diferencia de los tokens de consola, que
+    #: acuña la consola— así que es simétrico. El valor de abajo solo vale en
+    #: desarrollo: ``device_credential`` se niega a emitir con él fuera de ``dev``.
+    device_token_secret: str = "dev-device-secret-change-me-min-32-chars"
     console_jwt_public_key: str = ""
     console_jwt_issuer: str = "nexus-console"
     console_jwt_audience: str = "nexus-api"
@@ -522,6 +527,11 @@ class Settings(BaseSettings):
             offenders.append("NEXUS_COMPOSIO_API_KEY")
         if "change-me" in self.composio_webhook_secret:
             offenders.append("NEXUS_COMPOSIO_WEBHOOK_SECRET")
+        # Firma las credenciales de dispositivo (Requisito 6.3): con el valor de
+        # fábrica, cualquiera que lea el repo podría acuñar una llave de la
+        # máquina de un partner.
+        if "change-me" in self.device_token_secret:
+            offenders.append("NEXUS_DEVICE_TOKEN_SECRET")
         if "localhost" in self.public_api_base_url:
             offenders.append("NEXUS_PUBLIC_API_BASE_URL")
         if "localhost" in self.admin_panel_base_url:

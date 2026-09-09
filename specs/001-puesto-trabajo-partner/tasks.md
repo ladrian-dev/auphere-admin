@@ -536,6 +536,56 @@ plano de control con piezas sueltas.
 
 ---
 
+## Phase 10: El otro extremo del puente (Requisito 6)
+
+**Por qué existe, y es la segunda vez que pasa lo mismo.** `contracts/device-bridge.md`
+describe el protocolo entero, y T005, T050 y T067 construyeron **las tres la mitad
+del dispositivo**. Los criterios 6.1 y 6.2 estaban citados por esas tareas, así que
+la cobertura daba 100% mientras la mitad de la plataforma no la construía nadie —
+el mismo fallo que destapó la Phase 9. **Cobertura por cita no es cobertura por
+capacidad**, y ya van dos.
+
+Se descubrió al preguntar cómo probarlo en local: sin estos endpoints, el puente no
+tiene con quién hablar y el recorrido de punta a punta no existe.
+
+**Abre una superficie autenticada nueva** —una credencial de dispositivo que pide
+trabajo— así que lleva su test de aislamiento, como cualquier otra frontera.
+
+### Tests de la Phase 10 ⚠️
+
+- [x] T071 [P] Test en `apps/api/tests/isolation/test_29_device_credential_scope.py`:
+      una credencial de dispositivo **no alcanza** trabajo de otro dispositivo ni de
+      otro tenant, y el intento queda registrado. En rojo bloquea el merge (§I).
+      _Requisitos: 6.3, 6.4_
+      **HECHO.** 7 tests. Incluye la **guarda de secreto de producción** que el resto de los `…-change-me` del repo no tiene: emitir con el valor de fábrica fuera de `dev` levanta. Un secreto por defecto en producción no es configuración pendiente, es una puerta abierta — y ésta firma credenciales que dan acceso a la máquina de un partner.
+- [x] T072 [P] Test en `apps/api/tests/integration/test_device_bridge.py`: alta,
+      latido, sondeo y resultado; el latido **solo** mueve `last_heartbeat_at`.
+      _Requisitos: 6.1, 6.3, 4.1_
+      **HECHO.** 4 tests. El del latido compara **todas** las demás columnas antes y después: si algún día mueve algo más, aparece un estado que puede desincronizarse y §V deja de sostenerse. El alta emite la credencial **una sola vez**, mismo patrón que las claves de API.
+- [x] T073 [P] Test en `apps/api/tests/integration/test_device_bridge_inbound.py`:
+      no existe ninguna ruta que permita **entrar** hacia la máquina; todo es
+      respuesta a un sondeo del dispositivo. _Requisitos: 6.1_
+      **HECHO.** 4 tests que recorren las rutas montadas: ninguna se dirige a una máquina por id, el único `GET` es el sondeo, y todas exigen credencial de dispositivo. Si alguien añade un `execute` «solo para depurar», esto se pone rojo antes de llegar a la máquina de otra persona.
+
+### Implementación de la Phase 10
+
+- [x] T074 Credencial de dispositivo: emisión en el alta, verificación por petición y
+      revocación individual. Acotada a su tenant y a sus cuatro operaciones.
+      _Requisitos: 6.3_
+      **HECHO.** `services/device_credential.py`. Simétrico a propósito: los tokens de consola son EdDSA porque **los acuña la consola** y la API solo verifica; aquí la API es emisora y verificadora, así que un secreto compartido evita distribuir una clave privada más.
+- [x] T075 Los cuatro endpoints del puente —`enrol`, `heartbeat`, `poll`, `result`—
+      bajo un prefijo propio, no bajo `/console`: no los llama una persona.
+      _Requisitos: 6.1, 6.2_
+      **HECHO** (`/device/heartbeat`, `/device/poll`, `/device/result`), **fuera de `/console`** y no por cosmética: `/console/*` lo llama una persona con sesión y lo audita `test_console_scope` con reglas pensadas para eso. Mezclarlos obligaría a relajar las reglas de un sitio para que cupiera el otro. El `tenant_id` sale de **la firma**, no de la ruta.
+- [x] T076 Sustituir el transporte talón de la app por el real, contra esos
+      endpoints. Cierra el recorrido de punta a punta. _Requisitos: 6.1, 6.2_
+      **HECHO.** `HttpTransport`, 6 tests. Dos propiedades por encima de la fontanería: **solo sale** —hay un test que afirma que no existe `listen`— y **un fallo se levanta**: si el sondeo devolviera `[]` al fallar, el puente diría «no hay trabajo» en vez de pasar a `reconectando`, y enseñaría un estado que no es. Sin credencial la ventana abre igual pero **no arranca el puente**: la consola es útil sin él, y latir contra un 401 en bucle no.
+
+**Checkpoint**: el puente tiene dos extremos y el recorrido completo se puede
+ejecutar en local.
+
+---
+
 ## Phase 8: Polish & Cross-Cutting Concerns
 
 - [x] T054 [P] Retirar las marcas ajenas de la **superficie visible**: catálogo de cadenas
