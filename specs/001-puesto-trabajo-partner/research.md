@@ -49,16 +49,20 @@ de lectura del repo; **no se reabre nada que la evaluación ya decidiera**.
 - **Alternativas descartadas**: kiro-cli (dependencia que la evaluación demostró
   innecesaria y que ata a otro producto de Amazon).
 
-## D4 — Contención del catálogo: envoltorio con `--strict-mcp-config` — **SIN VERIFICAR**
+## D4 — Contención del catálogo: envoltorio con `--strict-mcp-config` — **VERIFICADO 2026-09-09**
 
-- **Decisión provisional**: `CLAUDE_CODE_EXECUTABLE` apunta a un envoltorio de la
+- **Decisión, ya verificada**: `CLAUDE_CODE_EXECUTABLE` apunta a un envoltorio de la
   edición que añade `--strict-mcp-config` al CLI, de modo que el harness use
   **solo** los servidores que Crew le pasa en `session/new`.
 - **Razón**: el CLI documenta el flag (*«Only use MCP servers from
   --mcp-config»*), y el punto de inyección existe. Ninguna de las dos cosas exige
   tocar el núcleo.
-- **Estado**: **no verificado.** Falta comprobar que el adaptador tolera el
-  envoltorio y que Crew sigue viendo sus propias herramientas.
+- **Estado**: **verificado en T001 (2026-09-09).** Catálogo: 3 servidores ajenos → 0.
+  Procesos ajenos bajo el gateway: 4 → 0. Crew conserva las suyas (74 de `core` +
+  `cron`). El mecanismo está entendido, no solo observado: el SDK serializa los
+  `mcpServers` de `session/new` en `--mcp-config` (`sdk.mjs:100`), así que el flag
+  restringe **a** ese conjunto en vez de vaciarlo. Evidencia en
+  [`evidence/T001/`](./evidence/T001/).
 - **Es la primera tarea del plan (`T001`), no la última.** Si falla, la edición
   tendría que intervenir el lanzamiento del harness — y eso sería lo primero que
   obligue a tocar el núcleo, con lo que se aplica el repliegue escrito en la
@@ -170,7 +174,7 @@ de lectura del repo; **no se reabre nada que la evaluación ya decidiera**.
 
 | Incógnita | Se resuelve en |
 |---|---|
-| ¿Basta el envoltorio para contener el catálogo? | `T001`, antes de construir nada |
+| ~~¿Basta el envoltorio para contener el catálogo?~~ | **Cerrada**: T001 pasa (2026-09-09) |
 | ¿Puede la app de escritorio contestar la aprobación de spawn? | `T002`, antes de comprometer el Requisito 11 |
 | Coste real de retirar las marcas de la superficie visible | Tarea de rebranding; la evaluación midió la superficie (catálogo inglés, empaquetado, constantes de ruta) pero no el trabajo |
 | Certificados de firma y notarización | **Fuera de este plan**: tienen plazo de entrega y se piden aparte |

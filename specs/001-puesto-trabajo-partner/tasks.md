@@ -36,11 +36,14 @@ Requisitos 5 u 11 arranca hasta que su puerta esté en verde.
 **⚠️ Si T001 falla, el plan se detiene y la spec se replantea sobre el repliegue
 escrito en la evaluación — antes de construir nada encima.**
 
-- [ ] T001 Verificar en máquina sucia que un envoltorio apuntado por `CLAUDE_CODE_EXECUTABLE`
+- [x] T001 Verificar en máquina sucia que un envoltorio apuntado por `CLAUDE_CODE_EXECUTABLE`
       con `--strict-mcp-config` deja el catálogo **sin** los servidores ajenos de
       `~/.claude.json` **y con** las herramientas propias de Crew; contrastar contra el
       árbol de procesos del gateway, no solo contra lo que el agente enumera.
       Procedimiento en `quickstart.md` §Puerta 1. _Requisitos: 5.1, 5.2, 5.3_
+      **PASA (2026-09-09).** Catálogo: 3 servidores ajenos → 0. Procesos ajenos bajo el
+      gateway: 4 → 0. Crew conserva las suyas (74 de `core` + `cron`). Evidencia en
+      [`evidence/T001/`](./evidence/T001/). Cierra la decisión D4 de `research.md`.
 - [ ] T002 Verificar que la cáscara de escritorio, conectada como cliente de dashboard,
       puede contestar la aprobación de un `spawn`, y comprobar **también el rechazo**:
       el estado mostrado tiene que coincidir con el real. No intentar los tres remedios
