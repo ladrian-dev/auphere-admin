@@ -375,6 +375,32 @@ y no solo estén sin listar, para que no dependan de que nadie se acuerde.
    workspace del agente— dentro de una ubicación que declare el empaquetado, y NO
    DEBE materializar ninguna de ellas en el home del partner por defecto.
 
+### Requisito 14 — El alcance de red y la ejecución local no conviven
+
+**Historia de usuario:** Como responsable de Auphere, quiero que ninguna herramienta
+que lea contenido externo esté activa en la misma sesión que la ejecución local, para
+que la cadena «el agente lee una web → la web dice *ejecuta esto* → el agente lo
+ejecuta en el portátil de una persona» no exista.
+
+Esto es §III dicho para esta beta. El Requisito 13 apaga el navegador **del
+sustrato**; éste cubre el caso que faltaba: una herramienta de alcance externo que
+entra **legítimamente** por la lista blanca del tenant — un conector, por ejemplo.
+La regla de la constitución es que *la fase que encienda la segunda de las dos paga
+las guardas de las dos*, y esta beta no las paga: enciende una sola.
+
+#### Criterios de aceptación
+
+1. El catálogo de herramientas DEBE declarar, por herramienta, si alcanza contenido
+   externo.
+2. IF el alcance de una herramienta no está declarado THEN el sistema DEBE tratarla
+   como si alcanzara contenido externo.
+3. WHILE el tenant tenga un dispositivo presente EL sistema NO DEBE ofrecer en el
+   mismo catálogo de turno herramientas de alcance externo **y** la herramienta de
+   ejecución local.
+4. WHEN ese conflicto se resuelve THEN el sistema DEBE conservar la ejecución local,
+   retirar las de alcance externo, y **decirlo como estado** — ni como error ni en
+   silencio (§V).
+
 ### Entidades clave *(si la feature toca datos)*
 
 - **Dispositivo del partner**: la máquina declarada, su latido y su última
@@ -408,6 +434,8 @@ y no solo estén sin listar, para que no dependan de que nadie se acuerde.
   realmente ocurrió, incluidos los rechazos.
 - **CE-009**: las capacidades que no usamos —navegador, control de escritorio,
   canal no oficial, carga de apps— son **inalcanzables**, no solo invisibles.
+- **CE-010**: en ninguna sesión con dispositivo presente coexisten una herramienta de
+  alcance externo y la ejecución local — cero casos, y el partner ve por qué.
 
 ## Fuera de alcance
 
