@@ -99,6 +99,21 @@ promesas y tienen sitio concreto:
 El diseño **no** añadió ninguna dependencia más allá de las dos ya declaradas en
 §D10, así que la puerta de licencias sigue igual.
 
+## Constitution Check — tercera comprobación (Requisito 15, la cáscara)
+
+El Requisito 15 llegó tarde y toca dos principios, así que se vuelve a comprobar
+en vez de darse por cubierto.
+
+| # | Principio | ¿Cumple? | Por qué |
+|---|---|---|---|
+| **VI** | Por API, nunca por navegador, y nunca contra nosotros mismos | ☑ **con la condición 15.3** | §VI prohíbe que un agente navegue nuestra consola porque eso mete una sesión autenticada en su ambiente. La cáscara tiene esa sesión **en la misma máquina** que el agente. Lo que las separa es 15.3: el agente llega a `console.*` por su propio servidor MCP y con **su propia identidad**, y la sesión de la persona no es alcanzable desde su ambiente. Sin ese criterio, esta fase violaría §VI de frente |
+| **I** | Aislamiento; la whitelist es por tenant, sin globales | ☑ | La cáscara no añade catálogo: sigue sirviéndose del de la edición, con sus tres reglas. Envolver la consola no crea una vía nueva hacia herramientas |
+| Restricciones adicionales | La consola nunca guarda una credencial de backend | ☑ | 15.2 lo extiende a la cáscara. Envolver la consola no puede relajar lo que la consola cumple — y una app de escritorio es justo donde la tentación de «guardar el token para no pedirlo cada vez» es mayor |
+| **V** | Estados honestos | ☑ | 15.4 le da sitio al `reconectando`, que hasta ahora existía en `OutboundBridge` sin pantalla donde vivir |
+
+**Nada nuevo en licencias ni en medidor**: Electron y `electron-updater` entran en
+la fase, y su licencia se declara con su tarea antes de instalarlos (§VIII).
+
 ## Project Structure
 
 ### Documentation (this feature)

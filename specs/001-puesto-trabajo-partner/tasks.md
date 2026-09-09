@@ -472,6 +472,63 @@ sus endpoints, así que esto se construye contra un contrato conocido.
 
 ---
 
+## Phase 9: La aplicación que el partner instala (Requisito 15)
+
+**Por qué existe esta fase, dicho para que no se repita el error.** Las 61 tareas
+anteriores citaban «la aplicación de escritorio» —R9 la firma, R11 la usa como
+superficie de aprobación, R4.3 pinta su estado— pero **ninguna la construía**. La
+comprobación de cobertura no lo vio porque mapea *criterios citados*, y esos
+requisitos sí estaban citados: **cobertura por cita no es cobertura por
+capacidad**. Una tarea puede citar un requisito y no entregarlo.
+
+**Y lo que la hace delicada no es Electron: es §VI.** La cáscara tiene una sesión
+autenticada de la consola en la misma máquina donde el agente ejecuta comandos —
+exactamente la situación que §VI prohíbe cuando el que navega es el agente. La
+separación la fija el criterio 15.3 y se comprueba en `T063`, que va **primero**.
+
+### Tests de la Phase 9 ⚠️
+
+- [x] T062 [P] Test en `apps/desktop/tests/shell-credentials.test.ts`: la aplicación
+      no persiste ninguna credencial de backend, y lo que guarda en disco no incluye
+      token de sesión. _Requisitos: 15.2_
+      **HECHO.** 6 tests. La consola ya cumple esto; envolverla no puede relajarlo, y es donde más tienta — en una app instalada, «guardo el token para no pedirlo cada vez» parece comodidad y es una llave en el disco de otra persona.
+- [x] T063 [P] Test en `apps/desktop/tests/session-isolation.test.ts`: **desde el
+      ambiente del agente no se alcanza la sesión de la persona**. Es la condición de
+      la fase y va primero: si no se sostiene, envolver la consola viola §VI y hay que
+      replantear la cáscara antes de construirla. _Requisitos: 15.3_
+      **HECHO, y la condición de la fase se sostiene.** 7 tests. La separación no es «el agente no mirará ahí» sino que **no haya dónde mirar**: particiones distintas y la del agente **no persistente**, así que no hay disco donde una sesión pueda quedarse.
+- [x] T064 [P] [US2] Test en `apps/desktop/tests/link-state.test.ts`: sin puente se
+      muestra `reconectando` y **no** se ofrecen herramientas locales.
+      _Requisitos: 15.4, 4.3_
+      **HECHO.** 6 tests. Ningún estado del puente se pinta como error: perder la conexión en un portátil es lo normal, y pintarlo en rojo enseña a ignorar los rojos.
+
+### Implementación de la Phase 9
+
+- [ ] T065 Ventana Electron que envuelve la consola de Auphere, sin reimplementar sus
+      pantallas. Declara la licencia de Electron y `electron-updater` con su párrafo
+      citado antes de instalarlos (§VIII). _Requisitos: 15.1, 15.2_
+- [x] T066 Aislar el ambiente del agente de la sesión de la persona: particiones
+      separadas, sin cookies compartidas, y `agent_env` de la edición como única vía
+      de entorno para el proceso del agente. _Requisitos: 15.3_
+      **HECHO.** `src/session-isolation.ts`. `assertPartitionsAreSeparate` se llama al arrancar: convierte el error de configuración más fácil de cometer al refactorizar en un arranque que no ocurre, en vez de en una fuga que nadie ve.
+- [ ] T067 Cablear `OutboundBridge` y `local-runner` al ciclo de vida de la app:
+      latido, sondeo, ejecución y resultado. Ya están construidos y probados; esto es
+      darles un proceso donde vivir. _Requisitos: 6.1, 6.2, 12.1_
+- [ ] T068 Pintar los estados que hoy no tienen dónde vivir: `reconectando` y la
+      presencia del dispositivo. Cierra la mitad pendiente de `T050`.
+      _Requisitos: 15.4, 4.3_
+- [ ] T069 Conectar la app como cliente de aprobaciones y contestar por la cola
+      global. **Cierra `T052`** — era exactamente lo que se dijo que se cerraría barato
+      cuando existiera este cliente, en vez de con andamios tirados.
+      _Requisitos: 11.1, 11.2_
+- [ ] T070 Empaquetado con `electron-updater`. Es lo que `T057` firma, así que va
+      antes que la firma y después que todo lo demás. _Requisitos: 9.2_
+
+**Checkpoint**: el partner tiene algo que instalar, y la beta 2 deja de ser un
+plano de control con piezas sueltas.
+
+---
+
 ## Phase 8: Polish & Cross-Cutting Concerns
 
 - [x] T054 [P] Retirar las marcas ajenas de la **superficie visible**: catálogo de cadenas

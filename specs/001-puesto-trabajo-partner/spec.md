@@ -401,6 +401,32 @@ las guardas de las dos*, y esta beta no las paga: enciende una sola.
    retirar las de alcance externo, y **decirlo como estado** — ni como error ni en
    silencio (§V).
 
+### Requisito 15 — La aplicación que el partner instala
+
+**Historia de usuario:** Como partner, quiero instalar una aplicación que sea mi
+ventana al teammate, sin que instalarla deje una llave de mi cuenta en el disco ni
+le dé al agente acceso a mi sesión.
+
+El Requisito 9 dice cómo se distribuye y el 11 la usa como superficie de
+aprobación, pero **ninguno dice qué es**. Y hay una tensión que hay que escribir
+antes de construirla: §VI prohíbe que un agente navegue la consola de Auphere
+*precisamente porque* eso mete una sesión autenticada dentro de su ambiente. Esta
+aplicación va a tener esa sesión **en la misma máquina** donde el agente ejecuta.
+Lo que separa una cosa de la otra no es la buena intención: es el criterio 15.3.
+
+#### Criterios de aceptación
+
+1. La aplicación DEBE ser una cáscara sobre la consola de Auphere, y NO DEBE
+   reimplementar sus pantallas — dos implementaciones de la misma pantalla
+   divergen, y la que se queda atrás miente.
+2. La aplicación NO DEBE almacenar ninguna credencial de backend, igual que la
+   consola que envuelve.
+3. La sesión autenticada de la persona NO DEBE ser alcanzable desde el ambiente
+   del agente. El agente llega a `console.*` por su propio servidor MCP y con su
+   propia identidad; no reutiliza la sesión de quien está delante.
+4. WHILE el puente no está establecido EL sistema DEBE mostrar `reconectando` como
+   estado, y NO DEBE ofrecer herramientas locales mientras tanto.
+
 ### Entidades clave *(si la feature toca datos)*
 
 - **Dispositivo del partner**: la máquina declarada, su latido y su última
@@ -436,6 +462,8 @@ las guardas de las dos*, y esta beta no las paga: enciende una sola.
   canal no oficial, carga de apps— son **inalcanzables**, no solo invisibles.
 - **CE-010**: en ninguna sesión con dispositivo presente coexisten una herramienta de
   alcance externo y la ejecución local — cero casos, y el partner ve por qué.
+- **CE-011**: desde el ambiente del agente no se alcanza la sesión de la consola de
+  la persona — cero caminos, comprobado y no supuesto.
 
 ## Fuera de alcance
 
