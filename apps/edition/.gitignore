@@ -1,0 +1,4 @@
+# El sustrato exportado y su rueda: se reconstruyen con scripts/build-substrate-wheel.sh
+build/
+# Entorno de desarrollo local
+.venv/

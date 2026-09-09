@@ -68,6 +68,11 @@ de lectura del repo; **no se reabre nada que la evaluación ya decidiera**.
   obligue a tocar el núcleo, con lo que se aplica el repliegue escrito en la
   evaluación (opción C sobre B) y esta spec se replantea antes de construir nada
   encima.
+- **Hallazgo de la Phase 1, para T020**: el seam CPP tiene un slot propio,
+  `agent_executable: AgentExecutableResolver` (`platform/context.py`). El envoltorio
+  podría inyectarse **por el seam** en vez de por `CLAUDE_CODE_EXECUTABLE`, lo que lo
+  haría parte de la edición en vez de una variable de entorno que alguien puede no
+  poner. Sin explorar; se evalúa al implementar T020.
 - **Alternativas si falla**: restringir el catálogo del lado de Crew (sin punto de
   extensión conocido); ejecutar el harness bajo un usuario dedicado sin
   `~/.claude.json` (no vale en la beta 2: la máquina es del partner).

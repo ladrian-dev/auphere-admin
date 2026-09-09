@@ -1,0 +1,19 @@
+[project]
+name = "auphere-edition"
+version = "0.1.0"
+description = "Auphere edition composed over the pinned KiroCrew substrate. Never patches the core."
+requires-python = ">=3.12"
+dependencies = []
+
+[project.entry-points."kirocrew.plugins"]
+build_enterprise_context = "auphere_edition.edition:build_enterprise_context"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
