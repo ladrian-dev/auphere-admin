@@ -122,26 +122,35 @@ antes de existir el cliente que hay que probar.
 
 ## Phase 2b: Las puertas de la constitución
 
-- [ ] T011 [P] Test de aislamiento de la **garantía 2 (tool whitelist)** en
+- [x] T011 [P] Test de aislamiento de la **garantía 2 (tool whitelist)** en
       `apps/api/tests/isolation/test_26_local_tool_catalog_exhaustive.py`: el catálogo de
       una sesión es exactamente la lista blanca del tenant, el partner no puede añadir
       nada, y si no se puede garantizar la sesión no abre. En rojo bloquea el merge (§I).
       _Requisitos: 5.1, 5.2, 5.3, 5.4_
-- [ ] T012 [P] Test de aislamiento de la **garantía 6 (log y traza)** en
+      **HECHO.** 4 tests. Fija el contrato de datos —lista vacía por tenant, archivado, y que `workstation:write` **no** lo tenga el rol *builder*—. La comprobación del catálogo en vivo es de la US4, igual que hace `test_2` con el suyo. **Deja escrito un punto abierto**: `console/agents.py` sí deja al partner fijar `tools` de su agente de cliente; la US4 tiene que elegir explícitamente de dónde sale el catálogo del teammate o R5.4 quedaría incumplido.
+- [x] T012 [P] Test de aislamiento de la **garantía 6 (log y traza)** en
       `apps/api/tests/isolation/test_27_local_execution_audit_tenant_tagged.py`: toda
       ejecución **y toda denegación** quedan etiquetadas por tenant. _Requisitos: 8.1, 8.2, 8.3_
-- [ ] T013 [P] Test de aislamiento de la **garantía 1 (RLS)** en
+      **HECHO.** 4 tests: no hay fuga entre tenants, la denegación se guarda con su motivo, y la base **impide** guardar una denegación sin motivo o con un motivo fuera del vocabulario.
+- [x] T013 [P] Test de aislamiento de la **garantía 1 (RLS)** en
       `apps/api/tests/isolation/test_28_local_allowlist_device_rls.py`: lista blanca y
       dispositivos son inalcanzables entre tenants y el `tenant_id` nunca llega del
       llamante. El nº 25 queda reservado a la VM de la beta 5. _Requisitos: 2.1, 4.1_
-- [ ] T014 Dejar escrita la licencia de las dos dependencias nuevas —KiroCrew
+      **HECHO.** 4 tests, incluido el fail-closed —sin `app.tenant_id` cero filas, no todas— y el `WITH CHECK` que impide escribir una fila con el `tenant_id` ajeno.
+- [x] T014 Dejar escrita la licencia de las dos dependencias nuevas —KiroCrew
       `0.7.0`@`37933a5` y `@agentclientprotocol/claude-agent-acp` `0.75.1`, ambas
       Apache-2.0— con el párrafo citado (§2 concesión, §4.d `NOTICE`, §6 marcas
       excluidas), y **conservar el `NOTICE`** en el paquete distribuido (§VIII).
       _Requisitos: 9.1_
+      **HECHO.** `apps/edition/NOTICE` y `THIRD-PARTY-LICENSES.md` con §2, §4.d y §6 citados. El build **falla** si la rueda no lleva `NOTICE` y `LICENSE` dentro: la obligación de §4.d es una puerta, no una costumbre.
 - [ ] T015 Conectar el **consumo de modelo** de las sesiones locales al medidor que ve el
       partner, y decir en qué pantalla lo ve. **No se factura reloj de máquina**: la
       máquina es del partner. _Requisitos: 10.1, 10.2_
+      **MOVIDA a la Phase 5 (US1), por orden.** No existe todavía ningún camino que
+      consuma modelo: el primero lo abre la ejecución de US1. Cablear el medidor contra
+      algo que no está sería escribir código sin nada que medir. La puerta del medidor
+      **sigue teniendo dueño** —esta tarea— y sigue siendo bloqueante antes del merge;
+      lo que cambia es cuándo se puede cumplir. Es el mismo error de orden que tuvo T002.
 
 > **El orden no es un error.** T011–T013 prueban lo que las fases 3 y siguientes
 > implementan: el test se escribe y **se ve en rojo** antes (§VII). Que un test
