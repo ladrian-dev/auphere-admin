@@ -280,29 +280,39 @@ ofrecer aprobación; añadirlo por consola y comprobar que ya se puede usar.
 
 ### Tests para US3 ⚠️
 
-- [ ] T029 [P] [US3] Test en `apps/api/tests/integration/test_local_allowlist_gate.py`:
+- [x] T029 [P] [US3] Test en `apps/api/tests/integration/test_local_allowlist_gate.py`:
       ejecutable ausente → denegado, y **no aparece como decisión pendiente aprobable**.
       _Requisitos: 2.2, 2.6_
-- [ ] T030 [P] [US3] Test en `apps/api/tests/unit/test_argv_metacharacters.py`: tuberías,
+      **HECHO.** 5 tests. El que importa comprueba `is_approvable is False`: ampliar la lista **no** es una decisión del turno, que era la mitad que la propuesta original de §2.7 no tenía.
+- [x] T030 [P] [US3] Test en `apps/api/tests/unit/test_argv_metacharacters.py`: tuberías,
       encadenamiento, subshells, redirecciones y sustitución de comandos se rechazan en
       `executable` y en **cada** elemento de `args`, esté o no permitido el ejecutable.
       _Requisitos: 2.4_
-- [ ] T031 [P] [US3] Test en `apps/api/tests/integration/test_argument_grants.py`:
+      **HECHO.** 19 casos. Incluye `\n` y `\r`, que se cuelan por debajo de un `;` y son igual de ejecutables.
+- [x] T031 [P] [US3] Test en `apps/api/tests/integration/test_argument_grants.py`:
       argumentos nuevos piden aprobación durable, y al concederla queda `decided_by` en la
       auditoría. _Requisitos: 2.3, 2.5_
+      **HECHO.** 4 tests: la idempotencia bajo carrera y que **una firma distinta es un permiso distinto** — aprobar `make build` no aprueba `make deploy`.
 
 ### Implementación de US3
 
-- [ ] T032 [US3] Gate de validación en
+- [x] T032 [US3] Gate de validación en
       `apps/api/src/nexus_api/services/local_exec_gate.py`: lista blanca, metacaracteres y
       **fail-closed** — lo que no se puede verificar se deniega y no se ofrece.
       _Requisitos: 2.2, 2.4, 2.6_
-- [ ] T033 [US3] Grants de argumentos con **uuid5 determinista + UPSERT** sobre
+      **HECHO.** `services/local_exec_gate.py`. Los metacaracteres se comprueban **antes** que la lista blanca: da igual que el ejecutable esté permitido si la invocación lleva un shell dentro.
+- [x] T033 [US3] Grants de argumentos con **uuid5 determinista + UPSERT** sobre
       `(tenant, ejecutable, firma de argv)`, apoyados en `companion.actions` para la
       aprobación durable — no se crea un segundo mecanismo de aprobación.
       _Requisitos: 2.3, 2.5_
+      **HECHO.** La firma es JSON compacto y no una concatenación: `["a b"]` y `["a","b"]` son invocaciones distintas y tienen que firmar distinto, o una aprobación valdría para la otra.
 - [ ] T034 [US3] Pantalla de consola para añadir y archivar ejecutables, con la persona
       que lo hizo. La lista arranca **vacía** por tenant. _Requisitos: 2.1_
+      **La mitad de API ya está** (T010: cinco rutas bajo `/console/clients/{ref}/workstation`,
+      con `workstation:write` fuera del rol *builder*). Falta la pantalla en `apps/console`,
+      que es **frontend y trae sus propias puertas bloqueantes** —los 5 estados, WCAG 2.2 AA,
+      responsive y tokens—. Se deja para un pase de UI propio en vez de colgarla del final de
+      una fase de backend: una pantalla que no pasa esas puertas no está hecha, está escrita.
 
 **Checkpoint**: US3 y US4 funcionan de forma independiente.
 
