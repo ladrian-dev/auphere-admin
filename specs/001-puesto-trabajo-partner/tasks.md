@@ -125,7 +125,53 @@ la Phase 7. Borrarlas es una decisión y se escribe.
       partner, y decir en qué pantalla lo ve. **No se factura reloj de máquina**: la
       máquina es del partner. _Requisitos: 10.1, 10.2_
 
+> **El orden no es un error.** T011–T013 prueban lo que las fases 3 y siguientes
+> implementan: el test se escribe y **se ve en rojo** antes (§VII). Que un test
+> preceda a su implementación es la regla, no una inconsistencia.
+
 **Checkpoint**: las puertas tienen dueño. Sin esto `/speckit-analyze` no da verde.
+
+---
+
+## Phase 2c: La frontera de aprobación (Requisito 7)
+
+**Propósito**: separar las dos escaleras. La del sustrato se queda para lo que pasa
+**dentro de la máquina**; la nuestra, durable y auditada, para todo lo que toque a
+un cliente final. Sin esto, US1 ejecutaría sin que nadie haya dibujado la frontera.
+
+**⚠️ Va antes de las historias a propósito**: el Requisito 7 no pertenece a ninguna
+historia de usuario —sale de §IV, no de un recorrido del partner— y por eso es
+justo el que se cae si se ordena solo por historias.
+
+### Tests para el Requisito 7 ⚠️
+
+- [ ] T016 [P] Test en `apps/api/tests/integration/test_end_client_approval_boundary.py`:
+      una acción que toca datos de un cliente final pasa por `companion.actions` y la
+      auditoría nombra a la **persona** que decidió, no al agente que ejecutó.
+      _Requisitos: 7.1_
+- [ ] T017 [P] Test en `apps/api/tests/integration/test_machine_scoped_ladder.py`: una
+      acción limitada a la máquina se resuelve con la escalera local y **no consume una
+      aprobación durable**. _Requisitos: 7.2_
+- [ ] T018 [P] Test en `apps/api/tests/unit/test_approval_expiry_denies.py`: una
+      aprobación que caduca sin respuesta deniega la acción — deny-on-silence, nunca
+      allow-on-silence. _Requisitos: 7.3_
+- [ ] T019 [P] Test en `apps/edition/tests/test_no_end_client_credentials.py`: el
+      ambiente donde corre el agente no contiene ninguna credencial de cliente final,
+      comprobado sobre el entorno real del proceso y no sobre la configuración.
+      _Requisitos: 7.4_
+
+### Implementación del Requisito 7
+
+- [ ] T020 Clasificador de alcance de la acción en
+      `apps/api/src/nexus_api/services/action_scope.py`: decide si una acción se queda en
+      la máquina o toca a un cliente final, y **falla hacia la escalera durable** cuando no
+      lo puede determinar. _Requisitos: 7.1, 7.2_
+- [ ] T021 Caducidad con denegación por silencio, y saneado del ambiente del proceso del
+      agente para que ninguna credencial de cliente final entre en él.
+      _Requisitos: 7.3, 7.4_
+
+**Checkpoint**: la frontera existe y está probada. Ahora sí pueden empezar las
+historias.
 
 ---
 
@@ -138,28 +184,28 @@ sesión y enumerar el catálogo.
 
 ### Tests para US4 (§VII: se escriben y se ven en rojo antes de implementar) ⚠️
 
-- [ ] T016 [P] [US4] Test de contrato del servidor MCP en
+- [ ] T022 [P] [US4] Test de contrato del servidor MCP en
       `apps/edition/tests/contract/test_console_mcp_catalog.py`: el catálogo publicado es
       igual al `agent_config.tools` del tenant, ni una entrada más.
       _Requisitos: 5.1, 5.2_
-- [ ] T017 [P] [US4] Test de fail-closed en
+- [ ] T023 [P] [US4] Test de fail-closed en
       `apps/edition/tests/contract/test_session_refuses_unverifiable_catalog.py`: si no se
       puede garantizar el catálogo, **la sesión no abre**. _Requisitos: 5.3_
-- [ ] T018 [P] [US4] Test de inalcanzabilidad en
+- [ ] T024 [P] [US4] Test de inalcanzabilidad en
       `apps/edition/tests/contract/test_disabled_capabilities.py`: navegador, control de
       escritorio, canal no oficial y carga de apps no son alcanzables — no basta con que
       no estén listados. _Requisitos: 13.1, 13.3, 13.4_
 
 ### Implementación de US4
 
-- [ ] T019 [US4] Servidor MCP de la edición en `apps/edition/src/auphere_edition/mcp_console.py`
+- [ ] T025 [US4] Servidor MCP de la edición en `apps/edition/src/auphere_edition/mcp_console.py`
       sobre las herramientas `console.*`, filtrado por la lista blanca del tenant. Contrato
       en `contracts/console-mcp.md`. _Requisitos: 5.1, 5.4_
-- [ ] T020 [US4] Llevar a producción el envoltorio validado en T001, en
+- [ ] T026 [US4] Llevar a producción el envoltorio validado en T001, en
       `apps/edition/src/auphere_edition/wrapper/`. _Requisitos: 5.1, 5.2_
-- [ ] T021 [US4] Registrar el intento cuando el ambiente declara herramientas
+- [ ] T027 [US4] Registrar el intento cuando el ambiente declara herramientas
       adicionales, sin exponerlas. _Requisitos: 5.2_
-- [ ] T022 [US4] Desactivar de forma inalcanzable navegador, control de escritorio, canal
+- [ ] T028 [US4] Desactivar de forma inalcanzable navegador, control de escritorio, canal
       no oficial y cargador de apps. _Requisitos: 13.1, 13.3, 13.4_
 
 **Checkpoint**: US4 funciona y se prueba sola.
@@ -176,28 +222,28 @@ ofrecer aprobación; añadirlo por consola y comprobar que ya se puede usar.
 
 ### Tests para US3 ⚠️
 
-- [ ] T023 [P] [US3] Test en `apps/api/tests/integration/test_local_allowlist_gate.py`:
+- [ ] T029 [P] [US3] Test en `apps/api/tests/integration/test_local_allowlist_gate.py`:
       ejecutable ausente → denegado, y **no aparece como decisión pendiente aprobable**.
       _Requisitos: 2.2, 2.6_
-- [ ] T024 [P] [US3] Test en `apps/api/tests/unit/test_argv_metacharacters.py`: tuberías,
+- [ ] T030 [P] [US3] Test en `apps/api/tests/unit/test_argv_metacharacters.py`: tuberías,
       encadenamiento, subshells, redirecciones y sustitución de comandos se rechazan en
       `executable` y en **cada** elemento de `args`, esté o no permitido el ejecutable.
       _Requisitos: 2.4_
-- [ ] T025 [P] [US3] Test en `apps/api/tests/integration/test_argument_grants.py`:
+- [ ] T031 [P] [US3] Test en `apps/api/tests/integration/test_argument_grants.py`:
       argumentos nuevos piden aprobación durable, y al concederla queda `decided_by` en la
       auditoría. _Requisitos: 2.3, 2.5_
 
 ### Implementación de US3
 
-- [ ] T026 [US3] Gate de validación en
+- [ ] T032 [US3] Gate de validación en
       `apps/api/src/nexus_api/services/local_exec_gate.py`: lista blanca, metacaracteres y
       **fail-closed** — lo que no se puede verificar se deniega y no se ofrece.
       _Requisitos: 2.2, 2.4, 2.6_
-- [ ] T027 [US3] Grants de argumentos con **uuid5 determinista + UPSERT** sobre
+- [ ] T033 [US3] Grants de argumentos con **uuid5 determinista + UPSERT** sobre
       `(tenant, ejecutable, firma de argv)`, apoyados en `companion.actions` para la
       aprobación durable — no se crea un segundo mecanismo de aprobación.
       _Requisitos: 2.3, 2.5_
-- [ ] T028 [US3] Pantalla de consola para añadir y archivar ejecutables, con la persona
+- [ ] T034 [US3] Pantalla de consola para añadir y archivar ejecutables, con la persona
       que lo hizo. La lista arranca **vacía** por tenant. _Requisitos: 2.1_
 
 **Checkpoint**: US3 y US4 funcionan de forma independiente.
@@ -214,36 +260,36 @@ conocida.
 
 ### Tests para US1 ⚠️
 
-- [ ] T029 [P] [US1] Test de integración del recorrido completo en
+- [ ] T035 [P] [US1] Test de integración del recorrido completo en
       `apps/api/tests/integration/test_fix_the_build.py`. _Requisitos: 1.1, 1.2_
-- [ ] T030 [P] [US1] Test en `apps/api/tests/unit/test_workdir_containment.py`: `cwd`
+- [ ] T036 [P] [US1] Test en `apps/api/tests/unit/test_workdir_containment.py`: `cwd`
       absoluto, con `..` o que deje de resolver dentro de sí mismo → denegado con
       `fuera_del_directorio`, comprobado **en el momento de usarse**, no solo al
       declararse. _Requisitos: 1.1, 1.4_
-- [ ] T031 [P] [US1] Test en `apps/api/tests/unit/test_tool_per_destination.py`: existe
+- [ ] T037 [P] [US1] Test en `apps/api/tests/unit/test_tool_per_destination.py`: existe
       `shell_local` y **no** existe ninguna herramienta de ejecución con parámetro de
       destino; destino ambiguo → denegado. _Requisitos: 1.2, 1.3_
-- [ ] T032 [P] [US1] Suite de contención de escrituras en **macOS**, los seis ataques
+- [ ] T038 [P] [US1] Suite de contención de escrituras en **macOS**, los seis ataques
       —symlink final, TOCTOU, symlink de padre, padre intercambiado, carrera de creación
       exclusiva, enlace duro—. _Requisitos: 3.1, 3.3_
-- [ ] T033 [P] [US1] La misma suite en **Windows**, con rutas relativas NT.
+- [ ] T039 [P] [US1] La misma suite en **Windows**, con rutas relativas NT.
       _Requisitos: 3.2, 3.3_
-- [ ] T034 [P] [US1] Test en `apps/api/tests/integration/test_execution_ceilings.py`:
+- [ ] T040 [P] [US1] Test en `apps/api/tests/integration/test_execution_ceilings.py`:
       una ejecución que no termina se corta al vencer el límite **con todo su árbol de
-      procesos**, y al cerrar la sesión no quedan huérfanos. _Requisitos: 12.1, 12.2, 12.3, 12.4_
+      procesos**, y al cerrar la sesión no quedan huérfanos. _Requisitos: 12.1, 12.2, 12.3, 12.4, 12.5_
 
 ### Implementación de US1
 
-- [ ] T035 [US1] Herramienta `shell_local` con `args` como **lista, nunca una cadena**, y
+- [ ] T041 [US1] Herramienta `shell_local` con `args` como **lista, nunca una cadena**, y
       `cwd_relative` relativo al `workdir`. Contrato en `contracts/shell-local-tool.md`.
       _Requisitos: 1.1, 1.2_
-- [ ] T036 [US1] Contención de escrituras en macOS. _Requisitos: 3.1, 3.3_
-- [ ] T037 [US1] Contención de escrituras en Windows con rutas relativas NT.
+- [ ] T042 [US1] Contención de escrituras en macOS. _Requisitos: 3.1, 3.3_
+- [ ] T043 [US1] Contención de escrituras en Windows con rutas relativas NT.
       _Requisitos: 3.2, 3.3_
-- [ ] T038 [US1] Límite de reloj y recogida del árbol de procesos al vencer y al cerrar
+- [ ] T044 [US1] Límite de reloj y recogida del árbol de procesos al vencer y al cerrar
       sesión; si un proceso no se puede terminar, se **nombra** en vez de darlo por
-      terminado. _Requisitos: 12.1, 12.2, 12.3, 12.4_
-- [ ] T039 [US1] Registrar cada intento —ejecución y denegación— sin guardar la salida
+      terminado. _Requisitos: 12.1, 12.2, 12.3, 12.4, 12.5_
+- [ ] T045 [US1] Registrar cada intento —ejecución y denegación— sin guardar la salida
       del comando: se guarda que ocurrió, no lo que dijo. _Requisitos: 8.1, 8.3_
 
 **Checkpoint**: el diferencial funciona de punta a punta.
@@ -260,21 +306,21 @@ el catálogo del turno siguiente.
 
 ### Tests para US2 ⚠️
 
-- [ ] T040 [P] [US2] Test en `apps/api/tests/integration/test_device_presence.py`: al
+- [ ] T046 [P] [US2] Test en `apps/api/tests/integration/test_device_presence.py`: al
       caducar el latido, las herramientas locales salen del catálogo y el teammate **no
       afirma resultados de comandos que no ejecutó**. _Requisitos: 4.1, 4.2_
-- [ ] T041 [P] [US2] Test en `apps/api/tests/unit/test_absence_is_designed.py`: sin
+- [ ] T047 [P] [US2] Test en `apps/api/tests/unit/test_absence_is_designed.py`: sin
       dispositivo no hay control desactivado ni pantalla que explique lo que no se tiene.
       _Requisitos: 4.4_
 
 ### Implementación de US2
 
-- [ ] T042 [US2] Latido y **derivación** del estado desde `last_heartbeat_at` — sin
+- [ ] T048 [US2] Latido y **derivación** del estado desde `last_heartbeat_at` — sin
       columna de estado, para que la pantalla no pueda quedarse mintiendo si muere el
       proceso que la actualizaría. _Requisitos: 4.1, 4.2_
-- [ ] T043 [US2] Composición del catálogo del turno según la presencia.
+- [ ] T049 [US2] Composición del catálogo del turno según la presencia.
       _Requisitos: 4.2_
-- [ ] T044 [US2] Estado en la interfaz —«desconectado desde las 23:10»— y `reconectando`
+- [ ] T050 [US2] Estado en la interfaz —«desconectado desde las 23:10»— y `reconectando`
       mientras el puente se recupera. Es estado, no error. _Requisitos: 4.3, 6.2_
 
 **Checkpoint**: las cuatro historias funcionan de forma independiente.
@@ -286,34 +332,34 @@ el catálogo del turno siguiente.
 **⚠️ Esta fase solo existe si T002 salió en verde.** Si salió en rojo, se retira el
 Requisito 11, se borran estas tareas y se escribe la razón.
 
-- [ ] T045 [P] Test en `apps/desktop/tests/test_spawn_approval_surface.py`: el estado
+- [ ] T051 [P] Test en `apps/desktop/tests/test_spawn_approval_surface.py`: el estado
       mostrado del subagente coincide con el real **incluido el rechazo** — la evaluación
       observó un `✅` para un subagente rechazado, y esa mentira no se hereda.
       _Requisitos: 11.2, 11.3_
-- [ ] T046 Lanzamiento de subagentes con la cáscara de escritorio como superficie que
+- [ ] T052 Lanzamiento de subagentes con la cáscara de escritorio como superficie que
       contesta la aprobación. _Requisitos: 11.1_
-- [ ] T047 Estado `bloqueado` cuando un subagente espera a otro, y no pintado como
+- [ ] T053 Estado `bloqueado` cuando un subagente espera a otro, y no pintado como
       ocioso. _Requisitos: 11.4_
 
 ---
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T048 [P] Retirar las marcas ajenas de la **superficie visible**: catálogo de cadenas
+- [ ] T054 [P] Retirar las marcas ajenas de la **superficie visible**: catálogo de cadenas
       en inglés (17 ocurrencias), empaquetado e instaladores (386) y las constantes de
       ruta. **No** se renombran los identificadores internos: la licencia no lo exige y
       hacerlo impediría seguir aguas arriba. _Requisitos: 9.1_
-- [ ] T049 [P] Añadir una comprobación que falle si un bump del sustrato reintroduce
+- [ ] T055 [P] Añadir una comprobación que falle si un bump del sustrato reintroduce
       marcas en superficie visible — no hay constante central de marca, así que esto es
       vigilancia recurrente, no una tarea que se cierra. _Requisitos: 9.2_
-- [ ] T050 [P] Enlace de vuelta desde la KB: `[[15-kirocrew-y-alternativas]]` §9 y
+- [ ] T056 [P] Enlace de vuelta desde la KB: `[[15-kirocrew-y-alternativas]]` §9 y
       `[[14-mvp-y-fases]]` §3 apuntan a `specs/001-puesto-trabajo-partner/`. El puente es
       obligatorio en las dos direcciones. _Requisitos: §IX (constitución)_
-- [ ] T051 Firma y notarización del paquete. **Bloqueada fuera de este plan**: los
+- [ ] T057 Firma y notarización del paquete. **Bloqueada fuera de este plan**: los
       certificados tienen plazo de entrega y hoy no están —en esta máquina solo hay
       «Apple Development», que no sirve para distribuir, y los OV de Windows duran 460
       días desde marzo de 2026—. _Requisitos: 9.1, 9.2_
-- [ ] T052 Ejecutar la validación completa de `quickstart.md`. _Requisitos: 1.1, 12.1_
+- [ ] T058 Ejecutar la validación completa de `quickstart.md`. _Requisitos: 1.1, 12.1_
 
 ---
 
@@ -328,7 +374,7 @@ Requisito 11, se borran estas tareas y se escribe la razón.
   **cerrada antes del merge**.
 - **Phase 3 → 4 → 5 → 6**: por dependencia de seguridad, no por número.
 - **Phase 7**: solo si T002 está en verde.
-- **Phase 8**: al final, salvo T051 que depende de un plazo externo.
+- **Phase 8**: al final, salvo T057 que depende de un plazo externo.
 
 ### Dependencias entre historias
 
@@ -344,7 +390,7 @@ Requisito 11, se borran estas tareas y se escribe la razón.
 - T004, T005 y T006 en paralelo tras T003.
 - T008 en paralelo tras T007; T011, T012 y T013 en paralelo entre sí.
 - Los bloques de tests de cada historia, en paralelo dentro de su fase.
-- T032 y T033 en paralelo si hay las dos máquinas.
+- T038 y T039 en paralelo si hay las dos máquinas.
 
 ---
 
@@ -374,6 +420,11 @@ acotada ni catálogo demostrable. No es un MVP: es un incidente.
 
 ## Notes
 
+- **Dos tareas citan una obligación constitucional en vez de un criterio**: T014
+  (licencias) cita `9.1` porque es distribuir lo que obliga a conservar el `NOTICE`,
+  y T056 cita `§IX` porque el puente con la KB no tiene número de requisito. Es
+  deliberado y se deja escrito: mapear un control a la política que lo exige es
+  trazabilidad, no un hueco.
 - Los commits los ejecuta la persona: el agente entrega el mensaje y para.
 - Cada tarea entregada se anota: `Entregado: PR #NNN (rama), fusionado YYYY-MM-DD`.
 - Los tests se ven **fallar** antes de implementar (§VII).
