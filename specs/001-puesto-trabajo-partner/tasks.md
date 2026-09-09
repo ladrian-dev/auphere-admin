@@ -64,24 +64,28 @@ antes de existir el cliente que hay que probar.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T003 Crear `apps/edition/` (Python ≥3.12) con el entry point `kirocrew.plugins`
+- [x] T003 Crear `apps/edition/` (Python ≥3.12) con el entry point `kirocrew.plugins`
       → `build_enterprise_context`, componiendo con `dataclasses.replace` sobre
       `build_default_context(cfg, profile="enterprise")`. **El núcleo del sustrato queda
       a 0 archivos modificados**: si alguna tarea obliga a tocarlo, se detiene.
       _Requisitos: 5.1_
-- [ ] T004 [P] Automatizar la construcción y publicación de la rueda del sustrato desde
+      **HECHO.** Composición verificada con `scripts/verify-composition.py`: perfil `enterprise`, `mcp_tooling` y `agent_catalog` propios, floor `PolicyAuthority` intacto, `contract_version` 1, y el clon en `37933a5` con **0 modificados**.
+- [x] T004 [P] Automatizar la construcción y publicación de la rueda del sustrato desde
       el commit fijado `37933a5` en el índice interno — no hay rueda pública, así que
       esto es cadena de suministro del paquete firmado, no una línea de dependencias.
       _Requisitos: 9.1, 9.2_
-- [ ] T005 [P] Crear `apps/desktop/` con el esqueleto del puente **saliente**: la
+      **HECHO.** `apps/edition/scripts/build-substrate-wheel.sh` exporta el commit con `git archive` —nunca `pip install -e` sobre el clon— y **falla si el clon queda con un solo fichero modificado**.
+- [x] T005 [P] Crear `apps/desktop/` con el esqueleto del puente **saliente**: la
       aplicación abre la conexión y sondea; ningún puerto a la escucha, ningún túnel
       inverso, ningún descubrimiento en red local. Contrato en
       `contracts/device-bridge.md`. _Requisitos: 6.1, 6.2_
-- [ ] T006 [P] Fijar en el empaquetado `KIROCREW_HOME`, `KIRO_HOME` y
+      **HECHO.** `OutboundBridge` + `presence`, 13 tests en verde. La invariante «nunca escucha» se comprueba recorriendo el fuente, y se verificó que el test **falla** al introducir un `createServer`.
+- [x] T006 [P] Fijar en el empaquetado `KIROCREW_HOME`, `KIRO_HOME` y
       `KIROCREW_WORKSPACE` dentro de la ubicación declarada, más la telemetría
       desactivada, **antes del primer arranque** — `KIROCREW_HOME` no gobierna el
       workspace del agente y un simple `--version` ya materializa el data home.
       _Requisitos: 13.2, 13.5_
+      **HECHO.** `auphere_edition.runtime_env` con `assert_isolated`, que falla cerrado si falta una de las tres. 6 tests, escritos en rojo antes de implementar.
 
 ---
 
