@@ -72,7 +72,7 @@ de lectura del repo; **no se reabre nada que la evaluación ya decidiera**.
   extensión conocido); ejecutar el harness bajo un usuario dedicado sin
   `~/.claude.json` (no vale en la beta 2: la máquina es del partner).
 
-## D5 — Superficie de aprobación de subagentes: la app de escritorio — **SIN VERIFICAR**
+## D5 — Superficie de aprobación de subagentes: la app de escritorio — **CONTRATO ESTABLECIDO 2026-09-09**
 
 - **Decisión provisional**: la aplicación de escritorio se conecta como cliente de
   dashboard y es quien contesta la aprobación de `spawn`.
@@ -81,9 +81,17 @@ de lectura del repo; **no se reabre nada que la evaluación ya decidiera**.
   que sugiere su mensaje de error es **conectar un cliente de dashboard**. Las
   otras tres (`approval_mode="auto"`, `hooks.auto_approve_subagent_spawn`,
   `hooks.auto_approve_sources`) **no existen en su código**: no se intentan.
-- **Estado**: **no verificado**, y es el riesgo que la spec asume a propósito.
-- **Es la segunda tarea del plan (`T002`).** Si falla, se retira el Requisito 11 y
-  la beta 2 entrega ejecución de un solo agente.
+- **Estado**: **contrato establecido en T002, sin verificar de punta a punta.** El
+  predicado es `has_dashboard_surface()` y una clave de sesión con prefijo
+  `dashboard:` lo satisface sin depender de que el dashboard corra; existe además una
+  cola global de aprobaciones (`GET /api/approvals`,
+  `POST /api/approvals/{id}/{action}`) independiente de la pestaña de chat. El fallo
+  de la evaluación se explica: `parent=cli_chat` no lleva ese prefijo. Queda probar
+  que **nuestro** cliente la contesta, y eso exige que ese cliente exista (T005).
+  Evidencia en [`evidence/T002/`](./evidence/T002/).
+- **La verificación de punta a punta se movió a la Phase 7 (`T052`)**, porque T002
+  exigía probar `apps/desktop/` antes de que T005 lo construya. Si allí falla, se
+  retira el Requisito 11 y la beta 2 entrega ejecución de un solo agente.
 
 ## D6 — Aislamiento del sustrato: tres variables, puestas antes del primer arranque
 

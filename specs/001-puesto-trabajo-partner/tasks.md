@@ -44,14 +44,21 @@ escrito en la evaluación — antes de construir nada encima.**
       **PASA (2026-09-09).** Catálogo: 3 servidores ajenos → 0. Procesos ajenos bajo el
       gateway: 4 → 0. Crew conserva las suyas (74 de `core` + `cron`). Evidencia en
       [`evidence/T001/`](./evidence/T001/). Cierra la decisión D4 de `research.md`.
-- [ ] T002 Verificar que la cáscara de escritorio, conectada como cliente de dashboard,
-      puede contestar la aprobación de un `spawn`, y comprobar **también el rechazo**:
-      el estado mostrado tiene que coincidir con el real. No intentar los tres remedios
-      que sugiere su mensaje de error — la evaluación comprobó que no existen en su
-      código. _Requisitos: 11.1, 11.2, 11.3_
+- [x] T002 **Establecer el contrato de la superficie de aprobación de subagentes**:
+      qué predicado decide que existe, y por qué vía se contesta. _Requisitos: 11.1_
+      **CONTRATO ESTABLECIDO (2026-09-09), no verificado de punta a punta.** El
+      predicado es `has_dashboard_surface()`: una clave de sesión con prefijo
+      `dashboard:` lo satisface **sin depender de que el dashboard corra**. Existe una
+      cola global de aprobaciones —`GET /api/approvals`, `POST /api/approvals/{id}/{action}`—
+      independiente de que haya pestaña de chat. En la evaluación falló porque
+      `parent=cli_chat` no lleva ese prefijo. Evidencia en [`evidence/T002/`](./evidence/T002/).
+      **T002 estaba mal planteada**: exigía verificar `apps/desktop/`, que no existe hasta
+      T005. La verificación de punta a punta se movió a la Phase 7.
 
-**Checkpoint**: si T002 falla, se retira el Requisito 11 y se borran las tareas de
-la Phase 7. Borrarlas es una decisión y se escribe.
+**Checkpoint**: T001 pasa, así que la fase 1 puede empezar. T002 dejó el Requisito 11
+con el contrato conocido pero sin probar de punta a punta; la Phase 7 sigue siendo
+condicional, y su condición ahora se resuelve **dentro** de ella (T052) en vez de
+antes de existir el cliente que hay que probar.
 
 ---
 
@@ -330,17 +337,24 @@ el catálogo del turno siguiente.
 
 ---
 
-## Phase 7: Requisito 11 - Subagentes *(condicionada a T002)*
+## Phase 7: Requisito 11 - Subagentes *(condición resuelta aquí dentro)*
 
-**⚠️ Esta fase solo existe si T002 salió en verde.** Si salió en rojo, se retira el
-Requisito 11, se borran estas tareas y se escribe la razón.
+**⚠️ La condición se comprueba en T052, y es lo primero de la fase.** Si ahí se
+demuestra que nuestro cliente no puede contestar la aprobación, se retira el
+Requisito 11, se borran las otras dos tareas y se escribe la razón. Ya **no** es una
+apuesta a ciegas: T002 dejó establecido el predicado (`has_dashboard_surface()`, que
+una clave con prefijo `dashboard:` satisface) y la cola global de aprobaciones con
+sus endpoints, así que esto se construye contra un contrato conocido.
 
 - [ ] T051 [P] Test en `apps/desktop/tests/test_spawn_approval_surface.py`: el estado
       mostrado del subagente coincide con el real **incluido el rechazo** — la evaluación
       observó un `✅` para un subagente rechazado, y esa mentira no se hereda.
       _Requisitos: 11.2, 11.3_
 - [ ] T052 Lanzamiento de subagentes con la cáscara de escritorio como superficie que
-      contesta la aprobación. _Requisitos: 11.1_
+      contesta la aprobación, **y verificación de punta a punta**: originar la sesión con
+      una clave que satisfaga `has_dashboard_surface()`, lanzar un `spawn`, contestarlo
+      desde nuestro cliente por la cola global, y comprobar que el subagente corre.
+      Es la condición de esta fase y va primero. _Requisitos: 11.1_
 - [ ] T053 Estado `bloqueado` cuando un subagente espera a otro, y no pintado como
       ocioso. _Requisitos: 11.4_
 
