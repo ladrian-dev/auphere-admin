@@ -82,6 +82,11 @@ variable "app_secret_keys" {
     "NEXUS_CONSOLE_ENABLED",
     "NEXUS_CONSOLE_JWT_PUBLIC_KEY",
     "NEXUS_CONNECTOR_CONSENT_SECRET",
+    # Firma las credenciales de dispositivo de la beta 2 (Requisito 6.3). El
+    # guard de ``config.py`` se niega a arrancar en producción con el valor de
+    # fábrica; en staging solo avisa. La clave tiene que existir en el secreto
+    # ANTES de aparecer aquí, o ECS aborta el arranque de la task.
+    "NEXUS_DEVICE_TOKEN_SECRET",
     "NEXUS_COMPOSIO_API_KEY",
     "NEXUS_COMPOSIO_WEBHOOK_SECRET",
     "NEXUS_PUBLIC_API_BASE_URL",
