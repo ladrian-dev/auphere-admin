@@ -21,16 +21,37 @@ from typing import Any
 EDITION_PROFILE = "enterprise"
 
 
+#: El servidor MCP de la edición: las herramientas ``console.*`` por API.
+#:
+#: §VI — un agente opera la plataforma **llamando a herramientas, no navegando**. El
+#: navegador de un agente es para lo que no tiene API; nunca para la consola de
+#: Auphere, que además metería una sesión autenticada nuestra dentro del ambiente del
+#: agente.
+CONSOLE_MCP_SERVER = "auphere-console"
+
+
 class AuphereMcpTooling:
     """Proveedor de herramientas de la edición.
 
-    Vacío a propósito en la Phase 1. La US4 lo llena con el servidor MCP que expone
-    las herramientas ``console.*`` **filtradas por la lista blanca del tenant** — el
-    catálogo de una sesión es exactamente esa lista y nada más (Requisito 5.1).
+    Declara **un** servidor: el de ``console.*``. Qué herramientas expone ese servidor
+    en cada turno lo decide :mod:`auphere_edition.catalog`, que aplica las tres reglas
+    —exhaustivo, fail-closed y alcance de red— sobre el catálogo declarativo de
+    Auphere. Ninguna de las dos mitades vale sola: declarar el servidor sin las reglas
+    dejaría el catálogo a merced de la fuente.
     """
 
+    def __init__(self, command: str = "auphere-console-mcp", args: list[str] | None = None) -> None:
+        self._command = command
+        self._args = args or []
+
     def extra_mcp_servers(self) -> dict[str, Any]:
-        return {}
+        return {
+            CONSOLE_MCP_SERVER: {
+                "command": self._command,
+                "args": list(self._args),
+                "env": {},
+            }
+        }
 
     def extra_skills(self) -> list[Any]:
         return []

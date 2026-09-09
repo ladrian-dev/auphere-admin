@@ -211,38 +211,54 @@ sesión y enumerar el catálogo.
 
 ### Tests para US4 (§VII: se escriben y se ven en rojo antes de implementar) ⚠️
 
-- [ ] T022 [P] [US4] Test de contrato del servidor MCP en
-      `apps/edition/tests/contract/test_console_mcp_catalog.py`: el catálogo publicado es
-      igual al `agent_config.tools` del tenant, ni una entrada más.
-      _Requisitos: 5.1, 5.2_
-- [ ] T023 [P] [US4] Test de fail-closed en
+- [x] T022 [P] [US4] Test de contrato del catálogo en
+      `apps/edition/tests/contract/test_catalog.py`: el catálogo publicado es exactamente
+      lo que declara su fuente, ni una entrada más. _Requisitos: 5.1, 5.2_
+      **HECHO, y corrige el enunciado.** Decía «igual al `agent_config.tools` del tenant»
+      y eso resultó ser **falso**: ese campo lo edita el partner y pertenece a *su agente
+      de cliente final*. El catálogo del teammate sale del catálogo **declarativo** de
+      `companion/tools/catalog.py` —código de Auphere— y por eso R5.4 se cumple por
+      construcción. La tenencia la imponen RLS y `client_scope` al ejecutar, no variando
+      el catálogo.
+- [x] T023 [P] [US4] Test de fail-closed en
       `apps/edition/tests/contract/test_session_refuses_unverifiable_catalog.py`: si no se
       puede garantizar el catálogo, **la sesión no abre**. _Requisitos: 5.3_
-- [ ] T024 [P] [US4] Test de inalcanzabilidad en
+      **HECHO** (en `test_catalog.py`). Cualquier fallo al resolver levanta `CatalogUnavailable`. Un test aparte distingue **fuente vacía de fuente rota**: cero herramientas es una respuesta legítima; no poder preguntar, no.
+- [x] T024 [P] [US4] Test de inalcanzabilidad en
       `apps/edition/tests/contract/test_disabled_capabilities.py`: navegador, control de
       escritorio, canal no oficial y carga de apps no son alcanzables — no basta con que
       no estén listados. _Requisitos: 13.1, 13.3, 13.4_
+      **HECHO** (en `test_catalog.py`), parametrizado sobre `DISABLED_CAPABILITIES`: se caen **aunque la fuente las traiga**. Ésa es la diferencia entre inalcanzable y no listado.
 
 ### Implementación de US4
 
-- [ ] T025 [US4] Servidor MCP de la edición en `apps/edition/src/auphere_edition/mcp_console.py`
-      sobre las herramientas `console.*`, filtrado por la lista blanca del tenant. Contrato
+- [ ] T025 [US4] Servidor MCP de la edición sobre las herramientas `console.*`. Contrato
       en `contracts/console-mcp.md`. _Requisitos: 5.1, 5.4_
-- [ ] T026 [US4] Llevar a producción el envoltorio validado en T001, en
+      **PARCIAL.** Hechas las dos mitades que gobiernan: `AuphereMcpTooling` declara el
+      servidor `auphere-console`, y `auphere_edition.catalog` tiene las tres reglas
+      —exhaustivo, fail-closed y alcance de red— con 15 tests. **Falta el proceso** que
+      las sirve por MCP hablando con la API. Las reglas van primero a propósito: un
+      servidor sin ellas dejaría el catálogo a merced de la fuente.
+- [x] T026 [US4] Llevar a producción el envoltorio validado en T001, en
       `apps/edition/src/auphere_edition/wrapper/`. _Requisitos: 5.1, 5.2_
-- [ ] T027 [US4] Registrar el intento cuando el ambiente declara herramientas
+      **HECHO.** `auphere_edition.wrapper`: el flag va delante y **nunca duplicado**, y el script se niega a apuntar a sí mismo — una recursión silenciosa habría sido cara de diagnosticar.
+- [x] T027 [US4] Registrar el intento cuando el ambiente declara herramientas
       adicionales, sin exponerlas. _Requisitos: 5.2_
-- [ ] T028 [US4] Desactivar de forma inalcanzable navegador, control de escritorio, canal
+      **HECHO.** `foreign_servers()` nombra lo que la máquina declara y **no confía en la forma del fichero**: es del partner y una config con basura dentro no es motivo para romper una sesión.
+- [x] T028 [US4] Desactivar de forma inalcanzable navegador, control de escritorio, canal
       no oficial y cargador de apps. _Requisitos: 13.1, 13.3, 13.4_
+      **HECHO.** `DISABLED_CAPABILITIES` se aplica en `resolve_catalog` **antes** que cualquier otra regla.
 
-- [ ] T059 [P] [US4] Test en `apps/edition/tests/contract/test_network_reach_exclusion.py`:
+- [x] T059 [P] [US4] Test en `apps/edition/tests/contract/test_network_reach_exclusion.py`:
       con dispositivo presente, un catálogo que contiene una herramienta de alcance
       externo **y** la de ejecución local no se compone; y una herramienta sin alcance
       declarado cuenta como externa. _Requisitos: 14.1, 14.2, 14.3_
-- [ ] T060 [US4] Declarar el alcance de red por herramienta en el catálogo y aplicar la
+      **HECHO**, dentro de `test_catalog.py` en lugar de un fichero aparte: la exclusión por alcance de red la aplica el mismo resolvedor, y separarla habría escondido que las tres reglas actúan juntas.
+- [x] T060 [US4] Declarar el alcance de red por herramienta en el catálogo y aplicar la
       exclusión: se conserva la ejecución local, se retiran las de alcance externo, y la
       interfaz lo dice **como estado** — el partner tiene que poder saber por qué le
       falta una herramienta que sí tiene contratada. _Requisitos: 14.1, 14.3, 14.4_
+      **HECHO en la regla.** `reaches_network` es ternario —`None` cuenta como que alcanza— y `excluded_for_network_reach()` existe para poder decirlo **como estado**. La pantalla que lo muestra es de US2.
 
 **Checkpoint**: US4 funciona y se prueba sola.
 
