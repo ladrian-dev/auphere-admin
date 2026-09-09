@@ -334,37 +334,56 @@ conocida.
 
 ### Tests para US1 ⚠️
 
-- [ ] T035 [P] [US1] Test de integración del recorrido completo en
+- [x] T035 [P] [US1] Test de integración del recorrido completo en
       `apps/api/tests/integration/test_fix_the_build.py`. _Requisitos: 1.1, 1.2_
-- [ ] T036 [P] [US1] Test en `apps/api/tests/unit/test_workdir_containment.py`: `cwd`
+      **HECHO**, en `apps/desktop/tests/local-runner.test.ts` (10 tests): el recorrido vive donde ocurre. Prueba las tres garantías **juntas**, porque el hueco que importa está entre ellas — un `cwd` que atraviesa un enlace deja al proceso corriendo fuera aunque la escritura esté contenida.
+- [x] T036 [P] [US1] Test en `apps/api/tests/unit/test_workdir_containment.py`: `cwd`
       absoluto, con `..` o que deje de resolver dentro de sí mismo → denegado con
       `fuera_del_directorio`, comprobado **en el momento de usarse**, no solo al
       declararse. _Requisitos: 1.1, 1.4_
-- [ ] T037 [P] [US1] Test en `apps/api/tests/unit/test_tool_per_destination.py`: existe
+      **CUBIERTO, en dos sitios y a propósito.** La mitad de «al declararse» está en
+      `test_local_allowlist_gate.py::test_escaping_the_workdir_is_denied`; la de «en el
+      momento de usarse» está en `containment.test.ts`, porque esa comprobación solo
+      existe donde está el sistema de ficheros. Duplicarla en la API daría una garantía
+      que la API no puede dar.
+- [x] T037 [P] [US1] Test en `apps/api/tests/unit/test_tool_per_destination.py`: existe
       `shell_local` y **no** existe ninguna herramienta de ejecución con parámetro de
       destino; destino ambiguo → denegado. _Requisitos: 1.2, 1.3_
-- [ ] T038 [P] [US1] Suite de contención de escrituras en **macOS**, los seis ataques
+      **HECHO**, en `apps/edition/tests/contract/test_catalog.py`: el catálogo del turno lo resuelve la edición, así que ahí es donde se puede afirmar que no existe una herramienta de ejecución con parámetro de destino.
+- [x] T038 [P] [US1] Suite de contención de escrituras en **macOS**, los seis ataques
       —symlink final, TOCTOU, symlink de padre, padre intercambiado, carrera de creación
       exclusiva, enlace duro—. _Requisitos: 3.1, 3.3_
+      **HECHO.** 13 tests en `apps/desktop/tests/containment.test.ts`, con los ataques montados **de verdad** contra el sistema de ficheros. Comprobado que **4 de los 6 tienen éxito al quitar la defensa** — los otros dos siguen parados porque su defensa es estructural (devolver el descriptor, y `O_EXCL`), no un flag.
 - [ ] T039 [P] [US1] La misma suite en **Windows**, con rutas relativas NT.
       _Requisitos: 3.2, 3.3_
-- [ ] T040 [P] [US1] Test en `apps/api/tests/integration/test_execution_ceilings.py`:
+      **BLOQUEADA por plataforma**, y con guarda puesta mientras tanto: la contención
+      **falla cerrado** fuera de POSIX (`assertPlatformSupported`, con su test). Correr en
+      Windows sin contención sería peor que no correr, porque parecería protegido. No se
+      escribe la implementación a ciegas: `O_NOFOLLOW` no existe allí y las rutas NT traen
+      sus propias trampas (`\\?\`, ADS, nombres reservados, 8.3). Necesita una máquina
+      Windows para probarse de verdad.
+- [x] T040 [P] [US1] Test en `apps/api/tests/integration/test_execution_ceilings.py`:
       una ejecución que no termina se corta al vencer el límite **con todo su árbol de
       procesos**, y al cerrar la sesión no quedan huérfanos. _Requisitos: 12.1, 12.2, 12.3, 12.4, 12.5_
+      **HECHO**, pero en `apps/desktop/tests/executor.test.ts` y no en la API: los techos se imponen donde corre el proceso, que es la máquina del partner. 7 tests, incluido que un proceso **lento pero vivo** no se mata por inactividad.
 
 ### Implementación de US1
 
-- [ ] T041 [US1] Herramienta `shell_local` con `args` como **lista, nunca una cadena**, y
+- [x] T041 [US1] Herramienta `shell_local` con `args` como **lista, nunca una cadena**, y
       `cwd_relative` relativo al `workdir`. Contrato en `contracts/shell-local-tool.md`.
       _Requisitos: 1.1, 1.2_
-- [ ] T042 [US1] Contención de escrituras en macOS. _Requisitos: 3.1, 3.3_
+      **HECHO** en el lado del dispositivo: `apps/desktop/src/local-runner.ts` recibe `args` como lista y `cwdRelative`, resuelve el directorio con la misma contención y aplica los techos. **No decide si el comando está permitido**: eso es del gate, en la plataforma — ponerlo aquí dejaría la decisión en la máquina del partner, que es justo donde no puede estar.
+- [x] T042 [US1] Contención de escrituras en macOS. _Requisitos: 3.1, 3.3_
+      **HECHO.** `apps/desktop/src/containment.ts`. La idea central: **no se valida una ruta, se valida un descriptor** — el camino se recorre segmento a segmento con `O_NOFOLLOW` y lo que se devuelve es el descriptor ya abierto, así que quien escriba después escribe en el inodo verificado pase lo que pase con el nombre.
 - [ ] T043 [US1] Contención de escrituras en Windows con rutas relativas NT.
       _Requisitos: 3.2, 3.3_
-- [ ] T044 [US1] Límite de reloj y recogida del árbol de procesos al vencer y al cerrar
+- [x] T044 [US1] Límite de reloj y recogida del árbol de procesos al vencer y al cerrar
       sesión; si un proceso no se puede terminar, se **nombra** en vez de darlo por
       terminado. _Requisitos: 12.1, 12.2, 12.3, 12.4, 12.5_
-- [ ] T045 [US1] Registrar cada intento —ejecución y denegación— sin guardar la salida
+      **HECHO.** Dos límites distintos a propósito —absoluto e inactividad—: un proceso que tarda no es un proceso colgado. Se arranca con grupo propio y se mata el grupo, no el PID: matar al padre deja vivo el árbol, que es justo lo que la evaluación observó en el sustrato.
+- [x] T045 [US1] Registrar cada intento —ejecución y denegación— sin guardar la salida
       del comando: se guarda que ocurrió, no lo que dijo. _Requisitos: 8.1, 8.3_
+      **HECHO.** `services/local_execution_recorder.py`, aparte del gate a propósito: el gate decide, esto recuerda. Registra la denegación —ocurrió— y **no** la petición de aprobación, que todavía no. La garantía de que la salida no se guarda es estructural y hay un test que lo afirma: no existe columna donde ponerla.
 
 **Checkpoint**: el diferencial funciona de punta a punta.
 

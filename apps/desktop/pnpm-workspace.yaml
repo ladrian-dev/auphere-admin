@@ -1,0 +1,10 @@
+allowBuilds:
+  esbuild: set this to true or false
+# `apps/desktop` es su propio workspace, como `apps/admin`: pnpm resuelve el
+# `pnpm-workspace.yaml` MÁS CERCANO subiendo desde el cwd, así que esto lo
+# mantiene fuera del workspace de la consola sin tocarlo.
+#
+# `esbuild` compila un binario en la instalación y lo trae vitest. Se autoriza
+# aquí igual que en el workspace raíz.
+onlyBuiltDependencies:
+  - esbuild

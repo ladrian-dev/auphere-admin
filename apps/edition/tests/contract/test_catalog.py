@@ -140,3 +140,25 @@ def test_nothing_is_excluded_without_a_device():
 
     src = source(Tool("connector.web.fetch", reaches_network=True))
     assert excluded_for_network_reach(src, device_present=False) == []
+
+
+# ── R1.2 y 1.3: una herramienta por destino ────────────────────────────
+
+
+def test_there_is_a_local_execution_tool_and_it_names_its_destination():
+    """`shell_local`, no `shell` con un parámetro que diga dónde.
+
+    Si el destino fuera un parámetro, el modelo se equivocaría — y equivocarse
+    aquí es correr un comando en el portátil de una persona.
+    """
+    assert LOCAL_EXECUTION_TOOL == "shell_local"
+    assert "local" in LOCAL_EXECUTION_TOOL
+
+
+def test_no_catalog_entry_is_a_destination_switched_shell():
+    """Un nombre genérico de ejecución delata un parámetro de destino."""
+    forbidden = {"shell", "exec", "run", "command", "terminal"}
+    resolved = resolve_catalog(
+        source(Tool(LOCAL_EXECUTION_TOOL), Tool("console.clients.list")), device_present=True
+    )
+    assert forbidden.isdisjoint(names(resolved))

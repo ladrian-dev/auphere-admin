@@ -53,6 +53,8 @@ class GateDecision:
     """Lo que el gate decide. ``denegada`` **nunca** es aprobable desde el turno."""
 
     outcome: Outcome
+    #: Verbatim, lo que se intentó — la auditoría pregunta eso, no qué se permitía.
+    executable: str = ""
     denial_reason: str | None = None
     executable_id: uuid.UUID | None = None
     grant_id: uuid.UUID | None = None
@@ -104,36 +106,58 @@ class LocalExecGate:
         signature = argv_signature(args)
 
         if not device_present:
-            return GateDecision("denegada", DENIAL_DISPOSITIVO_AUSENTE, argv_signature=signature)
+            return GateDecision(
+                "denegada",
+                executable=executable,
+                denial_reason=DENIAL_DISPOSITIVO_AUSENTE,
+                argv_signature=signature,
+            )
 
         if contains_shell_metacharacters(executable) or any(
             contains_shell_metacharacters(a) for a in args
         ):
             # Antes que la lista blanca a propósito: da igual que el ejecutable esté
             # permitido si la invocación lleva un shell dentro.
-            return GateDecision("denegada", DENIAL_METACARACTERES, argv_signature=signature)
+            return GateDecision(
+                "denegada",
+                executable=executable,
+                denial_reason=DENIAL_METACARACTERES,
+                argv_signature=signature,
+            )
 
         if _escapes_workdir(cwd_relative):
-            return GateDecision("denegada", DENIAL_FUERA_DEL_DIRECTORIO, argv_signature=signature)
+            return GateDecision(
+                "denegada",
+                executable=executable,
+                denial_reason=DENIAL_FUERA_DEL_DIRECTORIO,
+                argv_signature=signature,
+            )
 
         allowed = await self._executables.find_active(executable)
         if allowed is None:
             # Denegada, NO aprobable: ampliar la lista es un acto de la consola.
             return GateDecision(
-                "denegada", DENIAL_EJECUTABLE_NO_PERMITIDO, argv_signature=signature
+                "denegada",
+                executable=executable,
+                denial_reason=DENIAL_EJECUTABLE_NO_PERMITIDO,
+                argv_signature=signature,
             )
 
         grant = await self._grants.find_active(executable_id=allowed.id, argv_signature=signature)
         if grant is not None:
             return GateDecision(
                 "permitida",
+                executable=executable,
                 executable_id=allowed.id,
                 grant_id=grant.id,
                 argv_signature=signature,
             )
 
         return GateDecision(
-            "requiere_aprobacion", executable_id=allowed.id, argv_signature=signature
+            "requiere_aprobacion",
+            executable=executable,
+            executable_id=allowed.id,
+            argv_signature=signature,
         )
 
 
