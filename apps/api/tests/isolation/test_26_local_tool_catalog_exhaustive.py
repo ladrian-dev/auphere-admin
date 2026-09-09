@@ -5,14 +5,16 @@ Sigue el mismo reparto que ``test_2_tool_whitelist_contract``: aquí se fija el
 en vivo llega con la US4 (tareas T019-T022), que es quien construye el servidor MCP y
 el envoltorio. Lo que se puede comprobar hoy se comprueba hoy.
 
-**Un punto abierto, escrito aquí para que no se pierda.** El Requisito 5.4 dice que
-el catálogo del teammate lo configura únicamente Auphere y que el partner no puede
-añadir herramientas «ni desde su máquina ni desde la consola». Hoy
-``console/agents.py`` **sí** deja al partner fijar ``tools`` — pero de *su agente de
-cliente final*, que no es el teammate. Si la US4 sirviera el catálogo del teammate
-desde ese mismo campo, R5.4 quedaría incumplido. La US4 tiene que elegir
-explícitamente de dónde sale el catálogo del teammate, y este comentario es el
-recordatorio de que es una elección y no un detalle.
+**El punto que estaba abierto, ya resuelto (Phase 3).** El Requisito 5.4 dice que el
+catálogo del teammate lo configura únicamente Auphere. Se cumple **por construcción**:
+el teammate se sirve del catálogo declarativo de ``companion/tools/catalog.py`` —código
+de Auphere, donde *«añadir una herramienta es añadir una fila»*— y **no** de
+``agent_config.tools``, que sí es editable por el partner pero pertenece a *su agente de
+cliente final*, que es otro agente. Son dos listas blancas distintas para dos agentes
+distintos, y confundirlas era el riesgo.
+
+La tenencia no la da variar el catálogo: la imponen la RLS y ``client_scope`` cuando la
+herramienta se ejecuta. Es como ya funciona el Companion y como esta suite lo acepta.
 """
 
 from __future__ import annotations
