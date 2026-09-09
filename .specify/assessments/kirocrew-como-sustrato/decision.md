@@ -107,11 +107,11 @@ se reabriera a la beta 5:
   `[NEEDS CLARIFICATION]`, y es `/speckit-clarify` quien las cierra. La más
   urgente, porque es puerta de entrada de la beta 2 y no depende del sustrato:
   cerrar `shell_local` (`10-decisiones` §2.7).
-- **Aviso de proceso**: la tabla de puertas vive hoy en **dos** documentos que no
-  dicen lo mismo —la constitución 1.0.0 y `docs/spec-driven-development.md` §4—.
-  La enmienda 1.0.1 que le da un solo dueño está en
-  `docs/constitution-gates-single-source` y **sin fusionar**, a la espera del PR
-  que §Gobernanza exige. Conviene cerrarla antes de que la spec cite puertas.
+- **Nota de proceso, ya resuelta**: la tabla de puertas llegó a vivir en dos
+  documentos que no decían lo mismo. La enmienda **1.0.1** le dio un dueño único
+  —la constitución define la tabla; `docs/spec-driven-development.md` la cita— y
+  entró por PR, como exige §Gobernanza. La spec que salga de aquí cita **siete**
+  puertas, y las lee de la constitución.
 
 ---
 
