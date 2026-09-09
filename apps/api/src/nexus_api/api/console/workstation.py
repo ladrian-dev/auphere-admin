@@ -78,7 +78,7 @@ async def enrol_device(
     scope: ClientScope = Depends(client_scope("workstation:write")),
 ) -> DeviceOut:
     device = await PartnerDeviceRepository(scope.session).enrol(
-        principal_id=scope.principal.principal_uuid,
+        principal_id=scope.principal.user_id,
         display_name=payload.display_name,
         platform=payload.platform,
         workdir=payload.workdir,

@@ -18,7 +18,7 @@ La máquina del partner, su latido y el directorio donde puede trabajar.
 |---|---|---|
 | `id` | uuid | |
 | `tenant_id` | uuid | **RLS**. Del contexto, nunca del llamante |
-| `principal_id` | uuid | La persona dueña del dispositivo (decisión 9: hilo privado por persona) |
+| `principal_id` | text | La persona dueña del dispositivo (decisión 9). **Texto, no uuid**: es `partner_memberships.user_id`, que lo es — mismo motivo que en `companion` |
 | `display_name` | text | Lo que ve el partner: *«el MacBook de Luis»* |
 | `platform` | text | `macos` \| `windows` |
 | `workdir` | text | Directorio declarado por el partner (Requisito 1.1) |

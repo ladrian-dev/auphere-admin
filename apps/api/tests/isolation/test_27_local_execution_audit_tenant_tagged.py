@@ -32,7 +32,7 @@ async def _device(session, tenant_id: uuid.UUID) -> uuid.UUID:
         PartnerDevice(
             id=device_id,
             tenant_id=tenant_id,
-            principal_id=uuid.uuid4(),
+            principal_id="user_iso",
             display_name="portátil",
             platform="macos",
             workdir="/tmp/proyecto",
