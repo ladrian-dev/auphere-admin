@@ -1,0 +1,140 @@
+16:00:39 WARNING kiro_crew.sandbox: SECURITY: cgroup v2 scope enforcement unavailable (not Linux); agent subprocess fork-bomb / memory-DoS ceilings are NOT enforced on this host. RLIMIT_NOFILE still applies. See docs/architecture/resource-protection.md.
+16:00:39 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+16:00:39 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=b801e6ee-7199-43de-a8a0-372136406f4f phase=validate-cwd durationMs=0 totalMs=0
+16:00:39 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=b801e6ee-7199-43de-a8a0-372136406f4f phase=settings durationMs=26 totalMs=26
+16:00:39 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=b801e6ee-7199-43de-a8a0-372136406f4f resume=none apiType=native baseUrl=native
+16:00:39 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=b801e6ee-7199-43de-a8a0-372136406f4f phase=prepare-query durationMs=4 totalMs=30
+16:00:40 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=b801e6ee-7199-43de-a8a0-372136406f4f phase=sdk-initialize durationMs=608 totalMs=639
+16:00:40 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=b801e6ee-7199-43de-a8a0-372136406f4f phase=models durationMs=1 totalMs=639
+16:00:40 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=b801e6ee-7199-43de-a8a0-372136406f4f phase=modes durationMs=0 totalMs=639
+16:00:40 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=b801e6ee-7199-43de-a8a0-372136406f4f phase=agents durationMs=0 totalMs=639
+16:00:40 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=b801e6ee-7199-43de-a8a0-372136406f4f phase=register durationMs=5 totalMs=645
+Herramientas cargadas directamente (esquema disponible, invocables ya):
+
+```
+Agent
+AskUserQuestion
+Bash
+Edit
+ListAgents
+Read
+ReportFindings
+ScheduleWakeup
+Skill
+ToolSearch
+Workflow
+Write
+```
+
+Herramientas diferidas (solo el nombre; requieren `ToolSearch` para cargar el esquema antes de poder llamarlas):
+
+```
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterPlanMode
+EnterWorktree
+ExitPlanMode
+ExitWorktree
+LSP
+Monitor
+NotebookEdit
+PushNotification
+SendMessage
+TaskCreate
+TaskGet
+TaskList
+TaskOutput
+TaskStop
+TaskUpdate
+WebFetch
+WebSearch
+mcp__kirocrew-core__artifact_delete
+mcp__kirocrew-core__artifact_delete_comment
+mcp__kirocrew-core__artifact_folder_create
+mcp__kirocrew-core__artifact_folder_delete
+mcp__kirocrew-core__artifact_folder_list
+mcp__kirocrew-core__artifact_folder_move
+mcp__kirocrew-core__artifact_folder_rename
+mcp__kirocrew-core__artifact_get
+mcp__kirocrew-core__artifact_get_comments
+mcp__kirocrew-core__artifact_list
+mcp__kirocrew-core__artifact_mark_review
+mcp__kirocrew-core__artifact_move
+mcp__kirocrew-core__artifact_post_comment
+mcp__kirocrew-core__artifact_reply_comment
+mcp__kirocrew-core__artifact_revert
+mcp__kirocrew-core__artifact_save
+mcp__kirocrew-core__artifact_update
+mcp__kirocrew-core__artifact_versions
+mcp__kirocrew-core__ask_question
+mcp__kirocrew-core__autonudge_stop
+mcp__kirocrew-core__browser
+mcp__kirocrew-core__delete_message
+mcp__kirocrew-core__deploy_artifact
+mcp__kirocrew-core__file_send
+mcp__kirocrew-core__get_chat_session
+mcp__kirocrew-core__issue_radar_crew_read
+mcp__kirocrew-core__issue_radar_crew_record
+mcp__kirocrew-core__issue_radar_record_investigation
+mcp__kirocrew-core__knowledge_add_document
+mcp__kirocrew-core__knowledge_dedup
+mcp__kirocrew-core__knowledge_list_sources
+mcp__kirocrew-core__learn_add
+mcp__kirocrew-core__learn_list
+mcp__kirocrew-core__learn_remove
+mcp__kirocrew-core__list_sessions
+mcp__kirocrew-core__local_knowledge_search
+mcp__kirocrew-core__monitor_inspect
+mcp__kirocrew-core__monitor_start
+mcp__kirocrew-core__monitor_stop
+mcp__kirocrew-core__monitor_update
+mcp__kirocrew-core__monitor_watch
+mcp__kirocrew-core__ops_mission_control_api
+mcp__kirocrew-core__read_slack_profile
+mcp__kirocrew-core__register_hook
+mcp__kirocrew-core__reset_conversation
+mcp__kirocrew-core__resource_status
+mcp__kirocrew-core__search_chat_history
+mcp__kirocrew-core__select_crew
+mcp__kirocrew-core__send_message
+mcp__kirocrew-core__send_notification
+mcp__kirocrew-core__session_ledger_read
+mcp__kirocrew-core__session_ledger_record
+mcp__kirocrew-core__set_project
+mcp__kirocrew-core__skill_discover
+mcp__kirocrew-core__skill_fetch
+mcp__kirocrew-core__skill_search
+mcp__kirocrew-core__spawn_continue
+mcp__kirocrew-core__spawn_list
+mcp__kirocrew-core__spawn_release
+mcp__kirocrew-core__spawn_run
+mcp__kirocrew-core__spawn_status
+mcp__kirocrew-core__spawn_steer
+mcp__kirocrew-core__spawn_sub_agents
+mcp__kirocrew-core__suggest_followup
+mcp__kirocrew-core__task_run
+mcp__kirocrew-core__wait
+mcp__kirocrew-core__workflow_author
+mcp__kirocrew-core__workflow_cancel
+mcp__kirocrew-core__workflow_library_list
+mcp__kirocrew-core__workflow_list
+mcp__kirocrew-core__workflow_rerun_subtree
+mcp__kirocrew-core__workflow_result
+mcp__kirocrew-core__workflow_run
+mcp__kirocrew-core__workflow_status
+mcp__kirocrew-cron__cron_add
+mcp__kirocrew-cron__cron_list
+mcp__kirocrew-cron__cron_pause
+mcp__kirocrew-cron__cron_remove
+mcp__kirocrew-cron__cron_remove_all
+mcp__kirocrew-cron__cron_resume
+mcp__kirocrew-cron__cron_secret_request
+mcp__kirocrew-cron__cron_trigger
+mcp__kirocrew-cron__cron_update
+```
+
+Total: 12 cargadas + 108 diferidas. Nota: `Grep`, `Glob` y `TodoWrite` no aparecen en esta sesión, ni cargadas ni diferidas — para buscar por contenido tendría que usar `Bash` (grep/rg) o delegar a un agente `Explore`.16:01:02 WARNING kiro_crew.acp.client: claude-acp stderr: Unexpected case: {"type":"system","subtype":"post_turn_summary","summarizes_uuid":"33e31dab-86a5-475a-8016-944715444d4f","status_category":"review_ready","status_detail":"MCP tools inventory: 12 loaded + 108 deferred","needs_action":"","uuid":"28cc6483-cd2a-4a47-aaa3-157c9e0b6fd7","session_id":"b801e6ee-7199-43de-a8a0-372136406f4f"}
+16:01:02 WARNING kiro_crew.acp.client: Retained tracking for 1 live child PID(s) that survived teardown; orphan sweep will reap them: [36010]
+

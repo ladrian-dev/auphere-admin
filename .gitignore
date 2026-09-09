@@ -41,6 +41,14 @@ redis-data/
 *.log
 logs/
 
+# Excepción: la evidencia de spikes y de specs. Un README que cita un log que no
+# está en el repo es una afirmación sin prueba, y la evidencia existe justamente
+# para que las afirmaciones se puedan verificar sin haber estado delante.
+!.specify/assessments/**/evidence/**/*.log
+!.specify/assessments/**/evidence/**/*.jsonl
+!specs/**/evidence/**/*.log
+!specs/**/evidence/**/*.jsonl
+
 # Local artifacts
 tmp/
 .local/

@@ -456,6 +456,15 @@ sus endpoints, así que esto se construye contra un contrato conocido.
       una clave que satisfaga `has_dashboard_surface()`, lanzar un `spawn`, contestarlo
       desde nuestro cliente por la cola global, y comprobar que el subagente corre.
       Es la condición de esta fase y va primero. _Requisitos: 11.1_
+      **AVANCE (2026-09-09):** la cola global de aprobaciones **sí es alcanzable desde
+      nuestro cliente** — `GET /api/approvals` → `200`. Lo que en T002 bloqueaba
+      (`token superseded`) era que el registro de nonces vive **en la memoria del proceso
+      del gateway**: el token hay que pedírselo a él (`kirocrew token`), no generarlo
+      aparte. Sigue sin verificarse la última junta —que contestar desencadene el
+      subagente— porque originar una sesión con clave `dashboard:` exige un slot, su chat
+      va por WebSocket y su SPA no está compilada. Las dos salidas son **trabajo tirado**:
+      nuestra cáscara habla con la consola de Auphere, no con su dashboard. Se cierra
+      barato cuando exista esa cáscara, que es el cliente que de verdad va a contestar.
 - [x] T053 Estado `bloqueado` cuando un subagente espera a otro, y no pintado como
       ocioso. _Requisitos: 11.4_
       **HECHO** dentro de `spawn-state.ts`: `bloqueado` gana a `ejecutando` porque es más
@@ -465,16 +474,19 @@ sus endpoints, así que esto se construye contra un contrato conocido.
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T054 [P] Retirar las marcas ajenas de la **superficie visible**: catálogo de cadenas
+- [x] T054 [P] Retirar las marcas ajenas de la **superficie visible**: catálogo de cadenas
       en inglés (17 ocurrencias), empaquetado e instaladores (386) y las constantes de
       ruta. **No** se renombran los identificadores internos: la licencia no lo exige y
       hacerlo impediría seguir aguas arriba. _Requisitos: 9.1_
-- [ ] T055 [P] Añadir una comprobación que falle si un bump del sustrato reintroduce
+      **HECHO** como código, no como renombrado de una vez: `auphere_edition.branding`, 9 tests. El test cazó un bug real de mi expresión — marcaba `kiro_crew`, el identificador interno que **no** hay que tocar. Los internos usan `_`; las marcas visibles, espacio o nada.
+- [x] T055 [P] Añadir una comprobación que falle si un bump del sustrato reintroduce
       marcas en superficie visible — no hay constante central de marca, así que esto es
       vigilancia recurrente, no una tarea que se cierra. _Requisitos: 9.2_
-- [ ] T056 [P] Enlace de vuelta desde la KB: `[[15-kirocrew-y-alternativas]]` §9 y
+      **HECHO**, como puerta del build. Verificada **en los dos sentidos**: pasa con la línea base real (10) y **falla** al bajarla a 9. Corregí de paso dos errores míos: el mismo tropiezo de `pipefail` + `grep` que ya tuve con el `NOTICE`, y una ruta equivocada —las cadenas visibles están en `en.context.json`, no en `enCatalog.ts`, que es solo la tabla de claves—.
+- [x] T056 [P] Enlace de vuelta desde la KB: `[[15-kirocrew-y-alternativas]]` §9 y
       `[[14-mvp-y-fases]]` §3 apuntan a `specs/001-puesto-trabajo-partner/`. El puente es
       obligatorio en las dos direcciones. _Requisitos: §IX (constitución)_
+      **HECHO.** `[[15-kirocrew-y-alternativas]]` §9 y `[[14-mvp-y-fases]]` §3 apuntan ya a `specs/001-puesto-trabajo-partner/`. §IX pide el puente en las dos direcciones, y de paso la ficha 14 recoge las dos correcciones que la ejecución le devolvió: `shell_local` cerrado y el Requisito 14, que no existía cuando se escribió.
 - [ ] T057 Firma y notarización del paquete. **Bloqueada fuera de este plan**: los
       certificados tienen plazo de entrega y hoy no están —en esta máquina solo hay
       «Apple Development», que no sirve para distribuir, y los OV de Windows duran 460

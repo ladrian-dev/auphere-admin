@@ -1,0 +1,19 @@
+16:27:04 WARNING kiro_crew.sandbox: SECURITY: cgroup v2 scope enforcement unavailable (not Linux); agent subprocess fork-bomb / memory-DoS ceilings are NOT enforced on this host. RLIMIT_NOFILE still applies. See docs/architecture/resource-protection.md.
+16:27:04 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+16:27:05 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=3e9e9fe3-5551-4573-bc48-5886e3070dc2 phase=validate-cwd durationMs=0 totalMs=0
+16:27:05 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=3e9e9fe3-5551-4573-bc48-5886e3070dc2 phase=settings durationMs=24 totalMs=25
+16:27:05 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=3e9e9fe3-5551-4573-bc48-5886e3070dc2 resume=none apiType=native baseUrl=native
+16:27:05 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=3e9e9fe3-5551-4573-bc48-5886e3070dc2 phase=prepare-query durationMs=4 totalMs=29
+16:27:05 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=3e9e9fe3-5551-4573-bc48-5886e3070dc2 phase=sdk-initialize durationMs=339 totalMs=368
+16:27:05 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=3e9e9fe3-5551-4573-bc48-5886e3070dc2 phase=models durationMs=1 totalMs=369
+16:27:05 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=3e9e9fe3-5551-4573-bc48-5886e3070dc2 phase=modes durationMs=0 totalMs=369
+16:27:05 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=3e9e9fe3-5551-4573-bc48-5886e3070dc2 phase=agents durationMs=0 totalMs=369
+16:27:05 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=3e9e9fe3-5551-4573-bc48-5886e3070dc2 phase=register durationMs=6 totalMs=374
+I'll load the tool schema first, then call it.
+Denied automatically: mcp__kirocrew-core__spawn_run needs approval, and this invocation cannot ask.
+   Run `kirocrew chat` from a terminal to approve tool calls.
+No ejecuté el subagente: rechazaste el permiso para `spawn_run`.
+
+Llamada que intenté (agente `kirocrew-lite`, tarea `print hello`, sin memoria/lessons/proyecto por ser una tarea autocontenida). Si quieres que siga, dime si prefieres otro agente de la lista (`kirocrew-heartbeat`, `kirocrew-knowledge`, `kirocrew-ledger-conductor`, `kirocrew-lite`, `kirocrew-research`, `kirocrew-worker`) o algún ajuste, y vuelvo a intentarlo.16:27:19 WARNING kiro_crew.acp.client: claude-acp stderr: Unexpected case: {"type":"system","subtype":"post_turn_summary","summarizes_uuid":"29115cf6-a0d6-4f9f-8a6f-7e4a599d0298","status_category":"blocked","status_detail":"spawn_run denied; awaiting agent choice or approval","needs_action":"approve spawn_run or choose from: kirocrew-heartbeat, kirocrew-knowledge, kirocrew-ledger-conductor, kirocrew-lite, kirocrew-research, kirocrew-worker","uuid":"850b6927-e7d2-4bcc-b2e4-38004ba61f1f","session_id":"3e9e9fe3-5551-4573-bc48-5886e3070dc2"}
+16:27:19 WARNING kiro_crew.acp.client: Retained tracking for 1 live child PID(s) that survived teardown; orphan sweep will reap them: [40983]
+

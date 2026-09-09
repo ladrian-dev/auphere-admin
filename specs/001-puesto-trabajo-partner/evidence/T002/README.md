@@ -73,3 +73,44 @@ subagentes — que ahora se construye contra un contrato conocido en vez de a ci
 |---|---|
 | `gateway-t002.log` | Arranque del gateway con las tres variables y el envoltorio activo. Incluye el aviso de que su SPA no está compilada y el de que no hay techos de recursos fuera de Linux |
 | `C-spawn.log` | El intento de spawn: denegado en la puerta de herramientas de `chat -m`, un peldaño antes de la de admisión |
+
+---
+
+## Segunda pasada (2026-09-09, tarde) — la cola de aprobaciones **sí** es alcanzable
+
+Lo que en la primera pasada quedó como *«su API rechazó el token con `token
+superseded`»* ya tiene explicación y solución:
+
+**El registro de nonces vive en la memoria del proceso del gateway.**
+`token_auth.py:289` devuelve `token superseded` cuando el nonce presentado no está
+en ese registro — y un token generado en **otro proceso** nunca lo está. No era un
+token caducado ni una firma mala: era el proceso equivocado.
+
+**La forma correcta es pedírselo al gateway**, que expone `kirocrew token`. Con
+ése:
+
+```
+GET /api/approvals?token=…  →  HTTP 200, []
+```
+
+**Nuestro propio cliente puede leer la cola global de aprobaciones.** Eso era
+justamente lo que T002 no pudo demostrar, y ya está demostrado.
+
+### Lo que sigue sin verificarse, y por qué no se fuerza
+
+Falta la última junta: que **contestar** por esa cola desencadene el subagente. Para
+originar una sesión que satisfaga `has_dashboard_surface()` hace falta un *slot* de
+chat —la clave es `dashboard:{slot}`— y los slots se crean desde el dashboard, cuyo
+chat va por **WebSocket**. El CLI no tiene bandera para colgarse de un slot
+(`kirocrew chat -h` no la ofrece), y su SPA no está compilada («gateway is serving a
+stale dashboard — assets missing»).
+
+Las dos salidas son caras y **tiradas**: compilar su SPA, o escribir un cliente de su
+protocolo WebSocket. Nuestra cáscara de escritorio habla con **la consola de
+Auphere**, no con su dashboard, así que ninguna de las dos cosas se usaría después.
+Es la misma trampa que ya se evitó en la primera pasada, y se evita otra vez por la
+misma razón.
+
+**Dónde se cierra barato**: cuando exista la cáscara de escritorio, que es el
+cliente que de verdad va a contestar. Entonces la comprobación es un paso natural
+del producto en vez de un andamio para tirar.

@@ -1,0 +1,15 @@
+20:01:05 WARNING kiro_crew.cli_server: Dashboard dist/ not found — the dashboard will show the 'not built' guidance page until the SPA is bundled. Run `npm ci && npm run build` in the website/ directory to build the full dashboard.
+20:01:05 WARNING kiro_crew.sandbox: SECURITY: cgroup v2 scope enforcement unavailable (not Linux); agent subprocess fork-bomb / memory-DoS ceilings are NOT enforced on this host. RLIMIT_NOFILE still applies. See docs/architecture/resource-protection.md.
+20:01:06 WARNING kiro_crew.dashboard.server: dashboard unix socket unavailable (AF_UNIX path too long); internal API stays TCP-only
+20:01:06 WARNING kiro_crew.env: dropping spec env key 'KIROCREW_HOME': the KIROCREW_ namespace is reserved for the gateway's own caller-identity channel and cannot be declared by a config
+20:01:06 WARNING kiro_crew.env: dropping spec env key 'KIROCREW_HOME': the KIROCREW_ namespace is reserved for the gateway's own caller-identity channel and cannot be declared by a config
+20:01:07 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+20:01:07 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=c8a721a7-7556-4f95-8edb-392a365d650b phase=validate-cwd durationMs=0 totalMs=0
+20:01:07 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=c8a721a7-7556-4f95-8edb-392a365d650b phase=settings durationMs=22 totalMs=23
+20:01:07 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=c8a721a7-7556-4f95-8edb-392a365d650b resume=none apiType=native baseUrl=native
+20:01:07 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=c8a721a7-7556-4f95-8edb-392a365d650b phase=prepare-query durationMs=2 totalMs=25
+20:01:08 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=c8a721a7-7556-4f95-8edb-392a365d650b phase=sdk-initialize durationMs=1155 totalMs=1180
+20:01:08 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=c8a721a7-7556-4f95-8edb-392a365d650b phase=models durationMs=0 totalMs=1180
+20:01:08 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=c8a721a7-7556-4f95-8edb-392a365d650b phase=modes durationMs=0 totalMs=1180
+20:01:08 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=c8a721a7-7556-4f95-8edb-392a365d650b phase=agents durationMs=0 totalMs=1180
+20:01:08 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=c8a721a7-7556-4f95-8edb-392a365d650b phase=register durationMs=0 totalMs=1180

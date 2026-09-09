@@ -42,6 +42,30 @@ for required in NOTICE LICENSE; do
   esac
 done
 
+# T055 — vigilancia de marcas. No hay constante central de marca en el sustrato,
+# así que un bump puede reintroducirlas en superficie visible sin que nadie se
+# entere. Renombrar es un día; vigilar es siempre.
+#
+# Se cuenta el catálogo de cadenas EN INGLÉS, que es la fuente de la que derivan
+# los demás idiomas. Los identificadores internos (`kiro_crew`) NO se cuentan: no
+# son marca y renombrarlos costaría el seguimiento aguas arriba.
+# Las cadenas visibles en inglés viven aquí — `enCatalog.ts` es la tabla de
+# claves y no contiene el copy. Se comprobó fichero a fichero: las 17 apariciones
+# que midió la evaluación están en `en.context.json`.
+CATALOG="$OUT/src/website/src/i18n/en.context.json"
+BASELINE="${NEXUS_BRAND_BASELINE:-10}"
+if [ -f "$CATALOG" ]; then
+  # `grep` sale con 1 cuando no encuentra nada, y bajo `pipefail` eso tumbaría el
+  # build justo en el caso bueno. Es el mismo tropiezo que la puerta del NOTICE.
+  marks=$( { grep -oiE '\bkiro[ -]?crew\b|\bkiro\b' "$CATALOG" || true; } | wc -l | tr -d ' ')
+  if [ "$marks" -gt "$BASELINE" ]; then
+    echo "el bump reintrodujo marcas en superficie visible: $marks (línea base $BASELINE)" >&2
+    echo "revisa el catálogo inglés antes de publicar la rueda" >&2
+    exit 1
+  fi
+  echo "marcas en superficie visible: $marks (línea base $BASELINE)"
+fi
+
 echo "rueda: $WHEEL"
 echo "NOTICE y LICENSE presentes en la rueda (Apache-2.0 §4.d)"
 echo "clon intacto en $PINNED, 0 modificados"

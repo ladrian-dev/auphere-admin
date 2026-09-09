@@ -1,0 +1,16 @@
+16:24:27 WARNING kiro_crew.cli_server: Dashboard dist/ not found — the dashboard will show the 'not built' guidance page until the SPA is bundled. Run `npm ci && npm run build` in the website/ directory to build the full dashboard.
+16:24:27 WARNING kiro_crew.sandbox: SECURITY: cgroup v2 scope enforcement unavailable (not Linux); agent subprocess fork-bomb / memory-DoS ceilings are NOT enforced on this host. RLIMIT_NOFILE still applies. See docs/architecture/resource-protection.md.
+16:24:27 WARNING kiro_crew.agent: Refusing to rewrite the shared agent home $SPIKE/kiro/agents from an ephemeral instance (checkout $SPIKE/.venv/lib/python3.12, data home $SPIKE/home): it would repoint the real install's MCP servers at this instance's venv and data home, and break them outright when it is torn down. This instance will use the existing specs instead. Deliberately no remedy is suggested here: redirecting the agent home via KIRO_HOME also relocates kiro-cli's session storage, which Kiro Crew still reads from the host path -- see kiro_home()'s scope caveat.
+16:24:28 WARNING kiro_crew.dashboard.server: dashboard unix socket unavailable (AF_UNIX path too long); internal API stays TCP-only
+16:24:28 WARNING kiro_crew.env: dropping spec env key 'KIROCREW_HOME': the KIROCREW_ namespace is reserved for the gateway's own caller-identity channel and cannot be declared by a config
+16:24:28 WARNING kiro_crew.env: dropping spec env key 'KIROCREW_HOME': the KIROCREW_ namespace is reserved for the gateway's own caller-identity channel and cannot be declared by a config
+16:24:28 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+16:24:29 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=78102832-8426-4594-b1ec-806170fc52ff phase=validate-cwd durationMs=0 totalMs=0
+16:24:29 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=78102832-8426-4594-b1ec-806170fc52ff phase=settings durationMs=27 totalMs=27
+16:24:29 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=78102832-8426-4594-b1ec-806170fc52ff resume=none apiType=native baseUrl=native
+16:24:29 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=78102832-8426-4594-b1ec-806170fc52ff phase=prepare-query durationMs=4 totalMs=31
+16:24:30 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=78102832-8426-4594-b1ec-806170fc52ff phase=sdk-initialize durationMs=913 totalMs=944
+16:24:30 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=78102832-8426-4594-b1ec-806170fc52ff phase=models durationMs=1 totalMs=945
+16:24:30 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=78102832-8426-4594-b1ec-806170fc52ff phase=modes durationMs=0 totalMs=945
+16:24:30 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=78102832-8426-4594-b1ec-806170fc52ff phase=agents durationMs=0 totalMs=945
+16:24:30 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=78102832-8426-4594-b1ec-806170fc52ff phase=register durationMs=0 totalMs=945
