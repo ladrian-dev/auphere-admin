@@ -1,0 +1,38 @@
+00:19:36 WARNING kiro_crew.sandbox: SECURITY: cgroup v2 scope enforcement unavailable (not Linux); agent subprocess fork-bomb / memory-DoS ceilings are NOT enforced on this host. RLIMIT_NOFILE still applies. See docs/architecture/resource-protection.md.
+00:19:36 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+00:19:36 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=5904bc0b-0ab9-43d0-a5c6-c6d115a824b0 phase=validate-cwd durationMs=0 totalMs=0
+00:19:36 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=5904bc0b-0ab9-43d0-a5c6-c6d115a824b0 phase=settings durationMs=26 totalMs=26
+00:19:36 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=5904bc0b-0ab9-43d0-a5c6-c6d115a824b0 resume=none apiType=native baseUrl=native
+00:19:36 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=5904bc0b-0ab9-43d0-a5c6-c6d115a824b0 phase=prepare-query durationMs=3 totalMs=29
+00:19:37 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=5904bc0b-0ab9-43d0-a5c6-c6d115a824b0 phase=sdk-initialize durationMs=873 totalMs=902
+00:19:37 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=5904bc0b-0ab9-43d0-a5c6-c6d115a824b0 phase=models durationMs=1 totalMs=903
+00:19:37 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=5904bc0b-0ab9-43d0-a5c6-c6d115a824b0 phase=modes durationMs=0 totalMs=903
+00:19:37 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=5904bc0b-0ab9-43d0-a5c6-c6d115a824b0 phase=agents durationMs=0 totalMs=903
+00:19:37 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=5904bc0b-0ab9-43d0-a5c6-c6d115a824b0 phase=register durationMs=12 totalMs=915
+
+   _  ___            ___
+  | |/ (_)_ _ ___   / __|_ _ _____ __ __
+  | ' <| | '_/ _ \ | (__| '_/ -_) V  V /
+  |_|\_\_|_| \___/  \___|_| \___|\_/\_/
+
+  👻 Your personal AI agent
+
+⚠️  Do not enter sensitive, secret, or regulated data into KiroCrew.
+   Treat anything you send as potentially logged or processed by the
+   configured model provider.
+
+Type your message (Ctrl+D or 'exit' to quit)
+
+you> Ejecuta en la shell exactamente este comando y nada mas: echo aprobado > canario-aprobado.txt
+Voy a ejecutar el comando.[0m[?25h
+Permission required: Write approval canary file
+Command: echo aprobado > canario-aprobado.txt
+   [a] allow once  [d] deny (default): a
+Ejecutado. Se creó `canario-aprobado.txt` con el contenido `aprobado`.
+
+you> ^D
+Bye! 👻
+00:20:29 WARNING kiro_crew.acp.client: Retained tracking for 2 live child PID(s) that survived teardown; orphan sweep will reap them: [91293, 91317]
+
+
+--- peticion_enviada=True aprobacion_enviada=True ---

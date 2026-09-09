@@ -1,0 +1,131 @@
+00:15:07 WARNING kiro_crew.platform_compat: aws is on PATH at /usr/local/bin/aws but does not resolve under the trusted system directories (/usr/bin, /bin, /usr/sbin, /sbin, /run/current-system/sw/bin), so it is treated as unavailable; OS introspection that needs it degrades instead of running a PATH-chosen binary
+Kiro Crew Doctor 👻
+
+Platform
+  edition:     ✅ standalone
+  jail:        ⏭  no jail provider (public edition)
+Dependencies
+  kiro-cli:    ⏭  not found (the default agent backend)
+               Install kiro-cli per its docs, then: kiro-cli login
+  claude-acp:  ✅ resolved off PATH (Claude Code installed)
+  git:         ✅ /usr/bin/git
+  node:        ✅ /Users/lmatos/.nvm/versions/node/v24.11.1/bin/node (v24)
+
+Project
+  project dir: ⚠️  not set (run kirocrew setup from project root)
+
+Agent
+  config:      ❌ not found (run kirocrew setup)
+  model pins:  ✅ no unusable spellings in agent specs
+
+Configuration
+  config dir:  ✅ $SPIKE/home
+  provider:    acp
+  model:       auto
+  approval:    auto
+  dashboard:   http://localhost:5476
+  bind:        127.0.0.1 (local-only, SSH tunnel for remote)
+  auth:        loopback trusted (no token required)
+
+Model
+  effective:   auto (backend picks)
+  decided by:  bundled defaults.json
+    agent override:            (defers)
+    global agent.model:        (defers)
+    default spec pin:          (defers)
+  spec file:   '$SPIKE/home/kiro/agents/kirocrew.json'
+  tracking:    not recorded ('kirocrew')
+
+Stored Defaults
+  drift:       ✅ no stored value holds a superseded default
+
+Data Home
+  location:    ✅ $SPIKE/home
+  kirocrew CLI: ⏹ not on PATH (run `kirocrew setup` to link it)
+  trust root:  ✅ $SPIKE/home/trust/sel_hmac.key
+  strict identity: ⏹ no identity channel for kirocrew-core, kirocrew-dashboard, kirocrew-work
+               Tools that must know which session is calling (monitor_start, session_ledger_*,
+               set_project, ask_question, session control, chat_folder_*) are refused while a
+               server is unrouted: on the kiro backend the session's AcpRuntime carries no
+               session key in its environment by design, so the gateway's per-call caller
+               injection is the only channel, and it covers routed servers only. Route them
+               from MCP Management (or add them to mcp_gateway.stub_servers and restart) if you
+               use those tools. Leaving them unrouted is a valid choice — routing starts a
+               broker and one stub process per server — so this is a note, not a problem to
+               fix; the tools' own refusal now names the same cause.
+  mcp gateway daemon: ⏹ not running (pooling off, or no session has started one)
+
+Credentials
+  profiles:    ℹ️  ~/.aws present; install the AWS CLI to list profiles
+  refresh:     ⏹ no credential_process — credentials may expire mid-task
+  note:        ℹ️  agents cannot READ credential files; AWS CLI calls are allowed
+               So if an agent reports that AWS is unavailable, it most likely hit the
+               credential-file block rather than a missing setup — see:
+    https://github.com/kirodotdev/KiroCrew/blob/main/src/kiro_crew/docs/blocked-commands.md
+
+Agents Directory
+  janitor:     ✅ no stale temp/backup files to reclaim
+
+Pods
+  session bus: ⏹ not applicable (darwin — pods are Linux `systemd --user` only)
+
+Sandbox
+  backend:     ✅ sandbox-exec
+
+Memory Pressure
+  freeze risk: ⏹ not applicable (darwin — the swap/OOM-killer check reads Linux procfs)
+
+Agent Spec Paths
+  paths:       ⏹ no agent specs found
+
+MCP Tools
+
+Runtime
+  python:      ✅ $SPIKE/venv/bin/python3.12 (3.12.12)
+  kiro_crew:   ✅ 0.7.0
+  deps:        ✅ websockets, slack_sdk, aiohttp available
+  sqlite fts5: ✅ available
+
+Vector Memory (in-process embeddings)
+  runtime:     ✅ vendored llama-cpp-python importable
+  faiss:       ⏹ not installed (optional) — episodic recall uses the stdlib fallback; `pip install faiss-cpu` to accelerate it
+  model:       ⏹ not downloaded yet (downloads in background on gateway start)
+  model url:   ✅ reachable (200) https://d3j0sthz5doyui.cloudfront.net/models/qwen3-embedding-0.6b.gguf
+  embeddings:  ✅ always-on
+
+Speech-to-Text
+  provider:    ✅ local
+  engine:      ❌ speech recognition needs its voice dependencies: pip install 'boto3>=1.34,<2' 'amazon-transcribe>=0.6,<1' 'pywhispercpp>=1.5,<2'
+  model:       ⏹ base not downloaded yet (147 MB, fetched on first use)
+  ffmpeg:      ❌ not found
+               Fix: brew install ffmpeg
+
+Slack Integration
+  status:      ⏭  not configured (optional)
+  setup:       run 'kirocrew setup --slack', or connect any channel
+               (Slack, Discord, Telegram, …) from the dashboard
+
+Discord Integration
+  status:      ⏭  not enabled (optional)
+  setup:       enable it in the dashboard → Settings → Discord, or set
+               discord.enabled in config.json and DISCORD_BOT_TOKEN in
+               $SPIKE/home/.env, then `kirocrew restart`
+
+WhatsApp Integration
+  status:      ⏭  not enabled (optional)
+  setup:       run 'kirocrew setup --whatsapp', or enable it from
+               the dashboard (Settings → Channels → WhatsApp)
+
+Other Channels
+  status:      ⏭  none enabled (optional)
+  setup:       connect one from the dashboard's Settings > Channels
+
+Loop-stall Crash Dumps
+  dumps:       ✅ no crash dumps found (healthy)
+  dump dir:    $SPIKE/home/logs/crash-dumps
+
+Connectivity
+  kiro-cli:    ⏭  skipped (not installed)
+  gateway:     ⏹  not running
+
+❌ Fix these issues: agent config, speech recogniser (stt_extra_missing), ffmpeg

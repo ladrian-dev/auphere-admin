@@ -1,0 +1,297 @@
+00:20:49 WARNING kiro_crew.sandbox: SECURITY: cgroup v2 scope enforcement unavailable (not Linux); agent subprocess fork-bomb / memory-DoS ceilings are NOT enforced on this host. RLIMIT_NOFILE still applies. See docs/architecture/resource-protection.md.
+00:20:49 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+00:20:49 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=929196a5-a13c-4952-840e-e52918c5f283 phase=validate-cwd durationMs=0 totalMs=0
+00:20:49 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=929196a5-a13c-4952-840e-e52918c5f283 phase=settings durationMs=24 totalMs=24
+00:20:49 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=929196a5-a13c-4952-840e-e52918c5f283 resume=none apiType=native baseUrl=native
+00:20:49 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=929196a5-a13c-4952-840e-e52918c5f283 phase=prepare-query durationMs=4 totalMs=29
+00:20:50 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=929196a5-a13c-4952-840e-e52918c5f283 phase=sdk-initialize durationMs=292 totalMs=321
+00:20:50 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=929196a5-a13c-4952-840e-e52918c5f283 phase=models durationMs=1 totalMs=322
+00:20:50 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=929196a5-a13c-4952-840e-e52918c5f283 phase=modes durationMs=0 totalMs=322
+00:20:50 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=929196a5-a13c-4952-840e-e52918c5f283 phase=agents durationMs=0 totalMs=322
+00:20:50 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=929196a5-a13c-4952-840e-e52918c5f283 phase=register durationMs=6 totalMs=327
+## Herramientas con 'spawn' o 'subagent' en el nombre
+
+Con `spawn` (7):
+
+```
+mcp__kirocrew-core__spawn_continue
+mcp__kirocrew-core__spawn_list
+mcp__kirocrew-core__spawn_release
+mcp__kirocrew-core__spawn_run
+mcp__kirocrew-core__spawn_status
+mcp__kirocrew-core__spawn_steer
+mcp__kirocrew-core__spawn_sub_agents
+```
+
+Con `subagent`: **NINGUNA**. (Ojo: `spawn_sub_agents` lleva `sub_agents`, no `subagent`; y `subagent_type` es un *parámetro* de la herramienta `Agent`, no un nombre de herramienta.)
+
+## Herramientas MCP
+
+Todas están en estado *deferred* (nombre visible, esquema no cargado; requieren `ToolSearch` antes de invocarse). Son 5 servidores:
+
+**chrome-devtools (29)**
+```
+mcp__chrome-devtools__click
+mcp__chrome-devtools__close_page
+mcp__chrome-devtools__drag
+mcp__chrome-devtools__emulate
+mcp__chrome-devtools__evaluate_script
+mcp__chrome-devtools__fill
+mcp__chrome-devtools__fill_form
+mcp__chrome-devtools__get_console_message
+mcp__chrome-devtools__get_network_request
+mcp__chrome-devtools__handle_dialog
+mcp__chrome-devtools__hover
+mcp__chrome-devtools__lighthouse_audit
+mcp__chrome-devtools__list_console_messages
+mcp__chrome-devtools__list_network_requests
+mcp__chrome-devtools__list_pages
+mcp__chrome-devtools__navigate_page
+mcp__chrome-devtools__new_page
+mcp__chrome-devtools__performance_analyze_insight
+mcp__chrome-devtools__performance_start_trace
+mcp__chrome-devtools__performance_stop_trace
+mcp__chrome-devtools__press_key
+mcp__chrome-devtools__resize_page
+mcp__chrome-devtools__select_page
+mcp__chrome-devtools__take_heapsnapshot
+mcp__chrome-devtools__take_screenshot
+mcp__chrome-devtools__take_snapshot
+mcp__chrome-devtools__type_text
+mcp__chrome-devtools__upload_file
+mcp__chrome-devtools__wait_for
+```
+
+**higgsfield (98)**
+```
+mcp__higgsfield__animation_actions
+mcp__higgsfield__apps_describe
+mcp__higgsfield__apps_invoke
+mcp__higgsfield__apps_search
+mcp__higgsfield__balance
+mcp__higgsfield__cancel_trial_auto_renewal
+mcp__higgsfield__confirm_billing_purchase
+mcp__higgsfield__confirm_trial_cancel
+mcp__higgsfield__create_voice
+mcp__higgsfield__create_voice_from_confirmed_audio
+mcp__higgsfield__create_website
+mcp__higgsfield__deploy_website
+mcp__higgsfield__dubbing
+mcp__higgsfield__generate_3d
+mcp__higgsfield__generate_audio
+mcp__higgsfield__generate_audio_batch
+mcp__higgsfield__generate_image
+mcp__higgsfield__generate_image_batch
+mcp__higgsfield__generate_video
+mcp__higgsfield__generate_video_batch
+mcp__higgsfield__get_explainer_presets
+mcp__higgsfield__get_workflow_bundle_file
+mcp__higgsfield__get_workflow_instructions
+mcp__higgsfield__job_display
+mcp__higgsfield__job_status
+mcp__higgsfield__jobs_wait
+mcp__higgsfield__list_voices
+mcp__higgsfield__list_website_categories
+mcp__higgsfield__list_websites
+mcp__higgsfield__list_workspaces
+mcp__higgsfield__marketing_studio_v2_avatars
+mcp__higgsfield__marketing_studio_v2_costs
+mcp__higgsfield__marketing_studio_v2_create
+mcp__higgsfield__marketing_studio_v2_presets
+mcp__higgsfield__marketing_studio_v2_status
+mcp__higgsfield__media_confirm
+mcp__higgsfield__media_import_url
+mcp__higgsfield__media_upload
+mcp__higgsfield__media_upload_widget
+mcp__higgsfield__models_explore
+mcp__higgsfield__motion_control
+mcp__higgsfield__outpaint_image
+mcp__higgsfield__participate_in_contest
+mcp__higgsfield__personal_clipper_create
+mcp__higgsfield__personal_clipper_jobs
+mcp__higgsfield__personal_clipper_status
+mcp__higgsfield__presets_show
+mcp__higgsfield__publish_website
+mcp__higgsfield__reframe
+mcp__higgsfield__remove_background
+mcp__higgsfield__rename_website
+mcp__higgsfield__resolve_explainer_preset
+mcp__higgsfield__reveal_generation
+mcp__higgsfield__sandbox_exec
+mcp__higgsfield__scene_builder_3d_create_project
+mcp__higgsfield__scene_builder_3d_get_artifact
+mcp__higgsfield__scene_builder_3d_get_blend
+mcp__higgsfield__scene_builder_3d_get_glb
+mcp__higgsfield__scene_builder_3d_get_operation
+mcp__higgsfield__scene_builder_3d_get_project
+mcp__higgsfield__scene_builder_3d_import_asset
+mcp__higgsfield__scene_builder_3d_list_projects
+mcp__higgsfield__scene_builder_3d_query_python
+mcp__higgsfield__scene_builder_3d_run_python
+mcp__higgsfield__scene_builder_3d_search_assets
+mcp__higgsfield__scene_builder_3d_show_scene
+mcp__higgsfield__select_workspace
+mcp__higgsfield__shorts_studio_create
+mcp__higgsfield__shorts_studio_create_preset
+mcp__higgsfield__shorts_studio_list_presets
+mcp__higgsfield__shorts_studio_list_sessions
+mcp__higgsfield__shorts_studio_status
+mcp__higgsfield__show_characters
+mcp__higgsfield__show_generation_by_ids
+mcp__higgsfield__show_generations
+mcp__higgsfield__show_marketing_studio_generations
+mcp__higgsfield__show_marketing_studio_v2
+mcp__higgsfield__show_medias
+mcp__higgsfield__show_plans_and_credits
+mcp__higgsfield__show_reference_elements
+mcp__higgsfield__sync_agents
+mcp__higgsfield__tiktok_accounts
+mcp__higgsfield__tiktok_connect
+mcp__higgsfield__tiktok_music_trending
+mcp__higgsfield__tiktok_music_tune
+mcp__higgsfield__tiktok_prepare_publish
+mcp__higgsfield__tiktok_publish
+mcp__higgsfield__tiktok_publish_status
+mcp__higgsfield__tiktok_reconnect
+mcp__higgsfield__transactions
+mcp__higgsfield__upscale_image
+mcp__higgsfield__upscale_video
+mcp__higgsfield__video_analysis_create
+mcp__higgsfield__video_analysis_jobs
+mcp__higgsfield__video_analysis_status
+mcp__higgsfield__virality_predictor
+mcp__higgsfield__voice_change
+mcp__higgsfield__website_db
+mcp__higgsfield__website_repo_access
+mcp__higgsfield__website_secrets
+mcp__higgsfield__website_status
+```
+
+**kirocrew-core (66)**
+```
+mcp__kirocrew-core__artifact_delete
+mcp__kirocrew-core__artifact_delete_comment
+mcp__kirocrew-core__artifact_folder_create
+mcp__kirocrew-core__artifact_folder_delete
+mcp__kirocrew-core__artifact_folder_list
+mcp__kirocrew-core__artifact_folder_move
+mcp__kirocrew-core__artifact_folder_rename
+mcp__kirocrew-core__artifact_get
+mcp__kirocrew-core__artifact_get_comments
+mcp__kirocrew-core__artifact_list
+mcp__kirocrew-core__artifact_mark_review
+mcp__kirocrew-core__artifact_move
+mcp__kirocrew-core__artifact_post_comment
+mcp__kirocrew-core__artifact_reply_comment
+mcp__kirocrew-core__artifact_revert
+mcp__kirocrew-core__artifact_save
+mcp__kirocrew-core__artifact_update
+mcp__kirocrew-core__artifact_versions
+mcp__kirocrew-core__ask_question
+mcp__kirocrew-core__autonudge_stop
+mcp__kirocrew-core__browser
+mcp__kirocrew-core__delete_message
+mcp__kirocrew-core__deploy_artifact
+mcp__kirocrew-core__file_send
+mcp__kirocrew-core__get_chat_session
+mcp__kirocrew-core__issue_radar_crew_read
+mcp__kirocrew-core__issue_radar_crew_record
+mcp__kirocrew-core__issue_radar_record_investigation
+mcp__kirocrew-core__knowledge_add_document
+mcp__kirocrew-core__knowledge_dedup
+mcp__kirocrew-core__knowledge_list_sources
+mcp__kirocrew-core__learn_add
+mcp__kirocrew-core__learn_list
+mcp__kirocrew-core__learn_remove
+mcp__kirocrew-core__list_sessions
+mcp__kirocrew-core__local_knowledge_search
+mcp__kirocrew-core__monitor_inspect
+mcp__kirocrew-core__monitor_start
+mcp__kirocrew-core__monitor_stop
+mcp__kirocrew-core__monitor_update
+mcp__kirocrew-core__monitor_watch
+mcp__kirocrew-core__ops_mission_control_api
+mcp__kirocrew-core__read_slack_profile
+mcp__kirocrew-core__register_hook
+mcp__kirocrew-core__reset_conversation
+mcp__kirocrew-core__resource_status
+mcp__kirocrew-core__search_chat_history
+mcp__kirocrew-core__select_crew
+mcp__kirocrew-core__send_message
+mcp__kirocrew-core__send_notification
+mcp__kirocrew-core__session_ledger_read
+mcp__kirocrew-core__session_ledger_record
+mcp__kirocrew-core__set_project
+mcp__kirocrew-core__skill_discover
+mcp__kirocrew-core__skill_fetch
+mcp__kirocrew-core__skill_search
+mcp__kirocrew-core__spawn_continue
+mcp__kirocrew-core__spawn_list
+mcp__kirocrew-core__spawn_release
+mcp__kirocrew-core__spawn_run
+mcp__kirocrew-core__spawn_status
+mcp__kirocrew-core__spawn_steer
+mcp__kirocrew-core__spawn_sub_agents
+mcp__kirocrew-core__suggest_followup
+mcp__kirocrew-core__task_run
+mcp__kirocrew-core__wait
+mcp__kirocrew-core__workflow_author
+mcp__kirocrew-core__workflow_cancel
+mcp__kirocrew-core__workflow_library_list
+mcp__kirocrew-core__workflow_list
+mcp__kirocrew-core__workflow_rerun_subtree
+mcp__kirocrew-core__workflow_result
+mcp__kirocrew-core__workflow_run
+mcp__kirocrew-core__workflow_status
+```
+
+**kirocrew-cron (9)**
+```
+mcp__kirocrew-cron__cron_add
+mcp__kirocrew-cron__cron_list
+mcp__kirocrew-cron__cron_pause
+mcp__kirocrew-cron__cron_remove
+mcp__kirocrew-cron__cron_remove_all
+mcp__kirocrew-cron__cron_resume
+mcp__kirocrew-cron__cron_secret_request
+mcp__kirocrew-cron__cron_trigger
+mcp__kirocrew-cron__cron_update
+```
+
+**playwright (25)**
+```
+mcp__playwright__browser_click
+mcp__playwright__browser_close
+mcp__playwright__browser_console_messages
+mcp__playwright__browser_drag
+mcp__playwright__browser_drop
+mcp__playwright__browser_evaluate
+mcp__playwright__browser_file_upload
+mcp__playwright__browser_fill_form
+mcp__playwright__browser_find
+mcp__playwright__browser_handle_dialog
+mcp__playwright__browser_hover
+mcp__playwright__browser_navigate
+mcp__playwright__browser_navigate_back
+mcp__playwright__browser_network_request
+mcp__playwright__browser_network_requests
+mcp__playwright__browser_press_key
+mcp__playwright__browser_resize
+mcp__playwright__browser_run_code_unsafe
+mcp__playwright__browser_select_option
+mcp__playwright__browser_snapshot
+mcp__playwright__browser_tabs
+mcp__playwright__browser_take_screenshot
+mcp__playwright__browser_type
+mcp__playwright__browser_wait_for
+```
+
+Nota: los recuentos por servidor salen de contar la lista de herramientas diferidas tal como me llegó; no he ejecutado nada para verificarla.00:21:35 WARNING kiro_crew.acp.client: claude-acp stderr: Session 929196a5-a13c-4952-840e-e52918c5f283: query stream error: ACP connection closed
+00:21:35 WARNING kiro_crew.acp.client: claude-acp stderr: Session 929196a5-a13c-4952-840e-e52918c5f283: cancellation failed during teardown Error: Query closed before response received
+00:21:35 WARNING kiro_crew.acp.client: claude-acp stderr: at Gy.performCleanup (file://$SPIKE/npm/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs:100:22914)
+00:21:35 WARNING kiro_crew.acp.client: claude-acp stderr: at Gy.cleanup (file://$SPIKE/npm/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs:100:22569)
+00:21:35 WARNING kiro_crew.acp.client: claude-acp stderr: at Gy.close (file://$SPIKE/npm/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs:100:22441)
+00:21:35 WARNING kiro_crew.acp.client: claude-acp stderr: at ClaudeAcpAgent.closeQueryStream (file://$SPIKE/npm/node_modules/@agentclientprotocol/claude-agent-acp/dist/acp-agent.js:4686:23)
+00:21:35 WARNING kiro_crew.acp.client: claude-acp stderr: at ClaudeAcpAgent.runConsumer (file://$SPIKE/npm/node_modules/@agentclientprotocol/claude-agent-acp/dist/acp-agent.js:4362:22)
+00:21:35 WARNING kiro_crew.acp.client: Retained tracking for 2 live child PID(s) that survived teardown; orphan sweep will reap them: [92043, 92056]
+
