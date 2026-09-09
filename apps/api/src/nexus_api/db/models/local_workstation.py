@@ -75,7 +75,8 @@ class PartnerDevice(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     #: La persona dueña del dispositivo — decisión 9: hilo privado por persona.
-    principal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    #: Texto, no UUID: es ``partner_memberships.user_id``, que lo es.
+    principal_id: Mapped[str] = mapped_column(Text, nullable=False)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     platform: Mapped[str] = mapped_column(Text, nullable=False)
     #: Directorio declarado por el partner. Se revalida al usarse, no solo al declararse.

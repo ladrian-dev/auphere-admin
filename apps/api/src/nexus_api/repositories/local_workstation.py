@@ -60,7 +60,7 @@ class PartnerDeviceRepository:
     async def enrol(
         self,
         *,
-        principal_id: uuid.UUID,
+        principal_id: str,
         display_name: str,
         platform: str,
         workdir: str,

@@ -67,7 +67,10 @@ def upgrade() -> None:
             sa.ForeignKey("tenants.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column("principal_id", postgresql.UUID(as_uuid=True), nullable=False),
+        # Texto, no UUID: ``partner_memberships.user_id`` es texto, y ésta es esa
+        # identidad. Guardarla como UUID haría la columna inservible para lo único
+        # que va a contener. Mismo motivo que en ``companion``.
+        sa.Column("principal_id", sa.Text(), nullable=False),
         sa.Column("display_name", sa.Text(), nullable=False),
         sa.Column("platform", sa.Text(), nullable=False),
         sa.Column("workdir", sa.Text(), nullable=False),

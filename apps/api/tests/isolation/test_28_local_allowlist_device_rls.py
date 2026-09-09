@@ -32,7 +32,7 @@ async def _seed(session, tenant_id: uuid.UUID, *, executable: str, device_name: 
             PartnerDevice(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                principal_id=uuid.uuid4(),
+                principal_id="user_iso",
                 display_name=device_name,
                 platform="macos",
                 workdir="/tmp/proyecto",
