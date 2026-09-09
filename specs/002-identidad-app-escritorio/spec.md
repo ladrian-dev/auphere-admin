@@ -544,8 +544,11 @@ consecuencias dichas, para saber siempre qué he apagado.
    sin persona delante no hay quien apruebe, y una máquina que ejecuta sin nadie
    que pueda parar no es un puesto de trabajo, es un servidor.
 2. WHEN la persona desempareja desde la barra THEN la aplicación DEBE olvidar su
-   credencial de forma irrecuperable, y el sistema DEBE archivar la máquina con la
-   persona y la fecha.
+   credencial de forma irrecuperable, detener el latido, y decir que la máquina
+   queda pendiente de archivar desde la consola; la plataforma DEBE mostrarla
+   `ausente` hasta que una persona la archive o la pertenencia se retire.
+   *(Enmendado en `tasks.md` T048: archivar es un acto de persona con su nombre
+   —R13.1— y la credencial no gana una sexta operación —R4.2.)*
 3. WHEN un administrador archiva una máquina desde la consola THEN el sistema
    DEBE rechazar su siguiente latido, la aplicación DEBE pasar a `archivada desde
    la consola` y dejar de latir, y el puente DEBE estar parado en menos de un
@@ -729,6 +732,14 @@ porque cada una cambió un criterio.
 | ¿Qué le pasa al puente al cerrar sesión? | **Se detiene y conserva la credencial sellada** para la misma persona. Sin persona delante no hay quien apruebe (001-R11.1) | Requisito 11.1 — deja de ser marca y pasa a criterio, con su motivo |
 | ¿Puede la consola saber que corre dentro de la aplicación? | **Sí, con acoplamiento mínimo**: una sola bifurcación, para esconder la conexión de canales de Meta y decir «continúa en el navegador» | Requisito 12.7 — la bifurcación es única y cualquier otra exige su propia spec |
 | ¿Se cierra la decisión §2.3 de la KB —registro— aquí? | **Sí: solo por invitación.** *«El alta la hacemos nosotros»*, como dice el diseño v3, el código de hoy y la evaluación | Requisito 2.5 — de «hereda lo que la consola tenga» a prohibición del formulario de registro. La KB lo recoge en `[[10-decisiones]]` §2.3 con enlace a esta carpeta |
+
+## Enmiendas que el plan y las tareas devolvieron a esta spec (2026-09-09)
+
+| Criterio | Antes | Ahora | Por qué |
+|---|---|---|---|
+| 4.2 | cuatro operaciones | **cinco**: latir · sondear · devolver resultados · renovar · **declarar directorio** | R7 exige declarar desde la máquina; esconderlo dentro de otra operación sería mentir sobre lo que la credencial abre |
+| 10.1 | «una de las cuatro» | «una de las cinco» | consecuencia de la anterior |
+| 11.2 | desemparejar desde la barra **archiva** la máquina | desemparejar **olvida la credencial**; archivar queda para una persona en la consola o para la pertenencia retirada | archivar lleva nombre de persona (R13.1) y la credencial no gana una sexta operación (R4.2) |
 
 ## Riesgo asumido a propósito
 

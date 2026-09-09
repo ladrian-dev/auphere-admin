@@ -119,8 +119,10 @@ límite); QR (la barra y la consola están en la misma pantalla; no hay cámara)
 
 ## D6 · La puerta de sesión: `GET /api/session/whoami` leído por el proceso principal
 
-**Decisión.** El BFF de la consola expone `GET /api/session/whoami` → `{user_id,
-partner_slug}` o `401`, con la cookie de sesión y sin cuerpo. La cáscara lo llama
+**Decisión.** El BFF de la consola expone `GET /api/session/whoami` → `200 {user_id,
+partner_slug}`, `401` sin sesión, `403 no_membership` con sesión pero sin partner —
+con la cookie de sesión y sin cuerpo. La barra no ofrece emparejar en ninguno de los
+dos últimos (R2.4). La cáscara lo llama
 **desde el proceso principal** con `session.fromPartition(HUMAN_PARTITION).fetch`,
 al arrancar y cada vez que `session.cookies.on('changed')` toca
 `nexus-console.session`. El resultado decide: sin sesión → `sin sesión`, puente

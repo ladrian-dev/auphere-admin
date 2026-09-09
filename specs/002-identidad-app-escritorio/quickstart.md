@@ -70,8 +70,10 @@ builder) — el seed de `quickstart` de la 001 vale, más una invitación acepta
 - Entrar con el builder en la misma app → «Emparejada por otra persona · empareja
   la tuya» (Historia 5). Emparejar → dos máquinas con el mismo hostname y dueños
   distintos.
-- Barra → Desemparejar → `sin_emparejar`; `/workstation` la muestra archivada con
-  persona y fecha; `credentials.bin` ya no tiene la entrada.
+- Barra → Desemparejar → `sin_emparejar` con «archívala desde la consola si no vas
+  a volver»; `credentials.bin` ya no tiene la entrada; `/workstation` la muestra
+  `ausente` en 30 s. Desde `/workstation` → Archivar → aparece archivada con persona,
+  fecha y motivo `archivada_consola`.
 - Volver a emparejar; desde `/workstation` (owner) → Archivar → en < 1 min la barra
   dice **«Archivada desde la consola»** y deja de latir (`last_heartbeat_at` no
   avanza).

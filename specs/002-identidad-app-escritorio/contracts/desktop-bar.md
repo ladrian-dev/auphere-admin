@@ -11,7 +11,7 @@ window.auphere = {
   getState(): Promise<BarState>;
   onState(cb: (s: BarState) => void): () => void;
   pair(code: string): Promise<void>;            // canjea; el resultado llega por onState
-  unpair(): Promise<void>;                      // olvida la credencial y archiva
+  unpair(): Promise<void>;                      // olvida la credencial; archivar es de la consola
   pickDirectory(clientRef: string): Promise<void>; // selector nativo + cuatro validaciones + declarar
   openInBrowser(url: string): Promise<void>;    // solo URLs del origen de la consola
 };
@@ -37,7 +37,7 @@ type BarState = {
 |---|---|---|---|
 | `sin_emparejar` | «Esta máquina no está emparejada» | Introducir código | no |
 | `emparejando` | «Comprobando el código…» | — | no |
-| `conectada` | «MacBook de Luis · conectada» (+ «falta el directorio de N clientes» si aplica) | Directorios · Desemparejar | **sí** |
+| `conectada` | «MacBook de Luis · conectada» (+ «falta el directorio de N clientes» si aplica) | Directorios · Desemparejar (olvida la credencial; la barra dice «archívala desde la consola si no vas a volver») | **sí** |
 | `reconectando` | «MacBook de Luis · reconectando» | — | no |
 | `sin_sesion` | «Sin sesión · el puente está parado» | — | no |
 | `volver_a_emparejar` | «Hay que volver a emparejar esta máquina» | Introducir código | no |
@@ -60,11 +60,27 @@ sin_emparejar ──pair ok──▶ conectada ◀──latido ok── reconect
 Fuera de `conectada` **no** se ofrecen herramientas locales (R12.3), y el latido
 solo corre en `conectada` y `reconectando`.
 
+## Lo que la cáscara le pide a la consola (y la página no sabe)
+
+`GET /api/session/whoami` — ruta del BFF, mismo origen, con la cookie de la
+partición humana, llamada **desde el proceso principal** al arrancar y en cada
+cambio de la cookie `nexus-console.session`:
+
+| Respuesta | Significado | Estado de la barra |
+|---|---|---|
+| `200 {user_id, partner_slug}` | persona con pertenencia | arranca si `user_id` tiene credencial guardada; si la tiene otra persona → `pairedByOther`; si nadie → `sin_emparejar` |
+| `401` | sin sesión | `sin_sesion`, sin oferta de emparejar |
+| `403 {"code": "no_membership"}` | sesión sin partner | `sin_sesion`, sin oferta de emparejar (R2.4) |
+
+No devuelve nada más. La página cargada no participa.
+
 ## Almacén
 
 `credential-store.ts`: `safeStorage.encryptString` → `userData/credentials.bin`;
 mapa por `user_id`. Sin cifrado disponible, no se escribe y
-`encryptionAvailable=false`. Desemparejar borra la entrada.
+`encryptionAvailable=false`. Desemparejar borra la entrada y detiene el latido; **no** llama a la plataforma —no hay
+sexta operación—: la máquina queda `ausente` hasta que una persona la archive desde
+`/workstation` (R11.2 enmendado, `tasks.md` T048).
 
 ## Diseño
 
