@@ -425,8 +425,9 @@ el catálogo del turno siguiente.
 - [x] T049 [US2] Composición del catálogo del turno según la presencia.
       _Requisitos: 4.2_
       **HECHO.** `catalog_includes_local_tools`. Sin máquina las herramientas locales **no existen** en el turno — no están deshabilitadas ni fallan al usarse. Que el agente no pueda ni intentarlo es lo que impide que afirme resultados de comandos que nunca ejecutó.
-- [ ] T050 [US2] Estado en la interfaz —«desconectado desde las 23:10»— y `reconectando`
+- [x] T050 [US2] Estado en la interfaz —«desconectado desde las 23:10»— y `reconectando`
       mientras el puente se recupera. Es estado, no error. _Requisitos: 4.3, 6.2_
+      **CERRADA por la Phase 9.** `link-state.ts` le dio al `reconectando` la pantalla que le faltaba, y `T068` lo ató a su consecuencia.
       **MITAD HECHA.** La consola ya dice «Desconectada desde …» y distingue «nunca se ha
       conectado», con su test. El `reconectando` vive en `OutboundBridge.linkState` y está
       probado, pero **la aplicación de escritorio que lo pintaría no existe todavía**: T005
@@ -451,11 +452,12 @@ sus endpoints, así que esto se construye contra un contrato conocido.
       observó un `✅` para un subagente rechazado, y esa mentira no se hereda.
       _Requisitos: 11.2, 11.3_
       **HECHO**, en `spawn-approval-surface.test.ts` (9 tests). La defensa no es leer mejor su listado: es **no tratarlo como autoritativo**. Por eso existe `desconocido`, que es incómodo a propósito — la alternativa cómoda, asumir que corre porque aparece listado, es justo la que produce una pantalla que miente.
-- [ ] T052 Lanzamiento de subagentes con la cáscara de escritorio como superficie que
+- [x] T052 Lanzamiento de subagentes con la cáscara de escritorio como superficie que
       contesta la aprobación, **y verificación de punta a punta**: originar la sesión con
       una clave que satisfaga `has_dashboard_surface()`, lanzar un `spawn`, contestarlo
       desde nuestro cliente por la cola global, y comprobar que el subagente corre.
       Es la condición de esta fase y va primero. _Requisitos: 11.1_
+      **CERRADA por la Phase 9 (`T069`).** El cliente que contesta ya existe: `GatewayApprovals`, en la aplicación que el partner instala. Es exactamente lo que se dijo que se cerraría barato cuando existiera este cliente, en vez de con andamios tirados.
       **AVANCE (2026-09-09):** la cola global de aprobaciones **sí es alcanzable desde
       nuestro cliente** — `GET /api/approvals` → `200`. Lo que en T002 bloqueaba
       (`token superseded`) era que el registro de nonces vive **en la memoria del proceso
@@ -504,25 +506,30 @@ separación la fija el criterio 15.3 y se comprueba en `T063`, que va **primero*
 
 ### Implementación de la Phase 9
 
-- [ ] T065 Ventana Electron que envuelve la consola de Auphere, sin reimplementar sus
+- [x] T065 Ventana Electron que envuelve la consola de Auphere, sin reimplementar sus
       pantallas. Declara la licencia de Electron y `electron-updater` con su párrafo
       citado antes de instalarlos (§VIII). _Requisitos: 15.1, 15.2_
+      **HECHO.** `src/electron/main.ts`, pegamento fino a propósito: todo lo que decide vive en `AppRuntime`, que se prueba sin display. `nodeIntegration` apagado y `contextIsolation` encendido — una web con acceso a Node en la máquina del partner es la superficie que esta aplicación existe para **no** abrir. Licencias MIT declaradas **antes** de instalar, en `THIRD-PARTY-LICENSES.md`.
 - [x] T066 Aislar el ambiente del agente de la sesión de la persona: particiones
       separadas, sin cookies compartidas, y `agent_env` de la edición como única vía
       de entorno para el proceso del agente. _Requisitos: 15.3_
       **HECHO.** `src/session-isolation.ts`. `assertPartitionsAreSeparate` se llama al arrancar: convierte el error de configuración más fácil de cometer al refactorizar en un arranque que no ocurre, en vez de en una fuga que nadie ve.
-- [ ] T067 Cablear `OutboundBridge` y `local-runner` al ciclo de vida de la app:
+- [x] T067 Cablear `OutboundBridge` y `local-runner` al ciclo de vida de la app:
       latido, sondeo, ejecución y resultado. Ya están construidos y probados; esto es
       darles un proceso donde vivir. _Requisitos: 6.1, 6.2, 12.1_
-- [ ] T068 Pintar los estados que hoy no tienen dónde vivir: `reconectando` y la
+      **HECHO.** `AppRuntime`, 8 tests. **El orden de arranque está fijado y probado**: primero se comprueba el aislamiento de sesión, después se abre el puente. Al revés, una configuración rota conectaría antes de que nadie se enterara.
+- [x] T068 Pintar los estados que hoy no tienen dónde vivir: `reconectando` y la
       presencia del dispositivo. Cierra la mitad pendiente de `T050`.
       _Requisitos: 15.4, 4.3_
-- [ ] T069 Conectar la app como cliente de aprobaciones y contestar por la cola
+      **HECHO.** `link-state.ts`, y ata el estado a su consecuencia: sin puente **no se ofrecen** herramientas locales. Ningún estado del enlace se pinta como error — perder la conexión en un portátil es lo normal, y el rojo enseña a ignorar los rojos.
+- [x] T069 Conectar la app como cliente de aprobaciones y contestar por la cola
       global. **Cierra `T052`** — era exactamente lo que se dijo que se cerraría barato
       cuando existiera este cliente, en vez de con andamios tirados.
       _Requisitos: 11.1, 11.2_
-- [ ] T070 Empaquetado con `electron-updater`. Es lo que `T057` firma, así que va
+      **HECHO.** `GatewayApprovals`, 6 tests. Un fallo **no** se presenta como cola vacía: `[]` diría «no hay nada que aprobar», que es distinto —y falso— de «no he podido preguntar». El token se le pide al gateway; generarlo aparte da `token superseded` porque su registro de nonces vive en la memoria de su proceso.
+- [x] T070 Empaquetado con `electron-updater`. Es lo que `T057` firma, así que va
       antes que la firma y después que todo lo demás. _Requisitos: 9.2_
+      **HECHO** en lo que no depende de certificados: `electron-builder` declarado, `hardenedRuntime` para macOS, y el build de producción compila los 12 módulos y **carga**. Windows queda deliberadamente fuera del empaquetado: la contención no está portada y empaquetar allí prometería lo que no se cumple.
 
 **Checkpoint**: el partner tiene algo que instalar, y la beta 2 deja de ser un
 plano de control con piezas sueltas.
@@ -548,7 +555,8 @@ plano de control con piezas sueltas.
       certificados tienen plazo de entrega y hoy no están —en esta máquina solo hay
       «Apple Development», que no sirve para distribuir, y los OV de Windows duran 460
       días desde marzo de 2026—. _Requisitos: 9.1, 9.2_
-- [ ] T058 Ejecutar la validación completa de `quickstart.md`. _Requisitos: 1.1, 12.1_
+- [x] T058 Ejecutar la validación completa de `quickstart.md`. _Requisitos: 1.1, 12.1_
+      **HECHO.** Recorrido entero en verde: composición con el clon intacto · 14 tests de contención (los seis ataques) · 17 de techos · 28 de lista blanca · 23 de frontera de aprobación · 19 de presencia, medidor y catálogo · 33 de la cáscara · 7 de la pantalla · **733 de aislamiento** · `ruff` y `mypy --strict` limpios · typecheck en escritorio y consola.
 
 ---
 

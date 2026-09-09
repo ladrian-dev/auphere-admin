@@ -6,10 +6,16 @@
   "description": "Partner-machine shell. The bridge is outbound-only: nothing from the internet reaches the partner's machine.",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "electron .",
+    "package": "electron-builder --dir"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3",
+    "electron-updater": "6.8.9",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },
@@ -17,5 +23,19 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
+  },
+  "main": "dist/electron/main.js",
+  "build": {
+    "appId": "com.auphere.desktop",
+    "productName": "Auphere",
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true
+    },
+    "win": null
   }
 }

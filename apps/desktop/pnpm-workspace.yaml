@@ -1,4 +1,5 @@
 allowBuilds:
+  electron-winstaller: set this to true or false
   esbuild: set this to true or false
 # `apps/desktop` es su propio workspace, como `apps/admin`: pnpm resuelve el
 # `pnpm-workspace.yaml` MÁS CERCANO subiendo desde el cwd, así que esto lo
@@ -8,3 +9,6 @@ allowBuilds:
 # aquí igual que en el workspace raíz.
 onlyBuiltDependencies:
   - esbuild
+  # Electron descarga su binario en la instalación. `electron-winstaller` NO se
+  # autoriza: es el instalador de Windows y esa mitad no está portada todavía.
+  - electron
