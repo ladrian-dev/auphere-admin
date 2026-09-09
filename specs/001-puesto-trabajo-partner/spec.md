@@ -218,11 +218,11 @@ está o no, para no recibir un error donde debería haber un estado.
 
 #### Criterios de aceptación
 
-1. WHILE el dispositivo del partner mantiene su latido el sistema DEBE ofrecer las
-   herramientas locales en el catálogo del turno.
-2. WHEN el latido caduca THEN el sistema DEBE retirar las herramientas locales del
-   catálogo, y el teammate NO DEBE intentar usarlas ni afirmar resultados de
-   comandos que no ejecutó.
+1. WHILE el dispositivo del partner mantiene su latido —emitido cada **10 s**— el
+   sistema DEBE ofrecer las herramientas locales en el catálogo del turno.
+2. WHEN el latido caduca —**30 s** sin recibirlo— THEN el sistema DEBE retirar las
+   herramientas locales del catálogo, y el teammate NO DEBE intentar usarlas ni
+   afirmar resultados de comandos que no ejecutó.
 3. WHEN el partner consulta el estado THEN la interfaz DEBE decir desde cuándo el
    dispositivo está desconectado, presentado como estado y no como error.
 4. WHERE una capacidad local no está disponible EL sistema DEBE diseñar su
@@ -340,7 +340,8 @@ pone ningún techo por mí.
 #### Criterios de aceptación
 
 1. WHEN se lanza una ejecución local THEN el sistema DEBE aplicarle un límite de
-   tiempo de reloj.
+   reloj de **600 s** por defecto, configurable por tenant hasta un techo de
+   **3600 s**.
 2. WHEN una ejecución alcanza su límite THEN el sistema DEBE terminarla junto con
    **todo su árbol de procesos hijos**, y DEBE informarlo como resultado, no como
    silencio.
@@ -348,6 +349,9 @@ pone ningún techo por mí.
    hayan sobrevivido, y NO DEBE dejarlos huérfanos en la máquina del partner.
 4. IF un proceso no puede terminarse THEN el sistema DEBE decírselo al partner y
    nombrar el proceso, en vez de darlo por terminado.
+5. IF una ejecución no produce salida durante **300 s** THEN el sistema DEBE
+   tratarla como colgada y terminarla junto con su árbol de procesos. Un proceso
+   que tarda no es un proceso colgado: los dos límites son distintos a propósito.
 
 ### Requisito 13 — Lo que el sustrato trae y no se enciende
 
@@ -359,7 +363,9 @@ y no solo estén sin listar, para que no dependan de que nadie se acuerde.
 
 1. El sistema NO DEBE exponer al agente el navegador ni el control de escritorio
    del sustrato, y DEBE hacerlos **inalcanzables**: no basta con que no estén en la
-   lista blanca.
+   lista blanca. Se distingue del criterio 5.2, que trata de
+   herramientas que **el ambiente de la máquina** declara: esto son capacidades que
+   **el propio sustrato trae de fábrica**.
 2. El sistema DEBE arrancar con la telemetría del sustrato desactivada, fijada
    **antes del primer arranque**.
 3. El sistema NO DEBE habilitar el canal de mensajería no oficial del sustrato.
