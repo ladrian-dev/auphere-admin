@@ -1,0 +1,37 @@
+00:30:23 WARNING kiro_crew.sandbox: SECURITY: cgroup v2 scope enforcement unavailable (not Linux); agent subprocess fork-bomb / memory-DoS ceilings are NOT enforced on this host. RLIMIT_NOFILE still applies. See docs/architecture/resource-protection.md.
+00:30:23 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+00:30:23 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=26694dc3-585f-411d-85be-695e9b30cd47 phase=validate-cwd durationMs=0 totalMs=0
+00:30:23 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=26694dc3-585f-411d-85be-695e9b30cd47 phase=settings durationMs=27 totalMs=27
+00:30:23 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=26694dc3-585f-411d-85be-695e9b30cd47 resume=none apiType=native baseUrl=native
+00:30:23 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=26694dc3-585f-411d-85be-695e9b30cd47 phase=prepare-query durationMs=5 totalMs=33
+00:30:23 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=26694dc3-585f-411d-85be-695e9b30cd47 phase=sdk-initialize durationMs=332 totalMs=365
+00:30:23 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=26694dc3-585f-411d-85be-695e9b30cd47 phase=models durationMs=1 totalMs=366
+00:30:23 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=26694dc3-585f-411d-85be-695e9b30cd47 phase=modes durationMs=0 totalMs=366
+00:30:23 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=26694dc3-585f-411d-85be-695e9b30cd47 phase=agents durationMs=0 totalMs=366
+00:30:23 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=26694dc3-585f-411d-85be-695e9b30cd47 phase=register durationMs=6 totalMs=372
+
+   _  ___            ___
+  | |/ (_)_ _ ___   / __|_ _ _____ __ __
+  | ' <| | '_/ _ \ | (__| '_/ -_) V  V /
+  |_|\_\_|_| \___/  \___|_| \___|\_/\_/
+
+  👻 Your personal AI agent
+
+⚠️  Do not enter sensitive, secret, or regulated data into KiroCrew.
+   Treat anything you send as potentially logged or processed by the
+   configured model provider.
+
+Type your message (Ctrl+D or 'exit' to quit)
+
+you> Usa la herramienta mcp__kirocrew-core__spawn_run para lanzar UN subagente cuya tarea sea: escribir exactamente el texto SUBAGENTE-OK en un fichero llamado subagente.txt en el directorio de trabajo. Espera a que termine y dime su id y su estado final.
+I'll load the spawn tool schemas first.[0m[?25h
+Permission required: mcp__kirocrew-core__spawn_run
+   [a] allow once  [d] deny (default): a
+Subagente lanzado (`eeb9ffa2`). Esperando el evento de finalización.
+
+you> ^D
+Bye! 👻
+00:32:39 WARNING kiro_crew.acp.client: Retained tracking for 1 live child PID(s) that survived teardown; orphan sweep will reap them: [94673]
+
+
+--- enviada=True aprobaciones=1 ---

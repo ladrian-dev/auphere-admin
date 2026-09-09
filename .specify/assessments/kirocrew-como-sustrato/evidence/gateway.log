@@ -1,0 +1,32 @@
+00:29:36 WARNING kiro_crew.cli_server: Dashboard dist/ not found — the dashboard will show the 'not built' guidance page until the SPA is bundled. Run `npm ci && npm run build` in the website/ directory to build the full dashboard.
+00:29:36 WARNING kiro_crew.sandbox: SECURITY: cgroup v2 scope enforcement unavailable (not Linux); agent subprocess fork-bomb / memory-DoS ceilings are NOT enforced on this host. RLIMIT_NOFILE still applies. See docs/architecture/resource-protection.md.
+00:29:37 WARNING kiro_crew.env: dropping spec env key 'KIROCREW_HOME': the KIROCREW_ namespace is reserved for the gateway's own caller-identity channel and cannot be declared by a config
+00:29:37 WARNING kiro_crew.env: dropping spec env key 'KIROCREW_HOME': the KIROCREW_ namespace is reserved for the gateway's own caller-identity channel and cannot be declared by a config
+00:29:37 WARNING kiro_crew.dashboard.server: dashboard unix socket unavailable (AF_UNIX path too long); internal API stays TCP-only
+00:29:37 WARNING kiro_crew.env: dropping spec env key 'KIROCREW_HOME': the KIROCREW_ namespace is reserved for the gateway's own caller-identity channel and cannot be declared by a config
+00:29:37 WARNING kiro_crew.env: dropping spec env key 'KIROCREW_HOME': the KIROCREW_ namespace is reserved for the gateway's own caller-identity channel and cannot be declared by a config
+00:29:38 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+00:29:38 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=a7584eda-56fd-459b-b89d-3165370f9f89 phase=validate-cwd durationMs=0 totalMs=0
+00:29:38 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=a7584eda-56fd-459b-b89d-3165370f9f89 phase=settings durationMs=24 totalMs=25
+00:29:38 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=a7584eda-56fd-459b-b89d-3165370f9f89 resume=none apiType=native baseUrl=native
+00:29:38 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=a7584eda-56fd-459b-b89d-3165370f9f89 phase=prepare-query durationMs=3 totalMs=27
+00:29:39 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=a7584eda-56fd-459b-b89d-3165370f9f89 phase=sdk-initialize durationMs=917 totalMs=944
+00:29:39 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=a7584eda-56fd-459b-b89d-3165370f9f89 phase=models durationMs=1 totalMs=945
+00:29:39 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=a7584eda-56fd-459b-b89d-3165370f9f89 phase=modes durationMs=0 totalMs=945
+00:29:39 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=a7584eda-56fd-459b-b89d-3165370f9f89 phase=agents durationMs=0 totalMs=945
+00:29:39 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=a7584eda-56fd-459b-b89d-3165370f9f89 phase=register durationMs=0 totalMs=945
+00:30:37 WARNING kiro_crew.subagent: Subagent eeb9ffa2 refused: the spawn approval prompt reached no surface that could answer it (no dashboard client is connected, parent=cli_chat). To let spawns run without a prompt, use any one of: spawn with approval_mode="auto"; turn on Trust for the parent session in the dashboard; set hooks.auto_approve_subagent_spawn to true in config.json; or add "subagent" to hooks.auto_approve_sources.
+00:30:37 WARNING kiro_crew.providers.mirrors.claude_code: session MCP: withholding the whole mcpServers array -- Crew does not own this session's settings.local.json, so a permissions.allow entry there could pre-approve a Crew tool and skip session/request_permission entirely. This session runs without Crew's MCP tools; remove or rename the project's own .claude/settings.local.json to restore them.
+00:30:37 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+00:30:37 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=8f322ee3-2c4f-4879-bb81-9e82aa3bffbb phase=validate-cwd durationMs=0 totalMs=0
+00:30:37 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=8f322ee3-2c4f-4879-bb81-9e82aa3bffbb phase=settings durationMs=23 totalMs=24
+00:30:37 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=8f322ee3-2c4f-4879-bb81-9e82aa3bffbb resume=none apiType=native baseUrl=native
+00:30:37 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=8f322ee3-2c4f-4879-bb81-9e82aa3bffbb phase=prepare-query durationMs=3 totalMs=27
+00:30:38 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=8f322ee3-2c4f-4879-bb81-9e82aa3bffbb phase=sdk-initialize durationMs=338 totalMs=365
+00:30:38 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=8f322ee3-2c4f-4879-bb81-9e82aa3bffbb phase=models durationMs=1 totalMs=367
+00:30:38 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=8f322ee3-2c4f-4879-bb81-9e82aa3bffbb phase=modes durationMs=0 totalMs=367
+00:30:38 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=8f322ee3-2c4f-4879-bb81-9e82aa3bffbb phase=agents durationMs=0 totalMs=367
+00:30:38 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=8f322ee3-2c4f-4879-bb81-9e82aa3bffbb phase=register durationMs=0 totalMs=368
+13:36:19 WARNING kiro_crew.subagent: Subagent 4a5da723 refused: the spawn approval prompt reached no surface that could answer it (no dashboard client is connected, parent=cli_chat). To let spawns run without a prompt, use any one of: spawn with approval_mode="auto"; turn on Trust for the parent session in the dashboard; set hooks.auto_approve_subagent_spawn to true in config.json; or add "subagent" to hooks.auto_approve_sources.
+13:46:24 WARNING kiro_crew.acp.client: Retained tracking for 1 live child PID(s) that survived teardown; orphan sweep will reap them: [94896]
+13:46:24 WARNING kiro_crew.acp.client: Retained tracking for 1 live child PID(s) that survived teardown; orphan sweep will reap them: [94349]

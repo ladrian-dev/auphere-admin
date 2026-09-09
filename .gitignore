@@ -62,3 +62,9 @@ infra/terraform/backend.hcl
 .envrc
 storybook-static/
 *.tsbuildinfo
+
+# Excepción a `*.log` de arriba: la salida cruda de un spike es la evidencia que
+# hace verificable una evaluación, y `.specify/assessments/<slug>/evidence/` es el
+# sitio que el método le da. Acotado a ahí: ningún log de ejecución del producto
+# entra por esta puerta.
+!.specify/assessments/**/evidence/*.log

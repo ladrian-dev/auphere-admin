@@ -1,0 +1,29 @@
+00:18:22 WARNING kiro_crew.sandbox: SECURITY: cgroup v2 scope enforcement unavailable (not Linux); agent subprocess fork-bomb / memory-DoS ceilings are NOT enforced on this host. RLIMIT_NOFILE still applies. See docs/architecture/resource-protection.md.
+00:18:22 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+00:18:22 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=fca5398b-d460-4b59-a5fa-b81d164de91d phase=validate-cwd durationMs=0 totalMs=0
+00:18:22 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=fca5398b-d460-4b59-a5fa-b81d164de91d phase=settings durationMs=24 totalMs=24
+00:18:22 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=fca5398b-d460-4b59-a5fa-b81d164de91d resume=none apiType=native baseUrl=native
+00:18:22 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=fca5398b-d460-4b59-a5fa-b81d164de91d phase=prepare-query durationMs=4 totalMs=28
+00:18:22 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=fca5398b-d460-4b59-a5fa-b81d164de91d phase=sdk-initialize durationMs=298 totalMs=326
+00:18:22 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=fca5398b-d460-4b59-a5fa-b81d164de91d phase=models durationMs=1 totalMs=327
+00:18:22 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=fca5398b-d460-4b59-a5fa-b81d164de91d phase=modes durationMs=0 totalMs=327
+00:18:22 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=fca5398b-d460-4b59-a5fa-b81d164de91d phase=agents durationMs=0 totalMs=327
+00:18:22 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=fca5398b-d460-4b59-a5fa-b81d164de91d phase=register durationMs=6 totalMs=333
+
+Denied automatically: Delete canary spike file needs approval, and this invocation cannot ask.
+   Run `kirocrew chat` from a terminal to approve tool calls.
+El comando no se ejecutó. La respuesta literal del sistema de permisos fue:
+
+```
+User refused permission to run tool
+```
+
+Es decir, la llamada a Bash con `rm -f /tmp/kirocrew-spike-canario.txt` fue interceptada y denegada antes de ejecutarse — el archivo `/tmp/kirocrew-spike-canario.txt` sigue intacto (si existía). No voy a reintentarlo por otra vía.00:18:34 WARNING kiro_crew.acp.client: claude-acp stderr: Session fca5398b-d460-4b59-a5fa-b81d164de91d: query stream error: ACP connection closed
+00:18:34 WARNING kiro_crew.acp.client: claude-acp stderr: Session fca5398b-d460-4b59-a5fa-b81d164de91d: cancellation failed during teardown Error: Query closed before response received
+00:18:34 WARNING kiro_crew.acp.client: claude-acp stderr: at Gy.performCleanup (file://$SPIKE/npm/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs:100:22914)
+00:18:34 WARNING kiro_crew.acp.client: claude-acp stderr: at Gy.cleanup (file://$SPIKE/npm/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs:100:22569)
+00:18:34 WARNING kiro_crew.acp.client: claude-acp stderr: at Gy.close (file://$SPIKE/npm/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs:100:22441)
+00:18:34 WARNING kiro_crew.acp.client: claude-acp stderr: at ClaudeAcpAgent.closeQueryStream (file://$SPIKE/npm/node_modules/@agentclientprotocol/claude-agent-acp/dist/acp-agent.js:4686:23)
+00:18:34 WARNING kiro_crew.acp.client: claude-acp stderr: at ClaudeAcpAgent.runConsumer (file://$SPIKE/npm/node_modules/@agentclientprotocol/claude-agent-acp/dist/acp-agent.js:4362:22)
+00:18:34 WARNING kiro_crew.acp.client: Retained tracking for 2 live child PID(s) that survived teardown; orphan sweep will reap them: [90866, 90879]
+

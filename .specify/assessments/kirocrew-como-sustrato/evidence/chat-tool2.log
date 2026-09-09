@@ -1,0 +1,13 @@
+00:17:56 WARNING kiro_crew.sandbox: SECURITY: cgroup v2 scope enforcement unavailable (not Linux); agent subprocess fork-bomb / memory-DoS ceilings are NOT enforced on this host. RLIMIT_NOFILE still applies. See docs/architecture/resource-protection.md.
+00:17:56 WARNING kiro_crew.browser_cli.launch: installed playwright-cli does not expose the stable daemon socket/session hooks; leaving its lifecycle environment unchanged
+00:17:56 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=6ae3fa21-902b-445b-bef8-cc0da4f526a9 phase=validate-cwd durationMs=0 totalMs=0
+00:17:56 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=6ae3fa21-902b-445b-bef8-cc0da4f526a9 phase=settings durationMs=25 totalMs=25
+00:17:56 WARNING kiro_crew.acp.client: claude-acp stderr: [session/query] sessionId=6ae3fa21-902b-445b-bef8-cc0da4f526a9 resume=none apiType=native baseUrl=native
+00:17:56 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=6ae3fa21-902b-445b-bef8-cc0da4f526a9 phase=prepare-query durationMs=5 totalMs=30
+00:17:57 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=6ae3fa21-902b-445b-bef8-cc0da4f526a9 phase=sdk-initialize durationMs=894 totalMs=924
+00:17:57 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=6ae3fa21-902b-445b-bef8-cc0da4f526a9 phase=models durationMs=1 totalMs=924
+00:17:57 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=6ae3fa21-902b-445b-bef8-cc0da4f526a9 phase=modes durationMs=0 totalMs=924
+00:17:57 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=6ae3fa21-902b-445b-bef8-cc0da4f526a9 phase=agents durationMs=0 totalMs=924
+00:17:57 WARNING kiro_crew.acp.client: claude-acp stderr: [session/create] sessionId=6ae3fa21-902b-445b-bef8-cc0da4f526a9 phase=register durationMs=6 totalMs=930
+I'll read the file.2 — `Read`00:18:05 WARNING kiro_crew.acp.client: Retained tracking for 2 live child PID(s) that survived teardown; orphan sweep will reap them: [90640, 90657]
+
