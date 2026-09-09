@@ -235,6 +235,15 @@ sesión y enumerar el catálogo.
 - [ ] T028 [US4] Desactivar de forma inalcanzable navegador, control de escritorio, canal
       no oficial y cargador de apps. _Requisitos: 13.1, 13.3, 13.4_
 
+- [ ] T059 [P] [US4] Test en `apps/edition/tests/contract/test_network_reach_exclusion.py`:
+      con dispositivo presente, un catálogo que contiene una herramienta de alcance
+      externo **y** la de ejecución local no se compone; y una herramienta sin alcance
+      declarado cuenta como externa. _Requisitos: 14.1, 14.2, 14.3_
+- [ ] T060 [US4] Declarar el alcance de red por herramienta en el catálogo y aplicar la
+      exclusión: se conserva la ejecución local, se retiran las de alcance externo, y la
+      interfaz lo dice **como estado** — el partner tiene que poder saber por qué le
+      falta una herramienta que sí tiene contratada. _Requisitos: 14.1, 14.3, 14.4_
+
 **Checkpoint**: US4 funciona y se prueba sola.
 
 ---
@@ -459,6 +468,10 @@ acotada ni catálogo demostrable. No es un MVP: es un incidente.
   y T056 cita `§IX` porque el puente con la KB no tiene número de requisito. Es
   deliberado y se deja escrito: mapear un control a la política que lo exige es
   trazabilidad, no un hueco.
+- **Los identificadores de tarea son estables, no un orden.** A partir de T059 los
+  números se añaden al final aunque la tarea viva en una fase anterior: el orden lo
+  define la **fase**, no el número. Renumerar ahora rompería las referencias ya
+  escritas en commits y en `evidence/`, que es peor que una secuencia con saltos.
 - Los commits los ejecuta la persona: el agente entrega el mensaje y para.
 - Cada tarea entregada se anota: `Entregado: PR #NNN (rama), fusionado YYYY-MM-DD`.
 - Los tests se ven **fallar** antes de implementar (§VII).
