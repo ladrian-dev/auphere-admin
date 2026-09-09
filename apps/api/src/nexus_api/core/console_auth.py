@@ -107,6 +107,11 @@ PERMISSIONS: dict[str, frozenset[str]] = {
     "conversations:read": frozenset({_O, _A, _B, _AN}),
     "usage:read": frozenset({_O, _A, _B, _AN, _BI}),
     "audit:read": frozenset({_O, _A, _AN}),
+    # Puesto de trabajo en la máquina del partner (superficie 3a). Leer lo ve
+    # cualquiera que ya ve el agente; escribir NO lo tiene el builder: añadir un
+    # ejecutable a la lista blanca es una decisión de seguridad, no de configuración.
+    "workstation:read": frozenset({_O, _A, _B, _AN}),
+    "workstation:write": frozenset({_O, _A}),
     "team:read": frozenset({_O, _A, _B, _AN, _BI}),
     "team:manage": frozenset({_O, _A}),
     "keys:read": frozenset({_O, _A, _B}),
