@@ -70,7 +70,7 @@ Nunca crea ejecutables: si el ejecutable no está en la lista, no hay grant que 
 | `tenant_id` | uuid | **RLS** |
 | `executable_id` | uuid | FK a `local_executables` |
 | `argv_signature` | text | Forma canónica de los argumentos, normalizada |
-| `action_id` | uuid | FK a `companion.actions` — **la aprobación durable vive ahí**, con su `state_hash`, `decided_at` y `decided_by` |
+| `action_id` | uuid | Apunta a `companion.actions`, donde vive la aprobación durable (`state_hash`, `decided_at`, `decided_by`). **Sin FK a propósito**: esa tabla está bajo RLS por principal y en otro contexto acotado; una FK ataría el ciclo de vida de una aprobación al de un permiso y complicaría su RLS |
 | `granted_at` | timestamptz | |
 | `revoked_at` | timestamptz | Se archiva |
 

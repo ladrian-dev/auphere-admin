@@ -8,6 +8,12 @@ from nexus_api.repositories.auphere_channels import (
 )
 from nexus_api.repositories.channel import ChannelRepository
 from nexus_api.repositories.conversation import ConversationRepository, MessageRepository
+from nexus_api.repositories.local_workstation import (
+    LocalArgumentGrantRepository,
+    LocalExecutableRepository,
+    LocalExecutionRepository,
+    PartnerDeviceRepository,
+)
 from nexus_api.repositories.owner_backchannel import (
     OwnerConsultationRepository,
     OwnerPhoneIndexRepository,
@@ -31,4 +37,8 @@ __all__ = [
     "generate_correlation_id",
     "resolve_channel_for_inbound",
     "resolve_channel_for_owner",
+    "LocalArgumentGrantRepository",
+    "LocalExecutableRepository",
+    "LocalExecutionRepository",
+    "PartnerDeviceRepository",
 ]

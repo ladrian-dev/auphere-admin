@@ -94,6 +94,15 @@ from nexus_api.db.models.knowledge import (
     KnowledgeErrorCode,
     PartnerKnowledgeDocument,
 )
+from nexus_api.db.models.local_workstation import (
+    DENIAL_REASONS,
+    OUTCOMES,
+    PLATFORMS,
+    LocalArgumentGrant,
+    LocalExecutable,
+    LocalExecution,
+    PartnerDevice,
+)
 from nexus_api.db.models.model_profile import (
     MODEL_ROLES,
     ModelProfile,
@@ -318,4 +327,11 @@ __all__ = [
     "WorkflowPack",
     "WorkflowRun",
     "WorkflowSendReceipt",
+    "DENIAL_REASONS",
+    "LocalArgumentGrant",
+    "LocalExecutable",
+    "LocalExecution",
+    "OUTCOMES",
+    "PLATFORMS",
+    "PartnerDevice",
 ]

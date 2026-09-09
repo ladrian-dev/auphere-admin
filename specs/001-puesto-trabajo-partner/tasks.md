@@ -93,24 +93,28 @@ antes de existir el cliente que hay que probar.
 
 **⚠️ Ninguna historia empieza hasta que esta fase esté completa.**
 
-- [ ] T007 Migración `apps/api/alembic/versions/0106_local_workstation.py` con las cuatro
+- [x] T007 Migración `apps/api/alembic/versions/0106_local_workstation.py` con las cuatro
       tablas de `data-model.md` —`partner_devices`, `local_executables`,
       `local_argument_grants`, `local_executions`— **todas con `tenant_id` y RLS
       forzada**. `partner_devices` **no** lleva columna de estado: la presencia se deriva
       de `last_heartbeat_at`. Unicidad `(tenant_id, executable)` con `removed_at IS NULL`.
       _Requisitos: 2.1, 4.1, 8.1_
-- [ ] T008 [P] Modelos SQLAlchemy de las cuatro entidades en
+      **HECHO.** Aplicada contra Postgres real. Las cuatro tablas con `ENABLE` + `FORCE` + 1 política cada una; `test_21` en verde con ellas dentro.
+- [x] T008 [P] Modelos SQLAlchemy de las cuatro entidades en
       `apps/api/src/nexus_api/db/models/local_workstation.py`, con `outcome` restringido a
       `completada|expirada|terminada|denegada` y `denial_reason` a la lista cerrada
       `ejecutable_no_permitido|metacaracteres|fuera_del_directorio|sin_verificar|dispositivo_ausente`.
       _Requisitos: 8.1, 8.3_
-- [ ] T009 Repositorios en `apps/api/src/nexus_api/repositories/local_workstation.py` que
+      **HECHO.** Registrados en `db/models/__init__.py` y presentes en `Base.metadata`. Vocabulario cerrado de `outcome` y `denial_reason` repetido por CHECK en la base.
+- [x] T009 Repositorios en `apps/api/src/nexus_api/repositories/local_workstation.py` que
       **no aceptan `tenant_id` del llamante**: lo toman del contexto de petición
       (`SET LOCAL app.tenant_id`) como el resto de la plataforma. _Requisitos: 2.1, 8.2_
-- [ ] T010 Endpoints de consola en `apps/api/src/nexus_api/api/console/local_workstation.py`
+      **HECHO.** Ningún método público acepta `tenant_id`; sale de `require_current_tenant()`. `test_10_repos_reject_explicit_tenant` en verde. Los permisos de argumentos usan uuid5 determinista + UPSERT.
+- [x] T010 Endpoints de consola en `apps/api/src/nexus_api/api/console/local_workstation.py`
       para alta y archivado de ejecutables y para el alta del dispositivo. **La lista
       blanca solo se modifica aquí, por una persona** — nunca desde el turno.
       _Requisitos: 2.1, 4.3_
+      **HECHO.** Cinco rutas bajo `/console/clients/{ref}/workstation`, con permisos nuevos `workstation:read` y `workstation:write` — este último **no** lo tiene el rol *builder*. `test_console_scope` en verde (416).
 
 **Checkpoint**: base lista. Las historias pueden empezar.
 
