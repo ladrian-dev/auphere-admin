@@ -5,6 +5,14 @@ desde la máquina del partner hacia la plataforma, sondea trabajo, ejecuta y
 responde. **Nada entra desde internet hacia esa máquina** (Requisito 6.1): instalar
 esto no abre un puerto en casa ni en la oficina de nadie.
 
+> **Sustituido en parte (2026-09-09).** La credencial, sus claims y las
+> operaciones que autoriza los redefine
+> [`specs/002-identidad-app-escritorio/contracts/device-bridge-v2.md`](../../002-identidad-app-escritorio/contracts/device-bridge-v2.md):
+> la máquina pasa a ser del partner (enmienda del Requisito 6.3), `enrol` se
+> sustituye por el canje de un código de emparejamiento, y aparecen `renew` y
+> `links`. Los invariantes de abajo —saliente, sin entrantes, latido que caduca
+> solo— siguen vigentes.
+
 ## Del dispositivo hacia la plataforma
 
 | Mensaje | Para qué |

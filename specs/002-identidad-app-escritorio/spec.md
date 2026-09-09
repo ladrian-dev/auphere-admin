@@ -31,7 +31,7 @@ trabajo como necesitamos que lo configure, y lo guía para hacer cada paso»*.
 > va «acotada a su tenant». A partir de esta spec va **acotada al partner y a los
 > tenants de ese partner**, con el tenant fijado por trabajo y no por la
 > credencial. El espíritu —no alcanza otra máquina, no alcanza a quien no le
-> corresponde, cuatro operaciones y ni una más— se conserva. La enmienda está en el
+> corresponde, un número cerrado de operaciones y ni una más— se conserva. La enmienda está en el
 > Requisito 4 y lleva sus tests de aislamiento.
 
 ## Lo que hereda del diseño *Auphere Web v3*, y lo que el diseño no dibuja
@@ -389,8 +389,11 @@ herramienta refleje cómo trabajo y no cómo está modelada la base.
    máquina DEBE poder servir a cualquier subconjunto de los clientes de ese
    partner con **una sola** credencial y **una sola** presencia.
 2. La credencial de dispositivo DEBE ir acotada al partner y a los tenants de ese
-   partner, y DEBE seguir limitada a sus cuatro operaciones — latir, sondear,
-   devolver resultados y renovar —, sin ninguna más.
+   partner, y DEBE estar limitada a **cinco** operaciones — latir, sondear,
+   devolver resultados, renovar y declarar el directorio de un cliente —, sin
+   ninguna más. *(Enmendado en el plan: el Requisito 7 exige que el directorio se
+   declare desde la máquina, y eso es una operación de la máquina; contarla como
+   parte de otra habría sido esconderla.)*
 3. WHEN la plataforma despacha trabajo a una máquina THEN el tenant DEBE fijarse
    por trabajo desde el contexto de la plataforma, y NO DEBE llegar nunca del
    llamante ni viajar dentro de la credencial.
@@ -515,8 +518,8 @@ deje de valer sola.
 #### Criterios de aceptación
 
 1. WHILE la máquina mantiene su latido el sistema DEBE renovar su credencial sin
-   intervención de la persona, y la renovación DEBE contar como una de las cuatro
-   operaciones del Requisito 4.2, no como una quinta.
+   intervención de la persona, y la renovación DEBE ser una de las cinco
+   operaciones del Requisito 4.2, no una más.
 2. IF una máquina no late durante **30 días** THEN el sistema DEBE dejar de
    renovarla; WHEN vuelva THEN la barra DEBE mostrar `hay que volver a emparejar`
    como estado, y NO DEBE ofrecer herramientas locales hasta entonces.
