@@ -11,6 +11,10 @@ def _set_prod_secrets(monkeypatch):
     monkeypatch.setenv("NEXUS_FERNET_KEY", "prod-fernet-key-override")
     monkeypatch.setenv("NEXUS_EMBED_JWT_SECRET", "real-embed-jwt-secret-32-bytes-long!")
     monkeypatch.setenv("NEXUS_CONNECTOR_CONSENT_SECRET", "real-consent-secret-at-least-32-chars!!")
+    # Firma las credenciales de dispositivo de la beta 2 (Requisito 6.3): un
+    # despliegue de producción sin esto no arranca, y esta lista **es** la
+    # especificación de lo que un despliegue necesita.
+    monkeypatch.setenv("NEXUS_DEVICE_TOKEN_SECRET", "real-device-secret-at-least-32-chars!!")
     monkeypatch.setenv("NEXUS_COMPOSIO_API_KEY", "real-composio-key")
     monkeypatch.setenv("NEXUS_COMPOSIO_WEBHOOK_SECRET", "real-composio-webhook-secret")
     monkeypatch.setenv("NEXUS_PUBLIC_API_BASE_URL", "https://api.auphere.com")
