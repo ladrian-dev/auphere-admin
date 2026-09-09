@@ -268,10 +268,11 @@ sesión y enumerar el catálogo.
       falta una herramienta que sí tiene contratada. _Requisitos: 14.1, 14.3, 14.4_
       **HECHO en la regla.** `reaches_network` es ternario —`None` cuenta como que alcanza— y `excluded_for_network_reach()` existe para poder decirlo **como estado**. La pantalla que lo muestra es de US2.
 
-- [ ] T061 [US4] Endpoint de API que sirve el documento del catálogo de la sesión con la
+- [x] T061 [US4] Endpoint de API que sirve el documento del catálogo de la sesión con la
       forma fijada en `contracts/console-mcp.md`, incluido el `reaches_network` por
       herramienta. Es la otra mitad de T025: la edición ya lo consume y lo prueba contra
       un abridor falso; falta quien lo sirva. _Requisitos: 5.1, 14.1_
+      **HECHO.** `GET /console/session/tool-catalog`, auditado por `test_console_scope` (419 ✅). **Solo avala lo que puede avalar**: `reaches_network: false` para las `console.*`, que llaman a nuestra propia API; de todo lo demás se calla, y callarse significa «alcanza la red» (14.2). Un `false` por defecto convertiría el desconocimiento en permiso.
 
 **Checkpoint**: US4 funciona y se prueba sola.
 
@@ -445,17 +446,20 @@ apuesta a ciegas: T002 dejó establecido el predicado (`has_dashboard_surface()`
 una clave con prefijo `dashboard:` satisface) y la cola global de aprobaciones con
 sus endpoints, así que esto se construye contra un contrato conocido.
 
-- [ ] T051 [P] Test en `apps/desktop/tests/test_spawn_approval_surface.py`: el estado
+- [x] T051 [P] Test en `apps/desktop/tests/test_spawn_approval_surface.py`: el estado
       mostrado del subagente coincide con el real **incluido el rechazo** — la evaluación
       observó un `✅` para un subagente rechazado, y esa mentira no se hereda.
       _Requisitos: 11.2, 11.3_
+      **HECHO**, en `spawn-approval-surface.test.ts` (9 tests). La defensa no es leer mejor su listado: es **no tratarlo como autoritativo**. Por eso existe `desconocido`, que es incómodo a propósito — la alternativa cómoda, asumir que corre porque aparece listado, es justo la que produce una pantalla que miente.
 - [ ] T052 Lanzamiento de subagentes con la cáscara de escritorio como superficie que
       contesta la aprobación, **y verificación de punta a punta**: originar la sesión con
       una clave que satisfaga `has_dashboard_surface()`, lanzar un `spawn`, contestarlo
       desde nuestro cliente por la cola global, y comprobar que el subagente corre.
       Es la condición de esta fase y va primero. _Requisitos: 11.1_
-- [ ] T053 Estado `bloqueado` cuando un subagente espera a otro, y no pintado como
+- [x] T053 Estado `bloqueado` cuando un subagente espera a otro, y no pintado como
       ocioso. _Requisitos: 11.4_
+      **HECHO** dentro de `spawn-state.ts`: `bloqueado` gana a `ejecutando` porque es más
+      informativo, y nunca se pinta como ocioso algo que sí está avanzando trabajo.
 
 ---
 

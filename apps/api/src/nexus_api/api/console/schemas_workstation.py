@@ -59,3 +59,19 @@ class ExecutionOut(BaseModel):
     ended_at: datetime | None = None
     exit_code: int | None = None
     children_reaped: int
+
+
+class SessionToolEntry(BaseModel):
+    """Una fila del catálogo.
+
+    ``reaches_network`` es **opcional a propósito**: ausente significa *sin
+    declarar*, y sin declarar cuenta como que alcanza la red (Requisito 14.2).
+    Ponerle un defecto `False` convertiría el olvido en permiso.
+    """
+
+    name: str
+    reaches_network: bool | None = None
+
+
+class SessionToolCatalogOut(BaseModel):
+    tools: list[SessionToolEntry]
