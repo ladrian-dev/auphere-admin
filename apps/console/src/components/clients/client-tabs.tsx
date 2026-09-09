@@ -12,6 +12,7 @@ const TABS = [
   { seg: "skills", key: "clients.tabs.skills" },
   { seg: "knowledge", key: "clients.tabs.knowledge" },
   { seg: "playground", key: "clients.tabs.playground" },
+  { seg: "workstation", key: "clients.tabs.workstation" },
   { seg: "channels", key: "clients.tabs.channels" },
   { seg: "conversations", key: "clients.tabs.conversations" },
   { seg: "settings", key: "clients.tabs.settings" },

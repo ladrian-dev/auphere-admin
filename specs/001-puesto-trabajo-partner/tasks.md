@@ -306,13 +306,19 @@ ofrecer aprobación; añadirlo por consola y comprobar que ya se puede usar.
       aprobación durable — no se crea un segundo mecanismo de aprobación.
       _Requisitos: 2.3, 2.5_
       **HECHO.** La firma es JSON compacto y no una concatenación: `["a b"]` y `["a","b"]` son invocaciones distintas y tienen que firmar distinto, o una aprobación valdría para la otra.
-- [ ] T034 [US3] Pantalla de consola para añadir y archivar ejecutables, con la persona
+- [x] T034 [US3] Pantalla de consola para añadir y archivar ejecutables, con la persona
       que lo hizo. La lista arranca **vacía** por tenant. _Requisitos: 2.1_
-      **La mitad de API ya está** (T010: cinco rutas bajo `/console/clients/{ref}/workstation`,
-      con `workstation:write` fuera del rol *builder*). Falta la pantalla en `apps/console`,
-      que es **frontend y trae sus propias puertas bloqueantes** —los 5 estados, WCAG 2.2 AA,
-      responsive y tokens—. Se deja para un pase de UI propio en vez de colgarla del final de
-      una fase de backend: una pantalla que no pasa esas puertas no está hecha, está escrita.
+      **HECHO**, con las cuatro puertas de UI por delante y no por detrás.
+      `/clients/{ref}/workstation` en `apps/console`, con lane de backend, mensajes ES/EN,
+      pestaña y server actions. **Los 5 estados**: `loading.tsx` con esqueleto de las
+      dimensiones reales · vacío con acción (y `readonly` sin permiso) · error de ruta +
+      `toast` + error de campo en línea · **parcial** —si las máquinas no cargan, la lista
+      blanca se pinta igual y solo ese bloque avisa— · ideal. **Tokens**: cero hex, cero
+      `style`, cero valores arbitrarios, cero medios pasos, cero radios fuera del enum.
+      **a11y**: `aria-busy`, `aria-labelledby` por sección, `htmlFor`, `aria-invalid` +
+      `aria-describedby` + `role="alert"`, `role="status"` en el parcial y `<time>`.
+      **Sin permiso no hay botón apagado: no hay botón** (§V). 275 tests de consola en
+      verde, typecheck y build limpios.
 
 **Checkpoint**: US3 y US4 funcionan de forma independiente.
 

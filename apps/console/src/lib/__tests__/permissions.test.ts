@@ -19,6 +19,8 @@ const API_MAP: Record<string, string[]> = {
   "conversations:read": ["owner", "admin", "builder", "analyst"],
   "usage:read": ["owner", "admin", "builder", "analyst", "billing"],
   "audit:read": ["owner", "admin", "analyst"],
+  "workstation:read": ["owner", "admin", "builder", "analyst"],
+  "workstation:write": ["owner", "admin"],
   "team:read": ["owner", "admin", "builder", "analyst", "billing"],
   "team:manage": ["owner", "admin"],
   "keys:read": ["owner", "admin", "builder"],

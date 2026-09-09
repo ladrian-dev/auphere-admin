@@ -20,6 +20,10 @@ export const PERMISSIONS = {
   "conversations:read": ["owner", "admin", "builder", "analyst"],
   "usage:read": ["owner", "admin", "builder", "analyst", "billing"],
   "audit:read": ["owner", "admin", "analyst"],
+  // Puesto de trabajo en la máquina del partner (spec 001). Escribir NO lo
+  // tiene el builder: añadir un ejecutable es una decisión de seguridad.
+  "workstation:read": ["owner", "admin", "builder", "analyst"],
+  "workstation:write": ["owner", "admin"],
   "team:read": ["owner", "admin", "builder", "analyst", "billing"],
   "team:manage": ["owner", "admin"],
   "keys:read": ["owner", "admin", "builder"],

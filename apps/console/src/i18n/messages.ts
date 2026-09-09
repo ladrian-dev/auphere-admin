@@ -12,6 +12,7 @@ import { companionMessages } from "./lanes/companion";
 import { homeUsageMessages } from "./lanes/home-usage";
 import { onboardingMessages } from "./lanes/onboarding";
 import { playgroundMessages } from "./lanes/playground";
+import { workstationMessages } from "./lanes/workstation";
 
 const core = {
   // shell
@@ -333,6 +334,7 @@ const messages = {
   ...core,
   ...agentToolsMessages,
   ...playgroundMessages,
+  ...workstationMessages,
   ...channelsMessages,
   ...homeUsageMessages,
   ...onboardingMessages,

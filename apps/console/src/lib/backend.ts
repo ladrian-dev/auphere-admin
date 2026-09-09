@@ -293,6 +293,7 @@ import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
+import { workstationApi } from "./backend/workstation";
 
 /** Mint-per-call function for a principal (also used by route handlers that stream). */
 export function callFor(principal: Principal): Call {
@@ -320,6 +321,7 @@ export function backendFor(principal: Principal) {
     ...companionApi(call),
     ...homeUsageApi(call),
     ...onboardingApi(call),
+    ...workstationApi(call),
 
     me: () => call<Me>("/console/me"),
 
