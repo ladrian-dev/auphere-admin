@@ -172,30 +172,36 @@ justo el que se cae si se ordena solo por historias.
 
 ### Tests para el Requisito 7 ⚠️
 
-- [ ] T016 [P] Test en `apps/api/tests/integration/test_end_client_approval_boundary.py`:
+- [x] T016 [P] Test en `apps/api/tests/integration/test_end_client_approval_boundary.py`:
       una acción que toca datos de un cliente final pasa por `companion.actions` y la
       auditoría nombra a la **persona** que decidió, no al agente que ejecutó.
       _Requisitos: 7.1_
-- [ ] T017 [P] Test en `apps/api/tests/integration/test_machine_scoped_ladder.py`: una
+      **HECHO.** Comprueba que `decided_by` es de **la persona**, no del agente que ejecutó — que es el punto entero de §IV: un registro que dice «lo hizo el agente» no responde a la única pregunta que importa en un incidente.
+- [x] T017 [P] Test en `apps/api/tests/integration/test_machine_scoped_ladder.py`: una
       acción limitada a la máquina se resuelve con la escalera local y **no consume una
       aprobación durable**. _Requisitos: 7.2_
-- [ ] T018 [P] Test en `apps/api/tests/unit/test_approval_expiry_denies.py`: una
+      **HECHO.** Un comando local **no abre ninguna acción durable**. Si cada `make build` llenara la bandeja, la señal que importa —«esto toca a un cliente tuyo»— se perdería entre cientos de entradas de ruido.
+- [x] T018 [P] Test en `apps/api/tests/unit/test_approval_expiry_denies.py`: una
       aprobación que caduca sin respuesta deniega la acción — deny-on-silence, nunca
       allow-on-silence. _Requisitos: 7.3_
-- [ ] T019 [P] Test en `apps/edition/tests/test_no_end_client_credentials.py`: el
+      **HECHO.** Deny-on-silence a los 15 minutos, y una acción ya decidida **no se vuelve a decidir**: caducar no puede revertir un sí que ya se dio, sería reescribir la historia que la auditoría guarda.
+- [x] T019 [P] Test en `apps/edition/tests/test_no_end_client_credentials.py`: el
       ambiente donde corre el agente no contiene ninguna credencial de cliente final,
       comprobado sobre el entorno real del proceso y no sobre la configuración.
       _Requisitos: 7.4_
+      **HECHO.** El ambiente se construye por **lista blanca desde cero**, no saneando. El sustrato arranca con `env = {**os.environ}` y solo quita cinco variables; en la beta 2 ese entorno es el del partner, y una lista negra ahí es una lista de lo que se nos ocurrió, no de lo que hay.
 
 ### Implementación del Requisito 7
 
-- [ ] T020 Clasificador de alcance de la acción en
+- [x] T020 Clasificador de alcance de la acción en
       `apps/api/src/nexus_api/services/action_scope.py`: decide si una acción se queda en
       la máquina o toca a un cliente final, y **falla hacia la escalera durable** cuando no
       lo puede determinar. _Requisitos: 7.1, 7.2_
-- [ ] T021 Caducidad con denegación por silencio, y saneado del ambiente del proceso del
+      **HECHO.** `services/action_scope.py`. Lo que hace segura la clasificación no es la lista sino **el defecto**: lo que no se reconoce cae del lado durable. La lista de ámbito-máquina es diminuta y hay un test que se queja si crece.
+- [x] T021 Caducidad con denegación por silencio, y saneado del ambiente del proceso del
       agente para que ninguna credencial de cliente final entre en él.
       _Requisitos: 7.3, 7.4_
+      **HECHO**, reutilizando `is_stale` del companion en vez de crear un segundo mecanismo de caducidad. El ambiente lo cubre `auphere_edition.agent_env`, que además falla si algo con forma de credencial aparece **dentro de una variable permitida**.
 
 **Checkpoint**: la frontera existe y está probada. Ahora sí pueden empezar las
 historias.
