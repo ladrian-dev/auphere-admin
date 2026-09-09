@@ -349,6 +349,26 @@ pone ningún techo por mí.
 4. IF un proceso no puede terminarse THEN el sistema DEBE decírselo al partner y
    nombrar el proceso, en vez de darlo por terminado.
 
+### Requisito 13 — Lo que el sustrato trae y no se enciende
+
+**Historia de usuario:** Como responsable de Auphere, quiero que las capacidades
+que el puesto de trabajo trae de fábrica y nosotros no usamos sean **inalcanzables**
+y no solo estén sin listar, para que no dependan de que nadie se acuerde.
+
+#### Criterios de aceptación
+
+1. El sistema NO DEBE exponer al agente el navegador ni el control de escritorio
+   del sustrato, y DEBE hacerlos **inalcanzables**: no basta con que no estén en la
+   lista blanca.
+2. El sistema DEBE arrancar con la telemetría del sustrato desactivada, fijada
+   **antes del primer arranque**.
+3. El sistema NO DEBE habilitar el canal de mensajería no oficial del sustrato.
+4. El sistema NO DEBE permitir la carga de aplicaciones de terceros en el proceso
+   que hospeda al agente.
+5. El sistema DEBE fijar las tres rutas del sustrato —data home, home de familia y
+   workspace del agente— dentro de una ubicación que declare el empaquetado, y NO
+   DEBE materializar ninguna de ellas en el home del partner por defecto.
+
 ### Entidades clave *(si la feature toca datos)*
 
 - **Dispositivo del partner**: la máquina declarada, su latido y su última
@@ -380,6 +400,8 @@ pone ningún techo por mí.
   sesión — cero huérfanos en la máquina del partner.
 - **CE-008**: el estado que el partner ve de un subagente coincide con lo que
   realmente ocurrió, incluidos los rechazos.
+- **CE-009**: las capacidades que no usamos —navegador, control de escritorio,
+  canal no oficial, carga de apps— son **inalcanzables**, no solo invisibles.
 
 ## Fuera de alcance
 
