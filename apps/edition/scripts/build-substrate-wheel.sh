@@ -28,5 +28,20 @@ dirty="$(git -C "$CLONE" status --porcelain | wc -l | tr -d ' ')"
 [ "$before" = "$after" ] || { echo "el clon cambió de HEAD durante el build" >&2; exit 1; }
 [ "$dirty" = "0" ] || { echo "el clon quedó con $dirty ficheros modificados: eso es un fork, no una composición" >&2; exit 1; }
 
-echo "rueda: $(ls "$OUT"/dist/*.whl)"
+# Apache-2.0 §4.d: el NOTICE viaja con lo distribuido. Es obligación de licencia,
+# así que es una puerta del build y no una costumbre.
+WHEEL="$(ls "$OUT"/dist/*.whl)"
+# El listado se captura UNA vez a propósito: `unzip -l | grep -q` bajo `pipefail`
+# marca la tubería como fallida cuando grep acierta y sale antes de tiempo, y la
+# puerta denunciaba ruedas correctas.
+listing="$(unzip -l "$WHEEL")"
+for required in NOTICE LICENSE; do
+  case "$listing" in
+    *"licenses/$required"*) ;;
+    *) echo "la rueda no lleva $required dentro: Apache-2.0 §4.d lo exige" >&2; exit 1 ;;
+  esac
+done
+
+echo "rueda: $WHEEL"
+echo "NOTICE y LICENSE presentes en la rueda (Apache-2.0 §4.d)"
 echo "clon intacto en $PINNED, 0 modificados"
