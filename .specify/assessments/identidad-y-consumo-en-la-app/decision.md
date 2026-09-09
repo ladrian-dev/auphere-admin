@@ -180,3 +180,10 @@ Pendiente al cerrar la spec: `[[14-mvp-y-fases]]` §3 y `[[10-decisiones]]`
 —decisiones 2 y 9, y la §2.3 declarada como dependencia— deben apuntar a la
 carpeta `specs/NNN-*` que salga de este `go`. Una decisión de KB sin spec delante
 es una decisión que nadie ha ejecutado.
+
+> **Addendum 2026-09-09, tras `/speckit-specify`.** La dependencia declarada
+> sobre `[[10-decisiones]]` §2.3 quedó **cerrada** en la spec que salió de este
+> `go` — `specs/002-identidad-app-escritorio/` — a favor de «solo por
+> invitación», con el diseño v3 leído entero como evidencia adicional. Las otras
+> dos clarificaciones (cerrar sesión detiene el puente; acoplamiento mínimo para
+> Meta) están en la misma spec, §Clarificaciones cerradas.
