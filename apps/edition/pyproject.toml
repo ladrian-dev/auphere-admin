@@ -5,6 +5,10 @@ description = "Auphere edition composed over the pinned KiroCrew substrate. Neve
 requires-python = ">=3.12"
 dependencies = []
 
+[project.scripts]
+# Lo que el sustrato lanza como servidor MCP de la edición.
+auphere-console-mcp = "auphere_edition.console_mcp:main"
+
 [project.entry-points."kirocrew.plugins"]
 build_enterprise_context = "auphere_edition.edition:build_enterprise_context"
 

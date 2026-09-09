@@ -232,13 +232,14 @@ sesión y enumerar el catálogo.
 
 ### Implementación de US4
 
-- [ ] T025 [US4] Servidor MCP de la edición sobre las herramientas `console.*`. Contrato
+- [x] T025 [US4] Servidor MCP de la edición sobre las herramientas `console.*`. Contrato
       en `contracts/console-mcp.md`. _Requisitos: 5.1, 5.4_
-      **PARCIAL.** Hechas las dos mitades que gobiernan: `AuphereMcpTooling` declara el
-      servidor `auphere-console`, y `auphere_edition.catalog` tiene las tres reglas
-      —exhaustivo, fail-closed y alcance de red— con 15 tests. **Falta el proceso** que
-      las sirve por MCP hablando con la API. Las reglas van primero a propósito: un
-      servidor sin ellas dejaría el catálogo a merced de la fuente.
+      **HECHO.** `ConsoleMcpServer` (JSON-RPC sobre stdio, **sin dependencias nuevas**:
+      es código que corre en la máquina de otra persona) + `catalog_source` HTTP. Publica
+      el catálogo resuelto y **revalida al invocar** — publicar bien y confiar en que
+      nadie llame otra cosa es la mitad del trabajo. Un catálogo irresoluble es un
+      **error**, no una lista vacía: servir cero herramientas diría «no tienes nada», que
+      es otra afirmación y además falsa. Falta el endpoint que lo sirve → `T061`.
 - [x] T026 [US4] Llevar a producción el envoltorio validado en T001, en
       `apps/edition/src/auphere_edition/wrapper/`. _Requisitos: 5.1, 5.2_
       **HECHO.** `auphere_edition.wrapper`: el flag va delante y **nunca duplicado**, y el script se niega a apuntar a sí mismo — una recursión silenciosa habría sido cara de diagnosticar.
@@ -259,6 +260,11 @@ sesión y enumerar el catálogo.
       interfaz lo dice **como estado** — el partner tiene que poder saber por qué le
       falta una herramienta que sí tiene contratada. _Requisitos: 14.1, 14.3, 14.4_
       **HECHO en la regla.** `reaches_network` es ternario —`None` cuenta como que alcanza— y `excluded_for_network_reach()` existe para poder decirlo **como estado**. La pantalla que lo muestra es de US2.
+
+- [ ] T061 [US4] Endpoint de API que sirve el documento del catálogo de la sesión con la
+      forma fijada en `contracts/console-mcp.md`, incluido el `reaches_network` por
+      herramienta. Es la otra mitad de T025: la edición ya lo consume y lo prueba contra
+      un abridor falso; falta quien lo sirva. _Requisitos: 5.1, 14.1_
 
 **Checkpoint**: US4 funciona y se prueba sola.
 
