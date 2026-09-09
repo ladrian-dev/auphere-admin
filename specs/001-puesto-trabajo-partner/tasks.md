@@ -143,9 +143,10 @@ antes de existir el cliente que hay que probar.
       excluidas), y **conservar el `NOTICE`** en el paquete distribuido (§VIII).
       _Requisitos: 9.1_
       **HECHO.** `apps/edition/NOTICE` y `THIRD-PARTY-LICENSES.md` con §2, §4.d y §6 citados. El build **falla** si la rueda no lleva `NOTICE` y `LICENSE` dentro: la obligación de §4.d es una puerta, no una costumbre.
-- [ ] T015 Conectar el **consumo de modelo** de las sesiones locales al medidor que ve el
+- [x] T015 Conectar el **consumo de modelo** de las sesiones locales al medidor que ve el
       partner, y decir en qué pantalla lo ve. **No se factura reloj de máquina**: la
       máquina es del partner. _Requisitos: 10.1, 10.2_
+      **HECHO.** `services/local_workstation_metering.py` sobre `debit_wallet`, sin medidor nuevo: dos contadores es un sitio donde las cifras dejan de cuadrar. Lo ve en `/usage`, donde ya mira — no hay pantalla nueva porque no hay concepto nuevo. **La garantía de que no se factura reloj es estructural**: la función no recibe ninguna duración, así que no se puede cobrar tiempo ni por accidente. Y una denegación no cobra: sería cobrar por decir que no.
       **MOVIDA a la Phase 5 (US1), por orden.** No existe todavía ningún camino que
       consuma modelo: el primero lo abre la ejecución de US1. Cablear el medidor contra
       algo que no está sería escribir código sin nada que medir. La puerta del medidor
@@ -405,22 +406,31 @@ el catálogo del turno siguiente.
 
 ### Tests para US2 ⚠️
 
-- [ ] T046 [P] [US2] Test en `apps/api/tests/integration/test_device_presence.py`: al
+- [x] T046 [P] [US2] Test en `apps/api/tests/integration/test_device_presence.py`: al
       caducar el latido, las herramientas locales salen del catálogo y el teammate **no
       afirma resultados de comandos que no ejecutó**. _Requisitos: 4.1, 4.2_
-- [ ] T047 [P] [US2] Test en `apps/api/tests/unit/test_absence_is_designed.py`: sin
+      **HECHO.** 8 tests, incluido que **no existe columna de estado** donde una presencia pueda quedarse caducada, y que la ventana deja margen para perder dos latidos — con uno solo, una red con hipo se vería como una máquina que se va.
+- [x] T047 [P] [US2] Test en `apps/api/tests/unit/test_absence_is_designed.py`: sin
       dispositivo no hay control desactivado ni pantalla que explique lo que no se tiene.
       _Requisitos: 4.4_
+      **HECHO**, en `apps/console/src/components/workstation/__tests__/absence-is-designed.test.tsx`: una afirmación de interfaz se comprueba donde hay interfaz. 7 tests, incluido que **ningún control queda deshabilitado** y que una máquina que nunca se conectó se distingue de una que se fue.
 
 ### Implementación de US2
 
-- [ ] T048 [US2] Latido y **derivación** del estado desde `last_heartbeat_at` — sin
+- [x] T048 [US2] Latido y **derivación** del estado desde `last_heartbeat_at` — sin
       columna de estado, para que la pantalla no pueda quedarse mintiendo si muere el
       proceso que la actualizaría. _Requisitos: 4.1, 4.2_
-- [ ] T049 [US2] Composición del catálogo del turno según la presencia.
+      **HECHO.** `services/device_presence.py`. Latir no mueve nada más que `last_heartbeat_at`: no hay estado que pueda quedar desincronizado.
+- [x] T049 [US2] Composición del catálogo del turno según la presencia.
       _Requisitos: 4.2_
+      **HECHO.** `catalog_includes_local_tools`. Sin máquina las herramientas locales **no existen** en el turno — no están deshabilitadas ni fallan al usarse. Que el agente no pueda ni intentarlo es lo que impide que afirme resultados de comandos que nunca ejecutó.
 - [ ] T050 [US2] Estado en la interfaz —«desconectado desde las 23:10»— y `reconectando`
       mientras el puente se recupera. Es estado, no error. _Requisitos: 4.3, 6.2_
+      **MITAD HECHA.** La consola ya dice «Desconectada desde …» y distingue «nunca se ha
+      conectado», con su test. El `reconectando` vive en `OutboundBridge.linkState` y está
+      probado, pero **la aplicación de escritorio que lo pintaría no existe todavía**: T005
+      construyó el puente, no la cáscara Electron. No se marca hecha por una pantalla que
+      nadie puede ver.
 
 **Checkpoint**: las cuatro historias funcionan de forma independiente.
 
