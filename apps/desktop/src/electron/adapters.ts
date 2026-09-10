@@ -1,0 +1,112 @@
+/**
+ * Los adaptadores de Electron para lo que el núcleo pide por interfaz.
+ *
+ * Todo lo que decide está en módulos puros con tests; aquí solo se conecta
+ * cada interfaz a la API de Electron o de Node que la implementa. Sin tests
+ * unitarios a propósito: probarlos con dobles solo demostraría que los dobles
+ * hacen lo que les dijimos.
+ */
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { app, dialog, safeStorage, session, shell, type BaseWindow } from "electron";
+
+import type { Cipher, FileStore } from "../credential-store.js";
+import type { DirectoryFs } from "../directory-declare.js";
+import type { SessionCookieWatcher, Whoami, WhoamiClient } from "../session-gate.js";
+import { HUMAN_PARTITION } from "../session-isolation.js";
+
+// ── credencial: safeStorage + fichero en userData (D7) ──────────────────
+
+export function safeStorageCipher(): Cipher {
+  return {
+    isAvailable: () => safeStorage.isEncryptionAvailable(),
+    encrypt: (text) => safeStorage.encryptString(text),
+    decrypt: (bytes) => safeStorage.decryptString(bytes),
+  };
+}
+
+export function userDataFile(name = "credentials.bin"): FileStore {
+  const path = join(app.getPath("userData"), name);
+  return {
+    read: () => (existsSync(path) ? readFileSync(path) : null),
+    write: (bytes) => {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, bytes, { mode: 0o600 });
+    },
+    remove: () => rmSync(path, { force: true }),
+  };
+}
+
+// ── quién está dentro: whoami con la cookie de la partición humana (D6) ─
+
+export function consoleWhoami(consoleUrl: string): WhoamiClient {
+  const origin = new URL(consoleUrl).origin;
+  return {
+    async whoami(): Promise<Whoami> {
+      const response = await session.fromPartition(HUMAN_PARTITION).fetch(`${origin}/api/session/whoami`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      if (response.status === 401) return { kind: "anonymous" };
+      if (response.status === 403) return { kind: "no_membership" };
+      if (!response.ok) return { kind: "anonymous" };
+      // Una respuesta que no es JSON (una página, un proxy) no es una persona.
+      let body: { user_id?: string; partner_slug?: string };
+      try {
+        body = (await response.json()) as { user_id?: string; partner_slug?: string };
+      } catch {
+        return { kind: "anonymous" };
+      }
+      if (!body.user_id) return { kind: "anonymous" };
+      return { kind: "member", userId: String(body.user_id), partnerSlug: String(body.partner_slug ?? "") };
+    },
+  };
+}
+
+export const SESSION_COOKIE = "nexus-console.session";
+
+export function sessionCookieWatcher(): SessionCookieWatcher {
+  return {
+    onSessionCookieChanged(callback) {
+      session.fromPartition(HUMAN_PARTITION).cookies.on("changed", (_event, cookie) => {
+        if (cookie.name === SESSION_COOKIE) callback();
+      });
+    },
+  };
+}
+
+// ── directorio: selector nativo + comprobaciones del sistema (R7) ───────
+
+export const nodeDirectoryFs: DirectoryFs = {
+  exists: (p) => existsSync(p),
+  isDirectory: (p) => {
+    try {
+      return statSync(p).isDirectory();
+    } catch {
+      return false;
+    }
+  },
+  realpath: (p) => realpathSync.native(p),
+  canRead: (p) => {
+    try {
+      accessSync(p, constants.R_OK | constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+};
+
+export function nativeDirectoryPicker(window: BaseWindow, title: string): () => Promise<string | null> {
+  return async () => {
+    const result = await dialog.showOpenDialog(window, {
+      title,
+      properties: ["openDirectory", "createDirectory", "noResolveAliases"],
+    });
+    return result.canceled || result.filePaths.length === 0 ? null : (result.filePaths[0] ?? null);
+  };
+}
+
+export function openExternal(url: string): Promise<void> {
+  return shell.openExternal(url);
+}

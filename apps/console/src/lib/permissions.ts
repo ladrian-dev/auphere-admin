@@ -23,6 +23,8 @@ export const PERMISSIONS = {
   // Puesto de trabajo en la máquina del partner (spec 001). Escribir NO lo
   // tiene el builder: añadir un ejecutable es una decisión de seguridad.
   "workstation:read": ["owner", "admin", "builder", "analyst"],
+  // Emparejar la propia máquina (spec 002): quien usa a los teammates.
+  "workstation:pair": ["owner", "admin", "builder"],
   "workstation:write": ["owner", "admin"],
   "team:read": ["owner", "admin", "builder", "analyst", "billing"],
   "team:manage": ["owner", "admin"],

@@ -1,4 +1,4 @@
-"""``/console/clients/{ref}/workstation`` — el puesto de trabajo del partner.
+"""``/console/clients/{ref}/workstation`` — lo que del puesto de trabajo es del cliente.
 
 **La lista blanca de ejecutables solo se modifica aquí.** Ése es el punto entero del
 Requisito 2: un ejecutable ausente de la lista no se puede aprobar en caliente
@@ -15,20 +15,18 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
+from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.db.models import PartnerDevice
 from nexus_api.repositories.local_workstation import (
+    DeviceClientLinkRepository,
     LocalExecutableRepository,
     LocalExecutionRepository,
-    PartnerDeviceRepository,
 )
-from nexus_api.services.device_credential import issue_device_token
 
 from .deps import ClientScope, client_scope
 from .schemas_workstation import (
-    DeviceCreatedOut,
-    DeviceIn,
     DeviceOut,
     ExecutableIn,
     ExecutableOut,
@@ -50,57 +48,42 @@ def _presence(device: PartnerDevice, *, now: datetime | None = None) -> str:
     return "presente" if reference - device.last_heartbeat_at < PRESENCE_EXPIRY else "ausente"
 
 
-def _device_out(device: PartnerDevice) -> DeviceOut:
-    return DeviceOut(
-        id=device.id,
-        display_name=device.display_name,
-        platform=device.platform,
-        workdir=device.workdir,
-        app_version=device.app_version,
-        last_heartbeat_at=device.last_heartbeat_at,
-        presence=_presence(device),
-        enrolled_at=device.enrolled_at,
-    )
-
-
-# ── dispositivos ───────────────────────────────────────────────────────
+# ── máquinas vinculadas a este cliente ────────────────────────────────
+#
+# Spec 002: la máquina es del partner y se da de alta emparejándola desde
+# `/console/workstation`. Aquí solo se listan las que sirven a **este** cliente,
+# y solo las que la persona puede ver (las suyas, o todas si gestiona).
 
 
 @router.get("/devices", response_model=list[DeviceOut])
 async def list_devices(
     scope: ClientScope = Depends(client_scope("workstation:read")),
 ) -> list[DeviceOut]:
-    devices = await PartnerDeviceRepository(scope.session).list_active()
-    return [_device_out(d) for d in devices]
-
-
-@router.post("/devices", response_model=DeviceCreatedOut, status_code=status.HTTP_201_CREATED)
-async def enrol_device(
-    payload: DeviceIn,
-    scope: ClientScope = Depends(client_scope("workstation:write")),
-) -> DeviceCreatedOut:
-    """Da de alta la máquina y devuelve su credencial **una sola vez**."""
-    device = await PartnerDeviceRepository(scope.session).enrol(
+    await apply_partner_to_session(
+        scope.session,
+        scope.principal.partner.id,
         principal_id=scope.principal.user_id,
-        display_name=payload.display_name,
-        platform=payload.platform,
-        workdir=payload.workdir,
-        app_version=payload.app_version,
+        workstation_manager="workstation:write" in scope.principal.permissions,
     )
-    token = issue_device_token(device_id=device.id, tenant_id=device.tenant_id)
-    return DeviceCreatedOut(**_device_out(device).model_dump(), pairing_token=token)
-
-
-@router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def revoke_device(
-    device_id: uuid.UUID,
-    scope: ClientScope = Depends(client_scope("workstation:write")),
-) -> None:
-    """Archiva el dispositivo. Borrar no existe."""
-    repo = PartnerDeviceRepository(scope.session)
-    if await repo.get(device_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    await repo.revoke(device_id)
+    links = await DeviceClientLinkRepository(scope.session).active_for_tenant()
+    out: list[DeviceOut] = []
+    for link in links:
+        device = await scope.session.get(PartnerDevice, link.device_id)
+        if device is None or device.revoked_at is not None:
+            continue
+        out.append(
+            DeviceOut(
+                id=device.id,
+                display_name=device.display_name,
+                platform=device.platform,
+                workdir=link.workdir,
+                app_version=device.app_version,
+                last_heartbeat_at=device.last_heartbeat_at,
+                presence=_presence(device),
+                enrolled_at=device.enrolled_at,
+            )
+        )
+    return out
 
 
 # ── lista blanca ───────────────────────────────────────────────────────

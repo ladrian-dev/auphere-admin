@@ -1,6 +1,7 @@
 "use client";
 
 import { Laptop, TerminalSquare } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -140,7 +141,12 @@ export function WorkstationPanel({
       <section aria-labelledby="workstation-devices">
         <Card>
           <CardHeader>
-            <CardTitle id="workstation-devices">{t("workstation.devices.title")}</CardTitle>
+            <CardTitle id="workstation-devices" className="flex flex-wrap items-center justify-between gap-2">
+              <span>{t("workstation.devices.title")}</span>
+              <Link href="/workstation" className="text-sm font-normal text-primary underline-offset-4 hover:underline">
+                {t("workstation.devices.manageLink")}
+              </Link>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {devicesFailed ? (
@@ -171,7 +177,7 @@ export function WorkstationPanel({
                           : t("workstation.devices.never")}
                     </StatusBadge>
                     <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-                      {t("workstation.devices.workdir")}: {device.workdir}
+                      {t("workstation.devices.workdir")}: {device.workdir ?? t("workstation.devices.noDirectory")}
                     </span>
                   </li>
                 ))}

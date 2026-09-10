@@ -27,15 +27,35 @@ pytestmark = [pytest.mark.isolation, pytest.mark.asyncio]
 
 
 async def _device(session, tenant_id: uuid.UUID) -> uuid.UUID:
+    """Spec 002: la máquina es del partner del tenant; el directorio, un vínculo."""
+    from nexus_api.db.models import DeviceClientLink, Partner, Tenant
+
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant.partner_id is None:
+        partner = Partner(id=uuid.uuid4(), name="Iso Partner", slug=f"isop-{uuid.uuid4().hex[:6]}")
+        session.add(partner)
+        await session.flush()
+        tenant.partner_id = partner.id
+        await session.flush()
     device_id = uuid.uuid4()
     session.add(
         PartnerDevice(
             id=device_id,
-            tenant_id=tenant_id,
+            partner_id=tenant.partner_id,
             principal_id="user_iso",
             display_name="portátil",
+            hostname="portatil.local",
             platform="macos",
+        )
+    )
+    await session.flush()
+    session.add(
+        DeviceClientLink(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            device_id=device_id,
             workdir="/tmp/proyecto",
+            created_by="user_iso",
         )
     )
     await session.flush()
@@ -121,3 +141,53 @@ async def test_an_unknown_denial_reason_is_refused(db_session, tenants_ab):
     )
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+# ── spec 002: los actos de identidad de una máquina, etiquetados (R13) ──────
+
+
+async def test_identity_acts_are_tagged_with_partner_and_person(client, db_session, console_world):
+    """Garantía 6 para los actos de identidad: cada asiento nombra al partner en
+    ``target`` y a la persona —o a la máquina— en ``actor``; y ningún asiento de
+    A aparece en la auditoría de B."""
+    from sqlalchemy import select
+
+    from nexus_api.db.models import AuditLog
+
+    a, b = console_world["a"], console_world["b"]
+    issued = await client.post("/console/workstation/pairing-codes", headers=a["headers"]())
+    paired = await client.post(
+        "/device/pair",
+        json={"code": issued.json()["code"], "hostname": "mac.local", "platform": "macos"},
+    )
+    assert paired.status_code == 201
+    token = paired.json()["credential"]
+    await client.post("/device/renew", headers={"Authorization": f"Bearer {token}"})
+    await client.delete(
+        f"/console/workstation/devices/{paired.json()['device_id']}", headers=a["headers"]()
+    )
+
+    rows = (
+        (await db_session.execute(select(AuditLog).where(AuditLog.action.like("device.%"))))
+        .scalars()
+        .all()
+    )
+    actions = {r.action for r in rows}
+    assert {
+        "device.pair_code_issued",
+        "device.paired",
+        "device.renewed",
+        "device.archived",
+    } <= actions
+    for row in rows:
+        assert row.target == f"partner:{a['partner_id']}", row.action
+        assert row.actor.startswith(("console:", "device:")), row.actor
+    renewed = next(r for r in rows if r.action == "device.renewed")
+    assert renewed.actor == f"device:{paired.json()['device_id']}"
+
+    # La auditoría de B no ve nada de esto (la de consola filtra por partner).
+    audit_b = await client.get("/console/audit", headers=b["headers"]())
+    assert audit_b.status_code == 200, audit_b.text
+    body = audit_b.json()
+    items = body["items"] if isinstance(body, dict) else body
+    assert all(not str(item.get("action", "")).startswith("device.") for item in items)

@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { Alert, AlertDescription, Button, CardSkeleton, EmptyState, Metric, PageHeader, formatNumber } from "@nexus/ui";
 
 import { OnboardingCard } from "@/components/home/onboarding-card";
+import { WorkstationSetup } from "@/components/workstation/workstation-setup";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import type { Home } from "@/lib/backend/home-usage";
@@ -27,6 +28,9 @@ export default async function HomePage() {
       <PageHeader eyebrow={principal.partnerName} title={t("home.welcome", { name: principal.name })} />
       <Suspense fallback={<CardSkeleton />}>
         <OnboardingCard principal={principal} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <WorkstationSetup principal={principal} />
       </Suspense>
       {home === null ? (
         <Alert variant="destructive" role="alert">

@@ -76,6 +76,9 @@ PARTNER_FORCE_TABLES: dict[str, str] = {
     "tickets": "Tickets F4. FORCE por partner_id.",
     "ticket_events": "Eventos F4. FORCE por partner_id.",
     "admin_impersonation_sessions": "F5 overlay. FORCE + policy app.is_admin.",
+    # Spec 002: la máquina es del partner. FORCE con dos políticas (dueña · gestor).
+    "partner_devices": "Máquinas del partner. FORCE por partner_id + principal_id / gestor.",
+    "device_pairing_codes": "Códigos de emparejamiento. FORCE por partner_id.",
 }
 
 

@@ -53,6 +53,7 @@ from nexus_api.api.console import (
     whatsapp,
     workflow,
     workstation,
+    workstation_partner,
 )
 
 router = APIRouter(prefix="/console", tags=["console"])
@@ -96,4 +97,5 @@ router.include_router(onboarding.router)
 router.include_router(home.router)
 router.include_router(workflow.router)
 router.include_router(workstation.router)
+router.include_router(workstation_partner.router)
 router.include_router(session_catalog.router)

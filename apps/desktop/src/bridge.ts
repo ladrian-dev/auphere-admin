@@ -35,6 +35,8 @@ export type Inbound =
       args: string[];
       cwdRelative: string | null;
       timeoutMs: number;
+      /** Spec 002: el cliente cuyo directorio se usa. Sin él, el de repliegue. */
+      clientRef?: string;
     }
   | { kind: "cancel"; executionId: string };
 

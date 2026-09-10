@@ -1,0 +1,152 @@
+/*
+  La barra del puesto — Requisito 12 (spec 002).
+  Estética: terminal-bloomberg discreta. Monoespaciada solo para el nombre de la
+  máquina y el código; un acento (primary) para «conectada»; ningún estado en rojo.
+  Solo tokens de @nexus/ui (tokens.css, copiado en el build). Los colores se toman
+  del puente `:root` / `[data-theme="dark"]` (--background, --foreground, --primary…),
+  que es el que cambia con el tema; la tipografía y los radios, de la paleta.
+*/
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+
+.dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--muted-foreground);
+}
+.bar[data-status="conectada"] .dot {
+  background: var(--primary);
+}
+.bar[data-status="reconectando"] .dot,
+.bar[data-status="emparejando"] .dot {
+  background: var(--muted-foreground);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-wrap: pretty;
+}
+.machine,
+input[name="code"] {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.note,
+.help {
+  color: var(--muted-foreground);
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.btn {
+  min-height: 28px;
+  min-width: 24px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  cursor: pointer;
+}
+.btn.solid {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+.btn.ghost {
+  color: var(--muted-foreground);
+}
+.btn:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.sheet {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 0 10px;
+  border-top: 1px solid var(--border);
+}
+.sheet input {
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  width: 11ch;
+}
+.links {
+  list-style: none;
+  margin: 0;
+}
+.links li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.client {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

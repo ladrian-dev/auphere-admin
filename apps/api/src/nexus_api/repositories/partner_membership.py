@@ -173,6 +173,14 @@ class PartnerMembershipRepository:
             and member.status == MembershipStatus.ACTIVE.value
         ):
             await self._assert_not_last_owner(partner_id, leaving=member)
+        # Spec 002, Requisito 11.4: sus máquinas se archivan en la misma transacción,
+        # sin que nadie tenga que acordarse. Corre con el rol dueño: la persona ya no
+        # está y no hay ámbito de persona que fijar.
+        from nexus_api.repositories.local_workstation import PartnerDeviceRepository
+
+        await PartnerDeviceRepository(self._session).archive_all_for_principal(
+            member.user_id, reason="pertenencia_retirada"
+        )
         await self._session.delete(member)
         await self._session.flush()
         return True

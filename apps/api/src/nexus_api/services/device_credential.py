@@ -1,30 +1,21 @@
-"""La credencial de un dispositivo — Requisitos 6.3 y 6.4.
+"""La credencial de dispositivo, versión 2 — spec 002, Requisitos 4.2 y 10.
 
-**Qué es y qué no es.** El Requisito 15.2 prohíbe que la cáscara guarde una
-credencial de **backend** —una llave de la cuenta, que abre todo—. Ésta es otra
-cosa: abre exactamente cuatro operaciones (latir, sondear, devolver resultado,
-darse de baja) de **una máquina concreta** de **un tenant concreto**. Sin ella el
-dispositivo tendría que llevar la credencial de la persona, que es peor: esa sí
-abre todo, y encima viviría en un portátil.
+**Nombra partner, máquina y generación; nunca tenant.** El tenant lo fija cada
+trabajo y cada vínculo, por un ``client_ref`` que la plataforma resuelve dentro del
+partner de la firma (§I: el tenant nunca llega del llamante).
 
-**Simétrico, y a propósito.** Los tokens de consola son EdDSA porque los **acuña la
-consola** y la API solo los verifica: por eso la API tiene la clave pública y no la
-privada. Aquí la API es emisora y verificadora, así que un secreto compartido basta
-y evita distribuir una clave privada más.
+**Es apátrida en la firma y con estado en la fila.** Un JWT HS256 no se puede
+revocar ni rotar por sí solo; lo que lo hace revocable es que ``require_device``
+carga la fila en cada petición y compara ``gen`` con ``credential_generation``.
+Eso es lo que convierte en verdad el «revocable por sí sola» que la 001 escribió y
+no cubrió.
 
-**Con guardia de arranque, y la que ya existía.** `config.py` tiene un validador que
-**se niega a arrancar en producción** con placeholders de desarrollo. El secreto de
-este módulo se añadió a esa lista en vez de escribir un guardia paralelo: dos
-mecanismos con semántica distinta es un sitio más donde equivocarse.
+**Simétrico a propósito con la consola.** Los tokens de consola son EdDSA porque
+los acuña la consola y la API solo verifica; aquí la API es emisora y verificadora,
+así que un secreto compartido evita distribuir una clave privada más.
 
-Se fuerza en **producción**, no en staging, que es la convención deliberada del repo
-—el terraform lo dice: *«el guard de secretos solo fuerza en "production"»*—. En
-staging se puede probar con el valor de fábrica, y aquí queda un aviso ruidoso para
-que nadie confunda «funciona en staging» con «está configurado».
-
-**El `tenant_id` viaja firmado, no lo pone el llamante.** Es la misma regla de §I
-aplicada a un canal nuevo: quien pide trabajo no declara de qué tenant es — lo
-dice la firma, y la RLS decide después.
+**La guarda del secreto de fábrica se conserva**: fuera de ``dev`` con el valor
+por defecto no se emite ni se verifica nada.
 """
 
 from __future__ import annotations
@@ -43,14 +34,16 @@ log = structlog.get_logger(__name__)
 
 ALGORITHM = "HS256"
 _SERVICE_CLAIM = "device"
-
-#: Corta porque el dispositivo la renueva solo en cada latido. Una credencial de
-#: máquina que dura meses es una llave olvidada en un cajón.
-DEFAULT_TTL = timedelta(hours=12)
-
-
-#: El valor que trae `config.py` por defecto. Sirve en desarrollo y en ningún sitio más.
 _DEV_SECRET = "dev-device-secret-change-me-min-32-chars"
+
+#: Vida de una credencial. La máquina la renueva cuando le queda menos de RENEW_BEFORE.
+DEFAULT_TTL = timedelta(hours=12)
+RENEW_BEFORE = timedelta(hours=6)
+#: La generación anterior sigue valiendo este tiempo tras rotar: lo que tarda un
+#: fallo de red entre «el servidor rotó» y «la máquina guardó» en resolverse.
+GENERATION_GRACE = timedelta(seconds=60)
+#: Sin latir este tiempo, hay que volver a emparejar (Requisito 10.2).
+ABANDON_AFTER = timedelta(days=30)
 
 
 def _secret() -> str:
@@ -58,22 +51,14 @@ def _secret() -> str:
 
 
 def _assert_secret_is_real() -> None:
-    """Fuera de desarrollo, el secreto de fábrica no vale.
-
-    Es la guarda que el resto de los `…-change-me` del repo no tienen. Un secreto
-    por defecto en producción no es una configuración pendiente: es una puerta
-    abierta, y firma credenciales que dan acceso a la máquina de un partner.
-    """
     s = get_settings()
-    if s.is_prod and s.device_token_secret == _DEV_SECRET:
-        # Red de seguridad: el validador de `config.py` ya impide arrancar así,
-        # pero si alguien recarga los ajustes en caliente, esto lo para igual.
-        raise DeviceCredentialError(
-            "device_token_secret sigue en su valor de desarrollo en producción; "
-            "no se emiten ni verifican credenciales de dispositivo con él"
-        )
     if not s.is_prod and s.device_token_secret == _DEV_SECRET:
         log.warning("device_credential.dev_secret_in_use", environment=s.environment)
+        return
+    if s.device_token_secret == _DEV_SECRET or "change-me" in s.device_token_secret:
+        raise DeviceCredentialError(
+            "el secreto de las credenciales de dispositivo es el de fábrica fuera de dev"
+        )
 
 
 class DeviceCredentialError(RuntimeError):
@@ -83,19 +68,25 @@ class DeviceCredentialError(RuntimeError):
 @dataclass(frozen=True)
 class DeviceClaims:
     device_id: uuid.UUID
-    tenant_id: uuid.UUID
+    partner_id: uuid.UUID
+    generation: int
 
 
 def issue_device_token(
-    *, device_id: uuid.UUID, tenant_id: uuid.UUID, ttl: timedelta = DEFAULT_TTL
+    *,
+    device_id: uuid.UUID,
+    partner_id: uuid.UUID,
+    generation: int,
+    ttl: timedelta = DEFAULT_TTL,
 ) -> str:
-    """Emite la credencial en el alta. El `tenant_id` queda dentro de la firma."""
+    """Emite la credencial. Partner y generación quedan dentro de la firma."""
     _assert_secret_is_real()
     now = datetime.now(UTC)
     payload: dict[str, Any] = {
         "svc": _SERVICE_CLAIM,
         "sub": str(device_id),
-        "tid": str(tenant_id),
+        "pid": str(partner_id),
+        "gen": int(generation),
         "iat": int(now.timestamp()),
         "exp": int((now + ttl).timestamp()),
         "iss": get_settings().console_jwt_issuer,
@@ -105,7 +96,7 @@ def issue_device_token(
 
 
 def verify_device_token(token: str) -> DeviceClaims:
-    """Verifica y devuelve a quién autoriza. Falla cerrado ante cualquier duda."""
+    """Verifica firma y forma. El estado de la fila lo comprueba ``require_device``."""
     _assert_secret_is_real()
     if not token:
         raise DeviceCredentialError("no se presentó credencial de dispositivo")
@@ -124,20 +115,54 @@ def verify_device_token(token: str) -> DeviceClaims:
     # Un token de consola no vale aquí, y al revés tampoco: el servicio va firmado.
     if payload.get("svc") != _SERVICE_CLAIM:
         raise DeviceCredentialError("la credencial no es de un dispositivo")
-
     try:
         return DeviceClaims(
-            device_id=uuid.UUID(str(payload["sub"])), tenant_id=uuid.UUID(str(payload["tid"]))
+            device_id=uuid.UUID(str(payload["sub"])),
+            partner_id=uuid.UUID(str(payload["pid"])),
+            generation=int(payload["gen"]),
         )
-    except (KeyError, ValueError) as exc:
-        raise DeviceCredentialError("la credencial no nombra dispositivo y tenant") from exc
+    except (KeyError, ValueError, TypeError) as exc:
+        raise DeviceCredentialError(
+            "la credencial no nombra dispositivo, partner y generación"
+        ) from exc
+
+
+def generation_is_acceptable(
+    claimed: int,
+    *,
+    current: int,
+    rotated_at: datetime | None,
+    now: datetime | None = None,
+) -> bool:
+    """La generación actual, o la anterior dentro de la gracia. Nada más."""
+    if claimed == current:
+        return True
+    if claimed != current - 1 or rotated_at is None:
+        return False
+    reference = now or datetime.now(UTC)
+    rotated = rotated_at if rotated_at.tzinfo else rotated_at.replace(tzinfo=UTC)
+    return reference - rotated <= GENERATION_GRACE
+
+
+def is_abandoned(last_heartbeat_at: datetime | None, *, now: datetime | None = None) -> bool:
+    """Treinta días sin latir. ``None`` —nunca latió— no es abandono: es recién emparejada."""
+    if last_heartbeat_at is None:
+        return False
+    reference = now or datetime.now(UTC)
+    beat = last_heartbeat_at if last_heartbeat_at.tzinfo else last_heartbeat_at.replace(tzinfo=UTC)
+    return reference - beat > ABANDON_AFTER
 
 
 __all__ = [
+    "ABANDON_AFTER",
     "ALGORITHM",
     "DEFAULT_TTL",
+    "GENERATION_GRACE",
+    "RENEW_BEFORE",
     "DeviceClaims",
     "DeviceCredentialError",
+    "generation_is_acceptable",
+    "is_abandoned",
     "issue_device_token",
     "verify_device_token",
 ]

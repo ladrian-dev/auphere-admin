@@ -27,6 +27,38 @@ export const HUMAN_PARTITION = "persist:auphere-console";
 /** Sin `persist:` a propósito — muere con el proceso y no toca el disco. */
 export const AGENT_PARTITION = "auphere-agent";
 
+/**
+ * La barra del puesto (spec 002, Requisito 12): la única superficie propia de la
+ * aplicación, en su propia partición y **la única con `preload`**. Tampoco
+ * persiste: no guarda nada — la credencial vive cifrada aparte.
+ */
+export const BAR_PARTITION = "auphere-bar";
+
+/**
+ * Las preferencias de la vista de la consola. **Sin `preload`**: la página
+ * cargada no tiene ninguna vía de hablarle al proceso principal (R3.5). Si
+ * alguien añade una clave `preload` aquí, `session-isolation.test.ts` se entera.
+ */
+export function consoleWebPreferences(): {
+  partition: string;
+  contextIsolation: true;
+  nodeIntegration: false;
+  sandbox: true;
+} {
+  return { partition: HUMAN_PARTITION, contextIsolation: true, nodeIntegration: false, sandbox: true };
+}
+
+/** Las de la barra: mismo aislamiento, su partición, y su `preload`. */
+export function barWebPreferences(preload: string): {
+  partition: string;
+  preload: string;
+  contextIsolation: true;
+  nodeIntegration: false;
+  sandbox: true;
+} {
+  return { partition: BAR_PARTITION, preload, contextIsolation: true, nodeIntegration: false, sandbox: true };
+}
+
 /** Lo mínimo para que un proceso arranque. Igual que en la edición. */
 const ALLOWED_ENV_KEYS = ["PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR"] as const;
 
@@ -47,16 +79,20 @@ export class SessionIsolationError extends Error {
 export function assertPartitionsAreSeparate(
   human: string = HUMAN_PARTITION,
   agent: string = AGENT_PARTITION,
+  bar: string = BAR_PARTITION,
 ): void {
-  if (human === agent) {
+  if (new Set([human, agent, bar]).size !== 3) {
     throw new SessionIsolationError(
-      "la partición del agente y la de la persona son la misma: la sesión sería alcanzable",
+      "dos particiones son la misma: la sesión de la persona sería alcanzable",
     );
   }
   if (agent.startsWith("persist:")) {
     throw new SessionIsolationError(
       "la partición del agente no puede persistir: dejaría una sesión en disco",
     );
+  }
+  if (bar.startsWith("persist:")) {
+    throw new SessionIsolationError("la partición de la barra no puede persistir: no guarda nada");
   }
 }
 

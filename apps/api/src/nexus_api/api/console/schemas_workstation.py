@@ -21,32 +21,14 @@ class DeviceOut(BaseModel):
     id: uuid.UUID
     display_name: str
     platform: str
-    workdir: str
+    #: Del vínculo con este cliente; NULL mientras la máquina no lo declare.
+    workdir: str | None = None
     app_version: str | None = None
     last_heartbeat_at: datetime | None = None
     #: Derivado del latido, nunca almacenado: si el proceso que lo actualizaría
     #: muere, la presencia decae sola en vez de quedarse mintiendo (§V).
     presence: str
     enrolled_at: datetime
-
-
-class DeviceCreatedOut(DeviceOut):
-    """El alta, y **solo el alta**, devuelve la credencial del dispositivo.
-
-    Mismo patrón que las claves de API de la consola: se enseña una vez y no se
-    puede volver a leer. Si se pierde, se revoca el dispositivo y se da de alta
-    otro — que es más barato que tener un sitio donde una credencial viva
-    consultable.
-    """
-
-    pairing_token: str
-
-
-class DeviceIn(BaseModel):
-    display_name: str = Field(min_length=1, max_length=120)
-    platform: str = Field(pattern="^(macos|windows)$")
-    workdir: str = Field(min_length=1)
-    app_version: str | None = None
 
 
 class ExecutableOut(BaseModel):
@@ -87,3 +69,59 @@ class SessionToolEntry(BaseModel):
 
 class SessionToolCatalogOut(BaseModel):
     tools: list[SessionToolEntry]
+
+
+# ── spec 002: el puesto de trabajo a nivel de partner ───────────────────
+
+
+class PairingCodeOut(BaseModel):
+    """El código, **una sola vez**; la base guarda su hash."""
+
+    code: str
+    expires_at: datetime
+    ttl_seconds: int
+
+
+class MachineClientOut(BaseModel):
+    ref: str
+    name: str | None = None
+    workdir: str | None = None
+    needs_directory: bool
+
+
+class MachineOut(BaseModel):
+    id: uuid.UUID
+    display_name: str
+    hostname: str
+    platform: str
+    app_version: str | None = None
+    presence: str
+    last_heartbeat_at: datetime | None = None
+    enrolled_at: datetime
+    #: La persona dueña. Solo se rellena para quien puede ver todas (gestor).
+    owner_user_id: str
+    owner_display_name: str | None = None
+    mine: bool
+    archived_at: datetime | None = None
+    archived_reason: str | None = None
+    clients: list[MachineClientOut]
+
+
+class MachineRenameIn(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
+
+
+class LinkClientIn(BaseModel):
+    client_ref: str = Field(min_length=1, max_length=255)
+
+
+class SetupStepOut(BaseModel):
+    key: str
+    done: bool
+    #: Cuántas cosas quedan (clientes sin directorio, clientes sin ejecutables…).
+    pending: int = 0
+
+
+class SetupOut(BaseModel):
+    complete: bool
+    steps: list[SetupStepOut]

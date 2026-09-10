@@ -7,9 +7,10 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/copy-tokens.mjs && tsc -p tsconfig.build.json && node scripts/copy-bar.mjs",
     "start": "electron .",
-    "package": "electron-builder --dir"
+    "package": "electron-builder --dir",
+    "copy-tokens": "node scripts/copy-tokens.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

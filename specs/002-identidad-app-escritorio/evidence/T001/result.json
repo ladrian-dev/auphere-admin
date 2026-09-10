@@ -1,0 +1,18 @@
+{
+  "partitions": {
+    "human": "persist:auphere-console",
+    "bar": "auphere-bar",
+    "agent": "auphere-agent"
+  },
+  "consoleLoadedMs": 2863,
+  "consoleTitle": "Login · Consola Auphere",
+  "consoleUrl": "https://console.auphere.com/login",
+  "consoleHasLoginForm": true,
+  "auphereInConsoleView": "undefined",
+  "auphereInBarView": "object",
+  "barPing": "pong",
+  "humanIsPersistent": true,
+  "barIsPersistent": false,
+  "agentIsPersistent": false,
+  "ok": true
+}

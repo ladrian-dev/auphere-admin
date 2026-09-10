@@ -8,10 +8,12 @@ import { ChannelCard } from "@/components/channels/channel-card";
 import { TemplatesSection } from "@/components/channels/templates-section";
 import { f2ChannelCounter, f2VisibleChannels } from "@/components/channels/visible-channels";
 import { WhatsAppConnectUnavailable } from "@/components/channels/whatsapp-connect-unavailable";
+import { WhatsAppContinueInBrowser } from "@/components/channels/whatsapp-continue-in-browser";
 import { getT } from "@/i18n/server";
 import { BackendError, backendFor } from "@/lib/backend";
 import type { TemplateList } from "@/lib/backend/channels";
 import { can, requirePrincipal } from "@/lib/principal";
+import { isDesktopShell } from "@/lib/shell";
 
 /**
  * Channels centre (CP-17/18). F2: WhatsApp cards only; Connect CTA disabled
@@ -43,7 +45,15 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
     }
   }
   const base = `/clients/${encodeURIComponent(ref)}`;
-  const connect = <WhatsAppConnectUnavailable used={n} />;
+  // Spec 002, R12.7: dentro de la aplicación de escritorio la ventana emergente
+  // de Meta no vuelve, así que el control **no existe** ahí y en su lugar se
+  // ofrece continuar en el navegador. Es la única bifurcación por cáscara de
+  // toda la consola; `shell-detect.test.ts` lo vigila.
+  const connect = (await isDesktopShell()) ? (
+    <WhatsAppContinueInBrowser href={`${base}/channels`} />
+  ) : (
+    <WhatsAppConnectUnavailable used={n} />
+  );
 
   return (
     <div className="flex min-w-0 flex-col gap-6">

@@ -9,7 +9,10 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/login", "/invite", "/no-access", "/healthz"];
+// `/api/session/whoami` (spec 002): la cáscara de escritorio pregunta quién
+// está dentro; sin sesión la respuesta es un 401 en JSON, no una redirección
+// a /login — una página HTML no es una persona.
+const PUBLIC = ["/login", "/invite", "/no-access", "/healthz", "/api/session/whoami"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

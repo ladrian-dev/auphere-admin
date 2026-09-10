@@ -15,7 +15,15 @@ import pytest
 from sqlalchemy import select, text
 
 from nexus_api.core.tenant_context import tenant_context
-from nexus_api.db.models import LocalExecutable, LocalExecution, PartnerDevice, Tenant, TenantPlan
+from nexus_api.db.models import (
+    DeviceClientLink,
+    LocalExecutable,
+    LocalExecution,
+    Partner,
+    PartnerDevice,
+    Tenant,
+    TenantPlan,
+)
 from nexus_api.db.models.local_workstation import DENIAL_EJECUTABLE_NO_PERMITIDO
 from nexus_api.services.local_exec_gate import LocalExecGate
 from nexus_api.services.local_execution_recorder import record_decision
@@ -25,8 +33,17 @@ pytestmark = pytest.mark.asyncio
 
 async def _setup(session) -> tuple[uuid.UUID, uuid.UUID]:
     tenant_id, device_id = uuid.uuid4(), uuid.uuid4()
+    partner_id = uuid.uuid4()
+    session.add(Partner(id=partner_id, name="Audit Partner", slug=f"aup-{partner_id.hex[:6]}"))
+    await session.flush()
     session.add(
-        Tenant(id=tenant_id, name="Audit", slug=f"au-{tenant_id.hex[:6]}", plan=TenantPlan.PRO)
+        Tenant(
+            id=tenant_id,
+            name="Audit",
+            slug=f"au-{tenant_id.hex[:6]}",
+            plan=TenantPlan.PRO,
+            partner_id=partner_id,
+        )
     )
     await session.flush()
     session.add_all(
@@ -34,15 +51,26 @@ async def _setup(session) -> tuple[uuid.UUID, uuid.UUID]:
             LocalExecutable(
                 id=uuid.uuid4(), tenant_id=tenant_id, executable="make", added_by="tester"
             ),
+            # Spec 002: la máquina es del partner; el directorio es un vínculo por tenant.
             PartnerDevice(
                 id=device_id,
-                tenant_id=tenant_id,
+                partner_id=partner_id,
                 principal_id="user_audit",
                 display_name="portátil",
+                hostname="portatil.local",
                 platform="macos",
-                workdir="/tmp/proyecto",
             ),
         ]
+    )
+    await session.flush()  # la máquina antes que su vínculo (FK)
+    session.add(
+        DeviceClientLink(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            device_id=device_id,
+            workdir="/tmp/proyecto",
+            created_by="user_audit",
+        )
     )
     await session.commit()
     await session.execute(

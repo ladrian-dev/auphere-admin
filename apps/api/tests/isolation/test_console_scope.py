@@ -185,6 +185,7 @@ def _fill(path: str, *, ref: str) -> str:
         .replace("{token}", "a" * 43)
         .replace("{tool_name}", "calendar.list_slots")
         .replace("{doc_id}", str(uuid.uuid4()))
+        .replace("{device_id}", str(uuid.uuid4()))  # spec 002: máquinas del partner
         .replace("{thread_id}", str(uuid.uuid4()))
         .replace("{run_id}", str(uuid.uuid4()))
         .replace("{notification_id}", str(uuid.uuid4()))

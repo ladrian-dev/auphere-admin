@@ -15,9 +15,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   AGENT_PARTITION,
+  BAR_PARTITION,
   HUMAN_PARTITION,
   agentProcessEnv,
   assertPartitionsAreSeparate,
+  barWebPreferences,
+  consoleWebPreferences,
   sessionCookieNames,
 } from "../src/session-isolation.js";
 
@@ -67,5 +70,33 @@ describe("el entorno del proceso del agente (15.3 y 7.4)", () => {
   it("lo que el proceso necesita para arrancar sí pasa", () => {
     const env = agentProcessEnv({ PATH: "/usr/bin", HOME: "/Users/partner", LANG: "es_ES.UTF-8" });
     expect(Object.keys(env).sort()).toEqual(["HOME", "LANG", "PATH"]);
+  });
+});
+
+describe("la barra es una tercera partición, y solo ella tiene preload (3.5, 14.1)", () => {
+  it("tres particiones distintas, y solo la humana persiste", () => {
+    expect(new Set([HUMAN_PARTITION, AGENT_PARTITION, BAR_PARTITION]).size).toBe(3);
+    expect(BAR_PARTITION.startsWith("persist:")).toBe(false);
+    expect(() => assertPartitionsAreSeparate()).not.toThrow();
+    expect(() => assertPartitionsAreSeparate(HUMAN_PARTITION, AGENT_PARTITION, AGENT_PARTITION)).toThrow();
+    expect(() => assertPartitionsAreSeparate(HUMAN_PARTITION, AGENT_PARTITION, "persist:bar")).toThrow();
+  });
+
+  it("la vista de la consola no tiene preload: la página no puede hablarle a la cáscara", () => {
+    const prefs = consoleWebPreferences();
+    expect(prefs.partition).toBe(HUMAN_PARTITION);
+    expect(prefs).not.toHaveProperty("preload");
+    expect(prefs.contextIsolation).toBe(true);
+    expect(prefs.nodeIntegration).toBe(false);
+    expect(prefs.sandbox).toBe(true);
+  });
+
+  it("la barra sí, en su partición, y con el mismo aislamiento", () => {
+    const prefs = barWebPreferences("/ruta/al/preload.js");
+    expect(prefs.partition).toBe(BAR_PARTITION);
+    expect(prefs.preload).toBe("/ruta/al/preload.js");
+    expect(prefs.contextIsolation).toBe(true);
+    expect(prefs.nodeIntegration).toBe(false);
+    expect(prefs.sandbox).toBe(true);
   });
 });

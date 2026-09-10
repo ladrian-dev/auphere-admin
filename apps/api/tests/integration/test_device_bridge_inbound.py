@@ -32,8 +32,33 @@ def test_the_only_read_is_the_poll():
     assert gets == {"/device/poll"}
 
 
+#: La única ruta de ``/device/*`` sin credencial: **el código es la credencial de
+#: un solo uso** (spec 002, ``contracts/pairing.md``). Está aquí por nombre para
+#: que añadir una segunda excepción obligue a escribirla — y a justificarla.
+UNAUTHENTICATED_BY_DESIGN = {"/device/pair"}
+
+
+def test_the_only_unauthenticated_route_is_the_pairing_exchange():
+    paths = {r.path for r in DEVICE_ROUTES}
+    assert paths >= UNAUTHENTICATED_BY_DESIGN, "el canje del código no está montado"
+
+
+def test_the_credential_opens_exactly_five_operations():
+    """Requisito 4.2: latir, sondear, devolver resultado, renovar, declarar directorio."""
+    authenticated = {r.path for r in DEVICE_ROUTES} - UNAUTHENTICATED_BY_DESIGN
+    assert authenticated == {
+        "/device/heartbeat",
+        "/device/poll",
+        "/device/result",
+        "/device/renew",
+        "/device/links",
+    }
+
+
 def test_every_device_route_requires_the_device_credential():
     for route in DEVICE_ROUTES:
+        if route.path in UNAUTHENTICATED_BY_DESIGN:
+            continue
         names = {d.call.__name__ for d in route.dependant.dependencies if d.call}
         nested = {
             sub.call.__name__

@@ -14,7 +14,14 @@ import pytest
 from sqlalchemy import func, select, text
 
 from nexus_api.core.tenant_context import tenant_context
-from nexus_api.db.models import LocalExecutable, PartnerDevice, Tenant, TenantPlan
+from nexus_api.db.models import (
+    DeviceClientLink,
+    LocalExecutable,
+    Partner,
+    PartnerDevice,
+    Tenant,
+    TenantPlan,
+)
 from nexus_api.db.models.companion import CompanionAction
 from nexus_api.repositories.local_workstation import LocalArgumentGrantRepository
 from nexus_api.services.action_scope import ActionScope, classify_tool
@@ -24,9 +31,18 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _setup(session) -> tuple[uuid.UUID, uuid.UUID]:
-    tenant_id, executable_id = uuid.uuid4(), uuid.uuid4()
+    tenant_id, executable_id, device_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    partner_id = uuid.uuid4()
+    session.add(Partner(id=partner_id, name="Ladder Partner", slug=f"ldp-{partner_id.hex[:6]}"))
+    await session.flush()
     session.add(
-        Tenant(id=tenant_id, name="Ladder", slug=f"ld-{tenant_id.hex[:6]}", plan=TenantPlan.PRO)
+        Tenant(
+            id=tenant_id,
+            name="Ladder",
+            slug=f"ld-{tenant_id.hex[:6]}",
+            plan=TenantPlan.PRO,
+            partner_id=partner_id,
+        )
     )
     await session.flush()
     session.add_all(
@@ -34,15 +50,26 @@ async def _setup(session) -> tuple[uuid.UUID, uuid.UUID]:
             LocalExecutable(
                 id=executable_id, tenant_id=tenant_id, executable="make", added_by="tester"
             ),
+            # Spec 002: la máquina es del partner; el directorio es un vínculo por tenant.
             PartnerDevice(
-                id=uuid.uuid4(),
-                tenant_id=tenant_id,
+                id=device_id,
+                partner_id=partner_id,
                 principal_id="user_ladder",
                 display_name="portátil",
+                hostname="portatil.local",
                 platform="macos",
-                workdir="/tmp/proyecto",
             ),
         ]
+    )
+    await session.flush()  # la máquina antes que su vínculo (FK)
+    session.add(
+        DeviceClientLink(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            device_id=device_id,
+            workdir="/tmp/proyecto",
+            created_by="user_ladder",
+        )
     )
     await session.commit()
     await session.execute(

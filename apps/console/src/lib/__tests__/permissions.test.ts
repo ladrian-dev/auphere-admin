@@ -20,6 +20,7 @@ const API_MAP: Record<string, string[]> = {
   "usage:read": ["owner", "admin", "builder", "analyst", "billing"],
   "audit:read": ["owner", "admin", "analyst"],
   "workstation:read": ["owner", "admin", "builder", "analyst"],
+  "workstation:pair": ["owner", "admin", "builder"],
   "workstation:write": ["owner", "admin"],
   "team:read": ["owner", "admin", "builder", "analyst", "billing"],
   "team:manage": ["owner", "admin"],
@@ -47,5 +48,10 @@ describe("permission map", () => {
     expect(can("billing", "clients:read")).toBe(false);
     expect(can("billing", "usage:read")).toBe(true);
     expect(can("analyst", "agents:write")).toBe(false);
+  });
+  it("pairing a machine is for those who use the teammates, archiving any is for admins", () => {
+    expect(can("builder", "workstation:pair")).toBe(true);
+    expect(can("analyst", "workstation:pair")).toBe(false);
+    expect(can("builder", "workstation:write")).toBe(false);
   });
 });

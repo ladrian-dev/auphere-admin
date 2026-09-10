@@ -111,6 +111,10 @@ PERMISSIONS: dict[str, frozenset[str]] = {
     # cualquiera que ya ve el agente; escribir NO lo tiene el builder: añadir un
     # ejecutable a la lista blanca es una decisión de seguridad, no de configuración.
     "workstation:read": frozenset({_O, _A, _B, _AN}),
+    # Emparejar la PROPIA máquina y declarar sus clientes y directorios (spec 002).
+    # No es «escribir la configuración del tenant»: es reclamar lo que es tuyo,
+    # y por eso lo tiene el builder, que es quien usa a los teammates.
+    "workstation:pair": frozenset({_O, _A, _B}),
     "workstation:write": frozenset({_O, _A}),
     "team:read": frozenset({_O, _A, _B, _AN, _BI}),
     "team:manage": frozenset({_O, _A}),

@@ -142,6 +142,7 @@ app.include_router(webhooks.router)
 app.include_router(connectors_public.router)
 app.include_router(qa.router)
 app.include_router(device_bridge.router)
+app.add_exception_handler(device_bridge.DeviceRefused, device_bridge.device_refused_handler)  # type: ignore[arg-type]
 # ADR-028 + WP-28: superficie pública de partners (clave secreta,
 # servidor a servidor), montada una vez por versión viva. `/v1` está
 # congelada y responde con cabeceras de obsolescencia; `/v2` es la

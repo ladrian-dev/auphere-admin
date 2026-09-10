@@ -18,6 +18,7 @@ const core = {
   // shell
   "nav.home": { es: "Inicio", en: "Home" },
   "nav.clients": { es: "Clientes", en: "Clients" },
+  "nav.workstation": { es: "Puesto de trabajo", en: "Workstation" },
   "nav.usage": { es: "Consumo", en: "Usage" },
   "nav.audit": { es: "Auditoría", en: "Audit" },
   "nav.knowledge": { es: "Playbook", en: "Playbook" },

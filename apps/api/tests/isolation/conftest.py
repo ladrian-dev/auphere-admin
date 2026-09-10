@@ -33,6 +33,29 @@ async def set_tenant(session, tenant_id: uuid.UUID) -> None:
     await session.execute(text("SET LOCAL ROLE nexus_app"))
 
 
+async def set_partner(
+    session,
+    partner_id: uuid.UUID,
+    *,
+    principal_id: str | None = None,
+    manager: bool = False,
+) -> None:
+    """Los GUC del puesto de trabajo (spec 002): partner, persona y gestor.
+
+    Sin persona ni gestor, ``partner_devices`` no devuelve nada — es lo que se
+    prueba, no un descuido del helper.
+    """
+    await session.execute(
+        text(
+            "SELECT set_config('app.partner_id', :p, true), "
+            "       set_config('app.principal_id', :pr, true), "
+            "       set_config('app.workstation_manager', :m, true)"
+        ),
+        {"p": str(partner_id), "pr": principal_id or "", "m": "true" if manager else ""},
+    )
+    await session.execute(text("SET LOCAL ROLE nexus_app"))
+
+
 # ── Runtime fixtures (block C) ─────────────────────────────────────────────────
 
 

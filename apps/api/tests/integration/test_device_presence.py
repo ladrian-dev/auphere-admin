@@ -14,8 +14,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import text
 
-from nexus_api.core.tenant_context import tenant_context
-from nexus_api.db.models import PartnerDevice, Tenant, TenantPlan
+from nexus_api.core.partner_context import partner_context
+from nexus_api.db.models import Partner, PartnerDevice
 from nexus_api.repositories.local_workstation import PartnerDeviceRepository
 from nexus_api.services.device_presence import (
     HEARTBEAT_INTERVAL,
@@ -27,16 +27,17 @@ from nexus_api.services.device_presence import (
 pytestmark = pytest.mark.asyncio
 
 
-async def _tenant(session) -> uuid.UUID:
-    tenant_id = uuid.uuid4()
-    session.add(
-        Tenant(id=tenant_id, name="Pres", slug=f"pr-{tenant_id.hex[:6]}", plan=TenantPlan.PRO)
-    )
+async def _partner(session) -> uuid.UUID:
+    partner_id = uuid.uuid4()
+    session.add(Partner(id=partner_id, name="Pres", slug=f"pr-{partner_id.hex[:6]}"))
     await session.commit()
     await session.execute(
-        text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant_id)}
+        text(
+            "SELECT set_config('app.partner_id', :p, true), set_config('app.principal_id', 'user_pres', true)"
+        ),
+        {"p": str(partner_id)},
     )
-    return tenant_id
+    return partner_id
 
 
 def test_a_device_that_never_beat_is_absent():
@@ -67,14 +68,14 @@ def test_the_local_tools_leave_the_catalog_when_the_device_goes():
 
 async def test_the_heartbeat_is_the_only_thing_that_moves(db_session):
     """Latir no cambia nada más: no hay estado que pueda quedar desincronizado."""
-    tenant_id = await _tenant(db_session)
-    with tenant_context(tenant_id):
+    partner_id = await _partner(db_session)
+    with partner_context(str(partner_id)):
         repo = PartnerDeviceRepository(db_session)
-        device = await repo.enrol(
+        device = await repo.pair(
             principal_id="user_pres",
             display_name="portátil",
+            hostname="portatil.local",
             platform="macos",
-            workdir="/tmp/proyecto",
         )
         assert device.last_heartbeat_at is None
         assert derive_presence(device.last_heartbeat_at) == "ausente"

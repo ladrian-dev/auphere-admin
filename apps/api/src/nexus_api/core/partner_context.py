@@ -49,20 +49,38 @@ def partner_context(partner_id: str) -> Iterator[str]:
         _current_partner.reset(token)
 
 
-async def apply_partner_to_session(session: AsyncSession, partner_id: object) -> None:
+async def apply_partner_to_session(
+    session: AsyncSession,
+    partner_id: object,
+    *,
+    principal_id: str | None = None,
+    workstation_manager: bool = False,
+) -> None:
     """Fija ``app.partner_id`` y baja al rol ``nexus_app`` para esta transacción.
 
-    Las dos cosas van en **una sola sentencia**, igual que
-    ``apply_tenant_to_session`` / ``apply_principal_to_session``.
-    ``is_local=true`` descarta el valor en el COMMIT/ROLLBACK.
+    Todo va en **una sola sentencia**, igual que ``apply_tenant_to_session`` /
+    ``apply_principal_to_session``. ``is_local=true`` descarta el valor en el
+    COMMIT/ROLLBACK.
+
+    ``principal_id`` y ``workstation_manager`` son los dos GUC del puesto de
+    trabajo (spec 002): ``partner_devices`` se ve por la persona dueña o, si la
+    dependencia de consola lo fija por tener ``workstation:write``, por gestor.
+    Sin ninguno de los dos, esa tabla no devuelve filas — fail-closed, no
+    fail-open. Se vacían siempre para que no se hereden de otra petición.
     """
     await session.execute(
         text(
             "SELECT set_config('app.partner_id', :pid, true), "
+            "       set_config('app.principal_id', :principal, true), "
+            "       set_config('app.workstation_manager', :manager, true), "
             "       set_config('app.is_admin', '', true), "
             "       set_config('role', 'nexus_app', true)"
         ),
-        {"pid": str(partner_id)},
+        {
+            "pid": str(partner_id),
+            "principal": principal_id or "",
+            "manager": "true" if workstation_manager else "",
+        },
     )
 
 
