@@ -106,6 +106,8 @@ from nexus_api.db.models.local_workstation import (
     LocalExecutable,
     LocalExecution,
     PartnerDevice,
+    PartnerLocalExecPolicy,
+    PrincipalLocalExecPref,
 )
 from nexus_api.db.models.model_profile import (
     MODEL_ROLES,
@@ -312,12 +314,14 @@ __all__ = [
     "PartnerDevice",
     "PartnerInvitation",
     "PartnerKnowledgeDocument",
+    "PartnerLocalExecPolicy",
     "PartnerMembership",
     "PartnerModelAllowlist",
     "PartnerRole",
     "PartnerStatus",
     "PartnerTenant",
     "PartnerWallet",
+    "PrincipalLocalExecPref",
     "QAAuditLog",
     "QARun",
     "QASideEffectAudit",

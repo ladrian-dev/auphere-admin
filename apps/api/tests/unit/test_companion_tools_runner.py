@@ -121,6 +121,24 @@ async def test_a_boolean_does_not_pass_as_an_integer() -> None:
     assert json.loads(out.content)["error"] == "bad_arguments"
 
 
+async def test_a_list_of_strings_passes_and_a_shell_line_does_not() -> None:
+    """``string_array`` (spec 003) es lista de cadenas y solo eso.
+
+    Se comprueba en los dos sentidos porque el fallo interesante es el primero:
+    si el validador no conoce el tipo, cae al «tiene que ser string» y la lista
+    legítima nunca llega — la herramienta existe pero es inusable. Y el segundo
+    es el que protege: una cadena suelta como ``"test && rm -rf /"`` no puede
+    colarse por donde el gate espera mirar elemento a elemento (001-R2.4).
+    """
+    from nexus_api.companion.tools.runner import _is_type
+
+    assert _is_type([], "string_array")
+    assert _is_type(["test", "--fast"], "string_array")
+    assert not _is_type("test && rm -rf /", "string_array")
+    assert not _is_type(["ok", 3], "string_array")
+    assert not _is_type(None, "string_array")
+
+
 async def test_a_value_outside_the_enum_is_refused() -> None:
     belt = await _belt(_stub_app())
     out = await belt.call("console.get_usage", {"source": "companion"})

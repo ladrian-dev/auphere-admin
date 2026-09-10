@@ -55,6 +55,11 @@ ApplyMethod = Literal["POST", "PUT", "PATCH"]
 APPLY_ROUTES: dict[str, tuple[ApplyMethod, str]] = {
     # No existe ``PUT …/agent/draft``: en esta plataforma el borrador ES una
     # versión ``staged``, y se crea apilando una versión nueva.
+    # Spec 003: aplicar una ejecución aprobada es volver a llamar a la misma
+    # puerta. La ruta **busca** la acción confirmada con esta firma antes de
+    # dejar pasar: no hay ningún campo del cuerpo que el modelo pueda rellenar
+    # para decir «esto ya está aprobado».
+    "local_exec": ("POST", "/console/clients/{client_ref}/workstation/executions"),
     "client": ("POST", "/console/clients"),
     "prompt": ("POST", "/console/clients/{client_ref}/agent/versions"),
     "policy": ("PUT", "/console/clients/{client_ref}/agent/settings"),

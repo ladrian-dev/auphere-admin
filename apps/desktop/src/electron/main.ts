@@ -291,7 +291,7 @@ async function captureEvidence(
   const roster = await appView.webContents.executeJavaScript("document.body.innerText").catch(() => "");
   // Abre el hilo del primer teammate: es el recorrido del quickstart §4.1.
   await appView.webContents
-    .executeJavaScript("document.querySelector('nav ul button')?.click(), true")
+    .executeJavaScript("Array.from(document.querySelectorAll('nav ul button')).at(-1)?.click(), true")
     .catch(() => false);
   await new Promise((r) => setTimeout(r, 3500));
   const text = await appView.webContents.executeJavaScript("document.body.innerText").catch(() => "");

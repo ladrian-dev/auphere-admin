@@ -31,10 +31,10 @@ MINIMUM_PER_FAMILY: dict[str, int] = {
     "known_answer": 26,
     "ambiguous": 14,
     "cross_partner": 12,
-    "destructive": 17,
+    "destructive": 18,
 }
 
-MINIMUM_TOTAL = 69
+MINIMUM_TOTAL = 70
 
 
 def test_the_dataset_has_the_promised_size() -> None:

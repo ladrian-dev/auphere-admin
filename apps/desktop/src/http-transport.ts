@@ -12,6 +12,7 @@
  * `volver_a_emparejar` o `archivada_desde_consola` en vez de a `reconectando`.
  */
 import type { Inbound, Outbound, OutboundTransport } from "./bridge.js";
+import { STDOUT_SAMPLE_LIMIT } from "./executor.js";
 import type { DirectoryChecks } from "./directory-declare.js";
 
 type FetchLike = (
@@ -74,6 +75,30 @@ export class PairingFailed extends Error {
     super(code);
     this.name = "PairingFailed";
   }
+}
+
+/**
+ * Un elemento de `work[]` tal como llega, traducido a lo que la aplicación
+ * entiende. Lo que no venga completo se **descarta**: ejecutar algo a medio
+ * entender en el ordenador de alguien es exactamente lo que no se hace.
+ */
+function toInbound(raw: unknown): Inbound | null {
+  if (!raw || typeof raw !== "object") return null;
+  const w = raw as Record<string, unknown>;
+  const executionId = typeof w.execution_id === "string" ? w.execution_id : null;
+  const executable = typeof w.executable === "string" ? w.executable : null;
+  if (!executionId || !executable) return null;
+  const args = Array.isArray(w.args) ? w.args.filter((a): a is string => typeof a === "string") : [];
+  if (Array.isArray(w.args) && args.length !== w.args.length) return null;
+  return {
+    kind: "execute",
+    executionId,
+    executable,
+    args,
+    cwdRelative: typeof w.cwd_relative === "string" ? w.cwd_relative : null,
+    timeoutMs: typeof w.timeout_ms === "number" ? w.timeout_ms : 0,
+    ...(typeof w.client_ref === "string" ? { clientRef: w.client_ref } : {}),
+  };
 }
 
 export class HttpTransport implements OutboundTransport {
@@ -151,7 +176,10 @@ export class HttpTransport implements OutboundTransport {
     await this.assertAccepted(response, "/device/poll");
     const body = (await response.json()) as { work?: Inbound[]; links?: Array<Record<string, unknown>> };
     return {
-      work: Array.isArray(body.work) ? body.work : [],
+      // El cable habla `snake_case` (`contracts/local-dispatch.md`) y el resto
+      // de la aplicación, `camelCase`. La traducción vive **aquí**, en el
+      // límite, y no en quien ejecuta: así el ejecutor no sabe de HTTP.
+      work: (Array.isArray(body.work) ? body.work : []).map(toInbound).filter((w): w is Inbound => w !== null),
       links: (body.links ?? []).map((l) => ({
         clientRef: String(l.client_ref),
         clientName: l.client_name === null || l.client_name === undefined ? null : String(l.client_name),
@@ -217,6 +245,10 @@ export class HttpTransport implements OutboundTransport {
             outcome: message.outcome,
             exit_code: message.exitCode,
             children_reaped: message.childrenReaped,
+            // El servidor la acota a 2 KB; aquí se acota igual para que un
+            // cambio de un lado no dependa del otro.
+            stdout_sample: (message.stdoutSample ?? "").slice(0, STDOUT_SAMPLE_LIMIT) || undefined,
+            denial_code: message.denialCode,
           },
         ];
       case "execution_progress":

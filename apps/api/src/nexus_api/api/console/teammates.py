@@ -38,6 +38,7 @@ from nexus_api.db.models.companion import (
 )
 from nexus_api.repositories.teammate_tasks import TeammateTaskRepository
 from nexus_api.repositories.teammates import TeammateRepository
+from nexus_api.services.local_exec_policy import LocalExecPolicyRepository, resolve
 from nexus_api.services.teammate_inbox import inbox_events, list_inbox
 
 from .schemas_teammates import (
@@ -47,6 +48,11 @@ from .schemas_teammates import (
     TaskOut,
     TeammateOut,
     TeammateRefOut,
+)
+from .schemas_workstation import (
+    LocalExecPolicyOut,
+    LocalExecPrefIn,
+    LocalExecPrefOut,
 )
 
 router = APIRouter(prefix="/teammates")
@@ -297,3 +303,78 @@ async def inbox_stream(
             "Connection": "keep-alive",
         },
     )
+
+
+# ── la política de ejecución local, del lado de la persona (R10.1, 10.3) ─
+#
+# El **techo** vive en la página de equipo de la consola (`/console/team/...`):
+# es una decisión de seguridad del partner. Aquí solo está lo que cada persona
+# decide para sí misma, y solo puede restringir lo que el techo permite.
+
+
+def _policy_out(ceiling: str, rows: list[object]) -> LocalExecPolicyOut:
+    by_key = {getattr(row, "executable", None): getattr(row, "mode", "ask") for row in rows}
+    global_mode = by_key.get(None, "ask")
+    overall = resolve(ceiling=ceiling, global_pref=global_mode, executable_pref=None)
+    per_executable = []
+    for executable, mode in sorted(by_key.items(), key=lambda kv: (kv[0] is None, kv[0] or "")):
+        if executable is None:
+            continue
+        one = resolve(ceiling=ceiling, global_pref=global_mode, executable_pref=mode)
+        per_executable.append(
+            LocalExecPrefOut(
+                executable=executable, mode=mode, effective=one.mode, capped=one.capped
+            )
+        )
+    return LocalExecPolicyOut(
+        ceiling=ceiling,
+        global_mode=global_mode,
+        per_executable=per_executable,
+        effective=overall.mode,
+        capped=overall.capped,
+    )
+
+
+@router.get("/local-exec-prefs", response_model=LocalExecPolicyOut)
+async def local_exec_prefs(
+    scope: TeammatesScope = Depends(teammates_scope("teammates:use")),
+) -> LocalExecPolicyOut:
+    """Lo que esta persona prefiere y **cómo queda** con el techo del partner."""
+    repo = LocalExecPolicyRepository(scope.session)
+    # Ausente = sin restricción (ver `local_exec_policy.resolve`).
+    ceiling = await repo.ceiling(scope.principal.partner.id) or "always"
+    rows = await repo.prefs(principal_id=scope.principal.user_id)
+    return _policy_out(ceiling, list(rows))
+
+
+@router.put("/local-exec-prefs", response_model=LocalExecPolicyOut)
+async def set_local_exec_pref(
+    body: LocalExecPrefIn,
+    scope: TeammatesScope = Depends(teammates_scope("teammates:use")),
+) -> LocalExecPolicyOut:
+    """Guarda la preferencia. **Se guarda tal cual**, aunque el techo la baje.
+
+    Bajarla al guardar sería perder lo que la persona quiso: si mañana el
+    partner sube el techo, su elección tiene que seguir ahí. Lo que la pantalla
+    enseña es ``effective`` y ``capped`` (Requisito 10.4).
+    """
+    repo = LocalExecPolicyRepository(scope.session)
+    await repo.set_pref(
+        partner_id=scope.principal.partner.id,
+        principal_id=scope.principal.user_id,
+        executable=body.executable,
+        mode=body.mode,
+    )
+    scope.session.add(
+        AuditLog(
+            tenant_id=None,
+            actor=scope.principal.actor,
+            action="local_policy.pref_changed",
+            target=f"partner:{scope.principal.partner.id}",
+            after_json={"executable": body.executable or "*", "mode": body.mode},
+        )
+    )
+    # Ausente = sin restricción (ver `local_exec_policy.resolve`).
+    ceiling = await repo.ceiling(scope.principal.partner.id) or "always"
+    rows = await repo.prefs(principal_id=scope.principal.user_id)
+    return _policy_out(ceiling, list(rows))

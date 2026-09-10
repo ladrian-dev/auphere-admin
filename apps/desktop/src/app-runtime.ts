@@ -370,6 +370,15 @@ export class AppRuntime {
     if (message.kind !== "execute") return;
     const workdir = this.workdirFor(message.clientRef);
     if (workdir === null) return; // sin directorio declarado no hay dónde ejecutar (7.5)
-    await runExecuteMessage(message, workdir);
+    const result = await runExecuteMessage(message, workdir);
+    // **Y se contesta.** Hasta la spec 003 el resultado se calculaba y se
+    // tiraba: no había quien pusiera trabajo en la cola, así que nunca se
+    // notó. Ahora hay alguien esperándolo al otro lado, y un asiento de
+    // auditoría que se quedaría abierto para siempre si no se cerrara.
+    try {
+      await this.transport.send(result);
+    } catch (error) {
+      await this.translate(error);
+    }
   }
 }

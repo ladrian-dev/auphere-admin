@@ -85,6 +85,26 @@ export type InboxItemOut = {
   can_decide: boolean;
 };
 
+export type LocalExecCeiling = { ceiling: ExecMode; updated_by: string | null };
+export type ExecMode = "ask" | "always" | "never";
+
+export type LocalExecPref = {
+  executable: string;
+  mode: ExecMode;
+  effective: ExecMode;
+  capped: boolean;
+};
+
+export type LocalExecPolicy = {
+  ceiling: ExecMode;
+  global_mode: ExecMode;
+  per_executable: LocalExecPref[];
+  /** Lo que de verdad se aplica, con el techo ya puesto. */
+  effective: ExecMode;
+  /** El techo bajó lo que la persona pidió (R10.4). */
+  capped: boolean;
+};
+
 export function teammatesApi(call: Call) {
   const enc = encodeURIComponent;
   const base = "/console/teammates";
@@ -101,5 +121,13 @@ export function teammatesApi(call: Call) {
       call<TaskOut[]>(`${base}/tasks${state ? `?state=${enc(state)}` : ""}`),
     cancelTeammateTask: (id: string) =>
       call<TaskOut>(`${base}/tasks/${enc(id)}/cancel`, { method: "POST" }),
+    // El techo vive en la página de equipo: es una decisión del partner, no una
+    // preferencia de quien opera (spec 003, R10.1).
+    localExecPrefs: () => call<LocalExecPolicy>(`${base}/local-exec-prefs`),
+    setLocalExecPref: (pref: { executable: string | null; mode: ExecMode }) =>
+      call<LocalExecPolicy>(`${base}/local-exec-prefs`, { method: "PUT", body: pref }),
+    localExecCeiling: () => call<LocalExecCeiling>("/console/team/local-exec-ceiling"),
+    setLocalExecCeiling: (ceiling: ExecMode) =>
+      call<LocalExecCeiling>("/console/team/local-exec-ceiling", { method: "PUT", body: { ceiling } }),
   };
 }

@@ -172,31 +172,45 @@ def capability_is_unreachable(capability: str) -> tuple[bool, list[str]]:
     for spec in ALL_TOOLS:
         if spec.method == "GET" or spec.name == "console.apply":
             continue
-        # CO-05 añade la clase ``trial``, que hace POST contra el playground.
-        # No se le da un pase en blanco por ser de esa clase —eso convertiría
-        # el guardián en ruido, que es como se erosiona una garantía—: se le
-        # exige lo mismo que a ``APPLY_ROUTES``, que su destino no toque la
-        # superficie prohibida, MÁS que corra dentro del playground. Una
-        # herramienta ``trial`` que apuntara a otro sitio sigue siendo
-        # culpable, y una que no sea ``trial`` lo es siempre.
-        if (
-            spec.tool_class == "trial"
-            and "/playground/" in spec.path
-            and not _touches(spec.method, spec.path, surface)
-        ):
-            continue
-        guilty.append(f"{spec.name} no es GET ({spec.method})")
-        if f"{spec.method}:{spec.path}" in surface:
-            guilty.append(f"{spec.name} → {spec.method}:{spec.path}")
         if capability == "other_partner":
             # "Cualquier cosa de otro partner" no se cierra con una ruta:
             # se cierra porque ninguna herramienta acepta un parámetro con
             # el que nombrar a otro partner. El resto lo garantiza C1.
+            #
+            # Se comprueba **antes** de las excepciones de abajo: una clase
+            # exenta por su destino no queda exenta de esto, porque aquí lo
+            # que delata no es adónde va sino qué acepta que le digan.
             guilty += [
                 f"{spec.name} acepta {p.name}"
                 for p in spec.params
                 if p.name.lower() in {"tenant_id", "partner_id", "tenantid", "partnerid"}
             ]
+        # CO-05 añade la clase ``trial``, que hace POST contra el playground, y
+        # la spec 003 la clase ``machine``, que ejecuta en la máquina de quien
+        # la usa. A ninguna se le da un pase en blanco por su clase —eso
+        # convertiría el guardián en ruido, que es como se erosiona una
+        # garantía—: se les exige lo mismo que a ``APPLY_ROUTES``, que su
+        # destino no toque la superficie prohibida, MÁS la condición propia de
+        # su clase. Una ``trial`` que apuntara fuera del playground sigue
+        # siendo culpable; una ``machine`` que no pidiera permiso, también.
+        if not _touches(spec.method, spec.path, surface):
+            if spec.tool_class == "trial" and "/playground/" in spec.path:
+                continue
+            # La máquina no es superficie de la plataforma: no borra clientes,
+            # no factura y no toca claves porque no llega a ninguna ruta de la
+            # consola —termina en el puesto de trabajo, con la lista blanca del
+            # cliente, el techo del partner y la preferencia de la persona
+            # delante—. Lo que sí se exige aquí es que **siempre** pase por una
+            # decisión humana cuando la política lo pide.
+            if (
+                spec.tool_class == "machine"
+                and spec.path.endswith("/workstation/executions")
+                and spec.permission_policy == "always_ask"
+            ):
+                continue
+        guilty.append(f"{spec.name} no es GET ({spec.method})")
+        if f"{spec.method}:{spec.path}" in surface:
+            guilty.append(f"{spec.name} → {spec.method}:{spec.path}")
     return (not guilty, sorted(set(guilty)))
 
 

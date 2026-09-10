@@ -416,6 +416,7 @@ class LocalExecutionRepository:
         outcome: str,
         exit_code: int | None,
         children_reaped: int,
+        denial_reason: str | None = None,
     ) -> None:
         require_current_tenant()
         row = await self._session.get(LocalExecution, execution_id)
@@ -424,6 +425,11 @@ class LocalExecutionRepository:
             row.exit_code = exit_code
             row.children_reaped = children_reaped
             row.ended_at = datetime.now(UTC)
+            # La contención de la máquina también deniega (001-R12.3): su motivo
+            # es el que vale, y sin esto el asiento diría «denegada» sin decir
+            # por qué — que es justo lo que el CHECK de la tabla prohíbe.
+            if outcome == "denegada" and denial_reason:
+                row.denial_reason = denial_reason
 
     async def recent(self, limit: int = 50) -> Sequence[LocalExecution]:
         require_current_tenant()

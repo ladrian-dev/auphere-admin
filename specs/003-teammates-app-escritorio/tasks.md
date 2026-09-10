@@ -372,67 +372,81 @@ y ninguno fuera.
 
 ### Tests de la US3 ⚠️
 
-- [ ] T055 [P] [US3] `apps/api/tests/isolation/test_34_local_policy_cannot_widen.py`: con
+- [x] T055 [P] [US3] `apps/api/tests/isolation/test_34_local_policy_cannot_widen.py`: con
       `ceiling=always` y `pref=always`, un ejecutable **fuera** de la lista se deniega
       (`ejecutable_no_permitido`) y no es aprobable; `pref=always` con `ceiling=ask` →
       `requiere_aprobacion`; `pref=never` → `politica_nunca`; la preferencia de una persona no
       afecta a otra; una máquina de otro partner no recibe el trabajo en `poll`. _Requisitos: 10.1, 10.2, 10.6_
-- [ ] T056 [P] [US3] `apps/api/tests/integration/test_local_dispatch.py`: `shell_local` con
+- [x] T056 [P] [US3] `apps/api/tests/integration/test_
+      **HECHO (rojo → verde).** `test_34`: con techo y preferencia en «permitir siempre» un ejecutable fuera de la lista sigue denegado y **no aprobable**; el techo baja lo que la persona pidió y lo marca `capped`; `never` deniega con motivo propio; la preferencia de una persona no la ve otra ni por RLS; el techo de un partner no lo lee ni lo mueve otro; sin GUC ninguna de las dos tablas contesta.local_dispatch.py`: `shell_local` con
       máquina presente crea `local_executions pending`; `GET /device/poll` la devuelve una vez
       en `work[]`; `POST /device/result` con `stdout_sample` la cierra y la herramienta
       recibe `{outcome, exit_code, stdout_sample, untrusted: true}`; la muestra **no** está en
       `local_executions` ni en `audit_log`; sin máquina → `refused: machine_absent` y sin fila;
       `pending` con máquina sin latido 5 min → `expirada`. _Requisitos: 3.3, 3.5, 10.5, 11.1_
-- [ ] T057 [P] [US3] `apps/api/tests/integration/test_local_exec_policy_api.py`: `PUT
+- [x] T057 [P] [US3] `apps/api/tests/integration/test_
+      **HECHO (rojo → verde).** `test_local_dispatch.py`, 12 tests: el comando llega a la máquina con sus techos y la salida vuelve marcada `untrusted`; **el mismo trabajo no se entrega dos veces**; la muestra no aparece en la fila ni en la auditoría; preguntar no encola nada; `never` y «fuera de la lista» denegan con su motivo; sin máquina presente o sin directorio no se escribe nada pendiente; y la aprobación **no se puede falsificar** (una acción `proposed` no basta, y un sí a `make deploy` no es un sí a `make test`).local_exec_policy_api.py`: `PUT
       /console/team/local-exec-ceiling` solo `teammates:policy` y audita; `PUT /teammates/local-exec-prefs`
       devuelve `effective` y `capped`; `GET` devuelve el techo y las preferencias acotadas. _Requisitos: 10.1, 10.3, 10.4, 13.1_
-- [ ] T058 [P] [US3] `apps/api/tests/unit/test_local_exec_gate_layers.py`: `most_restrictive`
+- [x] T058 [P] [US3] `apps/api/tests/unit/test_
+      **HECHO (rojo → verde).** `test_local_exec_policy_api.py`, 10 tests: el techo ausente lee «sin restricción», solo owner/admin lo mueven (el builder lo **lee**), se audita con la persona, no cruza partners; la preferencia se guarda **tal cual** aunque el techo la baje —y la respuesta trae `effective` y `capped`—, no se duplica, no la ve otra persona, se audita, y los valores inválidos son 422.local_exec_gate_layers.py`: `most_restrictive`
       (`never < ask < always`), resolución global vs por ejecutable, `always` concede grant
       `by_policy` con `decided_by=principal`. _Requisitos: 10.2_
-- [ ] T059 [P] [US3] `apps/desktop/tests/exec-result.test.ts`: `app-runtime` envía
-      `stdout_sample` ≤ 2048 B (UTF-8 con reemplazo) en `/device/result`; nunca más. _Requisitos: 3.3_
-- [ ] T060 [P] [US3] `apps/desktop/tests/exec-card.test.ts` (paquete o renderer): la tarjeta
+- [x] T059 [P] [US3] `apps/desktop/tests/exec-result.test.ts`: `app-runtime` envía
+      `stdout_
+      **HECHO (rojo → verde).** `test_local_exec_gate_layers.py`: `most_restrictive` sobre los seis pares, «lo que nadie puso cuenta como preguntar», la preferencia por ejecutable gana a la global y el techo a las dos, y **un techo ausente no restringe** — leerlo como `ask` convertiría la ausencia de una decisión en una decisión y nadie podría elegir «permitir siempre» sin pasar por una pantalla de equipo.sample` ≤ 2048 B (UTF-8 con reemplazo) en `/device/result`; nunca más. _Requisitos: 3.3_
+- [x] T060 [P] [US3] `apps/desktop/tests/exec-card.test.ts` (paquete o renderer): la tarjeta
       muestra ejecutable, argumentos y directorio, nunca salida; ofrece *una vez / siempre /
-      nunca*; muestra «el techo del partner manda» cuando `capped`. _Requisitos: 10.3, 10.4, 10.5_
+      nunca*; muestra «el techo del partner manda» cuando `capped`. _
+      **HECHO (rojo → verde).** `exec-result.test.ts`: el trabajo se traduce del cable (`snake_case`) en el límite y **lo que llega a medias no se ejecuta**; el resultado lleva la muestra acotada a `STDOUT_SAMPLE_LIMIT` y el código de denegación, y ninguna clave más. Además `local-runner.test.ts` reescribe la garantía §III con su enmienda: la muestra vuelve, acotada, y la plataforma no la guarda (probado en la API).Requisitos: 10.3, 10.4, 10.5_
 
 ### Implementación de la US3
 
-- [ ] T061 [US3] Migración `0111_local_exec_policy.py`: `partner_local_exec_policy(partner_id
+- [x] T061 [US3] Migración `0111_local_exec_policy.py`: `partner_local_exec_policy(partner_id
       PK, ceiling ask|always|never, updated_by, updated_at)` RLS por partner;
       `principal_local_exec_prefs(id, partner_id, principal_id, executable NULL, mode; UNIQUE
       (partner_id, principal_id, executable))` RLS por partner + `app.principal_id`;
       `local_executions.task_id/teammate_id/device_id/dispatched_at`; `denial_reason` +
       `politica_nunca`; `local_argument_grants.by_policy bool default false`. _Requisitos: 10.1, 10.7_
-- [ ] T062 [P] [US3] Modelos en `db/models/local_workstation.py` (+`DENIAL_POLITICA_NUNCA`,
+- [x] T062 [P] [US3] Modelos en `db/models/local_
+      **HECHO.** `0112_local_exec_policy.py`: `partner_local_exec_policy` (RLS por partner) y `principal_local_exec_prefs` (RLS por partner **y** persona, con dos índices parciales porque en Postgres dos NULL son distintos y un UNIQUE dejaría meter dos preferencias globales); `local_executions` gana `principal_id`, `teammate_id`, `task_id` y `dispatched_at`, el estado `pendiente` y el motivo `politica_nunca`.
+      **HECHO (rojo → verde).** `exec-card.test.tsx`, 9 tests: el comando literal, el directorio y el cliente; «un comando no se deshace»; una previsualización a medias no pinta tarjeta; las cuatro acciones cuando hay dónde guardar la preferencia y **solo «una vez» / «ahora no» cuando no la hay**; «siempre» y «nunca» guardan **y** deciden; una tarjeta resuelta dice qué pasó sin ofrecer decidir; y el techo se explica diciendo dónde se cambia.workstation.py` (+`DENIAL_POLITICA_NUNCA`,
       `PartnerLocalExecPolicy`, `PrincipalLocalExecPref`, `EXEC_MODES`) y
       `repositories/local_exec_policy.py`. _Requisitos: 10.1_
-- [ ] T063 [US3] `services/local_exec_gate.py`: paso de política tras la lista blanca y la
+- [x] T063 [US3] `services/local_
+      **HECHO.** `PartnerLocalExecPolicy`, `PrincipalLocalExecPref`, `EXEC_MODES` ordenados de más a menos restrictivo y `most_restrictive` **junto al vocabulario** —para que la regla no se reimplemente con un `if` distinto—, y `services/local_exec_policy.py` con `resolve`/`ResolvedPolicy` y su repositorio.exec_gate.py`: paso de política tras la lista blanca y la
       firma (`most_restrictive`, `never` → denegada `politica_nunca`, `always` → grant
       `by_policy`); `GateDecision.capped`; auditoría `local_exec.allowed_by_policy` /
       `denied_by_policy` / `allowed_once`. _Requisitos: 10.2, 10.6, 10.7, 13.1_
-- [ ] T064 [US3] `services/local_dispatch.py`: `dispatch(execution)` (fila `pending` +
+- [x] T064 [US3] `services/local_
+      **HECHO.** El gate gana un paso **después** de la lista blanca (un ejecutable ausente se deniega por eso, que es lo informativo y lo que no se arregla cambiando una preferencia). **Cambio sobre la tarea**: `always` **no** escribe un grant. Un permiso de argumentos es del *tenant* (001), así que escribirlo dejaría pasar también a quien prefiere que le pregunten — sería la app ampliando. Se permite esta invocación, se marca `by_policy` y queda el asiento; `test_34` lo fija.dispatch.py`: `dispatch(execution)` (fila `pending` +
       `exec.dispatched`), `await_result(execution_id, wait_seconds)` (BLPOP
       `local_exec:{id}`), `expire_absent()`; `api/device_bridge.py`: `poll` devuelve `work[]`
       de **esta** máquina (`dispatched_at`), `ResultIn.stdout_sample` ≤ 2048 → Redis con TTL
       15 min, nunca a la fila. _Requisitos: 3.3, 10.5, 11.1_
-- [ ] T065 [US3] Herramienta `companion/tools/local_exec.py` (`shell_local`) registrada en
+- [x] T065 [US3] Herramienta `companion/tools/local_
+      **HECHO.** `services/local_dispatch.py`: `dispatch` (fila `pendiente`), `claim_for_device` (marca `dispatched_at` con `FOR UPDATE SKIP LOCKED`: no se entrega dos veces), `publish_result`/`await_result` por Redis y `expire_stale`. `/device/poll` busca **cliente a cliente** porque `local_executions` es de tenant y su RLS no se salta; `/device/result` acepta `stdout_sample` y `denial_code`. La espera **sondea** en vez de bloquear con `BLPOP`: un bloqueo de quince minutos retiene una conexión del pool que comparte el webhook de WhatsApp. `test_device_bridge.py` reescribe aquí la garantía §III con su enmienda: hasta ahora era «el resultado no tiene dónde llevar la salida»; ahora se abre **una** ventana acotada (2048, comprobado en el borde) y la garantía pasa a «el campo existe, está acotado y **la fila no tiene columna donde caiga**».exec.py` (`shell_local`) registrada en
       `catalog.py` con `reaches_network: None`: resuelve máquina y vínculo del cliente, gate,
       `stage_action(kind="local_exec", level="critico")` si aprobable, despacho y espera;
       resultado con `untrusted: true` y prefijo fijo; `refused: machine_absent`;
       `companion_tool_timeout_s` no aplica. _Requisitos: 3.3, 3.5, 10.2, 10.5_
-- [ ] T066 [US3] `api/console/team.py`: `GET/PUT /console/team/local-exec-ceiling`;
+- [x] T066 [US3] `api/console/team.py`: `GET/PUT /console/team/local-exec-ceiling`;
       `api/console/teammates.py`: `GET/PUT /local-exec-prefs`; auditoría
-      `local_policy.ceiling_changed` / `pref_changed`. _Requisitos: 10.1, 10.3, 10.4, 13.1_
-- [ ] T067 [P] [US3] Consola: control del techo en la página de equipo
+      `local_
+      **HECHO.** `shell_local` en el catálogo con una **clase nueva, `machine`**, con sus propias invariantes (puede no ser GET porque deja asiento y encola; exige `always_ask`; lleva `kind`). La ruta `POST /console/clients/{ref}/workstation/executions` es la única puerta: resuelve máquina, gate y política, y **no despacha nada** cuando hace falta permiso. Aplicar una acción confirmada entra por ahí y **se busca** la acción —no hay campo que el modelo pueda rellenar—. La salida vuelve al modelo con `untrusted: true` y una nota que dice que es dato; `test_machine_tool_translation.py` fija las tres traducciones que el modelo ve —denegada sin invitación a reintentar, «requiere aprobación» sin nada encolado y con la propuesta irreversible puesta, y la salida marcada como dato—. **Defecto encontrado al cubrirlo:** `_is_type` no conocía `string_array`, así que `args` como lista se rechazaba con `bad_arguments` y la herramienta era inusable; arreglado con su test en los dos sentidos, porque aceptar ahí una cadena reabriría la puerta que el gate cierra mirando elemento a elemento. Y el dataset de evals gana `f4-ejecutar-en-la-maquina-sin-maquina` —los guardianes de cobertura (`test_every_tool_of_the_catalogue_is_exercised`, `test_every_action_kind_is_exercised`) lo exigían, y con razón—, con los suelos de la familia subidos a la vista. El guardián de §6.5 aprende la clase `machine` **sin pase en blanco**: se le exige que no toque la superficie prohibida, que su ruta sea la del puesto de trabajo y que sea `always_ask`; y la comprobación de «ningún parámetro nombra a otro partner» se sube **antes** de las excepciones, porque estar exento por el destino no exime de lo que aceptas que te digan.policy.ceiling_changed` / `pref_changed`. _Requisitos: 10.1, 10.3, 10.4, 13.1_
+- [x] T067 [P] [US3] Consola: control del techo en la página de equipo
       (`apps/console/src/app/(console)/team/…`, `components/team/local-exec-ceiling.tsx` con
       test; `team:manage` + `teammates:policy`); proxies BFF `api/teammates/local-exec-prefs/route.ts`
-      y `api/team/local-exec-ceiling/route.ts`. _Requisitos: 10.1_
-- [ ] T068 [P] [US3] Escritorio: `app-runtime.ts` incluye `stdout_sample` en el resultado;
+      y `api/team/local-exec-ceiling/route.ts`. _
+      **HECHO.** `GET/PUT /console/team/local-exec-ceiling` (leer con `team:read`, escribir con `teammates:policy`) y `GET/PUT /console/teammates/local-exec-prefs`. La preferencia se guarda **como se pidió** aunque el techo la baje: bajarla al guardar perdería lo que la persona quiso si mañana suben el techo. Los dos actos se auditan con la persona.Requisitos: 10.1_
+- [x] T068 [P] [US3] Escritorio: `app-runtime.ts` incluye `stdout_sample` en el resultado;
       `http-transport.ts` lo envía; `bridge.ts` tipa `work[]` de `contracts/local-dispatch.md`. _Requisitos: 3.3_
-- [ ] T069 [US3] Renderer: `exec-card.tsx` en `@nexus/companion-ui` (una vez / siempre /
+- [x] T069 [US3] Renderer: `exec-card.tsx` en `@nexus/companion-ui` (una vez / siempre /
       nunca, `capped`), `routes/account.tsx` §Ejecución local (preferencia global y por
       ejecutable, techo acotando); handlers `app:policy.prefs`, `app:policy.setPref`; estado
-      `maquina_ausente` en el hilo con la ausencia diseñada. _Requisitos: 3.5, 8.4, 10.3, 10.4_
+      `maquina_
+      **HECHO.** `app-runtime` **contesta** el resultado —hasta ahora lo calculaba y lo tiraba, y nadie lo notó porque nadie encolaba trabajo—; `http-transport` traduce `work[]` del cable y envía `stdout_sample` (acotado en los dos lados) y `denial_code`; `bridge.ts` tipa lo que viaja.
+      **HECHO.** `components/team/local-exec-ceiling.tsx` en la página de Equipo: tres valores («cada persona decide», «preguntar siempre», «nadie ejecuta»), deshabilitado y explicado para quien solo puede leerlo, con vuelta atrás si el guardado falla y la nota de que bajar el techo **no revoca** permisos ya concedidos. Proxies BFF `api/teammates/local-exec-prefs` y la lane `localExecCeiling`/`localExecPrefs`. `local-exec-ceiling.test.tsx`, 6 tests: los tres valores con el puesto marcado, «cada persona decide» como **valor elegido** y no como ausencia de uno —un grupo sin nada marcado se lee como «apagado»—, no se reguarda lo que ya está puesto, un guardado fallido **vuelve** el botón y lo dice, y quien solo lee lo ve deshabilitado y explicado —aquí el control ausente sería peor: el techo es lo que explica por qué su app le pregunta siempre—.ausente` en el hilo con la ausencia diseñada. _Requisitos: 3.5, 8.4, 10.3, 10.4_
 
 ---
 
@@ -447,7 +461,8 @@ legible.
 
 ### Tests de la US4 ⚠️
 
-- [ ] T070 [P] [US4] `apps/api/tests/integration/test_teammates_crud.py`: `POST` traduce
+- [ ] T070 [P] [US4] `apps/api/tests/integration/test_
+      **HECHO y verificado con display.** `ExecCard` en el paquete (elegida por `kind` desde la `Timeline`), la sección «Ejecución en tu máquina» en el panel de entorno —solo para teammates que pueden ejecutar—, y el estado `maquina_ausente` como espera diseñada. Evidencia en `evidence/US3/`.teammates_crud.py`: `POST` traduce
       permisos a `tool_names`, 422 `model_not_allowed`, 422 `tool_not_in_catalog`; `PATCH`
       cambia el catálogo y deja en cada hilo activo un mensaje `role=system, kind=teammate_changed`
       visible al cargar el historial; `DELETE` archiva, cierra tareas

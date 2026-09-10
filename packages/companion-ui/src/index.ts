@@ -47,6 +47,7 @@ export {
 export { type CompanionMessageKey, type Locale, companionMessages, formatMessage } from "./messages";
 export { Composer, MAX_PROMPT } from "./components/composer";
 export { ConfirmCard } from "./components/confirm-card";
+export { ExecCard, type ExecMode, type ExecPreview, readExecPreview } from "./components/exec-card";
 export { IntakeCard } from "./components/intake-card";
 export { Meters } from "./components/meters";
 export { PlanCard } from "./components/plan-card";

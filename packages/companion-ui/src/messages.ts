@@ -21,6 +21,26 @@ export type Locale = "es" | "en";
 export const companionMessages = {
   // La única clave fuera de `companion.*` que los componentes usan; mismo texto que el núcleo de la consola.
   "common.retry": { es: "Reintentar", en: "Retry" },
+  // ── spec 003: ejecutar en la máquina ────────────────────────────────
+  "companion.exec.title": { es: "Ejecutar en tu máquina", en: "Run on your machine" },
+  "companion.exec.command": { es: "Comando", en: "Command" },
+  "companion.exec.cwd": { es: "Dentro de", en: "Inside" },
+  "companion.exec.client": { es: "Cliente", en: "Client" },
+  "companion.exec.undo": {
+    es: "Un comando no se deshace: lo que escriba, escrito queda.",
+    en: "A command cannot be undone: whatever it writes, stays written.",
+  },
+  "companion.exec.once": { es: "Permitir una vez", en: "Allow once" },
+  "companion.exec.always": { es: "Permitir siempre", en: "Always allow" },
+  "companion.exec.reject": { es: "Ahora no", en: "Not now" },
+  "companion.exec.never": { es: "Nunca en mi máquina", en: "Never on my machine" },
+  "companion.exec.ran": { es: "Se ejecutó.", en: "It ran." },
+  "companion.exec.notRan": { es: "No se ejecutó nada.", en: "Nothing ran." },
+  "companion.exec.capped": {
+    es: "Guardaste «permitir siempre», pero el techo de tu partner manda: se te sigue preguntando. Se cambia en la consola, en Equipo.",
+    en: "You saved “always allow”, but your partner's ceiling wins: you are still asked. It changes in the console, under Team.",
+  },
+  "companion.kind.local_exec": { es: "Ejecutar un comando", en: "Run a command" },
   // ── bubble + drawer chrome ───────────────────────────────────────────
   "companion.title": { es: "Companion", en: "Companion" },
   "companion.open": { es: "Abrir el Companion", en: "Open the Companion" },

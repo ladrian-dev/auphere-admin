@@ -26,13 +26,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
-from nexus_api.db.models import AuditLog, PartnerInvitation, PartnerMembership
+from nexus_api.core.partner_context import apply_partner_to_session
+from nexus_api.db.models import (
+    AuditLog,
+    PartnerInvitation,
+    PartnerLocalExecPolicy,
+    PartnerMembership,
+)
 from nexus_api.repositories.partner_membership import (
     LastOwnerError,
     PartnerInvitationRepository,
     PartnerMembershipRepository,
 )
 from nexus_api.services.email import send_email
+from nexus_api.services.local_exec_policy import LocalExecPolicyRepository
 
 from .schemas import (
     InvitationCreatedOut,
@@ -43,6 +50,7 @@ from .schemas import (
     MemberStatusIn,
     TeamOut,
 )
+from .schemas_workstation import LocalExecCeilingIn, LocalExecCeilingOut
 
 router = APIRouter(prefix="/team")
 
@@ -264,3 +272,58 @@ async def remove_member(
             raise _last_owner() from None
         session.add(_platform_audit(principal, "console.member.remove", email=email))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── el techo de ejecución local del partner (spec 003, Requisito 10.1) ──
+#
+# Vive aquí y no en `/console/teammates/*` a propósito: es una decisión de
+# seguridad del **equipo**, no una preferencia de quien opera. Por eso la
+# escribe `teammates:policy` (owner y admin) y la lee cualquiera que ya vea el
+# equipo — saber qué techo hay puesto no es un secreto, y esconderlo solo
+# haría que la gente no entendiera por qué se le sigue preguntando.
+
+
+@router.get("/local-exec-ceiling", response_model=LocalExecCeilingOut)
+async def get_local_exec_ceiling(
+    principal: ConsolePrincipal = Depends(require_console_principal("team:read")),
+    session: AsyncSession = Depends(get_db_session),
+) -> LocalExecCeilingOut:
+    async with session.begin():
+        await apply_partner_to_session(
+            session, principal.partner.id, principal_id=principal.user_id
+        )
+        row = await session.get(PartnerLocalExecPolicy, principal.partner.id)
+        return LocalExecCeilingOut(
+            # Sin fila no hay restricción: cada persona decide dentro de la
+            # lista blanca de su cliente.
+            ceiling=(row.ceiling if row is not None else "always"),
+            updated_by=(row.updated_by if row is not None else None),
+        )
+
+
+@router.put("/local-exec-ceiling", response_model=LocalExecCeilingOut)
+async def put_local_exec_ceiling(
+    body: LocalExecCeilingIn,
+    principal: ConsolePrincipal = Depends(require_console_principal("teammates:policy")),
+    session: AsyncSession = Depends(get_db_session),
+) -> LocalExecCeilingOut:
+    """Pone el techo. Bajarlo tiene efecto **en la siguiente invocación**: no
+    revoca permisos de argumentos ya concedidos, que se revocan uno a uno desde
+    el puesto de trabajo del cliente."""
+    async with session.begin():
+        await apply_partner_to_session(
+            session, principal.partner.id, principal_id=principal.user_id
+        )
+        await LocalExecPolicyRepository(session).set_ceiling(
+            principal.partner.id, ceiling=body.ceiling, by=principal.user_id
+        )
+        session.add(
+            AuditLog(
+                tenant_id=None,
+                actor=principal.actor,
+                action="local_policy.ceiling_changed",
+                target=f"partner:{principal.partner.id}",
+                after_json={"ceiling": body.ceiling},
+            )
+        )
+    return LocalExecCeilingOut(ceiling=body.ceiling, updated_by=principal.user_id)

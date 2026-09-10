@@ -133,6 +133,10 @@ def test_the_twelve_kinds_are_the_twelve_of_the_contract() -> None:
         "invite",
         "support_help",
         "support_capability",
+        # Spec 003 (CONTRACT-V3): ejecutar en la máquina del partner también se
+        # propone, se confirma y se aplica. Es el único ``kind`` cuyo destino no
+        # es un dato de la plataforma, y por eso lleva su propia clase.
+        "local_exec",
     }
     assert set(APPLY_ROUTES) == set(ACTION_KINDS)
 
@@ -147,24 +151,34 @@ def test_no_write_route_touches_the_forbidden_list() -> None:
             assert forbidden not in path, f"{kind} llega a {forbidden}"
     # Y ningún verbo destructivo en todo el catálogo, ni siquiera preparado.
     #
-    # Se comprueba por lista blanca y no por "todo es GET": CO-05 añade la
-    # clase ``trial``, que hace POST contra el playground. Esa es la ÚNICA
-    # excepción admitida, y se exige explícitamente —clase y política— en vez
-    # de ensanchar la regla, para que una herramienta nueva que escriba con
-    # POST siga rompiendo aquí.
+    # Se comprueba por lista blanca y no por "todo es GET". Hay **dos**
+    # excepciones admitidas, cada una con sus condiciones escritas aquí, para
+    # que una herramienta nueva que escriba con POST siga rompiendo este test:
+    #
+    # * ``trial`` (CO-05) — prueba el borrador en el playground, en seco.
+    # * ``machine`` (spec 003) — ejecuta en la máquina del partner. No escribe
+    #   nada de la plataforma: deja el asiento de auditoría y encola trabajo
+    #   para el puente. Exige ``always_ask`` y su propio ``kind``, porque
+    #   acaba en una tarjeta cuando la política dice que hay que preguntar.
     for tool in ALL_TOOLS:
         if tool.method == "GET":
             continue
         assert tool.method == "POST", f"{tool.name} usa un verbo destructivo"
-        assert tool.tool_class == "trial", (
-            f"{tool.name} no es GET y no es una prueba: la única puerta de "
-            "escritura sigue siendo console.apply"
+        assert tool.tool_class in ("trial", "machine"), (
+            f"{tool.name} no es GET, no es una prueba y no es la máquina: la "
+            "única puerta de escritura de la plataforma sigue siendo console.apply"
         )
-        assert tool.permission_policy == "always_allow", tool.name
-        assert tool.kind is None, f"{tool.name} no propone ninguna acción"
-        # Y una prueba no toca la configuración del cliente: su ruta es la del
-        # playground, que corre en seco y no llega a ningún cliente final.
-        assert "/playground/" in tool.path, tool.name
+        if tool.tool_class == "trial":
+            assert tool.permission_policy == "always_allow", tool.name
+            assert tool.kind is None, f"{tool.name} no propone ninguna acción"
+            # Una prueba no toca la configuración del cliente: su ruta es la del
+            # playground, que corre en seco y no llega a ningún cliente final.
+            assert "/playground/" in tool.path, tool.name
+        else:
+            assert tool.permission_policy == "always_ask", tool.name
+            assert tool.kind == "local_exec", tool.name
+            # Y su ruta es la del puesto de trabajo, no la configuración de nadie.
+            assert tool.path.endswith("/workstation/executions"), tool.name
 
 
 def test_every_write_route_exists_in_the_application() -> None:

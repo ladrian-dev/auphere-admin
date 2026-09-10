@@ -39,7 +39,13 @@ OUTCOME_COMPLETADA = "completada"
 OUTCOME_EXPIRADA = "expirada"
 OUTCOME_TERMINADA = "terminada"
 OUTCOME_DENEGADA = "denegada"
+#: Spec 003 — la ejecución que espera a que la máquina la recoja. Los cuatro de
+#: la 001 describían ejecuciones terminadas; sin este, una fila recién creada
+#: tendría que mentir diciendo «completada» (§V).
+OUTCOME_PENDIENTE = "pendiente"
+
 OUTCOMES: tuple[str, ...] = (
+    OUTCOME_PENDIENTE,
     OUTCOME_COMPLETADA,
     OUTCOME_EXPIRADA,
     OUTCOME_TERMINADA,
@@ -51,13 +57,38 @@ DENIAL_METACARACTERES = "metacaracteres"
 DENIAL_FUERA_DEL_DIRECTORIO = "fuera_del_directorio"
 DENIAL_SIN_VERIFICAR = "sin_verificar"
 DENIAL_DISPOSITIVO_AUSENTE = "dispositivo_ausente"
+#: Spec 003 — la persona dijo «nunca». Tiene motivo propio para que la auditoría
+#: distinga «lo prohibiste tú» de «ese ejecutable no está permitido».
+DENIAL_POLITICA_NUNCA = "politica_nunca"
 DENIAL_REASONS: tuple[str, ...] = (
     DENIAL_EJECUTABLE_NO_PERMITIDO,
     DENIAL_METACARACTERES,
     DENIAL_FUERA_DEL_DIRECTORIO,
     DENIAL_SIN_VERIFICAR,
     DENIAL_DISPOSITIVO_AUSENTE,
+    DENIAL_POLITICA_NUNCA,
 )
+
+#: Spec 003 — los tres modos de la política de ejecución local (Requisito 10).
+#: Ordenados de más restrictivo a menos: ``EXEC_MODES.index`` **es** la
+#: comparación, y por eso no hay dos sitios donde decir cuál gana.
+EXEC_NEVER = "never"
+EXEC_ASK = "ask"
+EXEC_ALWAYS = "always"
+EXEC_MODES: tuple[str, ...] = (EXEC_NEVER, EXEC_ASK, EXEC_ALWAYS)
+
+
+def most_restrictive(*modes: str | None) -> str:
+    """El más restrictivo de los modos dados. Ausente cuenta como ``ask``.
+
+    Es la regla entera del Requisito 10.2 y vive aquí, junto al vocabulario,
+    para que nadie la reimplemente con un ``if`` distinto.
+    """
+    known = [m for m in modes if m in EXEC_MODES]
+    if not known:
+        return EXEC_ASK
+    return min(known, key=EXEC_MODES.index)
+
 
 PLATFORM_MACOS = "macos"
 PLATFORM_WINDOWS = "windows"
@@ -281,11 +312,90 @@ class LocalExecution(Base):
     children_reaped: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
+    #: Spec 003 — de quién y de qué trabajo fue. La persona es la que decidió;
+    #: el teammate **nunca** es el actor de la auditoría (§5.6 de la revisión).
+    principal_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    teammate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: Cuándo se entregó a la máquina. Una ``pendiente`` sin esto todavía no la
+    #: recogió nadie; con esto y sin cerrar, se colgó y hay que caducarla.
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PartnerLocalExecPolicy(Base):
+    """El techo del partner (Requisito 10.1). Ausente significa ``ask``."""
+
+    __tablename__ = "partner_local_exec_policy"
+    __table_args__ = (
+        CheckConstraint(
+            "ceiling IN (" + ", ".join(f"'{m}'" for m in EXEC_MODES) + ")",
+            name="partner_local_exec_policy_ceiling_check",
+        ),
+    )
+
+    partner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("partners.id", ondelete="CASCADE"), primary_key=True
+    )
+    ceiling: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'ask'"))
+    updated_by: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class PrincipalLocalExecPref(Base):
+    """Lo que **una persona** prefiere, global o por ejecutable (Requisito 10.1).
+
+    De la persona y de su partner: la RLS lleva las dos claves, así que la
+    preferencia de una no toca a nadie más. Es lo que hace que «permitir
+    siempre» no pueda convertirse en un permiso de equipo por descuido.
+    """
+
+    __tablename__ = "principal_local_exec_prefs"
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN (" + ", ".join(f"'{m}'" for m in EXEC_MODES) + ")",
+            name="principal_local_exec_prefs_mode_check",
+        ),
+        Index(
+            "uq_principal_local_exec_prefs_global",
+            "partner_id",
+            "principal_id",
+            unique=True,
+            postgresql_where=text("executable IS NULL"),
+        ),
+        Index(
+            "uq_principal_local_exec_prefs_executable",
+            "partner_id",
+            "principal_id",
+            "executable",
+            unique=True,
+            postgresql_where=text("executable IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    partner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("partners.id", ondelete="CASCADE"), nullable=False
+    )
+    principal_id: Mapped[str] = mapped_column(Text, nullable=False)
+    #: NULL = la preferencia global de esta persona.
+    executable: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mode: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
 
 
 __all__ = [
+    "DENIAL_POLITICA_NUNCA",
     "DENIAL_REASONS",
+    "EXEC_ALWAYS",
+    "EXEC_ASK",
+    "EXEC_MODES",
+    "EXEC_NEVER",
     "OUTCOMES",
+    "OUTCOME_PENDIENTE",
     "PLATFORMS",
     "REVOKED_REASONS",
     "DeviceClientLink",
@@ -294,4 +404,7 @@ __all__ = [
     "LocalExecutable",
     "LocalExecution",
     "PartnerDevice",
+    "PartnerLocalExecPolicy",
+    "PrincipalLocalExecPref",
+    "most_restrictive",
 ]

@@ -36,6 +36,15 @@ export type PresencePush = {
   presence: "presente" | "ausente";
   links: Array<{ clientRef: string; clientName: string | null; needsDirectory: boolean }>;
 };
+export type ExecMode = "ask" | "always" | "never";
+export type LocalExecPolicy = {
+  ceiling: ExecMode;
+  global_mode: ExecMode;
+  per_executable: Array<{ executable: string; mode: ExecMode; effective: ExecMode; capped: boolean }>;
+  effective: ExecMode;
+  capped: boolean;
+};
+
 export type Jobs = { jobs: string[]; models: Array<{ id: string; note: string; cost_label: string }> };
 
 export type Level = "critico" | "aviso" | "informativo";
@@ -100,6 +109,8 @@ export interface AuphereBridge {
   tasksList(input?: { state?: string }): Promise<Result<Task[]>>;
   tasksCancel(input: { id: string }): Promise<Result<Task>>;
   notificationsPrefs(input?: { silence_aviso?: boolean }): Promise<{ silenceAviso: boolean }>;
+  policyPrefs(): Promise<Result<LocalExecPolicy>>;
+  policySetPref(input: { executable: string | null; mode: ExecMode }): Promise<Result<LocalExecPolicy>>;
   usage(): Promise<Result<{ budget: CompanionBudget; by_teammate: unknown[] }>>;
   openConsole(input: { path: string }): Promise<null>;
   on<K extends keyof Push>(channel: K, callback: (payload: Push[K]) => void): () => void;

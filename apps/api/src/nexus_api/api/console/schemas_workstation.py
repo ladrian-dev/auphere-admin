@@ -125,3 +125,76 @@ class SetupStepOut(BaseModel):
 class SetupOut(BaseModel):
     complete: bool
     steps: list[SetupStepOut]
+
+
+# ── spec 003: ejecutar en la máquina (Requisitos 3.3 y 10) ─────────────
+
+
+class ExecutionIn(BaseModel):
+    """Lo que un teammate pide ejecutar.
+
+    ``args`` es lista y **nunca** una cadena: una cadena volvería a abrir la
+    puerta que el gate cierra comprobando metacaracteres elemento a elemento
+    (001-R2.4). ``cwd_relative`` es relativo al directorio que la máquina
+    declaró para este cliente; la contención lo vuelve a comprobar allí.
+    """
+
+    executable: str = Field(min_length=1, max_length=128)
+    args: list[str] = Field(default_factory=list, max_length=64)
+    cwd_relative: str | None = Field(default=None, max_length=1024)
+
+
+class ExecutionOutcomeOut(BaseModel):
+    """Lo que la plataforma contesta a quien pidió ejecutar.
+
+    Tres decisiones y ninguna más: se ejecutó, hace falta permiso, o no.
+    ``stdout_sample`` solo viene en la primera, es una muestra acotada y va
+    marcada como **dato**: lo que un programa escribe no son instrucciones
+    (§III), y quien lo entregue al modelo tiene que decirlo.
+    """
+
+    decision: str
+    executable: str
+    argv_signature: str
+    execution_id: uuid.UUID | None = None
+    outcome: str | None = None
+    exit_code: int | None = None
+    stdout_sample: str | None = None
+    untrusted: bool = False
+    #: Vocabulario cerrado, nunca prosa (C8).
+    denial_code: str | None = None
+    #: El techo del partner bajó lo que esta persona pidió (Requisito 10.4).
+    capped: bool = False
+    #: El modo que de verdad se aplicó: `ask` · `always` · `never`.
+    mode: str = "ask"
+
+
+class LocalExecPolicyOut(BaseModel):
+    ceiling: str
+    global_mode: str
+    per_executable: list[LocalExecPrefOut] = Field(default_factory=list)
+    #: `effective` ya lleva el techo aplicado; `capped` dice si lo bajó.
+    effective: str
+    capped: bool
+
+
+class LocalExecPrefOut(BaseModel):
+    executable: str
+    mode: str
+    effective: str
+    capped: bool
+
+
+class LocalExecPrefIn(BaseModel):
+    #: `null` = la preferencia global de esta persona.
+    executable: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._+-]{1,128}$")
+    mode: str = Field(pattern="^(ask|always|never)$")
+
+
+class LocalExecCeilingIn(BaseModel):
+    ceiling: str = Field(pattern="^(ask|always|never)$")
+
+
+class LocalExecCeilingOut(BaseModel):
+    ceiling: str
+    updated_by: str | None = None

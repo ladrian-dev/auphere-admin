@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from nexus_api.db.models import DeviceClientLink, LocalExecution, PartnerDevice
@@ -180,13 +181,37 @@ async def test_a_result_closes_the_audit_entry(client, db_session, console_world
     assert closed.children_reaped == 2
 
 
-async def test_the_result_has_nowhere_to_carry_the_command_output():
-    """La garantía sigue siendo estructural en este extremo también."""
+async def test_the_result_carries_one_bounded_window_and_the_row_still_has_none():
+    """§III con su enmienda de la spec 003, escrita entera.
+
+    Hasta la 003 el resultado no tenía **dónde** llevar la salida, y eso era la
+    garantía. Ahora el teammate ejecuta a petición de una persona y tiene que
+    poder leer lo que salió, así que se abre **una** ventana, acotada, y la
+    garantía se mueve de "no existe el campo" a "el campo existe, está acotado
+    y no se guarda". Lo que no cambia es el asiento: la auditoría sigue
+    diciendo qué pasó, nunca qué dijo el comando.
+    """
     from nexus_api.api.device_bridge import ResultIn
 
-    assert "stdout" not in ResultIn.model_fields
-    assert "output" not in ResultIn.model_fields
-    assert set(ResultIn.model_fields) == {"execution_id", "outcome", "exit_code", "children_reaped"}
+    assert set(ResultIn.model_fields) == {
+        "execution_id",
+        "outcome",
+        "exit_code",
+        "children_reaped",
+        "stdout_sample",
+        "denial_code",
+    }
+    # La ventana es una y está medida en el borde, no en la confianza de quien
+    # envía: 2048 caracteres, el mismo tope que aplica la app antes de mandarlo.
+    sample = ResultIn.model_fields["stdout_sample"]
+    assert any(getattr(m, "max_length", None) == 2048 for m in sample.metadata), sample.metadata
+    with pytest.raises(ValidationError):
+        ResultIn(execution_id=uuid.uuid4(), outcome="completada", stdout_sample="x" * 2049)
+
+    # Y la fila —lo único que sobrevive a la ejecución— no tiene columna alguna
+    # donde esa muestra pudiera acabar.
+    columns = set(LocalExecution.__table__.columns.keys())
+    assert not columns & {"stdout", "stdout_sample", "output", "stderr", "log"}, columns
 
 
 # ── Requisito 11: archivar desde la consola, y la pertenencia retirada ─────

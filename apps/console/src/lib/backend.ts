@@ -294,6 +294,7 @@ import { homeUsageApi } from "./backend/home-usage";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
 import { teammatesApi } from "./backend/teammates";
+export type { ExecMode, LocalExecCeiling, LocalExecPolicy, LocalExecPref } from "./backend/teammates";
 import { workstationApi, workstationPartnerApi } from "./backend/workstation";
 
 /** Mint-per-call function for a principal (also used by route handlers that stream). */

@@ -2,8 +2,17 @@
  * El hilo con un teammate (R3): corre en la plataforma; aquí se pinta con el
  * paquete compartido y se nombra su estado con `deriveThreadState`.
  */
-import { Composer, type Decision, type IntakeSlot, Meters, Timeline, pendingAction, useCompanion } from "@nexus/companion-ui";
-import { useEffect, useMemo, useState } from "react";
+import {
+  Composer,
+  type Decision,
+  type ExecMode,
+  type IntakeSlot,
+  Meters,
+  Timeline,
+  pendingAction,
+  useCompanion,
+} from "@nexus/companion-ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { deriveThreadState, type ThreadState } from "../../app-state";
 import { type Teammate, bridge } from "../bridge";
@@ -12,12 +21,39 @@ import { ipcTransport } from "../transport-ipc";
 
 const BANNER_STATES: ThreadState[] = ["esperandote", "en_pausa_por_tope", "maquina_ausente", "parcial", "reconectando"];
 
+/** El ejecutable de la tarjeta que está esperando, si es de máquina. */
+function pendingExecutable(state: { items: Array<Record<string, unknown>> }): string | null {
+  for (const item of [...state.items].reverse()) {
+    if (item.kind !== "action" || item.actionKind !== "local_exec") continue;
+    const preview = item.preview as Record<string, unknown> | undefined;
+    const executable = preview?.executable;
+    return typeof executable === "string" ? executable : null;
+  }
+  return null;
+}
+
 export function ThreadView({ teammate, machinePresent, onRosterChanged }: { teammate: Teammate; machinePresent: boolean; onRosterChanged: () => void }) {
   const t = useAppT();
   const controller = useCompanion(ipcTransport);
   const { state, status, errorDetail, partial, reconnecting, deciding, decisionFailure, openThread, setThreadId, send, decide } = controller;
   const [text, setText] = useState("");
   const [opening, setOpening] = useState(true);
+  // El techo del partner, para poder decir la verdad en la tarjeta (R10.4).
+  const [capped, setCapped] = useState(false);
+
+  useEffect(() => {
+    void bridge.policyPrefs().then((res) => {
+      if (res.ok) setCapped(res.data.capped);
+    });
+  }, []);
+
+  const onExecPolicy = useCallback(async (mode: Exclude<ExecMode, "ask">) => {
+    // Se guarda **por ejecutable**, no global: decir «siempre» a `make test` no
+    // es decírselo a todo lo que un teammate quiera correr mañana.
+    const executable = pendingExecutable(state);
+    const saved = await bridge.policySetPref({ executable, mode });
+    if (saved.ok) setCapped(saved.data.capped);
+  }, [state]);
 
   useEffect(() => {
     let alive = true;
@@ -103,6 +139,8 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged }: { team
           onSuggestion={(s) => setText(s)}
           onAnswerSlot={(slot: IntakeSlot) => setText(slot.label || slot.key)}
           onDecide={(actionId: string, decision: Decision, note?: string) => void decide(actionId, decision, note).then(onRosterChanged)}
+          onExecPolicy={(mode) => void onExecPolicy(mode)}
+          execCapped={capped}
         />
         )}
       </div>

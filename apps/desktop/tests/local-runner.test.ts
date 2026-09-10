@@ -12,7 +12,12 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { MAX_TIMEOUT_MS, runExecuteMessage } from "../src/local-runner.js";
+import { STDOUT_SAMPLE_LIMIT } from "../src/executor.js";
+import {
+  MAX_TIMEOUT_MS,
+  type ExecutionResultMessage,
+  runExecuteMessage,
+} from "../src/local-runner.js";
 
 let workdir: string;
 let outside: string;
@@ -91,13 +96,55 @@ describe("los techos se aplican aquí también (Requisito 12)", () => {
   });
 });
 
-describe("la salida no viaja (§III)", () => {
-  it("el resultado dice qué pasó, no qué dijo el comando", async () => {
+describe("la salida es DATO, y acotada (§III con la enmienda de la spec 003)", () => {
+  /**
+   * La 001 no dejaba salir ni un byte: no había quien pidiera el comando, así
+   * que la única salida posible era la auditoría, y ahí la salida no entra.
+   *
+   * La 003 abre exactamente una rendija y la deja escrita: una **muestra
+   * acotada** vuelve a quien pidió ejecutar —un teammate no puede leer el
+   * resultado de lo que pidió si no— y viaja marcada como dato no confiable.
+   * Lo que **no** cambia: la plataforma no la persiste ni en la fila de
+   * ejecución ni en la auditoría, y eso se prueba en la API
+   * (`test_local_dispatch.py::test_the_output_never_lands_in_the_audit_row`).
+   */
+  it("devuelve una muestra de lo que el comando escribió", async () => {
     const result = await runExecuteMessage(
-      message({ args: ["-c", "echo secreto-del-cliente"] }),
+      message({ args: ["-c", "echo hola-del-cliente"] }),
       workdir,
     );
-    expect(JSON.stringify(result)).not.toContain("secreto-del-cliente");
-    expect(Object.keys(result)).not.toContain("stdoutSample");
+    expect(result.stdoutSample).toContain("hola-del-cliente");
+  });
+
+  it("la muestra está acotada por el techo del ejecutor, no por lo que escriba el comando", async () => {
+    const result = await runExecuteMessage(
+      message({ args: ["-c", "for i in $(seq 1 5000); do echo linea-larguisima-$i; done"] }),
+      workdir,
+    );
+    expect((result.stdoutSample ?? "").length).toBeLessThanOrEqual(STDOUT_SAMPLE_LIMIT);
+  });
+
+  it("el resultado sigue sin llevar nada más de la máquina", () => {
+    // Ni rutas, ni entorno, ni el directorio: lo que viaja es lo enumerado.
+    const allowed = [
+      "kind",
+      "executionId",
+      "outcome",
+      "exitCode",
+      "childrenReaped",
+      "survivors",
+      "stdoutSample",
+      "denialCode",
+    ];
+    const shape: ExecutionResultMessage = {
+      kind: "execution_result",
+      executionId: "e1",
+      outcome: "completada",
+      exitCode: 0,
+      childrenReaped: 0,
+      survivors: [],
+      stdoutSample: "x",
+    };
+    expect(Object.keys(shape).every((k) => allowed.includes(k))).toBe(true);
   });
 });

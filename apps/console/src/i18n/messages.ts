@@ -265,6 +265,21 @@ const core = {
 
   // team
   "team.title": { es: "Equipo", en: "Team" },
+  // Spec 003 — el techo de ejecución local del partner (R10.1).
+  "team.localExec.title": { es: "Ejecución en las máquinas del equipo", en: "Running on the team's machines" },
+  "team.localExec.description": {
+    es: "Hasta dónde puede llegar cada persona con su propia máquina. Los programas que un teammate puede ejecutar los sigue fijando la lista de cada cliente; esto solo acota si se pregunta antes.",
+    en: "How far each person may go with their own machine. Which programs a teammate may run is still set by each client's list; this only bounds whether they are asked first.",
+  },
+  "team.localExec.always": { es: "Cada persona decide", en: "Each person decides" },
+  "team.localExec.ask": { es: "Preguntar siempre", en: "Always ask" },
+  "team.localExec.never": { es: "Nadie ejecuta", en: "Nobody runs anything" },
+  "team.localExec.note": {
+    es: "Bajarlo tiene efecto en la siguiente petición. No revoca los permisos de comandos ya concedidos: esos se quitan en el puesto de trabajo del cliente, donde consta quién los dio.",
+    en: "Lowering it applies to the next request. It does not revoke command permissions already granted: those are removed in the client's workstation, where it says who granted them.",
+  },
+  "team.localExec.failed": { es: "No se pudo guardar. El techo sigue como estaba.", en: "Could not save. The ceiling is unchanged." },
+  "team.localExec.readOnly": { es: "Solo el propietario y los administradores pueden cambiarlo.", en: "Only the owner and admins can change it." },
   "team.description": { es: "Quién puede entrar en la consola de tu partner y con qué rol.", en: "Who can enter your partner's console and with which role." },
   "team.invite": { es: "Invitar", en: "Invite" },
   "team.invite.title": { es: "Invitar a alguien", en: "Invite someone" },

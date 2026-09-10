@@ -50,6 +50,10 @@ _WRITE_NAMES: frozenset[str] = (
     - _CONTACT_NAMES
 )
 
+#: ``shell_local`` **no** entra por ningún interruptor: depende de
+#: ``local_exec`` y de que haya máquina. Un teammate con permiso de escritura no
+#: se lleva de propina el ordenador de nadie.
+
 
 class ToolNotInCatalog(ValueError):
     """Un nombre que no está en ``ALL_TOOLS``. Se rechaza, nunca se ignora."""

@@ -131,6 +131,13 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
       ? o.notificationPrefs.read()
       : o.notificationPrefs.write({ silenceAviso: input.silence_aviso === true }),
   );
+  handle("app:policy.prefs", () => o.platform.request("/api/teammates/local-exec-prefs"));
+  handle("app:policy.setPref", (input: { executable: string | null; mode: string }) =>
+    o.platform.request("/api/teammates/local-exec-prefs", {
+      method: "PUT",
+      body: { executable: input.executable, mode: input.mode },
+    }),
+  );
   handle("app:usage", async () => {
     const budget = await o.platform.request("/api/companion/budget");
     return budget.ok ? { ok: true, data: { budget: budget.data, by_teammate: [] } } : budget;

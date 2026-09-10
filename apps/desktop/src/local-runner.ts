@@ -35,6 +35,17 @@ export type ExecutionResultMessage = {
   /** Presente solo cuando se denegó aquí. Código cerrado, no prosa. */
   denialCode?: "fuera_del_directorio" | "sin_verificar";
   survivors: number[];
+  /**
+   * Spec 003 — una muestra acotada de lo que el comando escribió, para que el
+   * teammate pueda leer el resultado de lo que pidió.
+   *
+   * **No es auditoría.** La plataforma no la guarda: viaja al modelo marcada
+   * como dato no confiable y se descarta (§III). Aquí ya viene recortada por
+   * el ejecutor (`STDOUT_SAMPLE_LIMIT`), y se recorta otra vez al enviarla
+   * porque el límite de la aplicación y el del servidor tienen que poder
+   * moverse por separado.
+   */
+  stdoutSample?: string;
 };
 
 /** El techo del tenant no puede subir por encima del techo del producto. */
@@ -76,7 +87,9 @@ export async function runExecuteMessage(
     idleTimeoutMs: DEFAULT_IDLE_TIMEOUT_MS,
   });
 
-  // La salida NO viaja: el resultado dice qué pasó, no qué dijo el comando.
+  // La salida ENTERA no viaja nunca; una muestra acotada sí, y solo porque
+  // quien pidió el comando tiene que poder leer qué pasó. La auditoría sigue
+  // sin verla: la plataforma la pasa al modelo y la tira.
   return {
     kind: "execution_result",
     executionId: message.executionId,
@@ -84,5 +97,6 @@ export async function runExecuteMessage(
     exitCode: result.exitCode,
     childrenReaped: result.childrenReaped,
     survivors: result.survivors,
+    stdoutSample: result.stdoutSample,
   };
 }

@@ -25,6 +25,7 @@ saber por qué dejó de valer (§V); un token inválido sigue recibiendo 401 mud
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -69,8 +70,20 @@ from nexus_api.services.device_pairing import (
     PairingRateLimiter,
     normalize_code,
 )
+from nexus_api.services.local_dispatch import (
+    ExecutionResult,
+    claim_for_device,
+    publish_result,
+)
 
 log = structlog.get_logger(__name__)
+
+#: Techos con los que se entrega un comando. Son los de la 001
+#: (``local-runner.ts``): el reloj absoluto y el de inactividad. Viajan en el
+#: trabajo para que la máquina no tenga que conocerlos de memoria y para que
+#: bajarlos sea un cambio de servidor, no un despliegue de la aplicación.
+DEFAULT_EXECUTION_TIMEOUT_MS = 600_000
+DEFAULT_EXECUTION_IDLE_MS = 300_000
 
 router = APIRouter(prefix="/device", tags=["device-bridge"])
 
@@ -217,6 +230,13 @@ class ResultIn(BaseModel):
     outcome: str = Field(pattern="^(completada|expirada|terminada|denegada)$")
     exit_code: int | None = None
     children_reaped: int = 0
+    #: Spec 003 — una muestra acotada de lo que el comando escribió, para que el
+    #: teammate pueda leer el resultado de lo que pidió. **No se persiste**: va
+    #: a Redis, de ahí al modelo marcada como dato no confiable, y se descarta.
+    #: La auditoría sigue diciendo qué pasó, no qué dijo el comando (§III).
+    stdout_sample: str | None = Field(default=None, max_length=2048)
+    #: El motivo cuando la contención de la máquina denegó (001-R12).
+    denial_code: str | None = Field(default=None, max_length=64)
 
 
 class RenewedOut(BaseModel):
@@ -352,14 +372,43 @@ async def heartbeat(body: HeartbeatIn, ctx: DeviceContext = Depends(require_devi
 async def poll(ctx: DeviceContext = Depends(require_device)) -> PollOut:
     """Devuelve el trabajo pendiente de **esta** máquina y sus vínculos.
 
-    ``work`` sigue vacío: el despachador llega con la ejecución real. ``links``
-    es lo que la barra necesita para saber qué directorios faltan (Requisito 7).
+    ``links`` es lo que la barra necesita para saber qué directorios faltan
+    (002-R7). ``work`` es lo que la spec 003 añadió: las ejecuciones que un
+    teammate dejó en cola para esta máquina.
+
+    El trabajo se busca **cliente a cliente**: ``local_executions`` es una tabla
+    de tenant y su RLS no se puede saltar «porque la máquina es del partner».
+    Son tantas consultas como clientes tenga la máquina —dos o tres—, y esa es
+    exactamente la razón por la que se puede hacer así.
     """
     await ctx.scope_partner()
     links = await DeviceClientLinkRepository(ctx.session).active_for_device(ctx.device.id)
     refs = await _refs_for(ctx.session, ctx.device.partner_id, [link.tenant_id for link in links])
+    work: list[dict[str, Any]] = []
+    for link in links:
+        if link.tenant_id not in refs or link.workdir is None:
+            # Sin directorio declarado no hay dónde ejecutar (002-R7.5): el
+            # trabajo se queda en cola hasta que la persona lo declare.
+            continue
+        await ctx.scope_tenant(link.tenant_id)
+        with tenant_context(link.tenant_id):
+            claimed = await claim_for_device(ctx.session, ctx.device.id)
+        for row in claimed:
+            work.append(
+                {
+                    "execution_id": str(row.id),
+                    "client_ref": refs[link.tenant_id][0],
+                    "executable": row.executable,
+                    "args": json.loads(row.argv_signature) if row.argv_signature else [],
+                    "cwd_relative": None,
+                    "timeout_ms": DEFAULT_EXECUTION_TIMEOUT_MS,
+                    "idle_timeout_ms": DEFAULT_EXECUTION_IDLE_MS,
+                }
+            )
+    # Se vuelve al ámbito del partner: lo de abajo es de la máquina, no de un cliente.
+    await ctx.scope_partner()
     return PollOut(
-        work=[],
+        work=work,
         links=[
             LinkOut(
                 client_ref=refs[link.tenant_id][0],
@@ -387,7 +436,11 @@ async def _refs_for(
 
 
 @router.post("/result", status_code=status.HTTP_204_NO_CONTENT)
-async def result(body: ResultIn, ctx: DeviceContext = Depends(require_device)) -> None:
+async def result(
+    body: ResultIn,
+    ctx: DeviceContext = Depends(require_device),
+    redis: Redis = Depends(get_redis),
+) -> None:
     """Cierra el asiento de auditoría. La salida del comando **no** viaja aquí.
 
     El asiento es de tenant: se localiza por id **antes** de acotar (acotado sería
@@ -407,7 +460,20 @@ async def result(body: ResultIn, ctx: DeviceContext = Depends(require_device)) -
             outcome=body.outcome,
             exit_code=body.exit_code,
             children_reaped=body.children_reaped,
+            denial_reason=body.denial_code,
         )
+    # Lo que el teammate esperaba. Va por Redis y **no** a la fila: la muestra
+    # de salida es dato para el modelo, no auditoría (§III).
+    await publish_result(
+        redis,
+        body.execution_id,
+        ExecutionResult(
+            outcome=body.outcome,
+            exit_code=body.exit_code,
+            stdout_sample=(body.stdout_sample or "")[:2048],
+            denial_code=body.denial_code,
+        ),
+    )
 
 
 @router.post("/renew", response_model=RenewedOut)

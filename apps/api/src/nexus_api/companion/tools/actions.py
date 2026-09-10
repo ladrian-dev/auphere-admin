@@ -407,6 +407,10 @@ VERIFY_READS: dict[str, str] = {
     "model": "/console/clients/{client_ref}/model",
     "knowledge": "/console/knowledge",
     "pack": "/console/clients/{client_ref}/workflow",
+    # Spec 003: ejecutar no deja un recurso que releer — deja un **asiento**.
+    # Verificar una ejecución es mirar la auditoría del puesto de trabajo, que
+    # es donde consta qué pasó (y nunca qué dijo el comando, §III).
+    "local_exec": "/console/clients/{client_ref}/workstation/executions",
     "invite": "/console/team",
     # CO-08. No hay sistema de tickets que releer —§25.1 es explícito en que
     # no se crea uno—, así que lo que se verifica es lo que SÍ se prometió:

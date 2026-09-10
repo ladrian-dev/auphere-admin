@@ -58,8 +58,14 @@ def test_a_trial_tool_cannot_be_declared_always_ask() -> None:
 
 
 def test_only_a_trial_may_use_a_verb_other_than_get() -> None:
-    """Sin esto, la clase nueva sería una puerta trasera de escritura."""
-    with pytest.raises(ValueError, match="solo una herramienta 'trial'"):
+    """Sin esto, la clase nueva sería una puerta trasera de escritura.
+
+    Desde la spec 003 hay **dos** clases que pueden no ser ``GET``: ``trial`` y
+    ``machine``. La segunda tampoco escribe en la plataforma —deja un asiento y
+    encola trabajo para el puente— y trae sus propias exigencias
+    (``always_ask`` y un ``kind``), que se comprueban abajo.
+    """
+    with pytest.raises(ValueError, match="solo 'trial' y 'machine'"):
         ToolSpec(
             name="x.write",
             path="/console/clients",
@@ -208,3 +214,20 @@ def test_it_was_tried_and_what_ran_is_what_gets_published() -> None:
 def test_a_trial_without_a_known_version_still_warns() -> None:
     """No saber qué versión respondió es no poder respaldar la prueba."""
     assert _trial_warning(_record(tested_version=None), 8)["warning_key"] == "tried_active_only"
+
+
+def test_a_machine_tool_must_always_ask() -> None:
+    """Lo que ejecuta en el ordenador de alguien no puede declararse permitido
+    de oficio: la política de tres capas puede relajarlo por persona, y para eso
+    tiene que existir la pregunta."""
+    with pytest.raises(ValueError, match="exige 'always_ask'"):
+        ToolSpec(
+            name="x.machine",
+            path="/console/clients/{client_ref}/workstation/executions",
+            method="POST",
+            tool_class="machine",
+            permission_policy="always_allow",
+            kind="local_exec",
+            label="x",
+            description="x",
+        )

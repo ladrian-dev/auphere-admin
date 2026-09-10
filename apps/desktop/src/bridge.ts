@@ -25,6 +25,15 @@ export type Outbound =
       outcome: "completada" | "expirada" | "terminada" | "denegada";
       exitCode: number | null;
       childrenReaped: number;
+      /**
+       * Spec 003 — muestra acotada de lo que el comando escribió. Va **al
+       * modelo** que pidió ejecutarlo, marcada como dato no confiable, y la
+       * plataforma la descarta: la auditoría sigue diciendo qué pasó y no qué
+       * dijo el comando (§III, 001-R8).
+       */
+      stdoutSample?: string;
+      /** El motivo cuando la contención de esta máquina denegó (001-R12.3). */
+      denialCode?: string;
     };
 
 export type Inbound =

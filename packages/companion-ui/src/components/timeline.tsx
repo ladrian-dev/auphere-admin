@@ -7,6 +7,7 @@ import { Button, EmptyState, ErrorState, Skeleton } from "@nexus/ui";
 
 
 import { ConfirmCard } from "./confirm-card";
+import { ExecCard, type ExecMode } from "./exec-card";
 import { IntakeCard } from "./intake-card";
 import { PlanCard } from "./plan-card";
 import { type CompanionState, thinkingToolCount, trialClientRef } from "../state";
@@ -47,9 +48,15 @@ type Props = {
   onSuggestion: (text: string) => void;
   onAnswerSlot: (slot: IntakeSlot) => void;
   onDecide: (actionId: string, decision: Decision, note?: string) => void;
+  /** Spec 003 — guardar la preferencia de ejecución local. Sin él, no se ofrece. */
+  onExecPolicy?: (mode: Exclude<ExecMode, "ask">) => void;
+  /** El techo del partner baja lo que esta persona prefiere (R10.4). */
+  execCapped?: boolean;
 };
 
 export function Timeline({
+  onExecPolicy,
+  execCapped = false,
   state,
   status,
   errorDetail,
@@ -179,7 +186,20 @@ export function Timeline({
                 <IntakeCard slots={item.slots} workKind={item.workKind} onAnswer={onAnswerSlot} />
               ) : null}
 
-              {item.kind === "action" ? (
+              {item.kind === "action" && item.actionKind === "local_exec" ? (
+                // Ejecutar en la máquina de alguien no es un cambio de
+                // configuración: se enseña el comando literal y se ofrecen las
+                // tres respuestas de la política (spec 003, R10.3 y R10.5).
+                <ExecCard
+                  item={item}
+                  busy={deciding}
+                  capped={execCapped}
+                  onDecide={(decision) => onDecide(item.id, decision)}
+                  {...(onExecPolicy ? { onPolicy: onExecPolicy } : {})}
+                />
+              ) : null}
+
+              {item.kind === "action" && item.actionKind !== "local_exec" ? (
                 <ConfirmCard
                   item={item}
                   currentUserId={currentUserId}
