@@ -79,11 +79,13 @@ from nexus_api.db.models.companion import (
     RUN_INTERRUPTED,
     RUN_PAUSED,
     RUN_RUNNING,
+    RUN_WAITING,
     TERMINAL_RUN_STATUSES,
     CompanionAction,
     CompanionMessage,
     CompanionRun,
     CompanionThread,
+    TeammateTask,
 )
 from nexus_api.db.models.console_notification import (
     ConsoleNotification,
@@ -91,8 +93,10 @@ from nexus_api.db.models.console_notification import (
 )
 from nexus_api.metering.quota import cache_read_quota_tokens, quota_tokens
 from nexus_api.metering.wallet import companion_wallet_remaining, debit_wallet
+from nexus_api.repositories.teammate_tasks import TeammateTaskRepository
 from nexus_api.repositories.teammates import TeammateRepository
 from nexus_api.services.teammate_catalog import for_teammate, system_prompt_for
+from nexus_api.services.teammate_inbox import publish_inbox_changed
 
 from .deps import resolve_mapping
 from .playground import MonthWindow, month_window
@@ -713,6 +717,21 @@ async def start_run(
             )
             session.add(run)
             await session.flush()
+            # Spec 003: el turno pertenece a una TAREA, que es lo que sobrevive
+            # a que la persona cierre la aplicación (Requisito 3.2).
+            task: TeammateTask | None = None
+            if thread.teammate_id is not None:
+                task = await TeammateTaskRepository(session).open_or_continue(
+                    thread_id=thread.id,
+                    teammate_id=thread.teammate_id,
+                    principal_id=principal_id,
+                    prompt=body.prompt,
+                    ttl_days=settings.teammate_task_ttl_days,
+                )
+                await TeammateTaskRepository(session).running(
+                    task, run_id=run.id, ttl_days=settings.teammate_task_ttl_days
+                )
+                run.task_id = task.id
             session.add(
                 CompanionMessage(
                     thread_id=thread.id,
@@ -730,6 +749,7 @@ async def start_run(
             tenant_id = thread.tenant_id
             mode = thread.mode
             teammate_id = thread.teammate_id
+            task_id = task.id if task is not None else None
             history = await _thread_history(session, thread.id, exclude_run=run_id)
     # Spec 003: el catálogo y la identidad del teammate, leídos bajo el partner.
     allowed_tools: frozenset[str] | None = None
@@ -746,6 +766,7 @@ async def start_run(
         tenant_id=tenant_id,
         allowed_tools=allowed_tools,
         teammate_prompt=teammate_prompt,
+        task_id=task_id,
         user_message=body.prompt,
         page_context=body.page_context.model_dump() if body.page_context is not None else None,
         history=history,
@@ -767,6 +788,8 @@ async def start_run(
             used_before=used_before,
             cap=cap,
             window=window,
+            task_id=task_id,
+            redis=redis,
         ),
     )
     response.headers["Cache-Control"] = "no-store"
@@ -907,6 +930,7 @@ def _make_driver(
     support_action: uuid.UUID | None = None,
     allowed_tools: frozenset[str] | None = None,
     teammate_prompt: str | None = None,
+    task_id: uuid.UUID | None = None,
 ) -> streaming.CompanionDriver:
     """El driver: mueve el grafo y vuelca sus eventos al log durable.
 
@@ -947,6 +971,7 @@ def _make_driver(
             run_id=run_id,
             action_ttl_seconds=settings.companion_action_ttl_seconds,
             allowed_tools=allowed_tools,
+            task_id=task_id,
         )
         knowledge_context = ""
         try:
@@ -1134,6 +1159,61 @@ def _make_driver(
     return _driver
 
 
+async def _move_task(
+    *,
+    principal_id: str,
+    task_id: uuid.UUID,
+    handle: streaming.CompanionRunHandle,
+    paused: bool,
+    awaiting: str,
+    redis: Redis | None,
+) -> None:
+    """Mueve la tarea al terminar el turno, y lo dice.
+
+    Corre fuera de la petición, como ``_finalise_run``: abre su propia sesión
+    con el ámbito del principal. Un fallo aquí no puede tumbar el cierre del
+    run —el trabajo ya pasó—, así que se registra y se sigue.
+    """
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.db.models.companion import (
+        TASK_ESPERANDOTE,
+        TASK_PAUSADA,
+        TASK_TERMINADA,
+    )
+
+    settings = get_settings()
+    ttl_days = settings.teammate_task_ttl_days
+    state = TASK_TERMINADA
+    cause = "completed"
+    try:
+        sm = get_sessionmaker()
+        async with sm() as session, session.begin():
+            await apply_principal_to_session(session, principal_id)
+            repo = TeammateTaskRepository(session)
+            task = await repo.get(task_id)
+            if task is None or task.is_terminal:
+                return
+            if paused:
+                state, cause = TASK_PAUSADA, "budget"
+                await repo.paused(task, ttl_days=ttl_days)
+            elif awaiting:
+                state, cause = TASK_ESPERANDOTE, "hitl"
+                await repo.waiting(task, action_id=uuid.UUID(awaiting), ttl_days=ttl_days)
+            else:
+                await repo.finished(task, ttl_days=ttl_days)
+    except Exception:  # pragma: no cover - el turno ya cerró; esto es el aviso
+        log.exception("teammates.task.move_failed", task_id=str(task_id))
+        return
+
+    await handle.emit("task.state", {"task_id": str(task_id), "state": state, "cause": cause})
+    if redis is not None:
+        from nexus_api.services.teammate_inbox import publish_task_state
+
+        await publish_task_state(
+            redis, principal_id=principal_id, task_id=task_id, state=state, cause=cause
+        )
+
+
 def _make_on_complete(
     *,
     principal_id: str,
@@ -1142,6 +1222,8 @@ def _make_on_complete(
     used_before: int,
     cap: int,
     window: MonthWindow,
+    task_id: uuid.UUID | None = None,
+    redis: Redis | None = None,
 ) -> streaming.OnComplete:
     async def _on_complete(handle: streaming.CompanionRunHandle) -> None:
         answer = "".join(handle.extras.get("answer") or [])
@@ -1150,6 +1232,11 @@ def _make_on_complete(
         # esperas distintas y confundirlas dejaría la fila en ``running``
         # para siempre, con un run que ya no va a continuar.
         paused = bool(handle.extras.get("budget_paused"))
+        awaiting = str(handle.extras.get("awaiting_action") or "")
+        # Spec 003: un turno de teammate que aparca **cierra** como ``waiting``
+        # y la TAREA queda esperando. Dejarlo ``running`` lo mataría el techo de
+        # duración y la espera sería mentira (§V, D3).
+        parked_for_task = task_id is not None and not paused and bool(awaiting)
         await _finalise_run(
             principal_id=principal_id,
             run_id=handle.run_id,
@@ -1162,8 +1249,18 @@ def _make_on_complete(
             cache_write=handle.total_cache_write,
             model=handle.model,
             answer=answer,
-            parked=(not paused) and bool(handle.extras.get("awaiting_action")),
+            parked=(not paused) and bool(awaiting) and task_id is None,
+            waiting=parked_for_task,
         )
+        if task_id is not None:
+            await _move_task(
+                principal_id=principal_id,
+                task_id=task_id,
+                handle=handle,
+                paused=paused,
+                awaiting=awaiting,
+                redis=redis,
+            )
         # La medida del TURNO, que es la unidad sobre la que se fija la cuota.
         # Va después de ``_finalise_run`` a propósito: si la fila no se cerró,
         # el turno no se cuenta, y así el panel y la base no pueden discrepar.
@@ -1264,6 +1361,7 @@ async def _finalise_run(
     model: str | None,
     answer: str,
     parked: bool = False,
+    waiting: bool = False,
 ) -> None:
     """Cierra la fila del run y persiste la respuesta.
 
@@ -1291,7 +1389,12 @@ async def _finalise_run(
             if run is None:
                 log.warning("companion.run.finalise_missing", run_id=str(run_id))
                 return
-            if not parked:
+            if waiting:
+                # Cerrado, pero esperando: la tarea es la que sigue viva (D3).
+                run.status = RUN_WAITING
+                run.error = None
+                run.ended_at = sa.func.now()
+            elif not parked:
                 run.status = status
                 run.error = error
                 run.ended_at = sa.func.now()
@@ -1634,7 +1737,10 @@ def _action_out(action: CompanionAction, ttl: float) -> CompanionActionOut:
         status=action.status,
         state_hash=str(action.state_hash or ""),
         proposed_at=action.proposed_at,
-        expires_at=expires_at_of(action.proposed_at, ttl),
+        # Con tarea no hay reloj: la espera la marca ella (Requisito 6.1).
+        expires_at=None if action.task_id is not None else expires_at_of(action.proposed_at, ttl),
+        level=action.level,
+        task_id=action.task_id,
         decided_at=action.decided_at,
         decided_by=action.decided_by,
         applied_at=action.applied_at,
@@ -1765,7 +1871,7 @@ async def resume_run(
             # continúa en OTRO run. Cerrarlo aquí, y no dejarlo al reaper, es
             # lo que hace que el hilo no se quede con dos runs "vivos".
             parked = await session.get(CompanionRun, run_id)
-            if parked is not None and parked.status == RUN_RUNNING:
+            if parked is not None and parked.status in (RUN_RUNNING, RUN_WAITING):
                 parked.status = RUN_COMPLETED
                 parked.ended_at = sa.func.now()
             thread = await _thread_row(session, action.thread_id, principal_id)
@@ -1778,10 +1884,25 @@ async def resume_run(
             _require_catalog_model()
             await _guard_concurrency(session, principal_id)
             new_run = CompanionRun(
-                thread_id=thread.id, principal_id=principal_id, status=RUN_RUNNING
+                thread_id=thread.id,
+                principal_id=principal_id,
+                status=RUN_RUNNING,
+                teammate_id=thread.teammate_id,
+                task_id=action.task_id,
             )
             session.add(new_run)
             await session.flush()
+            # Spec 003: la decisión no abre una tarea nueva — continúa la que
+            # esperaba, y le devuelve la vida que le quedaba (Requisito 6.2).
+            if action.task_id is not None:
+                repo = TeammateTaskRepository(session)
+                task = await repo.get(action.task_id)
+                if task is not None and not task.is_terminal:
+                    await repo.running(
+                        task,
+                        run_id=new_run.id,
+                        ttl_days=get_settings().teammate_task_ttl_days,
+                    )
             if body.note:
                 # El motivo entra en el hilo como texto de la persona: es lo
                 # que le dijo a Auphere, y tiene que sobrevivir al turno para
@@ -1802,7 +1923,15 @@ async def resume_run(
             new_run_id = new_run.id
             tenant_id = thread.tenant_id
             mode = thread.mode
+            teammate_id = thread.teammate_id
             history = await _thread_history(session, thread.id, exclude_run=new_run_id)
+
+    # La tarjeta deja de esperar: las otras pantallas de esta persona se enteran
+    # por su canal, sin sondear (Requisito 5.3, CE-003).
+    if action.task_id is not None:
+        await publish_inbox_changed(
+            redis, principal_id=principal_id, action_id=action.id, decision=body.decision
+        )
 
     window = month_window()
     used_before = await partner_companion_tokens_used(session, caller.partner.id, window)
@@ -1820,6 +1949,18 @@ async def resume_run(
         cap=cap,
         window=window,
         mode=mode,
+        task_id=action.task_id,
+        allowed_tools=(
+            frozenset(
+                for_teammate(
+                    await _require_teammate(session, caller.partner.id, principal_id, teammate_id),
+                    mode=mode,
+                    machine_present=False,
+                )
+            )
+            if teammate_id is not None
+            else None
+        ),
         # Solo cuando la acción confirmada ES de soporte. Así un turno
         # normal no paga ni una consulta extra por una función que no usa.
         support_action=(
@@ -1848,6 +1989,8 @@ async def resume_run(
             used_before=used_before,
             cap=cap,
             window=window,
+            task_id=action.task_id,
+            redis=redis,
         ),
     )
     log.info(

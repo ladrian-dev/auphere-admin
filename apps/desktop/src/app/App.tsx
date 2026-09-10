@@ -11,9 +11,10 @@ import { CompanionLocaleProvider } from "@nexus/companion-ui";
 import { Button } from "@nexus/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { type PresencePush, type SessionPush, type Teammate, bridge } from "./bridge";
+import { type InboxItem, type PresencePush, type SessionPush, type Teammate, bridge } from "./bridge";
 import { type Lang, LangProvider, systemLang, useAppT } from "./i18n";
 import { EnvPanel } from "./routes/env";
+import { Inbox } from "./routes/inbox";
 import { Roster } from "./routes/roster";
 import { ThreadView } from "./routes/thread";
 
@@ -84,6 +85,9 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
   const [roster, setRoster] = useState<Teammate[]>([]);
   const [rosterStatus, setRosterStatus] = useState<RosterStatus>("loading");
   const [selected, setSelected] = useState<string | null>(null);
+  const [view, setView] = useState<"team" | "pending">("team");
+  const [pending, setPending] = useState<InboxItem[]>([]);
+  const [focus, setFocus] = useState<string | null>(null);
 
   const loadRoster = useCallback(async () => {
     setRosterStatus("loading");
@@ -101,7 +105,23 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
     void loadRoster();
   }, [session, loadRoster]);
 
+  useEffect(() => {
+    const offInbox = bridge.on("app:inbox", setPending);
+    const offFocus = bridge.on("app:inbox.focus", ({ action_id }) => {
+      // Un aviso del sistema abre Pendientes en la tarjeta que lo produjo.
+      setView("pending");
+      setFocus(action_id);
+    });
+    const offTask = bridge.on("app:task.state", () => void loadRoster());
+    return () => {
+      offInbox();
+      offFocus();
+      offTask();
+    };
+  }, [loadRoster]);
+
   const current = useMemo(() => roster.find((r) => r.id === selected) ?? null, [roster, selected]);
+  const waiting = pending.length;
 
   if (session?.kind === "stop") {
     return (
@@ -122,21 +142,50 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
 
   return (
     <main className="grid min-h-screen grid-cols-[minmax(220px,280px)_minmax(0,1fr)_minmax(220px,300px)] bg-background text-foreground">
-      <Roster
-        items={roster}
-        status={rosterStatus}
-        selected={selected}
-        onSelect={setSelected}
-        onRetry={() => void loadRoster()}
-        onCreate={() => void bridge.openConsole({ path: "/" })}
-      />
+      <div className="flex min-w-0 flex-col">
+        <nav className="flex gap-1 border-b border-border p-2" aria-label={t("app.title")}>
+          {(["team", "pending"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              aria-pressed={view === tab}
+              onClick={() => setView(tab)}
+              className="min-h-8 flex-1 rounded-md px-3 text-sm transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[pressed=true]:bg-muted aria-[pressed=true]:font-medium"
+            >
+              {t(tab === "team" ? "nav.team" : "nav.pending")}
+              {tab === "pending" && waiting > 0 ? (
+                <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{waiting}</span>
+              ) : null}
+            </button>
+          ))}
+        </nav>
+        <Roster
+          items={roster}
+          status={rosterStatus}
+          selected={selected}
+          onSelect={(id) => {
+            setSelected(id);
+            setView("team");
+          }}
+          onRetry={() => void loadRoster()}
+          onCreate={() => void bridge.openConsole({ path: "/" })}
+        />
+      </div>
       <section className="flex min-w-0 flex-col border-x border-border" aria-label={t("app.title")}>
         {session?.kind === "pair_needed" ? (
           <p className="border-b border-border bg-muted px-4 py-2 text-sm text-pretty text-muted-foreground" role="status">
             {t("session.pair")}
           </p>
         ) : null}
-        {current ? (
+        {view === "pending" ? (
+          <Inbox
+            focus={focus}
+            onOpenThread={(teammateId) => {
+              setSelected(teammateId);
+              setView("team");
+            }}
+          />
+        ) : current ? (
           <ThreadView key={current.id} teammate={current} machinePresent={presence?.presence === "presente"} onRosterChanged={() => void loadRoster()} />
         ) : (
           <p className="m-auto max-w-prose p-8 text-center text-pretty text-muted-foreground">{t("thread.pick")}</p>

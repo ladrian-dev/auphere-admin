@@ -19,7 +19,7 @@ const CONTRACT = [
   "app:policy.prefs", "app:policy.setPref", "app:usage", "app:env.forThread",
   "app:openConsole", "app:notifications.prefs",
 ];
-const PUSH = ["app:event", "app:stream.end", "app:inbox.changed", "app:task.state", "app:session", "app:presence"];
+const PUSH = ["app:event", "app:inbox", "app:inbox.focus", "app:stream.end", "app:inbox.changed", "app:task.state", "app:session", "app:presence"];
 
 function fakeIpc(): IpcRendererLike & { invoke: ReturnType<typeof vi.fn> } {
   return { invoke: vi.fn(async () => ({})), on: vi.fn(), removeListener: vi.fn() };

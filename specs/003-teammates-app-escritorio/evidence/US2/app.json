@@ -1,0 +1,10 @@
+{
+  "surface": "app",
+  "consoleUrl": "http://localhost:3110/",
+  "bridgeType": "object",
+  "roster": "Equipo\nPendientes\nTu equipo\nS\nSofía\nAtención al cliente\nEn espera\nN\nNilo\nDesarrollo\nEn espera\n\nElige un teammate para abrir tu hilo con él.\n\nEntorno\n\nNavegador: todavía no.\n\nAbrir la consola",
+  "text": "Equipo\nPendientes\nTu equipo\nS\nSofía\nAtención al cliente\nEn espera\nN\nNilo\nDesarrollo\nEn espera\nS\nSofía\n\nAtención al cliente\n\nTu hilo con Sofía está vacío. Lo que le pidas sigue aunque cierres la aplicación.\n\nPuede proponer cambios. Cada uno pasa por tu confirmación antes de aplicarse.\nEntorno\nOficio\nAtención al cliente\nModelo\nopenai/gpt-5.6-sol\nMáquina\nAdrians-MacBook-Pro.local\n\nNavegador: todavía no.\n\nAbrir la consola",
+  "inboxText": "Equipo\nPendientes\nTu equipo\nS\nSofía\nAtención al cliente\nEn espera\nN\nNilo\nDesarrollo\nEn espera\n\nNada te espera\n\nCuando un teammate necesite permiso para algo que no puede hacer solo, aparece aquí. Nada se ejecuta antes.\n\nEntorno\nOficio\nAtención al cliente\nModelo\nopenai/gpt-5.6-sol\nMáquina\nAdrians-MacBook-Pro.local\n\nNavegador: todavía no.\n\nAbrir la consola",
+  "states": [],
+  "logs": []
+}

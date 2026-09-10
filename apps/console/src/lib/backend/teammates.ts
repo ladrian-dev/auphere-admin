@@ -46,6 +46,45 @@ export type TeammateIn = {
 export type ModelChoiceOut = { id: string; note: string; cost_label: string };
 export type TeammateJobsOut = { jobs: string[]; models: ModelChoiceOut[] };
 
+export type TaskState =
+  | "en_marcha"
+  | "esperandote"
+  | "pausada_por_tope"
+  | "terminada"
+  | "cancelada"
+  | "caducada";
+
+export type TaskOut = {
+  id: string;
+  thread_id: string;
+  teammate_id: string;
+  title: string;
+  state: TaskState;
+  expires_at: string;
+  current_run_id: string | null;
+  pending_action_id: string | null;
+  created_at: string;
+  updated_at: string;
+  ended_at: string | null;
+};
+
+export type ActionLevel = "critico" | "aviso" | "informativo";
+
+export type InboxItemOut = {
+  action_id: string;
+  task_id: string | null;
+  thread_id: string;
+  run_id: string | null;
+  teammate: { id: string; name: string };
+  title: string;
+  kind: string;
+  level: ActionLevel;
+  client_ref: string | null;
+  proposed_at: string;
+  /** `false` cuando el rol no puede aplicar lo que hay detrás: la tarjeta lo dice antes. */
+  can_decide: boolean;
+};
+
 export function teammatesApi(call: Call) {
   const enc = encodeURIComponent;
   const base = "/console/teammates";
@@ -57,5 +96,10 @@ export function teammatesApi(call: Call) {
     patchTeammate: (id: string, body: Partial<TeammateIn>) =>
       call<TeammateOut>(`${base}/${enc(id)}`, { method: "PATCH", body }),
     archiveTeammate: (id: string) => call<void>(`${base}/${enc(id)}`, { method: "DELETE" }),
+    teammateInbox: () => call<InboxItemOut[]>(`${base}/inbox`),
+    teammateTasks: (state?: string) =>
+      call<TaskOut[]>(`${base}/tasks${state ? `?state=${enc(state)}` : ""}`),
+    cancelTeammateTask: (id: string) =>
+      call<TaskOut>(`${base}/tasks/${enc(id)}/cancel`, { method: "POST" }),
   };
 }

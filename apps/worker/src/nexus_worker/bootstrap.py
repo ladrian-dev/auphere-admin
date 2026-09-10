@@ -86,6 +86,7 @@ from nexus_worker.streams.partition_maintenance_cron import run_partition_mainte
 from nexus_worker.streams.partner_receipt_cron import run_partner_receipt_cron
 from nexus_worker.streams.platform_watcher import run_platform_watcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
+from nexus_worker.streams.teammate_task_expiry_cron import run_teammate_task_expiry_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.usage_alerts_cron import run_usage_alerts_cron
 from nexus_worker.streams.wallet_renewal_cron import run_wallet_renewal_cron
@@ -416,6 +417,8 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("platform-watcher", run_platform_watcher(ctx.redis, stop=ctx.stop)),
         _spawn("reminder-cron", run_reminder_cron(stop=ctx.stop)),
         _spawn("workflow-pack-cron", run_workflow_pack_cron(stop=ctx.stop)),
+        # Spec 003: las tareas de teammate que vencieron esperando (R6.1).
+        _spawn("teammate-task-expiry-cron", run_teammate_task_expiry_cron(stop=ctx.stop)),
         _spawn(
             "cobranza-reminder-cron",
             run_cobranza_reminder_cron(stop=ctx.stop, redis=ctx.redis),

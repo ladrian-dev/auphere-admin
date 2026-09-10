@@ -8,10 +8,11 @@
  */
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { app, dialog, safeStorage, session, shell, type BaseWindow } from "electron";
+import { Notification, app, dialog, safeStorage, session, shell, type BaseWindow } from "electron";
 
 import type { Cipher, FileStore } from "../credential-store.js";
 import type { DirectoryFs } from "../directory-declare.js";
+import { type Effect, type Prefs, normalisePrefs } from "../notifications-policy.js";
 import type { SessionCookieWatcher, Whoami, WhoamiClient } from "../session-gate.js";
 import { HUMAN_PARTITION } from "../session-isolation.js";
 
@@ -70,6 +71,46 @@ export function consoleWhoami(consoleUrl: string): WhoamiClient {
       };
     },
   };
+}
+
+// ── avisos del sistema y preferencia (spec 003, R7) ─────────────────────
+
+/** La preferencia vive en `userData`: es del ordenador, no de la cuenta. */
+export function notificationPrefsStore(): { read(): Prefs; write(next: Prefs): Prefs } {
+  const file = userDataFile("notifications.json");
+  return {
+    read(): Prefs {
+      try {
+        const raw = file.read();
+        return normalisePrefs(raw ? (JSON.parse(raw.toString("utf8")) as Partial<Prefs>) : undefined);
+      } catch {
+        return normalisePrefs(undefined);
+      }
+    },
+    write(next: Prefs): Prefs {
+      const prefs = normalisePrefs(next);
+      file.write(Buffer.from(JSON.stringify(prefs), "utf8"));
+      return prefs;
+    },
+  };
+}
+
+/** Ejecuta lo que la política decidió. No decide nada por su cuenta. */
+export function applyNotificationEffects(
+  effects: Effect[],
+  onClick: (actionId: string | null) => void,
+): void {
+  for (const effect of effects) {
+    if (effect.kind === "notify" && Notification.isSupported()) {
+      const notification = new Notification({ title: effect.title, body: effect.body });
+      notification.on("click", () => onClick(effect.actionId));
+      notification.show();
+    }
+    if (effect.kind === "badge") {
+      // En macOS es el punto del Dock; en Windows y Linux, lo que haya.
+      app.setBadgeCount(effect.count);
+    }
+  }
 }
 
 /** El `fetch` de la partición de la persona, para el `PlatformClient` (spec 003, D9). */

@@ -42,7 +42,7 @@ describe("StreamHub", () => {
 
   it("cerrar desde el renderer aborta y NO emite final ni más eventos", async () => {
     const s = sink();
-    let abort: AbortSignal | null = null;
+    let abort: AbortSignal | undefined;
     const hub = new StreamHub(
       (_path, signal, onEvent) =>
         new Promise<void>((resolve) => {

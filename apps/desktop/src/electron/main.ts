@@ -24,6 +24,7 @@ import { AppRuntime } from "../app-runtime.js";
 import { GatewayApprovals } from "../approvals-client.js";
 import { CredentialStore } from "../credential-store.js";
 import { HttpTransport } from "../http-transport.js";
+import { InboxWatcher } from "../inbox-watcher.js";
 import { PlatformClient } from "../platform-client.js";
 import { HEARTBEAT_INTERVAL_MS } from "../presence.js";
 import { SessionGate } from "../session-gate.js";
@@ -34,12 +35,15 @@ import {
   barWebPreferences,
   consoleWebPreferences,
 } from "../session-isolation.js";
+import type { InboxItem } from "../inbox-watcher.js";
 import { StreamHub } from "../stream-hub.js";
 import { decideWindowOpen, navigationAllowed } from "../window-open-policy.js";
 import {
+  applyNotificationEffects,
   consoleWhoami,
   nativeDirectoryPicker,
   nodeDirectoryFs,
+  notificationPrefsStore,
   openExternal,
   partitionFetch,
   safeStorageCipher,
@@ -184,8 +188,11 @@ export async function bootstrap(): Promise<void> {
     pushApp("app:session", sessionForRenderer(decision));
     // Sin sesión, la pantalla no puede hacer nada útil: se enseña la consola
     // para que la persona entre; al volver la sesión, vuelve la pantalla.
-    if (decision.kind === "stop") showConsole("/");
-    else if (surface === "console" && consoleView.webContents.getURL().includes("/login")) showSurface("app");
+    if (decision.kind === "stop") {
+      inbox.stop();
+      inbox.reset();
+      showConsole("/");
+    } else if (surface === "console" && consoleView.webContents.getURL().includes("/login")) showSurface("app");
   });
   gate.watch(sessionCookieWatcher());
 
@@ -199,6 +206,28 @@ export async function bootstrap(): Promise<void> {
       end: (payload) => pushApp("app:stream.end", payload),
     },
   );
+  // La bandeja, vigilada desde el principal: el stream acelera, `GET /inbox`
+  // manda, y lo que llega nuevo pasa por la política de avisos (R5.3, R7).
+  const notificationPrefs = notificationPrefsStore();
+  const inbox = new InboxWatcher({
+    fetchInbox: async () => {
+      const res = await platform.request<InboxItem[]>("/api/teammates/inbox");
+      if (!res.ok) throw new Error(res.detail);
+      return res.data;
+    },
+    openStream: (onEvent, signal) =>
+      platform.stream("/api/teammates/inbox/stream", signal, (event) =>
+        onEvent(event.event, event.data),
+      ),
+    apply: (effects) =>
+      applyNotificationEffects(effects, (actionId) => {
+        showSurface("app");
+        pushApp("app:inbox.focus", { action_id: actionId });
+      }),
+    push: (channel, payload) => pushApp(channel, payload),
+    prefs: () => notificationPrefs.read(),
+    wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  });
   registerAppSurface({
     ipcMain,
     platform,
@@ -207,6 +236,8 @@ export async function bootstrap(): Promise<void> {
     push: pushApp,
     showConsole,
     onSessionLost: () => void gate.refresh(),
+    inbox,
+    notificationPrefs,
   });
   runtime.onBarState((state) =>
     pushApp("app:presence", {
@@ -224,6 +255,7 @@ export async function bootstrap(): Promise<void> {
   void runtime.applyGate(first);
   pushApp("app:session", sessionForRenderer(first));
   if (first.kind === "stop") showConsole("/");
+  else void inbox.start();
 
   // Evidencia de desarrollo (spec 003, quickstart §3): con
   // `AUPHERE_EVIDENCE_DIR` se guardan capturas y el texto de la pantalla a los
@@ -241,6 +273,7 @@ export async function bootstrap(): Promise<void> {
   window.on("closed", () => {
     clearInterval(timer);
     streams.closeAll();
+    inbox.stop();
     runtime.stop();
   });
 }
@@ -258,10 +291,19 @@ async function captureEvidence(
   const roster = await appView.webContents.executeJavaScript("document.body.innerText").catch(() => "");
   // Abre el hilo del primer teammate: es el recorrido del quickstart §4.1.
   await appView.webContents
-    .executeJavaScript("document.querySelector('nav button')?.click(), true")
+    .executeJavaScript("document.querySelector('nav ul button')?.click(), true")
     .catch(() => false);
   await new Promise((r) => setTimeout(r, 3500));
   const text = await appView.webContents.executeJavaScript("document.body.innerText").catch(() => "");
+  // Y Pendientes, que es la otra mitad de la US2.
+  await appView.webContents
+    .executeJavaScript(
+      "Array.from(document.querySelectorAll('nav button')).find(b => /Pendientes|Pending/.test(b.textContent||''))?.click(), true",
+    )
+    .catch(() => false);
+  await new Promise((r) => setTimeout(r, 1200));
+  const inboxText = await appView.webContents.executeJavaScript("document.body.innerText").catch(() => "");
+  writeFileSync(join(dir, "inbox.png"), (await appView.webContents.capturePage()).toPNG());
   const states = await appView.webContents
     .executeJavaScript("Array.from(document.querySelectorAll('[data-thread-state]')).map(e => e.dataset.threadState)")
     .catch(() => []);
@@ -269,7 +311,11 @@ async function captureEvidence(
   writeFileSync(join(dir, "console.png"), (await consoleView.webContents.capturePage()).toPNG());
   writeFileSync(
     join(dir, "app.json"),
-    JSON.stringify({ surface, consoleUrl: consoleView.webContents.getURL(), bridgeType, roster, text, states, logs }, null, 2),
+    JSON.stringify(
+      { surface, consoleUrl: consoleView.webContents.getURL(), bridgeType, roster, text, inboxText, states, logs },
+      null,
+      2,
+    ),
   );
 }
 

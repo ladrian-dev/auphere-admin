@@ -40,6 +40,10 @@ Invariantes: `archived_at IS NOT NULL ⇔ status = 'archived'`; nunca `DELETE`.
 
 Transiciones:
 
+El estado se dice por el evento `task.state {task_id, state, cause}` — **`cause`**
+y no `reason`: la guarda C8 prohíbe esa clave en el catálogo de eventos porque
+podría llevar prosa de un cliente final.
+
 ```
 en_marcha ──hitl.requested──▶ esperandote ──resume(approve|deny)──▶ en_marcha
 en_marcha ──budget.paused───▶ pausada_por_tope ──tope subido──────▶ en_marcha
@@ -77,8 +81,9 @@ Resolución (en `LocalExecGate`): `pref = prefs[executable] ?? prefs[NULL] ?? as
 |---|---|---|
 | `threads` | `teammate_id uuid FK NULL` | NULL = hilo del Companion clásico. Índice `(principal_id, teammate_id)` |
 | `runs` | `teammate_id uuid NULL`, `task_id uuid NULL` | denormalizados al crear; `teammate_id` para agregar consumo |
+| `runs` | CHECK `ck_companion_runs_status` ampliado | `waiting` es un estado nuevo; el CHECK de 0091 no lo conocía |
 | `runs.status` | + `waiting` | el run cerró aparcado; la tarea sigue |
-| `actions` | `level text` (`critico · aviso · informativo`), `expires_at timestamptz NULL` | CHECK: `expires_at IS NULL` solo si el hilo tiene `teammate_id` (trigger o CHECK vía función) |
+| `actions` | `level text` (`critico · aviso · informativo`, CHECK) y **`task_id uuid NULL`** | Se descartó el `expires_at timestamptz NULL` que este documento traía: las filas viejas del Companion habrían quedado ambiguamente «sin caducidad». Con `task_id` la regla es explícita —**con tarea no hay reloj**— y además es lo que `hitl.requested.task_id` necesita. Lo implementa `is_stale`, no un trigger |
 | `actions.kind` | + `local_exec` | payload `{execution_request: {executable, args, cwd_relative, client_ref}, argv_signature}` |
 | `local_executions` | `task_id uuid NULL`, `teammate_id uuid NULL` | trazabilidad; **sin** salida |
 | `local_executions.denial_reason` | + `politica_nunca` | vocabulario cerrado |

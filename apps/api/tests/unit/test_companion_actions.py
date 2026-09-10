@@ -130,6 +130,7 @@ def test_expiry_is_a_comparison_and_not_a_cron() -> None:
     class Row:
         status = STATUS_PROPOSED
         proposed_at = datetime.now(UTC) - timedelta(minutes=20)
+        task_id = None
 
     assert is_stale(Row(), 900)
     Row.proposed_at = datetime.now(UTC)
@@ -138,6 +139,25 @@ def test_expiry_is_a_comparison_and_not_a_cron() -> None:
     Row.status = "confirmed"
     Row.proposed_at = datetime.now(UTC) - timedelta(days=1)
     assert not is_stale(Row(), 900)
+
+
+def test_a_teammate_action_waits_for_its_task_and_not_for_the_clock() -> None:
+    """Spec 003, Requisito 6.1 — la enmienda acotada de §IV.
+
+    Con ``task_id`` no hay reloj: la tarea marca la vida y, cuando vence de
+    verdad, el barrido cierra la acción diciendo por qué. Sin esto, una
+    aprobación dejada de un día para otro caducaría sola y la persona volvería
+    a una pantalla que no explica nada.
+    """
+
+    class Row:
+        status = STATUS_PROPOSED
+        proposed_at = datetime.now(UTC) - timedelta(days=3)
+        task_id = uuid.uuid4()
+
+    assert not is_stale(Row(), 900)
+    # Y sigue sin caducar por reloj aunque el plazo del Companion sea ridículo.
+    assert not is_stale(Row(), 1)
 
 
 def test_expires_at_is_the_only_source_of_the_countdown() -> None:

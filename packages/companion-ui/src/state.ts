@@ -149,7 +149,20 @@ export type BudgetMeter = {
  * no `run.completed` at all (PLAN-CO-04 D4). Two different waits, painted
  * differently on purpose.
  */
-export type RunStatus = "idle" | "running" | "completed" | "cancelled" | "error" | "interrupted" | "paused";
+export type RunStatus =
+  | "idle"
+  | "running"
+  | "completed"
+  | "cancelled"
+  | "error"
+  | "interrupted"
+  | "paused"
+  /**
+   * CONTRACT-V3 (spec 003). El turno cerró **aparcado esperando a una
+   * persona**, y la TAREA sigue viva. Sin esta rama caería en `completed` y la
+   * pantalla daría por terminado un trabajo que espera una decisión.
+   */
+  | "waiting";
 
 export type CompanionState = {
   items: TimelineItem[];
@@ -240,6 +253,7 @@ function terminal(status: string): RunStatus {
   // `completed` and the cut would be invisible: a turn that stops halfway
   // would look like one that finished.
   if (status === "paused") return "paused";
+  if (status === "waiting") return "waiting";
   return "completed";
 }
 
@@ -256,6 +270,8 @@ function noticeFor(status: RunStatus): NoticeCode | null {
       return "error";
     case "paused":
       return "paused";
+    // `waiting` no deja aviso: la tarjeta de confirmación ya está en pantalla
+    // diciendo qué se espera. Un segundo cartel sería ruido sobre lo mismo.
     default:
       return null;
   }

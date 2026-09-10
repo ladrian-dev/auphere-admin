@@ -48,6 +48,7 @@ from nexus_api.companion.tools.proposals import (
     canonical_hash,
     short_digest,
 )
+from nexus_api.core.action_level import level_for
 from nexus_api.core.principal_context import apply_principal_to_session
 from nexus_api.db.models.companion import CompanionAction
 
@@ -98,8 +99,18 @@ def expires_at_of(proposed_at: datetime, ttl_seconds: float) -> datetime:
 
 
 def is_stale(action: CompanionAction, ttl_seconds: float, *, now: datetime | None = None) -> bool:
-    """¿Se le pasó el plazo sin que nadie decidiera?"""
+    """¿Se le pasó el plazo sin que nadie decidiera?
+
+    **Una acción de teammate no caduca por reloj** (spec 003, Requisito 6.1):
+    lleva ``task_id`` y la vida la marca la tarea, que caduca por su cuenta y
+    cierra la acción con su motivo. Es la enmienda acotada de §IV — durable,
+    idempotente y una sola decisión se conservan; lo que cambia es **quién
+    marca el plazo**, porque un turno del Companion muere a los cinco minutos y
+    colgar de eso una espera de días sería una pantalla que miente (§V).
+    """
     if action.status != STATUS_PROPOSED:
+        return False
+    if action.task_id is not None:
         return False
     return (now or datetime.now(UTC)) >= expires_at_of(action.proposed_at, ttl_seconds)
 
@@ -118,18 +129,27 @@ class StagedAction:
     preview: dict[str, Any]
     diff: list[dict[str, Any]] | None
     impact: list[dict[str, Any]]
-    expires_at: datetime
+    #: ``None`` cuando espera a una TAREA (spec 003, R6.1): no hay cuenta atrás
+    #: que pintar, y la interfaz dice «esperándote» en vez de «te quedan 14 min».
+    expires_at: datetime | None
+    #: Nivel de aviso (R7.1), fijado al proponer.
+    level: str = "informativo"
+    task_id: uuid.UUID | None = None
 
     def as_event(self) -> dict[str, Any]:
-        return {
+        event: dict[str, Any] = {
             "action_id": str(self.action_id),
             "kind": self.kind,
             "title": self.title,
             "preview": self.preview,
             "diff": self.diff,
             "impact": self.impact,
-            "expires_at": self.expires_at.isoformat(),
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "level": self.level,
         }
+        if self.task_id is not None:
+            event["task_id"] = str(self.task_id)
+        return event
 
 
 async def stage_action(
@@ -141,6 +161,7 @@ async def stage_action(
     step_index: int,
     proposal: Proposal,
     ttl_seconds: float,
+    task_id: uuid.UUID | None = None,
 ) -> StagedAction:
     """Persiste la propuesta como ``proposed``. **UPSERT, nunca INSERT.**
 
@@ -151,6 +172,7 @@ async def stage_action(
     action_id = action_id_for(run_id, step_index)
     payload = proposal.as_payload()
     now = datetime.now(UTC)
+    level = level_for(kind=proposal.kind, risk=proposal.risk)
     async with session.begin():
         await apply_principal_to_session(session, principal_id)
         stmt = pg_insert(CompanionAction).values(
@@ -167,6 +189,10 @@ async def stage_action(
             state_hash=proposal.state_hash,
             status=STATUS_PROPOSED,
             proposed_at=now,
+            # Spec 003: la tarea que espera y el nivel de aviso, fijados aquí
+            # —al proponer— y no al pintar (Requisitos 6.1 y 7.1).
+            task_id=task_id,
+            level=level,
         )
         # Re-proponer el MISMO paso del MISMO run sobrescribe: es la reejecución
         # de un nodo, no una segunda propuesta. Y nunca resucita una acción ya
@@ -179,6 +205,8 @@ async def stage_action(
                 "state_hash": stmt.excluded.state_hash,
                 "kind": stmt.excluded.kind,
                 "proposed_at": stmt.excluded.proposed_at,
+                "task_id": stmt.excluded.task_id,
+                "level": stmt.excluded.level,
             },
             where=CompanionAction.status == STATUS_PROPOSED,
         )
@@ -190,7 +218,10 @@ async def stage_action(
         preview=proposal.preview,
         diff=proposal.diff,
         impact=proposal.impact,
-        expires_at=expires_at_of(now, ttl_seconds),
+        # Con tarea no hay cuenta atrás: la espera la marca ella (Requisito 6.1).
+        expires_at=None if task_id is not None else expires_at_of(now, ttl_seconds),
+        level=level,
+        task_id=task_id,
     )
 
 

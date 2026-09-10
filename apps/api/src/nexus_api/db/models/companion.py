@@ -55,7 +55,14 @@ RUN_INTERRUPTED = "interrupted"
 #: esperando a una persona (PLAN-CO-04 §D4). Son dos esperas distintas y se
 #: pintan distinto.
 RUN_PAUSED = "paused"
+#: Spec 003 (D3). El turno cerró **aparcado esperando a una persona**, y la
+#: TAREA sigue viva. No es ``running`` —un run vivo con techo de duración se
+#: daría por muerto a los cinco minutos y la espera sería mentira (§V)— ni
+#: ``completed`` —el trabajo no terminó—. Solo lo llevan los runs con
+#: ``task_id``: el aparcado del Companion clásico no cambia.
+RUN_WAITING = "waiting"
 RUN_STATUSES: tuple[str, ...] = (
+    RUN_WAITING,
     RUN_RUNNING,
     RUN_COMPLETED,
     RUN_CANCELLED,
@@ -132,6 +139,8 @@ class CompanionRun(UUIDPrimaryKey, Base):
     principal_id: Mapped[str] = mapped_column(String(120), nullable=False)
     #: Spec 003 — copiado del hilo al crear el run, para agregar consumo por teammate.
     teammate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: La tarea a la que pertenece este turno. NULL = Companion clásico.
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'running'"))
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
@@ -213,6 +222,12 @@ class CompanionAction(Base):
     diff: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     state_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'proposed'"))
+    #: Spec 003 — la TAREA que espera esta decisión. Con ``task_id`` la acción
+    #: **no caduca por reloj**: la vida la marca ``teammate_tasks.expires_at``
+    #: (enmienda acotada de §IV, Requisito 6.1).
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: Nivel de aviso (Requisito 7.1). Se fija al proponer.
+    level: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'informativo'"))
     proposed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -220,6 +235,75 @@ class CompanionAction(Base):
     decided_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     result: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+
+TASK_EN_MARCHA = "en_marcha"
+TASK_ESPERANDOTE = "esperandote"
+TASK_PAUSADA = "pausada_por_tope"
+TASK_TERMINADA = "terminada"
+TASK_CANCELADA = "cancelada"
+TASK_CADUCADA = "caducada"
+TASK_STATES: tuple[str, ...] = (
+    TASK_EN_MARCHA,
+    TASK_ESPERANDOTE,
+    TASK_PAUSADA,
+    TASK_TERMINADA,
+    TASK_CANCELADA,
+    TASK_CADUCADA,
+)
+TERMINAL_TASK_STATES: frozenset[str] = frozenset({TASK_TERMINADA, TASK_CANCELADA, TASK_CADUCADA})
+
+#: Por qué la tarea cambió de estado. Enum cerrado del CONTRACT-V3: la clave se
+#: llama ``cause`` y no ``reason`` porque ``reason`` está prohibida en el
+#: catálogo de eventos (podría llevar prosa de un cliente final, C8).
+TASK_CAUSES: tuple[str, ...] = (
+    "hitl",
+    "budget",
+    "completed",
+    "cancelled",
+    "expired",
+    "teammate_archived",
+    "machine_absent",
+)
+
+
+class TeammateTask(Base):
+    """El trabajo que sobrevive al turno — spec 003, Requisito 3.2.
+
+    Un run es un turno; la tarea encadena turnos y es **el sujeto de la
+    espera**: cuando el agente pide permiso, el run cierra en ``waiting`` y la
+    tarea queda ``esperandote`` hasta que la persona decide. Su
+    ``expires_at`` se desplaza con cada run que termina y con cada decisión;
+    cuando vence de verdad, la tarea caduca y su acción se cierra con motivo.
+    """
+
+    __tablename__ = "teammate_tasks"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    thread_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{SCHEMA}.threads.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    teammate_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    principal_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'en_marcha'"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    current_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    pending_action_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.state in TERMINAL_TASK_STATES
 
 
 __all__ = [
@@ -232,10 +316,15 @@ __all__ = [
     "RUN_PAUSED",
     "RUN_RUNNING",
     "RUN_STATUSES",
+    "RUN_WAITING",
+    "TASK_CAUSES",
+    "TASK_STATES",
     "TERMINAL_RUN_STATUSES",
+    "TERMINAL_TASK_STATES",
     "THREAD_MODES",
     "CompanionAction",
     "CompanionMessage",
     "CompanionRun",
     "CompanionThread",
+    "TeammateTask",
 ]

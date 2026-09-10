@@ -72,3 +72,45 @@ class ModelChoiceOut(BaseModel):
 class JobsOut(BaseModel):
     jobs: list[str]
     models: list[ModelChoiceOut]
+
+
+# ── la tarea y la bandeja (spec 003, US2) ──────────────────────────────
+
+
+class TaskOut(BaseModel):
+    """Una tarea de la persona. ``state`` y ``cause`` son enums estables."""
+
+    id: uuid.UUID
+    thread_id: uuid.UUID
+    teammate_id: uuid.UUID
+    title: str
+    state: str
+    expires_at: datetime
+    current_run_id: uuid.UUID | None = None
+    pending_action_id: uuid.UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+    ended_at: datetime | None = None
+
+
+class TeammateRefOut(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
+class InboxItemOut(BaseModel):
+    """Una tarjeta de Pendientes. Sin cuerpos de mensaje y sin ids de tenant."""
+
+    action_id: uuid.UUID
+    task_id: uuid.UUID | None
+    thread_id: uuid.UUID
+    run_id: uuid.UUID | None
+    teammate: TeammateRefOut
+    title: str
+    kind: str
+    level: str
+    client_ref: str | None
+    proposed_at: datetime
+    #: `false` cuando el permiso que exige aplicar esto no es del rol: la
+    #: tarjeta lo dice **antes**, en vez de dejar decidir y comerse un 403 (§V).
+    can_decide: bool

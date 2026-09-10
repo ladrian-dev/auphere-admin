@@ -11,6 +11,8 @@ import type { IpcMain } from "electron";
 import { InvalidIpcInput, redact, validateInput } from "../app-ipc.js";
 import { PlatformClient, SessionLost } from "../platform-client.js";
 import type { GateDecision, WhoamiClient } from "../session-gate.js";
+import type { InboxWatcher } from "../inbox-watcher.js";
+import type { Prefs } from "../notifications-policy.js";
 import type { StreamHub } from "../stream-hub.js";
 
 export type Push = (channel: string, payload: unknown) => void;
@@ -23,6 +25,8 @@ export type AppSurfaceOptions = {
   push: Push;
   showConsole: (path: string) => void;
   onSessionLost: (reason: "anonymous" | "no_membership") => void;
+  inbox: InboxWatcher;
+  notificationPrefs: { read(): Prefs; write(next: Prefs): Prefs };
 };
 
 const q = encodeURIComponent;
@@ -98,11 +102,34 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
   handle("app:thread.cancel", (input: { run_id: string }) =>
     o.platform.request(`/api/companion/runs/${q(input.run_id)}`, { method: "DELETE" }),
   );
-  handle("app:inbox.decide", (input: { action_id: string; run_id: string; decision: string; note?: string }) =>
-    o.platform.request(`/api/companion/runs/${q(input.run_id)}/resume`, {
-      method: "POST",
-      body: { action_id: input.action_id, decision: input.decision, ...(input.note ? { note: input.note } : {}) },
-    }),
+  handle(
+    "app:inbox.decide",
+    async (input: { action_id: string; run_id: string; decision: string; note?: string }) => {
+      const result = await o.platform.request(`/api/companion/runs/${q(input.run_id)}/resume`, {
+        method: "POST",
+        body: {
+          action_id: input.action_id,
+          decision: input.decision,
+          ...(input.note ? { note: input.note } : {}),
+        },
+      });
+      // La tarjeta se retira aquí y no esperando al aviso: quien decide ve el
+      // efecto ya (R5.3). El aviso del canal es para las **otras** pantallas.
+      if (result.ok) o.inbox.onChanged(input.action_id);
+      return result;
+    },
+  );
+  handle("app:inbox.list", () => ({ ok: true, data: o.inbox.items }));
+  handle("app:tasks.list", (input: { state?: string } | undefined) =>
+    o.platform.request(`/api/teammates/tasks${input?.state ? `?state=${q(input.state)}` : ""}`),
+  );
+  handle("app:tasks.cancel", (input: { id: string }) =>
+    o.platform.request(`/api/teammates/tasks/${q(input.id)}/cancel`, { method: "POST" }),
+  );
+  handle("app:notifications.prefs", (input: { silence_aviso?: boolean } | undefined) =>
+    input === undefined
+      ? o.notificationPrefs.read()
+      : o.notificationPrefs.write({ silenceAviso: input.silence_aviso === true }),
   );
   handle("app:usage", async () => {
     const budget = await o.platform.request("/api/companion/budget");

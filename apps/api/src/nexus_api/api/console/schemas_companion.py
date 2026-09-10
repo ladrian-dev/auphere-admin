@@ -255,7 +255,12 @@ class CompanionActionOut(BaseModel):
     status: str
     state_hash: str
     proposed_at: datetime
-    expires_at: datetime
+    #: ``None`` cuando la acción espera a una TAREA (spec 003, R6.1): no hay
+    #: cuenta atrás que pintar, y la interfaz dice «esperándote».
+    expires_at: datetime | None
+    #: Nivel de aviso (R7.1): `critico` · `aviso` · `informativo`.
+    level: str = "informativo"
+    task_id: uuid.UUID | None = None
     decided_at: datetime | None
     decided_by: str | None
     applied_at: datetime | None

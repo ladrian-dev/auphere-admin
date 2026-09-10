@@ -170,6 +170,10 @@ async def test_a_proposal_stops_the_turn_and_leaves_a_pending_action(
     assert "run.completed" not in names
 
     hitl = next(e["data"] for e in events.json()["events"] if e["event"] == "hitl.requested")
+    # ``level`` entra con CONTRACT-V3 (spec 003): el nivel de aviso se fija al
+    # proponer, para que la aplicación de escritorio sepa si interrumpir. Un
+    # hilo del Companion no lleva ``task_id`` —no hay tarea que espere— y su
+    # caducidad sigue siendo la del reloj.
     assert set(hitl) == {
         "action_id",
         "kind",
@@ -178,7 +182,10 @@ async def test_a_proposal_stops_the_turn_and_leaves_a_pending_action(
         "diff",
         "impact",
         "expires_at",
+        "level",
     }
+    assert hitl["level"] in {"critico", "aviso", "informativo"}
+    assert hitl["expires_at"] is not None
     assert hitl["action_id"] == str(action.id)
 
 

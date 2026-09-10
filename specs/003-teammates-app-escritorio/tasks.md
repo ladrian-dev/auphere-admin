@@ -288,62 +288,74 @@ desde Pendientes → la tarjeta del hilo se marca en < 2 s.
 
 ### Tests de la US2 ⚠️
 
-- [ ] T042 [P] [US2] `apps/api/tests/integration/test_teammate_tasks.py`: el run de un hilo
+- [x] T042 [P] [US2] `apps/api/tests/integration/test_teammate_tasks.py`: el run de un hilo
       con teammate crea/continúa `teammate_tasks`; al `hitl.requested` el run cierra `waiting`
       y la tarea pasa a `esperandote`; `resume` abre un run nuevo en la misma tarea; una
       acción de teammate con `expires_at NULL` **no** da 409 `action_expired` tras 20 min;
       la tarea caduca por `expires_at` y cierra la acción `expired` con `task_expired`;
       archivar el teammate → `cancelada` + `teammate_archived`. _Requisitos: 3.2, 6.1, 6.2, 6.3, 2.6_
-- [ ] T043 [P] [US2] `apps/api/tests/integration/test_
+- [x] T043 [P] [US2] `apps/api/tests/integration/test_
+      **HECHO (rojo → verde).** 7 tests contra la aplicación real: la tarea nace con el turno y el run le pertenece; aparcar **cierra** el run como `waiting` con `ended_at` y la tarea queda `esperandote` con su acción; la acción no caduca con `proposed_at` de hace seis horas y su `expires_at` sale `null`; decidir abre un run nuevo en la **misma** tarea; el barrido la caduca cerrando la acción con `cause=task_expired`; archivar el teammate la cancela con `teammate_archived`; y la persona puede cancelarla (409 la segunda vez).
       **HECHO.** `src/app/i18n.ts` (es/en, `LangProvider`, `useAppT`, `systemLang`) y `CompanionLocaleProvider` del paquete con `renderLink` que abre en la consola; el idioma viene de `whoami` y decae al del sistema.teammate_inbox.py`: `GET /inbox` lista
       solo acciones de hilos con teammate **de la persona**; nada del Companion sin teammate;
       `can_decide=false` cuando el permiso de la herramienta que hay detrás de la acción no está en
       `permissions_for(role)`; `GET /inbox/stream` emite
       `inbox.changed` al decidir. _Requisitos: 5.1, 5.2, 5.4, 6.4_
-- [ ] T044 [P] [US2] `apps/api/tests/unit/test_action_level.py`: `local_exec` y `risk=high` →
+- [x] T044 [P] [US2] `apps/api/tests/unit/test_
+      **HECHO (rojo → verde).** 5 tests: la bandeja lista lo de **esta** persona con nivel, tarea, run, teammate y `client_ref` y sin `tenant_id`; no lista lo de otra persona; **no** lista lo del Companion de la consola; un `analyst` recibe 403; y el aviso viaja por el canal de la persona.action_level.py`: `local_exec` y `risk=high` →
       `critico`; `mutates` → `aviso`; resto `informativo`. _Requisitos: 7.1_
-- [ ] T045 [P] [US2] `apps/desktop/tests/notifications-policy.test.ts`: `critico` → aviso del
+- [x] T045 [P] [US2] `apps/desktop/tests/notifications-policy.test.ts`: `critico` → aviso del
       SO; `aviso` → badge; `informativo` → nada; al abrir con N esperando, **un** resumen;
-      `silence_aviso` no toca `critico`. _Requisitos: 7.2, 7.3, 7.5_
-- [ ] T046 [P] [US2] `apps/desktop/tests/inbox-sync.test.ts`: decidir por `app:inbox.decide`
+      `silence_
+      **HECHO (rojo → verde).** 5 tests sobre `level_for`. El clasificador quedó en **`core/`** y no en `services/`: `test_companion_tools_imports` prohíbe que un módulo de herramientas importe un servicio (se saltaría ámbito, RLS, cuota y auditoría), y esto es una función pura sin base de datos.aviso` no toca `critico`. _Requisitos: 7.2, 7.3, 7.5_
+- [x] T046 [P] [US2] `apps/desktop/tests/inbox-sync.test.ts`: decidir por `app:inbox.decide`
       emite el cambio al hilo abierto y a la bandeja sin recargar; recibir `inbox.changed`
       del stream marca la tarjeta; **un `inbox.changed` perdido durante la reconexión** se
-      recupera con el refresco de `GET /inbox` y la tarjeta queda igual de marcada. _Requisitos: 5.3_
+      recupera con el refresco de `GET /inbox` y la tarjeta queda igual de marcada. _
+      **HECHO (rojo → verde).** 9 tests: `critico` interrumpe y marca, `aviso` solo marca, `informativo` ni cuenta; al abrir, **un** resumen (con una sola tarjeta, el aviso lleva a ella); silenciar `aviso` no calla lo crítico; y la preferencia es un booleano — no hay forma de subir un nivel.Requisitos: 5.3_
 
 ### Implementación de la US2
 
-- [ ] T047 [US2] Migración `0110_teammate_tasks.py`: tabla `teammate_tasks` (columnas y
+- [x] T047 [US2] Migración `0110_teammate_tasks.py`: tabla `teammate_tasks` (columnas y
       estados de `data-model.md`; RLS por `EXISTS` sobre `threads`), `runs.task_id`,
       `runs.status` + `waiting`, `actions.level text NOT NULL DEFAULT 'informativo'`,
       `actions.expires_at timestamptz NULL` con CHECK (NULL solo si el hilo tiene `teammate_id`),
       `actions.kind` + `local_exec`. _Requisitos: 6.1, 7.1_
-- [ ] T048 [P] [US2] Modelos y repos: `db/models/companion.py` (`RUN_WAITING`, `TeammateTask`,
+- [x] T048 [P] [US2] Modelos y repos: `db/models/companion.py` (`RUN_
+      **HECHO.** `0111_teammate_tasks.py`: `companion.teammate_tasks` con RLS por `EXISTS` sobre el hilo (patrón 0090) y CHECK de estados; `runs.task_id`; `actions.task_id` y `actions.level` con su CHECK; y el CHECK de `runs.status` ampliado con `waiting`. **Cambio sobre `data-model.md`**: en vez de `actions.expires_at` nullable —que dejaría ambiguas las filas viejas del Companion— la acción lleva `task_id`, que además es lo que `hitl.requested` necesita.
+      **HECHO (rojo → verde).** 7 tests de `InboxWatcher`: la primera pasada resume, lo nuevo suena y lo ya visto no; **el aviso perdido durante la reconexión se recupera con `GET /inbox`** (el hallazgo H1 del análisis); `inbox.changed` retira la tarjeta; el bucle reconecta con espera creciente; y perder la sesión olvida la bandeja.WAITING`, `TeammateTask`,
       `TASK_STATES`), `repositories/teammate_tasks.py` (`open_or_continue`, `mark_waiting`,
       `resume`, `finish`, `cancel`, `expire_due`); `expires_at` se desplaza con cada run que
       termina y con cada decisión. _Requisitos: 6.1, 6.2_
-- [ ] T049 [US2] `apps/api/src/nexus_api/companion/tools/actions.py`: `stage_action` recibe
+- [x] T049 [US2] `apps/api/src/nexus_
+      **HECHO.** `TeammateTask`, `RUN_WAITING`, `TASK_STATES`, `TASK_CAUSES`; `repositories/teammate_tasks.py` con `open_or_continue` (un hilo tiene **una** tarea viva), `running`, `waiting`, `paused`, `finished`, `cancel`, `cancel_for_teammate` y `expire_due` (el único método que corre sin persona).api/companion/tools/actions.py`: `stage_action` recibe
       `level` y `ttl=None` cuando el hilo es de teammate; `is_stale` devuelve `False` con
       `expires_at` nulo; `services/action_level.py` (T044). _Requisitos: 6.1, 6.3, 7.1_
-- [ ] T050 [US2] `api/console/companion.py`: el driver de teammate cierra el run en `waiting` al
-      aparcar y emite `task.state`; `resume_run` sin 409 por reloj para acciones de teammate,
+- [x] T050 [US2] `api/console/companion.py`: el driver de teammate cierra el run en `waiting` al
+      aparcar y emite `task.state`; `resume_
+      **HECHO.** `stage_action` recibe `task_id` y fija `level`; `is_stale` devuelve `False` con `task_id`; `StagedAction` sirve `expires_at: null` y `level`; `core/action_level.py` clasifica.run` sin 409 por reloj para acciones de teammate,
       abre un run nuevo en la tarea y publica `inbox.changed` en `teammates:inbox:{principal}`;
       techos de D6 (`teammate_run_max_seconds`). _Requisitos: 3.2, 6.1, 6.2, 5.3_
-- [ ] T051 [US2] `services/teammate_inbox.py` + rutas en `api/console/teammates.py`:
+- [x] T051 [US2] `services/teammate_
+      **HECHO.** `start_run` abre o continúa la tarea y se la pasa al run y al toolbelt; `_finalise_run` cierra en `waiting` cuando hay tarea; `_move_task` mueve la tarea y emite `task.state`; `resume_run` continúa la **misma** tarea, hereda `teammate_id`/`task_id` y publica `inbox.changed`. El paquete compartido aprende `waiting` para no dar por terminado lo que espera.inbox.py` + rutas en `api/console/teammates.py`:
       `GET /inbox`, `GET /inbox/stream` (SSE por persona sobre Redis pubsub, `ping` 15 s),
       `GET /tasks`, `POST /tasks/{id}/cancel`; barrido `expire_due` como cron del **worker**:
       `apps/worker/src/nexus_worker/streams/teammate_task_expiry_cron.py` (cada 10 min, junto a
       `reminder_cron.py`), con test en `apps/worker/tests/`. _Requisitos: 5.1, 5.2, 5.4, 6.1_
-- [ ] T052 [P] [US2] Proxies BFF `apps/console/src/app/api/teammates/{inbox, inbox/stream,
-      tasks, tasks/[id]/cancel}/route.ts` (el stream con `maxDuration` como el del Companion). _Requisitos: 12.3_
-- [ ] T053 [P] [US2] `apps/desktop/src/notifications-policy.ts` (puro) y en `main.ts`:
+- [x] T052 [P] [US2] Proxies BFF `apps/console/src/app/api/teammates/{inbox, inbox/stream,
+      tasks, tasks/[id]/cancel}/route.ts` (el stream con `maxDuration` como el del Companion). _
+      **HECHO.** `services/teammate_inbox.py` (lectura, canal por persona, `inbox_events` como flujo probado sin HTTP) y las rutas `GET /inbox`, `GET /inbox/stream`, `GET /tasks`, `POST /tasks/{id}/cancel`, más `DELETE /teammates/{id}` (que la US2 necesitaba para cancelar lo que esperaba; T072 lo da por hecho). El barrido es un cron del **worker** cada 10 min con su test — `scheduled_job` era un modelo, no un planificador (hallazgo I1 del análisis).Requisitos: 12.3_
+- [x] T053 [P] [US2] `apps/desktop/src/notifications-policy.ts` (puro) y en `main.ts`:
       `Notification` del SO, resumen al abrir, badge del Dock/bandeja con el conteo,
       preferencia `silence_aviso` en `userData`; handlers `app:inbox.list`, `app:inbox.decide`,
       `app:tasks.list`, `app:tasks.cancel`, `app:notifications.prefs`; el stream de la bandeja
       abierto mientras hay sesión y, **en cada reconexión** (el proxy BFF corta a los 300 s),
       `GET /inbox` de nuevo y reconciliación — la bandeja no tiene historial. «Abierta» = proceso
       vivo, aunque la ventana esté en la bandeja del sistema. _Requisitos: 7.2, 7.3, 7.4, 7.5, 5.3_
-- [ ] T054 [US2] Renderer `routes/inbox.tsx` (Pendientes: nivel, prueba, cómo se deshace,
-      desde cuándo, `can_decide`, estado vacío del diseño) y en el hilo el estado
+- [x] T054 [US2] Renderer `routes/inbox.tsx` (Pendientes: nivel, prueba, cómo se deshace,
+      desde cuándo, `can_
+      **HECHO.** `notifications-policy.ts` (puro), `inbox-watcher.ts` (reconcilia en cada reconexión), `adapters.ts` con `Notification` y badge del Dock, preferencia en `userData`, y los handlers `app:inbox.list`, `app:tasks.list`, `app:tasks.cancel`, `app:notifications.prefs`. Decidir retira la tarjeta **aquí** sin esperar al canal; el canal es para las otras pantallas. Al perder la sesión, la bandeja se olvida.
+      **HECHO.** `api/teammates/{inbox,inbox/stream,tasks,tasks/[id]/cancel,[id]}/route.ts` y `withPermission` reutilizado; el proxy SSE con `maxDuration` y sin historia que perder.decide`, estado vacío del diseño) y en el hilo el estado
       `esperandote` con la tarjeta; `app-state.ts` aplica `inbox.changed` y `task.state`. _Requisitos: 5.1, 5.3, 5.5, 6.2_
 
 ---
@@ -354,7 +366,8 @@ desde Pendientes → la tarjeta del hilo se marca en < 2 s.
 la app nunca amplía; la salida es dato.
 
 **Independent Test**: tres combinaciones de techo/preferencia sobre un ejecutable
-en lista y uno fuera; `test_34` en verde; un fichero creado dentro del `workdir`
+en lista y uno fuera; `test_
+      **HECHO y verificado con display.** `routes/inbox.tsx` con los cinco estados (skeleton, vacío que explica cuándo aparece algo, error con reintento, `can_decide=false` como nota, ideal), nivel con las variantes del sistema, y navegación Equipo/Pendientes con contador. Un aviso del sistema abre Pendientes en su tarjeta (`app:inbox.focus`). Evidencia en `evidence/US2/`.34` en verde; un fichero creado dentro del `workdir`
 y ninguno fuera.
 
 ### Tests de la US3 ⚠️

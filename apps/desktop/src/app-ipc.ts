@@ -44,6 +44,8 @@ export const APP_INVOKE_CHANNELS: readonly InvokeChannel[] = [
 
 export const APP_PUSH_CHANNELS = [
   "app:event",
+  "app:inbox",
+  "app:inbox.focus",
   "app:stream.end",
   "app:inbox.changed",
   "app:task.state",

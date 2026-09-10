@@ -44,6 +44,7 @@ from nexus_api.db.models.companion import (
     CompanionMessage,
     CompanionRun,
     CompanionThread,
+    TeammateTask,
 )
 from nexus_api.db.models.connector import (
     Connector,
@@ -329,6 +330,7 @@ __all__ = [
     "SupportTicket",
     "SupportTicketEvent",
     "Teammate",
+    "TeammateTask",
     "Tenant",
     "TenantConnector",
     "TenantConnectorStatus",

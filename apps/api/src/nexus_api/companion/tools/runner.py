@@ -108,6 +108,9 @@ class CompanionToolbelt:
     #: Plazo de una propuesta sin decidir. Es lo único que fija ``expires_at``,
     #: y por eso la interfaz no calcula quince minutos por su cuenta.
     action_ttl_seconds: float = 900.0
+    #: Spec 003 — la TAREA de este turno, cuando el hilo es de un teammate. La
+    #: acción que se proponga la lleva, y por eso no caduca por reloj (R6.1).
+    task_id: uuid.UUID | None = None
     #: Spec 003 — el catálogo del TEAMMATE (subconjunto de ``ALL_TOOLS``).
     #: ``None`` es el Companion clásico: publica lo que el modo permite. Con
     #: lista, se publica la intersección **y** ``call`` rechaza lo demás:
@@ -564,6 +567,7 @@ class CompanionToolbelt:
                 step_index=step_index,
                 proposal=proposal,
                 ttl_seconds=self.action_ttl_seconds,
+                task_id=self.task_id,
             )
         return staged.as_event()
 
