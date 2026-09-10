@@ -35,6 +35,14 @@ export const AGENT_PARTITION = "auphere-agent";
 export const BAR_PARTITION = "auphere-bar";
 
 /**
+ * La pantalla de operar (spec 003, Requisito 12): la segunda superficie propia,
+ * en su partición, con `preload` y sin nada de la persona: el proceso principal
+ * habla con la plataforma con la sesión de **su** partición y le pasa datos.
+ * Tampoco persiste — el estado de la pantalla vive en la plataforma.
+ */
+export const APP_PARTITION = "auphere-app";
+
+/**
  * Las preferencias de la vista de la consola. **Sin `preload`**: la página
  * cargada no tiene ninguna vía de hablarle al proceso principal (R3.5). Si
  * alguien añade una clave `preload` aquí, `session-isolation.test.ts` se entera.
@@ -59,6 +67,17 @@ export function barWebPreferences(preload: string): {
   return { partition: BAR_PARTITION, preload, contextIsolation: true, nodeIntegration: false, sandbox: true };
 }
 
+/** Las de la pantalla de operar: mismo aislamiento que la barra, su partición, su `preload`. */
+export function appWebPreferences(preload: string): {
+  partition: string;
+  preload: string;
+  contextIsolation: true;
+  nodeIntegration: false;
+  sandbox: true;
+} {
+  return { partition: APP_PARTITION, preload, contextIsolation: true, nodeIntegration: false, sandbox: true };
+}
+
 /** Lo mínimo para que un proceso arranque. Igual que en la edición. */
 const ALLOWED_ENV_KEYS = ["PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR"] as const;
 
@@ -80,8 +99,9 @@ export function assertPartitionsAreSeparate(
   human: string = HUMAN_PARTITION,
   agent: string = AGENT_PARTITION,
   bar: string = BAR_PARTITION,
+  appPartition: string = APP_PARTITION,
 ): void {
-  if (new Set([human, agent, bar]).size !== 3) {
+  if (new Set([human, agent, bar, appPartition]).size !== 4) {
     throw new SessionIsolationError(
       "dos particiones son la misma: la sesión de la persona sería alcanzable",
     );
@@ -94,6 +114,9 @@ export function assertPartitionsAreSeparate(
   if (bar.startsWith("persist:")) {
     throw new SessionIsolationError("la partición de la barra no puede persistir: no guarda nada");
   }
+  if (appPartition.startsWith("persist:")) {
+    throw new SessionIsolationError("la partición de la pantalla no puede persistir: su estado vive en la plataforma");
+  }
 }
 
 /**
@@ -104,8 +127,9 @@ export function assertPartitionsAreSeparate(
  * que sea una nota en un comentario.
  */
 export function sessionCookieNames(partition: string): string[] {
-  if (partition === AGENT_PARTITION) return [];
-  return ["auphere_console_session"];
+  if (partition === HUMAN_PARTITION) return ["auphere_console_session"];
+  // La del agente, la de la barra y la de la pantalla: nunca se les monta sesión.
+  return [];
 }
 
 /** El entorno del proceso del agente, construido desde cero. */

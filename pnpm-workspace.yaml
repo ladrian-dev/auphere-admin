@@ -7,12 +7,16 @@
 # running ``pnpm`` inside ``apps/admin`` is unaffected by this file.
 packages:
   - "apps/console"
+  - "apps/desktop"
   - "packages/ui"
+  - "packages/companion-ui"
 allowBuilds:
+  electron: true
   esbuild: true
   sharp: true
   unrs-resolver: true
 onlyBuiltDependencies:
+  - electron
   - esbuild
   - sharp
   - unrs-resolver

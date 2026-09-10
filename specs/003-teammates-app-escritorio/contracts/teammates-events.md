@@ -7,7 +7,7 @@ test que lo comprueba; V3 fija **veinticuatro** y cambia el test por la puerta.
 
 | Evento | Origen | Claves |
 |---|---|---|
-| `task.state` | 003 | `task_id, state, reason` — `reason ∈ {hitl, budget, completed, cancelled, expired, teammate_archived, machine_absent}` |
+| `task.state` | 003 | `task_id, state, cause` — `cause ∈ {hitl, budget, completed, cancelled, expired, teammate_archived, machine_absent}` |
 | `exec.dispatched` | 003 | `execution_id, executable, args, cwd_relative, client_ref` |
 | `exec.completed` | 003 | `execution_id, outcome, exit_code` — **sin** salida |
 | `inbox.changed` | 003 | `action_id, decision, by` — en el stream de la bandeja y en el del hilo |

@@ -8,7 +8,17 @@ import { Button, Sheet, SheetContent, SheetDescription, SheetTitle } from "@nexu
 
 import { useT } from "@/i18n/client";
 
-import { Composer } from "./composer";
+import {
+  type BudgetPause,
+  type CompanionController,
+  Composer,
+  type Decision,
+  type IntakeSlot,
+  Meters,
+  Timeline,
+  pendingAction,
+} from "@nexus/companion-ui";
+
 import {
   MAX_WIDTH,
   MIN_WIDTH,
@@ -21,12 +31,7 @@ import {
   setWidth,
   subscribeUi,
 } from "./client";
-import { Meters } from "./meters";
 import type { PageContext } from "./page-context";
-import { pendingAction } from "./state";
-import { Timeline } from "./timeline";
-import type { CompanionController } from "./use-companion";
-import type { BudgetPause, Decision, IntakeSlot } from "./types";
 
 /**
  * The drawer (§4.2 / §14).

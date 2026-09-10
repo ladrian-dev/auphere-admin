@@ -41,7 +41,7 @@ construido con Vite, cargado desde `file://` en una `WebContentsView` con
 `preload` CJS, recibiendo un *stream* reenviado por IPC desde el proceso
 principal. Si no funciona así, D9 y D10 cambian antes de construir encima.
 
-- [ ] T001 Spike con display en `apps/desktop/`: `vite.app.config.ts` (`base: "./"`,
+- [x] T001 Spike con display en `apps/desktop/`: `vite.app.config.ts` (`base: "./"`,
       salida `dist/app/`) con un `App.tsx` mínimo que usa un componente de `@nexus/ui`;
       tercera `WebContentsView` en partición `auphere-app` con `app-preload.cjs` que
       expone `ping()` y `onEvent()`; el principal abre `GET /api/companion/runs/{id}/stream`
@@ -55,22 +55,27 @@ principal. Si no funciona así, D9 y D10 cambian antes de construir encima.
 
 ## Phase 1: Setup
 
-- [ ] T002 [P] Añadir `apps/desktop` a `pnpm-workspace.yaml` raíz; en `apps/desktop/package.json`
+- [x] T002 [P] Añadir `apps/desktop` a `pnpm-workspace.yaml` raíz; en `apps/desktop/package.json`
       añadir `react@19.2`, `react-dom@19.2`, `vite@7.3`, `@vitejs/plugin-react`,
       `@nexus/ui: workspace:*`, `@nexus/companion-ui: workspace:*`; script `build` →
       `copy-tokens && tsc -p tsconfig.build.json && vite build -c vite.app.config.ts && node scripts/copy-preloads.mjs`;
-      `scripts/copy-preloads.mjs` generaliza `copy-bar.mjs` para `bar-preload` y `app-preload`. _Requisitos: 12.1_
-- [ ] T003 [P] **Puerta de licencias (§VIII)**: `docs/licenses/desktop-renderer.md` con
+      `scripts/copy-preloads.mjs` generaliza `copy-bar.mjs` para `bar-preload` y `app-preload`. _
+      **PASA (2026-09-10).** `evidence/T001/result.json`: el renderer pinta con tokens OKLCH (`bodyBg oklch(0.971 …)`, botón `oklch(0.727 0.138 167.3)`), `window.auphere` es `object` en la app y **`undefined`** en la vista de la consola (que cargó `http://localhost:3110/login`), y tres eventos SSE leídos con `session.fromPartition(...).fetch` (primer byte a los 67 ms) llegaron al renderer por IPC con **1–6 ms** de latencia. `assertPartitionsAreSeparate` con cuatro particiones en verde (174 tests). D9 y D10 confirmados.Requisitos: 12.1_
+- [x] T003 [P] **Puerta de licencias (§VIII)**: `docs/licenses/desktop-renderer.md` con
       `react`, `react-dom`, `vite`, `@vitejs/plugin-react` — versión, licencia MIT y el
       párrafo citado; anotar que de KiroCrew no entra ningún fichero. _Requisitos: §VIII_
-- [ ] T004 [P] Esqueleto de `packages/companion-ui/` (`package.json` `@nexus/companion-ui`,
+- [x] T004 [P] Esqueleto de `packages/companion-ui/` (`package.json` `@nexus/companion-ui`,
       `tsconfig`, `vitest.config` con jsdom, `src/index.ts` vacío, `exports`); añadirlo
-      al workspace raíz y a `transpilePackages` de `apps/console/next.config.ts`. _Requisitos: 12.5_
-- [ ] T005 [P] Ajustes nuevos en `apps/api/src/nexus_api/config.py`: `teammate_run_max_seconds`
+      al workspace raíz y a `transpilePackages` de `apps/console/next.config.ts`. _
+      **HECHO.** `docs/licenses/desktop-renderer.md`: react/react-dom 19.2.4, vite 8.2.1, plugin-react 6.0.5, tailwindcss 4.3.3, tw-animate-css 1.4.0 — MIT, párrafo citado del fichero leído.
+      **HECHO.** `apps/desktop` y `packages/companion-ui` en `pnpm-workspace.yaml` (con `electron` en `allowBuilds`); React 19.2, Vite 8.2, `@vitejs/plugin-react` 6, Tailwind 4.3 por Vite; `vite.app.config.ts`, `tsconfig.app.json`, `copy-preloads.mjs` (barra + app). `pnpm build` dentro de `apps/desktop` tropieza con el *deps check* de pnpm; los pasos se ejecutan por sus binarios y funciona.Requisitos: 12.5_
+- [x] T005 [P] Ajustes nuevos en `apps/api/src/nexus_api/config.py`: `teammate_run_max_seconds`
       (1800), `local_exec_wait_seconds` (900), `teammate_task_ttl_days` (7); documentados en
       `apps/api/.env.example`. _Requisitos: 3.2, 6.1_
-- [ ] T006 [P] `docs/companion/CONTRACT-V3.md` a partir de `contracts/teammates-events.md`:
-      los 4 eventos nuevos, `hitl.requested` con `level`/`task_id`/`expires_at` nulo,
+- [x] T006 [P] `docs/companion/CONTRACT-V3.md` a partir de `contracts/teammates-events.md`:
+      los 4 eventos nuevos, `hitl.requested` con `level`/`task_
+      **HECHO.** `teammate_run_max_seconds=1800`, `local_exec_wait_seconds=900`, `teammate_task_ttl_days=7` en `config.py`, documentados en `.env.example`.
+      **HECHO.** Paquete con `package.json`, `tsconfig`, `vitest.config` (jsdom + jest-dom), `src/index.ts`; en el workspace raíz y en `transpilePackages` de la consola.id`/`expires_at` nulo,
       `run.completed` con `waiting`; enlace desde V2 §8. _Requisitos: 3.4, 5.3, 7.1_
 
 ---
@@ -82,55 +87,69 @@ historia que probar. Los tests de aislamiento van **primero** y en rojo.
 
 ### Tests de la Phase 2 ⚠️
 
-- [ ] T007 [P] `apps/api/tests/isolation/test_31_teammate_roster_scope.py`: dos partners con
+- [x] T007 [P] `apps/api/tests/isolation/test_
+      **HECHO.** `docs/companion/CONTRACT-V3.md`: 4 eventos nuevos, `hitl.requested` y `run.completed` ampliados, reglas que no cambian, garantía con test.31_teammate_roster_scope.py`: dos partners con
       teammates; con `app.partner_id` de uno, `SELECT`/`UPDATE` no alcanza los del otro;
       `analyst` y `billing` no pueden crear (`teammates:use`); nunca `DELETE`. _Requisitos: 1.1, 1.2, 2.2_
-- [ ] T008 [P] `apps/api/tests/isolation/test_32_teammate_thread_two_axes.py`: dos personas
+- [x] T008 [P] `apps/api/tests/isolation/test_
+      **HECHO (rojo → verde).** 5 tests: roster completo para cualquier miembro, nada sin GUC, `UPDATE` ajeno toca 0 filas, `DELETE` denegado a `nexus_app` (la migración lo revoca), permisos por rol.32_teammate_thread_two_axes.py`: dos personas
       del mismo partner, mismo teammate: cada una ve solo su hilo; `teammate_tasks` hereda
       por `EXISTS` sobre el hilo; la bandeja de una no lista acciones de la otra. _Requisitos: 3.1, 5.1_
-- [ ] T009 [P] `apps/api/tests/isolation/test_33_teammate_catalog_is_subset.py`: el catálogo
+- [x] T009 [P] `apps/api/tests/isolation/test_
+      **HECHO (rojo → verde).** Hilos y acciones por persona con el mismo teammate; `POST /threads` con un `teammate_id` de otro partner → 404 opaco. La parte de `teammate_tasks` (hereda por `EXISTS`) se afirma en T042, cuando exista la tabla.33_teammate_catalog_is_subset.py`: el catálogo
       que recibe `CompanionToolbelt` para un teammate de finanzas no contiene herramientas
       de desarrollo ni `shell_local` sin `local_exec`; `tool_names ⊄ ALL_TOOLS` → 422;
       cambiar el oficio cambia el catálogo en el siguiente run. _Requisitos: 4.1, 4.2, 4.3, 2.3, 2.4_
-- [ ] T010 [P] `apps/api/tests/unit/test_teammate_audit_vocab.py`: las ocho filas nuevas
+- [x] T010 [P] `apps/api/tests/unit/test_
+      **HECHO (rojo → verde).** 6 tests sobre `for_teammate` + `CompanionToolbelt.specs()`: solo lecturas sin `write`, nunca `shell_local` sin `local_exec`, `consult` manda, nombre fuera del catálogo rechazado, cambiar permisos cambia el siguiente turno, el toolbelt no publica lo no dado (y `call` lo rechaza en el motor).teammate_audit_vocab.py`: las ocho filas nuevas
       existen y ninguna admite al teammate como `{actor}`. _Requisitos: 13.1, 13.2_
-- [ ] T011 [P] `apps/api/tests/integration/test_contract_v3_catalog.py`: el catálogo de
+- [x] T011 [P] `apps/api/tests/integration/test_
+      **HECHO.** En `tests/integration/` (lee la base, no una constante): ocho filas, categoría `teammates`, `{actor}` = persona.contract_v3_catalog.py`: el catálogo de
       `companion_streaming` tiene **24** eventos; `publish` rechaza `task.state` con `state`
       fuera del enum; `hitl.requested` acepta `expires_at=None` solo con `task_id`. _Requisitos: 3.4, 6.1, 7.1_
 
 ### Implementación de la Phase 2
 
-- [ ] T012 Migración `apps/api/alembic/versions/0109_teammates.py`: tabla `teammates` con
+- [x] T012 Migración `apps/api/alembic/versions/0109_
+      **HECHO (rojo → verde).** 24 eventos; `task.state` valida `state` y **`cause`** (no `reason`: la guarda C8 `test_companion_no_customer_bodies` prohíbe esa clave — CONTRACT-V3 y los contratos se corrigieron); `hitl.requested` con `expires_at` nulo solo con `task_id`; `exec.completed` sin salida.teammates.py`: tabla `teammates` con
       las columnas de `data-model.md` (`name text ≤ 80`, `job ≤ 80`, `model`, `tool_names text[]`,
       `permissions jsonb`, `local_exec bool`, `status active|archived`, `created_by`,
       `archived_at`; CHECK `archived_at IS NOT NULL ⇔ status='archived'`), RLS por
       `app.partner_id` (política como `partner_devices_owner` sin filtro de principal);
       `threads.teammate_id uuid FK NULL` + índice `(principal_id, teammate_id)`;
       `runs.teammate_id uuid NULL`. _Requisitos: 1.1, 1.4, 3.1_
-- [ ] T013 Migración `0112_teammate_audit_vocab.py`: las ocho filas de `data-model.md`
+- [x] T013 Migración `0112_
+      **HECHO.** `0109_teammates.py`: tabla, CHECKs, índice, RLS FORCE por `app.partner_id`, `REVOKE DELETE … FROM nexus_app`, `threads.teammate_id` (FK RESTRICT + índice `(principal_id, teammate_id)`), `runs.teammate_id`.teammate_audit_vocab.py`: las ocho filas de `data-model.md`
       §Vocabulario, con CASTs como 0108. _Requisitos: 13.1_
-- [ ] T014 [P] Modelo `apps/api/src/nexus_api/db/models/teammate.py` (`Teammate`,
+- [x] T014 [P] Modelo `apps/api/src/nexus_
+      **HECHO como `0110_teammate_audit_vocab.py`** (renumerada: Alembic es lineal y las de US2/US3 irán detrás como 0111/0112). Ocho filas con CASTs como 0108.api/db/models/teammate.py` (`Teammate`,
       `TEAMMATE_STATUSES`, `JOB_SEED` de ocho oficios) exportado en `db/models/__init__.py`;
       columnas nuevas en `companion.py` (`CompanionThread.teammate_id`, `CompanionRun.teammate_id`). _Requisitos: 1.1_
-- [ ] T015 [P] Permisos en `apps/api/src/nexus_api/core/console_auth.py`: `teammates:use`
+- [x] T015 [P] Permisos en `apps/api/src/nexus_
+      **HECHO.** `db/models/teammate.py` (`Teammate`, `TEAMMATE_STATUSES`, `JOB_SEED`, `PERMISSION_KEYS`) exportado; `CompanionThread.teammate_id`, `CompanionRun.teammate_id`.api/core/console_auth.py`: `teammates:use`
       = {owner, admin, builder}; `teammates:policy` = {owner, admin}; y en
       `apps/console/src/lib/permissions.ts` con su test. _Requisitos: 2.2, 10.1_
-- [ ] T016 `apps/api/src/nexus_api/repositories/teammates.py`: `TeammateRepository`
+- [x] T016 `apps/api/src/nexus_
+      **HECHO.** `teammates:use` = {owner, admin, builder}, `teammates:policy` = {owner, admin} en `console_auth.py`, `permissions.ts` y su snapshot de test.api/repositories/teammates.py`: `TeammateRepository`
       (`list_active`, `get`, `create`, `update`, `archive`) — siempre bajo
       `apply_partner_to_session`; nunca `delete`. _Requisitos: 1.1, 2.6_
-- [ ] T017 `apps/api/src/nexus_api/services/teammate_catalog.py`: `permissions_to_tool_names`
+- [x] T017 `apps/api/src/nexus_
+      **HECHO.** `repositories/teammates.py`: `list_active`, `get`, `get_active`, `create`, `update`, `archive`; sin `delete` a propósito.api/services/teammate_catalog.py`: `permissions_to_tool_names`
       (los cinco interruptores → nombres de `ALL_TOOLS`), `for_teammate(teammate, mode,
       machine_present)` = filtro sobre `ALL_TOOLS` ∩ modo, + `shell_local` solo con
       `local_exec` y máquina presente; `validate_tool_names` (⊆ `ALL_TOOLS`, 422
       `tool_not_in_catalog`); `system_prompt_for(teammate)` con nombre y oficio. _Requisitos: 4.1, 4.2, 2.3_
-- [ ] T018 Eje teammate en `apps/api/src/nexus_api/api/console/companion.py`: `POST /threads`
+- [x] T018 Eje teammate en `apps/api/src/nexus_
+      **HECHO.** `services/teammate_catalog.py`: los cinco interruptores → nombres (`read` lecturas · `write` propuestas+prueba+apply sin publicar/invitar/gastar · `publish` · `spend` asignación y modelo · `contact` invitar y soporte), `validate_tool_names` (422 `tool_not_in_catalog` en la API de US4), `for_teammate` (modo manda; `shell_local` solo con `local_exec` + máquina + catálogo), `system_prompt_for`.api/api/console/companion.py`: `POST /threads`
       acepta `teammate_id`; `GET /threads?teammate_id=` filtra y **sin** parámetro excluye
       los que lo tienen; `start_run` copia `teammate_id` al run, usa `for_teammate` en el
       toolbelt y el prompt del teammate; `hitl.requested` emite `level`; T009 en verde. _Requisitos: 3.1, 4.1, 14.3_
-- [ ] T019 Eventos V3 en `apps/api/src/nexus_api/api/companion_streaming.py`: `task.state`,
+- [x] T019 Eventos V3 en `apps/api/src/nexus_
+      **HECHO.** `POST /threads` acepta `teammate_id` (404 opaco si no es del partner, `_require_teammate` bajo `app.partner_id`); `GET /threads?teammate_id=` filtra y sin él excluye; `start_run` copia `teammate_id` al run, pasa `allowed_tools` al toolbelt y la identidad como mensaje de sistema fuera del prefijo cacheado. `hitl.requested` con `level` se emite en T049 (la columna llega en 0111). Companion: 68 tests en verde.api/api/companion_streaming.py`: `task.state`,
       `exec.dispatched`, `exec.completed`, `inbox.changed`; `hitl.requested` con
       `level`/`task_id`/`expires_at` nulo; `run.completed` con `waiting`; T011 en verde. _Requisitos: 3.4, 7.1_
-- [ ] T020 `apps/api/tests/isolation/test_console_scope.py`: `_fill` conoce `{teammate_id}`,
+- [x] T020 `apps/api/tests/isolation/test_
+      **HECHO.** `task.state`, `exec.dispatched`, `exec.completed`, `inbox.changed`; `hitl.requested` + `level`/`task_id`; `InvalidCompanionEvent` y `_check_v3` en `sanitise_payload`.console_scope.py`: `_fill` conoce `{teammate_id}`,
       `{task_id}`, `{action_id}`; la ruta nueva `/console/teammates/*` entra sola en la
       cobertura. _Requisitos: 14.1_
 
@@ -141,27 +160,32 @@ historia que probar. Los tests de aislamiento van **primero** y en rojo.
 **Propósito**: mover el Companion a `@nexus/companion-ui` **antes** de que el
 escritorio lo use, con la consola consumiéndolo y sus 12 tests intactos.
 
-- [ ] T021 Mover a `packages/companion-ui/src/`: `state.ts`, `types.ts`, `use-companion.ts`,
+- [x] T021 Mover a `packages/companion-ui/src/`: `state.ts`, `types.ts`, `use-companion.ts`,
       `i18n.ts` (como `CompanionMessagesProvider` + `useCompanionText`), y los componentes
       `timeline`, `confirm-card`, `composer`, `meters`, `thinking`, `verify-table`,
       `intake-card`, `plan-card`, `tool-card`, `support`; sus tests a `packages/companion-ui/tests/`.
-      Ningún `next/*`; enlaces como callbacks (`onOpenClient`). _Requisitos: 12.5, 12.6_
-- [ ] T022 `packages/companion-ui/src/transport.ts` con la interfaz `Transport`
+      Ningún `next/*`; enlaces como callbacks (`onOpenClient`). _
+      **HECHO.** `_fill` conoce `{teammate_id}`, `{task_id}`, `{action_id}`; `test_21` registra `teammates` como tabla de partner. Suite de aislamiento: 782 en verde.Requisitos: 12.5, 12.6_
+- [x] T022 `packages/companion-ui/src/transport.ts` con la interfaz `Transport`
       (`request`, `openStream`) y `use-companion.ts` sobre ella; `messages/{es,en}.ts` con las
       claves que hoy están en `apps/console/src/i18n/lanes/companion.ts`. _Requisitos: 12.5_
-- [ ] T023 La consola consume el paquete: `apps/console/src/components/companion/client.ts`
+- [x] T023 La consola consume el paquete: `apps/console/src/components/companion/client.ts`
       pasa a implementar `Transport` con `fetch` + `EventSource`; `drawer`, `companion-launcher`,
       `trial-panel`, `page-context` importan de `@nexus/companion-ui`; `lanes/companion.ts`
-      re-exporta las claves del paquete; `pnpm -F @nexus/console test typecheck lint` en verde. _Requisitos: 12.6, 14.1_
+      re-exporta las claves del paquete; `pnpm -F @nexus/console test typecheck lint` en verde. _
+      **HECHO.** `transport.ts`: `Transport { request, stream }`, `createFetchTransport(base)` (el `fetch` + `SseParser` de la consola) y `makeCompanionClient(transport)`; `useCompanion(transport)` con el bucle de reconexión intacto. Los textos van en `messages.ts` (un fichero con `es`/`en` por clave, como las lanes de la consola) y `formatMessage`.
+      **HECHO.** `packages/companion-ui/src/`: `types`, `state`, `sse`, `wire` (DTOs con un solo dueño, + `teammate_id`), `storage` (caché de runs), `messages` (la lane entera + `common.retry`), `i18n.tsx` (`CompanionLocaleProvider` con `renderLink`), y 11 componentes en `components/` (incluido `trial-panel`, cuyo `next/link` pasó a `renderLink`). 8 ficheros de test movidos (135 tests en verde). Lint con las reglas de `@nexus/ui`.Requisitos: 12.6, 14.1_
 
 ---
 
 ## Phase 2c: Las puertas de la constitución
 
-- [ ] T024 [P] **Puerta de aislamiento**: T007, T008, T009 en rojo antes de T012 y en verde
+- [x] T024 [P] **Puerta de aislamiento**: T007, T008, T009 en rojo antes de T012 y en verde
       después; `test_34` (US3) y `no-credentials-over-ipc` (US1) en sus fases. Anotar aquí
       las cuatro garantías (1, 2, 3, 6) con su test. _Requisitos: 14.1_
-- [ ] T025 [P] **Puerta del medidor**: `apps/api/tests/integration/test_teammates_single_meter.py`:
+- [x] T025 [P] **Puerta del medidor**: `apps/api/tests/integration/test_
+      **Puerta de aislamiento — anotada.** Garantía 1: `test_31` (roster por partner) y `test_32` (hilo con dos ejes); garantía 2: `test_33` (catálogo por teammate) y `test_34` (US3, la política no amplía); garantía 3: `test_34` + `test_local_dispatch` (la salida es dato); garantía 6: `test_teammate_audit_vocab` + T070. En el escritorio: `no-credentials-over-ipc` (US1). Los tres primeros se vieron en rojo antes de 0109.
+      **HECHO.** La consola: `client.ts` = transporte + cliente + ancho/modo; `drawer` y `companion-launcher` importan del paquete y el lanzador monta `CompanionLocaleProvider` con `next/link`; `lanes/companion.ts`, `playground/sse.ts` y `lib/backend/companion.ts` re-exportan. Consola: 180 tests (315 − 135 movidos), `tsc` y `eslint` limpios.teammates_single_meter.py`:
       un run de teammate pasa por `llm_proxy_partner_scope` y debita la misma wallet; `GET
       /console/teammates/usage.budget` == `GET /console/companion/budget` byte a byte; no
       existe tabla ni evento de consumo nuevo (`usage_events` no gana filas por teammate). _Requisitos: 9.1, 9.2, 8.1_
@@ -173,64 +197,83 @@ escritorio lo use, con la consola consumiéndolo y sus 12 tests intactos.
 **Goal**: abrir la app y ver el roster del partner y hablar con cada teammate en un
 hilo propio, con el catálogo de su oficio.
 
-**Independent Test**: con dos teammates sembrados (`scripts/seed_teammates_dev.py`)
+**Independent Test**: con dos teammates sembrados (`scripts/seed_
+      **HECHO (verde).** `test_teammates_single_meter.py`: el turno de un teammate debita `partner_wallets` por el mismo camino, `runs.teammate_id` queda puesto, `usage_events` no gana filas, `/companion/budget` lo cuenta, y la lista de hilos de la consola nunca lo muestra. La igualdad `usage.budget == companion/budget` se afirma en T075 cuando exista la ruta.teammates_dev.py`)
 y dos personas, cada una ve los dos, escribe a uno, ninguna ve el hilo de la otra
 (T008), y el modelo recibe solo el catálogo del oficio (T009).
 
 ### Tests de la US1 ⚠️
 
-- [ ] T026 [P] [US1] `apps/api/tests/integration/test_teammates_roster.py`: `GET /console/teammates`
+- [x] T026 [P] [US1] `apps/api/tests/integration/test_teammates_roster.py`: `GET /console/teammates`
       devuelve `my_state`/`my_unread`/`last_done` derivados del hilo de la persona; archivados
       fuera salvo `include_archived`; `analyst` → 403. _Requisitos: 1.2, 1.3, 1.5_
-- [ ] T027 [P] [US1] `apps/desktop/tests/app-ipc.test.ts`: la lista de `app-ipc.ts` coincide
+- [x] T027 [P] [US1] `apps/desktop/tests/app-ipc.test.ts`: la lista de `app-ipc.ts` coincide
       con `contracts/desktop-app-ipc.md` (nombres y formas); el `preload` expone exactamente
-      esos nombres y ninguno más. _Requisitos: 12.1_
-- [ ] T028 [P] [US1] `apps/desktop/tests/no-credentials-over-ipc.test.ts`: para cada canal,
+      esos nombres y ninguno más. _
+      **HECHO (rojo → verde).** `test_teammates_roster.py`: estado derivado por persona (`en_marcha`/`en_espera`/`my_unread`), el hilo de otra persona no colorea el mío, archivados fuera salvo `include_archived`, `analyst` → 403, y `/jobs` con los ocho oficios y los modelos del allowlist.Requisitos: 12.1_
+- [x] T028 [P] [US1] `apps/desktop/tests/no-credentials-over-ipc.test.ts`: para cada canal,
       con un `PlatformClient` falso que devuelve cuerpos con `session`, `cookie`, `token`,
       `credential`, `authorization` a varias profundidades, la respuesta al renderer **no**
       contiene esas claves; el preload no expone `ipcRenderer`. _Requisitos: 12.2_
-- [ ] T029 [P] [US1] `apps/desktop/tests/platform-client.test.ts`: usa `session.fromPartition`
-      inyectado, nunca `fetch` global; 401 → `GateDecision stop`; 403 `no_membership` → `sin
+- [x] T029 [P] [US1] `apps/desktop/tests/platform-client.test.ts`: usa `session.fromPartition`
+      inyectado, nunca `fetch` global; 401 → `GateDecision stop`; 403 `no_
+      **HECHO (rojo → verde).** `no-credentials-over-ipc.test.ts`: cuerpos envenenados con `session`, `cookie`, `token`, `Authorization`, `credential` a tres profundidades salen limpios en éxito y en error; el cliente no manda cabeceras de sesión por su cuenta; y el fuente del `preload` no expone `ipcRenderer` ni toca `document.cookie`.
+      **HECHO (rojo → verde).** `app-ipc.test.ts`: los 22 canales de invocación y los 6 de empuje son exactamente el contrato; el puente expone una función por canal y `on`, y **no** `invoke`, `ipcRenderer` ni `send`; la validación rechaza canal desconocido, uuid mal formado, decisión inventada y `path` que no sea una ruta de la consola.membership` → `sin
       sesión`; nunca lee `document.cookie`. _Requisitos: 12.2, 12.3_
-- [ ] T030 [P] [US1] `apps/desktop/tests/sse.test.ts`: parser SSE puro (eventos multilínea,
-      `id`, reconexión con `since_seq`, chunks partidos). _Requisitos: 3.2_
-- [ ] T031 [P] [US1] `apps/desktop/tests/app-state.test.ts`: el estado del hilo deriva
+- [x] T030 [P] [US1] `apps/desktop/tests/sse.test.ts`: parser SSE puro (eventos multilínea,
+      `id`, reconexión con `since_
+      **HECHO (rojo → verde).** `platform-client.test.ts`: usa el `fetch` inyectado (el de la partición humana), 401/302/307 y una página HTML son `SessionLost`, 403 `no_membership` trae su motivo, otro 403 es error normal, sin red devuelve resultado y no excepción.seq`, chunks partidos). _Requisitos: 3.2_
+- [x] T031 [P] [US1] `apps/desktop/tests/app-state.test.ts`: el estado del hilo deriva
       `normal · cargando · vacío · error · reconectando · parcial · esperandote ·
-      en_pausa_por_tope · maquina_ausente`; ninguno se pinta como error; `reconectando`
+      en_
+      **HECHO (rojo → verde).** `sse.test.ts`: trozos partidos, CRLF, comentarios, `id`, bloque sin `data`, `data` no-JSON como `raw`, y `readSse` hasta EOF.pausa_por_tope · maquina_ausente`; ninguno se pinta como error; `reconectando`
       retoma desde el último `seq` sin duplicar. _Requisitos: 3.4, 3.5, 3.7_
-- [ ] T032 [P] [US1] `apps/desktop/tests/session-isolation.test.ts` extendido: cuatro
+- [x] T032 [P] [US1] `apps/desktop/tests/session-isolation.test.ts` extendido: cuatro
       particiones distintas; `auphere-app` no persiste; `appWebPreferences(preload)` con
-      `sandbox`, `contextIsolation`, sin `nodeIntegration`; la consola sigue sin `preload`. _Requisitos: 12.1, 12.3, 14.2_
+      `sandbox`, `contextIsolation`, sin `nodeIntegration`; la consola sigue sin `preload`. _
+      **HECHO (rojo → verde).** `app-state.test.ts`: los nueve estados nombrados, las precedencias (tope > espera > máquina ausente), `isFailure` solo para `error`, y `task.state`/`inbox.changed` moviendo roster y bandeja sin recargar.Requisitos: 12.1, 12.3, 14.2_
 
 ### Implementación de la US1
 
-- [ ] T033 [US1] `apps/api/src/nexus_api/api/console/teammates.py` + `schemas_teammates.py`:
-      `GET /console/teammates`, `GET /console/teammates/jobs`; router montado en `main.py`;
+- [x] T033 [US1] `apps/api/src/nexus_api/api/console/teammates.py` + `schemas_teammates.py`:
+      `GET /console/teammates` (`last_done` = título de la última tarea terminada de la persona con
+      ese teammate, o `null`), `GET /console/teammates/jobs`; router montado en `main.py`;
       `scripts/seed_teammates_dev.py` (dos teammates de ejemplo). _Requisitos: 1.2, 1.3, 1.5_
-- [ ] T034 [P] [US1] Proxies BFF en `apps/console/src/app/api/teammates/{route.ts, jobs/route.ts}`
+- [x] T034 [P] [US1] Proxies BFF en `apps/console/src/app/api/teammates/{route.ts, jobs/route.ts}`
       y `apps/console/src/lib/backend/teammates.ts` (`teammatesApi`) — solo `teammates:use`;
-      sin página. _Requisitos: 12.3, 14.3_
-- [ ] T035 [P] [US1] `apps/desktop/src/session-isolation.ts`: `APP_PARTITION="auphere-app"`,
+      sin página. _
+      **HECHO.** `api/console/teammates.py` (+`schemas_teammates.py`) con `GET /console/teammates` y `/jobs`, montado en el router de consola; `scripts/seed_teammates_dev.py` (Sofía · Atención al cliente, Nilo · Desarrollo), ejecutado contra la base local.
+      **HECHO (rojo → verde).** `session-isolation.test.ts` extendido: cuatro particiones, `auphere-app` sin `persist:`, `appWebPreferences` con sandbox y sin node, la consola sigue sin `preload`, y la pantalla no ve la cookie de la persona.Requisitos: 12.3, 14.3_
+- [x] T035 [P] [US1] `apps/desktop/src/session-isolation.ts`: `APP_PARTITION="auphere-app"`,
       `appWebPreferences(preload)`, `assertPartitionsAreSeparate` con cuatro. _Requisitos: 12.1_
-- [ ] T036 [P] [US1] `apps/desktop/src/app-ipc.ts`: la lista cerrada de canales con sus formas
+- [x] T036 [P] [US1] `apps/desktop/src/app-ipc.ts`: la lista cerrada de canales con sus formas
       (validación en runtime de entradas); `apps/desktop/src/electron/app-preload.ts` expone
-      exactamente esa lista bajo `window.auphere`. _Requisitos: 12.1, 12.2_
-- [ ] T037 [P] [US1] `apps/desktop/src/platform-client.ts`: `PlatformClient` sobre
+      exactamente esa lista bajo `window.auphere`. _
+      **HECHO.** `APP_PARTITION`, `appWebPreferences`, `assertPartitionsAreSeparate` con cuatro y `sessionCookieNames` invertido (solo la humana tiene cookies).
+      **HECHO.** `lib/backend/teammates.ts` (`teammatesApi`, difundido en `backendFor`), `app/api/teammates/{route,jobs/route}.ts` y `withPermission(...)` extraído de `withCompanion` en el guard. Sin página en la consola: es plumbing. `whoami` gana `permissions` (su test lo fija, y sigue sin rol, correo ni nombre).Requisitos: 12.1, 12.2_
+- [x] T037 [P] [US1] `apps/desktop/src/platform-client.ts`: `PlatformClient` sobre
       `session.fromPartition(HUMAN_PARTITION).fetch` contra `AUPHERE_CONSOLE_URL/api/...`;
       `redact()` que elimina las claves prohibidas antes de devolver; errores tipados. _Requisitos: 12.2, 12.3_
-- [ ] T038 [P] [US1] `apps/desktop/src/sse.ts` (parser puro) y `stream-hub.ts` (abre/cierra
-      streams por `stream_id`, reenvía `app:event`). _Requisitos: 3.2_
-- [ ] T039 [US1] `apps/desktop/src/electron/main.ts`: tercera vista `appView` por defecto,
+- [x] T038 [P] [US1] `apps/desktop/src/sse.ts` (parser puro) y `stream-hub.ts` (abre/cierra
+      streams por `stream_
+      **HECHO.** `platform-client.ts` sobre `session.fromPartition(HUMAN_PARTITION).fetch` (adaptador `partitionFetch`), con `SessionLost` y `redact` en toda salida.
+      **HECHO.** `app-ipc.ts` (lista, formas, `validateInput`, `redact`, `hasForbiddenKey`), `app-bridge.ts` (`buildAppBridge`, puro y probado) y `electron/app-preload.ts`. Los `preload` pasan a empaquetarse con Vite a CJS (`vite.preload.config.ts`): desde ahora importan módulos propios y una reescritura por regex no bastaba.id`, reenvía `app:event`). _Requisitos: 3.2_
+- [x] T039 [US1] `apps/desktop/src/electron/main.ts`: tercera vista `appView` por defecto,
       la consola oculta hasta `app:openConsole`; handlers `app:whoami`, `app:roster.list`,
       `app:roster.jobs`, `app:thread.open`, `app:thread.events`, `app:thread.send`,
       `app:thread.cancel`, `app:stream.open/close`, `app:openConsole`; `app:session` desde el
-      `SessionGate` de 002; `app:presence` desde `runtime`. _Requisitos: 3.2, 12.1, 12.3_
-- [ ] T040 [US1] Renderer `apps/desktop/src/app/`: `main.tsx`, `App.tsx` con tres columnas,
+      `SessionGate` de 002; `app:presence` desde `runtime`. _
+      **HECHO.** `sse.ts` (parser + `readSse`) y `stream-hub.ts` con su test: un stream por id, eventos con su `stream_id`, final dicho, y cerrar desde el renderer aborta **sin** emitir final ni cancelar el run.Requisitos: 3.2, 12.1, 12.3_
+- [x] T040 [US1] Renderer `apps/desktop/src/app/`: `main.tsx`, `App.tsx` con tres columnas,
       `routes/roster.tsx` (lista con oficio, modelo, estado, `unread`, estado vacío «crea el
       primero»), `routes/thread.tsx` sobre `@nexus/companion-ui` con `Transport` por IPC
-      (`transport-ipc.ts`), estados de T031, `styles.css` con `tokens.css`. _Requisitos: 1.2, 1.3, 1.5, 3.4, 3.5, 3.6, 12.5_
-- [ ] T041 [US1] `apps/desktop/src/app/i18n.ts`: diccionario es/en para la pantalla +
-      `CompanionMessagesProvider` del paquete; idioma por `locale` de `whoami`. _Requisitos: 12.5_
+      (`transport-ipc.ts`), estados de T031, `styles.css` con `tokens.css`. El mapa evento→forma
+      (`decir · preguntar · nota`, tipos de nota) es `TimelineItem` del paquete; `handoff` queda
+      como tipo reservado sin productor. _Requisitos: 1.2, 1.3, 1.5, 3.4, 3.5, 3.6, 12.5_
+- [x] T041 [US1] `apps/desktop/src/app/i18n.ts`: diccionario es/en para la pantalla +
+      `CompanionMessagesProvider` del paquete; idioma por `locale` de `whoami`. _
+      **HECHO y verificado con display.** `src/app/`: `App.tsx` (tres columnas, tema por `prefers-color-scheme`, sesión y presencia por empuje), `routes/roster.tsx` (cinco estados de Hurff: skeleton, error con reintento, sin permiso, vacío con CTA, ideal), `routes/thread.tsx` (paquete compartido + `deriveThreadState`), `routes/env.tsx`, `transport-ipc.ts` (rutas → canales, sin canal genérico) y `bridge.ts`. Evidencia en `evidence/US1/`: el roster real (Sofía, Nilo) leído con la sesión de la persona, el hilo abierto en `vacio`, y el aviso honesto de máquina sin emparejar. Dos correcciones §V que salieron del pase vivo: el selector de modo del `Composer` es opcional y no se pinta sin manejador, y el vacío del hilo es el de la app (el del cajón habla de modos que aquí no existen).
+      **HECHO.** `main.ts`: tercera vista `appView` visible por defecto, la consola oculta hasta `app:openConsole` (menú Ver · ⌘1/⌘2), `registerAppSurface` con los handlers, `app:session` desde la puerta (que gana `refresh()`), `app:presence` desde el runtime, y la pantalla sin navegación ni ventanas. El HTML del renderer pierde el `meta` CSP: en `file://` el origen es opaco y `'self'` bloqueaba su propio bundle — la garantía es la vista (sandbox, sin node, sin navegar).Requisitos: 12.5_
 
 ---
 
@@ -251,9 +294,11 @@ desde Pendientes → la tarjeta del hilo se marca en < 2 s.
       acción de teammate con `expires_at NULL` **no** da 409 `action_expired` tras 20 min;
       la tarea caduca por `expires_at` y cierra la acción `expired` con `task_expired`;
       archivar el teammate → `cancelada` + `teammate_archived`. _Requisitos: 3.2, 6.1, 6.2, 6.3, 2.6_
-- [ ] T043 [P] [US2] `apps/api/tests/integration/test_teammate_inbox.py`: `GET /inbox` lista
+- [ ] T043 [P] [US2] `apps/api/tests/integration/test_
+      **HECHO.** `src/app/i18n.ts` (es/en, `LangProvider`, `useAppT`, `systemLang`) y `CompanionLocaleProvider` del paquete con `renderLink` que abre en la consola; el idioma viene de `whoami` y decae al del sistema.teammate_inbox.py`: `GET /inbox` lista
       solo acciones de hilos con teammate **de la persona**; nada del Companion sin teammate;
-      `can_decide=false` para un cliente que el rol no opera; `GET /inbox/stream` emite
+      `can_decide=false` cuando el permiso de la herramienta que hay detrás de la acción no está en
+      `permissions_for(role)`; `GET /inbox/stream` emite
       `inbox.changed` al decidir. _Requisitos: 5.1, 5.2, 5.4, 6.4_
 - [ ] T044 [P] [US2] `apps/api/tests/unit/test_action_level.py`: `local_exec` y `risk=high` →
       `critico`; `mutates` → `aviso`; resto `informativo`. _Requisitos: 7.1_
@@ -262,7 +307,8 @@ desde Pendientes → la tarjeta del hilo se marca en < 2 s.
       `silence_aviso` no toca `critico`. _Requisitos: 7.2, 7.3, 7.5_
 - [ ] T046 [P] [US2] `apps/desktop/tests/inbox-sync.test.ts`: decidir por `app:inbox.decide`
       emite el cambio al hilo abierto y a la bandeja sin recargar; recibir `inbox.changed`
-      del stream marca la tarjeta. _Requisitos: 5.3_
+      del stream marca la tarjeta; **un `inbox.changed` perdido durante la reconexión** se
+      recupera con el refresco de `GET /inbox` y la tarjeta queda igual de marcada. _Requisitos: 5.3_
 
 ### Implementación de la US2
 
@@ -273,7 +319,8 @@ desde Pendientes → la tarjeta del hilo se marca en < 2 s.
       `actions.kind` + `local_exec`. _Requisitos: 6.1, 7.1_
 - [ ] T048 [P] [US2] Modelos y repos: `db/models/companion.py` (`RUN_WAITING`, `TeammateTask`,
       `TASK_STATES`), `repositories/teammate_tasks.py` (`open_or_continue`, `mark_waiting`,
-      `resume`, `finish`, `cancel`, `expire_due`). _Requisitos: 6.1, 6.2_
+      `resume`, `finish`, `cancel`, `expire_due`); `expires_at` se desplaza con cada run que
+      termina y con cada decisión. _Requisitos: 6.1, 6.2_
 - [ ] T049 [US2] `apps/api/src/nexus_api/companion/tools/actions.py`: `stage_action` recibe
       `level` y `ttl=None` cuando el hilo es de teammate; `is_stale` devuelve `False` con
       `expires_at` nulo; `services/action_level.py` (T044). _Requisitos: 6.1, 6.3, 7.1_
@@ -283,15 +330,18 @@ desde Pendientes → la tarjeta del hilo se marca en < 2 s.
       techos de D6 (`teammate_run_max_seconds`). _Requisitos: 3.2, 6.1, 6.2, 5.3_
 - [ ] T051 [US2] `services/teammate_inbox.py` + rutas en `api/console/teammates.py`:
       `GET /inbox`, `GET /inbox/stream` (SSE por persona sobre Redis pubsub, `ping` 15 s),
-      `GET /tasks`, `POST /tasks/{id}/cancel`; barrido `expire_due` en el job programado
-      cada 10 min (`scheduled_job` existente). _Requisitos: 5.1, 5.2, 5.4, 6.1_
+      `GET /tasks`, `POST /tasks/{id}/cancel`; barrido `expire_due` como cron del **worker**:
+      `apps/worker/src/nexus_worker/streams/teammate_task_expiry_cron.py` (cada 10 min, junto a
+      `reminder_cron.py`), con test en `apps/worker/tests/`. _Requisitos: 5.1, 5.2, 5.4, 6.1_
 - [ ] T052 [P] [US2] Proxies BFF `apps/console/src/app/api/teammates/{inbox, inbox/stream,
       tasks, tasks/[id]/cancel}/route.ts` (el stream con `maxDuration` como el del Companion). _Requisitos: 12.3_
 - [ ] T053 [P] [US2] `apps/desktop/src/notifications-policy.ts` (puro) y en `main.ts`:
       `Notification` del SO, resumen al abrir, badge del Dock/bandeja con el conteo,
       preferencia `silence_aviso` en `userData`; handlers `app:inbox.list`, `app:inbox.decide`,
       `app:tasks.list`, `app:tasks.cancel`, `app:notifications.prefs`; el stream de la bandeja
-      abierto mientras hay sesión. _Requisitos: 7.2, 7.3, 7.4, 7.5_
+      abierto mientras hay sesión y, **en cada reconexión** (el proxy BFF corta a los 300 s),
+      `GET /inbox` de nuevo y reconciliación — la bandeja no tiene historial. «Abierta» = proceso
+      vivo, aunque la ventana esté en la bandeja del sistema. _Requisitos: 7.2, 7.3, 7.4, 7.5, 5.3_
 - [ ] T054 [US2] Renderer `routes/inbox.tsx` (Pendientes: nivel, prueba, cómo se deshace,
       desde cuándo, `can_decide`, estado vacío del diseño) y en el hilo el estado
       `esperandote` con la tarjeta; `app-state.ts` aplica `inbox.changed` y `task.state`. _Requisitos: 5.1, 5.3, 5.5, 6.2_
@@ -386,7 +436,8 @@ legible.
 
 - [ ] T070 [P] [US4] `apps/api/tests/integration/test_teammates_crud.py`: `POST` traduce
       permisos a `tool_names`, 422 `model_not_allowed`, 422 `tool_not_in_catalog`; `PATCH`
-      cambia el catálogo y deja nota en los hilos; `DELETE` archiva, cierra tareas
+      cambia el catálogo y deja en cada hilo activo un mensaje `role=system, kind=teammate_changed`
+      visible al cargar el historial; `DELETE` archiva, cierra tareas
       `esperandote`, nunca borra; auditoría `teammate.created/updated/archived` con la
       persona. _Requisitos: 2.1, 2.3, 2.4, 2.6, 13.1_
 - [ ] T071 [P] [US4] `apps/desktop/tests/new-teammate-form.test.tsx`: los cinco estados del

@@ -65,13 +65,14 @@ from nexus_api.companion.tools.support import SUPPORT_KINDS
 from nexus_api.config import get_settings
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.core.otel_metrics import record_companion, record_companion_turn
+from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.core.principal_context import (
     apply_principal_to_session,
     principal_context,
 )
 from nexus_api.core.rate_limit import allow
 from nexus_api.core.respond_catalog import HUMAN_TURN_ERROR, RESPOND_MODEL_ID_SET
-from nexus_api.db.models import Partner, PartnerMembership, PartnerTenant
+from nexus_api.db.models import Partner, PartnerMembership, PartnerTenant, Teammate
 from nexus_api.db.models.companion import (
     RUN_COMPLETED,
     RUN_ERROR,
@@ -90,6 +91,8 @@ from nexus_api.db.models.console_notification import (
 )
 from nexus_api.metering.quota import cache_read_quota_tokens, quota_tokens
 from nexus_api.metering.wallet import companion_wallet_remaining, debit_wallet
+from nexus_api.repositories.teammates import TeammateRepository
+from nexus_api.services.teammate_catalog import for_teammate, system_prompt_for
 
 from .deps import resolve_mapping
 from .playground import MonthWindow, month_window
@@ -214,6 +217,23 @@ async def _thread_row(
     return thread
 
 
+async def _require_teammate(
+    session: AsyncSession, partner_id: uuid.UUID, principal_id: str, teammate_id: uuid.UUID
+) -> Teammate:
+    """El teammate activo del partner del llamante, o 404 opaco (spec 003).
+
+    Se lee en su propia transacción bajo ``app.partner_id``: la tabla es de
+    partner y la RLS no mira a la persona. Un id de otro partner no existe.
+    """
+    async with session.begin():
+        await apply_partner_to_session(session, partner_id, principal_id=principal_id)
+        teammate = await TeammateRepository(session).get_active(teammate_id)
+        if teammate is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown teammate")
+        session.expunge(teammate)
+        return teammate
+
+
 async def _client_ref_of(session: AsyncSession, thread: CompanionThread) -> str | None:
     """``external_client_ref`` del cliente atado al hilo, si lo hay.
 
@@ -237,6 +257,7 @@ def _thread_out(thread: CompanionThread, client_ref: str | None) -> CompanionThr
         title=thread.title,
         mode=thread.mode,
         client_ref=client_ref,
+        teammate_id=thread.teammate_id,
         archived_at=thread.archived_at,
         last_run_at=thread.last_run_at,
         created_at=thread.created_at,
@@ -433,11 +454,20 @@ async def list_threads(
     session: AsyncSession = Depends(get_db_session),
     include_archived: bool = Query(default=False),
     limit: int = Query(default=50, ge=1, le=200),
+    teammate_id: uuid.UUID | None = Query(default=None),
 ) -> list[CompanionThreadOut]:
-    """Los hilos del miembro que llama (RLS por principal)."""
+    """Los hilos del miembro que llama (RLS por principal).
+
+    Spec 003: con ``teammate_id`` se listan los hilos con ese teammate; **sin**
+    él, solo los del Companion clásico — la consola no ve teammates (R14.3).
+    """
     async with session.begin():
         await apply_principal_to_session(session, caller.principal_id)
         stmt = sa.select(CompanionThread).order_by(CompanionThread.updated_at.desc()).limit(limit)
+        if teammate_id is not None:
+            stmt = stmt.where(CompanionThread.teammate_id == teammate_id)
+        else:
+            stmt = stmt.where(CompanionThread.teammate_id.is_(None))
         if not include_archived:
             stmt = stmt.where(CompanionThread.archived_at.is_(None))
         rows = list((await session.execute(stmt)).scalars().all())
@@ -460,6 +490,8 @@ async def create_thread(
     if body.client_ref is not None:
         mapping = await resolve_mapping(session, caller.principal, body.client_ref)
         tenant_id = mapping.tenant_id
+    if body.teammate_id is not None:
+        await _require_teammate(session, caller.partner.id, caller.principal_id, body.teammate_id)
 
     async with session.begin():
         await apply_principal_to_session(session, caller.principal_id)
@@ -469,6 +501,7 @@ async def create_thread(
             tenant_id=tenant_id,
             title=body.title,
             mode=body.mode,
+            teammate_id=body.teammate_id,
         )
         session.add(thread)
         await session.flush()
@@ -672,7 +705,12 @@ async def start_run(
             _require_proxy(partner.id)
             _require_catalog_model()
             await _guard_concurrency(session, principal_id)
-            run = CompanionRun(thread_id=thread.id, principal_id=principal_id, status=RUN_RUNNING)
+            run = CompanionRun(
+                thread_id=thread.id,
+                principal_id=principal_id,
+                status=RUN_RUNNING,
+                teammate_id=thread.teammate_id,
+            )
             session.add(run)
             await session.flush()
             session.add(
@@ -691,13 +729,23 @@ async def start_run(
             run_id = run.id
             tenant_id = thread.tenant_id
             mode = thread.mode
+            teammate_id = thread.teammate_id
             history = await _thread_history(session, thread.id, exclude_run=run_id)
+    # Spec 003: el catálogo y la identidad del teammate, leídos bajo el partner.
+    allowed_tools: frozenset[str] | None = None
+    teammate_prompt: str | None = None
+    if teammate_id is not None:
+        teammate = await _require_teammate(session, partner.id, principal_id, teammate_id)
+        allowed_tools = frozenset(for_teammate(teammate, mode=mode, machine_present=False))
+        teammate_prompt = system_prompt_for(teammate)
 
     driver = _make_driver(
         principal=caller.principal,
         thread_id=thread_id,
         run_id=run_id,
         tenant_id=tenant_id,
+        allowed_tools=allowed_tools,
+        teammate_prompt=teammate_prompt,
         user_message=body.prompt,
         page_context=body.page_context.model_dump() if body.page_context is not None else None,
         history=history,
@@ -857,6 +905,8 @@ def _make_driver(
     mode: str = "build",
     resume: dict[str, Any] | None = None,
     support_action: uuid.UUID | None = None,
+    allowed_tools: frozenset[str] | None = None,
+    teammate_prompt: str | None = None,
 ) -> streaming.CompanionDriver:
     """El driver: mueve el grafo y vuelca sus eventos al log durable.
 
@@ -896,6 +946,7 @@ def _make_driver(
             thread_id=thread_id,
             run_id=run_id,
             action_ttl_seconds=settings.companion_action_ttl_seconds,
+            allowed_tools=allowed_tools,
         )
         knowledge_context = ""
         try:
@@ -911,6 +962,12 @@ def _make_driver(
         except Exception as exc:
             log.warning("companion.knowledge_load_failed", error=type(exc).__name__)
             knowledge_context = ""
+        if teammate_prompt:
+            # La identidad del teammate viaja como mensaje de sistema FUERA del
+            # prefijo cacheado, igual que el conocimiento (spec 003, D1).
+            knowledge_context = teammate_prompt + (
+                "\n\n" + knowledge_context if knowledge_context else ""
+            )
         state = {
             "thread_id": str(thread_id),
             "principal": {

@@ -140,6 +140,12 @@ PERMISSIONS: dict[str, frozenset[str]] = {
     # so an ``analyst`` still gets the router's 403 for anything it may not
     # do. This permission gates the DOOR, not the actions behind it.
     "companion:use": frozenset({_O, _A, _B}),
+    # Spec 003 — los teammates viven en la aplicación de escritorio. Usarlos
+    # (roster, hilos, bandeja, crear, preferencias propias) es de quien usa
+    # el Companion; el TECHO de la política de ejecución local del partner es
+    # una decisión de seguridad y la toman owner y admin.
+    "teammates:use": frozenset({_O, _A, _B}),
+    "teammates:policy": frozenset({_O, _A}),
 }
 
 

@@ -1,19 +1,30 @@
 "use client";
 
 import { Sparkles } from "lucide-react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
 
+import { CompanionLocaleProvider, type RenderLink, pendingAction, useCompanion } from "@nexus/companion-ui";
 import { Button } from "@nexus/ui";
 
-import { useT } from "@/i18n/client";
+import { useLocale, useT } from "@/i18n/client";
 import { type Role, can } from "@/lib/permissions";
 
-import { companionClient } from "./client";
+import { companionClient, companionTransport } from "./client";
 import { URL_PARAM, CompanionDrawer } from "./drawer";
 import { readPageContext, suggestionKeys } from "./page-context";
-import { pendingAction } from "./state";
-import { useCompanion } from "./use-companion";
+
+/**
+ * Los enlaces del paquete son `next/link` en la consola: una navegación de
+ * cliente mantiene el cajón abierto (spec 003, T023). En la aplicación de
+ * escritorio son otra cosa, y por eso el paquete no lo decide.
+ */
+const renderNextLink: RenderLink = ({ href, className, children }) => (
+  <Link href={href} className={className}>
+    {children}
+  </Link>
+);
 
 /**
  * `?companion=<thread>` as an external store.
@@ -70,6 +81,7 @@ function getUrlThreadServer(): string | null {
  */
 export function CompanionLauncher({ role, userId }: { role: Role; userId: string | null }) {
   const t = useT();
+  const locale = useLocale();
   const pathname = usePathname();
   const allowed = can(role, "companion:use");
 
@@ -102,7 +114,7 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
 
   const [budgetExhausted, setBudgetExhausted] = React.useState(false);
   const [now, setNow] = React.useState(() => Date.now());
-  const controller = useCompanion();
+  const controller = useCompanion(companionTransport);
   const { openThread, refreshThreads, state } = controller;
 
   const pageContext = React.useMemo(() => readPageContext(pathname), [pathname]);
@@ -223,15 +235,17 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
       </div>
 
       {allowed ? (
-        <CompanionDrawer
-          open={open}
-          onOpenChange={setOpen}
-          controller={controller}
-          pageContext={pageContext}
-          suggestions={suggestions}
-          currentUserId={userId}
-          exhausted={budgetExhausted}
-        />
+        <CompanionLocaleProvider locale={locale} renderLink={renderNextLink}>
+          <CompanionDrawer
+            open={open}
+            onOpenChange={setOpen}
+            controller={controller}
+            pageContext={pageContext}
+            suggestions={suggestions}
+            currentUserId={userId}
+            exhausted={budgetExhausted}
+          />
+        </CompanionLocaleProvider>
       ) : null}
     </>
   );

@@ -320,6 +320,17 @@ class Settings(BaseSettings):
     # sin cron: un proceso más que puede fallar en silencio es peor que una
     # comparación de fechas en el sitio donde importa.
     companion_action_ttl_seconds: float = 900.0
+    # Spec 003 — los teammates. Un run de teammate puede esperar a que la
+    # máquina del partner ejecute un comando (hasta 10 min), así que el techo
+    # de 300 s del Companion no le vale; y una aprobación de teammate no
+    # caduca por reloj propio sino con la TAREA (``teammate_tasks.expires_at``).
+    teammate_run_max_seconds: float = 1800.0
+    # Cuánto espera ``shell_local`` el resultado que la máquina devuelve por
+    # ``/device/result``. Acotado por el techo del ejecutor de la app (1 h).
+    local_exec_wait_seconds: float = 900.0
+    # Vida de una tarea sin eventos: pasado esto, ``esperandote`` → ``caducada``
+    # y su acción se cierra con motivo. Se desplaza con cada run y decisión.
+    teammate_task_ttl_days: int = 7
     # La palanca de coste que el D6 del ADR-033 nombra y que no existía:
     # "para bajar coste se baja ``effort``, no se apaga el pensamiento".
     # Viaja como ``output_config: {"effort": …}`` y NO como

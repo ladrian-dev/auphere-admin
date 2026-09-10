@@ -99,6 +99,26 @@ Resolución (en `LocalExecGate`): `pref = prefs[executable] ?? prefs[NULL] ?? as
 | `teammates:use` | owner, admin, builder | roster, hilos, bandeja, crear, preferencias propias |
 | `teammates:policy` | owner, admin | techo del partner (página de equipo) |
 
+## Derivados que la API calcula
+
+- **`last_done`** (roster): título de la última `teammate_task` en `terminada` de
+  esa persona con ese teammate; `null` si no hay.
+- **`can_decide`** (bandeja): el permiso de la herramienta que hay detrás de la
+  acción (`action.kind` → permiso del router que la aplica) está en
+  `permissions_for(role)` de la persona. Es el mismo permiso que `resume` exige.
+- **Nota de cambio de teammate**: al cambiar oficio o permisos se inserta en cada
+  hilo activo un mensaje `role=system`, `kind=teammate_changed`, con `seq`; se ve
+  al cargar el historial. No hay evento nuevo.
+- **`teammate_tasks.expires_at`** se desplaza con cada run que termina y con
+  cada decisión.
+
+## Identificadores
+
+Sin tildes en enums y columnas (`esperandote`, `critico`); la prosa de la spec
+lleva tilde. Dos nombres para el tope a propósito, porque son dos entidades: la
+**tarea** está `pausada_por_tope` (columna), el **hilo** se pinta
+`en_pausa_por_tope` (derivado de `budget.paused`).
+
 ## Estados de la pantalla (derivados, nunca almacenados)
 
 - **Hilo**: `normal · cargando · vacío · error · reconectando · parcial` (de

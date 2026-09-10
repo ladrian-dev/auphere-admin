@@ -1,5 +1,16 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "noEmit": false, "outDir": "dist", "module": "NodeNext", "moduleResolution": "NodeNext" },
-  "include": ["src"]
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext"
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "src/app",
+    "tests"
+  ]
 }

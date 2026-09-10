@@ -1,0 +1,44 @@
+{
+  "console": [
+    {
+      "view": "console",
+      "level": 1,
+      "message": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+    },
+    {
+      "view": "console",
+      "level": 1,
+      "message": "[HMR] connected"
+    },
+    {
+      "view": "console",
+      "level": 2,
+      "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes"
+    }
+  ],
+  "errors": [],
+  "sse": {
+    "status": 200,
+    "hasBody": true,
+    "firstByteMs": 67,
+    "forwarded": 3,
+    "received": 3,
+    "latenciesMs": [
+      6,
+      1,
+      2
+    ]
+  },
+  "loadMs": 889,
+  "app": {
+    "auphere": "object",
+    "pong": "preload: pong",
+    "btnBg": "oklch(0.727 0.138 167.3)",
+    "bodyBg": "oklch(0.971 0.006 185.3)",
+    "fg": "oklch(0.161 0.033 115.3)"
+  },
+  "consoleView": {
+    "url": "http://localhost:3110/login?from=%2F",
+    "auphere": "undefined"
+  }
+}

@@ -1,0 +1,5 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@nexus/ui/tokens.css";
+@source "../../../../packages/ui/src";
+@source "../../../../packages/companion-ui/src";

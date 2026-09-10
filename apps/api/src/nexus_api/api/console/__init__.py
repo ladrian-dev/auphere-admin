@@ -45,6 +45,7 @@ from nexus_api.api.console import (
     skills,
     support,
     team,
+    teammates,
     templates,
     tenants,
     tools,
@@ -77,6 +78,8 @@ router.include_router(playground.router)
 # CO-01: el Companion. Log de runs durable en Redis; el run no muere con la
 # conexión del navegador.
 router.include_router(companion.router)
+# Spec 003 — el roster y los hilos de teammates (la consola solo los proxea).
+router.include_router(teammates.router)
 # CO-08: qué existe y qué no (documento versionado, §5 de CONTRACT-V2) y
 # el escalado con expediente (§4). El ticket lo aplica ``console.apply``
 # tras una confirmación humana, como cualquier otra escritura.

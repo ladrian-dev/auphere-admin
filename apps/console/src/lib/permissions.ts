@@ -44,6 +44,10 @@ export const PERMISSIONS = {
   // the very same `/console/*` routers, so an analyst still gets the
   // router's 403 for anything it may not do.
   "companion:use": ["owner", "admin", "builder"],
+  // Spec 003 — usar teammates es de quien usa el Companion; el techo de la
+  // política de ejecución local lo ponen owner y admin.
+  "teammates:use": ["owner", "admin", "builder"],
+  "teammates:policy": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

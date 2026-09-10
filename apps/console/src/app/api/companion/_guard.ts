@@ -1,5 +1,5 @@
 import { BackendError, backendFor } from "@/lib/backend";
-import { can, resolvePrincipal } from "@/lib/principal";
+import { type Permission, can, resolvePrincipal } from "@/lib/principal";
 
 /**
  * Shared gate of the Companion BFF (CO-03).
@@ -63,10 +63,22 @@ function describe(err: BackendError): { detail: string; code: string | null; ext
 }
 
 export async function withCompanion(fn: (backend: Backend) => Promise<unknown>): Promise<Response> {
+  return withPermission("companion:use", fn);
+}
+
+/**
+ * La misma puerta para otro permiso (spec 003: `teammates:use` para las rutas
+ * que la aplicación de escritorio consume). Misma forma de seguridad: principal
+ * en el servidor, permiso comprobado, token de 60 s por llamada.
+ */
+export async function withPermission(
+  permission: Permission,
+  fn: (backend: Backend) => Promise<unknown>,
+): Promise<Response> {
   const res = await resolvePrincipal();
   if (res.kind !== "ok") return json(401, { detail: "Not signed in" });
-  if (!can(res.principal.role, "companion:use")) {
-    return json(403, { detail: "Missing permission companion:use" });
+  if (!can(res.principal.role, permission)) {
+    return json(403, { detail: `Missing permission ${permission}` });
   }
   try {
     const data = await fn(backendFor(res.principal));

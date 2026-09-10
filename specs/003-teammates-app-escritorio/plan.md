@@ -38,7 +38,7 @@ componentes. Un solo loop, un solo medidor, cero credenciales nuevas.
 
 **Constraints**: el renderer no tiene credenciales (CE-007); la app no puede ampliar la lista blanca ni el techo (CE-008); un solo medidor (CE-006); la vista de la consola sigue sin `preload` (002-R14); un run del Companion hoy muere a los 300 s (`companion_run_max_seconds`) y una herramienta a los 10 s (`companion_tool_timeout_s`): la ejecución local necesita sus propios techos (research D6).
 
-**Scale/Scope**: por partner, decenas de teammates y cientos de tareas al mes; 5 pantallas + 2 overlays en el renderer; ~20 componentes portados; 4 tablas y 6 rutas nuevas en la API; 6 rutas BFF de proxy en la consola; 1 control nuevo en la página de equipo.
+**Scale/Scope**: por partner, decenas de teammates y cientos de tareas al mes; 5 pantallas + 2 overlays en el renderer; ~20 componentes portados; 4 tablas y 14 rutas nuevas en la API; 12 rutas BFF de proxy en la consola; 1 cron en el worker; 1 control nuevo en la página de equipo.
 
 ## Constitution Check
 
@@ -117,6 +117,9 @@ apps/api/
 │   ├── api/{device_bridge.py (poll work[], result stdout_sample), companion_streaming.py (+eventos v3)}
 │   └── core/console_auth.py               # teammates:use, teammates:policy
 └── tests/{isolation/test_31…34, integration/test_teammates_*.py, unit/…}
+
+apps/worker/
+└── src/nexus_worker/streams/teammate_task_expiry_cron.py   # barrido de tareas caducadas (cada 10 min)
 
 packages/companion-ui/                     # NUEVO — extraído de apps/console/src/components/companion
 ├── src/{state.ts, types.ts, transport.ts, use-companion.ts, i18n.ts, messages/{es,en}.ts}

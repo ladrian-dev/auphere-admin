@@ -79,6 +79,8 @@ PARTNER_FORCE_TABLES: dict[str, str] = {
     # Spec 002: la máquina es del partner. FORCE con dos políticas (dueña · gestor).
     "partner_devices": "Máquinas del partner. FORCE por partner_id + principal_id / gestor.",
     "device_pairing_codes": "Códigos de emparejamiento. FORCE por partner_id.",
+    # Spec 003: el roster es del partner; todos sus miembros ven lo mismo. Sin DELETE.
+    "teammates": "Teammates del partner. FORCE por partner_id.",
 }
 
 

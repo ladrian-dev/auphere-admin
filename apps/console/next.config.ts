@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
   // Self-contained server for the container image (apps/console/Dockerfile).
   output: "standalone",
   reactStrictMode: true,
-  transpilePackages: ["@nexus/ui"],
+  transpilePackages: ["@nexus/ui", "@nexus/companion-ui"],
   // Lane agent-tools (CP-15): knowledge uploads go through a Server Action
   // as multipart (API caps at 10 MB → 413); the default 1 MB would 413 first.
   experimental: { serverActions: { bodySizeLimit: "11mb" } },

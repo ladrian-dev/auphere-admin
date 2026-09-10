@@ -44,6 +44,9 @@ class CompanionThreadCreateIn(BaseModel):
     # NEVER a tenant id — it is resolved under the principal's partner.
     client_ref: str | None = Field(default=None, min_length=1, max_length=255)
     mode: str = Field(default="consult", pattern="^(consult|build)$")
+    # Spec 003 — el hilo de un teammate. Se resuelve bajo el partner del
+    # llamante: un id de otro partner es un 404 opaco, nunca un hilo.
+    teammate_id: uuid.UUID | None = None
 
 
 class CompanionThreadPatchIn(BaseModel):
@@ -59,6 +62,7 @@ class CompanionThreadOut(BaseModel):
     title: str
     mode: str
     client_ref: str | None
+    teammate_id: uuid.UUID | None = None
     archived_at: datetime | None
     last_run_at: datetime | None
     created_at: datetime

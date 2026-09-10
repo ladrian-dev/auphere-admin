@@ -189,6 +189,9 @@ def _fill(path: str, *, ref: str) -> str:
         .replace("{thread_id}", str(uuid.uuid4()))
         .replace("{run_id}", str(uuid.uuid4()))
         .replace("{notification_id}", str(uuid.uuid4()))
+        .replace("{teammate_id}", str(uuid.uuid4()))  # spec 003: el roster
+        .replace("{task_id}", str(uuid.uuid4()))
+        .replace("{action_id}", str(uuid.uuid4()))
     )
 
 

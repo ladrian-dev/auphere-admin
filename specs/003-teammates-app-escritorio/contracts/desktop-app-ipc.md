@@ -18,7 +18,8 @@ que ninguna salida contiene claves `session`, `cookie`, `token`, `credential`,
 | `app:roster.archive` | `{id}` | `void` | DELETE |
 | `app:roster.jobs` | — | `{jobs[], models[]}` | GET |
 | `app:thread.open` | `{teammate_id}` | `{thread_id}` | busca o crea el hilo de la persona con ese teammate |
-| `app:thread.events` | `{thread_id, since_seq}` | `WireEvent[]` | historial |
+| `app:thread.runs` | `{thread_id}` | `CompanionThreadRuns` | los runs del hilo, ascendentes (§5.2) |
+| `app:run.events` | `{run_id, since_seq?}` | `CompanionEvents` | el historial de un run |
 | `app:thread.send` | `{thread_id, text, client_ref?}` | `{run_id, task_id}` | POST run |
 | `app:thread.cancel` | `{run_id}` | `void` | DELETE run |
 | `app:stream.open` | `{run_id, since_seq}` | `{stream_id}` | abre el SSE en el principal; los eventos llegan por `app:event` |
@@ -40,7 +41,7 @@ que ninguna salida contiene claves `session`, `cookie`, `token`, `credential`,
 |---|---|
 | `app:event` | `{stream_id, event: WireEvent}` |
 | `app:inbox.changed` | `{action_id, decision}` |
-| `app:task.state` | `{task_id, state, reason}` |
+| `app:task.state` | `{task_id, state, cause}` |
 | `app:session` | `GateDecision` de 002 (`start · stop · pair_needed`) — la pantalla pasa a «sin sesión» o «sin emparejar» |
 | `app:presence` | `{machine, presence}` |
 

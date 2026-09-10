@@ -1,106 +1,21 @@
 /**
- * Browser side of the Companion (CO-03): `fetch` against the BFF under
- * `app/api/companion/*`. Never throws — every call returns a discriminated
- * result, because a drawer that throws takes the whole console shell down
- * with it.
- *
- * `status` and `code` are carried through deliberately. The confirmation
- * card has to tell 409 `action_expired` ("you ran out of time") from 412
- * `state_changed` ("someone changed this while you were deciding"): §4.2
- * of the contract says they are different causes with the same way out,
- * and a single "it failed" would leave the user guessing which.
+ * Lado navegador del Companion en la consola (CO-03): el transporte de
+ * `fetch` contra el BFF `app/api/companion/*` y el cliente que el paquete
+ * construye encima (spec 003, T023). Lo que queda aquí es lo que solo tiene
+ * sentido en la consola: el ancho y el modo del cajón como estado persistido.
  */
-import type {
-  CompanionAction,
-  CompanionBudget,
-  CompanionDecision,
-  CompanionEnabled,
-  CompanionEvents,
-  CompanionResumed,
-  CompanionRunStarted,
-  CompanionThread,
-  CompanionThreadRuns,
-} from "@/lib/backend/companion";
+import {
+  cacheRunIds,
+  createFetchTransport,
+  loadRunIds,
+  makeCompanionClient,
+  rememberRunId,
+} from "@nexus/companion-ui";
+export type { Err, Ok, Result } from "@nexus/companion-ui";
 
-import type { PageContext } from "./page-context";
-
-export type Ok<T> = { ok: true; data: T };
-/**
- * `body` is the parsed error body, kept rather than discarded.
- *
- * §6.2 of CONTRACT-V2: the 409 `budget_paused` carries the budget snapshot
- * `{code, used, cap, period, resets_at}` **so the UI can explain the pause
- * without a second request**. Reducing the body to `detail` + `code` would
- * throw that snapshot away and force a `GET /budget` the contract says is
- * unnecessary.
- */
-export type Err = { ok: false; status: number; detail: string; code: string | null; body: unknown };
-export type Result<T> = Ok<T> | Err;
-
-const base = "/api/companion";
-
-async function call<T>(path: string, init?: RequestInit): Promise<Result<T>> {
-  try {
-    const res = await fetch(`${base}${path}`, {
-      ...init,
-      headers: { Accept: "application/json", ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers },
-      cache: "no-store",
-    });
-    if (res.status === 204) return { ok: true, data: null as T };
-    const text = await res.text();
-    let body: unknown = null;
-    if (text) {
-      try {
-        body = JSON.parse(text);
-      } catch {
-        body = text;
-      }
-    }
-    if (!res.ok) {
-      const b = body as { detail?: unknown; code?: unknown } | null;
-      return {
-        ok: false,
-        status: res.status,
-        detail: b && typeof b.detail === "string" ? b.detail : `HTTP ${res.status}`,
-        code: b && typeof b.code === "string" ? b.code : null,
-        body,
-      };
-    }
-    return { ok: true, data: body as T };
-  } catch {
-    // Offline, DNS, aborted — indistinguishable here and all mean the same
-    // to the user: we could not reach the Companion.
-    return { ok: false, status: 0, detail: "network", code: null, body: null };
-  }
-}
-
-export const companionClient = {
-  listThreads: () => call<CompanionThread[]>("/threads"),
-  createThread: (body: { title?: string; client_ref?: string; mode?: "consult" | "build" }) =>
-    call<CompanionThread>("/threads", { method: "POST", body: JSON.stringify(body) }),
-  patchThread: (id: string, body: { title?: string; archived?: boolean; mode?: "consult" | "build" }) =>
-    call<CompanionThread>(`/threads/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
-  /** Runs of a thread, ascending (§5.2) — the source of the run index. */
-  threadRuns: (threadId: string) => call<CompanionThreadRuns>(`/threads/${encodeURIComponent(threadId)}/runs`),
-  startRun: (threadId: string, prompt: string, pageContext: PageContext | null) =>
-    call<CompanionRunStarted>(`/threads/${encodeURIComponent(threadId)}/runs`, {
-      method: "POST",
-      body: JSON.stringify({ prompt, page_context: pageContext }),
-    }),
-  runEvents: (runId: string, sinceSeq = 0) =>
-    call<CompanionEvents>(`/runs/${encodeURIComponent(runId)}/events?since_seq=${sinceSeq}`),
-  /** The ONLY way to stop a run. Aborting the stream does not reach the API. */
-  cancelRun: (runId: string) => call<null>(`/runs/${encodeURIComponent(runId)}`, { method: "DELETE" }),
-  resumeRun: (runId: string, body: { action_id: string; decision: CompanionDecision; note?: string }) =>
-    call<CompanionResumed>(`/runs/${encodeURIComponent(runId)}/resume`, { method: "POST", body: JSON.stringify(body) }),
-  getAction: (actionId: string) => call<CompanionAction>(`/actions/${encodeURIComponent(actionId)}`),
-  budget: () => call<CompanionBudget>("/budget"),
-  /** Per-partner flag of §10 of CONTRACT-V2. The bubble is mounted only
-   *  when this is true — an off bubble is ABSENCE, not a disabled button. */
-  enabled: () => call<CompanionEnabled>("/enabled"),
-  streamUrl: (runId: string, sinceSeq: number) =>
-    `${base}/runs/${encodeURIComponent(runId)}/stream?since_seq=${sinceSeq}`,
-};
+export const companionTransport = createFetchTransport("/api/companion");
+export const companionClient = makeCompanionClient(companionTransport);
+export { cacheRunIds, loadRunIds, rememberRunId };
 
 // ── local persistence ──────────────────────────────────────────────────
 //
@@ -125,7 +40,6 @@ function write(key: string, value: string): void {
 
 const WIDTH_KEY = "nexus.companion.width";
 const MODE_KEY = "nexus.companion.mode";
-const RUNS_KEY = (threadId: string) => `nexus.companion.runs.${threadId}`;
 
 export const MIN_WIDTH = 380;
 export const MAX_WIDTH = 880;
@@ -215,37 +129,3 @@ export function setMode(mode: "consult" | "build"): void {
   emit();
 }
 
-/**
- * Cached run ids of a thread — **a cache, not the source**.
- *
- * The source is `GET /console/companion/threads/{id}/runs` (§5.2 of the
- * contract, added in v1.1). This cache exists for one reason: if that call
- * fails, the drawer can still rebuild whatever this browser saw before,
- * instead of showing an empty conversation. It is a degraded path, never
- * the norm — and it must not be trusted over the server, because a run
- * started on another machine would be missing from it.
- */
-export function loadRunIds(threadId: string): string[] {
-  const raw = read(RUNS_KEY(threadId));
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-export function rememberRunId(threadId: string, runId: string): string[] {
-  const current = loadRunIds(threadId);
-  if (current.includes(runId)) return current;
-  // Bounded: a long-lived thread must not grow the key without limit.
-  const next = [...current, runId].slice(-40);
-  write(RUNS_KEY(threadId), JSON.stringify(next));
-  return next;
-}
-
-/** Overwrite the cache with what the server just said is authoritative. */
-export function cacheRunIds(threadId: string, runIds: string[]): void {
-  write(RUNS_KEY(threadId), JSON.stringify(runIds.slice(-40)));
-}

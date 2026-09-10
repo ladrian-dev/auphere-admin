@@ -18,7 +18,7 @@ import type { CredentialStore, StoredCredential } from "./credential-store.js";
 export type Whoami =
   | { kind: "anonymous" }
   | { kind: "no_membership" }
-  | { kind: "member"; userId: string; partnerSlug: string; locale?: "es" | "en" };
+  | { kind: "member"; userId: string; partnerSlug: string; locale?: "es" | "en"; permissions?: string[] };
 
 export interface WhoamiClient {
   whoami(): Promise<Whoami>;
@@ -72,12 +72,16 @@ export class SessionGate {
     };
   }
 
+  /** Vuelve a preguntar y avisa a quien escucha. Lo usa la cookie y, desde la
+   *  spec 003, la pantalla cuando el BFF contesta «sin sesión». */
+  async refresh(): Promise<GateDecision> {
+    const decision = await this.evaluate();
+    for (const listener of this.listeners) listener(decision);
+    return decision;
+  }
+
   /** Cada cambio de la cookie de sesión vuelve a preguntar. La caducidad es un cambio más. */
   watch(watcher: SessionCookieWatcher): void {
-    watcher.onSessionCookieChanged(() => {
-      void this.evaluate().then((decision) => {
-        for (const listener of this.listeners) listener(decision);
-      });
-    });
+    watcher.onSessionCookieChanged(() => void this.refresh());
   }
 }

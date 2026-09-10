@@ -1,0 +1,42 @@
+{
+  "name": "@nexus/companion-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Companion's thread, cards, composer and meters — shared by the partner console and the desktop app. React + @nexus/ui tokens; never `next/*`.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@nexus/ui": "workspace:*",
+    "lucide-react": "^1.16.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.2",
+    "eslint": "^9.39.4",
+    "jsdom": "^29.1.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.59.4",
+    "vitest": "^4.1.6"
+  }
+}

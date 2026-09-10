@@ -36,6 +36,8 @@ const API_MAP: Record<string, string[]> = {
   "playbook:read": ["owner", "admin", "builder", "analyst"],
   "playbook:write": ["owner", "admin"],
   "companion:use": ["owner", "admin", "builder"],
+  "teammates:use": ["owner", "admin", "builder"],
+  "teammates:policy": ["owner", "admin"],
 };
 
 describe("permission map", () => {

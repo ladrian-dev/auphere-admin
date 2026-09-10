@@ -51,9 +51,9 @@ export function consoleWhoami(consoleUrl: string): WhoamiClient {
       if (response.status === 403) return { kind: "no_membership" };
       if (!response.ok) return { kind: "anonymous" };
       // Una respuesta que no es JSON (una página, un proxy) no es una persona.
-      let body: { user_id?: string; partner_slug?: string; locale?: string };
+      let body: { user_id?: string; partner_slug?: string; locale?: string; permissions?: unknown };
       try {
-        body = (await response.json()) as { user_id?: string; partner_slug?: string; locale?: string };
+        body = (await response.json()) as typeof body;
       } catch {
         return { kind: "anonymous" };
       }
@@ -64,9 +64,17 @@ export function consoleWhoami(consoleUrl: string): WhoamiClient {
         userId: String(body.user_id),
         partnerSlug: String(body.partner_slug ?? ""),
         ...(locale ? { locale } : {}),
+        ...(Array.isArray(body.permissions)
+          ? { permissions: body.permissions.filter((p): p is string => typeof p === "string") }
+          : {}),
       };
     },
   };
+}
+
+/** El `fetch` de la partición de la persona, para el `PlatformClient` (spec 003, D9). */
+export function partitionFetch(): (url: string, init?: RequestInit) => Promise<Response> {
+  return (url, init) => session.fromPartition(HUMAN_PARTITION).fetch(url, init);
 }
 
 export const SESSION_COOKIE = "nexus-console.session";

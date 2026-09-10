@@ -15,9 +15,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   AGENT_PARTITION,
+  APP_PARTITION,
   BAR_PARTITION,
   HUMAN_PARTITION,
   agentProcessEnv,
+  appWebPreferences,
   assertPartitionsAreSeparate,
   barWebPreferences,
   consoleWebPreferences,
@@ -98,5 +100,30 @@ describe("la barra es una tercera partición, y solo ella tiene preload (3.5, 14
     expect(prefs.contextIsolation).toBe(true);
     expect(prefs.nodeIntegration).toBe(false);
     expect(prefs.sandbox).toBe(true);
+  });
+});
+
+describe("la pantalla de operar es la cuarta partición (spec 003, 12.1, 12.3, 14.2)", () => {
+  it("cuatro particiones distintas; la de la pantalla no persiste", () => {
+    expect(new Set([HUMAN_PARTITION, AGENT_PARTITION, BAR_PARTITION, APP_PARTITION]).size).toBe(4);
+    expect(APP_PARTITION.startsWith("persist:")).toBe(false);
+    expect(() => assertPartitionsAreSeparate()).not.toThrow();
+    expect(() => assertPartitionsAreSeparate(HUMAN_PARTITION, AGENT_PARTITION, BAR_PARTITION, BAR_PARTITION)).toThrow();
+    expect(() => assertPartitionsAreSeparate(HUMAN_PARTITION, AGENT_PARTITION, BAR_PARTITION, "persist:app")).toThrow();
+  });
+
+  it("la pantalla tiene su preload, sandbox y aislamiento; la consola sigue sin preload", () => {
+    const prefs = appWebPreferences("/ruta/app-preload.cjs");
+    expect(prefs.partition).toBe(APP_PARTITION);
+    expect(prefs.preload).toBe("/ruta/app-preload.cjs");
+    expect(prefs.contextIsolation).toBe(true);
+    expect(prefs.nodeIntegration).toBe(false);
+    expect(prefs.sandbox).toBe(true);
+    expect(consoleWebPreferences()).not.toHaveProperty("preload");
+  });
+
+  it("la pantalla no comparte partición con la persona: no ve sus cookies", () => {
+    expect(APP_PARTITION).not.toBe(HUMAN_PARTITION);
+    expect(sessionCookieNames(APP_PARTITION)).not.toContain("auphere_console_session");
   });
 });

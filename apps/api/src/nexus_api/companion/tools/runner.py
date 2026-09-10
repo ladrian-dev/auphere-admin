@@ -108,6 +108,11 @@ class CompanionToolbelt:
     #: Plazo de una propuesta sin decidir. Es lo único que fija ``expires_at``,
     #: y por eso la interfaz no calcula quince minutos por su cuenta.
     action_ttl_seconds: float = 900.0
+    #: Spec 003 — el catálogo del TEAMMATE (subconjunto de ``ALL_TOOLS``).
+    #: ``None`` es el Companion clásico: publica lo que el modo permite. Con
+    #: lista, se publica la intersección **y** ``call`` rechaza lo demás:
+    #: el gate vive en el motor, no solo en ``specs()``.
+    allowed_tools: frozenset[str] | None = None
 
     calls_made: int = 0
     citations: list[Citation] = field(default_factory=list)
@@ -142,7 +147,10 @@ class CompanionToolbelt:
     def specs(self) -> list[dict[str, Any]]:
         from nexus_api.companion.tools.catalog import tool_specs
 
-        return tool_specs(mode=self.mode)
+        specs = tool_specs(mode=self.mode)
+        if self.allowed_tools is None:
+            return specs
+        return [s for s in specs if s["function"]["name"] in self.allowed_tools]
 
     @property
     def calls_left(self) -> int:
@@ -180,6 +188,20 @@ class CompanionToolbelt:
                     "budget_exhausted",
                     f"Has agotado las {self.max_calls} consultas de este turno. "
                     "Responde con lo que ya has leído y di qué te faltó mirar.",
+                ),
+                started,
+            )
+
+        if self.allowed_tools is not None and name not in self.allowed_tools:
+            # El teammate no tiene esta herramienta. Que el modelo la nombre
+            # —pasa— no la convierte en suya (garantía 2, Requisito 4.1).
+            return self._failed(
+                name,
+                spec.label,
+                ToolError(
+                    "not_in_catalog",
+                    f"No tienes la herramienta {name!r}: no es de tu oficio. "
+                    "Dile a la persona qué te falta en vez de intentarlo por otro camino.",
                 ),
                 started,
             )

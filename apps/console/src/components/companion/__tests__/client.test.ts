@@ -7,6 +7,7 @@ import {
   cacheRunIds,
   clampWidth,
   companionClient,
+  companionTransport,
   loadMode,
   loadRunIds,
   loadWidth,
@@ -154,8 +155,11 @@ describe("companionClient", () => {
     expect(JSON.stringify(body)).not.toContain("partner_id");
   });
 
-  it("resumes from a run's own cursor in the stream URL", () => {
-    expect(companionClient.streamUrl("run-a", 42)).toBe("/api/companion/runs/run-a/stream?since_seq=42");
+  it("resumes from a run's own cursor in the stream URL", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 500 }));
+    await companionTransport.stream("run-a", 42, () => {}, new AbortController().signal).catch(() => {});
+    const [url] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/companion/runs/run-a/stream?since_seq=42");
   });
 
   it("lists a thread's runs with a plain GET (§5.2)", async () => {

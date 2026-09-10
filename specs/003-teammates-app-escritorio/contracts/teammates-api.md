@@ -29,8 +29,8 @@ lo cubre automáticamente). Ninguna ruta acepta `partner_id`, `principal_id` ni
 
 | Método y ruta | Respuesta |
 |---|---|
-| `GET /console/teammates/inbox` | `InboxItemOut[]` — `{action_id, task_id, thread_id, teammate, client_ref, title, level, trial, undo_hint, proposed_at, can_decide}`; solo hilos de la persona con teammate; `can_decide=false` si el rol no puede operar el cliente |
-| `GET /console/teammates/inbox/stream` | SSE por persona: `inbox.changed {action_id, decision}` y `task.state`; `ping` cada 15 s |
+| `GET /console/teammates/inbox` | `InboxItemOut[]` — `{action_id, task_id, thread_id, teammate, client_ref, title, level, trial, undo_hint, proposed_at, can_decide}`; solo hilos de la persona con teammate; `can_decide=false` cuando el permiso de la herramienta detrás de la acción no está en `permissions_for(role)` — el mismo que exige `resume` |
+| `GET /console/teammates/inbox/stream` | SSE por persona: `inbox.changed {action_id, decision}` y `task.state`; `ping` cada 15 s. **Sin historial**: el cliente refresca `GET /inbox` en cada (re)conexión |
 
 ## Política de ejecución local
 

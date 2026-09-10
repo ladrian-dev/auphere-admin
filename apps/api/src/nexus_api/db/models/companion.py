@@ -101,6 +101,11 @@ class CompanionThread(UUIDPrimaryKey, Base):
         Text, nullable=False, server_default=text("'Nueva conversación'")
     )
     mode: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'consult'"))
+    #: Spec 003 — el eje teammate. NULL = hilo del Companion clásico. La RLS
+    #: por ``principal_id`` no cambia: el teammate es una columna, no una puerta.
+    teammate_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("teammates.id", ondelete="RESTRICT"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -125,6 +130,8 @@ class CompanionRun(UUIDPrimaryKey, Base):
         nullable=False,
     )
     principal_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: Spec 003 — copiado del hilo al crear el run, para agregar consumo por teammate.
+    teammate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'running'"))
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")

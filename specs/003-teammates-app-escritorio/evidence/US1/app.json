@@ -1,0 +1,11 @@
+{
+  "surface": "app",
+  "consoleUrl": "http://localhost:3110/",
+  "bridgeType": "object",
+  "roster": "Tu equipo\nS\nSofía\nAtención al cliente\nEn espera\nN\nNilo\nDesarrollo\nEn espera\n\nTu máquina no está emparejada: los teammates trabajan igual, pero no pueden tocar tus archivos hasta que la emparejes desde la barra.\n\nElige un teammate para abrir tu hilo con él.\n\nEntorno\n\nNavegador: todavía no.\n\nAbrir la consola",
+  "text": "Tu equipo\nS\nSofía\nAtención al cliente\nEn espera\nN\nNilo\nDesarrollo\nEn espera\n\nTu máquina no está emparejada: los teammates trabajan igual, pero no pueden tocar tus archivos hasta que la emparejes desde la barra.\n\nS\nSofía\n\nAtención al cliente\n\nTu hilo con Sofía está vacío. Lo que le pidas sigue aunque cierres la aplicación.\n\nPuede proponer cambios. Cada uno pasa por tu confirmación antes de aplicarse.\nEntorno\nOficio\nAtención al cliente\nModelo\nopenai/gpt-5.6-sol\nMáquina\nSin máquina emparejada — empareja la tuya desde la barra.\n\nNavegador: todavía no.\n\nAbrir la consola",
+  "states": [
+    "vacio"
+  ],
+  "logs": []
+}

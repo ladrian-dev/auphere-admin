@@ -15,7 +15,7 @@
  * * **No hay credencial por variable de entorno.** La máquina la canjea con un
  *   código, la guarda cifrada con el llavero, y solo late con una persona dentro.
  */
-import { BaseWindow, WebContentsView, app, ipcMain, session } from "electron";
+import { BaseWindow, Menu, WebContentsView, app, ipcMain, session } from "electron";
 import { hostname as osHostname } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,24 +24,29 @@ import { AppRuntime } from "../app-runtime.js";
 import { GatewayApprovals } from "../approvals-client.js";
 import { CredentialStore } from "../credential-store.js";
 import { HttpTransport } from "../http-transport.js";
+import { PlatformClient } from "../platform-client.js";
 import { HEARTBEAT_INTERVAL_MS } from "../presence.js";
 import { SessionGate } from "../session-gate.js";
 import {
   HUMAN_PARTITION,
+  appWebPreferences,
   assertPartitionsAreSeparate,
   barWebPreferences,
   consoleWebPreferences,
 } from "../session-isolation.js";
+import { StreamHub } from "../stream-hub.js";
 import { decideWindowOpen, navigationAllowed } from "../window-open-policy.js";
 import {
   consoleWhoami,
   nativeDirectoryPicker,
   nodeDirectoryFs,
   openExternal,
+  partitionFetch,
   safeStorageCipher,
   sessionCookieWatcher,
   userDataFile,
 } from "./adapters.js";
+import { registerAppSurface, sessionForRenderer } from "./app-surface.js";
 
 const CONSOLE_URL = process.env.AUPHERE_CONSOLE_URL ?? "https://console.auphere.com";
 const API_URL = process.env.AUPHERE_API_URL ?? "https://api.auphere.com";
@@ -50,9 +55,11 @@ const BAR_HEIGHT = 44;
 // ESM: no hay `__dirname`; la ruta de este fichero sale de `import.meta.url`.
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-function layout(window: BaseWindow, consoleView: WebContentsView, barView: WebContentsView): void {
+type Surface = "app" | "console";
+
+function layout(window: BaseWindow, views: WebContentsView[], barView: WebContentsView): void {
   const { width, height } = window.getContentBounds();
-  consoleView.setBounds({ x: 0, y: 0, width, height: Math.max(0, height - BAR_HEIGHT) });
+  for (const view of views) view.setBounds({ x: 0, y: 0, width, height: Math.max(0, height - BAR_HEIGHT) });
   barView.setBounds({ x: 0, y: Math.max(0, height - BAR_HEIGHT), width, height: BAR_HEIGHT });
 }
 
@@ -67,13 +74,59 @@ export async function bootstrap(): Promise<void> {
 
   const window = new BaseWindow({ width: 1280, height: 820, title: "Auphere" });
   const consoleView = new WebContentsView({ webPreferences: consoleWebPreferences() });
+  // Spec 003 — la pantalla de operar: la segunda superficie propia, con su
+  // partición y su `preload`. La consola sigue cargándose para administrar y
+  // para operar clientes; se enseña una u otra, nunca las dos.
+  const appView = new WebContentsView({
+    webPreferences: appWebPreferences(join(HERE, "app-preload.cjs")),
+  });
   const barView = new WebContentsView({
     webPreferences: barWebPreferences(join(HERE, "bar-preload.cjs")),
   });
   window.contentView.addChildView(consoleView);
+  window.contentView.addChildView(appView);
   window.contentView.addChildView(barView);
-  layout(window, consoleView, barView);
-  window.on("resize", () => layout(window, consoleView, barView));
+  layout(window, [consoleView, appView], barView);
+  window.on("resize", () => layout(window, [consoleView, appView], barView));
+
+  let surface: Surface = "app";
+  const showSurface = (next: Surface) => {
+    surface = next;
+    appView.setVisible(next === "app");
+    consoleView.setVisible(next === "console");
+  };
+  const showConsole = (path: string) => {
+    const target = new URL(path, CONSOLE_URL).toString();
+    if (consoleView.webContents.getURL() !== target) void consoleView.webContents.loadURL(target);
+    showSurface("console");
+  };
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
+      { role: "editMenu" as const },
+      {
+        label: "Ver",
+        submenu: [
+          { label: "Equipo", accelerator: "CommandOrControl+1", click: () => showSurface("app") },
+          { label: "Consola", accelerator: "CommandOrControl+2", click: () => showConsole("/") },
+          { type: "separator" },
+          { role: "reload" as const },
+          { role: "togglefullscreen" as const },
+        ],
+      },
+      { role: "windowMenu" as const },
+    ]),
+  );
+
+  // La pantalla de operar no navega: es una página local. Un enlace se abre en
+  // la consola (`app:openConsole`) o en el navegador del sistema, nunca dentro
+  // de la vista, que es lo que la mantiene siendo una pantalla y no un navegador.
+  appView.webContents.setWindowOpenHandler(({ url }) => {
+    const decision = decideWindowOpen(url, new URL(CONSOLE_URL).origin);
+    if (decision.action === "open_external") void openExternal(decision.url);
+    return { action: "deny" };
+  });
+  appView.webContents.on("will-navigate", (event) => event.preventDefault());
 
   // Ninguna ventana de la aplicación sin barra de direcciones (R12.7, 14.1).
   const consoleOrigin = new URL(CONSOLE_URL).origin;
@@ -121,19 +174,103 @@ export async function bootstrap(): Promise<void> {
   });
 
   // Quién está dentro lo lee el proceso principal, no la página (D6).
-  const gate = new SessionGate({ whoami: consoleWhoami(CONSOLE_URL), store });
-  gate.onDecision((decision) => void runtime.applyGate(decision));
+  const whoami = consoleWhoami(CONSOLE_URL);
+  const gate = new SessionGate({ whoami, store });
+  const pushApp = (channel: string, payload: unknown) => {
+    if (!appView.webContents.isDestroyed()) appView.webContents.send(channel, payload);
+  };
+  gate.onDecision((decision) => {
+    void runtime.applyGate(decision);
+    pushApp("app:session", sessionForRenderer(decision));
+    // Sin sesión, la pantalla no puede hacer nada útil: se enseña la consola
+    // para que la persona entre; al volver la sesión, vuelve la pantalla.
+    if (decision.kind === "stop") showConsole("/");
+    else if (surface === "console" && consoleView.webContents.getURL().includes("/login")) showSurface("app");
+  });
   gate.watch(sessionCookieWatcher());
 
+  // La pantalla de operar: el principal habla con el BFF con la sesión de la
+  // persona, y le pasa datos ya redactados (R12.2).
+  const platform = new PlatformClient({ consoleUrl: CONSOLE_URL, fetch: partitionFetch() });
+  const streams = new StreamHub(
+    (path, signal, onEvent) => platform.stream(path, signal, onEvent),
+    {
+      event: (payload) => pushApp("app:event", payload),
+      end: (payload) => pushApp("app:stream.end", payload),
+    },
+  );
+  registerAppSurface({
+    ipcMain,
+    platform,
+    streams,
+    whoami,
+    push: pushApp,
+    showConsole,
+    onSessionLost: () => void gate.refresh(),
+  });
+  runtime.onBarState((state) =>
+    pushApp("app:presence", {
+      machine: state.machine ?? null,
+      presence: state.status === "conectada" ? "presente" : "ausente",
+      links: state.links,
+    }),
+  );
+
   await barView.webContents.loadFile(join(HERE, "..", "bar", "index.html"));
+  await appView.webContents.loadFile(join(HERE, "..", "app", "index.html"));
   await consoleView.webContents.loadURL(CONSOLE_URL);
-  void runtime.applyGate(await gate.evaluate());
+  showSurface("app");
+  const first = await gate.evaluate();
+  void runtime.applyGate(first);
+  pushApp("app:session", sessionForRenderer(first));
+  if (first.kind === "stop") showConsole("/");
+
+  // Evidencia de desarrollo (spec 003, quickstart §3): con
+  // `AUPHERE_EVIDENCE_DIR` se guardan capturas y el texto de la pantalla a los
+  // pocos segundos de arrancar. No hace nada sin la variable.
+  const evidenceDir = process.env.AUPHERE_EVIDENCE_DIR;
+  if (evidenceDir) {
+    const logs: string[] = [];
+    appView.webContents.on("console-message", (event) => logs.push(`${event.level}: ${event.message}`.slice(0, 300)));
+    appView.webContents.on("did-fail-load", (_e, code, desc) => logs.push(`did-fail-load ${code} ${desc}`));
+    appView.webContents.on("preload-error", (_e, path, error) => logs.push(`preload-error ${path} ${String(error)}`));
+    setTimeout(() => void captureEvidence(evidenceDir, appView, consoleView, surface, logs), 6000);
+  }
 
   const timer = setInterval(() => void runtime.tick(), HEARTBEAT_INTERVAL_MS);
   window.on("closed", () => {
     clearInterval(timer);
+    streams.closeAll();
     runtime.stop();
   });
+}
+
+async function captureEvidence(
+  dir: string,
+  appView: WebContentsView,
+  consoleView: WebContentsView,
+  surface: Surface,
+  logs: string[] = [],
+): Promise<void> {
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  mkdirSync(dir, { recursive: true });
+  const bridgeType = await appView.webContents.executeJavaScript("typeof window.auphere").catch(() => "?");
+  const roster = await appView.webContents.executeJavaScript("document.body.innerText").catch(() => "");
+  // Abre el hilo del primer teammate: es el recorrido del quickstart §4.1.
+  await appView.webContents
+    .executeJavaScript("document.querySelector('nav button')?.click(), true")
+    .catch(() => false);
+  await new Promise((r) => setTimeout(r, 3500));
+  const text = await appView.webContents.executeJavaScript("document.body.innerText").catch(() => "");
+  const states = await appView.webContents
+    .executeJavaScript("Array.from(document.querySelectorAll('[data-thread-state]')).map(e => e.dataset.threadState)")
+    .catch(() => []);
+  writeFileSync(join(dir, "app.png"), (await appView.webContents.capturePage()).toPNG());
+  writeFileSync(join(dir, "console.png"), (await consoleView.webContents.capturePage()).toPNG());
+  writeFileSync(
+    join(dir, "app.json"),
+    JSON.stringify({ surface, consoleUrl: consoleView.webContents.getURL(), bridgeType, roster, text, states, logs }, null, 2),
+  );
 }
 
 if (process.env.NODE_ENV !== "test") {

@@ -174,6 +174,12 @@ from nexus_api.db.models.support_ticket import (
     SupportTicket,
     SupportTicketEvent,
 )
+from nexus_api.db.models.teammate import (
+    JOB_SEED,
+    PERMISSION_KEYS,
+    TEAMMATE_STATUSES,
+    Teammate,
+)
 from nexus_api.db.models.tenant import Tenant, TenantPlan, TenantStatus, TenantTier
 from nexus_api.db.models.tool import ToolCatalog, ToolStatus
 from nexus_api.db.models.usage import UsageEvent
@@ -193,6 +199,7 @@ __all__ = [
     "EVENT_OPEN",
     "EVENT_STATUS",
     "INVITATION_TTL",
+    "JOB_SEED",
     "LEDGER_BUCKETS",
     "MODEL_ROLES",
     "MODE_BUILD",
@@ -204,6 +211,7 @@ __all__ = [
     "OWNER_CONSULTATION_STATUSES",
     "OWNER_CONSULTATION_URGENCIES",
     "PARTNER_ROLES",
+    "PERMISSION_KEYS",
     "PLATFORMS",
     "REASON_MIN_LEN",
     "REVOKED_REASONS",
@@ -214,6 +222,7 @@ __all__ = [
     "RUN_RUNNING",
     "RUN_STATUSES",
     "STATUS_OPEN",
+    "TEAMMATE_STATUSES",
     "TENANT_SCOPED_API_KEY_SCOPES",
     "TERMINAL_RUN_STATUSES",
     "THREAD_MODES",
@@ -319,6 +328,7 @@ __all__ = [
     "ScheduledJobStatus",
     "SupportTicket",
     "SupportTicketEvent",
+    "Teammate",
     "Tenant",
     "TenantConnector",
     "TenantConnectorStatus",

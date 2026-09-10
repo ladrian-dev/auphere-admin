@@ -142,7 +142,18 @@ COMPANION_EVENTS: dict[str, frozenset[str]] = {
     # guardián, usar el mismo vocabulario en los dos evita que alguien
     # "arregle" uno rompiendo el otro.
     "hitl.requested": frozenset(
-        {"action_id", "kind", "title", "preview", "diff", "impact", "expires_at"}
+        {
+            "action_id",
+            "kind",
+            "title",
+            "preview",
+            "diff",
+            "impact",
+            "expires_at",
+            # spec 003 (v3): el nivel de aviso y la tarea que espera.
+            "level",
+            "task_id",
+        }
     ),
     # ``note`` en singular: ``notes`` está prohibido y ``reason`` también.
     # No es cosmética — el motivo de un rechazo VUELVE al modelo, así que
@@ -194,7 +205,33 @@ COMPANION_EVENTS: dict[str, frozenset[str]] = {
     # pintan distinto — y el segundo NO es un error: el hilo sigue ahí, la
     # historia sigue ahí, y lo desbloquea subir un número.
     "budget.paused": frozenset({"used", "cap", "period", "resets_at", "scope"}),
+    # ── CONTRACT-V3 (spec 003): la tarea, la máquina y la bandeja ─────────
+    # La TAREA es el objeto durable que encadena turnos (D3): cada cambio de
+    # estado se dice. ``state`` y ``cause`` son enums cerrados (``reason``
+    # está prohibido por C8: aquí no cabe texto, solo un identificador) y se comprueban
+    # al publicar — la interfaz pone la palabra, nunca el backend.
+    "task.state": frozenset({"task_id", "state", "cause"}),
+    # Lo que la plataforma dejó para la máquina y lo que la máquina contestó.
+    # **Sin salida**: la muestra viaja al modelo como resultado de herramienta,
+    # nunca por el stream (§III).
+    "exec.dispatched": frozenset(
+        {"execution_id", "executable", "args", "cwd_relative", "client_ref"}
+    ),
+    "exec.completed": frozenset({"execution_id", "outcome", "exit_code"}),
+    # Alguien decidió una acción de teammate: va al hilo y a la bandeja.
+    "inbox.changed": frozenset({"action_id", "decision", "by"}),
 }
+
+#: Enums de la v3 que ``sanitise_payload`` comprueba. Un estado fuera de la
+#: lista no es un descuido de claves: es un mensaje que la pantalla no sabe
+#: pintar, y se rechaza.
+TASK_STATES: frozenset[str] = frozenset(
+    {"en_marcha", "esperandote", "pausada_por_tope", "terminada", "cancelada", "caducada"}
+)
+TASK_CAUSES: frozenset[str] = frozenset(
+    {"hitl", "budget", "completed", "cancelled", "expired", "teammate_archived", "machine_absent"}
+)
+ACTION_LEVELS: frozenset[str] = frozenset({"critico", "aviso", "informativo"})
 
 #: Los dos únicos eventos donde ``text`` es legítimo: son las palabras del
 #: propio Companion. Cualquier otro uso es un cuerpo de mensaje ajeno.
@@ -203,6 +240,25 @@ COMPANION_AUTHORED_EVENTS: frozenset[str] = frozenset({"text.delta", "reasoning.
 
 class UnknownCompanionEvent(ValueError):
     """Se intentó publicar un evento fuera del catálogo."""
+
+
+class InvalidCompanionEvent(ValueError):
+    """Un evento del catálogo con un valor que la v3 no admite."""
+
+
+def _check_v3(event: str, data: dict[str, Any]) -> None:
+    if event == "task.state":
+        if data.get("state") not in TASK_STATES:
+            raise InvalidCompanionEvent(f"task.state fuera del enum: {data.get('state')!r}")
+        if data.get("cause") not in TASK_CAUSES:
+            raise InvalidCompanionEvent(f"task.state.cause fuera del enum: {data.get('cause')!r}")
+    elif event == "hitl.requested":
+        if "level" in data and data["level"] not in ACTION_LEVELS:
+            raise InvalidCompanionEvent(f"hitl.requested.level fuera del enum: {data['level']!r}")
+        if "expires_at" in data and data["expires_at"] is None and not data.get("task_id"):
+            raise InvalidCompanionEvent(
+                "hitl.requested sin caducidad solo cuando espera a una tarea (task_id)"
+            )
 
 
 def sanitise_payload(event: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -216,6 +272,7 @@ def sanitise_payload(event: str, data: dict[str, Any]) -> dict[str, Any]:
     allowed = COMPANION_EVENTS.get(event)
     if allowed is None:
         raise UnknownCompanionEvent(f"evento fuera del catálogo del Companion: {event!r}")
+    _check_v3(event, data)
     dropped = [k for k in data if k not in allowed]
     if dropped:
         # ``event`` es la clave reservada del mensaje en structlog.
