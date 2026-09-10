@@ -52,6 +52,11 @@ describe("qué decide la puerta", () => {
     expect(await g.evaluate()).toEqual({ kind: "start", userId: "luis", credential: cred });
   });
 
+  it("el idioma de la cuenta viaja con la decisión, para que la barra hable como la consola", async () => {
+    const { gate: g } = gate({ kind: "member", userId: "luis", partnerSlug: "p", locale: "es" }, { luis: cred });
+    expect(await g.evaluate()).toMatchObject({ kind: "start", locale: "es" });
+  });
+
   it("una persona sin credencial en una máquina sin nadie → emparejar, sin «otra persona»", async () => {
     const { gate: g } = gate({ kind: "member", userId: "luis", partnerSlug: "p" });
     expect(await g.evaluate()).toEqual({ kind: "pair_needed", userId: "luis", pairedByOther: false });

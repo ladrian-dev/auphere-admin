@@ -226,6 +226,7 @@ export class AppRuntime {
       return;
     }
     this.userId = decision.userId;
+    this.setBar({ kind: "person", locale: decision.locale });
     if (decision.kind === "pair_needed") {
       this.stop();
       this.credential = null;

@@ -188,6 +188,17 @@ describe("desemparejar y directorios (11.2, 7)", () => {
   });
 });
 
+describe("la barra habla el idioma de la cuenta (12.2)", () => {
+  it("el idioma llega a la barra con la persona y sobrevive a desemparejar", async () => {
+    const { app } = runtime();
+    await app.applyGate({ kind: "pair_needed", userId: "luis", pairedByOther: false, locale: "es" });
+    expect(app.barState.locale).toBe("es");
+    await app.pair("K7MP-4XQ2");
+    app.unpair();
+    expect(app.barState.locale).toBe("es");
+  });
+});
+
 describe("aprobaciones solo para la persona con sesión (5.3, Historia 5)", () => {
   it("sin puente corriendo no se pregunta a la cola: se levanta, no se devuelve vacío", async () => {
     const { app } = runtime();

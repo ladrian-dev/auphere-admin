@@ -36,6 +36,8 @@ export type BarState = {
   lastError?: { code: string };
   /** `false` → no se guarda nada y no se ofrece emparejar (1.2). */
   encryptionAvailable: boolean;
+  /** El idioma de la cuenta, para hablar como la consola; sin él, el del sistema. */
+  locale?: "es" | "en";
 };
 
 export type BarAction = "introducir_codigo" | "directorios" | "desemparejar";
@@ -54,7 +56,8 @@ export type BarEvent =
   | { kind: "pairing_required" }
   | { kind: "archived" }
   | { kind: "unpaired" }
-  | { kind: "restored"; machine: BarMachine };
+  | { kind: "restored"; machine: BarMachine }
+  | { kind: "person"; locale?: "es" | "en" };
 
 export function initialState(encryptionAvailable = true): BarState {
   return { status: "sin_emparejar", links: [], encryptionAvailable };
@@ -95,7 +98,12 @@ export function actionsFor(state: BarState): BarAction[] {
 }
 
 function forget(state: BarState, status: BarStatus): BarState {
-  return { status, links: [], encryptionAvailable: state.encryptionAvailable };
+  return {
+    status,
+    links: [],
+    encryptionAvailable: state.encryptionAvailable,
+    ...(state.locale ? { locale: state.locale } : {}),
+  };
 }
 
 export function transition(state: BarState, event: BarEvent): BarState {
@@ -132,5 +140,7 @@ export function transition(state: BarState, event: BarEvent): BarState {
       return forget(state, "archivada_desde_consola");
     case "unpaired":
       return forget(state, "sin_emparejar");
+    case "person":
+      return event.locale ? { ...state, locale: event.locale } : state;
   }
 }

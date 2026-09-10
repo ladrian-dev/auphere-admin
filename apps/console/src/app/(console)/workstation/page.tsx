@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@nexus/ui";
 
 import { MachinesList } from "@/components/workstation/machines-list";
+import { PresenceRefresh } from "@/components/workstation/presence-refresh";
 import { WorkstationSetupCard } from "@/components/workstation/workstation-setup-card";
 import { getT } from "@/i18n/server";
 import { BackendError, backendFor } from "@/lib/backend";
@@ -44,6 +45,7 @@ export default async function WorkstationPage() {
   return (
     <>
       <PageHeader eyebrow={principal.partnerName} title={t("ws.title")} description={t("ws.description")} />
+      <PresenceRefresh />
       {canPair ? <WorkstationSetupCard setup={setup} /> : null}
       <MachinesList
         machines={machinesRes.machines}

@@ -517,8 +517,11 @@ tres.
       corregidos con test: `bar.js` compilaba con un `export {}` que rompía el script
       clásico, y los tokens semánticos de `@nexus/ui` viven en `@theme { … }` —solo
       Tailwind lo entiende—, así que la copia los pasa a `:root` y la barra consume el
-      puente de tema. Dos asperezas anotadas como seguimiento: la barra habla el idioma
-      del sistema y no el de la cuenta, y `/workstation` no refresca sola la presencia.
+      puente de tema. Las dos asperezas que salieron —la barra hablaba el idioma del sistema
+      y no el de la cuenta, y `/workstation` no refrescaba sola la presencia— quedaron
+      cerradas el mismo día: `whoami` devuelve `locale` y la barra lo adopta;
+      `PresenceRefresh` refresca con la cadencia del latido mientras la pestaña está
+      visible. Tests en `session-gate`, `app-runtime-identity` y `presence-refresh`.
 ---
 
 ## Nota sobre T048 — una enmienda que el plan devolvió a la spec

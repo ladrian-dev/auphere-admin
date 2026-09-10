@@ -51,14 +51,20 @@ export function consoleWhoami(consoleUrl: string): WhoamiClient {
       if (response.status === 403) return { kind: "no_membership" };
       if (!response.ok) return { kind: "anonymous" };
       // Una respuesta que no es JSON (una página, un proxy) no es una persona.
-      let body: { user_id?: string; partner_slug?: string };
+      let body: { user_id?: string; partner_slug?: string; locale?: string };
       try {
-        body = (await response.json()) as { user_id?: string; partner_slug?: string };
+        body = (await response.json()) as { user_id?: string; partner_slug?: string; locale?: string };
       } catch {
         return { kind: "anonymous" };
       }
       if (!body.user_id) return { kind: "anonymous" };
-      return { kind: "member", userId: String(body.user_id), partnerSlug: String(body.partner_slug ?? "") };
+      const locale = body.locale === "en" ? "en" : body.locale === "es" ? "es" : undefined;
+      return {
+        kind: "member",
+        userId: String(body.user_id),
+        partnerSlug: String(body.partner_slug ?? ""),
+        ...(locale ? { locale } : {}),
+      };
     },
   };
 }

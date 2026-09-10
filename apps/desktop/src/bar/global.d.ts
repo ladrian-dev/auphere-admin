@@ -18,6 +18,7 @@ type BarState = {
   links: BarLink[];
   lastError?: { code: string };
   encryptionAvailable: boolean;
+  locale?: "es" | "en";
 };
 
 interface Window {

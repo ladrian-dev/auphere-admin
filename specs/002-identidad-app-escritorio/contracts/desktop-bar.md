@@ -68,7 +68,7 @@ cambio de la cookie `nexus-console.session`:
 
 | Respuesta | Significado | Estado de la barra |
 |---|---|---|
-| `200 {user_id, partner_slug}` | persona con pertenencia | arranca si `user_id` tiene credencial guardada; si la tiene otra persona → `pairedByOther`; si nadie → `sin_emparejar` |
+| `200 {user_id, partner_slug, locale}` | persona con pertenencia; la barra adopta `locale` | arranca si `user_id` tiene credencial guardada; si la tiene otra persona → `pairedByOther`; si nadie → `sin_emparejar` |
 | `401` | sin sesión | `sin_sesion`, sin oferta de emparejar |
 | `403 {"code": "no_membership"}` | sesión sin partner | `sin_sesion`, sin oferta de emparejar (R2.4) |
 

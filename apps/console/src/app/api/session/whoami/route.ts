@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
  * «cerrar sesión detiene el puente» (11.1) y «la misma persona vuelve sin
  * código».
  *
- * Tres respuestas y **nada más**: 200 con `user_id` y `partner_slug`; 401 sin
+ * Tres respuestas y **nada más**: 200 con `user_id`, `partner_slug` y el idioma
+ * de la cuenta (para que la barra hable como la consola); 401 sin
  * sesión; 403 `no_membership` con sesión pero sin partner — para que la barra
  * no ofrezca emparejar a quien no puede (2.4). Ni correo, ni rol, ni nombre.
  */
@@ -27,5 +28,9 @@ export async function GET(): Promise<Response> {
   const res = await resolvePrincipal();
   if (res.kind === "anonymous") return json(401, { code: "anonymous" });
   if (res.kind !== "ok") return json(403, { code: "no_membership" });
-  return json(200, { user_id: res.principal.userId, partner_slug: res.principal.partnerSlug });
+  return json(200, {
+    user_id: res.principal.userId,
+    partner_slug: res.principal.partnerSlug,
+    locale: res.principal.locale,
+  });
 }

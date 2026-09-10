@@ -9,14 +9,14 @@ vi.mock("@/lib/principal", () => ({ resolvePrincipal: () => resolvePrincipal() }
 import { GET } from "../whoami/route";
 
 describe("GET /api/session/whoami", () => {
-  it("con sesión y pertenencia: user_id y partner_slug, y nada más", async () => {
+  it("con sesión y pertenencia: user_id, partner_slug y locale, y nada más", async () => {
     resolvePrincipal.mockResolvedValue({
       kind: "ok",
-      principal: { userId: "luis", partnerSlug: "nexus-retail", email: "luis@x.com", role: "owner", name: "Luis" },
+      principal: { userId: "luis", partnerSlug: "nexus-retail", locale: "es", email: "luis@x.com", role: "owner", name: "Luis" },
     });
     const res = await GET();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ user_id: "luis", partner_slug: "nexus-retail" });
+    expect(await res.json()).toEqual({ user_id: "luis", partner_slug: "nexus-retail", locale: "es" });
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
 

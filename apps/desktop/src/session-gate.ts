@@ -18,16 +18,16 @@ import type { CredentialStore, StoredCredential } from "./credential-store.js";
 export type Whoami =
   | { kind: "anonymous" }
   | { kind: "no_membership" }
-  | { kind: "member"; userId: string; partnerSlug: string };
+  | { kind: "member"; userId: string; partnerSlug: string; locale?: "es" | "en" };
 
 export interface WhoamiClient {
   whoami(): Promise<Whoami>;
 }
 
 export type GateDecision =
-  | { kind: "start"; userId: string; credential: StoredCredential }
+  | { kind: "start"; userId: string; credential: StoredCredential; locale?: "es" | "en" }
   | { kind: "stop"; reason: "anonymous" | "no_membership" }
-  | { kind: "pair_needed"; userId: string; pairedByOther: boolean };
+  | { kind: "pair_needed"; userId: string; pairedByOther: boolean; locale?: "es" | "en" };
 
 export interface SessionCookieWatcher {
   onSessionCookieChanged(callback: () => void): void;
@@ -54,9 +54,15 @@ export class SessionGate {
     if (who.kind === "anonymous") return { kind: "stop", reason: "anonymous" };
     if (who.kind === "no_membership") return { kind: "stop", reason: "no_membership" };
     const credential = this.store.get(who.userId);
-    if (credential) return { kind: "start", userId: who.userId, credential };
+    const locale = who.locale;
+    if (credential) return { kind: "start", userId: who.userId, credential, ...(locale ? { locale } : {}) };
     const others = this.store.users().filter((u) => u !== who.userId);
-    return { kind: "pair_needed", userId: who.userId, pairedByOther: others.length > 0 };
+    return {
+      kind: "pair_needed",
+      userId: who.userId,
+      pairedByOther: others.length > 0,
+      ...(locale ? { locale } : {}),
+    };
   }
 
   onDecision(listener: (decision: GateDecision) => void): () => void {

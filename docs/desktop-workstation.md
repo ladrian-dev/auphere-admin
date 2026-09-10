@@ -36,11 +36,12 @@ por correo; no hay registro.
 Quién está dentro lo lee el **proceso principal** con
 `GET /api/session/whoami` del BFF, con la cookie de la partición humana, al
 arrancar y en cada cambio de la cookie `nexus-console.session`
-(`src/session-gate.ts`, `src/electron/adapters.ts`):
+(`src/session-gate.ts`, `src/electron/adapters.ts`). La respuesta trae también el
+idioma de la cuenta, y la barra lo adopta para hablar como la consola:
 
 | `whoami` | La barra | El puente |
 |---|---|---|
-| 200 `{user_id, partner_slug}` con credencial guardada para ese `user_id` | `conectada` | arranca |
+| 200 `{user_id, partner_slug, locale}` con credencial guardada para ese `user_id` | `conectada` (en el idioma de la cuenta) | arranca |
 | 200 sin credencial, nadie más emparejó | `sin_emparejar` | parado |
 | 200 sin credencial, otra persona emparejó | `sin_emparejar` + «emparejada por otra persona» | parado |
 | 401 (sin sesión) · 403 `no_membership` | `sin_sesion`, sin oferta de emparejar | parado |
@@ -81,6 +82,10 @@ device_archived` con motivo; generación vieja fuera de la gracia de 60 s →
 | Declarar directorio | `POST /device/links` | tenant resuelto desde `client_ref` **dentro del partner**; ajeno → `404` con asiento |
 
 La máquina renueva sola cuando le quedan menos de 6 h (`AppRuntime.maybeRenew`).
+
+`/workstation` refresca sus datos con la cadencia del latido mientras la
+pestaña está visible (`components/workstation/presence-refresh.tsx`): la
+presencia se ve sin recargar a mano.
 
 ## De quién es una máquina, y quién la ve
 

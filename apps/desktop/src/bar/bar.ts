@@ -12,7 +12,9 @@
  */
 (() => {
   type Lang = "es" | "en";
-  const lang: Lang = (navigator.language || "es").toLowerCase().startsWith("en") ? "en" : "es";
+  // El idioma de la cuenta manda (llega con el estado); el del sistema es el repliegue.
+  const systemLang: Lang = (navigator.language || "es").toLowerCase().startsWith("en") ? "en" : "es";
+  let lang: Lang = systemLang;
   document.documentElement.lang = lang;
   // El tema sigue la preferencia del sistema: los tokens oscuros viven bajo [data-theme="dark"].
   const dark = window.matchMedia("(prefers-color-scheme: dark)");
@@ -74,6 +76,8 @@
   };
 
   function render(): void {
+    lang = state.locale ?? systemLang;
+    document.documentElement.lang = lang;
     root.replaceChildren();
     root.dataset.status = state.status;
 
