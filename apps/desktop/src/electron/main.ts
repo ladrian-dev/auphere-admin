@@ -266,7 +266,8 @@ export async function bootstrap(): Promise<void> {
     appView.webContents.on("console-message", (event) => logs.push(`${event.level}: ${event.message}`.slice(0, 300)));
     appView.webContents.on("did-fail-load", (_e, code, desc) => logs.push(`did-fail-load ${code} ${desc}`));
     appView.webContents.on("preload-error", (_e, path, error) => logs.push(`preload-error ${path} ${String(error)}`));
-    const walk = process.env.AUPHERE_EVIDENCE_WALK === "us4" ? captureUs4 : captureEvidence;
+    const walks: Record<string, typeof captureEvidence> = { us4: captureUs4, us5: captureUs5 };
+    const walk = walks[process.env.AUPHERE_EVIDENCE_WALK ?? ""] ?? captureEvidence;
     setTimeout(() => void walk(evidenceDir, appView, consoleView, surface, logs), 6000);
   }
 
@@ -401,5 +402,39 @@ async function captureUs4(
   writeFileSync(
     join(dir, "app.json"),
     JSON.stringify({ surface, consoleUrl: consoleView.webContents.getURL(), steps, logs }, null, 2),
+  );
+}
+
+/**
+ * El recorrido de la US5 (`AUPHERE_EVIDENCE_WALK=us5`): abrir Cuenta y leer lo
+ * que dice. **No escribe nada**: es una pantalla de lectura, y una evidencia
+ * que tocara el consumo del mes para poder enseñarlo sería peor que ninguna.
+ */
+async function captureUs5(
+  dir: string,
+  appView: WebContentsView,
+  consoleView: WebContentsView,
+  surface: Surface,
+  logs: string[] = [],
+): Promise<void> {
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  mkdirSync(dir, { recursive: true });
+  const js = (code: string) => appView.webContents.executeJavaScript(code).catch((e: unknown) => String(e));
+  await js(
+    'Array.from(document.querySelectorAll("nav button")).find((b) => /Cuenta|Account/.test(b.textContent || ""))?.click(), true',
+  );
+  await new Promise((r) => setTimeout(r, 2500));
+  const text = (await js("document.body.innerText")) as string;
+  const meter = await js(
+    '(() => { const m = document.querySelector("meter"); return m ? { now: m.getAttribute("aria-valuenow"), max: m.getAttribute("aria-valuemax") } : null; })()',
+  );
+  writeFileSync(join(dir, "account.png"), (await appView.webContents.capturePage()).toPNG());
+  writeFileSync(
+    join(dir, "app.json"),
+    JSON.stringify(
+      { surface, consoleUrl: consoleView.webContents.getURL(), text, meter, logs },
+      null,
+      2,
+    ),
   );
 }

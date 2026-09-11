@@ -38,6 +38,7 @@ export const APP_INVOKE_CHANNELS: readonly InvokeChannel[] = [
   { name: "app:policy.prefs", input: "none" },
   { name: "app:policy.setPref", input: "pref" },
   { name: "app:usage", input: "none" },
+  { name: "app:team", input: "none" },
   { name: "app:env.forThread", input: "thread_id" },
   { name: "app:openConsole", input: "open_console" },
   { name: "app:notifications.prefs", input: "notif_prefs" },

@@ -3,7 +3,6 @@
  * (`app-ipc.ts`). El renderer no sabe de red: pregunta y recibe.
  */
 import type {
-  CompanionBudget,
   CompanionEvents,
   CompanionResumed,
   CompanionRunStarted,
@@ -56,6 +55,36 @@ export type TeammateChange = {
   by: string | null;
   at: string;
 };
+
+/** El consumo del mes (R8.1): el medidor del partner y el reparto por teammate. */
+export type Budget = {
+  used: number;
+  cap: number;
+  remaining: number;
+  percent: number;
+  exhausted: boolean;
+  period: string;
+  resets_at: string;
+};
+export type UsageRow = {
+  teammate_id: string;
+  name: string;
+  input_tokens: number;
+  output_tokens: number;
+  runs: number;
+};
+export type Usage = { budget: Budget; by_teammate: UsageRow[] };
+
+/** El equipo, solo para leerlo: administrar es de la consola (R8.2). */
+export type TeamMember = {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: string;
+  status: string;
+  is_you: boolean;
+};
+export type Team = { members: TeamMember[] };
 
 export type Level = "critico" | "aviso" | "informativo";
 export type InboxItem = {
@@ -122,7 +151,8 @@ export interface AuphereBridge {
   notificationsPrefs(input?: { silence_aviso?: boolean }): Promise<{ silenceAviso: boolean }>;
   policyPrefs(): Promise<Result<LocalExecPolicy>>;
   policySetPref(input: { executable: string | null; mode: ExecMode }): Promise<Result<LocalExecPolicy>>;
-  usage(): Promise<Result<{ budget: CompanionBudget; by_teammate: unknown[] }>>;
+  usage(): Promise<Result<Usage>>;
+  team(): Promise<Result<Team>>;
   openConsole(input: { path: string }): Promise<null>;
   on<K extends keyof Push>(channel: K, callback: (payload: Push[K]) => void): () => void;
 }

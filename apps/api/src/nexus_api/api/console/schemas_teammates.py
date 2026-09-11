@@ -14,6 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .schemas_companion import CompanionBudgetOut
+
 #: Lo que la persona tiene con un teammate, derivado de su último run.
 MY_STATES: tuple[str, ...] = ("en_marcha", "esperandote", "en_pausa_por_tope", "en_espera")
 
@@ -131,3 +133,30 @@ class TeammateChangeOut(BaseModel):
     #: Quién lo cambió, con el nombre que tenía entonces; ``null`` si no consta.
     by: str | None
     at: datetime
+
+
+# ── el consumo de Cuenta (spec 003, US5) ───────────────────────────────
+
+
+class TeammateUsageRowOut(BaseModel):
+    """Lo que el equipo entero gastó con un teammate este mes.
+
+    En **tokens**, que es la unidad del medidor y del tope (C9). No hay
+    importe: ``companion.runs`` no guarda con qué modelo corrió cada turno, así
+    que un número en dólares sería una estimación con el precio de hoy — y un
+    número inventado en una pantalla de consumo es peor que no darlo.
+    """
+
+    teammate_id: uuid.UUID
+    name: str
+    input_tokens: int
+    output_tokens: int
+    runs: int
+
+
+class TeammatesUsageOut(BaseModel):
+    """``budget`` es **el mismo objeto** que ``/console/companion/budget``
+    (R9.1): un medidor, no dos que se parezcan."""
+
+    budget: CompanionBudgetOut
+    by_teammate: list[TeammateUsageRowOut]

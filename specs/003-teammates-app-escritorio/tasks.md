@@ -493,19 +493,22 @@ teammate, y la pausa por tope se pinta como estado.
 
 ### Tests de la US5 ⚠️
 
-- [ ] T075 [P] [US5] `apps/api/tests/integration/test_teammates_usage.py`: `by_teammate`
+- [x] T075 [P] [US5] `apps/api/tests/integration/test_teammates_usage.py`: `by_teammate`
       agrega `runs` del mes por `teammate_id`; `budget` idéntico a `/companion/budget`. _Requisitos: 8.1, 9.1_
-- [ ] T076 [P] [US5] `apps/desktop/tests/account-usage.test.tsx`: Cuenta pinta el mismo número;
+      **HECHO (rojo → verde).** `test_teammates_usage.py`, 7 tests: el `budget` es **el mismo objeto** que `/console/companion/budget` (comparado entero, no de palabra); lo que gastó un teammate incluye lo que gastó con él **cualquier persona del equipo** —el roster es del partner—; el desglose más lo del Companion de la consola **cuadra** con el medidor; un teammate sin gasto no aparece; el mes pasado no cuenta; lo de otro partner no está; y sin `teammates:use` no hay consumo. **Cambio sobre el contrato:** la fila no lleva `cost_usd`. `companion.runs` no guarda con qué modelo corrió el turno, así que el importe sería una estimación con el precio de hoy, y el medidor y el tope son en tokens (C9); a cambio la fila lleva `name` y `runs`, que es lo que la pantalla necesitaba.
+- [x] T076 [P] [US5] `apps/desktop/tests/account-usage.test.tsx`: Cuenta pinta el mismo número;
       con `exhausted` el hilo pasa a `en_pausa_por_tope` y el copy dice dónde se sube. _Requisitos: 8.1, 9.3_
-
+      **HECHO (rojo → verde).** `account-usage.test.tsx`, 14 tests: el medidor pinta el número de la plataforma (con `role="meter"` y sus tres valores); el reparto por teammate; **lo que no es de ningún teammate se explica** en vez de dejar dos cifras que no suman; el vacío dice cuándo aparecerá algo; el tope alcanzado es un `status` que dice «en pausa», «los hilos siguen» y dónde se sube —y **no** un `alert`—; el equipo se lee y no hay un solo control apagado; si el equipo no se pudo leer, el resto de Cuenta sigue en pie; el techo acotando se dice con su sitio; y las dos puertas abren la consola.
 ### Implementación de la US5
 
-- [ ] T077 [US5] `GET /console/teammates/usage` en `api/console/teammates.py` (D14). _Requisitos: 8.1, 9.1_
-- [ ] T078 [P] [US5] Proxy BFF `api/teammates/usage/route.ts`. _Requisitos: 12.3_
-- [ ] T079 [US5] Renderer `routes/account.tsx`: uso del mes y por teammate, equipo con roles
+- [x] T077 [US5] `GET /console/teammates/usage` en `api/console/teammates.py` (D14). _Requisitos: 8.1, 9.1_
+      **HECHO.** `GET /console/teammates/usage`. El `budget` sale de la **misma función** que el de la consola: se extrajo `sum_partner_companion_tokens` de `partner_companion_tokens_used` —que abría transacción propia y aquí ya hay una— para que haya **una sola implementación**; dos que se parecieran empezarían iguales y acabarían discrepando en un redondeo. El reparto recorre membresía a membresía reapuntando `app.principal_id`, como el medidor: saltarse la RLS para «verlo todo» es justo lo que la garantía impide.
+- [x] T078 [P] [US5] Proxy BFF `api/teammates/usage/route.ts`. _Requisitos: 12.3_
+      **HECHO.** `api/teammates/usage/route.ts` y, para R8.2, `api/team/route.ts` (con `team:read`, que tienen los cinco roles). Lane `teammatesUsage`.
+- [x] T079 [US5] Renderer `routes/account.tsx`: uso del mes y por teammate, equipo con roles
       (solo lectura, los cinco del código), «Abrir la consola», «Cerrar sesión» (el de 002);
       handler `app:usage`; `budget.paused` → estado del hilo. _Requisitos: 8.1, 8.2, 8.3, 9.3_
-
+      **HECHO y verificado con display** (`evidence/US5/`): Cuenta como tercera pestaña, con el uso del mes, el equipo con roles, la política efectiva y las dos puertas. Canal `app:team` nuevo en el contrato de IPC; `app:usage` **deja de ser un hueco** —contestaba el presupuesto con `by_teammate: []` desde la US1— y pregunta por la ruta real. El `<meter>` nativo se cambió por un `role="meter"` con los tokens: el nativo se pintaba como una barra blanca de otro sistema.
 ---
 
 ## Phase 8: Polish & Cross-Cutting Concerns

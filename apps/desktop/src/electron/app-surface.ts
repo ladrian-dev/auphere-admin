@@ -143,10 +143,11 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
       body: { executable: input.executable, mode: input.mode },
     }),
   );
-  handle("app:usage", async () => {
-    const budget = await o.platform.request("/api/companion/budget");
-    return budget.ok ? { ok: true, data: { budget: budget.data, by_teammate: [] } } : budget;
-  });
+  // El consumo del mes con su reparto. Hasta la US5 esto contestaba el
+  // presupuesto del Companion con `by_teammate: []` — un hueco honesto mientras
+  // la ruta no existía; ahora existe y se pregunta por ella.
+  handle("app:usage", () => o.platform.request("/api/teammates/usage"));
+  handle("app:team", () => o.platform.request("/api/team"));
 
   handle("app:stream.open", (input: { run_id: string; since_seq: number }) => ({
     stream_id: o.streams.start(`/api/companion/runs/${q(input.run_id)}/stream?since_seq=${input.since_seq}`),

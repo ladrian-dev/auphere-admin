@@ -31,7 +31,8 @@ que ninguna salida contiene claves `session`, `cookie`, `token`, `credential`,
 | `app:tasks.cancel` | `{task_id}` | `void` | |
 | `app:policy.prefs` | — | `{ceiling, global, per_executable[]}` | |
 | `app:policy.setPref` | `{executable|null, mode}` | `{effective, capped}` | |
-| `app:usage` | — | `{budget, by_teammate[]}` | |
+| `app:usage` | — | `{budget, by_teammate[]}` | GET `/api/teammates/usage` — `budget` es el mismo objeto que el medidor de la consola |
+| `app:team` | — | `{members[]}` | GET `/api/team` — solo lectura: administrar el equipo es de la consola |
 | `app:env.forThread` | `{thread_id}` | `{machine, presence, workdir, client_ref, files[]}` | de `runtime.links` y presencia (002) — solo metadatos |
 | `app:openConsole` | `{path}` | `void` | muestra la vista de la consola en esa ruta |
 | `app:notifications.prefs` | `{silence_aviso?}` | `{silence_aviso}` | `userData`, no plataforma |

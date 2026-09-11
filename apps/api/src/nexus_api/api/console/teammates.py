@@ -27,7 +27,7 @@ from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.core.partner_allowlist import read_allowlist
 from nexus_api.core.partner_context import apply_partner_to_session, partner_context
-from nexus_api.db.models import JOB_SEED, AuditLog, Teammate
+from nexus_api.db.models import JOB_SEED, AuditLog, PartnerMembership, Teammate
 from nexus_api.db.models.companion import (
     RUN_PAUSED,
     RUN_RUNNING,
@@ -57,6 +57,8 @@ from .schemas_teammates import (
     TeammateOut,
     TeammatePatchIn,
     TeammateRefOut,
+    TeammatesUsageOut,
+    TeammateUsageRowOut,
 )
 from .schemas_workstation import (
     LocalExecPolicyOut,
@@ -351,6 +353,95 @@ async def archive_teammate(
     await TeammateTaskRepository(scope.session).cancel_for_teammate(teammate_id)
     await repo.archive(teammate)
     _audit(scope, "teammate.archived", teammate)
+
+
+# ── el consumo (Requisitos 8.1 y 9.1) ──────────────────────────────────
+
+
+@router.get("/usage", response_model=TeammatesUsageOut)
+async def usage(
+    scope: TeammatesScope = Depends(teammates_scope("teammates:use")),
+) -> TeammatesUsageOut:
+    """El consumo del mes: el medidor del partner y el reparto por teammate.
+
+    ``budget`` se calcula con **la misma función** que ``/console/companion/budget``
+    —no con una copia parecida— porque R9.1 dice un medidor y dos implementaciones
+    empiezan iguales y acaban discrepando en un redondeo.
+
+    El reparto suma los runs de **todas** las personas del partner, como el
+    medidor: el roster es del partner, así que «lo que gastó Sofía» es lo que
+    gastó el equipo con Sofía. La RLS de ``companion.runs`` cuelga de la persona,
+    de modo que se recorre membresía a membresía reapuntando ``app.principal_id``
+    dentro de la misma transacción; no hay atajo que valga aquí, porque saltarse
+    la RLS para «ver todo» es exactamente lo que la garantía impide.
+    """
+    from nexus_api.api.console.companion import budget_out, sum_partner_companion_tokens
+
+    # ``month_window`` vive en el playground, que fue quien primero necesitó un
+    # mes natural; el Companion lo importa de allí. Se toma de su casa y no de
+    # rebote, que es lo que mypy pide con razón: un re-export implícito se
+    # rompe el día que el intermediario deja de usarlo.
+    from nexus_api.api.console.playground import month_window
+    from nexus_api.core.principal_context import apply_principal_to_session
+
+    partner = scope.principal.partner
+    window = month_window()
+
+    names = {
+        row.id: row.name
+        for row in await TeammateRepository(scope.session).list_active(include_archived=True)
+    }
+    members = list(
+        (
+            await scope.session.execute(
+                sa.select(PartnerMembership.user_id).where(
+                    PartnerMembership.partner_id == partner.id
+                )
+            )
+        ).scalars()
+    )
+    totals: dict[uuid.UUID, list[int]] = {}
+    stmt = (
+        sa.select(
+            CompanionRun.teammate_id,
+            sa.func.coalesce(sa.func.sum(sa.func.coalesce(CompanionRun.input_tokens, 0)), 0),
+            sa.func.coalesce(sa.func.sum(sa.func.coalesce(CompanionRun.output_tokens, 0)), 0),
+            sa.func.count(),
+        )
+        .where(
+            CompanionRun.teammate_id.is_not(None),
+            CompanionRun.started_at >= window.start,
+            CompanionRun.started_at < window.next_start,
+        )
+        .group_by(CompanionRun.teammate_id)
+    )
+    for user_id in members:
+        await apply_principal_to_session(scope.session, user_id)
+        for teammate_id, tokens_in, tokens_out, runs in (await scope.session.execute(stmt)).all():
+            row = totals.setdefault(teammate_id, [0, 0, 0])
+            row[0] += int(tokens_in or 0)
+            row[1] += int(tokens_out or 0)
+            row[2] += int(runs or 0)
+    # La transacción se deja como estaba: los dos GUC de esta petición.
+    await apply_partner_to_session(scope.session, partner.id, principal_id=scope.principal.user_id)
+
+    used = await sum_partner_companion_tokens(scope.session, partner.id, window)
+    return TeammatesUsageOut(
+        budget=budget_out(used, partner.companion_monthly_token_cap, window),
+        by_teammate=[
+            TeammateUsageRowOut(
+                teammate_id=teammate_id,
+                # Un teammate archivado sigue habiendo gastado: se le nombra.
+                name=names.get(teammate_id, "—"),
+                input_tokens=tokens_in,
+                output_tokens=tokens_out,
+                runs=runs,
+            )
+            for teammate_id, (tokens_in, tokens_out, runs) in sorted(
+                totals.items(), key=lambda item: -(item[1][0] + item[1][1])
+            )
+        ],
+    )
 
 
 # ── la tarea (Requisitos 3.2 y 6) ──────────────────────────────────────

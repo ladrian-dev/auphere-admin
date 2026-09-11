@@ -99,6 +99,28 @@ export type InboxItemOut = {
   can_decide: boolean;
 };
 
+/** El consumo de Cuenta (R8.1). En tokens, la unidad del medidor y del tope. */
+export type TeammateUsageRow = {
+  teammate_id: string;
+  name: string;
+  input_tokens: number;
+  output_tokens: number;
+  runs: number;
+};
+export type TeammatesUsage = {
+  /** El **mismo** objeto que `/console/companion/budget` (R9.1). */
+  budget: {
+    used: number;
+    cap: number;
+    remaining: number;
+    percent: number;
+    exhausted: boolean;
+    period: string;
+    resets_at: string;
+  };
+  by_teammate: TeammateUsageRow[];
+};
+
 export type LocalExecCeiling = { ceiling: ExecMode; updated_by: string | null };
 export type ExecMode = "ask" | "always" | "never";
 
@@ -131,6 +153,7 @@ export function teammatesApi(call: Call) {
       call<TeammateOut>(`${base}/${enc(id)}`, { method: "PATCH", body }),
     archiveTeammate: (id: string) => call<void>(`${base}/${enc(id)}`, { method: "DELETE" }),
     teammateChanges: (id: string) => call<TeammateChangeOut[]>(`${base}/${enc(id)}/changes`),
+    teammatesUsage: () => call<TeammatesUsage>(`${base}/usage`),
     teammateInbox: () => call<InboxItemOut[]>(`${base}/inbox`),
     teammateTasks: (state?: string) =>
       call<TaskOut[]>(`${base}/tasks${state ? `?state=${enc(state)}` : ""}`),

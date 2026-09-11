@@ -289,36 +289,48 @@ async def partner_companion_tokens_used(
     plataforma), luego se baja el rol y se reapunta ``app.principal_id``
     dentro de la misma transacción. Un miembro expulsado deja de contar —
     aceptable para un tope mensual blando, igual que en el playground.
+
+    Abre transacción propia; quien ya esté dentro de una —``/console/teammates/usage``,
+    que comparte el mismo medidor (R9.1)— llama a :func:`sum_partner_companion_tokens`.
     """
     async with session.begin():
-        member_ids = list(
-            (
-                await session.execute(
-                    sa.select(PartnerMembership.user_id).where(
-                        PartnerMembership.partner_id == partner_id
-                    )
+        return await sum_partner_companion_tokens(session, partner_id, window)
+
+
+async def sum_partner_companion_tokens(
+    session: AsyncSession, partner_id: uuid.UUID, window: MonthWindow
+) -> int:
+    """La suma, sin abrir transacción. **Una sola implementación**: dos que se
+    parecieran empezarían iguales y acabarían discrepando en un redondeo, y
+    entonces Cuenta y la consola dirían números distintos del mismo gasto."""
+    member_ids = list(
+        (
+            await session.execute(
+                sa.select(PartnerMembership.user_id).where(
+                    PartnerMembership.partner_id == partner_id
                 )
-            ).scalars()
-        )
-        if not member_ids:
-            return 0
-        stmt = sa.select(
-            sa.func.coalesce(
-                sa.func.sum(
-                    sa.func.coalesce(CompanionRun.input_tokens, 0)
-                    + sa.func.coalesce(CompanionRun.output_tokens, 0)
-                ),
-                0,
             )
-        ).where(
-            CompanionRun.started_at >= window.start,
-            CompanionRun.started_at < window.next_start,
+        ).scalars()
+    )
+    if not member_ids:
+        return 0
+    stmt = sa.select(
+        sa.func.coalesce(
+            sa.func.sum(
+                sa.func.coalesce(CompanionRun.input_tokens, 0)
+                + sa.func.coalesce(CompanionRun.output_tokens, 0)
+            ),
+            0,
         )
-        total = 0
-        for user_id in member_ids:
-            await apply_principal_to_session(session, user_id)
-            total += int(await session.scalar(stmt) or 0)
-        return total
+    ).where(
+        CompanionRun.started_at >= window.start,
+        CompanionRun.started_at < window.next_start,
+    )
+    total = 0
+    for user_id in member_ids:
+        await apply_principal_to_session(session, user_id)
+        total += int(await session.scalar(stmt) or 0)
+    return total
 
 
 def budget_out(used: int, cap: int, window: MonthWindow) -> CompanionBudgetOut:

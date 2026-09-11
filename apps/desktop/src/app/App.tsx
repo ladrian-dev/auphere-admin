@@ -11,8 +11,19 @@ import { CompanionLocaleProvider } from "@nexus/companion-ui";
 import { Button } from "@nexus/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { type InboxItem, type Jobs, type PresencePush, type SessionPush, type Teammate, bridge } from "./bridge";
+import {
+  type InboxItem,
+  type Jobs,
+  type LocalExecPolicy,
+  type PresencePush,
+  type SessionPush,
+  type Team,
+  type Teammate,
+  type Usage,
+  bridge,
+} from "./bridge";
 import { type Lang, LangProvider, systemLang, useAppT } from "./i18n";
+import { Account } from "./routes/account";
 import { EnvPanel } from "./routes/env";
 import { Inbox } from "./routes/inbox";
 import { NewTeammateForm } from "./routes/new-teammate";
@@ -24,7 +35,15 @@ type RosterStatus = "loading" | "ready" | "error" | "forbidden";
 /** Qué ocupa la columna del medio. «new» y «settings» son pantallas, no diálogos:
  *  crear un teammate es una decisión con cuatro campos, y un modal encima del
  *  hilo escondería lo que la persona estaba leyendo. */
-type View = "team" | "pending" | "new" | "settings";
+type View = "team" | "pending" | "new" | "settings" | "account";
+
+/** Las tres pestañas de la izquierda. «Cuenta» es lectura: lo que se administra
+ *  vive en la consola, y la pantalla lo dice en vez de pintar controles muertos. */
+const TABS = [
+  { key: "team", label: "nav.team" },
+  { key: "pending", label: "nav.pending" },
+  { key: "account", label: "nav.account" },
+] as const;
 
 export function App() {
   const [lang, setLang] = useState<Lang>(systemLang);
@@ -94,6 +113,10 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
   const [view, setView] = useState<View>("team");
   const [jobs, setJobs] = useState<Jobs | null>(null);
   const [jobsStatus, setJobsStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [team, setTeam] = useState<Team | null>(null);
+  const [policy, setPolicy] = useState<LocalExecPolicy | null>(null);
+  const [accountStatus, setAccountStatus] = useState<"loading" | "ready" | "error">("loading");
   const [pending, setPending] = useState<InboxItem[]>([]);
   const [focus, setFocus] = useState<string | null>(null);
 
@@ -145,6 +168,29 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
     if (view === "new" || view === "settings") void loadJobs();
   }, [view, loadJobs]);
 
+  const loadAccount = useCallback(async () => {
+    setAccountStatus("loading");
+    const [consumed, members, prefs] = await Promise.all([
+      bridge.usage(),
+      bridge.team(),
+      bridge.policyPrefs(),
+    ]);
+    if (!consumed.ok) {
+      setAccountStatus("error");
+      return;
+    }
+    setUsage(consumed.data);
+    // El equipo y la política se piden a la vez, pero ninguno de los dos tumba
+    // la pantalla: lo que no se pudo leer se dice, y el resto sigue siendo cierto.
+    setTeam(members.ok ? members.data : null);
+    setPolicy(prefs.ok ? prefs.data : null);
+    setAccountStatus("ready");
+  }, []);
+
+  useEffect(() => {
+    if (view === "account") void loadAccount();
+  }, [view, loadAccount]);
+
   const current = useMemo(() => roster.find((r) => r.id === selected) ?? null, [roster, selected]);
   const waiting = pending.length;
 
@@ -169,16 +215,16 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
     <main className="grid min-h-screen grid-cols-[minmax(220px,280px)_minmax(0,1fr)_minmax(220px,300px)] bg-background text-foreground">
       <div className="flex min-w-0 flex-col">
         <nav className="flex gap-1 border-b border-border p-2" aria-label={t("app.title")}>
-          {(["team", "pending"] as const).map((tab) => (
+          {TABS.map((tab) => (
             <button
-              key={tab}
+              key={tab.key}
               type="button"
-              aria-pressed={view === tab}
-              onClick={() => setView(tab)}
+              aria-pressed={view === tab.key}
+              onClick={() => setView(tab.key)}
               className="min-h-8 flex-1 rounded-md px-3 text-sm transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[pressed=true]:bg-muted aria-[pressed=true]:font-medium"
             >
-              {t(tab === "team" ? "nav.team" : "nav.pending")}
-              {tab === "pending" && waiting > 0 ? (
+              {t(tab.label)}
+              {tab.key === "pending" && waiting > 0 ? (
                 <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{waiting}</span>
               ) : null}
             </button>
@@ -202,7 +248,16 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
             {t("session.pair")}
           </p>
         ) : null}
-        {view === "pending" ? (
+        {view === "account" ? (
+          <Account
+            status={accountStatus}
+            usage={usage}
+            team={team}
+            policy={policy}
+            onRetry={() => void loadAccount()}
+            onOpenConsole={(path) => void bridge.openConsole({ path })}
+          />
+        ) : view === "pending" ? (
           <Inbox
             focus={focus}
             onOpenThread={(teammateId) => {

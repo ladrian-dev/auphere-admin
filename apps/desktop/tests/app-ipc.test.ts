@@ -16,7 +16,7 @@ const CONTRACT = [
   "app:thread.open", "app:thread.runs", "app:run.events", "app:thread.send", "app:thread.cancel",
   "app:stream.open", "app:stream.close",
   "app:inbox.list", "app:inbox.decide", "app:tasks.list", "app:tasks.cancel",
-  "app:policy.prefs", "app:policy.setPref", "app:usage", "app:env.forThread",
+  "app:policy.prefs", "app:policy.setPref", "app:usage", "app:team", "app:env.forThread",
   "app:openConsole", "app:notifications.prefs",
 ];
 const PUSH = ["app:event", "app:inbox", "app:inbox.focus", "app:stream.end", "app:inbox.changed", "app:task.state", "app:session", "app:presence"];
