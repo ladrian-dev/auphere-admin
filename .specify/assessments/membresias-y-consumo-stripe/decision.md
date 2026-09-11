@@ -60,34 +60,52 @@ improvisa al final de otra tarea.
    Si el turno real es la mitad, los planes dan el doble de trabajo del que
    prometen; si es el doble, el plan de 20 $ da 25 turnos a la semana y no se
    puede vender.
-3. **Decidir las siete de `concept.md`** (D1-D7) con Luis, y escribir el **ADR
-   que enmienda ADR-022**. ADR-022 está aprobado y dice explícitamente *«no
-   vendemos por uso»*; el principio IX no permite contradecirla en silencio.
+3. ~~**Decidir las siete de `concept.md`** (D1-D7) con Luis, y escribir el **ADR
+   que enmienda ADR-022**.~~ **Hecho el 2026-09-11**:
+   [[nexus/decisions/ADR-037-membresias-y-consumo-de-la-app]], con banner de
+   enmienda en ADR-007 y ADR-022 y el índice de decisiones al día.
 4. **Hablar con un asesor fiscal** antes de escribir la Spec B. Es lo único de
    toda la lista que no depende de nosotros y que puede cambiar el producto.
+   **No bloquea la Spec A.**
 5. `/speckit-specify` para la Spec A.
 
-## Preguntas para `/speckit-clarify`
+> **Estado el 2026-09-11**: hechos el 3 y arrancando el 5. El 1 entra dentro de
+> la Spec A (es código y necesita spec detrás, regla nº1). El 2 está aparcado
+> como tarea de fondo y **solo bloquea las cifras de la Spec B**.
 
-1. **«Máximo 3 membresías»**: ¿significa *tres niveles en el catálogo* (así se
-   ha leído en toda la evaluación) o *un partner puede tener hasta tres
-   suscripciones a la vez*? Cambia la tabla de planes entera.
-2. **El ancla de la semana**: ¿el día de alta del partner, como propone D1 y
-   como hace Anthropic, o un lunes global porque es más fácil de explicar?
-3. **El peso por modelo** (D3): ¿entra en la primera spec, o se arranca con pool
-   plano y la lista de modelos por plan (mecanismo ya construido) como única
-   contención? Con pool plano, el plan Estudio a fondo en Sol es deficitario.
-4. **Los precios de la tabla**: 20 / 60 / 150 $ y 0,5 / 2 / 6 M semanales. ¿Se
-   fijan, o se fijan **después** de medir el turno real (punto 2 del orden)?
-5. **El crédito al cerrar la cuenta**: el saldo comprado no caduca — ¿qué pasa
+## Decidido con Luis el 2026-09-11
+
+Cuatro de las ocho preguntas quedaron cerradas antes de escribir el ADR, porque
+las cuatro cambiaban lo que había que escribir.
+
+| # | Pregunta | Decisión |
+|---|---|---|
+| 1 | ¿«Máximo 3 membresías» son niveles o suscripciones? | **Tres niveles de catálogo.** Un partner tiene una membresía y sube o baja de nivel; no se acumulan |
+| 2 | ¿Precios fijos o provisionales? | **Provisionales.** El ADR fija la estructura —tres niveles, pool semanal, caída a créditos, 65 % de margen objetivo, ningún plan deficitario a fondo— y las cifras se cierran tras medir el turno real |
+| 3 | ¿Qué ve un partner sin membresía? | **Un pool mínimo gratuito que solo gasta el Companion de la consola.** No es un cuarto plan: es lo que trae toda cuenta, y reutiliza el `companion_monthly_token_cap` de hoy como suelo |
+| 4 | ¿El peso por modelo en la primera spec? | **Sí**, dentro de `quota_tokens()`. Verificado: con el peso, agotar el pool cuesta lo mismo con cualquier cerebro; sin él, Estudio a fondo en Sol cuesta 166,90 $ contra 150 $ de precio |
+| 5 | ¿Dónde ancla la semana? | **En el día de alta del partner**, no en un lunes global. Reparte la renovación en vez de concentrarla en un tick, y un alta en viernes tiene una primera semana entera. `renew_included_if_expired` no se toca: ya dispara por caducidad |
+
+La 3 la abrió la propia respuesta de Luis: si el Companion está incluido en la
+membresía **y** la membresía es de la aplicación de escritorio, había que decir
+qué pasa con el partner de agencia que opera clientes finales desde la consola y
+no ha comprado la app. Hoy tiene el Companion encendido; atarlo a una membresía
+de escritorio se lo quitaría.
+
+## Preguntas que quedan para `/speckit-clarify`
+
+Las cuatro son de la **Spec B** (la membresía y el cobro). La Spec A no depende
+de ninguna.
+
+1. **El crédito al cerrar la cuenta**: el saldo comprado no caduca — ¿qué pasa
    con él cuando un partner se va? ¿Se devuelve, se pierde, o se conserva N
    meses?
-6. **El documento fiscal**: ¿la factura de Stripe sustituye al recibo mensual, o
+2. **El documento fiscal**: ¿la factura de Stripe sustituye al recibo mensual, o
    el recibo se queda como detalle de consumo anexo? Hoy el recibo dice «Total a
    pagar» y vence el día 5, y eso deja de ser cierto en cuanto Stripe cobre.
-7. **`partners.max_clients`**: el concepto lo deja **independiente del plan**.
+3. **`partners.max_clients`**: el concepto lo deja **independiente del plan**.
    ¿Se confirma, o el plan también sube el número de clientes finales?
-8. **Moneda**: ¿solo USD en la primera versión, o CLP desde el principio? El
+4. **Moneda**: ¿solo USD en la primera versión, o CLP desde el principio? El
    recibo ya sabe convertir; Stripe fija la moneda del cliente en la primera
    factura y cambiarla exige crear un `Customer` nuevo (ADR-022 §7).
 

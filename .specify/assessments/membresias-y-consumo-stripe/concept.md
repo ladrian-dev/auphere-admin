@@ -33,27 +33,56 @@ Esto cierra, por decisión de producto, la deuda **D5** del plan de pendientes:
 
 ## Las membresías
 
-Tres niveles. El pool va en **tokens de cuota equivalentes a Terra** (D3
-explica por qué «equivalentes»).
+**Tres niveles de catálogo, y un suelo que no es un nivel.** Un partner tiene
+**una** membresía y sube o baja de nivel; no se acumulan. El pool va en **tokens
+de cuota equivalentes a Terra** (D3 explica por qué «equivalentes»).
 
-| | **Base** | **Equipo** | **Estudio** |
-|---|---:|---:|---:|
-| Precio | **20 $/mes** | **60 $/mes** | **150 $/mes** |
-| Pool semanal | 500 000 | 2 000 000 | 6 000 000 |
-| Pool al mes (×4,33) | 2,17 M | 8,66 M | 26,0 M |
-| Turnos de trabajo/semana ≈ | ~50 | ~200 | ~600 |
-| Teammates | 2 | 6 | 12 |
-| Personas colaborando | 1 | 3 | 8 |
-| Ejecución en la máquina | **sí** | **sí** | **sí** |
-| Techo de ejecución configurable | no (defecto de plataforma) | sí, por persona | sí, por persona |
-| Cerebros disponibles | Luna · Terra | + **Sol** | + Sol |
-| **Coste a fondo** | 7,62 $ | 30,48 $ | 91,45 $ |
-| **Margen bruto de modelo a fondo** | **62 %** | **49 %** | **39 %** |
+> **Las cifras de esta tabla son provisionales**, y lo son a propósito. Salen de
+> un turno de referencia **supuesto** de 9 900 tokens de cuota. Lo que queda
+> fijado es la **estructura** —tres niveles, pool semanal, caída a créditos,
+> 65 % de margen objetivo sobre el crédito y ningún plan deficitario a fondo—;
+> los números se cierran después de medir el turno real contra
+> `companion.runs`. Si el turno real es el doble, el plan de 20 $ da 25 turnos a
+> la semana y no se puede vender.
+
+| | Consola (sin membresía) | **Base** | **Equipo** | **Estudio** |
+|---|---:|---:|---:|---:|
+| Precio | **0 $** | **20 $/mes** | **60 $/mes** | **150 $/mes** |
+| Pool semanal | 100 000 | 500 000 | 2 000 000 | 6 000 000 |
+| Pool al mes (×4,33) | 0,43 M | 2,17 M | 8,66 M | 26,0 M |
+| Turnos de trabajo/semana ≈ | — | ~50 | ~200 | ~600 |
+| Companion de la consola | **sí** | sí | sí | sí |
+| Teammates | **0** | 2 | 6 | 12 |
+| Personas colaborando | 1 | 1 | 3 | 8 |
+| Ejecución en la máquina | no | **sí** | **sí** | **sí** |
+| Techo de ejecución configurable | — | no (defecto de plataforma) | sí, por persona | sí, por persona |
+| Cerebros disponibles | Luna | Luna · Terra | + **Sol** | + Sol |
+| **Coste a fondo** | 1,52 $ | 7,62 $ | 30,48 $ | 91,45 $ |
+| **Margen bruto de modelo a fondo** | — | **62 %** | **49 %** | **39 %** |
 
 «Turno de trabajo» = el turno de referencia del §4.1 de
 [`research.md`](./research.md): 30 K de prompt con 80 % de acierto de caché y
-1,5 K de salida ≈ **9 900 tokens de cuota**. Es un supuesto declarado, no una
-medida; se contrasta contra `companion.runs` antes de fijar los números.
+1,5 K de salida ≈ **9 900 tokens de cuota**.
+
+### El suelo de la consola no es un cuarto plan
+
+Es lo que trae **toda cuenta de partner**, tenga membresía o no, y existe por una
+razón estructural: **el Companion vive en la consola, no en la aplicación.** Un
+partner de agencia que opera clientes finales y no ha comprado la app tiene hoy
+el Companion encendido; atarlo a una membresía de escritorio se lo quitaría.
+
+- El pool del suelo **solo lo gasta el Companion de la consola**. No da
+  teammates, no da ejecución en la máquina, y solo ofrece el cerebro barato.
+- **No se suma al plan: lo reemplaza.** El pool semanal es el del plan vigente;
+  sin plan, el del suelo. Sumar obligaría a explicar dos bolsas dentro del mismo
+  bolsillo, que es justo lo que D3 evita.
+- Cuesta **1,52 $ al mes por partner que no paga nada** si lo agota entero. Es
+  coste de adquisición, es acotado y es visible en el mismo libro que todo lo
+  demás — no es un regalo invisible.
+- **Reutiliza el número que ya existe.** 100 000 semanales ≈ 433 000 al mes ≈ el
+  `companion_monthly_token_cap` de 500 000 que hoy es el defecto. El suelo no es
+  un concepto nuevo: es el tope de hoy, con el período nuevo y el alcance
+  arreglado.
 
 ### Por qué la ejecución local va en los tres
 
@@ -257,6 +286,15 @@ es un token nativo: `cache_read` pesa 0,1 desde C3. Añadir un factor por modelo
 peso, en la misma función, y por tanto **las tres superficies siguen viendo el
 mismo número**. Si el peso viviera fuera —en el cobro, o en la consola— habría
 dos cifras otra vez, y ésa es la definición del problema que se está evitando.
+
+**La propiedad que lo justifica**, y conviene escribirla porque es el argumento
+entero en una línea: **con el peso puesto, agotar el pool cuesta lo mismo sea
+cual sea el cerebro.** Comprobado: vaciar el pool de Base cuesta 7,61 $ en Luna,
+7,61 $ en Terra y 7,61 $ en Sol; vaciar el de Estudio, 91,32 $ en los tres. Sin
+el peso, ese mismo pool de Estudio cuesta 91 $ en Terra y **166,90 $ en Sol**,
+contra un precio de 150 $. El peso no es una sutileza contable: es lo que
+convierte el peor caso de cada plan en un número que conocemos de antemano en
+vez de en una elección del partner.
 
 Consecuencia de honestidad: el pool deja de ser «tokens» a secas. Se nombra y se
 explica una vez —*«tokens de cuota, equivalentes al cerebro Terra»*— y la
