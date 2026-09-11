@@ -57,6 +57,8 @@ ALL_EXPECTED = {
     "data-retention-cron",
     "usage-alerts-cron",
     "workflow-pack-cron",
+    # Spec 003
+    "teammate-task-expiry-cron",
 }
 
 

@@ -148,6 +148,9 @@ SCHEDULER_TASK_NAMES = frozenset(
         "data-retention-cron",
         "usage-alerts-cron",
         "workflow-pack-cron",
+        # Spec 003 — cierra las tareas de teammate vencidas. Corre sin persona,
+        # así que es del planificador y no del runner.
+        "teammate-task-expiry-cron",
     }
 )
 
