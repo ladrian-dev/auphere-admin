@@ -2,7 +2,7 @@
   "name": "@nexus/companion-ui",
   "version": "0.1.0",
   "private": true,
-  "description": "The Companion's thread, cards, composer and meters — shared by the partner console and the desktop app. React + @nexus/ui tokens; never `next/*`.",
+  "description": "The Companion's thread, cards, composer and meters \u2014 shared by the partner console and the desktop app. React + @nexus/ui tokens; never `next/*`.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

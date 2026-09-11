@@ -12,7 +12,7 @@ import { buildAppBridge, methodName, type IpcRendererLike } from "../src/app-bri
 import { APP_INVOKE_CHANNELS, APP_PUSH_CHANNELS, InvalidIpcInput, validateInput } from "../src/app-ipc.js";
 
 const CONTRACT = [
-  "app:whoami", "app:roster.list", "app:roster.create", "app:roster.update", "app:roster.archive", "app:roster.jobs",
+  "app:whoami", "app:roster.list", "app:roster.create", "app:roster.update", "app:roster.archive", "app:roster.changes", "app:roster.jobs",
   "app:thread.open", "app:thread.runs", "app:run.events", "app:thread.send", "app:thread.cancel",
   "app:stream.open", "app:stream.close",
   "app:inbox.list", "app:inbox.decide", "app:tasks.list", "app:tasks.cancel",

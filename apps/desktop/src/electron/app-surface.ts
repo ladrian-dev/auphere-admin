@@ -71,6 +71,11 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
   handle("app:roster.archive", (input: { id: string }) =>
     o.platform.request(`/api/teammates/${q(input.id)}`, { method: "DELETE" }),
   );
+  // Las notas de «este teammate cambió» (R2.4). Se leen al abrir el hilo: no
+  // hay evento nuevo, y quien no estaba mirando las ve igual.
+  handle("app:roster.changes", (input: { id: string }) =>
+    o.platform.request(`/api/teammates/${q(input.id)}/changes`),
+  );
 
   // El hilo de la persona con ese teammate: se busca, y si no hay, se abre.
   handle("app:thread.open", async (input: { teammate_id: string }) => {

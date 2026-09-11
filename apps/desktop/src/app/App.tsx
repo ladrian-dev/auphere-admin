@@ -11,14 +11,20 @@ import { CompanionLocaleProvider } from "@nexus/companion-ui";
 import { Button } from "@nexus/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { type InboxItem, type PresencePush, type SessionPush, type Teammate, bridge } from "./bridge";
+import { type InboxItem, type Jobs, type PresencePush, type SessionPush, type Teammate, bridge } from "./bridge";
 import { type Lang, LangProvider, systemLang, useAppT } from "./i18n";
 import { EnvPanel } from "./routes/env";
 import { Inbox } from "./routes/inbox";
+import { NewTeammateForm } from "./routes/new-teammate";
 import { Roster } from "./routes/roster";
+import { TeammateSettings } from "./routes/teammate-settings";
 import { ThreadView } from "./routes/thread";
 
 type RosterStatus = "loading" | "ready" | "error" | "forbidden";
+/** Qué ocupa la columna del medio. «new» y «settings» son pantallas, no diálogos:
+ *  crear un teammate es una decisión con cuatro campos, y un modal encima del
+ *  hilo escondería lo que la persona estaba leyendo. */
+type View = "team" | "pending" | "new" | "settings";
 
 export function App() {
   const [lang, setLang] = useState<Lang>(systemLang);
@@ -85,7 +91,9 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
   const [roster, setRoster] = useState<Teammate[]>([]);
   const [rosterStatus, setRosterStatus] = useState<RosterStatus>("loading");
   const [selected, setSelected] = useState<string | null>(null);
-  const [view, setView] = useState<"team" | "pending">("team");
+  const [view, setView] = useState<View>("team");
+  const [jobs, setJobs] = useState<Jobs | null>(null);
+  const [jobsStatus, setJobsStatus] = useState<"loading" | "ready" | "error">("loading");
   const [pending, setPending] = useState<InboxItem[]>([]);
   const [focus, setFocus] = useState<string | null>(null);
 
@@ -119,6 +127,23 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
       offTask();
     };
   }, [loadRoster]);
+
+  // Los oficios y los modelos se piden **cuando se van a usar**, no al arrancar:
+  // la mayoría de las sesiones no crean ningún teammate.
+  const loadJobs = useCallback(async () => {
+    setJobsStatus("loading");
+    const res = await bridge.rosterJobs();
+    if (!res.ok) {
+      setJobsStatus("error");
+      return;
+    }
+    setJobs(res.data);
+    setJobsStatus("ready");
+  }, []);
+
+  useEffect(() => {
+    if (view === "new" || view === "settings") void loadJobs();
+  }, [view, loadJobs]);
 
   const current = useMemo(() => roster.find((r) => r.id === selected) ?? null, [roster, selected]);
   const waiting = pending.length;
@@ -168,7 +193,7 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
             setView("team");
           }}
           onRetry={() => void loadRoster()}
-          onCreate={() => void bridge.openConsole({ path: "/" })}
+          onCreate={() => setView("new")}
         />
       </div>
       <section className="flex min-w-0 flex-col border-x border-border" aria-label={t("app.title")}>
@@ -185,8 +210,56 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
               setView("team");
             }}
           />
+        ) : view === "new" ? (
+          <NewTeammateForm
+            status={jobsStatus}
+            jobs={jobs?.jobs ?? []}
+            models={jobs?.models ?? []}
+            onRetry={() => void loadJobs()}
+            onCancel={() => setView("team")}
+            onSubmit={async (draft) => {
+              const res = await bridge.rosterCreate(draft);
+              if (!res.ok) return { ok: false as const, error: res.code ?? "unknown" };
+              // Aparece para todo el partner; el hilo lo estrena cada persona.
+              await loadRoster();
+              setSelected(res.data.id);
+              setView("team");
+              return { ok: true as const };
+            }}
+          />
+        ) : view === "settings" && current ? (
+          <TeammateSettings
+            key={current.id}
+            teammate={current}
+            jobs={jobs?.jobs ?? []}
+            models={jobs?.models ?? []}
+            onClose={() => setView("team")}
+            onSave={async (patch) => {
+              const res = await bridge.rosterUpdate({ id: current.id, patch });
+              if (!res.ok) return { ok: false as const, error: res.code ?? "unknown" };
+              await loadRoster();
+              setView("team");
+              return { ok: true as const };
+            }}
+            onArchive={async () => {
+              const res = await bridge.rosterArchive({ id: current.id });
+              if (!res.ok) return { ok: false as const, error: res.code ?? "unknown" };
+              // Lo archivado sale del roster: sin selección, la columna del
+              // medio vuelve a «elige un teammate» en vez de pintar un hilo
+              // de alguien que ya no está en el equipo.
+              setSelected(null);
+              await loadRoster();
+              return { ok: true as const };
+            }}
+          />
         ) : current ? (
-          <ThreadView key={current.id} teammate={current} machinePresent={presence?.presence === "presente"} onRosterChanged={() => void loadRoster()} />
+          <ThreadView
+            key={current.id}
+            teammate={current}
+            machinePresent={presence?.presence === "presente"}
+            onRosterChanged={() => void loadRoster()}
+            onOpenSettings={() => setView("settings")}
+          />
         ) : (
           <p className="m-auto max-w-prose p-8 text-center text-pretty text-muted-foreground">{t("thread.pick")}</p>
         )}

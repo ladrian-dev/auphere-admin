@@ -45,7 +45,17 @@ export type LocalExecPolicy = {
   capped: boolean;
 };
 
-export type Jobs = { jobs: string[]; models: Array<{ id: string; note: string; cost_label: string }> };
+/** `cost_label` es relativo a la oferta del partner, no un precio (R2.1). */
+export type CostLabel = "bajo" | "medio" | "alto" | "desconocido";
+export type Jobs = { jobs: string[]; models: Array<{ id: string; note: string; cost_label: CostLabel }> };
+
+/** Una nota de «este teammate cambió» (R2.4). Sin valores: solo qué y quién. */
+export type TeammateChange = {
+  id: string;
+  fields: Array<"job" | "permissions" | "local_exec" | "model">;
+  by: string | null;
+  at: string;
+};
 
 export type Level = "critico" | "aviso" | "informativo";
 export type InboxItem = {
@@ -97,6 +107,7 @@ export interface AuphereBridge {
   rosterCreate(input: { name: string; job: string; model: string; permissions?: Partial<Teammate["permissions"]>; local_exec?: boolean }): Promise<Result<Teammate>>;
   rosterUpdate(input: { id: string; patch: Record<string, unknown> }): Promise<Result<Teammate>>;
   rosterArchive(input: { id: string }): Promise<Result<null>>;
+  rosterChanges(input: { id: string }): Promise<Result<TeammateChange[]>>;
   threadOpen(input: { teammate_id: string }): Promise<Result<{ thread_id: string }>>;
   threadRuns(input: { thread_id: string }): Promise<Result<CompanionThreadRuns>>;
   runEvents(input: { run_id: string; since_seq?: number }): Promise<Result<CompanionEvents>>;

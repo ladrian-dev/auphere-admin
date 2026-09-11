@@ -13,7 +13,8 @@
   },
   "include": [
     "src/app",
-    "src/app-ipc.ts"
+    "src/app-ipc.ts",
+    "tests/**/*.test.tsx"
   ],
   "exclude": []
 }

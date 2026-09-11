@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
+from typing import Any
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -26,7 +27,6 @@ from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.core.partner_allowlist import read_allowlist
 from nexus_api.core.partner_context import apply_partner_to_session, partner_context
-from nexus_api.core.respond_catalog import RESPOND_MODELS
 from nexus_api.db.models import JOB_SEED, AuditLog, Teammate
 from nexus_api.db.models.companion import (
     RUN_PAUSED,
@@ -37,8 +37,14 @@ from nexus_api.db.models.companion import (
     TeammateTask,
 )
 from nexus_api.repositories.teammate_tasks import TeammateTaskRepository
-from nexus_api.repositories.teammates import TeammateRepository
+from nexus_api.repositories.teammates import TeammateChangeRepository, TeammateRepository
 from nexus_api.services.local_exec_policy import LocalExecPolicyRepository, resolve
+from nexus_api.services.model_choices import model_choices
+from nexus_api.services.teammate_catalog import (
+    ToolNotInCatalog,
+    permissions_to_tool_names,
+    validate_tool_names,
+)
 from nexus_api.services.teammate_inbox import inbox_events, list_inbox
 
 from .schemas_teammates import (
@@ -46,7 +52,10 @@ from .schemas_teammates import (
     JobsOut,
     ModelChoiceOut,
     TaskOut,
+    TeammateChangeOut,
+    TeammateIn,
     TeammateOut,
+    TeammatePatchIn,
     TeammateRefOut,
 )
 from .schemas_workstation import (
@@ -161,12 +170,15 @@ async def list_teammates(
 
 @router.get("/jobs", response_model=JobsOut)
 async def jobs(scope: TeammatesScope = Depends(teammates_scope("teammates:use"))) -> JobsOut:
-    """La semilla de oficios y los modelos que el partner puede elegir."""
-    allowed = await read_allowlist(scope.session, scope.principal.partner.id)
+    """La semilla de oficios y los modelos que el partner puede elegir.
+
+    Cada modelo llega con **nota y coste** porque elegir un cerebro sin saber
+    qué gasta es elegir a ciegas; el coste es una etiqueta relativa dentro de
+    esta misma oferta (``services/model_choices.py``), no un precio.
+    """
     models = [
-        ModelChoiceOut(id=model_id, note=display, cost_label="")
-        for model_id, display in RESPOND_MODELS
-        if model_id in allowed
+        ModelChoiceOut(id=model_id, note=note, cost_label=cost)
+        for model_id, note, cost in await model_choices(scope.session, scope.principal.partner.id)
     ]
     return JobsOut(jobs=list(JOB_SEED), models=models)
 
@@ -174,6 +186,142 @@ async def jobs(scope: TeammatesScope = Depends(teammates_scope("teammates:use"))
 def _unknown_teammate() -> HTTPException:
     """404 opaco: un id de otro partner no existe, no «no puedes»."""
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown teammate")
+
+
+def _refuse(code: str, **extra: object) -> HTTPException:
+    """422 con vocabulario cerrado. La pantalla escribe la frase."""
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": code, **extra}
+    )
+
+
+async def _catalogue_for(scope: TeammatesScope, permissions: dict[str, Any]) -> list[str]:
+    """Los interruptores → el catálogo, validado contra ``ALL_TOOLS``.
+
+    La validación no es ceremonia aunque desde el formulario sea inalcanzable:
+    es lo que impide que un cambio del mapeo publique en silencio un teammate
+    con menos herramientas de las que su pantalla promete (garantía 2).
+    """
+    try:
+        return validate_tool_names(permissions_to_tool_names(permissions))
+    except ToolNotInCatalog as exc:
+        raise _refuse("tool_not_in_catalog", names=exc.names) from exc
+
+
+async def _check_model(scope: TeammatesScope, model: str) -> None:
+    """El modelo tiene que estar en la lista del partner (la misma que la
+    consola usa para ``respond``): la app no amplía la oferta."""
+    allowed = await read_allowlist(scope.session, scope.principal.partner.id)
+    if model not in allowed:
+        raise _refuse("model_not_allowed", model=model)
+
+
+@router.post("", response_model=TeammateOut, status_code=status.HTTP_201_CREATED)
+async def create_teammate(
+    body: TeammateIn,
+    scope: TeammatesScope = Depends(teammates_scope("teammates:use")),
+) -> TeammateOut:
+    """Crea un teammate del partner (Requisitos 2.1 y 2.2).
+
+    Lo crea **cualquiera** que pueda usar teammates: no hay roles de agente
+    (decisión 7). Y el catálogo lo deriva la API de los cinco interruptores —
+    el cuerpo no tiene dónde traer una herramienta, y si la trajera no se
+    miraría.
+    """
+    permissions = body.permissions.model_dump()
+    await _check_model(scope, body.model)
+    tool_names = await _catalogue_for(scope, permissions)
+    teammate = await TeammateRepository(scope.session).create(
+        partner_id=scope.principal.partner.id,
+        name=body.name,
+        job=body.job,
+        model=body.model,
+        tool_names=tool_names,
+        permissions=permissions,
+        local_exec=body.local_exec,
+        created_by=scope.principal.user_id,
+    )
+    _audit(scope, "teammate.created", teammate, job=teammate.job, model=teammate.model)
+    return await _out(scope.session, teammate)
+
+
+@router.patch("/{teammate_id}", response_model=TeammateOut)
+async def update_teammate(
+    teammate_id: uuid.UUID,
+    body: TeammatePatchIn,
+    scope: TeammatesScope = Depends(teammates_scope("teammates:use")),
+) -> TeammateOut:
+    """Cambia un teammate y **anota el cambio** (Requisitos 2.3 y 2.4).
+
+    Un archivado no se cambia: dejar editarlo sugeriría que puede volver, y
+    volver no es cambiar sino crear. Los cambios que tocan lo que el teammate
+    *puede hacer* dejan una nota que el hilo de cada persona pinta al cargar —
+    derivada, no copiada, porque escribirla en el hilo de otra persona exigiría
+    romper la RLS que lo hace privado (0090).
+    """
+    repo = TeammateRepository(scope.session)
+    teammate = await repo.get_active(teammate_id)
+    if teammate is None:
+        raise _unknown_teammate()
+
+    changes: dict[str, Any] = {}
+    if body.name is not None and body.name != teammate.name:
+        changes["name"] = body.name
+    if body.job is not None and body.job != teammate.job:
+        changes["job"] = body.job
+    if body.model is not None and body.model != teammate.model:
+        await _check_model(scope, body.model)
+        changes["model"] = body.model
+    if body.local_exec is not None and body.local_exec != teammate.local_exec:
+        changes["local_exec"] = body.local_exec
+    if body.permissions is not None:
+        permissions = body.permissions.model_dump()
+        if permissions != dict(teammate.permissions):
+            changes["permissions"] = permissions
+            changes["tool_names"] = await _catalogue_for(scope, permissions)
+
+    if changes:
+        await repo.update(teammate, **changes)
+        noted = await TeammateChangeRepository(scope.session).add(
+            partner_id=scope.principal.partner.id,
+            teammate_id=teammate.id,
+            fields=list(changes),
+            changed_by=scope.principal.user_id,
+            changed_by_label=scope.principal.membership.display_name,
+        )
+        _audit(
+            scope,
+            "teammate.updated",
+            teammate,
+            fields=sorted(changes),
+            noted=noted is not None,
+        )
+    return await _out(scope.session, teammate)
+
+
+@router.get("/{teammate_id}/changes", response_model=list[TeammateChangeOut])
+async def teammate_changes(
+    teammate_id: uuid.UUID,
+    scope: TeammatesScope = Depends(teammates_scope("teammates:use")),
+) -> list[TeammateChangeOut]:
+    """Las notas de este teammate, del partner (Requisito 2.4).
+
+    El hilo las intercala por hora con sus runs, así que quien no estaba
+    mirando ve el cambio donde ocurrió. Solo dice **qué campos** cambiaron y
+    quién: los valores viejos no se guardan, y la pantalla ya enseña los de hoy.
+    """
+    if await TeammateRepository(scope.session).get(teammate_id) is None:
+        raise _unknown_teammate()
+    rows = await TeammateChangeRepository(scope.session).for_teammate(teammate_id)
+    return [
+        TeammateChangeOut(
+            id=row.id,
+            fields=list(row.fields),
+            by=row.changed_by_label,
+            at=row.changed_at,
+        )
+        for row in rows
+    ]
 
 
 def _audit(scope: TeammatesScope, action: str, teammate: Teammate, **after: object) -> None:

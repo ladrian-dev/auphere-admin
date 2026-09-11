@@ -178,10 +178,12 @@ from nexus_api.db.models.support_ticket import (
     SupportTicketEvent,
 )
 from nexus_api.db.models.teammate import (
+    CHANGED_FIELDS,
     JOB_SEED,
     PERMISSION_KEYS,
     TEAMMATE_STATUSES,
     Teammate,
+    TeammateChange,
 )
 from nexus_api.db.models.tenant import Tenant, TenantPlan, TenantStatus, TenantTier
 from nexus_api.db.models.tool import ToolCatalog, ToolStatus
@@ -196,6 +198,7 @@ from nexus_api.db.models.workflow import (
 
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
+    "CHANGED_FIELDS",
     "CONSOLE_AUTH_SCHEMA",
     "DENIAL_REASONS",
     "EVENT_KINDS",
@@ -334,6 +337,7 @@ __all__ = [
     "SupportTicket",
     "SupportTicketEvent",
     "Teammate",
+    "TeammateChange",
     "TeammateTask",
     "Tenant",
     "TenantConnector",

@@ -24,7 +24,22 @@ export function Roster({ items, status, selected, onSelect, onRetry, onCreate }:
   const t = useAppT();
   return (
     <nav className="flex min-w-0 flex-col gap-2 p-3" aria-label={t("app.title")}>
-      <h1 className="px-2 text-sm font-semibold text-balance">{t("app.title")}</h1>
+      <div className="flex min-w-0 items-center gap-2 px-2">
+        <h1 className="min-w-0 flex-1 text-sm font-semibold text-balance">{t("app.title")}</h1>
+        {/* Crear no puede vivir solo en el estado vacío: con el equipo lleno
+            seguiría haciendo falta, y no habría dónde pulsarlo (R2.1). */}
+        {status === "ready" ? (
+          <button
+            type="button"
+            onClick={onCreate}
+            title={t("roster.create")}
+            aria-label={t("roster.create")}
+            className="inline-flex size-7 items-center justify-center rounded-md text-lg leading-none text-muted-foreground transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            +
+          </button>
+        ) : null}
+      </div>
       {status === "loading" ? (
         <ul className="flex flex-col gap-2" aria-busy="true">
           {[0, 1, 2].map((i) => (

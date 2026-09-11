@@ -22,6 +22,7 @@ export const APP_INVOKE_CHANNELS: readonly InvokeChannel[] = [
   { name: "app:roster.create", input: "roster_create" },
   { name: "app:roster.update", input: "roster_update" },
   { name: "app:roster.archive", input: "id" },
+  { name: "app:roster.changes", input: "id" },
   { name: "app:roster.jobs", input: "none" },
   { name: "app:thread.open", input: "thread_open" },
   { name: "app:thread.runs", input: "thread_id" },

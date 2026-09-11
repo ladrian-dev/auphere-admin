@@ -2,7 +2,7 @@
   "name": "console",
   "version": "0.1.0",
   "private": true,
-  "description": "Auphere Nexus — partner console (PLAN-CONSOLE-V1).",
+  "description": "Auphere Nexus \u2014 partner console (PLAN-CONSOLE-V1).",
   "scripts": {
     "dev": "next dev -p 3110",
     "build": "next build",

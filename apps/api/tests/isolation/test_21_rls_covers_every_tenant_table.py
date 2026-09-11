@@ -81,6 +81,12 @@ PARTNER_FORCE_TABLES: dict[str, str] = {
     "device_pairing_codes": "Códigos de emparejamiento. FORCE por partner_id.",
     # Spec 003: el roster es del partner; todos sus miembros ven lo mismo. Sin DELETE.
     "teammates": "Teammates del partner. FORCE por partner_id.",
+    "teammate_changes": "Notas de cambio. FORCE por partner_id. Sin UPDATE ni DELETE.",
+    # Las dos capas de la política de ejecución local (0112). La segunda lleva
+    # **dos** claves en la policy —partner y persona—: la preferencia de una no
+    # la ve otra, y por eso está aquí y no solo en ``test_34``.
+    "partner_local_exec_policy": "Techo del partner. FORCE por partner_id.",
+    "principal_local_exec_prefs": "Preferencia de cada persona. FORCE por partner_id + principal_id.",
 }
 
 

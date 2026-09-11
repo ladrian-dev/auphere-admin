@@ -16,6 +16,7 @@ que ninguna salida contiene claves `session`, `cookie`, `token`, `credential`,
 | `app:roster.create` | `TeammateIn` | `TeammateOut` | POST |
 | `app:roster.update` | `{id, patch}` | `TeammateOut` | PATCH |
 | `app:roster.archive` | `{id}` | `void` | DELETE |
+| `app:roster.changes` | `{id}` | `TeammateChangeOut[]` | GET `/api/teammates/{id}/changes` |
 | `app:roster.jobs` | — | `{jobs[], models[]}` | GET |
 | `app:thread.open` | `{teammate_id}` | `{thread_id}` | busca o crea el hilo de la persona con ese teammate |
 | `app:thread.runs` | `{thread_id}` | `CompanionThreadRuns` | los runs del hilo, ascendentes (§5.2) |

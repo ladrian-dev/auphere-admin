@@ -266,7 +266,8 @@ export async function bootstrap(): Promise<void> {
     appView.webContents.on("console-message", (event) => logs.push(`${event.level}: ${event.message}`.slice(0, 300)));
     appView.webContents.on("did-fail-load", (_e, code, desc) => logs.push(`did-fail-load ${code} ${desc}`));
     appView.webContents.on("preload-error", (_e, path, error) => logs.push(`preload-error ${path} ${String(error)}`));
-    setTimeout(() => void captureEvidence(evidenceDir, appView, consoleView, surface, logs), 6000);
+    const walk = process.env.AUPHERE_EVIDENCE_WALK === "us4" ? captureUs4 : captureEvidence;
+    setTimeout(() => void walk(evidenceDir, appView, consoleView, surface, logs), 6000);
   }
 
   const timer = setInterval(() => void runtime.tick(), HEARTBEAT_INTERVAL_MS);
@@ -322,4 +323,83 @@ async function captureEvidence(
 if (process.env.NODE_ENV !== "test") {
   void app.whenReady().then(bootstrap);
   app.on("window-all-closed", () => app.quit());
+}
+
+
+/**
+ * El recorrido de la US4 (`AUPHERE_EVIDENCE_WALK=us4`): crear un teammate desde
+ * la aplicación, cambiarle el oficio, ver la nota en el hilo y archivarlo.
+ *
+ * Escribe de verdad contra la plataforma —es lo que se quiere comprobar— así
+ * que **archiva lo que crea** al terminar. Archivar no borra (R2.6): la fila
+ * queda, que es justo lo que hay que poder ver después.
+ */
+async function captureUs4(
+  dir: string,
+  appView: WebContentsView,
+  consoleView: WebContentsView,
+  surface: Surface,
+  logs: string[] = [],
+): Promise<void> {
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  mkdirSync(dir, { recursive: true });
+  const js = (code: string) => appView.webContents.executeJavaScript(code).catch((e: unknown) => String(e));
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const shot = async (name: string) => writeFileSync(join(dir, name), (await appView.webContents.capturePage()).toPNG());
+  const text = () => js("document.body.innerText") as Promise<string>;
+  const click = (selector: string, match: string) =>
+    js(
+      `Array.from(document.querySelectorAll(${JSON.stringify(selector)}))` +
+        `.find((e) => new RegExp(${JSON.stringify(match)}, "i")` +
+        `.test(((e.getAttribute("aria-label") || "") + " " + (e.textContent || "")).trim()))?.click(), true`,
+    );
+  // React escucha el evento nativo, no la asignación directa a `.value`.
+  const type = (selector: string, value: string) =>
+    js(
+      `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false;` +
+        ` const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;` +
+        ` set.call(el, ${JSON.stringify(value)});` +
+        ` el.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`,
+    );
+
+  const steps: Record<string, string> = {};
+  steps.roster = await text();
+
+  await click("button", "crear teammate");
+  await wait(1500);
+  await shot("new-teammate.png");
+  steps.form = await text();
+
+  await type("#teammate-name", "Prueba US4");
+  await wait(300);
+  await click("button[type=submit]", "crear teammate");
+  await wait(2500);
+  await shot("created.png");
+  steps.created = await text();
+
+  await click("button", "^ajustes$");
+  await wait(1200);
+  await type("#settings-job", "Finanzas");
+  await wait(300);
+  await shot("settings.png");
+  await click("button[type=submit]", "guardar");
+  await wait(2500);
+  steps.saved = await text();
+  await shot("changed.png");
+
+  await click("button", "^ajustes$");
+  await wait(1200);
+  await click("button", "^archivar");
+  await wait(600);
+  steps.confirm = await text();
+  await shot("archive-confirm.png");
+  await click("button", "sí, archivar");
+  await wait(2500);
+  steps.archived = await text();
+  await shot("archived.png");
+
+  writeFileSync(
+    join(dir, "app.json"),
+    JSON.stringify({ surface, consoleUrl: consoleView.webContents.getURL(), steps, logs }, null, 2),
+  );
 }

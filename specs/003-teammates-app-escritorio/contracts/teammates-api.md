@@ -12,7 +12,8 @@ lo cubre automáticamente). Ninguna ruta acepta `partner_id`, `principal_id` ni
 | `POST /console/teammates` | `teammates:use` | `TeammateIn {name, job, model, permissions}` → 201 `TeammateOut`; la API traduce `permissions` a `tool_names` y valida ⊆ `ALL_TOOLS`; 422 si el modelo no está en la lista |
 | `PATCH /console/teammates/{id}` | `teammates:use` | campos de `TeammateIn`; el siguiente run usa el catálogo nuevo; el hilo recibe una nota |
 | `DELETE /console/teammates/{id}` | `teammates:use` | archiva (204); cierra tareas `esperandote` como `cancelada`; nunca borra |
-| `GET /console/teammates/jobs` | `teammates:use` | semilla de oficios y lista de modelos `{id, note, cost_label}` |
+| `GET /console/teammates/{id}/changes` | `teammates:use` | `TeammateChangeOut[] {id, fields[], by, at}` — qué cambió y quién, nunca los valores; el hilo lo pinta al abrir |
+| `GET /console/teammates/jobs` | `teammates:use` | semilla de oficios y lista de modelos `{id, note, cost_label}`; `cost_label` es relativo a la oferta del partner (`bajo·medio·alto·desconocido`), no un precio |
 
 ## Hilos y tareas (extienden el Companion)
 

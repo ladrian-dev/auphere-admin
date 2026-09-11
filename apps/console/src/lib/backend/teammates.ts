@@ -43,7 +43,21 @@ export type TeammateIn = {
   local_exec?: boolean;
 };
 
-export type ModelChoiceOut = { id: string; note: string; cost_label: string };
+/** `cost_label` es relativo a la oferta de este partner, no un precio. */
+export type CostLabel = "bajo" | "medio" | "alto" | "desconocido";
+export type ModelChoiceOut = { id: string; note: string; cost_label: CostLabel };
+
+/**
+ * Una nota de «este teammate cambió» (R2.4). Lleva **qué** cambió y quién,
+ * nunca los valores: la pantalla ya enseña los de hoy.
+ */
+export type TeammateChangeField = "job" | "permissions" | "local_exec" | "model";
+export type TeammateChangeOut = {
+  id: string;
+  fields: TeammateChangeField[];
+  by: string | null;
+  at: string;
+};
 export type TeammateJobsOut = { jobs: string[]; models: ModelChoiceOut[] };
 
 export type TaskState =
@@ -116,6 +130,7 @@ export function teammatesApi(call: Call) {
     patchTeammate: (id: string, body: Partial<TeammateIn>) =>
       call<TeammateOut>(`${base}/${enc(id)}`, { method: "PATCH", body }),
     archiveTeammate: (id: string) => call<void>(`${base}/${enc(id)}`, { method: "DELETE" }),
+    teammateChanges: (id: string) => call<TeammateChangeOut[]>(`${base}/${enc(id)}/changes`),
     teammateInbox: () => call<InboxItemOut[]>(`${base}/inbox`),
     teammateTasks: (state?: string) =>
       call<TaskOut[]>(`${base}/tasks${state ? `?state=${enc(state)}` : ""}`),

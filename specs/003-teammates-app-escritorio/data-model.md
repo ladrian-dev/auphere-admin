@@ -111,9 +111,16 @@ Resolución (en `LocalExecGate`): `pref = prefs[executable] ?? prefs[NULL] ?? as
 - **`can_decide`** (bandeja): el permiso de la herramienta que hay detrás de la
   acción (`action.kind` → permiso del router que la aplica) está en
   `permissions_for(role)` de la persona. Es el mismo permiso que `resume` exige.
-- **Nota de cambio de teammate**: al cambiar oficio o permisos se inserta en cada
-  hilo activo un mensaje `role=system`, `kind=teammate_changed`, con `seq`; se ve
-  al cargar el historial. No hay evento nuevo.
+- **Nota de cambio de teammate**: al cambiar oficio, permisos, ejecución local o
+  modelo se escribe **una** fila en `teammate_changes` (migración 0113, RLS por
+  partner, sin `UPDATE` ni `DELETE`) con los campos que cambiaron y quién; cada
+  hilo la lee al abrir y la pinta. No hay evento nuevo.
+  **Cambio sobre el plan** (que decía un mensaje `role=system`,
+  `kind=teammate_changed` por hilo activo): copiarla en el hilo de cada persona
+  exige escribir dentro de un hilo ajeno, y la RLS de `companion.messages`
+  cuelga de `threads.principal_id` (0090) — es decir, habría que romper justo la
+  garantía que hace privado el hilo. Derivarla sale además mejor: la ve quien no
+  estaba mirando y quien estrena hilo después del cambio.
 - **`teammate_tasks.expires_at`** se desplaza con cada run que termina y con
   cada decisión.
 

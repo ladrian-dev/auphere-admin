@@ -114,3 +114,20 @@ class InboxItemOut(BaseModel):
     #: `false` cuando el permiso que exige aplicar esto no es del rol: la
     #: tarjeta lo dice **antes**, en vez de dejar decidir y comerse un 403 (§V).
     can_decide: bool
+
+
+class TeammateChangeOut(BaseModel):
+    """Una nota de «este teammate cambió» (R2.4).
+
+    ``fields`` son identificadores estables —``job``, ``permissions``,
+    ``local_exec``, ``model``— y la pantalla escribe la frase. No lleva valores:
+    ni los de antes ni los de ahora. Un histórico de configuraciones es otra
+    cosa, y esta nota solo tiene que explicar por qué el teammate se comporta
+    distinto desde aquí.
+    """
+
+    id: uuid.UUID
+    fields: list[str]
+    #: Quién lo cambió, con el nombre que tenía entonces; ``null`` si no consta.
+    by: str | None
+    at: datetime
