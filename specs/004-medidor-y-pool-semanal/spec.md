@@ -342,8 +342,11 @@ trabajando hoy.
 #### Criterios de aceptación
 
 1. La pantalla del partner DEBE presentar el consumo incluido como **proporción
-   consumida** y **fecha de reposición**, y NO DEBE presentar la cifra absoluta
-   del pool ni la del gasto como dato principal.
+   consumida** y **fecha de reposición**, y **NO DEBE presentar en ningún sitio
+   de esa pantalla** la cifra absoluta del pool ni la del gasto contra él — ni
+   como dato principal ni como detalle secundario. La prohibición alcanza solo
+   al **pool incluido**: el saldo comprado (7.6), la ventana de contexto y el
+   detalle del turno no entran.
 2. El panel de operador DEBE seguir enseñando **las cifras absolutas**: Auphere
    necesita el número para diagnosticar, conciliar y decidir precios.
 3. WHEN Auphere cambia el tamaño del pool de un partner THEN el partner NO DEBE

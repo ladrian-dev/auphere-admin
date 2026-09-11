@@ -36,7 +36,7 @@ El tamaño del consumo incluido que se repone cada siete días.
 | **Rango** | `CHECK (weekly_pool_tokens >= 0)`. Cero es válido y significa «sin consumo incluido», que es un estado explicable |
 | **Se cambia** | Sin despliegue y sin migración (R2.9). El partner no lo ve como cantidad (R7.3) |
 
-### `model_prices` / `meter_prices` — filas, no columnas
+### `model_profiles` y `meter_prices` — filas, no columnas
 
 No hay cambio de esquema: se cargan las tarifas que faltan en `model_profiles`
 (las tres del catálogo cerrado, hoy a `NULL` desde la `0095`) y las filas de

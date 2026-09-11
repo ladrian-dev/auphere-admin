@@ -134,7 +134,8 @@ apps/api/
 │   ├── db/models/
 │   │   ├── model_profile.py  # + quota_weight
 │   │   └── partner.py        # + weekly_pool_tokens; cap mensual queda deprecado
-│   └── config.py             # sin cambios (el modelo por defecto no se toca aquí)
+│   └── services/
+│       └── local_workstation_metering.py  # tercer llamante: pasa el factor
 └── tests/
     ├── unit/                 # quota con factor · vencimiento semanal · reparto
     ├── integration/          # renovación · caída a comprado · reprecio
@@ -152,6 +153,14 @@ packages/companion-ui/src/
 apps/console/src/app/(console)/usage/page.tsx    # barra y fecha, no cifra
 apps/admin/src/app/(dashboard)/partners/[id]/    # cifras absolutas (operador)
 apps/desktop/src/app/routes/account.tsx          # barra y fecha, no cifra
+
+.github/workflows/ci.yml                         # las dos suites que hoy faltan
+
+# Documentación que describe lo que esta spec cambia, y por tanto se actualiza
+# EN EL MISMO COMMIT que el cambio (regla del CLAUDE.md del repositorio):
+specs/003-teammates-app-escritorio/contracts/teammates-api.md   # el campo budget
+docs/desktop-teammates.md                        # §«Un solo medidor»
+docs/companion/CONTRACT-V2.md                    # §6, si describe el tope mensual
 ```
 
 > **`packages/companion-ui` entró en esta lista durante la Fase 1, no antes.**
@@ -183,7 +192,7 @@ Hecha después de escribir `research.md`, `data-model.md` y los contratos.
 |---|---|---|
 | I | ✅ | El diseño **confirma** la reducción: el camino que recorría membresías desaparece. Se añade una prueba de que el partner no puede leer el presupuesto de otro y de que ningún endpoint de cliente final nombra pool ni saldo |
 | V | ✅ | El diseño destapó un matiz: el objeto de presupuesto **sigue llevando** las cifras absolutas porque el panel de operador las necesita, y es la **interfaz del partner** la que deja de pintarlas (decisión D6 del research). Eso no es una pantalla que miente: es una pantalla que resume, y el dato sigue disponible para quien tiene que conciliar |
-| VII | ✅ | Los criterios se tradujeron a 43 comprobaciones nombradas en `quickstart.md`, repartidas entre unidad, integración y aislamiento |
+| VII | ✅ | Los criterios se tradujeron a 43 comprobaciones nombradas en `quickstart.md`: unidad, integración, aislamiento y **`vitest`** — las siete de interfaz (`V37`–`V43`) viven ahí |
 | VIII | ✅ | Verificado sobre el diseño final: cero dependencias nuevas en `pyproject.toml` y en los `package.json` |
 | IX | ✅ | La ADR-037 enlaza a la carpeta de la evaluación, y esta spec enlaza a la ADR. Puente cerrado en las dos direcciones |
 

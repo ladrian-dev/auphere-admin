@@ -33,7 +33,7 @@ nuevo, ni dependencia nueva, ni estructura nueva.
 
 - [ ] T001 Añadir a `.github/workflows/ci.yml` dos trabajos que ejecuten las suites de `packages/companion-ui` (144 pruebas) y de `apps/desktop` (307), hoy ausentes del fichero.
       **Va primero y no es alcance prestado**: esta spec modifica `packages/companion-ui`, que comparten la consola y la aplicación de escritorio. Sin esto, «CI en verde» no quiere decir «todo verde», y romper las dos superficies a la vez no lo detecta nadie al fusionar.
-      _Requisitos: 7.1, 7.4_
+      _Requisitos: —_ (puerta de plan; **protege contra regresión** los criterios 7.1 y 7.4, no los implementa)
 
 **Checkpoint**: la integración continua ejecuta lo que esta spec va a tocar.
 
