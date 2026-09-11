@@ -41,7 +41,25 @@
    usan las dos superficies: alguien puede romper la aplicación desde la
    consola y no enterarse. Es lo más barato de arreglar de esta lista y lo que
    más caro sale dejarlo.
-7. **Una mina en la infraestructura.** `infra/terraform/20-services/variables.tf`
+7. **«Verde en local» y «verde en la tubería» no quieren decir lo mismo.** No
+   hay un comando único que corra lo que corre la integración continua. Quien
+   trabaja en la API verifica la API; el worker, los canales, el MCP, la
+   consola, el paquete compartido y la aplicación se quedan fuera sin que nadie
+   lo note hasta que la tubería se pone roja.
+
+   **Pasó el 2026-09-11 y costó un despliegue.** La spec 003 añadió un cron al
+   worker (`teammate-task-expiry-cron`) y lo registró, pero no lo declaró en el
+   contrato de nombres de `bootstrap.py`. El test que existe justo para eso
+   —`tests/unit/test_bootstrap_split.py`— falló en la tubería. En local se
+   habían corrido 3103 pruebas de la API y **ninguna** del worker. El
+   despliegue a staging abortó en su primer paso, que es esperar a la
+   integración continua; no llegó a tocar la base de datos, así que el contrato
+   de despliegue funcionó. Lo que no funcionó fue la verificación previa.
+
+   El arreglo no es «acordarse»: es un comando que corra lo mismo que la
+   tubería, y que la tubería use ese mismo comando para que no puedan
+   divergir.
+8. **Una mina en la infraestructura.** `infra/terraform/20-services/variables.tf`
    ya nombra `NEXUS_DEVICE_TOKEN_SECRET`, pero Terraform no se aplica en el
    despliegue. El día que alguien aplique infraestructura, esa clave tiene que
    existir **antes** en el secreto o ECS aborta el arranque de la tarea. No

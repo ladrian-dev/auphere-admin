@@ -37,10 +37,17 @@ se improvisa al final de otra tarea.
 
 ## El orden de la próxima sesión
 
-1. **Poner las dos suites que faltan en integración continua** (`apps/desktop`,
-   `packages/companion-ui`). Va antes que todo lo demás y casi no cuesta: la
-   cadena de firma se cuelga del mismo fichero, y firmar una aplicación cuyas
-   pruebas nadie corre al fusionar es firmar a ciegas.
+1. **Cerrar el hueco de verificación**, que va antes que todo lo demás y casi
+   no cuesta:
+   - las dos suites que faltan en integración continua (`apps/desktop`,
+     `packages/companion-ui`);
+   - un solo comando que corra lo que corre la tubería, y la tubería llamándolo
+     a él. El 2026-09-11 un cron nuevo del worker rompió la tubería y abortó un
+     despliegue porque en local solo se habían corrido las pruebas de la API:
+     dos listas distintas de «qué hay que correr» siempre acaban divergiendo.
+
+   La cadena de firma se cuelga de ese mismo fichero, y firmar una aplicación
+   cuyas pruebas nadie corre al fusionar es firmar a ciegas.
 2. **Mirar qué hay ya en el equipo de Apple de Auphere**: tener el Developer
    Program no implica tener un certificado *Developer ID Application*, porque
    las apps móviles usan otro tipo. Si no existe, lo crea el titular de la

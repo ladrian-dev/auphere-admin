@@ -87,3 +87,4 @@ tamaño).
 | Una versión rompe el puente y deja máquinas fuera | Despliegue por porcentaje y una versión anterior siempre disponible en el canal |
 | El diálogo de permisos del sistema aparece sin contexto la primera vez | La pantalla que declara el directorio lo explica antes |
 | Se empaqueta una versión con la aplicación rota porque nadie corre sus pruebas | Los dos trabajos nuevos de integración continua, **antes** que la cadena de firma |
+| Alguien verifica en local lo que conoce y la tubería descubre el resto | Un solo comando de verificación, usado por la persona y por la tubería |
