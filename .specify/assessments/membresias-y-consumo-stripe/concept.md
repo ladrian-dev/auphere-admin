@@ -33,9 +33,11 @@ Esto cierra, por decisión de producto, la deuda **D5** del plan de pendientes:
 
 ## Las membresías
 
-**Tres niveles de catálogo, y un suelo que no es un nivel.** Un partner tiene
-**una** membresía y sube o baja de nivel; no se acumulan. El pool va en **tokens
-de cuota equivalentes a Terra** (D3 explica por qué «equivalentes»).
+**Cuatro niveles en el catálogo y tres membresías.** `Free` es lo que trae toda
+cuenta: no se compra, no se factura y no cuenta contra el «máximo tres» de P1.
+Las membresías son `Pro`, `Team` y `Business`; un partner tiene **una** y sube o
+baja de nivel, no se acumulan. El pool va en **tokens de cuota equivalentes a
+Terra** (D3 explica por qué «equivalentes»).
 
 > **Las cifras de esta tabla son provisionales**, y lo son a propósito. Salen de
 > un turno de referencia **supuesto** de 9 900 tokens de cuota. Lo que queda
@@ -45,7 +47,7 @@ de cuota equivalentes a Terra** (D3 explica por qué «equivalentes»).
 > `companion.runs`. Si el turno real es el doble, el plan de 20 $ da 25 turnos a
 > la semana y no se puede vender.
 
-| | Consola (sin membresía) | **Base** | **Equipo** | **Estudio** |
+| | **Free** (sin membresía) | **Pro** | **Team** | **Business** |
 |---|---:|---:|---:|---:|
 | Precio | **0 $** | **20 $/mes** | **60 $/mes** | **150 $/mes** |
 | Pool semanal | 100 000 | 500 000 | 2 000 000 | 6 000 000 |
@@ -64,27 +66,30 @@ de cuota equivalentes a Terra** (D3 explica por qué «equivalentes»).
 [`research.md`](./research.md): 30 K de prompt con 80 % de acierto de caché y
 1,5 K de salida ≈ **9 900 tokens de cuota**.
 
-### El suelo de la consola no es un cuarto plan
+### `Free` es un nivel, pero no es una membresía
 
 Es lo que trae **toda cuenta de partner**, tenga membresía o no, y existe por una
 razón estructural: **el Companion vive en la consola, no en la aplicación.** Un
 partner de agencia que opera clientes finales y no ha comprado la app tiene hoy
 el Companion encendido; atarlo a una membresía de escritorio se lo quitaría.
 
-- El pool del suelo **solo lo gasta el Companion de la consola**. No da
+- El pool de `Free` **solo lo gasta el Companion de la consola**. No da
   teammates, no da ejecución en la máquina, y solo ofrece el cerebro barato.
-- **No se suma al plan: lo reemplaza.** El pool semanal es el del plan vigente;
-  sin plan, el del suelo. Sumar obligaría a explicar dos bolsas dentro del mismo
+- **No se suma a la membresía: la membresía lo reemplaza.** El pool semanal es el
+  del nivel vigente. Sumarlos obligaría a explicar dos bolsas dentro del mismo
   bolsillo, que es justo lo que D3 evita.
 - Cuesta **1,52 $ al mes por partner que no paga nada** si lo agota entero. Es
   coste de adquisición, es acotado y es visible en el mismo libro que todo lo
   demás — no es un regalo invisible.
 - **Reutiliza el número que ya existe.** 100 000 semanales ≈ 433 000 al mes ≈ el
-  `companion_monthly_token_cap` de 500 000 que hoy es el defecto. El suelo no es
-  un concepto nuevo: es el tope de hoy, con el período nuevo y el alcance
-  arreglado.
+  `companion_monthly_token_cap` de 500 000 que hoy es el defecto. No es un
+  concepto nuevo: es el tope de hoy, con el período nuevo y el alcance arreglado.
+- **No cuenta contra el «máximo tres membresías» de P1**, porque no es una
+  membresía: no se compra, no se factura y no tiene suscripción detrás. Tenerlo
+  es además lo estándar — los seis referentes del §2 de
+  [`research.md`](./research.md) tienen todos un nivel gratuito.
 
-### Por qué la ejecución local va en los tres
+### Por qué la ejecución local va en las tres
 
 Porque no nos cuesta nada y es la razón de existir del producto. La máquina es
 del partner y ya está pagada; `services/local_workstation_metering.py` lo
@@ -99,8 +104,8 @@ función de equipo, y un equipo de una persona no lo necesita.
 
 | De → a | Precio | Pool | Teammates | Personas |
 |---|---:|---:|---:|---:|
-| Base → Equipo | ×3 | **×4** | ×3 | ×3 |
-| Equipo → Estudio | ×2,5 | **×3** | ×2 | ×2,7 |
+| Pro → Team | ×3 | **×4** | ×3 | ×3 |
+| Team → Business | ×2,5 | **×3** | ×2 | ×2,7 |
 
 El pool crece **más rápido que el precio** en los dos escalones, y eso es
 deliberado:
@@ -113,18 +118,18 @@ deliberado:
    39 % de 150 $ son 58,6 $ — casi cinco veces más margen absoluto. Es lo que
    paga un soporte que no escala con la factura.
 3. **Y si fuera el doble por el doble, apilar planes sería igual de bueno que
-   subir de plan.** Con este escalado no lo es: tres Base cuestan 60 $ y dan
-   1,5 M semanales; Equipo cuesta 60 $ y da 2 M. Subir siempre gana, que es lo
+   subir de plan.** Con este escalado no lo es: tres Pro cuestan 60 $ y dan
+   1,5 M semanales; Team cuesta 60 $ y da 2 M. Subir siempre gana, que es lo
    que se quiere.
 4. **El suelo está en 62 % y el techo del riesgo en 39 %.** Ningún plan es
    deficitario aunque se agote entero todas las semanas del mes. Cursor vende
    20 $ de uso por 20 $ —margen cero a fondo— y depende por completo de que la
    mediana sea baja. Nosotros no dependemos de eso.
 
-### Lo que NO incluye ninguno de los tres
+### Lo que NO incluye ninguna de las tres
 
-- **Consumo de los clientes finales.** Eso son créditos, siempre, en los tres
-  planes. El pool es de la aplicación.
+- **Consumo de los clientes finales.** Eso son créditos, siempre, en las tres
+  membresías. El pool es de la aplicación.
 - **SSO, SCIM ni marca del partner.** Son CP-35 a CP-37, de Fase 2.
 - **Más clientes finales.** `partners.max_clients` **sigue siendo independiente
   del plan**, y conviene decidirlo así explícitamente: atar el número de clientes
@@ -146,7 +151,7 @@ por una razón de pantalla: dos precios para el mismo token obligan a explicar
 cuál se está gastando en cada momento, y la pantalla ya tiene bastante con
 explicar de qué bolsillo sale.
 
-Consecuencia que hay que aceptar y decir en voz alta: el pool de Base «vale»
+Consecuencia que hay que aceptar y decir en voz alta: el pool de Pro «vale»
 21,7 $ a tarifa de crédito y cuesta 20 $. **La membresía no es un descuento
 sobre tokens** — es el precio de la aplicación, de los asientos y de la
 ejecución en la máquina, con una bolsa dentro para que un partner nuevo pueda
@@ -159,35 +164,35 @@ D3), crédito vendido a 10 $/M, Stripe 2,9 % + 0,30 $ por cobro. **No incluye
 AWS**: el reparto por partner sale de [[nexus/PLAN-EJECUCION-COSTES-AWS-2026-09-08]]
 y se cruza al escribir la spec.
 
-**A · Partner pequeño** — plan Base, 1 persona, 2 teammates, 1 cliente final
+**A · Partner pequeño** — plan Pro, 1 persona, 2 teammates, 1 cliente final
 pequeño (≈900 turnos de canal al mes ≈ 1,44 M de cuota).
 
 | | Cuota | $ |
 |---|---:|---:|
-| Membresía Base | — | +20,00 |
+| Membresía Pro | — | +20,00 |
 | Créditos comprados (1,5 M) | — | +15,00 |
 | Consumo de teammates (30 % del pool) | 0,65 M | −2,29 |
 | Consumo del cliente final | 1,44 M | −5,07 |
 | Comisión de Stripe (2 cobros) | | −1,62 |
 | **Resultado** | | **+26,02 (74 %)** |
 
-**B · Partner medio** — plan Equipo, 3 personas, 5 teammates, 4 clientes.
+**B · Partner medio** — plan Team, 3 personas, 5 teammates, 4 clientes.
 
 | | Cuota | $ |
 |---|---:|---:|
-| Membresía Equipo | — | +60,00 |
+| Membresía Team | — | +60,00 |
 | Créditos comprados (6 M) | — | +60,00 |
 | Consumo de teammates (60 % del pool) | 5,20 M | −18,30 |
 | Consumo de los 4 clientes | 5,76 M | −20,28 |
 | Comisión de Stripe (2 cobros) | | −4,08 |
 | **Resultado** | | **+77,34 (64 %)** |
 
-**C · El que se pasa** — plan Base, 1 persona, agota el pool **todas** las
+**C · El que se pasa** — plan Pro, 1 persona, agota el pool **todas** las
 semanas y sigue trabajando contra créditos.
 
 | | Cuota | $ |
 |---|---:|---:|
-| Membresía Base | — | +20,00 |
+| Membresía Pro | — | +20,00 |
 | Créditos comprados (1,73 M, un 80 % más de pool) | — | +17,30 |
 | Pool consumido a fondo | 2,17 M | −7,62 |
 | Consumo sobre créditos | 1,73 M | −6,09 |
@@ -206,7 +211,7 @@ Tres límites independientes, y **dos ya están construidos**:
    ya cierran esa puerta hoy, y son fail-closed hasta cuando el libro no se
    puede leer.
 3. **El peso por modelo acota el coste por token** (D3). Sin él, el escenario C
-   en Sol costaría 13,90 $ en vez de 7,62 $ y el plan Estudio a fondo sería
+   en Sol costaría 13,90 $ en vez de 7,62 $ y el plan Business a fondo sería
    deficitario.
 
 ## Las decisiones que no son técnicas
@@ -289,9 +294,9 @@ dos cifras otra vez, y ésa es la definición del problema que se está evitando
 
 **La propiedad que lo justifica**, y conviene escribirla porque es el argumento
 entero en una línea: **con el peso puesto, agotar el pool cuesta lo mismo sea
-cual sea el cerebro.** Comprobado: vaciar el pool de Base cuesta 7,61 $ en Luna,
-7,61 $ en Terra y 7,61 $ en Sol; vaciar el de Estudio, 91,32 $ en los tres. Sin
-el peso, ese mismo pool de Estudio cuesta 91 $ en Terra y **166,90 $ en Sol**,
+cual sea el cerebro.** Comprobado: vaciar el pool de Pro cuesta 7,61 $ en Luna,
+7,61 $ en Terra y 7,61 $ en Sol; vaciar el de Business, 91,32 $ en los tres. Sin
+el peso, ese mismo pool de Business cuesta 91 $ en Terra y **166,90 $ en Sol**,
 contra un precio de 150 $. El peso no es una sutileza contable: es lo que
 convierte el peor caso de cada plan en un número que conocemos de antemano en
 vez de en una elección del partner.

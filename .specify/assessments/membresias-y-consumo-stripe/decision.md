@@ -80,10 +80,10 @@ las cuatro cambiaban lo que había que escribir.
 
 | # | Pregunta | Decisión |
 |---|---|---|
-| 1 | ¿«Máximo 3 membresías» son niveles o suscripciones? | **Tres niveles de catálogo.** Un partner tiene una membresía y sube o baja de nivel; no se acumulan |
+| 1 | ¿«Máximo 3 membresías» son niveles o suscripciones? | **Tres membresías de catálogo** — `Pro` · `Team` · `Business`, más el nivel `Free` que no se factura. Un partner tiene una y sube o baja; no se acumulan |
 | 2 | ¿Precios fijos o provisionales? | **Provisionales.** El ADR fija la estructura —tres niveles, pool semanal, caída a créditos, 65 % de margen objetivo, ningún plan deficitario a fondo— y las cifras se cierran tras medir el turno real |
-| 3 | ¿Qué ve un partner sin membresía? | **Un pool mínimo gratuito que solo gasta el Companion de la consola.** No es un cuarto plan: es lo que trae toda cuenta, y reutiliza el `companion_monthly_token_cap` de hoy como suelo |
-| 4 | ¿El peso por modelo en la primera spec? | **Sí**, dentro de `quota_tokens()`. Verificado: con el peso, agotar el pool cuesta lo mismo con cualquier cerebro; sin él, Estudio a fondo en Sol cuesta 166,90 $ contra 150 $ de precio |
+| 3 | ¿Qué ve un partner sin membresía? | **Un nivel `Free` con pool mínimo que solo gasta el Companion de la consola.** Es un nivel del catálogo pero **no una membresía**: no se compra, no se factura y no cuenta contra el «máximo tres». Reutiliza el `companion_monthly_token_cap` de hoy |
+| 4 | ¿El peso por modelo en la primera spec? | **Sí**, dentro de `quota_tokens()`. Verificado: con el peso, agotar el pool cuesta lo mismo con cualquier cerebro; sin él, Business a fondo en Sol cuesta 166,90 $ contra 150 $ de precio |
 | 5 | ¿Dónde ancla la semana? | **En el día de alta del partner**, no en un lunes global. Reparte la renovación en vez de concentrarla en un tick, y un alta en viernes tiene una primera semana entera. `renew_included_if_expired` no se toca: ya dispara por caducidad |
 
 La 3 la abrió la propia respuesta de Luis: si el Companion está incluido en la
