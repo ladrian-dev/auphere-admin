@@ -15,6 +15,7 @@
  * persona dentro** (11.1): sin sesión no hay quien apruebe.
  */
 import { OutboundBridge, type Inbound, type LinkState, type OutboundTransport } from "./bridge.js";
+import { TaskFiles } from "./task-files.js";
 import {
   actionsFor,
   initialState,
@@ -202,6 +203,20 @@ export class AppRuntime {
     return this.bar;
   }
 
+  /** Los clientes de esta máquina **con su directorio** (R11.1).
+   *
+   *  La barra no lo lleva a propósito —su contrato es de estado, no de rutas—,
+   *  y el panel de entorno sí lo necesita: sin directorio, «dónde trabaja» no
+   *  se puede contestar. No sale de esta máquina: la plataforma ya sabe que hay
+   *  un directorio declarado, nunca cuál. */
+  get clientLinks(): ReadonlyArray<{ clientRef: string; clientName: string | null; workdir: string | null }> {
+    return this.links.map((l) => ({
+      clientRef: l.clientRef,
+      clientName: l.clientName ?? null,
+      workdir: l.workdir ?? null,
+    }));
+  }
+
   onBarState(listener: (state: BarState) => void): () => void {
     this.barListeners.push(listener);
     return () => {
@@ -294,6 +309,10 @@ export class AppRuntime {
   }
 
   /** El directorio de un cliente vinculado, o el de repliegue (001). */
+  /** Lo que los comandos nombraron, por tarea (R11.2). Vive en RAM y se pierde
+   *  al cerrar: es contexto de lo que acaba de pasar, no un histórico. */
+  readonly taskFiles = new TaskFiles();
+
   workdirFor(clientRef: string | undefined): string | null {
     if (clientRef) {
       const link = this.links.find((l) => l.clientRef === clientRef);
@@ -370,6 +389,16 @@ export class AppRuntime {
     if (message.kind !== "execute") return;
     const workdir = this.workdirFor(message.clientRef);
     if (workdir === null) return; // sin directorio declarado no hay dónde ejecutar (7.5)
+    // Lo que este comando nombró, para el panel de entorno (R11.2). Se anota
+    // **antes** de ejecutar: aunque el comando falle, nombró lo que nombró.
+    this.taskFiles.record({
+      taskId: message.taskId ?? null,
+      clientRef: message.clientRef ?? "",
+      executable: message.executable,
+      args: message.args,
+      cwdRelative: message.cwdRelative,
+      workdir,
+    });
     const result = await runExecuteMessage(message, workdir);
     // **Y se contesta.** Hasta la spec 003 el resultado se calculaba y se
     // tiraba: no había quien pusiera trabajo en la cola, así que nunca se

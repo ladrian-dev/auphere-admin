@@ -218,6 +218,17 @@ export function TeammateSettings({
         <div
           role="alertdialog"
           aria-label={t("settings.archive")}
+          // Si se anuncia como diálogo, se comporta como uno: el foco entra al
+          // abrirlo y Escape lo cierra. Un `alertdialog` que no recibe el foco
+          // deja a quien navega con teclado leyendo una pregunta que no sabe
+          // dónde contestar (WCAG 2.4.3).
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              setConfirming(false);
+            }
+          }}
+          ref={(node) => node?.querySelector("button")?.focus()}
           className="flex flex-col gap-3 rounded-md border border-border bg-muted p-4"
         >
           <p className="max-w-prose text-sm text-pretty">

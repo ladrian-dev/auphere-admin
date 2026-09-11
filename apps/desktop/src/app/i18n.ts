@@ -130,6 +130,25 @@ const COPY = {
     es: "Tu sesión es la de la consola y se cierra allí: la aplicación no añade otra.",
     en: "Your session is the console's and is closed there: the app does not add another.",
   },
+  // ── panel de entorno (T080, R11) ──────────────────────────────────────
+  "env.client": { es: "Cliente", en: "Client" },
+  "env.workdir": { es: "Directorio", en: "Directory" },
+  "env.workdir.none": { es: "Sin directorio declarado", en: "No directory declared" },
+  "env.files.title": { es: "Lo que los comandos nombraron", en: "What the commands named" },
+  "env.files.hint": {
+    es: "Referencia de esta tarea, no un listado del directorio: la plataforma no sabe qué ficheros se escribieron, y la aplicación no los abre.",
+    en: "A reference for this task, not a directory listing: the platform does not know which files were written, and the app does not open them.",
+  },
+  "env.setup.title": { es: "Puesta en marcha", en: "Setup" },
+  "env.setup.noMachine": {
+    es: "No hay ninguna máquina emparejada, así que no hay dónde ejecutar. Se empareja desde la consola.",
+    en: "No machine is paired, so there is nowhere to run. Pairing happens in the console.",
+  },
+  "env.setup.noWorkdir": {
+    es: "Esta máquina está, pero el cliente está sin directorio declarado: hasta que lo declares no hay dónde trabajar.",
+    en: "The machine is here, but the client has no directory declared: until you declare one there is nowhere to work.",
+  },
+  "env.setup.open": { es: "Ir a la puesta en marcha", en: "Go to setup" },
   "inbox.title": { es: "Pendientes", en: "Pending" },
   "inbox.empty.title": { es: "Nada te espera", en: "Nothing is waiting for you" },
   "inbox.empty.body": {

@@ -46,6 +46,8 @@ export type Inbound =
       timeoutMs: number;
       /** Spec 002: el cliente cuyo directorio se usa. Sin él, el de repliegue. */
       clientRef?: string;
+      /** Spec 003 R11.2: de qué tarea es este trabajo, para el panel de entorno. */
+      taskId?: string;
     }
   | { kind: "cancel"; executionId: string };
 

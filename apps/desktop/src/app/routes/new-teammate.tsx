@@ -283,7 +283,9 @@ export function PermissionSwitch({
         onClick={onToggle}
         className="mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-border bg-muted p-0.5 transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[checked=true]:bg-primary"
       >
-        <span className="size-5 rounded-full bg-background transition-transform aria-hidden:opacity-100" style={{ transform: checked ? "translateX(20px)" : "translateX(0)" }} />
+        <span
+          className={`size-5 rounded-full bg-background transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`}
+        />
       </button>
       <span className="flex min-w-0 flex-col">
         <span className="text-sm">{label}</span>

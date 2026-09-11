@@ -90,7 +90,7 @@ export function Roster({ items, status, selected, onSelect, onRetry, onCreate }:
                       {tm.name}
                     </span>
                     {tm.my_unread ? (
-                      <span className="size-2 shrink-0 rounded-full bg-primary" aria-label={t("state.unread")} />
+                      <span role="img" className="size-2 shrink-0 rounded-full bg-primary" aria-label={t("state.unread")} />
                     ) : null}
                   </span>
                   <span className="truncate text-xs text-muted-foreground" title={tm.job}>

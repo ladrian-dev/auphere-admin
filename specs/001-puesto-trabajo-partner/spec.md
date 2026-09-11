@@ -430,6 +430,14 @@ Lo que separa una cosa de la otra no es la buena intención: es el criterio 15.3
 1. La aplicación DEBE ser una cáscara sobre la consola de Auphere, y NO DEBE
    reimplementar sus pantallas — dos implementaciones de la misma pantalla
    divergen, y la que se queda atrás miente.
+   > **Superado por `specs/003-teammates-app-escritorio` (R12).** La aplicación
+   > sí tiene pantallas propias desde la 003: el roster, el hilo, Pendientes y
+   > Cuenta. El motivo por el que este criterio decía lo contrario sigue siendo
+   > válido y por eso no se ha borrado — dos implementaciones de **la misma**
+   > pantalla divergen. Lo que cambió es que estas no son las mismas: la consola
+   > administra y no tiene ninguna de ellas (003-R14.3), y el timeline se
+   > comparte como paquete (`@nexus/companion-ui`) en vez de escribirse dos
+   > veces. Lo que sigue en pie de este requisito son los criterios 2, 3 y 4.
 2. La aplicación NO DEBE almacenar ninguna credencial de backend, igual que la
    consola que envuelve.
 3. La sesión autenticada de la persona NO DEBE ser alcanzable desde el ambiente

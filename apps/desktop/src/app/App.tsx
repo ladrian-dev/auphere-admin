@@ -19,6 +19,7 @@ import {
   type SessionPush,
   type Team,
   type Teammate,
+  type ThreadEnv,
   type Usage,
   bridge,
 } from "./bridge";
@@ -116,6 +117,7 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
   const [usage, setUsage] = useState<Usage | null>(null);
   const [team, setTeam] = useState<Team | null>(null);
   const [policy, setPolicy] = useState<LocalExecPolicy | null>(null);
+  const [env, setEnv] = useState<ThreadEnv | null>(null);
   const [accountStatus, setAccountStatus] = useState<"loading" | "ready" | "error">("loading");
   const [pending, setPending] = useState<InboxItem[]>([]);
   const [focus, setFocus] = useState<string | null>(null);
@@ -192,6 +194,24 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
   }, [view, loadAccount]);
 
   const current = useMemo(() => roster.find((r) => r.id === selected) ?? null, [roster, selected]);
+
+  // El entorno es del **hilo**: se vuelve a preguntar al cambiar de teammate y
+  // cuando la máquina cambia de estado, que es cuando puede haber cambiado el
+  // directorio o la presencia.
+  useEffect(() => {
+    const threadId = current?.my_thread_id ?? null;
+    if (threadId === null) {
+      setEnv(null);
+      return;
+    }
+    let alive = true;
+    void bridge.envForThread({ thread_id: threadId }).then((res) => {
+      if (alive) setEnv(res.ok ? res.data : null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [current?.my_thread_id, presence]);
   const waiting = pending.length;
 
   if (session?.kind === "stop") {
@@ -319,7 +339,12 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
           <p className="m-auto max-w-prose p-8 text-center text-pretty text-muted-foreground">{t("thread.pick")}</p>
         )}
       </section>
-      <EnvPanel teammate={current} presence={presence} />
+      <EnvPanel
+        teammate={current}
+        env={env}
+        policy={policy}
+        onOpenConsole={(path) => void bridge.openConsole({ path })}
+      />
     </main>
   );
 }

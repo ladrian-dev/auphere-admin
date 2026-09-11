@@ -27,6 +27,13 @@ export type AppSurfaceOptions = {
   onSessionLost: (reason: "anonymous" | "no_membership") => void;
   inbox: InboxWatcher;
   notificationPrefs: { read(): Prefs; write(next: Prefs): Prefs };
+  /** Lo que esta máquina sabe: dónde trabaja cada cliente y qué nombraron los
+   *  comandos de cada tarea (R11). Lo pone el runtime del puente. */
+  machine: {
+    presence(): { machine: { displayName: string; hostname: string } | null; presence: "presente" | "ausente" };
+    links(): Array<{ clientRef: string; clientName: string | null; workdir: string | null }>;
+    filesForTask(taskId: string | null): string[];
+  };
 };
 
 const q = encodeURIComponent;
@@ -148,6 +155,40 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
   // la ruta no existía; ahora existe y se pregunta por ella.
   handle("app:usage", () => o.platform.request("/api/teammates/usage"));
   handle("app:team", () => o.platform.request("/api/team"));
+
+  /**
+   * El entorno de un hilo — Requisito 11.
+   *
+   * Junta dos mundos que no se ven entre sí: la plataforma sabe de **tareas**
+   * (cuál está abierta en este hilo) y esta máquina sabe de **directorios** y
+   * de lo que los comandos nombraron. Ninguno de los dos datos viaja al otro:
+   * la lista de ficheros no sube, y el directorio no baja a ningún cliente.
+   *
+   * `files` es «lo que los comandos nombraron», no lo que se escribió: la
+   * plataforma nunca recibe esa lista (§III) y la aplicación no mira el disco
+   * para adivinarla. El panel lo dice con esas palabras.
+   */
+  handle("app:env.forThread", async (input: { thread_id: string }) => {
+    const tasks = await o.platform.request<Array<{ id: string; thread_id: string; state: string }>>(
+      "/api/teammates/tasks",
+    );
+    const task = tasks.ok
+      ? (tasks.data.find((row) => row.thread_id === input.thread_id && row.state === "en_marcha") ??
+        tasks.data.find((row) => row.thread_id === input.thread_id) ??
+        null)
+      : null;
+    const { machine, presence } = o.machine.presence();
+    return {
+      ok: true,
+      data: {
+        machine,
+        presence,
+        links: o.machine.links(),
+        task_id: task?.id ?? null,
+        files: o.machine.filesForTask(task?.id ?? null),
+      },
+    };
+  });
 
   handle("app:stream.open", (input: { run_id: string; since_seq: number }) => ({
     stream_id: o.streams.start(`/api/companion/runs/${q(input.run_id)}/stream?since_seq=${input.since_seq}`),

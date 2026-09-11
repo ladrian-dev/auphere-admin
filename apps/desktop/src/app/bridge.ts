@@ -86,6 +86,16 @@ export type TeamMember = {
 };
 export type Team = { members: TeamMember[] };
 
+/** El entorno de un hilo (R11): mitad plataforma (la tarea), mitad máquina. */
+export type ThreadEnv = {
+  machine: { displayName: string; hostname: string } | null;
+  presence: "presente" | "ausente";
+  links: Array<{ clientRef: string; clientName: string | null; workdir: string | null }>;
+  task_id: string | null;
+  /** Lo que los comandos de esa tarea nombraron. Nunca contenido. */
+  files: string[];
+};
+
 export type Level = "critico" | "aviso" | "informativo";
 export type InboxItem = {
   action_id: string;
@@ -152,6 +162,7 @@ export interface AuphereBridge {
   policyPrefs(): Promise<Result<LocalExecPolicy>>;
   policySetPref(input: { executable: string | null; mode: ExecMode }): Promise<Result<LocalExecPolicy>>;
   usage(): Promise<Result<Usage>>;
+  envForThread(input: { thread_id: string }): Promise<Result<ThreadEnv>>;
   team(): Promise<Result<Team>>;
   openConsole(input: { path: string }): Promise<null>;
   on<K extends keyof Push>(channel: K, callback: (payload: Push[K]) => void): () => void;

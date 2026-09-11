@@ -574,6 +574,11 @@ consola y empieza la cáscara.
    y NO DEBE reimplementar ninguna pantalla de la consola (001-R15.1, heredado).
    Esa barra existe porque pregunta y muestra cosas que **solo la máquina sabe**:
    si está emparejada, con qué nombre, y en qué estado está su puente.
+   > **Superado por `specs/003-teammates-app-escritorio` (R12.1).** Son **dos**
+   > superficies propias: la barra y la pantalla de operar, cada una con su
+   > partición y su `preload`. El criterio de aquí se mantiene como regla de la
+   > barra, y el de la 003 explica por qué la segunda no es reimplementar la
+   > consola: la consola no tiene esas pantallas.
 2. La barra DEBE tener exactamente estos estados, nombrados y diseñados, y
    ninguno DEBE pintarse como error: `sin emparejar` · `emparejando` ·
    `conectada` · `reconectando` · `sin sesión` · `hay que volver a emparejar` ·

@@ -98,6 +98,7 @@ function toInbound(raw: unknown): Inbound | null {
     cwdRelative: typeof w.cwd_relative === "string" ? w.cwd_relative : null,
     timeoutMs: typeof w.timeout_ms === "number" ? w.timeout_ms : 0,
     ...(typeof w.client_ref === "string" ? { clientRef: w.client_ref } : {}),
+    ...(typeof w.task_id === "string" ? { taskId: w.task_id } : {}),
   };
 }
 

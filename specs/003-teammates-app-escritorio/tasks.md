@@ -513,31 +513,37 @@ teammate, y la pausa por tope se pinta como estado.
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T080 [P] Panel de entorno `routes/thread.tsx` §Entorno: máquina, presencia, directorio
+- [x] T080 [P] Panel de entorno `routes/thread.tsx` §Entorno: máquina, presencia, directorio
       del cliente, `archivos` tocados en la tarea (de `exec.*`, solo nombres), `navegador` como
       ausencia diseñada, enlace a la puesta en marcha de 002 si falta máquina o directorio;
       handler `app:env.forThread`. _Requisitos: 11.1, 11.2, 11.3, 11.4_
-- [ ] T081 [P] Comportarse como app: `apps/desktop/src/electron/{single-instance, window-state,
+      **HECHO y verificado con display.** El panel dice máquina, presencia, **cliente y su directorio**, y los ficheros de la tarea. `app:env.forThread` —que estaba en el contrato y **no tenía manejador**— junta dos mundos que no se ven entre sí: la plataforma sabe de tareas (la abierta en este hilo) y la máquina de directorios; ninguno de los dos datos cruza. `work[]` gana `task_id` para poder decir «en **esta** tarea». **Cambio sobre la tarea:** `archivos` se titula «lo que los comandos nombraron» y no «Archivos», y lo es: la plataforma nunca recibe qué ficheros se escribieron (§III) y la app no mira el disco para adivinarlo; `task-files.ts` (10 tests) recorta lo absoluto a relativo y descarta lo que cae fuera del directorio del cliente. Sin máquina o sin directorio se **lleva** a la puesta en marcha de la 002, no se repite aquí (`env-panel.test.tsx`, 9 tests).
+- [x] T081 [P] Comportarse como app: `apps/desktop/src/electron/{single-instance, window-state,
       tray}.ts` (instancia única con `requestSingleInstanceLock`, ventana que recuerda su sitio
       en `userData`, icono de bandeja con el conteo, atajo global configurable); tests puros
       `window-state.test.ts`, `tray-badge.test.ts`. _Requisitos: 12.4_
-- [ ] T082 [P] Auditorías del workspace sobre `apps/desktop/src/app` y `packages/companion-ui`:
+      **HECHO.** Instancia única (`requestSingleInstanceLock`: dos instancias serían dos puentes con la misma credencial y dos vigilantes de la bandeja; la segunda invocación trae la primera al frente). `window-state.ts` (10 tests) con la regla que casi todo el mundo falla: una ventana guardada **fuera de las pantallas de hoy** vuelve al centro —restaurarla en el monitor que ya no está se ve igual que no arrancar— y lo guardado se escribe una vez al soltar, no en cada píxel. `tray-badge.ts` (9 tests): el conteo es de **lo que espera una decisión**, lo informativo no suma, y el tooltip no dice de qué va porque se ve en pantallas compartidas. Icono generado (anillo con punto, template de macOS) en `assets/`. **Nota:** el atajo global se configura en `shortcut.json` del directorio de datos y no en una pantalla — la spec no tiene ajustes, e inventar una pantalla para un atajo sería superficie que nadie pidió.
+- [x] T082 [P] Auditorías del workspace sobre `apps/desktop/src/app` y `packages/companion-ui`:
       `ui-states-checklist` → `a11y-audit` → `responsive-audit` → `design-tokens`; cero 🔴;
       sin `fg-subtle` en texto legible ni aviso con texto claro. Evidencia en `evidence/T082/`. _Requisitos: 12.5_
-- [ ] T083 [P] Notas de sustitución: `specs/001-puesto-trabajo-partner/spec.md` R15.1 y
+      **HECHO.** `evidence/T082/auditorias.md`: cero 🔴 en las cuatro. Dos 🟡 de accesibilidad **corregidos**: el punto de «te contestó» era un `span` con `aria-label` sin papel (no se anuncia), y el panel de confirmar el archivado se anunciaba `alertdialog` sin recibir el foco. En tokens, el `style` del interruptor pasó a `translate-x-5`; el único que queda es geometría en tiempo de ejecución, con su comentario. Queda escrito con todas las letras que son revisión del fuente con capturas reales al lado, **no** medición del render con `axe-core`: la pantalla vive en una `WebContentsView`, no en una URL, y montar ese arnés es trabajo propio.
+- [x] T083 [P] Notas de sustitución: `specs/001-puesto-trabajo-partner/spec.md` R15.1 y
       `specs/002-identidad-app-escritorio/spec.md` R12.1 («superado por specs/003»);
       `contracts/device-bridge-v2.md` de la 002 apunta a `local-dispatch.md`. _Requisitos: §Spec viva_
-- [ ] T084 [P] Spec viva: `docs/desktop-teammates.md` (la pantalla, el canal IPC, la tarea,
+      **HECHO.** 001-R15.1 y 002-R12.1 quedan anotados como superados **sin borrar el motivo** por el que decían lo contrario: dos implementaciones de la *misma* pantalla divergen, y estas no son las mismas —la consola no tiene ninguna de ellas—. El contrato del puente de la 002 dice qué le amplía la 003 y solo eso: `work[]` deja de volver vacío (apunta a `local-dispatch.md`) y el resultado acepta la muestra acotada, que **no se persiste**.
+- [x] T084 [P] Spec viva: `docs/desktop-teammates.md` (la pantalla, el canal IPC, la tarea,
       la política en tres capas, el despacho) y actualización de `docs/desktop-workstation.md`
       (cuatro particiones, `work[]`); `docs/companion/CONTRACT-V3.md` enlazado desde
       `docs/companion/README` si existe. _Requisitos: §Spec viva_
-- [ ] T085 [P] Enlace de vuelta a la KB: `[[14-mvp-y-fases]]` §2 enmendado («dentro de la
+      **HECHO.** `docs/desktop-teammates.md`: la frase que ordena todo («la consola configura, la app opera»), las tres superficies y la cuarta partición, el canal IPC y sus dos reglas con test, la tarea, las tres capas con las dos trampas que cuestan una tarde, el despacho de punta a punta y el medidor único. `docs/desktop-workstation.md` pasa a cuatro particiones y apunta aquí; CONTRACT-V1 y V2 enlazan la V3 con su regla de autoridad.
+- [x] T085 [P] Enlace de vuelta a la KB: `[[14-mvp-y-fases]]` §2 enmendado («dentro de la
       app») y §7 decisión 4; `[[10-decisiones]]` decisiones 13 y 14; `[[00-revision-del-diseno-v3]]`
       §5.1 cerrado. _Requisitos: §IX_
-- [ ] T086 Ejecutar `quickstart.md` completo (§1–§5) con una persona ajena al equipo para
+      **HECHO.** `[[10-decisiones]]` gana las decisiones **13** (los teammates viven en la app) y **14** (un solo medidor, sin importe en dólares), y cierra dos abiertas: 2.4 («teammate personal» no existe: roster del partner, hilo de la persona) y 2.5 (para lo que hay hoy se para el modelo y las confirmaciones siguen vivas; la VM sigue abierta). `[[14-mvp-y-fases]]` §2 queda enmendado —el equipo no vive dentro de la consola— **conservando** la lista de piezas, que es exactamente lo que hubo que construir. `[[00-revision-del-diseno-v3]]` §5.1 cerrado en escritorio y explicando por qué al móvil le queda menos: el hilo, la tarea y la bandeja son de la plataforma.
+- [x] T086 Ejecutar `quickstart.md` completo (§1–§5) con una persona ajena al equipo para
       CE-009; evidencia en `evidence/T086/`. CE-001 queda condicionado a la spec 004 y se
       anota así. _Requisitos: CE-001 … CE-011_
-
+      **HECHO en lo que puedo firmar; anotado lo que no.** `evidence/T086/quickstart.md`: §1 (835 de aislamiento + 61 de la 003), §2, §3 y §5 en verde, y el recorrido de §4 con su evidencia por pasos. **Un hallazgo del recorrido, corregido:** un hilo vacío de un teammate que necesita la máquina enseñaba el vacío **del cajón de la consola** debajo de la banda; el vacío propio solo se pintaba si el estado se llamaba `vacio`, y con la máquina ausente se llama otra cosa. **Lo que no cierro yo:** CE-009 pide una persona ajena al equipo, y eso no lo puede firmar quien escribió el código —el valor del criterio está en que no sepa dónde mirar—; con ello quedan la espera real de más de 15 minutos con aviso del sistema y la comprobación con dos sesiones en dos máquinas. CE-001 sigue condicionado a la spec 004, como estaba previsto.
 ---
 
 ## Dependencies & Execution Order

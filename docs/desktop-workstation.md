@@ -14,12 +14,18 @@ Una **cáscara** de Electron con dos vistas en una `BaseWindow`:
 
 | Vista | Partición | `preload` | Qué carga |
 |---|---|---|---|
-| Consola | `persist:auphere-console` (persistente) | **ninguno** | `https://console.auphere.com` — las pantallas son las de la consola, no se reimplementan |
+| Consola | `persist:auphere-console` (persistente) | **ninguno** | la consola — para **administrar**; sus pantallas no se reimplementan |
+| Pantalla de operar | `auphere-app` (no persistente) | `app-preload.cjs`, lista cerrada | `dist/app/index.html` (spec 003) |
 | Barra del puesto | `auphere-bar` (no persistente) | `bar-preload.cjs`, seis funciones | `dist/bar/index.html`, 44 px, abajo |
 
-El ambiente del agente vive en una tercera partición (`auphere-agent`, no
-persistente) y no alcanza ninguna de las otras dos. `session-isolation.ts` lo
+El ambiente del agente vive en una **cuarta** partición (`auphere-agent`, no
+persistente) y no alcanza ninguna de las otras tres. `session-isolation.ts` lo
 comprueba al arrancar y `tests/session-isolation.test.ts` lo afirma.
+
+> La pantalla de operar y todo lo que cuelga de ella (roster, hilo, Pendientes,
+> Cuenta, ejecución en la máquina) se describen en
+> [`docs/desktop-teammates.md`](desktop-teammates.md). Este documento es la
+> identidad, el emparejamiento, la barra y la contención.
 
 **La consola no puede hablarle a la cáscara.** Sin `preload` en su vista no hay
 canal. El canal entre la consola y la barra es la persona: la consola muestra un
@@ -77,6 +83,10 @@ device_archived` con motivo; generación vieja fuera de la gracia de 60 s →
 |---|---|---|
 | Latir | `POST /device/heartbeat` | partner · solo mueve `last_heartbeat_at` |
 | Sondear | `GET /device/poll` | partner · devuelve `work[]` y `links[]` (clientes vinculados y cuáles no tienen directorio) |
+
+> Desde la spec 003 `work[]` **ya no vuelve vacío**: lleva lo que un teammate
+> pidió ejecutar, con su `task_id`. El ciclo completo está en
+> `specs/003-teammates-app-escritorio/contracts/local-dispatch.md`.
 | Devolver resultado | `POST /device/result` | tenant del asiento, comprobado dentro del partner |
 | Renovar | `POST /device/renew` | partner · `gen + 1`; la anterior vale 60 s más |
 | Declarar directorio | `POST /device/links` | tenant resuelto desde `client_ref` **dentro del partner**; ajeno → `404` con asiento |

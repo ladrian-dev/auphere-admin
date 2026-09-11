@@ -165,3 +165,38 @@ export function nativeDirectoryPicker(window: BaseWindow, title: string): () => 
 export function openExternal(url: string): Promise<void> {
   return shell.openExternal(url);
 }
+
+
+/**
+ * El atajo global para traer la aplicación al frente (12.4).
+ *
+ * Vive en un fichero del directorio de datos y no en una pantalla: la spec 003
+ * no tiene ajustes, e inventar una pantalla para un atajo sería añadir
+ * superficie que nadie pidió. Lo que sí hace falta es que se pueda cambiar sin
+ * recompilar, porque un atajo fijo choca con el de otra aplicación y entonces
+ * no hay forma de arreglarlo.
+ *
+ * Un valor que no parece un acelerador de Electron se ignora: registrar basura
+ * lanza, y arrancar es más importante que el atajo.
+ */
+export function readShortcut(fallback = "CommandOrControl+Shift+A"): string | null {
+  const file = userDataFile("shortcut.json");
+  try {
+    const raw = file.read();
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw.toString("utf8")) as { accelerator?: unknown };
+    const value = parsed.accelerator;
+    if (value === null) return null; // apagarlo a propósito es una opción
+    if (typeof value !== "string" || !/^[A-Za-z0-9+]+$/.test(value.replace(/\s/g, ""))) {
+      return fallback;
+    }
+    return value;
+  } catch {
+    return fallback;
+  }
+}
+
+/** El idioma de la cáscara para lo que se ve fuera de la ventana (bandeja). */
+export function appLocale(): "es" | "en" {
+  return (app.getLocale() || "es").toLowerCase().startsWith("en") ? "en" : "es";
+}

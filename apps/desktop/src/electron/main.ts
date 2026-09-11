@@ -15,7 +15,7 @@
  * * **No hay credencial por variable de entorno.** La máquina la canjea con un
  *   código, la guarda cifrada con el llavero, y solo late con una persona dentro.
  */
-import { BaseWindow, Menu, WebContentsView, app, ipcMain, session } from "electron";
+import { BaseWindow, Menu, Tray, WebContentsView, app, globalShortcut, ipcMain, nativeImage, screen, session } from "electron";
 import { hostname as osHostname } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,8 @@ import {
 } from "../session-isolation.js";
 import type { InboxItem } from "../inbox-watcher.js";
 import { StreamHub } from "../stream-hub.js";
+import { trayBadge, trayTooltip, type Waiting } from "../tray-badge.js";
+import { MIN_WINDOW, readWindowState, rememberWindow } from "../window-state.js";
 import { decideWindowOpen, navigationAllowed } from "../window-open-policy.js";
 import {
   applyNotificationEffects,
@@ -48,6 +50,8 @@ import {
   partitionFetch,
   safeStorageCipher,
   sessionCookieWatcher,
+  appLocale,
+  readShortcut,
   userDataFile,
 } from "./adapters.js";
 import { registerAppSurface, sessionForRenderer } from "./app-surface.js";
@@ -76,7 +80,38 @@ export async function bootstrap(): Promise<void> {
   const human = session.fromPartition(HUMAN_PARTITION);
   human.setUserAgent(`${human.getUserAgent()} AuphereDesktop/${app.getVersion()}`);
 
-  const window = new BaseWindow({ width: 1280, height: 820, title: "Auphere" });
+  // Dónde se abre: lo guardado, corregido contra las pantallas de hoy (12.4).
+  // La corrección la hace un módulo puro con test; aquí solo se le pregunta.
+  const windowFile = userDataFile("window.json");
+  const savedWindow = (() => {
+    try {
+      const raw = windowFile.read();
+      return raw ? (JSON.parse(raw.toString("utf8")) as unknown) : null;
+    } catch {
+      return null;
+    }
+  })();
+  const placement = readWindowState(
+    savedWindow,
+    screen.getAllDisplays().map((d) => d.workArea),
+  );
+  const window = new BaseWindow({
+    ...(placement.x !== undefined ? { x: placement.x, y: placement.y } : {}),
+    width: placement.width,
+    height: placement.height,
+    minWidth: MIN_WINDOW.width,
+    minHeight: MIN_WINDOW.height,
+    title: "Auphere",
+  });
+  if (placement.maximised) window.maximize();
+  const remember = rememberWindow((state) => windowFile.write(Buffer.from(JSON.stringify(state))));
+  const noteBounds = () => {
+    const bounds = window.getBounds();
+    remember({ ...bounds, maximised: window.isMaximized() });
+  };
+  window.on("resize", noteBounds);
+  window.on("move", noteBounds);
+  window.on("close", () => remember.flush());
   const consoleView = new WebContentsView({ webPreferences: consoleWebPreferences() });
   // Spec 003 — la pantalla de operar: la segunda superficie propia, con su
   // partición y su `preload`. La consola sigue cargándose para administrar y
@@ -224,7 +259,14 @@ export async function bootstrap(): Promise<void> {
         showSurface("app");
         pushApp("app:inbox.focus", { action_id: actionId });
       }),
-    push: (channel, payload) => pushApp(channel, payload),
+    push: (channel, payload) => {
+      // La bandeja del sistema cuenta lo mismo que Pendientes, y solo lo que
+      // espera una decisión: lo informativo no sube el número (12.4).
+      if (channel === "app:inbox" && Array.isArray(payload)) {
+        setTrayWaiting(payload as Waiting[]);
+      }
+      pushApp(channel, payload);
+    },
     prefs: () => notificationPrefs.read(),
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });
@@ -238,6 +280,16 @@ export async function bootstrap(): Promise<void> {
     onSessionLost: () => void gate.refresh(),
     inbox,
     notificationPrefs,
+    // Lo que solo sabe esta máquina: dónde trabaja cada cliente y qué nombraron
+    // los comandos de cada tarea. No sube a la plataforma y no baja a nadie.
+    machine: {
+      presence: () => ({
+        machine: runtime.barState.machine ?? null,
+        presence: runtime.barState.status === "conectada" ? "presente" : "ausente",
+      }),
+      links: () => [...runtime.clientLinks],
+      filesForTask: (taskId) => runtime.taskFiles.forTask(taskId),
+    },
   });
   runtime.onBarState((state) =>
     pushApp("app:presence", {
@@ -246,6 +298,45 @@ export async function bootstrap(): Promise<void> {
       links: state.links,
     }),
   );
+
+  // ── comportarse como una aplicación (12.4) ─────────────────────────────
+  //
+  // El icono de bandeja es lo único que se ve con la ventana cerrada. Dice
+  // cuántas cosas esperan una decisión y **no de qué van**: se ve en pantallas
+  // compartidas y sin sesión delante.
+  const tray = new Tray(nativeImage.createFromPath(join(HERE, "..", "..", "assets", "trayTemplate.png")));
+  const showApp = () => {
+    if (!window.isVisible()) window.show();
+    if (window.isMinimized()) window.restore();
+    window.focus();
+    showSurface("app");
+  };
+  const setTrayWaiting = (waiting: Waiting[]): void => {
+    const badge = trayBadge(waiting);
+    tray.setToolTip(trayTooltip(waiting, appLocale()));
+    // En macOS el número va al lado del icono; en el resto, en el tooltip.
+    if (process.platform === "darwin") tray.setTitle(badge ? ` ${badge}` : "");
+  };
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Auphere", click: showApp },
+      { type: "separator" },
+      { label: "Salir", click: () => app.quit() },
+    ]),
+  );
+  tray.on("click", showApp);
+  setTrayWaiting([]);
+
+  // Un atajo global para traer la aplicación al frente. Configurable en
+  // `shortcut.json` del directorio de datos y no en una pantalla: la spec no
+  // tiene ajustes, y un fichero es una decisión reversible que no inventa una.
+  const shortcut = readShortcut();
+  if (shortcut && !globalShortcut.isRegistered(shortcut)) {
+    // Si otra aplicación lo tiene cogido, no se insiste ni se avisa: es una
+    // comodidad, y pelearse por un atajo del sistema no es cosa de esta app.
+    globalShortcut.register(shortcut, showApp);
+  }
+  app.on("will-quit", () => globalShortcut.unregisterAll());
 
   await barView.webContents.loadFile(join(HERE, "..", "bar", "index.html"));
   await appView.webContents.loadFile(join(HERE, "..", "app", "index.html"));
@@ -322,8 +413,23 @@ async function captureEvidence(
 }
 
 if (process.env.NODE_ENV !== "test") {
-  void app.whenReady().then(bootstrap);
-  app.on("window-all-closed", () => app.quit());
+  // **Una sola instancia** (12.4). Abrir la aplicación dos veces abriría dos
+  // puentes con la misma credencial y dos vigilantes de la bandeja: el segundo
+  // avisaría de lo mismo otra vez. La segunda invocación trae la primera al
+  // frente, que es lo que la persona quería al hacer doble clic.
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+  } else {
+    app.on("second-instance", () => {
+      const [first] = BaseWindow.getAllWindows();
+      if (!first) return;
+      if (first.isMinimized()) first.restore();
+      first.show();
+      first.focus();
+    });
+    void app.whenReady().then(bootstrap);
+    app.on("window-all-closed", () => app.quit());
+  }
 }
 
 

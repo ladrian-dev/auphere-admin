@@ -37,7 +37,8 @@
     "productName": "Auphere",
     "files": [
       "dist/**",
-      "package.json"
+      "package.json",
+      "assets/**"
     ],
     "mac": {
       "category": "public.app-category.developer-tools",

@@ -4,6 +4,11 @@ Sustituye a `specs/001-puesto-trabajo-partner/contracts/device-bridge.md` en lo
 que toca a la credencial y añade dos operaciones. Sigue siendo **saliente**: todo
 es respuesta a una llamada de la máquina.
 
+> **La spec 003 amplía este contrato en dos sitios, y solo en dos**: `work[]`
+> deja de estar vacío (ver `local-dispatch.md` de la 003) y `POST /device/result`
+> acepta `stdout_sample` y `denial_code`. La muestra **no se persiste**: va al
+> modelo como resultado de herramienta y se descarta. Lo demás no cambia.
+
 ## La credencial
 
 JWT HS256, TTL 12 h. Claims: `svc="device"` · `sub=device_id` · `pid=partner_id`
@@ -25,7 +30,7 @@ cada trabajo y cada vínculo, por `client_ref` resuelto dentro del partner.
 | Operación | Ruta | Cuerpo | Efecto |
 |---|---|---|---|
 | **Latir** | `POST /device/heartbeat` | `{app_version?}` | **Solo** mueve `last_heartbeat_at` (invariante de `T072`) |
-| **Sondear** | `GET /device/poll` | — | Devuelve `work[]` y **`links[]`**: `{client_ref, client_name, workdir, needs_directory}` |
+| **Sondear** | `GET /device/poll` | — | Devuelve `work[]` y **`links[]`**: `{client_ref, client_name, workdir, needs_directory}`. **`work[]` lo llena la spec 003**: hasta ella volvía siempre vacío porque nadie encolaba nada. Su forma y su ciclo de vida están en [`specs/003-teammates-app-escritorio/contracts/local-dispatch.md`](../../003-teammates-app-escritorio/contracts/local-dispatch.md) |
 | **Devolver resultado** | `POST /device/result` | como en v1 | Cierra el asiento de ejecución |
 | **Renovar** | `POST /device/renew` | — | `gen + 1`, `credential_rotated_at = now()`. Respuesta `{credential, generation, expires_at}`. Audita `device.renewed`, actor `device:{id}` |
 | **Declarar directorio** | `POST /device/links` | `{client_ref, workdir, checks: {exists, is_dir, resolves_within, readable}}` | Resuelve `client_ref` por `partner_tenants` bajo el partner de la firma; `404` si no es suyo (y se audita); escribe `workdir`, `declared_at` en el vínculo bajo `app.tenant_id` |

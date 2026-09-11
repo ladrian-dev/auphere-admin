@@ -8,7 +8,11 @@
 > solo está lo que **cambia** o lo que **se añade**. Si algo no aparece en este
 > documento, manda la v1.1.
 >
-> **Autoridad**: v2 > v1.1 > investigación. Con una excepción heredada: la
+> **La spec 003 la extiende con [`CONTRACT-V3.md`](CONTRACT-V3.md)**: cuatro
+> eventos nuevos (la tarea, la máquina y la bandeja) y dos ampliados. Lo que la
+> v2 congeló sigue en pie.
+>
+> **Autoridad**: v3 > v2 > v1.1 > investigación. Con una excepción heredada: la
 > columna de endpoints de aplicación del §3.1 de la v1.1, donde manda el código
 > (`APPLY_ROUTES` en `companion/tools/proposals.py`).
 >

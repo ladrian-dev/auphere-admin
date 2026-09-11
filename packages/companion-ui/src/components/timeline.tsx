@@ -150,6 +150,9 @@ export function Timeline({
             <li key={item.id} className="min-w-0">
               {item.kind === "user" ? (
                 <div className="flex min-w-0 justify-end">
+                  {/* `85%` es una proporción de la conversación, no un valor de
+                      la escala de espaciado: la burbuja no llega al borde para
+                      que se lea de quién es cada mensaje. */}
                   <p className="min-w-0 max-w-[85%] rounded-md bg-primary px-3 py-2 text-sm text-pretty break-words text-primary-foreground">
                     {item.text}
                   </p>

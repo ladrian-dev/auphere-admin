@@ -401,6 +401,11 @@ async def poll(ctx: DeviceContext = Depends(require_device)) -> PollOut:
                     "executable": row.executable,
                     "args": json.loads(row.argv_signature) if row.argv_signature else [],
                     "cwd_relative": None,
+                    # Spec 003 R11.2 — de qué tarea es este trabajo. Va aquí y no
+                    # se deduce en la máquina porque la máquina no tiene de dónde:
+                    # sin esto, el panel de entorno no puede decir «en esta tarea».
+                    # Es un identificador, no un dato de cliente.
+                    "task_id": str(row.task_id) if row.task_id else None,
                     "timeout_ms": DEFAULT_EXECUTION_TIMEOUT_MS,
                     "idle_timeout_ms": DEFAULT_EXECUTION_IDLE_MS,
                 }

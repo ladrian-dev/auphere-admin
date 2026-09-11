@@ -3,6 +3,10 @@
 > **Ola 2 (desde 2026-08-19): este documento sigue vigente, pero
 > [`CONTRACT-V2.md`](CONTRACT-V2.md) lo extiende.** Donde la v2 diga algo
 > distinto, manda la v2. Todo lo que la v2 no toque se lee aquí.
+>
+> **Spec 003: [`CONTRACT-V3.md`](CONTRACT-V3.md) añade una tercera capa** —la
+> tarea, la máquina y la bandeja—. Misma regla: manda la más nueva, y lo que no
+> toque se lee en la anterior.
 
 > **Estado: CONGELADO** (v1.1, 2026-08-19) para toda la Fase 1 de la Ola 1 (CO-03, CO-04, CO-07).
 >

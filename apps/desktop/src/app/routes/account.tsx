@@ -115,6 +115,10 @@ export function Account({ status, usage, team, policy, onRetry, onOpenConsole }:
           })}
           className="h-2 w-full overflow-hidden rounded-full bg-muted"
         >
+          {/* El único `style` de la pantalla, y es geometría en tiempo de
+              ejecución —un porcentaje que sale del dato—, no tema: el color va
+              en tokens. El mínimo del 2 % es para que un gasto pequeño se vea
+              como una raya y no como nada. */}
           <div
             className={`h-full rounded-full ${budget.exhausted ? "bg-status-warning" : "bg-primary"}`}
             style={{ width: `${Math.min(100, Math.max(budget.used > 0 ? 2 : 0, budget.percent))}%` }}

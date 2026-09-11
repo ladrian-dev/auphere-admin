@@ -138,9 +138,16 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
       ) : null}
       {/* El vacío es de la app y no del cajón de la consola: aquel habla de
           modos («en modo Consultar solo leo») que aquí no existen — el modo lo
-          fija el teammate. Dos vacíos serían dos pantallas, y una mentiría. */}
+          fija el teammate. Dos vacíos serían dos pantallas, y una mentiría.
+          Se mira **si el hilo está vacío**, no si el estado derivado se llama
+          `vacio`: con la máquina ausente o reconectando el estado es ese otro,
+          y hasta que se miró con display el hilo recién abierto enseñaba el
+          vacío del cajón —con su «pregunta lo que quieras sobre tus clientes»—
+          debajo de la banda de la máquina. Se exige `ready` y no «distinto de
+          cargando» porque un hilo que falló al abrirse también tiene cero
+          elementos, y decirle «está vacío» sería tapar el error. */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" data-thread-state={threadState}>
-        {threadState === "vacio" ? (
+        {!opening && status === "ready" && state.items.length === 0 ? (
           <p className="mx-auto max-w-prose py-12 text-center text-pretty text-muted-foreground">
             {t("thread.state.vacio", { name: teammate.name })}
           </p>
