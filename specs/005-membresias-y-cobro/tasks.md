@@ -47,13 +47,13 @@ y probar sola.
 
 **Propósito**: la dependencia, la frontera y las llaves. Nada de esto cobra.
 
-- [ ] T001 Añadir `stripe = "==15.6.1"` a `apps/api/pyproject.toml` y regenerar `apps/api/uv.lock` con `uv sync`. **Mismo commit que T002.** _Requisitos: —_
-- [ ] T002 Actualizar el BASELINE de `apps/api/tests/unit/test_no_new_dependencies.py` con `stripe` y dejar el párrafo MIT citado en el propio test, tal como lo recoge `research.md` §D1 (V56, §VIII) _Requisitos: —_
-- [ ] T003 [P] Crear el paquete `apps/api/src/nexus_api/billing/` con `__init__.py` y `provider.py`, donde vive el **único** `import stripe` del repositorio (research §D2) _Requisitos: 2.2, 2.6_
-- [ ] T004 [P] Añadir `billing_api_key`, `billing_public_key` y `billing_webhook_secret` a `apps/api/src/nexus_api/config.py` **sin valor por defecto y sin `change-me`**: si faltan, el paquete queda cerrado y las rutas responden `503 billing_unavailable` (contracts/webhook.md) _Requisitos: 2.2, 2.6_
-- [ ] T005 [P] Test estructural en `apps/api/tests/unit/test_billing_boundary.py`: recorre `src/` y **falla si aparece `import stripe` fuera de `nexus_api/billing/`** (V56, research §D2). Pasa desde el primer día a propósito — es un invariante, no una funcionalidad _Requisitos: —_
-- [ ] T006 [P] Test estructural en el mismo fichero: **el paquete `billing/` no importa `debit_wallet`** (research §D3, la conciliación va en una sola dirección) _Requisitos: 3.4_
-- [ ] T007 [P] Test estructural en el mismo fichero: **el camino del turno no importa `nexus_api.billing`** — ni `metering/`, ni `api/console/companion.py`, ni el runtime del agente. Cubre **CE-004** y **V57**: con el proveedor de pago caído el trabajo continúa con el saldo que ya hay, y solo deja de poderse comprar. Es la misma clase de avería que el `_require_wallet` de `resume_run` que la Spec A tuvo que quitar: una dependencia colada en el camino caliente que no se ve hasta que el externo falla _Requisitos: —_
+- [X] T001 Añadir `stripe = "==15.6.1"` a `apps/api/pyproject.toml` y regenerar `apps/api/uv.lock` con `uv sync`. **Mismo commit que T002.** _Requisitos: —_
+- [X] T002 Actualizar el BASELINE de `apps/api/tests/unit/test_no_new_dependencies.py` con `stripe` y dejar el párrafo MIT citado en el propio test, tal como lo recoge `research.md` §D1 (V56, §VIII) _Requisitos: —_
+- [X] T003 [P] Crear el paquete `apps/api/src/nexus_api/billing/` con `__init__.py` y `provider.py`, donde vive el **único** `import stripe` del repositorio (research §D2) _Requisitos: 2.2, 2.6_
+- [X] T004 [P] Añadir `billing_api_key`, `billing_public_key` y `billing_webhook_secret` a `apps/api/src/nexus_api/config.py` **sin valor por defecto y sin `change-me`**: si faltan, el paquete queda cerrado y las rutas responden `503 billing_unavailable` (contracts/webhook.md) _Requisitos: 2.2, 2.6_
+- [X] T005 [P] Test estructural en `apps/api/tests/unit/test_billing_boundary.py`: recorre `src/` y **falla si aparece `import stripe` fuera de `nexus_api/billing/`** (V56, research §D2). Pasa desde el primer día a propósito — es un invariante, no una funcionalidad _Requisitos: —_
+- [X] T006 [P] Test estructural en el mismo fichero: **el paquete `billing/` no importa `debit_wallet`** (research §D3, la conciliación va en una sola dirección) _Requisitos: 3.4_
+- [X] T007 [P] Test estructural en el mismo fichero: **el camino del turno no importa `nexus_api.billing`** — ni `metering/`, ni `api/console/companion.py`, ni el runtime del agente. Cubre **CE-004** y **V57**: con el proveedor de pago caído el trabajo continúa con el saldo que ya hay, y solo deja de poderse comprar. Es la misma clase de avería que el `_require_wallet` de `resume_run` que la Spec A tuvo que quitar: una dependencia colada en el camino caliente que no se ve hasta que el externo falla _Requisitos: —_
 
 ---
 
@@ -63,27 +63,27 @@ y probar sola.
 
 ### Tests de esquema (rojo primero)
 
-- [ ] T008 Test en `apps/api/tests/integration/test_migration_0116.py`: tras `upgrade`, `membership_tiers` existe con `CHECK (code IN ('free','pro','team','business'))`, `monthly_price_cents >= 0`, `weekly_pool_tokens >= 0`, `max_teammates >= 0`, `max_members >= 1`; `stripe_price_id` es `varchar(64)` **NULL, sin UNIQUE y sin FK**; y hay **cuatro filas** con las cifras de `data-model.md` _Requisitos: 1.1, 1.5_
-- [ ] T009 Test en el mismo fichero: `partner_subscriptions` existe con PK `partner_id`, `CHECK (state IN ('current','payment_failed','unpaid','canceled'))`, `tier_code` con FK a `membership_tiers.code` y **RLS `ENABLE` + `FORCE`** _Requisitos: 5.1_
-- [ ] T010 Test en `apps/api/tests/integration/test_migration_0117.py`: `billing_events` con `provider_event_id varchar(80) UNIQUE`, `payload jsonb`, **`partner_id` sin FK** (research: un aviso de una cuenta desconocida tiene que poder registrarse), índice parcial sobre `checkout_session_id`; y `partner_wallets.purchased_expires_at timestamptz NULL` _Requisitos: 4.2, 7.1_
+- [X] T008 Test en `apps/api/tests/integration/test_migration_0116.py`: tras `upgrade`, `membership_tiers` existe con `CHECK (code IN ('free','pro','team','business'))`, `monthly_price_cents >= 0`, `weekly_pool_tokens >= 0`, `max_teammates >= 0`, `max_members >= 1`; `stripe_price_id` es `varchar(64)` **NULL, sin UNIQUE y sin FK**; y hay **cuatro filas** con las cifras de `data-model.md` _Requisitos: 1.1, 1.5_
+- [X] T009 Test en el mismo fichero: `partner_subscriptions` existe con PK `partner_id`, `CHECK (state IN ('current','payment_failed','unpaid','canceled'))`, `tier_code` con FK a `membership_tiers.code` y **RLS `ENABLE` + `FORCE`** _Requisitos: 5.1_
+- [X] T010 Test en `apps/api/tests/integration/test_migration_0117.py`: `billing_events` con `provider_event_id varchar(80) UNIQUE`, `payload jsonb`, **`partner_id` sin FK** (research: un aviso de una cuenta desconocida tiene que poder registrarse), índice parcial sobre `checkout_session_id`; y `partner_wallets.purchased_expires_at timestamptz NULL` _Requisitos: 4.2, 7.1_
 
 ### Migraciones y modelos
 
-- [ ] T011 Migración `apps/api/alembic/versions/0116_membership_tiers.py` — `revision = "0116_membership_tiers"`, crea las dos tablas, siembra las cuatro filas y activa RLS+FORCE por `partner_id` en `partner_subscriptions` copiando el patrón de la 0094 _Requisitos: 1.1, 1.5, 5.1_
-- [ ] T012 [P] Modelo `MembershipTier` en `apps/api/src/nexus_api/db/models/membership.py` _Requisitos: 1.1_
-- [ ] T013 [P] Modelo `PartnerSubscription` en el mismo fichero, con la nota de por qué **no se reutiliza `partners.status`**: su CHECK solo admite `'active'|'suspended'` y significa si el partner está operativo _Requisitos: 5.1_
-- [ ] T014 Migración `apps/api/alembic/versions/0117_billing_events.py` — `revision = "0117_billing_events"`, crea `billing_events` y añade `partner_wallets.purchased_expires_at` _Requisitos: 4.2, 7.1_
-- [ ] T015 [P] Modelo `BillingEvent` en `apps/api/src/nexus_api/db/models/billing_event.py` _Requisitos: 4.2_
-- [ ] T016 [P] Añadir `purchased_expires_at` a `PartnerWallet` en `apps/api/src/nexus_api/db/models/partner_wallet.py`, con el comentario de la invariante: **`NULL` mientras la cuenta viva** (research §D8) _Requisitos: 7.1_
-- [ ] T017 Registrar los tres modelos en `apps/api/src/nexus_api/db/models/__init__.py` y su `__all__` _Requisitos: 1.1, 4.2, 5.1_
-- [ ] T018 Test de reversibilidad en `apps/api/tests/integration/test_migration_0116.py` y `..._0117.py`: `downgrade` deja el esquema como estaba, contra la base local _Requisitos: —_
+- [X] T011 Migración `apps/api/alembic/versions/0116_membership_tiers.py` — `revision = "0116_membership_tiers"`, crea las dos tablas, siembra las cuatro filas y activa RLS+FORCE por `partner_id` en `partner_subscriptions` copiando el patrón de la 0094 _Requisitos: 1.1, 1.5, 5.1_
+- [X] T012 [P] Modelo `MembershipTier` en `apps/api/src/nexus_api/db/models/membership.py` _Requisitos: 1.1_
+- [X] T013 [P] Modelo `PartnerSubscription` en el mismo fichero, con la nota de por qué **no se reutiliza `partners.status`**: su CHECK solo admite `'active'|'suspended'` y significa si el partner está operativo _Requisitos: 5.1_
+- [X] T014 Migración `apps/api/alembic/versions/0117_billing_events.py` — `revision = "0117_billing_events"`, crea `billing_events` y añade `partner_wallets.purchased_expires_at` _Requisitos: 4.2, 7.1_
+- [X] T015 [P] Modelo `BillingEvent` en `apps/api/src/nexus_api/db/models/billing_event.py` _Requisitos: 4.2_
+- [X] T016 [P] Añadir `purchased_expires_at` a `PartnerWallet` en `apps/api/src/nexus_api/db/models/partner_wallet.py`, con el comentario de la invariante: **`NULL` mientras la cuenta viva** (research §D8) _Requisitos: 7.1_
+- [X] T017 Registrar los tres modelos en `apps/api/src/nexus_api/db/models/__init__.py` y su `__all__` _Requisitos: 1.1, 4.2, 5.1_
+- [X] T018 Test de reversibilidad en `apps/api/tests/integration/test_migration_reversibility.py`: `downgrade` deja el esquema como estaba, contra la base local _Requisitos: —_
 
 ### El puente con el proveedor
 
-- [ ] T019 Cliente del proveedor en `apps/api/src/nexus_api/billing/provider.py`: crear sesión, recuperar objeto, modificar suscripción, programar bajada. **Toda llamada que crea o modifica lleva clave de idempotencia** con el patrón de `contracts/webhook.md` — **nunca** con un id del proveedor, siempre con el nuestro _Requisitos: 2.1, 3.1_
-- [ ] T020 [P] `apps/api/src/nexus_api/billing/catalog.py`: resuelve `code → stripe_price_id` leyendo `membership_tiers`. **El mapeo es una fila, no un literal** (research §D5.2) _Requisitos: 1.5_
-- [ ] T021 [P] `scripts/sync_billing_catalog.py`: idempotente por `code`, parametrizado por cuenta vía `BILLING_API_KEY`, con `--dry-run` y `--apply`; escribe los `stripe_price_id` en `membership_tiers`. **Fuera de `apps/` a propósito** para que no se pueda disparar desde la API. Lo ejecuta Luis con sus claves _Requisitos: 1.5_
-- [ ] T022 Comprobación de arranque en `apps/api/src/nexus_api/billing/provider.py` (V61): verificar contra la API que la cuenta **manda las suscripciones a `unpaid` tras agotar los reintentos**, y registrar un aviso si no. Stripe pone `unpaid` **solo si el panel está configurado así**; con los valores por defecto el escalón «impagada» de ADR-037 D6 **no ocurre nunca** y un impago salta directo a cancelada. Es una decisión de producto que vive en una casilla de configuración, y las casillas se pierden — sobre todo al cambiar de cuenta _Requisitos: 5.1, 5.3_
+- [X] T019 Cliente del proveedor en `apps/api/src/nexus_api/billing/provider.py`: crear sesión, recuperar objeto, modificar suscripción, programar bajada. **Toda llamada que crea o modifica lleva clave de idempotencia** con el patrón de `contracts/webhook.md` — **nunca** con un id del proveedor, siempre con el nuestro _Requisitos: 2.1, 3.1_
+- [X] T020 [P] `apps/api/src/nexus_api/billing/catalog.py`: resuelve `code → stripe_price_id` leyendo `membership_tiers`. **El mapeo es una fila, no un literal** (research §D5.2) _Requisitos: 1.5_
+- [X] T021 [P] `scripts/sync_billing_catalog.py`: idempotente por `code`, parametrizado por cuenta vía `BILLING_API_KEY`, con `--dry-run` y `--apply`; escribe los `stripe_price_id` en `membership_tiers`. **Fuera de `apps/` a propósito** para que no se pueda disparar desde la API. Lo ejecuta Luis con sus claves _Requisitos: 1.5_
+- [X] T022 Comprobación de arranque en `apps/api/src/nexus_api/billing/provider.py` (V61): verificar contra la API que la cuenta **manda las suscripciones a `unpaid` tras agotar los reintentos**, y registrar un aviso si no. Stripe pone `unpaid` **solo si el panel está configurado así**; con los valores por defecto el escalón «impagada» de ADR-037 D6 **no ocurre nunca** y un impago salta directo a cancelada. Es una decisión de producto que vive en una casilla de configuración, y las casillas se pierden — sobre todo al cambiar de cuenta _Requisitos: 5.1, 5.3_
 
 **Checkpoint**: el esquema está, el catálogo se puede crear, y nadie ha cobrado nada.
 
@@ -91,10 +91,10 @@ y probar sola.
 
 ## Phase 2b: Las puertas de la constitución
 
-- [ ] T023 Test de aislamiento **garantía 1 (RLS)** en `apps/api/tests/isolation/test_subscription_scope.py`: un partner **no ve** la fila de `partner_subscriptions` de otro, ni por la API ni por consulta directa con el rol de aplicación (V53). En rojo bloquea el merge (§I) _Requisitos: 5.1_
+- [X] T023 Test de aislamiento **garantía 1 (RLS)** en `apps/api/tests/isolation/test_subscription_scope.py`: un partner **no ve** la fila de `partner_subscriptions` de otro, ni por la API ni por consulta directa con el rol de aplicación (V53). En rojo bloquea el merge (§I) _Requisitos: 5.1_
 - [ ] T024 [P] Test de aislamiento **garantía 4 (acción consecuente)** en `apps/api/tests/isolation/test_billing_audit_names_the_person.py`: contratar, cambiar, comprar y cancelar dejan asiento que **nombra a la persona** de consola, no al proceso ni al partner (V12, V54, §IV) _Requisitos: 2.5_
-- [ ] T025 [P] Test de aislamiento **garantía 6 (log/trace)** en `apps/api/tests/isolation/test_billing_logs_carry_no_card.py`: con `structlog.testing.capture_logs()`, **ningún** registro del camino del cobro lleva patrón de tarjeta (PAN, CVC, `last4`) ni contenido de conversación. Copiar la forma de `test_wallet_events_are_logged.py`, que ya vigila esto para el libro. **Cubre V09, V27 y V55**, que el quickstart enuncia por separado por llegar desde tres requisitos distintos: es una sola comprobación _Requisitos: 2.2, 4.6_
-- [ ] T026 Test de aislamiento en `apps/api/tests/isolation/test_billing_not_exposed_to_tenant.py`: ninguna entidad de esta spec es alcanzable desde un tenant — no llevan `tenant_id` y no aparecen en ninguna ruta de tenant _Requisitos: 4.6_
+- [X] T025 [P] Test de aislamiento **garantía 6 (log/trace)** en `apps/api/tests/isolation/test_billing_logs_carry_no_card.py`: con `structlog.testing.capture_logs()`, **ningún** registro del camino del cobro lleva patrón de tarjeta (PAN, CVC, `last4`) ni contenido de conversación. Copiar la forma de `test_wallet_events_are_logged.py`, que ya vigila esto para el libro. **Cubre V09, V27 y V55**, que el quickstart enuncia por separado por llegar desde tres requisitos distintos: es una sola comprobación _Requisitos: 2.2, 4.6_
+- [X] T026 Test de aislamiento en `apps/api/tests/isolation/test_billing_not_exposed_to_tenant.py`: ninguna entidad de esta spec es alcanzable desde un tenant — no llevan `tenant_id` y no aparecen en ninguna ruta de tenant _Requisitos: 4.6_
 
 > **Puerta del medidor**: nada nuevo se mide. Lo que sí hay que conectar es que
 > el partner vea **en unidades** el saldo que pagó (R3.6). Su tarea es **T068**,

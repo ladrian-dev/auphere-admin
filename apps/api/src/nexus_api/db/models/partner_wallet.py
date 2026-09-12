@@ -50,6 +50,17 @@ class PartnerWallet(TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
     purchased_remaining: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    #: Spec 005 (research D8). ``NULL`` while the account is alive — that is
+    #: the invariant "purchased credit does not expire while the account
+    #: lives", written so it CANNOT be violated by accident: there is no date
+    #: to compare against. Set to now + 12 months on cancellation; back to
+    #: ``NULL`` if the partner comes back.
+    #:
+    #: Not to be confused with ``included_expires_at`` above, which is weekly.
+    #: Two pockets, two clocks (ADR-037 D1).
+    purchased_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class PartnerAllocation(UUIDPrimaryKey, TimestampMixin, Base):

@@ -17,6 +17,7 @@ from nexus_api.db.models.billing import (
     InvoiceLine,
     InvoiceStatus,
 )
+from nexus_api.db.models.billing_event import BillingEvent
 from nexus_api.db.models.broadcast import (
     Broadcast,
     BroadcastRecipient,
@@ -109,6 +110,7 @@ from nexus_api.db.models.local_workstation import (
     PartnerLocalExecPolicy,
     PrincipalLocalExecPref,
 )
+from nexus_api.db.models.membership import MembershipTier, PartnerSubscription
 from nexus_api.db.models.model_profile import (
     MODEL_ROLES,
     ModelProfile,
@@ -249,6 +251,7 @@ __all__ = [
     "AppointmentStatus",
     "AuditLog",
     "AuphereOwnerChannel",
+    "BillingEvent",
     "BillingPlan",
     "Broadcast",
     "BroadcastRecipient",
@@ -299,6 +302,7 @@ __all__ = [
     "LocalExecution",
     "MediaKind",
     "MembershipStatus",
+    "MembershipTier",
     "Message",
     "MessageDirection",
     "MessageStatus",
@@ -322,6 +326,7 @@ __all__ = [
     "PartnerModelAllowlist",
     "PartnerRole",
     "PartnerStatus",
+    "PartnerSubscription",
     "PartnerTenant",
     "PartnerWallet",
     "PrincipalLocalExecPref",

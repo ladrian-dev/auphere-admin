@@ -1,16 +1,18 @@
-"""Spec 004 · puerta de licencias (§VIII).
+"""Specs 004 y 005 · puerta de licencias (§VIII).
 
-El plan declara **cero dependencias nuevas**. Este test lo convierte en algo
-que se comprueba al fusionar en vez de en una frase de un documento.
+Convierte «se leyó la licencia» en algo que se comprueba al fusionar, en vez de
+en una frase de un documento.
 
-Vigila dos cosas distintas:
+Vigila tres cosas:
 
-1. Que no aparezca una dependencia que el plan no declaró.
-2. Que **``stripe`` no se cuele aquí**. Es de la Spec B, entra con su párrafo
-   de licencia citado (MIT, verificado el 2026-09-11) y con el webhook y la
-   idempotencia que ADR-022 §13-§15 ya diseñaron. Colarla antes se llevaría por
-   delante el corte entre las dos specs, que es lo que hace que ésta se pueda
-   desplegar sola.
+1. Que no aparezca una dependencia que ningún plan declaró.
+2. Que la instantánea no se quede vieja y deje de vigilar nada.
+3. Que ``stripe`` esté acompañada de su párrafo de licencia. La Spec A declaró
+   cero dependencias nuevas y este fichero llegó a prohibir ``stripe``
+   explícitamente, para que no se colara antes de tiempo y se llevara por
+   delante el corte entre las dos specs. **La Spec 005 es la que la trae**, así
+   que esa prohibición se convierte en su contraria: ahora exige que, si está,
+   traiga la licencia citada donde se pueda leer.
 """
 
 from __future__ import annotations
@@ -58,6 +60,20 @@ BASELINE: frozenset[str] = frozenset(
         "redis",
         "sqlalchemy",
         "sse-starlette",
+        # Spec 005 (2026-09-12). Licencia MIT, leída entera. El párrafo que
+        # permite el uso multi-tenant como servicio, citado en
+        # specs/005-membresias-y-cobro/research.md D1:
+        #
+        #   "Permission is hereby granted, free of charge, to any person
+        #    obtaining a copy of this software and associated documentation
+        #    files (the "Software"), to deal in the Software without
+        #    restriction, including without limitation the rights to use,
+        #    copy, modify, merge, publish, distribute, sublicense, and/or
+        #    sell copies of the Software [...]"
+        #
+        # MIT no alcanza el uso en red, no impone reciprocidad y no restringe
+        # el uso multi-tenant. Es un sí (§VIII).
+        "stripe",
         "structlog",
         "uvicorn",
     }
@@ -85,13 +101,22 @@ async def test_no_dependency_arrived_without_a_licence_read() -> None:
     )
 
 
-async def test_stripe_does_not_sneak_into_this_spec() -> None:
-    """La Spec A no cobra. Que ``stripe`` aparezca aquí significaría que el
-    corte entre las dos specs se rompió, y con él la propiedad de que ésta se
-    puede desplegar sola."""
-    assert "stripe" not in _names(), (
-        "``stripe`` es de la Spec B: entra con su párrafo de licencia citado y "
-        "con el webhook idempotente de ADR-022 §13-§15, no de rebote aquí"
+async def test_stripe_carries_its_licence_paragraph() -> None:
+    """``stripe`` solo vale si alguien leyó su licencia y lo dejó escrito.
+
+    Este test era lo contrario hasta la spec 005: prohibía la dependencia para
+    que no se colara en la Spec A. Ahora que entra, lo que hay que vigilar es
+    que no entre **desnuda** — que el párrafo siga aquí el día que alguien
+    audite por qué este proyecto propietario puede redistribuir ese paquete.
+    """
+    assert "stripe" in _names(), (
+        "la spec 005 la declara; si se retiró, quítala también del BASELINE"
+    )
+    source = Path(__file__).read_text()
+    assert "MIT" in source and "Permission is hereby granted" in source, (
+        "``stripe`` está en pyproject.toml pero su párrafo de licencia no está "
+        "citado aquí. El principio VIII pide leer la licencia ENTERA y dejar "
+        "escrito el párrafo que permite el uso multi-tenant como servicio"
     )
 
 

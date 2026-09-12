@@ -222,6 +222,14 @@ class Settings(BaseSettings):
     # at consent-initiation time.
     composio_api_key: str = ""
     composio_webhook_secret: str = "dev-composio-webhook-secret-change-me"
+    # Spec 005 — Stripe Billing. Deliberately NO defaults and no "change-me"
+    # placeholder: a factory value on a signing secret is worse than none,
+    # because the webhook would then accept anything signed by whoever reads
+    # this repository. Missing keys close the billing package instead of
+    # failing the boot — see ``billing_enabled``.
+    billing_api_key: str = ""
+    billing_public_key: str = ""
+    billing_webhook_secret: str = ""
     # Public base URL of the API — used to build the OAuth callback the user
     # is redirected to after consenting on the provider. Local dev keeps it
     # blank and uses http://localhost:8000 via the frontend BFF.
@@ -495,6 +503,26 @@ class Settings(BaseSettings):
     @property
     def is_dev(self) -> bool:
         return not self.is_prod
+
+    @property
+    def billing_enabled(self) -> bool:
+        """True only when all three provider keys are present.
+
+        Fail-closed on purpose (spec 005, contracts/webhook.md): with any of
+        them missing the console billing routes answer ``503
+        billing_unavailable`` and the webhook answers ``400``. The app still
+        boots — running without billing is an honest state (principle V) and
+        it is what a fresh dev checkout looks like; running with a fake
+        signing secret is not.
+        """
+        return all(
+            value.strip()
+            for value in (
+                self.billing_api_key,
+                self.billing_public_key,
+                self.billing_webhook_secret,
+            )
+        )
 
     @model_validator(mode="after")
     def _forbid_dev_secrets_in_prod(self) -> "Settings":

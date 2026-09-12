@@ -71,6 +71,14 @@ dependencies = [
     # CP-15: multipart uploads of knowledge documents from the partner
     # console (``POST /console/clients/{ref}/knowledge``). Apache-2.0.
     "python-multipart>=0.0.20",
+    # Spec 005: Stripe Billing — hosted Checkout, the Customer Portal and
+    # webhook signature verification. MIT licence, read in full and quoted
+    # in specs/005-membresias-y-cobro/research.md D1. MIT does not reach
+    # network use, imposes no reciprocity and does not restrict multi-tenant
+    # use as a service, so principle VIII allows it.
+    # Every ``import stripe`` in this codebase lives under
+    # ``nexus_api/billing/`` — enforced by tests/unit/test_billing_boundary.py.
+    "stripe>=15.6.1",
 ]
 
 [project.optional-dependencies]
