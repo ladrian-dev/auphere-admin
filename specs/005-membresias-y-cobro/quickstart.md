@@ -167,6 +167,12 @@ D3 previene.
 | **V53** | `partner_subscriptions` tiene RLS **ENABLE + FORCE** por `partner_id`, y un partner no ve la fila de otro | aislamiento |
 | **V54** | Contratar, cambiar, comprar y cancelar dejan **rastro que nombra a la persona** (§IV) | aislamiento |
 | **V55** | **Ningún registro** del camino del cobro lleva dato de tarjeta (§ garantía 6) | aislamiento |
+
+> **V09, V27 y V55 son la misma comprobación**, enunciada desde tres requisitos
+> distintos (R2.2 «ningún dato de tarjeta», R4.6 «ningún registro del camino del
+> pago» y la garantía 6). Se implementan en **un solo test**, `T023`. Se dejan
+> las tres entradas porque cada requisito tiene que poder rastrearse hasta una
+> comprobación, pero **no son tres tests**.
 | **V56** | `stripe` está en el BASELINE de `test_no_new_dependencies.py`, **no hay ninguna otra dependencia nueva**, y no se importa fuera de `nexus_api/billing/` | unidad |
 
 ---
