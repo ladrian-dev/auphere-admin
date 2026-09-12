@@ -751,3 +751,94 @@ async def add_console_member(
         "user_id": user_id,
         "headers": lambda **kw: console_headers(user_id=user_id, partner_id=partner_id, **kw),
     }
+
+
+# ── Spec 004: el libro del partner ──────────────────────────────────────────
+#
+# Dos fábricas que las cuatro historias de la spec 004 necesitan. Viven aquí
+# y no en cada suite porque el montaje es idéntico y repetirlo es cómo dos
+# tests acaban probando estados distintos creyendo que prueban el mismo.
+
+
+async def make_partner_with_wallet(
+    db_session: AsyncSession,
+    *,
+    included: int = 500_000,
+    purchased: int = 0,
+    expires_at: Any = None,
+    monthly_cap: int = 500_000,
+) -> dict[str, Any]:
+    """A console partner whose wallet sits in a known state.
+
+    The wallet row is NOT created here: migration 0094 installs a trigger
+    (``trg_partners_seed_wallet``) that seeds one on every partner insert,
+    with ``companion_monthly_token_cap`` and the end of the calendar month.
+    Creating a second one would hit the primary key; this updates the row the
+    trigger already wrote, which is also what production does.
+
+    ``expires_at=None`` keeps whatever the trigger picked. Pass a datetime to
+    place the wallet before or after its own expiry — that is how the renewal
+    tests move time without touching the clock.
+    """
+    from nexus_api.db.models import Partner, PartnerWallet
+
+    partner_id = uuid.uuid4()
+    slug = f"w-{partner_id.hex[:8]}"
+    db_session.add(
+        Partner(
+            id=partner_id,
+            name=f"Wallet Partner {slug}",
+            slug=slug,
+            console_enabled=True,
+            companion_enabled=True,
+            companion_monthly_token_cap=monthly_cap,
+        )
+    )
+    await db_session.flush()  # fires the trigger
+
+    wallet = await db_session.get(PartnerWallet, partner_id)
+    assert wallet is not None, "trigger trg_partners_seed_wallet did not seed the wallet"
+    wallet.included_remaining = included
+    wallet.purchased_remaining = purchased
+    if expires_at is not None:
+        wallet.included_expires_at = expires_at
+    await db_session.commit()
+    return {"partner_id": partner_id, "slug": slug, "monthly_cap": monthly_cap}
+
+
+#: Idempotency-key prefix of each lane that spends the wallet. Kept in one
+#: place because the whole point of spec 004 is that the three lanes debit
+#: the same book in the same unit; a test that invents its own prefix would
+#: prove nothing about the lane it claims to exercise.
+WALLET_LANES: dict[str, str] = {
+    "companion": "companion:",  # api/console/companion.py
+    "channel": "channel:",  # nexus_worker/metering/consumer.py
+    "local_exec": "local_exec:",  # services/local_workstation_metering.py
+}
+
+
+async def spend_from_wallet(
+    *,
+    partner_id: uuid.UUID,
+    qty: int,
+    lane: str,
+    tenant_id: uuid.UUID | None = None,
+    ref: str | None = None,
+) -> Any:
+    """Debit ``qty`` through one lane, using that lane's real key prefix.
+
+    Calls the production ``debit_wallet`` rather than writing a ledger row by
+    hand: the split between buckets, the row lock and the idempotency are the
+    behaviour under test, so faking them would test the fake.
+    """
+    from nexus_api.metering.wallet import debit_wallet
+
+    if lane not in WALLET_LANES:
+        raise ValueError(f"unknown lane {lane!r}; expected one of {sorted(WALLET_LANES)}")
+    key = f"{WALLET_LANES[lane]}{ref or uuid.uuid4()}"
+    return await debit_wallet(
+        partner_id=partner_id,
+        qty=qty,
+        idempotency_key=key,
+        tenant_id=tenant_id,
+    )

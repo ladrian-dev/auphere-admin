@@ -120,7 +120,7 @@ Lo que esta spec toca, y **nada más**:
 ```text
 apps/api/
 ├── alembic/versions/
-│   ├── 0114_model_prices_and_meter_prices.py   # Historia 1 — tarifas + reprecio
+│   ├── 0114_sold_model_prices.py               # Historia 1 — tarifas + reprecio
 │   └── 0115_quota_weight_and_weekly_pool.py    # Historias 3 y 4 — factor + período
 ├── src/nexus_api/
 │   ├── metering/

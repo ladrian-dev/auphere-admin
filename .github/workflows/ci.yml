@@ -188,6 +188,39 @@ jobs:
           pnpm typecheck
           pnpm lint
           pnpm test
+      # Spec 004 (T001). Faltaban: los dos paquetes viven en ESTE workspace
+      # —``pnpm-workspace.yaml`` de la raíz los lista— así que el install de
+      # arriba ya los trae y añadirlos aquí no cuesta un job nuevo ni una
+      # instalación más.
+      #
+      # Por qué importa: ``@nexus/companion-ui`` es el timeline, el composer
+      # y los medidores que USAN LAS DOS superficies, la consola y la
+      # aplicación de escritorio. Hasta hoy nadie ejecutaba sus pruebas al
+      # fusionar, así que una regresión suya rompía las dos a la vez sin que
+      # saltara nada. «CI en verde» no quería decir «todo verde».
+      #
+      # El job NO se renombra aunque ya no sea solo la consola: si hay una
+      # regla de protección de rama exigiendo el check ``test-console``,
+      # cambiarle el nombre la deja apuntando a un check que no existe — y
+      # eso no falla, simplemente deja de bloquear.
+      #
+      # ``--filter`` desde la RAÍZ, no ``working-directory``, y esto no es
+      # estilo: ``apps/desktop`` tiene su propio ``pnpm-workspace.yaml``
+      # anidado, y pnpm resuelve el más cercano subiendo desde el cwd. Ese
+      # workspace no lista ``packages/companion-ui`` ni ``packages/ui``, de
+      # los que ``apps/desktop`` depende con ``workspace:*``, así que
+      # cualquier ``pnpm`` ejecutado DENTRO de la carpeta muere con
+      # ERR_PNPM_WORKSPACE_PKG_NOT_FOUND antes de llegar a vitest.
+      # Desde la raíz con filtro resuelve el workspace bueno y pasa.
+      - name: "@nexus/companion-ui — typecheck + lint + test"
+        run: |
+          pnpm --filter @nexus/companion-ui typecheck
+          pnpm --filter @nexus/companion-ui lint
+          pnpm --filter @nexus/companion-ui test
+      - name: "desktop — typecheck + test"
+        run: |
+          pnpm --filter @nexus/desktop typecheck
+          pnpm --filter @nexus/desktop test
       - name: "console — next build"
         working-directory: apps/console
         env:

@@ -31,7 +31,7 @@ llevar a producción sola.
 **Purpose**: lo único que hay que preparar antes de tocar nada. No hay proyecto
 nuevo, ni dependencia nueva, ni estructura nueva.
 
-- [ ] T001 Añadir a `.github/workflows/ci.yml` dos trabajos que ejecuten las suites de `packages/companion-ui` (144 pruebas) y de `apps/desktop` (307), hoy ausentes del fichero.
+- [X] T001 Añadir a `.github/workflows/ci.yml` dos trabajos que ejecuten las suites de `packages/companion-ui` (144 pruebas) y de `apps/desktop` (307), hoy ausentes del fichero.
       **Va primero y no es alcance prestado**: esta spec modifica `packages/companion-ui`, que comparten la consola y la aplicación de escritorio. Sin esto, «CI en verde» no quiere decir «todo verde», y romper las dos superficies a la vez no lo detecta nadie al fusionar.
       _Requisitos: —_ (puerta de plan; **protege contra regresión** los criterios 7.1 y 7.4, no los implementa)
 
@@ -45,9 +45,9 @@ nuevo, ni dependencia nueva, ni estructura nueva.
 
 **⚠️ CRÍTICO**: ninguna historia empieza hasta que esto esté.
 
-- [ ] T002 [P] Añadir en `apps/api/tests/conftest.py` una fábrica de partner con libro: crea `partners`, `partner_wallets` e `included_expires_at` en un estado dado, para no repetir el montaje en cada suite.
+- [X] T002 [P] Añadir en `apps/api/tests/conftest.py` una fábrica de partner con libro: crea `partners`, `partner_wallets` e `included_expires_at` en un estado dado, para no repetir el montaje en cada suite.
       _Requisitos: 2.1, 4.1, 5.1_
-- [ ] T003 [P] Añadir en `apps/api/tests/conftest.py` una fábrica de consumo: asienta un débito por un carril concreto (Companion · canal de cliente · ejecución local) para poder probar la separación de bolsillos sin levantar el runtime entero.
+- [X] T003 [P] Añadir en `apps/api/tests/conftest.py` una fábrica de consumo: asienta un débito por un carril concreto (Companion · canal de cliente · ejecución local) para poder probar la separación de bolsillos sin levantar el runtime entero.
       _Requisitos: 5.1, 5.2_
 
 > **El reloj no necesita utilidad nueva**: `renew_included_if_expired()` y
@@ -88,24 +88,25 @@ ver que no quedan filas sin valorar para los modelos que el producto vende.
 
 ### Tests de la Historia 1 (§VII — se escriben y se ven en ROJO antes de implementar) ⚠️
 
-- [ ] T009 [P] [US1] Test en `apps/api/tests/unit/test_model_catalog_prices.py`: los tres modelos del catálogo cerrado tienen entrada, entrada cacheada y salida; y `price_cache_write_per_mtok` sigue **ausente**, no a cero — el test lo afirma explícitamente, con el motivo en el docstring (OpenAI no cobra la escritura de caché, igual que razonó la `0076` para `gpt-4o`).
+- [X] T009 [P] [US1] Test en `apps/api/tests/unit/test_model_catalog_prices.py`: los tres modelos del catálogo cerrado tienen entrada, entrada cacheada y salida; y `price_cache_write_per_mtok` sigue **ausente**, no a cero — el test lo afirma explícitamente, con el motivo en el docstring (OpenAI no cobra la escritura de caché, igual que razonó la `0076` para `gpt-4o`).
       _Requisitos: 1.1, 1.2_ · V01, V02
-- [ ] T010 [P] [US1] Test en `apps/api/tests/integration/test_reprice_backfill.py`: aplicar la migración revalora lo que estaba sin valorar y **no toca** lo que ya tenía coste; aplicarla dos veces no cambia una fila.
+- [X] T010 [P] [US1] Test en `apps/api/tests/integration/test_reprice_backfill.py`: aplicar la migración revalora lo que estaba sin valorar y **no toca** lo que ya tenía coste; aplicarla dos veces no cambia una fila.
       _Requisitos: 1.3_ · V03
-- [ ] T011 [P] [US1] Test en `apps/api/tests/integration/test_cost_completeness.py`: un consumo de modelo sin tarifa sigue sin valorar y se cuenta aparte (`complete = false` y el recuento de filas sin precio); un mes con tráfico de los modelos que vendemos responde `complete = true`.
+- [X] T011 [P] [US1] Test en `apps/api/tests/integration/test_cost_completeness.py`: un consumo de modelo sin tarifa sigue sin valorar y se cuenta aparte (`complete = false` y el recuento de filas sin precio); un mes con tráfico de los modelos que vendemos responde `complete = true`.
       _Requisitos: 1.4_ · V04, V05
-- [ ] T012 [P] [US1] Test en `apps/api/tests/unit/test_meter_prices_complete.py`: todo medidor conocido o tiene precio unitario o está declarado como no valorable; ninguno desaparece en silencio de un total.
+- [X] T012 [P] [US1] Test en `apps/api/tests/unit/test_meter_prices_complete.py`: todo medidor conocido o tiene precio unitario o está declarado como no valorable; ninguno desaparece en silencio de un total.
       _Requisitos: 1.6_ · V06
 
 ### Implementación de la Historia 1
 
-- [ ] T013 [US1] Crear la migración `apps/api/alembic/versions/0114_model_prices_and_meter_prices.py` que carga en `model_profiles` las tarifas de `openai/gpt-5.6-sol` (**4,00** entrada / **0,40** cacheada / **20,00** salida), `openai/gpt-5.6-terra` (**2,00** / **0,20** / **12,00**) y `openai/gpt-5.6-luna` (**0,20** / **0,02** / **1,20**), dejando `price_cache_write_per_mtok` en `NULL`. Copiar **verbatim** el `_PRICE_EXPR` y el `UPDATE` idempotente de la `0076` — una migración es un hecho histórico y no puede cambiar de resultado porque alguien edite un módulo compartido seis meses después. Con `downgrade()` real.
+- [X] T013 [US1] Crear la migración `apps/api/alembic/versions/0114_sold_model_prices.py` que carga en `model_profiles` las tarifas de `openai/gpt-5.6-sol` (**4,00** entrada / **0,40** cacheada / **20,00** salida), `openai/gpt-5.6-terra` (**2,00** / **0,20** / **12,00**) y `openai/gpt-5.6-luna` (**0,20** / **0,02** / **1,20**), dejando `price_cache_write_per_mtok` en `NULL`. Copiar **verbatim** el `_PRICE_EXPR` y el `UPDATE` idempotente de la `0076` — una migración es un hecho histórico y no puede cambiar de resultado porque alguien edite un módulo compartido seis meses después. Con `downgrade()` real.
       _Requisitos: 1.1, 1.2, 1.3_
-- [ ] T014 [US1] En el docstring de la `0114`, dejar escrita **la fuente y la fecha** de cada tarifa (`developers.openai.com/api/docs/pricing`, consultada 2026-09-11), como hizo la `0076`. Revisar una tarifa dentro de un año no puede obligar a investigar de cero.
+- [X] T014 [US1] En el docstring de la `0114`, dejar escrita **la fuente y la fecha** de cada tarifa (`developers.openai.com/api/docs/pricing`, consultada 2026-09-11), como hizo la `0076`. Revisar una tarifa dentro de un año no puede obligar a investigar de cero.
       _Requisitos: 1.5_
-- [ ] T015 [US1] En la misma `0114`, añadir las filas de `meter_prices` que faltan, o declarar explícitamente cuáles no se valoran. Hoy la tabla tiene **6 filas y todas son `media.*`**, con `note` marcándolas `provisional 2026-08`.
+- [X] T015 [US1] En la misma `0114`, añadir las filas de `meter_prices` que faltan, o declarar explícitamente cuáles no se valoran. Hoy la tabla tiene **6 filas y todas son `media.*`**, con `note` marcándolas `provisional 2026-08`.
       _Requisitos: 1.6_
 - [ ] T016 [US1] Ejecutar la migración contra un dump de producción y probar el `downgrade()`, como pide la regla 3 de `[[nexus/PLAN-CONSOLE-V1]]`.
+      **Mitad hecha el 2026-09-11**: `downgrade()` probado contra la base local con datos — los tres modelos vuelven a `NULL` y las tarifas de Anthropic y `gpt-4o` quedan intactas, que es lo que su comentario promete. **Falta el dump de producción**, que no está disponible en esta máquina. Se queda abierta a propósito: media tarea marcada entera es cómo se cuela un `downgrade()` que nadie probó donde importa.
       _Requisitos: 1.3_
 
 **Checkpoint**: el margen es calculable. **Desplegable sola.** Cierra el ítem
