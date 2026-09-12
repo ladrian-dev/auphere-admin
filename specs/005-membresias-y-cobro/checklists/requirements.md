@@ -66,6 +66,18 @@ provisionales y viven como dato. La spec fija la estructura; las cifras se
 cierran al medir el turno real, y R1.5 exige que cambiarlas no requiera
 despliegue precisamente para que eso sea barato.
 
+### Lo que añadió `/speckit-analyze` (2026-09-12)
+
+**R1.8 no estaba y hacía falta.** El análisis encontró que la pantalla de planes
+iba a publicar la cifra absoluta del pool —porque el catálogo la lleva— y que
+eso deshacía lo que la Spec A R7.3 acababa de construir: que ajustar el tamaño
+de un pool no se perciba como un recorte ni como un regalo. Las cifras son
+provisionales por decisión de producto, así que el ajuste **va a pasar**.
+
+No era un `[NEEDS CLARIFICATION]` que se pasara por alto: era un hueco que solo
+se ve cuando el contrato de la API está escrito. La decisión, con lo que hacen
+los seis referentes, está en research §D9.
+
 ### Estado
 
-**Checklist completo.** Listo para `/speckit-plan`.
+**Checklist completo.** 8 requisitos, **48 criterios**.

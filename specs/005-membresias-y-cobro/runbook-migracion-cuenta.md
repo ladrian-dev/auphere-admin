@@ -79,6 +79,27 @@ duplica precios. Escribe los `stripe_price_id` nuevos en `membership_tiers`.
 
 **Lo ejecuta Luis, con sus claves.** Toca una cuenta con capacidad de cobro.
 
+### 1b · Configurar la cuenta nueva (se pierde al migrar, y no avisa)
+
+La cuenta nueva arranca con **los valores por defecto**, así que hay que volver
+a poner lo que hace que la escalera exista:
+
+| Ajuste | Por qué, y qué pasa si se olvida |
+|---|---|
+| Tras agotar reintentos, la suscripción va a **`unpaid`** | Stripe pone `unpaid` **solo si el panel lo dice** (verificado 2026-09-12). Con el valor por defecto, un impago salta de `past_due` a `canceled` y **el escalón intermedio de ADR-037 D6 no ocurre nunca** |
+| **Smart Retries** encendido | Es la escalera de reintentos. Sin ella no hay reintentos que agotar |
+| **Días de aviso de renovación** | Es lo que dispara `invoice.upcoming`, con lo que se cumple R5.6 |
+| El **endpoint de webhook** registrado en Workbench, con los eventos de `contracts/webhook.md` | Sin el endpoint no llega nada |
+
+> **Y una comprobación que solo aplica a una cuenta ajena**: el castigo de las
+> 72 horas por no responder a `invoice.created` es **de la cuenta entera**, no
+> de un endpoint —«includes handling **all** webhook endpoints configured for
+> your account»—. Antes de cobrar con una cuenta que no es solo nuestra, hay que
+> mirar qué otros endpoints tiene registrados y si responden.
+
+La comprobación de arranque de la aplicación (T022) verifica el primero de estos
+ajustes y avisa si falta. Los demás se comprueban a mano aquí.
+
 ### 2 · Apuntar la aplicación a la cuenta nueva
 
 Rotar `BILLING_API_KEY`, `BILLING_PUBLIC_KEY` y `BILLING_WEBHOOK_SECRET`, con el

@@ -58,11 +58,25 @@ reenviara algo que ya tenemos.
 | `customer.subscription.deleted` | `state='canceled'`, pool a Free, `purchased_expires_at` a 12 meses |
 | `checkout.session.completed` | Si es compra de crédito: **`add_purchased`** |
 | `checkout.session.async_payment_succeeded` | Lo mismo. Métodos diferidos |
+| `invoice.finalization_failed` | **Alertar al operador**, con `last_finalization_error`. **No degrada al partner** |
+| `invoice.upcoming` | Avisar al partner de la renovación próxima. Es con lo que se cumple R5.6: avisar **antes** |
 
 **No estamos suscritos a `invoice.created`**, y es deliberado: un endpoint que
 no responde correctamente a ese evento hace que el proveedor **retrase la
 finalización de todas las facturas con cobro automático hasta 72 horas**
 (verificado 2026-09-12). No lo necesitamos — el dinero llega con `invoice.paid`.
+
+> Y un matiz de esa misma página que importa con **esta** cuenta: «Responding
+> properly to `invoice.created` includes handling **all webhook endpoints
+> configured for your account**». El castigo es de la cuenta entera, no de un
+> endpoint. Si la cuenta de Andrés Matos tuviera otra integración con un
+> endpoint roto, nos afectaría. Se comprueba al arrancar y se anota en el
+> runbook.
+
+**`invoice.finalization_failed` sí está, y es la avería más silenciosa de las
+dos** (research §D10): una factura que no finaliza deja la suscripción
+`active` —el partner trabaja con normalidad— y **no se cobra nada**. No hay
+síntoma. No degrada al partner: **alerta al operador**.
 
 ---
 
@@ -116,6 +130,13 @@ billing:credit:7f3a…:5000:2026-09-12T10:03:11Z
 
 **Nunca lleva el identificador del proveedor** — lleva el nuestro (research
 §D5.1). Así la clave sigue siendo válida si la cuenta cambia.
+
+**Y en el sentido contrario**: toda sesión de Checkout se abre con
+`client_reference_id = <nuestro partner_id>`, y toda suscripción lleva el mismo
+valor en `metadata`. Por eso el manejador **resuelve el partner desde el propio
+aviso** y no buscando por `stripe_customer_id` — que es lo que mantiene esa
+columna como referencia borrable y hace inocuo el `UPDATE` del runbook de
+migración (research §D10).
 
 **La discriminante importa**: sin ella, un partner que sube a `team`, baja y
 vuelve a subir reutilizaría la clave del primer intento y el proveedor

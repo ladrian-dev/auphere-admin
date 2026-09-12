@@ -230,6 +230,13 @@ para que el precio signifique algo.
    DEBE decírselo y bloquear la creación de nuevos, y NO DEBE retirar nada de lo
    que ya tenía.
 7. `partners.max_clients` NO DEBE depender del nivel.
+8. La pantalla de planes DEBE describir cada nivel por **sus topes** —cuántos
+   agentes y cuántas personas— y por **un múltiplo de consumo respecto al nivel
+   de entrada**, y **NO DEBE publicar la cifra absoluta del pool**. WHEN
+   Auphere ajuste el tamaño de un pool THEN el partner NO DEBE percibirlo como
+   un recorte ni como un regalo de una cantidad concreta — es la misma
+   prohibición que ya rige la pantalla de consumo (Spec A R7.3), y alcanza
+   también a la de planes.
 
 ### Requisito 2 — Suscribirse es cosa del partner
 
@@ -363,8 +370,9 @@ se fue el consumo, y una factura que sirva para mi contabilidad.
 ### Entidades clave
 
 - **Nivel de membresía** — un plan del catálogo con su precio, su tamaño de pool
-  y sus topes de teammates y de personas. **De plataforma**: igual para todos,
-  sin `tenant_id`.
+  —**interno, no publicado**— y sus topes de teammates y de personas, que son
+  lo que el partner lee junto al múltiplo de consumo. **De plataforma**: igual
+  para todos, sin `tenant_id`.
 - **Suscripción del partner** — qué nivel tiene, en qué estado está y hasta
   cuándo. Pertenece al **partner**; la RLS la alcanza por `partner_id`.
 - **Aviso de pago recibido** — el registro de lo que el proveedor nos contó, con

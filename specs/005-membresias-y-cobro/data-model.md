@@ -47,12 +47,24 @@ es de nadie.
 **Filas iniciales**, de `concept.md` de la evaluación (cifras **provisionales**
 por decisión de producto, ADR-037):
 
-| `code` | precio | pool semanal | teammates | personas |
-|---|---:|---:|---:|---:|
-| `free` | 0 | 100 000 | 0 | 1 |
-| `pro` | 2 000 | 500 000 | 2 | 1 |
-| `team` | 6 000 | 2 000 000 | 6 | 3 |
-| `business` | 15 000 | 6 000 000 | 12 | 8 |
+| `code` | precio | pool semanal *(interno)* | teammates | personas | consumo publicado |
+|---|---:|---:|---:|---:|---|
+| `free` | 0 | 100 000 | 0 | 1 | — |
+| `pro` | 2 000 | 500 000 | 2 | 1 | base |
+| `team` | 6 000 | 2 000 000 | 6 | 3 | **4× el de Pro** |
+| `business` | 15 000 | 6 000 000 | 12 | 8 | **12× el de Pro** |
+
+> **`weekly_pool_tokens` es interno y no se publica.** Lo que el partner ve de
+> cada nivel son **sus topes duros** —cuántos agentes y cuántas personas— y,
+> para los niveles por encima del base, **un múltiplo de consumo calculado**
+> desde esta columna. Las razones, en research §D9: las cifras son
+> provisionales, y un número en una tabla de precios convierte cada ajuste de
+> capacidad en un recorte o un regalo visible.
+>
+> El múltiplo **se calcula, no se guarda**: `weekly_pool_tokens` del nivel
+> dividido por el del nivel de pago más bajo, redondeado al entero. Si algún día
+> se ajusta un pool, el múltiplo se ajusta solo — **no hay nada que se pueda
+> quedar desfasado**, que es la razón de no hacerlo columna.
 
 Cambiar una cifra es un `UPDATE`, **sin desplegar** (R1.5).
 

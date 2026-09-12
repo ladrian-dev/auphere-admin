@@ -213,7 +213,7 @@ El resto del código conoce «una suscripción» y «una compra»; no conoce Str
 
 **Ninguna fila en rojo. La puerta pasa.**
 
-Dos consecuencias del diseño que conviene leer antes de `/speckit-tasks`:
+Cuatro consecuencias del diseño que conviene leer antes de `/speckit-tasks`:
 
 1. **La mina de la finalización de facturas** ([research.md](./research.md) §D4).
    Si nuestro webhook no responde correctamente a `invoice.created`, el
@@ -221,6 +221,18 @@ Dos consecuencias del diseño que conviene leer antes de `/speckit-tasks`:
    las de todos los partners, no solo la del evento. Es el peor modo de fallo de
    esta spec y no es evidente: el sistema no se cae, simplemente deja de
    facturar.
-2. **`partners.status` no sirve** para el estado de suscripción. Solo admite
+2. **La pantalla de planes no publica la cifra del pool** (research §D9,
+   criterio R1.8, añadido tras `/speckit-analyze`). El catálogo la lleva
+   internamente, pero enseñarla convertiría cada ajuste de capacidad en un
+   recorte o un regalo visible — que es lo que la Spec A R7.3 prohíbe. Ninguno
+   de los seis referentes publica el número de tokens de su plan.
+3. **La segunda avería silenciosa: `invoice.finalization_failed`** (research
+   §D10). Una factura que no finaliza deja la suscripción `active` —el partner
+   trabaja con normalidad— y **no se cobra nada**, sin ningún síntoma. No
+   estaba en el diseño inicial; la encontró el repaso de las herramientas de
+   Stripe. Y su gemela de configuración: **el estado `unpaid` solo existe si el
+   panel de la cuenta está configurado para ello**, así que el escalón
+   intermedio de la escalera vive en una casilla que se pierde al migrar.
+4. **`partners.status` no sirve** para el estado de suscripción. Solo admite
    `active` y `suspended`, y significa otra cosa: si un partner está operativo.
    Un partner impagado sigue estando operativo para leer su historia.

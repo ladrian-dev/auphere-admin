@@ -3,9 +3,13 @@
 **Spec**: [spec.md](./spec.md) · **Plan**: [plan.md](./plan.md)
 **Fecha**: 2026-09-12
 
-Ocho decisiones. Las tres primeras eligen el proveedor y dónde vive; las
-tres siguientes son el diseño del cobro; las dos últimas son las que hacen que
-la cuenta de Stripe pueda cambiar de dueño sin drama.
+Diez decisiones. Las tres primeras eligen el proveedor y dónde vive; las tres
+siguientes son el diseño del cobro; D5 es la que hace que la cuenta de Stripe
+pueda cambiar de dueño sin drama; **D9 la añadió `/speckit-analyze`**, al
+encontrar que la pantalla de planes iba a publicar una cifra que la Spec A había
+quitado de la vista a propósito; y **D10 es la que más avería evita**: al
+repasar qué trae Stripe hecho aparecieron dos fallos silenciosos que el diseño
+no cubría.
 
 Todo lo que se afirma aquí sobre el comportamiento de Stripe está **verificado
 el 2026-09-12** contra su documentación oficial, con la página citada. Lo que no
@@ -253,6 +257,12 @@ historia, y meterlo en `suspended` lo apagaría entero.
 | `incomplete` | `current` | Aún no hubo primer pago. El nivel no está concedido, así que no hay nada que degradar |
 | `paused` | `unpaid` | No lo usamos, pero **el mapeo no puede tener agujeros** |
 
+> **Aviso que sale de D10**: el estado `unpaid` **solo existe si la cuenta está
+> configurada para ello** — Stripe lo dice explícitamente. Con los valores por
+> defecto, un impago va de `past_due` a `canceled` y el escalón intermedio nunca
+> llega. El mapeo está hecho para sobrevivir a eso: si la casilla se pierde, se
+> salta un escalón pero **nadie pierde trabajo**.
+
 **Un estado que no esté en la tabla hace fallar el manejador** y deja el estado
 anterior intacto. Por defecto no se cae en `current`: un estado desconocido que
 se lea como «al corriente» es acceso regalado, y silencioso.
@@ -312,6 +322,191 @@ apunte que se puede explicar.
 > **Ojo con D3**: esto *resta* saldo. No lo contradice — D3 prohíbe que **un
 > aviso externo** reste. Esto es una regla nuestra, con fecha nuestra, escrita
 > en el libro. La distinción es la que importa: quién decide.
+
+---
+
+## D9 · La pantalla de planes no publica la cifra del pool
+
+**Decisión**: el catálogo que ve el partner describe cada nivel con **lo que es
+un número estable y contractual** y con **un múltiplo**, nunca con la cifra del
+pool:
+
+1. **Los topes duros**: cuántos agentes puede crear y cuántas personas caben.
+   Son números que no se van a mover, porque moverlos sería cambiar el producto.
+2. **Un múltiplo de consumo respecto al nivel de entrada** — «4× el de Pro» —
+   que **se calcula** dividiendo `weekly_pool_tokens` entre el del nivel de pago
+   más bajo. No se almacena.
+
+`weekly_pool_tokens` **nunca sale** por la API de consola. El panel de operador
+sigue viendo la cifra absoluta, como pide la Spec A R7.2.
+
+**Por qué, y el dato que lo decide**: la evaluación ya lo había encontrado al
+mirar a Anthropic —
+
+> el 6 de mayo de 2026 duplicaron permanentemente los límites de cinco horas […]
+> el refuerzo temporal del +50 % semanal pasó a un +25 % permanente el 14 de
+> septiembre de 2026. Es decir: **los topes se mueven, y se mueven hacia
+> arriba. Un número escrito en una tabla de precios envejece; uno en una
+> columna, no.**
+> — `.specify/assessments/membresias-y-consumo-stripe/research.md` §2.2
+
+Nuestras cifras son **provisionales por decisión de producto** (ADR-037) y se
+cerrarán al medir el turno real. Publicar «500 000 unidades» convierte cada
+ajuste en un anuncio: subirlo es un regalo que después no se puede retirar,
+bajarlo es un recorte que el partner ve y con razón reclama. Es literalmente lo
+que la Spec A R7.3 prohíbe, y que el cambio ocurra en la pantalla de planes en
+vez de en la de consumo no lo hace menos cierto.
+
+**Qué hacen los referentes** (verificado 2026-09-11, evaluación §2):
+
+| | Cómo publica lo que incluye |
+|---|---|
+| Anthropic | Múltiplos: Max se vende como «5×» y «20×» el uso de Pro. **No publica tokens** |
+| Cursor | «5× el uso por 3× el precio» en el asiento Teams. Publica **dólares** de uso incluido, no unidades |
+| Lovable | Créditos, que son **su** unidad comercial estable, no el consumo real |
+| OpenAI, Copilot | Asiento y créditos; el consumo de API va aparte |
+
+**Ninguno de los seis publica el número de tokens de su plan.** No es pudor: es
+que ese número es una decisión de capacidad y las decisiones de capacidad
+cambian.
+
+**Por qué el múltiplo se calcula y no se guarda**: si fuera una columna habría
+que acordarse de actualizarla al cambiar un pool, y el día que se olvide la
+pantalla mentiría. Derivado de `weekly_pool_tokens`, **no se puede desfasar**.
+
+**Y por qué los topes sí se publican tal cual**: `max_teammates` y
+`max_members` no son capacidad, son **producto**. Cambiarlos es cambiar lo que
+se vendió, y por eso no se van a mover con la frecuencia con la que se moverá el
+pool. Un número que no se mueve se puede publicar sin miedo; el pool es
+precisamente el que sí se mueve.
+
+**Lo que se rechazó**:
+
+| Alternativa | Por qué no |
+|---|---|
+| Publicar la cifra y declarar la pantalla de planes excepción a R7 | Es gratis hoy y caro cada vez que se ajuste la capacidad. La evaluación ya avisaba de que los topes se mueven, y hacia arriba |
+| Una estimación en lenguaje de trabajo («unas 250 conversaciones») | Es **texto que hay que mantener a mano**, y deja de ser cierto en silencio en cuanto cambien los pesos por modelo. Una promesa que envejece sola es peor que no darla |
+| Solo el múltiplo, sin topes | «4× de algo que no conozco» no le dice nada a quien todavía no tiene plan. Los topes son lo que ancla la comparación |
+
+---
+
+## D10 · Apoyarse en lo que Stripe ya trae, y en dos cosas que casi nos comemos
+
+**Decisión**: usar las herramientas que el proveedor ya ofrece para no escribir
+—ni equivocarnos en— lo que él ya resolvió. Todo lo de esta sección está
+**verificado el 2026-09-12** en la documentación oficial de Stripe.
+
+### Lo que se usa, y para qué
+
+| Herramienta | Para qué, y qué error evita |
+|---|---|
+| **Checkout alojado** | El dato de tarjeta no toca nuestra infraestructura. Ya decidido en D1 |
+| **`client_reference_id`** | **Es la pieza que faltaba.** Ver abajo |
+| **Customer Portal** | Cambiar tarjeta, ver facturas, darse de baja. Construirlo nosotros significaría tocar datos de tarjeta |
+| **Smart Retries** | La escalera de reintentos la lleva el proveedor. Escribir dunning propio es reimplementar mal un problema resuelto |
+| **`invoice.upcoming`** | Llega unos días antes de la renovación. **Es con lo que se cumple R5.6** — avisar *antes* de degradar, no después |
+| **Relojes de prueba** | Recorrer la escalera entera en un test en vez de esperar un mes |
+| **CLI de Stripe** | Reenviar eventos al local. **Firma con un secreto propio**, distinto al de la cuenta |
+| **Claves de idempotencia** | Que un reintento nuestro no doble un cobro |
+| **Workbench** | Donde se registra el endpoint y se ven los eventos fallidos |
+
+### `client_reference_id`: cómo el webhook sabe de quién es el pago
+
+Verificado en la referencia de la API (`POST /v1/checkout/sessions`):
+
+> `client_reference_id` (string, optional) — A unique string to reference the
+> Checkout Session. This can be a customer ID, a cart ID, or similar, and can be
+> used to reconcile the session with your internal systems.
+> **The maximum length is 200 characters.**
+
+**Se pone nuestro `partner_id`** al abrir la sesión. Un UUID son 36 caracteres,
+así que cabe de sobra.
+
+Por qué importa, y no es comodidad: sin esto, el webhook tendría que resolver el
+partner **buscando por `stripe_customer_id`**, lo que convertiría ese
+identificador en la vía de acceso al partner — justo lo que D5.1 quiere evitar.
+Con `client_reference_id`, **el aviso trae nuestro identificador dentro** y la
+columna de Stripe vuelve a ser lo que dice ser: una referencia, borrable sin
+consecuencias. El día de la migración de cuenta, esto es lo que hace que el
+`UPDATE … SET stripe_customer_id = NULL` del runbook sea inocuo.
+
+El mismo `partner_id` va además en `metadata` de la suscripción, para que el
+aviso de renovación —que no nace de una sesión de Checkout— también lo traiga.
+
+---
+
+### Las dos cosas que casi nos comemos
+
+#### 1 · `invoice.finalization_failed`: cobertura sin cobro
+
+No estaba en la lista de eventos de D4, y **tenía que estar**. Verificado:
+
+> If Stripe can't finalize an invoice, it sends an `invoice.finalization_failed`
+> event […] **Subscriptions remain active if invoices can't be finalized, which
+> means that users may still be able to access your product while you're not
+> able to collect payments.** […] You can't collect payments on an invoice that
+> isn't finalized.
+
+Léase despacio: la suscripción **sigue `active`**, nuestra escalera no se mueve,
+el partner trabaja con normalidad — y **no estamos cobrando**. No hay ningún
+síntoma. Es la segunda avería silenciosa de esta spec, hermana de la de las 72
+horas, y la habríamos descubierto cuadrando ingresos a fin de mes.
+
+**Se añade a los eventos suscritos.** No degrada al partner —no es culpa suya—:
+**alerta al operador**, con el `last_finalization_error` de la factura, que es
+donde Stripe explica el motivo.
+
+Y ojo con la causa más probable el día que se encienda Stripe Tax:
+`automatic_tax.status = requires_location_inputs` impide finalizar. Otra razón
+para que el tratamiento fiscal sea una precondición de despliegue y no un
+detalle.
+
+#### 2 · Sin configurar el panel, la escalera D6 no existe
+
+Verificado, sobre el estado `unpaid`:
+
+> Stripe sets a subscription's status to `unpaid` **only when your Dashboard
+> subscription settings select this outcome**.
+
+Y sobre `past_due`:
+
+> If the invoice is still unpaid after all attempted payment retries, you can
+> configure the subscription to move to `canceled`, `unpaid`, or leave it as
+> `past_due`.
+
+Es decir: **el escalón «impagada» de ADR-037 D6 no ocurre solo.** Si la cuenta
+se queda con su comportamiento por defecto, un partner que deja de pagar pasa de
+`past_due` directamente a `canceled` —o se queda en `past_due` para siempre— y
+**el estado intermedio que diseñamos para no hacer daño nunca llega**.
+
+Eso convierte una decisión de producto en **una casilla de configuración**, y
+las casillas de configuración se pierden. Tres consecuencias:
+
+1. Se documenta en `docs/billing.md` como parte del arranque de la cuenta, junto
+   a Smart Retries.
+2. Entra en el **runbook de migración**: la cuenta nueva empieza con los valores
+   por defecto, así que hay que volver a ponerla.
+3. Y sobre todo: **el mapeo de D6 tiene que sobrevivir a que esté mal
+   configurada.** Por eso `canceled` y `incomplete_expired` mapean a nuestro
+   `canceled` y el partner conserva todo igual: si la casilla se pierde y un
+   impago acaba en `canceled` antes de tiempo, **nadie pierde trabajo** — solo
+   se salta un escalón.
+
+### Lo que se evaluó y no se usa: las *Entitlements* de Stripe
+
+Stripe tiene una API de derechos (`entitlements.active_entitlement_summary.updated`)
+que dice a qué funciones tiene acceso un cliente activo. Encajaría con los topes
+de nivel, y **se rechaza por dos razones**:
+
+1. **Ata el nivel a la cuenta.** Los derechos viven en Stripe, así que migrar de
+   cuenta dejaría de ser «recrear el catálogo» para ser «recrear el catálogo y
+   los derechos de cada cliente». Va en contra de D5.
+2. **Es la misma trampa que los credit grants.** Lo que decide si alguien puede
+   crear un teammate tiene que decidirlo el sistema, sin preguntar fuera. Un
+   derecho que solo se conoce consultando al proveedor hace que una caída del
+   proveedor bloquee una operación — y CE-004 dice lo contrario.
+
+El nivel es `partner_subscriptions.tier_code`, y es nuestro.
 
 ---
 

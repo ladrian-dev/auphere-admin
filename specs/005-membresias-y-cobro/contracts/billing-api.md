@@ -24,7 +24,8 @@ El estado de la membresía. Es lo que pinta la pantalla entera.
     "display_name": "Pro",
     "monthly_price_cents": 2000,
     "max_teammates": 2,
-    "max_members": 1
+    "max_members": 1,
+    "consumption_multiple": 1
   },
   "state": "current",
   "state_changed_at": "2026-09-01T10:00:00Z",
@@ -32,7 +33,10 @@ El estado de la membresía. Es lo que pinta la pantalla entera.
   "pending_tier": null,
   "usage": { "teammates": 1, "members": 1 },
   "purchased_expires_at": null,
-  "catalog": [ { "code": "free", "...": "..." } ]
+  "catalog": [
+    { "code": "team", "display_name": "Team", "monthly_price_cents": 6000,
+      "max_teammates": 6, "max_members": 3, "consumption_multiple": 4 }
+  ]
 }
 ```
 
@@ -45,8 +49,18 @@ El estado de la membresía. Es lo que pinta la pantalla entera.
   `/console/companion/budget`, que es el medidor único (Spec A). **Un segundo
   sitio que diga cuánto queda es un segundo medidor**, y ese fue el defecto D5
   que la Spec A acabó de arreglar.
-- **`catalog` se devuelve entero**, filtrado por `is_public`. La pantalla de
-  cambio de plan no necesita otra llamada.
+- **`weekly_pool_tokens` no sale por esta ruta, ni siquiera dentro de
+  `catalog`** (research §D9). Lo que describe a un nivel son **sus topes
+  duros** —`max_teammates` y `max_members`, que son números estables y
+  contractuales— y **`consumption_multiple`**, el múltiplo de consumo respecto
+  al nivel de pago más bajo: **calculado en el servidor, nunca almacenado**,
+  para que no pueda desfasarse cuando se ajuste una capacidad. Es `null` en el
+  nivel gratuito y `1` en el base. El panel de operador sigue viendo la cifra
+  absoluta (Spec A R7.2).
+- **`catalog` se devuelve entero**, filtrado por `is_public`, y cada entrada
+  lleva la misma forma que `tier` — con sus topes y su `consumption_multiple`,
+  **sin `weekly_pool_tokens`**. La pantalla de cambio de plan no necesita otra
+  llamada.
 - **`pending_tier` explícito.** Un partner que ya pidió bajar tiene que ver que
   lo pidió; si no, lo vuelve a pedir.
 
