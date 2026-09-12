@@ -36,6 +36,35 @@ export class BackendError extends Error {
     if (b && typeof b === "object" && typeof b.detail === "string") return b.detail;
     return this.message;
   }
+
+  /**
+   * The closed-vocabulary code when the endpoint answers with a structured
+   * ``detail`` — ``{"code": "tier_below_usage", ...}``.
+   *
+   * Without this, a structured detail falls through to ``message``, which
+   * carries the raw JSON of the backend response. Putting that in front of a
+   * person is exactly what principle III forbids: the screen writes the
+   * sentence, the API only names the case.
+   */
+  get code(): string | null {
+    const b = this.body as { detail?: unknown } | null;
+    const detail = b && typeof b === "object" ? b.detail : null;
+    if (detail && typeof detail === "object" && typeof (detail as { code?: unknown }).code === "string") {
+      return (detail as { code: string }).code;
+    }
+    return null;
+  }
+
+  /** Extra fields the structured detail carried, minus the code. */
+  get info(): Record<string, unknown> {
+    const b = this.body as { detail?: unknown } | null;
+    const detail = b && typeof b === "object" ? b.detail : null;
+    if (detail && typeof detail === "object") {
+      const { code: _code, ...rest } = detail as Record<string, unknown>;
+      return rest;
+    }
+    return {};
+  }
 }
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -266,6 +295,10 @@ export type ReceiptSummary = {
   issued_at: string | null;
   due_date: string;
 };
+import type { CheckoutOut, MembershipOut } from "./backend/membership";
+
+export type { CheckoutOut, MembershipOut, TierOut } from "./backend/membership";
+
 export type Billing = { billing_email: string | null; contact_email: string | null; receipts: ReceiptSummary[] };
 
 // ── client factory ─────────────────────────────────────────────────────
@@ -374,6 +407,10 @@ export function backendFor(principal: Principal) {
     revokeKey: (id: string) => call<ApiKey>(`/console/keys/${enc(id)}/revoke`, { method: "POST" }),
 
     billing: () => call<Billing>("/console/billing"),
+    membership: () => call<MembershipOut>("/console/billing/membership"),
+    startCheckout: (tier_code: string) =>
+      call<CheckoutOut>("/console/billing/checkout", { method: "POST", body: { tier_code } }),
+    billingPortal: () => call<{ url: string }>("/console/billing/portal"),
   };
 }
 

@@ -387,6 +387,28 @@ trabajo a la basura es la peor versión de un tope.
 > Consecuencia en el texto de pantalla: *«esperar no lo desbloquea»* **dejó de
 > ser cierto** y se corrigió. Con el pool semanal, esperar sí lo desbloquea.
 
+> **Ampliado por la spec 005 (2026-09-12).** El pool ya no se repone solo por
+> que pase una semana: se repone **si la suscripción está al corriente**. La
+> escalera de impago (ADR-037 D6) añade tres estados por encima de la pausa,
+> y el único efecto de todos ellos es ése.
+>
+> | Estado de la cuenta | ¿Se repone el pool? | ¿Se gasta el saldo comprado? |
+> |---|:--:|:--:|
+> | Al corriente | Sí | Sí |
+> | Pago fallido | **No** | Sí |
+> | Impagada | **No** | Sí |
+> | Cancelada | **No** | Sí, 12 meses |
+>
+> **Nada más cambia en ninguno de los cuatro.** Ni un teammate se archiva, ni
+> una tarea se cancela, **ni una confirmación pendiente se invalida** — y una
+> pendiente se puede responder sin saldo, que es lo que la spec 003 R9.3 ya
+> exigía y que la Spec A tuvo que arreglar quitando `_require_wallet` de
+> `resume_run`. Un impago es un problema de facturación; el trabajo de alguien
+> no se toca por eso.
+>
+> La pausa sigue siendo derivada (§6.1): un partner impagado con saldo
+> comprado **no está en pausa**, sigue trabajando contra su crédito.
+
 ### 6.1. La pausa es derivada, no un estado nuevo del hilo
 
 Un hilo está en pausa **si y solo si** su partner se ha quedado sin saldo

@@ -71,9 +71,7 @@ def open_subscription_session(
     session = client.checkout.sessions.create(
         params,
         options={
-            "idempotency_key": idempotency_key(
-                "sub", partner_id, "checkout", price_id, period_tag
-            )
+            "idempotency_key": idempotency_key("sub", partner_id, "checkout", price_id, period_tag)
         },
     )
     log.info("metering.billing_checkout_opened", partner_id=str(partner_id), mode="subscription")
@@ -117,9 +115,7 @@ def open_credit_session(
         # row would reuse the first key and Stripe would replay the stored
         # response — a second purchase that silently does not happen.
         options={
-            "idempotency_key": idempotency_key(
-                "credit", partner_id, str(amount_cents), stamp
-            )
+            "idempotency_key": idempotency_key("credit", partner_id, str(amount_cents), stamp)
         },
     )
     log.info("metering.billing_checkout_opened", partner_id=str(partner_id), mode="credit")

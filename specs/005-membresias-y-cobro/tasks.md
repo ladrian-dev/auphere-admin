@@ -116,8 +116,8 @@ partner tiene nivel, pool y puede crear teammates hasta su tope.
 ### Tests de la Historia 1 (§VII — escribir, ver en ROJO, y solo entonces implementar) ⚠️
 
 - [X] T027 [P] [US1] Test de contrato de `GET /console/billing/membership` en `apps/api/tests/integration/test_console_billing_contract.py`: la forma de `contracts/billing-api.md`, con `usage` incluido y **sin cifras de pool ni de saldo** — eso es del medidor único _Requisitos: 1.1, 5.7_
-- [ ] T028 [P] [US1] Test de integración del recorrido de suscripción en `apps/api/tests/integration/test_subscribe_flow.py` (V08, V10): al confirmarse el pago, **nivel y pool se aplican en el mismo acto** _Requisitos: 2.1, 2.3_
-- [ ] T029 [P] [US1] Test: abandonar el pago a medias **no cambia nada** (V11) _Requisitos: 2.4_
+- [X] T028 [P] [US1] Test de integración del recorrido de suscripción en `apps/api/tests/integration/test_subscribe_flow.py` (V08, V10): al confirmarse el pago, **nivel y pool se aplican en el mismo acto** _Requisitos: 2.1, 2.3_
+- [X] T029 [P] [US1] Test: abandonar el pago a medias **no cambia nada** (V11) _Requisitos: 2.4_
 - [X] T030 [P] [US1] Test en `apps/api/tests/integration/test_billing_webhook.py`: firma inválida y firma ausente → `400`, **sin interpretar el cuerpo**, con rastro (V21, V22) _Requisitos: 4.1_
 - [X] T031 [P] [US1] Test: el evento **se registra antes** de actuar — se fuerza un fallo del trabajo y la fila existe con `status='failed'` (V23) _Requisitos: 4.2_
 - [X] T032 [P] [US1] Test: el webhook responde en **< 500 ms** con el trabajo encolado y no ejecutado (V24) _Requisitos: 4.3_
@@ -129,7 +129,7 @@ partner tiene nivel, pool y puede crear teammates hasta su tope.
 - [X] T038 [P] [US1] Test: cambiar `weekly_pool_tokens` de un nivel con un `UPDATE` surte efecto **sin reiniciar ni migrar** (V05) _Requisitos: 1.5_
 - [X] T039 [P] [US1] Test en `apps/api/tests/integration/test_console_billing_contract.py` (V58): **la cifra absoluta del pool no sale por `/console/billing/membership`**, ni en `tier` ni en `catalog`; salen los topes y `consumption_multiple`, y el múltiplo **se calcula** — se cambia `weekly_pool_tokens` de un nivel y el múltiplo cambia solo, sin tocar ninguna otra fila. El panel de operador **sí** sigue viendo la cifra (Spec A R7.2) _Requisitos: 1.8_
 - [X] T040 [P] [US1] Test: conceder un nivel **no toca `partners.max_clients`** (V07) _Requisitos: 1.7_
-- [ ] T041 [P] [US1] Test de consola en `apps/console/src/app/(console)/billing/__tests__/membership.test.tsx` (V04): en el nivel gratuito **no existe** el control de crear teammate ni el de ejecución en la máquina — **ni apagado**. La ausencia se diseña (§V) _Requisitos: 1.4_
+- [X] T041 [P] [US1] Test de consola en `apps/console/src/app/(console)/billing/__tests__/membership.test.tsx` (V04): en el nivel gratuito **no existe** el control de crear teammate ni el de ejecución en la máquina — **ni apagado**. La ausencia se diseña (§V) _Requisitos: 1.4_
 - [X] T042 [P] [US1] Test en `apps/api/tests/unit/test_console_has_no_billing_credential.py`: `grep` en `apps/console` por las variables de clave del proveedor, al estilo del que ya existe para `NEXUS_ADMIN_TOKEN` (V13) _Requisitos: 2.6_
 - [X] T043 [P] [US1] Test en `apps/api/tests/integration/test_billing_webhook.py` (V59, V60): **`invoice.finalization_failed` alerta al operador y NO degrada al partner** —la suscripción sigue `active`, nuestro estado no se mueve, y la alerta lleva `last_finalization_error`—; y el manejador **resuelve el partner por `client_reference_id`**, no buscando por `stripe_customer_id`. La primera mitad es la avería más silenciosa de la spec: una factura que no finaliza deja al partner trabajando y a nosotros sin cobrar, sin ningún síntoma _Requisitos: 4.5, 5.1_
 
@@ -147,8 +147,8 @@ partner tiene nivel, pool y puede crear teammates hasta su tope.
 - [X] T053 [US1] `GET /console/billing/membership` y `POST /console/billing/checkout` en `apps/api/src/nexus_api/api/console/billing.py` — se **amplía** el router existente, no se sustituye. La respuesta describe cada nivel por **sus topes** y por un **`consumption_multiple` calculado en el servidor** a partir de `weekly_pool_tokens` —`null` en Free, `1` en el base—, y **nunca la cifra absoluta**, ni en `tier` ni en `catalog` (research §D9) _Requisitos: 1.1, 1.8, 2.1_
 - [X] T054 [US1] `GET /console/billing/portal` en el mismo fichero: la gestión de tarjeta y las facturas se delegan al proveedor, que es lo que evita tocar datos de tarjeta _Requisitos: 2.2, 8.4_
 - [X] T055 [US1] Auditoría que **nombra a la persona** de consola en contratar y cambiar, no al proceso (hace verde T024) _Requisitos: 2.5_
-- [ ] T056 [US1] Pantalla de membresía y planes en `apps/console/src/app/(console)/billing/page.tsx`, con los cinco estados (cargando, vacío, error, parcial, ideal). Cada nivel se presenta con **cuántos agentes y cuántas personas admite** y su múltiplo de consumo, **sin número de unidades** _Requisitos: 1.1, 1.8, 5.7_
-- [ ] T057 [US1] En el nivel gratuito, **no renderizar** los controles de teammate ni de ejecución en la máquina (hace verde T041) _Requisitos: 1.4_
+- [X] T056 [US1] Pantalla de membresía y planes en `apps/console/src/app/(console)/billing/page.tsx`, con los cinco estados (cargando, vacío, error, parcial, ideal). Cada nivel se presenta con **cuántos agentes y cuántas personas admite** y su múltiplo de consumo, **sin número de unidades** _Requisitos: 1.1, 1.8, 5.7_
+- [X] T057 [US1] En el nivel gratuito, **no renderizar** los controles de teammate ni de ejecución en la máquina (hace verde T041) _Requisitos: 1.4_
 - [X] T058 [US1] Traducir los errores del proveedor a los códigos de `contracts/billing-api.md`: **nunca** mostrar el mensaje crudo de una API externa a una persona (§III) _Requisitos: 5.7_
 
 **Checkpoint**: un partner puede pagar y empezar. **Es el MVP y se despliega solo.**

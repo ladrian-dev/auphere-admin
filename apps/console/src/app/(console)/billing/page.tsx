@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { Button, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
 
+import { MembershipSection } from "@/components/billing/membership-section";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
@@ -12,10 +13,13 @@ export default async function BillingPage() {
   const principal = await requirePrincipal("/billing");
   if (!can(principal.role, "billing:read")) redirect("/");
   const { t, locale } = await getT(principal.locale);
-  const billing = await backendFor(principal).billing();
+  const backend = backendFor(principal);
+  // Las dos en paralelo: son independientes y la pantalla necesita ambas.
+  const [billing, membership] = await Promise.all([backend.billing(), backend.membership()]);
   return (
     <>
       <PageHeader eyebrow={t("nav.group.account")} title={t("billing.title")} description={t("billing.description")} />
+      <MembershipSection membership={membership} />
       <dl className="grid max-w-lg grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
         <dt className="text-muted-foreground">{t("billing.email")}</dt>
         <dd className="min-w-0 truncate font-mono">{billing.billing_email ?? t("billing.notSet")}</dd>

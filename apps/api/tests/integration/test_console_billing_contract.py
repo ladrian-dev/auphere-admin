@@ -54,9 +54,7 @@ async def test_the_pool_figure_never_leaves_the_server(client, console_world) ->
         )
 
 
-async def test_what_the_partner_sees_instead_is_caps_and_a_multiple(
-    client, console_world
-) -> None:
+async def test_what_the_partner_sees_instead_is_caps_and_a_multiple(client, console_world) -> None:
     a = console_world["a"]
     resp = await client.get(_PATH, headers=a["headers"]())
     catalog = {entry["code"]: entry for entry in resp.json()["catalog"]}
@@ -72,9 +70,7 @@ async def test_what_the_partner_sees_instead_is_caps_and_a_multiple(
     assert catalog["business"]["max_members"] == 8
 
 
-async def test_the_multiple_follows_a_capacity_change_on_its_own(
-    client, console_world
-) -> None:
+async def test_the_multiple_follows_a_capacity_change_on_its_own(client, console_world) -> None:
     """La propiedad entera de D9: se calcula, no se guarda.
 
     Se dobla la capacidad de todos los niveles y lo que el partner ve **no
@@ -82,7 +78,9 @@ async def test_the_multiple_follows_a_capacity_change_on_its_own(
     """
     a = console_world["a"]
     async with get_sessionmaker()() as s:
-        await s.execute(sa.text("UPDATE membership_tiers SET weekly_pool_tokens = weekly_pool_tokens * 2"))
+        await s.execute(
+            sa.text("UPDATE membership_tiers SET weekly_pool_tokens = weekly_pool_tokens * 2")
+        )
         await s.commit()
     try:
         resp = await client.get(_PATH, headers=a["headers"]())
@@ -109,18 +107,14 @@ async def test_a_partner_only_ever_sees_its_own_membership(client, console_world
     a, b = console_world["a"], console_world["b"]
     async with get_sessionmaker()() as s:
         await s.execute(
-            sa.text(
-                "UPDATE partner_subscriptions SET tier_code = 'pro' WHERE partner_id = :p"
-            ),
+            sa.text("UPDATE partner_subscriptions SET tier_code = 'pro' WHERE partner_id = :p"),
             {"p": str(b["partner_id"])},
         )
         await s.commit()
 
     resp = await client.get(_PATH, headers=a["headers"]())
     assert resp.status_code == 200
-    assert resp.json()["tier"]["code"] == "business", (
-        "el partner A ve el nivel de B"
-    )
+    assert resp.json()["tier"]["code"] == "business", "el partner A ve el nivel de B"
 
 
 async def test_without_a_token_there_is_no_membership(client) -> None:

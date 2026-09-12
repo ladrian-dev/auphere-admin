@@ -24,7 +24,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
-from nexus_api.billing.events import HANDLED_EVENTS, record_event
+from nexus_api.billing.events import HANDLED_EVENTS, object_id_from, record_event
 from nexus_api.billing.provider import verify_signature
 from nexus_api.config import get_settings
 from nexus_api.core.streams import xadd_capped
@@ -92,6 +92,9 @@ async def billing_webhook(
             "event_type": event_type,
             "partner_id": str(row.partner_id or ""),
             "checkout_session_id": row.checkout_session_id or "",
+            # What the worker re-fetches from the provider. The body is never
+            # the source of the amount (§III).
+            "object_id": object_id_from(event) or "",
         },
     )
     log.info(

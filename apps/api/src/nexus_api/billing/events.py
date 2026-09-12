@@ -128,6 +128,18 @@ def partner_id_from(event: dict[str, Any]) -> uuid.UUID | None:
     return None
 
 
+def object_id_from(event: dict[str, Any]) -> str | None:
+    """The id of the object the notice is about.
+
+    The worker re-fetches that object from the provider's API rather than
+    trusting the body, so without this id there is nothing to fetch and the
+    rule "the body is data, the object is fetched" cannot be honoured.
+    """
+    obj = (event.get("data") or {}).get("object") or {}
+    value = obj.get("id")
+    return str(value) if value else None
+
+
 def checkout_session_id_from(event: dict[str, Any]) -> str | None:
     """The second idempotency anchor.
 

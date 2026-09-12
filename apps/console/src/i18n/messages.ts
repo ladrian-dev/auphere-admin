@@ -10,6 +10,7 @@ import { agentToolsMessages } from "./lanes/agent-tools";
 import { channelsMessages } from "./lanes/channels";
 import { companionMessages } from "./lanes/companion";
 import { homeUsageMessages } from "./lanes/home-usage";
+import { membershipMessages } from "./lanes/membership";
 import { onboardingMessages } from "./lanes/onboarding";
 import { playgroundMessages } from "./lanes/playground";
 import { workstationMessages } from "./lanes/workstation";
@@ -350,6 +351,7 @@ const messages = {
   ...core,
   ...agentToolsMessages,
   ...playgroundMessages,
+  ...membershipMessages,
   ...workstationMessages,
   ...channelsMessages,
   ...homeUsageMessages,

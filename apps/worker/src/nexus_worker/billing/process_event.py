@@ -127,3 +127,82 @@ async def apply_credit_purchase(session: Any, *, partner_id: uuid.UUID, checkout
         units=units,
     )
     return units
+
+
+# ── The consumer ─────────────────────────────────────────────────────────────
+
+
+async def ensure_group(redis: Any) -> None:
+    from redis.exceptions import ResponseError
+
+    try:
+        await redis.xgroup_create(BILLING_EVENT_STREAM, GROUP, id="0", mkstream=True)
+    except ResponseError as exc:
+        if "BUSYGROUP" not in str(exc):
+            raise
+
+
+def _decode(raw: dict[Any, Any]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for key, value in raw.items():
+        ks = key.decode() if isinstance(key, bytes) else str(key)
+        vs = value.decode() if isinstance(value, bytes) else str(value)
+        out[ks] = vs
+    return out
+
+
+async def handle_entry(session: Any, client: Any, fields: dict[str, str]) -> str:
+    """Apply one notice. Returns the status to record on the event row.
+
+    The object is **fetched from the provider**, never read out of the body:
+    the body says what happened, the provider says what it is worth. That is
+    Stripe's own guidance (the body can be stale) and principle III at the
+    same time — what arrives from outside is data.
+    """
+    from nexus_api.billing.ladder import flag_finalization_failure
+
+    event_type = fields.get("event_type", "")
+    raw_partner = fields.get("partner_id") or ""
+    partner_id = uuid.UUID(raw_partner) if raw_partner else None
+
+    if event_type == "invoice.finalization_failed":
+        # Degrades nobody. An invoice that will not finalize is coverage
+        # without revenue and gives no other symptom (research D10).
+        await flag_finalization_failure(
+            session, partner_id=partner_id, reason=fields.get("provider_event_id", "")
+        )
+        return "processed"
+
+    if partner_id is None:
+        # An orphan notice is kept, not dropped: losing the trail of a notice
+        # about money is worse than having a row nobody can act on.
+        log.warning("metering.billing_event_orphan", event_type=event_type)
+        return "failed"
+
+    if event_type == "invoice.paid":
+        invoice = client.invoices.retrieve(fields.get("object_id") or "")
+        await apply_invoice_paid(session, partner_id=partner_id, invoice=invoice)
+        return "processed"
+
+    if event_type in {"customer.subscription.updated", "customer.subscription.deleted"}:
+        sub = client.subscriptions.retrieve(fields.get("object_id") or "")
+        await apply_subscription_state(session, partner_id=partner_id, sub=sub)
+        return "processed"
+
+    if event_type in {
+        "checkout.session.completed",
+        "checkout.session.async_payment_succeeded",
+    }:
+        checkout = client.checkout.sessions.retrieve(fields.get("checkout_session_id") or "")
+        await apply_credit_purchase(session, partner_id=partner_id, checkout=checkout)
+        return "processed"
+
+    if event_type in {"invoice.payment_failed", "invoice.upcoming"}:
+        from nexus_api.billing.ladder import move_to
+        from nexus_api.db.models.membership import STATE_PAYMENT_FAILED
+
+        if event_type == "invoice.payment_failed":
+            await move_to(session, partner_id=partner_id, state=STATE_PAYMENT_FAILED)
+        return "processed"
+
+    return "ignored"
