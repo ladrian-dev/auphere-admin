@@ -160,7 +160,26 @@ async def test_partner_a_cannot_see_partner_b(db_session) -> None:
         assert other_alloc is None
 
 
-async def test_cannot_over_allocate(db_session) -> None:
+async def test_a_cap_is_a_spending_limit_and_is_not_bounded_by_the_balance(db_session) -> None:
+    """**Cambió con la spec 004 (R6), y el cambio es deliberado.**
+
+    Este test se llamaba ``test_cannot_over_allocate`` y afirmaba que la suma
+    de topes no podía superar el saldo. Al implementar R6.1 apareció la
+    consecuencia: un partner **sin créditos comprados** no podía dar cuota a
+    ningún cliente, así que sus clientes **nacían mudos** — el mismo modo de
+    fallo que costó el corte del 31-ago y contra el que
+    ``seed_default_allocation`` fue escrita.
+
+    Decidido el 2026-09-12: el tope por cliente no es una reserva sobre un
+    saldo, es el **límite de gasto mensual** que el partner le pone a un
+    cliente para que no se lo lleve todo. Lo que impide gastar sin saldo es
+    ``allow_channel_turn``, que lo comprueba **en cada turno** — y eso no se
+    relaja aquí ni en ningún sitio; lo cubre ``test_channel_turn_denied_*``
+    en este mismo fichero.
+
+    Lo que este test sigue guardando —y es lo que le da sitio en la suite de
+    aislamiento— es que un tope escrito para un partner **no toca al otro**.
+    """
     partner_id = uuid.uuid4()
     t1, t2 = uuid.uuid4(), uuid.uuid4()
     sm = get_sessionmaker()
@@ -182,9 +201,17 @@ async def test_cannot_over_allocate(db_session) -> None:
         await _seed_wallet(session, partner_id, included=100, purchased=0)
         await session.commit()
 
-    await set_allocation(partner_id, t1, 60)
+    first = await set_allocation(partner_id, t1, 60)
+    second = await set_allocation(partner_id, t2, 50)
+    assert first.cap == 60
+    assert second.cap == 50, (
+        "un límite de gasto por encima del saldo de hoy es legítimo: el saldo "
+        "lo comprueba cada turno, no el tope"
+    )
+
+    # Sin wallet no hay tope que poner: eso sí sigue siendo un error.
     with pytest.raises(OverAllocation):
-        await set_allocation(partner_id, t2, 50)
+        await set_allocation(uuid.uuid4(), t1, 10)
 
 
 async def test_cannot_spend_without_quota(db_session) -> None:

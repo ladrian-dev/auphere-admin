@@ -33,6 +33,8 @@ from nexus_api.metering.wallet import (
 pytestmark = pytest.mark.asyncio
 
 MONTHLY_CAP = 500_000
+#: Spec 004 (R2): el tamaño del pool vive ahora en ``weekly_pool_tokens``.
+POOL_SIZE = MONTHLY_CAP
 DEFAULT_CAP = 50_000
 
 
@@ -44,6 +46,7 @@ async def _partner_with_expired_wallet(db_session) -> uuid.UUID:
             name="Renovación Test",
             slug=f"renov-{partner_id.hex[:6]}",
             companion_monthly_token_cap=MONTHLY_CAP,
+            weekly_pool_tokens=POOL_SIZE,
         )
     )
     await db_session.flush()
@@ -92,9 +95,7 @@ async def test_renewal_then_seed_gives_the_client_its_quota(db_session) -> None:
     partner_id = await _partner_with_expired_wallet(db_session)
     tenant_id = await _tenant(db_session, partner_id)
 
-    renewed = await renew_included_if_expired(
-        db_session, partner_id=partner_id, monthly_cap=MONTHLY_CAP
-    )
+    renewed = await renew_included_if_expired(db_session, partner_id=partner_id)
     assert renewed is True
 
     cap = await seed_default_allocation(
@@ -105,48 +106,52 @@ async def test_renewal_then_seed_gives_the_client_its_quota(db_session) -> None:
     wallet = await db_session.get(PartnerWallet, partner_id)
     assert wallet is not None
     assert int(wallet.included_remaining) == MONTHLY_CAP
-    assert wallet.included_expires_at == next_period_end()
+    # Spec 004 (R2.2): el límite se ancla a la fecha de alta del partner, no al
+    # mes natural, así que hay que decirle desde dónde contar.
+    partner = await db_session.get(Partner, partner_id)
+    assert wallet.included_expires_at == next_period_end(anchor=partner.created_at)
 
 
-async def test_seeding_before_renewing_is_the_trap(db_session) -> None:
-    """Al revés: la fila se crea a 0 y el cliente sigue mudo."""
+async def test_the_seeding_trap_no_longer_exists(db_session) -> None:
+    """La trampa que este test documentaba **ya no es posible**.
+
+    Se llamaba «sembrar antes de renovar es la trampa»: con el libro caducado,
+    ``seed_default_allocation`` creaba la fila a 0 y el cliente quedaba mudo
+    para siempre, porque renovar después no vuelve a tocar una fila ya
+    sembrada. El orden del cron —renovar primero, sembrar después— era la
+    única defensa, y dependía de que nadie lo invirtiera.
+
+    Spec 004 (R6, decidido 2026-09-12): el tope dejó de ser una reserva sobre
+    el saldo, así que se siembra entero sea cual sea el estado del libro. El
+    orden del cron sigue siendo el bueno por el ``included``, pero invertirlo
+    ya no deja a nadie mudo.
+    """
     partner_id = await _partner_with_expired_wallet(db_session)
     tenant_id = await _tenant(db_session, partner_id)
 
     cap = await seed_default_allocation(
         db_session, partner_id=partner_id, tenant_id=tenant_id, default_cap=DEFAULT_CAP
     )
-    assert cap == 0
+    assert cap == DEFAULT_CAP, "sembrar con el libro caducado ya no da cero"
 
-    # Y renovar después NO arregla la fila ya sembrada: es idempotente y no
-    # la toca. Por eso el cron renueva primero.
-    await renew_included_if_expired(db_session, partner_id=partner_id, monthly_cap=MONTHLY_CAP)
+    await renew_included_if_expired(db_session, partner_id=partner_id)
     again = await seed_default_allocation(
         db_session, partner_id=partner_id, tenant_id=tenant_id, default_cap=DEFAULT_CAP
     )
-    assert again == 0
+    assert again == DEFAULT_CAP, "sigue siendo idempotente: no re-siembra ni duplica"
 
 
 async def test_renewal_is_idempotent(db_session) -> None:
     partner_id = await _partner_with_expired_wallet(db_session)
-    assert (
-        await renew_included_if_expired(db_session, partner_id=partner_id, monthly_cap=MONTHLY_CAP)
-        is True
-    )
-    assert (
-        await renew_included_if_expired(db_session, partner_id=partner_id, monthly_cap=MONTHLY_CAP)
-        is False
-    )
+    assert await renew_included_if_expired(db_session, partner_id=partner_id) is True
+    assert await renew_included_if_expired(db_session, partner_id=partner_id) is False
 
 
 async def test_renewal_fires_on_expiry_not_on_the_first_of_the_month(db_session) -> None:
     """Un scheduler caído el día 1 no puede costar el mes entero."""
     partner_id = await _partner_with_expired_wallet(db_session)
     # Estamos a mitad de mes y el included caducó hace días: renueva igual.
-    assert (
-        await renew_included_if_expired(db_session, partner_id=partner_id, monthly_cap=MONTHLY_CAP)
-        is True
-    )
+    assert await renew_included_if_expired(db_session, partner_id=partner_id) is True
     wallet = await db_session.get(PartnerWallet, partner_id)
     assert wallet is not None
     assert wallet.included_expires_at > datetime.now(UTC)
@@ -154,7 +159,7 @@ async def test_renewal_fires_on_expiry_not_on_the_first_of_the_month(db_session)
 
 async def test_seed_does_not_touch_an_existing_allocation(db_session) -> None:
     partner_id = await _partner_with_expired_wallet(db_session)
-    await renew_included_if_expired(db_session, partner_id=partner_id, monthly_cap=MONTHLY_CAP)
+    await renew_included_if_expired(db_session, partner_id=partner_id)
     tenant_id = await _tenant(db_session, partner_id)
     db_session.add(
         PartnerAllocation(partner_id=partner_id, tenant_id=tenant_id, cap=1234, remaining=7)
@@ -186,7 +191,7 @@ async def test_new_period_replenishes_a_spent_quota(db_session) -> None:
     """
     partner_id = await _partner_with_expired_wallet(db_session)
     tenant_id = await _tenant(db_session, partner_id)
-    await renew_included_if_expired(db_session, partner_id=partner_id, monthly_cap=MONTHLY_CAP)
+    await renew_included_if_expired(db_session, partner_id=partner_id)
     await seed_default_allocation(
         db_session, partner_id=partner_id, tenant_id=tenant_id, default_cap=DEFAULT_CAP
     )
@@ -208,7 +213,7 @@ async def test_new_period_replenishes_a_spent_quota(db_session) -> None:
 async def test_replenish_is_idempotent_and_never_lowers(db_session) -> None:
     partner_id = await _partner_with_expired_wallet(db_session)
     tenant_id = await _tenant(db_session, partner_id)
-    await renew_included_if_expired(db_session, partner_id=partner_id, monthly_cap=MONTHLY_CAP)
+    await renew_included_if_expired(db_session, partner_id=partner_id)
     await seed_default_allocation(
         db_session, partner_id=partner_id, tenant_id=tenant_id, default_cap=DEFAULT_CAP
     )

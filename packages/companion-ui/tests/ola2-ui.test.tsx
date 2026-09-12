@@ -342,14 +342,23 @@ describe("the composer under a pause (v2 §6.5)", () => {
     renderComposer({ paused: pause });
     expect(screen.getByLabelText("Mensaje al Companion")).toBeDisabled();
     expect(screen.getByText("En pausa")).toBeInTheDocument();
-    expect(screen.getByText(/Se reanuda subiendo el tope/)).toBeInTheDocument();
+    // Spec 004: la salida cambió. Antes el texto decía «esperar no lo
+    // desbloquea», cierto con un tope mensual que solo se subía a mano. Con el
+    // pool semanal **esperar sí lo desbloquea**, y con saldo comprado el
+    // trabajo ni se para. Dejar el texto viejo habría sido una pantalla que
+    // miente, en la consola y en la aplicación a la vez.
+    expect(screen.getByText(/Vuelve solo el/)).toBeInTheDocument();
     // A disabled control with no way out is a wall.
-    expect(screen.getByText(/no hace falta que reintentes/)).toBeInTheDocument();
+    expect(screen.getByText(/con saldo en la cuenta el trabajo continúa/)).toBeInTheDocument();
   });
 
-  it("shows the figures from the snapshot, so no second request is needed", () => {
+  it("does NOT show raw token figures (spec 004, R7.1)", () => {
     renderComposer({ paused: pause });
-    expect(screen.getByText(/2.000.000 de 2.000.000/)).toBeInTheDocument();
+    // El partner ve que se agotó y cuándo vuelve, no cuántos tokens eran. Que
+    // la cifra siga en el objeto es deliberado —el panel de operador la
+    // necesita para conciliar (R7.2)—; lo que se retira es de la pantalla.
+    expect(screen.queryByText(/2.000.000/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Se agotó el consumo incluido/)).toBeInTheDocument();
   });
 
   it("says the conversation and a pending confirmation are both kept", () => {
@@ -368,7 +377,7 @@ describe("the composer under a pause (v2 §6.5)", () => {
     renderComposer({ exhausted: true });
     expect(screen.getByLabelText("Mensaje al Companion")).toBeDisabled();
     expect(screen.getByText("En pausa")).toBeInTheDocument();
-    expect(screen.getByText(/Se alcanzó el tope de tokens/)).toBeInTheDocument();
+    expect(screen.getByText(/Se agotó el consumo incluido/)).toBeInTheDocument();
   });
 
   it("EN renders too", () => {

@@ -66,6 +66,19 @@ class ModelProfile(Base):
     # Voz (STT/TTS): se factura por minuto, no por token.
     price_per_minute: Mapped[decimal.Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
 
+    # Migración 0115 (spec 004, R3) — cuánto pesa un token de cuota de este
+    # modelo, normalizado al cerebro medio del catálogo cerrado.
+    #
+    # Es **dato y no cálculo derivado de la tarifa** (R3.3) a propósito:
+    # derivarlo haría que el contador del partner se moviera solo el día que un
+    # proveedor ajeno cambie un precio, y un contador que se mueve solo no se
+    # puede explicar en soporte.
+    #
+    # ``NULL`` significa «este modelo no se sirve por el carril de cuota de
+    # LLM», **no** «peso 1». ``openai/whisper-1`` lo tiene NULL y sigue
+    # funcionando: se mide por minutos y no pasa por ``quota_tokens()``.
+    quota_weight: Mapped[decimal.Decimal | None] = mapped_column(Numeric(6, 3), nullable=True)
+
     max_context: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Prefijo mínimo cacheable del proveedor. Por debajo de este número NO

@@ -46,7 +46,7 @@ lo cubre automáticamente). Ninguna ruta acepta `partner_id`, `principal_id` ni
 
 | Método y ruta | Respuesta |
 |---|---|
-| `GET /console/teammates/usage` | `{budget: CompanionBudgetOut (el mismo objeto que /companion/budget), by_teammate: [{teammate_id, name, input_tokens, output_tokens, runs}]}`. **Sin `cost_usd`**: `companion.runs` no guarda con qué modelo corrió el turno, así que un importe sería una estimación con el precio de hoy — y el medidor y el tope son en tokens (C9). El reparto suma los runs de todas las personas del partner, como el medidor: el roster es del partner |
+| `GET /console/teammates/usage` | **Actualizado por la spec 004**: `budget` sigue siendo *el mismo objeto* que `/companion/budget`, pero ahora sale **del libro** (`partner_wallets`) y no de una suma sobre `companion.runs`; su `period` es la **semana ISO del partner** (`YYYY-Www`), no el mes. El reparto `by_teammate` sigue saliendo de los runs y por tanto **puede sumar menos que el total** — la diferencia se nombra (`attribution_gap`) en vez de repartirse. Detalle en `specs/004-medidor-y-pool-semanal/contracts/budget-object.md`. Forma: `{budget: CompanionBudgetOut, by_teammate: [{teammate_id, name, input_tokens, output_tokens, runs}]}`. **Sin `cost_usd`**: `companion.runs` no guarda con qué modelo corrió el turno, así que un importe sería una estimación con el precio de hoy — y el medidor y el tope son en tokens (C9). El reparto suma los runs de todas las personas del partner, como el medidor: el roster es del partner |
 
 ## Errores
 

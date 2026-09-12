@@ -91,19 +91,30 @@ const COPY = {
   "nav.account": { es: "Cuenta", en: "Account" },
   "account.loading": { es: "Cargando tu consumo…", en: "Loading your usage…" },
   "account.error": { es: "No se pudo leer el consumo. Lo gastado está contado en la plataforma: esto es la pantalla.", en: "Could not read usage. What was spent is counted on the platform: this is the screen." },
-  "account.usage.title": { es: "Uso del mes", en: "This month" },
-  "account.usage.line": { es: "{used} de {cap} tokens. Vuelve a empezar el {resets}.", en: "{used} of {cap} tokens. Starts over on {resets}." },
-  "account.usage.valuetext": { es: "{used} de {cap} tokens", en: "{used} of {cap} tokens" },
+  "account.usage.title": { es: "Uso de esta semana", en: "This week" },
+  // Spec 004 (R7.1): proporción y fecha, **sin la cifra del pool**. El partner
+  // no ve cuántos tokens le quedan; ve cuánto le queda y cuándo vuelve. Así el
+  // tamaño del pool deja de ser un compromiso público y se puede ajustar sin
+  // que cada ajuste sea un anuncio.
+  "account.usage.line": { es: "Has usado el {percent} %. Vuelve a empezar el {resets}.", en: "You have used {percent} %. Starts over on {resets}." },
+  // R7.4: el lector de pantalla recibe LO MISMO que quien ve la barra. Una
+  // barra sin valores no le dice nada a nadie.
+  "account.usage.valuetext": { es: "{percent} % del consumo de la semana", en: "{percent} % of this week's usage" },
   "account.usage.runs": { es: "{runs} turnos", en: "{runs} turns" },
-  "account.usage.empty": { es: "Este mes ningún teammate ha gastado todavía.", en: "No teammate has spent anything this month yet." },
+  "account.usage.empty": { es: "Esta semana ningún teammate ha gastado todavía.", en: "No teammate has spent anything this week yet." },
+  // La diferencia entre el total y lo atribuido se NOMBRA (R4.4). Sin cifra,
+  // por la misma razón que la línea de arriba: lo que importa es que existe y
+  // de dónde viene, no cuántos tokens son.
   "account.usage.elsewhere": {
-    es: "Otros {tokens} tokens se gastaron desde la consola, que usa el mismo medidor.",
-    en: "Another {tokens} tokens were spent from the console, which uses the same meter.",
+    es: "Parte de lo consumido no sale de un teammate: la consola y lo que se ejecuta en tu máquina gastan del mismo sitio.",
+    en: "Some of what was used did not come from a teammate: the console and what runs on your machine spend from the same place.",
   },
-  "account.usage.capped.label": { es: "Tope del mes", en: "Monthly cap" },
+  "account.usage.capped.label": { es: "Consumo de la semana", en: "This week's usage" },
+  // R5.3/R5.5: agotar el pool ya NO detiene el trabajo si hay saldo comprado.
+  // Decir «se pausa» sin más sería mentir en el caso normal.
   "account.usage.capped": {
-    es: "Alcanzaste el tope del mes: el trabajo queda en pausa. Los hilos y lo que espera tu confirmación siguen vivos. El tope se sube en la consola.",
-    en: "You reached this month's cap: work is paused. Threads and anything waiting for your confirmation stay alive. The cap is raised in the console.",
+    es: "Se agotó el consumo incluido de esta semana. Si tu cuenta tiene saldo, el trabajo sigue con él; si no, queda en pausa hasta que vuelva el {resets}. Los hilos y lo que espera tu confirmación siguen vivos.",
+    en: "This week's included usage is spent. If your account has credit, work continues on it; if not, it pauses until it comes back on {resets}. Threads and anything waiting for your confirmation stay alive.",
   },
   "account.team.title": { es: "Equipo", en: "Team" },
   "account.team.you": { es: "tú", en: "you" },

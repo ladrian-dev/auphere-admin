@@ -155,7 +155,12 @@ async def test_start_run_is_409_when_wallet_empty(client, console_world, db_sess
         json={"prompt": "hola"},
     )
     assert resp.status_code == 409, resp.text
-    assert resp.json()["detail"]["code"] == "wallet_empty"
+    # Spec 004 (R4.6): un solo número decide, así que un solo código lo dice.
+    # Antes había dos puertas sobre el mismo saldo —la del presupuesto y
+    # ``_require_wallet``— y devolvían ``budget_paused`` y ``wallet_empty``
+    # para un estado idéntico. Queda la primera, que además se pinta como
+    # pausa y lleva la instantánea del presupuesto dentro.
+    assert resp.json()["detail"]["code"] == "budget_paused"
 
 
 async def test_empty_allocation_does_not_block_companion(client, console_world, db_session) -> None:
@@ -280,22 +285,32 @@ async def test_put_own_allocation_raises_cap(client, console_world, db_session) 
     assert again.json()["remaining"] == 600_000
 
 
-async def test_put_allocation_409_when_sum_exceeds_available(client, console_world) -> None:
+async def test_a_cap_above_the_current_balance_is_accepted(client, console_world) -> None:
+    """Spec 004 (R6, decidido 2026-09-12): el tope es un LÍMITE DE GASTO.
+
+    Antes esto devolvía 409 ``over_allocated``, porque el tope se trataba como
+    una reserva sobre el saldo. Acotarlo así tenía una consecuencia que solo
+    apareció al implementarlo: un partner sin créditos comprados no podía dar
+    cuota a ningún cliente, y **sus clientes nacían mudos** — el modo de fallo
+    que costó el corte del 31-ago.
+
+    Lo que impide gastar de más sigue siendo ``allow_channel_turn``, que mira el
+    saldo real en cada turno. El tope es otra cosa: el techo que el partner le
+    pone a un cliente para que no se lleve todo.
+    """
     a = console_world["a"]
     resp = await client.put(
         "/console/clients/{}/allocation".format(a["ref"]),
         headers=a["headers"](),
         json={"cap": 500_001},
     )
-    assert resp.status_code == 409, resp.text
-    assert resp.json()["detail"]["code"] == "over_allocated"
+    assert resp.status_code == 200, resp.text
 
     own = await client.get(
         "/console/clients/{}/allocation".format(a["ref"]), headers=a["headers"]()
     )
     assert own.status_code == 200, own.text
-    assert own.json()["cap"] == 500_000
-    assert own.json()["remaining"] == 500_000
+    assert own.json()["cap"] == 500_001
 
 
 async def test_put_allocation_forbidden_without_usage_write(
@@ -469,9 +484,15 @@ async def test_put_creates_allocation_for_client_without_row(
     assert "partner_id" not in body
 
 
-async def test_put_first_allocation_409_when_sum_exceeds_available(
+async def test_a_first_cap_is_accepted_even_with_the_balance_committed(
     client, console_world, db_session
 ) -> None:
+    """El compañero del test de arriba, para el cliente que aún no tiene fila.
+
+    Con la lectura vieja, un segundo cliente no podía recibir ni **un** token de
+    tope si el primero ya tenía comprometido todo el saldo. Con el tope como
+    límite de gasto, sí: lo que decide si atiende es el saldo del momento.
+    """
     a = console_world["a"]
     ref = "client-a-over"
     await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=ref)
@@ -480,10 +501,10 @@ async def test_put_first_allocation_409_when_sum_exceeds_available(
         headers=a["headers"](),
         json={"cap": 1},
     )
-    assert resp.status_code == 409, resp.text
-    assert resp.json()["detail"]["code"] == "over_allocated"
-    still = await client.get(f"/console/clients/{ref}/allocation", headers=a["headers"]())
-    assert still.status_code == 404, still.text
+    assert resp.status_code == 200, resp.text
+    now = await client.get(f"/console/clients/{ref}/allocation", headers=a["headers"]())
+    assert now.status_code == 200, now.text
+    assert now.json()["cap"] == 1
 
 
 # ── admin C3 (F1) ────────────────────────────────────────────────────────────

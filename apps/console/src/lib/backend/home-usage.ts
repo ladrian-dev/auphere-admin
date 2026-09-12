@@ -95,6 +95,9 @@ export type Wallet = {
   reserve: number;
   included_expires_at: string | null;
   exhausted: boolean;
+  /** Spec 004 (R7.1): proporción del pool consumida, calculada en la API. */
+  pool_size?: number;
+  included_percent_used?: number;
 };
 export type Allocation = { client_ref: string; cap: number; remaining: number };
 

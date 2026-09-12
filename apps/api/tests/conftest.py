@@ -665,6 +665,13 @@ async def console_world(db_session: AsyncSession) -> dict[str, Any]:
                 # sobre la fila para probar el camino apagado.
                 companion_enabled=True,
                 max_clients=3,
+                # Spec 004 (R2): el tamaño del pool semanal se declara aquí en
+                # vez de heredar el defecto de la columna (115 000). Las suites
+                # de consola comparan cifras concretas contra este mundo, y un
+                # número heredado las ata a un defecto que puede cambiar por
+                # motivos de producto que nada tienen que ver con lo que
+                # prueban.
+                weekly_pool_tokens=500_000,
             )
         )
         db_session.add(
@@ -766,7 +773,7 @@ async def make_partner_with_wallet(
     included: int = 500_000,
     purchased: int = 0,
     expires_at: Any = None,
-    monthly_cap: int = 500_000,
+    monthly_cap: int | None = None,
 ) -> dict[str, Any]:
     """A console partner whose wallet sits in a known state.
 
@@ -782,6 +789,12 @@ async def make_partner_with_wallet(
     """
     from nexus_api.db.models import Partner, PartnerWallet
 
+    # The pool SIZE defaults to whatever the wallet starts with. Letting them
+    # drift apart would make every ``used`` assertion in the suite wrong by a
+    # constant, which is the kind of thing that gets "fixed" by changing the
+    # expected number instead of the setup.
+    monthly_cap = included if monthly_cap is None else monthly_cap
+
     partner_id = uuid.uuid4()
     slug = f"w-{partner_id.hex[:8]}"
     db_session.add(
@@ -792,6 +805,8 @@ async def make_partner_with_wallet(
             console_enabled=True,
             companion_enabled=True,
             companion_monthly_token_cap=monthly_cap,
+            # Spec 004 (R2): el tamaño del pool vive aquí desde la 0115.
+            weekly_pool_tokens=monthly_cap,
         )
     )
     await db_session.flush()  # fires the trigger
@@ -841,4 +856,36 @@ async def spend_from_wallet(
         qty=qty,
         idempotency_key=key,
         tenant_id=tenant_id,
+        # The channel may not touch the included pool (R5.2). The factory
+        # mirrors what each lane really passes, so a test that claims to
+        # exercise a lane exercises that lane's rules too.
+        allow_included=lane != "channel",
     )
+
+
+async def drain_wallet(db_session: AsyncSession, partner_id: uuid.UUID, *, leave: int = 0) -> None:
+    """Leave a partner with ``leave`` included tokens and nothing purchased.
+
+    ``leave=1`` is the "one more turn and then paused" setup: the turn starts
+    because the book is not empty, drains it, and the next one is refused.
+
+    Spec 004 (R4.6): the cap **is** the book. Lowering
+    ``companion_monthly_token_cap`` used to pause a partner because that column
+    was compared against a sum over ``companion.runs``; it no longer gates
+    anything, so a test that wants "this partner is out of budget" has to say so
+    where the platform reads it.
+    """
+    from nexus_api.db.models import Partner, PartnerWallet
+
+    wallet = await db_session.get(PartnerWallet, partner_id)
+    assert wallet is not None
+    wallet.included_remaining = leave
+    wallet.purchased_remaining = 0
+    # The pool SIZE follows the balance too. Leaving them apart would make
+    # ``used`` (= size - balance) report a spend that never happened, which is
+    # the sort of artefact that gets "fixed" by editing the expected number.
+    partner = await db_session.get(Partner, partner_id)
+    if partner is not None:
+        partner.companion_monthly_token_cap = leave
+        partner.weekly_pool_tokens = leave
+    await db_session.commit()

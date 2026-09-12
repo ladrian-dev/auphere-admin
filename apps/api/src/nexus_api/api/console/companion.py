@@ -41,6 +41,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Annotated, Any
 
 import sqlalchemy as sa
@@ -91,6 +92,7 @@ from nexus_api.db.models.console_notification import (
     ConsoleNotification,
     NotificationSeverity,
 )
+from nexus_api.metering.pricing_policy import UnweightedModel, weight_for
 from nexus_api.metering.quota import cache_read_quota_tokens, quota_tokens
 from nexus_api.metering.wallet import companion_wallet_remaining, debit_wallet
 from nexus_api.repositories.teammate_tasks import TeammateTaskRepository
@@ -300,9 +302,23 @@ async def partner_companion_tokens_used(
 async def sum_partner_companion_tokens(
     session: AsyncSession, partner_id: uuid.UUID, window: MonthWindow
 ) -> int:
-    """La suma, sin abrir transacción. **Una sola implementación**: dos que se
-    parecieran empezarían iguales y acabarían discrepando en un redondeo, y
-    entonces Cuenta y la consola dirían números distintos del mismo gasto."""
+    """**Atribución**, no total (spec 004, R4.2).
+
+    Esto suma lo que se puede atribuir a un teammate o al Companion: las filas
+    de ``companion.runs``. **No es el gasto del partner** y no se puede usar
+    como tal. El total es el libro —``partner_budget``—, que además de esto
+    incluye los turnos de canal de los clientes finales y las ejecuciones en la
+    máquina, que estas filas no ven.
+
+    Ésa fue exactamente la avería: el mismo número dimensionaba las dos cosas,
+    así que un partner podía ver el presupuesto al 20 % y recibir un
+    ``409 wallet_empty`` a la vez. Si lo que buscas es «cuánto ha gastado este
+    partner», la respuesta está en ``partner_budget``; esto responde «quién lo
+    gastó».
+
+    Sin abrir transacción. **Una sola implementación**: dos que se parecieran
+    empezarían iguales y acabarían discrepando en un redondeo.
+    """
     member_ids = list(
         (
             await session.execute(
@@ -331,6 +347,80 @@ async def sum_partner_companion_tokens(
         await apply_principal_to_session(session, user_id)
         total += int(await session.scalar(stmt) or 0)
     return total
+
+
+def attribution_gap(*, total: int, attributed: int) -> int:
+    """Lo gastado que no cuelga de ningún teammate (R4.4).
+
+    Suelo en cero a propósito: la atribución puede superar al libro por un
+    instante —la fila del run se cierra dentro de la petición y el asiento se
+    escribe justo después—, y un «gastado en otro sitio» negativo en pantalla
+    no significa nada.
+    """
+    return max(0, total - attributed)
+
+
+async def partner_budget(session: AsyncSession, partner_id: uuid.UUID) -> CompanionBudgetOut:
+    """El presupuesto del partner, **leído del libro** (R4.1).
+
+    Abre transacción propia, como hacía ``partner_companion_tokens_used``; quien
+    ya esté dentro de una llama a :func:`partner_budget_in_tx`. Es el mismo
+    reparto que el repositorio ya tenía para la atribución, y por el mismo
+    motivo: dejar una transacción implícita abierta hace que el
+    ``session.begin()`` del llamante muera con «a transaction is already begun».
+    """
+    async with session.begin():
+        return await partner_budget_in_tx(session, partner_id)
+
+
+async def partner_budget_in_tx(session: AsyncSession, partner_id: uuid.UUID) -> CompanionBudgetOut:
+    """El presupuesto, sin abrir transacción.
+
+    ``remaining`` **es** ``partner_wallets.included_remaining``: la misma
+    columna que la plataforma consulta para dejar pasar un turno. No es
+    ``cap - used``, y esa diferencia es la spec entera — una resta sigue
+    produciendo un número plausible mucho después de que el libro diga cero.
+
+    Fail-closed: si el libro no se lee, saldo cero (lo hereda de
+    ``read_wallet``), y sin saldo no hay llamada al modelo.
+    """
+    from nexus_api.metering.wallet import read_wallet
+
+    snapshot = await read_wallet(partner_id)
+    cap = await _pool_size(session, partner_id)
+    remaining = snapshot.included_remaining if snapshot else 0
+    resets_at = snapshot.included_expires_at if snapshot else None
+    return CompanionBudgetOut(
+        used=max(0, cap - remaining),
+        cap=cap,
+        remaining=remaining,
+        percent=100.0 if cap <= 0 else min(100.0, round((cap - remaining) * 100.0 / cap, 2)),
+        exhausted=remaining <= 0,
+        # R2.8 / contrato: la semana ISO del partner, no el mes natural. Cero
+        # consumidores parsean este campo —verificado el 2026-09-11: las cinco
+        # apariciones lo tratan como cadena opaca y ninguna lo renderiza—, así
+        # que cambiarle el formato es seguro.
+        period=iso_week(resets_at) if resets_at else iso_week(_utcnow()),
+        resets_at=resets_at or _utcnow(),
+    )
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def iso_week(moment: datetime) -> str:
+    """``YYYY-Www`` — la semana ISO que contiene ``moment``."""
+    year, week, _day = moment.isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+async def _pool_size(session: AsyncSession, partner_id: uuid.UUID) -> int:
+    """El tamaño del pool semanal del partner. Una sola lectura, un solo sitio."""
+    value = await session.scalar(
+        sa.select(Partner.weekly_pool_tokens).where(Partner.id == partner_id)
+    )
+    return int(value or 0)
 
 
 def budget_out(used: int, cap: int, window: MonthWindow) -> CompanionBudgetOut:
@@ -415,6 +505,12 @@ async def _require_wallet(partner_id: uuid.UUID) -> None:
 
     El Companion gasta ``partner_wallets`` (included, luego purchased).
     ``partner_allocations`` es canal: vacío no bloquea el turno.
+
+    **Desde la spec 004 solo queda en ``resume_run``**, que no pasa por la
+    puerta del presupuesto. En ``start_run`` se retiró: allí la puerta lee el
+    mismo saldo y ya corta con ``budget_paused``, así que tener las dos era
+    comprobar dos veces el mismo número y devolver dos códigos distintos para
+    un estado idéntico (R4.6).
     """
     remaining = await companion_wallet_remaining(partner_id)
     if remaining <= 0:
@@ -455,10 +551,15 @@ async def get_budget(
     caller: CompanionCaller = Depends(companion_reader()),
     session: AsyncSession = Depends(get_db_session),
 ) -> CompanionBudgetOut:
-    """Gasto del Companion del partner en el mes en curso, en tokens (C9)."""
-    window = month_window()
-    used = await partner_companion_tokens_used(session, caller.partner.id, window)
-    return budget_out(used, caller.partner.companion_monthly_token_cap, window)
+    """El consumo del partner, **leído del libro** (spec 004, R4.1).
+
+    Hasta la spec 004 esto sumaba ``companion.runs``, que solo ve turnos de
+    Companion y de teammates; el libro lo gastan además los turnos de canal de
+    los clientes y las ejecuciones en la máquina. Eran dos cifras del mismo
+    gasto, y podían discrepar en pantalla. Ahora el número que se enseña es el
+    mismo entero que decide si un turno pasa.
+    """
+    return await partner_budget(session, caller.partner.id)
 
 
 # ── hilos ──────────────────────────────────────────────────────────────
@@ -702,9 +803,13 @@ async def start_run(
 
     partner = caller.partner
     window = month_window()
-    used_before = await partner_companion_tokens_used(session, partner.id, window)
-    cap = partner.companion_monthly_token_cap
-    if used_before >= cap:
+    # R4.6: **un solo número decide**. El tope ya no es una suma sobre las
+    # ejecuciones comparada con una columna de ``partners``: es el saldo del
+    # libro, que es lo que ``_require_wallet`` comprueba más abajo y lo que el
+    # débito descuenta. Dos puertas sobre el mismo gasto eran la avería.
+    snapshot = await partner_budget(session, partner.id)
+    used_before, cap = snapshot.used, snapshot.cap
+    if snapshot.exhausted:
         await notify_cap_reached(partner.id, window)
         raise _budget_paused(used_before, cap, window)
 
@@ -717,7 +822,11 @@ async def start_run(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT, detail="Thread is archived"
                 )
-            await _require_wallet(partner.id)
+            # ``_require_wallet`` **no** va aquí: la puerta del presupuesto de
+            # arriba lee el mismo saldo y ya ha cortado con ``budget_paused``.
+            # Dos comprobaciones sobre el mismo número son la avería que R4.6
+            # elimina, y además daban dos códigos distintos —``budget_paused``
+            # y ``wallet_empty``— para un estado idéntico.
             _require_proxy(partner.id)
             _require_catalog_model()
             await _guard_concurrency(session, principal_id)
@@ -1284,12 +1393,31 @@ def _make_on_complete(
         uncached = max(
             0, int(handle.total_input_tokens) - cache_read_quota_tokens(handle.total_cache_read)
         )
-        qty = quota_tokens(
-            prompt_tokens=uncached + int(handle.total_cache_read),
-            cache_read=int(handle.total_cache_read),
-            output_tokens=int(handle.total_output_tokens),
-            cache_write=int(handle.total_cache_write),
-        )
+        # Spec 004, R3.1: el peso del cerebro entra en la MISMA función que ya
+        # pondera la lectura de caché. Sale del catálogo cacheado —el mismo que
+        # se lee dos líneas más arriba para valorar el turno—, así que no añade
+        # una consulta por turno.
+        #
+        # Un modelo sin peso no puede debitar: el turno ya ocurrió, así que
+        # negarse aquí no impediría nada y solo dejaría de cobrarlo en
+        # silencio. Se registra y se omite, igual que hace el consumidor de
+        # canal, y queda medido en la fila del run.
+        try:
+            qty = quota_tokens(
+                prompt_tokens=uncached + int(handle.total_cache_read),
+                cache_read=int(handle.total_cache_read),
+                output_tokens=int(handle.total_output_tokens),
+                cache_write=int(handle.total_cache_write),
+                model_weight=await _model_weight(handle.model),
+            )
+        except UnweightedModel as exc:
+            log.error(
+                "metering.unweighted_model",
+                model=handle.model,
+                partner_id=str(partner_id),
+                error=str(exc),
+            )
+            qty = 0
         try:
             await debit_wallet(
                 partner_id=partner_id,
@@ -1306,6 +1434,20 @@ def _make_on_complete(
             await notify_cap_reached(partner_id, window)
 
     return _on_complete
+
+
+async def _model_weight(model: str | None) -> Decimal:
+    """El peso de cuota del modelo del turno (spec 004, R3.1).
+
+    Del catálogo cacheado (TTL 300 s), que ya se lee en este mismo camino para
+    valorar el turno: cero consultas nuevas por llamada.
+    """
+    from nexus_worker.metering.pricing import get_catalog
+
+    if not model:
+        raise UnweightedModel("the run did not record which model it used")
+    catalog = await get_catalog()
+    return weight_for(model, {mid: row.quota_weight for mid, row in catalog.items()})
 
 
 async def _turn_cost_usd(handle: streaming.CompanionRunHandle) -> float | None:
@@ -1891,7 +2033,18 @@ async def resume_run(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT, detail="Thread is archived"
                 )
-            await _require_wallet(caller.partner.id)
+            # ``_require_wallet`` se retiró también de aquí (spec 004, R5.4).
+            # Un *resume* no es trabajo nuevo: cierra una confirmación que ya
+            # estaba esperando, y la spec 003 (R9.3) garantiza que ésas
+            # **siguen vivas y respondibles** con el tope alcanzado. Mientras
+            # el tope era otra columna esto no chocaba; desde que el tope ES el
+            # saldo, comprobarlo aquí rompía la garantía.
+            #
+            # Lo que se gasta cerrando esa confirmación no se cobra: sin cuota,
+            # ``debit_wallet`` devuelve ``spent=0`` y no escribe asiento, así
+            # que el turno queda medido y sin cobrar en vez de cobrado sin
+            # saldo. Es el precio de no dejar a una persona con una decisión
+            # pendiente que no puede responder.
             _require_proxy(caller.partner.id)
             _require_catalog_model()
             await _guard_concurrency(session, principal_id)

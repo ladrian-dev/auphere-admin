@@ -372,14 +372,29 @@ tiene parámetros. El documento es el mismo para todos los partners.
 **El 429 del tope mensual de tokens de CO-01 se retira.** Un 429 que tira el
 trabajo a la basura es la peor versión de un tope.
 
+> **Enmendado por la spec 004 (2026-09-12).** Tres cosas de esta sección
+> cambiaron y conviene leerlas antes que el resto:
+>
+> 1. **El tope ya no es mensual: es semanal**, anclado a la fecha de alta del
+>    partner, y se repone solo.
+> 2. **El tope ES el saldo del libro**, no una columna de `partners`
+>    comparada con una suma sobre `companion.runs`. Eran dos números del mismo
+>    gasto y podían discrepar en pantalla.
+> 3. **Agotar el pool ya no pausa si hay saldo comprado**: el trabajo cae a los
+>    créditos y continúa sin que nadie intervenga. La pausa es el estado de
+>    quien se queda sin las dos cosas.
+>
+> Consecuencia en el texto de pantalla: *«esperar no lo desbloquea»* **dejó de
+> ser cierto** y se corrigió. Con el pool semanal, esperar sí lo desbloquea.
+
 ### 6.1. La pausa es derivada, no un estado nuevo del hilo
 
-Un hilo está en pausa **si y solo si** su partner está por encima del tope
-(`used >= cap`). No hay columna de estado en el hilo, no hay que despausar nada a
-mano, y subir el tope reanuda todos los hilos del partner a la vez — que es
-exactamente lo que §23.2 describe ("solo se reanuda cambiando o quitando el
-presupuesto"). Un estado persistido sería una segunda fuente de verdad que se
-puede desincronizar de la primera.
+Un hilo está en pausa **si y solo si** su partner se ha quedado sin saldo
+—incluido y comprado— en el libro. No hay columna de estado en el hilo, no hay
+que despausar nada a mano, y reponer saldo reanuda todos los hilos del partner
+a la vez — que es exactamente lo que §23.2 describe ("solo se reanuda cambiando
+o quitando el presupuesto"). Un estado persistido sería una segunda fuente de
+verdad que se puede desincronizar de la primera.
 
 ### 6.2. Qué acepta y qué no un hilo en pausa
 

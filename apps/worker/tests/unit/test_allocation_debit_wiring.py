@@ -21,6 +21,26 @@ import pytest
 from nexus_worker.metering import consumer
 
 
+@pytest.fixture(autouse=True)
+def _catalog(monkeypatch):
+    """El débito necesita el peso por modelo (spec 004, R3.1).
+
+    Se inyecta en vez de dejar que ``get_catalog()`` vaya a la base: este es un
+    test unit sin Postgres, y pedirlo de verdad cachea un motor que después
+    rompe otro test del dispatcher. El peso 1 es el neutro: lo que este fichero
+    prueba es el CABLEADO de los dos libros, no la ponderación.
+    """
+    from decimal import Decimal
+
+    class _Row:
+        quota_weight = Decimal(1)
+
+    async def _fake_catalog():
+        return {"openai/gpt-5.6-sol": _Row()}
+
+    monkeypatch.setattr(consumer, "get_catalog", _fake_catalog)
+
+
 def _event(meter: str, quantity: int, *, seq: int = 1) -> dict:
     return {
         "meter": meter,

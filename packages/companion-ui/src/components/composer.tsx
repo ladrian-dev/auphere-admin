@@ -3,7 +3,7 @@
 import { PauseCircle, Send, Square } from "lucide-react";
 import * as React from "react";
 
-import { Button, Textarea, formatDate, formatNumber } from "@nexus/ui";
+import { Button, Textarea, formatDate } from "@nexus/ui";
 
 
 import type { BudgetPause } from "../types";
@@ -149,21 +149,19 @@ export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Co
             <PauseCircle aria-hidden="true" className="mt-px size-4 shrink-0" />
             <span className="min-w-0 text-pretty">
               <span className="font-medium text-foreground">{t("companion.paused.title")}</span>{" "}
-              {paused
-                ? t("companion.paused.body", {
-                    used: formatNumber(paused.used, locale),
-                    cap: formatNumber(paused.cap, locale),
-                  })
-                : t("companion.meter.exhausted.body")}
+              {paused ? t("companion.paused.body") : t("companion.meter.exhausted.body")}
             </span>
           </p>
           {/* Without the way out, a disabled box is just a wall. */}
-          <p className="mt-1 pl-5 text-xs text-pretty text-muted-foreground">{t("companion.paused.unblock")}</p>
-          {paused?.resetsAt ? (
-            <p className="mt-px pl-5 text-xs text-muted-foreground">
-              {t("companion.meter.month.resets", { date: formatDate(paused.resetsAt, locale) })}
-            </p>
-          ) : null}
+          {/* Spec 004: la salida ya no es solo «escríbenos». El pool vuelve
+              solo en su fecha y, con saldo comprado, el trabajo ni se para.
+              Decir «esperar no lo desbloquea» era cierto con un tope mensual
+              que solo se subía a mano; con el pool semanal es falso. */}
+          <p className="mt-1 pl-5 text-xs text-pretty text-muted-foreground">
+            {paused?.resetsAt
+              ? t("companion.paused.unblock", { date: formatDate(paused.resetsAt, locale) })
+              : t("companion.paused.unblock.nodate")}
+          </p>
           {/* The thread is not gone and neither is anything owed. */}
           <p className="mt-1 pl-5 text-xs text-pretty text-muted-foreground">{t("companion.paused.kept")}</p>
         </div>

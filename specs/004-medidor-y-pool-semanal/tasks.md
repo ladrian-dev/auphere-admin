@@ -62,15 +62,15 @@ nuevo, ni dependencia nueva, ni estructura nueva.
 
 **Purpose**: las tres comprobaciones que `/speckit-analyze` no deja pasar.
 
-- [ ] T004 [P] **Puerta de aislamiento · garantía 1 (Postgres RLS)** — test en `apps/api/tests/isolation/test_budget_reads_wallet_scope.py`: con dos partners con libros distintos, la lectura del presupuesto de uno **nunca** devuelve el saldo del otro; y con `app.partner_id` ausente, devuelve cero filas en vez de un 500. En rojo bloquea el merge (§I).
+- [X] T004 [P] **Puerta de aislamiento · garantía 1 (Postgres RLS)** — test en `apps/api/tests/isolation/test_budget_reads_wallet_scope.py`: con dos partners con libros distintos, la lectura del presupuesto de uno **nunca** devuelve el saldo del otro; y con `app.partner_id` ausente, devuelve cero filas en vez de un 500. En rojo bloquea el merge (§I).
       _Requisitos: 4.1, 4.5_ · V26
-- [ ] T005 [P] **Puerta de aislamiento · garantía 1 (fuga a cliente final)** — test en `apps/api/tests/isolation/test_pool_not_exposed_to_tenant.py`: ninguna respuesta de un endpoint orientado a cliente final menciona pool, saldo, tope ni precio. Estructural sobre el esquema OpenAPI, copiando el patrón que CP-21 ya usa para el contenido de conversación.
+- [X] T005 [P] **Puerta de aislamiento · garantía 1 (fuga a cliente final)** — test en `apps/api/tests/isolation/test_pool_not_exposed_to_tenant.py`: ninguna respuesta de un endpoint orientado a cliente final menciona pool, saldo, tope ni precio. Estructural sobre el esquema OpenAPI, copiando el patrón que CP-21 ya usa para el contenido de conversación.
       _Requisitos: 4.6_ · V26
-- [ ] T006 [P] **Puerta de aislamiento · garantía 6 (log + trace)** — test en `apps/api/tests/isolation/test_wallet_events_are_logged.py`: cada renovación semanal y cada débito dejan su asiento y su evento con el partner identificado, y **ningún** log lleva contenido de conversación.
+- [X] T006 [P] **Puerta de aislamiento · garantía 6 (log + trace)** — test en `apps/api/tests/isolation/test_wallet_events_are_logged.py`: cada renovación semanal y cada débito dejan su asiento y su evento con el partner identificado, y **ningún** log lleva contenido de conversación.
       _Requisitos: 2.1, 5.6_
-- [ ] T007 [P] **Puerta de licencias** — test en `apps/api/tests/unit/test_no_new_dependencies.py` que compara la lista de dependencias declaradas contra la instantánea de esta rama y falla si aparece una nueva. El plan declara **ninguna**; `stripe` es de la Spec B y no puede colarse aquí (§VIII).
+- [X] T007 [P] **Puerta de licencias** — test en `apps/api/tests/unit/test_no_new_dependencies.py` que compara la lista de dependencias declaradas contra la instantánea de esta rama y falla si aparece una nueva. El plan declara **ninguna**; `stripe` es de la Spec B y no puede colarse aquí (§VIII).
       _Requisitos: —_ (puerta de plan, no de spec)
-- [ ] T008 **Puerta del medidor** — dejar escrito en [`contracts/quota-unit.md`](./contracts/quota-unit.md) que lo que gasta es **modelo y solo modelo** (ni reloj de máquina ni herramienta de pago), y que el partner lo ve en Consumo de la consola y en Cuenta de la aplicación como **barra y fecha**. Ya está redactado: la tarea es verificar que sigue siendo cierto al cerrar la spec.
+- [X] T008 **Puerta del medidor** — dejar escrito en [`contracts/quota-unit.md`](./contracts/quota-unit.md) que lo que gasta es **modelo y solo modelo** (ni reloj de máquina ni herramienta de pago), y que el partner lo ve en Consumo de la consola y en Cuenta de la aplicación como **barra y fecha**. Ya está redactado: la tarea es verificar que sigue siendo cierto al cerrar la spec.
       _Requisitos: 7.1, 7.2_
 
 **Checkpoint**: las tres puertas tienen dueño.
@@ -125,36 +125,36 @@ las tres superficies lo ven igual.
 
 ### Tests de la Historia 2 (§VII — en ROJO antes de implementar) ⚠️
 
-- [ ] T017 [P] [US2] **El test que hoy falla**, en `apps/api/tests/integration/test_budget_matches_wallet.py`: consumir por canal hasta vaciar el libro y comprobar que el presupuesto lo refleja. Hoy diría 20 % con el libro vacío. Se escribe **antes** y se ve en rojo: es la prueba de que el defecto existe.
+- [X] T017 [P] [US2] **El test que hoy falla**, en `apps/api/tests/integration/test_budget_matches_wallet.py`: consumir por canal hasta vaciar el libro y comprobar que el presupuesto lo refleja. Hoy diría 20 % con el libro vacío. Se escribe **antes** y se ve en rojo: es la prueba de que el defecto existe.
       _Requisitos: 4.1, 4.3_ · V21
-- [ ] T018 [P] [US2] Test en `apps/api/tests/integration/test_three_surfaces_agree.py`: las lecturas de consola, operador y aplicación derivan del mismo dato y del mismo período en la misma petición.
+- [X] T018 [P] [US2] Test en `apps/api/tests/integration/test_three_surfaces_agree.py`: las lecturas de consola, operador y aplicación derivan del mismo dato y del mismo período en la misma petición.
       _Requisitos: 4.3_ · V22, CE-001
-- [ ] T019 [P] [US2] Test en `apps/api/tests/unit/test_attribution_gap.py`: cuando el total supera lo atribuido a teammates, la diferencia se nombra y **no** se reparte entre los que sí aparecen.
+- [X] T019 [P] [US2] Test en `apps/api/tests/unit/test_attribution_gap.py`: cuando el total supera lo atribuido a teammates, la diferencia se nombra y **no** se reparte entre los que sí aparecen.
       _Requisitos: 4.4_ · V23
-- [ ] T020 [P] [US2] Test en `apps/api/tests/unit/test_wallet_fail_closed.py`: con el libro ilegible, el saldo es cero y no hay llamada al modelo.
+- [X] T020 [P] [US2] Test en `apps/api/tests/unit/test_wallet_fail_closed.py`: con el libro ilegible, el saldo es cero y no hay llamada al modelo.
       _Requisitos: 4.5_ · V24
-- [ ] T021 [P] [US2] Test **estructural** en `apps/api/tests/unit/test_single_meter.py`: no queda ningún segundo tope de otro alcance comparándose contra la misma cifra. Falla si alguien reintroduce una suma sobre ejecuciones como total.
+- [X] T021 [P] [US2] Test **estructural** en `apps/api/tests/unit/test_single_meter.py`: no queda ningún segundo tope de otro alcance comparándose contra la misma cifra. Falla si alguien reintroduce una suma sobre ejecuciones como total.
       _Requisitos: 4.6_ · V25, CE-008
-- [ ] T022 [P] [US2] Tests en `apps/api/tests/integration/test_pocket_separation.py`: teammates y Companion gastan incluido primero y comprado después; el canal de clientes **nunca** toca el incluido; el mismo turno reprocesado no descuenta dos veces.
+- [X] T022 [P] [US2] Tests en `apps/api/tests/integration/test_pocket_separation.py`: teammates y Companion gastan incluido primero y comprado después; el canal de clientes **nunca** toca el incluido; el mismo turno reprocesado no descuenta dos veces.
       _Requisitos: 5.1, 5.2, 5.6_ · V27, V28, V31
-- [ ] T023 [P] [US2] Tests en `apps/api/tests/integration/test_allocation_on_purchased.py`: el disponible para asignar se calcula sobre **comprado**; el tope por cliente se repone mensualmente; un cliente que agota su tope calla solo él; la suma de topes no supera el saldo; los avisos al 80 % y 100 % siguen llegando sin duplicar.
+- [X] T023 [P] [US2] Tests en `apps/api/tests/integration/test_allocation_on_purchased.py`: el disponible para asignar se calcula sobre **comprado**; el tope por cliente se repone mensualmente; un cliente que agota su tope calla solo él; la suma de topes no supera el saldo; los avisos al 80 % y 100 % siguen llegando sin duplicar.
       _Requisitos: 6.1, 6.2, 6.3, 6.4, 6.5_ · V32, V33, V34, V35, V36
 
 ### Implementación de la Historia 2
 
-- [ ] T024 [US2] En `apps/api/src/nexus_api/metering/wallet.py`, añadir el parámetro `allow_included: bool = True` a `debit_wallet`. El valor por defecto `True` es deliberado: los dos llamantes que sí pueden gastar incluido no cambian una línea. Ver decisión **D4** del [research](./research.md).
+- [X] T024 [US2] En `apps/api/src/nexus_api/metering/wallet.py`, añadir el parámetro `allow_included: bool = True` a `debit_wallet`. El valor por defecto `True` es deliberado: los dos llamantes que sí pueden gastar incluido no cambian una línea. Ver decisión **D4** del [research](./research.md).
       _Requisitos: 5.1, 5.2_
-- [ ] T025 [US2] En `apps/worker/src/nexus_worker/metering/consumer.py`, pasar `allow_included=False` en el débito del canal. Es el cambio que hace que el consumo de clientes finales deje de comerse el pool de la aplicación.
+- [X] T025 [US2] En `apps/worker/src/nexus_worker/metering/consumer.py`, pasar `allow_included=False` en el débito del canal. Es el cambio que hace que el consumo de clientes finales deje de comerse el pool de la aplicación.
       _Requisitos: 5.2_
-- [ ] T026 [US2] En `apps/api/src/nexus_api/metering/wallet.py`, hacer que `allocatable_for()` y `set_allocation()` calculen contra `purchased_remaining` en vez de contra el disponible total, conservando la invariante «la suma de topes no supera el saldo sobre el que se calculan».
+- [X] T026 [US2] En `apps/api/src/nexus_api/metering/wallet.py`, hacer que `allocatable_for()` y `set_allocation()` calculen contra `purchased_remaining` en vez de contra el disponible total, conservando la invariante «la suma de topes no supera el saldo sobre el que se calculan».
       _Requisitos: 6.1, 6.5_
-- [ ] T027 [US2] En `apps/api/src/nexus_api/api/console/companion.py`, reescribir `budget_out()` para que tome `cap` y `remaining` **del libro** en vez de de la suma de `companion.runs`. `remaining` pasa a ser la columna que la plataforma consulta para dejar pasar, no una resta. Tabla campo a campo en [`contracts/budget-object.md`](./contracts/budget-object.md).
+- [X] T027 [US2] En `apps/api/src/nexus_api/api/console/companion.py`, reescribir `budget_out()` para que tome `cap` y `remaining` **del libro** en vez de de la suma de `companion.runs`. `remaining` pasa a ser la columna que la plataforma consulta para dejar pasar, no una resta. Tabla campo a campo en [`contracts/budget-object.md`](./contracts/budget-object.md).
       _Requisitos: 4.1_
-- [ ] T028 [US2] En el mismo fichero, degradar `sum_partner_companion_tokens()` a **atribución**: sigue recorriendo membresías bajo RLS porque el reparto sí es por persona, pero deja de presentarse como total. Dejar el porqué en el docstring.
+- [X] T028 [US2] En el mismo fichero, degradar `sum_partner_companion_tokens()` a **atribución**: sigue recorriendo membresías bajo RLS porque el reparto sí es por persona, pero deja de presentarse como total. Dejar el porqué en el docstring.
       _Requisitos: 4.2_
-- [ ] T029 [US2] En `apps/api/src/nexus_api/api/console/teammates.py`, consumir el `budget_out` nuevo sin duplicar lógica: **una sola implementación**, que es lo que R9.1 de la spec 003 ya exigía.
+- [X] T029 [US2] En `apps/api/src/nexus_api/api/console/teammates.py`, consumir el `budget_out` nuevo sin duplicar lógica: **una sola implementación**, que es lo que R9.1 de la spec 003 ya exigía.
       _Requisitos: 4.2, 4.3_
-- [ ] T030 [US2] Retirar `_require_wallet` como comprobación **separada** del presupuesto, o dejarla explícitamente como la misma lectura: hoy son dos caminos que pueden discrepar y ése es el defecto. Documentar cuál de las dos se elige y por qué.
+- [X] T030 [US2] Retirar `_require_wallet` como comprobación **separada** del presupuesto, o dejarla explícitamente como la misma lectura: hoy son dos caminos que pueden discrepar y ése es el defecto. Documentar cuál de las dos se elige y por qué.
       _Requisitos: 4.6_
 
 **Checkpoint**: el número que se enseña y el número que decide son el mismo. **D5
@@ -172,50 +172,50 @@ partner, y ver que el pool vuelve solo sin que nadie ejecute nada a mano.
 
 ### Tests de la Historia 3 (§VII — en ROJO antes de implementar) ⚠️
 
-- [ ] T031 [P] [US3] Tests en `apps/api/tests/unit/test_weekly_period.py`: el vencimiento cae a siete días del ancla, no el día 1 del mes; dos partners dados de alta en días distintos vencen en días distintos (**no hay lunes global**).
+- [X] T031 [P] [US3] Tests en `apps/api/tests/unit/test_weekly_period.py`: el vencimiento cae a siete días del ancla, no el día 1 del mes; dos partners dados de alta en días distintos vencen en días distintos (**no hay lunes global**).
       _Requisitos: 2.1, 2.2_ · V07, V08
-- [ ] T032 [P] [US3] Tests en `apps/api/tests/integration/test_weekly_renewal.py`: al vencer, el pool vuelve completo y lo no gastado **no se suma**; con el proceso detenido tres días, al volver repone de inmediato.
+- [X] T032 [P] [US3] Tests en `apps/api/tests/integration/test_weekly_renewal.py`: al vencer, el pool vuelve completo y lo no gastado **no se suma**; con el proceso detenido tres días, al volver repone de inmediato.
       _Requisitos: 2.3, 2.4_ · V09, V10
-- [ ] T033 [P] [US3] Test en `apps/api/tests/unit/test_purchased_never_expires.py`: `purchased` sobrevive a la renovación, al cambio de período y al vaciado del incluido. Invariante.
+- [X] T033 [P] [US3] Test en `apps/api/tests/unit/test_purchased_never_expires.py`: `purchased` sobrevive a la renovación, al cambio de período y al vaciado del incluido. Invariante.
       _Requisitos: 2.5_ · V11
-- [ ] T034 [P] [US3] Test en `apps/api/tests/integration/test_monthly_volume_preserved.py`: el volumen mensual de cada partner no cambia al migrar de mes a semana.
+- [X] T034 [P] [US3] Test en `apps/api/tests/integration/test_monthly_volume_preserved.py`: el volumen mensual de cada partner no cambia al migrar de mes a semana.
       _Requisitos: 2.6_ · V12, CE-007
-- [ ] T035 [P] [US3] Test en `apps/api/tests/integration/test_partner_created_with_pool.py`: un partner recién creado nace con pool y con su vencimiento puesto **en el mismo acto**; no hay ventana en la que exista sin saldo esperando a un proceso de fondo.
+- [X] T035 [P] [US3] Test en `apps/api/tests/integration/test_partner_created_with_pool.py`: un partner recién creado nace con pool y con su vencimiento puesto **en el mismo acto**; no hay ventana en la que exista sin saldo esperando a un proceso de fondo.
       _Requisitos: 2.7_ · V13
-- [ ] T036 [P] [US3] Test en `apps/api/tests/integration/test_pool_size_is_data.py`: cambiar el tamaño del pool no exige migración ni despliegue.
+- [X] T036 [P] [US3] Test en `apps/api/tests/integration/test_pool_size_is_data.py`: cambiar el tamaño del pool no exige migración ni despliegue.
       _Requisitos: 2.9_ · V14, CE-009
-- [ ] T037 [P] [US3] Tests en `apps/api/tests/integration/test_pause_and_fallthrough.py`: agotado el incluido a mitad de ciclo el trabajo continúa **sin intervención**; sin incluido y sin comprado queda en pausa por tope con las confirmaciones vivas y **nada cancelado ni archivado**.
+- [X] T037 [P] [US3] Tests en `apps/api/tests/integration/test_pause_and_fallthrough.py`: agotado el incluido a mitad de ciclo el trabajo continúa **sin intervención**; sin incluido y sin comprado queda en pausa por tope con las confirmaciones vivas y **nada cancelado ni archivado**.
       _Requisitos: 5.3, 5.4_ · V29, V30, CE-004, CE-005
-- [ ] T038 [P] [US3] Tests de interfaz en `apps/desktop/src/app/routes/__tests__/account.test.tsx` y en la consola: la pantalla del partner muestra proporción y fecha y **no** la cifra del pool; el medidor conserva sus tres valores y su texto alternativo; el saldo **comprado** sigue en unidades.
+- [X] T038 [P] [US3] Tests de interfaz en `apps/desktop/src/app/routes/__tests__/account.test.tsx` y en la consola: la pantalla del partner muestra proporción y fecha y **no** la cifra del pool; el medidor conserva sus tres valores y su texto alternativo; el saldo **comprado** sigue en unidades.
       _Requisitos: 7.1, 7.4, 7.6_ · V37, V39, V40
-- [ ] T039 [P] [US3] Test en `apps/admin/src/app/(dashboard)/partners/[id]/__tests__/wallet.test.tsx`: el panel de operador **sigue** mostrando las cifras absolutas del pool. Es la mitad que se olvida: R7 quita el número de la pantalla del partner, **no** de la de quien tiene que conciliar una factura. Sin este test, alguien aplica el recorte a las dos superficies y Auphere se queda sin poder diagnosticar.
+- [X] T039 [P] [US3] Test en `apps/admin/src/app/(dashboard)/partners/[id]/__tests__/wallet.test.tsx`: el panel de operador **sigue** mostrando las cifras absolutas del pool. Es la mitad que se olvida: R7 quita el número de la pantalla del partner, **no** de la de quien tiene que conciliar una factura. Sin este test, alguien aplica el recorte a las dos superficies y Auphere se queda sin poder diagnosticar.
       _Requisitos: 7.2_ · V38
-- [ ] T040 [P] [US3] Test en `packages/companion-ui/src/components/__tests__/composer.test.tsx`: el aviso de pausa ya no pinta «X de Y», y el texto de desbloqueo dice las salidas que ahora existen.
+- [X] T040 [P] [US3] Test en `packages/companion-ui/src/components/__tests__/composer.test.tsx`: el aviso de pausa ya no pinta «X de Y», y el texto de desbloqueo dice las salidas que ahora existen.
       _Requisitos: 7.1, 7.5_ · V41, V42
-- [ ] T041 [P] [US3] Test de no regresión en `packages/companion-ui`: el medidor de **ventana de contexto** y el del **turno** siguen intactos. R7 abstrae el pool, no todo número en pantalla.
+- [X] T041 [P] [US3] Test de no regresión en `packages/companion-ui`: el medidor de **ventana de contexto** y el del **turno** siguen intactos. R7 abstrae el pool, no todo número en pantalla.
       _Requisitos: 7.1_ · V43
 
 ### Implementación de la Historia 3
 
-- [ ] T042 [US3] En `apps/api/src/nexus_api/metering/wallet.py`, reescribir `next_period_end()` para devolver el siguiente múltiplo de siete días contado desde `partners.created_at`. **`renew_included_if_expired()` no se toca**: ya dispara por caducidad y no por calendario, así que el cron horario sirve igual (decisión **D3** del research).
+- [X] T042 [US3] En `apps/api/src/nexus_api/metering/wallet.py`, reescribir `next_period_end()` para devolver el siguiente múltiplo de siete días contado desde `partners.created_at`. **`renew_included_if_expired()` no se toca**: ya dispara por caducidad y no por calendario, así que el cron horario sirve igual (decisión **D3** del research).
       _Requisitos: 2.1, 2.2, 2.4_
-- [ ] T043 [US3] Crear la migración `apps/api/alembic/versions/0115_quota_weight_and_weekly_pool.py` con la columna `partners.weekly_pool_tokens bigint NOT NULL`, `CHECK (weekly_pool_tokens >= 0)`, sembrada como `round(companion_monthly_token_cap × 7 / 30.44)` para preservar el volumen mensual. Con `downgrade()` real.
+- [X] T043 [US3] Crear la migración `apps/api/alembic/versions/0115_quota_weight_and_weekly_pool.py` con la columna `partners.weekly_pool_tokens bigint NOT NULL`, `CHECK (weekly_pool_tokens >= 0)`, sembrada como `round(companion_monthly_token_cap × 7 / 30.44)` para preservar el volumen mensual. Con `downgrade()` real.
       _Requisitos: 2.6, 2.9_
-- [ ] T044 [US3] En `apps/api/src/nexus_api/db/models/partner.py`, marcar `companion_monthly_token_cap` como **deprecada** nombrando en el comentario la migración que la eliminará. **No se borra aquí**: crear la sustituta y borrar la original en la misma migración deja un `downgrade()` incapaz de devolver los datos.
+- [X] T044 [US3] En `apps/api/src/nexus_api/db/models/partner.py`, marcar `companion_monthly_token_cap` como **deprecada** nombrando en el comentario la migración que la eliminará. **No se borra aquí**: crear la sustituta y borrar la original en la misma migración deja un `downgrade()` incapaz de devolver los datos.
       _Requisitos: 2.6_
-- [ ] T045 [US3] Hacer que el alta de partner deje el pool y el vencimiento puestos **en la misma transacción** que crea el partner, con el mismo criterio que `seed_default_allocation` ya usa para la cuota de un cliente: *«la cuota y el cliente nacen en la misma transacción o no nace ninguno»*.
+- [X] T045 [US3] Hacer que el alta de partner deje el pool y el vencimiento puestos **en la misma transacción** que crea el partner, con el mismo criterio que `seed_default_allocation` ya usa para la cuota de un cliente: *«la cuota y el cliente nacen en la misma transacción o no nace ninguno»*.
       _Requisitos: 2.7_
-- [ ] T046 [US3] En `apps/api/src/nexus_api/api/console/schemas_companion.py`, cambiar el formato de `period` a semana ISO (`YYYY-Www`) y actualizar la descripción del campo.
+- [X] T046 [US3] En `apps/api/src/nexus_api/api/console/schemas_companion.py`, cambiar el formato de `period` a semana ISO (`YYYY-Www`) y actualizar la descripción del campo.
       _Requisitos: 2.8_
-- [ ] T047 [US3] En `packages/companion-ui/src/messages.ts`, corregir las nueve cadenas: las dos que pintan cifras (`companion.meter.month.detail`, `companion.paused.body`), las seis que dicen «mes», y sobre todo **`companion.paused.unblock`**, que hoy dice *«esperar no lo desbloquea»* y **pasa a ser falsa** — con el pool semanal esperar sí lo desbloquea, y con la caída a comprado muchas veces ni se pausa. El texto nuevo dice las dos salidas que ahora existen antes de la de escribirnos.
+- [X] T047 [US3] En `packages/companion-ui/src/messages.ts`, corregir las nueve cadenas: las dos que pintan cifras (`companion.meter.month.detail`, `companion.paused.body`), las seis que dicen «mes», y sobre todo **`companion.paused.unblock`**, que hoy dice *«esperar no lo desbloquea»* y **pasa a ser falsa** — con el pool semanal esperar sí lo desbloquea, y con la caída a comprado muchas veces ni se pausa. El texto nuevo dice las dos salidas que ahora existen antes de la de escribirnos.
       _Requisitos: 5.5, 7.1, 7.5_
-- [ ] T048 [US3] En `packages/companion-ui/src/components/composer.tsx`, quitar las cifras del aviso de pausa y dejar el período y la fecha de reposición.
+- [X] T048 [US3] En `packages/companion-ui/src/components/composer.tsx`, quitar las cifras del aviso de pausa y dejar el período y la fecha de reposición.
       _Requisitos: 7.1_
-- [ ] T049 [US3] En `apps/desktop/src/app/routes/account.tsx`, cambiar la línea «X de Y tokens» por proporción y fecha. **Conservar el `role="meter"` con sus tres valores y su `aria-valuetext`**: una barra sin valores no le dice nada a quien usa lector de pantalla.
+- [X] T049 [US3] En `apps/desktop/src/app/routes/account.tsx`, cambiar la línea «X de Y tokens» por proporción y fecha. **Conservar el `role="meter"` con sus tres valores y su `aria-valuetext`**: una barra sin valores no le dice nada a quien usa lector de pantalla.
       _Requisitos: 7.1, 7.4_
-- [ ] T050 [US3] En `apps/console/src/app/(console)/usage/page.tsx`, mismo criterio para el pool incluido. **El saldo comprado sigue en unidades**: es dinero que el partner pagó y tiene derecho a verificar.
+- [X] T050 [US3] En `apps/console/src/app/(console)/usage/page.tsx`, mismo criterio para el pool incluido. **El saldo comprado sigue en unidades**: es dinero que el partner pagó y tiene derecho a verificar.
       _Requisitos: 7.1, 7.6_
-- [ ] T051 [US3] En `apps/admin/src/app/(dashboard)/partners/[id]/`, confirmar que el panel de operador **sigue** enseñando las cifras absolutas y añadir el control para cambiar `weekly_pool_tokens`, con su evento de auditoría nombrando a la persona.
+- [X] T051 [US3] En `apps/admin/src/app/(dashboard)/partners/[id]/`, confirmar que el panel de operador **sigue** enseñando las cifras absolutas y añadir el control para cambiar `weekly_pool_tokens`, con su evento de auditoría nombrando a la persona.
       _Requisitos: 2.9, 7.2, 7.3_
 
 **Checkpoint**: el pool se repone solo cada semana y la pantalla dice la verdad
@@ -234,34 +234,34 @@ cerebros y comprobar que el coste en dólares coincide.
 
 ### Tests de la Historia 4 (§VII — en ROJO antes de implementar) ⚠️
 
-- [ ] T052 [P] [US4] **Test de propiedad** en `apps/api/tests/unit/test_quota_weight_invariance.py`: se recorre **el catálogo entero**, no un caso suelto, y se comprueba que agotar un pool de tamaño fijo cuesta lo mismo con cada modelo — banda **3,5144 $–3,5154 $** por millón, 0,03 % de desviación.
+- [X] T052 [P] [US4] **Test de propiedad** en `apps/api/tests/unit/test_quota_weight_invariance.py`: se recorre **el catálogo entero**, no un caso suelto, y se comprueba que agotar un pool de tamaño fijo cuesta lo mismo con cada modelo — banda **3,5144 $–3,5154 $** por millón, 0,03 % de desviación.
       _Requisitos: 3.2_ · V15, CE-002
-- [ ] T053 [P] [US4] Test en `apps/api/tests/unit/test_weight_is_data.py`: los factores están declarados como dato y **no** se derivan de la tarifa vigente; cambiar una tarifa no mueve el contador del partner.
+- [X] T053 [P] [US4] Test en `apps/api/tests/unit/test_weight_is_data.py`: los factores están declarados como dato y **no** se derivan de la tarifa vigente; cambiar una tarifa no mueve el contador del partner.
       _Requisitos: 3.3_ · V16
-- [ ] T054 [P] [US4] Test en `apps/api/tests/unit/test_missing_weight_refuses.py`: un modelo con factor ausente **no atiende ni un turno** y el error lo nombra y dice qué le falta.
+- [X] T054 [P] [US4] Test en `apps/api/tests/unit/test_missing_weight_refuses.py`: un modelo con factor ausente **no atiende ni un turno** y el error lo nombra y dice qué le falta.
       _Requisitos: 3.4_ · V17, CE-010
-- [ ] T055 [P] [US4] Test en `apps/api/tests/unit/test_voice_unaffected_by_weight.py`: `openai/whisper-1` tiene el factor ausente **y sigue funcionando**, porque se mide por minutos y no pasa por la cuota de LLM. Es el error que alguien "arreglará" en seis meses poniéndole un `1.0`.
+- [X] T055 [P] [US4] Test en `apps/api/tests/unit/test_voice_unaffected_by_weight.py`: `openai/whisper-1` tiene el factor ausente **y sigue funcionando**, porque se mide por minutos y no pasa por la cuota de LLM. Es el error que alguien "arreglará" en seis meses poniéndole un `1.0`.
       _Requisitos: 3.4_ · V18
-- [ ] T056 [P] [US4] Test en `apps/api/tests/unit/test_weight_change_does_not_revalue.py`: cambiar un factor **no** revalúa asientos ya escritos. Un asiento es un hecho contable.
+- [X] T056 [P] [US4] Test en `apps/api/tests/unit/test_weight_change_does_not_revalue.py`: cambiar un factor **no** revalúa asientos ya escritos. Un asiento es un hecho contable.
       _Requisitos: 3.5_ · V19
-- [ ] T057 [P] [US4] Test **estructural** en `apps/api/tests/unit/test_all_callers_pass_weight.py`: recorre los llamantes de `quota_tokens` y falla si alguno no pasa `model_weight`. Más barato que descubrirlo cuadrando una factura.
+- [X] T057 [P] [US4] Test **estructural** en `apps/api/tests/unit/test_all_callers_pass_weight.py`: recorre los llamantes de `quota_tokens` y falla si alguno no pasa `model_weight`. Más barato que descubrirlo cuadrando una factura.
       _Requisitos: 3.1_ · V20
 
 ### Implementación de la Historia 4
 
-- [ ] T058 [US4] En `apps/api/src/nexus_api/metering/quota.py`, añadir `model_weight: Decimal` a `quota_tokens()` como parámetro **obligatorio y sin valor por defecto**: un defecto de `1` convertiría el olvido de pasarlo en un cobro silencioso a la baja. El factor se aplica al total y **antes** del redondeo final con `ROUND_HALF_UP`, para no redondear dos veces.
+- [X] T058 [US4] En `apps/api/src/nexus_api/metering/quota.py`, añadir `model_weight: Decimal` a `quota_tokens()` como parámetro **obligatorio y sin valor por defecto**: un defecto de `1` convertiría el olvido de pasarlo en un cobro silencioso a la baja. El factor se aplica al total y **antes** del redondeo final con `ROUND_HALF_UP`, para no redondear dos veces.
       _Requisitos: 3.1_
-- [ ] T059 [US4] En la migración `0115`, añadir `model_profiles.quota_weight numeric(6,3) NULL` con `CHECK (quota_weight IS NULL OR quota_weight > 0)` — un peso de cero haría el pool infinito — y sembrar: Luna **0,100** · Haiku 4.5 **0,457** · Terra **1,000** · Sonnet 4.6 **1,371** · gpt-4o **1,724** · Sol **1,828**; `whisper-1` queda en `NULL`. `NULL` significa «este modelo no se sirve», **no** «peso 1».
+- [X] T059 [US4] En la migración `0115`, añadir `model_profiles.quota_weight numeric(6,3) NULL` con `CHECK (quota_weight IS NULL OR quota_weight > 0)` — un peso de cero haría el pool infinito — y sembrar: Luna **0,100** · Haiku 4.5 **0,457** · Terra **1,000** · Sonnet 4.6 **1,371** · gpt-4o **1,724** · Sol **1,828**; `whisper-1` queda en `NULL`. `NULL` significa «este modelo no se sirve», **no** «peso 1».
       _Requisitos: 3.3, 3.4_
-- [ ] T060 [US4] En `apps/api/src/nexus_api/db/models/model_profile.py`, declarar `quota_weight` con el comentario que explica por qué es dato y no cálculo derivado de la tarifa.
+- [X] T060 [US4] En `apps/api/src/nexus_api/db/models/model_profile.py`, declarar `quota_weight` con el comentario que explica por qué es dato y no cálculo derivado de la tarifa.
       _Requisitos: 3.3_
-- [ ] T061 [US4] En `apps/worker/src/nexus_worker/metering/pricing.py`, añadir `quota_weight` a `ModelPrice` y al catálogo cacheado. **Cero consultas nuevas por turno**: el catálogo ya se lee en el camino del turno con TTL de 300 s.
+- [X] T061 [US4] En `apps/worker/src/nexus_worker/metering/pricing.py`, añadir `quota_weight` a `ModelPrice` y al catálogo cacheado. **Cero consultas nuevas por turno**: el catálogo ya se lee en el camino del turno con TTL de 300 s.
       _Requisitos: 3.1_
-- [ ] T062 [US4] Hacer que los **tres** llamantes resuelvan y pasen el factor: `api/console/companion.py`, `apps/worker/.../metering/consumer.py` y `services/local_workstation_metering.py`. Si uno lo olvidara, su consumo entraría al libro con otra unidad — el defecto de la Historia 2, reaparecido en el camino de escritura.
+- [X] T062 [US4] Hacer que los **tres** llamantes resuelvan y pasen el factor: `api/console/companion.py`, `apps/worker/.../metering/consumer.py` y `services/local_workstation_metering.py`. Si uno lo olvidara, su consumo entraría al libro con otra unidad — el defecto de la Historia 2, reaparecido en el camino de escritura.
       _Requisitos: 3.1_
-- [ ] T063 [US4] Implementar la negativa de **R3.4**: modelo en catálogo con factor ausente → error legible que lo nombra, por el mismo camino que ya rechaza un modelo fuera de catálogo. **Y acotarlo en el código**: la negativa aplica solo al carril de cuota de LLM, no a `voice.minutes` ni a `media.*`.
+- [X] T063 [US4] Implementar la negativa de **R3.4**: modelo en catálogo con factor ausente → error legible que lo nombra, por el mismo camino que ya rechaza un modelo fuera de catálogo. **Y acotarlo en el código**: la negativa aplica solo al carril de cuota de LLM, no a `voice.minutes` ni a `media.*`.
       _Requisitos: 3.4_
-- [ ] T064 [US4] Verificar que la indicación relativa `bajo · medio · alto · desconocido` de `services/model_choices.py` sigue publicándose por teammate, y que **no** aparece un importe en dólares en la fila de un turno (decisión 14 de la KB).
+- [X] T064 [US4] Verificar que la indicación relativa `bajo · medio · alto · desconocido` de `services/model_choices.py` sigue publicándose por teammate, y que **no** aparece un importe en dólares en la fila de un turno (decisión 14 de la KB).
       _Requisitos: 3.6_
 
 **Checkpoint**: el peor caso de cada plan es un número conocido de antemano y no
@@ -271,17 +271,17 @@ una elección del partner.
 
 ## Phase 7: Polish & cross-cutting
 
-- [ ] T065 [P] Actualizar `specs/003-teammates-app-escritorio/contracts/teammates-api.md`: el campo `budget` cambia de período y de origen. **En el mismo commit que el cambio**, como pide el `CLAUDE.md` del repositorio.
+- [X] T065 [P] Actualizar `specs/003-teammates-app-escritorio/contracts/teammates-api.md`: el campo `budget` cambia de período y de origen. **En el mismo commit que el cambio**, como pide el `CLAUDE.md` del repositorio.
       _Requisitos: 4.3_
-- [ ] T066 [P] Actualizar `docs/desktop-teammates.md` §«Un solo medidor»: sigue siendo cierto que hay un solo medidor, pero ahora el objeto sale del libro y el período es semanal. El documento describe lo que esta spec cambia, así que se actualiza aquí.
+- [X] T066 [P] Actualizar `docs/desktop-teammates.md` §«Un solo medidor»: sigue siendo cierto que hay un solo medidor, pero ahora el objeto sale del libro y el período es semanal. El documento describe lo que esta spec cambia, así que se actualiza aquí.
       _Requisitos: 4.1, 4.2_
-- [ ] T067 [P] Actualizar `docs/companion/CONTRACT-V2.md` §6 si describe el tope mensual o el texto de pausa.
+- [X] T067 [P] Actualizar `docs/companion/CONTRACT-V2.md` §6 si describe el tope mensual o el texto de pausa.
       _Requisitos: 5.5, 7.5_
-- [ ] T068 Escribir en la KB la nota de cierre y enlazar desde `[[nexus/decisions/ADR-037-membresias-y-consumo-de-la-app]]` a esta carpeta de spec (§IX: el puente es obligatorio en las dos direcciones).
+- [X] T068 Escribir en la KB la nota de cierre y enlazar desde `[[nexus/decisions/ADR-037-membresias-y-consumo-de-la-app]]` a esta carpeta de spec (§IX: el puente es obligatorio en las dos direcciones).
       _Requisitos: —_
-- [ ] T069 Ejecutar el recorrido de humo de [`quickstart.md`](./quickstart.md), los siete pasos, sobre el entorno local.
+- [X] T069 Ejecutar el recorrido de humo de [`quickstart.md`](./quickstart.md), los siete pasos, sobre el entorno local.
       _Requisitos: todos_
-- [ ] T070 Ejecutar las tres suites completas y dejar las cifras en el PR: `tests/unit`, `tests/isolation` (bloquea merge) y `tests/integration`, más `vitest` de consola, aplicación y `@nexus/companion-ui`.
+- [X] T070 Ejecutar las tres suites completas y dejar las cifras en el PR: `tests/unit`, `tests/isolation` (bloquea merge) y `tests/integration`, más `vitest` de consola, aplicación y `@nexus/companion-ui`.
       _Requisitos: todos_
 
 ---

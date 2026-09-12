@@ -7,9 +7,17 @@
  *
  * El número **no se calcula aquí**. Es el mismo objeto que la consola pinta en
  * su medidor (R9.1), y el desglose viene de la misma tabla. Cuando el total y
- * el desglose no coinciden —porque el Companion de la consola gasta del mismo
- * sitio— la pantalla lo explica: dos cifras que no suman y nadie diciendo por
- * qué es la manera de que nadie vuelva a creerse ninguna.
+ * el desglose no coinciden —porque la consola y lo que corre en la máquina
+ * gastan del mismo sitio— la pantalla lo explica: dos cifras que no suman y
+ * nadie diciendo por qué es la manera de que nadie vuelva a creerse ninguna.
+ *
+ * Spec 004 (R7.1): el partner ve **una barra y una fecha**, no la cifra del
+ * pool. Ninguno de los seis referentes del mercado enseña cifras crudas de
+ * consumo, y tiene una consecuencia práctica: el tamaño del pool deja de ser
+ * un compromiso público y se puede ajustar cuando la medición diga otra cosa,
+ * sin que cada ajuste sea un anuncio. El **saldo comprado** queda fuera de esa
+ * abstracción (R7.6) y se sigue enseñando en unidades: es dinero que el
+ * partner pagó y tiene derecho a verificar.
  */
 import { Button, Skeleton } from "@nexus/ui";
 import * as React from "react";
@@ -106,12 +114,11 @@ export function Account({ status, usage, team, policy, onRetry, onOpenConsole }:
         <div
           role="meter"
           aria-label={t("account.usage.title")}
-          aria-valuenow={budget.used}
+          aria-valuenow={Math.round(budget.percent)}
           aria-valuemin={0}
-          aria-valuemax={budget.cap}
+          aria-valuemax={100}
           aria-valuetext={t("account.usage.valuetext", {
-            used: nf.format(budget.used),
-            cap: nf.format(budget.cap),
+            percent: nf.format(Math.round(budget.percent)),
           })}
           className="h-2 w-full overflow-hidden rounded-full bg-muted"
         >
@@ -126,8 +133,7 @@ export function Account({ status, usage, team, policy, onRetry, onOpenConsole }:
         </div>
         <p className="text-sm text-pretty">
           {t("account.usage.line", {
-            used: nf.format(budget.used),
-            cap: nf.format(budget.cap),
+            percent: nf.format(Math.round(budget.percent)),
             resets: new Intl.DateTimeFormat(lang, { day: "numeric", month: "long" }).format(
               new Date(budget.resets_at),
             ),
@@ -140,7 +146,11 @@ export function Account({ status, usage, team, policy, onRetry, onOpenConsole }:
             aria-label={t("account.usage.capped.label")}
             className="max-w-prose rounded-md bg-muted p-3 text-sm text-pretty text-muted-foreground"
           >
-            {t("account.usage.capped")}
+            {t("account.usage.capped", {
+              resets: new Intl.DateTimeFormat(lang, { day: "numeric", month: "long" }).format(
+                new Date(budget.resets_at),
+              ),
+            })}
           </p>
         ) : null}
 
@@ -166,7 +176,7 @@ export function Account({ status, usage, team, policy, onRetry, onOpenConsole }:
 
         {elsewhere > 0 ? (
           <p className="max-w-prose text-xs text-pretty text-muted-foreground">
-            {t("account.usage.elsewhere", { tokens: nf.format(elsewhere) })}
+            {t("account.usage.elsewhere")}
           </p>
         ) : null}
       </section>

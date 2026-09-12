@@ -99,6 +99,11 @@ async def get_wallet(
     if snap is None:
         return _empty()
     caps = await _sum_caps(principal.partner.id)
+    # R7.1: el tamaño del pool viaja para que la consola pinte una PROPORCIÓN.
+    # Derivarla en el cliente de restas entre ``available``, ``purchased`` e
+    # ``included`` daría un número que parece correcto y no significa nada.
+    pool_size = int(principal.partner.weekly_pool_tokens or 0)
+    used = max(0, pool_size - snap.included_remaining)
     return WalletOut(
         included_remaining=snap.included_remaining,
         purchased_remaining=snap.purchased_remaining,
@@ -106,6 +111,10 @@ async def get_wallet(
         reserve=snap.available - caps,
         included_expires_at=snap.included_expires_at,
         exhausted=snap.empty,
+        pool_size=pool_size,
+        included_percent_used=100.0
+        if pool_size <= 0
+        else min(100.0, round(used * 100.0 / pool_size, 2)),
     )
 
 

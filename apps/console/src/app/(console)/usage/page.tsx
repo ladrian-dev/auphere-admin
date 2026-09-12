@@ -51,6 +51,9 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
     api.listAllocations().catch((): Allocation[] => []),
   ]);
   const n = (v: number) => formatNumber(v, locale);
+  // R7.1: la proporción la calcula la API, que es quien conoce el tamaño del
+  // pool. Aquí solo se pinta.
+  const walletPercent = Math.round(wallet.included_percent_used ?? 0);
   const totals = Object.entries(report.totals_by_meter);
   const month = report.month;
   const today = new Date().toISOString().slice(0, 10);
@@ -102,9 +105,13 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
         </Alert>
       ) : null}
       <section className="grid gap-4 md:grid-cols-3" aria-label={t("hu.usage.wallet")}>
+        {/* Spec 004 (R7.1): el consumo INCLUIDO se presenta como proporción,
+            no como cifra. El partner ve cuánto le queda y cuándo vuelve.
+            El saldo COMPRADO de al lado sigue en unidades (R7.6): es dinero
+            que pagó y tiene derecho a verificar. */}
         <Metric
           label={t("hu.usage.wallet.included")}
-          value={n(wallet.included_remaining)}
+          value={`${walletPercent}%`}
           hint={
             wallet.included_expires_at
               ? t("hu.usage.wallet.expires", { date: formatDateTime(wallet.included_expires_at, locale) })

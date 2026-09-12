@@ -44,6 +44,7 @@ import structlog
 from nexus_api.core.streams import xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.metering.pricing_policy import UnweightedModel, weight_for
 from nexus_api.metering.quota import billable_qty_for_meter, quota_tokens
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
@@ -188,15 +189,22 @@ _INSERT_SQL = sa.text(
 )
 
 
-def _turn_quota(rows: list[dict[str, Any]]) -> dict[str, int]:
-    """turn_id -> quota_tokens() C3, agrupando por llamada."""
-    calls: dict[str, dict[str, int]] = {}
+def _turn_quota(rows: list[dict[str, Any]], weights: dict[str, Any]) -> dict[str, int]:
+    """turn_id -> quota_tokens() C3, agrupando por llamada.
+
+    ``weights`` es el mapa ``model_id -> quota_weight`` del catálogo cacheado
+    (spec 004, R3.1). Se agrupa por llamada porque el peso es del MODELO, y una
+    misma tarea puede encadenar llamadas a cerebros distintos: ponderar el turno
+    entero con un solo peso cobraría mal la mitad.
+    """
+    calls: dict[str, dict[str, Any]] = {}
     for row in rows:
         meter = str(row.get("meter") or "")
         if not meter.startswith("llm."):
             continue
         call = _llm_call_key(row)
-        g = calls.setdefault(call, {"prompt": 0, "cache": 0, "output": 0})
+        g = calls.setdefault(call, {"prompt": 0, "cache": 0, "output": 0, "model": ""})
+        g["model"] = row.get("model") or g["model"]
         qty = int(row.get("quantity") or 0)
         if meter == "llm.input_tokens":
             g["prompt"] = qty
@@ -207,8 +215,19 @@ def _turn_quota(rows: list[dict[str, Any]]) -> dict[str, int]:
     turns: dict[str, int] = {}
     for call, g in calls.items():
         turn = call.rsplit(":", 1)[0] if ":" in call else call
+        try:
+            weight = weight_for(str(g["model"]), weights)
+        except UnweightedModel as exc:
+            # Medido y sin debitar, con su motivo. El mismo criterio que
+            # ``cost_usd`` NULL: una ausencia declarada es preferible a un
+            # número inventado que nadie vuelve a mirar.
+            log.error("metering.unweighted_model", model=g["model"], error=str(exc))
+            continue
         turns[turn] = turns.get(turn, 0) + quota_tokens(
-            prompt_tokens=g["prompt"], cache_read=g["cache"], output_tokens=g["output"]
+            prompt_tokens=g["prompt"],
+            cache_read=g["cache"],
+            output_tokens=g["output"],
+            model_weight=weight,
         )
     return turns
 
@@ -222,7 +241,22 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
         return
     from nexus_api.metering.wallet import debit_allocation, debit_wallet
 
-    for turn, qty in _turn_quota(rows).items():
+    # R3.4 se aplica al camino de **servir** un turno, no al de asentarlo: aquí
+    # el turno ya ocurrió y el modelo ya se pagó, así que negarse no impide
+    # nada — solo dejaría de cobrarlo en silencio. Un modelo sin peso se
+    # registra como error y su turno se omite del débito; queda medido en
+    # ``usage_records``, que es la verdad contable, y la diferencia es visible.
+    #
+    # El catálogo se pide solo si hay algo que debitar: pedirlo siempre abría
+    # una sesión de base en caminos que no la necesitan.
+    weights: dict[str, Any] = {}
+    if any(str(r.get("meter") or "").startswith("llm.") for r in rows):
+        try:
+            weights = {mid: row.quota_weight for mid, row in (await get_catalog()).items()}
+        except Exception as exc:  # pragma: no cover - defensivo
+            log.warning("metering.catalog_unavailable_for_weights", error=str(exc))
+            return
+    for turn, qty in _turn_quota(rows, weights).items():
         if qty <= 0:
             continue
         key = f"channel:{turn}"
@@ -232,6 +266,12 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
                 tenant_id=tenant_id,
                 qty=qty,
                 idempotency_key=key,
+                # Spec 004, R5.2: el consumo de un cliente final sale de los
+                # créditos COMPRADOS del partner, nunca del pool incluido. El
+                # pool es de la aplicación —teammates y Companion—; sin este
+                # argumento, un cliente con un día movido deja al partner sin
+                # poder usar la aplicación que paga.
+                allow_included=False,
             )
         except Exception as exc:
             log.warning(

@@ -75,10 +75,20 @@ def companion_provider():
 async def _set_cap(partner_id: uuid.UUID, cap: int) -> None:
     sm = get_sessionmaker()
     async with sm() as session, session.begin():
+        # Spec 004 (R4.6): el tope **es el saldo del libro**. La columna
+        # ``companion_monthly_token_cap`` quedó deprecada y ya no gatea nada,
+        # así que dejar a un partner sin presupuesto se dice aquí.
+        await session.execute(
+            sa.text(
+                "UPDATE partner_wallets SET included_remaining = :c, "
+                "purchased_remaining = 0 WHERE partner_id = :p"
+            ),
+            {"c": cap, "p": str(partner_id)},
+        )
         await session.execute(
             sa.update(Partner)
             .where(Partner.id == partner_id)
-            .values(companion_monthly_token_cap=cap)
+            .values(companion_monthly_token_cap=cap, weekly_pool_tokens=cap)
         )
 
 

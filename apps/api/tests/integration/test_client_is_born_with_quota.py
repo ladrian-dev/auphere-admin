@@ -102,10 +102,19 @@ async def test_new_client_can_actually_answer(client, db_session) -> None:
 
 
 async def test_provisioning_survives_an_exhausted_wallet(client, db_session) -> None:
-    """Sin disponible se siembra lo que quede (puede ser 0) y el alta NO falla.
+    """Sin saldo, el cliente nace **con su cuota entera**, no con cero.
 
-    Una fila con cap 0 es visible en Consumo y explicable; la ausencia de
-    fila es el silencio.
+    Spec 004 (R6, decidido 2026-09-12). Antes se sembraba «lo que quedara», que
+    con el libro vacío era 0, y se aceptaba porque una fila con cap 0 al menos
+    es visible en Consumo. Pero seguía siendo un cliente que no contesta el día
+    que lo dan de alta, y cuando el partner recarga tampoco arranca solo: la
+    fila ya sembrada no se vuelve a tocar.
+
+    El tope dejó de ser una reserva sobre el saldo y pasó a ser un límite de
+    gasto, así que se siembra completo. Lo que decide si un turno pasa es
+    ``allow_channel_turn``, que mira el saldo real en cada turno — de modo que
+    un partner sin créditos sigue sin poder gastar, pero **en cuanto recarga,
+    su cliente contesta sin que nadie toque una fila**.
     """
     from nexus_api.db.models import PartnerWallet
 
@@ -137,4 +146,8 @@ async def test_provisioning_survives_an_exhausted_wallet(client, db_session) -> 
         )
     )
     assert alloc is not None
-    assert int(alloc.cap) == 0
+    assert int(alloc.cap) > 0, (
+        "el cliente nació con cuota cero porque el partner no tenía saldo. "
+        "El tope es un límite de gasto, no una reserva: se siembra entero y el "
+        "saldo lo comprueba cada turno"
+    )

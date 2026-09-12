@@ -503,16 +503,19 @@ export const companionMessages = {
   },
   "companion.meter.turn": { es: "Turno", en: "Turn" },
   "companion.meter.turn.detail": { es: "{input} de entrada · {output} de salida", en: "{input} in · {output} out" },
-  "companion.meter.month": { es: "Mes", en: "Month" },
+  // Spec 004 (R2): el período es SEMANAL, y (R7.1) el partner ve proporción y
+  // fecha, no la cifra del pool. Las claves conservan el nombre ``month`` para
+  // no romper a quien las importe; lo que dicen es la semana.
+  "companion.meter.month": { es: "Semana", en: "Week" },
   "companion.meter.month.detail": {
-    es: "{used} de {cap} tokens del tope mensual del Companion ({percent}%)",
-    en: "{used} of {cap} tokens of the Companion's monthly cap ({percent}%)",
+    es: "{percent}% del consumo incluido de esta semana",
+    en: "{percent}% of this week's included usage",
   },
   "companion.meter.month.resets": { es: "Se reinicia el {date}", en: "Resets on {date}" },
-  "companion.meter.exhausted": { es: "Tope alcanzado", en: "Cap reached" },
+  "companion.meter.exhausted": { es: "Consumo incluido agotado", en: "Included usage spent" },
   "companion.meter.exhausted.body": {
-    es: "Se alcanzó el tope de tokens del Companion de este mes.",
-    en: "This month's Companion token cap has been reached.",
+    es: "Se agotó el consumo incluido de esta semana.",
+    en: "This week's included usage is spent.",
   },
 
   // ── the pause (v2 §6) ────────────────────────────────────────────────
@@ -520,14 +523,30 @@ export const companionMessages = {
   // A pause, not an error. Nothing here is red: red for something that is
   // fixed by raising a number teaches people to fear the tool.
   "companion.paused.title": { es: "En pausa", en: "Paused" },
+  // R7.1: sin cifras. Lo que la persona necesita saber es que se agotó y
+  // cuándo vuelve, no cuántos tokens eran.
   "companion.paused.body": {
-    es: "Se alcanzó el tope de tokens del Companion de este mes: {used} de {cap}.",
-    en: "This month's Companion token cap has been reached: {used} of {cap}.",
+    es: "Se agotó el consumo incluido de esta semana y la cuenta no tiene saldo.",
+    en: "This week's included usage is spent and the account has no credit left.",
   },
   // Without the way out, a disabled box is just a wall.
+  //
+  // **Este texto decía «esperar no lo desbloquea», y la spec 004 lo vuelve
+  // FALSO.** Con el pool semanal, esperar SÍ lo desbloquea: vuelve solo en su
+  // fecha. Y con la caída a saldo comprado (R5.3), muchas veces ni siquiera se
+  // pausa. Dejarlo habría sido una pantalla que miente, que es justo lo que
+  // §V prohíbe — y como este paquete lo comparten la consola y la aplicación,
+  // habría mentido en las dos a la vez.
   "companion.paused.unblock": {
-    es: "Se reanuda subiendo el tope. Escríbenos y lo ampliamos: no hace falta que reintentes, esperar no lo desbloquea.",
-    en: "It resumes when the cap is raised. Contact us and we will raise it: retrying will not help, and waiting will not unblock it.",
+    es: "Vuelve solo el {date}. Si no puedes esperar, con saldo en la cuenta el trabajo continúa: escríbenos y lo añadimos.",
+    en: "It comes back on its own on {date}. If you cannot wait, work continues with credit on the account: contact us and we will add it.",
+  },
+  // El mismo mensaje sin la fecha, para el estado PARCIAL: sabemos que se
+  // agotó pero no cuándo vuelve. Decir una fecha que no tenemos sería peor que
+  // no decirla (§V).
+  "companion.paused.unblock.nodate": {
+    es: "Vuelve solo al empezar tu semana. Si no puedes esperar, con saldo en la cuenta el trabajo continúa: escríbenos y lo añadimos.",
+    en: "It comes back on its own when your week starts. If you cannot wait, work continues with credit on the account: contact us and we will add it.",
   },
   "companion.paused.kept": {
     es: "La conversación no se pierde, y si te dejé una confirmación pendiente puedes responderla igual.",

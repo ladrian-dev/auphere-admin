@@ -80,12 +80,18 @@ async def sweep_once(sm: object) -> dict[str, int]:
     replenished = 0
     seeded = 0
 
-    for partner_id, monthly_cap in await _partner_ids(sm):
+    for partner_id, _deprecated_cap in await _partner_ids(sm):
         try:
             async with sm() as session, session.begin():  # type: ignore[operator]
                 await apply_partner_to_session(session, partner_id)
+                # Spec 004 (R2): el tamaño y el ancla los lee la propia
+                # función de ``partners`` (``weekly_pool_tokens`` y
+                # ``created_at``). Pasarlo desde aquí era lo que ataba la
+                # renovación a ``companion_monthly_token_cap``, el número que
+                # también dimensionaba la suma sobre ``companion.runs`` — la
+                # deuda D5.
                 if await renew_included_if_expired(
-                    session, partner_id=partner_id, monthly_cap=monthly_cap
+                    session, partner_id=partner_id
                 ):
                     renewed += 1
                     # Periodo nuevo: lo gastado el mes pasado se repone. Sin

@@ -545,7 +545,6 @@ async def test_the_monthly_cap_does_not_block_a_resume(
     esperando decisión no puede quedarse atrapado porque el partner haya
     gastado su presupuesto entre la propuesta y el sí — eso dejaría al
     usuario con una tarjeta que no se puede ni cancelar."""
-    from nexus_api.db.models import Partner
 
     a = console_world["a"]
     _t, run_id, action = await _propose_prompt(client, a, companion_provider)
@@ -553,9 +552,10 @@ async def test_the_monthly_cap_does_not_block_a_resume(
     # Cero y no uno: así el tope está agotado sin depender de que la fila
     # del run aparcado haya terminado de escribir sus tokens, que es una
     # carrera con la tarea de fondo y no lo que este test mide.
-    partner = await db_session.get(Partner, a["partner_id"])
-    partner.companion_monthly_token_cap = 0
-    await db_session.commit()
+    # Spec 004 (R4.6): el tope es el saldo del libro, no la columna deprecada.
+    from tests.conftest import drain_wallet
+
+    await drain_wallet(db_session, a["partner_id"])
 
     # Un turno nuevo SÍ está cortado… con **409 ``budget_paused``** desde
     # CO-08 (§6.2 de CONTRACT-V2): el tope pausa en vez de matar, y 429

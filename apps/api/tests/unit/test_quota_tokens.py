@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from nexus_api.metering.quota import (
     billable_qty_for_meter,
     cache_read_quota_tokens,
@@ -16,14 +18,27 @@ def test_cache_read_counts_one_tenth_not_zero_and_not_one() -> None:
     assert uncached_input_tokens(prompt, cache) == 1_000
     assert cache_read_quota_tokens(cache) == 900
     assert quota_input_tokens(prompt_tokens=prompt, cache_read=cache) == 1_900
-    assert quota_tokens(prompt_tokens=prompt, cache_read=cache, output_tokens=output) == 2_000
+    assert (
+        quota_tokens(
+            prompt_tokens=prompt,
+            cache_read=cache,
+            output_tokens=output,
+            model_weight=Decimal(1),
+        )
+        == 2_000
+    )
 
 
 def test_prompt_bruto_plus_cache_read_is_not_the_quota() -> None:
     """Si alguien suma prompt + cache_read, este test tiene que romper."""
     prompt, cache, output = 10_000, 9_000, 100
     naive = prompt + cache + output
-    policy = quota_tokens(prompt_tokens=prompt, cache_read=cache, output_tokens=output)
+    policy = quota_tokens(
+        prompt_tokens=prompt,
+        cache_read=cache,
+        output_tokens=output,
+        model_weight=Decimal(1),
+    )
     assert naive != policy
     assert naive == 19_100
     assert policy == 2_000
@@ -36,6 +51,7 @@ def test_cache_write_is_out_of_the_cap() -> None:
             cache_read=0,
             output_tokens=50,
             cache_write=8_000,
+            model_weight=Decimal(1),
         )
         == 1_050
     )
@@ -58,7 +74,14 @@ def test_input_billable_plus_cache_quantity_is_not_the_quota() -> None:
     )
     cache_native = float(cache)
     wrong = input_billable + cache_native
-    right = float(quota_tokens(prompt_tokens=prompt, cache_read=cache, output_tokens=output))
+    right = float(
+        quota_tokens(
+            prompt_tokens=prompt,
+            cache_read=cache,
+            output_tokens=output,
+            model_weight=Decimal(1),
+        )
+    )
     assert input_billable == 1_000.0
     assert billable_qty_for_meter("llm.cache_read", cache) == 900.0
     assert billable_qty_for_meter("llm.cache_write", 500) == 0.0
@@ -75,6 +98,7 @@ def test_companion_and_channel_debit_the_same_call_once() -> None:
         cache_read=cache,
         output_tokens=output,
         cache_write=write,
+        model_weight=Decimal(1),
     )
     channel = (
         billable_qty_for_meter("llm.input_tokens", prompt, prompt_tokens=prompt, cache_read=cache)

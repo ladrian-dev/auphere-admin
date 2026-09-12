@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from nexus_api.metering.quota import quota_tokens
 from nexus_api.metering.wallet import effective_included, split_spend
@@ -41,5 +42,10 @@ def test_missing_expiry_is_zero() -> None:
 
 
 def test_unit_is_quota_tokens_c3() -> None:
-    qty = quota_tokens(prompt_tokens=10_000, cache_read=9_000, output_tokens=100)
+    qty = quota_tokens(
+        prompt_tokens=10_000,
+        cache_read=9_000,
+        output_tokens=100,
+        model_weight=Decimal(1),
+    )
     assert qty == 1_000 + 900 + 100

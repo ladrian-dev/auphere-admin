@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from decimal import Decimal
 
 from nexus_api.metering.quota import quota_tokens
 
@@ -64,14 +65,23 @@ def test_summing_input_billable_plus_cache_native_is_not_quota() -> None:
     )
     by_meter = {r["meter"]: r for r in rows}
     wrong = by_meter["llm.input_tokens"]["billable_qty"] + by_meter["llm.cache_read"]["quantity"]
-    right = quota_tokens(prompt_tokens=10_000, cache_read=9_000, output_tokens=100)
+    # Peso neutro: lo que este test compara es la unidad C3, no el factor por
+    # modelo de la spec 004. El argumento es obligatorio a propósito — sin él,
+    # olvidarlo en producción sería un cobro silencioso a la baja.
+    right = quota_tokens(
+        prompt_tokens=10_000, cache_read=9_000, output_tokens=100, model_weight=Decimal(1)
+    )
     assert wrong != right
 
 
 def test_companion_quota_matches_channel_billable_for_the_same_call() -> None:
     prompt, cache, output, write = 10_000, 9_000, 100, 400
     companion = quota_tokens(
-        prompt_tokens=prompt, cache_read=cache, output_tokens=output, cache_write=write
+        prompt_tokens=prompt,
+        cache_read=cache,
+        output_tokens=output,
+        cache_write=write,
+        model_weight=Decimal(1),
     )
     _, rows = consumer.rows_from_entry(
         _entry(

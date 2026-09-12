@@ -14,6 +14,11 @@ class WalletOut(BaseModel):
     reserve: int
     included_expires_at: datetime | None
     exhausted: bool
+    #: Spec 004 (R7.1) — el TAMAÑO del pool semanal, para que la consola pueda
+    #: pintar una proporción sin derivarla de restas que no significan eso.
+    #: El partner no ve esta cifra; ve el porcentaje que sale de ella.
+    pool_size: int = 0
+    included_percent_used: float = 0.0
 
 
 class AllocationOut(BaseModel):

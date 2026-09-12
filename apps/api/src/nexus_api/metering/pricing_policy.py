@@ -31,6 +31,9 @@ y por unidad a la vez lo cobra dos veces, o toma el que la consulta lea primero
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from decimal import Decimal
+
 #: Se valoran contra ``model_profiles``: llevan un modelo detrás.
 #: ``llm.cache_write`` está aquí aunque en los proveedores de OpenAI del
 #: catálogo cerrado la tarifa sea NULL: el sitio donde se valoraría es
@@ -66,4 +69,47 @@ NOT_VALUED_METERS: frozenset[str] = frozenset(
     }
 )
 
-__all__ = ["MODEL_PRICED_METERS", "NOT_VALUED_METERS"]
+
+class UnweightedModel(RuntimeError):
+    """El modelo está en el catálogo y no tiene peso de cuota declarado.
+
+    Spec 004, R3.4. Se **rechaza el turno** en vez de atenderlo con un peso
+    supuesto: un peso neutro nos come el margen en silencio y el del modelo más
+    caro le cobra de más al partner por un olvido que no es suyo. Además no es
+    un modo de fallo nuevo — la plataforma ya rechaza un modelo que no está en
+    el catálogo, y esto es la misma clase de error de configuración, a una fila
+    de arreglarse.
+    """
+
+
+def lane_needs_weight(meter: str) -> bool:
+    """¿Pasa este medidor por la cuota de LLM, y por tanto necesita peso?
+
+    **Solo los medidores de token.** ``voice.minutes`` se mide por minutos y
+    ``media.*`` por unidades; ninguno pasa por ``quota_tokens()``, así que a
+    ``openai/whisper-1`` no le hace falta peso y **debe seguir funcionando** sin
+    él. Está escrito aquí, y no solo en un comentario, porque es exactamente lo
+    que alguien "arregla" dentro de seis meses poniéndole un 1,0 a whisper y
+    rompiendo la invarianza sin que salte un test.
+    """
+    return meter in MODEL_PRICED_METERS and meter != "voice.minutes"
+
+
+def weight_for(model_id: str, weights: Mapping[str, Decimal | None]) -> Decimal:
+    """El peso de un modelo, o ``UnweightedModel`` con su nombre dentro."""
+    weight = weights.get(model_id)
+    if weight is None:
+        raise UnweightedModel(
+            f"{model_id} has no quota_weight: it is in the catalog but cannot be "
+            "charged against a pool. Load its weight in model_profiles."
+        )
+    return Decimal(weight)
+
+
+__all__ = [
+    "MODEL_PRICED_METERS",
+    "NOT_VALUED_METERS",
+    "UnweightedModel",
+    "lane_needs_weight",
+    "weight_for",
+]

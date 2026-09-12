@@ -375,7 +375,7 @@ async def usage(
     dentro de la misma transacción; no hay atajo que valga aquí, porque saltarse
     la RLS para «ver todo» es exactamente lo que la garantía impide.
     """
-    from nexus_api.api.console.companion import budget_out, sum_partner_companion_tokens
+    from nexus_api.api.console.companion import partner_budget_in_tx
 
     # ``month_window`` vive en el playground, que fue quien primero necesitó un
     # mes natural; el Companion lo importa de allí. Se toma de su casa y no de
@@ -425,9 +425,11 @@ async def usage(
     # La transacción se deja como estaba: los dos GUC de esta petición.
     await apply_partner_to_session(scope.session, partner.id, principal_id=scope.principal.user_id)
 
-    used = await sum_partner_companion_tokens(scope.session, partner.id, window)
+    # R4.1/R4.3: **el mismo objeto y la misma fuente** que
+    # ``/console/companion/budget`` — el libro. La suma de arriba es el reparto
+    # por teammate (atribución), no el total; confundirlos era la avería.
     return TeammatesUsageOut(
-        budget=budget_out(used, partner.companion_monthly_token_cap, window),
+        budget=await partner_budget_in_tx(scope.session, partner.id),
         by_teammate=[
             TeammateUsageRowOut(
                 teammate_id=teammate_id,

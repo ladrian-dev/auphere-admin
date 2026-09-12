@@ -117,9 +117,30 @@ minutos retiene una conexión del pool que comparte el webhook de WhatsApp.
 
 Un turno de teammate gasta por el mismo camino que el Companion y debita la
 misma cartera del partner. No hay contador nuevo: `GET /console/teammates/usage`
-devuelve **el mismo objeto** que `/console/companion/budget` —la suma sale de la
-misma función— más el reparto por teammate, en tokens. Sin importe en dólares:
-la fila del run no guarda con qué modelo corrió, y el tope es en tokens.
+devuelve **el mismo objeto** que `/console/companion/budget` más el reparto por
+teammate. Sin importe en dólares: la fila del run no guarda con qué modelo
+corrió, y el tope es en tokens.
+
+**La spec 004 arregló la mitad que no cuadraba.** Hasta entonces ese objeto
+salía de sumar `companion.runs`, que solo ve turnos de Companion y de
+teammates; el libro lo gastan además los turnos de canal de los clientes y las
+ejecuciones en la máquina, y el **mismo** número
+(`partners.companion_monthly_token_cap`) dimensionaba las dos cosas. Un partner
+podía leer «20 % usado» y recibir un `409 wallet_empty` a la vez.
+
+Desde la 004:
+
+- El total sale **del libro** (`partner_wallets.included_remaining`): el número
+  que se enseña es el mismo entero que decide si un turno pasa.
+- La suma sobre `companion.runs` baja a ser **atribución** — quién gastó, no
+  cuánto. Puede sumar menos que el total, y la diferencia **se nombra** en vez
+  de repartirse entre los teammates que sí aparecen.
+- El período es **semanal**, anclado a la fecha de alta del partner, y lo no
+  gastado no se acumula.
+- El consumo de los **clientes finales** sale de los créditos comprados y ya no
+  puede vaciar el pool de la aplicación.
+- En pantalla, el partner ve **una barra y una fecha**, no la cifra del pool.
+  El panel de operador sigue viendo las cifras: las necesita para conciliar.
 
 ## Qué se comparte y qué no
 

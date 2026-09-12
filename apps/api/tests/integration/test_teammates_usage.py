@@ -148,10 +148,18 @@ async def test_what_each_teammate_spent_includes_what_the_whole_team_spent_with_
 
 
 async def test_the_breakdown_and_the_meter_tell_the_same_story(client, db_session, console_world):
-    """La suma del desglose más lo del Companion clásico **es** el medidor.
+    """El desglose reparte lo atribuible; el medidor es el libro.
 
-    Es la comprobación que hace útil el desglose: si no cerrara, Cuenta diría
-    «gastaste 900» arriba y enseñaría 500 repartidos, y nadie sabría cuál creer.
+    **Esto cambió con la spec 004 (R4.1/R4.4) y el cambio es el punto.** Antes
+    el medidor era la suma de ``companion.runs``, así que desglose y medidor
+    cerraban por construcción — y por eso mismo el medidor no veía el gasto de
+    los clientes ni el de la ejecución en la máquina, que sí vacían el libro.
+    Un partner podía leer «20 % usado» y recibir un ``wallet_empty``.
+
+    Ahora el medidor sale del libro y el desglose sigue saliendo de los runs, de
+    modo que **el medidor puede ser mayor**. La diferencia no se oculta ni se
+    reparte entre los teammates que sí aparecen: se nombra
+    (``attribution_gap``), y la pantalla Cuenta ya tiene la línea para decirla.
     """
     a = console_world["a"]
     sofia, nilo = _teammate(a["partner_id"], "Sofía"), _teammate(a["partner_id"], "Nilo")
@@ -187,9 +195,17 @@ async def test_the_breakdown_and_the_meter_tell_the_same_story(client, db_sessio
     body = (await _usage(client, a)).json()
 
     by_teammate = sum(r["input_tokens"] + r["output_tokens"] for r in body["by_teammate"])
-    assert by_teammate == 450
-    assert body["budget"]["used"] == 500
+    assert by_teammate == 450, "el desglose reparte solo lo atribuible a un teammate"
+    # El hilo sin teammate (50) no aparece en el desglose, y eso es correcto.
     assert [r["teammate_id"] for r in body["by_teammate"]].count(None) == 0
+
+    # El medidor es el libro. Estos runs se sembraron a mano, sin pasar por
+    # ``debit_wallet``, así que el libro no ha bajado — y el medidor lo dice.
+    # Comprobar aquí que «cierran» sería volver a atar el total a los runs.
+    from nexus_api.api.console.companion import attribution_gap
+
+    assert body["budget"]["used"] == 0
+    assert attribution_gap(total=body["budget"]["used"], attributed=by_teammate) == 0
 
 
 async def test_a_teammate_with_nothing_this_month_is_not_in_the_breakdown(
@@ -207,7 +223,7 @@ async def test_a_teammate_with_nothing_this_month_is_not_in_the_breakdown(
     assert body["by_teammate"] == []
 
 
-async def test_last_months_runs_do_not_count(client, db_session, console_world):
+async def test_last_months_runs_do_not_count_in_the_breakdown(client, db_session, console_world):
     a = console_world["a"]
     sofia = _teammate(a["partner_id"], "Sofía")
     db_session.add(sofia)
@@ -235,8 +251,11 @@ async def test_last_months_runs_do_not_count(client, db_session, console_world):
 
     body = (await _usage(client, a)).json()
 
-    assert body["budget"]["used"] == 15
+    # El medidor sale del libro y estos runs se sembraron a mano; lo que este
+    # test comprueba es el DESGLOSE: el del mes pasado no aparece, el de este
+    # sí (spec 004, R4.2 — la suma de runs es atribución, no total).
     assert body["by_teammate"][0]["input_tokens"] == 10
+    assert body["by_teammate"][0]["output_tokens"] == 5
 
 
 async def test_another_partners_spending_is_not_here(client, db_session, console_world):

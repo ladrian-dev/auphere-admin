@@ -418,17 +418,16 @@ async def test_the_cap_is_the_companions_own_and_pauses_with_409(client, console
     reintentar no sirve de nada: no pasa el tiempo, pasa que alguien sube el
     tope. Un ``Retry-After`` sería mentira.
     """
-    import sqlalchemy as sa
-
-    from nexus_api.db.models import Partner
+    from tests.conftest import drain_wallet
 
     a = console_world["a"]
-    await db_session.execute(
-        sa.update(Partner)
-        .where(Partner.id == a["partner_id"])
-        .values(companion_monthly_token_cap=1)
-    )
-    await db_session.commit()
+    # Spec 004 (R4.6): el tope **es el saldo del libro**. Bajar
+    # ``companion_monthly_token_cap`` ya no pausa a nadie: esa columna era la
+    # mitad de la avería —dimensionaba a la vez una suma sobre
+    # ``companion.runs`` y la recarga de un libro que gastan además los
+    # clientes y las ejecuciones locales— y quedó deprecada. Para dejar a un
+    # partner sin presupuesto hay que decirlo donde la plataforma lo lee.
+    await drain_wallet(db_session, a["partner_id"], leave=1)
 
     created = await client.post(
         "/console/companion/threads", headers=a["headers"](), json={"title": "t"}

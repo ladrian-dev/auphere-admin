@@ -76,13 +76,19 @@ function paint(props: Partial<AccountProps> = {}) {
   return { onRetry, onOpenConsole };
 }
 
-describe("el consumo del mes", () => {
-  it("pinta el número de la plataforma, no uno propio", () => {
+describe("el consumo de la semana", () => {
+  it("pinta la proporción de la plataforma, no una cifra propia", () => {
+    // Spec 004 (R7.1): el partner ve una barra y una fecha, no la cifra del
+    // pool. Así el tamaño del pool deja de ser un compromiso público y se
+    // puede ajustar cuando la medición diga otra cosa.
     paint();
     const meter = screen.getByRole("meter");
-    expect(meter).toHaveAttribute("aria-valuenow", "120000");
-    expect(meter).toHaveAttribute("aria-valuemax", "1000000");
-    expect(screen.getByText(/120.000/)).toBeInTheDocument();
+    expect(meter).toHaveAttribute("aria-valuenow", "12");
+    expect(meter).toHaveAttribute("aria-valuemax", "100");
+    // R7.4: el lector de pantalla recibe LO MISMO que quien ve la barra.
+    expect(meter).toHaveAttribute("aria-valuetext", expect.stringContaining("12"));
+    // Y la cifra del pool no está en ninguna parte de la pantalla.
+    expect(screen.queryByText(/1.000.000/)).not.toBeInTheDocument();
   });
 
   it("reparte por teammate y dice qué parte no es de ninguno", () => {
@@ -98,7 +104,7 @@ describe("el consumo del mes", () => {
     // El Companion de la consola gasta del mismo medidor (R9.1). Sin esta
     // frase, la resta entre el total y el desglose parecería un fallo.
     paint({ usage: { budget: { ...BUDGET, used: 150_000 }, by_teammate: USAGE.by_teammate } });
-    expect(screen.getByText(/desde la consola/i)).toBeInTheDocument();
+    expect(screen.getByText(/no sale de un teammate/i)).toBeInTheDocument();
   });
 
   it("sin gasto de teammates aún, el vacío explica cuándo aparece algo", () => {
@@ -114,10 +120,12 @@ describe("el consumo del mes", () => {
       },
     });
 
-    const notice = screen.getByRole("status", { name: /tope/i });
-    expect(notice).toHaveTextContent(/en pausa/i);
+    const notice = screen.getByRole("status", { name: /consumo de la semana/i });
+    // Spec 004 (R5.3): agotar el pool ya NO detiene el trabajo si hay saldo.
+    // Decir «se pausa» sin más sería mentir en el caso normal.
+    expect(notice).toHaveTextContent(/se agotó el consumo incluido/i);
+    expect(notice).toHaveTextContent(/si tu cuenta tiene saldo/i);
     expect(notice).toHaveTextContent(/hilos/i);
-    expect(notice).toHaveTextContent(/consola/i);
     // Y no se pinta como error: nada roto, solo parado.
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(onOpenConsole).not.toHaveBeenCalled();

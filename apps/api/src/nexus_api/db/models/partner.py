@@ -149,10 +149,34 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
     # apart from the playground's on purpose: sharing one cap would make
     # testing an agent and asking the Companion for help steal budget from
     # each other. Conservative default (500k ≈ 300-500 Companion turns).
+    #
+    # **DEPRECADA desde la spec 004 (migración 0115).** Dejó de ser un tope:
+    # el tope es el saldo del libro (``partner_wallets``), y el tamaño del
+    # pool vive en ``weekly_pool_tokens``. Ésta era la avería — el mismo
+    # número dimensionaba la suma sobre ``companion.runs`` Y la recarga de un
+    # libro que gastan además los clientes finales y las ejecuciones locales,
+    # así que las dos cifras podían discrepar en pantalla.
+    #
+    # No se borra aquí a propósito: crear la sustituta y borrar la original en
+    # la misma migración deja un ``downgrade()`` incapaz de devolver los datos,
+    # y la regla 3 de PLAN-CONSOLE-V1 pide ``downgrade()`` real probado contra
+    # un dump de producción. La elimina una migración posterior, cuando el
+    # despliegue lleve un ciclo con la columna nueva.
     companion_monthly_token_cap: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=500_000, server_default="500000"
     )
     companion_cap_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Migración 0115 (spec 004, R2) — el tamaño del consumo incluido que se
+    # repone cada SIETE DÍAS, anclado a ``created_at``. Es un dato y no una
+    # constante porque R2.9 exige poder cambiarlo sin desplegar, y porque el
+    # partner no lo ve como cantidad (R7.3): ve una barra, así que ajustarlo
+    # cuando la medición diga otra cosa no es un anuncio.
+    # 115 000 = el equivalente semanal del defecto mensual de 500 000. Un
+    # defecto de cero dejaría a cada partner nuevo sin pool, y su Companion sin
+    # arrancar.
+    weekly_pool_tokens: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=115_000, server_default="115000"
+    )
     # Migration 0092 — the Companion's per-partner switch (CO-08, §10 of
     # CONTRACT-V2). The door is ``companion:use`` AND this flag; without it
     # every write to ``/console/companion/*`` answers 403

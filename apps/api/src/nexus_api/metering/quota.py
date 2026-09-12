@@ -78,12 +78,30 @@ def quota_tokens(
     cache_read: int = 0,
     output_tokens: int = 0,
     cache_write: int = 0,
+    model_weight: Decimal,
 ) -> int:
-    """Tope de una llamada. ``cache_write`` se acepta para no olvidarlo: vale 0."""
+    """Tope de una llamada. ``cache_write`` se acepta para no olvidarlo: vale 0.
+
+    ``model_weight`` (spec 004, R3.1) es el peso del cerebro, normalizado al
+    medio del catálogo. Se aplica **al total y una sola vez**, justo antes del
+    redondeo final: el peso de ``cache_read`` ya vive dentro, y redondear dos
+    veces deriva.
+
+    **No tiene valor por defecto, a propósito.** Un defecto de 1 convertiría
+    cada llamada que se olvidara de pasarlo en un cobro silencioso a la baja —
+    el modo de fallo que esta spec elimina en todos los demás sitios. Que falte
+    tiene que ser un ``TypeError`` en la primera ejecución, no un agujero en el
+    margen descubierto cuadrando una factura.
+
+    La propiedad que compra: **agotar un pool cuesta lo mismo sea cual sea el
+    cerebro**. Sin ella, el peor caso de un plan lo decide el partner al elegir
+    modelo y no nosotros al ponerle precio.
+    """
     del cache_write
-    return quota_input_tokens(prompt_tokens=prompt_tokens, cache_read=cache_read) + max(
+    native = quota_input_tokens(prompt_tokens=prompt_tokens, cache_read=cache_read) + max(
         0, _as_int(output_tokens)
     )
+    return round_tokens_half_away(Decimal(native) * model_weight)
 
 
 def billable_qty_for_meter(

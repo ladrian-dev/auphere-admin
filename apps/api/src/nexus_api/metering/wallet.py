@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models.partner import Partner
 from nexus_api.db.models.partner_wallet import (
     BUCKET_INCLUDED,
     BUCKET_PURCHASED,
@@ -141,22 +142,42 @@ def _expire_included(row: PartnerWallet, *, now: datetime | None = None) -> None
         row.updated_at = stamp
 
 
-def next_period_end(*, now: datetime | None = None) -> datetime:
-    """00:00 UTC del día 1 del mes siguiente al de ``now``.
+#: Duración del período del pool incluido. Spec 004, R2.1.
+POOL_PERIOD = timedelta(days=7)
 
-    Misma política que el trigger que siembra el wallet al crear el partner:
-    el included vive el mes natural y caduca al empezar el siguiente.
+
+def next_period_end(*, anchor: datetime, now: datetime | None = None) -> datetime:
+    """El siguiente límite semanal contado desde ``anchor``.
+
+    Spec 004, R2.1/R2.2. El ``anchor`` es ``partners.created_at``: ya existe, no
+    se mueve nunca, y por tanto **no hace falta una columna de ancla** — un
+    segundo estado que mantener sincronizado con el primero es el modo de fallo
+    que esta spec elimina en otro sitio.
+
+    Anclado al partner y **no a un lunes global** a propósito: un lunes global
+    concentra la renovación de toda la plataforma en un tick, y le da una
+    primera «semana» de dos días a quien se dé de alta un viernes. Anthropic
+    ancla por cuenta («un horario fijo asignado a tu cuenta») por lo mismo.
+
+    Siempre devuelve un instante **estrictamente futuro**: un límite igual al
+    reloj caduca en el momento de escribirse y haría que el cron renovara dos
+    veces seguidas.
     """
     stamp = now or _now()
-    year, month = (stamp.year + 1, 1) if stamp.month == 12 else (stamp.year, stamp.month + 1)
-    return datetime(year, month, 1, tzinfo=UTC)
+    if anchor.tzinfo is None:
+        # Algunos drivers devuelven ``created_at`` naive. Reventar aquí tumbaría
+        # la renovación de todos los partners a la vez.
+        anchor = anchor.replace(tzinfo=UTC)
+    elapsed = stamp - anchor
+    periods = elapsed // POOL_PERIOD + 1
+    return anchor + POOL_PERIOD * periods
 
 
 async def renew_included_if_expired(
     session: AsyncSession,
     *,
     partner_id: uuid.UUID,
-    monthly_cap: int,
+    pool_size: int | None = None,
     now: datetime | None = None,
 ) -> bool:
     """Repone el included del mes si ya caducó (D3). ``True`` si renovó.
@@ -171,19 +192,27 @@ async def renew_included_if_expired(
     idempotente — con el included vigente no toca nada, así que el tick
     horario solo hace trabajo una vez.
 
-    Deuda conocida: ``monthly_cap`` sale de ``partners.companion_monthly_token_cap``,
-    que es el mismo número que gasta el Companion. Separar los dos bolsillos
-    es D5; mientras tanto se conserva la fuente que ya usaba el trigger para
-    no inventar una segunda verdad.
+    **El período es SEMANAL desde la spec 004** y va anclado a la fecha de alta
+    del partner; el tamaño sale de ``partners.weekly_pool_tokens``. Ya no se
+    pasa un cap desde fuera salvo en pruebas: el que había —
+    ``companion_monthly_token_cap``— dimensionaba a la vez esto y una suma
+    sobre ``companion.runs``, y ésa era la deuda **D5**.
+
+    **Lo no gastado NO se acumula** (R2.3): se repone al tamaño completo, no se
+    suma encima. Acumular convierte un peor caso semanal acotado en un pico
+    mensual de cuatro veces, que es justo lo que la ventana semanal evita.
     """
     stamp = now or _now()
+    anchor, size = await _pool_anchor_and_size(session, partner_id)
+    if pool_size is not None:
+        size = pool_size
     row = await _load_wallet_for_update(session, partner_id)
     if row is None:
         return False
     if effective_included(row.included_remaining, row.included_expires_at, now=stamp) > 0:
         return False
-    row.included_remaining = max(0, monthly_cap)
-    row.included_expires_at = next_period_end(now=stamp)
+    row.included_remaining = max(0, size)
+    row.included_expires_at = next_period_end(anchor=anchor, now=stamp)
     row.updated_at = stamp
     await session.flush()
     log.info(
@@ -193,6 +222,27 @@ async def renew_included_if_expired(
         expires_at=row.included_expires_at.isoformat(),
     )
     return True
+
+
+async def _pool_anchor_and_size(
+    session: AsyncSession, partner_id: uuid.UUID
+) -> tuple[datetime, int]:
+    """Fecha de alta del partner y tamaño de su pool semanal.
+
+    Una sola lectura: el ancla y el tamaño viven los dos en ``partners`` y se
+    usan siempre juntos.
+    """
+    row = (
+        await session.execute(
+            sa.select(Partner.created_at, Partner.weekly_pool_tokens).where(
+                Partner.id == partner_id
+            )
+        )
+    ).first()
+    if row is None:
+        return _now(), 0
+    created_at, size = row
+    return (created_at or _now()), int(size or 0)
 
 
 async def replenish_allocations(session: AsyncSession, *, partner_id: uuid.UUID) -> int:
@@ -334,12 +384,18 @@ async def add_purchased(partner_id: uuid.UUID, qty: int) -> WalletSnapshot:
 async def allocatable_for(
     session: AsyncSession, partner_id: uuid.UUID, tenant_id: uuid.UUID
 ) -> int:
-    """Cuánto cap se le puede dar a este tenant sin sobreasignar.
+    """Saldo **comprado** aún no comprometido en otros clientes. Informativo.
 
-    ``available`` del wallet menos lo ya comprometido en los **otros**
-    clientes. Cero si no hay wallet o si el included caducó y no hay
-    purchased — que es exactamente el estado en el que ``set_allocation``
-    falla con ``OverAllocation`` y parece un bug del panel.
+    Spec 004, R6.1: desde que los clientes finales gastan solo comprado (R5.2),
+    el cubo relevante es ése y no el disponible entero.
+
+    **Ya no es un límite.** El tope por cliente dejó de ser una reserva sobre un
+    saldo y pasó a ser lo que su nombre dice: un límite de gasto mensual que el
+    partner fija para que un cliente no se lo lleve todo. Acotarlo por el saldo
+    del momento hacía que un partner sin créditos no pudiera dar cuota a nadie
+    —y sus clientes **nacían mudos**, que es el modo de fallo que costó el corte
+    del 31-ago—. Quien decide si un turno pasa es ``allow_channel_turn``, que
+    mira el saldo real en cada turno; ésta es una cifra para la pantalla.
     """
     wallet = await session.get(PartnerWallet, partner_id)
     if wallet is None:
@@ -352,7 +408,7 @@ async def allocatable_for(
             )
         )
     )
-    return max(0, _snapshot(wallet).available - others)
+    return max(0, _as_int(wallet.purchased_remaining) - others)
 
 
 async def seed_default_allocation(
@@ -389,7 +445,10 @@ async def seed_default_allocation(
     )
     if existing is not None:
         return _as_int(existing.cap)
-    cap = min(default_cap, await allocatable_for(session, partner_id, tenant_id))
+    # Se siembra el defecto ENTERO. Recortarlo por el saldo del momento es lo
+    # que hacía nacer mudo al cliente de un partner sin créditos: el tope es un
+    # límite de gasto, no una reserva, y el saldo lo comprueba cada turno.
+    cap = default_cap
     session.add(
         PartnerAllocation(
             partner_id=partner_id,
@@ -399,21 +458,24 @@ async def seed_default_allocation(
         )
     )
     await session.flush()
-    if cap < default_cap:
-        log.warning(
-            "wallet.default_allocation_capped",
-            partner_id=str(partner_id),
-            tenant_id=str(tenant_id),
-            wanted=default_cap,
-            granted=cap,
-        )
     return cap
 
 
 async def set_allocation(
     partner_id: uuid.UUID, tenant_id: uuid.UUID, cap: int
 ) -> PartnerAllocation:
-    """Crea o actualiza el cap de un tenant. Suma de caps ≤ wallet."""
+    """Crea o actualiza el **límite de gasto mensual** de un tenant.
+
+    Spec 004, R6: esto ya no es una porción reservada del libro. Es el techo que
+    el partner le pone a un cliente para que no se lleve todo el saldo, y por
+    eso **no se comprueba contra el saldo del momento**: hacerlo dejaba a los
+    clientes de un partner sin créditos con cuota cero —naciendo mudos, el modo
+    de fallo del corte del 31-ago— y no protegía de nada que
+    ``allow_channel_turn`` no proteja ya en cada turno.
+
+    ``OverAllocation`` se conserva para el caso en que no hay libro en absoluto:
+    un tope sobre un partner que no tiene wallet no significa nada.
+    """
     if cap < 0:
         raise ValueError("cap must be >= 0")
     sm = get_sessionmaker()
@@ -422,17 +484,6 @@ async def set_allocation(
         wallet = await _load_wallet_for_update(session, partner_id)
         if wallet is None:
             raise OverAllocation("no wallet")
-        available = _snapshot(wallet).available
-        others = _as_int(
-            await session.scalar(
-                sa.select(sa.func.coalesce(sa.func.sum(PartnerAllocation.cap), 0)).where(
-                    PartnerAllocation.partner_id == partner_id,
-                    PartnerAllocation.tenant_id != tenant_id,
-                )
-            )
-        )
-        if others + cap > available:
-            raise OverAllocation(f"sum of caps {others + cap} exceeds wallet {available}")
         row = await session.scalar(
             sa.select(PartnerAllocation)
             .where(
@@ -470,11 +521,23 @@ async def debit_wallet(
     tenant_id: uuid.UUID | None = None,
     usage_record_id: uuid.UUID | None = None,
     companion_run_id: uuid.UUID | None = None,
+    allow_included: bool = True,
 ) -> DebitResult:
     """Debita ``qty`` (unidad C3). Included primero. Misma clave = no dobla.
 
     Si no queda nada, ``spent=0`` y no escribe asiento (no se gasta sin cuota).
     Un débito partido en dos cubos usa ``{key}:included`` y ``{key}:purchased``.
+
+    ``allow_included=False`` **cierra el cubo incluido para este llamante** y
+    lo deja gastando solo comprado (spec 004, R5.2). Lo usa el consumidor de
+    canal: el pool es de la aplicación —teammates y Companion— y el consumo de
+    los clientes finales sale de los créditos que el partner compró. Sin esto,
+    un cliente con un día movido deja al partner sin poder usar la aplicación
+    que paga.
+
+    El valor por defecto es ``True`` a propósito: los dos carriles que sí
+    pueden gastar incluido no cambian ni una línea. El que cambia es el que
+    tiene que cambiar.
     """
     if qty <= 0:
         return DebitResult(spent=0, from_included=0, from_purchased=0, duplicate=False)
@@ -486,6 +549,7 @@ async def debit_wallet(
             tenant_id=tenant_id,
             usage_record_id=usage_record_id,
             companion_run_id=companion_run_id,
+            allow_included=allow_included,
         )
     except Exception as exc:
         if isinstance(exc, IntegrityError):
@@ -507,6 +571,7 @@ async def _debit_locked(
     tenant_id: uuid.UUID | None,
     usage_record_id: uuid.UUID | None,
     companion_run_id: uuid.UUID | None,
+    allow_included: bool = True,
 ) -> DebitResult:
     sm = get_sessionmaker()
     async with sm() as session, session.begin():
@@ -528,8 +593,12 @@ async def _debit_locked(
             return DebitResult(spent=0, from_included=0, from_purchased=0, duplicate=False)
         _expire_included(wallet)
         snap = _snapshot(wallet)
+        # R5.2: con el cubo incluido cerrado para este llamante, el reparto
+        # se hace como si estuviera vacío. No se toca ``split_spend``: la
+        # política de quién puede gastar qué es de aquí, no de la aritmética.
+        spendable_included = snap.included_remaining if allow_included else 0
         from_included, from_purchased = split_spend(
-            qty, snap.included_remaining, snap.purchased_remaining
+            qty, spendable_included, snap.purchased_remaining
         )
         spent = from_included + from_purchased
         if spent <= 0:
