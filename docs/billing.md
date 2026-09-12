@@ -104,6 +104,40 @@ probable el día que se encienda Stripe Tax es
 
 ---
 
+## La escalera de impago, en una tabla
+
+| Estado | ¿Repone el pool? | ¿Gasta crédito comprado? | Aviso |
+|---|:--:|:--:|---|
+| Al corriente | Sí | Sí | — |
+| Pago fallido | **No** | Sí | `billing.payment_failed` |
+| Impagada | **No** | Sí | `billing.unpaid` |
+| Cancelada | **No** | Sí, 12 meses | `billing.canceled` |
+
+**El único efecto de los cuatro estados es si el pool se repone.** Ni un
+teammate se archiva, ni una tarea se cancela, ni una confirmación pendiente se
+invalida, ni se borra una conversación. Un impago es un problema de
+facturación; el trabajo de alguien no se toca por eso.
+
+El primer escalón **no degrada nada** a propósito: abre la ventana entre el
+aviso y el efecto que R5.6 pide.
+
+### La caducidad del crédito
+
+`purchased_expires_at` es **`NULL` mientras la cuenta vive**. Esa es la
+invariante «el crédito comprado no caduca mientras la cuenta viva» escrita de
+forma que no se puede violar por accidente: no hay fecha que comparar.
+
+Al cancelar se pone a doce meses; al volver, a `NULL` otra vez, sin que nadie
+reponga nada a mano. El cron `expire-credit-cron` corre a diario y **deja
+asiento en `usage_ledger`** con la clave `credit_expired:<partner>:<fecha>` —
+que además es lo que impide que un tick repetido descuente dos veces.
+
+> Esto **resta** saldo, que es lo que D3 prohíbe a los avisos externos. No lo
+> contradice: lo decide una regla nuestra, con fecha nuestra, y deja apunte. La
+> diferencia es quién decide.
+
+---
+
 ## Cambiar de cuenta de Stripe
 
 La cuenta es de **Andrés Matos**, socio de Auphere, mientras se completa el

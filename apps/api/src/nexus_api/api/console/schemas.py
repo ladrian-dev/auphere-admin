@@ -504,6 +504,20 @@ class CreditIn(BaseModel):
     amount_cents: int = Field(ge=500, le=500_000)
 
 
+class CancelOut(BaseModel):
+    """Lo que se le dice a quien acaba de cancelar.
+
+    Las dos cifras que necesita ahora mismo: qué pasa con el dinero que ya
+    puso y hasta cuándo. Sin ellas lo pregunta por soporte, y mientras tanto
+    cree que lo ha perdido.
+    """
+
+    state: str
+    effective_at: datetime | None
+    purchased_remaining: int
+    purchased_expires_at: datetime | None
+
+
 class PortalOut(BaseModel):
     url: str
 

@@ -49,6 +49,12 @@ class NotificationKind(str, enum.Enum):
     # callado ya. payload: {percent, cap, available, period, clients_out}
     WALLET_LOW = "wallet.low"
     WALLET_EMPTY = "wallet.empty"
+    # Spec 005 — la escalera de impago. Distinto de ``wallet.*``: aquél avisa
+    # de que el saldo se acaba, éstos de que **el cobro** falló. Un partner
+    # puede tener saldo de sobra y la tarjeta caducada.
+    BILLING_PAYMENT_FAILED = "billing.payment_failed"  # payload: {state, since}
+    BILLING_UNPAID = "billing.unpaid"  # payload: {state, since}
+    BILLING_CANCELED = "billing.canceled"  # payload: {state, since, credit_expires_at}
     MEMBER_JOINED = "member.joined"  # payload: {email, role}
     ONBOARDING_STEP = "onboarding.step"  # payload: {step}
 

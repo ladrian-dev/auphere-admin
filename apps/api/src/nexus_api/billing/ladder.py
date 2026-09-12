@@ -12,7 +12,7 @@ operational for reading their own history.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
@@ -181,7 +181,53 @@ async def grant_tier(
     )
 
 
-async def move_to(session: AsyncSession, *, partner_id: uuid.UUID, state: str) -> None:
+#: Un escalón → el aviso que le corresponde. ``current`` no avisa: volver a la
+#: normalidad no es una noticia que interrumpa a nadie.
+_STEP_NOTICE: dict[str, str] = {
+    STATE_PAYMENT_FAILED: "billing.payment_failed",
+    STATE_UNPAID: "billing.unpaid",
+    STATE_CANCELED: "billing.canceled",
+}
+
+
+async def _notify_step(session: AsyncSession, *, partner_id: uuid.UUID, state: str) -> None:
+    """Avisa del escalón, una sola vez.
+
+    R5.6 pide avisar **antes** de que el servicio se degrade, y el diseño lo
+    consigue con el primer escalón: «pago fallido» no degrada nada, existe
+    para abrir una ventana entre el aviso y el efecto.
+
+    La clave de deduplicación lleva el estado y no la fecha: Stripe reintenta
+    varias veces y el partner tiene que recibir **un** aviso por escalón, no
+    uno por reintento. Un escalón nuevo sí vuelve a avisar, porque entonces sí
+    cambia algo para él.
+    """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from nexus_api.db.models import ConsoleNotification
+
+    kind = _STEP_NOTICE.get(state)
+    if kind is None:
+        return
+
+    await session.execute(
+        pg_insert(ConsoleNotification)
+        .values(
+            partner_id=partner_id,
+            kind=kind,
+            severity="warning",
+            payload={"state": state, "since": datetime.now(UTC).isoformat()},
+            dedupe_key=f"billing:{partner_id}:{state}",
+        )
+        .on_conflict_do_nothing(
+            index_elements=["dedupe_key"], index_where=sa.text("dedupe_key IS NOT NULL")
+        )
+    )
+
+
+async def move_to(
+    session: AsyncSession, *, partner_id: uuid.UUID, state: str, notify: bool = False
+) -> None:
     """Move a partner one step of the ladder. Nothing else changes.
 
     Not one teammate archived, not one task cancelled, not one pending
@@ -201,6 +247,8 @@ async def move_to(session: AsyncSession, *, partner_id: uuid.UUID, state: str) -
         return
     row.state = state
     row.state_changed_at = datetime.now(UTC)
+    if notify:
+        await _notify_step(session, partner_id=partner_id, state=state)
     log.info("metering.ladder_moved", partner_id=str(partner_id), state=state)
 
 
@@ -223,3 +271,44 @@ async def flag_finalization_failure(
         partner_id=str(partner_id or ""),
         reason=reason,
     )
+
+
+async def cancel_subscription(
+    session: AsyncSession, *, partner_id: uuid.UUID, months: int = 12
+) -> datetime | None:
+    """Cancel a partner's plan. Returns when their credit expires.
+
+    What cancelling does **not** do is the important half: not a teammate
+    archived, not a task cancelled, not a pending confirmation invalidated,
+    not a conversation deleted (principle IV). The account stays whole and
+    readable. The only thing that stops is the weekly pool refilling.
+
+    What it does do is put a clock on the purchased credit — twelve months
+    (R7.2). Until now that column was ``NULL``, which is how the invariant
+    "purchased credit does not expire while the account lives" is written so
+    that it cannot be violated by accident: with no date there is nothing to
+    compare. Cancelling is the one moment a date belongs there, and coming
+    back clears it again.
+    """
+    row = (
+        await session.execute(
+            sa.select(PartnerSubscription).where(PartnerSubscription.partner_id == partner_id)
+        )
+    ).scalar_one_or_none()
+    now = datetime.now(UTC)
+    if row is not None and row.state != STATE_CANCELED:
+        row.state = STATE_CANCELED
+        row.state_changed_at = now
+        row.pending_tier_code = None
+
+    expires_at = now + timedelta(days=365 * months // 12)
+    await session.execute(
+        sa.text("UPDATE partner_wallets SET purchased_expires_at = :d WHERE partner_id = :p"),
+        {"d": expires_at, "p": str(partner_id)},
+    )
+    log.info(
+        "metering.subscription_canceled",
+        partner_id=str(partner_id),
+        credit_expires_at=expires_at.isoformat(),
+    )
+    return expires_at

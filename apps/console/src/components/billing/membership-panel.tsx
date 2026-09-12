@@ -45,6 +45,7 @@ type Props = {
   membership: MembershipOut;
   onChoose?: (code: string) => Promise<void> | void;
   onFixCard?: () => Promise<void> | void;
+  onCancel?: () => Promise<void> | void;
 };
 
 /** Estados que piden acción. `current` no pinta nada: no hay nada que arreglar. */
@@ -112,7 +113,7 @@ function TierCard({
   );
 }
 
-export function MembershipPanel({ membership, onChoose, onFixCard }: Props) {
+export function MembershipPanel({ membership, onChoose, onFixCard, onCancel }: Props) {
   const t = useT();
   const locale = useLocale();
   const [busy, setBusy] = useState(false);
@@ -207,6 +208,16 @@ export function MembershipPanel({ membership, onChoose, onFixCard }: Props) {
           ) : null}
         </section>
       )}
+
+      {/* Cancelar sólo se ofrece si hay algo que cancelar. En el gratuito y en
+          una cuenta ya cancelada no se pinta apagado: no se pinta (§V). */}
+      {tier.code !== "free" && state !== "canceled" && onCancel ? (
+        <div>
+          <Button variant="outline" size="sm" onClick={() => void onCancel()}>
+            {t("membership.cancel")}
+          </Button>
+        </div>
+      ) : null}
 
       <section aria-labelledby="catalog-h" className="flex flex-col gap-3">
         <h2 id="catalog-h" className="text-lg font-semibold">

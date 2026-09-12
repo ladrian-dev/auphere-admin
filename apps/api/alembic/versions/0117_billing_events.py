@@ -59,6 +59,13 @@ AUDIT_VOCABULARY: tuple[tuple[str, str, str, str, str], ...] = (
         "{actor} inició una compra de crédito.",
         "{actor} started a credit purchase.",
     ),
+    (
+        "console.billing.canceled",
+        "billing",
+        "warning",
+        "{actor} canceló el plan. El saldo comprado se conserva hasta {credit_expires_at}.",
+        "{actor} cancelled the plan. Purchased credit is kept until {credit_expires_at}.",
+    ),
 )
 
 revision: str = "0117_billing_events"

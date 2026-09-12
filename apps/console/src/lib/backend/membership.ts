@@ -37,3 +37,11 @@ export type CheckoutOut = {
   applied: boolean;
   effective_at: string | null;
 };
+
+export type CancelOut = {
+  state: SubscriptionState;
+  effective_at: string | null;
+  /** Lo que el partner quiere saber al cancelar: qué pasa con lo que ya pagó. */
+  purchased_remaining: number;
+  purchased_expires_at: string | null;
+};

@@ -13,7 +13,11 @@ import { useState } from "react";
 
 import { toast } from "sonner";
 
-import { openPortalAction, startCheckoutAction } from "@/app/(console)/billing/actions";
+import {
+  cancelSubscriptionAction,
+  openPortalAction,
+  startCheckoutAction,
+} from "@/app/(console)/billing/actions";
 import { useT } from "@/i18n/client";
 import type { MembershipOut } from "@/lib/backend/membership";
 
@@ -66,5 +70,33 @@ export function MembershipSection({ membership }: { membership: MembershipOut })
     window.location.assign(res.data.url);
   }
 
-  return <MembershipPanel membership={membership} onChoose={choose} onFixCard={fixCard} />;
+  async function cancel() {
+    // Se confirma antes: cancelar es consecuente, aunque no borre nada. El
+    // texto de la confirmación dice lo que NO se pierde, que es lo que la
+    // persona está temiendo en ese momento.
+    if (!window.confirm(`${t("membership.cancel.confirm.title")}\n\n${t("membership.cancel.confirm.body")}`)) {
+      return;
+    }
+    const res = await cancelSubscriptionAction();
+    if (!res.ok) {
+      toast.error(t("membership.error.unavailable"));
+      return;
+    }
+    if (res.data.purchased_expires_at) {
+      toast.success(
+        t("membership.cancel.done", {
+          date: new Date(res.data.purchased_expires_at).toLocaleDateString(),
+        }),
+      );
+    }
+  }
+
+  return (
+    <MembershipPanel
+      membership={membership}
+      onChoose={choose}
+      onFixCard={fixCard}
+      onCancel={cancel}
+    />
+  );
 }

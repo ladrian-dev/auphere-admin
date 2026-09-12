@@ -52,6 +52,7 @@ from nexus_api.services.partner_receipt_email import receipt_subject, render_rec
 
 from .schemas import (
     BillingOut,
+    CancelOut,
     CheckoutIn,
     CheckoutOut,
     CreditIn,
@@ -422,3 +423,59 @@ async def buy_credit(
     )
     await session.commit()
     return CheckoutOut(url=url)
+
+
+@router.delete("/subscription", response_model=CancelOut)
+async def cancel_subscription_route(
+    principal: ConsolePrincipal = Depends(require_console_principal("billing:manage")),
+    session: AsyncSession = Depends(get_db_session),
+) -> CancelOut:
+    """Cancel the plan. **Nothing is archived** (§IV).
+
+    Not a teammate, not a task, not a pending confirmation, not a
+    conversation. The account stays whole and readable; what stops is the
+    weekly pool refilling. The purchased credit gets a twelve-month clock and
+    the answer says so, because that is what the person is wondering.
+
+    Cancelling twice is not an error. Somebody who clicks again because the
+    first click did not look like it worked does not deserve a red screen.
+    """
+    from nexus_api.billing.ladder import cancel_subscription
+
+    partner_id = principal.partner.id
+    expires_at = await cancel_subscription(session, partner_id=partner_id)
+
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT purchased_remaining, purchased_expires_at "
+                "FROM partner_wallets WHERE partner_id = :p"
+            ),
+            {"p": str(partner_id)},
+        )
+    ).first()
+
+    subscription = (
+        await session.execute(
+            sa.select(PartnerSubscription).where(PartnerSubscription.partner_id == partner_id)
+        )
+    ).scalar_one_or_none()
+
+    session.add(
+        AuditLog(
+            tenant_id=None,
+            actor=principal.actor,
+            action="console.billing.canceled",
+            target=f"partner:{partner_id}",
+            before_json=None,
+            after_json={"credit_expires_at": expires_at.isoformat() if expires_at else None},
+        )
+    )
+    await session.commit()
+
+    return CancelOut(
+        state=subscription.state if subscription else STATE_CANCELED,
+        effective_at=subscription.current_period_end if subscription else None,
+        purchased_remaining=int(row[0]) if row else 0,
+        purchased_expires_at=row[1] if row else expires_at,
+    )

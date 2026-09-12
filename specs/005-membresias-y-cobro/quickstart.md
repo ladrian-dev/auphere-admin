@@ -26,8 +26,20 @@ Nunca las reales — este entorno cobra de verdad si se le dan las de producció
 `BILLING_WEBHOOK_SECRET`. Si se usa el secreto de la cuenta, todas las firmas
 fallan y parece un fallo del código.
 
-**Relojes de prueba**: son lo que hace verificable el requisito 5. Sin ellos, la
-escalera de impago solo se puede recorrer esperando un mes.
+**Relojes de prueba**: son lo que hace verificable el requisito 5 **contra el
+proveedor de verdad**. Sin ellos, la escalera solo se recorre esperando un mes.
+
+> **En local no hay cuenta conectada, y es una decisión** (2026-09-12): las
+> credenciales se ponen en staging y producción, no en las máquinas de
+> desarrollo. Consecuencia honesta para este documento: **en local la escalera
+> se verifica simulando el estado que el proveedor enviaría** —que es
+> exactamente lo que prueban V30 a V37— y **el recorrido con relojes reales es
+> una comprobación de staging**, no de la suite local.
+>
+> Lo que la simulación cubre entero: el mapeo exhaustivo, qué se pausa, qué
+> sobrevive y qué vuelve solo. Lo que **no** cubre y hay que mirar en staging:
+> que Stripe emita de verdad los estados que esperamos y en ese orden — sobre
+> todo el paso a `unpaid`, que depende de una casilla del panel.
 
 ---
 

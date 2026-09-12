@@ -203,6 +203,17 @@ async def renew_included_if_expired(
     mensual de cuatro veces, que es justo lo que la ventana semanal evita.
     """
     stamp = now or _now()
+    # Spec 005 (R5.2): el pool se repone **si la suscripción está al corriente**.
+    #
+    # Es el ÚNICO efecto de la escalera de impago, y vive aquí en vez de en el
+    # paquete de cobro a propósito: quien decide si hay saldo es el libro, no
+    # el proveedor. Una caída de Stripe no puede cambiar esta respuesta.
+    #
+    # Ni un teammate se archiva, ni una tarea se cancela, ni una confirmación
+    # pendiente se invalida por un impago. Sólo deja de reponerse esto — y el
+    # saldo comprado, que es dinero ya pagado, se sigue gastando igual.
+    if not await _pool_refills_for(session, partner_id):
+        return False
     anchor, size = await _pool_anchor_and_size(session, partner_id)
     if pool_size is not None:
         size = pool_size
@@ -222,6 +233,25 @@ async def renew_included_if_expired(
         expires_at=row.included_expires_at.isoformat(),
     )
     return True
+
+
+async def _pool_refills_for(session: AsyncSession, partner_id: uuid.UUID) -> bool:
+    """Si la suscripción del partner permite reponer el pool incluido.
+
+    **Un partner sin fila repone.** La ausencia de suscripción es el nivel
+    gratuito, que también tiene pool; exigir una fila haría que todo partner
+    nuevo naciera sin reposición hasta que alguien la sembrara, y eso es el
+    modo de fallo del 31 de agosto — cuentas que nacen mudas.
+
+    Se consulta con SQL y no por el modelo para no arrastrar el paquete de
+    cobro al camino del turno: esta función se llama al servir, y CE-004 dice
+    que con el proveedor caído el trabajo continúa.
+    """
+    state = await session.scalar(
+        sa.text("SELECT state FROM partner_subscriptions WHERE partner_id = :p"),
+        {"p": str(partner_id)},
+    )
+    return state is None or state == "current"
 
 
 async def _pool_anchor_and_size(

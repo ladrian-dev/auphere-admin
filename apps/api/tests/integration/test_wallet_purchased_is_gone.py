@@ -23,7 +23,9 @@ import pytest
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
-_WALLET = Path(__file__).resolve().parents[2] / "src" / "nexus_api" / "api" / "console" / "wallet.py"
+_WALLET = (
+    Path(__file__).resolve().parents[2] / "src" / "nexus_api" / "api" / "console" / "wallet.py"
+)
 
 
 async def test_the_route_is_not_registered_anywhere() -> None:

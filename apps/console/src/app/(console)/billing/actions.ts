@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { type ActionResult, run } from "@/lib/actions";
-import { type CheckoutOut, backendFor } from "@/lib/backend";
+import { type CancelOut, type CheckoutOut, backendFor } from "@/lib/backend";
 import { requirePrincipal } from "@/lib/principal";
 
 const tierCode = z.enum(["pro", "team", "business"]);
@@ -43,4 +43,11 @@ export async function buyCreditAction(raw: unknown): Promise<ActionResult<Checko
 export async function openPortalAction(): Promise<ActionResult<{ url: string }>> {
   const principal = await requirePrincipal();
   return run(() => backendFor(principal).billingPortal());
+}
+
+export async function cancelSubscriptionAction(): Promise<ActionResult<CancelOut>> {
+  const principal = await requirePrincipal();
+  const res = await run(() => backendFor(principal).cancelSubscription());
+  if (res.ok) revalidatePath("/billing");
+  return res;
 }

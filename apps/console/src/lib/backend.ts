@@ -296,9 +296,9 @@ export type ReceiptSummary = {
   issued_at: string | null;
   due_date: string;
 };
-import type { CheckoutOut, MembershipOut } from "./backend/membership";
+import type { CancelOut, CheckoutOut, MembershipOut } from "./backend/membership";
 
-export type { CheckoutOut, MembershipOut, TierOut } from "./backend/membership";
+export type { CancelOut, CheckoutOut, MembershipOut, TierOut } from "./backend/membership";
 
 export type Billing = { billing_email: string | null; contact_email: string | null; receipts: ReceiptSummary[] };
 
@@ -414,6 +414,8 @@ export function backendFor(principal: Principal) {
     buyCredit: (amount_cents: number) =>
       call<CheckoutOut>("/console/billing/credit", { method: "POST", body: { amount_cents } }),
     billingPortal: () => call<{ url: string }>("/console/billing/portal"),
+    cancelSubscription: () =>
+      call<CancelOut>("/console/billing/subscription", { method: "DELETE" }),
   };
 }
 

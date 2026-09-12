@@ -66,6 +66,18 @@ export const membershipMessages = {
     en: "You keep your purchased credit until {date}.",
   },
 
+  // ── cancelar ───────────────────────────────────────────────────────
+  // Lo que se dice al cancelar importa tanto como lo que pasa: quien cancela
+  // quiere saber ahora mismo qué ocurre con el dinero que ya puso.
+  "membership.cancel": { es: "Cancelar plan", en: "Cancel plan" },
+  "membership.cancel.confirm.title": { es: "¿Cancelar el plan?", en: "Cancel the plan?" },
+  "membership.cancel.confirm.body": {
+    es: "No se pierde nada: tus agentes, tus tareas y tus confirmaciones pendientes siguen donde están, y puedes seguir leyéndolo todo. Lo que deja de reponerse es el consumo incluido. Tu saldo comprado se conserva doce meses.",
+    en: "Nothing is lost: your agents, tasks and pending confirmations stay where they are, and you can still read everything. What stops replenishing is the included usage. Your purchased credit is kept for twelve months.",
+  },
+  "membership.cancel.confirm.cta": { es: "Sí, cancelar", en: "Yes, cancel" },
+  "membership.cancel.done": { es: "Plan cancelado. Conservas tu saldo hasta el {date}.", en: "Plan cancelled. You keep your credit until {date}." },
+
   // ── compra de crédito ──────────────────────────────────────────────
   "membership.credit.title": { es: "Comprar crédito", en: "Buy credit" },
   "membership.credit.amount": { es: "Importe en dólares", en: "Amount in dollars" },

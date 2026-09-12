@@ -58,7 +58,15 @@ const membership = (over: Partial<MembershipOut> = {}): MembershipOut => ({
 function panel(over: Partial<MembershipOut> = {}) {
   return render(
     <LocaleProvider locale="es">
-      <MembershipPanel membership={membership(over)} />
+      {/* Se pasan los tres manejadores porque la pantalla real los pasa: sin
+          ellos el panel no pintaría controles y los tests de ausencia pasarían
+          por la razón equivocada. */}
+      <MembershipPanel
+        membership={membership(over)}
+        onChoose={vi.fn()}
+        onFixCard={vi.fn()}
+        onCancel={vi.fn()}
+      />
     </LocaleProvider>,
   );
 }
@@ -135,5 +143,22 @@ describe("un cambio programado se ve (D7)", () => {
   it("dice a qué nivel se baja y cuándo", () => {
     panel({ pending_tier: "pro", current_period_end: "2026-10-01T10:00:00Z" });
     expect(screen.getAllByText(/Pro/).length).toBeGreaterThan(0);
+  });
+});
+
+describe("cancelar dice lo que pasa con el dinero (R7.4)", () => {
+  it("con un plan de pago se ofrece cancelar", () => {
+    panel();
+    expect(screen.getByRole("button", { name: /cancelar/i })).toBeTruthy();
+  });
+
+  it("en el gratuito no hay nada que cancelar, y no se pinta apagado", () => {
+    panel({ tier: CATALOG[0] });
+    expect(screen.queryByRole("button", { name: /cancelar/i })).toBeNull();
+  });
+
+  it("una cuenta ya cancelada no ofrece cancelar otra vez", () => {
+    panel({ state: "canceled" });
+    expect(screen.queryByRole("button", { name: /cancelar/i })).toBeNull();
   });
 });

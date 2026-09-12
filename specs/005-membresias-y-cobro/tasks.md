@@ -197,31 +197,31 @@ comprueba qué sobrevive.
 
 ### Tests de la Historia 3 ⚠️
 
-- [ ] T071 [P] [US3] Test unitario en `apps/api/tests/unit/test_subscription_state_map.py` (V30): el mapeo cubre los ocho estados del proveedor (`trialing`, `active`, `incomplete`, `incomplete_expired`, `past_due`, `unpaid`, `canceled`, `paused`) y **un estado inventado hace fallar el manejador** dejando el estado anterior intacto. **No cae en `current` por defecto**: eso sería acceso regalado y silencioso _Requisitos: 5.1_
-- [ ] T072 [P] [US3] Test en `apps/api/tests/integration/test_dunning_ladder.py` (V31): en **pago fallido** el pool **no se repone** en el ciclo siguiente y el saldo comprado **sí se gasta** _Requisitos: 5.2_
-- [ ] T073 [P] [US3] Test (V32): en **impagada** el trabajo nuevo para con **el mismo** estado que ya existe para quedarse sin saldo (spec 003), no con uno nuevo _Requisitos: 5.3_
-- [ ] T074 [P] [US3] Test (V33) — **el corazón de la spec**: en impagada **ningún teammate se archiva, ninguna tarea se cancela y ninguna confirmación pendiente se invalida**, y una confirmación pendiente **se puede responder sin saldo**. Se cuentan las tres cosas antes y después y se responde la confirmación (§IV, «borrar no existe»; spec 003 R9.3) _Requisitos: 5.3_
-- [ ] T075 [P] [US3] Test (V34): un pago confirmado devuelve a **al corriente sin intervención manual** _Requisitos: 5.4_
-- [ ] T076 [P] [US3] Test (V35): cancelar baja a Free **al terminar el período pagado**, con la historia intacta _Requisitos: 5.5_
-- [ ] T077 [P] [US3] Test (V36): el aviso al partner sale **antes** del cambio de estado, no después _Requisitos: 5.6_
-- [ ] T078 [P] [US3] Test de consola (V37): los cuatro estados se pintan diciendo **qué lo arregla**, sin presentarlo como un error del partner _Requisitos: 5.7_
-- [ ] T079 [P] [US3] Test en `apps/api/tests/integration/test_purchased_expiry.py` (V43): con la cuenta viva, `purchased_expires_at` es **`NULL`** y el saldo no caduca aunque se avance un año _Requisitos: 7.1_
-- [ ] T080 [P] [US3] Test (V44): al cancelar se fija a **12 meses** _Requisitos: 7.2_
-- [ ] T081 [P] [US3] Test (V45): reactivar dentro del plazo lo vuelve a dejar a **`NULL`**, **sin que nadie reponga nada a mano** _Requisitos: 7.3_
-- [ ] T082 [P] [US3] Test (V46): al cancelar, la respuesta dice **cuánto saldo conserva y hasta cuándo** _Requisitos: 7.4_
-- [ ] T083 [P] [US3] Test (V47): al caducar queda **asiento en `usage_ledger`** con cuánto y cuándo. Esto **resta** saldo y no contradice D3: lo decide una regla nuestra, con fecha nuestra, y deja apunte _Requisitos: 7.5_
+- [X] T071 [P] [US3] Test unitario en `apps/api/tests/unit/test_subscription_state_map.py` (V30): el mapeo cubre los ocho estados del proveedor (`trialing`, `active`, `incomplete`, `incomplete_expired`, `past_due`, `unpaid`, `canceled`, `paused`) y **un estado inventado hace fallar el manejador** dejando el estado anterior intacto. **No cae en `current` por defecto**: eso sería acceso regalado y silencioso _Requisitos: 5.1_
+- [X] T072 [P] [US3] Test en `apps/api/tests/integration/test_dunning_ladder.py` (V31): en **pago fallido** el pool **no se repone** en el ciclo siguiente y el saldo comprado **sí se gasta** _Requisitos: 5.2_
+- [X] T073 [P] [US3] Test (V32): en **impagada** el trabajo nuevo para con **el mismo** estado que ya existe para quedarse sin saldo (spec 003), no con uno nuevo _Requisitos: 5.3_
+- [X] T074 [P] [US3] Test (V33) — **el corazón de la spec**: en impagada **ningún teammate se archiva, ninguna tarea se cancela y ninguna confirmación pendiente se invalida**, y una confirmación pendiente **se puede responder sin saldo**. Se cuentan las tres cosas antes y después y se responde la confirmación (§IV, «borrar no existe»; spec 003 R9.3) _Requisitos: 5.3_
+- [X] T075 [P] [US3] Test (V34): un pago confirmado devuelve a **al corriente sin intervención manual** _Requisitos: 5.4_
+- [X] T076 [P] [US3] Test (V35): cancelar baja a Free **al terminar el período pagado**, con la historia intacta _Requisitos: 5.5_
+- [X] T077 [P] [US3] Test (V36): el aviso al partner sale **antes** del cambio de estado, no después _Requisitos: 5.6_
+- [X] T078 [P] [US3] Test de consola (V37): los cuatro estados se pintan diciendo **qué lo arregla**, sin presentarlo como un error del partner _Requisitos: 5.7_
+- [X] T079 [P] [US3] Test en `apps/api/tests/integration/test_purchased_expiry.py` (V43): con la cuenta viva, `purchased_expires_at` es **`NULL`** y el saldo no caduca aunque se avance un año _Requisitos: 7.1_
+- [X] T080 [P] [US3] Test (V44): al cancelar se fija a **12 meses** _Requisitos: 7.2_
+- [X] T081 [P] [US3] Test (V45): reactivar dentro del plazo lo vuelve a dejar a **`NULL`**, **sin que nadie reponga nada a mano** _Requisitos: 7.3_
+- [X] T082 [P] [US3] Test (V46): al cancelar, la respuesta dice **cuánto saldo conserva y hasta cuándo** _Requisitos: 7.4_
+- [X] T083 [P] [US3] Test (V47): al caducar queda **asiento en `usage_ledger`** con cuánto y cuándo. Esto **resta** saldo y no contradice D3: lo decide una regla nuestra, con fecha nuestra, y deja apunte _Requisitos: 7.5_
 
 ### Implementación de la Historia 3
 
-- [ ] T084 [US3] `apps/api/src/nexus_api/billing/ladder.py`: el mapeo **exhaustivo** estado del proveedor → estado nuestro, con la tabla de `research.md` §D6 (hace verde T071) _Requisitos: 5.1_
-- [ ] T085 [US3] Manejadores de `invoice.payment_failed`, `customer.subscription.updated` y `customer.subscription.deleted` _Requisitos: 5.1, 5.2, 5.5_
-- [ ] T086 [US3] Pausar la reposición del pool en `apps/api/src/nexus_api/metering/wallet.py`: `renew_included_if_expired` no repone si el estado no es `current`. **El saldo comprado sigue gastándose** _Requisitos: 5.2, 5.3_
-- [ ] T087 [US3] `DELETE /console/billing/subscription` en `apps/api/src/nexus_api/api/console/billing.py`: efecto a fin de período, **nada se archiva**, y fija `purchased_expires_at` a 12 meses _Requisitos: 5.5, 7.2, 7.4_
-- [ ] T088 [US3] Reactivación: al volver a `current`, `purchased_expires_at` vuelve a **`NULL`** (hace verde T081) _Requisitos: 7.3_
-- [ ] T089 [US3] `apps/worker/src/nexus_worker/billing/expire_credit_cron.py`: pone a cero los cubos cuya fecha pasó **dejando asiento con su motivo** (hace verde T083) _Requisitos: 7.5_
-- [ ] T090 [US3] Notificación previa a la degradación, reutilizando `evaluate_partner_wallet_alerts` — que toma un `Partner`, no un id _Requisitos: 5.6_
-- [ ] T091 [US3] Pintar los cuatro estados en `apps/console/src/app/(console)/billing/`, diciendo qué lo arregla _Requisitos: 5.7_
-- [ ] T092 [US3] Actualizar `docs/companion/CONTRACT-V2.md` §6 con los escalones nuevos, **en el mismo commit** que el cambio _Requisitos: 5.3_
+- [X] T084 [US3] `apps/api/src/nexus_api/billing/ladder.py`: el mapeo **exhaustivo** estado del proveedor → estado nuestro, con la tabla de `research.md` §D6 (hace verde T071) _Requisitos: 5.1_
+- [X] T085 [US3] Manejadores de `invoice.payment_failed`, `customer.subscription.updated` y `customer.subscription.deleted` _Requisitos: 5.1, 5.2, 5.5_
+- [X] T086 [US3] Pausar la reposición del pool en `apps/api/src/nexus_api/metering/wallet.py`: `renew_included_if_expired` no repone si el estado no es `current`. **El saldo comprado sigue gastándose** _Requisitos: 5.2, 5.3_
+- [X] T087 [US3] `DELETE /console/billing/subscription` en `apps/api/src/nexus_api/api/console/billing.py`: efecto a fin de período, **nada se archiva**, y fija `purchased_expires_at` a 12 meses _Requisitos: 5.5, 7.2, 7.4_
+- [X] T088 [US3] Reactivación: al volver a `current`, `purchased_expires_at` vuelve a **`NULL`** (hace verde T081) _Requisitos: 7.3_
+- [X] T089 [US3] `apps/worker/src/nexus_worker/billing/expire_credit_cron.py`: pone a cero los cubos cuya fecha pasó **dejando asiento con su motivo** (hace verde T083) _Requisitos: 7.5_
+- [X] T090 [US3] Notificación previa a la degradación, reutilizando `evaluate_partner_wallet_alerts` — que toma un `Partner`, no un id _Requisitos: 5.6_
+- [X] T091 [US3] Pintar los cuatro estados en `apps/console/src/app/(console)/billing/`, diciendo qué lo arregla _Requisitos: 5.7_
+- [X] T092 [US3] Actualizar `docs/companion/CONTRACT-V2.md` §6 con los escalones nuevos, **en el mismo commit** que el cambio _Requisitos: 5.3_
 
 **Checkpoint**: la escalera se recorre entera y no se pierde nada de nadie.
 

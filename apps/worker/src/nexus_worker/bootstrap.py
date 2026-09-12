@@ -47,6 +47,7 @@ from nexus_mcp.servers.agendapro_public.transport import (
     set_default_transport as set_agendapro_public_transport,
 )
 
+from nexus_worker.billing.expire_credit_cron import run_expire_credit_cron
 from nexus_worker.config import WorkerSettings, get_api_settings, get_worker_settings
 from nexus_worker.guardrails import OutcomeGrader
 from nexus_worker.health import run_heartbeat
@@ -429,6 +430,7 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         _spawn("wallet-renewal-cron", run_wallet_renewal_cron(stop=ctx.stop)),
+        _spawn("expire-credit-cron", run_expire_credit_cron(stop=ctx.stop)),
         _spawn("isolation-event-drainer", isolation_event_drainer(ctx.stop)),
         _spawn(
             "no-show-scrape-cron",

@@ -90,9 +90,7 @@ async def sweep_once(sm: object) -> dict[str, int]:
                 # renovación a ``companion_monthly_token_cap``, el número que
                 # también dimensionaba la suma sobre ``companion.runs`` — la
                 # deuda D5.
-                if await renew_included_if_expired(
-                    session, partner_id=partner_id
-                ):
+                if await renew_included_if_expired(session, partner_id=partner_id):
                     renewed += 1
                     # Periodo nuevo: lo gastado el mes pasado se repone. Sin
                     # esto el wallet vuelve a 500k y un cliente que agotó su

@@ -408,6 +408,20 @@ trabajo a la basura es la peor versión de un tope.
 >
 > La pausa sigue siendo derivada (§6.1): un partner impagado con saldo
 > comprado **no está en pausa**, sigue trabajando contra su crédito.
+>
+> **Y se avisa antes, no después.** El primer escalón —«pago fallido»— existe
+> exactamente para eso: no degrada nada, y abre una ventana entre el aviso y el
+> efecto. Enterarse de que la tarjeta falló porque algo dejó de funcionar
+> convierte un problema administrativo en una sorpresa operativa.
+>
+> Tres avisos nuevos en el vocabulario cerrado de notificaciones, uno por
+> escalón y **uno solo por escalón**: `billing.payment_failed`,
+> `billing.unpaid`, `billing.canceled`. Stripe reintenta varias veces; el
+> partner recibe un aviso, no cinco.
+>
+> No se confunden con `wallet.*`, que ya existía: aquél avisa de que **el saldo
+> se acaba**, éstos de que **el cobro falló**. Un partner puede tener saldo de
+> sobra y la tarjeta caducada.
 
 ### 6.1. La pausa es derivada, no un estado nuevo del hilo
 

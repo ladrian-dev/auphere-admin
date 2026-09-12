@@ -83,7 +83,15 @@ async def apply_subscription_state(session: Any, *, partner_id: uuid.UUID, sub: 
     from nexus_api.billing.ladder import move_to, state_from_provider
 
     provider_status = str(getattr(sub, "status", "") or "")
-    await move_to(session, partner_id=partner_id, state=state_from_provider(provider_status))
+    # ``notify=True``: el partner se entera del escalón por nosotros, no porque
+    # algo deje de funcionar (R5.6). El aviso se deduplica por escalón, así que
+    # los reintentos de Stripe no se convierten en cinco notificaciones.
+    await move_to(
+        session,
+        partner_id=partner_id,
+        state=state_from_provider(provider_status),
+        notify=True,
+    )
 
 
 async def apply_credit_purchase(session: Any, *, partner_id: uuid.UUID, checkout: Any) -> int:
@@ -202,7 +210,7 @@ async def handle_entry(session: Any, client: Any, fields: dict[str, str]) -> str
         from nexus_api.db.models.membership import STATE_PAYMENT_FAILED
 
         if event_type == "invoice.payment_failed":
-            await move_to(session, partner_id=partner_id, state=STATE_PAYMENT_FAILED)
+            await move_to(session, partner_id=partner_id, state=STATE_PAYMENT_FAILED, notify=True)
         return "processed"
 
     return "ignored"
