@@ -93,6 +93,15 @@ export const membershipMessages = {
     en: "Credit does not expire while your account is alive, and it is what your clients' agents spend.",
   },
 
+  // ── facturas del proveedor ─────────────────────────────────────────
+  // No se nombra al proveedor: cuál es es un detalle nuestro, y el día que
+  // cambie esta pantalla no tiene por qué cambiar con él.
+  "membership.invoices": { es: "Ver mis facturas", en: "View my invoices" },
+  "membership.invoices.help": {
+    es: "Las facturas son el documento fiscal. Este recibo explica en qué se fue el consumo, cliente por cliente.",
+    en: "Invoices are the fiscal document. This receipt explains where the usage went, client by client.",
+  },
+
   // ── errores ────────────────────────────────────────────────────────
   // Ninguno enseña el mensaje crudo del proveedor: lo que llega de una API
   // externa es contenido externo y no se pone delante de una persona (§III).

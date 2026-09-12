@@ -30,6 +30,8 @@ from nexus_api.billing.checkout import (
     open_credit_session,
     open_portal,
     open_subscription_session,
+    schedule_downgrade,
+    upgrade_subscription,
 )
 from nexus_api.billing.provider import idempotency_key  # noqa: F401 - re-exported for tests
 from nexus_api.config import get_settings
@@ -37,10 +39,13 @@ from nexus_api.core.console_auth import ConsolePrincipal, require_console_princi
 from nexus_api.db.models import AuditLog, Invoice, InvoiceLine, Tenant
 from nexus_api.db.models.membership import (
     STATE_CANCELED,
+    STATE_CURRENT,
+    STATE_PAYMENT_FAILED,
     TIER_FREE,
     MembershipTier,
     PartnerSubscription,
 )
+from nexus_api.metering.wallet import apply_tier_change
 from nexus_api.services.membership_limits import over_cap_by
 from nexus_api.services.partner_receipt import (
     ReceiptLine,
@@ -317,13 +322,58 @@ async def start_checkout(
     ).scalar_one_or_none()
 
     settings = get_settings()
+    period_tag = datetime.now(UTC).strftime("%G-W%V")
+
+    # Con una suscripción viva **no se abre página de pago**: se modifica la
+    # que hay. Mandar a alguien que ya paga a introducir su tarjeta otra vez
+    # para subir de plan es pedirle que demuestre algo que ya demostró.
+    live = subscription is not None and subscription.stripe_subscription_id
+    if live and subscription.state in {STATE_CURRENT, STATE_PAYMENT_FAILED}:
+        try:
+            outcome = await apply_tier_change(session, partner_id=partner_id, new_tier=tier.code)
+            if outcome == "upgraded":
+                # El prorrateo del dinero lo hace el proveedor; el pool lo
+                # completa el libro. Cada uno lo que sabe hacer.
+                upgrade_subscription(
+                    partner_id=partner_id,
+                    subscription_id=subscription.stripe_subscription_id,
+                    price_id=tier.stripe_price_id or "",
+                    period_tag=period_tag,
+                )
+            else:
+                schedule_downgrade(
+                    partner_id=partner_id,
+                    subscription_id=subscription.stripe_subscription_id,
+                    price_id=tier.stripe_price_id or "",
+                    period_tag=period_tag,
+                )
+        except BillingUnavailable as exc:
+            raise _unavailable() from exc
+
+        session.add(
+            AuditLog(
+                tenant_id=None,
+                actor=principal.actor,
+                action="console.billing.tier_changed",
+                target=f"partner:{partner_id}",
+                before_json={"tier": subscription.tier_code},
+                after_json={"tier": tier.code, "outcome": outcome},
+            )
+        )
+        await session.commit()
+        return CheckoutOut(
+            url=None,
+            applied=outcome == "upgraded",
+            effective_at=subscription.current_period_end if outcome == "scheduled" else None,
+        )
+
     try:
         url = open_subscription_session(
             partner_id=partner_id,
             price_id=tier.stripe_price_id,
             console_base_url=settings.console_base_url,
             customer_id=subscription.stripe_customer_id if subscription else None,
-            period_tag=datetime.now(UTC).strftime("%G-W%V"),
+            period_tag=period_tag,
         )
     except BillingUnavailable as exc:
         raise _unavailable() from exc

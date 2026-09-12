@@ -141,4 +141,103 @@ __all__ = [
     "open_credit_session",
     "open_portal",
     "open_subscription_session",
+    "schedule_downgrade",
+    "upgrade_subscription",
 ]
+
+
+def upgrade_subscription(
+    *,
+    partner_id: uuid.UUID,
+    subscription_id: str,
+    price_id: str,
+    period_tag: str = "",
+) -> None:
+    """Move a live subscription up a tier, now.
+
+    **The proration is Stripe's job**, not ours: ``create_prorations`` makes it
+    compute the unused remainder of the current period and credit it against
+    the new price. Working out the days ourselves would be reimplementing —
+    worse — something the provider already does, and that has to match what
+    the customer later reads on their invoice. Two answers to the same
+    question is how a billing dispute starts.
+
+    ``proration_behavior`` and the item swap go together: Stripe needs the
+    subscription item's id to know which line is being replaced, so the
+    subscription is fetched first.
+    """
+    client = get_client()
+    subscription = client.subscriptions.retrieve(subscription_id)
+    items = getattr(subscription, "items", None)
+    data = getattr(items, "data", None) or []
+    if not data:
+        raise BillingUnavailable(f"la suscripción {subscription_id} no tiene líneas")
+
+    client.subscriptions.update(
+        subscription_id,
+        {
+            "items": [{"id": data[0].id, "price": price_id}],
+            # Stripe prorrates: the unused part of what they already paid is
+            # credited against the new price, on their next invoice.
+            "proration_behavior": "create_prorations",
+        },
+        options={
+            "idempotency_key": idempotency_key("sub", partner_id, "upgrade", price_id, period_tag)
+        },
+    )
+    log.info("metering.subscription_upgraded", partner_id=str(partner_id))
+
+
+def schedule_downgrade(
+    *,
+    partner_id: uuid.UUID,
+    subscription_id: str,
+    price_id: str,
+    period_tag: str = "",
+) -> None:
+    """Move a subscription down a tier **at the end of the paid period**.
+
+    A Subscription Schedule with ``proration_behavior='none'``: nothing is
+    refunded and nothing is cut mid-week, because the partner paid for this
+    week in full. Applying a downgrade immediately would take back something
+    already bought — which is the same mistake as reclaiming the pool.
+
+    The schedule is created from the existing subscription so its current
+    phase is preserved; the new price becomes the phase that follows.
+    """
+    client = get_client()
+    schedule = client.subscription_schedules.create(
+        {"from_subscription": subscription_id},
+        options={
+            "idempotency_key": idempotency_key("sched", partner_id, "create", subscription_id)
+        },
+    )
+    phases = list(getattr(schedule, "phases", None) or [])
+    if not phases:
+        raise BillingUnavailable("el calendario de suscripción llegó sin fases")
+
+    current = phases[0]
+    client.subscription_schedules.update(
+        schedule.id,
+        {
+            "phases": [
+                {
+                    "items": [
+                        {"price": item.price, "quantity": getattr(item, "quantity", 1)}
+                        for item in (getattr(current, "items", None) or [])
+                    ],
+                    "start_date": getattr(current, "start_date", None),
+                    "end_date": getattr(current, "end_date", None),
+                },
+                {"items": [{"price": price_id, "quantity": 1}]},
+            ],
+            # Nothing refunded, nothing cut mid-period.
+            "proration_behavior": "none",
+        },
+        options={
+            "idempotency_key": idempotency_key(
+                "sched", partner_id, "downgrade", price_id, period_tag
+            )
+        },
+    )
+    log.info("metering.subscription_downgrade_scheduled", partner_id=str(partner_id))

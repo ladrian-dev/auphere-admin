@@ -138,6 +138,29 @@ que además es lo que impide que un tick repetido descuente dos veces.
 
 ---
 
+## Cambiar de plan: quién hace qué
+
+| | Quién lo hace | Cómo |
+|---|---|---|
+| **Prorratear el dinero al subir** | **Stripe** | `proration_behavior='create_prorations'` sobre la suscripción viva |
+| **Programar la bajada** | **Stripe** | *Subscription Schedule* con `proration_behavior='none'` |
+| **Completar el pool de la semana** | Nosotros | Es nuestro libro; el proveedor no sabe qué es |
+
+Calcular los días de un ciclo por nuestra cuenta sería reimplementar —peor—
+algo que el proveedor ya hace, y que además tiene que **coincidir con lo que el
+partner lee en su factura**. Dos respuestas a la misma pregunta es como empieza
+una disputa de facturación.
+
+**Subir es inmediato y no abre página de pago**: quien ya paga no tiene que
+volver a introducir su tarjeta para subir de plan. **Bajar espera a fin de
+período** y no reclama el pool en curso — esa semana ya está pagada.
+
+Al completar el pool se suma **la diferencia de tamaño**, no el tamaño nuevo:
+reiniciar regalaría lo ya consumido, y no tocarlo cobraría el nivel nuevo sin
+darlo.
+
+---
+
 ## Cambiar de cuenta de Stripe
 
 La cuenta es de **Andrés Matos**, socio de Auphere, mientras se completa el
@@ -152,6 +175,24 @@ El procedimiento entero está en
 Lo que más importa de él: **no canceles las suscripciones en Stripe hasta que
 la cuenta nueva haya cobrado un ciclo completo.** Nuestro estado se revierte con
 un `UPDATE`; el de Stripe, no.
+
+---
+
+## Los dos documentos
+
+| | Qué es | Quién lo emite |
+|---|---|---|
+| **Factura** | El **documento fiscal** | El proveedor |
+| **Recibo** | Lo que el proveedor no sabe: desglose por cliente y la conversión de las comisiones desde CLP | Nosotros |
+
+El recibo dejó de decir «total a pagar» y de llevar vencimiento. Dejarlo en los
+dos pide pagar dos veces — y aunque nadie pague dos veces, obliga a averiguar
+cuál de los dos era el bueno.
+
+Se llega a las facturas desde la consola, por el portal del proveedor. No se
+construye una pantalla de facturas propia: traería datos de pago a nuestra
+infraestructura y duplicaría un documento que ya existe, con el riesgo de que
+las dos versiones dejen de coincidir.
 
 ---
 

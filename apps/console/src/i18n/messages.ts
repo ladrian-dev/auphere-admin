@@ -336,7 +336,7 @@ const core = {
 
   // billing
   "billing.title": { es: "Facturación", en: "Billing" },
-  "billing.description": { es: "Tus recibos y datos de contacto de facturación. El cobro automático llega en la fase siguiente.", en: "Your receipts and billing contact. Automatic charging arrives in the next phase." },
+  "billing.description": { es: "Tu plan, tus recibos y tus datos de facturación.", en: "Your plan, your receipts and your billing details." },
   "billing.email": { es: "Correo de facturación", en: "Billing e-mail" },
   "billing.receipts": { es: "Recibos", en: "Receipts" },
   "billing.receipts.empty": { es: "Todavía no hay recibos", en: "No receipts yet" },

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Button, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
 
 import { MembershipSection } from "@/components/billing/membership-section";
+import { ProviderInvoicesLink } from "@/components/billing/provider-invoices-link";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
@@ -25,9 +26,18 @@ export default async function BillingPage() {
         <dd className="min-w-0 truncate font-mono">{billing.billing_email ?? t("billing.notSet")}</dd>
       </dl>
       <section aria-labelledby="receipts-h" className="flex flex-col gap-3">
-        <h2 id="receipts-h" className="text-lg font-semibold">
-          {t("billing.receipts")}
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="receipts-h" className="text-lg font-semibold">
+            {t("billing.receipts")}
+          </h2>
+          {/* Spec 005 R8.4: la factura del proveedor es el documento fiscal;
+              este recibo explica el consumo. Los dos papeles, y el camino al
+              otro documento donde se busca. */}
+          <ProviderInvoicesLink hasSubscription={membership.tier.code !== "free"} />
+        </div>
+        <p className="text-muted-foreground max-w-prose text-sm text-pretty">
+          {t("membership.invoices.help")}
+        </p>
         {billing.receipts.length === 0 ? (
           <EmptyState title={t("billing.receipts.empty")} readonly />
         ) : (

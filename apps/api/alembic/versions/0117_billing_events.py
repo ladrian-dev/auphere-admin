@@ -60,6 +60,13 @@ AUDIT_VOCABULARY: tuple[tuple[str, str, str, str, str], ...] = (
         "{actor} started a credit purchase.",
     ),
     (
+        "console.billing.tier_changed",
+        "billing",
+        "info",
+        "{actor} cambió el plan a {tier}.",
+        "{actor} changed the plan to {tier}.",
+    ),
+    (
         "console.billing.canceled",
         "billing",
         "warning",

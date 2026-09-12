@@ -235,6 +235,102 @@ async def renew_included_if_expired(
     return True
 
 
+def top_up_amount(*, remaining: int, old_size: int, new_size: int) -> int:
+    """Cuánto pool añadir al subir de nivel a mitad de semana (R6.2).
+
+    **La diferencia de tamaño**, que es exactamente lo que el partner no tenía
+    y acaba de pagar. Ni el tamaño nuevo entero —eso regalaría lo ya
+    consumido— ni nada —eso le cobraría el nivel nuevo sin dárselo, que es
+    peor porque pagó y no notó nada.
+
+    Que el resultado no dependa de ``remaining`` es la propiedad, no un
+    descuido: lo gastado ya se gastó, y lo que cambia al subir es el techo.
+    Por eso también funciona cuando el ciclo se repone en el mismo instante —
+    reponer pone ``remaining`` al tamaño viejo y esto añade la diferencia, así
+    que el resultado es el tamaño nuevo, ni duplicado ni a cero (R6.5).
+
+    Nunca devuelve un número negativo: esta función solo suma. Bajar de nivel
+    se aplica a fin de período y no toca el pool en curso.
+    """
+    del remaining  # parte de la firma para que el contrato se lea entero
+    return max(0, _as_int(new_size) - _as_int(old_size))
+
+
+async def apply_tier_change(session: AsyncSession, *, partner_id: uuid.UUID, new_tier: str) -> str:
+    """Aplica un cambio de nivel al LIBRO. Devuelve ``"upgraded"`` o ``"scheduled"``.
+
+    El reparto con el proveedor: **el dinero lo prorratea él** —esta función no
+    calcula días ni importes— y **el pool lo completamos nosotros**, porque es
+    nuestro libro y el proveedor no sabe qué es.
+
+    Subir es inmediato: quien sube lo hace justo cuando se ha quedado sin pool,
+    y hacerle esperar al siguiente ciclo es cobrarle por algo que todavía no
+    puede usar.
+
+    Bajar **se anota como pendiente** y no toca nada del ciclo en curso: el
+    partner pagó esta semana entera. Se aplica cuando el proveedor confirme el
+    período nuevo.
+    """
+    current = (
+        await session.execute(
+            sa.text("SELECT tier_code FROM partner_subscriptions WHERE partner_id = :p"),
+            {"p": str(partner_id)},
+        )
+    ).scalar_one_or_none()
+
+    sizes = dict(
+        (
+            await session.execute(
+                sa.text(
+                    "SELECT code, weekly_pool_tokens FROM membership_tiers WHERE code = ANY(:codes)"
+                ),
+                {"codes": [c for c in (current, new_tier) if c]},
+            )
+        ).all()
+    )
+    old_size = int(sizes.get(current or "", 0))
+    new_size = int(sizes.get(new_tier, 0))
+
+    if new_size <= old_size:
+        # Bajar: pendiente, y reemplaza cualquier bajada anterior. Cambiar de
+        # opinión antes de que se aplique no puede dejar dos programadas.
+        await session.execute(
+            sa.text(
+                "UPDATE partner_subscriptions SET pending_tier_code = :t WHERE partner_id = :p"
+            ),
+            {"t": new_tier, "p": str(partner_id)},
+        )
+        log.info("wallet.tier_downgrade_scheduled", partner_id=str(partner_id), tier=new_tier)
+        return "scheduled"
+
+    added = top_up_amount(remaining=0, old_size=old_size, new_size=new_size)
+    await session.execute(
+        sa.text(
+            "UPDATE partner_wallets SET included_remaining = included_remaining + :n, "
+            "updated_at = now() WHERE partner_id = :p"
+        ),
+        {"n": added, "p": str(partner_id)},
+    )
+    await session.execute(
+        sa.text(
+            "UPDATE partner_subscriptions SET tier_code = :t, pending_tier_code = NULL "
+            "WHERE partner_id = :p"
+        ),
+        {"t": new_tier, "p": str(partner_id)},
+    )
+    await session.execute(
+        sa.text("UPDATE partners SET weekly_pool_tokens = :n WHERE id = :p"),
+        {"n": new_size, "p": str(partner_id)},
+    )
+    log.info(
+        "wallet.tier_upgraded",
+        partner_id=str(partner_id),
+        tier=new_tier,
+        topped_up=added,
+    )
+    return "upgraded"
+
+
 async def _pool_refills_for(session: AsyncSession, partner_id: uuid.UUID) -> bool:
     """Si la suscripción del partner permite reponer el pool incluido.
 

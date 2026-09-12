@@ -92,7 +92,7 @@ y probar sola.
 ## Phase 2b: Las puertas de la constitución
 
 - [X] T023 Test de aislamiento **garantía 1 (RLS)** en `apps/api/tests/isolation/test_subscription_scope.py`: un partner **no ve** la fila de `partner_subscriptions` de otro, ni por la API ni por consulta directa con el rol de aplicación (V53). En rojo bloquea el merge (§I) _Requisitos: 5.1_
-- [ ] T024 [P] Test de aislamiento **garantía 4 (acción consecuente)** en `apps/api/tests/isolation/test_billing_audit_names_the_person.py`: contratar, cambiar, comprar y cancelar dejan asiento que **nombra a la persona** de consola, no al proceso ni al partner (V12, V54, §IV) _Requisitos: 2.5_
+- [X] T024 [P] Test de aislamiento **garantía 4 (acción consecuente)** en `apps/api/tests/isolation/test_billing_audit_names_the_person.py`: contratar, cambiar, comprar y cancelar dejan asiento que **nombra a la persona** de consola, no al proceso ni al partner (V12, V54, §IV) _Requisitos: 2.5_
 - [X] T025 [P] Test de aislamiento **garantía 6 (log/trace)** en `apps/api/tests/isolation/test_billing_logs_carry_no_card.py`: con `structlog.testing.capture_logs()`, **ningún** registro del camino del cobro lleva patrón de tarjeta (PAN, CVC, `last4`) ni contenido de conversación. Copiar la forma de `test_wallet_events_are_logged.py`, que ya vigila esto para el libro. **Cubre V09, V27 y V55**, que el quickstart enuncia por separado por llegar desde tres requisitos distintos: es una sola comprobación _Requisitos: 2.2, 4.6_
 - [X] T026 Test de aislamiento en `apps/api/tests/isolation/test_billing_not_exposed_to_tenant.py`: ninguna entidad de esta spec es alcanzable desde un tenant — no llevan `tenant_id` y no aparecen en ninguna ruta de tenant _Requisitos: 4.6_
 
@@ -236,20 +236,20 @@ de la semana en curso y el saldo comprado.
 
 ### Tests de la Historia 4 ⚠️
 
-- [ ] T093 [P] [US4] Test unitario en `apps/api/tests/unit/test_pool_top_up.py` (V39): con 100 000 gastados de 500 000, subir a 1 000 000 deja **900 000** disponibles. Ni 1 000 000 (regalaría lo consumido) ni 400 000 (cobraría el nivel nuevo sin darlo). Aritmética exacta _Requisitos: 6.2_
-- [ ] T094 [P] [US4] Test unitario (V42): cambio de nivel **en el mismo instante** que la reposición del ciclo — el pool no queda ni duplicado ni a cero _Requisitos: 6.5_
-- [ ] T095 [P] [US4] Test de integración en `apps/api/tests/integration/test_plan_change.py` (V38): subir es **inmediato** y el pool nuevo está disponible en el mismo turno _Requisitos: 6.1_
-- [ ] T096 [P] [US4] Test (V40): bajar se aplica **a fin de período** y el pool del ciclo en curso **no se reclama** _Requisitos: 6.3_
-- [ ] T097 [P] [US4] Test (V41): **ninguna** de las cuatro transiciones altera `purchased_remaining` _Requisitos: 6.4_
-- [ ] T098 [P] [US4] Test: bajar a un nivel con menos topes de los que ya se usan → `409 tier_below_usage` diciendo cuántos sobran, **sin archivar nada** _Requisitos: 1.6_
+- [X] T093 [P] [US4] Test unitario en `apps/api/tests/unit/test_pool_top_up.py` (V39): con 100 000 gastados de 500 000, subir a 1 000 000 deja **900 000** disponibles. Ni 1 000 000 (regalaría lo consumido) ni 400 000 (cobraría el nivel nuevo sin darlo). Aritmética exacta _Requisitos: 6.2_
+- [X] T094 [P] [US4] Test unitario (V42): cambio de nivel **en el mismo instante** que la reposición del ciclo — el pool no queda ni duplicado ni a cero _Requisitos: 6.5_
+- [X] T095 [P] [US4] Test de integración en `apps/api/tests/integration/test_plan_change.py` (V38): subir es **inmediato** y el pool nuevo está disponible en el mismo turno _Requisitos: 6.1_
+- [X] T096 [P] [US4] Test (V40): bajar se aplica **a fin de período** y el pool del ciclo en curso **no se reclama** _Requisitos: 6.3_
+- [X] T097 [P] [US4] Test (V41): **ninguna** de las cuatro transiciones altera `purchased_remaining` _Requisitos: 6.4_
+- [X] T098 [P] [US4] Test: bajar a un nivel con menos topes de los que ya se usan → `409 tier_below_usage` diciendo cuántos sobran, **sin archivar nada** _Requisitos: 1.6_
 
 ### Implementación de la Historia 4
 
-- [ ] T099 [US4] `top_up_included_to(partner_id, new_pool_size)` en `apps/api/src/nexus_api/metering/wallet.py`: **suma la diferencia de tamaño**, no reinicia (hace verde T093, T094) _Requisitos: 6.2, 6.5_
-- [ ] T100 [US4] Subida inmediata en `apps/api/src/nexus_api/billing/checkout.py`: modificar la suscripción con prorrateo y llamar a T099. **No abre página nueva** _Requisitos: 6.1, 6.2_
-- [ ] T101 [US4] Bajada programada con *Subscription Schedule* y `proration_behavior='none'`, reflejada en `pending_tier_code` _Requisitos: 6.3_
-- [ ] T102 [US4] `409 tier_below_usage` en `POST /console/billing/checkout`, con cuántos teammates o personas sobran _Requisitos: 1.6_
-- [ ] T103 [US4] Pantalla de cambio de plan en `apps/console/src/app/(console)/billing/`, mostrando `pending_tier` cuando lo hay — si no se ve, el partner lo vuelve a pedir _Requisitos: 6.1, 6.3_
+- [X] T099 [US4] `top_up_included_to(partner_id, new_pool_size)` en `apps/api/src/nexus_api/metering/wallet.py`: **suma la diferencia de tamaño**, no reinicia (hace verde T093, T094) _Requisitos: 6.2, 6.5_
+- [X] T100 [US4] Subida inmediata en `apps/api/src/nexus_api/billing/checkout.py`: modificar la suscripción con prorrateo y llamar a T099. **No abre página nueva** _Requisitos: 6.1, 6.2_
+- [X] T101 [US4] Bajada programada con *Subscription Schedule* y `proration_behavior='none'`, reflejada en `pending_tier_code` _Requisitos: 6.3_
+- [X] T102 [US4] `409 tier_below_usage` en `POST /console/billing/checkout`, con cuántos teammates o personas sobran _Requisitos: 1.6_
+- [X] T103 [US4] Pantalla de cambio de plan en `apps/console/src/app/(console)/billing/`, mostrando `pending_tier` cuando lo hay — si no se ve, el partner lo vuelve a pedir _Requisitos: 6.1, 6.3_
 
 **Checkpoint**: se sube y se baja sin perder pool ni crédito.
 
@@ -265,17 +265,17 @@ cobro y que el desglose sigue estando.
 
 ### Tests de la Historia 5 ⚠️
 
-- [ ] T104 [P] [US5] Test en `apps/api/tests/integration/test_partner_receipt_v2.py` (V48): el recibo lleva línea de **membresía** y línea de **consumo** _Requisitos: 8.1_
-- [ ] T105 [P] [US5] Test (V49): **no** dice «total a pagar» ni lleva vencimiento, y `PAYMENT_DUE_DAY` ya no interviene en el recibo _Requisitos: 8.2_
-- [ ] T106 [P] [US5] Test (V50): conserva el desglose por cliente y el detalle de conversión de las comisiones en CLP con su tipo de cambio _Requisitos: 8.3_
-- [ ] T107 [P] [US5] Test (V52): recibo y factura del proveedor **no se contradicen** en el importe del período _Requisitos: 8.5_
-- [ ] T108 [P] [US5] Test de consola (V51): se llega a las facturas del proveedor desde la consola _Requisitos: 8.4_
+- [X] T104 [P] [US5] Test en `apps/api/tests/integration/test_partner_receipt_v2.py` (V48): el recibo lleva línea de **membresía** y línea de **consumo** _Requisitos: 8.1_
+- [X] T105 [P] [US5] Test (V49): **no** dice «total a pagar» ni lleva vencimiento, y `PAYMENT_DUE_DAY` ya no interviene en el recibo _Requisitos: 8.2_
+- [X] T106 [P] [US5] Test (V50): conserva el desglose por cliente y el detalle de conversión de las comisiones en CLP con su tipo de cambio _Requisitos: 8.3_
+- [X] T107 [P] [US5] Test (V52): recibo y factura del proveedor **no se contradicen** en el importe del período _Requisitos: 8.5_
+- [X] T108 [P] [US5] Test de consola (V51): se llega a las facturas del proveedor desde la consola _Requisitos: 8.4_
 
 ### Implementación de la Historia 5
 
-- [ ] T109 [US5] Línea de membresía y línea de consumo en `apps/api/src/nexus_api/services/partner_receipt.py` _Requisitos: 8.1_
-- [ ] T110 [US5] Quitar «total a pagar» y el vencimiento del recibo; `PAYMENT_DUE_DAY` deja de aplicarse ahí _Requisitos: 8.2_
-- [ ] T111 [US5] Enlace a las facturas del proveedor desde la consola, apoyado en `GET /console/billing/portal` (T054) _Requisitos: 8.4_
+- [X] T109 [US5] Línea de membresía y línea de consumo en `apps/api/src/nexus_api/services/partner_receipt.py` _Requisitos: 8.1_
+- [X] T110 [US5] Quitar «total a pagar» y el vencimiento del recibo; `PAYMENT_DUE_DAY` deja de aplicarse ahí _Requisitos: 8.2_
+- [X] T111 [US5] Enlace a las facturas del proveedor desde la consola, apoyado en `GET /console/billing/portal` (T054) _Requisitos: 8.4_
 
 **Checkpoint**: los dos documentos existen, cada uno con su papel.
 
@@ -283,10 +283,10 @@ cobro y que el desglose sigue estando.
 
 ## Phase 8: Cierre
 
-- [ ] T112 [P] `docs/billing.md` nuevo: cómo se cobra, la escalera, **la configuración de la cuenta del proveedor** —`unpaid` tras los reintentos, Smart Retries, días de aviso de renovación, endpoint en Workbench— y **el enlace al runbook de migración**. Sin esa configuración la escalera de D6 no existe, y es lo primero que se pierde al cambiar de cuenta _Requisitos: —_
-- [ ] T113 [P] Actualizar `[[nexus/decisions/ADR-037-membresias-y-consumo-de-la-app]]` §«Estado de implementación» con lo que esta spec cerró y las decisiones que aparecieron al codificar (§IX) _Requisitos: —_
-- [ ] T114 Recorrido de humo de `quickstart.md` con relojes de prueba, los diez pasos. **Si el paso 7 pierde una confirmación pendiente, la feature no está terminada por mucho que las suites estén verdes** _Requisitos: todos_
-- [ ] T115 Ejecutar las tres suites de `apps/api` y la de consola, y **reportar las cifras reales** _Requisitos: todos_
+- [X] T112 [P] `docs/billing.md` nuevo: cómo se cobra, la escalera, **la configuración de la cuenta del proveedor** —`unpaid` tras los reintentos, Smart Retries, días de aviso de renovación, endpoint en Workbench— y **el enlace al runbook de migración**. Sin esa configuración la escalera de D6 no existe, y es lo primero que se pierde al cambiar de cuenta _Requisitos: —_
+- [X] T113 [P] Actualizar `[[nexus/decisions/ADR-037-membresias-y-consumo-de-la-app]]` §«Estado de implementación» con lo que esta spec cerró y las decisiones que aparecieron al codificar (§IX) _Requisitos: —_
+- [X] T114 Recorrido de humo de `quickstart.md` con relojes de prueba, los diez pasos. **Si el paso 7 pierde una confirmación pendiente, la feature no está terminada por mucho que las suites estén verdes** _Requisitos: todos_
+- [X] T115 Ejecutar las tres suites de `apps/api` y la de consola, y **reportar las cifras reales** _Requisitos: todos_
 
 ---
 

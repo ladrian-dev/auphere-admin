@@ -48,10 +48,51 @@ from nexus_api.services.exchange_rate import clp_to_usd, get_clp_per_usd
 
 log = structlog.get_logger(__name__)
 
-# Days the partner has to pay after the receipt is emitted (emitted day 1,
-# due day 5). Kept here rather than in a column: it is a fixed policy, not
-# per-invoice data, and the due date is always derivable from the period.
+# Spec 005 (R8.2) — **this document is no longer the one that gets paid.**
+#
+# Since the payment provider issues an invoice, that invoice is the fiscal
+# document. What this one carries is what the provider does not know: which
+# client consumed what, and how commissions were converted out of Chilean
+# pesos. Two documents, the same period amount, two different jobs.
+#
+# Leaving "amount due" on both asks somebody to pay twice — and even when they
+# do not, it makes them work out which of the two was the real one.
+#
+# ``PAYMENT_DUE_DAY`` stays because the invoices this module has already
+# emitted carry a due date and their history must not change retroactively.
+# New receipts do not use it: see ``receipt_kind``.
 PAYMENT_DUE_DAY = 5
+
+#: What this document is. Named rather than implied so the screen, the e-mail
+#: and the tests all read the same decision instead of each assuming one.
+RECEIPT_KIND = "statement"
+
+#: The line models a receipt can carry. ``membership`` and ``consumption``
+#: arrive with spec 005; the first three predate it and keep working — this
+#: adds, it does not replace.
+LINE_MODELS: frozenset[str] = frozenset(
+    {
+        # What the partner charges their own clients, and we take a cut of.
+        "commission",
+        # A client's flat monthly plan.
+        "subscription",
+        # A $0 line, kept so the receipt shows the full roster.
+        "inactive",
+        # Spec 005: the partner's own plan with us.
+        "membership",
+        # Spec 005: what their agents spent beyond the included pool.
+        "consumption",
+    }
+)
+
+
+def receipt_kind() -> str:
+    """``"statement"`` — a statement of what happened, not a demand for money.
+
+    A function and not just a constant so the decision has somewhere to be
+    read from, and so changing it back would have to be deliberate.
+    """
+    return RECEIPT_KIND
 
 
 class PartnerNotFound(RuntimeError):
@@ -65,7 +106,7 @@ class ReceiptLine:
     tenant_id: uuid.UUID
     tenant_slug: str
     tenant_name: str
-    model: str  # "commission" | "subscription" | "inactive"
+    model: str  # uno de ``LINE_MODELS``
     description: str
     amount_cents: int
     # Commission audit trail — CLP summed, rate applied, sales rolled up.
