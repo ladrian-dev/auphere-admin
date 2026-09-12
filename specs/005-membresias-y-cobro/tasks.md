@@ -164,21 +164,21 @@ acredita nada.
 
 ### Tests de la Historia 2 ⚠️
 
-- [ ] T059 [P] [US2] Test en `apps/api/tests/integration/test_buy_credit.py` (V14): compra completa → `purchased_remaining` sube por la cantidad comprada _Requisitos: 3.1_
-- [ ] T060 [P] [US2] Test: una **sesión abierta y no pagada** no acredita nada (V15) _Requisitos: 3.2_
-- [ ] T061 [P] [US2] Test: `checkout.session.completed` y `async_payment_succeeded` de **la misma sesión** acreditan **una vez** — son eventos distintos, así que el UNIQUE por `provider_event_id` no basta: la segunda ancla es `checkout_session_id` (V17) _Requisitos: 3.3_
-- [ ] T062 [P] [US2] Test: `payment_status == 'unpaid'` **no acredita** _Requisitos: 3.1, 3.2_
-- [ ] T063 [P] [US2] Test exhaustivo en `apps/api/tests/integration/test_no_external_debit.py` (V18): se recorren **todos** los tipos de evento manejados con el saldo en 50 000 y **nunca baja**. La avería que previene no es un caso, es una clase _Requisitos: 3.4_
-- [ ] T064 [P] [US2] Test: `POST /console/wallet/purchased` responde `404` **y la ruta no está en el código** (V19) _Requisitos: 3.5_
-- [ ] T065 [P] [US2] Test de consola (V20): el saldo comprado se ve **en unidades**, porque es dinero que el partner pagó _Requisitos: 3.6_
+- [X] T059 [P] [US2] Test en `apps/api/tests/integration/test_buy_credit.py` (V14): compra completa → `purchased_remaining` sube por la cantidad comprada _Requisitos: 3.1_
+- [X] T060 [P] [US2] Test: una **sesión abierta y no pagada** no acredita nada (V15) _Requisitos: 3.2_
+- [X] T061 [P] [US2] Test: `checkout.session.completed` y `async_payment_succeeded` de **la misma sesión** acreditan **una vez** — son eventos distintos, así que el UNIQUE por `provider_event_id` no basta: la segunda ancla es `checkout_session_id` (V17) _Requisitos: 3.3_
+- [X] T062 [P] [US2] Test: `payment_status == 'unpaid'` **no acredita** _Requisitos: 3.1, 3.2_
+- [X] T063 [P] [US2] Test exhaustivo en `apps/api/tests/integration/test_no_external_debit.py` (V18): se recorren **todos** los tipos de evento manejados con el saldo en 50 000 y **nunca baja**. La avería que previene no es un caso, es una clase _Requisitos: 3.4_
+- [X] T064 [P] [US2] Test: `POST /console/wallet/purchased` responde `404` **y la ruta no está en el código** (V19) _Requisitos: 3.5_
+- [X] T065 [P] [US2] Test de consola (V20): el saldo comprado se ve **en unidades**, porque es dinero que el partner pagó _Requisitos: 3.6_
 
 ### Implementación de la Historia 2
 
-- [ ] T066 [US2] Sesión de crédito en `apps/api/src/nexus_api/billing/checkout.py`, con mínimo y máximo por compra validados en la API — un máximo protege de un cero de más tecleado _Requisitos: 3.1_
-- [ ] T067 [US2] Manejadores de `checkout.session.completed` y `checkout.session.async_payment_succeeded`: comprobar `payment_status != 'unpaid'`, anclar en `checkout_session_id`, y llamar a **`add_purchased`**, que ya existe, es idempotente por fila y está probado _Requisitos: 3.1, 3.3_
-- [ ] T068 [US2] `POST /console/billing/credit` en `apps/api/src/nexus_api/api/console/billing.py` y la vista de Consumo mostrando el saldo comprado **en unidades** — **ésta es la puerta del medidor** _Requisitos: 3.1, 3.6_
-- [ ] T069 [US2] **Borrar** `POST /console/wallet/purchased` de `apps/api/src/nexus_api/api/console/wallet.py:194` y su esquema. Se borra el endpoint, **no** el modelo ni `add_purchased`. Una puerta que añade saldo sin pago no debe existir ni apagada _Requisitos: 3.5_
-- [ ] T070 [US2] Pantalla de compra de crédito en `apps/console/src/app/(console)/billing/`, con los cinco estados _Requisitos: 3.1, 3.6_
+- [X] T066 [US2] Sesión de crédito en `apps/api/src/nexus_api/billing/checkout.py`, con mínimo y máximo por compra validados en la API — un máximo protege de un cero de más tecleado _Requisitos: 3.1_
+- [X] T067 [US2] Manejadores de `checkout.session.completed` y `checkout.session.async_payment_succeeded`: comprobar `payment_status != 'unpaid'`, anclar en `checkout_session_id`, y llamar a **`add_purchased`**, que ya existe, es idempotente por fila y está probado _Requisitos: 3.1, 3.3_
+- [X] T068 [US2] `POST /console/billing/credit` en `apps/api/src/nexus_api/api/console/billing.py` y la vista de Consumo mostrando el saldo comprado **en unidades** — **ésta es la puerta del medidor** _Requisitos: 3.1, 3.6_
+- [X] T069 [US2] **Borrar** `POST /console/wallet/purchased` de `apps/api/src/nexus_api/api/console/wallet.py:194` y su esquema. Se borra el endpoint, **no** el modelo ni `add_purchased`. Una puerta que añade saldo sin pago no debe existir ni apagada _Requisitos: 3.5_
+- [X] T070 [US2] Pantalla de compra de crédito en `apps/console/src/app/(console)/billing/`, con los cinco estados _Requisitos: 3.1, 3.6_
 
 **Checkpoint**: el partner puede recargar. US1 + US2 son el negocio completo.
 

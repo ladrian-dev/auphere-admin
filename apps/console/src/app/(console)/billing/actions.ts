@@ -27,6 +27,19 @@ export async function startCheckoutAction(raw: unknown): Promise<ActionResult<Ch
   return res;
 }
 
+export async function buyCreditAction(raw: unknown): Promise<ActionResult<CheckoutOut>> {
+  // Los mismos límites que la API. Duplicarlos aquí no es redundancia: el
+  // formulario ya los aplica para no rebotar contra un 422, y esta capa los
+  // vuelve a aplicar porque una server action es una entrada, no una pantalla.
+  const { amount_cents } = z
+    .object({ amount_cents: z.number().int().min(500).max(500_000) })
+    .parse(raw);
+  const principal = await requirePrincipal();
+  const res = await run(() => backendFor(principal).buyCredit(amount_cents));
+  if (res.ok) revalidatePath("/usage");
+  return res;
+}
+
 export async function openPortalAction(): Promise<ActionResult<{ url: string }>> {
   const principal = await requirePrincipal();
   return run(() => backendFor(principal).billingPortal());

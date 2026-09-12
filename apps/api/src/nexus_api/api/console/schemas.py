@@ -487,6 +487,23 @@ class CheckoutOut(BaseModel):
     effective_at: datetime | None = None
 
 
+class CreditIn(BaseModel):
+    """Cuánto crédito se compra, en centavos de dólar.
+
+    Los dos límites son deliberados. El **máximo** protege de un cero de más
+    tecleado convirtiéndose en un cargo real —el error más caro que puede
+    cometer alguien en esta pantalla— y el **mínimo** evita compras cuya
+    comisión del proveedor se come el importe.
+
+    Sólo USD en esta versión: la moneda de un cliente es irreversible en el
+    proveedor, así que abrir otras sin decidirlo sería difícil de deshacer.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount_cents: int = Field(ge=500, le=500_000)
+
+
 class PortalOut(BaseModel):
     url: str
 

@@ -35,9 +35,7 @@ class AllocationIn(BaseModel):
     cap: int = Field(ge=0)
 
 
-class PurchasedIn(BaseModel):
-    """Recarga del cubo purchased. El partner sale del principal."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    qty: int = Field(gt=0)
+# ``PurchasedIn`` se borró con la spec 005, junto a la ruta que lo usaba. Era
+# el cuerpo de una llamada con la que un partner se acreditaba saldo sin pagar;
+# ahora el crédito entra por el aviso del pago confirmado. Dejar el esquema sin
+# su ruta invitaría a volver a colgarle una.

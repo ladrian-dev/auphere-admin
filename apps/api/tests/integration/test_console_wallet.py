@@ -342,88 +342,6 @@ async def test_put_allocation_rejects_partner_id_in_body(client, console_world) 
     assert resp.status_code == 422, resp.text
 
 
-async def test_recharge_purchased_adds_tokens_for_the_caller(client, console_world) -> None:
-    a = console_world["a"]
-    before = await client.get("/console/wallet", headers=a["headers"]())
-    assert before.status_code == 200, before.text
-    purchased = before.json()["purchased_remaining"]
-    resp = await client.post(
-        "/console/wallet/purchased",
-        headers=a["headers"](),
-        json={"qty": 250},
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["purchased_remaining"] == purchased + 250
-    assert "partner_id" not in body
-    again = await client.get("/console/wallet", headers=a["headers"]())
-    assert again.json()["purchased_remaining"] == purchased + 250
-
-
-async def test_recharge_rejects_bad_qty_and_partner_id_in_body(client, console_world) -> None:
-    a = console_world["a"]
-    zero = await client.post("/console/wallet/purchased", headers=a["headers"](), json={"qty": 0})
-    extra = await client.post(
-        "/console/wallet/purchased",
-        headers=a["headers"](),
-        json={"qty": 1, "partner_id": str(a["partner_id"])},
-    )
-    assert zero.status_code == 422, zero.text
-    assert extra.status_code == 422, extra.text
-
-
-async def test_recharge_of_a_never_credits_b(client, console_world) -> None:
-    a, b = console_world["a"], console_world["b"]
-    before_b = await client.get("/console/wallet", headers=b["headers"]())
-    assert before_b.status_code == 200, before_b.text
-    resp = await client.post(
-        "/console/wallet/purchased",
-        headers=a["headers"](),
-        json={"qty": 77},
-    )
-    assert resp.status_code == 200, resp.text
-    after_b = await client.get("/console/wallet", headers=b["headers"]())
-    assert after_b.status_code == 200, after_b.text
-    assert after_b.json()["purchased_remaining"] == before_b.json()["purchased_remaining"]
-    assert after_b.json()["available"] == before_b.json()["available"]
-
-
-async def test_recharge_in_prod_is_opaque_404_and_does_not_credit(
-    client, console_world, monkeypatch
-) -> None:
-    from nexus_api.config import Settings
-
-    monkeypatch.setattr(Settings, "is_prod", property(lambda self: True))
-    a = console_world["a"]
-    before = await client.get("/console/wallet", headers=a["headers"]())
-    assert before.status_code == 200, before.text
-    purchased = before.json()["purchased_remaining"]
-    missing = await client.get("/console/clients/no-such-client/allocation", headers=a["headers"]())
-    resp = await client.post(
-        "/console/wallet/purchased",
-        headers=a["headers"](),
-        json={"qty": 1},
-    )
-    assert resp.status_code == 404, resp.text
-    assert resp.json() == missing.json()
-    after = await client.get("/console/wallet", headers=a["headers"]())
-    assert after.status_code == 200, after.text
-    assert after.json()["purchased_remaining"] == purchased
-
-
-async def test_recharge_forbidden_without_usage_write(client, console_world, db_session) -> None:
-    from tests.conftest import add_console_member
-
-    a = console_world["a"]
-    analyst = await add_console_member(db_session, partner_id=a["partner_id"], role="analyst")
-    resp = await client.post(
-        "/console/wallet/purchased",
-        headers=analyst["headers"](),
-        json={"qty": 1},
-    )
-    assert resp.status_code == 403, resp.text
-
-
 async def _add_unallocated_client(db_session, *, partner_id, ref: str):
     import uuid
 
@@ -450,7 +368,19 @@ async def _add_unallocated_client(db_session, *, partner_id, ref: str):
         )
     )
     await db_session.commit()
-    return tenant_id
+
+
+# Los cinco tests de la recarga del partner vivían aquí y **se borraron con
+# la spec 005**, junto a la ruta que probaban.
+#
+# ``POST /console/wallet/purchased`` era un juguete de desarrollo apagado por
+# entorno: un partner acreditándose saldo sin pagar. Ahora la compra es real
+# y el crédito entra por el aviso del pago confirmado.
+#
+# Lo que sustituye a estos tests es
+# ``tests/integration/test_wallet_purchased_is_gone.py``, que comprueba que la
+# puerta no está —ni registrada, ni declarada, ni apagada por entorno— y que
+# la recarga de OPERADOR, que sí deja auditoría, sigue viva.
 
 
 async def test_put_creates_allocation_for_client_without_row(
@@ -660,25 +590,7 @@ async def test_admin_recharge_works_in_prod_and_leaves_an_audit_row(
     assert after.json()["purchased_remaining"] == purchased + 1_000
 
 
-async def test_partner_self_recharge_stays_closed_in_prod(
-    client, console_world, monkeypatch
-) -> None:
-    """La otra mitad de D4: el partner NO se acredita saldo a sí mismo.
-
-    Sin cobro de por medio eso es regalar producto. Esta puerta la abre K2
-    (Stripe), y entonces el crédito entrará por el webhook del pago
-    confirmado, no por esta llamada.
-    """
-    from nexus_api.config import Settings
-
-    monkeypatch.setattr(Settings, "is_prod", property(lambda self: True))
-    a = console_world["a"]
-    before = await client.get("/console/wallet", headers=a["headers"]())
-    assert before.status_code == 200, before.text
-    purchased = before.json()["purchased_remaining"]
-
-    resp = await client.post("/console/wallet/purchased", headers=a["headers"](), json={"qty": 1})
-    assert resp.status_code == 404, resp.text
-
-    after = await client.get("/console/wallet", headers=a["headers"]())
-    assert after.json()["purchased_remaining"] == purchased
+# ``test_partner_self_recharge_stays_closed_in_prod`` también se fue: decía que
+# la puerta seguía cerrada en producción, y la puerta ya no existe en ningún
+# entorno. Comprobar que un 404 sigue siendo 404 cuando la ruta se borró es un
+# test que pasa por la razón equivocada.

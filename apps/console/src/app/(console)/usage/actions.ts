@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
-import type { Allocation, Wallet } from "@/lib/backend/home-usage";
+import type { Allocation } from "@/lib/backend/home-usage";
 import { can, requirePrincipal } from "@/lib/principal";
 
 const schema = z.object({
@@ -22,18 +22,9 @@ export async function saveAllocationAction(raw: unknown): Promise<ActionResult<A
   return res;
 }
 
-const purchasedSchema = z.object({
-  qty: z.number().int().positive(),
-});
-
-export async function addPurchasedAction(raw: unknown): Promise<ActionResult<Wallet>> {
-  const body = purchasedSchema.parse(raw);
-  const principal = await requirePrincipal();
-  if (!can(principal.role, "usage:write")) return { ok: false, status: 403, message: "forbidden" };
-  const res = await run(() => backendFor(principal).addPurchased(body.qty));
-  if (res.ok) revalidatePath("/usage");
-  return res;
-}
+// ``addPurchasedAction`` se borró con la spec 005, con la ruta que llamaba.
+// Acreditarse saldo sin pagar era un juguete de desarrollo apagado por
+// entorno; ahora la compra es real y vive en ``billing/actions.ts``.
 
 const moveSchema = z.object({
   from_ref: z.string().min(1).max(255),

@@ -124,8 +124,9 @@ export function homeUsageApi(call: Call) {
     usageV2: (p: UsageQuery = {}) => call<UsageReportV2>(`/console/usage${q(p)}`),
     getWallet: () => call<Wallet>("/console/wallet"),
     listAllocations: () => call<Allocation[]>("/console/wallet/allocations"),
-    addPurchased: (qty: number) =>
-      call<Wallet>("/console/wallet/purchased", { method: "POST", body: { qty } }),
+    // ``addPurchased`` se borró con la spec 005: su ruta ya no existe. El
+    // crédito entra por el aviso del pago confirmado, y la compra se abre
+    // desde ``billing``.
     setAllocation: (ref: string, cap: number) =>
       call<Allocation>(`/console/clients/${encodeURIComponent(ref)}/allocation`, {
         method: "PUT",

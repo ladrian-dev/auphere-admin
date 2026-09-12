@@ -27,6 +27,7 @@ from nexus_api.api.deps import get_db_session
 from nexus_api.billing.catalog import base_paid_pool, consumption_multiple, load_public_tiers
 from nexus_api.billing.checkout import (
     BillingUnavailable,
+    open_credit_session,
     open_portal,
     open_subscription_session,
 )
@@ -53,6 +54,7 @@ from .schemas import (
     BillingOut,
     CheckoutIn,
     CheckoutOut,
+    CreditIn,
     MembershipOut,
     MembershipUsageOut,
     PortalOut,
@@ -371,3 +373,52 @@ async def open_billing_portal(
     except BillingUnavailable as exc:
         raise _unavailable() from exc
     return PortalOut(url=url)
+
+
+@router.post("/credit", response_model=CheckoutOut)
+async def buy_credit(
+    body: CreditIn,
+    principal: ConsolePrincipal = Depends(require_console_principal("billing:manage")),
+    session: AsyncSession = Depends(get_db_session),
+) -> CheckoutOut:
+    """Open the page to buy consumption credit.
+
+    **This credits nothing.** It opens the provider's page; the balance goes
+    up when the payment is confirmed and the notice arrives. That separation
+    is the whole point of removing ``POST /console/wallet/purchased``: there
+    is no longer any way for a partner to add balance without paying.
+    """
+    partner_id = principal.partner.id
+    subscription = (
+        await session.execute(
+            sa.select(PartnerSubscription).where(PartnerSubscription.partner_id == partner_id)
+        )
+    ).scalar_one_or_none()
+
+    try:
+        url = open_credit_session(
+            partner_id=partner_id,
+            amount_cents=body.amount_cents,
+            console_base_url=get_settings().console_base_url,
+            customer_id=subscription.stripe_customer_id if subscription else None,
+            # The stamp is what makes a second purchase of the same amount a
+            # second purchase. Without it the idempotency key repeats and the
+            # provider replays the first response: a purchase the partner asked
+            # for, paid attention to, and that silently does not happen.
+            stamp=datetime.now(UTC).isoformat(timespec="seconds"),
+        )
+    except BillingUnavailable as exc:
+        raise _unavailable() from exc
+
+    session.add(
+        AuditLog(
+            tenant_id=None,
+            actor=principal.actor,
+            action="console.billing.credit_opened",
+            target=f"partner:{partner_id}",
+            before_json=None,
+            after_json={"amount_cents": body.amount_cents},
+        )
+    )
+    await session.commit()
+    return CheckoutOut(url=url)

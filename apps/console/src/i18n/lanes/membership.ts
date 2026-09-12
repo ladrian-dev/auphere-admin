@@ -66,6 +66,21 @@ export const membershipMessages = {
     en: "You keep your purchased credit until {date}.",
   },
 
+  // ── compra de crédito ──────────────────────────────────────────────
+  "membership.credit.title": { es: "Comprar crédito", en: "Buy credit" },
+  "membership.credit.amount": { es: "Importe en dólares", en: "Amount in dollars" },
+  "membership.credit.buy": { es: "Comprar", en: "Buy" },
+  // Se dice qué compra ese dinero ANTES de pagarlo: «50 $» no significa nada
+  // por sí solo, y la relación con lo que consume un turno es justo lo que el
+  // partner no tiene por qué saber de memoria.
+  "membership.credit.buys": { es: "Compra {units} unidades de consumo.", en: "Buys {units} consumption units." },
+  "membership.credit.range": { es: "Entre {min} y {max} dólares, en números enteros.", en: "Between {min} and {max} dollars, whole numbers." },
+  "membership.credit.invalid": { es: "El importe tiene que estar entre {min} y {max} dólares.", en: "The amount must be between {min} and {max} dollars." },
+  "membership.credit.help": {
+    es: "El crédito no caduca mientras tu cuenta siga viva, y es lo que gastan los agentes de tus clientes.",
+    en: "Credit does not expire while your account is alive, and it is what your clients' agents spend.",
+  },
+
   // ── errores ────────────────────────────────────────────────────────
   // Ninguno enseña el mensaje crudo del proveedor: lo que llega de una API
   // externa es contenido externo y no se pone delante de una persona (§III).

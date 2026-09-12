@@ -60,7 +60,8 @@ export class BackendError extends Error {
     const b = this.body as { detail?: unknown } | null;
     const detail = b && typeof b === "object" ? b.detail : null;
     if (detail && typeof detail === "object") {
-      const { code: _code, ...rest } = detail as Record<string, unknown>;
+      const rest = { ...(detail as Record<string, unknown>) };
+      delete rest.code;
       return rest;
     }
     return {};
@@ -410,6 +411,8 @@ export function backendFor(principal: Principal) {
     membership: () => call<MembershipOut>("/console/billing/membership"),
     startCheckout: (tier_code: string) =>
       call<CheckoutOut>("/console/billing/checkout", { method: "POST", body: { tier_code } }),
+    buyCredit: (amount_cents: number) =>
+      call<CheckoutOut>("/console/billing/credit", { method: "POST", body: { amount_cents } }),
     billingPortal: () => call<{ url: string }>("/console/billing/portal"),
   };
 }

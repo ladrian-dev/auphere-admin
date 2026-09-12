@@ -52,6 +52,13 @@ AUDIT_VOCABULARY: tuple[tuple[str, str, str, str, str], ...] = (
         "{actor} inició la contratación del plan {tier}.",
         "{actor} started contracting the {tier} plan.",
     ),
+    (
+        "console.billing.credit_opened",
+        "billing",
+        "info",
+        "{actor} inició una compra de crédito.",
+        "{actor} started a credit purchase.",
+    ),
 )
 
 revision: str = "0117_billing_events"

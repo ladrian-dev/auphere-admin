@@ -6,14 +6,13 @@ import { Alert, AlertDescription, Button, EmptyState, Metric, PageHeader, format
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import type { Allocation, Wallet } from "@/lib/backend/home-usage";
-import { env } from "@/lib/env";
 import { can, requirePrincipal } from "@/lib/principal";
 import { barsFromSeries, cumulativeWithProjection, topMeters } from "@/lib/usage-projection";
 
 import { AllocationCapForm } from "./allocation-cap";
 import { AssignAllocationForm } from "./assign-allocation";
 import { MoveAllocationForm } from "./move-allocation";
-import { RechargePurchasedForm } from "./recharge-purchased";
+import { BuyCreditForm } from "@/components/billing/buy-credit-form";
 import { UsageCharts } from "./charts";
 import { UsageControls } from "./controls";
 
@@ -36,7 +35,12 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
   const principal = await requirePrincipal("/usage");
   if (!can(principal.role, "usage:read")) redirect("/");
   const canWrite = can(principal.role, "usage:write");
-  const canRecharge = canWrite && env().NODE_ENV !== "production";
+  // Spec 005: la compra de crédito **sí** existe en producción — es un pago
+  // real. La condición vieja la escondía allí porque el endpoint que había
+  // detrás respondía 404 en prod: acreditarse saldo sin pagar era un juguete
+  // de desarrollo. Y el permiso es el de facturación, no el de escribir
+  // consumo: quien compra es quien paga.
+  const canBuyCredit = can(principal.role, "billing:manage");
   const { t, locale } = await getT(principal.locale);
   const sp = await searchParams;
   const days = [7, 30, 90].includes(Number(sp.days)) ? Number(sp.days) : 30;
@@ -121,10 +125,17 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
         <Metric label={t("hu.usage.wallet.purchased")} value={n(wallet.purchased_remaining)} hint={t("hu.usage.wallet.tokens")} />
         <Metric label={t("hu.usage.wallet.reserve")} value={n(wallet.reserve)} hint={t("hu.usage.wallet.reserve.hint")} />
       </section>
-      {canRecharge ? (
-        <section className="space-y-2" aria-label={t("hu.usage.wallet.recharge")}>
-          <p className="text-sm font-medium">{t("hu.usage.wallet.recharge")}</p>
-          <RechargePurchasedForm />
+      {/* Spec 005: la recarga sin cobro desapareció. Lo que hay ahora es una
+          compra de verdad — el saldo sube cuando el pago se confirma, nunca
+          antes. El permiso pasa a ser el de facturación, no el de escribir
+          consumo: quien compra es quien paga. */}
+      {canBuyCredit ? (
+        <section className="space-y-2" aria-label={t("membership.credit.title")}>
+          <p className="text-sm font-medium">{t("membership.credit.title")}</p>
+          <BuyCreditForm />
+          <p className="text-muted-foreground max-w-prose text-sm text-pretty">
+            {t("membership.credit.help")}
+          </p>
         </section>
       ) : null}
       <div className="min-w-0 overflow-x-auto rounded-md ring-1 ring-foreground/10">
