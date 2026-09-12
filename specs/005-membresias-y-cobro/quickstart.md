@@ -45,7 +45,7 @@ escalera de impago solo se puede recorrer esperando un mes.
 | **V58** | **La cifra absoluta del pool no sale por `/console/billing/membership`**, ni en `tier` ni en `catalog`; salen los topes y un `consumption_multiple` calculado. El panel de operador **sí** ve la cifra | integración |
 | **V59** | **`invoice.finalization_failed` está manejado**: alerta al operador con `last_finalization_error` y **no** degrada al partner. La suscripción sigue `active` y el estado nuestro no se mueve | integración |
 | **V60** | Toda sesión de Checkout se abre con `client_reference_id = partner_id`, y el manejador **resuelve el partner desde el aviso**, no buscando por `stripe_customer_id` | integración |
-| **V61** | El arranque comprueba la configuración de la cuenta: **tras agotar reintentos la suscripción va a `unpaid`**, no a `canceled`. Sin eso el escalón intermedio de D6 no existe | integración |
+| **V61** | El arranque **avisa** de que hay que comprobar a mano que la cuenta manda las suscripciones a `unpaid` tras agotar reintentos. Stripe **no expone ese ajuste por API** (comprobado 2026-09-12), así que no se puede verificar: lo que se comprueba es que el aviso existe y que el runbook lo cubre. Sin ese ajuste el escalón intermedio de D6 no existe | unidad |
 
 V04 es el que más se falla: lo fácil es pintar el botón con `disabled`. La
 constitución (§V) pide que **la ausencia se diseñe**, no que se apague.

@@ -483,7 +483,10 @@ Eso convierte una decisión de producto en **una casilla de configuración**, y
 las casillas de configuración se pierden. Tres consecuencias:
 
 1. Se documenta en `docs/billing.md` como parte del arranque de la cuenta, junto
-   a Smart Retries.
+   a Smart Retries. **Y no se puede automatizar**: la API de Stripe no expone
+   ese ajuste (comprobado el 2026-09-12), así que lo único que el código puede
+   hacer es dejar un aviso al arrancar recordando que alguien tiene que
+   mirarlo. Un test que dijera verificarlo estaría mintiendo.
 2. Entra en el **runbook de migración**: la cuenta nueva empieza con los valores
    por defecto, así que hay que volver a ponerla.
 3. Y sobre todo: **el mapeo de D6 tiene que sobrevivir a que esté mal

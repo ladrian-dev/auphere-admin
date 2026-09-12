@@ -147,10 +147,64 @@ def upgrade() -> None:
     # desde la aplicación — quien lo cambia es una migración o un operador.
     op.execute("GRANT SELECT ON membership_tiers TO nexus_app")
 
-    # No se siembran filas de suscripción: un partner sin fila ES Free
-    # (data-model.md). La ausencia es un estado válido y se diseña (principio V);
-    # sembrar obligaría a mantener sincronizadas dos representaciones del mismo
-    # hecho.
+    # Un partner NUEVO sin fila es Free, y eso es correcto: la ausencia es un
+    # estado válido y se diseña (principio V).
+    #
+    # Los partners que YA EXISTEN son otra cosa. Sin esta siembra, el día del
+    # despliegue todos pasarían a Free —cero teammates— y dejarían de poder
+    # crear ninguno. Es exactamente el modo de fallo del 31 de agosto que la
+    # Spec A ya arregló una vez: clientes que nacen mudos porque una cuenta
+    # nueva empieza sin nada. Cobrar no puede quitarle a nadie lo que ya tenía.
+    #
+    # Se les siembra en el nivel de pago MÁS PEQUEÑO que cubre lo que ya usan,
+    # mirando teammates y personas. Un partner que hoy tiene 4 teammates entra
+    # en Team, no en Pro. Nadie se queda corto y nadie sube más de lo necesario.
+    op.execute(
+        """
+        INSERT INTO partner_subscriptions (partner_id, tier_code, state)
+        SELECT p.id,
+               (
+                 SELECT t.code
+                   FROM membership_tiers t
+                  WHERE t.max_teammates >= COALESCE(u.teammates, 0)
+                    AND t.max_members   >= GREATEST(COALESCE(u.members, 0), 1)
+                  ORDER BY t.sort_order
+                  LIMIT 1
+               ),
+               'current'
+          FROM partners p
+          LEFT JOIN (
+                SELECT partner_id,
+                       count(*) FILTER (WHERE src = 'tm') AS teammates,
+                       count(*) FILTER (WHERE src = 'pm') AS members
+                  FROM (
+                        SELECT partner_id, 'tm' AS src FROM teammates
+                         WHERE status <> 'archived'
+                        UNION ALL
+                        SELECT partner_id, 'pm' AS src FROM partner_memberships
+                         WHERE status = 'active'
+                  ) x
+                 GROUP BY partner_id
+          ) u ON u.partner_id = p.id
+        ON CONFLICT (partner_id) DO NOTHING
+        """
+    )
+    # Si algún partner usa MÁS de lo que admite el nivel más alto, la
+    # subconsulta devuelve NULL y la fila no entra — el partner se queda sin
+    # fila, es decir en Free, que es justo lo que no queremos. Se sube al nivel
+    # más alto y se deja constancia: por encima del tope pero sin perder nada,
+    # que es lo que R1.6 pide para cualquier partner que se pase.
+    op.execute(
+        """
+        INSERT INTO partner_subscriptions (partner_id, tier_code, state)
+        SELECT p.id, 'business', 'current'
+          FROM partners p
+         WHERE NOT EXISTS (
+               SELECT 1 FROM partner_subscriptions s WHERE s.partner_id = p.id
+         )
+        ON CONFLICT (partner_id) DO NOTHING
+        """
+    )
 
 
 def downgrade() -> None:

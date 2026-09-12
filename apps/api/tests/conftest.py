@@ -638,6 +638,7 @@ async def console_world(db_session: AsyncSession) -> dict[str, Any]:
         Partner,
         PartnerAllocation,
         PartnerMembership,
+        PartnerSubscription,
         PartnerTenant,
         Tenant,
         TenantPlan,
@@ -685,6 +686,18 @@ async def console_world(db_session: AsyncSession) -> dict[str, Any]:
             )
         )
         await db_session.flush()
+        # Spec 005 (R1): el partner de consola tiene una membresía de pago.
+        # Sin ella sería Free — cero teammates, cero ejecución en la máquina —
+        # y las suites que prueban esas cosas verían un tope donde quieren
+        # probar comportamiento. Un partner NUEVO de producción sí nace Free;
+        # éste representa uno que ya paga.
+        db_session.add(
+            PartnerSubscription(
+                partner_id=partner_id,
+                tier_code="business",
+                state="current",
+            )
+        )
         db_session.add(
             PartnerTenant(
                 partner_id=partner_id,

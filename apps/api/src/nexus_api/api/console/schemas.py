@@ -424,6 +424,73 @@ class ReceiptSummaryOut(BaseModel):
     due_date: date
 
 
+class TierOut(BaseModel):
+    """A tier as the partner sees it.
+
+    ``weekly_pool_tokens`` is deliberately absent. What describes a tier here
+    are its **hard caps** — numbers that do not move, because moving them
+    changes the product — and ``consumption_multiple``, computed server-side
+    from the pool size. The figure itself is provisional (ADR-037) and will be
+    adjusted; printing it turns every capacity change into a visible cut or
+    gift, which is what Spec A R7.3 forbids (research D9).
+    """
+
+    code: str
+    display_name: str
+    monthly_price_cents: int
+    max_teammates: int
+    max_members: int
+    #: ``None`` on the free tier and on any ratio that is not whole: saying
+    #: "4x" for something that is 3.7x is a false commercial promise.
+    consumption_multiple: int | None
+
+
+class MembershipUsageOut(BaseModel):
+    """What the partner is using right now.
+
+    Ships with the membership object rather than behind another call: without
+    it the screen would have to fetch the teammate list just to know whether
+    the create button is disabled, and there would be a moment where it shows
+    a button that is about to fail (principle V).
+    """
+
+    teammates: int
+    members: int
+
+
+class MembershipOut(BaseModel):
+    tier: TierOut
+    state: str
+    state_changed_at: datetime | None
+    current_period_end: datetime | None
+    pending_tier: str | None
+    usage: MembershipUsageOut
+    purchased_expires_at: datetime | None
+    catalog: list[TierOut]
+
+
+class CheckoutIn(BaseModel):
+    tier_code: str
+
+
+class CheckoutOut(BaseModel):
+    """``url`` is ``None`` when no payment page was needed.
+
+    An upgrade does not open one — the subscription is modified and the
+    difference prorated — and a downgrade does not either, because it is
+    scheduled. Returning ``applied`` separately keeps the console from having
+    to infer which of the three happened.
+    """
+
+    url: str | None = None
+    applied: bool = False
+    effective_at: datetime | None = None
+
+
+class PortalOut(BaseModel):
+    url: str
+
+
 class BillingOut(BaseModel):
     billing_email: str | None
     contact_email: str | None

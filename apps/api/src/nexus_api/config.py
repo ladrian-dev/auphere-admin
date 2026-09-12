@@ -227,6 +227,9 @@ class Settings(BaseSettings):
     # because the webhook would then accept anything signed by whoever reads
     # this repository. Missing keys close the billing package instead of
     # failing the boot — see ``billing_enabled``.
+    #: Where the provider sends the customer back after paying. Local dev
+    #: points at the console dev server; production at the real host.
+    console_base_url: str = "http://localhost:3000"
     billing_api_key: str = ""
     billing_public_key: str = ""
     billing_webhook_secret: str = ""

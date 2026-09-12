@@ -83,7 +83,10 @@ def verify_signature(*, payload: bytes, signature: str, secret: str) -> dict[str
     import stripe
 
     event = stripe.Webhook.construct_event(payload, signature, secret)
-    return dict(event)
+    # ``.to_dict()`` and not ``dict(event)``: the SDK's Event refuses the
+    # plain-mapping conversion, and the TypeError it raises would surface here
+    # as "invalid signature" — a verification bug that reads as an attack.
+    return event.to_dict()
 
 
 async def check_account_configuration(client: stripe.StripeClient) -> list[str]:

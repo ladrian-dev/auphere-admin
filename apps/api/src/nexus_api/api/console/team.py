@@ -40,6 +40,10 @@ from nexus_api.repositories.partner_membership import (
 )
 from nexus_api.services.email import send_email
 from nexus_api.services.local_exec_policy import LocalExecPolicyRepository
+from nexus_api.services.membership_limits import (
+    TierLimitReached,
+    assert_can_add_member,
+)
 
 from .schemas import (
     InvitationCreatedOut,
@@ -142,6 +146,22 @@ async def invite(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail="already a member of this partner"
             )
+        # Spec 005 R1.3 — el tope de personas del nivel. Se comprueba DESPUÉS
+        # del duplicado: invitar a alguien que ya está dentro no consume plaza,
+        # y decirle "no caben más" a quien ya es miembro sería falso.
+        try:
+            await assert_can_add_member(session, principal.partner.id)
+        except TierLimitReached as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "tier_limit_reached",
+                    "kind": exc.kind,
+                    "limit": exc.limit,
+                    "current": exc.current,
+                    "tier": exc.tier_code,
+                },
+            ) from exc
         try:
             invitation, token = await PartnerInvitationRepository(session).create(
                 partner_id=principal.partner.id,

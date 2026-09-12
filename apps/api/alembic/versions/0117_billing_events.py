@@ -32,7 +32,27 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
+
 from alembic import op
+
+#: Vocabulario de auditoría de las acciones de facturación. Cada acción que
+#: escribe ``audit_log`` con prefijo ``console.`` necesita su fila, y hay un
+#: test estructural que lo vigila: sin ella, la pantalla de actividad del
+#: partner enseñaría un identificador en vez de una frase.
+#:
+#: La redacción nombra a la persona —``{actor}``— porque §IV pide que el
+#: rastro diga quién decidió. El aviso del proveedor CONFIRMA lo que una
+#: persona ya decidió; no aparece aquí como sujeto de nada.
+AUDIT_VOCABULARY: tuple[tuple[str, str, str, str, str], ...] = (
+    (
+        "console.billing.checkout_opened",
+        "billing",
+        "info",
+        "{actor} inició la contratación del plan {tier}.",
+        "{actor} started contracting the {tier} plan.",
+    ),
+)
 
 revision: str = "0117_billing_events"
 down_revision: str | Sequence[str] | None = "0116_membership_tiers"
@@ -84,7 +104,44 @@ def upgrade() -> None:
         """
     )
 
+    bind = op.get_bind()
+    for action, category, severity, summary_es, summary_en in AUDIT_VOCABULARY:
+        bind.execute(
+            sa.text(
+                """
+                INSERT INTO console_audit_vocabulary
+                    (action, category, severity, summary_es, summary_en)
+                SELECT
+                    CAST(:action AS VARCHAR(80)),
+                    CAST(:category AS VARCHAR(40)),
+                    CAST(:severity AS VARCHAR(10)),
+                    CAST(:summary_es AS TEXT),
+                    CAST(:summary_en AS TEXT)
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM console_audit_vocabulary
+                    WHERE action = CAST(:action AS VARCHAR(80))
+                )
+                """
+            ),
+            {
+                "action": action,
+                "category": category,
+                "severity": severity,
+                "summary_es": summary_es,
+                "summary_en": summary_en,
+            },
+        )
+
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    for action, *_ in AUDIT_VOCABULARY:
+        bind.execute(
+            sa.text(
+                "DELETE FROM console_audit_vocabulary "
+                "WHERE action = CAST(:action AS VARCHAR(80))"
+            ),
+            {"action": action},
+        )
     op.execute("ALTER TABLE partner_wallets DROP COLUMN IF EXISTS purchased_expires_at")
     op.execute("DROP TABLE IF EXISTS billing_events")

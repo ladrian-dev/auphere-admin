@@ -39,6 +39,10 @@ from nexus_api.db.models.companion import (
 from nexus_api.repositories.teammate_tasks import TeammateTaskRepository
 from nexus_api.repositories.teammates import TeammateChangeRepository, TeammateRepository
 from nexus_api.services.local_exec_policy import LocalExecPolicyRepository, resolve
+from nexus_api.services.membership_limits import (
+    TierLimitReached,
+    assert_can_add_teammate,
+)
 from nexus_api.services.model_choices import model_choices
 from nexus_api.services.teammate_catalog import (
     ToolNotInCatalog,
@@ -230,6 +234,20 @@ async def create_teammate(
     el cuerpo no tiene dónde traer una herramienta, y si la trajera no se
     miraría.
     """
+    # Spec 005 R1.2 — el tope del nivel, antes que cualquier otra validación:
+    # comprobar el modelo primero haría que un partner en Free viera un error
+    # sobre modelos cuando lo que le falta es plan.
+    try:
+        await assert_can_add_teammate(scope.session, scope.principal.partner.id)
+    except TierLimitReached as exc:
+        raise _refuse(
+            "tier_limit_reached",
+            kind=exc.kind,
+            limit=exc.limit,
+            current=exc.current,
+            tier=exc.tier_code,
+        ) from exc
+
     permissions = body.permissions.model_dump()
     await _check_model(scope, body.model)
     tool_names = await _catalogue_for(scope, permissions)
