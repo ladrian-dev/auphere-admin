@@ -100,9 +100,25 @@ Para no volver a preguntarlo:
 | `nexus/staging/app` | 42 claves, **las cuatro de la spec 005 ya dentro** |
 | `NEXUS_CONSOLE_ENABLED` (staging) | `true` |
 | Clave de Stripe en staging | `sk_test_…`, modo correcto |
+| Endpoint del webhook | `…/webhook/billing`, **8 eventos exactos**, `enabled` |
+| Catálogo en modo test | Pro 20 $ · Team 60 $ · Business 150 $, activos con `tier_code` |
+| Portal del proveedor | configurado y activo |
+| `apply` en workspace staging | **hecho**: las cinco tareas piden 4/4 claves |
+| Los cinco servicios ECS | `COMPLETED`, 1/1, logs sin errores |
+| El cobro en staging | **encendido**: el webhook responde `invalid signature` y ya no `billing closed` |
+| Crons del planificador | 27 arriba, `expire_credit_cron` y `wallet_renewal_cron` incluidos |
 
-Queda por hacer en staging: el endpoint del webhook (mal creado a mano, ver
-1.1), el `apply` con su `tfvars` (1.4) y los price ids (1.6).
+Queda por hacer en staging, y las dos cosas bloquean el paso a producción:
+
+1. **Los price ids en `membership_tiers`** (paso 1.6). Sin ellos el checkout no
+   encuentra el precio del nivel.
+2. **Un aviso real de Stripe.** Que el webhook conteste `invalid signature`
+   prueba que las tres claves llegan, pero **no** que
+   `NEXUS_BILLING_WEBHOOK_SECRET` sea el mismo con el que firma Stripe: un
+   secreto que no case da exactamente esa misma respuesta. Firmarse uno mismo el
+   aviso no vale —verificaría con la propia clave que se usó para firmar—, así
+   que la prueba tiene que originarse en Stripe: «Send test event» en el
+   endpoint, o `stripe trigger checkout.session.completed`.
 
 ---
 

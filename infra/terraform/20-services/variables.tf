@@ -108,9 +108,13 @@ variable "app_secret_keys" {
     "NEXUS_RESEND_API_KEY",
     "NEXUS_OPERATOR_ALERT_EMAIL",
     # ─── Membresías y cobro (spec 005) ────────────────────────────────────
-    # DESCOMENTAR SOLO DESPUÉS de que las cuatro existan en ``nexus/<ws>/app``:
+    # Esta lista la comparten los dos workspaces. Las cuatro existen en
+    # ``nexus/staging/app`` desde 2026-09-13; en ``nexus/prod/app`` **NO**.
     #
-    #   AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh <ws> \
+    # ⚠️  ANTES DEL PRÓXIMO ``apply`` EN EL WORKSPACE ``prod``, pobla el secreto
+    #     de prod o las cinco tareas de producción no arrancarán:
+    #
+    #   AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh prod \
     #     NEXUS_CONSOLE_BASE_URL NEXUS_BILLING_API_KEY \
     #     NEXUS_BILLING_PUBLIC_KEY NEXUS_BILLING_WEBHOOK_SECRET
     #
@@ -126,10 +130,10 @@ variable "app_secret_keys" {
     # al partner tras pagar: sin ella la API se niega a arrancar en prod desde
     # el guard de config.py, que es mejor que cobrar y perder el acuse.
     #
-    # "NEXUS_CONSOLE_BASE_URL",
-    # "NEXUS_BILLING_API_KEY",
-    # "NEXUS_BILLING_PUBLIC_KEY",
-    # "NEXUS_BILLING_WEBHOOK_SECRET",
+    "NEXUS_CONSOLE_BASE_URL",
+    "NEXUS_BILLING_API_KEY",
+    "NEXUS_BILLING_PUBLIC_KEY",
+    "NEXUS_BILLING_WEBHOOK_SECRET",
   ]
 }
 
