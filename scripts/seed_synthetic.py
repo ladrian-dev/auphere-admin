@@ -179,23 +179,15 @@ async def _wipe_synthetic(conn: AsyncConnection) -> None:
         await _set_tenant_guc(conn, tenant_id)
         # Orden inverso de FKs. messages cae por CASCADE de conversations.
         await conn.execute(
-            sa.delete(Conversation.__table__).where(
-                Conversation.__table__.c.tenant_id == tenant_id
-            )
+            sa.delete(Conversation.__table__).where(Conversation.__table__.c.tenant_id == tenant_id)
         )
         await conn.execute(
-            sa.delete(Customer.__table__).where(
-                Customer.__table__.c.tenant_id == tenant_id
-            )
+            sa.delete(Customer.__table__).where(Customer.__table__.c.tenant_id == tenant_id)
         )
         await conn.execute(
-            sa.delete(Channel.__table__).where(
-                Channel.__table__.c.tenant_id == tenant_id
-            )
+            sa.delete(Channel.__table__).where(Channel.__table__.c.tenant_id == tenant_id)
         )
-        await conn.execute(
-            sa.delete(Tenant.__table__).where(Tenant.__table__.c.id == tenant_id)
-        )
+        await conn.execute(sa.delete(Tenant.__table__).where(Tenant.__table__.c.id == tenant_id))
     print(f"wipe: {len(rows)} tenants sintéticos previos eliminados")
 
 
@@ -332,13 +324,9 @@ async def seed(
                                 ),
                                 "intent": rng.choice(INTENTS) if inbound else None,
                                 "cost_usd": (
-                                    round(rng.uniform(0.001, 0.02), 5)
-                                    if not inbound
-                                    else None
+                                    round(rng.uniform(0.001, 0.02), 5) if not inbound else None
                                 ),
-                                "latency_ms": rng.randint(800, 6000)
-                                if not inbound
-                                else None,
+                                "latency_ms": rng.randint(800, 6000) if not inbound else None,
                                 "model": "synthetic/none",
                                 "tool_calls": [],
                                 "attempts": 0,
@@ -369,9 +357,7 @@ async def seed(
 
                 await conn.execute(sa.insert(Conversation.__table__), conv_rows)
                 for i in range(0, len(msg_rows), BATCH_ROWS):
-                    await conn.execute(
-                        sa.insert(Message.__table__), msg_rows[i : i + BATCH_ROWS]
-                    )
+                    await conn.execute(sa.insert(Message.__table__), msg_rows[i : i + BATCH_ROWS])
 
                 created["tenants"] += 1
                 created["conversations"] += len(conv_rows)
@@ -400,9 +386,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--tenants", type=int, default=50)
     parser.add_argument("--conversations", type=int, default=10_000)
     parser.add_argument("--messages", type=int, default=200_000)
-    parser.add_argument(
-        "--seed", type=int, default=42, help="semilla RNG (reproducible)"
-    )
+    parser.add_argument("--seed", type=int, default=42, help="semilla RNG (reproducible)")
     parser.add_argument(
         "--wipe",
         action="store_true",

@@ -52,24 +52,56 @@ que mirarlas.
 | **Días de aviso de renovación** | Dispara `invoice.upcoming`, que es con lo que se avisa **antes** de degradar |
 | El **endpoint de webhook** registrado, con los eventos de `contracts/webhook.md` | Sin él no llega nada |
 
-### El catálogo de precios
+### El script: catálogo, webhook y portal
 
-Lo crea un script idempotente, y **lo ejecuta una persona con las claves**:
+Lo ejecuta **una persona con las claves**, una vez por entorno:
+
+| Entorno | Modo de Stripe | Webhook | Consola |
+|---|---|---|---|
+| **staging** | test (`sk_test_`) | `api.staging.auphere.com/webhook/billing` | `console.staging.auphere.com` |
+| **prod** | live (`sk_live_`) | `api.auphere.com/webhook/billing` | `console.auphere.com` |
 
 ```bash
-BILLING_API_KEY=sk_test_... uv run python scripts/sync_billing_catalog.py --dry-run
+BILLING_API_KEY=sk_test_... uv run --directory apps/api python scripts/sync_billing_catalog.py --env staging --dry-run
 ```
 
 ```bash
-BILLING_API_KEY=sk_test_... uv run python scripts/sync_billing_catalog.py --apply
+BILLING_API_KEY=sk_test_... uv run --directory apps/api python scripts/sync_billing_catalog.py --env staging --apply
 ```
 
-Idempotente por la clave del nivel, que viaja en `metadata.tier_code`.
-Ejecutarlo dos veces no duplica precios. Vive fuera de `apps/` a propósito: un
-comando de la API lo dejaría a un `POST` de crear precios en producción.
+Para producción, lo mismo con `--env prod` y la clave `sk_live_`. Pide escribir
+«prod» antes de aplicar.
 
-Al terminar imprime los `UPDATE` que escriben los `stripe_price_id` en
-`membership_tiers`.
+> **La guardia que importa.** `--env` es obligatorio y el script **se niega a
+> correr si la clave y el entorno no se corresponden**. El cruce caro es una
+> clave *live* contra staging: apuntaría el webhook de producción al entorno de
+> pruebas, los cobros reales aterrizarían allí y se aplicarían contra una base
+> de datos que no es la de los clientes. Dinero cobrado que no acredita a
+> nadie, y sin ningún error a la vista.
+
+Crea tres cosas, todas idempotentes:
+
+1. **Los precios**, reconocidos por `metadata.tier_code` y no por su nombre
+   visible — que es texto comercial y cambia.
+2. **El webhook**, idempotente por URL, con exactamente los eventos que la API
+   maneja. La lista está sincronizada con `HANDLED_EVENTS` por un test que
+   falla si divergen, y **`invoice.created` no está** (ver la mina de abajo).
+3. **El portal del cliente**: tarjeta, facturas y baja a fin de período.
+   Cambiar de plan está **deshabilitado** a propósito — sería una segunda vía
+   que salta nuestros topes, y el `409` que impide bajar por debajo del uso
+   vive en nuestra API.
+
+Al terminar imprime los `UPDATE` de `stripe_price_id`, el
+`NEXUS_BILLING_WEBHOOK_SECRET` **en tu terminal y en ningún otro sitio**
+(Stripe solo lo revela al crear el endpoint), y la lista de lo que queda a
+mano.
+
+> **Los `stripe_price_id` son por entorno.** Modo test y modo live son
+> catálogos distintos dentro de la misma cuenta: los ids de staging no sirven
+> en producción. Cada uno va a la base de datos de su entorno.
+
+Vive fuera de `apps/` a propósito: un comando de la API lo dejaría a un `POST`
+de crear precios en producción.
 
 ---
 

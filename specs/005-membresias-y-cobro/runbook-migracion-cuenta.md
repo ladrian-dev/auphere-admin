@@ -67,12 +67,17 @@ desapareciera crédito que pagó.
 ### 1 · Crear el catálogo en la cuenta nueva
 
 ```bash
-BILLING_API_KEY=<clave de la cuenta NUEVA> uv run python scripts/sync_billing_catalog.py --dry-run
+BILLING_API_KEY=<clave de la cuenta NUEVA> uv run --directory apps/api python scripts/sync_billing_catalog.py --env staging --dry-run
 ```
 
 ```bash
-BILLING_API_KEY=<clave de la cuenta NUEVA> uv run python scripts/sync_billing_catalog.py --apply
+BILLING_API_KEY=<clave de la cuenta NUEVA> uv run --directory apps/api python scripts/sync_billing_catalog.py --env prod --apply
 ```
+
+**Los dos entornos, por separado y en ese orden**: primero staging con la clave
+de test de la cuenta nueva, se comprueba el recorrido entero, y solo entonces
+producción. El script se niega a correr si la clave y el entorno no se
+corresponden, así que el cruce no es posible ni con prisa.
 
 El script es **idempotente por la clave del nivel**: ejecutarlo dos veces no
 duplica precios. Escribe los `stripe_price_id` nuevos en `membership_tiers`.
