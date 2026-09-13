@@ -111,6 +111,30 @@ aislamiento, las licencias y el medidor. Antes de `/speckit-implement`,
 > puertas divergen — de hecho estas dos ya habían divergido en una fila el mismo
 > día que se escribieron. Si una puerta cambia, cambia en la constitución.
 
+### Y una octava, que no es de la constitución: verificar antes de fusionar
+
+```bash
+./scripts/verify.sh          # lo que corre la tubería
+./scripts/verify.sh lint     # solo ruff + mypy --strict, treinta segundos
+```
+
+**«Verde en local» y «verde en la tubería» no significan lo mismo** cuando cada
+uno corre una lista distinta, y dos listas siempre divergen. Es el mismo
+argumento del recuadro de arriba, aplicado a lo que se ejecuta en vez de a lo
+que se comprueba.
+
+Ha roto la tubería dos veces, las dos por lo mismo: un cron nuevo del worker
+declarado en `bootstrap.py` pero no en su contrato de nombres, con la suite del
+worker sin correr en local.
+
+| | Spec | Qué se coló |
+|---|---|---|
+| 2026-09-11 | 003 | `teammate-task-expiry-cron`. Abortó un despliegue |
+| 2026-09-13 | 005 | `expire-credit-cron`, **y 15 errores de `mypy --strict`** |
+
+Lo que se olvida no son las pruebas de la API — ésas las corre todo el mundo.
+Son **el worker, `mypy --strict`, el paquete compartido y el `next build`**.
+
 ---
 
 ## 5. Cómo se escriben los requisitos: EARS

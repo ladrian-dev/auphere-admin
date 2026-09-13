@@ -38,6 +38,8 @@ ALL_EXPECTED = {
     "agent-sales-poll-cron",
     "partner-receipt-cron",
     "wallet-renewal-cron",
+    # Spec 005: la caducidad del crédito comprado tras una baja.
+    "expire-credit-cron",
     "isolation-event-drainer",
     "no-show-scrape-cron",
     "cost-rollup-cron",

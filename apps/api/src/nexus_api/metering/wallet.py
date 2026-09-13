@@ -278,18 +278,17 @@ async def apply_tier_change(session: AsyncSession, *, partner_id: uuid.UUID, new
         )
     ).scalar_one_or_none()
 
-    sizes = dict(
-        (
-            await session.execute(
-                sa.text(
-                    "SELECT code, weekly_pool_tokens FROM membership_tiers WHERE code = ANY(:codes)"
-                ),
-                {"codes": [c for c in (current, new_tier) if c]},
-            )
-        ).all()
-    )
-    old_size = int(sizes.get(current or "", 0))
-    new_size = int(sizes.get(new_tier, 0))
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT code, weekly_pool_tokens FROM membership_tiers WHERE code = ANY(:codes)"
+            ),
+            {"codes": [c for c in (current, new_tier) if c]},
+        )
+    ).all()
+    sizes: dict[str, int] = {str(row[0]): int(row[1]) for row in rows}
+    old_size = sizes.get(current or "", 0)
+    new_size = sizes.get(new_tier, 0)
 
     if new_size <= old_size:
         # Bajar: pendiente, y reemplaza cualquier bajada anterior. Cambiar de

@@ -86,7 +86,8 @@ def verify_signature(*, payload: bytes, signature: str, secret: str) -> dict[str
     # ``.to_dict()`` and not ``dict(event)``: the SDK's Event refuses the
     # plain-mapping conversion, and the TypeError it raises would surface here
     # as "invalid signature" — a verification bug that reads as an attack.
-    return event.to_dict()
+    parsed: dict[str, Any] = event.to_dict()
+    return parsed
 
 
 async def check_account_configuration(client: stripe.StripeClient) -> list[str]:
@@ -103,20 +104,17 @@ async def check_account_configuration(client: stripe.StripeClient) -> list[str]:
     rather than raising: a misconfigured account must not stop the app from
     booting, it must be loud.
     """
-    warnings: list[str] = []
-    try:
-        # The setting is not exposed by the API; what we can assert is that
-        # the account answers and that someone looked. The real check is the
-        # runbook's, and this leaves a dated trace that it was due.
-        client.accounts.retrieve()  # type: ignore[attr-defined]
-    except Exception as exc:
-        warnings.append(f"no se pudo leer la cuenta del proveedor: {exc}")
-        return warnings
-
-    warnings.append(
+    del client  # nothing to ask it: see below
+    # There was a call to the provider's API here and it did two wrong things:
+    # it was written against a signature that does not exist, and even working
+    # it would have asserted nothing — the setting is not exposed. A check that
+    # cannot check is worse than none, because it reads as coverage.
+    #
+    # What is left is the honest part: a loud, dated reminder that a person has
+    # to look. The real verification lives in the migration runbook.
+    return [
         "comprueba a mano en el panel del proveedor que, al agotar los "
         "reintentos, la suscripción pasa a «unpaid» y no a «canceled»: sin esa "
         "casilla el escalón intermedio de la escalera de impago no existe "
         "(research D10)"
-    )
-    return warnings
+    ]

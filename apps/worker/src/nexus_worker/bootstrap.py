@@ -132,6 +132,8 @@ SCHEDULER_TASK_NAMES = frozenset(
         "agent-sales-poll-cron",
         "partner-receipt-cron",
         "wallet-renewal-cron",
+        # Spec 005: caduca el crédito comprado doce meses después de una baja.
+        "expire-credit-cron",
         "isolation-event-drainer",
         "no-show-scrape-cron",
         "cost-rollup-cron",

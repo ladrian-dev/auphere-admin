@@ -327,8 +327,16 @@ async def start_checkout(
     # Con una suscripción viva **no se abre página de pago**: se modifica la
     # que hay. Mandar a alguien que ya paga a introducir su tarjeta otra vez
     # para subir de plan es pedirle que demuestre algo que ya demostró.
-    live = subscription is not None and subscription.stripe_subscription_id
-    if live and subscription.state in {STATE_CURRENT, STATE_PAYMENT_FAILED}:
+    # La condición va entera en el ``if`` y no en una variable intermedia. No
+    # es estilo: con una variable, el comprobador pierde el rastro de que
+    # ``subscription`` no es ``None`` dentro del bloque, y lo que se lee como
+    # protegido deja de estarlo si alguien mueve una línea.
+    subscription_id = subscription.stripe_subscription_id if subscription else None
+    if (
+        subscription is not None
+        and subscription_id
+        and subscription.state in {STATE_CURRENT, STATE_PAYMENT_FAILED}
+    ):
         try:
             outcome = await apply_tier_change(session, partner_id=partner_id, new_tier=tier.code)
             if outcome == "upgraded":
@@ -336,14 +344,14 @@ async def start_checkout(
                 # completa el libro. Cada uno lo que sabe hacer.
                 upgrade_subscription(
                     partner_id=partner_id,
-                    subscription_id=subscription.stripe_subscription_id,
+                    subscription_id=subscription_id,
                     price_id=tier.stripe_price_id or "",
                     period_tag=period_tag,
                 )
             else:
                 schedule_downgrade(
                     partner_id=partner_id,
-                    subscription_id=subscription.stripe_subscription_id,
+                    subscription_id=subscription_id,
                     price_id=tier.stripe_price_id or "",
                     period_tag=period_tag,
                 )

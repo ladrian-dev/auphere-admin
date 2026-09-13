@@ -42,10 +42,11 @@ class Skip(Exception):
 async def _tier_for_price(session: Any, price_id: str | None) -> str | None:
     if not price_id:
         return None
-    return await session.scalar(
+    code: str | None = await session.scalar(
         sa.text("SELECT code FROM membership_tiers WHERE stripe_price_id = :p"),
         {"p": price_id},
     )
+    return code
 
 
 async def apply_invoice_paid(session: Any, *, partner_id: uuid.UUID, invoice: Any) -> None:
@@ -126,7 +127,7 @@ async def apply_credit_purchase(session: Any, *, partner_id: uuid.UUID, checkout
     # the conversion is greppable when the rate changes.
     from nexus_api.billing.pricing import units_for_cents
 
-    units = units_for_cents(amount_total)
+    units: int = units_for_cents(amount_total)
     await add_purchased(partner_id=partner_id, qty=units)
     log.info(
         "metering.credit_purchased",

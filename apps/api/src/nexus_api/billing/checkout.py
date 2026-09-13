@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -69,7 +69,7 @@ def open_subscription_session(
         params["customer"] = customer_id
 
     session = client.checkout.sessions.create(
-        params,
+        cast(Any, params),
         options={
             "idempotency_key": idempotency_key("sub", partner_id, "checkout", price_id, period_tag)
         },
@@ -110,7 +110,7 @@ def open_credit_session(
         params["customer"] = customer_id
 
     session = client.checkout.sessions.create(
-        params,
+        cast(Any, params),
         # The stamp matters: without it, a partner who buys 50 USD twice in a
         # row would reuse the first key and Stripe would replay the stored
         # response — a second purchase that silently does not happen.
@@ -219,21 +219,24 @@ def schedule_downgrade(
     current = phases[0]
     client.subscription_schedules.update(
         schedule.id,
-        {
-            "phases": [
-                {
-                    "items": [
-                        {"price": item.price, "quantity": getattr(item, "quantity", 1)}
-                        for item in (getattr(current, "items", None) or [])
-                    ],
-                    "start_date": getattr(current, "start_date", None),
-                    "end_date": getattr(current, "end_date", None),
-                },
-                {"items": [{"price": price_id, "quantity": 1}]},
-            ],
-            # Nothing refunded, nothing cut mid-period.
-            "proration_behavior": "none",
-        },
+        cast(
+            Any,
+            {
+                "phases": [
+                    {
+                        "items": [
+                            {"price": item.price, "quantity": getattr(item, "quantity", 1)}
+                            for item in (getattr(current, "items", None) or [])
+                        ],
+                        "start_date": getattr(current, "start_date", None),
+                        "end_date": getattr(current, "end_date", None),
+                    },
+                    {"items": [{"price": price_id, "quantity": 1}]},
+                ],
+                # Nothing refunded, nothing cut mid-period.
+                "proration_behavior": "none",
+            },
+        ),
         options={
             "idempotency_key": idempotency_key(
                 "sched", partner_id, "downgrade", price_id, period_tag
