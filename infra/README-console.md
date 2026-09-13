@@ -49,12 +49,12 @@ en algún sitio, es de antes de ADR-032 y sobra.
      entorno con `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`.
      Con el valor de desarrollo la API no arranca en prod.
 2. **Migraciones**: `alembic upgrade head` (staging va por debajo; la cabeza
-   es `0088_console_identity`).
+   es `0117_billing_events` desde la spec 005).
 3. **CORS/ALB**: nada especial — la consola llama a la API desde el servidor
    (Server Components / Route Handlers), no desde el navegador.
 4. **Alta del partner piloto**:
    ```bash
-   uv run python scripts/seed_console_memberships.py \
+   uv run --project apps/api python apps/api/scripts/seed_console_memberships.py \
      --partner-slug facelad --owner-email owner@facelad.com --enable-console
    ```
    Imprime el enlace de invitación (`/invite/<token>`); quien lo abra pone su
@@ -80,8 +80,10 @@ el listener HTTPS — no lo apliques así.
 Antes de apply en `prod`: las claves de `app_secret_keys` (incluida
 `NEXUS_CONSOLE_JWT_PUBLIC_KEY`) tienen que existir en `nexus/prod/app`.
 
-La cabeza de Alembic en develop ya no es solo `0088_console_identity`:
-tras este merge la cadena es 0088 → 0089_operator_identity → 0090_companion → 0091 → 0092.
+La cabeza de Alembic en `develop` es `0117_billing_events`. Las seis últimas
+(`0112`→`0117`) llegaron con las specs 003, 004 y 005 y **no se han ensayado
+contra un dump de producción** (T016 de la spec 004): hazlo antes del apply en
+`prod`. Secuencia completa en [`../docs/go-live-consola-y-teammates.md`](../docs/go-live-consola-y-teammates.md).
 
 ## Alternativa (ECS, no vigente)
 

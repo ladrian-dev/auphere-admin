@@ -1,7 +1,8 @@
 # Cómo se cobra, y qué hay que configurar para que funcione
 
 **Spec**: `specs/005-membresias-y-cobro/` · **ADR**: `[[nexus/decisions/ADR-037-membresias-y-consumo-de-la-app]]`
-**Estado**: Historia 1 implementada (contratar un nivel). El resto, en curso.
+**Estado**: las cinco historias implementadas (115 tareas). Claves aprovisionadas
+en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves» abajo.
 
 ---
 
@@ -62,11 +63,11 @@ Lo ejecuta **una persona con las claves**, una vez por entorno:
 | **prod** | live (`sk_live_`) | `api.auphere.com/webhook/billing` | `console.auphere.com` |
 
 ```bash
-BILLING_API_KEY=sk_test_... uv run --directory apps/api python scripts/sync_billing_catalog.py --env staging --dry-run
+BILLING_API_KEY=sk_test_... uv run --project apps/api python scripts/sync_billing_catalog.py --env staging --dry-run
 ```
 
 ```bash
-BILLING_API_KEY=sk_test_... uv run --directory apps/api python scripts/sync_billing_catalog.py --env staging --apply
+BILLING_API_KEY=sk_test_... uv run --project apps/api python scripts/sync_billing_catalog.py --env staging --apply
 ```
 
 Para producción, lo mismo con `--env prod` y la clave `sk_live_`. Pide escribir
@@ -225,6 +226,34 @@ Se llega a las facturas desde la consola, por el portal del proveedor. No se
 construye una pantalla de facturas propia: traería datos de pago a nuestra
 infraestructura y duplicaría un documento que ya existe, con el riesgo de que
 las dos versiones dejen de coincidir.
+
+---
+
+## Las cuatro claves, y por qué el orden importa
+
+Nada de esto funciona en un entorno desplegado hasta que existan cuatro claves.
+Están en `nexus/staging/app`; en `nexus/prod/app` no:
+
+| Clave | staging | producción |
+|---|---|---|
+| `NEXUS_CONSOLE_BASE_URL` | `https://console.staging.auphere.com` | `https://console.auphere.com` |
+| `NEXUS_BILLING_API_KEY` | `sk_test_…` | `sk_live_…` |
+| `NEXUS_BILLING_PUBLIC_KEY` | `pk_test_…` | `pk_live_…` |
+| `NEXUS_BILLING_WEBHOOK_SECRET` | `whsec_…` de test | `whsec_…` de live |
+
+Las tres de `BILLING` van juntas o no van: `billing_enabled` es todo o nada, así
+que con dos de tres las rutas de cobro responden `503 billing_unavailable` y el
+despliegue miente sin dar un solo error.
+
+`NEXUS_CONSOLE_BASE_URL` es a donde el proveedor devuelve al partner después de
+pagar. Sin ella el cobro se completa —el webhook es servidor a servidor— y el
+acuse aterriza en un `localhost`. En producción el guard de `config.py` se niega
+a arrancar antes de dejar que eso pase; **en staging solo avisa.**
+
+El orden no se negocia —**secreto primero, Terraform después**— porque una
+definición de tarea que pide una clave ausente del secreto no arranca. La
+secuencia completa, con los dos entornos y la app de escritorio, está en
+[`go-live-consola-y-teammates.md`](go-live-consola-y-teammates.md).
 
 ---
 

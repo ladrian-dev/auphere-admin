@@ -19,6 +19,10 @@ def _set_prod_secrets(monkeypatch):
     monkeypatch.setenv("NEXUS_COMPOSIO_WEBHOOK_SECRET", "real-composio-webhook-secret")
     monkeypatch.setenv("NEXUS_PUBLIC_API_BASE_URL", "https://api.auphere.com")
     monkeypatch.setenv("NEXUS_ADMIN_PANEL_BASE_URL", "https://admin.auphere.com")
+    # La consola es a donde el proveedor devuelve al partner tras pagar: esta
+    # lista **es** la especificación de lo que un despliegue necesita.
+    monkeypatch.setenv("NEXUS_CONSOLE_BASE_URL", "https://consola.auphere.com")
+    monkeypatch.setenv("NEXUS_ADMIN_TOKEN", "real-admin-token")
 
 
 def test_settings_loads_from_env(monkeypatch):
@@ -122,3 +126,37 @@ def test_prod_rejects_the_silent_defaults_from_the_aws_cutover(monkeypatch):
     assert "NEXUS_COMPOSIO_WEBHOOK_SECRET" in msg
     assert "NEXUS_PUBLIC_API_BASE_URL" in msg
     assert "NEXUS_ADMIN_PANEL_BASE_URL" in msg
+
+
+def test_prod_rejects_the_payment_return_url_pointing_at_localhost(monkeypatch):
+    """El mismo fallo del 2026-08-19, ahora en la ruta de cobro.
+
+    ``console_base_url`` es la URL a la que el proveedor devuelve al partner
+    después de pagar, y el ``return_url`` del portal. Sus dos hermanas
+    —``public_api_base_url`` y ``admin_panel_base_url``— ya están en el guard;
+    esta se quedó fuera. Sin ella, un despliegue que olvide la variable arranca
+    limpio, cobra de verdad (el webhook es servidor a servidor y activa la
+    suscripción) y manda al partner que acaba de pagar a un ``localhost`` de su
+    propia máquina: el dinero entra y el acuse se pierde.
+    """
+    monkeypatch.setenv("NEXUS_ENVIRONMENT", "production")
+    _set_prod_secrets(monkeypatch)
+    monkeypatch.delenv("NEXUS_CONSOLE_BASE_URL", raising=False)
+    with pytest.raises(ValueError) as exc:
+        Settings()
+    assert "NEXUS_CONSOLE_BASE_URL" in str(exc.value)
+
+
+def test_prod_rejects_the_placeholder_admin_token(monkeypatch):
+    """El ``admin_token`` cierra las 20+ rutas de ``/admin``, ``impersonate``
+    incluida. Con el valor de fábrica, cualquiera que lea este repositorio
+    tiene el Bearer del panel de operador en producción. El test hermano
+    ``test_settings_admin_token_required_for_prod`` solo comprueba que la
+    variable se lee: no ejerce el guard.
+    """
+    monkeypatch.setenv("NEXUS_ENVIRONMENT", "production")
+    _set_prod_secrets(monkeypatch)
+    monkeypatch.delenv("NEXUS_ADMIN_TOKEN", raising=False)
+    with pytest.raises(ValueError) as exc:
+        Settings()
+    assert "NEXUS_ADMIN_TOKEN" in str(exc.value)

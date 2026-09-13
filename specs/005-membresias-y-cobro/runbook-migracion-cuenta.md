@@ -67,11 +67,11 @@ desapareciera crédito que pagó.
 ### 1 · Crear el catálogo en la cuenta nueva
 
 ```bash
-BILLING_API_KEY=<clave de la cuenta NUEVA> uv run --directory apps/api python scripts/sync_billing_catalog.py --env staging --dry-run
+BILLING_API_KEY=<clave de la cuenta NUEVA> uv run --project apps/api python scripts/sync_billing_catalog.py --env staging --dry-run
 ```
 
 ```bash
-BILLING_API_KEY=<clave de la cuenta NUEVA> uv run --directory apps/api python scripts/sync_billing_catalog.py --env prod --apply
+BILLING_API_KEY=<clave de la cuenta NUEVA> uv run --project apps/api python scripts/sync_billing_catalog.py --env prod --apply
 ```
 
 **Los dos entornos, por separado y en ese orden**: primero staging con la clave

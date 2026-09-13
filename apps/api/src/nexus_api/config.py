@@ -72,9 +72,6 @@ class Settings(BaseSettings):
     # Auth for admin endpoints. Better Auth replaces this in block G.
     admin_token: str = "dev-admin-token-change-me"
 
-    # Generic HMAC secret kept for any future webhook with a simple HMAC scheme.
-    webhook_hmac_secret: str = "dev-hmac-secret-change-me"
-
     # Meta WhatsApp Cloud API — direct Tech Provider integration. The only
     # WhatsApp provider (YCloud removed 2026-06-12).
     #
@@ -574,6 +571,17 @@ class Settings(BaseSettings):
         # máquina de un partner.
         if "change-me" in self.device_token_secret:
             offenders.append("NEXUS_DEVICE_TOKEN_SECRET")
+        # Cierra las 20+ rutas de ``/admin`` (``impersonate`` incluida). Con el
+        # valor de fábrica, cualquiera que lea este repositorio tiene el Bearer
+        # del panel de operador.
+        if "change-me" in self.admin_token:
+            offenders.append("NEXUS_ADMIN_TOKEN")
+        # A donde el proveedor devuelve al partner después de pagar, y el
+        # ``return_url`` del portal. Sin esto el cobro se completa —el webhook
+        # es servidor a servidor— y el acuse aterriza en un ``localhost`` de la
+        # máquina del partner. Es el fallo del 2026-08-19 en la ruta del dinero.
+        if "localhost" in self.console_base_url:
+            offenders.append("NEXUS_CONSOLE_BASE_URL")
         if "localhost" in self.public_api_base_url:
             offenders.append("NEXUS_PUBLIC_API_BASE_URL")
         if "localhost" in self.admin_panel_base_url:

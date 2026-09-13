@@ -107,6 +107,29 @@ variable "app_secret_keys" {
     # (DLQ, ráfagas de error) no salen de CloudWatch — nadie se entera.
     "NEXUS_RESEND_API_KEY",
     "NEXUS_OPERATOR_ALERT_EMAIL",
+    # ─── Membresías y cobro (spec 005) ────────────────────────────────────
+    # DESCOMENTAR SOLO DESPUÉS de que las cuatro existan en ``nexus/<ws>/app``:
+    #
+    #   AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh <ws> \
+    #     NEXUS_CONSOLE_BASE_URL NEXUS_BILLING_API_KEY \
+    #     NEXUS_BILLING_PUBLIC_KEY NEXUS_BILLING_WEBHOOK_SECRET
+    #
+    # Una definición de tarea que pide una clave ausente del secreto **no
+    # arranca** (``ResourceInitializationError: did not contain json key``), y
+    # este apply se lleva por delante los cinco servicios del entorno. El orden
+    # es secreto primero, Terraform después. Runbook completo en
+    # ``docs/go-live-consola-y-teammates.md``.
+    #
+    # Las tres de ``BILLING`` van juntas o no van: ``billing_enabled`` es todo
+    # o nada (config.py), así que con dos de tres el cobro sigue apagado y el
+    # despliegue miente. ``CONSOLE_BASE_URL`` es a donde el proveedor devuelve
+    # al partner tras pagar: sin ella la API se niega a arrancar en prod desde
+    # el guard de config.py, que es mejor que cobrar y perder el acuse.
+    #
+    # "NEXUS_CONSOLE_BASE_URL",
+    # "NEXUS_BILLING_API_KEY",
+    # "NEXUS_BILLING_PUBLIC_KEY",
+    # "NEXUS_BILLING_WEBHOOK_SECRET",
   ]
 }
 
