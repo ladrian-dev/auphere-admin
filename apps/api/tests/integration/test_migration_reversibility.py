@@ -1,4 +1,4 @@
-"""Spec 005 · las dos migraciones se pueden deshacer (T018).
+"""Las migraciones se pueden deshacer — spec 005 T018, y todo lo que vino después.
 
 La regla 3 de `[[nexus/PLAN-CONSOLE-V1]]` pide ``downgrade()`` real. Un
 ``downgrade`` que nadie ejecuta nunca es una función que se escribe por
@@ -15,6 +15,7 @@ porque toca el esquema que esa sesión da por hecho.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -23,8 +24,17 @@ import pytest
 pytestmark = [pytest.mark.integration]
 
 _API = Path(__file__).resolve().parents[2]
-_HEAD = "0117_billing_events"
+_VERSIONS = _API / "alembic" / "versions"
+#: El suelo desde el que se baja. Es un punto fijo a propósito: por debajo hay
+#: migraciones que esta prueba no quiere deshacer en cada ejecución.
 _BEFORE = "0115_weekly_pool_and_weight"
+
+#: **La cabeza NO se escribe a mano.** Estaba cableada a ``0117_billing_events``
+#: y la prueba se puso roja el día que entró la 0118 — no porque nada
+#: estuviera mal, sino porque la constante había envejecido. La precondición
+#: real no es «la base está en 0117»: es «la base está en head», y eso
+#: ``alembic current`` ya lo dice.
+_AT_HEAD = "(head)"
 
 
 def _alembic(*args: str) -> subprocess.CompletedProcess[str]:
@@ -49,17 +59,19 @@ def restored() -> object:
     _alembic("upgrade", "head")
 
 
-def test_the_two_migrations_go_down_and_come_back_up(restored: object) -> None:
-    assert _HEAD in _current(), "la base no está en head antes de empezar"
+def test_the_migrations_go_down_and_come_back_up(restored: object) -> None:
+    """Baja hasta ``_BEFORE`` y vuelve a subir, sea cual sea la cabeza de hoy."""
+    assert _AT_HEAD in _current(), "la base no está en head antes de empezar"
 
     down = _alembic("downgrade", _BEFORE)
     assert down.returncode == 0, f"el downgrade falló:\n{down.stderr}"
-    assert _HEAD not in _current()
+    assert _BEFORE in _current(), "el downgrade no dejó la base donde se le pidió"
+    assert _AT_HEAD not in _current()
 
     # Lo que de verdad se prueba: que no quedó ningún resto que impida subir.
     up = _alembic("upgrade", "head")
     assert up.returncode == 0, f"el downgrade dejó restos y la subida vuelve a fallar:\n{up.stderr}"
-    assert _HEAD in _current()
+    assert _AT_HEAD in _current()
 
 
 def test_the_revision_ids_fit_in_the_version_column() -> None:
@@ -69,5 +81,14 @@ def test_the_revision_ids_fit_in_the_version_column() -> None:
     registrarse, dejando el esquema migrado y la tabla de versión sin
     actualizar. Pasó en la spec 004 con la 0114.
     """
-    for revision in (_HEAD, "0116_membership_tiers"):
+    revisions = sorted(
+        m.group(1)
+        for m in (
+            re.search(r'^revision: str = "([^"]+)"', f.read_text(), re.M)
+            for f in _VERSIONS.glob("[0-9]*.py")
+        )
+        if m is not None
+    )
+    assert revisions, "no se encontró ninguna revisión: ¿cambió el formato del fichero?"
+    for revision in revisions:
         assert len(revision) <= 32, f"«{revision}» mide {len(revision)}, el límite es 32"
