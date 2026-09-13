@@ -59,7 +59,7 @@ contención en falso.
 ### Tests primero
 
 - [ ] T011 [P] [US1] **[TEST, en rojo]** `apps/api/tests/unit/test_signup_service.py`: el alta crea partner + invitación + membresía `owner` en **una** transacción; si `accept()` lanza, no queda ni partner ni membresía ni solicitud consumida. _Requisitos: 3.1, 3.2_
-- [ ] T012 [P] [US1] **[TEST, en rojo]** `apps/api/tests/integration/test_signup_flow.py`: los tres actos del contrato contra Postgres. Incluye que el partner nace **sin fila** en `partner_subscriptions` y con `console_enabled = true`. _Requisitos: 3.3, 3.4_
+- [ ] T012 [P] [US1] **[TEST, en rojo]** `apps/api/tests/integration/test_signup_flow.py`: los tres actos del contrato contra Postgres. Incluye que el partner nace **sin fila** en `partner_subscriptions` y con `console_enabled = true`. _Requisitos: 2.3, 3.3, 3.4_
 - [ ] T013 [P] [US1] **[TEST, en rojo]** Indistinguibilidad: `POST /console/signup` con correo existente y con correo nuevo devuelven el **mismo código y el mismo cuerpo byte a byte**, y los `404` de token muerto (inexistente, caducado, usado, revocado) son los cuatro idénticos. _Requisitos: 1.2, 7.3_
 - [ ] T014 [P] [US1] **[TEST, en rojo]** `apps/api/tests/isolation/test_signup_scope.py`: ninguna ruta nueva acepta `partner_id` ni `tenant_id`; un alta no puede colgar una membresía de un partner existente; ningún objeto nuevo lleva `tenant_id`. **Bloquea el merge.** _Requisitos: §I constitución_
 - [ ] T015 [P] [US1] **[TEST, en rojo]** El rastro de auditoría nombra a la persona y la vía de entrada, y **no** contiene contraseña, token en claro ni IP en claro. _Requisitos: 3.5, 7.4_
@@ -73,11 +73,13 @@ contención en falso.
 - [ ] T020 [US1] `apps/api/src/nexus_api/api/console/schemas_signup.py`. Ningún campo de respuesta permite enumerar correos. _Requisitos: 1.2_
 - [ ] T021 [US1] Los dos correos en `apps/api/src/nexus_api/services/email.py`: el del enlace y el de «ya tienes cuenta». Misma respuesta HTTP, correo distinto. _Requisitos: 1.1, 1.2_
 - [ ] T022 [US1] Límites de ritmo del alta sobre `core/rate_limit`, por correo y por IP (ésta ya real, Fase 2), más el tope de correos al mismo destinatario. _Requisitos: 7.1, 7.2_
-- [ ] T023 [US1] Bandera `signup_enabled`: apagada, la consola **no enseña botón gris ni página explicativa** — enseña el login. La ausencia se diseña. _Requisitos: 1.7_
-- [ ] T024 [P] [US1] `apps/console/src/app/(auth)/signup/` — formulario y pantalla de «revisa tu correo», con los 5 estados. _Requisitos: 1.1_
-- [ ] T025 [P] [US1] `apps/console/src/app/(auth)/signup/[token]/` — nombre de empresa y contraseña, y **retomar donde se dejó** quien verificó y no llegó a nombrar la empresa. _Requisitos: 3.6_
-- [ ] T026 [P] [US1] `apps/console/src/app/api/signup/` — el BFF: acuña el token de servicio y reenvía `X-Nexus-Client-IP`. _Requisitos: 1.1, 7.1_
-- [ ] T027 [US1] **[VERIFICACIÓN POR MUTACIÓN]** Romper la atomicidad (quitar el `async with session.begin()`) y comprobar que T011 cae; hacer que la respuesta de correo existente difiera y comprobar que T013 cae. _Requisitos: 3.2, 1.2_
+- [ ] T023 [US1] **[TEST, en rojo]** Al superar el límite, la respuesta lleva el mismo código y `Retry-After` que el login **y no sale ningún correo**: cero mensajes nuevos en Mailhog después del 429. Es la mitad que contiene el abuso — un limitador que responde 429 *después* de haber mandado el correo pasaría cualquier test que sólo mire el código de estado. _Requisitos: 1.4_
+- [ ] T024 [US1] Bandera `signup_enabled`: apagada, la consola **no enseña botón gris ni página explicativa** — enseña el login. La ausencia se diseña. _Requisitos: 1.7_
+- [ ] T025 [US1] **[TEST, en rojo]** El registro es abierto **de verdad**: un alta se completa sin que intervenga nadie, el partner queda `active`, y no existe cola, estado ni columna de «pendiente de aprobación»; tampoco se exige revisión humana, dominio corporativo ni datos fiscales. Es un requisito **negativo**, y por eso hay que probarlo: añadir una puerta más adelante no rompería ningún otro test de esta spec. _Requisitos: 1.6, 2.4_
+- [ ] T026 [P] [US1] `apps/console/src/app/(auth)/signup/` — formulario y pantalla de «revisa tu correo», con los 5 estados. _Requisitos: 1.1_
+- [ ] T027 [P] [US1] `apps/console/src/app/(auth)/signup/[token]/` — nombre de empresa y contraseña, y **retomar donde se dejó** quien verificó y no llegó a nombrar la empresa. _Requisitos: 3.6_
+- [ ] T028 [P] [US1] `apps/console/src/app/api/signup/` — el BFF: acuña el token de servicio y reenvía `X-Nexus-Client-IP`. _Requisitos: 1.1, 7.1_
+- [ ] T029 [US1] **[VERIFICACIÓN POR MUTACIÓN]** Romper la atomicidad (quitar el `async with session.begin()`) y comprobar que T011 cae; hacer que la respuesta de correo existente difiera y comprobar que T013 cae. _Requisitos: 3.2, 1.2_
 
 **Checkpoint**: alguien que nunca habló con el equipo está dentro de su consola. **Es el MVP.**
 
@@ -89,11 +91,11 @@ contención en falso.
 
 **Prueba independiente**: un partner creado por la Historia 1 contrata Pro y la suscripción queda activa en el proveedor y en el libro, sin haber dado de alta ni un cliente.
 
-- [ ] T028 [US2] **[TEST, en rojo]** Un owner recién registrado llega a la pantalla de planes sin ningún paso que exija operador, y tras confirmarse el pago queda en `current` con la persona nombrada en la auditoría. _Requisitos: 4.1, 4.2_
-- [ ] T029 [US2] **[TEST, en rojo]** Un partner en Free **puede** crear clientes finales, y un turno de ese cliente **no pasa** sin saldo comprado ni plan — la puerta es el medidor de la spec 005, no un tope nuevo. _Requisitos: 4.3, Historia 2 esc. 3_
-- [ ] T030 [US2] Enlazar la consola del partner nuevo con la pantalla de planes existente. **No se construye checkout**: ya existe. _Requisitos: 4.1_
-- [ ] T031 [US2] Revisar que ningún punto del alta cobre nada: alta y contratación son dos actos, y el segundo es del owner. _Requisitos: 4.4_
-- [ ] T032 [US2] Donde un tope de Free se alcance, la consola enseña lo que sí se puede hacer y el camino a contratar — **sin botón apagado ni pantalla que explique lo que no tienes**. _Requisitos: 4.3, §V constitución_
+- [ ] T030 [US2] **[TEST, en rojo]** Un owner recién registrado llega a la pantalla de planes sin ningún paso que exija operador, y tras confirmarse el pago queda en `current` con la persona nombrada en la auditoría. _Requisitos: 4.1, 4.2_
+- [ ] T031 [US2] **[TEST, en rojo]** Un partner en Free **puede** crear clientes finales, y un turno de ese cliente **no pasa** sin saldo comprado ni plan — la puerta es el medidor de la spec 005, no un tope nuevo. _Requisitos: 4.3, Historia 2 esc. 3_
+- [ ] T032 [US2] Enlazar la consola del partner nuevo con la pantalla de planes existente. **No se construye checkout**: ya existe. _Requisitos: 4.1_
+- [ ] T033 [US2] Revisar que ningún punto del alta cobre nada: alta y contratación son dos actos, y el segundo es del owner. _Requisitos: 4.4_
+- [ ] T034 [US2] Donde un tope de Free se alcance, la consola enseña lo que sí se puede hacer y el camino a contratar — **sin botón apagado ni pantalla que explique lo que no tienes**. _Requisitos: 4.3, §V constitución_
 
 **Checkpoint**: el hueco se convierte en ingreso posible.
 
@@ -107,19 +109,19 @@ contención en falso.
 
 ### Tests primero
 
-- [ ] T033 [P] [US3] **[TEST, en rojo]** `apps/api/tests/unit/test_oauth_state.py`: el `state` es tamper-evident, tiene nonce, caduca, y **un `state` vale una sola vez**. _Requisitos: 5.4_
-- [ ] T034 [P] [US3] **[TEST, en rojo]** `apps/api/tests/unit/test_google_oidc.py`: **`email_verified: false` → 403 y cero filas nuevas**; `iss`/`aud`/`exp` verificados; firma que no valida contra el JWKS → rechazo. _Requisitos: 5.1, 5.3_
-- [ ] T035 [P] [US3] **[TEST, en rojo]** Vinculación: correo verificado que ya tiene cuenta se vincula a **esa** cuenta; no se crea una segunda cuenta ni una segunda membresía. Y el ancla es `(provider, subject)`: cambiar el correo del proveedor conservando el `sub` sigue resolviendo a la misma cuenta. _Requisitos: 5.2, 5.3_
+- [ ] T035 [P] [US3] **[TEST, en rojo]** `apps/api/tests/unit/test_oauth_state.py`: el `state` es tamper-evident, tiene nonce, caduca, y **un `state` vale una sola vez**. _Requisitos: 5.4_
+- [ ] T036 [P] [US3] **[TEST, en rojo]** `apps/api/tests/unit/test_google_oidc.py`: **`email_verified: false` → 403 y cero filas nuevas**; `iss`/`aud`/`exp` verificados; firma que no valida contra el JWKS → rechazo. _Requisitos: 2.2, 5.1, 5.3_
+- [ ] T037 [P] [US3] **[TEST, en rojo]** Vinculación: correo verificado que ya tiene cuenta se vincula a **esa** cuenta; no se crea una segunda cuenta ni una segunda membresía. Y el ancla es `(provider, subject)`: cambiar el correo del proveedor conservando el `sub` sigue resolviendo a la misma cuenta. _Requisitos: 5.2, 5.3_
 
 ### Implementación
 
-- [ ] T036 [US3] Extraer `apps/api/src/nexus_api/services/oauth_state.py` del patrón de `services/tiktok_oauth_state.py` y hacer que **los dos** lo usen. Tres copias de una firma divergen, y la que se queda sin la corrección es la que menos se toca. _Requisitos: 5.4_
-- [ ] T037 [US3] `apps/api/src/nexus_api/services/google_oidc.py`: URL de autorización con PKCE, intercambio del código, verificación del `id_token` con `PyJWKClient`. **Ninguna dependencia nueva** — `pyjwt` y `httpx` ya están. _Requisitos: 5.1_
-- [ ] T038 [US3] El `code_verifier` en Redis bajo el nonce, TTL 10 min, consumido una vez. **No viaja al navegador.** _Requisitos: 5.4_
-- [ ] T039 [US3] `apps/api/src/nexus_api/api/console/auth_google.py` con `start` y `callback` según el contrato. La sesión que sale es **la misma clase** que la del login con contraseña. _Requisitos: 5.1, 5.5_
-- [ ] T040 [US3] **No se guarda ningún token del proveedor.** Dejarlo escrito en el módulo con la razón: sería una credencial almacenada sin lector, la misma figura que `NEXUS_WEBHOOK_HMAC_SECRET`. _Requisitos: 5.7_
-- [ ] T041 [P] [US3] Botón «Continuar con Google» en el login y en el alta. Si el proveedor no responde, **contraseña sigue funcionando** y la página no se cuelga. _Requisitos: 5.6_
-- [ ] T042 [US3] **[VERIFICACIÓN POR MUTACIÓN]** Quitar la comprobación de `email_verified` y comprobar que T034 cae; aceptar un `state` reutilizado y comprobar que T033 cae. _Requisitos: 5.1, 5.4_
+- [ ] T038 [US3] Extraer `apps/api/src/nexus_api/services/oauth_state.py` del patrón de `services/tiktok_oauth_state.py` y hacer que **los dos** lo usen. Tres copias de una firma divergen, y la que se queda sin la corrección es la que menos se toca. _Requisitos: 5.4_
+- [ ] T039 [US3] `apps/api/src/nexus_api/services/google_oidc.py`: URL de autorización con PKCE, intercambio del código, verificación del `id_token` con `PyJWKClient`. **Ninguna dependencia nueva** — `pyjwt` y `httpx` ya están. _Requisitos: 5.1_
+- [ ] T040 [US3] El `code_verifier` en Redis bajo el nonce, TTL 10 min, consumido una vez. **No viaja al navegador.** _Requisitos: 5.4_
+- [ ] T041 [US3] `apps/api/src/nexus_api/api/console/auth_google.py` con `start` y `callback` según el contrato. La sesión que sale es **la misma clase** que la del login con contraseña. _Requisitos: 5.1, 5.5_
+- [ ] T042 [US3] **No se guarda ningún token del proveedor.** Dejarlo escrito en el módulo con la razón: sería una credencial almacenada sin lector, la misma figura que `NEXUS_WEBHOOK_HMAC_SECRET`. _Requisitos: 5.7_
+- [ ] T043 [P] [US3] Botón «Continuar con Google» en el login y en el alta. Si el proveedor no responde, **contraseña sigue funcionando** y la página no se cuelga. _Requisitos: 5.6_
+- [ ] T044 [US3] **[VERIFICACIÓN POR MUTACIÓN]** Quitar la comprobación de `email_verified` y comprobar que T036 cae; aceptar un `state` reutilizado y comprobar que T035 cae. _Requisitos: 5.1, 5.4_
 
 **Checkpoint**: dos puertas a la misma cuenta, y la segunda no se puede forzar.
 
@@ -127,28 +129,28 @@ contención en falso.
 
 ## Phase 6 — Historia 4: lo que ve el operador (P2)
 
-- [ ] T043 [US4] **[TEST, en rojo]** Un partner creado por esta vía aparece en el panel con fecha, vía de entrada y nivel; un registro a medias se distingue de un partner activo. _Requisitos: 8.1, 8.2_
-- [ ] T044 [US4] Vista en `apps/admin` con los partners recién nacidos y las solicitudes pendientes. _Requisitos: 8.1_
-- [ ] T045 [US4] Reenviar enlace de verificación y suspender partner **sin ejecutar ningún script dentro de la VPC**. _Requisitos: 8.2_
-- [ ] T046 [US4] Comprobar que el alta por invitación existente sigue funcionando intacta: un partner atendido por el equipo no tiene por qué pasar por el formulario. _Requisitos: 8.3_
+- [ ] T045 [US4] **[TEST, en rojo]** Un partner creado por esta vía aparece en el panel con fecha, vía de entrada y nivel; un registro a medias se distingue de un partner activo. _Requisitos: 8.1, 8.2_
+- [ ] T046 [US4] Vista en `apps/admin` con los partners recién nacidos y las solicitudes pendientes. _Requisitos: 8.1_
+- [ ] T047 [US4] Reenviar enlace de verificación y suspender partner **sin ejecutar ningún script dentro de la VPC**. _Requisitos: 2.5, 8.2_
+- [ ] T048 [US4] Comprobar que el alta por invitación existente sigue funcionando intacta: un partner atendido por el equipo no tiene por qué pasar por el formulario. _Requisitos: 8.3_
 
 ---
 
 ## Phase 7 — El registro que no llega a ninguna parte
 
-- [ ] T047 **[TEST, en rojo]** Una solicitud caducada no deja partner ni cuenta; el mismo correo puede volver a intentarlo; un token usado dos veces se comporta como uno inválido. _Requisitos: 6.1, casos límite_
-- [ ] T048 Cron de caducidad de `signup_requests`. **Declararlo en `bootstrap.py` Y en su contrato de nombres** — esto ha roto la tubería dos veces, las dos por lo mismo. _Requisitos: 1.5, 6.1_
-- [ ] T049 Archivado por inactividad: 180 días sin sesión de ningún miembro y sin ningún cliente final, con aviso por correo antes. **Nunca por no pagar.** _Requisitos: 6.3, 6.4_
-- [ ] T050 Desarchivar conservando lo suyo cuando el owner vuelve, sin pedirle que se registre de nuevo. **Borrar no existe.** _Requisitos: 6.2, 6.5_
+- [ ] T049 **[TEST, en rojo]** Una solicitud caducada no deja partner ni cuenta; el mismo correo puede volver a intentarlo; un token usado dos veces se comporta como uno inválido. _Requisitos: 6.1, casos límite_
+- [ ] T050 Cron de caducidad de `signup_requests`. **Declararlo en `bootstrap.py` Y en su contrato de nombres** — esto ha roto la tubería dos veces, las dos por lo mismo. _Requisitos: 1.5, 6.1_
+- [ ] T051 Archivado por inactividad: 180 días sin sesión de ningún miembro y sin ningún cliente final, con aviso por correo antes. **Nunca por no pagar.** _Requisitos: 6.3, 6.4_
+- [ ] T052 Desarchivar conservando lo suyo cuando el owner vuelve, sin pedirle que se registre de nuevo. **Borrar no existe.** _Requisitos: 6.2, 6.5_
 
 ---
 
 ## Phase 8 — Cierre
 
-- [ ] T051 Ejecutar [quickstart.md](quickstart.md) entero, incluida la comparación de **tiempos** de respuesta entre correo existente y nuevo — un canal lateral temporal deja el `CE-004` abierto aunque el cuerpo sea idéntico. _Requisitos: CE-001 … CE-006_
-- [ ] T052 Verificar entregabilidad real del correo a los tres dominios más frecuentes del ICP. Si cae en spam, es un hallazgo con su corrección, no una suposición que se arrastra. _Requisitos: 1.1, research R8_
-- [ ] T053 Actualizar la **spec viva**: `docs/partner-integration.md` y lo que describa el alta, **en el mismo commit** que cambia el comportamiento. Un PR que cambia comportamiento documentado y no toca su documento se devuelve. _Requisitos: §3 de docs/spec-driven-development.md_
-- [ ] T054 `./scripts/verify.sh` completo. No la mitad: lo que se olvida en este repo es el worker, `mypy --strict`, el paquete compartido y el `next build`. _Requisitos: puerta 8_
+- [ ] T053 Ejecutar [quickstart.md](quickstart.md) entero, incluida la comparación de **tiempos** de respuesta entre correo existente y nuevo — un canal lateral temporal deja el `CE-004` abierto aunque el cuerpo sea idéntico. _Requisitos: CE-001 … CE-006_
+- [ ] T054 Verificar entregabilidad real del correo a los tres dominios más frecuentes del ICP. Si cae en spam, es un hallazgo con su corrección, no una suposición que se arrastra. _Requisitos: 1.1, research R8_
+- [ ] T055 Actualizar la **spec viva**: `docs/partner-integration.md` y lo que describa el alta, **en el mismo commit** que cambia el comportamiento. Un PR que cambia comportamiento documentado y no toca su documento se devuelve. _Requisitos: §3 de docs/spec-driven-development.md_
+- [ ] T056 `./scripts/verify.sh` completo. No la mitad: lo que se olvida en este repo es el worker, `mypy --strict`, el paquete compartido y el `next build`. _Requisitos: puerta 8_
 
 ---
 
@@ -159,13 +161,13 @@ contención en falso.
 - **US2** depende de US1 (hace falta un partner que contrate).
 - **US3** es independiente de US2 y **no bloquea a US1**: el alta con contraseña tiene que funcionar sin Google (CE-006).
 - **US4** es independiente; gana valor con volumen.
-- **Phase 7** puede ir en paralelo a US2–US4; el cron de T048 no depende de nada de ellas.
+- **Phase 7** puede ir en paralelo a US2–US4; el cron de T050 no depende de nada de ellas.
 
 ## Paralelismo
 
 - Fase 1: T002 y T003 en paralelo tras T001.
-- US1: T011–T015 (los cinco tests) en paralelo. T024, T025 y T026 en paralelo entre sí.
-- US3: T033, T034 y T035 en paralelo.
+- US1: T011–T015 (los cinco tests) en paralelo. T026, T027 y T028 en paralelo entre sí.
+- US3: T035, T036 y T037 en paralelo.
 
 ## Estrategia
 

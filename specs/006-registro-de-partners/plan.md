@@ -125,6 +125,9 @@ apps/console/src/
 ├── app/(auth)/signup/[token]/             ← empresa + contraseña
 ├── app/api/signup/                        ← el BFF, que acuña el token de servicio y reenvía la IP
 └── lib/auth-actions.ts                    ← + signUp, + continueWithGoogle
+
+apps/admin/                                ← panel de operador: los partners que entraron solos,
+                                              las solicitudes a medias, reenviar enlace, suspender
 ```
 
 **Decisión de estructura**: se sigue la del repo tal cual. `signup.py` es un
