@@ -102,6 +102,28 @@ async def _finished(run_id: uuid.UUID, principal_id: str, timeout: float = 5.0) 
     raise AssertionError("el run no se cerró a tiempo")
 
 
+async def _budget_once_spent(client, world, timeout: float = 5.0) -> dict:
+    """Espera a que **el libro** refleje el gasto, y devuelve el presupuesto.
+
+    ``_finished`` sincroniza contra ``companion_runs``, que es lo que este
+    endpoint sumaba **hasta la spec 004**. Desde R4.1 el presupuesto se lee del
+    libro del partner, y son dos escrituras distintas: el run puede estar
+    cerrado y el apunte del libro ir un instante detrás. Cerrar el run y leer el
+    libro en la misma respiración es la carrera que dejó la tubería en rojo el
+    2026-09-13 —en local no se abre nunca, en integración continua sí.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout
+    body: dict = {}
+    while asyncio.get_running_loop().time() < deadline:
+        response = await client.get("/console/companion/budget", headers=world["headers"]())
+        assert response.status_code == 200, response.text
+        body = response.json()
+        if body["used"] > 0:
+            return body
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"el libro no registró el gasto a tiempo: {body}")
+
+
 async def _start(client, world, prompt: str = "hola") -> tuple[str, str]:
     created = await client.post(
         "/console/companion/threads", headers=world["headers"](), json={"title": "t"}
@@ -477,9 +499,9 @@ async def test_the_budget_endpoint_counts_what_the_runs_spent(client, console_wo
     _thread_id, run_id = await _start(client, a)
     await _finished(uuid.UUID(run_id), a["user_id"])
 
-    after = await client.get("/console/companion/budget", headers=a["headers"]())
-    assert after.json()["used"] > 0
-    assert after.json()["period"] == before.json()["period"]
+    after = await _budget_once_spent(client, a)
+    assert after["used"] > 0
+    assert after["period"] == before.json()["period"]
 
 
 async def test_the_spend_lands_in_usage_records_as_companion(client, console_world, fake_redis):

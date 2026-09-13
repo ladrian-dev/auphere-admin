@@ -78,6 +78,7 @@ export NEXUS_ADD_FORCE="$FORCE"
 python3 - "$REGION" "$SECRET_ID" <<'PY'
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -91,6 +92,44 @@ def aws(*a: str) -> str:
         ["aws", *a, "--region", region], capture_output=True, text=True, check=True
     ).stdout
 
+
+#: La forma de las claves cuyo formato conocemos. Existe por una avería real: el
+#: 2026-09-13 un ``whsec_`` entró con un punto pegado del copiar y pegar. Eran 39
+#: caracteres en vez de 38, nada se quejó, y Stripe firmaba bien mientras la API
+#: devolvía ``SignatureVerificationError`` — que se lee como un ataque, no como
+#: un dedo. Trece minutos para encontrarlo; un carácter para causarlo.
+SHAPES = {
+    "NEXUS_BILLING_WEBHOOK_SECRET": (r"^whsec_[A-Za-z0-9]{32}$", "whsec_ + 32 alfanuméricos"),
+    "NEXUS_BILLING_API_KEY": (r"^sk_(test|live)_[A-Za-z0-9]+$", "sk_test_… o sk_live_…"),
+    "NEXUS_BILLING_PUBLIC_KEY": (r"^pk_(test|live)_[A-Za-z0-9]+$", "pk_test_… o pk_live_…"),
+}
+
+problems: list[str] = []
+for k in keys:
+    value = os.environ[k]
+    # Un espacio o un salto de línea en los extremos nunca es parte del valor, y
+    # es lo que más veces sobrevive a un copiar y pegar.
+    if value != value.strip():
+        problems.append(f"{k}: sobran espacios o saltos de línea en los extremos")
+        continue
+    if k.endswith("_BASE_URL"):
+        if not re.match(r"^https?://[^\s/]+$", value):
+            problems.append(f"{k}: se esperaba un origen https sin ruta ni barra final")
+        continue
+    shape = SHAPES.get(k)
+    if shape and not re.match(shape[0], value):
+        problems.append(f"{k}: no tiene la forma {shape[1]} ({len(value)} caracteres)")
+
+if problems:
+    print("ERROR: hay valores con la forma equivocada. Nada escrito.\n", file=sys.stderr)
+    for p in problems:
+        print(f"    {p}", file=sys.stderr)
+    print(
+        "\nCompruébalos en el shell antes de repetir. Un valor con un carácter de\n"
+        "más no da un error de configuración: da un fallo que parece otra cosa.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 try:
     current = json.loads(
