@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getT } from "@/i18n/server";
+import { env } from "@/lib/env";
 import { resolvePrincipal } from "@/lib/principal";
 
 import { LoginForm } from "./login-form";
@@ -24,6 +26,16 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <section className="flex flex-col gap-6">
       <h1 className="text-3xl font-semibold">{t("login.title")}</h1>
       <LoginForm redirectTo={redirectTo} />
+      {/* Con el alta apagada NO hay enlace, ni gris ni con explicación: la
+          ausencia se diseña (constitución §V). Quien no puede registrarse no
+          tiene por qué enterarse de que existe un registro. */}
+      {env().NEXUS_SIGNUP_ENABLED ? (
+        <p className="text-sm text-muted-foreground">
+          <Link href="/signup" className="underline underline-offset-4">
+            {t("login.noAccount")}
+          </Link>
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -22,6 +22,13 @@ const schema = z.object({
   // handed to the client component as props — no NEXT_PUBLIC_ inlining, so
   // a dev/staging Meta app is a redeploy, not a rebuild. All optional: an
   // environment without them shows "not configured" instead of a broken button.
+  // El alta autónoma (spec 006). Apagada por defecto, y **tiene que coincidir
+  // con `signup_enabled` de la API**: si la consola la pinta y la API la
+  // rechaza, el formulario da 503 al enviar, que es peor que no existir.
+  NEXUS_SIGNUP_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
   NEXUS_META_APP_ID: z.string().optional(),
   NEXUS_META_GRAPH_API_VERSION: z.string().default("v22.0"),
   NEXUS_META_CONFIG_ID_WA_CLOUD_API: z.string().optional(),

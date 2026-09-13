@@ -42,6 +42,7 @@ from nexus_api.api.console import (
     playground,
     seed_templates,
     session_catalog,
+    signup,
     skills,
     support,
     team,
@@ -72,6 +73,7 @@ router.include_router(models.router)
 router.include_router(audit.router)
 router.include_router(team.router)
 router.include_router(invitations.router)
+router.include_router(signup.router)
 router.include_router(keys.router)
 router.include_router(billing.router)
 router.include_router(playground.router)

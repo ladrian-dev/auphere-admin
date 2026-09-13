@@ -119,6 +119,19 @@ async function request<T>(token: string, path: string, opts: Opts = {}): Promise
 
 // ── response types (mirror api/console/schemas.py — metadata only) ─────
 
+export type SignupLookup = {
+  email: string;
+  provider: "google" | null;
+  expires_at: string;
+};
+
+export type SignupCompleted = {
+  session_token: string;
+  expires_at: string;
+  partner_slug: string;
+  role: "owner";
+};
+
 export type Quota = {
   max_clients: number;
   used_clients: number;
@@ -476,6 +489,31 @@ export const consoleService = {
       if (err instanceof BackendError && err.status === 401) return null;
       throw err;
     }
+  },
+  /**
+   * Pide el alta. **Siempre 202**, exista o no el correo: la API no
+   * distingue, y esta capa tampoco puede hacerlo sin deshacer el trabajo.
+   * `503` es la bandera apagada, y el llamante lo usa para NO pintar el
+   * formulario — no para pintar un formulario con un error.
+   */
+  async startSignup(body: { email: string; locale: "es" | "en" }): Promise<void> {
+    const t = await mintServiceToken();
+    await request<{ status: "sent" }>(t, "/console/signup", { method: "POST", body });
+  },
+  /** `null` cuando el enlace está muerto — los cuatro casos son el mismo. */
+  async lookupSignup(token: string): Promise<SignupLookup | null> {
+    const t = await mintServiceToken();
+    return request<SignupLookup>(t, `/console/signup/${encodeURIComponent(token)}`, { optional: true });
+  },
+  async completeSignup(
+    token: string,
+    body: { company_name: string; password: string; display_name?: string | null },
+  ): Promise<SignupCompleted> {
+    const t = await mintServiceToken();
+    return (await request<SignupCompleted>(t, `/console/signup/${encodeURIComponent(token)}/complete`, {
+      method: "POST",
+      body,
+    })) as SignupCompleted;
   },
   async logout(token: string): Promise<void> {
     const t = await mintServiceToken();

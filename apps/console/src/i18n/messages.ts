@@ -95,6 +95,44 @@ const core = {
   "role.billing.desc": { es: "Facturación, plan y recibos. Nada operativo.", en: "Billing, plan and receipts. Nothing operational." },
 
   // auth
+  "login.noAccount": { es: "¿No tienes cuenta? Crea una.", en: "No account? Create one." },
+  "signup.title": { es: "Crea tu cuenta.", en: "Create your account." },
+  "signup.body": {
+    es: "Te mandamos un enlace para confirmar que el correo es tuyo.",
+    en: "We'll send you a link to confirm the address is yours.",
+  },
+  "signup.submit": { es: "Continuar", en: "Continue" },
+  "signup.sent.title": { es: "Revisa tu correo", en: "Check your inbox" },
+  "signup.sent.body": {
+    es: "Si esa dirección puede registrarse, ya tiene un enlace esperando. Caduca en 24 horas.",
+    en: "If that address can be registered, a link is already waiting. It expires in 24 hours.",
+  },
+  "signup.haveAccount": { es: "¿Ya tienes cuenta?", en: "Already have an account?" },
+  "signup.tooMany": {
+    es: "Demasiadas solicitudes. Prueba dentro de un minuto.",
+    en: "Too many requests. Try again in a minute.",
+  },
+  "signup.invalidLink": { es: "Este enlace ya no vale", en: "This link is no longer valid" },
+  "signup.invalidLink.body": {
+    es: "Puede haber caducado, haberse usado ya, o haber quedado sustituido por otro más reciente. Pide uno nuevo.",
+    en: "It may have expired, been used, or been replaced by a newer one. Request a new one.",
+  },
+  "signup.finish.title": { es: "Ya casi.", en: "Almost there." },
+  "signup.finish.body": {
+    es: "Sólo falta cómo se llama tu empresa y una contraseña.",
+    en: "Just your company name and a password.",
+  },
+  "signup.company": { es: "Nombre de la empresa", en: "Company name" },
+  "signup.company.help": {
+    es: "El que verán tus clientes. Se puede cambiar después.",
+    en: "The one your clients will see. You can change it later.",
+  },
+  "signup.yourName": { es: "Tu nombre", en: "Your name" },
+  "signup.finish.submit": { es: "Crear mi cuenta", en: "Create my account" },
+  "signup.alreadyMember": {
+    es: "Ese correo ya pertenece a una empresa. Entra con él.",
+    en: "That address already belongs to a company. Sign in instead.",
+  },
   "login.eyebrow": { es: "Consola de partners", en: "Partner console" },
   "login.title": { es: "Inicia sesión.", en: "Sign in." },
   "login.email": { es: "Correo", en: "E-mail" },
