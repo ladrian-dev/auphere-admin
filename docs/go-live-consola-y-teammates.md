@@ -88,9 +88,24 @@ las claves es el único error que `sync_billing_catalog.py` existe para impedir.
 
 ---
 
-## Lo que ya está en pie (comprobado 2026-09-13)
+## Estado: desplegado en producción el 2026-09-13
 
-Para no volver a preguntarlo:
+**El go-live se completó.** `main` en `89d93ef`, las doce migraciones
+(`0106`→`0117`) aplicadas, los cinco servicios `COMPLETED` y el cobro encendido
+en los dos entornos. El `/health` respondió `ok` en las 21 comprobaciones
+minuto a minuto durante el despliegue: **ningún cliente perdió servicio**.
+
+Lo que queda abierto no es ingeniería:
+
+- **El tratamiento fiscal.** Con `sk_live_` en producción, la distancia entre
+  desplegado y cobrando de verdad es un clic de un partner. La cuenta del
+  proveedor está a nombre de una persona física (`business_type: individual`,
+  ES) y aloja además otro negocio, cuyas compras llegan a nuestro webhook y
+  terminan en `failed` por huérfanas —correcto, pero genera ruido—.
+- **La app de escritorio sin firmar** (T057): se instala en las máquinas del
+  equipo, no se distribuye a un partner.
+
+Lo demás, para no volver a preguntarlo:
 
 | | Estado |
 |---|---|
