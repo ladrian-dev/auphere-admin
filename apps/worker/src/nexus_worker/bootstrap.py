@@ -48,6 +48,7 @@ from nexus_mcp.servers.agendapro_public.transport import (
 )
 
 from nexus_worker.billing.expire_credit_cron import run_expire_credit_cron
+from nexus_worker.billing.process_event import run_billing_event_consumer
 from nexus_worker.config import WorkerSettings, get_api_settings, get_worker_settings
 from nexus_worker.guardrails import OutcomeGrader
 from nexus_worker.health import run_heartbeat
@@ -112,6 +113,12 @@ RUNNER_TASK_NAMES = frozenset(
         "inbound-consumer",
         "stream-claimer",
         "owner-fanout-consumer",
+        # Spec 005 · T119: aplica el aviso del proveedor —nivel, crédito,
+        # escalera—. Va aquí y no en el scheduler porque no es un cron: escala
+        # en horizontal como el resto de consumidores y el grupo de Redis
+        # reparte, con la restricción única de ``provider_event_id``
+        # sosteniendo la idempotencia.
+        "billing-event-consumer",
     }
 )
 EGRESS_TASK_NAMES = frozenset(
@@ -364,6 +371,14 @@ def runner_tasks(
                 ctx.redis,
                 pipeline,
                 consumer_name=ws.inbound_consumer_name + ":ownerfanout",
+                stop=ctx.stop,
+            ),
+        ),
+        _spawn(
+            "billing-event-consumer",
+            run_billing_event_consumer(
+                ctx.redis,
+                consumer_name=ws.inbound_consumer_name + ":billing",
                 stop=ctx.stop,
             ),
         ),

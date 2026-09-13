@@ -27,6 +27,7 @@ from typing import Any
 
 import sqlalchemy as sa
 import structlog
+from nexus_api.core.streams import xadd_capped
 
 log = structlog.get_logger(__name__)
 
@@ -215,3 +216,155 @@ async def handle_entry(session: Any, client: Any, fields: dict[str, str]) -> str
         return "processed"
 
     return "ignored"
+
+
+#: Cuántas entradas se leen por pasada. El camino del dinero es de bajo volumen
+#: —un aviso por cobro— así que el lote existe para no hacer una ida y vuelta a
+#: Redis por aviso, no para absorber ráfagas.
+READ_BATCH = 20
+
+#: Cuánto espera el bucle cuando el stream está vacío, que es casi siempre.
+IDLE_SECONDS = 5.0
+
+
+async def _mark_status(session: Any, event_row_id: str, status: str) -> None:
+    """Escribe en la fila del aviso cómo acabó.
+
+    La fila la creó el webhook en ``received``. Sin este paso el rastro diría
+    que el aviso llegó y nunca qué se hizo con él, que es la mitad que importa
+    cuando alguien pregunta por qué su nivel no se activó.
+    """
+    from nexus_api.db.models.billing_event import BillingEvent
+
+    await session.execute(
+        sa.update(BillingEvent)
+        .where(BillingEvent.id == uuid.UUID(event_row_id))
+        .values(status=status)
+    )
+
+
+async def drain_once(
+    redis: Any,
+    session_factory: Any,
+    client: Any,
+    *,
+    consumer_name: str,
+    count: int = READ_BATCH,
+) -> int:
+    """Una pasada: lee, aplica y acusa. Devuelve cuántas entradas atendió."""
+    await ensure_group(redis)
+    response: Any = await redis.xreadgroup(
+        GROUP, consumer_name, {BILLING_EVENT_STREAM: ">"}, count=count, block=None
+    )
+    entries: list[tuple[str, dict[str, str]]] = []
+    for _stream, raw_entries in response or []:
+        for raw_id, raw_fields in raw_entries:
+            entry_id = raw_id.decode() if isinstance(raw_id, bytes) else str(raw_id)
+            entries.append((entry_id, _decode(raw_fields)))
+    if not entries:
+        return 0
+
+    for entry_id, fields in entries:
+        row_id = fields.get("event_row_id") or ""
+        status = "failed"
+        try:
+            async with session_factory() as session:
+                try:
+                    status = await handle_entry(session, client, fields)
+                except Skip as skip:
+                    # No es un error: el aviso no tenía nada que aplicar. Se
+                    # distingue de ``failed`` porque quien audite el camino del
+                    # dinero necesita saber cuál de las dos cosas pasó.
+                    log.info(
+                        "metering.billing_event_skipped",
+                        entry_id=entry_id,
+                        reason=str(skip),
+                        event_type=fields.get("event_type", ""),
+                    )
+                    status = "ignored"
+                if row_id:
+                    await _mark_status(session, row_id, status)
+                await session.commit()
+        except Exception as exc:
+            # Un fallo inesperado —el proveedor caído, un objeto que no se puede
+            # recuperar— no se reintenta en bucle: el aviso ya está guardado en
+            # ``billing_events`` y es reprocesable desde ahí. Dejarlo en el PEL
+            # bloquearía los avisos de detrás, que es peor que atender este
+            # tarde. Va al buzón de descarte con el error y se acusa.
+            log.error(
+                "metering.billing_event_dead_lettered",
+                entry_id=entry_id,
+                event_type=fields.get("event_type", ""),
+                error=str(exc)[:200],
+            )
+            await xadd_capped(
+                redis,
+                DLQ_STREAM,
+                {
+                    **fields,
+                    "dlq_source_stream": BILLING_EVENT_STREAM,
+                    "dlq_source_entry_id": entry_id,
+                    "dlq_error": str(exc)[:500],
+                },
+            )
+        await redis.xack(BILLING_EVENT_STREAM, GROUP, entry_id)
+        log.info(
+            "metering.billing_event_applied",
+            entry_id=entry_id,
+            event_type=fields.get("event_type", ""),
+            status=status,
+        )
+    return len(entries)
+
+
+async def run_billing_event_consumer(
+    redis: Any,
+    *,
+    stop: Any,
+    consumer_name: str,
+    idle_seconds: float = IDLE_SECONDS,
+) -> None:
+    """Lee ``nexus:billing:events`` y aplica cada aviso. Sale con ``stop``.
+
+    Esto es la otra mitad del webhook, y la razón de que el webhook responda
+    ``queued``: Stripe espera hasta diez segundos por la respuesta a
+    ``checkout.session.completed`` antes de devolver al cliente a la página de
+    gracias, así que aplicar el cobro dentro de la petición convertiría un pago
+    correcto en una página que parece haber fallado.
+
+    Va en la familia **runner** y no en el scheduler: no es un cron, y escala en
+    horizontal con el resto de consumidores —el grupo de Redis reparte, y la
+    idempotencia la sostiene la restricción única de ``provider_event_id``—.
+    """
+    import asyncio
+    import contextlib
+
+    from nexus_api.billing.provider import BillingUnavailable, get_client
+    from nexus_api.db.base import get_sessionmaker
+
+    try:
+        client = get_client()
+    except BillingUnavailable as exc:
+        # Sin claves del proveedor no hay nada que aplicar, y un bucle girando
+        # en vacío solo ensucia los logs. Es el estado de un checkout de
+        # desarrollo recién clonado, no una avería.
+        log.info("metering.billing_consumer_disabled", reason=str(exc)[:120])
+        return
+
+    session_factory = get_sessionmaker()
+    log.info("metering.billing_consumer_start", stream=BILLING_EVENT_STREAM, group=GROUP)
+    while not stop.is_set():
+        try:
+            attended = await drain_once(redis, session_factory, client, consumer_name=consumer_name)
+            if attended == 0:
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(stop.wait(), timeout=idle_seconds)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # El bucle no muere: un aviso de cobro sin consumidor es la avería
+            # que esta tarea existe para cerrar.
+            log.error("metering.billing_consumer_tick_failed", error=str(exc)[:200])
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=1.0)
+    log.info("metering.billing_consumer_stopped")

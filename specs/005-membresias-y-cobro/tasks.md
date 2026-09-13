@@ -290,6 +290,61 @@ cobro y que el desglose sigue estando.
 
 ---
 
+## Phase 9: La costura que el despliegue encontró
+
+**Por qué hay una fase después del cierre.** Al configurar staging y producción
+el 2026-09-13 se vio que el aviso del proveedor llega, se registra, se encola en
+`nexus:billing:events` y **nadie lo lee**. `handle_entry` —el que aplica el
+nivel, acredita el crédito y mueve la escalera— existe y está probado, pero no
+está declarado en `bootstrap.py`, no aparece en el contrato de nombres de
+`test_bootstrap_split.py` y ningún entrypoint lo arranca. Sus únicos invocadores
+son los tests.
+
+Las 115 tareas quedaron en verde porque cada pieza se probó por separado. La
+costura entre el webhook y el worker no tenía a quién probarla, y es justo la
+avería que el propio `test_no_external_debit.py` describe en su cabecera: «el
+webhook solo registra y encola, y el trabajo lo hace el worker». Se entendió el
+reparto; no se conectó el cable.
+
+Sin esta fase el producto **cobra y no entrega**, así que bloquea el paso a
+producción. Nada se ha perdido: el aviso queda en `billing_events` y el stream
+tiene tope de 100 000, de modo que todo lo encolado es reprocesable.
+
+### Tests de la Phase 9 ⚠️
+
+- [X] T116 En `apps/worker/tests/unit/test_bootstrap_split.py`, añadir
+      `billing-event-consumer` a la lista de nombres que el runner declara. **En
+      rojo primero**: es exactamente la comprobación que habría cazado esto el
+      día que se escribió `process_event.py`, y la misma que ya falló dos veces
+      con los crons (2026-09-11 y 2026-09-13) _Requisitos: 4.3_
+      **HECHO.** `billing-event-consumer` en `ALL_EXPECTED`. En rojo primero: `test_families_are_disjoint_and_complete` falló con el nombre en el contrato y ninguna familia produciéndolo, que es la señal exacta que faltaba.
+- [X] T117 Test en `apps/api/tests/integration/` que recorra el camino
+      **completo**: aviso firmado al webhook → entrada en el stream → el
+      consumidor la lee → el nivel queda aplicado. Sin llamar a `handle_entry` a
+      mano, que es lo que oculta el fallo. Un aviso huérfano en el mismo
+      recorrido DEBE terminar en `failed` sin tocar saldo _Requisitos: 2.3, 3.1, 4.3_
+      **HECHO.** `apps/api/tests/integration/test_billing_stream_consumer.py`, tres casos: la compra confirmada llega al libro por el stream, el huérfano acaba en `failed` sin mover saldo, y la misma sesión acredita una vez. Verificado que vigila: con una sonda que finge `processed` sin aplicar, los tres se ponen rojos.
+
+### Implementación de la Phase 9
+
+- [X] T118 `run_billing_event_consumer` en
+      `apps/worker/src/nexus_worker/billing/process_event.py`: bucle
+      `xreadgroup` sobre `nexus:billing:events` con el grupo que ya crea
+      `ensure_group`, semántica de acuse igual que los otros consumidores, y el
+      resultado de `handle_entry` decidiendo el acuse. Un `failed` **no** se
+      reintenta en bucle: se acusa y queda el rastro, porque el aviso ya está
+      guardado y un huérfano no mejora repitiéndolo _Requisitos: 2.3, 3.1, 4.3_
+      **HECHO.** `drain_once` y `run_billing_event_consumer`. `Skip` → `ignored`, el retorno del manejador se escribe en la fila, y una excepción inesperada va al buzón de descarte y se acusa para no bloquear los avisos de detrás. Sin claves del proveedor el bucle no arranca, igual que el de grade.
+- [X] T119 Declararlo en `bootstrap.py` como `billing-event-consumer` en la
+      familia **runner** —no en el scheduler: no es un cron y escala en
+      horizontal como los demás consumidores— _Requisitos: 4.3_
+      **HECHO.** En la familia **runner**, no en el scheduler: no es un cron.
+- [ ] T120 Reprocesar en staging lo encolado antes del arreglo y comprobar que
+      el aviso de prueba del 2026-09-13 termina en `failed` por huérfano, que es
+      su destino correcto _Requisitos: 4.3_
+
+---
+
 ## Dependencias y orden de ejecución
 
 ### Entre fases

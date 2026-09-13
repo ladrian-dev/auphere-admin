@@ -40,6 +40,12 @@ ALL_EXPECTED = {
     "wallet-renewal-cron",
     # Spec 005: la caducidad del crédito comprado tras una baja.
     "expire-credit-cron",
+    # Spec 005 · T116: aplica el aviso del proveedor —nivel, crédito, escalera—.
+    # Faltaba aquí, y era el único sitio donde se habría notado: el webhook
+    # encolaba en ``nexus:billing:events`` y no había familia que lo leyera. Es
+    # literalmente «a task assigned to none dies without a trace» de la cabecera
+    # de este fichero, con el camino del dinero dentro.
+    "billing-event-consumer",
     "isolation-event-drainer",
     "no-show-scrape-cron",
     "cost-rollup-cron",
