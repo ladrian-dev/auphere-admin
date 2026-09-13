@@ -22,10 +22,14 @@ y probar sola.
 
 ## Phase 1: Setup
 
-- [ ] T001 Crear la migración `apps/api/alembic/versions/0118_signup_and_identities.py` con `public.signup_requests` y `console_auth.principal_identities`, sus `CHECK` de `status`/`provider` y los cuatro índices de [data-model.md](data-model.md). `down_revision = "0117_billing_events"`. _Requisitos: 1.1, 5.3_
-- [ ] T002 [P] Declarar el modelo `SignupRequest` en `apps/api/src/nexus_api/db/models/signup.py`: `email varchar(255)` en minúsculas, `token_hash char(64)`, `status` en `('pending','consumed','expired','revoked')`, `expires_at` a **24 h**, `provider varchar(20)` nullable, `created_ip_hash char(64)` nullable. Exportarlo en `db/models/__init__.py`. _Requisitos: 1.1, 1.3, 1.5_
-- [ ] T003 [P] Añadir `PrincipalIdentity` a `apps/api/src/nexus_api/db/models/console_identity.py`: `principal_id` FK con `ON DELETE CASCADE`, `provider varchar(20)`, `subject varchar(255)`, `email_at_link varchar(255)`, único en `(provider, subject)`. _Requisitos: 5.2, 5.3_
-- [ ] T004 Añadir a `apps/api/src/nexus_api/config.py` los ajustes nuevos: `signup_enabled` (bandera, defecto `False`), `signup_token_ttl_hours` (24), `google_client_id`, `google_client_secret`, `google_redirect_uri`. Los dos últimos **sin defecto utilizable**, y rechazados por el validador de arranque si llevan `change-me`, igual que `composio_webhook_secret`. _Requisitos: 1.7, 5.1_
+- [X] T001 Crear la migración `apps/api/alembic/versions/0118_signup_and_identities.py` con `public.signup_requests` y `console_auth.principal_identities`, sus `CHECK` de `status`/`provider` y los cuatro índices de [data-model.md](data-model.md). `down_revision = "0117_billing_events"`. _Requisitos: 1.1, 5.3_
+      **HECHO.** `0118_signup_and_identities`. Verificada en los dos sentidos contra Postgres local: `0117 → 0118`, las dos tablas con 10 y 7 columnas, los cuatro índices y los tres `CHECK` creados, `GRANT SELECT,INSERT,UPDATE,DELETE` a `nexus_app` sobre `signup_requests` y **ninguno** sobre `console_auth` (asimetría de 0088); `downgrade -1` deja 0 tablas y el `upgrade` vuelve a subir limpio.
+- [X] T002 [P] Declarar el modelo `SignupRequest` en `apps/api/src/nexus_api/db/models/signup.py`: `email varchar(255)` en minúsculas, `token_hash char(64)`, `status` en `('pending','consumed','expired','revoked')`, `expires_at` a **24 h**, `provider varchar(20)` nullable, `created_ip_hash char(64)` nullable. Exportarlo en `db/models/__init__.py`. _Requisitos: 1.1, 1.3, 1.5_
+      **HECHO.** `SignupRequest` con los tres índices —el de correo y el de caducidad, parciales sobre `status = 'pending'`— y los dos `CHECK`. Exportado y verificado importable.
+- [X] T003 [P] Añadir `PrincipalIdentity` a `apps/api/src/nexus_api/db/models/console_identity.py`: `principal_id` FK con `ON DELETE CASCADE`, `provider varchar(20)`, `subject varchar(255)`, `email_at_link varchar(255)`, único en `(provider, subject)`. _Requisitos: 5.2, 5.3_
+      **HECHO.** `PrincipalIdentity` en `console_auth`, única en `(provider, subject)`. Sin columna para tokens del proveedor, y el porqué escrito en el modelo.
+- [X] T004 Añadir a `apps/api/src/nexus_api/config.py` los ajustes nuevos: `signup_enabled` (bandera, defecto `False`), `signup_token_ttl_hours` (24), `google_client_id`, `google_client_secret`, `google_redirect_uri`. Los dos últimos **sin defecto utilizable**, y rechazados por el validador de arranque si llevan `change-me`, igual que `composio_webhook_secret`. _Requisitos: 1.7, 5.1_
+      **HECHO.** `signup_enabled` (defecto `False`), `signup_token_ttl_hours` (24) y los tres de Google sin defecto utilizable. La guarda de arranque es **todo o nada**, y se probó: los tres vacíos arranca · sólo `client_id` rechaza · `id`+`secret` sin `redirect` rechaza · sólo `redirect_uri` rechaza · los tres puestos arranca.
 
 **Checkpoint**: la base sabe guardar una solicitud y un vínculo de proveedor. Nada del producto ha cambiado todavía.
 
@@ -39,12 +43,18 @@ del BFF la API ve la misma IP para todo el mundo (research R3). Construir el
 formulario de alta encima de un limitador que no limita sería entregar la
 contención en falso.
 
-- [ ] T005 **[TEST, en rojo]** Escribir `apps/api/tests/unit/test_client_ip.py`: con `X-Nexus-Client-IP` presente se usa esa IP; ausente, se devuelve el marcador de cubo único y **no** `request.client.host`; con un valor que no es IP, se trata como ausente. _Requisitos: 7.1_
-- [ ] T006 Implementar `apps/api/src/nexus_api/core/client_ip.py` con una única función de lectura. **No se lee `X-Forwarded-For`**: lo puede poner cualquiera que alcance la API, y obliga a adivinar cuántos proxies hay delante. _Requisitos: 7.1_
-- [ ] T007 Hacer que el BFF ponga la cabecera en `apps/console/src/lib/` (donde se acuña el token de servicio), en **todas** las llamadas pre-sesión. _Requisitos: 7.1_
-- [ ] T008 Cambiar `check_login_rate_limit` en `apps/api/src/nexus_api/api/console/auth.py` para que la IP salga de `core/client_ip`. **Esto cambia el comportamiento del login en producción**: empieza a limitar por IP de verdad, que es lo que su docstring ya prometía. _Requisitos: 7.1_
-- [ ] T009 **[VERIFICACIÓN POR MUTACIÓN]** Romper `client_ip` para que devuelva siempre una constante y comprobar que T005 se pone rojo. Dejar la evidencia en la tarea. _Requisitos: 7.1_
+- [X] T005 **[TEST, en rojo]** Escribir `apps/api/tests/unit/test_client_ip.py`: con `X-Nexus-Client-IP` presente se usa esa IP; ausente, se devuelve el marcador de cubo único y **no** `request.client.host`; con un valor que no es IP, se trata como ausente. _Requisitos: 7.1_
+      **HECHO.** 15 pruebas en `tests/unit/test_client_ip.py`. Vista en rojo antes de existir el módulo (`ModuleNotFoundError`).
+- [X] T006 Implementar `apps/api/src/nexus_api/core/client_ip.py` con una única función de lectura. **No se lee `X-Forwarded-For`**: lo puede poner cualquiera que alcance la API, y obliga a adivinar cuántos proxies hay delante. _Requisitos: 7.1_
+      **HECHO.** `core/client_ip.py`. Un valor que no parsea como IP se trata **como ausente**, no se acepta: aceptarlo dejaría estrenar un cubo de ritmo por petición, que es tener el limitador apagado.
+- [X] T007 Hacer que el BFF ponga la cabecera en `apps/console/src/lib/` (donde se acuña el token de servicio), en **todas** las llamadas pre-sesión. _Requisitos: 7.1_
+      **HECHO.** `apps/console/src/lib/client-ip.ts` + cableado en el `request()` de `backend.ts`, por donde pasan **todas** las llamadas pre-sesión. 7 pruebas en vitest; typecheck y eslint limpios. Aquí sí se lee `x-forwarded-for` porque la pone la plataforma delante del BFF; en la API no, porque allí la pone cualquiera.
+- [X] T008 Cambiar `check_login_rate_limit` en `apps/api/src/nexus_api/api/console/auth.py` para que la IP salga de `core/client_ip`. **Esto cambia el comportamiento del login en producción**: empieza a limitar por IP de verdad, que es lo que su docstring ya prometía. _Requisitos: 7.1_
+      **HECHO, y con un hallazgo que habría roto el login.** La misma variable `ip` alimentaba el limitador **y** `ConsoleSession.ip`, que es una columna `INET`: pasarle el marcador del cubo único habría reventado el `INSERT` y dejado a nadie entrar. Se separan en dos funciones (`client_ip` para contar, `client_ip_for_storage` para guardar, que devuelve `NULL` cuando no consta). 45 pruebas de login y consola en verde.
+- [X] T009 **[VERIFICACIÓN POR MUTACIÓN]** Romper `client_ip` para que devuelva siempre una constante y comprobar que T005 se pone rojo. Dejar la evidencia en la tarea. _Requisitos: 7.1_
+      **HECHO.** Cuatro mutaciones, las cuatro rojas: aceptar la cabecera sin validar → 5 fallos · caer a una IP fija en vez del cubo único → 2 · guardar el marcador en vez de `NULL` → 3 · renombrar la cabecera a `X-Forwarded-For` → 1. Restaurado: 15/15 y fichero idéntico.
 - [ ] T010 Desplegar la Fase 2 sola a staging y observar los límites del login antes de seguir. Producción tiene 3 clientes con tráfico: un limitador que de golpe empieza a contar de verdad se mira antes de apilarle un formulario público encima. _Requisitos: 7.1_
+      **PENDIENTE — es tuyo.** Un despliegue a staging no lo ejecuto yo. Lo que hay que mirar allí: que el 429 del login empiece a saltar por IP (veinte correos distintos desde la misma IP) y que las sesiones nuevas sigan guardando `ip` sin error.
 
 **Checkpoint**: el limitador limita lo que dice limitar. Sin esto, el Requisito 7 no se puede cerrar.
 

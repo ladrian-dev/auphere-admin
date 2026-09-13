@@ -40,6 +40,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
+from nexus_api.core.client_ip import client_ip, client_ip_for_storage
 from nexus_api.core.console_auth import ConsoleService, permissions_for, require_console_service
 from nexus_api.core.rate_limit import allow
 from nexus_api.db.models import AuditLog
@@ -108,8 +109,17 @@ def _unauthorized() -> HTTPException:
     )
 
 
-def _client_ip(request: Request) -> str | None:
-    return request.client.host if request.client else None
+def _rate_limit_ip(request: Request) -> str:
+    """Contra qué cubo se cuenta esta petición.
+
+    **No es ``request.client.host``, y eso es el arreglo.** El navegador nunca
+    habla con esta API: habla con el BFF (ADR-032), así que el host del socket
+    es la IP de salida del BFF para todo el mundo, y el cubo «por IP» que el
+    docstring de este módulo promete era en realidad un único cubo global.
+    Ahora la IP llega en una cabecera que sólo pone el BFF; sin ella se cae a
+    un cubo único **con nombre**, en vez de fingir que hay límite por IP.
+    """
+    return client_ip(request)
 
 
 async def check_login_rate_limit(redis: Redis, *, email: str, ip: str | None) -> None:
@@ -152,7 +162,7 @@ async def login(
     redis: Redis = Depends(get_redis),
 ) -> LoginOut:
     email = console_identity.normalize_email(str(body.email))
-    ip = _client_ip(request)
+    ip = _rate_limit_ip(request)
     await check_login_rate_limit(redis, email=email, ip=ip)
 
     # DOS transacciones a propósito. El intento fallido incrementa el
@@ -169,7 +179,10 @@ async def login(
         token, expires_at = await console_identity.start_session(
             session,
             account,
-            ip=ip,
+            # La IP que se GUARDA no es la que se cuenta: ``ConsoleSession.ip``
+            # es ``INET`` y el marcador del cubo único no es una IP. Cuando no
+            # consta, la columna dice ``NULL``.
+            ip=client_ip_for_storage(request),
             user_agent=request.headers.get("user-agent"),
         )
         view = await console_identity.load_principal_view(session, account)

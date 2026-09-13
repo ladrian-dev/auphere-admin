@@ -1,5 +1,6 @@
 import "server-only";
 
+import { clientIpHeader } from "./client-ip";
 import { env } from "./env";
 import { mintPrincipalToken, mintServiceToken } from "./jwt";
 import type { Principal } from "./principal";
@@ -71,6 +72,23 @@ export class BackendError extends Error {
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 type Opts = { method?: Method; body?: unknown; optional?: boolean; signal?: AbortSignal };
 
+/**
+ * La IP del visitante, reenviada a la API.
+ *
+ * Sin esto la API ve la IP de salida de este BFF para todo el mundo, y su cubo
+ * de ritmo «por IP» deja de ser por IP. Se lee de las cabeceras entrantes, que
+ * aquí sí pone la plataforma. Si `next/headers` no está disponible —fuera de
+ * una petición— no se manda nada y la API cae a su cubo único.
+ */
+async function forwardedClientIp(): Promise<Record<string, string>> {
+  try {
+    const { headers } = await import("next/headers");
+    return clientIpHeader(await headers());
+  } catch {
+    return {};
+  }
+}
+
 async function request<T>(token: string, path: string, opts: Opts = {}): Promise<T | null> {
   const url = `${env().NEXUS_BACKEND_URL}${path}`;
   const res = await fetch(url, {
@@ -78,6 +96,7 @@ async function request<T>(token: string, path: string, opts: Opts = {}): Promise
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
+      ...(await forwardedClientIp()),
       ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,

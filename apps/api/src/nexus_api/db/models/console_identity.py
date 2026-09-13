@@ -24,7 +24,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import INET, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -104,3 +104,54 @@ class ConsoleSession(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"<ConsoleSession {self.principal_id}>"
+
+
+class PrincipalIdentity(Base):
+    """Un proveedor externo que responde de quién es una persona (0118).
+
+    **El ancla es ``subject``, no el correo, y la diferencia importa.** El
+    ``sub`` de Google es opaco y no se reasigna nunca. Un correo sí: se libera
+    y se reasigna, y en Workspace eso pasa cada vez que alguien deja una
+    empresa. Anclar al correo haría que quien hereda una dirección herede la
+    cuenta.
+
+    Una cuenta admite **varios** vínculos desde el primer día — Google hoy,
+    otro proveedor mañana — y un ``(provider, subject)`` pertenece a una sola
+    cuenta. Con columnas en ``principals`` en vez de esta tabla, el segundo
+    proveedor pediría otra columna y el tercero otra.
+
+    **No guarda ningún token del proveedor.** No hay columna y es deliberado:
+    el ``id_token`` ya trae ``sub`` y ``email_verified``, y no se pide
+    ``refresh_token`` porque hoy no hay ámbito que refrescar. Se añadirá con la
+    spec que lo use; hoy sería una credencial almacenada sin lector.
+    """
+
+    __tablename__ = "principal_identities"
+    __table_args__ = (
+        CheckConstraint("provider IN ('google')", name="ck_principal_identities_provider"),
+        Index("uq_principal_identities_provider_subject", "provider", "subject", unique=True),
+        Index("ix_principal_identities_principal", "principal_id"),
+        {"schema": CONSOLE_AUTH_SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    principal_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{CONSOLE_AUTH_SCHEMA}.principals.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)
+    #: El identificador estable del proveedor. Esto es la identidad.
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: Instantánea para auditoría: "¿con qué correo se vinculó esto?".
+    #: **Nunca** criterio de búsqueda — para eso está ``subject``.
+    email_at_link: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        return f"<PrincipalIdentity {self.provider}:{self.subject}>"

@@ -240,6 +240,24 @@ class Settings(BaseSettings):
     # JSON body).
     admin_panel_base_url: str = "http://localhost:3000"
 
+    # ── Spec 006: el registro autónomo de partners ────────────────────────
+    #: Apagada por defecto **a propósito**. Encenderla abre una escritura sin
+    #: sesión que crea un ``partner``, que es la raíz de la que cuelga todo lo
+    #: demás. Con la bandera apagada la consola no enseña un botón gris ni una
+    #: pantalla que explique lo que no hay: enseña el login (constitución §V).
+    signup_enabled: bool = False
+    #: 24 h, no los 21 días de una invitación. Una invitación la manda alguien
+    #: que te conoce; una solicitud de alta la pide un desconocido y su correo
+    #: está en la bandeja ahora mismo.
+    signup_token_ttl_hours: int = 24
+    #: Google OIDC. **Sin defecto utilizable y sin ``change-me``**: un valor de
+    #: fábrica en un cliente OAuth no es un secreto a medias, es un proveedor
+    #: de identidad que no es el nuestro. Vacío = el alta con Google no se
+    #: ofrece; el alta con contraseña sigue funcionando (CE-006).
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = ""
+
     # HMAC secret for consent_token signing (see services/connectors/consent_token.py).
     # Used to mint the magic-link tokens we ship to tenant owners via WhatsApp.
     connector_consent_secret: str = "dev-consent-secret-change-me-min-32-chars"
@@ -566,6 +584,12 @@ class Settings(BaseSettings):
             offenders.append("NEXUS_COMPOSIO_API_KEY")
         if "change-me" in self.composio_webhook_secret:
             offenders.append("NEXUS_COMPOSIO_WEBHOOK_SECRET")
+        # Google a medias es peor que Google apagado: la consola ofrecería el
+        # botón y el intercambio del código fallaría con un error del
+        # proveedor, que no se parece a la causa. O están los tres, o ninguno.
+        google = (self.google_client_id, self.google_client_secret, self.google_redirect_uri)
+        if any(v.strip() for v in google) and not all(v.strip() for v in google):
+            offenders.append("NEXUS_GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI")
         # Firma las credenciales de dispositivo (Requisito 6.3): con el valor de
         # fábrica, cualquiera que lea el repo podría acuñar una llave de la
         # máquina de un partner.

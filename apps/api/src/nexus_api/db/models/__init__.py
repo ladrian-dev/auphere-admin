@@ -60,6 +60,7 @@ from nexus_api.db.models.console_identity import (
     CONSOLE_AUTH_SCHEMA,
     ConsoleAccount,
     ConsoleSession,
+    PrincipalIdentity,
 )
 from nexus_api.db.models.console_notification import (
     ConsoleNotification,
@@ -169,6 +170,7 @@ from nexus_api.db.models.scheduled_job import (
     ScheduledJobKind,
     ScheduledJobStatus,
 )
+from nexus_api.db.models.signup import SignupProvider, SignupRequest, SignupStatus
 from nexus_api.db.models.support_ticket import (
     EVENT_KINDS,
     EVENT_OPEN,
@@ -329,6 +331,7 @@ __all__ = [
     "PartnerSubscription",
     "PartnerTenant",
     "PartnerWallet",
+    "PrincipalIdentity",
     "PrincipalLocalExecPref",
     "QAAuditLog",
     "QARun",
@@ -339,6 +342,9 @@ __all__ = [
     "ScheduledJob",
     "ScheduledJobKind",
     "ScheduledJobStatus",
+    "SignupProvider",
+    "SignupRequest",
+    "SignupStatus",
     "SupportTicket",
     "SupportTicketEvent",
     "Teammate",
