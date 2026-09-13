@@ -339,9 +339,10 @@ tiene tope de 100 000, de modo que todo lo encolado es reprocesable.
       familia **runner** —no en el scheduler: no es un cron y escala en
       horizontal como los demás consumidores— _Requisitos: 4.3_
       **HECHO.** En la familia **runner**, no en el scheduler: no es un cron.
-- [ ] T120 Reprocesar en staging lo encolado antes del arreglo y comprobar que
+- [X] T120 Reprocesar en staging lo encolado antes del arreglo y comprobar que
       el aviso de prueba del 2026-09-13 termina en `failed` por huérfano, que es
       su destino correcto _Requisitos: 4.3_
+      **HECHO.** 2026-09-13 17:21 UTC, en cuanto el runner arrancó con el consumidor: `billing_consumer_start` → `billing_event_orphan` → `billing_event_applied status=failed` sobre la entrada `1789316026439-0`, que es el aviso que Stripe entregó a las 16:13. El grupo se crea en `id="0"`, así que drenó lo encolado sin intervención. Huérfano porque `stripe trigger` fabrica la sesión con `client_reference_id` nulo: es su destino correcto.
 
 ---
 

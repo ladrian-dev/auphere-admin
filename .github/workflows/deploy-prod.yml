@@ -67,7 +67,7 @@ jobs:
           set -euo pipefail
           # Mismo contrato que en staging: el deploy no avanza hasta que el
           # run de ``ci`` del MISMO sha esté verde.
-          for i in $(seq 1 60); do
+          for i in $(seq 1 180); do
             RUN=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=50" \
               --jq '[.workflow_runs[] | select(.name == "ci")][0] // empty')
             if [ -n "$RUN" ]; then
@@ -84,7 +84,8 @@ jobs:
             fi
             sleep 30
           done
-          echo "::error::timeout esperando al workflow ci."
+          echo "::error::timeout (90 min) esperando al workflow ci. NO es un fallo
+          de despliegue: ci no había terminado. Mira su duración antes de tocar nada.
           exit 1
 
       - name: configure aws credentials (OIDC)

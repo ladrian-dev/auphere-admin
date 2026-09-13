@@ -46,9 +46,17 @@ jobs:
         run: |
           set -euo pipefail
           # El workflow ci corre en paralelo sobre el mismo push; el deploy
-          # no avanza hasta que ese run del MISMO sha esté verde. Timeout
-          # 30 min; cualquier conclusión != success aborta el deploy.
-          for i in $(seq 1 60); do
+          # no avanza hasta que ese run del MISMO sha esté verde. Cualquier
+          # conclusión != success aborta el deploy.
+          #
+          # La espera es de 90 min y no de 30 por una avería del 2026-09-13:
+          # ``ci`` tardó 36m37s, acabó en VERDE, y el deploy ya se había
+          # rendido seis minutos antes. El resultado se lee como «el
+          # despliegue falló» cuando lo que pasó es que se esperó de menos.
+          # La suite venía creciendo —15m39s, 16m55s, 21m53s, 36m37s— así que
+          # el margen se lo comió el propio proyecto. Esperar de más no cuesta
+          # nada: si ``ci`` se cuelga, el paso siguiente no arranca igual.
+          for i in $(seq 1 180); do
             RUN=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=50" \
               --jq '[.workflow_runs[] | select(.name == "ci")][0] // empty')
             if [ -n "$RUN" ]; then
@@ -65,7 +73,8 @@ jobs:
             fi
             sleep 30
           done
-          echo "::error::timeout esperando al workflow ci."
+          echo "::error::timeout (90 min) esperando al workflow ci. NO es un fallo
+          de despliegue: ci no había terminado. Mira su duración antes de tocar nada.
           exit 1
 
       - name: configure aws credentials (OIDC)
