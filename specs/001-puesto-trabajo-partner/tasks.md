@@ -529,7 +529,29 @@ separación la fija el criterio 15.3 y se comprueba en `T063`, que va **primero*
       **HECHO.** `GatewayApprovals`, 6 tests. Un fallo **no** se presenta como cola vacía: `[]` diría «no hay nada que aprobar», que es distinto —y falso— de «no he podido preguntar». El token se le pide al gateway; generarlo aparte da `token superseded` porque su registro de nonces vive en la memoria de su proceso.
 - [x] T070 Empaquetado con `electron-updater`. Es lo que `T057` firma, así que va
       antes que la firma y después que todo lo demás. _Requisitos: 9.2_
-      **HECHO** en lo que no depende de certificados: `electron-builder` declarado, `hardenedRuntime` para macOS, y el build de producción compila los 12 módulos y **carga**. Windows queda deliberadamente fuera del empaquetado: la contención no está portada y empaquetar allí prometería lo que no se cumple.
+      **HECHO A MEDIAS, y corregido el 2026-09-13.** Lo que sí estaba: `electron-builder` declarado, `hardenedRuntime` para macOS, y el build de producción compila los 12 módulos y **carga**. Windows queda deliberadamente fuera del empaquetado: la contención no está portada y empaquetar allí prometería lo que no se cumple.
+      **Lo que NO estaba, pese a que la tarea se llama así:** `electron-updater` figuraba sólo en `package.json` —y en `devDependencies`, que es el lado equivocado para algo que se importa en tiempo de ejecución—, sin un solo `import` en `src/` ni en `tests/`, y sin bloque `publish`. **El criterio 9.2 no estaba cubierto por nada.** Es la tercera vez en esta spec que una tarea se da por hecha citando el requisito sin construir la capacidad (ver la nota de la Phase 9 y de la Phase 10). Se cierra en T071–T074.
+
+- [x] T071 La política de actualización, pura y probada sin Electron:
+      `src/update-policy.ts`. Falla **cerrada** —binario sin firmar no comprueba
+      siquiera, ni con un paquete ya descargado— y separa descargar de instalar.
+      _Requisitos: 9.2_
+      **HECHO.** 13 pruebas en `tests/update-policy.test.ts`. Verificadas por mutación: quitar la guarda de firma → 2 rojos; evaluar `downloaded` antes que la firma → 1 rojo; `isBusy` siempre falso → 2 rojos; aceptar `http` en el canal → 1 rojo.
+
+- [x] T072 La aplicación comprueba **su propia firma** contra nuestro Team ID
+      antes de hablar con el canal, y si no puede comprobarla no se actualiza.
+      _Requisitos: 9.1, 9.2_
+      **HECHO.** `developerIdRequirement()` en la política, `detectBuildKind()` en `src/electron/updater.ts`. El requisito se comprobó contra una firma real: nuestro binario firmado pasa (`rc=0`), `/bin/ls` —firmado por Apple pero de otro equipo— falla (`rc=3`).
+
+- [x] T073 No reiniciar encima de trabajo vivo: `StreamHub.liveCount` (sesiones
+      de agente en vuelo) y la lista de espera del tray (decisiones sin tomar)
+      alimentan la política desde `bootstrap`. _Requisitos: 9.2_
+      **HECHO.** `liveCount` con su prueba, verificada por mutación (devolver 0 → 2 rojos). La lista de espera del tray se recibía y se tiraba; ahora se retiene. `informativo` no cuenta, igual que no marca la bandeja.
+
+- [x] T074 Entitlements explícitos y mínimos, destinos que se puedan distribuir
+      (`dmg` + `zip`, que es el que Squirrel.Mac sabe consumir) y el canal
+      declarado. _Requisitos: 9.1, 9.2_
+      **HECHO.** `build/entitlements.mac.plist` con cuatro entitlements y el porqué de cada uno; **`apple-events` deliberadamente ausente** — no hay una sola llamada a AppleScript en `src/`. `electron-updater` movido a `dependencies`. `pnpm --filter @nexus/desktop test` 321/321, `typecheck` y `build` limpios.
 
 **Checkpoint**: el partner tiene algo que instalar, y la beta 2 deja de ser un
 plano de control con piezas sueltas.
@@ -601,10 +623,9 @@ ejecutar en local.
       `[[14-mvp-y-fases]]` §3 apuntan a `specs/001-puesto-trabajo-partner/`. El puente es
       obligatorio en las dos direcciones. _Requisitos: §IX (constitución)_
       **HECHO.** `[[15-kirocrew-y-alternativas]]` §9 y `[[14-mvp-y-fases]]` §3 apuntan ya a `specs/001-puesto-trabajo-partner/`. §IX pide el puente en las dos direcciones, y de paso la ficha 14 recoge las dos correcciones que la ejecución le devolvió: `shell_local` cerrado y el Requisito 14, que no existía cuando se escribió.
-- [ ] T057 Firma y notarización del paquete. **Bloqueada fuera de este plan**: los
-      certificados tienen plazo de entrega y hoy no están —en esta máquina solo hay
-      «Apple Development», que no sirve para distribuir, y los OV de Windows duran 460
-      días desde marzo de 2026—. _Requisitos: 9.1, 9.2_
+- [ ] T057 Firma y notarización del paquete. _Requisitos: 9.1, 9.2_
+      **La firma de macOS quedó desbloqueada el 2026-09-13.** Se emitió un **Developer ID Application: FACELAD SpA (CBSWMG766P)**, intermediario **G2** (el defecto del portal era «Previous Sub-CA», que caduca el 2027-02-01; se cambió a mano), válido hasta 2031-09-14. Probado firmando de verdad: cadena hasta Apple Root CA, `flags=runtime` y **sello de tiempo de Apple obtenido**. La clave privada se generó en esta máquina y no salió de ella; el material suelto se destruyó tras importarla al llavero.
+      **Lo que sigue pendiente:** (a) la **notarización**, que necesita una App Store Connect API key nueva con acceso Developer o Admin — las dos que existen (`Api revenue cat`, `[Expo] EAS Submit`) son de producción de Facelad y su `.p8` no se puede volver a descargar; (b) **Windows**, que no depende del certificado sino de que la contención esté portada (T039/T043): firmar allí prometería lo que no se cumple.
 - [x] T058 Ejecutar la validación completa de `quickstart.md`. _Requisitos: 1.1, 12.1_
       **HECHO.** Recorrido entero en verde: composición con el clon intacto · 14 tests de contención (los seis ataques) · 17 de techos · 28 de lista blanca · 23 de frontera de aprobación · 19 de presencia, medidor y catálogo · 33 de la cáscara · 7 de la pantalla · **733 de aislamiento** · `ruff` y `mypy --strict` limpios · typecheck en escritorio y consola.
 

@@ -13,6 +13,14 @@ dist/
 build/
 *.egg
 
+# `build/` de arriba es para Python y se traga `apps/desktop/build/`, que NO es
+# un artefacto: son los entitlements del hardened runtime, o sea la lista de lo
+# que la app de escritorio puede hacer saltándose una protección del sistema.
+# Sin esta excepción el fichero no viaja, electron-builder usa los suyos por
+# defecto y nadie se entera hasta que alguien audita un paquete firmado.
+!apps/desktop/build/
+!apps/desktop/build/**
+
 # Node / Next.js
 node_modules/
 .next/

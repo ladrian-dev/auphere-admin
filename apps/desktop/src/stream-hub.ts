@@ -25,6 +25,14 @@ export class StreamHub {
     private readonly sink: StreamSink,
   ) {}
 
+  /**
+   * Cuántos streams siguen abiertos. Lo lee el updater: un stream abierto es
+   * una sesión de agente en vuelo, y reiniciar la aplicación encima la mata.
+   */
+  get liveCount(): number {
+    return this.open.size;
+  }
+
   start(path: string): string {
     this.seq += 1;
     const streamId = `s${this.seq}`;

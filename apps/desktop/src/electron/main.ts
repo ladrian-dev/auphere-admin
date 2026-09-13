@@ -55,6 +55,8 @@ import {
   userDataFile,
 } from "./adapters.js";
 import { registerAppSurface, sessionForRenderer } from "./app-surface.js";
+import { startUpdater } from "./updater.js";
+import type { Activity } from "../update-policy.js";
 
 const CONSOLE_URL = process.env.AUPHERE_CONSOLE_URL ?? "https://console.auphere.com";
 const API_URL = process.env.AUPHERE_API_URL ?? "https://api.auphere.com";
@@ -71,7 +73,7 @@ function layout(window: BaseWindow, views: WebContentsView[], barView: WebConten
   barView.setBounds({ x: 0, y: Math.max(0, height - BAR_HEIGHT), width, height: BAR_HEIGHT });
 }
 
-export async function bootstrap(): Promise<void> {
+export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   // Antes de nada y antes de abrir el puente: si las particiones se han igualado
   // en algún refactor, esto no arranca en vez de filtrar en silencio.
   assertPartitionsAreSeparate();
@@ -311,7 +313,11 @@ export async function bootstrap(): Promise<void> {
     window.focus();
     showSurface("app");
   };
+  // La última lista de espera, retenida. El tray ya la recibía y se perdía; el
+  // updater la necesita para no instalar encima de una decisión sin tomar.
+  let waitingNow: Waiting[] = [];
   const setTrayWaiting = (waiting: Waiting[]): void => {
+    waitingNow = waiting;
     const badge = trayBadge(waiting);
     tray.setToolTip(trayTooltip(waiting, appLocale()));
     // En macOS el número va al lado del icono; en el resto, en el tooltip.
@@ -369,6 +375,17 @@ export async function bootstrap(): Promise<void> {
     inbox.stop();
     runtime.stop();
   });
+
+  // Lo que el updater necesita saber para NO reiniciar encima de nada: los
+  // streams abiertos son sesiones de agente en vuelo, y la lista de espera son
+  // decisiones que una persona todavía no ha tomado. `informativo` no cuenta:
+  // no espera a nadie, igual que no marca la bandeja.
+  return {
+    readActivity: () => ({
+      liveSessions: streams.liveCount,
+      pendingApprovals: waitingNow.filter((w) => w.level !== "informativo").length,
+    }),
+  };
 }
 
 async function captureEvidence(
@@ -427,7 +444,17 @@ if (process.env.NODE_ENV !== "test") {
       first.show();
       first.focus();
     });
-    void app.whenReady().then(bootstrap);
+    void app.whenReady().then(async () => {
+      const bootstrapped = bootstrap();
+      await bootstrapped;
+      // El updater va DESPUÉS de arrancar: comprobar la propia firma cuesta un
+      // proceso, y nada de esto debe retrasar la primera ventana.
+      const { readActivity } = await bootstrapped;
+      await startUpdater({
+        readActivity,
+        log: (message, detail) => console.info("[updater]", message, detail ?? {}),
+      });
+    });
     app.on("window-all-closed", () => app.quit());
   }
 }

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements del hardened runtime — spec 001, Requisito 9.1.
+
+  Se declaran EXPLÍCITAMENTE en vez de heredar los de electron-builder. No es
+  que los suyos estén mal: es que esto es la lista de lo que la aplicación
+  puede hacer saltándose una protección del sistema, y una lista así se revisa
+  en el diff, no se hereda de una dependencia.
+
+  Lo que NO está, y es deliberado:
+
+  * `com.apple.security.automation.apple-events` — no hay una sola llamada a
+    AppleScript ni a `osascript` en `src/`. Es el entitlement que deja gobernar
+    otras aplicaciones del Mac, y esta aplicación ya ejecuta órdenes en la
+    máquina del partner: no se le añade una segunda puerta que no usa.
+  * Los entitlements de sandbox (`com.apple.security.app-sandbox` y sus
+    `network.*`, `files.*`) — no aplican fuera de la App Store, y pedirlos
+    aquí no sandboxea nada; sólo confunde a quien lea esto.
+
+  `disable-library-validation` y `allow-dyld-environment-variables` están porque
+  los pide la estructura de procesos ayudantes de Electron. Si algún día se
+  quitan, se quitan con un paquete firmado que arranque — no a ojo.
+-->
+<plist version="1.0">
+<dict>
+  <!-- V8 compila a código máquina en tiempo de ejecución. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <!-- El respaldo de V8 cuando no puede usar JIT con permisos estrictos. -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- Electron ajusta el entorno del cargador para sus procesos ayudantes. -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  <!-- Los ayudantes y los módulos nativos no llevan nuestra firma. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

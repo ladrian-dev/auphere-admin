@@ -74,3 +74,20 @@ describe("StreamHub", () => {
     expect(hub.size).toBe(0);
   });
 });
+
+describe("cuántas sesiones siguen vivas (lo lee el updater)", () => {
+  it("cuenta los streams abiertos y descuenta al cerrarlos", async () => {
+    const hub = new StreamHub(
+      () => new Promise<void>(() => {}), // nunca resuelve: el stream queda abierto
+      { event: () => {}, end: () => {} },
+    );
+    expect(hub.liveCount).toBe(0);
+    const a = hub.start("/uno");
+    const b = hub.start("/dos");
+    expect(hub.liveCount).toBe(2);
+    hub.close(a);
+    expect(hub.liveCount).toBe(1);
+    hub.close(b);
+    expect(hub.liveCount).toBe(0);
+  });
+});
