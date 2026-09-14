@@ -141,8 +141,21 @@ jobs:
           # Silicon); un `find ... -print -quit` cogía uno y daba por buenos los
           # dos. Con `-quit` se puede publicar un arm64 sin firmar y no
           # enterarse hasta que alguien lo abre.
-          mapfile -t APPS < <(find apps/desktop/dist -maxdepth 2 -name '*.app' -type d)
+          #
+          # **Nada de `mapfile` aquí.** El shell de estos runners es
+          # `/bin/bash`, que en macOS es **3.2** —Apple no lo actualiza por la
+          # licencia de bash 4— y `mapfile` no existe: el paso muere con
+          # `command not found` y código 127 antes de verificar nada. Pasó en
+          # v0.1.0. El bucle `while read` con sustitución de proceso sí funciona
+          # en 3.2, y **corre en el shell principal**, así que un `exit 1` de
+          # dentro aborta el paso de verdad (con `find | while` iría a un
+          # subshell y el fallo se perdería).
+          APPS=()
+          while IFS= read -r app; do
+            APPS+=("$app")
+          done < <(find apps/desktop/dist -maxdepth 2 -name '*.app' -type d)
           test "${#APPS[@]}" -ge 1 || { echo "no se construyó ningún .app"; exit 1; }
+          echo "verificando ${#APPS[@]} aplicaciones"
 
           for APP in "${APPS[@]}"; do
             echo "── $APP"
