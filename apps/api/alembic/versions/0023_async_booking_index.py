@@ -44,6 +44,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_scheduled_jobs_kind_status_run_at", table_name="scheduled_jobs"
-    )
+    op.drop_index("ix_scheduled_jobs_kind_status_run_at", table_name="scheduled_jobs")

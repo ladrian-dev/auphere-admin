@@ -41,7 +41,6 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from typing import Annotated, Any
 
 import sqlalchemy as sa
@@ -92,8 +91,8 @@ from nexus_api.db.models.console_notification import (
     ConsoleNotification,
     NotificationSeverity,
 )
-from nexus_api.metering.pricing_policy import UnweightedModel, weight_for
-from nexus_api.metering.quota import cache_read_quota_tokens, quota_tokens
+from nexus_api.metering.pricing_policy import LaneWeights, UnweightedModel, weights_for
+from nexus_api.metering.quota import quota_tokens
 from nexus_api.metering.wallet import companion_wallet_remaining, debit_wallet
 from nexus_api.repositories.teammate_tasks import TeammateTaskRepository
 from nexus_api.repositories.teammates import TeammateRepository
@@ -1390,15 +1389,17 @@ def _make_on_complete(
             cost_usd=await _turn_cost_usd(handle),
             steps=handle.total_steps,
         )
-        uncached = max(
-            0, int(handle.total_input_tokens) - cache_read_quota_tokens(handle.total_cache_read)
-        )
-        # Spec 004, R3.1: el peso del cerebro entra en la MISMA función que ya
-        # pondera la lectura de caché. Sale del catálogo cacheado —el mismo que
-        # se lee dos líneas más arriba para valorar el turno—, así que no añade
-        # una consulta por turno.
+        # Spec 007: ``total_input_tokens`` **ya es la entrada no cacheada
+        # nativa**. Antes era la cuota y aquí se des-ponderaba restando
+        # ``0,1 x cache_read``; esa resta dependía de que dos módulos en dos
+        # procesos distintos usaran la misma constante, y con un peso por carril
+        # deja de ser invertible. Ahora no hay nada que deshacer.
+        uncached = max(0, int(handle.total_input_tokens))
+        # Los tres pesos salen del catálogo cacheado —el mismo que se lee unas
+        # líneas más arriba para valorar el turno—, así que no añaden una
+        # consulta por turno.
         #
-        # Un modelo sin peso no puede debitar: el turno ya ocurrió, así que
+        # Un modelo sin pesos no puede debitar: el turno ya ocurrió, así que
         # negarse aquí no impediría nada y solo dejaría de cobrarlo en
         # silencio. Se registra y se omite, igual que hace el consumidor de
         # canal, y queda medido en la fila del run.
@@ -1408,7 +1409,7 @@ def _make_on_complete(
                 cache_read=int(handle.total_cache_read),
                 output_tokens=int(handle.total_output_tokens),
                 cache_write=int(handle.total_cache_write),
-                model_weight=await _model_weight(handle.model),
+                weights=await _lane_weights(handle.model),
             )
         except UnweightedModel as exc:
             log.error(
@@ -1436,18 +1437,19 @@ def _make_on_complete(
     return _on_complete
 
 
-async def _model_weight(model: str | None) -> Decimal:
-    """El peso de cuota del modelo del turno (spec 004, R3.1).
+async def _lane_weights(model: str | None) -> LaneWeights:
+    """Los tres pesos de cuota del modelo del turno (spec 007, R1.2).
 
     Del catálogo cacheado (TTL 300 s), que ya se lee en este mismo camino para
-    valorar el turno: cero consultas nuevas por llamada.
+    valorar el turno: cero consultas nuevas por llamada. El mapa lo construye
+    ``lane_weights_from`` y no una comprensión escrita aquí — con tres carriles,
+    tres copias de la misma comprensión divergen a la primera.
     """
-    from nexus_worker.metering.pricing import get_catalog
+    from nexus_worker.metering.pricing import get_catalog, lane_weights_from
 
     if not model:
         raise UnweightedModel("the run did not record which model it used")
-    catalog = await get_catalog()
-    return weight_for(model, {mid: row.quota_weight for mid, row in catalog.items()})
+    return weights_for(model, lane_weights_from(await get_catalog()))
 
 
 async def _turn_cost_usd(handle: streaming.CompanionRunHandle) -> float | None:
@@ -1480,12 +1482,11 @@ async def _turn_cost_usd(handle: streaming.CompanionRunHandle) -> float | None:
     if row is None:
         return None
 
-    # total_input_tokens es la CUOTA (uncached + 0.1*cache). El USD valora
-    # nativos: se recupera el uncached restando el 0.1 del cache del turno.
-    # Redondeo a nivel de turno, no por llamada: un token de holgura posible.
-    uncached = max(
-        0, int(handle.total_input_tokens) - cache_read_quota_tokens(handle.total_cache_read)
-    )
+    # Spec 007: ``total_input_tokens`` ya es el uncached NATIVO, que es
+    # justo lo que el USD necesita. La reconstrucción que había aquí
+    # desaparece — valorar en dólares deja de depender de la política de
+    # cuota, que es como debió estar siempre: son dos preguntas distintas.
+    uncached = max(0, int(handle.total_input_tokens))
     total = 0.0
     seen_any = False
     for tokens, rate in (
@@ -1552,7 +1553,12 @@ async def _finalise_run(
                 run.status = status
                 run.error = error
                 run.ended_at = sa.func.now()
-            run.input_tokens = input_tokens
+            # Spec 007: el nativo va a su columna. ``input_tokens`` queda
+            # **deprecada** y deja de escribirse: guardaba la cuota ponderada
+            # con la constante 0,1 (0093), que ya no existe. Las filas viejas
+            # conservan su valor y su significado; las nuevas la dejan a NULL,
+            # que es la verdad — no hay una cuota única que quepa ahí.
+            run.uncached_input_tokens = input_tokens
             run.output_tokens = output_tokens
             run.cache_read = cache_read
             run.cache_write = cache_write

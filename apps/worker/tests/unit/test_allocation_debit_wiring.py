@@ -23,17 +23,23 @@ from nexus_worker.metering import consumer
 
 @pytest.fixture(autouse=True)
 def _catalog(monkeypatch):
-    """El débito necesita el peso por modelo (spec 004, R3.1).
+    """El débito necesita los tres pesos por carril (spec 007, R1.2).
 
     Se inyecta en vez de dejar que ``get_catalog()`` vaya a la base: este es un
     test unit sin Postgres, y pedirlo de verdad cachea un motor que después
-    rompe otro test del dispatcher. El peso 1 es el neutro: lo que este fichero
-    prueba es el CABLEADO de los dos libros, no la ponderación.
+    rompe otro test del dispatcher. Los pesos son 1 —el neutro— porque lo que
+    este fichero prueba es el CABLEADO de los dos libros, no la ponderación.
+
+    ``quota_weight`` sigue en el doble aunque esté deprecada: mientras la
+    columna exista, un doble que no la tenga se parece menos a la fila real.
     """
     from decimal import Decimal
 
     class _Row:
         quota_weight = Decimal(1)
+        quota_weight_input = Decimal(1)
+        quota_weight_cache_read = Decimal(1)
+        quota_weight_output = Decimal(1)
 
     async def _fake_catalog():
         return {"openai/gpt-5.6-sol": _Row()}

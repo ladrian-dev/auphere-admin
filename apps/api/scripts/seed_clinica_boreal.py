@@ -74,13 +74,13 @@ BOREAL_NAME = "Clínica Boreal"
 BOREAL_TIMEZONE = "America/Caracas"
 BOREAL_MARKET = "VE"
 BOREAL_BUSINESS_HOURS = {
-    "monday":    {"open": "09:00", "close": "18:00"},
-    "tuesday":   {"open": "09:00", "close": "18:00"},
+    "monday": {"open": "09:00", "close": "18:00"},
+    "tuesday": {"open": "09:00", "close": "18:00"},
     "wednesday": {"open": "09:00", "close": "18:00"},
-    "thursday":  {"open": "09:00", "close": "18:00"},
-    "friday":    {"open": "09:00", "close": "18:00"},
-    "saturday":  {"open": "09:00", "close": "14:00"},
-    "sunday":    None,
+    "thursday": {"open": "09:00", "close": "18:00"},
+    "friday": {"open": "09:00", "close": "18:00"},
+    "saturday": {"open": "09:00", "close": "14:00"},
+    "sunday": None,
 }
 
 # Placeholders ficticios pero verosímiles — coherentes con la ficha
@@ -89,8 +89,7 @@ BOREAL_BUSINESS_HOURS = {
 BOREAL_PLACEHOLDERS: dict[str, object] = {
     "tenant.name": BOREAL_NAME,
     "tenant.address": (
-        "Av. Principal de Las Mercedes, Edificio Atlantic, Piso 4. "
-        "Caracas 1080, Distrito Capital"
+        "Av. Principal de Las Mercedes, Edificio Atlantic, Piso 4. Caracas 1080, Distrito Capital"
     ),
     "tenant.timezone": BOREAL_TIMEZONE,
     "tenant.business_hours_label": "Lun-Vie 9-18, Sáb 9-14 (solo consultas)",
@@ -154,9 +153,7 @@ BOREAL_SKILL_NAMES: list[str] = [
 # los cases). El threshold del payload (0.920) viaja con el JSON.
 BOREAL_EVAL_DATASET = "aesthetic_clinic_v1"
 
-_SKILLS_MANIFEST = (
-    Path(__file__).resolve().parents[2] / "worker" / "skills" / "uploaded.json"
-)
+_SKILLS_MANIFEST = Path(__file__).resolve().parents[2] / "worker" / "skills" / "uploaded.json"
 
 
 def _resolve_runtime_skills() -> list[dict[str, str]]:
@@ -189,12 +186,8 @@ def _resolve_runtime_skills() -> list[dict[str, str]]:
             "boreal: WARN skills not yet uploaded (omitted from runtime_skills): "
             + ", ".join(missing)
         )
-        print(
-            "boreal:      run apps/worker/scripts/upload_skill.py --skill <name> --create"
-        )
-        print(
-            "boreal:      then re-run this script — it will pick up the new ids."
-        )
+        print("boreal:      run apps/worker/scripts/upload_skill.py --skill <name> --create")
+        print("boreal:      then re-run this script — it will pick up the new ids.")
     return out
 
 

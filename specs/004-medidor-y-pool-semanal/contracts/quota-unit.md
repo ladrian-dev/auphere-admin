@@ -1,3 +1,11 @@
+> **⚠️ SUPERADO por [`007/contracts/quota-unit-v2.md`](../../007-pesos-de-cuota-por-carril/contracts/quota-unit-v2.md)
+> (2026-09-14).** El peso único por modelo que describe este documento se
+> sustituyó por **tres pesos, uno por carril**. Lo que aquí se afirma sobre el
+> factor `0,1` de `cache_read` y sobre la invarianza del pool **ya no es
+> cierto**: la invarianza sólo se cumplía en el punto de calibración de la
+> migración `0115`. Se conserva como historia de por qué se decidió lo que se
+> decidió; **para el código, la verdad es el v2**.
+
 # Contrato — la unidad de cuota, con factor por modelo
 
 `metering/quota.py` define **la única unidad** en la que se mide el consumo de

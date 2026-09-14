@@ -90,12 +90,9 @@ def upgrade() -> None:
         year, month = (year + 1, 1) if month == 12 else (year, month + 1)
     op.execute("CREATE TABLE usage_records_default PARTITION OF usage_records DEFAULT")
 
+    op.execute("CREATE UNIQUE INDEX uq_usage_idem ON usage_records (idempotency_key, occurred_at)")
     op.execute(
-        "CREATE UNIQUE INDEX uq_usage_idem ON usage_records (idempotency_key, occurred_at)"
-    )
-    op.execute(
-        "CREATE INDEX ix_usage_tenant_meter ON usage_records "
-        "(tenant_id, meter, occurred_at DESC)"
+        "CREATE INDEX ix_usage_tenant_meter ON usage_records (tenant_id, meter, occurred_at DESC)"
     )
     op.execute(
         "CREATE INDEX ix_usage_partner ON usage_records (partner_id, occurred_at DESC) "

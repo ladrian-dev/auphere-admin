@@ -148,15 +148,24 @@ async def test_a_turn_becomes_usage_rows(clean_usage_stream) -> None:
 
     total = sum(c for c in costs.values() if c is not None)
     assert total == Decimal("0.02156000"), "coste real del turno, en dólares"
-    # C3: quantity es el nativo; billable_qty es la cuota (uncached / 0.1x / 0).
+    # Spec 007: ``quantity`` sigue siendo el nativo; ``billable_qty`` lleva el
+    # peso de SU carril y de SU modelo. Las dos llamadas del turno usan cerebros
+    # distintos, y ahí se ve por qué el peso no puede ser del turno:
+    #
+    #   entrada  haiku 700 x 0,22   +  sonnet 800 x 0,66   =  154 + 528 = 682
+    #   caché    sonnet 4.200 x 0,066                      =        277
+    #   salida   haiku 20 x 1,1     +  sonnet 300 x 3,3    =   22 + 990 = 1.012
+    #
+    # Antes de la 007 la entrada valía 1.500 —el nativo sin ponderar— y la
+    # caché 420, que era el 0,1 plano.
     billable = {}
     for meter, quantity, _model, _cost, bq, *_ in rows:
         billable[meter] = billable.get(meter, 0) + float(bq)
         if meter == "llm.cache_read":
             assert float(bq) != float(quantity)
-    assert billable["llm.input_tokens"] == 700 + 800
-    assert billable["llm.cache_read"] == 420
-    assert billable["llm.output_tokens"] == 20 + 300
+    assert billable["llm.input_tokens"] == 154 + 528
+    assert billable["llm.cache_read"] == 277
+    assert billable["llm.output_tokens"] == 22 + 990
     # El contexto del turno viaja con cada fila.
     assert all(r[5] == conversation_id for r in rows)
 

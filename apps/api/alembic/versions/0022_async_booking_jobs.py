@@ -70,16 +70,12 @@ def upgrade() -> None:
         "ix_appointments_public_pending",
         "appointments",
         ["tenant_id", "created_at"],
-        postgresql_where=sa.text(
-            "public_booking_status IN ('pending', 'in_progress')"
-        ),
+        postgresql_where=sa.text("public_booking_status IN ('pending', 'in_progress')"),
     )
 
 
 def downgrade() -> None:
     op.drop_index("ix_appointments_public_pending", table_name="appointments")
-    op.drop_constraint(
-        "ck_appointments_public_booking_status", "appointments", type_="check"
-    )
+    op.drop_constraint("ck_appointments_public_booking_status", "appointments", type_="check")
     op.drop_column("appointments", "public_booking_status")
     # Enum value is intentionally left in place — PG doesn't allow removing values.

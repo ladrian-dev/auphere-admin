@@ -15,8 +15,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "0109_teammates"
 down_revision: str | Sequence[str] | None = "0108_device_audit_vocab"
@@ -44,14 +45,19 @@ def upgrade() -> None:
         sa.Column("local_exec", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("status", sa.Text(), nullable=False, server_default="active"),
         sa.Column("created_by", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
         sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint("char_length(name) BETWEEN 1 AND 80", name="teammates_name_len"),
         sa.CheckConstraint("char_length(job) BETWEEN 1 AND 80", name="teammates_job_len"),
         sa.CheckConstraint("status IN ('active', 'archived')", name="teammates_status_check"),
         sa.CheckConstraint(
-            "(status = 'archived') = (archived_at IS NOT NULL)", name="teammates_archived_consistent"
+            "(status = 'archived') = (archived_at IS NOT NULL)",
+            name="teammates_archived_consistent",
         ),
     )
     op.create_index("ix_teammates_partner_status", "teammates", ["partner_id", "status"])
@@ -100,7 +106,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_companion_runs_teammate_started", table_name="runs", schema="companion")
     op.drop_column("runs", "teammate_id", schema="companion")
-    op.drop_index("ix_companion_threads_principal_teammate", table_name="threads", schema="companion")
+    op.drop_index(
+        "ix_companion_threads_principal_teammate", table_name="threads", schema="companion"
+    )
     op.drop_column("threads", "teammate_id", schema="companion")
     op.execute("DROP POLICY IF EXISTS teammates_partner ON teammates")
     op.drop_index("ix_teammates_partner_status", table_name="teammates")

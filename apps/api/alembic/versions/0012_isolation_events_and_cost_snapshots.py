@@ -145,17 +145,14 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(
-        "DROP POLICY IF EXISTS daily_cost_snapshots_tenant_isolation "
-        "ON daily_cost_snapshots"
+        "DROP POLICY IF EXISTS daily_cost_snapshots_tenant_isolation ON daily_cost_snapshots"
     )
     op.execute("ALTER TABLE daily_cost_snapshots NO FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE daily_cost_snapshots DISABLE ROW LEVEL SECURITY")
     op.drop_index("ix_daily_cost_snapshots_tenant_day", table_name="daily_cost_snapshots")
     op.drop_table("daily_cost_snapshots")
 
-    op.execute(
-        "DROP POLICY IF EXISTS isolation_events_tenant_isolation ON isolation_events"
-    )
+    op.execute("DROP POLICY IF EXISTS isolation_events_tenant_isolation ON isolation_events")
     op.execute("ALTER TABLE isolation_events NO FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE isolation_events DISABLE ROW LEVEL SECURITY")
     op.drop_index("ix_isolation_events_tenant_metric_created", table_name="isolation_events")

@@ -60,7 +60,16 @@ class ModelPrice:
     cache_min_tokens: int | None = None
     # Spec 004, R3: cuánto pesa un token de cuota de este modelo. NULL = el
     # modelo no se sirve por el carril de cuota de LLM (no es «peso 1»).
+    #
+    # **DEPRECADO (spec 007)**: lo sustituyen los tres pesos por carril. Se
+    # conserva mientras quede algún llamante de ``weight_for``.
     quota_weight: Decimal | None = None
+    # Spec 007: el peso de cada carril, derivado de la tarifa de ese mismo
+    # carril. Los tres o ninguno — un modelo con dos y uno nulo no es «medio
+    # servible», es un error de configuración, y ``weights_for`` lo rechaza.
+    quota_weight_input: Decimal | None = None
+    quota_weight_cache_read: Decimal | None = None
+    quota_weight_output: Decimal | None = None
     # Ventana de contexto del modelo. No es un precio, pero vive en la
     # misma fila y en el mismo catálogo cacheado: el medidor de contexto
     # del Companion (CO-01) lo necesita en cada llamada, y abrir una
@@ -89,7 +98,10 @@ _CATALOG_SQL = sa.text(
            price_per_minute,
            cache_min_tokens,
            max_context,
-           quota_weight
+           quota_weight,
+           quota_weight_input,
+           quota_weight_cache_read,
+           quota_weight_output
       FROM model_profiles
     """
 )
@@ -150,7 +162,20 @@ async def load_catalog() -> dict[str, ModelPrice]:
         rows = (await session.execute(_CATALOG_SQL)).all()
 
     catalog: dict[str, ModelPrice] = {}
-    for model_id, inp, out, cread, cwrite, per_min, cache_min, max_ctx, weight in rows:
+    for (
+        model_id,
+        inp,
+        out,
+        cread,
+        cwrite,
+        per_min,
+        cache_min,
+        max_ctx,
+        weight,
+        w_in,
+        w_cache,
+        w_out,
+    ) in rows:
         catalog[model_id] = ModelPrice(
             model_id=model_id,
             input_per_mtok=inp,
@@ -161,8 +186,76 @@ async def load_catalog() -> dict[str, ModelPrice]:
             cache_min_tokens=cache_min,
             max_context=max_ctx,
             quota_weight=weight,
+            quota_weight_input=w_in,
+            quota_weight_cache_read=w_cache,
+            quota_weight_output=w_out,
         )
     return catalog
+
+
+def _warn_on_weight_drift(catalog: dict[str, ModelPrice]) -> None:
+    """Avisa si algún peso dejó de corresponder a su tarifa (spec 007, R6).
+
+    Las tarifas viven en la base para que cambiarlas sea una fila y no un
+    despliegue. Con los pesos también en la base, actualizar un precio sin
+    actualizar su peso deja el multiplicador de ese carril donde nadie lo mira —
+    y la primera vez que ocurra no habrá nadie delante.
+
+    **No bloquea el arranque.** Mismo criterio que ``pricing.catalog_load_failed``:
+    una divergencia no puede tumbar la plataforma. Pero tampoco puede ser
+    invisible, así que se registra con el modelo y el carril, y **se distingue**
+    la que sigue sobre el suelo de la que lo cruza: la primera es una
+    imprecisión, la segunda es dinero saliendo.
+    """
+    from nexus_api.billing.pricing import CREDIT_USD_PER_MILLION
+    from nexus_api.metering.pricing_policy import weight_drift
+
+    prices = {
+        model_id: {
+            "input": row.input_per_mtok,
+            "cache_read": row.cache_read_per_mtok,
+            "output": row.output_per_mtok,
+        }
+        for model_id, row in catalog.items()
+    }
+    try:
+        drifts = weight_drift(
+            prices,
+            lane_weights_from(catalog),
+            sell_usd_per_million=Decimal(CREDIT_USD_PER_MILLION),
+        )
+    except Exception as exc:  # pragma: no cover - una comprobación no rompe una carga
+        log.warning("pricing.weight_drift_check_failed", error=str(exc))
+        return
+    for drift in drifts:
+        (log.error if drift.below_floor else log.warning)(
+            "pricing.quota_weight_drift"
+            if not drift.below_floor
+            else "pricing.quota_weight_below_floor",
+            model=drift.model_id,
+            lane=drift.lane,
+            stored=str(drift.stored),
+            expected=str(drift.expected),
+            multiplier=f"{drift.multiplier:.4f}",
+        )
+
+
+def lane_weights_from(catalog: dict[str, ModelPrice]) -> dict[str, dict[str, Decimal | None]]:
+    """El catálogo, visto como ``modelo -> {carril: peso}``.
+
+    Existe para que los tres llamantes de ``weights_for`` construyan el mapa de
+    **una sola manera**. Con la versión de un peso, cada uno armaba su
+    comprensión de diccionario a mano y las tres eran iguales por casualidad;
+    con tres carriles, tres copias divergen a la primera.
+    """
+    return {
+        model_id: {
+            "input": row.quota_weight_input,
+            "cache_read": row.quota_weight_cache_read,
+            "output": row.quota_weight_output,
+        }
+        for model_id, row in catalog.items()
+    }
 
 
 async def get_catalog(*, force: bool = False) -> dict[str, ModelPrice]:
@@ -178,6 +271,7 @@ async def get_catalog(*, force: bool = False) -> dict[str, ModelPrice]:
             _cache = await load_catalog()
             _cached_at = time.monotonic()
             log.info("pricing.catalog_loaded", models=len(_cache))
+            _warn_on_weight_drift(_cache)
         except Exception as exc:
             # Un catálogo viejo vale infinitamente más que ninguno: seguir
             # valorando con tarifas de hace 6 minutos es mejor que dejar de

@@ -39,7 +39,7 @@ import structlog
 # de conocimiento del agente de cliente sigan siendo el MISMO tratamiento,
 # que es lo que el test de paridad comprueba.
 from nexus_api.core.guardrails.untrusted import TAG_TOOL_RESULT, fence_only
-from nexus_api.metering.quota import quota_input_tokens
+from nexus_api.metering.quota import uncached_input_tokens
 
 from nexus_worker.runtime.companion.grounding import is_unsupported
 from nexus_worker.runtime.companion.intake import (
@@ -485,29 +485,37 @@ def _usage(piece: str) -> dict[str, Any]:
 
 
 def _billable_input(usage: dict[str, Any]) -> int:
-    """Entrada que come el tope: uncached + 0.1 x cache_read (C3).
+    """Entrada NO CACHEADA de una llamada. Nativa, sin ponderar (spec 007).
 
     ``prompt_tokens`` es el prefijo entero que vio el modelo, y en este agente
     el prefijo —prompt de sistema más 32 definiciones de herramientas, del
     orden de 7.000 tokens— viaja en **cada** una de las hasta 12 pasadas del
     bucle. Contarlo a precio pleno doce veces es lo que hacía que la cuota
-    mensual se agotara en unos pocos turnos de trabajo real.
+    mensual se agotara en unos pocos turnos de trabajo real. Por eso lo que se
+    acumula es el uncached y la caché va aparte, en ``total_cache_read``.
 
-    Anthropic cobra los tokens leídos de caché a una décima parte. La
-    política de cuota es esa misma: no restarlos al 100 % (subcuenta frente
-    a la factura) ni sumar el bruto + cache_read (doble-cuenta). La función
-    única es ``nexus_api.metering.quota.quota_input_tokens`` — el canal
-    usa la misma.
+    **Lo que cambió en la spec 007, y por qué importa.** Antes esto devolvía la
+    CUOTA de entrada —uncached + 0,1 x cache_read— y la API la des-ponderaba
+    restando ese mismo 0,1 para recuperar el nativo y poder valorar el turno en
+    dólares. Ese ida y vuelta sólo funcionaba porque el factor era una constante
+    global única. Con un peso por carril y por modelo deja de ser invertible:
+    para deshacerlo haría falta el modelo, que este bucle no tiene y no debe
+    tener — meter el catálogo de precios dentro del agente es el acoplamiento
+    que la 007 viene a quitar.
+
+    Así que **aquí se mide y no se tarifa.** La ponderación ocurre una sola vez,
+    en el borde donde se debita. Un nativo no caduca cuando cambia un precio;
+    una cuota ponderada, sí.
 
     **Esto no cambia el medidor de ventana de contexto.** Lo que llena la
-    ventana es el prefijo entero, venga de caché o no, así que ese sigue
-    usando ``prompt_tokens`` bruto. Son dos preguntas distintas y tienen dos
-    números distintos a propósito.
+    ventana es el prefijo entero, venga de caché o no, así que ese sigue usando
+    ``prompt_tokens`` bruto. Son dos preguntas distintas y tienen dos números
+    distintos a propósito.
     """
     return int(
-        quota_input_tokens(
-            prompt_tokens=int(usage.get("prompt_tokens") or 0),
-            cache_read=int(usage.get("cache_read_input_tokens") or 0),
+        uncached_input_tokens(
+            int(usage.get("prompt_tokens") or 0),
+            int(usage.get("cache_read_input_tokens") or 0),
         )
     )
 

@@ -357,9 +357,13 @@ async def test_the_turn_is_priced_component_by_component(monkeypatch) -> None:
 
     monkeypatch.setattr("nexus_worker.metering.pricing.get_catalog", _catalog)
 
+    # Spec 007: ``total_input_tokens`` es el uncached **nativo**. Antes valía
+    # 1.100.000 porque llevaba dentro el 0,1 de la caché, y ``_turn_cost_usd``
+    # tenía que deshacer esa suma para valorar. Ahora no hay nada que deshacer:
+    # un millón de tokens sin cachear son un millón, y valen 3 $.
     handle = SimpleNamespace(
         model="anthropic/claude-sonnet-4-6",
-        total_input_tokens=1_100_000,
+        total_input_tokens=1_000_000,
         total_output_tokens=1_000_000,
         total_cache_read=1_000_000,
         total_cache_write=1_000_000,

@@ -26,6 +26,7 @@ Revises: 0043_owner_phone_index_confirmed_at
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0044_remove_ycloud_meta_only"
@@ -47,9 +48,7 @@ def upgrade() -> None:
     )
 
     # ── data: drop ycloud rows BEFORE tightening the CHECK ─────────
-    op.execute(
-        "DELETE FROM auphere_owner_channels WHERE provider = 'ycloud'"
-    )
+    op.execute("DELETE FROM auphere_owner_channels WHERE provider = 'ycloud'")
     op.execute(
         """
         DELETE FROM tenant_connectors
@@ -59,9 +58,7 @@ def upgrade() -> None:
         """
     )
     op.execute("DELETE FROM connectors WHERE slug = 'whatsapp_ycloud'")
-    op.execute(
-        "UPDATE channels SET status = 'disconnected' WHERE provider = 'ycloud'"
-    )
+    op.execute("UPDATE channels SET status = 'disconnected' WHERE provider = 'ycloud'")
 
     # ── constraint: meta is the only provider ───────────────────────
     op.drop_constraint(

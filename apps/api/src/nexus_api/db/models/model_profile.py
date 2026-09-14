@@ -77,7 +77,40 @@ class ModelProfile(Base):
     # ``NULL`` significa «este modelo no se sirve por el carril de cuota de
     # LLM», **no** «peso 1». ``openai/whisper-1`` lo tiene NULL y sigue
     # funcionando: se mide por minutos y no pasa por ``quota_tokens()``.
+    #
+    # **DEPRECADA (spec 007).** La sustituyen los tres pesos por carril de abajo.
+    # Se conserva para que el ``downgrade()`` de la 0120 sea real; la borra una
+    # migración posterior, cuando el despliegue lleve un ciclo con las nuevas.
     quota_weight: Mapped[decimal.Decimal | None] = mapped_column(Numeric(6, 3), nullable=True)
+
+    # Spec 007 — **el peso es del CARRIL, no del modelo.** Un solo factor no
+    # puede representar tres precios: los proveedores cobran la salida entre 5x
+    # y 6x la entrada, y la caché a una décima parte en Anthropic y en la
+    # familia GPT-5.6 pero a la MITAD en ``gpt-4o``. Con un factor único, el
+    # multiplicador sobre el coste salía distinto en cada carril y en el caro
+    # salía por debajo de uno: los seis modelos del catálogo incumplían el suelo.
+    #
+    # Cada peso se deriva de la tarifa de su propio carril con un multiplicador
+    # de 2,2x sobre 10 USD/millón — margen del 54,5 % por construcción, en
+    # cualquier mezcla de entrada, caché y salida.
+    #
+    # ``NUMERIC(12,6)``, la escala de las TARIFAS y no la de ``quota_weight``:
+    # el peso es una tarifa reescalada, y con tres decimales el carril de caché
+    # del modelo más barato del catálogo perdía precisión (0,0044 → 0,004).
+    #
+    # **Los tres o ninguno.** NULL en los tres sigue significando «este modelo no
+    # se sirve por el carril de cuota de LLM» —``openai/whisper-1`` los tiene a
+    # NULL y sigue funcionando por minutos—, y un modelo con dos pesos y uno
+    # nulo lo rechaza un CHECK del esquema (0120).
+    quota_weight_input: Mapped[decimal.Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    quota_weight_cache_read: Mapped[decimal.Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    quota_weight_output: Mapped[decimal.Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
 
     max_context: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

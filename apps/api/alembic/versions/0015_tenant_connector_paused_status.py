@@ -32,8 +32,7 @@ _NEW_CHECK = (
 )
 
 _OLD_CHECK = (
-    "status IN ('pending', 'connected', 'partial', 'needs_reauth', "
-    "'disconnected', 'error')"
+    "status IN ('pending', 'connected', 'partial', 'needs_reauth', 'disconnected', 'error')"
 )
 
 

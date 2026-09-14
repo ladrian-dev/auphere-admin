@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+from nexus_api.metering.pricing_policy import LaneWeights
 from nexus_api.metering.quota import quota_tokens
 from nexus_api.metering.wallet import effective_included, split_spend
 
@@ -41,11 +42,19 @@ def test_missing_expiry_is_zero() -> None:
     assert effective_included(10_000, None) == 0
 
 
-def test_unit_is_quota_tokens_c3() -> None:
+def test_unit_is_quota_tokens_per_lane() -> None:
+    """Spec 007 — la unidad del libro es lo que devuelve ``quota_tokens``.
+
+    Con pesos neutros se ve el desglose en crudo: uncached + caché + salida,
+    cada uno por su carril. Lo que este caso fija es que el **wallet** cuenta
+    esa unidad y no otra, no cuánto vale cada carril — eso lo fija
+    ``test_quota_lanes.py``.
+    """
+    neutral = LaneWeights(input=Decimal(1), cache_read=Decimal(1), output=Decimal(1))
     qty = quota_tokens(
         prompt_tokens=10_000,
         cache_read=9_000,
         output_tokens=100,
-        model_weight=Decimal(1),
+        weights=neutral,
     )
-    assert qty == 1_000 + 900 + 100
+    assert qty == 1_000 + 9_000 + 100

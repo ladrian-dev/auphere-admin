@@ -196,9 +196,7 @@ def upgrade() -> None:
             server_default=sa.text("true"),
         ),
     )
-    op.create_index(
-        "idx_owner_phone_tenant", "owner_phone_index", ["tenant_id"]
-    )
+    op.create_index("idx_owner_phone_tenant", "owner_phone_index", ["tenant_id"])
 
     # ── conversations: pending-owner-response flag ────────────────────────
     op.add_column(
@@ -316,12 +314,7 @@ def downgrade() -> None:
 
     op.execute("ALTER TABLE owner_consultations NO FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE owner_consultations DISABLE ROW LEVEL SECURITY")
-    op.execute(
-        "DROP POLICY IF EXISTS owner_consultations_tenant_isolation "
-        "ON owner_consultations"
-    )
+    op.execute("DROP POLICY IF EXISTS owner_consultations_tenant_isolation ON owner_consultations")
     op.drop_index("idx_oc_conversation", table_name="owner_consultations")
-    op.drop_index(
-        "idx_oc_tenant_status_urgency", table_name="owner_consultations"
-    )
+    op.drop_index("idx_oc_tenant_status_urgency", table_name="owner_consultations")
     op.drop_table("owner_consultations")

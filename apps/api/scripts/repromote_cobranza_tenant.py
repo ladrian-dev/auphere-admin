@@ -148,8 +148,10 @@ async def _amain(slug: str, apply: bool) -> int:
         )
         promoted = await svc.promote(staged.version, actor="repromote_cobranza_tenant.py")
 
-    print(f"\nOK: {slug} promovido a agent_config v{promoted.version} "
-          f"({len(rendered.tools)} tools). Publica el refresh de cache si aplica.")
+    print(
+        f"\nOK: {slug} promovido a agent_config v{promoted.version} "
+        f"({len(rendered.tools)} tools). Publica el refresh de cache si aplica."
+    )
     return 0
 
 

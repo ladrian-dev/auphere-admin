@@ -34,9 +34,7 @@ down_revision: str | Sequence[str] | None = "0064_partition_helpers"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_THREAD_PATTERN = (
-    "^tenant:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:"
-)
+_THREAD_PATTERN = "^tenant:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:"
 
 
 def upgrade() -> None:

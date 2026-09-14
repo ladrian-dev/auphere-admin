@@ -140,9 +140,7 @@ def upgrade() -> None:
         WITH CHECK (partner_id = {_PARTNER})
         """
     )
-    op.execute(
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON partner_subscriptions TO nexus_app"
-    )
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON partner_subscriptions TO nexus_app")
     # El catálogo es de plataforma: igual para todos y sin RLS. Sólo lectura
     # desde la aplicación — quien lo cambia es una migración o un operador.
     op.execute("GRANT SELECT ON membership_tiers TO nexus_app")

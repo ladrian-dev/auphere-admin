@@ -22,6 +22,7 @@ es justo lo que un operador querría ver.
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0119_signup_partner_link"

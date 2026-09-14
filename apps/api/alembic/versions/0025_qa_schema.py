@@ -38,8 +38,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "0025"
 down_revision: str | Sequence[str] | None = "0024"
@@ -60,7 +61,12 @@ def upgrade() -> None:
     # ── qa.threads ─────────────────────────────────────────────────────────
     op.create_table(
         "threads",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column("operator_id", postgresql.UUID(as_uuid=True), nullable=False, index=True),
         sa.Column(
             "tenant_id",
@@ -72,12 +78,24 @@ def upgrade() -> None:
         # External id is the thread_id assigned by the LangGraph Server.
         # NULL until the first run is dispatched.
         sa.Column("external_id", sa.String(length=120), nullable=True, unique=True),
-        sa.Column("title", sa.String(length=200), nullable=False, server_default=sa.text("'Untitled'")),
+        sa.Column(
+            "title", sa.String(length=200), nullable=False, server_default=sa.text("'Untitled'")
+        ),
         sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_run_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("message_count", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         schema="qa",
     )
     op.create_index(
@@ -90,7 +108,12 @@ def upgrade() -> None:
     # ── qa.side_effect_audit ───────────────────────────────────────────────
     op.create_table(
         "side_effect_audit",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column("operator_id", postgresql.UUID(as_uuid=True), nullable=False, index=True),
         sa.Column(
             "tenant_id",
@@ -106,11 +129,28 @@ def upgrade() -> None:
             index=True,
         ),
         sa.Column("tool_name", sa.String(length=160), nullable=False),
-        sa.Column("tool_args", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("synthetic_result", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("blocked_reason", sa.String(length=80), nullable=False, server_default=sa.text("'dry_run'")),
+        sa.Column(
+            "tool_args", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+        ),
+        sa.Column(
+            "synthetic_result",
+            postgresql.JSONB,
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "blocked_reason",
+            sa.String(length=80),
+            nullable=False,
+            server_default=sa.text("'dry_run'"),
+        ),
         sa.Column("run_id", sa.String(length=120), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         schema="qa",
     )
     op.create_index(
@@ -123,7 +163,12 @@ def upgrade() -> None:
     # ── qa.audit_log ───────────────────────────────────────────────────────
     op.create_table(
         "audit_log",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column("operator_id", postgresql.UUID(as_uuid=True), nullable=False, index=True),
         sa.Column(
             "tenant_id",
@@ -135,8 +180,15 @@ def upgrade() -> None:
         sa.Column("action", sa.String(length=80), nullable=False),
         sa.Column("target_kind", sa.String(length=60), nullable=True),
         sa.Column("target_id", sa.String(length=120), nullable=True),
-        sa.Column("payload", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "payload", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         schema="qa",
     )
     op.create_index(

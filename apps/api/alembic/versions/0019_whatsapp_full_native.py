@@ -392,9 +392,7 @@ def downgrade() -> None:
     op.drop_table("whatsapp_template_status")
 
     # 7. whatsapp_opt_outs
-    op.execute(
-        "DROP POLICY IF EXISTS whatsapp_opt_outs_tenant_isolation ON whatsapp_opt_outs"
-    )
+    op.execute("DROP POLICY IF EXISTS whatsapp_opt_outs_tenant_isolation ON whatsapp_opt_outs")
     op.execute("ALTER TABLE whatsapp_opt_outs NO FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE whatsapp_opt_outs DISABLE ROW LEVEL SECURITY")
     op.drop_index("ix_optout_active", table_name="whatsapp_opt_outs")

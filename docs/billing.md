@@ -23,6 +23,50 @@ agente — y que cambiar de cuenta de Stripe no toque el saldo de nadie.
 Las dos por página alojada del proveedor. **Ningún dato de tarjeta entra aquí**,
 ni en base de datos ni en logs, y hay un test de aislamiento que lo vigila.
 
+## Qué vale una unidad de cuota
+
+**Spec**: `specs/007-pesos-de-cuota-por-carril/` · **Contrato**:
+[`quota-unit-v2.md`](../specs/007-pesos-de-cuota-por-carril/contracts/quota-unit-v2.md)
+
+La unidad que come el tope se deriva de los tokens nativos con **un peso por
+carril**, no con uno por modelo:
+
+```
+cuota = redondeo( entrada_no_cacheada x w_in
+                + lectura_de_caché    x w_cache
+                + salida              x w_out )
+```
+
+Los tres pesos viven en `model_profiles` (columnas `quota_weight_*`) y se
+derivan de la tarifa de **su propio carril**:
+
+```
+w_carril = 2,2 x price_carril_per_mtok / 10
+```
+
+- **2,2x es el objetivo**: margen del **54,5 %**, el mismo en los tres carriles
+  de todos los modelos. Por eso **el margen no depende de la mezcla** de trabajo
+  que haga el partner — que es la propiedad entera.
+- **1,50x es el suelo**: nunca por debajo, en ningún carril y en ningún modelo,
+  **nunca en promedio**. Lo vigila
+  `tests/integration/test_quota_floor.py`, que lee el **catálogo real de la
+  base** y no una lista escrita en el test.
+
+**Los tres o ninguno.** `NULL` en los tres significa «este modelo no se sirve por
+el carril de cuota de LLM» —`openai/whisper-1` los tiene a NULL y sigue
+funcionando por minutos—, y un modelo con dos pesos y uno nulo lo rechaza un
+`CHECK` del esquema y `weights_for` en el código.
+
+**Si alguien cambia una tarifa y olvida el peso**, `weight_drift` lo detecta al
+cargar el catálogo y lo registra con el modelo y el carril, distinguiendo la
+divergencia que sigue sobre el suelo de la que lo cruza. No bloquea el arranque:
+una divergencia no puede tumbar la plataforma, pero tampoco puede ser invisible.
+
+> **Un cambio de pesos no revalora nada.** La unidad no cambia de definición,
+> cambia su tasa de conversión desde los tokens nativos. Un millón de unidades
+> sigue siendo un millón; lo que cambia es cuánto trabajo compra. Por eso el
+> despliegue es reversible por revert.
+
 ## Lo que se publica de cada nivel, y lo que no
 
 La pantalla de planes enseña **los topes** —cuántos agentes, cuántas personas—

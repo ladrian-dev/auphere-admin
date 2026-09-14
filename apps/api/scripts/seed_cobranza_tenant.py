@@ -75,16 +75,20 @@ from nexus_api.services.templating.seed_templates import (
 # display name is "Amigable Cobro" — the agent/tenant IS Amigable Cobro;
 # "Mouna" turned out to be one of Amigable Cobro's own clients, not the tenant.
 MOUNA_SLUG = os.environ.get("NEXUS_COBRANZA_SLUG") or os.environ.get("NEXUS_MOUNA_SLUG", "mouna")
-MOUNA_NAME = os.environ.get("NEXUS_COBRANZA_NAME") or os.environ.get("NEXUS_MOUNA_NAME", "Amigable Cobro")
-MOUNA_TIMEZONE = os.environ.get("NEXUS_COBRANZA_TIMEZONE") or os.environ.get("NEXUS_MOUNA_TIMEZONE", "America/Caracas")
+MOUNA_NAME = os.environ.get("NEXUS_COBRANZA_NAME") or os.environ.get(
+    "NEXUS_MOUNA_NAME", "Amigable Cobro"
+)
+MOUNA_TIMEZONE = os.environ.get("NEXUS_COBRANZA_TIMEZONE") or os.environ.get(
+    "NEXUS_MOUNA_TIMEZONE", "America/Caracas"
+)
 MOUNA_MARKET = os.environ.get("NEXUS_COBRANZA_MARKET") or os.environ.get("NEXUS_MOUNA_MARKET", "VE")
+
 
 def _env_list(name: str, default: list[str]) -> list[str]:
     raw = os.environ.get(name, "").strip()
     if not raw:
         return default
     return [p.strip() for p in raw.split(",") if p.strip()]
-
 
 
 # Teléfonos ADMIN de Mouna (E.164) — los ÚNICOS números a los que el

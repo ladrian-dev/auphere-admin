@@ -43,8 +43,7 @@ def upgrade() -> None:
     # ── scheduled_jobs ─────────────────────────────────────────────────────
     op.execute("CREATE TYPE scheduled_job_kind AS ENUM ('reminder')")
     op.execute(
-        "CREATE TYPE scheduled_job_status AS ENUM "
-        "('pending', 'sent', 'cancelled', 'failed')"
+        "CREATE TYPE scheduled_job_status AS ENUM ('pending', 'sent', 'cancelled', 'failed')"
     )
     sj_kind = postgresql.ENUM("reminder", name="scheduled_job_kind", create_type=False)
     sj_status = postgresql.ENUM(
@@ -97,10 +96,7 @@ def upgrade() -> None:
     )
 
     # ── queue_entries ──────────────────────────────────────────────────────
-    op.execute(
-        "CREATE TYPE queue_entry_status AS ENUM "
-        "('waiting', 'checked_in', 'served', 'left')"
-    )
+    op.execute("CREATE TYPE queue_entry_status AS ENUM ('waiting', 'checked_in', 'served', 'left')")
     qe_status = postgresql.ENUM(
         "waiting",
         "checked_in",
@@ -133,7 +129,9 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.Column("status", qe_status, nullable=False, server_default="waiting"),
-        sa.Column("joined_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "joined_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
+        ),
         sa.Column("checked_in_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("served_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("left_at", sa.DateTime(timezone=True), nullable=True),

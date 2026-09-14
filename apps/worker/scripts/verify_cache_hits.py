@@ -58,8 +58,7 @@ def _build_system_prefix() -> str:
     cache minimum so the run does not silently hit the no-cache fallback."""
     return (
         "You are a test agent for verifying Anthropic prompt caching. "
-        "Answer in a single short sentence.\n\n"
-        + (_PAD * 100)
+        "Answer in a single short sentence.\n\n" + (_PAD * 100)
     )
 
 
@@ -104,9 +103,7 @@ async def _run(*, model: str, turns: int, pause_s: float) -> int:
             or 0
         )
         cache_read = (
-            usage.get("cache_read_input_tokens")
-            or usage.get("prompt_cache_read_input_tokens")
-            or 0
+            usage.get("cache_read_input_tokens") or usage.get("prompt_cache_read_input_tokens") or 0
         )
         input_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
         print(

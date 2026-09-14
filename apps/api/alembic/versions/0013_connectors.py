@@ -127,8 +127,7 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("slug", name="uq_connectors_slug"),
         sa.CheckConstraint(
-            "auth_kind IN ('oauth_composio', 'browser_credentials', "
-            "'webhook_manual', 'api_key')",
+            "auth_kind IN ('oauth_composio', 'browser_credentials', 'webhook_manual', 'api_key')",
             name="ck_connectors_auth_kind",
         ),
         sa.CheckConstraint(
@@ -245,26 +244,16 @@ def upgrade() -> None:
             ondelete="RESTRICT",
             name="fk_tcto_tool",
         ),
-        sa.UniqueConstraint(
-            "tenant_id", "tool_name", name="uq_tcto_tenant_tool"
-        ),
+        sa.UniqueConstraint("tenant_id", "tool_name", name="uq_tcto_tenant_tool"),
         sa.CheckConstraint(
             "mode IN ('always', 'blocked', 'needs_approval')",
             name="ck_tcto_mode",
         ),
     )
-    op.create_index(
-        "ix_tcto_tenant", "tenant_connector_tool_overrides", ["tenant_id"]
-    )
-    op.execute(
-        "ALTER TABLE tenant_connector_tool_overrides ENABLE ROW LEVEL SECURITY"
-    )
-    op.execute(
-        "ALTER TABLE tenant_connector_tool_overrides FORCE ROW LEVEL SECURITY"
-    )
-    op.execute(
-        _RLS_POLICY_SQL.format(table="tenant_connector_tool_overrides")
-    )
+    op.create_index("ix_tcto_tenant", "tenant_connector_tool_overrides", ["tenant_id"])
+    op.execute("ALTER TABLE tenant_connector_tool_overrides ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE tenant_connector_tool_overrides FORCE ROW LEVEL SECURITY")
+    op.execute(_RLS_POLICY_SQL.format(table="tenant_connector_tool_overrides"))
 
     # ── tool_catalog: connector_id FK + annotations + default_mode ──────────
     op.add_column(
@@ -279,9 +268,7 @@ def upgrade() -> None:
         ["id"],
         ondelete="SET NULL",
     )
-    op.create_index(
-        "ix_tool_catalog_connector", "tool_catalog", ["connector_id"]
-    )
+    op.create_index("ix_tool_catalog_connector", "tool_catalog", ["connector_id"])
     op.add_column(
         "tool_catalog",
         sa.Column(
@@ -339,21 +326,12 @@ def downgrade() -> None:
         "DROP POLICY IF EXISTS tenant_connector_tool_overrides_tenant_isolation "
         "ON tenant_connector_tool_overrides"
     )
-    op.execute(
-        "ALTER TABLE tenant_connector_tool_overrides NO FORCE ROW LEVEL SECURITY"
-    )
-    op.execute(
-        "ALTER TABLE tenant_connector_tool_overrides DISABLE ROW LEVEL SECURITY"
-    )
-    op.drop_index(
-        "ix_tcto_tenant", table_name="tenant_connector_tool_overrides"
-    )
+    op.execute("ALTER TABLE tenant_connector_tool_overrides NO FORCE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE tenant_connector_tool_overrides DISABLE ROW LEVEL SECURITY")
+    op.drop_index("ix_tcto_tenant", table_name="tenant_connector_tool_overrides")
     op.drop_table("tenant_connector_tool_overrides")
 
-    op.execute(
-        "DROP POLICY IF EXISTS tenant_connectors_tenant_isolation "
-        "ON tenant_connectors"
-    )
+    op.execute("DROP POLICY IF EXISTS tenant_connectors_tenant_isolation ON tenant_connectors")
     op.execute("ALTER TABLE tenant_connectors NO FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE tenant_connectors DISABLE ROW LEVEL SECURITY")
     op.drop_index("ix_tc_tenant_status", table_name="tenant_connectors")

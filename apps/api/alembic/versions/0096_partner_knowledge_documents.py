@@ -84,9 +84,7 @@ def upgrade() -> None:
         WITH CHECK (partner_id = {_PARTNER})
         """
     )
-    op.execute(
-        f"GRANT SELECT, INSERT, UPDATE, DELETE ON {_TABLE} TO nexus_app"
-    )
+    op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {_TABLE} TO nexus_app")
 
 
 def downgrade() -> None:

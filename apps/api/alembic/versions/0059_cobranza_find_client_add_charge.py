@@ -108,7 +108,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(
-        "DELETE FROM tool_catalog WHERE name IN ("
-        + ", ".join(f"'{n}'" for n in _NEW_TOOLS)
-        + ")"
+        "DELETE FROM tool_catalog WHERE name IN (" + ", ".join(f"'{n}'" for n in _NEW_TOOLS) + ")"
     )

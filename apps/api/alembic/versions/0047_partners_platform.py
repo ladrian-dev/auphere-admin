@@ -175,9 +175,7 @@ def upgrade() -> None:
     op.create_index(
         "ix_embed_audit_partner_created", "embed_audit_log", ["partner_id", "created_at"]
     )
-    op.create_index(
-        "ix_embed_audit_tenant_created", "embed_audit_log", ["tenant_id", "created_at"]
-    )
+    op.create_index("ix_embed_audit_tenant_created", "embed_audit_log", ["tenant_id", "created_at"])
 
     # nexus_app (RLS-enforced role) needs read access for the fail-closed
     # re-checks inside tenant-scoped transactions, and INSERT on the audit

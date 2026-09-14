@@ -80,8 +80,7 @@ VOCABULARY: tuple[tuple[str, str, str, str, str], ...] = (
 def upgrade() -> None:
     op.execute(f"ALTER TABLE companion.runs DROP CONSTRAINT IF EXISTS {RUN_CONSTRAINT}")
     op.execute(
-        f"ALTER TABLE companion.runs ADD CONSTRAINT {RUN_CONSTRAINT} "
-        f"CHECK (status IN ({_RUN_NEW}))"
+        f"ALTER TABLE companion.runs ADD CONSTRAINT {RUN_CONSTRAINT} CHECK (status IN ({_RUN_NEW}))"
     )
 
     op.execute(f"CREATE SEQUENCE IF NOT EXISTS {SEQUENCE} START WITH 1 INCREMENT BY 1")
@@ -122,6 +121,5 @@ def downgrade() -> None:
     op.execute("UPDATE companion.runs SET status = 'completed' WHERE status = 'paused'")
     op.execute(f"ALTER TABLE companion.runs DROP CONSTRAINT IF EXISTS {RUN_CONSTRAINT}")
     op.execute(
-        f"ALTER TABLE companion.runs ADD CONSTRAINT {RUN_CONSTRAINT} "
-        f"CHECK (status IN ({_RUN_OLD}))"
+        f"ALTER TABLE companion.runs ADD CONSTRAINT {RUN_CONSTRAINT} CHECK (status IN ({_RUN_OLD}))"
     )

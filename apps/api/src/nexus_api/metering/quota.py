@@ -1,24 +1,46 @@
-"""Política C3 de cuota en tokens nativos del proveedor.
+"""Política de cuota: **un peso por carril**, no uno por modelo (spec 007).
 
 Un hecho = una llamada = los campos nativos (input, output, cache_read,
-cache_write). Companion y el consumidor de canal tienen que debitar la
-MISMA cifra; si cada uno inventa la suya, el libro de Fase 3 no puede
-alimentarse.
+cache_write). Los dos puntos que debitan —el del Companion y el del canal—
+tienen que producir la MISMA cifra; si cada uno inventa la suya, el libro no
+puede cuadrarse.
 
-    quota = uncached_input + 0.1 * cache_read + output
-    uncached_input = max(0, prompt_tokens - cache_read)
+    cuota = redondeo( entrada_no_cacheada x w_in
+                    + lectura_de_caché    x w_cache
+                    + salida              x w_out )
 
-``cache_read`` cuenta **0.1**, igual que en la factura de Anthropic.
-``cache_write`` no entra en la cuota (no se inventa un quinto
-multiplicador). Nunca se suma el prompt bruto + cache_read: eso
-doble-cuenta el acierto de caché.
+    entrada_no_cacheada = max(0, prompt_tokens - cache_read)
 
-Quota ≠ coste. ADR-007 / ``price_row`` siguen valorando las cantidades
-nativas. Esta función solo responde "cuántos tokens comen el tope".
+**Qué cambió respecto de la 004, y por qué.** Antes había un solo peso por
+modelo, aplicado al total, y la caché llevaba un ``0,1`` plano delante. Un factor
+único no puede representar tres precios: los proveedores cobran la salida entre
+5x y 6x la entrada, y la caché a una décima parte en Anthropic y en la familia
+GPT-5.6 pero a **la mitad** en ``gpt-4o``. El resultado era que el multiplicador
+sobre el coste salía distinto en cada carril, y en el carril caro salía **por
+debajo de uno**: cinco de los seis modelos del catálogo vendían la salida por
+debajo de coste, y el sexto incumplía el suelo en caché.
 
-Redondeo a token entero: half away from zero (``Decimal``
-``ROUND_HALF_UP``). ``round()`` de Python es banker's (2.5 → 2) y no se
-usa aquí.
+El ``0,1`` global **ya no existe**. Era la aproximación de un carril con un
+número; ahora el carril tiene su peso, que resulta ser una décima parte en unos
+modelos y la mitad en otros. Lo que era una coincidencia afortunada —y la
+migración 0114 la dejó escrita como tal— ahora es un dato.
+
+**Un solo redondeo.** Antes había dos encadenados: el aporte de la caché se
+cuantizaba y luego el total ponderado otra vez. Tres productos homogéneos se
+suman antes de cuantizar, y eso es menos deriva, no más. ``ROUND_HALF_UP``,
+mitad se aleja de cero; ``round()`` de Python es banker's (2,5 → 2) y no se usa
+aquí.
+
+**La propiedad que esto compra.** El cociente entre lo que cobramos y lo que
+cuesta es el mismo en los tres carriles, y por tanto **el margen no depende de la
+mezcla** de trabajo que haga el partner. La 004 creía tener esta propiedad: la
+tenía sólo en su punto de calibración (30 K de prompt, 80 % de acierto de caché,
+1,5 K de salida). Con el trabajo de teammate —pesado en salida, y el que la
+bolsa incluida paga— el coste real de agotar un pool variaba un 78 % entre
+modelos. Ahora varía menos de un 2 %, y lo que queda es redondeo.
+
+Cuota ≠ coste. ADR-007 / ``price_row`` siguen valorando las cantidades nativas.
+Esta función sólo responde "cuántas unidades comen el tope".
 """
 
 from __future__ import annotations
@@ -26,7 +48,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-CACHE_READ_QUOTA_WEIGHT = Decimal("0.1")
+from nexus_api.metering.pricing_policy import LaneWeights
 
 _LLM_INPUT = "llm.input_tokens"
 _LLM_OUTPUT = "llm.output_tokens"
@@ -52,24 +74,19 @@ def _as_int(value: Any) -> int:
 
 
 def round_tokens_half_away(value: Decimal) -> int:
-    """Token entero, mitad se aleja de cero. ``2.5 → 3``, no el ``2`` de ``round()``."""
+    """Unidad entera, mitad se aleja de cero. ``2.5 → 3``, no el ``2`` de ``round()``."""
     return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def uncached_input_tokens(prompt_tokens: int, cache_read: int) -> int:
-    """Entrada que no vino de caché. Suelo cero si el vendor parte la cuenta."""
+    """Entrada que no vino de caché. Suelo cero si el vendor parte la cuenta.
+
+    **Nativo, sin ponderar.** Desde la spec 007 esto es lo que el grafo del
+    Companion acumula y lo que se persiste: medir y tarifar son dos cosas, y
+    mezclarlas es lo que hacía que un cambio de tarifa fuera un cambio en cuatro
+    módulos.
+    """
     return max(0, _as_int(prompt_tokens) - max(0, _as_int(cache_read)))
-
-
-def cache_read_quota_tokens(cache_read: int) -> int:
-    """Aporte de ``cache_read`` a la cuota: 0.1 x nativo, token entero."""
-    native = max(0, _as_int(cache_read))
-    return round_tokens_half_away(Decimal(native) * CACHE_READ_QUOTA_WEIGHT)
-
-
-def quota_input_tokens(*, prompt_tokens: int = 0, cache_read: int = 0) -> int:
-    """Entrada que come el tope: uncached + 0.1 x cache_read."""
-    return uncached_input_tokens(prompt_tokens, cache_read) + cache_read_quota_tokens(cache_read)
 
 
 def quota_tokens(
@@ -78,57 +95,68 @@ def quota_tokens(
     cache_read: int = 0,
     output_tokens: int = 0,
     cache_write: int = 0,
-    model_weight: Decimal,
+    weights: LaneWeights,
 ) -> int:
     """Tope de una llamada. ``cache_write`` se acepta para no olvidarlo: vale 0.
 
-    ``model_weight`` (spec 004, R3.1) es el peso del cerebro, normalizado al
-    medio del catálogo. Se aplica **al total y una sola vez**, justo antes del
-    redondeo final: el peso de ``cache_read`` ya vive dentro, y redondear dos
-    veces deriva.
+    ``weights`` son los tres pesos del modelo **de esta llamada**. Una tarea que
+    encadena llamadas a cerebros distintos se pondera llamada a llamada, nunca
+    turno a turno: ponderar el turno entero con un solo juego de pesos cobraría
+    mal la mitad.
 
-    **No tiene valor por defecto, a propósito.** Un defecto de 1 convertiría
-    cada llamada que se olvidara de pasarlo en un cobro silencioso a la baja —
-    el modo de fallo que esta spec elimina en todos los demás sitios. Que falte
-    tiene que ser un ``TypeError`` en la primera ejecución, no un agujero en el
-    margen descubierto cuadrando una factura.
-
-    La propiedad que compra: **agotar un pool cuesta lo mismo sea cual sea el
-    cerebro**. Sin ella, el peor caso de un plan lo decide el partner al elegir
-    modelo y no nosotros al ponerle precio.
+    **No tiene valor por defecto, a propósito.** Un defecto convertiría cada
+    llamada que se olvidara de pasarlo en un cobro silencioso a la baja — el modo
+    de fallo que esta spec elimina en todos los demás sitios. Que falte tiene que
+    ser un ``TypeError`` en la primera ejecución, no un agujero en el margen
+    descubierto cuadrando una factura.
     """
     del cache_write
-    native = quota_input_tokens(prompt_tokens=prompt_tokens, cache_read=cache_read) + max(
-        0, _as_int(output_tokens)
+    uncached = uncached_input_tokens(prompt_tokens, cache_read)
+    cached = max(0, _as_int(cache_read))
+    output = max(0, _as_int(output_tokens))
+    total = (
+        Decimal(uncached) * weights.input
+        + Decimal(cached) * weights.cache_read
+        + Decimal(output) * weights.output
     )
-    return round_tokens_half_away(Decimal(native) * model_weight)
+    return round_tokens_half_away(total)
 
 
 def billable_qty_for_meter(
     meter: str,
     quantity: Any,
     *,
+    weights: LaneWeights,
     prompt_tokens: int | None = None,
     cache_read: int = 0,
 ) -> float:
     """``billable_qty`` de UNA fila nativa. No colapsa el desglose.
 
-    - ``llm.input_tokens``: uncached (el cache va en su propia fila).
-    - ``llm.cache_read``: 0.1 x nativo.
-    - ``llm.output_tokens``: nativo.
+    - ``llm.input_tokens``: uncached x ``w_in`` (el cache va en su propia fila).
+    - ``llm.cache_read``: nativo x ``w_cache``.
+    - ``llm.output_tokens``: nativo x ``w_out``.
     - ``llm.cache_write``: 0 (fuera del tope).
     - resto: la cantidad medida, como hasta ahora.
+
+    **Es informativo: quien fija el débito es ``quota_tokens()``.** La suma del
+    desglose puede diferir del débito en menos de una unidad, porque el débito se
+    cuantiza una vez y el desglose una vez por fila. La asimetría ya existía y se
+    declara en vez de repartirse: repartir el redondeo entre carriles exigiría
+    una regla que nadie podría defender.
     """
     qty = quantity
     if meter == _LLM_INPUT:
         prompt = _as_int(prompt_tokens if prompt_tokens is not None else qty)
-        return float(uncached_input_tokens(prompt, cache_read))
+        uncached = uncached_input_tokens(prompt, cache_read)
+        return float(round_tokens_half_away(Decimal(uncached) * weights.input))
     if meter == _LLM_CACHE_READ:
-        return float(cache_read_quota_tokens(_as_int(qty)))
+        native = max(0, _as_int(qty))
+        return float(round_tokens_half_away(Decimal(native) * weights.cache_read))
     if meter == _LLM_CACHE_WRITE:
         return 0.0
     if meter == _LLM_OUTPUT:
-        return float(max(0, _as_int(qty)))
+        native = max(0, _as_int(qty))
+        return float(round_tokens_half_away(Decimal(native) * weights.output))
     if isinstance(qty, (int, float)) and not isinstance(qty, bool):
         return float(qty)
     if isinstance(qty, Decimal):

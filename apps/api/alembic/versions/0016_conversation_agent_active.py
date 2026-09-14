@@ -20,6 +20,7 @@ inherit the column default — no application change required.
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.

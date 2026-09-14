@@ -68,8 +68,7 @@ def upgrade() -> None:
     # 36-char representation.
     for table in QA_TABLES:
         op.execute(
-            f"ALTER TABLE qa.{table} "
-            f"ALTER COLUMN operator_id TYPE text USING operator_id::text"
+            f"ALTER TABLE qa.{table} ALTER COLUMN operator_id TYPE text USING operator_id::text"
         )
 
     # Recreate the policies, this time comparing text to text. The
@@ -100,8 +99,7 @@ def downgrade() -> None:
 
     for table in QA_TABLES:
         op.execute(
-            f"ALTER TABLE qa.{table} "
-            f"ALTER COLUMN operator_id TYPE uuid USING operator_id::uuid"
+            f"ALTER TABLE qa.{table} ALTER COLUMN operator_id TYPE uuid USING operator_id::uuid"
         )
 
     for table in QA_TABLES:

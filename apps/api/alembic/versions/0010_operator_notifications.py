@@ -37,10 +37,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "CREATE TYPE operator_notification_status AS ENUM "
-        "('pending', 'sent', 'failed')"
-    )
+    op.execute("CREATE TYPE operator_notification_status AS ENUM ('pending', 'sent', 'failed')")
     on_status = postgresql.ENUM(
         "pending",
         "sent",
@@ -108,9 +105,7 @@ def upgrade() -> None:
     # ── messages: outbound retry bookkeeping ─────────────────────────────────
     op.add_column(
         "messages",
-        sa.Column(
-            "attempts", sa.Integer, nullable=False, server_default="0"
-        ),
+        sa.Column("attempts", sa.Integer, nullable=False, server_default="0"),
     )
     op.add_column("messages", sa.Column("last_error", sa.Text, nullable=True))
 
@@ -120,16 +115,11 @@ def downgrade() -> None:
     op.drop_column("messages", "attempts")
 
     op.execute(
-        "DROP POLICY IF EXISTS operator_notifications_tenant_isolation "
-        "ON operator_notifications"
+        "DROP POLICY IF EXISTS operator_notifications_tenant_isolation ON operator_notifications"
     )
     op.execute("ALTER TABLE operator_notifications NO FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE operator_notifications DISABLE ROW LEVEL SECURITY")
-    op.drop_index(
-        "ix_operator_notifications_status", table_name="operator_notifications"
-    )
-    op.drop_index(
-        "ix_operator_notifications_tenant_id", table_name="operator_notifications"
-    )
+    op.drop_index("ix_operator_notifications_status", table_name="operator_notifications")
+    op.drop_index("ix_operator_notifications_tenant_id", table_name="operator_notifications")
     op.drop_table("operator_notifications")
     op.execute("DROP TYPE IF EXISTS operator_notification_status")

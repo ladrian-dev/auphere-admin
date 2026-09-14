@@ -98,7 +98,9 @@ async def _ensure_clients(
     return out
 
 
-async def _ensure_runtime_rows(sm: async_sessionmaker[AsyncSession], tid: uuid.UUID, i: int) -> None:
+async def _ensure_runtime_rows(
+    sm: async_sessionmaker[AsyncSession], tid: uuid.UUID, i: int
+) -> None:
     """Channel + agent + customer per client, in a scoped transaction."""
     async with sm() as session, tenant_scoped_session(session, tid):
         ch = await session.scalar(sa.select(Channel).where(Channel.type == ChannelType.WHATSAPP))
@@ -178,9 +180,7 @@ async def _top_up_conversations(
         return missing
 
 
-async def _top_up_usage(
-    sm: async_sessionmaker[AsyncSession], tid: uuid.UUID, target: int
-) -> int:
+async def _top_up_usage(sm: async_sessionmaker[AsyncSession], tid: uuid.UUID, target: int) -> int:
     """``target`` rows this month for this tenant, keyed ``vol:<tenant>:<n>``.
     Deterministic ``occurred_at`` per n so re-runs hit ``ON CONFLICT``."""
     async with sm() as session, tenant_scoped_session(session, tid):
@@ -229,7 +229,9 @@ async def _top_up_usage(
 
 
 async def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--partner-slug", default="demo")
     ap.add_argument("--clients", type=int, default=24)
     ap.add_argument("--conversations", type=int, default=6000)

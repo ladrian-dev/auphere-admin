@@ -60,9 +60,7 @@ _TABLES = ("invoices", "invoice_lines", "embed_audit_log")
 def upgrade() -> None:
     for table in _TABLES:
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
-        op.execute(
-            f"CREATE POLICY {table}_tenant_isolation ON {table} USING ({_TENANT_MATCH})"
-        )
+        op.execute(f"CREATE POLICY {table}_tenant_isolation ON {table} USING ({_TENANT_MATCH})")
 
 
 def downgrade() -> None:

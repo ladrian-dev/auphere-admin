@@ -28,8 +28,9 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
-from alembic import op
 from sqlalchemy import text
+
+from alembic import op
 
 revision: str = "0060_woo_checkout_link"
 down_revision: str | Sequence[str] | None = "0059_tiktok_channel"

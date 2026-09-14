@@ -83,3 +83,60 @@ async def test_a_weight_change_does_not_revalue_what_is_already_posted(db_sessio
         {"p": str(pid)},
     )
     assert before == after
+
+
+# ── Spec 007 · los tres pesos por carril ────────────────────────────────
+#
+# El modo de fallo nuevo no es «un modelo sin peso» —ése ya estaba cubierto
+# arriba— sino **un modelo con DOS pesos y uno nulo**. Es más peligroso que la
+# ausencia entera: parece configurado, y el carril que falta es justamente el
+# que nadie mira hasta que cuadra una factura. El esquema lo rechaza (0120), y
+# esto comprueba que el código también, sin depender de la base.
+
+
+async def test_a_model_missing_a_single_lane_is_refused_by_name() -> None:
+    """R1.6 — los tres o ninguno. Un carril nulo invalida el modelo entero."""
+    from nexus_api.metering.pricing_policy import UnweightedModel, weights_for
+
+    for missing in ("input", "cache_read", "output"):
+        lanes = {"input": Decimal("0.66"), "cache_read": Decimal("0.066"), "output": Decimal("3.3")}
+        lanes[missing] = None  # type: ignore[assignment]
+        with pytest.raises(UnweightedModel) as exc:
+            weights_for("anthropic/claude-sonnet-4-6", {"anthropic/claude-sonnet-4-6": lanes})
+        assert "anthropic/claude-sonnet-4-6" in str(exc.value), "el error no nombra el modelo"
+        assert missing in str(exc.value), "el error no dice qué carril falta"
+
+
+async def test_a_model_with_no_lanes_at_all_is_refused_by_name() -> None:
+    """R1.6 — la ausencia entera sigue siendo un rechazo, como en la 004."""
+    from nexus_api.metering.pricing_policy import UnweightedModel, weights_for
+
+    with pytest.raises(UnweightedModel) as exc:
+        weights_for("openai/gpt-4o", {"openai/gpt-4o": None})
+    assert "openai/gpt-4o" in str(exc.value)
+
+
+async def test_the_three_lanes_come_back_as_given() -> None:
+    """R1.6 — un modelo completo devuelve sus tres pesos, sin inventar ninguno."""
+    from nexus_api.metering.pricing_policy import LaneWeights, weights_for
+
+    lanes = weights_for(
+        "x",
+        {"x": {"input": Decimal("0.88"), "cache_read": Decimal("0.088"), "output": Decimal("4.4")}},
+    )
+    assert lanes == LaneWeights(
+        input=Decimal("0.88"), cache_read=Decimal("0.088"), output=Decimal("4.4")
+    )
+
+
+async def test_a_model_outside_the_llm_quota_lane_is_unaffected() -> None:
+    """R1.7 — ``whisper-1`` se mide por minutos y **no necesita ningún peso**.
+
+    Está aquí, y no sólo en un comentario, porque es exactamente lo que alguien
+    "arregla" dentro de seis meses poniéndole tres pesos a whisper y rompiendo
+    la invarianza sin que salte nada.
+    """
+    from nexus_api.metering.pricing_policy import lane_needs_weight
+
+    assert lane_needs_weight("llm.output_tokens") is True
+    assert lane_needs_weight("voice.minutes") is False

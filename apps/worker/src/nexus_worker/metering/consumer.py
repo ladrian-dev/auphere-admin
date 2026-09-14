@@ -44,14 +44,19 @@ import structlog
 from nexus_api.core.streams import xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.metering.pricing_policy import UnweightedModel, weight_for
-from nexus_api.metering.quota import billable_qty_for_meter, quota_tokens
+from nexus_api.metering.pricing_policy import UnweightedModel, weights_for
+from nexus_api.metering.quota import billable_qty_for_meter, quota_tokens, uncached_input_tokens
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
 from nexus_worker.metering.budget import add_spend
 from nexus_worker.metering.collector import SOURCE_CHANNEL, USAGE_SOURCES, USAGE_STREAM
-from nexus_worker.metering.pricing import get_catalog, get_unit_prices, price_row
+from nexus_worker.metering.pricing import (
+    get_catalog,
+    get_unit_prices,
+    lane_weights_from,
+    price_row,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -128,7 +133,7 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
                 "source": source,
             }
         )
-    _apply_quota_billable(rows)
+    _apply_native_breakdown(rows)
     return tenant_id, rows
 
 
@@ -142,14 +147,24 @@ def _llm_call_key(row: dict[str, Any]) -> str:
     return key
 
 
-def _apply_quota_billable(rows: list[dict[str, Any]]) -> None:
-    """billable_qty = politica C3; quantity sigue siendo el nativo.
+def _apply_native_breakdown(rows: list[dict[str, Any]]) -> None:
+    """Desglose NATIVO por fila. Sin pesos: aquí todavía no se puede.
 
     El colector emite una fila por campo (input bruto, output, cache_read,
-    cache_write). Si billable_qty copiara quantity en input, un libro que
-    sume input + cache_read doble-cuenta. La cuota de input es el uncached;
-    la de cache_read es 0.1x; cache_write no come tope. cost_usd sigue
-    saliendo de quantity x tarifa (ADR-007).
+    cache_write). Si ``billable_qty`` copiara ``quantity`` en input, un libro que
+    sume input + cache_read doble-cuenta: la aportación de input es el
+    **uncached**, y la caché ya va en su propia fila.
+
+    **Por qué esto no pondera (spec 007).** Esta función corre en
+    ``rows_from_entry``, que es síncrona y no puede pedir el catálogo. Con un
+    peso único global se podía hacer todo aquí; con un peso por carril y por
+    modelo hace falta el catálogo, y pedirlo desde una función síncrona
+    significaría abrir una sesión de base por entrada de stream. Así que se
+    parte en dos: **medir aquí, ponderar en ``persist_rows``**, que ya lee el
+    catálogo una vez por pasada para valorar en dólares.
+
+    Es la misma separación que la spec 007 hace en el camino del Companion, y
+    por el mismo motivo: un nativo no caduca cuando cambia un precio.
     """
     groups: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
@@ -165,9 +180,48 @@ def _apply_quota_billable(rows: list[dict[str, Any]]) -> None:
             elif row["meter"] == "llm.input_tokens":
                 prompt = int(row["quantity"] or 0)
         for row in group:
+            meter = str(row["meter"])
+            if meter == "llm.input_tokens":
+                row["billable_qty"] = float(uncached_input_tokens(prompt, cache_read))
+            elif meter == "llm.cache_write":
+                row["billable_qty"] = 0.0
+            else:
+                row["billable_qty"] = float(int(row["quantity"] or 0))
+
+
+def _apply_lane_weights(rows: list[dict[str, Any]], weights: dict[str, dict[str, Any]]) -> None:
+    """Multiplica cada carril por el peso de SU modelo (spec 007, R1.3).
+
+    Segunda mitad de ``_apply_native_breakdown``. Un modelo sin los tres pesos
+    deja su fila con el desglose nativo y **se registra con su motivo**: el mismo
+    criterio que ``cost_usd`` NULL — una ausencia declarada es preferible a un
+    número inventado que nadie vuelve a mirar. El débito, que es lo que mueve
+    dinero, se omite aparte en ``_debit_channel_wallet``.
+    """
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if str(row.get("meter") or "").startswith("llm."):
+            groups.setdefault(_llm_call_key(row), []).append(row)
+    for group in groups.values():
+        model = ""
+        cache_read = 0
+        prompt = 0
+        for row in group:
+            model = str(row.get("model") or model)
+            if row["meter"] == "llm.cache_read":
+                cache_read = int(row["quantity"] or 0)
+            elif row["meter"] == "llm.input_tokens":
+                prompt = int(row["quantity"] or 0)
+        try:
+            lanes = weights_for(model, weights)
+        except UnweightedModel as exc:
+            log.error("metering.unweighted_model_breakdown", model=model, error=str(exc))
+            continue
+        for row in group:
             row["billable_qty"] = billable_qty_for_meter(
                 str(row["meter"]),
                 row["quantity"],
+                weights=lanes,
                 prompt_tokens=prompt,
                 cache_read=cache_read,
             )
@@ -192,10 +246,10 @@ _INSERT_SQL = sa.text(
 def _turn_quota(rows: list[dict[str, Any]], weights: dict[str, Any]) -> dict[str, int]:
     """turn_id -> quota_tokens() C3, agrupando por llamada.
 
-    ``weights`` es el mapa ``model_id -> quota_weight`` del catálogo cacheado
-    (spec 004, R3.1). Se agrupa por llamada porque el peso es del MODELO, y una
-    misma tarea puede encadenar llamadas a cerebros distintos: ponderar el turno
-    entero con un solo peso cobraría mal la mitad.
+    ``weights`` es el mapa ``model_id -> {carril: peso}`` del catálogo cacheado
+    (spec 007, R1.2). Se agrupa por llamada porque los pesos son del MODELO, y
+    una misma tarea puede encadenar llamadas a cerebros distintos: ponderar el
+    turno entero con un solo juego de pesos cobraría mal la mitad.
     """
     calls: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -216,7 +270,7 @@ def _turn_quota(rows: list[dict[str, Any]], weights: dict[str, Any]) -> dict[str
     for call, g in calls.items():
         turn = call.rsplit(":", 1)[0] if ":" in call else call
         try:
-            weight = weight_for(str(g["model"]), weights)
+            lanes = weights_for(str(g["model"]), weights)
         except UnweightedModel as exc:
             # Medido y sin debitar, con su motivo. El mismo criterio que
             # ``cost_usd`` NULL: una ausencia declarada es preferible a un
@@ -227,7 +281,7 @@ def _turn_quota(rows: list[dict[str, Any]], weights: dict[str, Any]) -> dict[str
             prompt_tokens=g["prompt"],
             cache_read=g["cache"],
             output_tokens=g["output"],
-            model_weight=weight,
+            weights=lanes,
         )
     return turns
 
@@ -252,7 +306,7 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
     weights: dict[str, Any] = {}
     if any(str(r.get("meter") or "").startswith("llm.") for r in rows):
         try:
-            weights = {mid: row.quota_weight for mid, row in (await get_catalog()).items()}
+            weights = lane_weights_from(await get_catalog())
         except Exception as exc:  # pragma: no cover - defensivo
             log.warning("metering.catalog_unavailable_for_weights", error=str(exc))
             return
@@ -329,6 +383,11 @@ async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) ->
     for tenant_id, rows in rows_by_tenant.items():
         if not rows:
             continue
+        if catalog:
+            # Spec 007: la segunda mitad del desglose. El catálogo ya está
+            # leído para valorar en dólares, así que ponderar aquí no cuesta
+            # ninguna consulta nueva.
+            _apply_lane_weights(rows, lane_weights_from(catalog))
         if catalog or unit_prices:
             for row in rows:
                 row["cost_usd"] = price_row(row, catalog, unit_prices)

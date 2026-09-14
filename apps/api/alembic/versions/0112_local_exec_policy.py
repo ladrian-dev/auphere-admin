@@ -26,8 +26,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "0112_local_exec_policy"
 down_revision: str | Sequence[str] | None = "0111_teammate_tasks"
@@ -66,7 +67,9 @@ def upgrade() -> None:
         #: la preferencia de la persona, que es ``ask``.
         sa.Column("ceiling", sa.Text(), nullable=False, server_default="always"),
         sa.Column("updated_by", sa.Text(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
         sa.CheckConstraint(f"ceiling IN ({modes})", name="partner_local_exec_policy_ceiling_check"),
     )
     op.execute("ALTER TABLE partner_local_exec_policy ENABLE ROW LEVEL SECURITY")
@@ -92,7 +95,9 @@ def upgrade() -> None:
         #: NULL = la preferencia global de esta persona.
         sa.Column("executable", sa.Text(), nullable=True),
         sa.Column("mode", sa.Text(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
         sa.CheckConstraint(f"mode IN ({modes})", name="principal_local_exec_prefs_mode_check"),
         sa.CheckConstraint(
             r"executable IS NULL OR executable ~ '^[A-Za-z0-9._+-]{1,128}$'",
@@ -128,8 +133,12 @@ def upgrade() -> None:
 
     # ── la auditoría gana contexto ────────────────────────────────────
     op.add_column("local_executions", sa.Column("principal_id", sa.Text(), nullable=True))
-    op.add_column("local_executions", sa.Column("teammate_id", postgresql.UUID(as_uuid=True), nullable=True))
-    op.add_column("local_executions", sa.Column("task_id", postgresql.UUID(as_uuid=True), nullable=True))
+    op.add_column(
+        "local_executions", sa.Column("teammate_id", postgresql.UUID(as_uuid=True), nullable=True)
+    )
+    op.add_column(
+        "local_executions", sa.Column("task_id", postgresql.UUID(as_uuid=True), nullable=True)
+    )
     op.add_column(
         "local_executions", sa.Column("dispatched_at", sa.DateTime(timezone=True), nullable=True)
     )
@@ -177,9 +186,15 @@ def downgrade() -> None:
     op.drop_column("local_executions", "task_id")
     op.drop_column("local_executions", "teammate_id")
     op.drop_column("local_executions", "principal_id")
-    op.execute("DROP POLICY IF EXISTS principal_local_exec_prefs_owner ON principal_local_exec_prefs")
-    op.drop_index("uq_principal_local_exec_prefs_executable", table_name="principal_local_exec_prefs")
+    op.execute(
+        "DROP POLICY IF EXISTS principal_local_exec_prefs_owner ON principal_local_exec_prefs"
+    )
+    op.drop_index(
+        "uq_principal_local_exec_prefs_executable", table_name="principal_local_exec_prefs"
+    )
     op.drop_index("uq_principal_local_exec_prefs_global", table_name="principal_local_exec_prefs")
     op.drop_table("principal_local_exec_prefs")
-    op.execute("DROP POLICY IF EXISTS partner_local_exec_policy_partner ON partner_local_exec_policy")
+    op.execute(
+        "DROP POLICY IF EXISTS partner_local_exec_policy_partner ON partner_local_exec_policy"
+    )
     op.drop_table("partner_local_exec_policy")

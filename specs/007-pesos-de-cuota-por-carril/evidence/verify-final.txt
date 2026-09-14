@@ -1,0 +1,662 @@
+
+[1m▸ ruff check · api[0m
+All checks passed!
+[32m  ok[0m
+
+[1m▸ ruff format · api[0m
+698 files already formatted
+[32m  ok[0m
+
+[1m▸ ruff check · worker[0m
+All checks passed!
+[32m  ok[0m
+
+[1m▸ ruff format · worker[0m
+149 files already formatted
+[32m  ok[0m
+
+[1m▸ ruff check · channels[0m
+All checks passed!
+[32m  ok[0m
+
+[1m▸ ruff format · channels[0m
+24 files already formatted
+[32m  ok[0m
+
+[1m▸ ruff check · mcp[0m
+All checks passed!
+[32m  ok[0m
+
+[1m▸ ruff format · mcp[0m
+64 files already formatted
+[32m  ok[0m
+
+[1m▸ mypy · api[0m
+Success: no issues found in 327 source files
+[32m  ok[0m
+
+[1m▸ mypy · worker[0m
+Success: no issues found in 98 source files
+[32m  ok[0m
+
+[1m▸ mypy · channels[0m
+Success: no issues found in 19 source files
+[32m  ok[0m
+
+[1m▸ mypy · mcp[0m
+Success: no issues found in 58 source files
+[32m  ok[0m
+
+[1m▸ pytest · api[0m
+.......................xx.....................x......................... [  1%]
+..x..................................................................... [  3%]
+......................
+Companion · evals CO-07
+========================================
+casos totales: 92
+  known_answer     48
+  ambiguous        14
+  cross_partner    12
+  destructive      18
+pendientes (xfail):
+  live             4
+
+R1 — afirmaciones sin respaldo
+----------------------------------------
+  etiquetados con respaldo    67
+  etiquetados sin respaldo    6
+  falsos positivos            0.00% (umbral < 2%)
+  recall                      100.00% (umbral 100%)
+  turnos marcados             8.22%  (crudo — NO comparable con el 2%: el dataset siembra 6 alucinaciones a propósito)
+
+R1 dentro de umbral.
+.................................................. [  5%]
+........................................................................ [  7%]
+........................................................................ [  9%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+........................................................................ [ 18%]
+........................................................................ [ 20%]
+........................................................................ [ 22%]
+........................................................................ [ 24%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 29%]
+........................................................................ [ 31%]
+........................................................................ [ 33%]
+........................................................................ [ 35%]
+........................................................................ [ 37%]
+........................................................................ [ 39%]
+........................................................................ [ 41%]
+........................................................................ [ 43%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+........................................................................ [ 50%]
+...............................ssssssss................................. [ 52%]
+........................................................................ [ 54%]
+........................................................................ [ 56%]
+........................................................................ [ 58%]
+........................................................................ [ 59%]
+........................................................................ [ 61%]
+........................................................................ [ 63%]
+........................................................................ [ 65%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 71%]
+........................................................................ [ 73%]
+........................................................................ [ 74%]
+........................................................................ [ 76%]
+.....................................................................sss [ 78%]
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss [ 80%]
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss [ 82%]
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss [ 84%]
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss [ 86%]
+ssssssssssss............................................................ [ 87%]
+........................................................................ [ 89%]
+........................................................................ [ 91%]
+........................................................................ [ 93%]
+........................................................................ [ 95%]
+........................................................................ [ 97%]
+........................................................................ [ 99%]
+..............................                                           [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/langgraph/checkpoint/serde/encrypted.py:5
+  /Users/lmatos/Workspace/nexus/apps/api/.venv/lib/python3.12/site-packages/langgraph/checkpoint/serde/encrypted.py:5: LangChainPendingDeprecationWarning: The default value of `allowed_objects` will change in a future version. Pass an explicit value (e.g., allowed_objects='messages' or allowed_objects='core') to suppress this warning.
+    from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+tests/evals/companion/test_family_known_answer.py: 2 warnings
+tests/evals/companion/test_r1_metric.py: 4 warnings
+tests/integration/test_companion_action_resume.py: 2 warnings
+tests/integration/test_companion_pilot.py: 1 warning
+tests/integration/test_qa_metrics.py: 1 warning
+tests/unit/test_companion_streaming.py: 2 warnings
+tests/unit/test_mcp_dry_run.py: 1 warning
+tests/unit/test_qa_streaming_orchestrator.py: 1 warning
+  /Users/lmatos/Workspace/nexus/apps/api/.venv/lib/python3.12/site-packages/structlog/_base.py:173: UserWarning: Remove `format_exc_info` from your processor chain if you want pretty exceptions.
+    event_dict = proc(self._logger, method_name, event_dict)
+
+tests/integration/test_admin_partner_models.py::test_console_picker_hides_terra_and_put_is_422
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/api/console/models.py:126: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _unknown_model(body.model_id)
+
+tests/integration/test_admin_partner_models.py::test_admin_models_rejects_extra_and_outside_catalog
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/api/admin/partner_models.py:71: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _unknown_catalog(model_id)
+
+tests/integration/test_admin_tickets.py: 1 warning
+tests/integration/test_partner_auto_provisioning.py: 3 warnings
+tests/unit/test_endpoint_budget_policies.py: 1 warning
+tests/unit/test_endpoint_console.py: 1 warning
+tests/unit/test_endpoint_console_agent_tools.py: 2 warnings
+tests/unit/test_endpoint_model_bindings.py: 2 warnings
+  /Users/lmatos/Workspace/nexus/apps/api/.venv/lib/python3.12/site-packages/fastapi/routing.py:328: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await dependant.call(**values)
+
+tests/integration/test_auphere_channels.py: 3 warnings
+tests/integration/test_owner_channel_slash_commands.py: 14 warnings
+tests/unit/test_endpoint_webhook_meta_coexistence.py: 4 warnings
+tests/unit/test_endpoint_webhook_meta_inbound.py: 5 warnings
+tests/unit/test_otel_export.py: 1 warning
+tests/unit/test_tenant_tier_routing.py: 1 warning
+tests/unit/test_webhook_ack_roundtrips.py: 3 warnings
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/repositories/auphere_channels.py:206: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(_PHONE_IDS_KEY, _PHONE_IDS_TTL_S, json.dumps(sorted(ids)))
+
+tests/integration/test_console_models.py::test_put_model_rejects_loose_gpt56
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/api/console/models.py:120: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _unknown_model(body.model_id)
+
+tests/integration/test_device_pairing.py::test_normalization_reads_what_a_person_would_type
+  tests/integration/test_device_pairing.py:145: PytestWarning: The test <Function test_normalization_reads_what_a_person_would_type> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_normalization_reads_what_a_person_would_type():
+
+tests/integration/test_device_presence.py::test_a_device_that_never_beat_is_absent
+  tests/integration/test_device_presence.py:43: PytestWarning: The test <Function test_a_device_that_never_beat_is_absent> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_a_device_that_never_beat_is_absent():
+
+tests/integration/test_device_presence.py::test_within_the_window_it_is_present
+  tests/integration/test_device_presence.py:47: PytestWarning: The test <Function test_within_the_window_it_is_present> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_within_the_window_it_is_present():
+
+tests/integration/test_device_presence.py::test_past_the_window_it_is_absent
+  tests/integration/test_device_presence.py:51: PytestWarning: The test <Function test_past_the_window_it_is_absent> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_past_the_window_it_is_absent():
+
+tests/integration/test_device_presence.py::test_there_is_room_to_lose_beats_before_declaring_absence
+  tests/integration/test_device_presence.py:55: PytestWarning: The test <Function test_there_is_room_to_lose_beats_before_declaring_absence> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_there_is_room_to_lose_beats_before_declaring_absence():
+
+tests/integration/test_device_presence.py::test_the_window_fits_inside_the_minute_ce004_demands
+  tests/integration/test_device_presence.py:60: PytestWarning: The test <Function test_the_window_fits_inside_the_minute_ce004_demands> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_the_window_fits_inside_the_minute_ce004_demands():
+
+tests/integration/test_device_presence.py::test_the_local_tools_leave_the_catalog_when_the_device_goes
+  tests/integration/test_device_presence.py:64: PytestWarning: The test <Function test_the_local_tools_leave_the_catalog_when_the_device_goes> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_the_local_tools_leave_the_catalog_when_the_device_goes():
+
+tests/integration/test_end_client_approval_boundary.py::test_an_end_client_action_requires_the_durable_ladder
+  tests/integration/test_end_client_approval_boundary.py:26: PytestWarning: The test <Function test_an_end_client_action_requires_the_durable_ladder> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_an_end_client_action_requires_the_durable_ladder():
+
+tests/integration/test_end_client_approval_boundary.py::test_the_audit_names_the_person_not_the_agent
+  tests/integration/test_end_client_approval_boundary.py:31: PytestWarning: The test <Function test_the_audit_names_the_person_not_the_agent> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_the_audit_names_the_person_not_the_agent():
+
+tests/integration/test_end_client_approval_boundary.py::test_the_durable_action_carries_a_state_hash_column
+  tests/integration/test_end_client_approval_boundary.py:48: PytestWarning: The test <Function test_the_durable_action_carries_a_state_hash_column> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_the_durable_action_carries_a_state_hash_column():
+
+tests/integration/test_end_client_approval_boundary.py::test_a_thread_exists_to_hang_the_action_from
+  tests/integration/test_end_client_approval_boundary.py:54: PytestWarning: The test <Function test_a_thread_exists_to_hang_the_action_from> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_a_thread_exists_to_hang_the_action_from():
+
+tests/integration/test_endpoint_direct_messages.py::test_invalid_phone_is_422
+tests/integration/test_endpoint_direct_messages.py::test_missing_variable_is_422_and_names_it
+tests/integration/test_endpoint_direct_messages.py::test_unexpected_variable_is_422
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/api/messages.py:66: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    result = await send_template_message(session, tenant_id=ctx.tenant_id, payload=payload)
+
+tests/integration/test_endpoint_direct_messages.py::test_unknown_template_is_422
+tests/integration/test_endpoint_direct_messages.py::test_unapproved_template_is_422
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/services/direct_messages.py:236: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    resolved = await resolve_template(
+
+tests/integration/test_google_availability.py::TestPreguntarNoEscribe::test_el_contraste_start_si_escribe
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/services/google_oidc.py:247: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(pkce_key(nonce), PKCE_TTL_SECONDS, verifier)
+
+tests/integration/test_partner_broadcasts.py::test_unapproved_template_is_rejected
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/services/broadcasts.py:242: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    resolved = await resolve_template(
+
+tests/integration/test_teammates_crud.py::test_a_model_outside_the_partners_list_is_refused
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/api/console/teammates.py:222: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _refuse("model_not_allowed", model=model)
+
+tests/integration/test_teammates_crud.py::test_a_name_outside_the_catalogue_is_refused_not_ignored
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/api/console/teammates.py:214: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _refuse("tool_not_in_catalog", names=exc.names) from exc
+
+tests/isolation/test_fase4_packs.py::test_unknown_step_id_is_422
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/api/console/workflow.py:100: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _http_422(exc) from exc
+
+tests/unit/test_console_identity.py::test_hash_and_verify_roundtrip
+  tests/unit/test_console_identity.py:85: PytestWarning: The test <Function test_hash_and_verify_roundtrip> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_hash_and_verify_roundtrip() -> None:
+
+tests/unit/test_console_identity.py::test_hash_never_contains_the_password_and_survives_garbage
+  tests/unit/test_console_identity.py:95: PytestWarning: The test <Function test_hash_never_contains_the_password_and_survives_garbage> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_hash_never_contains_the_password_and_survives_garbage() -> None:
+
+tests/unit/test_console_identity.py::test_password_policy_is_twelve_characters
+  tests/unit/test_console_identity.py:105: PytestWarning: The test <Function test_password_policy_is_twelve_characters> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_password_policy_is_twelve_characters() -> None:
+
+tests/unit/test_endpoint_console.py::test_audit_paging_and_filters
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/api/console/audit.py:325: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    c_ts, c_id = _decode_cursor(cursor)
+
+tests/unit/test_endpoint_console_agent_tools.py::test_knowledge_upload_too_large_is_413
+  /Users/lmatos/Workspace/nexus/apps/api/.venv/lib/python3.12/site-packages/fastapi/routing.py:328: StarletteDeprecationWarning: 'HTTP_413_REQUEST_ENTITY_TOO_LARGE' is deprecated. Use 'HTTP_413_CONTENT_TOO_LARGE' instead.
+    return await dependant.call(**values)
+
+tests/unit/test_endpoint_console_onboarding.py::test_describe_placeholders_barbershop_and_cobranza
+  tests/unit/test_endpoint_console_onboarding.py:40: PytestWarning: The test <Function test_describe_placeholders_barbershop_and_cobranza> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_describe_placeholders_barbershop_and_cobranza() -> None:
+
+tests/unit/test_endpoint_console_onboarding.py::test_from_seed_stages_draft_v1_with_disclosure_and_409_on_second
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/api/console/seed_templates.py:256: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await stage_from_seed(
+
+tests/unit/test_endpoint_console_onboarding.py::test_notifications_cursor_paging
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/api/console/notifications.py:104: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    c_at, c_id = _decode_cursor(cursor)
+
+tests/unit/test_endpoint_webhook_meta_coexistence.py: 3 warnings
+tests/unit/test_endpoint_webhook_meta_inbound.py: 5 warnings
+tests/unit/test_endpoint_webhook_tiktok.py: 4 warnings
+tests/unit/test_otel_export.py: 1 warning
+tests/unit/test_tenant_resolver.py: 5 warnings
+tests/unit/test_tenant_tier_routing.py: 1 warning
+tests/unit/test_webhook_ack_roundtrips.py: 3 warnings
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/core/tenant_resolver.py:59: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(redis_key, settings.tenant_cache_ttl, str(tenant_id))
+
+tests/unit/test_endpoint_webhook_meta_inbound.py: 4 warnings
+tests/unit/test_endpoint_webhook_tiktok.py: 3 warnings
+tests/unit/test_otel_export.py: 1 warning
+tests/unit/test_tenant_tier_routing.py: 3 warnings
+tests/unit/test_webhook_ack_roundtrips.py: 3 warnings
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/core/tenant_resolver.py:97: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(key, settings.tenant_cache_ttl, tier)
+
+tests/unit/test_health_ready.py::test_workers_ok_with_live_heartbeat
+  /Users/lmatos/Workspace/nexus/apps/api/tests/unit/test_health_ready.py:62: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await fake_redis.setex("nexus:health:nexus-worker:host-1", 60, "1")
+
+tests/unit/test_tenant_resolver.py::test_corrupt_cache_falls_back_to_db
+  /Users/lmatos/Workspace/nexus/apps/api/tests/unit/test_tenant_resolver.py:85: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await fake_redis.setex("nexus:tenant_resolve:meta:phone-4", 60, "not-a-uuid")
+
+tests/unit/test_wallet_fail_closed.py::test_unreadable_book_reads_as_zero
+  /Users/lmatos/Workspace/nexus/apps/api/tests/unit/test_wallet_fail_closed.py:25: RuntimeWarning: coroutine 'test_unreadable_book_reads_as_zero.<locals>._boom' was never awaited
+    assert await wallet.read_wallet(uuid.uuid4()) is None
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_wallet_fail_closed.py::test_unreadable_book_reads_as_zero
+  /Users/lmatos/Workspace/nexus/apps/api/src/nexus_api/metering/wallet.py:422: RuntimeWarning: coroutine 'test_unreadable_book_reads_as_zero.<locals>._boom' was never awaited
+    snap = await read_wallet(partner_id)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_wallet_fail_closed.py::test_unreadable_book_closes_the_channel
+  /Users/lmatos/Workspace/nexus/apps/api/tests/unit/test_wallet_fail_closed.py:36: RuntimeWarning: coroutine 'test_unreadable_book_closes_the_channel.<locals>._boom' was never awaited
+    assert await wallet.allow_channel_turn(uuid.uuid4()) is False
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_wallet_fail_closed.py::test_unreadable_book_closes_the_allocation_read
+  /Users/lmatos/Workspace/nexus/apps/api/tests/unit/test_wallet_fail_closed.py:46: RuntimeWarning: coroutine 'test_unreadable_book_closes_the_allocation_read.<locals>._boom' was never awaited
+    assert await wallet.companion_allocation_remaining(uuid.uuid4(), uuid.uuid4()) == 0
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+3531 passed, 311 skipped, 4 xfailed, 130 warnings in 560.54s (0:09:20)
+[32m  ok[0m
+
+[1m▸ pytest · worker[0m
+........................................................................ [ 17%]
+........................................................................ [ 34%]
+........................................................................ [ 51%]
+........................................................................ [ 68%]
+........................................................................ [ 85%]
+...........................................................              [100%]/Users/lmatos/Workspace/nexus/apps/api/.venv/lib/python3.12/site-packages/_pytest/unraisableexception.py:33: RuntimeWarning: coroutine 'Connection._cancel' was never awaited
+  gc.collect()
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/langgraph/cache/base/__init__.py:8
+  /Users/lmatos/Workspace/nexus/apps/api/.venv/lib/python3.12/site-packages/langgraph/cache/base/__init__.py:8: LangChainPendingDeprecationWarning: The default value of `allowed_objects` will change in a future version. Pass an explicit value (e.g., allowed_objects='messages' or allowed_objects='core') to suppress this warning.
+    from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+tests/unit/test_bootstrap_split.py::test_families_are_disjoint_and_complete
+  tests/unit/test_bootstrap_split.py:77: PytestWarning: The test <Function test_families_are_disjoint_and_complete> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_families_are_disjoint_and_complete() -> None:
+
+tests/unit/test_heartbeat.py::test_heartbeat_writes_key_with_ttl
+  /Users/lmatos/Workspace/nexus/apps/worker/src/nexus_worker/health.py:47: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(key, HEARTBEAT_TTL_S, "1")
+
+tests/unit/test_media_metering_units.py::test_unpriced_media_meter_stays_null
+  tests/unit/test_media_metering_units.py:116: PytestWarning: The test <Function test_unpriced_media_meter_stays_null> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_unpriced_media_meter_stays_null() -> None:
+
+tests/unit/test_pipeline_interactive.py::TestCapture::test_skipped_envelope_does_not_capture
+  /Users/lmatos/Workspace/nexus/apps/api/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py:1892: RuntimeWarning: coroutine 'Connection._cancel' was never awaited
+    def begin(self, nested: bool = False) -> SessionTransaction:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_pipeline_ucm_node.py::TestUcmFormatterNode::test_enabled_degrades_for_state_channel_type
+  /Users/lmatos/Workspace/nexus/packages/ucm-schema/py/src/ucm_schema/validators/__init__.py:104: RuntimeWarning: coroutine 'Connection._cancel' was never awaited
+    def _check_limits(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_readonly_tool_filter.py::test_readonly_admin_loses_every_write_tool
+  <string>:9: RuntimeWarning: coroutine 'Connection._cancel' was never awaited
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_skills_pipeline.py::TestChannelGatingHandlerIntegration::test_skills_in_bundle_inject_container_and_code_execution
+  /Users/lmatos/Workspace/nexus/apps/api/.venv/lib/python3.12/site-packages/sqlalchemy/orm/identity.py:46: RuntimeWarning: coroutine 'Connection._cancel' was never awaited
+    self._wr = weakref.ref(self)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_skills_pipeline.py::TestChannelGatingHandlerIntegration::test_no_skills_means_no_container_no_code_execution
+  /Users/lmatos/.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/asyncio/base_events.py:1024: RuntimeWarning: coroutine 'Connection._cancel' was never awaited
+    async def create_connection(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_skills_pipeline.py::TestChannelGatingHandlerIntegration::test_whatsapp_only_skill_excluded_on_web
+  /Users/lmatos/Workspace/nexus/apps/api/.venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: RuntimeWarning: coroutine 'Connection._cancel' was never awaited
+    result = context.throw(*sys.exc_info())
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_skills_pipeline.py::TestChannelGatingHandlerIntegration::test_legacy_skill_without_channels_key_still_loads
+  /Users/lmatos/.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/weakref.py:369: RuntimeWarning: coroutine 'Connection._cancel' was never awaited
+    def remove(k, selfref=ref(self)):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_ucm_formatter.py::TestShadowDiff::test_channel_default_is_whatsapp
+  /Users/lmatos/Workspace/nexus/apps/api/.venv/lib/python3.12/site-packages/pydantic/type_adapter.py:441: RuntimeWarning: coroutine 'Connection._cancel' was never awaited
+    return self.validator.validate_python(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+419 passed, 12 warnings in 5.72s
+[32m  ok[0m
+
+[1m▸ pytest · channels[0m
+.....................................................                    [100%]
+53 passed in 5.52s
+[32m  ok[0m
+
+[1m▸ pytest · mcp[0m
+........................................................................ [ 72%]
+............................                                             [100%]
+100 passed in 0.44s
+[32m  ok[0m
+
+[1m▸ @nexus/ui · typecheck[0m
+
+> @nexus/ui@0.1.0 typecheck /Users/lmatos/Workspace/nexus/packages/ui
+> tsc --noEmit -p tsconfig.json
+
+[32m  ok[0m
+
+[1m▸ @nexus/ui · lint[0m
+
+> @nexus/ui@0.1.0 lint /Users/lmatos/Workspace/nexus/packages/ui
+> eslint src eslint --max-warnings 0
+
+[32m  ok[0m
+
+[1m▸ @nexus/ui · test[0m
+
+> @nexus/ui@0.1.0 test /Users/lmatos/Workspace/nexus/packages/ui
+> vitest run
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (vitest.config.ts:8:41). Use `import.meta.dirname` instead
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.10 /Users/lmatos/Workspace/nexus/packages/ui
+
+
+ Test Files  5 passed (5)
+      Tests  49 passed (49)
+   Start at  21:11:13
+   Duration  1.23s (transform 184ms, setup 674ms, import 771ms, tests 414ms, environment 2.81s)
+
+[32m  ok[0m
+
+[1m▸ consola · sin token de admin[0m
+
+> console@0.1.0 check:no-admin-token /Users/lmatos/Workspace/nexus/apps/console
+> node scripts/check-no-admin-token.mjs
+
+ok: no NEXUS_ADMIN_TOKEN in apps/console
+[32m  ok[0m
+
+[1m▸ consola · typecheck[0m
+[32m  ok[0m
+
+[1m▸ consola · lint[0m
+[32m  ok[0m
+
+[1m▸ consola · vitest[0m
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.10 /Users/lmatos/Workspace/nexus/apps/console
+
+Not implemented: navigation to another Document
+Not implemented: navigation to another Document
+
+ Test Files  44 passed (44)
+      Tests  256 passed (256)
+   Start at  21:11:21
+   Duration  6.34s (transform 4.01s, setup 6.60s, import 23.53s, tests 3.23s, environment 27.24s)
+
+[32m  ok[0m
+
+[1m▸ companion-ui · typecheck[0m
+
+> @nexus/companion-ui@0.1.0 typecheck /Users/lmatos/Workspace/nexus/packages/companion-ui
+> tsc --noEmit
+
+[32m  ok[0m
+
+[1m▸ companion-ui · test[0m
+
+> @nexus/companion-ui@0.1.0 test /Users/lmatos/Workspace/nexus/packages/companion-ui
+> vitest run
+
+
+ RUN  v4.1.10 /Users/lmatos/Workspace/nexus/packages/companion-ui
+
+
+ Test Files  9 passed (9)
+      Tests  144 passed (144)
+   Start at  21:11:30
+   Duration  1.61s (transform 966ms, setup 1.28s, import 3.19s, tests 794ms, environment 4.90s)
+
+[32m  ok[0m
+
+[1m▸ desktop · typecheck[0m
+
+> @nexus/desktop@0.1.0 typecheck /Users/lmatos/Workspace/nexus/apps/desktop
+> tsc --noEmit && tsc --noEmit -p tsconfig.app.json
+
+[32m  ok[0m
+
+[1m▸ desktop · test[0m
+
+> @nexus/desktop@0.1.0 test /Users/lmatos/Workspace/nexus/apps/desktop
+> vitest run
+
+
+ RUN  v4.1.10 /Users/lmatos/Workspace/nexus/apps/desktop
+
+
+ Test Files  37 passed (37)
+      Tests  307 passed (307)
+   Start at  21:11:35
+   Duration  1.93s (transform 1.09s, setup 0ms, import 3.66s, tests 3.45s, environment 2.31s)
+
+[32m  ok[0m
+
+[1m▸ panel · typecheck[0m
+[32m  ok[0m
+
+[1m▸ panel · lint[0m
+
+/Users/lmatos/Workspace/nexus/apps/admin/src/components/qa/__tests__/resume.test.tsx
+  43:19  warning  'ucm' is defined but never used  @typescript-eslint/no-unused-vars
+  46:23  warning  'ucm' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/lmatos/Workspace/nexus/apps/admin/src/components/qa/inspector-drawer.tsx
+  331:6  warning  React Hook useEffect has a missing dependency: 'thread'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+✖ 3 problems (0 errors, 3 warnings)
+
+[32m  ok[0m
+
+[1m▸ panel · vitest[0m
+
+ RUN  v4.1.6 /Users/lmatos/Workspace/nexus/apps/admin
+
+
+ Test Files  18 passed (18)
+      Tests  123 passed (123)
+   Start at  21:11:43
+   Duration  2.43s (transform 975ms, setup 1.41s, import 4.39s, tests 2.67s, environment 12.06s)
+
+[32m  ok[0m
+
+[1m▸ consola · next build[0m
+
+> console@0.1.0 build /Users/lmatos/Workspace/nexus/apps/console
+> next build
+
+▲ Next.js 16.2.11 (Turbopack)
+- Environments: .env.local
+- Experiments (use with caution):
+  · serverActions
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.1s
+  Running TypeScript ...
+  Finished TypeScript in 3.4s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/19) ...
+  Generating static pages using 11 workers (4/19) 
+  Generating static pages using 11 workers (9/19) 
+  Generating static pages using 11 workers (14/19) 
+✓ Generating static pages using 11 workers (19/19) in 124ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /api/audit/export
+├ ƒ /api/billing/receipts/[id]
+├ ƒ /api/companion/actions/[id]
+├ ƒ /api/companion/budget
+├ ƒ /api/companion/enabled
+├ ƒ /api/companion/runs/[id]
+├ ƒ /api/companion/runs/[id]/events
+├ ƒ /api/companion/runs/[id]/resume
+├ ƒ /api/companion/runs/[id]/stream
+├ ƒ /api/companion/threads
+├ ƒ /api/companion/threads/[id]
+├ ƒ /api/companion/threads/[id]/runs
+├ ƒ /api/playground/[ref]/threads/[id]/stream
+├ ƒ /api/session/whoami
+├ ƒ /api/team
+├ ƒ /api/teammates
+├ ƒ /api/teammates/[id]
+├ ƒ /api/teammates/[id]/changes
+├ ƒ /api/teammates/inbox
+├ ƒ /api/teammates/inbox/stream
+├ ƒ /api/teammates/jobs
+├ ƒ /api/teammates/local-exec-prefs
+├ ƒ /api/teammates/tasks
+├ ƒ /api/teammates/tasks/[id]/cancel
+├ ƒ /api/teammates/usage
+├ ƒ /api/usage/export
+├ ƒ /audit
+├ ƒ /auth/google/callback
+├ ƒ /billing
+├ ƒ /clients
+├ ƒ /clients/[ref]
+├ ƒ /clients/[ref]/agent
+├ ƒ /clients/[ref]/agent/settings
+├ ƒ /clients/[ref]/channels
+├ ƒ /clients/[ref]/channels/diagnostics
+├ ƒ /clients/[ref]/conversations
+├ ƒ /clients/[ref]/knowledge
+├ ƒ /clients/[ref]/playground
+├ ƒ /clients/[ref]/settings
+├ ƒ /clients/[ref]/skills
+├ ƒ /clients/[ref]/tools
+├ ƒ /clients/[ref]/workstation
+├ ƒ /clients/new
+├ ƒ /healthz
+├ ƒ /invite/[token]
+├ ƒ /keys
+├ ƒ /knowledge
+├ ƒ /login
+├ ƒ /no-access
+├ ƒ /notifications
+├ ƒ /signup
+├ ƒ /signup/[token]
+├ ƒ /team
+├ ƒ /usage
+├ ƒ /usage/alerts
+└ ƒ /workstation
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+
+[32m  ok[0m
+
+[32mTodo verde.[0m La tubería debería pasar.
+EXIT=0
+
+--- quickstart §7 · el downgrade es real -----------------------------------
+$ cd apps/api && uv run alembic downgrade -2 && uv run alembic upgrade head
+Running downgrade 0121_companion_run_native_input -> 0120_quota_weights_per_lane
+Running downgrade 0120_quota_weights_per_lane -> 0119_signup_partner_link
+Running upgrade 0119_signup_partner_link -> 0120_quota_weights_per_lane
+Running upgrade 0120_quota_weights_per_lane -> 0121_companion_run_native_input
+
+luna — quota_weight (deprecada, intacta): 0.100
+       carriles: 0.044000 / 0.004400 / 0.264000
+
+Ninguna columna se borra en la subida, así que la bajada no pierde datos.

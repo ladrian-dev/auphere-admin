@@ -97,7 +97,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "DELETE FROM tool_catalog WHERE name = 'response.send_interactive'"
-    )
+    op.execute("DELETE FROM tool_catalog WHERE name = 'response.send_interactive'")
     op.drop_column("messages", "interactive_payload")

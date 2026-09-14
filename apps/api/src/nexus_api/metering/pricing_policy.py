@@ -32,6 +32,7 @@ y por unidad a la vez lo cobra dos veces, o toma el que la consulta lea primero
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from decimal import Decimal
 
 #: Se valoran contra ``model_profiles``: llevan un modelo detrás.
@@ -96,7 +97,14 @@ def lane_needs_weight(meter: str) -> bool:
 
 
 def weight_for(model_id: str, weights: Mapping[str, Decimal | None]) -> Decimal:
-    """El peso de un modelo, o ``UnweightedModel`` con su nombre dentro."""
+    """El peso único de un modelo, o ``UnweightedModel`` con su nombre dentro.
+
+    **DEPRECADA (spec 007).** La sustituye ``weights_for``, que devuelve el peso
+    de cada carril. Se conserva mientras quede algún llamante; se retira cuando
+    no quede ninguno, no antes: quitarla de golpe convertiría un cambio de
+    fórmula en un cambio de fórmula **y** una cascada de imports rotos, y las dos
+    cosas juntas se revisan peor que por separado.
+    """
     weight = weights.get(model_id)
     if weight is None:
         raise UnweightedModel(
@@ -106,10 +114,148 @@ def weight_for(model_id: str, weights: Mapping[str, Decimal | None]) -> Decimal:
     return Decimal(weight)
 
 
+#: Los tres carriles que llevan peso. ``cache_write`` **no está**, y no es un
+#: olvido: la escritura en caché no come tope y no gana un cuarto multiplicador.
+LANES: tuple[str, ...] = ("input", "cache_read", "output")
+
+
+@dataclass(frozen=True)
+class LaneWeights:
+    """Cuántas unidades de cuota cuesta un token de cada carril (spec 007, R1).
+
+    Cada uno se deriva de la tarifa de **su propio carril**, de modo que el
+    cociente entre lo cobrado y lo que cuesta sea el mismo en los tres. Esa es
+    la propiedad entera: **el margen deja de depender de la mezcla** de entrada,
+    caché y salida que produzca el trabajo del partner.
+    """
+
+    input: Decimal
+    cache_read: Decimal
+    output: Decimal
+
+
+def weights_for(
+    model_id: str,
+    weights: Mapping[str, Mapping[str, Decimal | None] | None],
+) -> LaneWeights:
+    """Los tres pesos de un modelo, o ``UnweightedModel`` diciendo qué falta.
+
+    **Los tres o ninguno.** Un modelo con dos pesos y uno nulo se rechaza igual
+    que uno sin ninguno, y el modo de fallo peligroso es justamente ése: parece
+    configurado, y el carril que falta es el que nadie mira hasta que cuadra una
+    factura. El esquema lo impide con un ``CHECK`` (0120) y esto lo impide sin
+    depender de la base — porque un catálogo se sirve desde una caché en memoria
+    y un ``CHECK`` no protege lo que ya está cargado.
+
+    El error **nombra el modelo y el carril**: en producción, quien lo lea tiene
+    que saber qué fila mirar sin abrir un depurador.
+    """
+    lanes = weights.get(model_id)
+    if lanes is None:
+        raise UnweightedModel(
+            f"{model_id} has no quota lane weights: it is in the catalog but cannot "
+            "be charged against a pool. Load its three weights in model_profiles."
+        )
+    missing = [lane for lane in LANES if lanes.get(lane) is None]
+    if missing:
+        raise UnweightedModel(
+            f"{model_id} is missing the quota weight for {', '.join(missing)}: "
+            "a model is weighted on all three lanes or on none. Load the missing "
+            "one in model_profiles."
+        )
+    return LaneWeights(
+        input=Decimal(lanes["input"]),  # type: ignore[arg-type]
+        cache_read=Decimal(lanes["cache_read"]),  # type: ignore[arg-type]
+        output=Decimal(lanes["output"]),  # type: ignore[arg-type]
+    )
+
+
+#: Lo que se cobra sobre el coste de proveedor (spec 007). El **objetivo** puede
+#: moverse por decisión comercial; el **suelo** es la regla que hace que esa
+#: decisión no pueda ser un descuido.
+QUOTA_TARGET_MULTIPLIER = Decimal("2.2")
+QUOTA_FLOOR_MULTIPLIER = Decimal("1.50")
+
+
+@dataclass(frozen=True)
+class WeightDrift:
+    """Un carril cuyo peso ya no corresponde a su tarifa (spec 007, R6)."""
+
+    model_id: str
+    lane: str
+    stored: Decimal
+    expected: Decimal
+    multiplier: Decimal
+
+    @property
+    def below_floor(self) -> bool:
+        """¿La divergencia hunde el carril por debajo del suelo?
+
+        Un peso que se quedó viejo y sigue sobre el suelo es una imprecisión;
+        uno que lo cruza es dinero saliendo. No pueden dar el mismo aviso.
+        """
+        return self.multiplier < QUOTA_FLOOR_MULTIPLIER
+
+
+def weight_drift(
+    prices: Mapping[str, Mapping[str, Decimal | None]],
+    weights: Mapping[str, Mapping[str, Decimal | None] | None],
+    *,
+    sell_usd_per_million: Decimal,
+    tolerance: Decimal = Decimal("0.000001"),
+) -> list[WeightDrift]:
+    """Carriles cuyo peso guardado no corresponde ya a su tarifa.
+
+    **Por qué esto existe y no se deriva el peso en cada llamada.** Derivarlo
+    haría imposible la divergencia —lo que no se duplica no puede divergir— pero
+    acoplaría dos cosas deliberadamente independientes: la tarifa es un hecho
+    externo que cambia cuando el proveedor quiere, y el peso es una decisión
+    comercial nuestra. Con la derivación como fórmula, cualquier subida de tarifa
+    se trasladaría al partner el mismo minuto, sin que nadie lo decidiera, y el
+    contador se movería solo — que es justo lo que ``model_profile.py`` lleva
+    advirtiendo desde la 004.
+
+    Así que la derivación se conserva **como comprobación**: lo bueno de la idea
+    sin el acoplamiento. Se ejecuta al cargar el catálogo y no bloquea nada — una
+    divergencia no puede tumbar la plataforma, pero tampoco puede ser invisible.
+    """
+    lane_prices = {"input": "input", "cache_read": "cache_read", "output": "output"}
+    drifts: list[WeightDrift] = []
+    for model_id, lanes in weights.items():
+        if lanes is None or any(lanes.get(lane) is None for lane in LANES):
+            continue
+        model_prices = prices.get(model_id) or {}
+        for lane in LANES:
+            price = model_prices.get(lane_prices[lane])
+            stored = lanes.get(lane)
+            if price is None or stored is None or Decimal(price) <= 0:
+                continue
+            expected = QUOTA_TARGET_MULTIPLIER * Decimal(price) / sell_usd_per_million
+            if abs(Decimal(stored) - expected) <= tolerance:
+                continue
+            drifts.append(
+                WeightDrift(
+                    model_id=model_id,
+                    lane=lane,
+                    stored=Decimal(stored),
+                    expected=expected,
+                    multiplier=Decimal(stored) * sell_usd_per_million / Decimal(price),
+                )
+            )
+    return drifts
+
+
 __all__ = [
+    "LANES",
     "MODEL_PRICED_METERS",
     "NOT_VALUED_METERS",
+    "QUOTA_FLOOR_MULTIPLIER",
+    "QUOTA_TARGET_MULTIPLIER",
+    "LaneWeights",
     "UnweightedModel",
+    "WeightDrift",
     "lane_needs_weight",
+    "weight_drift",
     "weight_for",
+    "weights_for",
 ]

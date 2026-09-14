@@ -93,9 +93,7 @@ def upgrade() -> None:
 
     # 3 · indexes (partitioned — propagate to every partition).
     op.execute("CREATE INDEX ix_messages_new_tenant_id ON messages_new (tenant_id)")
-    op.execute(
-        "CREATE INDEX ix_messages_new_conversation_id ON messages_new (conversation_id)"
-    )
+    op.execute("CREATE INDEX ix_messages_new_conversation_id ON messages_new (conversation_id)")
     op.execute("CREATE INDEX ix_messages_new_trace_id ON messages_new (trace_id)")
     op.execute(
         "CREATE UNIQUE INDEX uq_messages_new_provider_message_id "
@@ -148,17 +146,13 @@ def upgrade() -> None:
 
     # 8 · rename indexes to their canonical names now that the table owns them.
     op.execute("ALTER INDEX ix_messages_new_tenant_id RENAME TO ix_messages_tenant_id")
-    op.execute(
-        "ALTER INDEX ix_messages_new_conversation_id RENAME TO ix_messages_conversation_id"
-    )
+    op.execute("ALTER INDEX ix_messages_new_conversation_id RENAME TO ix_messages_conversation_id")
     op.execute("ALTER INDEX ix_messages_new_trace_id RENAME TO ix_messages_trace_id")
     op.execute(
-        "ALTER INDEX uq_messages_new_provider_message_id "
-        "RENAME TO uq_messages_provider_message_id"
+        "ALTER INDEX uq_messages_new_provider_message_id RENAME TO uq_messages_provider_message_id"
     )
     op.execute(
-        "ALTER INDEX uq_messages_new_tenant_idempotency "
-        "RENAME TO uq_messages_tenant_idempotency"
+        "ALTER INDEX uq_messages_new_tenant_idempotency RENAME TO uq_messages_tenant_idempotency"
     )
 
 

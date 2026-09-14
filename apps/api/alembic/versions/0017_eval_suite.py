@@ -294,9 +294,7 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("run_id", "case_id", name="uq_eval_run_results_run_case"),
     )
-    op.create_index(
-        "ix_eval_run_results_tenant", "eval_run_results", ["tenant_id"]
-    )
+    op.create_index("ix_eval_run_results_tenant", "eval_run_results", ["tenant_id"])
     op.create_index("ix_eval_run_results_run", "eval_run_results", ["run_id"])
     op.execute("ALTER TABLE eval_run_results ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE eval_run_results FORCE ROW LEVEL SECURITY")

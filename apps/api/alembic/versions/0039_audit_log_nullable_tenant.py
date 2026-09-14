@@ -45,9 +45,7 @@ def downgrade() -> None:
     # Best-effort: NULL rows would need to be cleaned up first.
     # Leaving them blocks the downgrade — that's intentional because
     # losing platform audit data is worse than blocking a rollback.
-    op.execute(
-        "DELETE FROM audit_log WHERE tenant_id IS NULL"
-    )
+    op.execute("DELETE FROM audit_log WHERE tenant_id IS NULL")
     op.alter_column(
         "audit_log",
         "tenant_id",

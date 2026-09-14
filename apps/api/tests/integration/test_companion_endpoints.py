@@ -211,8 +211,11 @@ async def test_a_cached_turn_lands_on_otel_and_the_run_row(client, console_world
     run = await _finished(uuid.UUID(run_id), a["user_id"])
     assert run.cache_read == 8_000
     assert run.cache_write == 500
-    # Cuota C3: uncached 2000 + 0.1 * 8000 = 2800. No cambiar.
-    assert run.input_tokens == 2_800
+    # Spec 007: la fila guarda el NATIVO no cacheado (10.000 - 8.000), en su
+    # propia columna. ``input_tokens`` guardaba la cuota ponderada con el 0,1
+    # global y queda deprecada: deja de escribirse, y por eso vale NULL.
+    assert run.uncached_input_tokens == 2_000
+    assert run.input_tokens is None
     assert run.output_tokens == 100
 
     data = reader.get_metrics_data()

@@ -1,0 +1,117 @@
+# T022 — el invariante roto a propósito (spec 007, R2.3)
+
+**Cómo se rompió, y por qué NO como decía el quickstart primero.** El primer
+intento fue un `UPDATE` sobre `model_profiles`, y el test **pasó en verde**: el
+`conftest` de la API hace `DROP SCHEMA public CASCADE` + `alembic upgrade head`
+al empezar cada sesión, así que la base se reconstruye desde las migraciones y
+cualquier dato tocado a mano desaparece antes de que corra el primer caso. (El
+primer intento además tocó la base `nexus` de desarrollo, no `nexus_test`.)
+
+Eso es **bueno**: significa que este test vigila el catálogo **tal como lo
+siembran las migraciones**, que es lo que de verdad llega a producción, y no un
+dato suelto. Por eso lo que hay que romper es la FUENTE: se cambió el
+multiplicador de la migración `0120` de `2.2` a `0.5` y se volvió a correr.
+
+Salida cruda, sin recortar:
+
+```
+.FF                                                                      [100%]
+=================================== FAILURES ===================================
+______________ test_no_lane_of_any_model_is_sold_below_the_floor _______________
+
+    async def test_no_lane_of_any_model_is_sold_below_the_floor() -> None:
+        """R2.1, R2.2, R2.3 — por carril y por modelo, sobre el valor almacenado."""
+        rows = await _servable_rows()
+        assert rows
+    
+        offenders: list[str] = []
+        for row in rows:
+            for lane, weight_col, price_col in _LANES:
+                price, weight = row[price_col], row[weight_col]
+                if price is None:
+                    offenders.append(f"{row['model_id']} · {lane}: tiene peso y no tiene tarifa")
+                    continue
+                multiplier = Decimal(weight) * CREDIT_USD_PER_MILLION / Decimal(price)
+                if multiplier < FLOOR:
+                    offenders.append(
+                        f"{row['model_id']} · carril {lane}: {multiplier:.4f}x "
+                        f"(suelo {FLOOR}x) — peso {weight}, tarifa {price} USD/Mtok"
+                    )
+>       assert not offenders, "carriles por debajo del suelo:\n  " + "\n  ".join(offenders)
+E       AssertionError: carriles por debajo del suelo:
+E           openai/gpt-5.6-luna · carril entrada: 0.5000x (suelo 1.50x) — peso 0.010000, tarifa 0.200000 USD/Mtok
+E           openai/gpt-5.6-luna · carril caché: 0.5000x (suelo 1.50x) — peso 0.001000, tarifa 0.020000 USD/Mtok
+E           openai/gpt-5.6-luna · carril salida: 0.5000x (suelo 1.50x) — peso 0.060000, tarifa 1.200000 USD/Mtok
+E           anthropic/claude-haiku-4-5 · carril entrada: 0.5000x (suelo 1.50x) — peso 0.050000, tarifa 1.000000 USD/Mtok
+E           anthropic/claude-haiku-4-5 · carril caché: 0.5000x (suelo 1.50x) — peso 0.005000, tarifa 0.100000 USD/Mtok
+E           anthropic/claude-haiku-4-5 · carril salida: 0.5000x (suelo 1.50x) — peso 0.250000, tarifa 5.000000 USD/Mtok
+E           anthropic/claude-haiku-4-5-20251001 · carril entrada: 0.5000x (suelo 1.50x) — peso 0.050000, tarifa 1.000000 USD/Mtok
+E           anthropic/claude-haiku-4-5-20251001 · carril caché: 0.5000x (suelo 1.50x) — peso 0.005000, tarifa 0.100000 USD/Mtok
+E           anthropic/claude-haiku-4-5-20251001 · carril salida: 0.5000x (suelo 1.50x) — peso 0.250000, tarifa 5.000000 USD/Mtok
+E           openai/gpt-5.6-terra · carril entrada: 0.5000x (suelo 1.50x) — peso 0.100000, tarifa 2.000000 USD/Mtok
+E           openai/gpt-5.6-terra · carril caché: 0.5000x (suelo 1.50x) — peso 0.010000, tarifa 0.200000 USD/Mtok
+E           openai/gpt-5.6-terra · carril salida: 0.5000x (suelo 1.50x) — peso 0.600000, tarifa 12.000000 USD/Mtok
+E           anthropic/claude-sonnet-4-6 · carril entrada: 0.5000x (suelo 1.50x) — peso 0.150000, tarifa 3.000000 USD/Mtok
+E           anthropic/claude-sonnet-4-6 · carril caché: 0.5000x (suelo 1.50x) — peso 0.015000, tarifa 0.300000 USD/Mtok
+E           anthropic/claude-sonnet-4-6 · carril salida: 0.5000x (suelo 1.50x) — peso 0.750000, tarifa 15.000000 USD/Mtok
+E           openai/gpt-4o · carril entrada: 0.5000x (suelo 1.50x) — peso 0.125000, tarifa 2.500000 USD/Mtok
+E           openai/gpt-4o · carril caché: 0.5000x (suelo 1.50x) — peso 0.062500, tarifa 1.250000 USD/Mtok
+E           openai/gpt-4o · carril salida: 0.5000x (suelo 1.50x) — peso 0.500000, tarifa 10.000000 USD/Mtok
+E           openai/gpt-5.6-sol · carril entrada: 0.5000x (suelo 1.50x) — peso 0.200000, tarifa 4.000000 USD/Mtok
+E           openai/gpt-5.6-sol · carril caché: 0.5000x (suelo 1.50x) — peso 0.020000, tarifa 0.400000 USD/Mtok
+E           openai/gpt-5.6-sol · carril salida: 0.5000x (suelo 1.50x) — peso 1.000000, tarifa 20.000000 USD/Mtok
+E       assert not ['openai/gpt-5.6-luna · carril entrada: 0.5000x (suelo 1.50x) — peso 0.010000, tarifa 0.200000 USD/Mtok', 'openai/gpt-...k', 'anthropic/claude-haiku-4-5 · carril salida: 0.5000x (suelo 1.50x) — peso 0.250000, tarifa 5.000000 USD/Mtok', ...]
+
+tests/integration/test_quota_floor.py:83: AssertionError
+______ test_every_lane_hits_the_target_within_the_rounding_of_the_column _______
+
+    async def test_every_lane_hits_the_target_within_the_rounding_of_the_column() -> None:
+        """R2.4 — no basta pasar el suelo: el objetivo se alcanza de verdad.
+    
+        Es la diferencia entre «no perdemos dinero» y «cobramos lo que decidimos
+        cobrar». Con la escala de las tarifas, el carril más barato del catálogo
+        (0,0044) cabe exacto; la tolerancia cubre el error de redondeo residual.
+        """
+        rows = await _servable_rows()
+        assert rows
+    
+        drift: list[str] = []
+        for row in rows:
+            for lane, weight_col, price_col in _LANES:
+                price = row[price_col]
+                if price is None:
+                    continue
+                multiplier = Decimal(row[weight_col]) * CREDIT_USD_PER_MILLION / Decimal(price)
+                if abs(multiplier - TARGET) > Decimal("0.01"):
+                    drift.append(f"{row['model_id']} · {lane}: {multiplier:.4f}x (objetivo {TARGET}x)")
+>       assert not drift, "carriles fuera del objetivo:\n  " + "\n  ".join(drift)
+E       AssertionError: carriles fuera del objetivo:
+E           openai/gpt-5.6-luna · entrada: 0.5000x (objetivo 2.2x)
+E           openai/gpt-5.6-luna · caché: 0.5000x (objetivo 2.2x)
+E           openai/gpt-5.6-luna · salida: 0.5000x (objetivo 2.2x)
+E           anthropic/claude-haiku-4-5 · entrada: 0.5000x (objetivo 2.2x)
+E           anthropic/claude-haiku-4-5 · caché: 0.5000x (objetivo 2.2x)
+E           anthropic/claude-haiku-4-5 · salida: 0.5000x (objetivo 2.2x)
+E           anthropic/claude-haiku-4-5-20251001 · entrada: 0.5000x (objetivo 2.2x)
+E           anthropic/claude-haiku-4-5-20251001 · caché: 0.5000x (objetivo 2.2x)
+E           anthropic/claude-haiku-4-5-20251001 · salida: 0.5000x (objetivo 2.2x)
+E           openai/gpt-5.6-terra · entrada: 0.5000x (objetivo 2.2x)
+E           openai/gpt-5.6-terra · caché: 0.5000x (objetivo 2.2x)
+E           openai/gpt-5.6-terra · salida: 0.5000x (objetivo 2.2x)
+E           anthropic/claude-sonnet-4-6 · entrada: 0.5000x (objetivo 2.2x)
+E           anthropic/claude-sonnet-4-6 · caché: 0.5000x (objetivo 2.2x)
+E           anthropic/claude-sonnet-4-6 · salida: 0.5000x (objetivo 2.2x)
+E           openai/gpt-4o · entrada: 0.5000x (objetivo 2.2x)
+E           openai/gpt-4o · caché: 0.5000x (objetivo 2.2x)
+E           openai/gpt-4o · salida: 0.5000x (objetivo 2.2x)
+E           openai/gpt-5.6-sol · entrada: 0.5000x (objetivo 2.2x)
+E           openai/gpt-5.6-sol · caché: 0.5000x (objetivo 2.2x)
+E           openai/gpt-5.6-sol · salida: 0.5000x (objetivo 2.2x)
+E       assert not ['openai/gpt-5.6-luna · entrada: 0.5000x (objetivo 2.2x)', 'openai/gpt-5.6-luna · caché: 0.5000x (objetivo 2.2x)', 'op...laude-haiku-4-5 · caché: 0.5000x (objetivo 2.2x)', 'anthropic/claude-haiku-4-5 · salida: 0.5000x (objetivo 2.2x)', ...]
+
+tests/integration/test_quota_floor.py:105: AssertionError
+=========================== short test summary info ============================
+FAILED tests/integration/test_quota_floor.py::test_no_lane_of_any_model_is_sold_below_the_floor
+FAILED tests/integration/test_quota_floor.py::test_every_lane_hits_the_target_within_the_rounding_of_the_column
+2 failed, 1 passed in 2.30s
+```

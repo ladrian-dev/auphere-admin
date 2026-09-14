@@ -26,8 +26,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "0111_teammate_tasks"
 down_revision: str | Sequence[str] | None = "0110_teammate_audit_vocab"
@@ -63,8 +64,12 @@ def upgrade() -> None:
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("current_run_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("pending_action_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
         sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint(
             "state IN (" + ", ".join(f"'{s}'" for s in TASK_STATES) + ")",

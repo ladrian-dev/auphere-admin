@@ -56,8 +56,7 @@ def upgrade() -> None:
     op.execute("CREATE SCHEMA IF NOT EXISTS langgraph")
     op.execute("GRANT USAGE, CREATE ON SCHEMA langgraph TO nexus_app")
     op.execute(
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES "
-        "IN SCHEMA langgraph TO nexus_app"
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA langgraph TO nexus_app"
     )
     op.execute(
         "ALTER DEFAULT PRIVILEGES IN SCHEMA langgraph "

@@ -93,8 +93,7 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "CREATE INDEX ix_ticket_events_ticket_created "
-        "ON ticket_events (ticket_id, created_at DESC)"
+        "CREATE INDEX ix_ticket_events_ticket_created ON ticket_events (ticket_id, created_at DESC)"
     )
     op.execute("CREATE INDEX ix_ticket_events_partner ON ticket_events (partner_id)")
 

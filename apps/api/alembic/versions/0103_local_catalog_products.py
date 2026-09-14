@@ -75,9 +75,7 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("tenant_id", "sku", name="uq_local_catalog_tenant_sku"),
     )
-    op.create_index(
-        "ix_local_catalog_tenant_search", _TABLE, ["tenant_id", "search_text"]
-    )
+    op.create_index("ix_local_catalog_tenant_search", _TABLE, ["tenant_id", "search_text"])
 
     op.execute(f"ALTER TABLE {_TABLE} ENABLE ROW LEVEL SECURITY")
     op.execute(f"ALTER TABLE {_TABLE} FORCE ROW LEVEL SECURITY")

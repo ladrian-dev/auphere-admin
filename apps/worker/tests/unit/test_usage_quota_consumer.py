@@ -1,4 +1,16 @@
-"""El consumidor aplica la misma cuota C3 que Companion; no deja billable = bruto."""
+"""El consumidor desglosa en NATIVO y no deja ``billable_qty`` = bruto.
+
+**Qué cambió con la spec 007.** ``rows_from_entry`` es síncrona y no puede pedir
+el catálogo; con un peso único global se podía ponderar aquí mismo, con un peso
+por carril y por modelo ya no. Así que el trabajo se parte en dos: **este paso
+mide** (uncached para input, nativo para caché y salida, cero para cache_write)
+y ``_apply_lane_weights`` pondera después, en ``persist_rows``, donde el
+catálogo ya está leído para valorar en dólares.
+
+Por eso los casos de abajo afirman **nativos** y no cuotas. El caso que afirma
+que las dos mitades coinciden con lo que debita el Companion vive en
+``test_turn_quota_lanes.py``, que es donde puede inyectar pesos.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +18,7 @@ import json
 import uuid
 from decimal import Decimal
 
+from nexus_api.metering.pricing_policy import LaneWeights
 from nexus_api.metering.quota import quota_tokens
 
 from nexus_worker.metering import consumer
@@ -33,7 +46,8 @@ def _event(
     }
 
 
-def test_input_billable_is_uncached_and_cache_row_is_tenth() -> None:
+def test_input_billable_is_uncached_and_the_cache_row_stays_native() -> None:
+    """El 0,1 plano desapareció: la caché se pondera después, con SU peso."""
     _, rows = consumer.rows_from_entry(
         _entry(
             events=[
@@ -48,7 +62,7 @@ def test_input_billable_is_uncached_and_cache_row_is_tenth() -> None:
     assert by_meter["llm.input_tokens"]["quantity"] == 10_000
     assert by_meter["llm.input_tokens"]["billable_qty"] == 1_000.0
     assert by_meter["llm.cache_read"]["quantity"] == 9_000
-    assert by_meter["llm.cache_read"]["billable_qty"] == 900.0
+    assert by_meter["llm.cache_read"]["billable_qty"] == 9_000.0
     assert by_meter["llm.output_tokens"]["billable_qty"] == 100.0
     assert by_meter["llm.cache_write"]["billable_qty"] == 0.0
 
@@ -65,23 +79,29 @@ def test_summing_input_billable_plus_cache_native_is_not_quota() -> None:
     )
     by_meter = {r["meter"]: r for r in rows}
     wrong = by_meter["llm.input_tokens"]["billable_qty"] + by_meter["llm.cache_read"]["quantity"]
-    # Peso neutro: lo que este test compara es la unidad C3, no el factor por
-    # modelo de la spec 004. El argumento es obligatorio a propósito — sin él,
-    # olvidarlo en producción sería un cobro silencioso a la baja.
-    right = quota_tokens(
-        prompt_tokens=10_000, cache_read=9_000, output_tokens=100, model_weight=Decimal(1)
-    )
+    # Pesos neutros: lo que este test compara es la unidad, no la ponderación.
+    # El argumento es obligatorio a propósito — sin él, olvidarlo en producción
+    # sería un cobro silencioso a la baja.
+    neutral = LaneWeights(input=Decimal(1), cache_read=Decimal(1), output=Decimal(1))
+    right = quota_tokens(prompt_tokens=10_000, cache_read=9_000, output_tokens=100, weights=neutral)
     assert wrong != right
 
 
 def test_companion_quota_matches_channel_billable_for_the_same_call() -> None:
+    """Con pesos neutros, el desglose nativo suma lo mismo que la cuota.
+
+    Es la comprobación de que las dos mitades hablan de lo mismo antes de
+    ponderar. La versión con pesos reales —y por tanto la que vigila que
+    arreglar un lado sin el otro se vea— está en ``test_turn_quota_lanes.py``.
+    """
     prompt, cache, output, write = 10_000, 9_000, 100, 400
+    neutral = LaneWeights(input=Decimal(1), cache_read=Decimal(1), output=Decimal(1))
     companion = quota_tokens(
         prompt_tokens=prompt,
         cache_read=cache,
         output_tokens=output,
         cache_write=write,
-        model_weight=Decimal(1),
+        weights=neutral,
     )
     _, rows = consumer.rows_from_entry(
         _entry(

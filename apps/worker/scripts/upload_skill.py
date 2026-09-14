@@ -76,9 +76,7 @@ def _parse_frontmatter(skill_md_path: Path) -> dict[str, Any]:
     """
     text = skill_md_path.read_text(encoding="utf-8")
     if not text.startswith("---"):
-        raise ValueError(
-            f"{skill_md_path} must start with YAML frontmatter ('---' line)"
-        )
+        raise ValueError(f"{skill_md_path} must start with YAML frontmatter ('---' line)")
     end = text.find("---", 3)
     if end == -1:
         raise ValueError(f"{skill_md_path} has unterminated frontmatter")
@@ -88,9 +86,7 @@ def _parse_frontmatter(skill_md_path: Path) -> dict[str, Any]:
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         if ":" not in line:
-            raise ValueError(
-                f"{skill_md_path} frontmatter line not 'key: value': {line!r}"
-            )
+            raise ValueError(f"{skill_md_path} frontmatter line not 'key: value': {line!r}")
         key, _, value = line.partition(":")
         out[key.strip()] = value.strip()
     return out
@@ -157,9 +153,7 @@ def _collect_files(skill_dir: Path) -> list[tuple[str, bytes, str]]:
         # multipart uploads. Use ``text/markdown`` for .md and a
         # generic application/octet-stream for everything else; the
         # Skills API does not rely on Content-Type beyond logging.
-        content_type = (
-            "text/markdown" if path.suffix == ".md" else "application/octet-stream"
-        )
+        content_type = "text/markdown" if path.suffix == ".md" else "application/octet-stream"
         out.append((arcname, path.read_bytes(), content_type))
     return out
 
@@ -177,11 +171,7 @@ def _read_manifest() -> dict[str, Any]:
 
 def _write_manifest(manifest: dict[str, Any]) -> None:
     # Preserve the human-readable "_doc" key if it was there.
-    existing = (
-        json.loads(_MANIFEST.read_text(encoding="utf-8"))
-        if _MANIFEST.exists()
-        else {}
-    )
+    existing = json.loads(_MANIFEST.read_text(encoding="utf-8")) if _MANIFEST.exists() else {}
     if "_doc" in existing:
         manifest["_doc"] = existing["_doc"]
     _MANIFEST.write_text(

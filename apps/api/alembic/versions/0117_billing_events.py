@@ -159,8 +159,7 @@ def downgrade() -> None:
     for action, *_ in AUDIT_VOCABULARY:
         bind.execute(
             sa.text(
-                "DELETE FROM console_audit_vocabulary "
-                "WHERE action = CAST(:action AS VARCHAR(80))"
+                "DELETE FROM console_audit_vocabulary WHERE action = CAST(:action AS VARCHAR(80))"
             ),
             {"action": action},
         )

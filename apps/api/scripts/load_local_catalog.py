@@ -43,6 +43,11 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+# El plegado se IMPORTA del cliente que luego lee estas filas, no se
+# reimplementa: si el importador y el lector pliegan distinto, las filas
+# quedan escritas pero inbuscables, y el agente responde "no lo tengo"
+# sobre un producto que sí está.
+from nexus_mcp.servers.catalogo_local.client import fold
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -50,42 +55,57 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_engine
 from nexus_api.db.models.tenant import Tenant
 
-# El plegado se IMPORTA del cliente que luego lee estas filas, no se
-# reimplementa: si el importador y el lector pliegan distinto, las filas
-# quedan escritas pero inbuscables, y el agente responde "no lo tengo"
-# sobre un producto que sí está.
-from nexus_mcp.servers.catalogo_local.client import fold
-
-
 # Alias -> columna canónica. La clave se compara ya plegada.
 _ALIASES: dict[str, str] = {
-    "nombre": "nombre", "producto": "nombre", "descripcion": "nombre",
-    "descripción": "nombre", "articulo": "nombre", "item": "nombre",
-    "sku": "sku", "codigo": "sku", "código": "sku", "cod": "sku",
-    "referencia": "sku", "ref": "sku",
-    "categoria": "categoria", "categoría": "categoria", "familia": "categoria",
-    "linea": "categoria", "grupo": "categoria",
+    "nombre": "nombre",
+    "producto": "nombre",
+    "descripcion": "nombre",
+    "descripción": "nombre",
+    "articulo": "nombre",
+    "item": "nombre",
+    "sku": "sku",
+    "codigo": "sku",
+    "código": "sku",
+    "cod": "sku",
+    "referencia": "sku",
+    "ref": "sku",
+    "categoria": "categoria",
+    "categoría": "categoria",
+    "familia": "categoria",
+    "linea": "categoria",
+    "grupo": "categoria",
     "tipo": "tipo",
-    "precio_usd": "precio_usd", "precio": "precio_usd", "pvp": "precio_usd",
-    "precio venta": "precio_usd", "precio_venta": "precio_usd", "usd": "precio_usd",
-    "stock_actual": "stock_actual", "stock": "stock_actual",
-    "existencia": "stock_actual", "existencias": "stock_actual",
-    "cantidad": "stock_actual", "disponible": "stock_actual",
-    "stock_minimo": "stock_minimo", "minimo": "stock_minimo",
-    "mínimo": "stock_minimo", "stock min": "stock_minimo",
+    "precio_usd": "precio_usd",
+    "precio": "precio_usd",
+    "pvp": "precio_usd",
+    "precio venta": "precio_usd",
+    "precio_venta": "precio_usd",
+    "usd": "precio_usd",
+    "stock_actual": "stock_actual",
+    "stock": "stock_actual",
+    "existencia": "stock_actual",
+    "existencias": "stock_actual",
+    "cantidad": "stock_actual",
+    "disponible": "stock_actual",
+    "stock_minimo": "stock_minimo",
+    "minimo": "stock_minimo",
+    "mínimo": "stock_minimo",
+    "stock min": "stock_minimo",
     "punto_reorden": "stock_minimo",
 }
 
 
 def _canonical(header: str) -> str | None:
-    return _ALIASES.get(fold(header).replace("_", " ").replace("  ", " ")) or _ALIASES.get(fold(header))
+    return _ALIASES.get(fold(header).replace("_", " ").replace("  ", " ")) or _ALIASES.get(
+        fold(header)
+    )
 
 
 def _to_decimal(raw: Any) -> Decimal:
     s = str(raw or "0").strip().replace("$", "").replace(" ", "")
-    if "," in s and "." in s:          # 1.234,56 -> 1234.56
+    if "," in s and "." in s:  # 1.234,56 -> 1234.56
         s = s.replace(".", "").replace(",", ".")
-    elif "," in s:                      # 12,50 -> 12.50
+    elif "," in s:  # 12,50 -> 12.50
         s = s.replace(",", ".")
     try:
         return Decimal(s or "0").quantize(Decimal("0.01"))
@@ -109,7 +129,7 @@ def _materialise(source: str) -> Path:
 
     import boto3
 
-    bucket, _, key = source[len("s3://"):].partition("/")
+    bucket, _, key = source[len("s3://") :].partition("/")
     if not bucket or not key:
         print(f"ERROR: URI de S3 mal formado: {source}")
         raise SystemExit(2)
@@ -135,8 +155,7 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
             from openpyxl import load_workbook
         except ImportError:
             print(
-                "ERROR: falta openpyxl para leer XLSX. "
-                "Exporta la hoja a CSV y vuelve a intentarlo."
+                "ERROR: falta openpyxl para leer XLSX. Exporta la hoja a CSV y vuelve a intentarlo."
             )
             raise SystemExit(2) from None
         wb = load_workbook(path, read_only=True, data_only=True)
@@ -266,7 +285,9 @@ async def _amain(args: argparse.Namespace) -> int:
             )
         ).scalar_one()
 
-    print(f"{args.tenant_slug}: {len(rows)} filas importadas · {total} en catálogo · {bajo} bajo mínimo")
+    print(
+        f"{args.tenant_slug}: {len(rows)} filas importadas · {total} en catálogo · {bajo} bajo mínimo"
+    )
     return 0
 
 

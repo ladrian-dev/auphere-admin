@@ -88,10 +88,16 @@ def upgrade() -> None:
         sa.Column("display_name", sa.String(255), nullable=True),
         sa.Column("locale", sa.String(5), nullable=False, server_default="es"),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
         ),
         sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("failed_attempts", sa.Integer(), nullable=False, server_default="0"),
@@ -133,7 +139,10 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
         ),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column(

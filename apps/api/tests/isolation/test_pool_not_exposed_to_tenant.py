@@ -25,6 +25,12 @@ FORBIDDEN = (
     "included_remaining",
     "purchased_remaining",
     "quota_weight",
+    # Spec 007 — los tres pesos por carril. Se añaden aquí el mismo día que
+    # existen: una lista de nombres prohibidos que se actualiza «luego» es una
+    # lista que protege el esquema de hace seis meses.
+    "quota_weight_input",
+    "quota_weight_cache_read",
+    "quota_weight_output",
     "pool_size",
     "included_percent_used",
     "companion_monthly_token_cap",
@@ -57,6 +63,30 @@ async def test_no_tenant_facing_endpoint_names_the_economic_plane(client) -> Non
                 f"{path} menciona «{name}». El pool, el saldo y los precios son del "
                 "plano del PARTNER; un endpoint de cliente final no puede nombrarlos"
             )
+
+
+async def test_the_forbidden_scan_actually_catches_a_leak() -> None:
+    """Que la lista vigile, y no sólo que exista.
+
+    El caso de arriba pasa tanto si ningún endpoint nombra el plano económico
+    como si el barrido estuviera roto —un ``json.dumps`` sobre el objeto
+    equivocado, un prefijo que ya no casa— y las dos cosas se ven igual desde
+    fuera: verde. Esto le da un esquema sintético que **sí** filtra y comprueba
+    que lo encuentra.
+
+    Se añade con la spec 007, al descubrir que el test del suelo pasaba en verde
+    con el invariante roto porque miraba donde no era.
+    """
+    import json
+
+    leaky = {"paths": {"/webhook/x": {"get": {"responses": {"200": {"quota_weight_output": 1}}}}}}
+    paths = _paths_of(leaky, TENANT_FACING)
+    assert paths == ["/webhook/x"], "el barrido no encuentra ni la ruta"
+    blob = json.dumps(leaky["paths"]["/webhook/x"])
+    assert any(name in blob for name in FORBIDDEN), (
+        "la lista FORBIDDEN no detecta una fuga evidente: el caso de al lado "
+        "estaría pasando por vacío"
+    )
 
 
 async def test_the_economic_tables_have_no_tenant_column(db_session) -> None:

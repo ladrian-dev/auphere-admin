@@ -44,8 +44,9 @@ import json
 import os
 from collections.abc import Sequence
 
-from alembic import op
 from sqlalchemy import text
+
+from alembic import op
 
 revision: str = "0024"
 down_revision: str | Sequence[str] | None = "0023"
@@ -187,7 +188,5 @@ def downgrade() -> None:
         catalog = json.load(fh)
     names = list(catalog.keys())
     op.execute(
-        "DELETE FROM tool_catalog WHERE name IN ("
-        + ", ".join(f"'{n}'" for n in names)
-        + ")"
+        "DELETE FROM tool_catalog WHERE name IN (" + ", ".join(f"'{n}'" for n in names) + ")"
     )
