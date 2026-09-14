@@ -158,7 +158,7 @@ async def complete_signup(
     return SignupOutcome(partner=partner, membership=membership)
 
 
-async def send_signup_mail(*, email: str, token: str | None, locale: str = "es") -> None:
+async def send_signup_mail(*, email: str, token: str | None, locale: str = "es") -> bool:
     """Dos correos distintos, una sola respuesta HTTP.
 
     Con ``token`` es el enlace del alta; sin él, la dirección ya tiene cuenta y
@@ -173,7 +173,8 @@ async def send_signup_mail(*, email: str, token: str | None, locale: str = "es")
     from nexus_api.config import get_settings
     from nexus_api.services.email import send_email
 
-    base = get_settings().console_base_url.rstrip("/")
+    settings = get_settings()
+    base = settings.console_base_url.rstrip("/")
     if token is not None:
         subject = "Crea tu cuenta de Auphere" if locale == "es" else "Create your Auphere account"
         link = f"{base}/signup/{token}"
@@ -181,5 +182,11 @@ async def send_signup_mail(*, email: str, token: str | None, locale: str = "es")
     else:
         subject = "Ya tienes cuenta en Auphere" if locale == "es" else "You already have an account"
         body = f'<p><a href="{base}/login">{base}/login</a></p>'
-    # ``send_email`` nunca lanza: devuelve False si no está configurado.
-    await send_email(to=email, subject=subject, html=body)
+    # ``send_email`` nunca lanza. Devuelve False tanto si no hay proveedor como
+    # si el proveedor rechazó, y **quien llama tiene que distinguirlo**: lo
+    # primero es una decisión de despliegue, lo segundo una avería.
+    # Remitente **explícito**: sin él, ``send_email`` hereda el de los recibos
+    # y el alta acaba saliendo de «facturación».
+    return await send_email(
+        to=email, subject=subject, html=body, from_addr=settings.signup_from_email
+    )

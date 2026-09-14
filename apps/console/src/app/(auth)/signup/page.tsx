@@ -10,7 +10,7 @@ import { GoogleButton } from "../google-button";
 import { SignupForm } from "./signup-form";
 
 export async function generateMetadata() {
-  const { t } = await getT("es");
+  const { t } = await getT();
   return { title: t("signup.title") };
 }
 
@@ -27,7 +27,7 @@ export default async function SignupPage() {
   // Con sesión viva no se enseña un alta: ya estás dentro.
   const resolution = await resolvePrincipal();
   if (resolution.kind !== "anonymous") redirect("/");
-  const { t } = await getT("es");
+  const { t } = await getT();
   // Se resuelve **aquí, en el servidor**. Preguntarlo desde el navegador
   // costaba una llamada por visita y, cuando se preguntaba con `/start`, un
   // PKCE huérfano de diez minutos en Redis por cada carga de una página

@@ -11,7 +11,7 @@ import { GoogleButton } from "../google-button";
 import { LoginForm } from "./login-form";
 
 export async function generateMetadata() {
-  const { t } = await getT("es");
+  const { t } = await getT();
   return { title: t("login.title") };
 }
 
@@ -21,7 +21,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const resolution = await resolvePrincipal();
   if (resolution.kind !== "anonymous") redirect("/");
   const { from } = await searchParams;
-  const { t } = await getT("es");
+  const { t } = await getT();
   // Same-origin path only: one leading slash and no backslash (browsers
   // treat "/\evil.com" as protocol-relative).
   const redirectTo = from && /^\/(?![\/\\])[^\\]*$/.test(from) ? from : "/";

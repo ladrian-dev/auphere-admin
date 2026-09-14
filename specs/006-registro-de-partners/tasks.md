@@ -215,6 +215,16 @@ contención en falso.
       Ninguna prueba podía verlo: las de componente montan la página directamente, las de la API no pasan por Next y `next build` no ejerce el enrutado. Lo encontró un `curl` a la URL desplegada devolviendo `307`. **Tercera vez en esta spec que cobertura por cita no es cobertura por capacidad.**
       Rojo primero: 3 de 14 (`/signup`, `/signup/{token}`, `/auth/google/callback`). Cuatro mutaciones: quitar `/signup` → 2 rojos · quitar el callback → 1 · abrir la puerta entera → 6 · la redirección sin CSP → 1.
 
+- [X] T059 Un correo que no sale **no se anuncia como enviado**. _Requisitos: 1.1, CE-004_
+      **HECHO. Lo encontró T054, que es para lo que existe.** En staging el dominio no estaba verificado en Resend (`403`), y la API respondía `202 «revisa tu correo»` igual: callejón sin salida silencioso para todo el que use el alta con contraseña. `send_email` devuelve `False` y nadie miraba el resultado.
+      Ahora: sin proveedor → `202` (no es avería, es un entorno que no manda correo); proveedor que rechaza → `502`. **No abre el oráculo de CE-004**, porque el rechazo del proveedor no depende de la dirección. Rojo primero: 1 de 3. Tres mutaciones: quitar la distinción «hay proveedor» → 1 rojo · volver a tragarse el fallo → 1 · **fallar sólo cuando el correo no existe, que sí abriría el oráculo → 1**.
+      Hallazgo secundario: el paso de Mailhog del quickstart es documentación muerta — `email.py` sólo habla con Resend.
+
+- [X] T060 El correo del alta tiene remitente propio (`no-reply@`) y `/login` deja de fijar el idioma. _Requisitos: 1.1, 5.6, research R8_
+      **HECHO.** Dos hallazgos de la pasada por staging.
+      **El remitente**: el alta salía de `facturacion@auphere.com` sin que nadie lo decidiera —`send_email` hereda `receipt_from_email` si no le pasan otro—. Ahora `signup_from_email`, explícito, y el mismo para los dos correos del alta: distintos remitentes delatarían cuál te tocó. Rojo primero 3 de 4, **y uno de mis tests pasaba por vacío** (comprobaba que el remitente no dijera «factur» cuando el remitente ni se mandaba); se endureció exigiendo que esté puesto. Mutaciones: volver a heredar → 3 rojos · volver a facturación → 3.
+      **`/login`**: fijaba el idioma con `getT("es")` desde `fc998a3`, de donde lo copié a `/signup`. Corregido con el visto bueno del operador; la lista de excepciones del test ya no existe. Mutación: reintroducirlo → 1 rojo.
+
 - [X] T056 `./scripts/verify.sh` completo. No la mitad: lo que se olvida en este repo es el worker, `mypy --strict`, el paquete compartido y el `next build`. _Requisitos: puerta 8_
       **HECHO.** `Todo verde.` · 31 pasos ejecutados · api 3468 passed, 308 skipped, 4 xfailed · worker 416 · channels 53 · mcp 100 · @nexus/ui 49 · consola 217 · companion-ui 144 · escritorio 307 · panel 114 · `ruff` y `mypy --strict` limpios en los cuatro paquetes · `next build` ok. Tres fallos reales antes de esto, todos míos: `ruff check` y `ruff format` sobre `test_identity_link.py` (editado con `sed` después de formatear) y `mypy · worker` (`Any` devuelto por `expire_overdue()`). Casi los doy por verdes: mi `grep` buscaba «Algo falló» y el script escribe «Fallaron 3». Se vio leyendo la cola en crudo, no el resumen propio.
 

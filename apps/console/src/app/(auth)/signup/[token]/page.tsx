@@ -23,7 +23,7 @@ export const metadata = { title: "Crea tu cuenta" };
 export default async function SignupTokenPage({ params }: { params: Promise<{ token: string }> }) {
   if (!env().NEXUS_SIGNUP_ENABLED) notFound();
   const { token } = await params;
-  const { t } = await getT("es");
+  const { t } = await getT();
   const valid = /^[A-Za-z0-9_-]{16,128}$/.test(token);
   const signup = valid ? await consoleService.lookupSignup(token) : null;
   if (!signup) {

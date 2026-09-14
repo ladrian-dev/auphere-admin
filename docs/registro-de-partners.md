@@ -172,6 +172,50 @@ aparte (demostrar la propiedad del dominio en Search Console y esperar revisión
 No bloquea entrar: la pantalla dice «Auphere» y el dominio. Está sin mandar a
 propósito.
 
+## 5 ter · Un correo que no sale no se anuncia como enviado
+
+Encontrado en staging, no en el repositorio. El dominio no estaba verificado en
+Resend, que devolvió `403 The auphere.com domain is not verified`, y la API
+respondió **202 «revisa tu correo»** igual. Quien pide el alta lee que hay un
+enlace esperando, no llega nada, y el único rastro es una línea de log — con la
+circularidad de que la alerta que avisaría de que el correo está roto **se manda
+por correo**.
+
+La causa no era el proveedor: era que `send_email` devuelve `False` y nadie
+miraba el resultado.
+
+| Situación | Respuesta | Por qué |
+|---|---|---|
+| Sin proveedor configurado | `202` | No es una avería. Ese entorno no manda correo y nunca prometió hacerlo. |
+| Proveedor configurado que rechaza | `502` | Eso es una avería, y callársela convierte el alta en un callejón sin salida silencioso. |
+
+**El 502 no abre el oráculo que `CE-004` cierra.** Que el proveedor rechace no
+depende de la dirección: le pasa a todas por igual, así que la respuesta sigue
+siendo idéntica exista o no la cuenta. Hay una prueba que lo fija, y una
+mutación que la pone roja si alguien hace que el fallo dependa del correo.
+
+> **El paso de Mailhog del quickstart no puede funcionar.** `docker-compose`
+> levanta Mailhog, pero `services/email.py` sólo habla con Resend: en local
+> `email_enabled` es `False` y no se manda nada a ninguna parte. El enlace del
+> alta en desarrollo se saca de la base de datos, no de `localhost:8025`.
+
+## 5 quater · De quién viene el correo
+
+**`no-reply@auphere.com`, y es una decisión, no una herencia.**
+
+Salía de `facturacion@auphere.com` porque `send_email` cae a
+`receipt_from_email` cuando quien llama no pasa remitente. El primer correo que
+recibe alguien que no te conoce no puede venir de «facturación»: todavía no hay
+nada que facturar, invita a marcarlo como no deseado, y ensucia la reputación de
+la dirección que **sí** tiene que llegar cuando haya recibos de verdad.
+
+Los dos correos del alta —el enlace y el «ya tienes cuenta»— usan el **mismo**
+remitente. Que vinieran de sitios distintos delataría cuál te tocó, que es justo
+lo que `CE-004` cierra.
+
+No hace falta configurar nada más: Resend verifica el **dominio**, así que
+cualquier buzón de `auphere.com` sale en cuanto el dominio está verificado.
+
 ## 6 · Las banderas, y que tienen que coincidir
 
 | Dónde | Ajuste | Defecto |

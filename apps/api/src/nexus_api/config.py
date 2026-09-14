@@ -459,6 +459,15 @@ class Settings(BaseSettings):
     # warning, so the receipt is still generated and visible in the panel.
     resend_api_key: str = "dev-resend-key-change-me"
     receipt_from_email: str = "Auphere <facturacion@auphere.com>"
+    #: El alta tiene **su propio** remitente y no hereda el de los recibos.
+    #: Salía de «facturación» sin que nadie lo decidiera —``send_email`` cae a
+    #: ``receipt_from_email`` cuando quien llama no pasa remitente—, y el primer
+    #: correo que recibe alguien que no te conoce no puede venir de ahí: todavía
+    #: no hay nada que facturar, invita a marcarlo como no deseado y ensucia la
+    #: reputación de la dirección que sí tiene que llegar cuando haya recibos.
+    #: **El dominio tiene que estar verificado en el proveedor** o el envío se
+    #: rechaza con un 403 (pasó en staging el 2026-09-14).
+    signup_from_email: str = "Auphere <no-reply@auphere.com>"
 
     @property
     def email_enabled(self) -> bool:

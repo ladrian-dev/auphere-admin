@@ -122,7 +122,23 @@ async def start_signup(
 
     # Fuera de la transacción: mandar correo no debe mantener abierta una
     # transacción, y que falle el envío no debe deshacer la solicitud.
-    await send_signup_mail(email=email, token=plaintext, locale=body.locale)
+    sent = await send_signup_mail(email=email, token=plaintext, locale=body.locale)
+    if settings.email_enabled and not sent:
+        # **Hay proveedor y ha dicho que no: eso es una avería, y callársela
+        # convierte el alta en un callejón sin salida silencioso.** Pasó en
+        # staging: el dominio no estaba verificado, el proveedor devolvió 403 y
+        # esto respondía 202 «revisa tu correo» igual.
+        #
+        # **No abre el oráculo de CE-004**: que el proveedor rechace no depende
+        # de la dirección, le pasa a todas por igual, así que el 502 es el mismo
+        # exista o no la cuenta. Hay una prueba que lo fija.
+        #
+        # Sin proveedor configurado NO se llega aquí: un entorno que no manda
+        # correo no está averiado, simplemente no manda correo.
+        # Sin la dirección: `email.send_failed` de `services/email.py` ya la
+        # lleva, y repetirla aquí la duplica en un sitio más.
+        log.error("signup.mail_not_sent")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="signup_mail_not_sent")
     return SignupStartOut()
 
 
