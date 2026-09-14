@@ -84,3 +84,21 @@ storybook-static/
 # sitio que el método le da. Acotado a ahí: ningún log de ejecución del producto
 # entra por esta puerta.
 !.specify/assessments/**/evidence/*.log
+
+# Material de firma — NUNCA en el repositorio.
+# Añadido el 2026-09-14 al comprobar que `git check-ignore cert.p12` no lo
+# rechazaba: una clave privada de firma en la historia de git no se borra, se
+# revoca — y revocar un Developer ID deja sin arrancar las apps ya instaladas.
+*.p12
+*.pfx
+*.p8
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.keychain
+*.keychain-db
+
+# Informes de seguridad de /cso. Se quedan en la máquina: contienen el mapa de
+# la superficie de ataque y las rutas de cada hallazgo, que es justo el guion
+# que alguien querría para atacar esto.
+.gstack/

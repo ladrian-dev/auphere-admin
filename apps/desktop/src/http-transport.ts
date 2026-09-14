@@ -66,6 +66,26 @@ export class BridgeRejected extends Error {
   }
 }
 
+/**
+ * La plataforma exige una versión más nueva — spec 008, R4.
+ *
+ * **No hereda de `BridgeRejected`, y eso es la decisión entera.** Ese error
+ * significa «esta credencial ya no vale» y el runtime reacciona olvidándola: la
+ * borra del almacén y deja la máquina sin emparejar. Aquí la credencial está
+ * perfectamente bien — lo que está viejo es el binario. Tratarlo igual haría que
+ * exigir una versión mínima **desemparejara a todo el mundo**, que es
+ * exactamente el daño que la puerta venía a evitar.
+ */
+export class AppUpdateRequired extends Error {
+  constructor(
+    readonly minimumVersion?: string,
+    readonly motive?: string,
+  ) {
+    super(`la plataforma exige al menos la versión ${minimumVersion ?? "?"}`);
+    this.name = "AppUpdateRequired";
+  }
+}
+
 /** El canje del código no valió. Un solo motivo visible, a propósito (3.3). */
 export class PairingFailed extends Error {
   constructor(
@@ -227,6 +247,11 @@ export class HttpTransport implements OutboundTransport {
       const body = (await response.json().catch(() => ({}))) as { code?: string; reason?: string };
       if (body.code === "device_archived") throw new BridgeRejected("device_archived", body.reason);
       if (body.code === "pairing_required") throw new BridgeRejected("pairing_required");
+      // Spec 008: la credencial sigue siendo válida; lo viejo es el binario.
+      if (body.code === "app_update_required") {
+        const gate = body as { minimum_version?: string; reason?: string };
+        throw new AppUpdateRequired(gate.minimum_version, gate.reason);
+      }
     }
     throw new BridgeUnavailable(`${path} respondió ${response.status}`);
   }
@@ -235,7 +260,10 @@ export class HttpTransport implements OutboundTransport {
   private encode(message: Outbound): [string | null, Record<string, unknown>] {
     switch (message.kind) {
       case "heartbeat":
-        return ["/device/heartbeat", {}];
+        // Spec 008: el latido lleva la versión. Sin esto la puerta de versión
+        // mínima **no se dispararía nunca** — la plataforma no sabría qué
+        // versión llama, y `is_blocked` deja pasar a quien no lo dice.
+        return ["/device/heartbeat", { app_version: this.appVersion }];
       case "enrol":
         return ["/device/heartbeat", { app_version: message.appVersion }];
       case "execution_result":

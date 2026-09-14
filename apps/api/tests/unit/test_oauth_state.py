@@ -41,8 +41,25 @@ class TestLaFirmaProtege:
         assert vuelto.nonce == payload.nonce
 
     def test_un_byte_cambiado_invalida(self) -> None:
+        """Se toca el PRIMER carácter, no el último — y no es indiferente.
+
+        Tocando el último, este caso fallaba **una de cada diez veces**: en
+        base64 los bits sobrantes del carácter final no siempre llegan al valor
+        decodificado, así que según el nonce aleatorio de turno el byte
+        «cambiado» producía exactamente el mismo payload y la firma seguía
+        siendo válida. El test no estaba encontrando un fallo de firma: estaba
+        encontrando una propiedad de base64.
+
+        El primer carácter siempre lleva seis bits significativos, así que
+        alterarlo cambia el valor decodificado siempre.
+
+        Medido el 2026-09-14 antes de un despliegue a producción: 18 verdes y 2
+        rojos en veinte ejecuciones seguidas. Un intermitente en la tubería es
+        peor que un test que falta, porque enseña a reintentar en vez de mirar.
+        """
         state, _ = sign_state(claims={"t": "abc"}, secret=SECRET)
-        roto = state[:-1] + ("A" if state[-1] != "A" else "B")
+        roto = ("A" if state[0] != "A" else "B") + state[1:]
+        assert roto != state
         with pytest.raises(OAuthStateInvalid):
             verify_state(state=roto, secret=SECRET)
 

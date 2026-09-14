@@ -332,7 +332,12 @@ async def sum_partner_companion_tokens(
     stmt = sa.select(
         sa.func.coalesce(
             sa.func.sum(
-                sa.func.coalesce(CompanionRun.input_tokens, 0)
+                # Spec 007: los runs nuevos guardan el nativo en
+                # ``uncached_input_tokens`` y dejan ``input_tokens`` a NULL; los
+                # viejos, al revés. Sumar sólo la columna vieja dejaría esto a
+                # cero para todo el consumo posterior al despliegue — una avería
+                # silenciosa, porque un panel que baja se lee como menos trabajo.
+                sa.func.coalesce(CompanionRun.uncached_input_tokens, CompanionRun.input_tokens, 0)
                 + sa.func.coalesce(CompanionRun.output_tokens, 0)
             ),
             0,

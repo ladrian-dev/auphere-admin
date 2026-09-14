@@ -19,9 +19,40 @@ export const BAR_STATUSES = [
   "sin_sesion",
   "volver_a_emparejar",
   "archivada_desde_consola",
+  /**
+   * Spec 008 R4.3 — la plataforma exige una versión más nueva.
+   *
+   * Es un estado de conexión y no un aviso, porque el puente está **parado**:
+   * el latido no pasa. Pero, a diferencia de `archivada_desde_consola` y
+   * `volver_a_emparejar`, **la credencial sigue siendo buena** — lo viejo es el
+   * binario. Por eso no se llega aquí olvidando nada, y por eso se sale solo:
+   * en cuanto la actualización se aplica, el siguiente latido pasa.
+   */
+  "version_no_admitida",
 ] as const;
 
 export type BarStatus = (typeof BAR_STATUSES)[number];
+
+/**
+ * Que hay una versión esperando — spec 008, R3.7 y R3.8.
+ *
+ * **Va aparte de `status`, y no es un octavo estado.** Los siete que hay son de
+ * conexión y se excluyen entre sí; «hay una actualización lista» es ortogonal:
+ * una máquina puede estar `conectada` **y** tener una versión esperando, y
+ * meterlo en la misma enumeración obligaría a elegir cuál de las dos cosas se
+ * cuenta. Se perdería justo la que importa.
+ *
+ * `waiting` distingue las dos situaciones que la persona vive distinto:
+ *
+ * * `false` — «lista, se instala al cerrar». No pide nada.
+ * * `true`  — «esperando a que termine lo que hay vivo». Explica por qué la
+ *   aplicación **no** se está actualizando, que es la pregunta que alguien se
+ *   hace cuando le dijeron que había versión nueva y sigue viendo la vieja.
+ *
+ * **Ausente significa que no hay nada que decir** (§V): sin versión esperando,
+ * la barra no pinta indicador apagado ni texto explicando lo que no hay.
+ */
+export type BarUpdate = { version: string; waiting: boolean };
 
 export type BarLink = { clientRef: string; clientName: string | null; needsDirectory: boolean };
 export type BarMachine = { displayName: string; hostname: string };
@@ -38,9 +69,13 @@ export type BarState = {
   encryptionAvailable: boolean;
   /** El idioma de la cuenta, para hablar como la consola; sin él, el del sistema. */
   locale?: "es" | "en";
+  /** Spec 008: hay versión descargada. **Ausente = no hay nada que decir** (§V). */
+  update?: BarUpdate;
+  /** Spec 008 R4.2: qué versión exige la plataforma, para poder decirlo. */
+  requiredVersion?: string;
 };
 
-export type BarAction = "introducir_codigo" | "directorios" | "desemparejar";
+export type BarAction = "introducir_codigo" | "directorios" | "desemparejar" | "actualizar";
 
 export type BarEvent =
   | { kind: "pair_started" }
@@ -57,7 +92,13 @@ export type BarEvent =
   | { kind: "archived" }
   | { kind: "unpaired" }
   | { kind: "restored"; machine: BarMachine }
-  | { kind: "person"; locale?: "es" | "en" };
+  | { kind: "person"; locale?: "es" | "en" }
+  /** Spec 008: el updater avisa de lo que tiene y de si puede aplicarlo. */
+  | { kind: "update_ready"; version: string; waiting: boolean }
+  /** Se aplicó, o dejó de haber nada: la barra vuelve a no decir nada. */
+  | { kind: "update_gone" }
+  /** Spec 008: la plataforma pide una versión más nueva. NO se olvida nada. */
+  | { kind: "version_rejected"; minimumVersion?: string };
 
 export function initialState(encryptionAvailable = true): BarState {
   return { status: "sin_emparejar", links: [], encryptionAvailable };
@@ -90,6 +131,12 @@ export function actionsFor(state: BarState): BarAction[] {
       return ["introducir_codigo"];
     case "conectada":
       return ["directorios", "desemparejar"];
+    // Spec 008 R4.3: se ofrece **actualizar**, y sólo eso. No «introducir
+    // código»: la credencial sigue siendo válida y volver a emparejar no
+    // arreglaría nada — mandaría a la persona a dar vueltas por la consola
+    // buscando un código que no es el problema.
+    case "version_no_admitida":
+      return ["actualizar"];
     case "emparejando":
     case "reconectando":
     case "sin_sesion":
@@ -108,6 +155,27 @@ function forget(state: BarState, status: BarStatus): BarState {
 
 export function transition(state: BarState, event: BarEvent): BarState {
   switch (event.kind) {
+    // Spec 008 — los dos eventos de actualización **no tocan `status`**, y eso
+    // es la decisión entera: son ortogonales a la conexión. Una máquina
+    // `conectada` con una versión esperando sigue estando conectada, y las
+    // herramientas locales y el latido siguen dependiendo sólo de `status`.
+    case "update_ready":
+      return { ...state, update: { version: event.version, waiting: event.waiting } };
+    // Volver a `undefined` y no a un objeto con `waiting: false`: la ausencia
+    // se diseña (§V). Sin versión esperando, la barra no dice nada — ni
+    // indicador apagado ni texto explicando lo que no hay.
+    case "update_gone":
+      return { ...state, update: undefined };
+    // El puente para, pero **la credencial se conserva**: esto no es una
+    // máquina archivada ni una que haya que volver a emparejar. Se sale solo en
+    // cuanto la actualización se aplique.
+    case "version_rejected":
+      return {
+        ...state,
+        status: "version_no_admitida",
+        requiredVersion: event.minimumVersion,
+        lastError: undefined,
+      };
     case "pair_started":
       return { ...state, status: "emparejando", lastError: undefined, pairedByOther: undefined };
     case "pair_ok":

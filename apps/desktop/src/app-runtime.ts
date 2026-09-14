@@ -27,7 +27,7 @@ import {
 } from "./bar-state.js";
 import type { CredentialStore, StoredCredential } from "./credential-store.js";
 import { declareDirectory, type DirectoryFs } from "./directory-declare.js";
-import { BridgeRejected, PairingFailed, type HttpTransport, type PolledLink } from "./http-transport.js";
+import { AppUpdateRequired, BridgeRejected, PairingFailed, type HttpTransport, type PolledLink } from "./http-transport.js";
 import { localToolsAvailable, statusLabel, type StatusLabel } from "./link-state.js";
 import { runExecuteMessage } from "./local-runner.js";
 import { derivePresence, type Presence } from "./presence.js";
@@ -356,6 +356,15 @@ export class AppRuntime {
   }
 
   private async translate(error: unknown): Promise<void> {
+    // Spec 008: va ANTES de `BridgeRejected` y no dentro. La credencial está
+    // bien; lo viejo es el binario. Se para el puente y se dice, pero **no se
+    // olvida nada**: si esto borrara la credencial, exigir una versión mínima
+    // desemparejaría a todo el mundo a la vez.
+    if (error instanceof AppUpdateRequired) {
+      this.stop();
+      this.setBar({ kind: "version_rejected", minimumVersion: error.minimumVersion });
+      return;
+    }
     if (error instanceof BridgeRejected) {
       this.stop();
       if (this.store && this.userId) this.store.forget(this.userId);

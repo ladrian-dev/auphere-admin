@@ -35,6 +35,9 @@ describe("los siete estados (12.2)", () => {
       "sin_sesion",
       "volver_a_emparejar",
       "archivada_desde_consola",
+      // Spec 008. Añadir uno aquí sin tocar `contracts/desktop-bar.md` es
+      // justo lo que este caso impide: la lista y el contrato se leen juntos.
+      "version_no_admitida",
     ]);
   });
 

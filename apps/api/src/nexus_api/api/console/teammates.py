@@ -422,7 +422,20 @@ async def usage(
     stmt = (
         sa.select(
             CompanionRun.teammate_id,
-            sa.func.coalesce(sa.func.sum(sa.func.coalesce(CompanionRun.input_tokens, 0)), 0),
+            # Spec 007: nativo nuevo, o el viejo si la fila es anterior. Sumar
+            # sólo ``input_tokens`` dejaría el consumo por teammate a cero desde
+            # el despliegue, y un panel que baja se lee como menos trabajo, no
+            # como un panel roto. Las dos magnitudes no son idénticas —la vieja
+            # llevaba el 0,1 de la caché dentro—, así que una serie que cruce el
+            # despliegue mezcla dos definiciones: aproximado, pero no falso.
+            sa.func.coalesce(
+                sa.func.sum(
+                    sa.func.coalesce(
+                        CompanionRun.uncached_input_tokens, CompanionRun.input_tokens, 0
+                    )
+                ),
+                0,
+            ),
             sa.func.coalesce(sa.func.sum(sa.func.coalesce(CompanionRun.output_tokens, 0)), 0),
             sa.func.count(),
         )

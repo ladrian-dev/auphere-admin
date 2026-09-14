@@ -41,6 +41,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
+from nexus_api.config import get_settings
 from nexus_api.core.partner_context import apply_partner_to_session, partner_context
 from nexus_api.core.tenant_context import apply_tenant_to_session, tenant_context
 from nexus_api.db.models import (
@@ -50,6 +51,11 @@ from nexus_api.db.models import (
     PartnerDevice,
     PartnerTenant,
     Tenant,
+)
+from nexus_api.desktop_version import (
+    BLOCKING_REASONS,
+    MinimumVersion,
+    is_blocked,
 )
 from nexus_api.repositories.local_workstation import (
     DeviceClientLinkRepository,
@@ -258,6 +264,29 @@ class DeclareLinkIn(BaseModel):
     checks: DeclareChecks = Field(default_factory=DeclareChecks)
 
 
+def current_minimum_version() -> MinimumVersion | None:
+    """Lo que la configuración declara, o ``None`` si no declara nada.
+
+    Una fecha ilegible se trata como **sin mínimo**, no como «en vigor desde
+    siempre»: el modo de fallo de una variable mal escrita tiene que ser dejar
+    pasar, nunca dejar fuera a todo el mundo a la vez.
+    """
+    settings = get_settings()
+    raw = (settings.desktop_min_version or "").strip()
+    if not raw:
+        return None
+    try:
+        effective = datetime.fromisoformat(settings.desktop_min_version_from)
+    except (TypeError, ValueError):
+        return None
+    if effective.tzinfo is None:
+        effective = effective.replace(tzinfo=UTC)
+    reason = settings.desktop_min_version_reason
+    if reason not in BLOCKING_REASONS:
+        reason = "contract"
+    return MinimumVersion(version=raw, reason=reason, effective_from=effective)
+
+
 # ── el canje del código: la única ruta sin credencial ───────────────────
 
 
@@ -361,11 +390,50 @@ def _expires_at(token: str) -> datetime:
 # ── las cinco operaciones ───────────────────────────────────────────────
 
 
-@router.post("/heartbeat", status_code=status.HTTP_204_NO_CONTENT)
-async def heartbeat(body: HeartbeatIn, ctx: DeviceContext = Depends(require_device)) -> None:
-    """Late. **Solo** mueve `last_heartbeat_at`: no hay estado que desincronizar."""
+@router.post(
+    "/heartbeat",
+    status_code=status.HTTP_204_NO_CONTENT,
+    # ``response_class`` y el retorno ``Response`` no son estilo: con
+    # ``status_code=204`` declarado y un tipo de retorno que pueda llevar
+    # cuerpo, FastAPI **se niega a construir la aplicación** —«204 must not
+    # have a response body»— y el fallo aparece al recolectar los tests, lejos
+    # de aquí. El camino feliz sigue devolviendo 204 sin cuerpo; el de rechazo
+    # devuelve 403 con el suyo.
+    response_class=Response,
+    responses={
+        status.HTTP_403_FORBIDDEN: {
+            "description": "La versión de la aplicación está por debajo del mínimo admisible."
+        }
+    },
+)
+async def heartbeat(body: HeartbeatIn, ctx: DeviceContext = Depends(require_device)) -> Response:
+    """Late. **Solo** mueve `last_heartbeat_at`: no hay estado que desincronizar.
+
+    Y desde la spec 008 es también **la puerta de versión mínima** (R4). Va aquí
+    y no en otro sitio porque es lo único que corre **solo y cada poco**: un
+    gate al emparejar sólo alcanzaría a máquinas nuevas, y uno en cada ruta no
+    añadiría nada porque el latido llega primero. La barra, además, ya sabe
+    reaccionar a una negativa del latido cambiando de estado.
+
+    ``app_version`` se sigue **sin persistir** (`T072`): la versión de la fila se
+    fija al emparejar y al renovar. Aquí se lee para decidir, nada más.
+    """
+    minimum = current_minimum_version()
+    if is_blocked(body.app_version, minimum) and minimum is not None:
+        # Mismo idioma que ``device_archived`` y ``pairing_required``: un código
+        # cerrado más un motivo legible. Nunca algo que parezca un fallo de red,
+        # que es lo que la persona vería si esto devolviera 500 o cortara.
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={
+                "code": "app_update_required",
+                "reason": minimum.reason,
+                "minimum_version": minimum.version,
+            },
+        )
     await ctx.scope_partner()
     await PartnerDeviceRepository(ctx.session).record_heartbeat(ctx.device.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/poll", response_model=PollOut)

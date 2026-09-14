@@ -122,12 +122,75 @@ y no está archivada (`services/device_presence.tenant_presence`).
 | Desemparejar | la barra | la aplicación **olvida** la credencial y deja de latir; la máquina queda `ausente` hasta que alguien la archive |
 | Archivar | `/workstation` → Archivar, o la pertenencia retirada | `revoked_at` + motivo (`archivada_consola` · `pertenencia_retirada` · `desemparejada`); el siguiente latido recibe `403 device_archived` y la barra pasa a `archivada_desde_consola`. Terminal: se empareja otra |
 
+## Cómo se distribuye y cómo se actualiza
+
+**Spec**: `specs/008-empaquetado-firma-y-canal/` · **Contrato**:
+[`release-channel.md`](../specs/008-empaquetado-firma-y-canal/contracts/release-channel.md)
+
+**El canal de actualización es una superficie de confianza**, de la misma clase
+que la ejecución local: lo que se publique ahí reemplaza el binario que ejecuta
+comandos en la máquina del partner. Por eso:
+
+| Regla | Dónde vive |
+|---|---|
+| Solo lectura para todo el mundo, sin credenciales en el cliente | Bucket privado + CloudFront con OAC (`infra/terraform/40-releases/`) |
+| Escribe una sola identidad, **distinta de la que despliega** | Rol OIDC `nexus-<ws>-desktop-publisher`, sin permiso de borrado |
+| Publicar es **añadir**: la versión anterior se queda | Versionado del bucket + el workflow no borra nada |
+| Todo lo publicado pasó por la cadena | `.github/workflows/release-desktop.yml`, con disparo manual para que nadie firme en su portátil |
+
+La cadena corre en **`macos-latest`** —el único trabajo del repositorio que no
+es Ubuntu— porque firmar y notarizar sólo se puede hacer en macOS. Importa el
+certificado a un **llavero temporal** que destruye siempre, y **abre el `.app`
+firmado antes de publicar**: `hardenedRuntime` sin los permisos correctos no
+falla al construir, falla al abrir.
+
+### Qué comprueba la app antes de actualizarse
+
+El orden **es** la política (`src/update-policy.ts`), y falla cerrada:
+
+1. ¿Este binario lleva nuestra firma de distribución? Si no, **no le pregunta
+   nada al canal** — ni aunque ya tenga un paquete descargado.
+2. ¿Hay versión nueva? La descarga sin preguntar y sin interrumpir.
+3. ¿Hay sesión de agente viva o aprobación pendiente? **Espera, y lo dice.**
+4. Si no, se instala **al salir**. Nunca reiniciando por su cuenta.
+
+Las aprobaciones de nivel `informativo` no cuentan: no esperan a nadie.
+
+### La versión mínima admisible
+
+Vive en el **latido**, que es lo único que corre solo y cada poco
+(`desktop_version.py`). **Está apagada**: `desktop_min_version` vacío significa
+que no se rechaza a nadie, y ése es el estado del despliegue actual.
+
+Tres reglas cuando se encienda:
+
+- **Preaviso obligatorio.** `desktop_min_version_from` es la fecha de entrada en
+  vigor; antes de ella la puerta no cierra aunque el mínimo esté declarado. Es
+  lo que hace comprobable el aviso — Slack avisa seis meses antes, Zoom noventa
+  días.
+- **Avisar ≠ bloquear.** Una versión vieja pero admisible sigue funcionando.
+- **Sólo por contrato roto o seguridad.** No es una palanca para empujar
+  mejoras: una máquina bloqueada es un partner que no puede trabajar.
+
+**Falla abierto**, a diferencia de casi todo lo demás aquí: si la máquina no
+dice su versión, o la versión no se puede leer, **pasa**. El riesgo de dejar
+entrar una versión vieja es mucho menor que el de dejar fuera a un partner por
+un guion mal puesto.
+
 ## Los siete estados de la barra
 
 `sin_emparejar · emparejando · conectada · reconectando · sin_sesion ·
 volver_a_emparejar · archivada_desde_consola` — `src/bar-state.ts`. Ninguno se
 pinta como error; las herramientas locales solo existen en `conectada`; el
 latido solo corre en `conectada` y `reconectando`.
+
+**Y un octavo dato que NO es un estado**: `update`, que dice si hay una versión
+descargada y si está **lista** («se instala al cerrar») o **esperando** («a que
+termine lo que hay vivo»). Va aparte de `status` a propósito: son ortogonales
+—una máquina puede estar `conectada` **y** tener una versión esperando— y
+meterlo en la enumeración obligaría a elegir cuál de las dos cosas se pinta.
+**Ausente significa que no hay nada que decir**: sin versión esperando la barra
+no muestra indicador apagado ni texto explicando lo que no hay.
 
 ## Lo que la consola sabe de la cáscara
 

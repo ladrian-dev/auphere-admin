@@ -22,7 +22,8 @@ window.auphere = {
 ```ts
 type BarState = {
   status: "sin_emparejar" | "emparejando" | "conectada" | "reconectando"
-        | "sin_sesion" | "volver_a_emparejar" | "archivada_desde_consola";
+        | "sin_sesion" | "volver_a_emparejar" | "archivada_desde_consola"
+        | "version_no_admitida";          // spec 008 — ver §Ampliación
   machine?: { displayName: string; hostname: string };
   pairedByOther?: boolean;               // Historia 5.1
   links: { clientRef: string; clientName: string; needsDirectory: boolean }[];
@@ -42,6 +43,7 @@ type BarState = {
 | `sin_sesion` | «Sin sesión · el puente está parado» | — | no |
 | `volver_a_emparejar` | «Hay que volver a emparejar esta máquina» | Introducir código | no |
 | `archivada_desde_consola` | «Archivada desde la consola» | Introducir código | no |
+| `version_no_admitida` | «Esta versión ya no se admite · actualiza para seguir» | **Actualizar** | no |
 
 Con `pairedByOther`: «Emparejada por otra persona · empareja la tuya» + Introducir
 código. Nunca se muestra el nombre de la otra persona.
@@ -91,3 +93,45 @@ sexta operación—: la máquina queda `ausente` hasta que una persona la archiv
   y código; un acento para «conectada»; ningún estado en rojo.
 - WCAG 2.2 AA: foco visible ≥ 2 px, objetivos ≥ 24 px, `prefers-reduced-motion`,
   `prefers-color-scheme`. Cinco estados de Hurff por vista de la hoja.
+
+---
+
+## Ampliación de la spec 008 — la actualización
+
+Este contrato nació con **siete** estados y ahora tiene **ocho**. La ampliación
+se escribe aquí y no en el código porque un test
+(`bar-state.test.ts::son exactamente los del contrato`) compara la enumeración
+contra esta lista: añadir uno sin tocar este documento pone el test en rojo, que
+es exactamente lo que debe pasar.
+
+### `version_no_admitida`
+
+La plataforma exige una versión más nueva (`403 app_update_required` en el
+latido). El puente **para**, pero:
+
+- **La credencial sigue siendo válida.** No se olvida nada, no se desempareja y
+  no se ofrece «introducir código»: mandaría a la persona a buscar por la consola
+  un código que no arregla su problema. La única acción es **Actualizar**.
+- **Se sale solo.** En cuanto la actualización se aplica, el siguiente latido
+  pasa y la barra vuelve a `conectada`.
+- `requiredVersion` acompaña al estado para poder decir **qué** versión hace
+  falta, no sólo que la actual no vale.
+
+Es la diferencia con `archivada_desde_consola` y `volver_a_emparejar`, que sí son
+terminales y sí exigen emparejar de nuevo.
+
+### `update`, que **no** es un estado
+
+Además del octavo estado, `BarState` gana un campo `update?: { version, waiting }`
+que dice si hay una versión descargada esperando. **Va aparte de `status` a
+propósito**: son ortogonales —una máquina puede estar `conectada` **y** tener
+una versión esperando— y meterlo en la enumeración obligaría a elegir cuál de las
+dos cosas se pinta.
+
+`waiting` distingue «lista, se instala al cerrar» de «esperando a que termine lo
+que hay vivo». La segunda existe porque explica **por qué** la aplicación no se
+está actualizando, que es la pregunta que alguien se hace cuando le dijeron que
+había versión nueva y sigue viendo la vieja.
+
+**Ausente significa que no hay nada que decir**: sin versión esperando, la barra
+no pinta indicador apagado ni texto explicando lo que no hay (§V).

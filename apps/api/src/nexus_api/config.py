@@ -70,6 +70,25 @@ class Settings(BaseSettings):
     db_max_overflow: int = 20
 
     # Auth for admin endpoints. Better Auth replaces this in block G.
+    #: Spec 008 R4 — la versión mínima de la app de escritorio.
+    #:
+    #: **Vacío significa que no se rechaza a nadie, y es el defecto**: es el
+    #: estado del primer despliegue. La capacidad se construye ahora porque
+    #: después ya habría versiones viejas instaladas sin forma legible de
+    #: avisarlas.
+    #:
+    #: ``desktop_min_version_from`` es la fecha de entrada en vigor en ISO-8601.
+    #: Mientras no llegue, la puerta **no cierra** aunque el mínimo esté puesto:
+    #: es lo que hace comprobable el preaviso (Slack avisa seis meses antes,
+    #: Zoom noventa días) en vez de dejarlo en una intención.
+    #:
+    #: ``desktop_min_version_reason`` sólo admite ``contract`` o ``security``.
+    #: Bloquear no es una palanca para empujar mejoras: una máquina bloqueada es
+    #: un partner que no puede trabajar.
+    desktop_min_version: str = ""
+    desktop_min_version_reason: str = "contract"
+    desktop_min_version_from: str = ""
+
     admin_token: str = "dev-admin-token-change-me"
 
     # Meta WhatsApp Cloud API — direct Tech Provider integration. The only

@@ -22,7 +22,9 @@
   applyTheme();
   dark.addEventListener("change", applyTheme);
 
-  const COPY: Record<string, Record<Lang, string>> = {
+  const UPDATE_URL = "https://updates.auphere.com/desktop";
+
+const COPY: Record<string, Record<Lang, string>> = {
     "workstation.bar.sin_emparejar": { es: "Esta máquina no está emparejada", en: "This machine is not paired" },
     "workstation.bar.emparejando": { es: "Comprobando el código…", en: "Checking the code…" },
     "workstation.bar.conectada": { es: "conectada", en: "connected" },
@@ -30,8 +32,15 @@
     "workstation.bar.sin_sesion": { es: "Sin sesión · el puente está parado", en: "No session · the bridge is stopped" },
     "workstation.bar.volver_a_emparejar": { es: "Hay que volver a emparejar esta máquina", en: "This machine needs to be paired again" },
     "workstation.bar.archivada_desde_consola": { es: "Archivada desde la consola", en: "Archived from the console" },
+    "workstation.bar.version_no_admitida": { es: "Esta versión ya no se admite · actualiza para seguir", en: "This version is no longer supported · update to continue" },
     pairedByOther: { es: "Emparejada por otra persona · empareja la tuya", en: "Paired by someone else · pair yours" },
     enterCode: { es: "Introducir código", en: "Enter code" },
+    update: { es: "Actualizar", en: "Update" },
+    // Spec 008: las dos formas del aviso. La segunda dice **por qué** no se
+    // está actualizando — es la pregunta que alguien se hace cuando le dijeron
+    // que había versión nueva y sigue viendo la vieja.
+    updateReady: { es: "Versión nueva · se instala al cerrar", en: "New version · installs when you quit" },
+    updateWaiting: { es: "Versión nueva · espera a que termine lo que hay en marcha", en: "New version · waiting for work in progress" },
     codePlaceholder: { es: "XXXX-XXXX", en: "XXXX-XXXX" },
     codeHelp: { es: "Pídelo en la consola: Puesto de trabajo → Emparejar esta máquina", en: "Get it in the console: Workstation → Pair this machine" },
     pair: { es: "Emparejar", en: "Pair" },
@@ -113,6 +122,16 @@
     const actions = el("div", { class: "actions" });
     const canPair = ["sin_emparejar", "volver_a_emparejar", "archivada_desde_consola"].includes(state.status);
     if (canPair) actions.append(button(t("enterCode"), () => openSheet("code")));
+    // Spec 008 R4.3: aquí **no** se ofrece emparejar. La credencial sigue
+    // siendo buena; lo viejo es el binario.
+    if (state.status === "version_no_admitida") {
+      // **Se reutiliza `openInBrowser`, que ya está en el preload.** Añadir un
+      // `checkForUpdate` habría ampliado la única superficie de la aplicación
+      // que tiene `preload` —una lista cerrada de seis funciones— y el botón no
+      // lo justifica: el actualizador ya comprueba solo cada cuatro horas, así
+      // que esto no es el único camino a la versión nueva, sólo el más corto.
+      actions.append(button(t("update"), () => void window.auphere.openInBrowser(UPDATE_URL)));
+    }
     if (state.status === "conectada") {
       actions.append(button(t("directories"), () => openSheet(sheet === "directories" ? "none" : "directories")));
       actions.append(button(t("unpair"), unpair, "ghost"));

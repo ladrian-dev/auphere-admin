@@ -7,7 +7,8 @@ type BarStatus =
   | "reconectando"
   | "sin_sesion"
   | "volver_a_emparejar"
-  | "archivada_desde_consola";
+  | "archivada_desde_consola"
+  | "version_no_admitida";
 
 type BarLink = { clientRef: string; clientName: string | null; needsDirectory: boolean };
 
@@ -18,6 +19,10 @@ type BarState = {
   links: BarLink[];
   lastError?: { code: string };
   encryptionAvailable: boolean;
+  /** Spec 008: hay versión descargada esperando. Ausente = no se dice nada. */
+  update?: { version: string; waiting: boolean };
+  /** Spec 008: qué versión exige la plataforma cuando rechaza la actual. */
+  requiredVersion?: string;
   locale?: "es" | "en";
 };
 
