@@ -136,24 +136,44 @@ jobs:
       - name: Verificar firma, notarización y sello
         run: |
           set -euo pipefail
-          APP="$(find apps/desktop/dist -maxdepth 2 -name '*.app' -print -quit)"
-          test -n "$APP" || { echo "no se construyó ningún .app"; exit 1; }
+          # **Se verifican los DOS `.app`, no el primero que aparezca.** El
+          # build produce `dist/mac/` (Intel) y `dist/mac-arm64/` (Apple
+          # Silicon); un `find ... -print -quit` cogía uno y daba por buenos los
+          # dos. Con `-quit` se puede publicar un arm64 sin firmar y no
+          # enterarse hasta que alguien lo abre.
+          mapfile -t APPS < <(find apps/desktop/dist -maxdepth 2 -name '*.app' -type d)
+          test "${#APPS[@]}" -ge 1 || { echo "no se construyó ningún .app"; exit 1; }
 
-          codesign --verify --deep --strict --verbose=2 "$APP"
-          codesign -dvvv "$APP" 2>&1 | grep -q 'flags=.*runtime' \
-            || { echo "el .app NO lleva hardened runtime"; exit 1; }
-          spctl --assess --type execute --verbose "$APP"
+          for APP in "${APPS[@]}"; do
+            echo "── $APP"
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            codesign -dvvv "$APP" 2>&1 | grep -q 'flags=.*runtime' \
+              || { echo "$APP NO lleva hardened runtime"; exit 1; }
+            spctl --assess --type execute --verbose "$APP"
 
-          for pkg in apps/desktop/dist/*.dmg apps/desktop/dist/*.zip; do
-            [ -e "$pkg" ] || continue
-            xcrun stapler validate "$pkg"
+            # **El sello se grapa al `.app`, no al `.dmg`.** Esto es lo que
+            # falló en v0.1.0: el paso corría `stapler validate` sobre los
+            # paquetes y el DMG respondía «does not have a ticket stapled to
+            # it» — correctamente, porque electron-builder notariza y grapa la
+            # aplicación y después la mete en el DMG. Lo que importa para la
+            # primera apertura sin red es que la app lleve su ticket, y lo
+            # lleva. Los `.zip` **no se pueden grapar nunca**: el formato no lo
+            # admite, así que verificarlos era pedir algo imposible.
+            xcrun stapler validate "$APP"
           done
-
       # Construir en verde no prueba que abra. Esto sí.
       - name: Abrir el .app firmado
         run: |
           set -euo pipefail
-          APP="$(find apps/desktop/dist -maxdepth 2 -name '*.app' -print -quit)"
+          # Sólo el de la arquitectura del runner. El otro no se puede abrir
+          # aquí —un binario x64 en un runner arm64 depende de Rosetta, que en
+          # los runners de GitHub no está—, así que intentarlo daría un rojo que
+          # no significa nada. Que el otro está bien firmado lo dice el paso
+          # anterior, que sí verifica los dos.
+          NATIVE_DIR="$([ "$(uname -m)" = "arm64" ] && echo mac-arm64 || echo mac)"
+          APP="$(find "apps/desktop/dist/$NATIVE_DIR" -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP" || { echo "no hay .app para $(uname -m)"; exit 1; }
+          echo "abriendo $APP"
           open -g "$APP"
           sleep 20
           pgrep -f "$(basename "$APP" .app)" > /dev/null \

@@ -196,8 +196,16 @@ cualquier otra, para empezar a usarla sin que nadie me ayude.
    para macOS, **cubriendo tanto Apple Silicon como Intel**.
 2. Los artefactos DEBEN ir firmados con una identidad de distribución, con el
    runtime endurecido y con los permisos que la aplicación necesita declarados.
-3. Los artefactos DEBEN estar notarizados y llevar el sello **grapado al propio
-   fichero**, para que la primera apertura no dependa de tener red.
+3. Los artefactos DEBEN estar notarizados, y el sello DEBE quedar **grapado a la
+   aplicación**, para que la primera apertura no dependa de tener red.
+
+   > **Corregido el 2026-09-15, tras la primera publicación.** Este criterio
+   > decía «grapado al propio fichero» y se verificaba sobre el `.dmg` y el
+   > `.zip`. Es imposible: `electron-builder` notariza y grapa **la aplicación**
+   > y después la empaqueta, así que el DMG responde «does not have a ticket
+   > stapled to it» — y los `.zip` **no se pueden grapar nunca**, el formato no
+   > lo admite. Lo que de verdad protege la primera apertura sin red es que la
+   > app lleve su ticket, y lo lleva.
 4. WHEN alguien abre el artefacto en un Mac que nunca ha visto el proyecto THEN
    la aplicación DEBE arrancar sin aviso de desarrollador no identificado y sin
    que haya que tocar la terminal.
