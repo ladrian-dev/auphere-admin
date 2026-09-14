@@ -9,10 +9,30 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
+// Lo que puede abrir alguien que **todavía no es nadie**. Cada entrada es una
+// decisión, no una comodidad, y `src/__tests__/proxy-public-routes.test.ts`
+// las fija una por una.
+//
 // `/api/session/whoami` (spec 002): la cáscara de escritorio pregunta quién
 // está dentro; sin sesión la respuesta es un 401 en JSON, no una redirección
 // a /login — una página HTML no es una persona.
-const PUBLIC = ["/login", "/invite", "/no-access", "/healthz", "/api/session/whoami"];
+//
+// `/signup` y `/auth/google/callback` (spec 006) faltaban, y el alta llegó a
+// staging sin ellas. El efecto era total y silencioso: la única gente para la
+// que existe el registro —la que no tiene cuenta— rebotaba a `/login` antes de
+// ver el formulario, y la vuelta de Google, que llega con `?code=&state=` y sin
+// cookie, rebotaba igual. Todo verde y nada funcionando: ninguna prueba de
+// componente ni de la API pasa por esta capa. **Una ruta nueva que un
+// desconocido deba alcanzar se añade aquí en el mismo commit que la crea.**
+const PUBLIC = [
+  "/login",
+  "/invite",
+  "/signup",
+  "/auth/google/callback",
+  "/no-access",
+  "/healthz",
+  "/api/session/whoami",
+];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

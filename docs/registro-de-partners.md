@@ -31,6 +31,27 @@ regla nueva.
 El partner nace **en Free**: sin fila en `partner_subscriptions`, porque la
 ausencia de fila *es* Free y es un estado válido y diseñado.
 
+## 1 bis · La lista pública del proxy, y cómo el alta llegó rota a staging
+
+El alta se construyó entera —API, formularios, correo, Google—, pasó la
+verificación completa en verde y se desplegó a staging **sin poder usarse**.
+
+`apps/console/src/proxy.ts` (el «middleware» de Next 16) rebota a `/login`
+cualquier ruta que no esté en su lista `PUBLIC`, y `/signup` no estaba. O sea:
+la única gente para la que existe el registro —la que no tiene cuenta— rebotaba
+a `/login?from=/signup` antes de ver el formulario. `/auth/google/callback`
+tampoco estaba, así que la vuelta de Google, que llega del navegador con
+`?code=&state=` y sin cookie, rebotaba igual.
+
+**Nada de esto lo podía ver una prueba de las que había.** Las de componente
+montan la página directamente, las de la API no pasan por Next y `next build`
+no ejerce el enrutado. Se descubrió mirando la URL desplegada: un `curl` a
+`console.staging.auphere.com/signup` devolviendo `307`.
+
+Ahora hay `src/__tests__/proxy-public-routes.test.ts`, que fija ruta por ruta
+qué puede abrir un desconocido y qué sigue cerrado. **Una ruta nueva que alguien
+sin sesión deba alcanzar se añade a `PUBLIC` en el mismo commit que la crea.**
+
 ## 2 · Por qué estos endpoints no son anónimos
 
 Van detrás del **token de servicio del BFF**, igual que `/console/auth/*` y
