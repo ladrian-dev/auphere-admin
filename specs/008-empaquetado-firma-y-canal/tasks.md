@@ -384,6 +384,15 @@ comprueba qué ve la persona.
       que publica binarios. También: script injection por el input del disparo
       manual, un secreto interpolado en `run:`, y cuatro acciones sin pin. Y
       `.gstack/` no estaba en `.gitignore`.
+- [ ] T045 Tras la primera publicación real, arreglar las dos cosas anotadas en
+      [`docs/pendientes-tras-el-go-live.md`](../../docs/pendientes-tras-el-go-live.md)
+      §2: **(a)** declarar `minimumSystemVersion: "13.0"` — Electron 44 exige
+      macOS 13 y sin el campo el `.dmg` deja instalar en un Mac que luego no
+      puede abrir la app; **(b)** el workflow sube `latest-mac.yml` por nombre
+      exacto y `electron-builder` puede generar un índice por arquitectura, así
+      que el glob pasa a `latest-mac*.yml` o la actualización queda rota para una
+      de las dos. Ninguna impide instalar. Se dejaron para después de ver la
+      cadena correr, a propósito. _Requisitos: 1.1, 2.1_
 - [ ] T044 Entregar el mensaje de commit y **parar**. Los commits los ejecuta la
       persona. _Requisitos: —_
 

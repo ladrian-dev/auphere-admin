@@ -53,6 +53,57 @@ paquete, los endpoints `/device/pair` y `/device/poll` responden en producción
 `NEXUS_DEVICE_TOKEN_SECRET` está aprovisionado —llevaba meses en Terraform sin
 estar en el secreto de prod, y se puso el 2026-09-13—.
 
+### Al día 2026-09-15 · lo que la spec 008 ya cerró, y lo que queda
+
+**Esta sección de arriba está desactualizada desde el 2026-09-14.** El
+certificado `Developer ID Application: FACELAD SpA (CBSWMG766P)` existe desde el
+2026-09-13, la clave de notarización también, y ambos viven ya como secretos del
+repositorio. La cadena (`.github/workflows/release-desktop.yml`), el canal
+(`updates.auphere.com`, servido por CloudFront sobre un bucket privado) y el rol
+que publica están hechos. Lo que falta es **ejecutarla una vez y mirar**.
+
+#### Dos cosas que hay que arreglar, anotadas antes de la primera publicación
+
+Las dos se encontraron el 2026-09-15 preparando el primer tag, y se dejaron para
+después **a propósito**: ninguna impide instalar, y verlas fallar de verdad vale
+más que arreglarlas a ciegas.
+
+**a) `minimumSystemVersion` no está declarado.** Electron 44 exige **macOS 13
+Ventura o superior** —Chromium dejó de soportar Monterey— y afecta sobre todo a
+los Intel, que es donde más gente se quedó en macOS 12. Sin ese campo en
+`apps/desktop/package.json`, el `.dmg` **deja instalar** en un Mac con 12 y la
+aplicación falla al abrir **sin decir por qué**. Con el campo puesto, macOS lo
+bloquea antes de copiar nada y nombra la versión que hace falta.
+
+Arreglo: `"minimumSystemVersion": "13.0"` en el bloque `mac` de `build`.
+
+**b) El workflow sube un solo índice del canal.** La línea es
+`for f in apps/desktop/dist/latest-mac.yml`, nombre exacto. Al construir dos
+arquitecturas, `electron-builder` puede generar **un manifiesto por
+arquitectura** (el problema conocido
+[electron-builder#7975](https://github.com/electron-userland/electron-builder/issues/7975));
+si genera `latest-mac-arm64.yml` además del otro, ese fichero **no se sube** y la
+actualización automática queda rota para una de las dos.
+
+No afecta a instalar, sólo a actualizarse después. Arreglo: cambiar el glob a
+`latest-mac*.yml`, que cubre los dos casos y no rompe nada si sólo hay uno.
+
+#### Qué mirar en la primera ejecución, para no repetirla
+
+1. **Qué ficheros dejó el build**: en los logs del trabajo, `ls apps/desktop/dist`.
+   Si aparece más de un `latest-mac*.yml`, (b) está confirmado.
+2. **Qué acabó en el canal**:
+   `aws s3 ls s3://nexus-prod-desktop-releases-793033583982/desktop/ --profile nexus`.
+   Deben estar los cuatro paquetes (dmg y zip × arm64 y x64) **y** todos los
+   índices que el build generó.
+3. **Que el `.app` abrió**: el paso «Abrir el .app firmado» falla el trabajo si
+   el proceso no sigue vivo a los 20 s. Si el trabajo llega a publicar, ese paso
+   pasó.
+4. **En el Mac limpio** (T021): que no aparezca **ningún** diálogo del sistema.
+   Y que sea un Mac que nunca haya visto el proyecto — en el de Luis, Gatekeeper
+   abre igual aunque la notarización esté mal, porque el certificado está en su
+   llavero.
+
 ## 3 · El tratamiento fiscal
 
 Sigue siendo lo que era, con una diferencia: **ya no es teórico.** `sk_live_`

@@ -68,6 +68,23 @@ run_js() {
   # olvida en local es lo de abajo del todo: el paquete compartido, la
   # aplicación de escritorio y el ``next build`` — que falla por cosas que
   # ``tsc`` no ve, como un import de servidor en un componente de cliente.
+  # **Lo PRIMERO, porque es lo primero que hace la tubería y lo que aquí no se
+  # hacía.** ``ci.yml`` arranca con ``pnpm install --frozen-lockfile``: si el
+  # ``pnpm-lock.yaml`` no corresponde a los ``package.json``, el trabajo muere
+  # ahí y no llega a ejecutar una sola prueba.
+  #
+  # En local no se notaba nunca: ``pnpm`` resuelve contra el ``node_modules`` ya
+  # instalado y todo sale verde, asi que este script decia "la tuberia deberia
+  # pasar" sobre un arbol que la tuberia rechazaba en su primer paso.
+  #
+  # Paso el 2026-09-14 (spec 008): un ``cherry-pick`` movio ``electron-updater``
+  # de ``devDependencies`` a ``dependencies`` —correcto, se importa en runtime—
+  # y el lockfile se quedo atras. Verde aqui, rojo en ``ci``, y el despliegue a
+  # produccion esperando a un CI que no podia pasar. Es la tercera vez que esa
+  # diferencia rompe la tuberia, y la primera en que la causa no fue una prueba
+  # que no se corria sino una que no existia.
+  step "lockfile al dia" pnpm install --frozen-lockfile --ignore-scripts
+
   step "@nexus/ui · typecheck" pnpm --dir "$ROOT/packages/ui" typecheck
   step "@nexus/ui · lint"      pnpm --dir "$ROOT/packages/ui" lint
   step "@nexus/ui · test"      pnpm --dir "$ROOT/packages/ui" test
