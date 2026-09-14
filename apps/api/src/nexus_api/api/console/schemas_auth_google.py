@@ -7,6 +7,18 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class GoogleAvailableOut(BaseModel):
+    """¿Se puede ofrecer Google? **Una respuesta, no un efecto.**
+
+    Existe porque preguntarlo con ``/start`` acuñaba un PKCE que nadie iba a
+    consumir: el botón preguntaba al montar y volvía a llamar al pulsar, así
+    que cada visita a ``/login`` —pública— dejaba una clave de diez minutos en
+    Redis. Un verbo que escribe no sirve para una pregunta.
+    """
+
+    available: bool
+
+
 class GoogleStartIn(BaseModel):
     #: Para qué se pulsó el botón. Viaja firmado dentro del `state`, así que la
     #: vuelta sabe de dónde venía sin fiarse del navegador.

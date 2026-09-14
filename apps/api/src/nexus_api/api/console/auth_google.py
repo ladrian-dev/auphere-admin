@@ -43,6 +43,7 @@ from nexus_api.services.oauth_state import (
 )
 
 from .schemas_auth_google import (
+    GoogleAvailableOut,
     GoogleCallbackIn,
     GoogleCallbackOut,
     GoogleStartIn,
@@ -56,11 +57,18 @@ router = APIRouter(prefix="/auth/google")
 PROVIDER = "google"
 
 
+def _configured() -> bool:
+    """Los tres, o ninguno. Con dos de tres el canje fallaría con un error del
+    proveedor que no se parece en nada a la causa."""
+    s = get_settings()
+    return bool(s.google_client_id and s.google_client_secret and s.google_redirect_uri)
+
+
 def _config() -> tuple[str, str, str, str]:
     """Los cuatro valores, o 503. Recordatorio: la configuración es todo o
     nada — la guarda de arranque impide desplegar con Google a medias."""
     s = get_settings()
-    if not (s.google_client_id and s.google_client_secret and s.google_redirect_uri):
+    if not _configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="google_not_configured"
         )
@@ -80,6 +88,23 @@ def _rejected(reason: str) -> HTTPException:
     """
     log.warning("console_auth.google_rejected", reason=reason)
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_request")
+
+
+@router.get("/available", response_model=GoogleAvailableOut)
+async def available(
+    _svc: ConsoleService = Depends(require_console_service()),
+) -> GoogleAvailableOut:
+    """¿Hay Google? **Esto no crea nada, y ese es todo su motivo de existir.**
+
+    La consola lo pregunta para decidir si pinta el botón. Antes lo preguntaba
+    con ``/start``, que acuña un par PKCE y lo guarda diez minutos: cada visita
+    a ``/login`` —una página pública— dejaba una clave que nadie consumiría.
+
+    **200 con ``false`` y no 503**: que no haya Google es una respuesta, no un
+    fallo. El alta con contraseña sigue funcionando sin él (CE-006), y la
+    consola necesita distinguir «no hay» de «no se pudo preguntar».
+    """
+    return GoogleAvailableOut(available=_configured())
 
 
 @router.post("/start", response_model=GoogleStartOut)

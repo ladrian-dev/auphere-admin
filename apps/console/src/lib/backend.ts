@@ -522,6 +522,23 @@ export const consoleService = {
       body,
     })) as SignupCompleted;
   },
+  /**
+   * ¿Se puede ofrecer Google? **Nunca lanza y nunca crea nada.**
+   *
+   * Un fallo del backend aquí significa «no lo sé», y no saberlo se trata como
+   * «no hay»: no se anuncia lo que no se puede demostrar. Es un `GET` a un
+   * endpoint sin efectos, no `\/start` — ése acuña un PKCE que viviría diez
+   * minutos en Redis sin que nadie lo consuma.
+   */
+  async googleAvailable(): Promise<boolean> {
+    try {
+      const t = await mintServiceToken();
+      const r = await request<{ available: boolean }>(t, "/console/auth/google/available");
+      return r?.available === true;
+    } catch {
+      return false;
+    }
+  },
   async googleStart(intent: "login" | "signup"): Promise<{ authorization_url: string }> {
     const t = await mintServiceToken();
     return (await request<{ authorization_url: string }>(t, "/console/auth/google/start", {

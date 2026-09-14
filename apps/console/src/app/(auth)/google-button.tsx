@@ -15,35 +15,33 @@ import { googleStartAction } from "@/lib/auth-actions";
  * La ausencia se diseña (constitución §V), y el alta y el login con contraseña
  * siguen funcionando sin él, que es justo lo que el requisito pide.
  *
- * Se comprueba al montar con una llamada que no crea nada: si la API responde
- * que Google no está configurado, `googleStartAction` devuelve `null` y aquí
- * no se pinta nada.
+ * **La disponibilidad llega resuelta desde el servidor, y eso es deliberado.**
+ * Antes se comprobaba al montar llamando a `googleStartAction`, que es el que
+ * EMPIEZA un inicio de sesión: acuña un par PKCE y lo guarda diez minutos en
+ * Redis. Como preguntaba al montar y volvía a llamar al pulsar, cada visita a
+ * `/login` —una página pública— dejaba una clave que nadie iba a consumir. El
+ * comentario que había aquí decía «una llamada que no crea nada»; era falso.
+ *
+ * De paso desaparece el parpadeo: ya no hay un instante de «todavía no se
+ * sabe», porque la página se renderiza con la respuesta dentro.
  */
-export function GoogleButton({ intent }: { intent: "login" | "signup" }) {
+export function GoogleButton({
+  intent,
+  available,
+}: {
+  intent: "login" | "signup";
+  available: boolean;
+}) {
   const t = useT();
-  const [available, setAvailable] = React.useState<boolean | null>(null);
   const [pending, startTransition] = React.useTransition();
 
-  React.useEffect(() => {
-    let alive = true;
-    googleStartAction(intent)
-      .then((url) => alive && setAvailable(url !== null))
-      .catch(() => alive && setAvailable(false));
-    return () => {
-      alive = false;
-    };
-  }, [intent]);
-
-  // `null` es «todavía no se sabe»: no se pinta un botón que quizá haya que
-  // quitar, porque aparecer y desaparecer es peor que tardar un momento.
-  if (available !== true) return null;
+  if (!available) return null;
 
   function go() {
     startTransition(async () => {
       const url = await googleStartAction(intent);
       if (!url) {
         toast.error(t("common.error.backend"));
-        setAvailable(false);
         return;
       }
       window.location.assign(url);

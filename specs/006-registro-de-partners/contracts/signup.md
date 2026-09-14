@@ -97,15 +97,36 @@ nace sin contraseña.
 
 ---
 
-## `GET /console/auth/google/start`
+## `GET /console/auth/google/available`
+
+```jsonc
+// 200 — siempre 200, nunca 503
+{ "available": true }
+```
+
+**Una pregunta, no un efecto.** La consola lo usa para decidir si pinta el
+botón, y lo resuelve en el servidor al renderizar la página. Existe porque
+preguntarlo con `/start` acuñaba un PKCE que nadie consumiría: cada visita a
+`/login` —pública— dejaba una clave de diez minutos en Redis.
+
+`false` cuando falta cualquiera de los tres ajustes de Google: con dos de tres
+el canje fallaría con un error del proveedor que no se parece a la causa. Que
+no haya Google **no es un error** — el alta con contraseña sigue funcionando
+(CE-006) y la consola necesita distinguir «no hay» de «no se pudo preguntar».
+
+## `POST /console/auth/google/start`
 
 ```jsonc
 // petición
-{ "intent": "signup" | "login", "redirect_to": "/" }
+{ "intent": "signup" | "login" }
 
 // 200
 { "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?…" }
 ```
+
+**`POST` y no `GET` a propósito**: esta llamada *escribe* — acuña el par PKCE y
+guarda el verificador en Redis. Un `GET` con efectos invita a que alguien lo
+use como sonda, que es exactamente el fallo que costó el endpoint de arriba.
 
 La URL lleva `state` firmado (HMAC-SHA256 sobre JSON canónico, nonce, TTL 10
 min — el patrón de `services/tiktok_oauth_state.py`) y el `code_challenge` de

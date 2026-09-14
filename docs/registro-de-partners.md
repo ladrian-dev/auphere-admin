@@ -92,6 +92,20 @@ pública de Google es pública, y un verificador que aceptara HS256 daría por
 bueno un token firmado con esa clave pública **como secreto compartido**. Hay
 una prueba que forja ese token a mano.
 
+**Preguntar si hay Google no crea nada, y hubo que arreglarlo.** El botón
+decidía si pintarse llamando a `/console/auth/google/start`, que es el endpoint
+que **empieza** un inicio de sesión: acuña un par PKCE y lo guarda diez minutos
+en Redis. Como preguntaba al montar y volvía a llamar al pulsar, cada visita a
+`/login` —una página pública— dejaba una clave que nadie iba a consumir jamás.
+Ahora hay `GET /console/auth/google/available`, que sólo responde, y la consola
+lo resuelve **en el servidor**: la página se renderiza con la respuesta dentro,
+sin llamada desde el navegador y sin el parpadeo del botón que aparece y se va.
+
+Responde **200 con `false`**, no 503: que no haya Google es una respuesta, no un
+fallo, y la consola necesita distinguir «no hay» de «no se pudo preguntar». Un
+fallo del backend se trata como «no hay» — no se anuncia lo que no se puede
+demostrar.
+
 **La identidad se ancla al `sub`, no al correo.** Un correo cambia de dueño; en
 Workspace se reasigna cada vez que alguien se va. El `sub` no se reasigna nunca.
 
@@ -99,6 +113,43 @@ Workspace se reasigna cada vez que alguien se va. El `sub` no se reasigna nunca.
 `email_verified`, y no se pide `refresh_token` porque hoy no hay ámbito que
 refrescar. Guardarlos sería una credencial almacenada sin lector — la figura de
 `NEXUS_WEBHOOK_HMAC_SECRET`.
+
+## 5 bis · El cliente OAuth de Google, y cómo está montado
+
+Proyecto **`auphere-nexus`** en Google Cloud, bajo la organización `auphere.com`
+— no bajo una cuenta personal, para que sobreviva a quien lo creó.
+
+**Un cliente OAuth por entorno, no uno compartido.** El `client_secret` de
+staging vive en máquinas de desarrollo; el de producción no. Con un solo
+cliente para los dos, comprometer staging sería comprometer producción.
+
+| Entorno | Redirect URI autorizado |
+|---|---|
+| staging | `https://console.staging.auphere.com/auth/google/callback` |
+| dev local | `http://localhost:3110/auth/google/callback` (en el cliente de staging) |
+| producción | `https://console.auphere.com/auth/google/callback` |
+
+**«Authorized JavaScript origins» se deja vacío a propósito.** El canje del
+código lo hace el servidor; ningún JavaScript del navegador habla con Google.
+Rellenarlo sería declarar una superficie que no existe.
+
+**Audiencia `External`, estado `In production`.** `Internal` sólo dejaría entrar
+cuentas de `auphere.com`, y quien se registra es justo alguien de fuera.
+`Testing` tiene un tope de **100 usuarios contados para toda la vida del
+proyecto**, que no se reinicia.
+
+**Los ámbitos son `openid`, `email` y `profile`, y por eso no hace falta
+verificación de Google.** Su propio Verification Center lo dice: *«Verification
+is not required since your app is not requesting any sensitive or restricted
+scopes»*. Cuando una spec futura pida leer Calendar o Gmail para un teammate,
+eso **sí** será un ámbito sensible y **sí** exigirá pasar revisión — conviene
+saberlo antes de prometer fechas.
+
+**El logo está subido pero no se muestra**, y es el estado esperado: enseñar
+marca propia en la pantalla de consentimiento exige verificación de marca
+aparte (demostrar la propiedad del dominio en Search Console y esperar revisión).
+No bloquea entrar: la pantalla dice «Auphere» y el dominio. Está sin mandar a
+propósito.
 
 ## 6 · Las banderas, y que tienen que coincidir
 
@@ -115,6 +166,33 @@ hay (constitución §V).
 Google es independiente: sin `google_client_id/secret/redirect_uri` el botón
 **no se pinta**, y el alta con contraseña sigue funcionando. La guarda de
 arranque rechaza tener esos tres a medias.
+
+### Encenderlo, y en qué orden
+
+**Secreto → Terraform → despliegue.** Nunca al revés: una definición de tarea
+que pide una clave ausente del secreto **no arranca**
+(`ResourceInitializationError: did not contain json key`), y ese apply se lleva
+por delante los cinco servicios del entorno.
+
+```bash
+# 1 · El secreto. Los valores salen del JSON que descarga Google, así que
+#     ningún secreto pasa por la pantalla ni por el historial del shell.
+J=~/Downloads/client_secret_<id>.apps.googleusercontent.com.json
+export NEXUS_GOOGLE_CLIENT_ID=$(jq -r .web.client_id "$J")
+export NEXUS_GOOGLE_CLIENT_SECRET=$(jq -r .web.client_secret "$J")
+export NEXUS_GOOGLE_REDIRECT_URI=https://console.staging.auphere.com/auth/google/callback
+AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh staging \
+  NEXUS_GOOGLE_CLIENT_ID NEXUS_GOOGLE_CLIENT_SECRET NEXUS_GOOGLE_REDIRECT_URI
+
+# 2 · Terraform. `app_secret_keys` es una lista COMPARTIDA por los dos
+#     workspaces: prod necesita las tres claves aunque prod todavía no abra
+#     el alta, o su próximo apply no arranca.
+# 3 · Despliegue.
+```
+
+La consola va aparte, en Vercel: `NEXUS_SIGNUP_ENABLED=true` en el proyecto del
+entorno. **Las dos banderas se encienden en la misma ventana**, no en días
+distintos.
 
 ## 7 · La solicitud, y lo que caduca
 

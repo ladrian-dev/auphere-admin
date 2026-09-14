@@ -134,6 +134,32 @@ variable "app_secret_keys" {
     "NEXUS_BILLING_API_KEY",
     "NEXUS_BILLING_PUBLIC_KEY",
     "NEXUS_BILLING_WEBHOOK_SECRET",
+    # ─── Entrar con Google (spec 006, Requisito 5) ─────────────────────────
+    # Las tres van juntas o no van: el guard de ``config.py`` rechaza el
+    # arranque con Google a medias, porque una consola que pinta el botón y
+    # una API que falla al canjear el código da un error del proveedor que no
+    # se parece en nada a la causa.
+    #
+    # ``CLIENT_ID`` y ``REDIRECT_URI`` no son credenciales —el primero viaja
+    # en la URL de autorización, el segundo lo conoce cualquiera que mire el
+    # navegador— pero viven aquí igual que ``NEXUS_META_APP_ID`` o
+    # ``NEXUS_CONSOLE_BASE_URL``: el criterio de esta lista no es «es
+    # secreto», es «cambia con el entorno». Y cambian: cada entorno tiene su
+    # propio cliente OAuth, para que un compromiso en staging no sea el
+    # ``client_secret`` de producción.
+    #
+    # ⚠️  Pobla LOS DOS secretos ANTES del próximo apply. Esta lista la
+    #     comparten los dos workspaces, y una task que pide una clave ausente
+    #     **no arranca** — se llevaría por delante los cinco servicios:
+    #
+    #   AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh staging \
+    #     NEXUS_GOOGLE_CLIENT_ID NEXUS_GOOGLE_CLIENT_SECRET NEXUS_GOOGLE_REDIRECT_URI
+    #   AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh prod \
+    #     NEXUS_GOOGLE_CLIENT_ID NEXUS_GOOGLE_CLIENT_SECRET NEXUS_GOOGLE_REDIRECT_URI
+    #
+    "NEXUS_GOOGLE_CLIENT_ID",
+    "NEXUS_GOOGLE_CLIENT_SECRET",
+    "NEXUS_GOOGLE_REDIRECT_URI",
   ]
 }
 
