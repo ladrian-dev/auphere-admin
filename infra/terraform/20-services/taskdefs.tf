@@ -95,6 +95,22 @@ locals {
     # gate ``media_s3_enabled`` exigía claves explícitas y la media se
     # guardaba en memoria en vez de en S3, sin un solo error.
     { name = "NEXUS_MEDIA_S3_USE_DEFAULT_CREDENTIALS", value = "true" },
+    # El alta autónoma de partners (spec 006). Encenderla abre una escritura
+    # **sin sesión** que crea un ``partner``, la raíz de la que cuelga todo lo
+    # demás. Por eso el defecto del código es ``False`` y por eso vive aquí, en
+    # un diff, y no en la edición silenciosa de un secreto.
+    #
+    # **Tiene que coincidir con ``NEXUS_SIGNUP_ENABLED`` de la consola en
+    # Vercel**, y el desajuste NO es simétrico: consola encendida con API
+    # apagada da un 503 al enviar el formulario, que es peor que no existir;
+    # API encendida con consola apagada sólo significa que no se enseña el
+    # formulario. Si hay que desincronizarlas un rato, que sea en ese orden.
+    #
+    # Encendida en staging y en prod el 2026-09-14, después de verificar el
+    # recorrido completo en staging: alta → correo entregado desde
+    # ``no-reply@auphere.com`` → nombrar empresa → dentro como propietario en
+    # plan gratuito, sin que nadie ejecutara nada (T053, CE-001).
+    { name = "NEXUS_SIGNUP_ENABLED", value = "true" },
   ]
 
   # LiteLLM OSS solo en staging. Prod NO lleva esta variable: el Builder
@@ -113,17 +129,6 @@ locals {
     terraform.workspace == "staging" ? [
       { name = "LITELLM_PROXY_API_BASE", value = "http://litellm.nexus-staging.internal:4000" },
       { name = "NEXUS_LLM_PROXY_REQUIRED", value = "true" },
-      # El alta autónoma de partners (spec 006). Encenderla abre una escritura
-      # SIN SESIÓN que crea un ``partner``, que es la raíz de la que cuelga
-      # todo lo demás — por eso el defecto del código es ``False`` y por eso
-      # esto se ve en un diff y no en la edición de un secreto.
-      #
-      # **Tiene que coincidir con ``NEXUS_SIGNUP_ENABLED`` de la consola en
-      # Vercel.** Si la consola la enciende y la API no, el formulario da 503
-      # al enviar, que es peor que no existir.
-      #
-      # Prod no la lleva: primero se mira en staging (T053 de la spec).
-      { name = "NEXUS_SIGNUP_ENABLED", value = "true" },
     ] : [],
   )
 
