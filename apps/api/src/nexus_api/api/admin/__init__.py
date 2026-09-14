@@ -25,6 +25,7 @@ from nexus_api.api.admin import (
     prompt_library,
     receipts,
     screenshots,
+    signups,
     skills,
     tenants,
     tickets,
@@ -54,6 +55,7 @@ router.include_router(auphere_channels.router)
 router.include_router(backchannel_owners.router)
 router.include_router(whatsapp_templates.router)
 router.include_router(partners.router)
+router.include_router(signups.router)
 router.include_router(tickets.router)
 router.include_router(impersonate.router)
 router.include_router(partner_wallet.router)

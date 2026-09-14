@@ -829,6 +829,31 @@ export type ConnectorToolOverride = {
 
 export type PartnerStatus = "active" | "suspended";
 
+/**
+ * Una solicitud de alta y su desenlace — spec 006, Requisito 8.
+ *
+ * `partner` en `null` **es** la señal de que el registro está a medias: correo
+ * verificado, empresa sin nombrar. No es un dato que falte, es el estado.
+ */
+export type SignupRowOut = {
+  id: string;
+  email: string;
+  status: "pending" | "consumed" | "expired" | "revoked";
+  /** Nunca `null`: la API traduce el `null` de la base a `"password"`. */
+  provider: "password" | "google";
+  created_at: string;
+  expires_at: string;
+  consumed_at: string | null;
+  partner: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    /** `free` cuando no hay suscripción: la ausencia de fila *es* Free. */
+    tier: string;
+  } | null;
+};
+
 export type PartnerOut = {
   id: string;
   name: string;
@@ -1804,6 +1829,13 @@ export const backend = {
     ),
 
   // ── Partners (ADR-028 — embed widget platform) ─────────────────────────
+
+  // ── Altas autónomas (spec 006, R8) ─────────────────────────────────────
+  listSignups: () =>
+    call<SignupRowOut[]>("/admin/signups").then((r) => r ?? []),
+
+  resendSignup: (signupId: string) =>
+    call<SignupRowOut>(`/admin/signups/${signupId}/resend`, { method: "POST" }),
 
   listPartners: () =>
     call<PartnerOut[]>("/admin/partners").then((r) => r ?? []),

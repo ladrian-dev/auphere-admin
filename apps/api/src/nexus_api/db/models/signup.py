@@ -20,9 +20,10 @@ enlace, y no se escribe en ningún registro ni traza — mismo patrón que
 from __future__ import annotations
 
 import enum
+import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Index, String, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from nexus_api.db.base import Base
@@ -71,6 +72,13 @@ class SignupRequest(UUIDPrimaryKey, TimestampMixin, Base):
 
     #: Siempre en minúsculas — lo normaliza el servicio, lo aprovecha el índice.
     email: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    #: El partner que salió de esta solicitud, cuando salió alguno (R8.1). Es
+    #: lo que deja al panel decir de cada partner **por qué vía entró**, sin
+    #: añadirle una columna a ``partners`` — esa tabla la lee media plataforma.
+    partner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("partners.id", ondelete="SET NULL"), nullable=True
+    )
     #: SHA-256 hex. Nunca sale en una respuesta ni entra en un log.
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(

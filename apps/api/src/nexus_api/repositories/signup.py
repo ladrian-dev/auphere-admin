@@ -85,6 +85,20 @@ class SignupRequestRepository:
         await self._session.flush()
         return int(result.rowcount or 0)
 
+    async def get_pending_by_email(self, email: str) -> SignupRequest | None:
+        """La pendiente viva de ese correo, si la hay. Sólo puede haber una:
+        ``create`` revoca las anteriores."""
+        return (
+            await self._session.execute(
+                sa.select(SignupRequest)
+                .where(
+                    sa.func.lower(SignupRequest.email) == email.strip().lower(),
+                    SignupRequest.status == SignupStatus.PENDING.value,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
     async def get_pending_by_token(self, plaintext: str) -> SignupRequest | None:
         """La solicitud detrás de un enlace.
 

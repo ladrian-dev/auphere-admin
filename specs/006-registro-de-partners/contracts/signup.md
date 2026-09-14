@@ -1,4 +1,4 @@
-# Contrato — `/console/signup/*` y `/console/auth/google/*`
+# Contrato — `/console/signup/*`, `/console/auth/google/*` y `/admin/signups/*`
 
 **Todos estos endpoints van detrás del token de servicio del BFF**
 (`svc: "console"`, EdDSA, 60 s, anti-replay por `jti`), igual que
@@ -172,3 +172,42 @@ navegador**.
   código, ni en el tiempo de respuesta.
 - **No escribe en ningún registro** la contraseña, el token en claro, el
   `code`, el `id_token` ni el `code_verifier`.
+
+---
+
+## `GET /admin/signups`
+
+```jsonc
+// 200 — de la más reciente a la más vieja
+[
+  {
+    "id": "…",
+    "email": "maria@agencia.com",
+    "status": "pending" | "consumed" | "expired" | "revoked",
+    "provider": "password" | "google",   // nunca null
+    "created_at": "…", "expires_at": "…", "consumed_at": null,
+    "partner": null | { "id": "…", "name": "…", "slug": "…", "status": "active", "tier": "free" }
+  }
+]
+```
+
+`partner` en `null` **es** la señal de que el registro está a medias. No es un
+dato que falte: es el estado, y es lo que R8.1 pide distinguir.
+
+## `POST /admin/signups/{id}/resend`
+
+```jsonc
+// 200 — la solicitud NUEVA (la anterior queda revocada)
+{ "id": "…", "status": "pending", "partner": null, … }
+```
+
+| Código | Cuándo |
+|---|---|
+| `200` | Reemitida y enviada |
+| `404` | No existe |
+| `409` | Existe pero no está viva: consumida o caducada |
+| `401` | Sin token de operador |
+
+**409 y no 404**: aquí no hay nada que ocultar. Quien pregunta es un operador
+autenticado, no un desconocido sondeando qué correos existen — que es lo que sí
+obliga a `/console/signup/*` a responder siempre igual.

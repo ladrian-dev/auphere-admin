@@ -34,7 +34,7 @@ from nexus_api.core.rate_limit import allow
 from nexus_api.db.models import AuditLog
 from nexus_api.repositories.signup import SignupRequestRepository
 from nexus_api.services import console_identity
-from nexus_api.services.signup import SignupBirthError, complete_signup
+from nexus_api.services.signup import SignupBirthError, complete_signup, send_signup_mail
 
 from .schemas_signup import (
     SignupCompleteIn,
@@ -122,31 +122,8 @@ async def start_signup(
 
     # Fuera de la transacción: mandar correo no debe mantener abierta una
     # transacción, y que falle el envío no debe deshacer la solicitud.
-    await _send_signup_mail(email=email, token=plaintext, locale=body.locale)
+    await send_signup_mail(email=email, token=plaintext, locale=body.locale)
     return SignupStartOut()
-
-
-async def _send_signup_mail(*, email: str, token: str | None, locale: str) -> None:
-    """Dos correos distintos, una sola respuesta HTTP.
-
-    Con ``token`` es el enlace del alta; sin él, la dirección ya tiene cuenta y
-    lo que llega es «ya tienes cuenta, entra por aquí». Quien llamó no puede
-    distinguir los dos casos: la diferencia sólo la ve quien abre el buzón, que
-    es precisamente el dueño de la dirección.
-    """
-    from nexus_api.services.email import send_email
-
-    settings = get_settings()
-    base = settings.console_base_url.rstrip("/")
-    if token is not None:
-        subject = "Crea tu cuenta de Auphere" if locale == "es" else "Create your Auphere account"
-        link = f"{base}/signup/{token}"
-        body = f'<p><a href="{link}">{link}</a></p>'
-    else:
-        subject = "Ya tienes cuenta en Auphere" if locale == "es" else "You already have an account"
-        body = f'<p><a href="{base}/login">{base}/login</a></p>'
-    # ``send_email`` nunca lanza: devuelve False si no está configurado.
-    await send_email(to=email, subject=subject, html=body)
 
 
 @router.get("/{token}", response_model=SignupLookupOut)

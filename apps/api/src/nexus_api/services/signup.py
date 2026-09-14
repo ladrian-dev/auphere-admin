@@ -149,7 +149,37 @@ async def complete_signup(
 
     signup.status = SignupStatus.CONSUMED.value
     signup.consumed_at = now
+    # El rastro que pide R8.1: de esta solicitud salió ESTE partner. Sin esto,
+    # el panel enseña partners y no sabe cuáles llegaron sin que nadie mirara.
+    signup.partner_id = partner.id
     await session.flush()
 
     # NO se inserta nada en ``partner_subscriptions``: sin fila es Free.
     return SignupOutcome(partner=partner, membership=membership)
+
+
+async def send_signup_mail(*, email: str, token: str | None, locale: str = "es") -> None:
+    """Dos correos distintos, una sola respuesta HTTP.
+
+    Con ``token`` es el enlace del alta; sin él, la dirección ya tiene cuenta y
+    lo que llega es «ya tienes cuenta, entra por aquí». Quien llamó no puede
+    distinguir los dos casos: la diferencia sólo la ve quien abre el buzón, que
+    es precisamente el dueño de la dirección.
+
+    **Vive aquí y no en el router de la consola** desde que el panel de operador
+    puede reenviar el enlace (R8.2). Dos sitios que mandan el mismo correo con
+    dos plantillas distintas es cómo se empieza a tener dos productos.
+    """
+    from nexus_api.config import get_settings
+    from nexus_api.services.email import send_email
+
+    base = get_settings().console_base_url.rstrip("/")
+    if token is not None:
+        subject = "Crea tu cuenta de Auphere" if locale == "es" else "Create your Auphere account"
+        link = f"{base}/signup/{token}"
+        body = f'<p><a href="{link}">{link}</a></p>'
+    else:
+        subject = "Ya tienes cuenta en Auphere" if locale == "es" else "You already have an account"
+        body = f'<p><a href="{base}/login">{base}/login</a></p>'
+    # ``send_email`` nunca lanza: devuelve False si no está configurado.
+    await send_email(to=email, subject=subject, html=body)

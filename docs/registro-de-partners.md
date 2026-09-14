@@ -214,10 +214,51 @@ normal de un alta abandonada).
 > contrato de `tests/unit/test_bootstrap_split.py`. Olvidar el segundo abortó
 > dos despliegues (2026-09-11 y 2026-09-13).
 
-## 8 · Lo que todavía no está
+## 8 · Lo que ve el operador
 
-- **El panel de operador** (US4): ver los partners que entraron solos, reenviar
-  un enlace y suspender sin entrar en la VPC.
+Al abrir la puerta, el panel deja de ser donde se crean los partners y pasa a
+ser donde uno **se entera** de los que se crearon sin él. Eso es `/signups`.
+
+La tabla mezcla a propósito dos cosas que no son iguales —empresas ya nacidas y
+registros a medias—: separarlas en dos pantallas escondería justo la relación
+que el operador necesita ver.
+
+**La vía de entrada sale de `signup_requests.provider`, no de `partners`.** Lo
+que faltaba para R8.1 no era un atributo del partner sino saber *qué partner
+salió de qué solicitud*, y eso es una relación: `signup_requests.partner_id`
+(migración 0119). Se podría haber añadido `partners.created_via`; no se hace por
+lo mismo que no se le añade un tercer estado — esa tabla la lee media
+plataforma, y cada columna nueva es una que alguien tendrá que interpretar en
+sitios que hoy ni se sospechan. `ON DELETE SET NULL`: borrar un partner no borra
+el rastro de que alguien se registró.
+
+**`provider` nunca sale `null`.** En la base, nulo significa «con contraseña»;
+obligar a quien lee el panel a saber eso es trasladarle un detalle de
+almacenamiento. La API lo traduce a `password`.
+
+**El nivel es `free` cuando no hay fila en `partner_subscriptions`**, porque la
+ausencia de fila *es* Free (ADR-037), no la ausencia de un dato.
+
+### Las dos acciones, sin entrar en la VPC (R8.2)
+
+| | |
+|---|---|
+| **Suspender** | `PATCH /admin/partners/{id}` con `status`. **Ya existía**; no hizo falta nada. |
+| **Reenviar el enlace** | `POST /admin/signups/{id}/resend`. Esto era lo único que obligaba a abrir una consola dentro de la VPC. |
+
+Reemitir **mata el enlace anterior** — `create` revoca las pendientes de ese
+correo. Con dos vivos, reenviar duplicaría la superficie en vez de reemplazarla,
+y el enlace viejo seguiría abriendo una cuenta.
+
+Sólo sobre una solicitud **viva**: 409 si está consumida —ya tiene cuenta, y
+reenviarle un alta la mandaría a rehacer lo hecho— o caducada, porque resucitar
+un plazo desde el panel lo convierte en una sugerencia. En los dos casos el
+camino es que la persona vuelva a pedirlo. Queda rastro en auditoría
+(`signup.resend`): una acción de operador que manda un correo a un desconocido
+no puede no dejarlo.
+
+## 9 · Lo que todavía no está
+
 - **El archivado por inactividad** (180 días, R6.3–6.5). Necesita un tercer
   valor en `partners.status`, que hoy sólo admite `active` y `suspended` y se
   lee por toda la plataforma. Merece su propia pasada, no un añadido.

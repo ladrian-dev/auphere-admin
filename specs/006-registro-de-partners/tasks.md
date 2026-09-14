@@ -173,9 +173,16 @@ contención en falso.
 
 ## Phase 6 — Historia 4: lo que ve el operador (P2)
 
-- [ ] T045 [US4] **[TEST, en rojo]** Un partner creado por esta vía aparece en el panel con fecha, vía de entrada y nivel; un registro a medias se distingue de un partner activo. _Requisitos: 8.1, 8.2_
-- [ ] T046 [US4] Vista en `apps/admin` con los partners recién nacidos y las solicitudes pendientes. _Requisitos: 8.1_
-- [ ] T047 [US4] Reenviar enlace de verificación y suspender partner **sin ejecutar ningún script dentro de la VPC**. _Requisitos: 2.5, 8.2_
+- [X] T045 [US4] **[TEST, en rojo]** Un partner creado por esta vía aparece en el panel con fecha, vía de entrada y nivel; un registro a medias se distingue de un partner activo. _Requisitos: 8.1, 8.2_
+      **HECHO.** `tests/integration/test_admin_signups.py`, 9 pruebas. Rojo primero: las 9, incluidas las de 401 (la ruta daba 404, que es el rojo correcto).
+      **Encontró que el requisito no era satisfacible con los datos de entonces.** `partners` no guarda la vía de entrada y `signup_requests` no sabía qué partner había salido de ella. Se añadió `signup_requests.partner_id` (migración 0119) y **no** una columna en `partners`: esa tabla la lee media plataforma, igual que el motivo por el que no se toca `partners.status` en T051.
+      Cinco mutaciones: no atar la solicitud al partner → 2 rojos · `join` en vez de `outerjoin`, que hace desaparecer los registros a medias → 1 · la vía de entrada vuelve a ser `null` → 2 · el reenvío deja de mirar la caducidad → 1 · el nivel deja de caer a `free` → 2.
+- [X] T046 [US4] Vista en `apps/admin` con los partners recién nacidos y las solicitudes pendientes. _Requisitos: 8.1_
+      **HECHO.** `GET /admin/signups` en una sola consulta con `LEFT JOIN` a `partners` y `partner_subscriptions`, y la página `/signups` en el panel con sus cinco estados (skeleton, vacío, frontera de error, a medias, nacido). Una tabla y no dos pantallas: separar «empresas» de «registros a medias» escondería justo la relación que el operador necesita ver.
+      El criterio vive en `lib/signups.ts` —qué es «a medias», cómo se nombra una vía de entrada, qué se puede reenviar— con 9 pruebas propias y tres mutaciones comprobadas. Una tabla se mira; esto se comprueba.
+- [X] T047 [US4] Reenviar enlace de verificación y suspender partner **sin ejecutar ningún script dentro de la VPC**. _Requisitos: 2.5, 8.2_
+      **HECHO, y media tarea ya estaba hecha sin saberlo.** Suspender se podía desde antes: `PATCH /admin/partners/{id}` acepta `status: "suspended"`. Lo que faltaba era reenviar, que era lo único que obligaba a abrir una consola dentro de la VPC.
+      `POST /admin/signups/{id}/resend` reemite y **mata el enlace anterior** (`create` revoca las pendientes de ese correo): con dos vivos, reenviar duplicaría la superficie en vez de reemplazarla. Sólo sobre una solicitud viva — 409 si está consumida o caducada, porque resucitar un plazo desde el panel lo convierte en una sugerencia. Deja rastro en auditoría: una acción de operador que manda un correo a un desconocido no puede no dejarlo.
 - [X] T048 [US4] Comprobar que el alta por invitación existente sigue funcionando intacta: un partner atendido por el equipo no tiene por qué pasar por el formulario. _Requisitos: 8.3_
       **HECHO.** 43 pruebas de la consola, el repositorio de membresías y la identidad, en verde tras todos los cambios. El alta por invitación no se tocó: el alta autónoma **entra por esa misma puerta** (`accept()`), no por una paralela.
 
