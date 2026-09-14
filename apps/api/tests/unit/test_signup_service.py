@@ -20,7 +20,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import sqlalchemy as sa
-from nexus_api.services.signup import SignupBirthError, complete_signup
 
 from nexus_api.db.models import (
     InvitationStatus,
@@ -31,6 +30,7 @@ from nexus_api.db.models import (
     SignupRequest,
     SignupStatus,
 )
+from nexus_api.services.signup import SignupBirthError, complete_signup
 
 pytestmark = pytest.mark.asyncio
 

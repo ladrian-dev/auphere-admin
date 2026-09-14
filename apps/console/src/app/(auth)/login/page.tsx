@@ -5,6 +5,8 @@ import { getT } from "@/i18n/server";
 import { env } from "@/lib/env";
 import { resolvePrincipal } from "@/lib/principal";
 
+import { GoogleButton } from "../google-button";
+
 import { LoginForm } from "./login-form";
 
 export async function generateMetadata() {
@@ -26,6 +28,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <section className="flex flex-col gap-6">
       <h1 className="text-3xl font-semibold">{t("login.title")}</h1>
       <LoginForm redirectTo={redirectTo} />
+      <GoogleButton intent="login" />
       {/* Con el alta apagada NO hay enlace, ni gris ni con explicación: la
           ausencia se diseña (constitución §V). Quien no puede registrarse no
           tiene por qué enterarse de que existe un registro. */}

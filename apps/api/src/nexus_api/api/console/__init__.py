@@ -24,6 +24,7 @@ from nexus_api.api.console import (
     agents,
     audit,
     auth,
+    auth_google,
     billing,
     capabilities,
     channels,
@@ -74,6 +75,7 @@ router.include_router(audit.router)
 router.include_router(team.router)
 router.include_router(invitations.router)
 router.include_router(signup.router)
+router.include_router(auth_google.router)
 router.include_router(keys.router)
 router.include_router(billing.router)
 router.include_router(playground.router)

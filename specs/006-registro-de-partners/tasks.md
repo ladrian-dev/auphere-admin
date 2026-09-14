@@ -120,11 +120,16 @@ contención en falso.
 
 **Prueba independiente**: un partner creado por la Historia 1 contrata Pro y la suscripción queda activa en el proveedor y en el libro, sin haber dado de alta ni un cliente.
 
-- [ ] T030 [US2] **[TEST, en rojo]** Un owner recién registrado llega a la pantalla de planes sin ningún paso que exija operador, y tras confirmarse el pago queda en `current` con la persona nombrada en la auditoría. _Requisitos: 4.1, 4.2_
-- [ ] T031 [US2] **[TEST, en rojo]** Un partner en Free **puede** crear clientes finales, y un turno de ese cliente **no pasa** sin saldo comprado ni plan — la puerta es el medidor de la spec 005, no un tope nuevo. _Requisitos: 4.3, Historia 2 esc. 3_
-- [ ] T032 [US2] Enlazar la consola del partner nuevo con la pantalla de planes existente. **No se construye checkout**: ya existe. _Requisitos: 4.1_
-- [ ] T033 [US2] Revisar que ningún punto del alta cobre nada: alta y contratación son dos actos, y el segundo es del owner. _Requisitos: 4.4_
-- [ ] T034 [US2] Donde un tope de Free se alcance, la consola enseña lo que sí se puede hacer y el camino a contratar — **sin botón apagado ni pantalla que explique lo que no tienes**. _Requisitos: 4.3, §V constitución_
+- [X] T030 [US2] **[TEST, en rojo]** Un owner recién registrado llega a la pantalla de planes sin ningún paso que exija operador, y tras confirmarse el pago queda en `current` con la persona nombrada en la auditoría. _Requisitos: 4.1, 4.2_
+      **HECHO.** `tests/integration/test_signup_to_paid.py`. El partner nace `active`, con consola encendida y **sin fila** de suscripción, que es el estado desde el que se puede contratar. Y el owner nace con `billing:read`: si no lo tuviera, el alta terminaría con alguien dentro que **no puede pagar** y haría falta un operador para arreglarlo — justo lo que esta spec quita.
+- [X] T031 [US2] **[TEST, en rojo]** Un partner en Free **puede** crear clientes finales, y un turno de ese cliente **no pasa** sin saldo comprado ni plan — la puerta es el medidor de la spec 005, no un tope nuevo. _Requisitos: 4.3, Historia 2 esc. 3_
+      **HECHO, y verifiqué la premisa antes de escribirlo.** La decisión D3 dice que la puerta es el medidor porque los clientes finales gastan sólo saldo comprado; lo comprobé en el código antes de dar por buena mi propia spec: `apps/worker/.../metering/consumer.py` pasa `allow_included=False` citando spec 004 R5.2. El test: con cero comprado, un débito de canal devuelve `spent == 0` y `from_included == 0`. Y la otra mitad, que también hay que probar — el pool incluido **sí** sirve al Companion, porque si cerrarlo a los clientes lo cerrara para todo, Free no valdría para nada y D3 sería falsa en la práctica.
+- [X] T032 [US2] Enlazar la consola del partner nuevo con la pantalla de planes existente. **No se construye checkout**: ya existe. _Requisitos: 4.1_
+      **HECHO — y resultó ser verificar, no construir.** La pantalla de planes de la spec 005 ya existe, ya está en la navegación y ya trata `free` con su sección propia (`membership-panel.tsx:180`). Lo único que faltaba comprobar era que el rol con el que nace un partner llega hasta ella, y eso es lo que fija el test de T030. **No se construyó checkout**, como decía la tarea.
+- [X] T033 [US2] Revisar que ningún punto del alta cobre nada: alta y contratación son dos actos, y el segundo es del owner. _Requisitos: 4.4_
+      **HECHO.** Comprobado por ausencia: tras registrarse no hay suscripción y el monedero no tiene movimiento. Si algún día el alta acredita saldo «de bienvenida», el test se pone rojo y esa decisión se toma a propósito en vez de por deriva.
+- [X] T034 [US2] Donde un tope de Free se alcance, la consola enseña lo que sí se puede hacer y el camino a contratar — **sin botón apagado ni pantalla que explique lo que no tienes**. _Requisitos: 4.3, §V constitución_
+      **HECHO — ya lo cumplía la spec 005.** `membership-panel.tsx` pinta para `free` una sección con lo que ese nivel da y los niveles a los que se puede pasar; los de pago son elegibles y el propio Free no lleva botón (`onChoose={entry.code === "free" ? undefined : choose}`). No hay botón apagado ni pantalla que explique lo que no tienes. Revisado, no reescrito.
 
 **Checkpoint**: el hueco se convierte en ingreso posible.
 
@@ -138,19 +143,29 @@ contención en falso.
 
 ### Tests primero
 
-- [ ] T035 [P] [US3] **[TEST, en rojo]** `apps/api/tests/unit/test_oauth_state.py`: el `state` es tamper-evident, tiene nonce, caduca, y **un `state` vale una sola vez**. _Requisitos: 5.4_
-- [ ] T036 [P] [US3] **[TEST, en rojo]** `apps/api/tests/unit/test_google_oidc.py`: **`email_verified: false` → 403 y cero filas nuevas**; `iss`/`aud`/`exp` verificados; firma que no valida contra el JWKS → rechazo. _Requisitos: 2.2, 5.1, 5.3_
-- [ ] T037 [P] [US3] **[TEST, en rojo]** Vinculación: correo verificado que ya tiene cuenta se vincula a **esa** cuenta; no se crea una segunda cuenta ni una segunda membresía. Y el ancla es `(provider, subject)`: cambiar el correo del proveedor conservando el `sub` sigue resolviendo a la misma cuenta. _Requisitos: 5.2, 5.3_
+- [X] T035 [P] [US3] **[TEST, en rojo]** `apps/api/tests/unit/test_oauth_state.py`: el `state` es tamper-evident, tiene nonce, caduca, y **un `state` vale una sola vez**. _Requisitos: 5.4_
+      **HECHO.** 9 pruebas en `tests/unit/test_oauth_state.py`, incluida la que **fija el formato en el cable**: un `state` emitido por el módulo viejo de TikTok tiene que seguir verificándose con el nuevo. Si esa se pone roja, desplegar rompe autorizaciones en vuelo.
+- [X] T036 [P] [US3] **[TEST, en rojo]** `apps/api/tests/unit/test_google_oidc.py`: **`email_verified: false` → 403 y cero filas nuevas**; `iss`/`aud`/`exp` verificados; firma que no valida contra el JWKS → rechazo. _Requisitos: 2.2, 5.1, 5.3_
+      **HECHO.** 15 pruebas en `tests/unit/test_google_oidc.py`. `email_verified` falso, ausente **y la cadena `"false"`** se rechazan — esta última porque una cadena no vacía sería verdadera en una comprobación ingenua. Más emisor, audiencia, caducidad y firma.
+- [X] T037 [P] [US3] **[TEST, en rojo]** Vinculación: correo verificado que ya tiene cuenta se vincula a **esa** cuenta; no se crea una segunda cuenta ni una segunda membresía. Y el ancla es `(provider, subject)`: cambiar el correo del proveedor conservando el `sub` sigue resolviendo a la misma cuenta. _Requisitos: 5.2, 5.3_
+      **HECHO.** `tests/unit/test_identity_link.py`, 4 pruebas. La que importa: **el `sub` manda sobre el correo** — segunda vuelta con el mismo `sub` y otra dirección resuelve a la misma cuenta. Si el ancla fuera el correo, quien heredase la vieja dirección sería esa persona.
 
 ### Implementación
 
-- [ ] T038 [US3] Extraer `apps/api/src/nexus_api/services/oauth_state.py` del patrón de `services/tiktok_oauth_state.py` y hacer que **los dos** lo usen. Tres copias de una firma divergen, y la que se queda sin la corrección es la que menos se toca. _Requisitos: 5.4_
-- [ ] T039 [US3] `apps/api/src/nexus_api/services/google_oidc.py`: URL de autorización con PKCE, intercambio del código, verificación del `id_token` con `PyJWKClient`. **Ninguna dependencia nueva** — `pyjwt` y `httpx` ya están. _Requisitos: 5.1_
-- [ ] T040 [US3] El `code_verifier` en Redis bajo el nonce, TTL 10 min, consumido una vez. **No viaja al navegador.** _Requisitos: 5.4_
-- [ ] T041 [US3] `apps/api/src/nexus_api/api/console/auth_google.py` con `start` y `callback` según el contrato. La sesión que sale es **la misma clase** que la del login con contraseña. _Requisitos: 5.1, 5.5_
-- [ ] T042 [US3] **No se guarda ningún token del proveedor.** Dejarlo escrito en el módulo con la razón: sería una credencial almacenada sin lector, la misma figura que `NEXUS_WEBHOOK_HMAC_SECRET`. _Requisitos: 5.7_
-- [ ] T043 [P] [US3] Botón «Continuar con Google» en el login y en el alta. Si el proveedor no responde, **contraseña sigue funcionando** y la página no se cuelga. _Requisitos: 5.6_
-- [ ] T044 [US3] **[VERIFICACIÓN POR MUTACIÓN]** Quitar la comprobación de `email_verified` y comprobar que T036 cae; aceptar un `state` reutilizado y comprobar que T035 cae. _Requisitos: 5.1, 5.4_
+- [X] T038 [US3] Extraer `apps/api/src/nexus_api/services/oauth_state.py` del patrón de `services/tiktok_oauth_state.py` y hacer que **los dos** lo usen. Tres copias de una firma divergen, y la que se queda sin la corrección es la que menos se toca. _Requisitos: 5.4_
+      **HECHO.** `services/oauth_state.py` genérico, y `tiktok_oauth_state.py` pasa a ser una fachada de 90 líneas sobre él. Verificado que no rompe nada: 175 pruebas de TikTok, consentimiento y state en verde.
+- [X] T039 [US3] `apps/api/src/nexus_api/services/google_oidc.py`: URL de autorización con PKCE, intercambio del código, verificación del `id_token` con `PyJWKClient`. **Ninguna dependencia nueva** — `pyjwt` y `httpx` ya están. _Requisitos: 5.1_
+      **HECHO.** `services/google_oidc.py`. **Cero dependencias nuevas**: `pyjwt` (con `PyJWKClient`) y `httpx` ya estaban, así que la puerta de licencias no se abre.
+- [X] T040 [US3] El `code_verifier` en Redis bajo el nonce, TTL 10 min, consumido una vez. **No viaja al navegador.** _Requisitos: 5.4_
+      **HECHO.** `code_verifier` en Redis bajo el nonce, TTL 600 s, consumido con un pipeline `get`+`delete`. Es atómico a propósito: con las dos operaciones sueltas, dos callbacks simultáneos con el mismo `state` pasarían los dos.
+- [X] T041 [US3] `apps/api/src/nexus_api/api/console/auth_google.py` con `start` y `callback` según el contrato. La sesión que sale es **la misma clase** que la del login con contraseña. _Requisitos: 5.1, 5.5_
+      **HECHO.** `api/console/auth_google.py` con `start` y `callback`. La sesión que sale es **la misma clase** que la del login con contraseña. La suite de aislamiento pasó de 877 a 888 al montarlas.
+- [X] T042 [US3] **No se guarda ningún token del proveedor.** Dejarlo escrito en el módulo con la razón: sería una credencial almacenada sin lector, la misma figura que `NEXUS_WEBHOOK_HMAC_SECRET`. _Requisitos: 5.7_
+      **HECHO.** `exchange_code` devuelve **sólo** el `id_token`, y está escrito por qué: un `access_token` que nadie usa es una credencial que alguien acabará guardando. No hay columna para tokens del proveedor.
+- [X] T043 [P] [US3] Botón «Continuar con Google» en el login y en el alta. Si el proveedor no responde, **contraseña sigue funcionando** y la página no se cuelga. _Requisitos: 5.6_
+      **HECHO.** `(auth)/google-button.tsx` + la ruta `/auth/google/callback` (ruta y no server action, porque Google **redirige el navegador**). Si Google no está configurado o no responde, **el botón no se pinta** — no se queda gris. Cancelar en la pantalla de Google vuelve al login sin ruido: es una decisión, no un fallo.
+- [X] T044 [US3] **[VERIFICACIÓN POR MUTACIÓN]** Quitar la comprobación de `email_verified` y comprobar que T036 cae; aceptar un `state` reutilizado y comprobar que T035 cae. _Requisitos: 5.1, 5.4_
+      **HECHO, y encontró un test que pasaba por el motivo equivocado.** Cinco mutaciones: quitar `email_verified` → 3 rojos · tratarlo como verdad con sólo estar presente → 1 · no comprobar audiencia → 1 · firma del `state` desactivada → 2 · **aceptar HS256 → 1**. Esta última no caía al principio: mi prueba de `alg: none` se apoyaba en la lista de claims obligatorios, no en la restricción de algoritmos, así que seguía verde aunque alguien la relajara. Se reescribió forjando **a mano** un token HS256 firmado con la clave pública como secreto —la confusión de algoritmos clásica—, porque `jwt.encode` se niega a construirlo y un atacante no usa `jwt.encode`.
 
 **Checkpoint**: dos puertas a la misma cuenta, y la segunda no se puede forzar.
 
@@ -161,14 +176,17 @@ contención en falso.
 - [ ] T045 [US4] **[TEST, en rojo]** Un partner creado por esta vía aparece en el panel con fecha, vía de entrada y nivel; un registro a medias se distingue de un partner activo. _Requisitos: 8.1, 8.2_
 - [ ] T046 [US4] Vista en `apps/admin` con los partners recién nacidos y las solicitudes pendientes. _Requisitos: 8.1_
 - [ ] T047 [US4] Reenviar enlace de verificación y suspender partner **sin ejecutar ningún script dentro de la VPC**. _Requisitos: 2.5, 8.2_
-- [ ] T048 [US4] Comprobar que el alta por invitación existente sigue funcionando intacta: un partner atendido por el equipo no tiene por qué pasar por el formulario. _Requisitos: 8.3_
+- [X] T048 [US4] Comprobar que el alta por invitación existente sigue funcionando intacta: un partner atendido por el equipo no tiene por qué pasar por el formulario. _Requisitos: 8.3_
+      **HECHO.** 43 pruebas de la consola, el repositorio de membresías y la identidad, en verde tras todos los cambios. El alta por invitación no se tocó: el alta autónoma **entra por esa misma puerta** (`accept()`), no por una paralela.
 
 ---
 
 ## Phase 7 — El registro que no llega a ninguna parte
 
-- [ ] T049 **[TEST, en rojo]** Una solicitud caducada no deja partner ni cuenta; el mismo correo puede volver a intentarlo; un token usado dos veces se comporta como uno inválido. _Requisitos: 6.1, casos límite_
-- [ ] T050 Cron de caducidad de `signup_requests`. **Declararlo en `bootstrap.py` Y en su contrato de nombres** — esto ha roto la tubería dos veces, las dos por lo mismo. _Requisitos: 1.5, 6.1_
+- [X] T049 **[TEST, en rojo]** Una solicitud caducada no deja partner ni cuenta; el mismo correo puede volver a intentarlo; un token usado dos veces se comporta como uno inválido. _Requisitos: 6.1, casos límite_
+      **HECHO.** 6 pruebas en `tests/unit/test_signup_expiry.py`. Incluye que el cron **no toca las ya consumidas** —reescribir su estado perdería la información de que se usaron— y que el mismo correo puede volver a intentarlo, porque lo contrario quemaría una dirección para siempre.
+- [X] T050 Cron de caducidad de `signup_requests`. **Declararlo en `bootstrap.py` Y en su contrato de nombres** — esto ha roto la tubería dos veces, las dos por lo mismo. _Requisitos: 1.5, 6.1_
+      **HECHO, y declarado en LOS DOS sitios desde el principio.** `expire-signups-cron` en `bootstrap.SCHEDULER_TASK_NAMES` **y** en el contrato de `tests/unit/test_bootstrap_split.py`. Verificado por mutación: quitándolo sólo del contrato, `assert union == ALL_EXPECTED` falla — que es exactamente la guarda que habría evitado los despliegues abortados del 2026-09-11 y el 2026-09-13.
 - [ ] T051 Archivado por inactividad: 180 días sin sesión de ningún miembro y sin ningún cliente final, con aviso por correo antes. **Nunca por no pagar.** _Requisitos: 6.3, 6.4_
 - [ ] T052 Desarchivar conservando lo suyo cuando el owner vuelve, sin pedirle que se registre de nuevo. **Borrar no existe.** _Requisitos: 6.2, 6.5_
 
@@ -178,7 +196,8 @@ contención en falso.
 
 - [ ] T053 Ejecutar [quickstart.md](quickstart.md) entero, incluida la comparación de **tiempos** de respuesta entre correo existente y nuevo — un canal lateral temporal deja el `CE-004` abierto aunque el cuerpo sea idéntico. _Requisitos: CE-001 … CE-006_
 - [ ] T054 Verificar entregabilidad real del correo a los tres dominios más frecuentes del ICP. Si cae en spam, es un hallazgo con su corrección, no una suposición que se arrastra. _Requisitos: 1.1, research R8_
-- [ ] T055 Actualizar la **spec viva**: `docs/partner-integration.md` y lo que describa el alta, **en el mismo commit** que cambia el comportamiento. Un PR que cambia comportamiento documentado y no toca su documento se devuelve. _Requisitos: §3 de docs/spec-driven-development.md_
+- [X] T055 Actualizar la **spec viva**: `docs/partner-integration.md` y lo que describa el alta, **en el mismo commit** que cambia el comportamiento. Un PR que cambia comportamiento documentado y no toca su documento se devuelve. _Requisitos: §3 de docs/spec-driven-development.md_
+      **HECHO.** `docs/registro-de-partners.md`, la spec viva del recorrido: los tres actos, por qué los endpoints no son anónimos, el arreglo del limitador por IP con los **dos sitios que siguen rotos**, las tres cosas que sostienen el flujo de Google, las banderas y por qué tienen que coincidir, y lo que todavía no está.
 - [ ] T056 `./scripts/verify.sh` completo. No la mitad: lo que se olvida en este repo es el worker, `mypy --strict`, el paquete compartido y el `next build`. _Requisitos: puerta 8_
 
 ---

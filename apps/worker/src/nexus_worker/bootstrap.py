@@ -60,6 +60,7 @@ from nexus_worker.runtime.checkpointer import postgres_checkpointer
 from nexus_worker.runtime.llm import LiteLLMProvider, build_default_router
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
+from nexus_worker.signup.expire_signups_cron import run_expire_signups_cron
 from nexus_worker.streams.agent_sales_poll_cron import run_agent_sales_poll_cron
 from nexus_worker.streams.async_booking_cron import run_async_booking_cron
 from nexus_worker.streams.checkpoint_retention_cron import run_checkpoint_retention_cron
@@ -141,6 +142,8 @@ SCHEDULER_TASK_NAMES = frozenset(
         "wallet-renewal-cron",
         # Spec 005: caduca el crédito comprado doce meses después de una baja.
         "expire-credit-cron",
+        # Spec 006: barre las solicitudes de alta que nadie llegó a usar.
+        "expire-signups-cron",
         "isolation-event-drainer",
         "no-show-scrape-cron",
         "cost-rollup-cron",
@@ -448,6 +451,7 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         _spawn("wallet-renewal-cron", run_wallet_renewal_cron(stop=ctx.stop)),
         _spawn("expire-credit-cron", run_expire_credit_cron(stop=ctx.stop)),
+        _spawn("expire-signups-cron", run_expire_signups_cron(stop=ctx.stop)),
         _spawn("isolation-event-drainer", isolation_event_drainer(ctx.stop)),
         _spawn(
             "no-show-scrape-cron",

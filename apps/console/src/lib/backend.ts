@@ -119,6 +119,13 @@ async function request<T>(token: string, path: string, opts: Opts = {}): Promise
 
 // ── response types (mirror api/console/schemas.py — metadata only) ─────
 
+export type GoogleCallback = {
+  outcome: "session" | "signup_pending";
+  session_token?: string | null;
+  expires_at?: string | null;
+  signup_token?: string | null;
+};
+
 export type SignupLookup = {
   email: string;
   provider: "google" | null;
@@ -514,6 +521,20 @@ export const consoleService = {
       method: "POST",
       body,
     })) as SignupCompleted;
+  },
+  async googleStart(intent: "login" | "signup"): Promise<{ authorization_url: string }> {
+    const t = await mintServiceToken();
+    return (await request<{ authorization_url: string }>(t, "/console/auth/google/start", {
+      method: "POST",
+      body: { intent },
+    })) as { authorization_url: string };
+  },
+  async googleCallback(body: { code: string; state: string }): Promise<GoogleCallback> {
+    const t = await mintServiceToken();
+    return (await request<GoogleCallback>(t, "/console/auth/google/callback", {
+      method: "POST",
+      body,
+    })) as GoogleCallback;
   },
   async logout(token: string): Promise<void> {
     const t = await mintServiceToken();

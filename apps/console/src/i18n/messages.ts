@@ -96,6 +96,11 @@ const core = {
 
   // auth
   "login.noAccount": { es: "¿No tienes cuenta? Crea una.", en: "No account? Create one." },
+  "auth.google": { es: "Continuar con Google", en: "Continue with Google" },
+  "auth.google.unverified": {
+    es: "Google no confirma que ese correo sea tuyo. Verifícalo en tu cuenta de Google y vuelve.",
+    en: "Google does not confirm that address is yours. Verify it in your Google account and come back.",
+  },
   "signup.title": { es: "Crea tu cuenta.", en: "Create your account." },
   "signup.body": {
     es: "Te mandamos un enlace para confirmar que el correo es tuyo.",

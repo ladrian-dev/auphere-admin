@@ -4,6 +4,8 @@ import { getT } from "@/i18n/server";
 import { env } from "@/lib/env";
 import { resolvePrincipal } from "@/lib/principal";
 
+import { GoogleButton } from "../google-button";
+
 import { SignupForm } from "./signup-form";
 
 export async function generateMetadata() {
@@ -32,6 +34,7 @@ export default async function SignupPage() {
         <p className="text-pretty text-muted-foreground">{t("signup.body")}</p>
       </div>
       <SignupForm />
+      <GoogleButton intent="signup" />
     </section>
   );
 }
