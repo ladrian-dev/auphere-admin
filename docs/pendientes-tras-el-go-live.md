@@ -88,6 +88,13 @@ actualización automática queda rota para una de las dos.
 No afecta a instalar, sólo a actualizarse después. Arreglo: cambiar el glob a
 `latest-mac*.yml`, que cubre los dos casos y no rompe nada si sólo hay uno.
 
+> **Comprobado el 2026-09-15 con la publicación real: NO aplica.**
+> `electron-builder` 26 generó **un solo** `latest-mac.yml`, y ese índice lista
+> las cuatro entradas —los dos `.zip` y los dos `.dmg`, con y sin sufijo
+> `-arm64`—, así que `electron-updater` elige la suya. El glob defensivo sigue
+> mereciendo la pena por si una versión futura cambia de criterio, pero deja de
+> ser urgente. Lo que **sí** sigue pendiente es (a), el `minimumSystemVersion`.
+
 #### Qué mirar en la primera ejecución, para no repetirla
 
 1. **Qué ficheros dejó el build**: en los logs del trabajo, `ls apps/desktop/dist`.

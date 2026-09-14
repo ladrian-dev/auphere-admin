@@ -384,11 +384,13 @@ canal esté descrito en el repositorio y no en la memoria de alguien.
 - **Telemetría de instalación.** Si hace falta, es una spec con su propia
   conversación sobre qué se recoge.
 - **Actualizaciones diferenciales.** El paquete completo basta a este tamaño.
-- **El icono de la aplicación.** El assessment lo listaba **dentro** del alcance;
-  aquí queda fuera y conviene decir por qué, porque es un desacuerdo entre
-  documentos y no un olvido: es trabajo de diseño, no bloquea la cadena, y
-  meterlo dentro haría que una decisión estética pudiera retrasar la beta. La
-  aplicación se publica con el icono que tenga.
+- ~~**El icono de la aplicación.**~~ **Se hizo aparte el 2026-09-15**, después
+  de la primera publicación y fuera de esta spec, al ver que la app salía con el
+  átomo de Electron. La razón para dejarlo fuera seguía siendo buena —es trabajo
+  de diseño y no bloquea la cadena—, y por eso fue un commit propio en vez de
+  reabrir una spec implementada y verificada. Está en
+  `apps/desktop/build/icon.icns`; `electron-builder` lo coge por convención
+  desde `buildResources`, sin declarar nada en la configuración.
 - **Migrar la identidad de firma al equipo de Auphere.** Decidido aparte; esta
   spec deja escrito el coste de hacerlo.
 
