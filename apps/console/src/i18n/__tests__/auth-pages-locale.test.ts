@@ -29,6 +29,14 @@ import { describe, expect, it } from "vitest";
 const AUTH_DIR = join(import.meta.dirname, "..", "..", "app", "(auth)");
 
 
+function filesUnder(dir: string, suffix: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) return filesUnder(full, suffix);
+    return entry.endsWith(suffix) ? [full] : [];
+  });
+}
+
 function pagesUnder(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const full = join(dir, entry);
@@ -53,6 +61,39 @@ describe("las páginas de (auth)", () => {
         hardcoded,
         `fija el idioma con ${hardcoded?.[0]}: la mitad servidor quedaría en un ` +
           `idioma y la mitad cliente en otro. Usa getT() sin argumento.`,
+      ).toBeNull();
+    },
+  );
+});
+
+/**
+ * La misma regla, un escalón más abajo.
+ *
+ * `/signup` se veía en inglés y el correo llegaba en español: el formulario
+ * mandaba `locale: "es"` literal a la acción de servidor. Visto en staging el
+ * 2026-09-14, con el asunto «Crea tu cuenta de Auphere» debajo de una página
+ * que decía «Create your account.».
+ *
+ * Es el mismo fallo que `getT("es")` y por eso vive en el mismo fichero: **una
+ * mitad del producto decidiendo el idioma por su cuenta**. El idioma sale del
+ * `LocaleProvider`, que es quien ya lo resolvió bien una vez.
+ */
+describe("los componentes de (auth)", () => {
+  const componentes = filesUnder(AUTH_DIR, ".tsx");
+
+  it("hay componentes que comprobar", () => {
+    expect(componentes.length).toBeGreaterThan(0);
+  });
+
+  it.each(componentes.map((p) => [p.slice(p.indexOf("(auth)")).split("\\").join("/"), p] as const))(
+    "%s no fija el idioma del correo a mano",
+    (_label, path) => {
+      const src = readFileSync(path, "utf8");
+      const hardcoded = src.match(/locale:\s*["'](es|en)["']/g);
+      expect(
+        hardcoded,
+        `manda ${hardcoded?.[0]} literal: el correo saldría en un idioma y la ` +
+          `página en otro. Usa useLocale().`,
       ).toBeNull();
     },
   );

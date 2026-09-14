@@ -324,8 +324,23 @@ no puede no dejarlo.
 
 ## 9 · Lo que todavía no está
 
-- **El archivado por inactividad** (180 días, R6.3–6.5). Necesita un tercer
-  valor en `partners.status`, que hoy sólo admite `active` y `suspended` y se
-  lee por toda la plataforma. Merece su propia pasada, no un añadido.
-- **El paso por staging** del recorrido completo, con la comparación de tiempos
-  de respuesta entre correo existente y nuevo.
+**El archivado por inactividad** (180 días, R6.3–6.5). Necesita un tercer valor
+en `partners.status`, que hoy sólo admite `active` y `suspended` y se lee por
+toda la plataforma. Merece su propia pasada, no un añadido.
+
+**Dos medidas que un navegador no puede tomar**, y conviene decir por qué en vez
+de dejarlas como «pendientes» sin más:
+
+- **La denegación en ráfaga del limitador.** `core/rate_limit.allow()` es un
+  token bucket donde `per_minute` es también la capacidad, así que a 3/min se
+  repone una ficha cada 20 s. Entre clic y clic de un formulario pasa más tiempo
+  del que tarda el cubo en recuperarse, así que **no se puede provocar una
+  ráfaga desde un navegador**. Lo que sí quedó comprobado en staging: 11 logins
+  desde una IP → 11 `401`, ninguno `429`. A ritmo normal no echa a nadie.
+- **La comparación de tiempos de `CE-004`.** Pide 20 peticiones de cada caso y
+  comparar medianas; el ruido del navegador y de la red tapa justo el canal
+  lateral que se quiere medir.
+
+Las dos piden un script contra la consola. Mientras no exista, `CE-004` está
+cerrado **por cuerpo** —comprobado idéntico byte a byte— y abierto **por
+tiempo**.

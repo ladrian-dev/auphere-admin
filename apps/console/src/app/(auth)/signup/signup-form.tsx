@@ -9,7 +9,7 @@ import { z } from "zod";
 
 import { Button, Form, FormControl, FormField, FormItem, FormLabel, FormMessage, Input } from "@nexus/ui";
 
-import { useT } from "@/i18n/client";
+import { useLocale, useT } from "@/i18n/client";
 import { signUpAction } from "@/lib/auth-actions";
 
 type Values = { email: string };
@@ -24,6 +24,9 @@ type Values = { email: string };
  */
 export function SignupForm() {
   const t = useT();
+  // El idioma del correo es el de quien lo va a leer, no un literal: la
+  // página se veía en inglés y el asunto llegaba en español.
+  const locale = useLocale();
   const [pending, startTransition] = React.useTransition();
   const [sent, setSent] = React.useState(false);
   const schema = React.useMemo(
@@ -34,7 +37,7 @@ export function SignupForm() {
 
   function submit(values: Values) {
     startTransition(async () => {
-      const result = await signUpAction({ email: values.email, locale: "es" });
+      const result = await signUpAction({ email: values.email, locale });
       if (!result.ok) {
         // `disabled` no se enseña como error de formulario: la página no
         // debería existir si la bandera está apagada, así que llegar aquí es
