@@ -97,6 +97,22 @@ const core = {
   // auth
   "login.noAccount": { es: "¿No tienes cuenta? Crea una.", en: "No account? Create one." },
   "auth.google": { es: "Continuar con Google", en: "Continue with Google" },
+  // Spec 009 — el código que lleva la sesión a la app de escritorio. La frase
+  // que importa es la segunda: quien llega aquí no sabe por qué no está ya
+  // dentro de la aplicación.
+  "desktopCode.what": {
+    es: "Ya has entrado. Escribe este código en la barra de la aplicación de escritorio para entrar también allí.",
+    en: "You are in. Type this code into the bar of the desktop app to sign in there too.",
+  },
+  "desktopCode.aria": { es: "Código para la aplicación de escritorio", en: "Code for the desktop app" },
+  "desktopCode.expiry": {
+    es: "Caduca en 10 minutos y sirve una sola vez. Si se te pasa, vuelve a entrar y te damos otro.",
+    en: "It expires in 10 minutes and works once. If it lapses, sign in again for a new one.",
+  },
+  "desktopCode.failed": {
+    es: "No se pudo generar el código. Vuelve a intentarlo desde la aplicación.",
+    en: "The code could not be generated. Try again from the app.",
+  },
   "auth.google.unverified": {
     es: "Google no confirma que ese correo sea tuyo. Verifícalo en tu cuenta de Google y vuelve.",
     en: "Google does not confirm that address is yours. Verify it in your Google account and come back.",

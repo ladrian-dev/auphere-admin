@@ -33,8 +33,35 @@ encontrados al usar la primera versión publicada (v0.1.0) instalada.
 
 - Q: ¿El código de un solo uso sirve sólo para terminar un inicio de sesión con Google, o es el camino general para traer cualquier sesión de la consola a la aplicación? → A: **Sólo Google.** La consola enseña el código únicamente al volver del callback; entrar con correo y contraseña sigue funcionando dentro de la cáscara y no se toca.
 - Q: Cuando alguien teclea el código en la barra, ¿qué queda exactamente dentro de la aplicación: una sesión nueva y propia, o una copia de la que ya tiene abierta en el navegador? → A: **Una sesión nueva y propia**, acuñada por el mismo camino por el que la consola ya emite sesiones, con su propia caducidad. Las dos sesiones son independientes.
-- Q: Si alguien lee el código en una pantalla ajena y lo teclea en su propia máquina antes de que caduque, ¿debe funcionarle? → A: **No. El código queda atado a la máquina que lo pidió**, con la misma huella que el emparejamiento ya manda (hostname + plataforma).
+- Q: Si alguien lee el código en una pantalla ajena y lo teclea en su propia máquina antes de que caduque, ¿debe funcionarle? → A: ~~No, atado a la máquina~~ → **ENMENDADO el 2026-09-15 durante la implementación: no se ata.** La respuesta original se dio sobre una premisa falsa — ver «Enmienda» abajo.
 - Q: La constitución §IX exige citar la nota de KB que justifica la spec, y no existe. ¿Qué hacemos con ese hueco? → A: **Escribir un ADR corto en la KB.** Hecho: `[[ADR-039-volver-y-entrar-desde-la-app-de-escritorio]]`, con la decisión, las alternativas descartadas y su razón.
+
+### Enmienda del 2026-09-15 · el código no se ata a la máquina
+
+**Q2 se decidió con una premisa falsa y se corrige, no se ajusta en silencio.**
+
+La premisa era que «la máquina que lo pidió» es un dato conocido en el momento
+de emitir. No lo es. Quien pide el código es el **navegador del sistema**, al
+volver de Google, y el navegador no sabe el `hostname` del Mac donde corre la
+aplicación. No hay nada que atar.
+
+El camino para que lo supiera está cerrado a propósito: la consola tendría que
+preguntárselo a la cáscara antes de redirigir a Google, y **la vista de la
+consola no tiene `preload`** — que es la garantía entera de la spec 002. Abrirlo
+para esto costaría más de lo que protege.
+
+**Lo que queda protegiendo el código**, y es lo mismo que protege al de
+emparejamiento de máquinas, que tampoco ata: vive **diez minutos**, sirve **una
+vez**, y sólo aparece en la pantalla de quien **acaba de autenticarse con
+Google**. Un rechazo sigue sin contar por qué.
+
+**Lo que se pierde**: el caso de la pantalla compartida. Alguien que lea el
+código de una pantalla ajena y lo teclee dentro de la ventana, entra. Queda
+dicho aquí para que sea una decisión y no un olvido.
+
+Se descartó también atar a la cáscara por el `user-agent` (`AuphereDesktop/`):
+sabe **que** es el escritorio, no **cuál**, así que no cierra ese caso y sí
+añade una comprobación que parecería protegerlo.
 
 ## Estado real, contrastado el 2026-09-15
 
@@ -111,8 +138,9 @@ consola, se entra en la aplicación de punta a punta.
 ### Casos límite
 
 - **El código se teclea en otra máquina.** Alguien lee el código de una pantalla
-  compartida y lo escribe en su propio portátil. **Cerrado el 2026-09-15: se
-  rechaza** (R5.3), porque el código va atado a la máquina que lo pidió.
+  compartida y lo escribe en su propio portátil. **Enmendado el 2026-09-15:
+  entra.** No se ata, porque no hay a qué atarlo. Lo que lo acota es la ventana
+  de diez minutos y el uso único, y el canje queda registrado (R5.3).
 - **La persona ya tiene sesión de otra cuenta en la cáscara** cuando canjea un
   código de una cuenta distinta.
 - **Google no está disponible** (`googleStartAction` devuelve nada). Hoy el botón
@@ -230,11 +258,11 @@ intención.
 1. Un código NO DEBE conceder más permisos que los de la persona que lo pidió.
 2. Un código NO DEBE poder usarse para entrar como otra persona: lo que se canjea
    es **la sesión de quien lo pidió**, y eso DEBE comprobarse en el servidor.
-3. IF el código se canjea desde una máquina distinta de la que lo pidió THEN el
-   sistema DEBE rechazarlo, y DEBE responder lo mismo que ante un código
-   caducado o inexistente (R4.5): quien prueba no aprende por qué falló.
-   *La huella de máquina es la que el emparejamiento ya manda —`hostname` y
-   plataforma—; no se inventa una nueva ni se recoge nada más.*
+3. WHEN un código se canjea THEN el sistema DEBE **registrar desde dónde** —la
+   máquina y su dirección— aunque no lo exija. *Enmendado el 2026-09-15: el
+   código **no** se ata a la máquina (ver «Enmienda»). Lo que queda es dejar
+   rastro, que es lo que permite mirar atrás si algo va mal; impedirlo exigiría
+   un dato que el navegador no tiene.*
 4. El código NO DEBE viajar nunca a la plataforma en claro en un registro, una
    traza ni un mensaje de error.
 5. WHEN un código se canjea THEN la auditoría DEBE nombrar a la **persona** y la
@@ -295,8 +323,9 @@ intención.
 - **Diez minutos de vida y ocho caracteres** se heredan del emparejamiento sin
   discutirlos: dos ventanas distintas para dos códigos que se teclean igual sería
   una diferencia que nadie podría explicar.
-- **La huella de máquina no recoge nada nuevo.** Se usa la que el emparejamiento
-  ya manda (`hostname` y plataforma). Esta spec no añade telemetría.
+- **Esta spec no recoge ningún dato nuevo de la máquina.** Tras la enmienda del
+  2026-09-15 no hay huella que comparar; lo que se registra al canjear es lo que
+  `principal_sessions` ya guarda de cualquier sesión: `ip` y `user_agent`.
 - Entrar con correo y contraseña **sigue funcionando como hoy** y no se toca.
 
 ## Preguntas abiertas
@@ -311,9 +340,12 @@ el servidor, y la que deja la auditoría pudiendo nombrar qué máquina hizo qu�
 Copiar el secreto habría sido más barato y habría convertido cada revocación en
 una conversación. Recogido en R4.1–R4.3.
 
-### ~~Q2 — ¿el código queda atado a la máquina que lo pide?~~ RESUELTA
+### ~~Q2 — ¿el código queda atado a la máquina que lo pide?~~ RESUELTA, Y DESPUÉS ENMENDADA
 
-**Decidido el 2026-09-15: sí, atado** (opción B). Con Q1 ya decidido la máquina
+**Decidido el 2026-09-15: sí, atado** (opción B). **Y enmendado el mismo día, al
+implementarlo: NO se ata** (opción A). Ver «Enmienda» arriba — la premisa de la
+respuesta original era falsa. Lo de abajo se conserva para que el cambio de
+opinión tenga su historia: Con Q1 ya decidido la máquina
 deja de ser un dato incidental —la sesión que se acuña **es de esa máquina**—, así
 que atarlo es coherente con lo que se va a construir y no pide un mecanismo
 nuevo: la huella es la que el emparejamiento ya manda.

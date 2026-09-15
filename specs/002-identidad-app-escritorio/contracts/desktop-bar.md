@@ -1,5 +1,15 @@
 # Contrato — la barra del puesto: estados, `preload` mínimo y almacén
 
+> **Enmendado el 2026-09-15 por la spec 009**: el `preload` pasa de **seis a
+> ocho** — `showApp` con la Historia 1 y `redeemCode` con la Historia 2 — y
+> `BarAction` de cuatro a cinco con `volver_a_la_app`. La razón, con el
+> precedente en contra que hubo que argumentar, está en
+> [`specs/009-volver-y-entrar-desde-la-app/contracts/bar-preload.md`](../../009-volver-y-entrar-desde-la-app/contracts/bar-preload.md).
+>
+> **Lo que no cambia**: la lista sigue cerrada y declarada aquí, la vista de la
+> consola sigue sin `preload`, y ninguna función toca `login`, `session`,
+> `cookie` ni `token`.
+
 La única superficie propia de la aplicación (R12). Vive en su propia
 `WebContentsView`, partición `auphere-bar` (no persistente), con un `preload`
 que la vista de la consola **no tiene**.
@@ -14,6 +24,9 @@ window.auphere = {
   unpair(): Promise<void>;                      // olvida la credencial; archivar es de la consola
   pickDirectory(clientRef: string): Promise<void>; // selector nativo + cuatro validaciones + declarar
   openInBrowser(url: string): Promise<void>;    // solo URLs del origen de la consola
+  // ── enmienda de la spec 009 ──────────────────────────────────────────────
+  showApp(): Promise<void>;                     // vuelve a la pantalla del equipo
+  redeemCode(code: string): Promise<void>;      // canjea el código; el resultado llega por onState
 };
 ```
 

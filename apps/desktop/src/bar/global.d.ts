@@ -24,6 +24,8 @@ type BarState = {
   /** Spec 008: qué versión exige la plataforma cuando rechaza la actual. */
   requiredVersion?: string;
   locale?: "es" | "en";
+  /** Spec 009: qué superficie se ve. Ausente = la pantalla del equipo. */
+  surface?: "console";
 };
 
 interface Window {
@@ -34,5 +36,9 @@ interface Window {
     unpair(): Promise<void>;
     pickDirectory(clientRef: string): Promise<void>;
     openInBrowser(url: string): Promise<void>;
+    /** Spec 009: vuelve a la pantalla del equipo. No acepta a dónde ir. */
+    showApp(): Promise<void>;
+    /** Spec 009: canjea el código de sesión. El resultado llega por onState. */
+    redeemCode(code: string): Promise<void>;
   };
 }

@@ -50,19 +50,24 @@ misma hoja de la misma barra sería una diferencia que nadie podría explicar.
 **máquina** y emite una credencial de dispositivo. Aquí se ata una **persona** y se
 emite una sesión. Misma cerradura, llave distinta.
 
-## D4 · La huella de máquina que ya viaja
+## D4 · ~~La huella de máquina~~ · RETIRADA el 2026-09-15, al implementarla
 
-**Decisión**: para atar el código (Q2 / R5.3) se usa `hostname` + plataforma, que
-es lo que `HttpTransport.pair()` ya manda en el canje de emparejamiento.
+**Decisión original**: atar el código con `hostname` + plataforma, la huella que
+`HttpTransport.pair()` ya manda.
 
-**Fundamento**: `main.ts:197` construye `machine: { hostname: osHostname(), platform }`
-y el runtime lo pasa en cada `pair`. No hay que recoger nada nuevo, que es lo que
-convierte «atar el código» en una comprobación y no en una recogida de datos.
+**Por qué no se puede**: el código lo pide el **navegador del sistema** al volver
+de Google, y el navegador no conoce el `hostname` del Mac donde corre la
+aplicación. Esta investigación dio por hecho que «la máquina que lo pidió» era un
+dato disponible al emitir, y no lo es. Se vio al escribir la pantalla, no antes.
 
-**Riesgo anotado**: `hostname` no es único ni infalsificable. No pretende serlo:
-cierra el caso de la pantalla compartida (alguien que lee el código y lo teclea en
-**su** portátil), no el de un atacante que ya controla la máquina de la víctima —
-ése ya perdió antes de llegar aquí.
+**Descartado también**: que la consola pidiera la etiqueta a la cáscara antes de
+redirigir a Google. Exigiría darle un `preload` a la vista de la consola, que es
+la garantía que sostiene la spec 002.
+
+**Lo que queda protegiendo el código**: diez minutos, un solo uso, y que sólo
+aparece en la pantalla de quien acaba de autenticarse. El mismo modelo que el
+código de emparejamiento, que tampoco ata. Enmienda completa en
+[`spec.md`](spec.md) y en `[[ADR-039…]]`.
 
 ## D5 · Cómo llega el código a la barra sin romper el test que prohíbe `session`
 

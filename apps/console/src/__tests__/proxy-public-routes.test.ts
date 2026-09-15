@@ -38,6 +38,10 @@ describe("lo que un desconocido tiene que poder abrir", () => {
     ["/auth/google/callback", "Google devuelve el navegador aquí sin cookie"],
     ["/no-access", "explicar por qué no entras no puede exigir entrar"],
     ["/healthz", "una sonda no tiene cookies"],
+    [
+      "/api/session/code/redeem",
+      "spec 009: la cáscara canjea el código SIN sesión — es lo que viene a conseguir",
+    ],
   ])("%s — %s", (path) => {
     expect(redirectTarget(anonymousGet(path))).toBeNull();
   });

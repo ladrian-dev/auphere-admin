@@ -22,6 +22,11 @@ window.auphere = {
 
 Canales IPC: `bar:showApp` y `bar:redeem`.
 
+**Se publicaron en dos pasos**, y a propósito: `showApp` con la Historia 1 y
+`redeemCode` con la Historia 2. Dejar una función sin handler en una versión
+firmada habría sido ampliar la superficie declarada por una capacidad que
+todavía no existía.
+
 ## Por qué la lista crece, cuando ya se dijo que no una vez
 
 `bar.ts:125` rechazó añadir `checkForUpdate` con este argumento: «habría ampliado
@@ -40,8 +45,9 @@ no hay nada esperando a hacerlo por ella.
 2. **La vista de la consola sigue sin `preload`.** Nada de esto le da un canal a
    la página cargada (spec 002, R3.5).
 3. **Ninguna devuelve un secreto.** `redeemCode` entrega ocho caracteres y recibe
-   un estado. El token no cruza el `preload` en ninguna dirección — quien habla
-   con la plataforma es el principal, igual que con `pair`.
+   un estado. El token no cruza el `preload` en ninguna dirección, y de hecho
+   **la cáscara tampoco lo ve**: el canje va por el `fetch` de la partición
+   humana, el BFF responde con la cookie puesta, y la partición la guarda sola.
 4. **`showApp` no acepta a dónde ir.** Sólo sabe volver. Una `showSurface(name)`
    parametrizada daría a la barra la capacidad de navegar, que es más de lo que
    hace falta.

@@ -12,7 +12,6 @@ El secreto de un solo uso que trae una sesión de Google a la aplicación.
 |---|---|---|
 | `code_hash` | `varchar(64)` **PK** | SHA-256 del código. **La PK es el hash**, igual que en `principal_sessions`: un volcado de la tabla no deja entrar en ninguna cuenta |
 | `principal_id` | `uuid` NOT NULL | FK → `console_auth.principals.id`, `ON DELETE CASCADE`. Quién lo pidió |
-| `machine_hint` | `varchar(255)` NOT NULL | La huella de la máquina que lo pidió: `hostname` + plataforma, **hasheada**. Es lo que ata el código (R5.3) |
 | `created_at` | `timestamptz` NOT NULL | `now()` |
 | `expires_at` | `timestamptz` NOT NULL | `created_at + CODE_TTL` (10 min) |
 | `consumed_at` | `timestamptz` NULL | **NULL = sin usar.** Se rellena al canjear, y no se borra la fila |
@@ -28,8 +27,12 @@ respuesta, no un efecto de la tabla** (R4.5). Con la fila delante, el servidor
 elige qué contesta; sin ella, no puede elegir. Además es lo que permite auditar
 que un código se usó (R5.5).
 
-**`machine_hint` hasheada.** Ata sin guardar el nombre del ordenador de nadie. Lo
-único que hace falta es comparar, y para comparar basta el hash.
+**Sin columna de máquina, desde la enmienda del 2026-09-15.** La tabla llegó a
+tener un `machine_hint` hasheado para atar el código. Se retiró al descubrir que
+no hay a qué atarlo: quien pide el código es el navegador del sistema. Dejarla
+como columna muerta habría sido peor que quitarla — un dato que nadie lee parece
+una protección que nadie tiene. Lo que se registra del canje es lo que
+`principal_sessions` ya guarda de cualquier sesión: `ip` y `user_agent`.
 
 **Un solo código vivo por persona.** R3.4: emitir uno nuevo invalida el anterior.
 Se implementa marcando `consumed_at` en los vivos de esa `principal_id` antes de

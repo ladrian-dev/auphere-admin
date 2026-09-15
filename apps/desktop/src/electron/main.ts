@@ -38,6 +38,7 @@ import {
 import type { InboxItem } from "../inbox-watcher.js";
 import { StreamHub } from "../stream-hub.js";
 import { trayBadge, trayTooltip, type Waiting } from "../tray-badge.js";
+import { withSurface } from "../bar-state.js";
 import { MIN_WINDOW, readWindowState, rememberWindow } from "../window-state.js";
 import { decideWindowOpen, navigationAllowed } from "../window-open-policy.js";
 import {
@@ -131,10 +132,17 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   window.on("resize", () => layout(window, [consoleView, appView], barView));
 
   let surface: Surface = "app";
+  /** Se rellena más abajo, cuando la barra existe. Antes de eso, cambiar de
+   *  superficie no tiene a quién avisar. */
+  let onSurfaceChanged: (next: Surface) => void = () => {};
   const showSurface = (next: Surface) => {
     surface = next;
     appView.setVisible(next === "app");
     consoleView.setVisible(next === "console");
+    // Spec 009 R1: la barra ofrece volver **sólo** con la consola delante, así
+    // que tiene que enterarse de cada cambio. Sin esto la acción se quedaría
+    // pegada a lo que hubiera al arrancar.
+    onSurfaceChanged(next);
   };
   const showConsole = (path: string) => {
     const target = new URL(path, CONSOLE_URL).toString();
@@ -199,19 +207,47 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   });
 
   // La barra: estado empujado, acciones por IPC. Exactamente las del contrato.
+  // La superficie vive en el principal, no en el runtime: es de la ventana, no
+  // del puente. Quién decide qué significa "no hay superficie que decir" está en
+  // `bar-state.ts`, con su test; aquí sólo se junta con el estado del puente.
   const pushState = () => {
-    if (!barView.webContents.isDestroyed()) barView.webContents.send("bar:state", runtime.barState);
+    if (!barView.webContents.isDestroyed()) {
+      barView.webContents.send("bar:state", withSurface(runtime.barState, surface));
+    }
   };
   runtime.onBarState(pushState);
-  ipcMain.handle("bar:getState", () => runtime.barState);
+  onSurfaceChanged = () => pushState();
+  ipcMain.handle("bar:getState", () => withSurface(runtime.barState, surface));
   ipcMain.handle("bar:pair", (_event, code: unknown) => runtime.pair(String(code)));
   ipcMain.handle("bar:unpair", () => runtime.unpair());
   ipcMain.handle("bar:pickDirectory", (_event, clientRef: unknown) =>
     runtime.declareDirectory(String(clientRef), nativeDirectoryPicker(window, "Elige el directorio del cliente")),
   );
+  // Spec 009 R1.1 — **sin parámetro**: `showApp` sólo sabe volver. Una
+  // `showSurface(name)` parametrizada le daría a la barra la capacidad de
+  // navegar, que es más de lo que hace falta y más de lo que se puede justificar
+  // al ampliar una lista cerrada.
+  ipcMain.handle("bar:showApp", () => showSurface("app"));
+  // Spec 009 R4.1 — **el canje va por el `fetch` de la partición humana, y ésa
+  // es la pieza entera.** Lo que el BFF responda con `Set-Cookie` lo guarda esa
+  // partición por su cuenta, así que la cáscara entrega ocho caracteres y no
+  // llega a ver ningún token. El Requisito 2.1 de la spec 002 —la aplicación no
+  // tiene autenticación propia— sigue siendo cierto sin excepciones.
+  ipcMain.handle("bar:redeem", (_event, code: unknown) => runtime.redeemCode(String(code)));
   ipcMain.handle("bar:openInBrowser", (_event, url: unknown) => {
     const decision = decideWindowOpen(String(url), consoleOrigin);
     return decision.action === "open_external" ? openExternal(decision.url) : undefined;
+  });
+
+  runtime.useRedeem(async (code: string) => {
+    const response = await session
+      .fromPartition(HUMAN_PARTITION)
+      .fetch(`${consoleOrigin}/api/session/code/redeem`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+    return { ok: response.ok };
   });
 
   // Quién está dentro lo lee el proceso principal, no la página (D6).

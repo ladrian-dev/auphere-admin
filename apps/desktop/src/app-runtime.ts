@@ -320,6 +320,48 @@ export class AppRuntime {
     }
   }
 
+  /**
+   * Quién canjea el código contra el BFF — spec 009, R4.1.
+   *
+   * Se inyecta en vez de construirse aquí porque lo que hay al otro lado es el
+   * `fetch` de una partición de Electron, y el runtime se prueba sin Electron.
+   */
+  private redeem: ((code: string) => Promise<{ ok: boolean }>) | null = null;
+
+  useRedeem(fn: (code: string) => Promise<{ ok: boolean }>): void {
+    this.redeem = fn;
+  }
+
+  /**
+   * Canjea el código que la persona tecleó — spec 009, R4.
+   *
+   * **Este método hace muy poco a propósito.** No valida el código, no guarda
+   * nada y no ve ningún secreto: entrega ocho caracteres y, si el BFF los
+   * acepta, anuncia que la identidad cambió para que la puerta vuelva a
+   * derivar el veredicto — el mismo camino que `pair()`.
+   *
+   * **El código va tal cual se tecleó.** `normalize_code` vive en la API, y
+   * normalizar también aquí sería una segunda definición de qué es un código
+   * válido, que es como acaban discrepando.
+   */
+  async redeemCode(code: string): Promise<void> {
+    if (!this.redeem) {
+      this.setBar({ kind: "redeem_failed" });
+      return;
+    }
+    let ok = false;
+    try {
+      ok = (await this.redeem(code)).ok;
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      this.setBar({ kind: "redeem_failed" });
+      return;
+    }
+    this.announceIdentityChanged();
+  }
+
   /** Desemparejar: olvida la credencial. Archivar es de la consola (R11.2). */
   unpair(): void {
     this.stop();

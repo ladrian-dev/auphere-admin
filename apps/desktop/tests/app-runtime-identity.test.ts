@@ -305,3 +305,59 @@ describe("aprobaciones solo para la persona con sesión (5.3, Historia 5)", () =
     expect(await app.pendingApprovals()).toEqual([]);
   });
 });
+
+/**
+ * El canje del código de sesión — spec 009, Historia 2.
+ *
+ * **Lo que el runtime hace aquí es muy poco, y ése es el diseño.** No valida el
+ * código, no guarda nada y no ve ningún secreto: entrega ocho caracteres al
+ * BFF con el `fetch` de la partición humana, y lo que vuelve lo guarda la
+ * partición sola. Si sale bien, lo único que el runtime hace es **volver a
+ * preguntarle a la puerta**, exactamente como al emparejar.
+ */
+describe("canjear el código de sesión (spec 009, R4)", () => {
+  function conBff(responder: () => Promise<{ ok: boolean }>) {
+    const store = new CredentialStore(cipher, file());
+    const { app } = runtime(transport(), store);
+    const gate = new SessionGate({
+      store,
+      whoami: {
+        whoami: vi.fn().mockResolvedValue({ kind: "member", userId: "luis", partnerSlug: "p" }),
+      },
+    });
+    const seen: string[] = [];
+    gate.onDecision((d) => seen.push(d.kind));
+    app.onIdentityChanged(() => void gate.refresh());
+    app.useRedeem(responder);
+    return { app, seen };
+  }
+
+  it("un canje correcto vuelve a preguntarle a la puerta", async () => {
+    const { app, seen } = conBff(async () => ({ ok: true }));
+    await app.redeemCode("K7MP-4XQ2");
+    await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0));
+  });
+
+  it("un canje fallido lo dice en la barra y NO avisa de identidad", async () => {
+    const { app, seen } = conBff(async () => ({ ok: false }));
+    await app.redeemCode("ZZZZ-9999");
+    expect(app.barState.lastError?.code).toBe("session_code_invalid");
+    expect(seen).toEqual([]);
+  });
+
+  it("el código se manda tal cual la persona lo tecleó: normalizar es del servidor", async () => {
+    const visto: string[] = [];
+    const { app } = conBff(async () => {
+      return { ok: true };
+    });
+    app.useRedeem(async (code) => {
+      visto.push(code);
+      return { ok: true };
+    });
+    await app.redeemCode("k7mp-4xq2");
+    // Sin recortar ni mayusculizar aquí: `normalize_code` vive en la API y una
+    // segunda normalización en el cliente es una segunda definición de qué es
+    // un código válido.
+    expect(visto).toEqual(["k7mp-4xq2"]);
+  });
+});

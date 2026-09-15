@@ -389,6 +389,15 @@ export function backendFor(principal: Principal) {
   const call = callFor(principal);
   const enc = encodeURIComponent;
   return {
+    /**
+     * El código que lleva ESTA sesión a la app de escritorio (spec 009, R3.1).
+     *
+     * Va con la credencial de la persona y no con la de servicio: la API lo
+     * emite para quien lo pide y para nadie más, así que quién pide tiene que
+     * viajar en el token.
+     */
+    issueSessionCode: (): Promise<{ code: string }> =>
+      call<{ code: string }>("/console/auth/session-code", { method: "POST" }),
     // lane modules — each lane owns its file under lib/backend/
     ...agentToolsApi(call),
     ...playgroundApi(call),
@@ -482,6 +491,25 @@ export const consoleService = {
   async login(body: { email: string; password: string }): Promise<LoginResult> {
     const t = await mintServiceToken();
     return (await request<LoginResult>(t, "/console/auth/login", { method: "POST", body })) as LoginResult;
+  },
+  /**
+   * Canjea el código de un solo uso de la app de escritorio (spec 009, R4).
+   *
+   * Va con la credencial de **servicio** y no con la de la persona, como el
+   * login y la vuelta de Google: quien llega aquí todavía no es nadie. En la
+   * API no hay ni una ruta `/console/*` sin credencial, y una suite de
+   * aislamiento lo comprueba una por una.
+   */
+  async redeemSessionCode(body: { code: string }): Promise<{
+    session_token: string;
+    expires_at: string;
+  }> {
+    const t = await mintServiceToken();
+    return (await request<{ session_token: string; expires_at: string }>(
+      t,
+      "/console/auth/session-code/redeem",
+      { method: "POST", body },
+    )) as { session_token: string; expires_at: string };
   },
   /** `null` when the token is unknown or expired — never an exception. */
   async session(token: string): Promise<ApiPrincipal | null> {
