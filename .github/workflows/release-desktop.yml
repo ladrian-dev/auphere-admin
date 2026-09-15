@@ -137,7 +137,7 @@ jobs:
         run: |
           set -euo pipefail
           # **Se verifican los DOS `.app`, no el primero que aparezca.** El
-          # build produce `dist/mac/` (Intel) y `dist/mac-arm64/` (Apple
+          # build produce `release/mac/` (Intel) y `release/mac-arm64/` (Apple
           # Silicon); un `find ... -print -quit` cogía uno y daba por buenos los
           # dos. Con `-quit` se puede publicar un arm64 sin firmar y no
           # enterarse hasta que alguien lo abre.
@@ -153,7 +153,7 @@ jobs:
           APPS=()
           while IFS= read -r app; do
             APPS+=("$app")
-          done < <(find apps/desktop/dist -maxdepth 2 -name '*.app' -type d)
+          done < <(find apps/desktop/release -maxdepth 2 -name '*.app' -type d)
           test "${#APPS[@]}" -ge 1 || { echo "no se construyó ningún .app"; exit 1; }
           echo "verificando ${#APPS[@]} aplicaciones"
 
@@ -184,7 +184,7 @@ jobs:
           # no significa nada. Que el otro está bien firmado lo dice el paso
           # anterior, que sí verifica los dos.
           NATIVE_DIR="$([ "$(uname -m)" = "arm64" ] && echo mac-arm64 || echo mac)"
-          APP="$(find "apps/desktop/dist/$NATIVE_DIR" -maxdepth 1 -name '*.app' -print -quit)"
+          APP="$(find "apps/desktop/release/$NATIVE_DIR" -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP" || { echo "no hay .app para $(uname -m)"; exit 1; }
           echo "abriendo $APP"
           open -g "$APP"
@@ -212,11 +212,16 @@ jobs:
           #
           # Nada se borra: publicar es añadir. La versión anterior sigue siendo
           # la única marcha atrás que existe cuando el puente es saliente.
-          for f in apps/desktop/dist/*.dmg apps/desktop/dist/*.zip apps/desktop/dist/*.blockmap; do
+          for f in apps/desktop/release/*.dmg apps/desktop/release/*.zip apps/desktop/release/*.blockmap; do
             [ -e "$f" ] || continue
             aws s3 cp "$f" "s3://$BUCKET/desktop/$(basename "$f")"
           done
-          for f in apps/desktop/dist/latest-mac.yml; do
+          # `latest-mac*.yml`, no el nombre exacto. En v0.1.0 y v0.1.1
+          # electron-builder 26 generó UN solo índice con las cuatro entradas,
+          # así que hoy da igual; si una versión futura vuelve a emitir uno por
+          # arquitectura (electron-builder#7975), el que no se subiera dejaría
+          # la actualización rota para media base instalada. T045 (b).
+          for f in apps/desktop/release/latest-mac*.yml; do
             [ -e "$f" ] || continue
             aws s3 cp "$f" "s3://$BUCKET/desktop/$(basename "$f")"
           done

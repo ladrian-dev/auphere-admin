@@ -92,6 +92,20 @@ export class AppRuntime {
   private lastHeartbeatAt: number | null = null;
   private bar: BarState;
   private barListeners: Array<(state: BarState) => void> = [];
+  /**
+   * Quién quiere enterarse de que la credencial guardada cambió.
+   *
+   * Existe porque hay **dos superficies** contando el mismo hecho y solo una se
+   * enteraba: la barra se mueve con los eventos del puente, pero el banner de la
+   * pantalla lo pinta `SessionGate`, que deriva su veredicto del almacén. Antes,
+   * emparejar cambiaba el almacén sin tocar la cookie ni perder la sesión, así
+   * que nada volvía a preguntarle a la puerta y el banner seguía diciendo «sin
+   * emparejar» con la barra ya conectada.
+   *
+   * **Se anuncia, no se decide.** El runtime no conoce la puerta y no debe: dice
+   * que la credencial cambió, y quien mande decide qué hacer con eso.
+   */
+  private identityListeners: Array<() => void> = [];
   private userId: string | null = null;
   private credential: StoredCredential | null = null;
   private links: PolledLink[] = [];
@@ -217,6 +231,18 @@ export class AppRuntime {
     }));
   }
 
+  /** Se dispara cuando la credencial guardada cambia: al canjear y al olvidar. */
+  onIdentityChanged(listener: () => void): () => void {
+    this.identityListeners.push(listener);
+    return () => {
+      this.identityListeners = this.identityListeners.filter((l) => l !== listener);
+    };
+  }
+
+  private announceIdentityChanged(): void {
+    for (const listener of this.identityListeners) listener();
+  }
+
   onBarState(listener: (state: BarState) => void): () => void {
     this.barListeners.push(listener);
     return () => {
@@ -285,6 +311,9 @@ export class AppRuntime {
       this.transport.useToken(credential.token);
       this.setBar({ kind: "pair_ok", machine: { displayName: paired.displayName, hostname: this.machine.hostname } });
       if (!this.running) await this.start();
+      // Al final y no antes: quien escuche va a volver a derivar el veredicto, y
+      // debe encontrar el almacén y la barra ya en su sitio.
+      this.announceIdentityChanged();
     } catch (error) {
       const code = error instanceof PairingFailed ? error.code : "pairing_unavailable";
       this.setBar({ kind: "pair_failed", code });
@@ -298,6 +327,7 @@ export class AppRuntime {
     this.credential = null;
     this.links = [];
     this.setBar({ kind: "unpaired" });
+    this.announceIdentityChanged();
   }
 
   /** Declarar el directorio de un cliente con el selector nativo (R7). */

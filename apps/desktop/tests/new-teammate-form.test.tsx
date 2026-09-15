@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "./dom-matchers";
 
 import { LangProvider } from "../src/app/i18n";
-import { NewTeammateForm, type NewTeammateFormProps } from "../src/app/routes/new-teammate";
+import { NewTeammateForm, type NewTeammateFormProps, capOf } from "../src/app/routes/new-teammate";
 
 afterEach(cleanup);
 
@@ -196,5 +196,104 @@ describe("el formulario de crear teammate", () => {
     await user.click(screen.getByRole("button", { name: /cancelar/i }));
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  /**
+   * El tope del plan — el fallo `teammate-tope-de-plan-mensaje-generico`.
+   *
+   * La API rechaza bien y manda `limit`, `current` y `tier` a propósito. Lo que
+   * fallaba es que la pantalla lo contaba como avería pasajera: «vuelve a
+   * intentarlo», que es justo lo único que no sirve de nada.
+   */
+  describe("cuando el plan es el que no da para más", () => {
+    const rejectWith = (cap?: { limit: number; current: number; tier: string }) =>
+      vi.fn().mockResolvedValue({ ok: false, error: "tier_limit_reached", ...(cap ? { cap } : {}) });
+
+    it("con un plan sin teammates, dice que es el plan y no manda reintentar", async () => {
+      const user = userEvent.setup();
+      paint({ onSubmit: rejectWith({ limit: 0, current: 0, tier: "free" }) });
+      await user.type(nameField(), "Sofía");
+      await user.click(createButton());
+
+      await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(/no incluye teammates/i);
+      // Lo que NO puede decir: no hay nada que reintentar.
+      expect(alert).not.toHaveTextContent(/vuelve a intentarlo/i);
+      // Y tiene que nombrar dónde se cambia, o explica el muro y no la puerta.
+      expect(alert).toHaveTextContent(/cuenta/i);
+      // Un plan de cero no ofrece archivar: no hay nada que liberar.
+      expect(alert).not.toHaveTextContent(/archiva/i);
+    });
+
+    it("con el plan lleno, da los dos números y ofrece archivar", async () => {
+      const user = userEvent.setup();
+      paint({ onSubmit: rejectWith({ limit: 3, current: 3, tier: "pro" }) });
+      await user.type(nameField(), "Sofía");
+      await user.click(createButton());
+
+      await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(/3/);
+      expect(alert).toHaveTextContent(/archiva/i);
+      expect(alert).not.toHaveTextContent(/vuelve a intentarlo/i);
+    });
+
+    it("sin los números, sigue diciendo que es el plan y no pinta un hueco", async () => {
+      const user = userEvent.setup();
+      // El cuerpo viene de la red: puede llegar con otra forma, o no llegar.
+      paint({ onSubmit: rejectWith() });
+      await user.type(nameField(), "Sofía");
+      await user.click(createButton());
+
+      await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(/plan/i);
+      expect(alert).not.toHaveTextContent(/undefined|NaN|\{|\}/);
+      expect(alert).not.toHaveTextContent(/vuelve a intentarlo/i);
+    });
+
+    /**
+     * `capOf` es la mitad que faltaba del fallo: `App.tsx` recibía los números
+     * y los tiraba. Se prueba aparte porque el formulario recibe `cap` ya
+     * hecho, así que los casos de arriba pasarían igual con esto roto.
+     */
+    describe("leer el tope del cuerpo del rechazo", () => {
+      it("saca los tres campos de la forma que manda el BFF", () => {
+        // Tal cual lo aplana `_guard.ts:90`: extras + detail + code arriba.
+        expect(
+          capOf({
+            kind: "teammates",
+            limit: 0,
+            current: 0,
+            tier: "free",
+            detail: "el nivel «free» admite 0 teammates y ya hay 0",
+            code: "tier_limit_reached",
+          }),
+        ).toEqual({ cap: { limit: 0, current: 0, tier: "free" } });
+      });
+
+      it.each([
+        ["nulo", null],
+        ["una cadena", "boom"],
+        ["sin los campos", { detail: "vaya" }],
+        ["con limit de texto", { limit: "0", current: 0, tier: "free" }],
+        ["sin tier", { limit: 3, current: 3 }],
+      ])("no inventa nada cuando el cuerpo llega %s", (_caso, body) => {
+        expect(capOf(body)).toEqual({});
+      });
+    });
+
+    it("conserva lo escrito: si la salida es cambiar de plan, volver a teclear es castigo doble", async () => {
+      const user = userEvent.setup();
+      paint({ onSubmit: rejectWith({ limit: 0, current: 0, tier: "free" }) });
+      await user.type(nameField(), "Sofía");
+      await user.type(screen.getByLabelText(/oficio/i), " sénior");
+      await user.click(createButton());
+
+      await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+      expect(nameField()).toHaveValue("Sofía");
+      expect(screen.getByLabelText(/oficio/i)).toHaveValue(`${JOBS[0]} sénior`);
+    });
   });
 });

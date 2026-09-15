@@ -27,7 +27,7 @@ import { type Lang, LangProvider, systemLang, useAppT } from "./i18n";
 import { Account } from "./routes/account";
 import { EnvPanel } from "./routes/env";
 import { Inbox } from "./routes/inbox";
-import { NewTeammateForm } from "./routes/new-teammate";
+import { NewTeammateForm, capOf } from "./routes/new-teammate";
 import { Roster } from "./routes/roster";
 import { TeammateSettings } from "./routes/teammate-settings";
 import { ThreadView } from "./routes/thread";
@@ -294,7 +294,7 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
             onCancel={() => setView("team")}
             onSubmit={async (draft) => {
               const res = await bridge.rosterCreate(draft);
-              if (!res.ok) return { ok: false as const, error: res.code ?? "unknown" };
+              if (!res.ok) return { ok: false as const, error: res.code ?? "unknown", ...capOf(res.body) };
               // Aparece para todo el partner; el hilo lo estrena cada persona.
               await loadRoster();
               setSelected(res.data.id);

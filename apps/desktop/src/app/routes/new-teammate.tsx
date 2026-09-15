@@ -15,7 +15,7 @@
 import { Button, Input, Label, Skeleton } from "@nexus/ui";
 import * as React from "react";
 
-import { useAppT } from "../i18n";
+import { type AppKey, useAppT } from "../i18n";
 
 export type CostLabel = "bajo" | "medio" | "alto" | "desconocido";
 export type ModelChoice = { id: string; note: string; cost_label: CostLabel };
@@ -36,7 +36,17 @@ export type TeammateDraft = {
   local_exec: boolean;
 };
 
-export type SubmitResult = { ok: true } | { ok: false; error: string };
+/**
+ * El tope del nivel, tal y como lo manda la plataforma (spec 005, R1.2).
+ *
+ * `TierLimitReached` carga estos tres números a propósito — su docstring dice
+ * por qué: «a message that only says "limit reached" makes someone open a
+ * support ticket to learn a number we already know». Llegan hasta aquí y hasta
+ * hace poco se tiraban en `App.tsx`.
+ */
+export type TierCap = { limit: number; current: number; tier: string };
+
+export type SubmitResult = { ok: true } | { ok: false; error: string; cap?: TierCap };
 
 export type NewTeammateFormProps = {
   status: "loading" | "ready" | "error";
@@ -69,10 +79,47 @@ export const PERMISSION_ORDER: (keyof TeammatePermissions)[] = [
 
 /** Los códigos que la plataforma sabe decir. El resto se cuenta en general —
  *  enseñar el código crudo no ayuda a nadie a arreglar nada. */
-const KNOWN_ERRORS = ["model_not_allowed", "tool_not_in_catalog"] as const;
+const KNOWN_ERRORS = ["model_not_allowed", "tool_not_in_catalog", "tier_limit_reached"] as const;
 type KnownError = (typeof KNOWN_ERRORS)[number];
 export const isKnownError = (code: string): code is KnownError =>
   (KNOWN_ERRORS as readonly string[]).includes(code);
+
+/**
+ * Qué frase toca para un rechazo por tope de plan.
+ *
+ * Se apoya en `limit` y **no** en el `kind` que manda la API: el mismo código
+ * lo lanza `assert_can_add_member` para personas, y dar por supuesto que
+ * siempre son teammates dejaría una frase mintiendo el día que esa ruta llegue
+ * a esta pantalla.
+ *
+ * Sin `cap` —el cuerpo viene de la red— se cae a la frase sin números, nunca a
+ * un hueco.
+ */
+export function tierCopyKey(cap: TierCap | undefined): AppKey {
+  if (!cap || !Number.isFinite(cap.limit)) return "create.failed.tier_limit_reached";
+  return cap.limit === 0 ? "create.failed.tier_none" : "create.failed.tier_full";
+}
+
+/**
+ * El tope del nivel, si el rechazo lo trae.
+ *
+ * `Err.body` viene de la red y no se confía en su forma: si falta, si llega con
+ * otra, o si los números no son números, se devuelve nada y la pantalla dice lo
+ * que sí sabe. Devolver `{}` en vez de `{ cap: undefined }` es lo que deja que
+ * el llamante lo esparza sin pisar el campo.
+ *
+ * Lo que NO se hace aquí es mirar `kind`: el mismo código lo lanza el tope de
+ * personas, y la frase la elige la pantalla a partir de `limit`.
+ */
+export function capOf(body: unknown): { cap?: TierCap } {
+  if (!body || typeof body !== "object") return {};
+  const b = body as Record<string, unknown>;
+  const { limit, current, tier } = b;
+  if (typeof limit !== "number" || typeof current !== "number" || typeof tier !== "string") {
+    return {};
+  }
+  return { cap: { limit, current, tier } };
+}
 
 export function NewTeammateForm({
   status,
@@ -90,6 +137,8 @@ export function NewTeammateForm({
   const [localExec, setLocalExec] = React.useState(false);
   const [sending, setSending] = React.useState(false);
   const [failed, setFailed] = React.useState<string | null>(null);
+  // El tope viaja aparte del código: sin él la frase no puede dar números.
+  const [cap, setCap] = React.useState<TierCap | undefined>(undefined);
 
   // El oficio y el modelo llegan con la lista; se eligen los primeros hasta que
   // la persona diga otra cosa. Un formulario que empieza sin nada elegido
@@ -147,6 +196,7 @@ export function NewTeammateForm({
     if (!ready || sending) return;
     setSending(true);
     setFailed(null);
+    setCap(undefined);
     const result = await onSubmit({
       name: name.trim(),
       job: job.trim(),
@@ -155,7 +205,10 @@ export function NewTeammateForm({
       local_exec: localExec,
     });
     setSending(false);
-    if (!result.ok) setFailed(result.error);
+    if (!result.ok) {
+      setFailed(result.error);
+      setCap(result.cap);
+    }
   };
 
   return (
@@ -241,7 +294,9 @@ export function NewTeammateForm({
 
       {failed ? (
         <p className="max-w-prose text-sm text-pretty text-status-warning" role="alert">
-          {t(isKnownError(failed) ? `create.failed.${failed}` : "create.failed.unknown")}
+          {failed === "tier_limit_reached"
+            ? t(tierCopyKey(cap), cap ? { limit: cap.limit, current: cap.current } : undefined)
+            : t(isKnownError(failed) ? `create.failed.${failed}` : "create.failed.unknown")}
         </p>
       ) : null}
 

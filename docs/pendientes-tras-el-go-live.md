@@ -77,6 +77,12 @@ bloquea antes de copiar nada y nombra la versión que hace falta.
 
 Arreglo: `"minimumSystemVersion": "13.0"` en el bloque `mac` de `build`.
 
+> **HECHO el 2026-09-15** (T045 a). Declarado, con test que lo vigila
+> (`apps/desktop/tests/packaging-config.test.ts`). **Nota importante: no era la
+> causa del fallo de «la otra máquina».** Esa máquina tiene macOS 26; se
+> comprobó preguntando antes de tocar código. El campo sigue siendo correcto por
+> lo que dice arriba, pero ese misterio era otro — ver §2.1.
+
 **b) El workflow sube un solo índice del canal.** La línea es
 `for f in apps/desktop/dist/latest-mac.yml`, nombre exacto. Al construir dos
 arquitecturas, `electron-builder` puede generar **un manifiesto por
@@ -88,6 +94,9 @@ actualización automática queda rota para una de las dos.
 No afecta a instalar, sólo a actualizarse después. Arreglo: cambiar el glob a
 `latest-mac*.yml`, que cubre los dos casos y no rompe nada si sólo hay uno.
 
+> **HECHO el 2026-09-15** (T045 b): el glob es `latest-mac*.yml`. Se mantiene
+> como defensa aunque hoy no haga falta, por lo que dice el párrafo siguiente.
+>
 > **Comprobado el 2026-09-15 con la publicación real: NO aplica.**
 > `electron-builder` 26 generó **un solo** `latest-mac.yml`, y ese índice lista
 > las cuatro entradas —los dos `.zip` y los dos `.dmg`, con y sin sufijo
@@ -110,6 +119,46 @@ No afecta a instalar, sólo a actualizarse después. Arreglo: cambiar el glob a
    Y que sea un Mac que nunca haya visto el proyecto — en el de Luis, Gatekeeper
    abre igual aunque la notarización esté mal, porque el certificado está en su
    llavero.
+
+### 2.1 · Lo que la primera publicación real destapó, y no estaba previsto
+
+Al usar la aplicación instalada aparecieron **seis** fallos, no los cuatro que
+titula `bugs-app-escritorio-2026-09-15.md`. Dos de ellos son de la cadena, no de
+la aplicación, y por eso viven aquí:
+
+**El paquete se tragaba su propia salida.** `directories.output` no estaba
+declarado —por defecto `dist`— y `files` decía `dist/**`. Cada arquitectura
+empaquetaba dentro de su `app.asar` lo que electron-builder acababa de escribir:
+Electron entero en arm64, y en x64 además la app de arm64 ya firmada **y un
+`.dmg` a medio escribir de 987 MB**, porque las dos arquitecturas se solapan en
+el tiempo. El `.dmg` de Intel de v0.1.0 y v0.1.1 pesa **1,0 GB** contra los
+266 MB del de Apple Silicon.
+
+Arreglado: `.specify/bugs/paquete-se-traga-su-propia-salida/`. El asar de arm64
+baja de 388.854.240 a 76.418.304 bytes, medido en un build local.
+
+**El actualizador nunca se armaba.** `electron-updater` es CommonJS y expone
+`autoUpdater` con un getter perezoso que `cjs-module-lexer` no detecta, así que
+desde ESM el desestructurado daba `undefined` y lanzaba. **v0.1.0 y v0.1.1 no
+comprobaron el canal ni una vez.** Era inalcanzable fuera de un binario
+empaquetado *y* firmado, que es la primera vez que ese código corrió.
+
+Arreglado: `.specify/bugs/updater-no-arranca/`. **Consecuencia que hay que decir
+en las notas de 0.1.2: este arreglo no se auto-entrega.** Toda máquina con 0.1.0
+o 0.1.1 instala 0.1.2 a mano; de ahí en adelante sí se actualiza sola.
+
+**T021 quedó respondido de rebote, y en verde.** En el Mac limpio —Intel, macOS
+26, con el `.dmg` publicado— `spctl` contesta `accepted · source=Notarized
+Developer ID · origin=Developer ID Application: FACELAD SpA (CBSWMG766P)` y
+`codesign` dice `valid on disk` y que satisface su Designated Requirement. La
+notarización funciona fuera de esta máquina, que era la pregunta.
+
+**Lo que sigue sin respuesta**: en ese mismo Mac la aplicación sale con código 1
+a los ~290 ms **sin imprimir una sola línea**, ni con `ELECTRON_ENABLE_LOGGING=1`,
+y sin dejar informe de caída. Descartados: versión de macOS, arquitectura,
+paquete equivocado, descarga truncada, Gatekeeper, firma, llavero y cerrojo de
+instancia única. Lo único objetivamente roto que le quedaba era ese asar de
+1,98 GB. **0.1.2 es el experimento que lo responde.**
 
 ## 3 · El tratamiento fiscal
 

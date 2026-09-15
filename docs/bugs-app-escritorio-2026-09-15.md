@@ -1,4 +1,8 @@
-# Cuatro fallos de la app de escritorio, encontrados al usarla de verdad
+# Seis fallos de la app de escritorio, encontrados al usarla de verdad
+
+> **Este documento se escribió con cinco y el título decía cuatro.** Al
+> investigarlos aparecieron un sexto y una causa de cadena que no estaba
+> prevista. El estado de cada uno, abajo.
 
 **Fecha**: 2026-09-15 · **Versión**: `0.1.0`, la primera publicada por la cadena
 de la spec 008 · **Encontrados por**: Luis, usando la aplicación instalada.
@@ -14,6 +18,33 @@ desde el repositorio.
 
 > **Estado de cada hipótesis**: lo marcado como **observado** viene del código;
 > lo marcado como **hipótesis** hay que confirmarlo reproduciendo.
+
+---
+
+## Estado al 2026-09-15, tras la sesión de diagnóstico
+
+| # | Fallo | Estado |
+|---|---|---|
+| 1 | Google no vuelve a la app | **Sin arreglar.** Mecanismo confirmado; necesita decisión de diseño |
+| 2 | El banner de «sin emparejar» no se va | **Sin arreglar.** Confirmado: dos superficies leyendo dos fuentes |
+| 3 | Crear teammate da error genérico | **ARREGLADO** · `.specify/bugs/teammate-tope-de-plan-mensaje-generico/` |
+| 4 | No hay vuelta desde la consola | **Sin arreglar, y el diagnóstico de abajo es falso** — ver corrección |
+| 5 | En otra máquina no funcionó | **Sin resolver.** Las dos hipótesis de abajo están descartadas |
+| 5b | El paquete se traga su propia salida | **ARREGLADO** · `.specify/bugs/paquete-se-traga-su-propia-salida/` |
+| 6 | El actualizador nunca se arma | **ARREGLADO** · `.specify/bugs/updater-no-arranca/` |
+
+Los tres arreglados se publican juntos en **0.1.2**.
+
+**El fallo 6 no estaba en esta lista y es el más grave de los tres arreglados**:
+`electron-updater` es CommonJS y expone `autoUpdater` con un getter perezoso que
+`cjs-module-lexer` no detecta, así que desde ESM el desestructurado daba
+`undefined` y lanzaba. **v0.1.0 y v0.1.1 no preguntaron al canal ni una vez.**
+Era inalcanzable salvo en un binario empaquetado *y* firmado.
+
+**El 5b tampoco**: el `.dmg` de Intel pesa 1,0 GB contra 266 MB el de Apple
+Silicon, porque cada arquitectura empaquetaba dentro de su `app.asar` la salida
+del propio empaquetador — en x64, la app de arm64 ya firmada y un `.dmg` a medio
+escribir de 987 MB. Detalle en `pendientes-tras-el-go-live.md` §2.1.
 
 ---
 
@@ -116,6 +147,15 @@ que vivir en algo que sí sea de la cáscara — la barra del puesto, el menú d
 aplicación, o un atajo de teclado. No es un botón que se olvidó: es que **no
 puede** estar donde uno lo buscaría, y eso hay que diseñarlo.
 
+> **CORRECCIÓN del 2026-09-15.** El razonamiento es bueno y la conclusión es
+> falsa: **ya hay tres caminos de vuelta, y los tres están en la cáscara.** El
+> menú «Ver → Equipo» con `Cmd+1` (`main.ts:151`), el clic en el icono de
+> bandeja (`main.ts:333`), y el atajo global `Cmd+Shift+A` (`main.ts:343`).
+>
+> Así que el fallo no es que falte el camino: es que **no se encuentra**. Eso
+> cambia el arreglo — no hay que inventar una superficie, hay que hacer visible
+> la que existe. Sigue siendo diseño, pero otro.
+
 **Dónde mirar**: `src/electron/main.ts` (`showSurface`, `showApp`),
 `src/bar/bar.ts`, y `contracts/desktop-bar.md` de la spec 002 para las acciones
 que la barra ya declara.
@@ -155,6 +195,14 @@ if (!state.encryptionAvailable) return [];
 aplicación abre, se ve entera, y **no se puede hacer absolutamente nada con
 ella**, sin un error que explique por qué. Encaja exactamente con «no funcionó».
 
+> **CORRECCIÓN del 2026-09-15: esto es falso, y la hipótesis entera está
+> descartada.** La barra **sí** dice por qué: `bar.ts:109` pinta la nota
+> `noEncryption` — «Este sistema no ofrece cifrado para guardar la credencial: no
+> se puede emparejar». Se queda sin acciones, pero no en silencio.
+>
+> Y sobre todo: **en esa máquina no apareció ningún diálogo del llavero**, así
+> que `safeStorage` no llegó a pedir nada. La aplicación no llega a ese código.
+
 Ese comportamiento es **deliberado y correcto** —guardar la credencial en claro
 «mientras tanto» es la llave en el disco de otra persona, y el Requisito 15.2 de
 la spec 001 lo prohíbe— pero está diseñado como un caso raro, no como el primer
@@ -170,6 +218,10 @@ ajena cae aquí, el producto parece roto.
    Ventura**; en macOS 12 la app instala y no abre — y ése es justo el pendiente
    (a) de `pendientes-tras-el-go-live.md`, el `minimumSystemVersion` que no está
    declarado y que haría que macOS lo dijera en vez de fallar en silencio.
+
+   > **RESPONDIDO: macOS 26.** La candidata barata está descartada. El
+   > `minimumSystemVersion` se declaró igualmente (T045 a), porque sigue siendo
+   > correcto, pero no era esto.
 3. **Qué arquitectura**, y si se instaló el `.dmg` correcto: el de Intel va **sin
    sufijo** (`Auphere-0.1.0.dmg`) y el de Apple Silicon lleva `-arm64`.
 4. **Si apareció el diálogo del llavero y qué se contestó.** Cancelarlo deja
@@ -184,6 +236,40 @@ certificado de firma en el llavero y el proyecto entero. Esta es la primera señ
 de que la aplicación se comporta distinto fuera de aquí — que es exactamente lo
 que **T021 de la spec 008** existe para detectar, y que sigue sin ejecutarse
 formalmente en un Mac limpio.
+
+---
+
+### Lo que se averiguó el 2026-09-15, y lo que queda
+
+Las cinco preguntas se respondieron. La máquina es **Intel de verdad**
+(`uname -m` → `x86_64`), con el `.dmg` correcto y **completo** (1.017.906.539
+bytes, el tamaño publicado exacto), **macOS 26**, sin diálogo del llavero y sin
+otra instancia corriendo.
+
+Y la aplicación está bien firmada y notarizada **en esa máquina**:
+
+```
+/Applications/Auphere.app: accepted
+source=Notarized Developer ID
+origin=Developer ID Application: FACELAD SpA (CBSWMG766P)
+/Applications/Auphere.app: valid on disk
+/Applications/Auphere.app: satisfies its Designated Requirement
+```
+
+**Eso responde T021 de la spec 008, en verde**: la notarización vale fuera de la
+máquina de Luis, que era la duda.
+
+Lo que sigue sin respuesta es por qué se cierra. El proceso sale con **código 1 a
+los ~290 ms**, sin ventana, **sin imprimir una sola línea** ni siquiera con
+`ELECTRON_ENABLE_LOGGING=1`, y sin dejar informe de caída — así que no es una
+caída: es una salida. Descartados: versión de macOS, arquitectura, paquete
+equivocado, descarga truncada, Gatekeeper, firma, `safeStorage` y el cerrojo de
+instancia única de `main.ts:437`.
+
+Lo único objetivamente roto que le quedaba a ese binario es su `app.asar` de
+**1,98 GB** con un `.dmg` a medio escribir dentro (fallo 5b). No está demostrado
+que sea la causa. **0.1.2 es el experimento**: cambia esa variable y deja las
+demás quietas.
 
 ---
 

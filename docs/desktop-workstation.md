@@ -144,6 +144,13 @@ certificado a un **llavero temporal** que destruye siempre, y **abre el `.app`
 firmado antes de publicar**: `hardenedRuntime` sin los permisos correctos no
 falla al construir, falla al abrir.
 
+> **Y abre sólo el de la arquitectura del runner**, que es arm64. El `.app` de
+> Intel se verifica (firma, notarización, sello) pero **no se abre nunca**:
+> abrirlo ahí exigiría Rosetta, que los runners de GitHub no tienen. Es el hueco
+> por el que v0.1.0 y v0.1.1 publicaron un x64 de 2,1 GB que en un Mac Intel
+> sale con código 1 a los 290 ms. Cerrarlo del todo pide un runner Intel o una
+> máquina de pruebas; mientras tanto, **el x64 se prueba a mano o no se prueba**.
+
 ### Qué comprueba la app antes de actualizarse
 
 El orden **es** la política (`src/update-policy.ts`), y falla cerrada:
@@ -151,6 +158,17 @@ El orden **es** la política (`src/update-policy.ts`), y falla cerrada:
 1. ¿Este binario lleva nuestra firma de distribución? Si no, **no le pregunta
    nada al canal** — ni aunque ya tenga un paquete descargado.
 2. ¿Hay versión nueva? La descarga sin preguntar y sin interrumpir.
+
+> **Esto describe la política, y la política estuvo bien desde el principio. Lo
+> que no corría era el paso 2.** En v0.1.0 y v0.1.1 la carga del módulo de
+> `electron-updater` lanzaba un `TypeError` antes de armar nada, así que
+> **ninguna máquina llegó a preguntarle al canal ni una vez**. Arreglado el
+> 2026-09-15 (`.specify/bugs/updater-no-arranca/`), a partir de 0.1.2.
+>
+> Se pudo publicar así porque este camino es **inalcanzable salvo en un binario
+> empaquetado y firmado**: en desarrollo el paso 1 devuelve `unpackaged` y la
+> política corta antes. La primera vez que corrió fue la primera publicación
+> real.
 3. ¿Hay sesión de agente viva o aprobación pendiente? **Espera, y lo dice.**
 4. Si no, se instala **al salir**. Nunca reiniciando por su cuenta.
 

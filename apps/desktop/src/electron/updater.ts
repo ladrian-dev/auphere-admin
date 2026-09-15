@@ -88,7 +88,24 @@ export async function startUpdater(ports: UpdaterPorts): Promise<() => void> {
     return () => {};
   }
 
-  const { autoUpdater } = await import("electron-updater");
+  // **Por `default`, y no desestructurando el espacio de nombres.**
+  //
+  // `electron-updater` es CommonJS y expone `autoUpdater` con un getter
+  // perezoso (`out/main.js:78`). Node construye las exportaciones nombradas de
+  // un CJS importado desde ESM con `cjs-module-lexer`, que es un analizador
+  // **estático** y no reconoce esa forma: el desestructurado directo daba
+  // `undefined` y la línea siguiente lanzaba un `TypeError`. Es lo que dejó a
+  // v0.1.0 y v0.1.1 sin comprobar el canal ni una vez.
+  //
+  // El `?? updaterModule` no es defensa por si acaso: si una versión futura
+  // publica ESM, el valor pasa a estar en el espacio de nombres y esto sigue
+  // funcionando en lugar de romperse al revés.
+  //
+  // **Vitest no reproduce esto**: su interop de CJS sí expone la nombrada, así
+  // que un test escrito con su `import` daría verde. La comprobación vive en
+  // `tests/updater-module-shape.test.ts` y sale a un `node` de verdad.
+  const updaterModule = await import("electron-updater");
+  const { autoUpdater } = updaterModule.default ?? updaterModule;
   autoUpdater.autoDownload = true;
   // Nunca reinicia por su cuenta: se instala al salir, y quien sale es la
   // persona. `decideUpdate` vuelve a decidirlo justo antes de cerrar.

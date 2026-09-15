@@ -65,6 +65,25 @@ const COPY = {
   "create.failed.model_not_allowed": { es: "Ese modelo no está en la lista de tu partner. Elige otro o pídeselo a un administrador.", en: "That model is not on your partner's list. Pick another or ask an administrator." },
   "create.failed.tool_not_in_catalog": { es: "La plataforma no reconoce alguna de las herramientas de esos permisos. No se ha creado nada.", en: "The platform does not recognise one of the tools for those permissions. Nothing was created." },
   "create.failed.unknown": { es: "No se pudo crear. No se ha creado nada; vuelve a intentarlo.", en: "Could not create it. Nothing was created; try again." },
+  // El tope del plan. **Tres frases y no una**: el rechazo es correcto, así que
+  // ninguna dice «vuelve a intentarlo» — no hay nada que reintentar—, y un plan
+  // de cero no es lo mismo que un plan lleno. Con Free, `limit` y `current`
+  // valen los dos 0: «admite 0 y ya tienes 0» suena a avería del sistema, y
+  // ofrecer archivar no lleva a ninguna parte porque no hay nada que liberar.
+  "create.failed.tier_none": {
+    es: "Tu plan no incluye teammates. Para crear uno hay que cambiar de plan, en Cuenta.",
+    en: "Your plan includes no teammates. Creating one means changing plan, in Account.",
+  },
+  "create.failed.tier_full": {
+    es: "Tu plan admite {limit} teammates y ya tienes {current}. Archiva uno o cambia de plan, en Cuenta.",
+    en: "Your plan allows {limit} teammates and you already have {current}. Archive one or change plan, in Account.",
+  },
+  // Cuando los números no llegan —el cuerpo viene de la red y puede venir con
+  // otra forma—, se dice lo que sí se sabe. Nunca un hueco ni un `undefined`.
+  "create.failed.tier_limit_reached": {
+    es: "Tu plan no permite crear más teammates. Puedes cambiarlo en Cuenta.",
+    en: "Your plan does not allow more teammates. You can change it in Account.",
+  },
   // ── cambiar y archivar (US4, R2.3 y R2.6) ─────────────────────────────
   "settings.title": { es: "Ajustes del teammate", en: "Teammate settings" },
   "settings.save": { es: "Guardar cambios", en: "Save changes" },

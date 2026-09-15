@@ -232,6 +232,16 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
     } else if (surface === "console" && consoleView.webContents.getURL().includes("/login")) showSurface("app");
   });
   gate.watch(sessionCookieWatcher());
+  // **Emparejar y desemparejar también mueven la puerta.** Son lo único que
+  // cambia la credencial guardada sin tocar la cookie ni perder la sesión, así
+  // que sin esto nada volvía a derivar el veredicto: la barra pasaba a
+  // `conectada` y el banner de la pantalla seguía diciendo «sin emparejar»
+  // hasta el siguiente cambio de cookie, que puede tardar horas.
+  //
+  // Se refresca en vez de empujar un `app:session` fabricado: la puerta lee la
+  // credencial donde está, y una copia mentiría el día que tenga una condición
+  // más que mirar.
+  runtime.onIdentityChanged(() => void gate.refresh());
 
   // La pantalla de operar: el principal habla con el BFF con la sesión de la
   // persona, y le pasa datos ya redactados (R12.2).
@@ -450,9 +460,19 @@ if (process.env.NODE_ENV !== "test") {
       // El updater va DESPUÉS de arrancar: comprobar la propia firma cuesta un
       // proceso, y nada de esto debe retrasar la primera ventana.
       const { readActivity } = await bootstrapped;
+      // **Con `catch`, y a propósito.** Sin él, un fallo al armar el updater
+      // quedaba como `UnhandledPromiseRejectionWarning` en un `stderr` que
+      // nadie lee en una aplicación de escritorio — que es como v0.1.0 y
+      // v0.1.1 se publicaron sin actualizarse y sin que se notara.
+      //
+      // Se traga la excepción a propósito: que el canal no arranque no puede
+      // tumbar el puente ni la pantalla, que es para lo que la persona abrió
+      // la aplicación. Pero se registra, que es donde alguien va a buscarlo.
       await startUpdater({
         readActivity,
         log: (message, detail) => console.info("[updater]", message, detail ?? {}),
+      }).catch((error: unknown) => {
+        console.error("[updater] no se pudo armar", error);
       });
     });
     app.on("window-all-closed", () => app.quit());

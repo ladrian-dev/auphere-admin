@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AppRuntime, RENEW_BEFORE_MS } from "../src/app-runtime.js";
 import { CredentialStore, type Cipher, type FileStore } from "../src/credential-store.js";
 import { BridgeRejected, PairingFailed } from "../src/http-transport.js";
+import { SessionGate } from "../src/session-gate.js";
 
 const cipher: Cipher = {
   isAvailable: () => true,
@@ -45,6 +46,88 @@ function runtime(t = transport(), store = new CredentialStore(cipher, file())) {
   });
   return { app, t, store };
 }
+
+/**
+ * El banner de «sin emparejar» — el fallo `banner-sin-emparejar-no-se-va`.
+ *
+ * WHEN la persona empareja la máquina
+ * THEN el sistema DEBE volver a derivar el veredicto de la puerta de sesión.
+ *
+ * El banner de la pantalla (`App.tsx:266`) se pinta con `pair_needed`, que sale
+ * de `gate.onDecision` y solo se vuelve a evaluar cuando cambia la cookie o
+ * cuando se pierde la sesión. Emparejar cambia el **almacén**, que es de donde
+ * la puerta saca su veredicto, pero no tocaba ni la cookie ni la sesión: el
+ * banner se quedaba mintiendo mientras la barra decía lo contrario.
+ *
+ * **Manda la puerta, y por eso el arreglo es volver a derivar y no copiar.** La
+ * puerta lee la credencial donde está; la barra refleja eventos del puente, que
+ * son consecuencia. Fabricar un `app:session` desde el canje mentiría el día que
+ * la puerta tenga una condición más.
+ */
+describe("emparejar mueve las DOS superficies (fallo del banner)", () => {
+  /** Como los cablea `main.ts`: la misma tienda para el runtime y la puerta. */
+  function wired() {
+    const store = new CredentialStore(cipher, file());
+    const { app, t } = runtime(transport(), store);
+    const gate = new SessionGate({
+      store,
+      whoami: {
+        whoami: vi.fn().mockResolvedValue({ kind: "member", userId: "luis", partnerSlug: "p" }),
+      },
+    });
+    // La única línea de pegamento que `main.ts` añade.
+    const seen: string[] = [];
+    gate.onDecision((d) => seen.push(d.kind));
+    app.onIdentityChanged(() => void gate.refresh());
+    return { app, t, gate, store, seen };
+  }
+
+  it("avisa de que la identidad cambió al emparejar y al desemparejar", async () => {
+    const { app } = wired();
+    const changed = vi.fn();
+    app.onIdentityChanged(changed);
+    await app.applyGate({ kind: "pair_needed", userId: "luis", pairedByOther: false });
+
+    await app.pair("K7MP-4XQ2");
+    expect(changed).toHaveBeenCalledTimes(1);
+
+    app.unpair();
+    expect(changed).toHaveBeenCalledTimes(2);
+  });
+
+  it("un código que no vale no anuncia nada: no se guardó nada", async () => {
+    const t = transport({ pair: vi.fn().mockRejectedValue(new PairingFailed("pairing_code_invalid")) });
+    const { app } = runtime(t);
+    const changed = vi.fn();
+    app.onIdentityChanged(changed);
+    await app.applyGate({ kind: "pair_needed", userId: "luis", pairedByOther: false });
+    await app.pair("NOPE-0000");
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it("tras emparejar, el veredicto que recibe el banner deja de ser pair_needed", async () => {
+    const { app, gate, seen } = wired();
+    expect((await gate.evaluate()).kind).toBe("pair_needed");
+    await app.applyGate({ kind: "pair_needed", userId: "luis", pairedByOther: false });
+
+    await app.pair("K7MP-4XQ2");
+    await vi.waitFor(() => expect(seen).toContain("start"));
+
+    // Y la barra dice lo mismo, que es lo que fallaba: las dos, no una.
+    expect(app.barState.status).toBe("conectada");
+  });
+
+  it("y al desemparejar el banner vuelve a aparecer", async () => {
+    const { app, gate, seen } = wired();
+    await app.applyGate({ kind: "pair_needed", userId: "luis", pairedByOther: false });
+    await app.pair("K7MP-4XQ2");
+    await vi.waitFor(() => expect(seen).toContain("start"));
+    seen.length = 0;
+
+    app.unpair();
+    await vi.waitFor(() => expect(seen).toContain("pair_needed"));
+  });
+});
 
 describe("emparejar (Historia 1)", () => {
   it("sin persona dentro no se empareja: la barra lo dice", async () => {

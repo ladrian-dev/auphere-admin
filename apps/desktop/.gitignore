@@ -1,3 +1,6 @@
 dist/
 # Copiado en el build desde packages/ui (Requisito 12.5).
 src/bar/tokens.css
+# La salida de electron-builder. Fuera de `dist/` a propósito: dentro, el
+# empaquetador se tragaba su propia salida (ver `build.directories.output`).
+release/
