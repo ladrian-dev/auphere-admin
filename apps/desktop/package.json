@@ -1,6 +1,6 @@
 {
   "name": "@nexus/desktop",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "description": "Partner-machine shell. The bridge is outbound-only: nothing from the internet reaches the partner's machine.",
