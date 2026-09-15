@@ -39,8 +39,8 @@ describe("lo que un desconocido tiene que poder abrir", () => {
     ["/no-access", "explicar por qué no entras no puede exigir entrar"],
     ["/healthz", "una sonda no tiene cookies"],
     [
-      "/api/session/code/redeem",
-      "spec 009: la cáscara canjea el código SIN sesión — es lo que viene a conseguir",
+      "/desktop-auth",
+      "spec 009: aquí empieza el login de la app, y quien llega todavía no tiene sesión",
     ],
   ])("%s — %s", (path) => {
     expect(redirectTarget(anonymousGet(path))).toBeNull();

@@ -32,12 +32,11 @@ const PUBLIC = [
   "/no-access",
   "/healthz",
   "/api/session/whoami",
-  // `/api/session/code/redeem` (spec 009): la cáscara de escritorio canjea aquí
-  // el código que la persona acaba de teclear, y **todavía no tiene sesión** —
-  // es exactamente lo que viene a conseguir. Lo que sustituye a la cookie son
-  // tres cosas que vive en la API: diez minutos, un solo uso, y sólo desde la
-  // máquina que pidió el código.
-  "/api/session/code/redeem",
+  // `/desktop-auth` (spec 009): donde la aplicación manda el navegador para
+  // empezar el inicio de sesión. Quien llega **todavía no tiene sesión** — es
+  // lo que viene a conseguir —, así que si rebotara a `/login` sin recordar a
+  // dónde iba, el retorno a la aplicación se perdería.
+  "/desktop-auth",
 ];
 
 export function proxy(request: NextRequest) {

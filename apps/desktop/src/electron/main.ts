@@ -16,11 +16,13 @@
  *   código, la guarda cifrada con el llavero, y solo late con una persona dentro.
  */
 import { BaseWindow, Menu, Tray, WebContentsView, app, globalShortcut, ipcMain, nativeImage, screen, session } from "electron";
+import { randomUUID } from "node:crypto";
 import { hostname as osHostname } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AppRuntime } from "../app-runtime.js";
+import { createPkce, listenForLogin } from "../loopback-login.js";
 import { GatewayApprovals } from "../approvals-client.js";
 import { CredentialStore } from "../credential-store.js";
 import { HttpTransport } from "../http-transport.js";
@@ -228,26 +230,52 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   // navegar, que es más de lo que hace falta y más de lo que se puede justificar
   // al ampliar una lista cerrada.
   ipcMain.handle("bar:showApp", () => showSurface("app"));
-  // Spec 009 R4.1 — **el canje va por el `fetch` de la partición humana, y ésa
-  // es la pieza entera.** Lo que el BFF responda con `Set-Cookie` lo guarda esa
-  // partición por su cuenta, así que la cáscara entrega ocho caracteres y no
-  // llega a ver ningún token. El Requisito 2.1 de la spec 002 —la aplicación no
-  // tiene autenticación propia— sigue siendo cierto sin excepciones.
-  ipcMain.handle("bar:redeem", (_event, code: unknown) => runtime.redeemCode(String(code)));
   ipcMain.handle("bar:openInBrowser", (_event, url: unknown) => {
     const decision = decideWindowOpen(String(url), consoleOrigin);
     return decision.action === "open_external" ? openExternal(decision.url) : undefined;
   });
 
-  runtime.useRedeem(async (code: string) => {
-    const response = await session
-      .fromPartition(HUMAN_PARTITION)
-      .fetch(`${consoleOrigin}/api/session/code/redeem`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-    return { ok: response.ok };
+  /**
+   * El inicio de sesión de la aplicación — spec 009 (2ª enmienda), RFC 8252.
+   *
+   * Cinco pasos y ninguno guarda un token en la cáscara:
+   *
+   * 1. Un par PKCE. El `verifier` se queda **en esta función**.
+   * 2. Un oyente efímero en `127.0.0.1` (spec 001, criterio 6.5).
+   * 3. El navegador del sistema va a `/desktop-auth` con `redirect_uri`,
+   *    `state` y `code_challenge`.
+   * 4. Se espera el retorno. El `state` lo comprueba el oyente.
+   * 5. Se canjea `code` + `verifier` **con el `fetch` de la partición humana**,
+   *    así que la cookie que devuelva la API la guarda esa partición sola.
+   *
+   * `finally` cierra el oyente pase lo que pase: un servidor que sobrevive al
+   * flujo es justo el fallo que la enmienda del Requisito 6 podría introducir.
+   */
+  runtime.useBrowserSignIn(async () => {
+    const { verifier, challenge } = createPkce();
+    const state = randomUUID();
+    const listening = await listenForLogin(state);
+    try {
+      const authorize = new URL("/desktop-auth", CONSOLE_URL);
+      authorize.searchParams.set("redirect_uri", listening.redirectUri);
+      authorize.searchParams.set("state", state);
+      authorize.searchParams.set("code_challenge", challenge);
+      await openExternal(authorize.toString());
+
+      const returned = await listening.wait;
+      if (returned.kind !== "code") return { ok: false };
+
+      const response = await session
+        .fromPartition(HUMAN_PARTITION)
+        .fetch(`${API_URL}/console/auth/session-code/redeem`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: returned.code, code_verifier: verifier }),
+        });
+      return { ok: response.ok };
+    } finally {
+      listening.cancel();
+    }
   });
 
   // Quién está dentro lo lee el proceso principal, no la página (D6).

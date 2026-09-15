@@ -38,7 +38,5 @@ interface Window {
     openInBrowser(url: string): Promise<void>;
     /** Spec 009: vuelve a la pantalla del equipo. No acepta a dónde ir. */
     showApp(): Promise<void>;
-    /** Spec 009: canjea el código de sesión. El resultado llega por onState. */
-    redeemCode(code: string): Promise<void>;
   };
 }

@@ -3,7 +3,7 @@
  *
  * La vista de la consola **no tiene ninguno**; el test de aislamiento de
  * particiones lo afirma. Lo que se expone aquí es exactamente lo que el contrato
- * (`contracts/desktop-bar.md`) enumera: **ocho** funciones desde la spec 009,
+ * (`contracts/desktop-bar.md`) enumera: **siete** funciones desde la spec 009,
  * ninguna que lea nada de la persona. La barra pregunta y muestra lo que **solo
  * la máquina sabe**.
  *
@@ -31,11 +31,6 @@ const api = {
   /** Vuelve a la pantalla del equipo. **No acepta a dónde ir**: sólo sabe
    *  volver, que es menos superficie que auditar (spec 009, R1.1). */
   showApp: (): Promise<void> => ipcRenderer.invoke("bar:showApp"),
-  /** Entrega los ocho caracteres que la persona tecleó. Devuelve nada: lo que
-   *  pasó llega por `onState`, igual que en `pair`. **Nada secreto cruza de
-   *  vuelta**: lo que la plataforma responde lo guarda la partición por su
-   *  cuenta, y este fichero no lo ve (spec 009, R4.1). */
-  redeemCode: (code: string): Promise<void> => ipcRenderer.invoke("bar:redeem", code),
 };
 
 contextBridge.exposeInMainWorld("auphere", api);

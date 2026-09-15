@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { BackendError, consoleService } from "@/lib/backend";
 import { setSessionToken } from "@/lib/session";
-import { isDesktopShellUserAgent } from "@/lib/shell-ua";
 
 /**
  * La vuelta de Google — spec 006, Requisito 5.
@@ -31,16 +30,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const result = await consoleService.googleCallback({ code, state });
     if (result.outcome === "session" && result.session_token) {
       await setSessionToken(result.session_token, result.expires_at ?? undefined);
-      // **Spec 009 R3.1** — si quien empezó el login fue la cáscara de
-      // escritorio, entrar en el navegador no la mete a ella: la cookie se
-      // queda aquí. Se le da un código para que la persona lo lleve.
-      //
-      // Se mira el `user-agent` porque es lo único que distingue este caso, y
-      // la cáscara se anuncia desde la spec 002 justamente para esto. Sabe
-      // **que** es el escritorio, no cuál — y con eso basta para decidir a qué
-      // pantalla mandar a alguien.
-      if (isDesktopShellUserAgent(request.headers.get("user-agent"))) {
-        return NextResponse.redirect(new URL("/desktop-code", request.url));
+      // **Spec 009, segunda enmienda** — el retorno a la aplicación ya no pasa
+      // por aquí. Si el login lo empezó la cáscara, viene con `?next=` puesto
+      // por `/desktop-auth`, y es esa ruta la que cierra el círculo.
+      const next = params.get("next");
+      if (next && next.startsWith("/desktop-auth")) {
+        return NextResponse.redirect(new URL(next, request.url));
       }
       return NextResponse.redirect(new URL("/", request.url));
     }

@@ -1,8 +1,9 @@
 # Contrato — la barra del puesto: estados, `preload` mínimo y almacén
 
 > **Enmendado el 2026-09-15 por la spec 009**: el `preload` pasa de **seis a
-> ocho** — `showApp` con la Historia 1 y `redeemCode` con la Historia 2 — y
-> `BarAction` de cuatro a cinco con `volver_a_la_app`. La razón, con el
+> siete** con `showApp`, y `BarAction` de cuatro a cinco con `volver_a_la_app`.
+> Llegó a haber una octava para el inicio de sesión; con el paso a RFC 8252 ése
+> ocurre en el proceso principal y la barra no participa. La razón, con el
 > precedente en contra que hubo que argumentar, está en
 > [`specs/009-volver-y-entrar-desde-la-app/contracts/bar-preload.md`](../../009-volver-y-entrar-desde-la-app/contracts/bar-preload.md).
 >
@@ -26,7 +27,6 @@ window.auphere = {
   openInBrowser(url: string): Promise<void>;    // solo URLs del origen de la consola
   // ── enmienda de la spec 009 ──────────────────────────────────────────────
   showApp(): Promise<void>;                     // vuelve a la pantalla del equipo
-  redeemCode(code: string): Promise<void>;      // canjea el código; el resultado llega por onState
 };
 ```
 

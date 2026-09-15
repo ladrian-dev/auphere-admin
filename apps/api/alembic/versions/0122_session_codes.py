@@ -11,12 +11,13 @@ Tres decisiones de forma, y ninguna es de estilo:
 
 * **La PK es el hash**, como en ``principal_sessions``, cuyo docstring lo dice
   mejor: «un volcado de la tabla no permite entrar en ninguna cuenta».
-* **No hay columna de máquina.** La tabla llegó a tener una para atar el código
-  a quien lo pidió; se retiró al ver que no hay a qué atarlo — el código nace en
-  el navegador del sistema, que no conoce el Mac donde corre la aplicación. Una
-  columna que nadie lee parece una protección que nadie tiene. Lo que queda
-  protegiendo el código son los diez minutos y el uso único, y lo que se registra
-  del canje es lo que ``principal_sessions`` ya guarda: ``ip`` y ``user_agent``.
+* **``code_challenge`` ata el código a quien lo pidió, y es PKCE (RFC 7636).**
+  La columna llegó a llamarse ``machine_hint`` y a guardar un ``hostname``
+  hasheado; se retiró al ver que el navegador no conoce la máquina, y vuelve con
+  el nombre que le da el estándar. Lo que ata ahora no es *dónde* estás sino
+  *que tienes el secreto*: el ``code_verifier`` se genera en la aplicación y no
+  sale de su proceso, así que un código visto en la URL del retorno no le sirve
+  a nadie más.
 * **``consumed_at`` en vez de borrar la fila.** Borrar haría indistinguible «ya
   usado» de «no existió», y esa indistinguibilidad tiene que ser una decisión de
   la RESPUESTA (R4.5), no un efecto de la tabla. Con la fila delante el servidor
@@ -52,6 +53,7 @@ def upgrade() -> None:
             sa.ForeignKey("console_auth.principals.id", ondelete="CASCADE"),
             nullable=False,
         ),
+        sa.Column("code_challenge", sa.String(128), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),

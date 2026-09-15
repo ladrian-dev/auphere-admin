@@ -1,4 +1,4 @@
-# Contrato — el `preload` de la barra pasa de seis funciones a ocho
+# Contrato — el `preload` de la barra pasa de seis funciones a siete
 
 **Enmienda** a [`specs/002-identidad-app-escritorio/contracts/desktop-bar.md`](../../002-identidad-app-escritorio/contracts/desktop-bar.md),
 que es el documento que manda. Ese contrato se actualiza **en el mismo commit**
@@ -16,16 +16,16 @@ window.auphere = {
   openInBrowser(url: string): Promise<void>;
   // ── spec 009 ──────────────────────────────────────────────────────────
   showApp(): Promise<void>;          // vuelve a la pantalla del equipo
-  redeemCode(code: string): Promise<void>;  // canjea el código; el resultado llega por onState
 };
 ```
 
-Canales IPC: `bar:showApp` y `bar:redeem`.
+Canal IPC: `bar:showApp`.
 
-**Se publicaron en dos pasos**, y a propósito: `showApp` con la Historia 1 y
-`redeemCode` con la Historia 2. Dejar una función sin handler en una versión
-firmada habría sido ampliar la superficie declarada por una capacidad que
-todavía no existía.
+**Y sólo una función, tras la segunda enmienda.** Llegó a haber una octava,
+`redeemCode`, para el código que la persona tecleaba. Con el paso a RFC 8252 el
+inicio de sesión **no pasa por la barra**: ocurre en el proceso principal, entre
+el navegador del sistema y un oyente en loopback. La barra no toca nada de eso,
+así que la lista se queda en siete.
 
 ## Por qué la lista crece, cuando ya se dijo que no una vez
 
@@ -44,10 +44,9 @@ no hay nada esperando a hacerlo por ella.
    la 002, con un test que falla si aparece una novena.
 2. **La vista de la consola sigue sin `preload`.** Nada de esto le da un canal a
    la página cargada (spec 002, R3.5).
-3. **Ninguna devuelve un secreto.** `redeemCode` entrega ocho caracteres y recibe
-   un estado. El token no cruza el `preload` en ninguna dirección, y de hecho
-   **la cáscara tampoco lo ve**: el canje va por el `fetch` de la partición
-   humana, el BFF responde con la cookie puesta, y la partición la guarda sola.
+3. **Ninguna devuelve un secreto.** Ninguna de las siete. Y el inicio de sesión
+   tampoco pasa por aquí: lo hace el proceso principal, y la cookie la guarda la
+   partición humana por su cuenta.
 4. **`showApp` no acepta a dónde ir.** Sólo sabe volver. Una `showSurface(name)`
    parametrizada daría a la barra la capacidad de navegar, que es más de lo que
    hace falta.

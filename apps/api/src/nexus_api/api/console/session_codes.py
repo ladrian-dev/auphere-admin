@@ -27,7 +27,9 @@ import uuid
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from redis.asyncio import Redis
 
+from nexus_api.api.deps import get_redis
 from nexus_api.core.client_ip import client_ip_for_storage
 from nexus_api.core.console_auth import (
     ConsolePrincipal,
@@ -36,6 +38,7 @@ from nexus_api.core.console_auth import (
     require_console_service,
 )
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.services.device_pairing import PairingRateLimiter
 from nexus_api.services.session_codes import (
     SessionCodeRejected,
     issue_session_code,
@@ -50,8 +53,17 @@ class IssueOut(BaseModel):
     code: str
 
 
+class IssueIn(BaseModel):
+    #: El `code_challenge` de PKCE (S256). Lo genera la aplicación y es lo que
+    #: ata el código a quien lo pidió.
+    code_challenge: str = Field(min_length=32, max_length=128)
+
+
 class RedeemIn(BaseModel):
     code: str = Field(min_length=1, max_length=32)
+    #: El secreto que la aplicación NO enseñó a nadie. Sin él, un código visto
+    #: en la URL del retorno no vale.
+    code_verifier: str = Field(min_length=32, max_length=256)
 
 
 class RedeemOut(BaseModel):
@@ -61,11 +73,16 @@ class RedeemOut(BaseModel):
 
 @router.post("", response_model=IssueOut, status_code=status.HTTP_201_CREATED)
 async def issue(
+    body: IssueIn,
     principal: ConsolePrincipal = Depends(require_console_principal()),
 ) -> IssueOut:
     """Emite el código para **quien lo pide**, nunca para otro (R3.1, R5.1)."""
     async with get_sessionmaker()() as session, session.begin():
-        code = await issue_session_code(session, principal_id=uuid.UUID(principal.user_id))
+        code = await issue_session_code(
+            session,
+            principal_id=uuid.UUID(principal.user_id),
+            code_challenge=body.code_challenge,
+        )
     return IssueOut(code=code)
 
 
@@ -74,6 +91,7 @@ async def redeem(
     body: RedeemIn,
     request: Request,
     _svc: ConsoleService = Depends(require_console_service()),
+    redis: Redis = Depends(get_redis),
 ) -> RedeemOut | JSONResponse:
     """Canjea el código por una sesión nueva.
 
@@ -90,8 +108,14 @@ async def redeem(
             token, expires_at = await redeem_session_code(
                 session,
                 code=body.code,
+                code_verifier=body.code_verifier,
                 ip=client_ip_for_storage(request),
                 user_agent=request.headers.get("user-agent"),
+                limiter=PairingRateLimiter(redis=redis),
+                # Por IP: es lo único que identifica a quien llama antes de
+                # tener sesión. No es perfecto —una NAT comparte castigo— pero
+                # sin límite la ruta admite intentos infinitos y gratis.
+                attempt_key=client_ip_for_storage(request) or "desconocido",
             )
         except SessionCodeRejected:
             return JSONResponse(

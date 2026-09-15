@@ -36,6 +36,36 @@ encontrados al usar la primera versión publicada (v0.1.0) instalada.
 - Q: Si alguien lee el código en una pantalla ajena y lo teclea en su propia máquina antes de que caduque, ¿debe funcionarle? → A: ~~No, atado a la máquina~~ → **ENMENDADO el 2026-09-15 durante la implementación: no se ata.** La respuesta original se dio sobre una premisa falsa — ver «Enmienda» abajo.
 - Q: La constitución §IX exige citar la nota de KB que justifica la spec, y no existe. ¿Qué hacemos con ese hueco? → A: **Escribir un ADR corto en la KB.** Hecho: `[[ADR-039-volver-y-entrar-desde-la-app-de-escritorio]]`, con la decisión, las alternativas descartadas y su razón.
 
+### Segunda enmienda del 2026-09-15 · el mecanismo pasa a ser el estándar
+
+**Lo que se construyó era un Device Authorization Grant (RFC 8628) hecho a mano y
+al revés**, y las dos enmiendas anteriores son consecuencia de eso. En el RFC el
+**dispositivo** genera el secreto y **sondea**; aquí lo generaba el navegador y
+la persona lo tecleaba en la aplicación. De ahí salieron los dos problemas:
+
+- la atadura a la máquina era imposible (primera enmienda), porque el navegador
+  no conoce el Mac;
+- el límite de intentos se quedó sin cablear, y lo encontró `/cso` como 🔴.
+
+**Decidido por Luis el 2026-09-15: se pasa a RFC 8252** — *authorization code* +
+**PKCE**, con retorno a `127.0.0.1`. Es lo que hacen Claude Code, `gh`, `gcloud`
+y Heroku, y lo que un auditor reconoce sin que nadie se lo explique.
+
+**PKCE devuelve lo que la primera enmienda perdió.** El `code_verifier` se genera
+en la máquina y no sale del proceso: quien vea el código en la URL no puede
+canjearlo. La atadura vuelve, con nombre estándar y sin depender de un `hostname`.
+
+**Lo que costó, y se pagó a sabiendas**: enmendar el **Requisito 6 de la spec
+001** («el puente es saliente»), aflojar su guardián `no-inbound.test.ts` a
+«exactamente uno» con cuatro condiciones comprobadas, y corregir la promesa del
+`package.json`. Un oyente en loopback es entrante aunque sólo lo alcance la
+propia máquina, y eso se dice en vez de esconderse.
+
+**Lo que NO cambia**: la tabla, el TTL de diez minutos, el uso único, el hash y
+el rechazo indistinguible. Todo eso hace la misma falta aquí.
+
+Plan completo en [`migracion-a-loopback-pkce.md`](migracion-a-loopback-pkce.md).
+
 ### Enmienda del 2026-09-15 · el código no se ata a la máquina
 
 **Q2 se decidió con una premisa falsa y se corrige, no se ajusta en silencio.**
@@ -209,13 +239,17 @@ veces.
 
 #### Criterios de aceptación
 
-1. WHEN una persona termina un inicio de sesión con Google en el navegador del
-   sistema THEN la consola DEBE emitir un código de un solo uso y mostrárselo.
-   **Sólo por ese camino**: el código no se ofrece a quien entró con correo y
-   contraseña, porque ésa ya entra dentro de la cáscara.
-2. El código DEBE usar el alfabeto, la longitud y el tiempo de vida que ya usa el
-   emparejamiento de máquinas (`core/pairing_codes.py`): sin caracteres
-   ambiguos, ocho posiciones, diez minutos.
+1. WHEN una persona termina un inicio de sesión en el navegador del sistema
+   THEN la consola DEBE emitir un código de un solo uso y **devolverlo por
+   redirección** al `redirect_uri` que la aplicación indicó, junto con el
+   `state`. *Segunda enmienda: el código ya no se enseña ni se teclea.*
+2. El `redirect_uri` DEBE validarse **en el servidor**, y sólo se aceptan los de
+   `127.0.0.1`. IF llega cualquier otro THEN el sistema NO DEBE emitir código ni
+   redirigir a él.
+3. El código DEBE quedar atado al `code_challenge` (PKCE, S256) que la
+   aplicación envió al empezar, y el canje DEBE exigir el `code_verifier`.
+4. El código DEBE usar el tiempo de vida que ya usa el emparejamiento de
+   máquinas (`core/pairing_codes.py`): diez minutos.
 3. El sistema DEBE guardar **el hash** del código, nunca el código.
 4. WHEN se emite un código nuevo para la misma persona THEN el anterior DEBE
    quedar invalidado: no hay dos códigos vivos a la vez.

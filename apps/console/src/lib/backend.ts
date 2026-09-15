@@ -396,8 +396,8 @@ export function backendFor(principal: Principal) {
      * emite para quien lo pide y para nadie más, así que quién pide tiene que
      * viajar en el token.
      */
-    issueSessionCode: (): Promise<{ code: string }> =>
-      call<{ code: string }>("/console/auth/session-code", { method: "POST" }),
+    issueSessionCode: (body: { code_challenge: string }): Promise<{ code: string }> =>
+      call<{ code: string }>("/console/auth/session-code", { method: "POST", body }),
     // lane modules — each lane owns its file under lib/backend/
     ...agentToolsApi(call),
     ...playgroundApi(call),
@@ -500,17 +500,6 @@ export const consoleService = {
    * API no hay ni una ruta `/console/*` sin credencial, y una suite de
    * aislamiento lo comprueba una por una.
    */
-  async redeemSessionCode(body: { code: string }): Promise<{
-    session_token: string;
-    expires_at: string;
-  }> {
-    const t = await mintServiceToken();
-    return (await request<{ session_token: string; expires_at: string }>(
-      t,
-      "/console/auth/session-code/redeem",
-      { method: "POST", body },
-    )) as { session_token: string; expires_at: string };
-  },
   /** `null` when the token is unknown or expired — never an exception. */
   async session(token: string): Promise<ApiPrincipal | null> {
     const t = await mintServiceToken();

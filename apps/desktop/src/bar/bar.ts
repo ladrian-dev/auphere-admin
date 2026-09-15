@@ -52,15 +52,6 @@ const COPY: Record<string, Record<Lang, string>> = {
     declared: { es: "declarado", en: "declared" },
     unpair: { es: "Desemparejar", en: "Unpair" },
     backToApp: { es: "Volver al equipo", en: "Back to the team" },
-    enterSessionCode: { es: "Tengo un código de acceso", en: "I have a sign-in code" },
-    sessionCodeHelp: {
-      es: "El que te dio la consola al entrar con Google. Caduca en 10 minutos.",
-      en: "The one the console gave you after signing in with Google. It expires in 10 minutes.",
-    },
-    "error.session_code_invalid": {
-      es: "Ese código no vale. Pide otro entrando de nuevo en la consola.",
-      en: "That code does not work. Sign in to the console again for a new one.",
-    },
     unpairConfirm: { es: "Esta máquina olvidará su credencial. Si no vas a volver a usarla, archívala también desde la consola. ¿Desemparejar?", en: "This machine will forget its credential. If you will not use it again, archive it from the console too. Unpair?" },
     unpairedHint: { es: "Credencial olvidada · archívala desde la consola si no vas a volver", en: "Credential forgotten · archive it from the console if you will not be back" },
     noEncryption: { es: "Este sistema no ofrece cifrado para guardar la credencial: no se puede emparejar", en: "This system offers no encryption to keep the credential: pairing is not possible" },
@@ -84,7 +75,7 @@ const COPY: Record<string, Record<Lang, string>> = {
   const root: HTMLElement = mount;
 
   let state: BarState = { status: "sin_emparejar", links: [], encryptionAvailable: true };
-  let sheet: "none" | "code" | "directories" | "sessionCode" = "none";
+  let sheet: "none" | "code" | "directories" = "none";
   let justUnpaired = false;
 
   const el = (tag: string, attrs: Record<string, string> = {}, ...children: Array<Node | string>) => {
@@ -146,11 +137,6 @@ const COPY: Record<string, Record<Lang, string>> = {
     if (state.surface === "console") {
       actions.append(button(t("backToApp"), () => void window.auphere.showApp()));
     }
-    // Spec 009 — **sólo sin sesión**: con la sesión dentro no hay nada que
-    // canjear, y un botón que no lleva a ningún sitio es lo que §V prohíbe.
-    if (state.status === "sin_sesion") {
-      actions.append(button(t("enterSessionCode"), () => openSheet("sessionCode")));
-    }
     const canPair = ["sin_emparejar", "volver_a_emparejar", "archivada_desde_consola"].includes(state.status);
     if (canPair) actions.append(button(t("enterCode"), () => openSheet("code")));
     // Spec 008 R4.3: aquí **no** se ofrece emparejar. La credencial sigue
@@ -170,18 +156,6 @@ const COPY: Record<string, Record<Lang, string>> = {
     root.append(actions);
 
     if (sheet === "code" && canPair) root.append(codeSheet());
-    // **La misma hoja que el emparejamiento, y hace algo distinto.** Se teclean
-    // igual a propósito; que uno ate la máquina y el otro traiga la sesión tiene
-    // que verse en el texto, porque en el gesto no se ve.
-    if (sheet === "sessionCode" && state.status === "sin_sesion") {
-      root.append(
-        codeSheet({
-          submit: (code) => window.auphere.redeemCode(code),
-          help: "sessionCodeHelp",
-          label: "enterSessionCode",
-        }),
-      );
-    }
     if (sheet === "directories" && state.status === "conectada") root.append(directoriesSheet());
   }
 

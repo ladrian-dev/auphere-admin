@@ -321,37 +321,37 @@ export class AppRuntime {
   }
 
   /**
-   * Quién canjea el código contra el BFF — spec 009, R4.1.
+   * Quién hace el inicio de sesión por el navegador — spec 009, 2ª enmienda.
    *
-   * Se inyecta en vez de construirse aquí porque lo que hay al otro lado es el
-   * `fetch` de una partición de Electron, y el runtime se prueba sin Electron.
+   * Se inyecta porque al otro lado hay un oyente en loopback, un navegador del
+   * sistema y el `fetch` de una partición de Electron; y el runtime se prueba
+   * sin nada de eso. Aquí sólo vive **qué pasa después**.
    */
-  private redeem: ((code: string) => Promise<{ ok: boolean }>) | null = null;
+  private signIn: (() => Promise<{ ok: boolean }>) | null = null;
 
-  useRedeem(fn: (code: string) => Promise<{ ok: boolean }>): void {
-    this.redeem = fn;
+  useBrowserSignIn(fn: () => Promise<{ ok: boolean }>): void {
+    this.signIn = fn;
   }
 
   /**
-   * Canjea el código que la persona tecleó — spec 009, R4.
+   * Inicia sesión abriendo el navegador — spec 009, 2ª enmienda (RFC 8252).
    *
-   * **Este método hace muy poco a propósito.** No valida el código, no guarda
-   * nada y no ve ningún secreto: entrega ocho caracteres y, si el BFF los
-   * acepta, anuncia que la identidad cambió para que la puerta vuelva a
-   * derivar el veredicto — el mismo camino que `pair()`.
+   * **Este método hace muy poco a propósito.** Ni genera el PKCE, ni levanta el
+   * oyente, ni ve ningún token: pide que ocurra y, si sale bien, anuncia que la
+   * identidad cambió para que la puerta vuelva a derivar el veredicto — el
+   * mismo camino que `pair()`.
    *
-   * **El código va tal cual se tecleó.** `normalize_code` vive en la API, y
-   * normalizar también aquí sería una segunda definición de qué es un código
-   * válido, que es como acaban discrepando.
+   * Que falle no es una avería: cerrar la pestaña del navegador es una decisión
+   * y se cuenta como estado, nunca en rojo.
    */
-  async redeemCode(code: string): Promise<void> {
-    if (!this.redeem) {
+  async signInWithBrowser(): Promise<void> {
+    if (!this.signIn) {
       this.setBar({ kind: "redeem_failed" });
       return;
     }
     let ok = false;
     try {
-      ok = (await this.redeem(code)).ok;
+      ok = (await this.signIn()).ok;
     } catch {
       ok = false;
     }

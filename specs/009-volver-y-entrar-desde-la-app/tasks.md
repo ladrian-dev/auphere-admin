@@ -152,6 +152,34 @@ desplegada), T018, T019 y T020. El test que comprobaba la atadura se sustituyó
 por **uno que fija la pérdida**: cualquiera con el código entra, y si alguien
 vuelve a atarlo se pondrá rojo y leerá el porqué.
 
+### Segunda enmienda del 2026-09-15 · el mecanismo pasa a RFC 8252
+
+Luis preguntó **«¿cómo lo hace Claude, Grok y ese tipo de apps?»** y la respuesta
+deshizo la Historia 2: lo construido era un **RFC 8628 hecho a mano y al revés**,
+y las dos enmiendas anteriores eran consecuencia de esa inversión.
+
+Se pasa a **loopback + PKCE (RFC 8252)**, lo que hacen Claude Code, `gh` y
+`gcloud`. Coste asumido a sabiendas: enmendar el **Requisito 6 de la spec 001**,
+aflojar `no-inbound.test.ts` a «exactamente uno» con cuatro condiciones, y
+corregir la promesa del `package.json`.
+
+**Qué cambia de las tareas ya marcadas:**
+
+| Tarea | Qué pasa |
+|---|---|
+| T014–T016 | Siguen valiendo. El TTL, el uso único y la indistinguibilidad son iguales |
+| T017 | La columna vuelve, ahora como `code_challenge` (PKCE) |
+| T018 | Reescrita: PKCE **y el límite de intentos**, que faltaba |
+| T019/T021 | El test de «se pierde la atadura» se sustituye por el de PKCE, con sus mutaciones |
+| T022–T024 | La consola cambia: `/desktop-code` (leer) → `/desktop-auth` (redirigir) |
+| T025–T028 | El `preload` vuelve a **siete**: `redeemCode` desaparece, el login no pasa por la barra |
+
+**Y cierra el 🔴 de `/cso`**: `PairingRateLimiter` cableado en los cuatro caminos
+de rechazo, con su test y su mutación. Era el hallazgo que bloqueaba T030.
+
+Piezas nuevas: `apps/desktop/src/loopback-login.ts`,
+`apps/console/src/lib/desktop-redirect.ts` y `(auth)/desktop-auth/page.tsx`.
+
 ## Fase 5 · Cierre
 
 - [ ] T031 Actualizar `docs/desktop-workstation.md`: la barra tiene una acción más y el `preload` ocho funciones. **Mismo commit** que el código que lo cambia. _Requisitos: 1.1, 2.1_

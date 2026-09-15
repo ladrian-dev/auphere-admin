@@ -315,8 +315,8 @@ describe("aprobaciones solo para la persona con sesión (5.3, Historia 5)", () =
  * partición sola. Si sale bien, lo único que el runtime hace es **volver a
  * preguntarle a la puerta**, exactamente como al emparejar.
  */
-describe("canjear el código de sesión (spec 009, R4)", () => {
-  function conBff(responder: () => Promise<{ ok: boolean }>) {
+describe("iniciar sesión por el navegador (spec 009, 2ª enmienda)", () => {
+  function conNavegador(responder: () => Promise<{ ok: boolean }>) {
     const store = new CredentialStore(cipher, file());
     const { app } = runtime(transport(), store);
     const gate = new SessionGate({
@@ -328,36 +328,29 @@ describe("canjear el código de sesión (spec 009, R4)", () => {
     const seen: string[] = [];
     gate.onDecision((d) => seen.push(d.kind));
     app.onIdentityChanged(() => void gate.refresh());
-    app.useRedeem(responder);
+    app.useBrowserSignIn(responder);
     return { app, seen };
   }
 
-  it("un canje correcto vuelve a preguntarle a la puerta", async () => {
-    const { app, seen } = conBff(async () => ({ ok: true }));
-    await app.redeemCode("K7MP-4XQ2");
+  it("un inicio de sesión correcto vuelve a preguntarle a la puerta", async () => {
+    const { app, seen } = conNavegador(async () => ({ ok: true }));
+    await app.signInWithBrowser();
     await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0));
   });
 
-  it("un canje fallido lo dice en la barra y NO avisa de identidad", async () => {
-    const { app, seen } = conBff(async () => ({ ok: false }));
-    await app.redeemCode("ZZZZ-9999");
+  it("uno fallido lo dice en la barra y NO avisa de identidad", async () => {
+    const { app, seen } = conNavegador(async () => ({ ok: false }));
+    await app.signInWithBrowser();
     expect(app.barState.lastError?.code).toBe("session_code_invalid");
     expect(seen).toEqual([]);
   });
 
-  it("el código se manda tal cual la persona lo tecleó: normalizar es del servidor", async () => {
-    const visto: string[] = [];
-    const { app } = conBff(async () => {
-      return { ok: true };
-    });
-    app.useRedeem(async (code) => {
-      visto.push(code);
-      return { ok: true };
-    });
-    await app.redeemCode("k7mp-4xq2");
-    // Sin recortar ni mayusculizar aquí: `normalize_code` vive en la API y una
-    // segunda normalización en el cliente es una segunda definición de qué es
-    // un código válido.
-    expect(visto).toEqual(["k7mp-4xq2"]);
+  it("sin nadie que inicie sesión, lo dice en vez de quedarse callado", async () => {
+    const store = new CredentialStore(cipher, file());
+    const { app } = runtime(transport(), store);
+    // Nadie llamó a `useBrowserSignIn`: es un error de cableado, y la barra lo
+    // cuenta igual en vez de fingir que no pasó nada.
+    await app.signInWithBrowser();
+    expect(app.barState.lastError?.code).toBe("session_code_invalid");
   });
 });

@@ -31,14 +31,14 @@ describe("la app no autentica a nadie (2.1, 2.5)", () => {
   });
 
   /**
-   * **Ocho desde la spec 009, y sigue siendo una lista cerrada.**
+   * **Siete desde la spec 009, y sigue siendo una lista cerrada.**
    *
-   * Eran seis. `showApp` y `redeemCode` entran porque la barra no puede cambiar
+   * Eran seis. `showApp` entra porque la barra no puede cambiar
    * de superficie ni entregar un código sin un canal al proceso principal — que
    * es justo el propósito de no dárselo, y por eso la ampliación se argumenta en
    * `specs/009-…/contracts/bar-preload.md` en vez de darse por hecha.
    *
-   * Lo que **no** cambia es la prohibición de abajo: ninguna de las ocho toca
+   * Lo que **no** cambia es la prohibición de abajo: ninguna de las siete toca
    * `login`, `session`, `cookie` ni `token`. `redeemCode` entrega ocho
    * caracteres que una persona tecleó y recibe un estado; quien habla con la
    * plataforma es el principal. La aplicación sigue sin autenticación propia
@@ -52,10 +52,9 @@ describe("la app no autentica a nadie (2.1, 2.5)", () => {
     "pickDirectory",
     "openInBrowser",
     "showApp",
-    "redeemCode",
   ];
 
-  it("el preload expone exactamente las ocho funciones del contrato", () => {
+  it("el preload expone exactamente las siete funciones del contrato", () => {
     const text = readFileSync(PRELOAD, "utf8");
     for (const fn of CONTRATO) {
       expect(text).toContain(`${fn}:`);
