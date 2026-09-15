@@ -74,6 +74,30 @@ describe("GoogleButton", () => {
     await userEvent.click(screen.getByRole("button", { name: /Google/i }));
 
     expect(googleStartAction).toHaveBeenCalledTimes(1);
-    expect(googleStartAction).toHaveBeenCalledWith("login");
+    // Sin `returnTo` va `undefined`: el camino normal, entrar en la consola.
+    expect(googleStartAction).toHaveBeenCalledWith("login", undefined);
+  });
+
+  /**
+   * **El test que faltaba, y por eso el fallo 1 seguía vivo con la spec entera
+   * escrita.** El camino de correo y contraseña conservaba el destino, así que
+   * parecía que éste también. No lo hacía: se perdía aquí, en el botón, y quien
+   * entraba con Google acababa en la portada mientras la aplicación de
+   * escritorio esperaba en su puerto hasta caducar.
+   */
+  it("lleva el destino de vuelta, si lo hay", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    googleStartAction.mockResolvedValue("https://accounts.google.com/o/oauth2/v2/auth?x=1");
+    Object.defineProperty(window, "location", { value: { assign: vi.fn() }, writable: true });
+
+    const destino = "/desktop-auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A5000%2F&state=abc";
+    render(
+      <LocaleProvider locale="es">
+        <GoogleButton intent="login" available returnTo={destino} />
+      </LocaleProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Google/i }));
+
+    expect(googleStartAction).toHaveBeenCalledWith("login", destino);
   });
 });

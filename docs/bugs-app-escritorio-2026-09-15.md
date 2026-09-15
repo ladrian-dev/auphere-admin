@@ -25,7 +25,7 @@ desde el repositorio.
 
 | # | Fallo | Estado |
 |---|---|---|
-| 1 | Google no vuelve a la app | **Sin arreglar.** Mecanismo confirmado; necesita decisión de diseño |
+| 1 | Google no vuelve a la app | **ARREGLADO** · RFC 8252 (loopback + PKCE) · `specs/009-volver-y-entrar-desde-la-app/` |
 | 2 | El banner de «sin emparejar» no se va | **Sin arreglar.** Confirmado: dos superficies leyendo dos fuentes |
 | 3 | Crear teammate da error genérico | **ARREGLADO** · `.specify/bugs/teammate-tope-de-plan-mensaje-generico/` |
 | 4 | No hay vuelta desde la consola | **Sin arreglar, y el diagnóstico de abajo es falso** — ver corrección |
@@ -33,7 +33,7 @@ desde el repositorio.
 | 5b | El paquete se traga su propia salida | **ARREGLADO Y VERIFICADO** · el asar de x64 pasa de 1.982.761.659 a 68.668.433 bytes |
 | 6 | El actualizador nunca se arma | **ARREGLADO** · `.specify/bugs/updater-no-arranca/` |
 
-Los tres arreglados se publican juntos en **0.1.2**.
+Los tres primeros se publicaron en **0.1.3**. Los fallos 1 y 4 van por la spec 009, todavía sin publicar.
 
 **El fallo 6 no estaba en esta lista y es el más grave de los tres arreglados**:
 `electron-updater` es CommonJS y expone `autoUpdater` con un getter perezoso que

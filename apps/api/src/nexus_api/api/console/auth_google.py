@@ -115,7 +115,13 @@ async def start(
 ) -> GoogleStartOut:
     client_id, _secret, redirect_uri, state_secret = _config()
     verifier, challenge = google_oidc.pkce_pair()
-    state, payload = sign_state(claims={"i": body.intent}, secret=state_secret)
+    # El destino viaja **dentro del `state` firmado** y no en la URL: los
+    # parámetros del callback los pone Google, y lo que no llega firmado por
+    # nosotros no se puede creer. Es lo que dice RFC 6749 §10.12.
+    claims: dict[str, str] = {"i": body.intent}
+    if body.return_to:
+        claims["r"] = body.return_to
+    state, payload = sign_state(claims=claims, secret=state_secret)
     # El verificador se queda aquí. **No viaja al navegador**: si viajara,
     # quien intercepte el redirect tendría las dos mitades de PKCE.
     await google_oidc.remember_pkce(redis, nonce=payload.nonce, verifier=verifier)
@@ -180,7 +186,10 @@ async def callback(
                 user_agent=request.headers.get("user-agent"),
             )
             return GoogleCallbackOut(
-                outcome="session", session_token=token, expires_at=expires_at.isoformat()
+                outcome="session",
+                session_token=token,
+                expires_at=expires_at.isoformat(),
+                return_to=payload.claims.get("r"),
             )
 
         # No hay cuenta: esto es un alta, y el alta tiene sus reglas.

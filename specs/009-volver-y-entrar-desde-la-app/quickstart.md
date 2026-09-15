@@ -50,56 +50,44 @@ acciones **y la de volver sigue ahí**. Si desaparece, alguien la metió dentro 
 Hace falta una cuenta de Google que sea principal de un partner, y **no** tener
 sesión en la partición de la aplicación.
 
+**No hay ningún código que teclear.** Es RFC 8252: la aplicación abre el
+navegador, la persona entra, y el navegador vuelve solo a `127.0.0.1`.
+
 | # | Qué se hace | Qué tiene que pasar |
 |---|---|---|
 | 1 | Abrir la app sin sesión | Se enseña la consola en `/login` |
-| 2 | Pulsar «continuar con Google» | Se abre el **navegador del sistema**. Esto no cambia y no debe cambiar |
-| 3 | Completar el inicio de sesión allí | El navegador llega a una pantalla con un código de ocho caracteres y qué hacer con él (R3.1) |
-| 4 | Teclearlo en la barra | La app queda dentro y sale la pantalla del equipo sin tocar nada más (H2.2) |
-| 5 | Teclear el **mismo** código otra vez | Rechazado, sin decir de quién era (R4.4) |
-| 6 | Pedir uno nuevo y teclear el **anterior** | Rechazado: sólo hay uno vivo por persona (R3.4) |
-| 7 | Pedir uno y esperar once minutos | Rechazado por caducado, y la barra ofrece pedir otro (H2.4) |
-| 8 | Pedir uno y teclearlo en **otra máquina** | Rechazado, y **con el mismo mensaje** que el caducado y que uno inventado (R5.3 + R4.5) |
-| 9 | Fallar cinco veces seguidas | Espera creciente, igual que el emparejamiento (R4.6) |
+| 2 | Pulsar «continuar con Google» | Se abre el **navegador del sistema** |
+| 3 | Completar el inicio de sesión allí | El navegador vuelve solo y dice que ya puedes volver a Auphere |
+| 4 | Mirar la aplicación | **Está dentro**, sin haber tecleado nada (H2.2) |
+| 5 | Cerrar la pestaña a medias, antes de entrar | La app no se queda colgada: el oyente caduca y la barra lo cuenta como estado, nunca en rojo |
 
-### Las tres comprobaciones que nadie hace y son el punto entero
+### Las cuatro comprobaciones que nadie hace y son el punto entero
 
-**Que las sesiones son independientes** (R4.2). Con sesión en las dos, cerrar la
-del navegador:
+**Que el oyente NO sobrevive al flujo** (spec 001, criterio 6.5.3). Con la app
+abierta y **sin** inicio de sesión en curso:
 
 ```bash
-open "https://console.auphere.com/logout"
+lsof -nP -iTCP -sTCP:LISTEN | grep -i auphere
 ```
 
-La aplicación **sigue dentro**. Si se cae, se copió el secreto en vez de acuñar
-uno nuevo, y Q1 está incumplido.
+Tiene que salir **vacío**. Si sale algo, hay un servidor viviendo en la máquina
+del partner y la enmienda del Requisito 6 introdujo justo lo que prometía evitar.
 
-**Que se puede cerrar la de la app sin cerrar la del navegador** (R4.3), que es lo
-que hace que «independientes» no sea sólo una palabra. Desde la consola, en la
-lista de sesiones: termina la que lleva `AuphereDesktop/` y la del navegador
-sigue viva.
+**Que mientras dura, escucha sólo en loopback** (6.5.1). Con el navegador
+abierto a medio login, el mismo comando tiene que mostrar `127.0.0.1:` y
+**nunca** `*:` ni `0.0.0.0:`.
 
-**Que el código no aparece en claro en ningún sitio** (R5.4):
+**Que el redirector no se puede desviar** (el ataque que `desktop-redirect.ts`
+cierra). A mano, en el navegador:
 
-```bash
-docker compose logs api --since 10m | grep -oE "\b[ABCDEFGHJKMNPQRSTVWXYZ23456789]{8}\b" | head
+```
+https://console.auphere.com/desktop-auth?redirect_uri=https://example.com/&state=x&code_challenge=y
 ```
 
-Ahí no puede salir ningún código. El alfabeto del `grep` es el de
-`core/pairing_codes.py` a propósito: busca exactamente la forma que tienen. **Si
-aparece algo, es 🔴 y bloquea antes de seguir.**
+Tiene que llevar a `/no-access` y **no emitir ningún código**.
 
-### Lo que la auditoría tiene que poder decir (R5.5)
-
-La sesión acuñada por el canje se distingue por su `user_agent`, que la cáscara
-pone desde la spec 002:
-
-```bash
-docker compose exec -T postgres psql -U nexus -d nexus -c "SELECT principal_id, user_agent, created_at FROM console_auth.principal_sessions ORDER BY created_at DESC LIMIT 5;"
-```
-
-Una de las filas recientes tiene que llevar `AuphereDesktop/`. Si las dos sesiones
-son indistinguibles, la auditoría no puede decir qué máquina hizo qué.
+**Que las sesiones son independientes** (R4.2). Cerrar la del navegador y ver
+que la aplicación **sigue dentro**.
 
 ## Antes de declararlo hecho
 

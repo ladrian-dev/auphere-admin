@@ -131,8 +131,14 @@ entra de punta a punta.
 - [X] T026 **[TEST, ROJO]** [P] [US2] `apps/desktop/tests/app-runtime-identity.test.ts`: el canje correcto deja la app dentro y **avisa del cambio de identidad**, igual que `pair()`. _Requisitos: 4.1_
 - [X] T027 [US2] El canje en `apps/desktop/src/app-runtime.ts`, **junto a `pair()`** — son hermanos y conviene que se lean seguidos. Manda la huella de máquina que el runtime ya tiene. _Requisitos: 4.1, 5.3_
 - [X] T028 [US2] La hoja del código en `apps/desktop/src/bar/bar.ts`, **reutilizando la que ya existe** para el emparejamiento. Copia en `es` y `en` que deje claro que este código trae la sesión y no empareja la máquina: se teclean igual y hacen cosas distintas. _Requisitos: 4.7_
-- [ ] T029 [US2] Recorrer los nueve pasos de la Historia 2 del [quickstart](quickstart.md), **incluidas las tres comprobaciones que nadie hace**: sesiones independientes, cerrar la de la app sin la del navegador, y el `grep` del alfabeto sobre los logs. Salida cruda en `.evidence/009/`. _Requisitos: 4.2, 4.3, 5.4_
-- [ ] T030 **[PUERTA]** [US2] Ejecutar **`/cso`**. Toca autenticación y secretos de un solo uso. **Un finding 🔴 bloquea el ship** hasta mitigar o aceptar el riesgo por escrito. _Requisitos: 5.1, 5.2, 5.3, 5.4_
+- [ ] T029 [US2] Recorrer la Historia 2 del [quickstart](quickstart.md) — **reescrita
+      tras la 2ª enmienda: ya no hay código que teclear**— y sobre todo sus **cuatro
+      comprobaciones**: que `lsof` no muestra ningún oyente con la app abierta y sin
+      login en curso; que durante el login escucha en `127.0.0.1` y nunca en `*`; que
+      un `redirect_uri` ajeno lleva a `/no-access` sin emitir código; y que cerrar la
+      sesión del navegador no cierra la de la app. Salida cruda en `.evidence/009/`.
+      _Requisitos: 4.2, 5.4_ · _spec 001: 6.5_
+- [X] T030 **[PUERTA]** [US2] Ejecutar **`/cso`**. *Dos pasadas: la primera encontró el 🔴 del límite de intentos; la segunda, con `--diff`, encontró que el retorno tras Google no se conservaba. Los dos cerrados. Informe en `.gstack/security-reports/2026-09-15-009-diff.md`.* Toca autenticación y secretos de un solo uso. **Un finding 🔴 bloquea el ship** hasta mitigar o aceptar el riesgo por escrito. _Requisitos: 5.1, 5.2, 5.3, 5.4_
 
 **Punto de control**: fallo 1 cerrado. Una cuenta de Google entra.
 
@@ -182,12 +188,28 @@ Piezas nuevas: `apps/desktop/src/loopback-login.ts`,
 
 ## Fase 5 · Cierre
 
-- [ ] T031 Actualizar `docs/desktop-workstation.md`: la barra tiene una acción más y el `preload` ocho funciones. **Mismo commit** que el código que lo cambia. _Requisitos: 1.1, 2.1_
-- [ ] T032 Marcar en `docs/bugs-app-escritorio-2026-09-15.md` los fallos 1 y 4 como arreglados, con el enlace a esta spec. _Requisitos: —_
-- [ ] T033 **[PUERTA]** `./scripts/verify.sh` **entero**, leyendo la cola en crudo. No vale `js` ni `py` sueltos: lo que se olvida es el worker, `mypy --strict`, el paquete compartido y el `next build`. _Requisitos: —_
+- [X] T031 Actualizar `docs/desktop-workstation.md`: la barra tiene una acción más y el `preload` ocho funciones. **Mismo commit** que el código que lo cambia. _Requisitos: 1.1, 2.1_
+- [X] T032 Marcar en `docs/bugs-app-escritorio-2026-09-15.md` los fallos 1 y 4 como arreglados, con el enlace a esta spec. _Requisitos: —_
+- [X] T033 **[PUERTA]** `./scripts/verify.sh` **entero**, leyendo la cola en crudo. No vale `js` ni `py` sueltos: lo que se olvida es el worker, `mypy --strict`, el paquete compartido y el `next build`. _Requisitos: —_
 - [ ] T034 Entregar el mensaje de commit y **PARAR**. Los commits los ejecuta la persona; hay un hook que bloquea `git commit`. _Requisitos: —_
 
 ---
+
+### El fallo que `/cso --diff` encontró, y por qué importa cómo se encontró
+
+La segunda pasada de la puerta no encontró un agujero de seguridad: encontró que
+**la función no funcionaba en su camino principal**. El retorno tras entrar con
+Google se perdía en el botón, porque los parámetros del callback los pone Google
+y `next` no llegaba nunca.
+
+Salió al comprobar una pregunta de seguridad (*«¿se puede abusar del `from`?»*)
+que resultó no tener hallazgo — el validador de `/login` ya estaba. Tirando de ese
+hilo apareció el otro.
+
+**Por qué sobrevivió a la spec entera**: el camino de correo y contraseña sí
+conservaba el destino, así que parecía que el de Google también. Ningún test
+cubría «tras Google, vuelvo a donde iba», y ahora sí: uno en la API sobre el
+`state` firmado, y otro en el botón. Recrear el fallo pone dos en rojo.
 
 ## Dependencias
 

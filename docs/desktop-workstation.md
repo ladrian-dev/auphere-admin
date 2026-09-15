@@ -16,7 +16,7 @@ Una **cáscara** de Electron con dos vistas en una `BaseWindow`:
 |---|---|---|---|
 | Consola | `persist:auphere-console` (persistente) | **ninguno** | la consola — para **administrar**; sus pantallas no se reimplementan |
 | Pantalla de operar | `auphere-app` (no persistente) | `app-preload.cjs`, lista cerrada | `dist/app/index.html` (spec 003) |
-| Barra del puesto | `auphere-bar` (no persistente) | `bar-preload.cjs`, seis funciones | `dist/bar/index.html`, 44 px, abajo |
+| Barra del puesto | `auphere-bar` (no persistente) | `bar-preload.cjs`, **siete** funciones | `dist/bar/index.html`, 44 px, abajo |
 
 El ambiente del agente vive en una **cuarta** partición (`auphere-agent`, no
 persistente) y no alcanza ninguna de las otras tres. `session-isolation.ts` lo
@@ -121,6 +121,41 @@ y no está archivada (`services/device_presence.tenant_presence`).
 | Cerrar sesión | Cuenta, en la consola | la cookie cambia → `whoami` 401 → el latido para, la barra dice `sin_sesion`; la credencial se conserva sellada para la misma persona |
 | Desemparejar | la barra | la aplicación **olvida** la credencial y deja de latir; la máquina queda `ausente` hasta que alguien la archive |
 | Archivar | `/workstation` → Archivar, o la pertenencia retirada | `revoked_at` + motivo (`archivada_consola` · `pertenencia_retirada` · `desemparejada`); el siguiente latido recibe `403 device_archived` y la barra pasa a `archivada_desde_consola`. Terminal: se empareja otra |
+
+## Cómo se entra, y por dónde vuelve el navegador
+
+**Spec**: `specs/009-volver-y-entrar-desde-la-app/` · **Contrato**:
+[`bar-preload.md`](../specs/009-volver-y-entrar-desde-la-app/contracts/bar-preload.md)
+
+Dos cosas que la spec 009 añadió, y la segunda cambió una garantía.
+
+**Volver a la pantalla del equipo.** La barra gana una acción, `volver_a_la_app`,
+y el `preload` una función, `showApp`. Se ofrece **sólo con la consola delante**:
+sin ella no lleva a ningún sitio, y un botón que no lleva a ningún sitio es lo
+que §V prohíbe. No pasa por `actionsFor(state)` a propósito — volver no depende
+de la conexión ni del cifrado, y meterla ahí la haría desaparecer con el llavero
+bloqueado.
+
+**Entrar.** Es **RFC 8252**: *authorization code* + PKCE con retorno a
+`127.0.0.1`, lo mismo que hacen Claude Code, `gh` y `gcloud`. La cáscara genera
+el par PKCE, levanta un oyente efímero, manda el navegador del sistema a
+`/desktop-auth`, y canjea el código con el `fetch` de su partición — **así que la
+cookie la guarda la partición y la aplicación nunca ve un token**. El Requisito
+2.1 de la spec 002 sigue siendo cierto sin excepciones.
+
+> **Esto enmendó el Requisito 6 de la spec 001.** Decía «el puente es saliente» a
+> secas; ahora dice que nunca escucha **en la red** y que escucha en loopback
+> sólo mientras dura un inicio de sesión, con cuatro condiciones (criterio 6.5)
+> que `apps/desktop/tests/no-inbound.test.ts` comprueba recorriendo el fuente.
+> Ese test sigue prohibiendo cualquier otro oyente: la excepción es **una**.
+>
+> **Lo que se pierde, dicho en voz alta**: durante esos segundos otro proceso de
+> la misma máquina puede hablarle a ese puerto. Es el riesgo que PKCE cubre — sin
+> el `code_verifier`, que no sale del proceso, el código no vale.
+
+Antes se construyó otra cosa: un código que la persona tecleaba en la barra. Era
+un RFC 8628 hecho a mano y al revés, y se retiró. El porqué está en
+`[[ADR-039-volver-y-entrar-desde-la-app-de-escritorio]]`.
 
 ## Cómo se distribuye y cómo se actualiza
 

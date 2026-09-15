@@ -124,6 +124,8 @@ export type GoogleCallback = {
   session_token?: string | null;
   expires_at?: string | null;
   signup_token?: string | null;
+  /** A dónde volver. Sale del `state` FIRMADO, no de la URL (spec 009). */
+  return_to?: string | null;
 };
 
 export type SignupLookup = {
@@ -556,11 +558,17 @@ export const consoleService = {
       return false;
     }
   },
-  async googleStart(intent: "login" | "signup"): Promise<{ authorization_url: string }> {
+  async googleStart(
+    intent: "login" | "signup",
+    returnTo?: string,
+  ): Promise<{ authorization_url: string }> {
     const t = await mintServiceToken();
     return (await request<{ authorization_url: string }>(t, "/console/auth/google/start", {
       method: "POST",
-      body: { intent },
+      // `return_to` viaja al servidor, que lo valida y lo mete FIRMADO en el
+      // `state`. No se pone aquí en la URL: lo que no llega firmado por
+      // nosotros, el callback no puede creérselo.
+      body: returnTo ? { intent, return_to: returnTo } : { intent },
     })) as { authorization_url: string };
   },
   async googleCallback(body: { code: string; state: string }): Promise<GoogleCallback> {
