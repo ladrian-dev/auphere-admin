@@ -501,7 +501,23 @@ export const consoleService = {
    * login y la vuelta de Google: quien llega aquí todavía no es nadie. En la
    * API no hay ni una ruta `/console/*` sin credencial, y una suite de
    * aislamiento lo comprueba una por una.
+   *
+   * **Este método faltaba y la cáscara llamaba a la API por su cuenta.** El
+   * docstring estaba escrito y la función no, así que el canje salía sin
+   * credencial y staging contestaba `401 Missing bearer token`: se entraba en
+   * el navegador y la aplicación se quedaba fuera, sin ruido.
    */
+  async redeemSessionCode(body: {
+    code: string;
+    code_verifier: string;
+  }): Promise<{ session_token: string; expires_at: string }> {
+    const t = await mintServiceToken();
+    return (await request<{ session_token: string; expires_at: string }>(
+      t,
+      "/console/auth/session-code/redeem",
+      { method: "POST", body },
+    )) as { session_token: string; expires_at: string };
+  },
   /** `null` when the token is unknown or expired — never an exception. */
   async session(token: string): Promise<ApiPrincipal | null> {
     const t = await mintServiceToken();

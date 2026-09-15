@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import { AppRuntime } from "../app-runtime.js";
 import { createPkce, listenForLogin } from "../loopback-login.js";
+import { describeEnvironment } from "../startup-banner.js";
 import { GatewayApprovals } from "../approvals-client.js";
 import { CredentialStore } from "../credential-store.js";
 import { HttpTransport } from "../http-transport.js";
@@ -77,6 +78,12 @@ function layout(window: BaseWindow, views: WebContentsView[], barView: WebConten
 }
 
 export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
+  // Lo PRIMERO que se dice, antes de nada: contra qué se está hablando. La
+  // aplicación apunta a producción salvo que alguien ponga las variables, así
+  // que probar contra el entorno equivocado es el caso fácil — y su síntoma es
+  // indistinguible de un fallo de código (spec 009, 2026-09-15).
+  console.info("[auphere]", describeEnvironment(CONSOLE_URL, API_URL));
+
   // Antes de nada y antes de abrir el puente: si las particiones se han igualado
   // en algún refactor, esto no arranca en vez de filtrar en silencio.
   assertPartitionsAreSeparate();
@@ -245,8 +252,12 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
    * 3. El navegador del sistema va a `/desktop-auth` con `redirect_uri`,
    *    `state` y `code_challenge`.
    * 4. Se espera el retorno. El `state` lo comprueba el oyente.
-   * 5. Se canjea `code` + `verifier` **con el `fetch` de la partición humana**,
-   *    así que la cookie que devuelva la API la guarda esa partición sola.
+   * 5. Se canjea `code` + `verifier` **contra la consola, no contra la API**:
+   *    la ruta de la API exige la credencial de servicio del BFF, que esta
+   *    cáscara no tiene ni puede tener. Va con el `fetch` de la partición
+   *    humana, así que la cookie que devuelve la consola la guarda esa
+   *    partición sola — y es esa cookie, no un token en JSON, lo que hace que
+   *    `SessionGate` vea que ya se está dentro.
    *
    * `finally` cierra el oyente pase lo que pase: un servidor que sobrevive al
    * flujo es justo el fallo que la enmienda del Requisito 6 podría introducir.
@@ -267,7 +278,7 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
 
       const response = await session
         .fromPartition(HUMAN_PARTITION)
-        .fetch(`${API_URL}/console/auth/session-code/redeem`, {
+        .fetch(`${CONSOLE_URL}/api/desktop/redeem`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: returned.code, code_verifier: verifier }),

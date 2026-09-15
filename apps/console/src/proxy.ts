@@ -37,6 +37,11 @@ const PUBLIC = [
   // lo que viene a conseguir —, así que si rebotara a `/login` sin recordar a
   // dónde iba, el retorno a la aplicación se perdería.
   "/desktop-auth",
+  // `/api/desktop/redeem` (spec 009): donde ese mismo inicio de sesión TERMINA.
+  // La cáscara canjea el código y lo que se lleva es la cookie — o sea que
+  // llega sin ella por definición. Sin esta línea, rebotaría a `/login` y la
+  // aplicación se quedaría fuera con la persona ya dentro del navegador.
+  "/api/desktop/redeem",
 ];
 
 export function proxy(request: NextRequest) {

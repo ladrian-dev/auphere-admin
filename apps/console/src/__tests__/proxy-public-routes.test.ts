@@ -42,6 +42,10 @@ describe("lo que un desconocido tiene que poder abrir", () => {
       "/desktop-auth",
       "spec 009: aquí empieza el login de la app, y quien llega todavía no tiene sesión",
     ],
+    [
+      "/api/desktop/redeem",
+      "spec 009: aquí TERMINA ese login, y la cookie es justo lo que viene a buscar",
+    ],
   ])("%s — %s", (path) => {
     expect(redirectTarget(anonymousGet(path))).toBeNull();
   });

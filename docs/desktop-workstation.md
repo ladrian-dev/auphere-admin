@@ -143,6 +143,17 @@ el par PKCE, levanta un oyente efímero, manda el navegador del sistema a
 cookie la guarda la partición y la aplicación nunca ve un token**. El Requisito
 2.1 de la spec 002 sigue siendo cierto sin excepciones.
 
+**El canje va contra la consola (`POST /api/desktop/redeem`), no contra la API.**
+Las dos mitades de esa frase importan y se aprendieron rompiéndolo. La ruta de
+la API exige la credencial de servicio del BFF, y la cáscara no tiene ninguna ni
+puede tenerla; llamando directamente recibía `401 Missing bearer token`, y el
+inicio de sesión no terminaba nunca **sin que se viera**, porque en el navegador
+todo salía bien. Y aunque no exigiera credencial, la API devuelve el token en
+JSON: la sesión de la aplicación es la cookie del origen de la consola, así que
+un token en el cuerpo no habría hecho entrar a nadie. La consola es el único
+sitio que tiene la credencial y a la vez puede poner la cookie; por eso contesta
+`204` y nada más.
+
 > **Esto enmendó el Requisito 6 de la spec 001.** Decía «el puente es saliente» a
 > secas; ahora dice que nunca escucha **en la red** y que escucha en loopback
 > sólo mientras dura un inicio de sesión, con cuatro condiciones (criterio 6.5)
