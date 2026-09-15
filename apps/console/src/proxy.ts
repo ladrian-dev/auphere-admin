@@ -32,6 +32,11 @@ const PUBLIC = [
   "/no-access",
   "/healthz",
   "/api/session/whoami",
+  // `/desktop-auth` (spec 009): donde la aplicación manda el navegador para
+  // empezar el inicio de sesión. Quien llega **todavía no tiene sesión** — es
+  // lo que viene a conseguir —, así que si rebotara a `/login` sin recordar a
+  // dónde iba, el retorno a la aplicación se perdería.
+  "/desktop-auth",
 ];
 
 export function proxy(request: NextRequest) {

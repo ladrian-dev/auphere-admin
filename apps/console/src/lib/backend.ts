@@ -124,6 +124,8 @@ export type GoogleCallback = {
   session_token?: string | null;
   expires_at?: string | null;
   signup_token?: string | null;
+  /** A dónde volver. Sale del `state` FIRMADO, no de la URL (spec 009). */
+  return_to?: string | null;
 };
 
 export type SignupLookup = {
@@ -389,6 +391,15 @@ export function backendFor(principal: Principal) {
   const call = callFor(principal);
   const enc = encodeURIComponent;
   return {
+    /**
+     * El código que lleva ESTA sesión a la app de escritorio (spec 009, R3.1).
+     *
+     * Va con la credencial de la persona y no con la de servicio: la API lo
+     * emite para quien lo pide y para nadie más, así que quién pide tiene que
+     * viajar en el token.
+     */
+    issueSessionCode: (body: { code_challenge: string }): Promise<{ code: string }> =>
+      call<{ code: string }>("/console/auth/session-code", { method: "POST", body }),
     // lane modules — each lane owns its file under lib/backend/
     ...agentToolsApi(call),
     ...playgroundApi(call),
@@ -483,6 +494,14 @@ export const consoleService = {
     const t = await mintServiceToken();
     return (await request<LoginResult>(t, "/console/auth/login", { method: "POST", body })) as LoginResult;
   },
+  /**
+   * Canjea el código de un solo uso de la app de escritorio (spec 009, R4).
+   *
+   * Va con la credencial de **servicio** y no con la de la persona, como el
+   * login y la vuelta de Google: quien llega aquí todavía no es nadie. En la
+   * API no hay ni una ruta `/console/*` sin credencial, y una suite de
+   * aislamiento lo comprueba una por una.
+   */
   /** `null` when the token is unknown or expired — never an exception. */
   async session(token: string): Promise<ApiPrincipal | null> {
     const t = await mintServiceToken();
@@ -539,11 +558,17 @@ export const consoleService = {
       return false;
     }
   },
-  async googleStart(intent: "login" | "signup"): Promise<{ authorization_url: string }> {
+  async googleStart(
+    intent: "login" | "signup",
+    returnTo?: string,
+  ): Promise<{ authorization_url: string }> {
     const t = await mintServiceToken();
     return (await request<{ authorization_url: string }>(t, "/console/auth/google/start", {
       method: "POST",
-      body: { intent },
+      // `return_to` viaja al servidor, que lo valida y lo mete FIRMADO en el
+      // `state`. No se pone aquí en la URL: lo que no llega firmado por
+      // nosotros, el callback no puede creérselo.
+      body: returnTo ? { intent, return_to: returnTo } : { intent },
     })) as { authorization_url: string };
   },
   async googleCallback(body: { code: string; state: string }): Promise<GoogleCallback> {

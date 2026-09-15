@@ -252,10 +252,30 @@ de aislamiento nº 2 siga siendo cierta en la máquina de otra persona.
 **Historia de usuario:** Como partner, quiero que nada entre desde internet a mi
 máquina, para que instalar esto no abra un puerto en mi casa ni en mi oficina.
 
+> **Enmendado el 2026-09-15** (spec 009): se acota de «nunca escucha» a «nunca
+> escucha en la red, y escucha en loopback sólo para el retorno del inicio de
+> sesión». Ver el criterio 6.5 y la nota del 6.1.
+
 #### Criterios de aceptación
 
 1. El sistema DEBE establecer la conexión desde la máquina del partner hacia la
-   plataforma, y NO DEBE aceptar conexiones entrantes hacia esa máquina.
+   plataforma, y NO DEBE aceptar conexiones entrantes **desde la red** hacia esa
+   máquina.
+
+   > **Enmendado el 2026-09-15 por la spec 009.** Decía «no debe aceptar
+   > conexiones entrantes», sin más, y eso impedía el inicio de sesión estándar
+   > de una aplicación de escritorio (RFC 8252: *authorization code* + PKCE con
+   > retorno a `127.0.0.1`), que es lo que hacen Claude Code, `gh` y `gcloud`.
+   >
+   > **Lo que la promesa protegía sigue protegido**: instalar esto no abre un
+   > puerto en la casa ni en la oficina de nadie. Internet sigue sin llegar.
+   > Lo que se admite ahora es un oyente **en loopback**, alcanzable sólo por la
+   > propia máquina, con las cuatro condiciones del criterio 6.5.
+   >
+   > **Lo que se pierde, dicho en voz alta**: durante esos segundos, otro proceso
+   > de esa misma máquina puede hablarle a ese puerto. Es exactamente el riesgo
+   > que PKCE existe para cubrir — sin el `code_verifier`, que nunca sale del
+   > proceso, el código interceptado no vale nada.
 2. WHEN la conexión se pierde THEN el dispositivo DEBE reintentar desde su lado, y
    la interfaz DEBE mostrar `reconectando` mientras tanto.
 3. WHEN un dispositivo se da de alta THEN el sistema DEBE emitirle una credencial
@@ -269,6 +289,22 @@ máquina, para que instalar esto no abra un puerto en mi casa ni en mi oficina.
 4. IF una credencial de dispositivo se usa para pedir trabajo de **otro**
    dispositivo o de otro tenant THEN el sistema DEBE denegarlo, y el intento DEBE
    quedar registrado.
+5. WHERE la aplicación necesite completar un inicio de sesión iniciado en el
+   navegador, el sistema PUEDE abrir **un** oyente, y sólo con las cuatro
+   condiciones siguientes. `apps/desktop/tests/no-inbound.test.ts` las comprueba
+   recorriendo el fuente, y sigue prohibiendo cualquier otro oyente.
+
+   1. Escucha en `127.0.0.1` y NO DEBE escuchar en `0.0.0.0` ni en una interfaz
+      de red.
+   2. El puerto lo elige el sistema operativo; NO DEBE ser fijo.
+   3. Vive lo que dura el inicio de sesión: se cierra al recibir el código o al
+      caducar. NO DEBE haber un oyente mientras la aplicación está simplemente
+      abierta.
+   4. Atiende **una** ruta, que sólo lee `code` y `state`, y NO DEBE hacer nada
+      más con lo que reciba.
+
+   IF el retorno llega con un `state` que no es el emitido THEN el sistema DEBE
+   descartarlo sin canjear nada.
 
 ### Requisito 7 — Dos escaleras de aprobación, y una frontera clara
 

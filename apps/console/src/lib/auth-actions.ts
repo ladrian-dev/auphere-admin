@@ -140,9 +140,12 @@ export async function completeSignupAction(raw: unknown): Promise<CompleteSignup
  * llama no pinta el botón** (Requisito 5.6): el alta y el login con contraseña
  * tienen que seguir funcionando sin depender de un tercero.
  */
-export async function googleStartAction(intent: "login" | "signup"): Promise<string | null> {
+export async function googleStartAction(
+  intent: "login" | "signup",
+  returnTo?: string,
+): Promise<string | null> {
   try {
-    const { authorization_url } = await consoleService.googleStart(intent);
+    const { authorization_url } = await consoleService.googleStart(intent, returnTo);
     return authorization_url;
   } catch (err) {
     if (err instanceof BackendError) return null;

@@ -320,6 +320,48 @@ export class AppRuntime {
     }
   }
 
+  /**
+   * Quién hace el inicio de sesión por el navegador — spec 009, 2ª enmienda.
+   *
+   * Se inyecta porque al otro lado hay un oyente en loopback, un navegador del
+   * sistema y el `fetch` de una partición de Electron; y el runtime se prueba
+   * sin nada de eso. Aquí sólo vive **qué pasa después**.
+   */
+  private signIn: (() => Promise<{ ok: boolean }>) | null = null;
+
+  useBrowserSignIn(fn: () => Promise<{ ok: boolean }>): void {
+    this.signIn = fn;
+  }
+
+  /**
+   * Inicia sesión abriendo el navegador — spec 009, 2ª enmienda (RFC 8252).
+   *
+   * **Este método hace muy poco a propósito.** Ni genera el PKCE, ni levanta el
+   * oyente, ni ve ningún token: pide que ocurra y, si sale bien, anuncia que la
+   * identidad cambió para que la puerta vuelva a derivar el veredicto — el
+   * mismo camino que `pair()`.
+   *
+   * Que falle no es una avería: cerrar la pestaña del navegador es una decisión
+   * y se cuenta como estado, nunca en rojo.
+   */
+  async signInWithBrowser(): Promise<void> {
+    if (!this.signIn) {
+      this.setBar({ kind: "redeem_failed" });
+      return;
+    }
+    let ok = false;
+    try {
+      ok = (await this.signIn()).ok;
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      this.setBar({ kind: "redeem_failed" });
+      return;
+    }
+    this.announceIdentityChanged();
+  }
+
   /** Desemparejar: olvida la credencial. Archivar es de la consola (R11.2). */
   unpair(): void {
     this.stop();

@@ -28,9 +28,16 @@ import { googleStartAction } from "@/lib/auth-actions";
 export function GoogleButton({
   intent,
   available,
+  returnTo,
 }: {
   intent: "login" | "signup";
   available: boolean;
+  /** A dónde volver tras entrar — spec 009, fallo 1.
+   *
+   *  Sin esto, quien entra con Google desde `/login?from=…` acaba en la portada
+   *  y la aplicación de escritorio se queda esperando: el camino de correo y
+   *  contraseña conservaba el destino y éste lo perdía en este botón. */
+  returnTo?: string;
 }) {
   const t = useT();
   const [pending, startTransition] = React.useTransition();
@@ -39,7 +46,7 @@ export function GoogleButton({
 
   function go() {
     startTransition(async () => {
-      const url = await googleStartAction(intent);
+      const url = await googleStartAction(intent, returnTo);
       if (!url) {
         toast.error(t("common.error.backend"));
         return;

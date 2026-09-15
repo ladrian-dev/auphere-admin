@@ -25,15 +25,15 @@ desde el repositorio.
 
 | # | Fallo | Estado |
 |---|---|---|
-| 1 | Google no vuelve a la app | **Sin arreglar.** Mecanismo confirmado; necesita decisión de diseño |
+| 1 | Google no vuelve a la app | **ARREGLADO** · RFC 8252 (loopback + PKCE) · `specs/009-volver-y-entrar-desde-la-app/` |
 | 2 | El banner de «sin emparejar» no se va | **Sin arreglar.** Confirmado: dos superficies leyendo dos fuentes |
 | 3 | Crear teammate da error genérico | **ARREGLADO** · `.specify/bugs/teammate-tope-de-plan-mensaje-generico/` |
 | 4 | No hay vuelta desde la consola | **Sin arreglar, y el diagnóstico de abajo es falso** — ver corrección |
-| 5 | En otra máquina no funcionó | **Sin resolver.** Las dos hipótesis de abajo están descartadas |
-| 5b | El paquete se traga su propia salida | **ARREGLADO** · `.specify/bugs/paquete-se-traga-su-propia-salida/` |
+| 5 | En otra máquina no funcionó | **RESUELTO el 2026-09-15** · v0.1.3 abre en ese Mac Intel · `.specify/bugs/paquete-se-traga-su-propia-salida/test.md` |
+| 5b | El paquete se traga su propia salida | **ARREGLADO Y VERIFICADO** · el asar de x64 pasa de 1.982.761.659 a 68.668.433 bytes |
 | 6 | El actualizador nunca se arma | **ARREGLADO** · `.specify/bugs/updater-no-arranca/` |
 
-Los tres arreglados se publican juntos en **0.1.2**.
+Los tres primeros se publicaron en **0.1.3**. Los fallos 1 y 4 van por la spec 009, todavía sin publicar.
 
 **El fallo 6 no estaba en esta lista y es el más grave de los tres arreglados**:
 `electron-updater` es CommonJS y expone `autoUpdater` con un getter perezoso que
@@ -267,9 +267,17 @@ equivocado, descarga truncada, Gatekeeper, firma, `safeStorage` y el cerrojo de
 instancia única de `main.ts:437`.
 
 Lo único objetivamente roto que le quedaba a ese binario es su `app.asar` de
-**1,98 GB** con un `.dmg` a medio escribir dentro (fallo 5b). No está demostrado
-que sea la causa. **0.1.2 es el experimento**: cambia esa variable y deja las
-demás quietas.
+**1,98 GB** con un `.dmg` a medio escribir dentro (fallo 5b).
+
+> **CERRADO el 2026-09-15.** Se publicó v0.1.3 con el paquete arreglado y **la
+> aplicación abre en ese mismo Mac Intel**. El asar de x64 pasó de 1.982.761.659
+> a 68.668.433 bytes, y los dos artefactos publicados pesan ahora exactamente lo
+> mismo — que es la prueba de que ninguno se traga al otro.
+>
+> **La causa se identificó por eliminación y se confirmó con el arreglo; el
+> mecanismo interno de Electron no se aisló.** Una hipótesis —que fallara la
+> validación de integridad del asar— se probó y resultó **falsa**. Informe
+> completo en `.specify/bugs/paquete-se-traga-su-propia-salida/test.md`.
 
 ---
 

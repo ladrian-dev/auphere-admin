@@ -30,7 +30,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const result = await consoleService.googleCallback({ code, state });
     if (result.outcome === "session" && result.session_token) {
       await setSessionToken(result.session_token, result.expires_at ?? undefined);
-      return NextResponse.redirect(new URL("/", request.url));
+      // **Spec 009, fallo 1** — volver a donde ibas.
+      //
+      // `return_to` sale del `state` **firmado** que la API verificó, no de la
+      // URL: los parámetros de esta ruta los pone Google, y lo que no llega
+      // firmado por nosotros no se puede creer. La API además sólo lo acepta si
+      // es una ruta del mismo origen, así que esto no es un redirector abierto.
+      const back = result.return_to;
+      return NextResponse.redirect(new URL(back && back.startsWith("/") ? back : "/", request.url));
     }
     if (result.outcome === "signup_pending" && result.signup_token) {
       // Identidad buena, falta nombrar la empresa: sigue por el MISMO camino

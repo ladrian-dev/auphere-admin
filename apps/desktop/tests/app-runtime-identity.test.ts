@@ -305,3 +305,52 @@ describe("aprobaciones solo para la persona con sesión (5.3, Historia 5)", () =
     expect(await app.pendingApprovals()).toEqual([]);
   });
 });
+
+/**
+ * El canje del código de sesión — spec 009, Historia 2.
+ *
+ * **Lo que el runtime hace aquí es muy poco, y ése es el diseño.** No valida el
+ * código, no guarda nada y no ve ningún secreto: entrega ocho caracteres al
+ * BFF con el `fetch` de la partición humana, y lo que vuelve lo guarda la
+ * partición sola. Si sale bien, lo único que el runtime hace es **volver a
+ * preguntarle a la puerta**, exactamente como al emparejar.
+ */
+describe("iniciar sesión por el navegador (spec 009, 2ª enmienda)", () => {
+  function conNavegador(responder: () => Promise<{ ok: boolean }>) {
+    const store = new CredentialStore(cipher, file());
+    const { app } = runtime(transport(), store);
+    const gate = new SessionGate({
+      store,
+      whoami: {
+        whoami: vi.fn().mockResolvedValue({ kind: "member", userId: "luis", partnerSlug: "p" }),
+      },
+    });
+    const seen: string[] = [];
+    gate.onDecision((d) => seen.push(d.kind));
+    app.onIdentityChanged(() => void gate.refresh());
+    app.useBrowserSignIn(responder);
+    return { app, seen };
+  }
+
+  it("un inicio de sesión correcto vuelve a preguntarle a la puerta", async () => {
+    const { app, seen } = conNavegador(async () => ({ ok: true }));
+    await app.signInWithBrowser();
+    await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0));
+  });
+
+  it("uno fallido lo dice en la barra y NO avisa de identidad", async () => {
+    const { app, seen } = conNavegador(async () => ({ ok: false }));
+    await app.signInWithBrowser();
+    expect(app.barState.lastError?.code).toBe("session_code_invalid");
+    expect(seen).toEqual([]);
+  });
+
+  it("sin nadie que inicie sesión, lo dice en vez de quedarse callado", async () => {
+    const store = new CredentialStore(cipher, file());
+    const { app } = runtime(transport(), store);
+    // Nadie llamó a `useBrowserSignIn`: es un error de cableado, y la barra lo
+    // cuenta igual en vez de fingir que no pasó nada.
+    await app.signInWithBrowser();
+    expect(app.barState.lastError?.code).toBe("session_code_invalid");
+  });
+});

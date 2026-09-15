@@ -73,9 +73,25 @@ export type BarState = {
   update?: BarUpdate;
   /** Spec 008 R4.2: qué versión exige la plataforma, para poder decirlo. */
   requiredVersion?: string;
+  /**
+   * Spec 009 R1 — qué superficie se ve.
+   *
+   * **Ausente significa la pantalla del equipo**, y con ella no hay nada que
+   * ofrecer: la ausencia se diseña (§V). Sólo se puebla cuando la consola
+   * ocupa la ventana, que es el único momento en que volver lleva a algún
+   * sitio.
+   */
+  surface?: "console";
 };
 
-export type BarAction = "introducir_codigo" | "directorios" | "desemparejar" | "actualizar";
+export type BarAction =
+  | "introducir_codigo"
+  | "directorios"
+  | "desemparejar"
+  | "actualizar"
+  /** Spec 009 R1. **Ortogonal a los siete estados**, como `update`: depende de
+   *  qué superficie se ve, no de si la máquina está emparejada. */
+  | "volver_a_la_app";
 
 export type BarEvent =
   | { kind: "pair_started" }
@@ -98,7 +114,15 @@ export type BarEvent =
   /** Se aplicó, o dejó de haber nada: la barra vuelve a no decir nada. */
   | { kind: "update_gone" }
   /** Spec 008: la plataforma pide una versión más nueva. NO se olvida nada. */
-  | { kind: "version_rejected"; minimumVersion?: string };
+  | { kind: "version_rejected"; minimumVersion?: string }
+  /**
+   * Spec 009 R4.7 — el código de sesión no valía.
+   *
+   * **No toca `status` y no olvida nada.** Canjear mal no es perder la
+   * conexión ni la credencial: es que ocho caracteres no eran los buenos. Se
+   * cuenta como los siete estados, en tono de estado y nunca en rojo.
+   */
+  | { kind: "redeem_failed" };
 
 export function initialState(encryptionAvailable = true): BarState {
   return { status: "sin_emparejar", links: [], encryptionAvailable };
@@ -120,6 +144,41 @@ export function localToolsOffered(status: BarStatus): boolean {
 
 export function heartbeatRuns(status: BarStatus): boolean {
   return status === "conectada" || status === "reconectando";
+}
+
+/**
+ * Lo que la barra ofrece, entero — spec 009, R1.
+ *
+ * Dos mitades que se suman y **no se mezclan**:
+ *
+ * * `actionsFor(state)` decide a partir de `status`, los siete estados de
+ *   conexión, y se apaga sin cifrado porque sin dónde guardar no hay nada que
+ *   emparejar.
+ * * volver a la pantalla del equipo depende de **qué se ve**, no de la
+ *   conexión, y no guarda nada.
+ *
+ * Meter la segunda dentro de la primera la haría desaparecer con el
+ * `if (!state.encryptionAvailable) return []` de abajo, y encerrar a alguien en
+ * la consola porque su llavero está bloqueado sería un castigo sin causa
+ * (R2.4). Por eso se componen aquí y no allí.
+ */
+/**
+ * El estado que se le empuja a la barra, con la superficie dentro — spec 009 R1.
+ *
+ * Vive aquí y no en la cáscara porque es una decisión, no pegamento: **qué
+ * significa "no hay superficie que decir"**. Y la respuesta es que el campo no
+ * está, no que valga `"app"` — la ausencia se diseña (§V), y un `surface:"app"`
+ * obligaría a la barra a distinguir dos formas de decir lo mismo.
+ */
+export function withSurface(state: BarState, surface: "app" | "console"): BarState {
+  return surface === "console" ? { ...state, surface: "console" } : { ...state, surface: undefined };
+}
+
+export function barActions(state: BarState): BarAction[] {
+  return [
+    ...(state.surface === "console" ? (["volver_a_la_app"] as const) : []),
+    ...actionsFor(state),
+  ];
 }
 
 export function actionsFor(state: BarState): BarAction[] {
@@ -150,6 +209,8 @@ function forget(state: BarState, status: BarStatus): BarState {
     links: [],
     encryptionAvailable: state.encryptionAvailable,
     ...(state.locale ? { locale: state.locale } : {}),
+    // Olvidar la credencial no cambia qué superficie se está viendo.
+    ...(state.surface ? { surface: state.surface } : {}),
   };
 }
 
@@ -208,6 +269,8 @@ export function transition(state: BarState, event: BarEvent): BarState {
       return forget(state, "archivada_desde_consola");
     case "unpaired":
       return forget(state, "sin_emparejar");
+    case "redeem_failed":
+      return { ...state, lastError: { code: "session_code_invalid" } };
     case "person":
       return event.locale ? { ...state, locale: event.locale } : state;
   }

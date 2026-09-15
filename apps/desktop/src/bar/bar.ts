@@ -51,6 +51,7 @@ const COPY: Record<string, Record<Lang, string>> = {
     choose: { es: "Elegir carpeta", en: "Choose folder" },
     declared: { es: "declarado", en: "declared" },
     unpair: { es: "Desemparejar", en: "Unpair" },
+    backToApp: { es: "Volver al equipo", en: "Back to the team" },
     unpairConfirm: { es: "Esta máquina olvidará su credencial. Si no vas a volver a usarla, archívala también desde la consola. ¿Desemparejar?", en: "This machine will forget its credential. If you will not use it again, archive it from the console too. Unpair?" },
     unpairedHint: { es: "Credencial olvidada · archívala desde la consola si no vas a volver", en: "Credential forgotten · archive it from the console if you will not be back" },
     noEncryption: { es: "Este sistema no ofrece cifrado para guardar la credencial: no se puede emparejar", en: "This system offers no encryption to keep the credential: pairing is not possible" },
@@ -108,6 +109,15 @@ const COPY: Record<string, Record<Lang, string>> = {
 
     if (!state.encryptionAvailable) {
       root.append(el("span", { class: "note", role: "note" }, t("noEncryption")));
+      // **Sin cifrado no se puede emparejar, pero sí volver** (spec 009 R2.4).
+      // Encerrar a alguien en la consola porque su llavero está bloqueado sería
+      // un castigo sin causa, así que la vuelta se pinta igualmente y sólo se
+      // corta el resto.
+      if (state.surface === "console") {
+        const solaVuelta = el("div", { class: "actions" });
+        solaVuelta.append(button(t("backToApp"), () => void window.auphere.showApp()));
+        root.append(solaVuelta);
+      }
       return;
     }
 
@@ -120,6 +130,13 @@ const COPY: Record<string, Record<Lang, string>> = {
     }
 
     const actions = el("div", { class: "actions" });
+    // **Primero, y fuera de todo lo demás.** Volver no depende del estado de
+    // conexión ni del cifrado: depende de qué se está viendo. Va antes del
+    // `if (!state.encryptionAvailable) return` de arriba precisamente porque ahí
+    // se corta lo que necesita guardar algo, y esto no guarda nada (R2.4).
+    if (state.surface === "console") {
+      actions.append(button(t("backToApp"), () => void window.auphere.showApp()));
+    }
     const canPair = ["sin_emparejar", "volver_a_emparejar", "archivada_desde_consola"].includes(state.status);
     if (canPair) actions.append(button(t("enterCode"), () => openSheet("code")));
     // Spec 008 R4.3: aquí **no** se ofrece emparejar. La credencial sigue
@@ -155,8 +172,18 @@ const COPY: Record<string, Record<Lang, string>> = {
     input?.focus();
   }
 
-  function codeSheet(): HTMLElement {
-    const form = el("form", { class: "sheet", "aria-label": t("enterCode") });
+  /**
+   * La hoja de teclear un código. **Una sola, para los dos códigos.**
+   *
+   * El de emparejamiento ata la máquina; el de la spec 009 trae la sesión. Se
+   * teclean igual a propósito —mismo alfabeto, misma longitud, mismos diez
+   * minutos— y por eso lo que cambia tiene que estar en el texto: el rótulo del
+   * botón y la ayuda. En el gesto no se ve.
+   */
+  function codeSheet(
+    opts: { submit?: (code: string) => Promise<void>; help?: string; label?: string } = {},
+  ): HTMLElement {
+    const form = el("form", { class: "sheet", "aria-label": t(opts.label ?? "enterCode") });
     const input = el("input", {
       name: "code",
       type: "text",
@@ -168,9 +195,9 @@ const COPY: Record<string, Record<Lang, string>> = {
       "aria-label": t("enterCode"),
       maxlength: "12",
     }) as HTMLInputElement;
-    const help = el("span", { class: "help", id: "code-help" }, t("codeHelp"));
+    const help = el("span", { class: "help", id: "code-help" }, t(opts.help ?? "codeHelp"));
     input.setAttribute("aria-describedby", "code-help");
-    const submit = el("button", { type: "submit", class: "btn solid" }, t("pair"));
+    const submit = el("button", { type: "submit", class: "btn solid" }, t(opts.label ?? "pair"));
     const cancel = button(t("cancel"), () => openSheet("none"), "ghost");
     form.append(input, submit, cancel, help);
     form.addEventListener("submit", (event) => {
@@ -179,7 +206,7 @@ const COPY: Record<string, Record<Lang, string>> = {
       if (!code) return;
       sheet = "none";
       justUnpaired = false;
-      void window.auphere.pair(code);
+      void (opts.submit ? opts.submit(code) : window.auphere.pair(code));
     });
     return form;
   }

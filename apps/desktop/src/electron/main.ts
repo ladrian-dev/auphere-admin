@@ -16,11 +16,13 @@
  *   código, la guarda cifrada con el llavero, y solo late con una persona dentro.
  */
 import { BaseWindow, Menu, Tray, WebContentsView, app, globalShortcut, ipcMain, nativeImage, screen, session } from "electron";
+import { randomUUID } from "node:crypto";
 import { hostname as osHostname } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AppRuntime } from "../app-runtime.js";
+import { createPkce, listenForLogin } from "../loopback-login.js";
 import { GatewayApprovals } from "../approvals-client.js";
 import { CredentialStore } from "../credential-store.js";
 import { HttpTransport } from "../http-transport.js";
@@ -38,6 +40,7 @@ import {
 import type { InboxItem } from "../inbox-watcher.js";
 import { StreamHub } from "../stream-hub.js";
 import { trayBadge, trayTooltip, type Waiting } from "../tray-badge.js";
+import { withSurface } from "../bar-state.js";
 import { MIN_WINDOW, readWindowState, rememberWindow } from "../window-state.js";
 import { decideWindowOpen, navigationAllowed } from "../window-open-policy.js";
 import {
@@ -131,10 +134,17 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   window.on("resize", () => layout(window, [consoleView, appView], barView));
 
   let surface: Surface = "app";
+  /** Se rellena más abajo, cuando la barra existe. Antes de eso, cambiar de
+   *  superficie no tiene a quién avisar. */
+  let onSurfaceChanged: (next: Surface) => void = () => {};
   const showSurface = (next: Surface) => {
     surface = next;
     appView.setVisible(next === "app");
     consoleView.setVisible(next === "console");
+    // Spec 009 R1: la barra ofrece volver **sólo** con la consola delante, así
+    // que tiene que enterarse de cada cambio. Sin esto la acción se quedaría
+    // pegada a lo que hubiera al arrancar.
+    onSurfaceChanged(next);
   };
   const showConsole = (path: string) => {
     const target = new URL(path, CONSOLE_URL).toString();
@@ -199,19 +209,73 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   });
 
   // La barra: estado empujado, acciones por IPC. Exactamente las del contrato.
+  // La superficie vive en el principal, no en el runtime: es de la ventana, no
+  // del puente. Quién decide qué significa "no hay superficie que decir" está en
+  // `bar-state.ts`, con su test; aquí sólo se junta con el estado del puente.
   const pushState = () => {
-    if (!barView.webContents.isDestroyed()) barView.webContents.send("bar:state", runtime.barState);
+    if (!barView.webContents.isDestroyed()) {
+      barView.webContents.send("bar:state", withSurface(runtime.barState, surface));
+    }
   };
   runtime.onBarState(pushState);
-  ipcMain.handle("bar:getState", () => runtime.barState);
+  onSurfaceChanged = () => pushState();
+  ipcMain.handle("bar:getState", () => withSurface(runtime.barState, surface));
   ipcMain.handle("bar:pair", (_event, code: unknown) => runtime.pair(String(code)));
   ipcMain.handle("bar:unpair", () => runtime.unpair());
   ipcMain.handle("bar:pickDirectory", (_event, clientRef: unknown) =>
     runtime.declareDirectory(String(clientRef), nativeDirectoryPicker(window, "Elige el directorio del cliente")),
   );
+  // Spec 009 R1.1 — **sin parámetro**: `showApp` sólo sabe volver. Una
+  // `showSurface(name)` parametrizada le daría a la barra la capacidad de
+  // navegar, que es más de lo que hace falta y más de lo que se puede justificar
+  // al ampliar una lista cerrada.
+  ipcMain.handle("bar:showApp", () => showSurface("app"));
   ipcMain.handle("bar:openInBrowser", (_event, url: unknown) => {
     const decision = decideWindowOpen(String(url), consoleOrigin);
     return decision.action === "open_external" ? openExternal(decision.url) : undefined;
+  });
+
+  /**
+   * El inicio de sesión de la aplicación — spec 009 (2ª enmienda), RFC 8252.
+   *
+   * Cinco pasos y ninguno guarda un token en la cáscara:
+   *
+   * 1. Un par PKCE. El `verifier` se queda **en esta función**.
+   * 2. Un oyente efímero en `127.0.0.1` (spec 001, criterio 6.5).
+   * 3. El navegador del sistema va a `/desktop-auth` con `redirect_uri`,
+   *    `state` y `code_challenge`.
+   * 4. Se espera el retorno. El `state` lo comprueba el oyente.
+   * 5. Se canjea `code` + `verifier` **con el `fetch` de la partición humana**,
+   *    así que la cookie que devuelva la API la guarda esa partición sola.
+   *
+   * `finally` cierra el oyente pase lo que pase: un servidor que sobrevive al
+   * flujo es justo el fallo que la enmienda del Requisito 6 podría introducir.
+   */
+  runtime.useBrowserSignIn(async () => {
+    const { verifier, challenge } = createPkce();
+    const state = randomUUID();
+    const listening = await listenForLogin(state);
+    try {
+      const authorize = new URL("/desktop-auth", CONSOLE_URL);
+      authorize.searchParams.set("redirect_uri", listening.redirectUri);
+      authorize.searchParams.set("state", state);
+      authorize.searchParams.set("code_challenge", challenge);
+      await openExternal(authorize.toString());
+
+      const returned = await listening.wait;
+      if (returned.kind !== "code") return { ok: false };
+
+      const response = await session
+        .fromPartition(HUMAN_PARTITION)
+        .fetch(`${API_URL}/console/auth/session-code/redeem`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: returned.code, code_verifier: verifier }),
+        });
+      return { ok: response.ok };
+    } finally {
+      listening.cancel();
+    }
   });
 
   // Quién está dentro lo lee el proceso principal, no la página (D6).
