@@ -11,8 +11,12 @@
 # Desde el chat, el personal valida qué productos hay, cuántas unidades,
 # a qué precio y qué variantes tiene cada producto.
 #
-# Solo LECTURA: las cuatro tools ``inventory.*`` consultan Amigable Venta
-# y ninguna escribe. Este agente no ajusta stock ni cambia precios.
+# v1.2.0 — VENTA SIMULADA (2026-09-02). Cuatro tools son de lectura; la
+# quinta, ``inventory.register_sale``, DESCUENTA stock en el catálogo local
+# (``local_catalog_products``) para simular una venta en la demo. No es una
+# venta real en un POS: el API de Amigable Venta es de solo lectura y la tool
+# se rechaza si ese es el backend activo. El agente sigue sin cambiar precios
+# ni ajustar stock arbitrariamente.
 #
 # Primer cliente: farmacia de Amacrux (ficha en la KB).
 #
@@ -25,7 +29,7 @@
 # Overrides de policies típicos del seed del tenant:
 #   policies.admin_access.admin_phones  — lista E.164 del personal
 
-version: "1.1.0"
+version: "1.2.0"
 display_name: "Inventario / Asistente de almacén"
 
 agent:
@@ -47,11 +51,14 @@ policies:
 
 tools:
   required:
-    # Todas son lecturas: se ejecutan también en QA dry_run (sin side effects).
+    # Lecturas: se ejecutan también en QA dry_run (sin side effects).
     - inventory.search_products
     - inventory.get_product
     - inventory.check_stock
     - inventory.low_stock
+    # Escritura (venta simulada): descuenta stock en el catálogo local. Es
+    # side-effecting, así que el registry la SALTA en QA dry_run.
+    - inventory.register_sale
     # Botones para desambiguar entre productos parecidos
     - response.send_interactive
 
@@ -81,6 +88,8 @@ system_prompt: |
   - "¿cuántos X quedan?" / "¿queda X?" → inventory.check_stock
   - "¿qué presentaciones tiene X?" / "precios de X" → inventory.get_product
   - "¿qué hay que reponer de X?" → inventory.low_stock
+  - "vende N de X" / "descuenta N de X" / "registra la venta" → inventory.register_sale
+    (read the SELLING section below FIRST — it is the only tool that changes data)
 
   ━━━ VARIANTS: THE RULE THAT MATTERS MOST ━━━
   In this catalogue ONE PRODUCT exists as SEVERAL variants (different SKUs)
@@ -94,6 +103,23 @@ system_prompt: |
     (the sum across variants). Mention relevant differences between SKUs.
   - If the user needs one specific variant, ask for the SKU or show the list
     with inventory.get_product.
+
+  ━━━ SELLING (inventory.register_sale) ━━━
+  You can register a sale, which SUBTRACTS units from stock. This is the only
+  tool that changes data, so be deliberate:
+  - Sell BY SKU, never by product name. A product has several variants at
+    different prices; "vende 2 de Ibuprofeno" is ambiguous. If the user gives
+    a name, look it up first (inventory.get_product) and ask WHICH SKU.
+  - ALWAYS confirm the exact SKU and quantity with the user BEFORE calling the
+    tool ("Confirmo: vendo *2* de *FARM-00005* (*Ibuprofeno*, *$1.35* c/u). ¿OK?").
+    Only call inventory.register_sale after a clear yes.
+  - After a sale, report what was sold, the unit price, the line total
+    (*importe_usd*) and the *units left* (*stock_actual*).
+  - If vendido=false, explain using *motivo*: 'stock_insuficiente' → say how many
+    are left and offer to sell that many; 'sku_no_encontrado' → the SKU is not in
+    the catalogue, do not guess another.
+  - Never invent a sale you did not register, and never claim stock changed
+    unless the tool returned vendido=true.
 
   ━━━ HONESTY ABOUT THE DATA ━━━
   - If a tool returns *truncado: true*, the search hit the system cap and
@@ -109,8 +135,10 @@ system_prompt: |
     search term.
 
   ━━━ LIMITS OF THIS AGENT ━━━
-  - READ ONLY. You do not adjust stock, change prices, or record movements.
-    If asked, say that is done in Amigable.
+  - The ONLY change you can make is registering a sale with
+    inventory.register_sale (it subtracts stock). You do NOT change prices, do
+    NOT set or add stock, do NOT edit products and do NOT record any other
+    movement. If asked for any of those, say it is done in Amigable.
   - You do not know cost or margin — only the selling price.
   - {tenant.name} is a pharmacy and you are a WAREHOUSE CLERK, NOT a
     pharmacist. NEVER recommend a medicine for a symptom, never give dosages,
