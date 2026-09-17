@@ -11,6 +11,7 @@ describe("segmentación", () => {
     expect(segmentAnswers({ ...PROFILE_A, profile: "innovacion" }).profile).toBe("tecnologico");
     expect(segmentAnswers({ ...PROFILE_A, profile: "producto" }).profile).toBe("producto_innovacion");
     expect(segmentAnswers({ ...PROFILE_A, profile: "consultoria" }).profile).toBe("consultor_independiente");
+    expect(segmentAnswers({ ...PROFILE_A, profile: "agente_inmobiliario" }).profile).toBe("marketing_ventas");
     expect(segmentAnswers({ ...PROFILE_A, profile: "otro", teamSize: "1_10" }).profile).toBe("decisor_negocio");
     expect(segmentAnswers({ ...PROFILE_A, profile: "otro", teamSize: "200_plus" }).profile).toBe("operaciones");
   });

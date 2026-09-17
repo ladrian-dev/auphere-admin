@@ -2,7 +2,7 @@
 
 export const PROFILES = [
   "direccion", "operaciones", "innovacion", "tecnologia", "ingenieria",
-  "producto", "marketing_ventas", "consultoria", "otro",
+  "producto", "marketing_ventas", "consultoria", "agente_inmobiliario", "otro",
 ] as const;
 export type Profile = (typeof PROFILES)[number];
 

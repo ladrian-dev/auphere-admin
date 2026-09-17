@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { FRICTIONS, GOALS } from "../enums";
+import { FRICTIONS, GOALS, PROFILES } from "../enums";
 import { ALL_QUESTIONS, TOTAL_ESTIMATED_SECONDS, TOTAL_QUESTIONS, remainingSeconds } from "../questions";
 
 describe("definición de preguntas", () => {
@@ -14,6 +14,10 @@ describe("definición de preguntas", () => {
     expect(ALL_QUESTIONS.find((q) => q.id === "goals")?.max).toBe(2);
     expect(ALL_QUESTIONS.find((q) => q.id === "frictions")?.options.map((o) => o.value).sort()).toEqual([...FRICTIONS].sort());
     expect(ALL_QUESTIONS.find((q) => q.id === "goals")?.options.map((o) => o.value).sort()).toEqual([...GOALS].sort());
+  });
+
+  it("la pregunta de rol ofrece todos los perfiles del enum", () => {
+    expect(ALL_QUESTIONS.find((q) => q.id === "profile")?.options.map((o) => o.value).sort()).toEqual([...PROFILES].sort());
   });
 
   it("no muestra la palabra 'madurez' y todo tiene etiqueta", () => {

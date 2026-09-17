@@ -54,6 +54,8 @@ export function profileSegment(a: Answers): ProfileSegment {
     case "producto":
       return "producto_innovacion";
     case "marketing_ventas":
+    // Su trabajo es captar, calificar y dar seguimiento: mismas oportunidades que ventas.
+    case "agente_inmobiliario":
       return "marketing_ventas";
     case "consultoria":
       return "consultor_independiente";

@@ -38,6 +38,7 @@ const profile: Question<Profile> = {
     { value: "producto", label: "Producto o diseño" },
     { value: "marketing_ventas", label: "Marketing o ventas" },
     { value: "consultoria", label: "Consultoría" },
+    { value: "agente_inmobiliario", label: "Agente inmobiliario" },
     { value: "otro", label: "Otro" },
   ],
 };
