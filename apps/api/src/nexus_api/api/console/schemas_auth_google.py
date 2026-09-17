@@ -38,7 +38,7 @@ class GoogleStartIn(BaseModel):
     @field_validator("return_to")
     @classmethod
     def _solo_una_ruta_del_mismo_origen(cls, value: str | None) -> str | None:
-        """Un validador y no un `pattern` porque pydantic valida con el motor de
+        r"""Un validador y no un `pattern` porque pydantic valida con el motor de
         Rust, que **no admite lookahead** — y porque aquí conviene poder decir
         en voz alta qué se rechaza y por qué.
 

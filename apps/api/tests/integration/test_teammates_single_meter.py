@@ -21,7 +21,11 @@ from nexus_api.db.models import Teammate
 from nexus_api.db.models.companion import CompanionRun
 from nexus_api.db.models.partner_wallet import PartnerWallet
 
-from .test_companion_endpoints import _companion_graph, _finished  # noqa: F401 — fixture y helper
+from .test_companion_endpoints import (  # noqa: F401 — fixture y helpers
+    _budget_once_spent,
+    _companion_graph,
+    _finished,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -103,9 +107,12 @@ async def test_the_budget_endpoint_counts_the_teammate_turn(client, console_worl
     teammate_id = await _seed_teammate(db_session, a)
     _thread_id, run_id = await _start_teammate_turn(client, a, teammate_id)
     await _finished(uuid.UUID(run_id), a["user_id"])
-    budget = await client.get("/console/companion/budget", headers=a["headers"]())
-    assert budget.status_code == 200, budget.text
-    assert budget.json()["used"] > 0
+    # **Se espera al libro, no al run.** Cerrar el run y apuntar el gasto son dos
+    # escrituras, y leer el presupuesto entre las dos da `used == 0`. Es la misma
+    # carrera del 2026-09-13; aquel arreglo se quedó en `test_companion_endpoints`
+    # y ésta volvió a tumbar la tubería el 2026-09-15.
+    budget = await _budget_once_spent(client, a)
+    assert budget["used"] > 0
 
 
 async def test_the_console_thread_list_never_shows_a_teammate_thread(
