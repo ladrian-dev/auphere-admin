@@ -9,6 +9,17 @@ antes de ejecutar el `install`, no después.
 | `electron` | 44.3.0 | MIT |
 | `electron-updater` | 6.8.9 | MIT |
 | `electron-builder` | 26.15.3 | MIT (herramienta de build) |
+| `electron-context-menu` | 5.0.0 | MIT |
+| `@fontsource-variable/inter-tight` | 5.3.0 | **OFL-1.1** (la fuente) · MIT (el empaquetado) |
+| `@fontsource-variable/jetbrains-mono` | 5.3.0 | **OFL-1.1** (la fuente) · MIT (el empaquetado) |
+| `@playwright/test` | 1.63.0 | Apache-2.0 (herramienta de desarrollo) |
+| `@axe-core/playwright` | 4.13.0 | **MPL-2.0** (herramienta de desarrollo, no se distribuye) |
+
+Las tres que entran en los paquetes compartidos por la spec 010, con la misma
+regla: `react-resizable-panels` 4.12.4 (MIT, «Copyright (c) 2018 Brian Vaughn»),
+`@tanstack/react-virtual` 3.14.13 (MIT, «Copyright (c) 2021-present Tanner
+Linsley») y `use-stick-to-bottom` 1.1.6 (MIT, «Copyright (c) 2024 - present
+StackBlitz»).
 
 ## El párrafo que lo permite
 
@@ -31,6 +42,24 @@ Conservar el aviso de copyright y el texto de la licencia en las copias
 distribuidas. `electron-builder` incluye los avisos de las dependencias en el
 paquete; la tarea de empaquetado (`T070`) comprueba que el fichero de licencias
 viaja dentro.
+
+## Las dos que no son MIT y por qué se aceptan
+
+**OFL-1.1** (las dos fuentes). El texto leído del paquete instalado dice:
+
+> This Font Software is licensed under the SIL Open Font License, Version 1.1.
+
+Permite usar, estudiar, modificar y **redistribuir** el software de fuente, con o
+sin modificaciones, incluida su venta como parte de un producto mayor. Lo único
+que prohíbe es venderlo **por sí solo** y usar los nombres reservados en trabajos
+derivados. Una aplicación que empaqueta la fuente para pintar su interfaz es
+exactamente el caso permitido. Sin cláusula de red.
+
+**MPL-2.0** (`@axe-core/playwright`). Copyleft **por fichero**: obliga a publicar
+las modificaciones *de sus propios ficheros*, no del software que lo usa. Se
+acepta porque es **herramienta de desarrollo**, no se distribuye con el producto
+y no se modifica ninguno de sus ficheros. Queda declarado aquí para que la
+decisión sea visible y no haya que volver a razonarla.
 
 ## Lo que ya estaba
 

@@ -39,11 +39,15 @@ export type AppSurfaceOptions = {
 const q = encodeURIComponent;
 
 export function registerAppSurface(o: AppSurfaceOptions): void {
-  const handle = (channel: string, fn: (input: any) => Promise<unknown> | unknown) => {
+  // `never` en el parámetro es lo que deja registrar manejadores con formas de
+  // entrada distintas sin `any`: por contravarianza, cualquier `(input: X) =>`
+  // es asignable aquí. La entrada real la valida `validateInput` antes de
+  // llamar, que es donde vive la garantía.
+  const handle = (channel: string, fn: (input: never) => Promise<unknown> | unknown) => {
     o.ipcMain.handle(channel, async (_event, input: unknown) => {
       validateInput(channel, input);
       try {
-        return redact(await fn(input));
+        return redact(await fn(input as never));
       } catch (error) {
         if (error instanceof SessionLost) {
           o.onSessionLost(error.reason);

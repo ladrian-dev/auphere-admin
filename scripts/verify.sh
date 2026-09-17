@@ -98,6 +98,10 @@ run_js() {
   step "companion-ui · test"      pnpm --filter @nexus/companion-ui test
 
   step "desktop · typecheck" pnpm --filter @nexus/desktop typecheck
+  # El lint entra con la spec 010: ``apps/desktop`` era el unico paquete de
+  # interfaz sin configuracion de ESLint, asi que las reglas del sistema de
+  # diseno no lo vigilaban y se colaron medios pasos de espaciado.
+  step "desktop · lint"      pnpm --filter @nexus/desktop lint
   step "desktop · test"      pnpm --filter @nexus/desktop test
 
   step "panel · typecheck"   pnpm --dir "$ROOT/apps/admin" exec tsc --noEmit -p tsconfig.json

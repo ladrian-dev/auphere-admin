@@ -215,7 +215,7 @@ export function NewTeammateForm({
     <form className="flex min-w-0 flex-col gap-5 p-6" onSubmit={(e) => void submit(e)} noValidate>
       <h2 className="text-base font-semibold text-balance">{t("create.title")}</h2>
 
-      <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-2">
         <Label htmlFor="teammate-name">{t("create.name")}</Label>
         <Input
           id="teammate-name"
@@ -226,7 +226,7 @@ export function NewTeammateForm({
         />
       </div>
 
-      <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-2">
         <Label htmlFor="teammate-job">{t("create.job")}</Label>
         {/* Semilla editable: la lista ayuda, no encierra (R2.1). */}
         <Input
@@ -336,10 +336,10 @@ export function PermissionSwitch({
         aria-checked={checked}
         aria-label={label}
         onClick={onToggle}
-        className="mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-border bg-muted p-0.5 transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[checked=true]:bg-primary"
+        className="mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-border bg-muted p-1 transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[checked=true]:bg-primary"
       >
         <span
-          className={`size-5 rounded-full bg-background transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`}
+          className={`size-4 rounded-full bg-background transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`}
         />
       </button>
       <span className="flex min-w-0 flex-col">

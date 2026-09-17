@@ -1,5 +1,30 @@
+/*
+  Spec 010, T006 — las fuentes de marca viajan **dentro** de la aplicación.
+
+  Hasta ahora esta pantalla no cargaba ninguna: `tokens.css` declara
+  `--font-inter-tight` esperando que la sirva `next/font`, que es lo que hace la
+  consola, y aquí no hay Next. El resultado era que en la misma ventana la
+  consola se veía en Inter Tight y la pantalla de operar en la fuente del
+  sistema.
+
+  Se empaquetan con la aplicación (OFL-1.1) en vez de pedirlas a la red: sin
+  conexión también tiene que verse bien, y la política de contenido de esta
+  vista no permite orígenes remotos.
+*/
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource-variable/inter-tight";
+@import "@fontsource-variable/jetbrains-mono";
 @import "@nexus/ui/tokens.css";
 @source "../../../../packages/ui/src";
 @source "../../../../packages/companion-ui/src";
+
+/*
+  Los nombres que publica `@fontsource-variable`. `tokens.css` los lee por estas
+  dos variables, así que declararlas aquí es lo único que hace falta para que
+  toda la ventana hable con la misma voz tipográfica.
+*/
+:root {
+  --font-inter-tight: "Inter Tight Variable";
+  --font-jetbrains-mono: "JetBrains Mono Variable";
+}

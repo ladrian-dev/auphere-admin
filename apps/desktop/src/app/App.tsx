@@ -245,7 +245,7 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
             >
               {t(tab.label)}
               {tab.key === "pending" && waiting > 0 ? (
-                <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{waiting}</span>
+                <span className="ml-1 rounded-full bg-primary px-2 text-xs text-primary-foreground">{waiting}</span>
               ) : null}
             </button>
           ))}

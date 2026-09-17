@@ -108,7 +108,7 @@ export function EnvPanel({ teammate, env, policy, onOpenConsole }: EnvPanelProps
       {env && env.files.length > 0 ? (
         <section className="flex min-w-0 flex-col gap-1" aria-label={t("env.files.title")}>
           <h3 className="text-sm font-semibold text-balance">{t("env.files.title")}</h3>
-          <ul className="flex min-w-0 flex-col gap-0.5">
+          <ul className="flex min-w-0 flex-col gap-1">
             {env.files.map((file) => (
               <li key={file} className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={file}>
                 {file}

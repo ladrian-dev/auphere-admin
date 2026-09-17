@@ -118,7 +118,7 @@ describe("emparejar mueve las DOS superficies (fallo del banner)", () => {
   });
 
   it("y al desemparejar el banner vuelve a aparecer", async () => {
-    const { app, gate, seen } = wired();
+    const { app, seen } = wired();
     await app.applyGate({ kind: "pair_needed", userId: "luis", pairedByOther: false });
     await app.pair("K7MP-4XQ2");
     await vi.waitFor(() => expect(seen).toContain("start"));

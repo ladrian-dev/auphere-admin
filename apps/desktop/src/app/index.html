@@ -3,6 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      Spec 010, T006. La vista del puesto tenía política de contenido desde la
+      spec 002 y ésta no: era el hueco que quedaba. Se declara aquí, en la
+      página, porque la pantalla se carga con `loadFile` y no hay cabeceras.
+
+      `'unsafe-inline'` en los estilos es lo que exige el renderizado del
+      renderer (Vite inyecta la hoja en desarrollo y React escribe estilos en
+      línea); todo lo demás queda cerrado, y en particular **no hay ningún
+      origen remoto**: ni fuentes, ni iconos, ni scripts. `connect-src 'none'`
+      es la declaración de que esta pantalla no habla con la red: todo lo que
+      necesita se lo pide al proceso principal por el canal cerrado.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'"
+    />
     <title>Auphere</title>
   </head>
   <body>

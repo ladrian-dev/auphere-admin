@@ -115,7 +115,7 @@ export function TeammateSettings({
     <form className="flex min-w-0 flex-col gap-5 p-6" onSubmit={(e) => void submit(e)} noValidate>
       <h2 className="text-base font-semibold text-balance">{t("settings.title")}</h2>
 
-      <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-2">
         <Label htmlFor="settings-name">{t("create.name")}</Label>
         <Input
           id="settings-name"
@@ -126,7 +126,7 @@ export function TeammateSettings({
         />
       </div>
 
-      <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-2">
         <Label htmlFor="settings-job">{t("create.job")}</Label>
         <Input
           id="settings-job"

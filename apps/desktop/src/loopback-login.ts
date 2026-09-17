@@ -78,18 +78,19 @@ export async function listenForLogin(
   });
 
   let closed = false;
-  let timer: NodeJS.Timeout | undefined;
-  let server: Server | undefined;
 
+  // `server` y `timer` se leen dentro de `finish`, que sólo puede ejecutarse
+  // después de que ambos existan: lo llama el manejador de peticiones (que
+  // necesita el servidor escuchando) o `cancel`, que se devuelve al final.
   const finish = (value: LoginReturn): void => {
     if (closed) return;
     closed = true;
-    if (timer) clearTimeout(timer);
-    server?.close();
+    clearTimeout(timer);
+    server.close();
     settle(value);
   };
 
-  server = createServer((request, response) => {
+  const server: Server = createServer((request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     // Una sola ruta, y sólo se leen dos parámetros.
     const code = url.searchParams.get("code");
@@ -103,14 +104,14 @@ export async function listenForLogin(
   });
 
   const port = await new Promise<number>((resolve, reject) => {
-    server?.once("error", reject);
-    server?.listen(0, "127.0.0.1", () => {
-      const address = server?.address();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
       resolve(typeof address === "object" && address ? address.port : 0);
     });
   });
 
-  timer = setTimeout(() => finish({ kind: "timeout" }), timeoutMs);
+  const timer = setTimeout(() => finish({ kind: "timeout" }), timeoutMs);
   // No mantiene el proceso vivo por sí mismo: la aplicación decide cuándo sale.
   timer.unref?.();
 
