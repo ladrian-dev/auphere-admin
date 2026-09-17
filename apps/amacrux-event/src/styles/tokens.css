@@ -1,0 +1,111 @@
+/*
+ * Tokens de marca Amacrux — sustituibles en un solo fichero.
+ * Paleta del "Manual de marca simplificado" (2026): navy #01103f, turquesa
+ * #5bdfd2, gris #39383b, blanco. Tipografías del manual: Agrandir + SF Pro
+ * (sin licencia web) → sustitutas Outfit + Inter (OFL) cargadas por next/font.
+ * TODO_COMERCIAL: validar con Amacrux la licencia de Agrandir para web.
+ */
+:root {
+  color-scheme: light;
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --surface-strong: #01103f;
+  --ink: #0b1230;
+  --ink-muted: #4b5470;
+  --ink-on-strong: #ffffff;
+  --line: #d9e0ec;
+  --primary: #01103f;
+  --primary-contrast: #ffffff;
+  --accent: #5bdfd2;
+  --accent-deep: #1fb3a5;
+  --accent-contrast: #01103f;
+  --electric: #0b5ed7;
+  --success: #158f5e;
+  --warning: #b7791f;
+  --danger: #c93b3b;
+  --focus: #0b5ed7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #050b26;
+    --surface: #0b1640;
+    --surface-strong: #01103f;
+    --ink: #eef2ff;
+    --ink-muted: #aab4d6;
+    --ink-on-strong: #ffffff;
+    --line: #22306a;
+    --primary: #5bdfd2;
+    --primary-contrast: #01103f;
+    --accent: #5bdfd2;
+    --accent-deep: #8ff0e6;
+    --accent-contrast: #01103f;
+    --electric: #6ea8ff;
+    --success: #5fd39b;
+    --warning: #f0c060;
+    --danger: #ff8a8a;
+    --focus: #8ff0e6;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #050b26;
+  --surface: #0b1640;
+  --surface-strong: #01103f;
+  --ink: #eef2ff;
+  --ink-muted: #aab4d6;
+  --ink-on-strong: #ffffff;
+  --line: #22306a;
+  --primary: #5bdfd2;
+  --primary-contrast: #01103f;
+  --accent: #5bdfd2;
+  --accent-deep: #8ff0e6;
+  --accent-contrast: #01103f;
+  --electric: #6ea8ff;
+  --success: #5fd39b;
+  --warning: #f0c060;
+  --danger: #ff8a8a;
+  --focus: #8ff0e6;
+}
+
+@theme inline {
+  --color-brand-navy: #01103f;
+  --color-brand-turquoise: #5bdfd2;
+  --color-brand-gray: #39383b;
+  --color-canvas: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-on-strong: var(--ink-on-strong);
+  --color-line: var(--line);
+  --color-primary: var(--primary);
+  --color-primary-contrast: var(--primary-contrast);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-electric: var(--electric);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-focus: var(--focus);
+
+  --font-display: var(--font-outfit), "Agrandir", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), "SF Pro Text", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+
+  --shadow-1: 0 1px 2px rgb(1 16 63 / 0.06);
+  --shadow-2: 0 6px 20px rgb(1 16 63 / 0.10);
+  --shadow-3: 0 18px 48px rgb(1 16 63 / 0.18);
+  --shadow-glow: 0 0 0 4px rgb(91 223 210 / 0.35);
+
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-fast: 160ms;
+  --duration-base: 260ms;
+}

@@ -1,0 +1,65 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  p { text-wrap: pretty; }
+  :focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  ::selection { background: var(--accent); color: var(--accent-contrast); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Marca según tema: navy en claro, blanco en oscuro. */
+  .brand-dark { display: none; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .brand-light { display: none; }
+    :root:not([data-theme="light"]) .brand-dark { display: block; }
+  }
+  :root[data-theme="dark"] .brand-light { display: none; }
+  :root[data-theme="dark"] .brand-dark { display: block; }
+  .brand-gradient {
+    background:
+      radial-gradient(120% 80% at 100% 0%, rgb(91 223 210 / 0.35), transparent 55%),
+      radial-gradient(90% 70% at 0% 100%, rgb(11 94 215 / 0.45), transparent 60%),
+      linear-gradient(160deg, #01103f 0%, #0a1f63 60%, #01103f 100%);
+  }
+  .fade-up {
+    animation: fade-up var(--duration-base) var(--ease-out) both;
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+  .touch-target { min-height: 48px; }
+}

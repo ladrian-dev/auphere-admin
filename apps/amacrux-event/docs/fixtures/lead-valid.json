@@ -1,0 +1,27 @@
+{
+  "name": "Ana Pérez",
+  "company": "Farmacia Central",
+  "email": "ana@farmacia-central.test",
+  "role": "Gerente",
+  "phone": "+58 412 0000000",
+  "interest": "automatizacion_operativa",
+  "consentContact": true,
+  "consentMarketing": false,
+  "resultSnapshot": {
+    "scoreTotal": 61,
+    "range": "oportunidad_prioritaria",
+    "leadTier": "caliente",
+    "segment": { "profile": "decisor_negocio", "maturity": "inicial", "opportunityCategories": ["automatizacion_operativa", "integraciones_orquestacion", "ia_conocimiento_soporte"], "intent": "media", "complexity": "quick_win" },
+    "recommendationIds": ["clasificacion-solicitudes", "sincronizacion-entre-herramientas", "recordatorios-y-seguimiento"]
+  },
+  "answers": {
+    "profile": "direccion", "sector": "comercio_retail", "teamSize": "11_50", "customerType": "b2c",
+    "workLevel": "explorando", "aiUsage": "no", "dataLocation": "hojas_calculo",
+    "frictions": ["tareas_manuales", "copiar_datos", "emails_solicitudes"], "goals": ["ahorrar_tiempo"],
+    "urgency": "proximos_meses", "techCapacity": "sin_equipo", "investment": "prueba"
+  },
+  "campaign": "ia-empresas-2026",
+  "utm": { "source": "qr", "medium": "evento" },
+  "idempotencyKey": "3f6d2c1e-0f0a-4d5e-9b3a-1c2d3e4f5a6b",
+  "fax": ""
+}

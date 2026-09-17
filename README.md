@@ -18,3 +18,7 @@ curl http://localhost:8000/health
 ```
 
 See `CLAUDE.md` for more.
+
+## Apps auxiliares
+
+- `apps/amacrux-event` — landing pública del Diagnóstico IA de Amacrux para eventos (QR). Workspace pnpm propio; ver `apps/amacrux-event/docs/INSTALL.md` y `specs/009-diagnostico-evento-amacrux/`.
