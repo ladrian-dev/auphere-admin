@@ -12,11 +12,21 @@ import {
   onOpen,
 } from "../src/notifications-policy.js";
 
-const item = (level: Pending["level"], id = "a1"): Pending => ({
+const item = (level: Pending["level"], id = "a1", can_decide = true): Pending => ({
   action_id: id,
   level,
   teammate: "Sofía",
   title: "Asignar el rol de atención",
+  can_decide,
+});
+
+describe("el número es el mismo que el de las demás superficies (spec 010, 5.4)", () => {
+  it("lo que esta persona no puede decidir no marca el icono", () => {
+    // La regla vive en `waiting.ts` y la comparten las cuatro superficies:
+    // antes cada una contaba a su manera y la ventana decía tres cifras.
+    const effects = onArrival(item("critico"), DEFAULT_PREFS, [item("critico", "a1", false)]);
+    expect(effects.find((e) => e.kind === "badge")).toEqual({ kind: "badge", count: 0 });
+  });
 });
 
 describe("un aviso que llega con la aplicación abierta", () => {

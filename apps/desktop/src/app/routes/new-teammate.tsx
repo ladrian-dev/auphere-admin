@@ -336,7 +336,7 @@ export function PermissionSwitch({
         aria-checked={checked}
         aria-label={label}
         onClick={onToggle}
-        className="mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-border bg-muted p-1 transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[checked=true]:bg-primary"
+        className="mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-border bg-muted p-1 transition-colors aria-[checked=true]:bg-primary"
       >
         <span
           className={`size-4 rounded-full bg-background transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`}

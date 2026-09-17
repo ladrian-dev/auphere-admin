@@ -20,7 +20,16 @@ app.whenReady().then(async () => {
     height: 700,
     show: false,
     backgroundColor: "#101512",
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      // El `preload` de verdad, ya construido: sin él `window.auphere` no
+      // existe y la pantalla no llegaría ni a montarse. Nadie atiende sus
+      // canales en este banco, así que la pantalla pinta sus estados de error
+      // — que es exactamente lo que se quiere poder ver aquí.
+      preload: join(__dirname, "..", "..", "dist", "electron", "app-preload.cjs"),
+    },
   });
 
   // Todo lo que la vista escriba en consola sale por stdout con una marca, para

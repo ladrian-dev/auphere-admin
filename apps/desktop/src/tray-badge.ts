@@ -12,18 +12,26 @@
  * sesión delante. El asunto se lee dentro de la aplicación.
  */
 
-export type Waiting = { level: "critico" | "aviso" | "informativo" };
+import { badgeText, countWaiting, waitingFrom } from "./waiting.js";
 
-/** Por encima de esto el número exacto ya no informa: informa que son muchas. */
-const MANY = 9;
+export type Waiting = { level: "critico" | "aviso" | "informativo"; can_decide: boolean };
 
-const decides = (item: Waiting): boolean => item.level !== "informativo";
-
+/**
+ * La cifra y su tope salen de `waiting.ts`: aquí sólo se pintan. Es la misma
+ * regla que usan la lista lateral, el icono de la aplicación y Pendientes.
+ */
 export function trayBadge(waiting: Waiting[]): string {
-  const count = waiting.filter(decides).length;
-  if (count === 0) return "";
-  return count > MANY ? `${MANY}+` : String(count);
+  return badgeText(waitingFrom(waiting.map(asItem)));
 }
+
+/** La bandeja sólo necesita nivel y si se puede decidir; el resto es relleno. */
+const asItem = (w: Waiting) => ({
+  action_id: "",
+  teammate_id: "",
+  since: "",
+  level: w.level,
+  can_decide: w.can_decide,
+});
 
 const COPY = {
   es: {
@@ -40,7 +48,7 @@ const COPY = {
 
 export function trayTooltip(waiting: Waiting[], lang: "es" | "en"): string {
   const copy = COPY[lang] ?? COPY.es;
-  const count = waiting.filter(decides).length;
+  const count = countWaiting(waiting);
   if (count === 0) return copy.none;
   return count === 1 ? copy.one : copy.many(count);
 }

@@ -12,7 +12,13 @@
  * afirma con cuerpos envenenados.
  */
 
-export type Shape = "none" | "id" | "thread_open" | "thread_id" | "run_events" | "thread_send" | "run" | "stream_open" | "stream_close" | "decide" | "tasks_list" | "pref" | "open_console" | "notif_prefs" | "roster_create" | "roster_update";
+import { isSection } from "./sections.js";
+
+export type Shape =
+  | "none" | "id" | "thread_open" | "thread_id" | "run_events" | "thread_send" | "run" | "stream_open" | "stream_close"
+  | "decide" | "tasks_list" | "pref" | "open_console" | "notif_prefs" | "roster_create" | "roster_update"
+  // Spec 010 — el armazón y el puesto absorbido.
+  | "section" | "content_bounds" | "shell_prefs" | "pair_code" | "client_ref" | "handoff";
 
 export type InvokeChannel = { name: `app:${string}`; input: Shape };
 
@@ -42,6 +48,32 @@ export const APP_INVOKE_CHANNELS: readonly InvokeChannel[] = [
   { name: "app:env.forThread", input: "thread_id" },
   { name: "app:openConsole", input: "open_console" },
   { name: "app:notifications.prefs", input: "notif_prefs" },
+
+  /*
+   * Spec 010 (`contracts/desktop-app-ipc-v2.md`). Tres grupos:
+   *
+   * * **el armazón** — pedir una sección, decir dónde cabe el panel y guardar
+   *   las preferencias de la ventana;
+   * * **el puesto de trabajo**, que deja de ser superficie propia y trae aquí
+   *   sus capacidades (enmienda del contrato de la spec 002);
+   * * **los recorridos que salen y vuelven** — entrar por el navegador, la
+   *   puesta en marcha, instalar la versión descargada y la vuelta del pago.
+   *
+   * Ninguno acepta `tenant_id`, ninguno aprueba nada y ninguno devuelve
+   * credenciales: `redact` sigue aplicándose a todo lo que sale.
+   */
+  { name: "app:shell.showSection", input: "section" },
+  { name: "app:shell.contentBounds", input: "content_bounds" },
+  { name: "app:shell.prefs", input: "shell_prefs" },
+  { name: "app:signIn.start", input: "none" },
+  { name: "app:signIn.cancel", input: "none" },
+  { name: "app:workstation.state", input: "none" },
+  { name: "app:workstation.pair", input: "pair_code" },
+  { name: "app:workstation.unpair", input: "none" },
+  { name: "app:workstation.pickDirectory", input: "client_ref" },
+  { name: "app:setup.status", input: "none" },
+  { name: "app:update.install", input: "none" },
+  { name: "app:handoff.done", input: "handoff" },
 ] as const;
 
 export const APP_PUSH_CHANNELS = [
@@ -53,6 +85,14 @@ export const APP_PUSH_CHANNELS = [
   "app:task.state",
   "app:session",
   "app:presence",
+  // Spec 010. `app:waiting` es la **única** fuente del número de decisiones que
+  // esperan; `app:connectivity` es lo que separa «sin red» de «sin sesión».
+  "app:console.location",
+  "app:workstation",
+  "app:signIn",
+  "app:update",
+  "app:waiting",
+  "app:connectivity",
 ] as const;
 
 export type PushChannel = (typeof APP_PUSH_CHANNELS)[number];
@@ -70,6 +110,17 @@ export class InvalidIpcInput extends Error {
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 4096;
 const uuidish = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
+/** Píxeles lógicos: entero y no negativo. Nada de decimales ni de negativos. */
+const px = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
+
+/**
+ * El alfabeto del código de emparejamiento (spec 002): sin I, L, O, U ni 0/1,
+ * para que nadie confunda un carácter al teclearlo. Se comprueba **aquí**,
+ * antes de tocar la red, porque un código mal tecleado no es un viaje.
+ */
+const PAIRING_ALPHABET = /^[ABCDEFGHJKMNPQRSTVWXYZ23456789]{8}$/;
+const pairingCode = (v: unknown): v is string =>
+  typeof v === "string" && PAIRING_ALPHABET.test(v.replace(/-/g, "").toUpperCase());
 
 /** Valida la entrada de un canal. Lanza `InvalidIpcInput`; nunca adivina. */
 export function validateInput(channel: string, input: unknown): void {
@@ -123,6 +174,31 @@ export function validateInput(channel: string, input: unknown): void {
       return need(isRecord(input) && str(input.name) && str(input.job) && str(input.model), "name, job, model");
     case "roster_update":
       return need(isRecord(input) && uuidish(input.id) && isRecord(input.patch), "id, patch");
+
+    // ── Spec 010 ────────────────────────────────────────────────────────────
+    case "section":
+      // Lo que no está en la lista canónica no existe: ni se muestra, ni se
+      // traduce a una ruta. Una ruta **no** es una sección.
+      return need(isRecord(input) && isSection(input.section), "section fuera de la lista canónica");
+    case "content_bounds":
+      return need(
+        isRecord(input) && px(input.x) && px(input.y) && px(input.width) && px(input.height),
+        "x, y, width, height: enteros no negativos",
+      );
+    case "shell_prefs":
+      return need(
+        isRecord(input) &&
+          (input.theme === undefined || ["system", "light", "dark"].includes(String(input.theme))) &&
+          (input.sidebarWidth === undefined || px(input.sidebarWidth)) &&
+          (input.silenceAviso === undefined || typeof input.silenceAviso === "boolean"),
+        "theme, sidebarWidth, silenceAviso",
+      );
+    case "pair_code":
+      return need(isRecord(input) && pairingCode(input.code), "code");
+    case "client_ref":
+      return need(isRecord(input) && str(input.client_ref), "client_ref");
+    case "handoff":
+      return need(isRecord(input) && ["sign_in", "payment"].includes(String(input.kind)), "kind");
   }
 }
 

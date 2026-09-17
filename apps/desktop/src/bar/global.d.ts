@@ -1,6 +1,8 @@
 // Lo que el preload de la barra expone. Fichero de script (sin import/export)
 // para que el compilador lo aplique a bar.ts, que también es un script.
 type BarStatus =
+  // Spec 010: el estado del primer pintado, antes de saber nada.
+  | "comprobando"
   | "sin_emparejar"
   | "emparejando"
   | "conectada"

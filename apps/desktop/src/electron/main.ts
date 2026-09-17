@@ -41,7 +41,8 @@ import {
 import type { InboxItem } from "../inbox-watcher.js";
 import { StreamHub } from "../stream-hub.js";
 import { trayBadge, trayTooltip, type Waiting } from "../tray-badge.js";
-import { withSurface } from "../bar-state.js";
+import { countWaiting } from "../waiting.js";
+import { withSurface } from "../workstation-state.js";
 import { MIN_WINDOW, readWindowState, rememberWindow } from "../window-state.js";
 import { decideWindowOpen, navigationAllowed } from "../window-open-policy.js";
 import {
@@ -218,7 +219,7 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   // La barra: estado empujado, acciones por IPC. Exactamente las del contrato.
   // La superficie vive en el principal, no en el runtime: es de la ventana, no
   // del puente. Quién decide qué significa "no hay superficie que decir" está en
-  // `bar-state.ts`, con su test; aquí sólo se junta con el estado del puente.
+  // `workstation-state.ts`, con su test; aquí sólo se junta con el estado del puente.
   const pushState = () => {
     if (!barView.webContents.isDestroyed()) {
       barView.webContents.send("bar:state", withSurface(runtime.barState, surface));
@@ -297,7 +298,10 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   };
   gate.onDecision((decision) => {
     void runtime.applyGate(decision);
-    pushApp("app:session", sessionForRenderer(decision));
+    // `null` = no se pudo preguntar (spec 010 R3.2): no hay veredicto nuevo
+    // que empujar, y empujar uno falso es exactamente lo que se está quitando.
+    const forRenderer = sessionForRenderer(decision);
+    if (forRenderer) pushApp("app:session", forRenderer);
     // Sin sesión, la pantalla no puede hacer nada útil: se enseña la consola
     // para que la persona entre; al volver la sesión, vuelve la pantalla.
     if (decision.kind === "stop") {
@@ -435,7 +439,8 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   showSurface("app");
   const first = await gate.evaluate();
   void runtime.applyGate(first);
-  pushApp("app:session", sessionForRenderer(first));
+  const firstForRenderer = sessionForRenderer(first);
+  if (firstForRenderer) pushApp("app:session", firstForRenderer);
   if (first.kind === "stop") showConsole("/");
   else void inbox.start();
 
@@ -468,7 +473,7 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   return {
     readActivity: () => ({
       liveSessions: streams.liveCount,
-      pendingApprovals: waitingNow.filter((w) => w.level !== "informativo").length,
+      pendingApprovals: countWaiting(waitingNow),
     }),
   };
 }

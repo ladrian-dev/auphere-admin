@@ -53,6 +53,30 @@
   --color-sand: oklch(0.936 0.009 179.6); /* #E4ECEA */
   --color-white: oklch(1 0 0);
 
+  /* ── Tinta neutra cálida — spec 010, D3 ─────────────────────────────
+     Las superficies del tema oscuro. Croma muy bajo en el matiz verde de la
+     marca: se reconocen como Auphere sin competir con el contenido, que es lo
+     que hacía el verde saturado como fondo de trabajo de ocho horas. El verde
+     queda para lo que significa algo — primario, positivo, foco y datos. */
+  --color-ink-surface: oklch(0.185 0.012 170);
+  --color-ink-raised: oklch(0.235 0.014 170);
+  --color-ink-sunken: oklch(0.28 0.014 170);
+
+  /* ── Estado, en versión legible como texto — spec 010, R2.4 ─────────
+     Los tonos de estado que se usan **como texto** necesitan 4,5:1 sobre su
+     fondo, y los de arriba no llegaban: el aviso daba 2,97:1 sobre bone y el
+     peligro 1,24:1 sobre la tarjeta oscura. Van por pares: el sólido para
+     rellenos e iconos, el `-text` para cuando lo que hay es una frase. */
+  --color-status-warning-text: oklch(0.46 0.105 72.5);
+  --color-status-danger-text: oklch(0.48 0.16 28.3);
+  --color-status-warning-text-dark: oklch(0.82 0.105 78);
+  --color-status-danger-text-dark: oklch(0.75 0.14 25);
+
+  /* El foco: verde de marca oscurecido hasta que se ve sobre `bone`. El
+     primario da 2,09:1 ahí, que sirve para una llamada a la acción y no para
+     decir dónde está el foco (WCAG 2.2, 1.4.11). */
+  --color-focus-light: oklch(0.48 0.11 167.3);
+
   /* ── 2. Semantic roles ────────────────────────────────────────────── */
   --color-primary: var(--color-mountain-meadow);
   --color-primary-mid: var(--color-mint);
@@ -113,6 +137,25 @@
   --text-3xl: 44px;
   --text-3xl--line-height: 1.05;
 
+  /* ── Densidad de escritorio — spec 010, T033 ────────────────────────
+     La aplicación de escritorio es densa: listas largas, filas que se recorren
+     con el teclado y una ventana que se comparte con la consola. Estas medidas
+     salen de la guía de Apple (control por defecto 28 pt, cuerpo 13 pt) cruzada
+     con WCAG 2.2, que es más estricta en el objetivo mínimo: manda WCAG.
+
+     Son **tokens**, no utilidades: quien las use las nombra, y así una fila de
+     28 px es la misma fila en todas partes. */
+  --text-ui: 13px;
+  --text-ui--line-height: 1.4;
+  --size-row: 28px;
+  --size-row-avatar: 32px;
+  --size-control: 28px;
+  /* WCAG 2.2, 2.5.8. Por debajo de esto no baja ningún objetivo. */
+  --size-target-min: 24px;
+  --size-sidebar-min: 220px;
+  --size-sidebar-max: 320px;
+  --size-strip: 52px;
+
   --tracking-tightest: -0.04em;
   --tracking-tighter: -0.03em;
   --tracking-tight: -0.02em;
@@ -165,11 +208,16 @@
   --accent: var(--color-pistachio);
   /* pine, not bangladesh-green: 6.25:1 on pistachio (bangladesh-green is 4.22:1, below AA 4.5). */
   --accent-foreground: var(--color-pine);
-  --destructive: var(--color-status-danger);
+  /* Spec 010 R2.4: el que se usa como texto es el legible; el sólido sigue
+     disponible para rellenos e iconos. */
+  --destructive: var(--color-status-danger-text);
   --destructive-foreground: var(--color-bone);
+  --warning: var(--color-status-warning-text);
   --border: var(--color-border);
-  --input: var(--color-border);
-  --ring: var(--color-primary);
+  /* `--input` es el borde de un **control**: identifica el componente, así que
+     cumple 3:1 (WCAG 1.4.11). `--border` es separación y no lo necesita. */
+  --input: oklch(0.161 0.033 115.3 / 0.45);
+  --ring: var(--color-focus-light);
   --radius: 8px;
 
   --sidebar: var(--color-bone);
@@ -179,37 +227,44 @@
   --sidebar-accent: var(--color-pistachio);
   --sidebar-accent-foreground: var(--color-pine); /* 6.25:1, see --accent-foreground */
   --sidebar-border: var(--color-border);
-  --sidebar-ring: var(--color-primary);
+  --sidebar-ring: var(--color-focus-light);
 
   color-scheme: light;
 }
 
 /* ── 3. shadcn bridge — dark. Driven by ThemeProvider (data-theme). ───── */
 [data-theme="dark"] {
-  --background: var(--color-dark-green);
+  /* Spec 010, D3 — tinta neutra cálida, verde de acento.
+     Antes la tarjeta era `bangladesh-green`, un verde claro y saturado: el
+     error encima daba **1,24:1** y el texto apagado 3,83:1. */
+  --background: var(--color-ink-surface);
   --foreground: var(--color-bone);
-  --card: var(--color-bangladesh-green);
+  --card: var(--color-ink-raised);
   --card-foreground: var(--color-bone);
-  --popover: var(--color-bangladesh-green);
+  --popover: var(--color-ink-raised);
   --popover-foreground: var(--color-bone);
   --primary: var(--color-mountain-meadow);
   --primary-foreground: var(--color-rich-black);
-  --secondary: var(--color-pine);
+  --secondary: var(--color-ink-sunken);
   --secondary-foreground: var(--color-bone);
-  --muted: var(--color-pine);
-  --muted-foreground: oklch(0.971 0.006 185.3 / 0.65);
-  --accent: var(--color-mint);
-  --accent-foreground: var(--color-rich-black);
-  --border: oklch(0.971 0.006 185.3 / 0.12);
-  --input: oklch(0.971 0.006 185.3 / 0.12);
+  --muted: var(--color-ink-sunken);
+  --muted-foreground: oklch(0.971 0.006 185.3 / 0.78);
+  --accent: var(--color-ink-sunken);
+  --accent-foreground: var(--color-bone);
+  --destructive: var(--color-status-danger-text-dark);
+  --warning: var(--color-status-warning-text-dark);
+  --border: oklch(0.971 0.006 185.3 / 0.14);
+  --input: oklch(0.971 0.006 185.3 / 0.4);
+  --ring: var(--color-primary);
 
-  --sidebar: var(--color-dark-green);
+  --sidebar: var(--color-ink-surface);
   --sidebar-foreground: var(--color-bone);
   --sidebar-primary: var(--color-mountain-meadow);
   --sidebar-primary-foreground: var(--color-rich-black);
-  --sidebar-accent: var(--color-pine);
+  --sidebar-accent: var(--color-ink-sunken);
   --sidebar-accent-foreground: var(--color-bone);
-  --sidebar-border: oklch(0.971 0.006 185.3 / 0.12);
+  --sidebar-border: oklch(0.971 0.006 185.3 / 0.14);
+  --sidebar-ring: var(--color-primary);
 
   color-scheme: dark;
 }
@@ -237,6 +292,9 @@
   */
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  /* Spec 010 R2.4: el aviso legible como texto, para que `text-warning` exista
+     y nadie tenga que volver a escribir el tono sólido en una frase. */
+  --color-warning: var(--warning);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar);

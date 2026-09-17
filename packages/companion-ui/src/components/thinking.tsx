@@ -48,7 +48,7 @@ export function Thinking({
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((v) => !v)}
-        className="flex min-h-6 w-full min-w-0 items-center gap-1 rounded-sm text-left text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="flex min-h-6 w-full min-w-0 items-center gap-1 rounded-sm text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
         <ChevronRight
           aria-hidden="true"
@@ -60,7 +60,7 @@ export function Thinking({
       {open ? (
         <div id={id} className="mt-1 min-w-0 border-l border-border pl-3">
           <p className="min-w-0 text-xs whitespace-pre-wrap text-pretty break-words text-muted-foreground">{text}</p>
-          <p className="mt-1 text-xs text-muted-foreground/70">{t("companion.thinking.note")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("companion.thinking.note")}</p>
         </div>
       ) : null}
     </div>

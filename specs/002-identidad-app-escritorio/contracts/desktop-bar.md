@@ -1,5 +1,20 @@
 # Contrato — la barra del puesto: estados, `preload` mínimo y almacén
 
+> **Enmendado el 2026-09-17 por la spec 010: la barra deja de existir.** Sus
+> capacidades —estado de la máquina, emparejar, desemparejar, elegir
+> directorio— pasan a la pantalla de operar, y con ellas las prohibiciones que
+> la protegían. Se retiran la vista, su partición (de cuatro a **tres**) y su
+> `preload` de siete funciones.
+>
+> **Lo que sobrevive entero**: los ocho estados y sus transiciones, que eran
+> lógica pura con test y siguen siéndolo con otro nombre; que ningún estado se
+> pinta como fallo; que sin cifrado de disco no se ofrece emparejar; y que el
+> código lo canjea el proceso principal con la sesión de la partición humana.
+>
+> El argumento de por qué esto **reduce** superficie en vez de ampliarla, y el
+> reparto de dónde vive ahora cada cosa, están en
+> [`specs/010-experiencia-app-escritorio/contracts/workstation-en-el-armazon.md`](../../010-experiencia-app-escritorio/contracts/workstation-en-el-armazon.md).
+
 > **Enmendado el 2026-09-15 por la spec 009**: el `preload` pasa de **seis a
 > siete** con `showApp`, y `BarAction` de cuatro a cinco con `volver_a_la_app`.
 > Llegó a haber una octava para el inicio de sesión; con el paso a RFC 8252 ése

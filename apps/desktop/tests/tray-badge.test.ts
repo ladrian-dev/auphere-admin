@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { type Waiting, trayBadge, trayTooltip } from "../src/tray-badge";
 
-const item = (level: Waiting["level"]): Waiting => ({ level });
+const item = (level: Waiting["level"], can_decide = true): Waiting => ({ level, can_decide });
 
 describe("el número de la bandeja", () => {
   it("sin nada esperando, no hay número", () => {
@@ -26,6 +26,13 @@ describe("el número de la bandeja", () => {
     // decisión, y el día que haya una crítica se leería igual de ruidosa.
     expect(trayBadge([item("informativo"), item("informativo")])).toBe("");
     expect(trayBadge([item("critico"), item("informativo")])).toBe("1");
+  });
+
+  it("lo que esta persona no puede decidir tampoco cuenta (spec 010, 5.4)", () => {
+    // Sigue estando en Pendientes, con a quién pedírselo. Lo que no hace es
+    // perseguirla por un icono con un número que ella no puede bajar.
+    expect(trayBadge([item("critico", false)])).toBe("");
+    expect(trayBadge([item("critico", false), item("aviso")])).toBe("1");
   });
 
   it("a partir de nueve se dice «9+»: el número exacto ya no informa", () => {

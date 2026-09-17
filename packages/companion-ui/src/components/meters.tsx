@@ -82,7 +82,11 @@ export function Meters({
           <dd className="flex min-w-0 items-center gap-2">
             <Bar
               percent={budget.percent}
-              tone={budget.exhausted ? "danger" : budget.percent >= 80 ? "warning" : "default"}
+              /* Spec 010 R2.9: el consumo agotado es un **estado**, no un
+                 fallo. Pintarlo en rojo enseña a ignorar los rojos, y el rojo
+                 hace falta para lo que de verdad hay que detener. Se marca con
+                 el tono de aviso, que es lo que es: algo que atender. */
+              tone={budget.exhausted || budget.percent >= 80 ? "warning" : "default"}
               label={t("companion.meter.month.detail", {
                 used: formatNumber(budget.used, locale),
                 cap: formatNumber(budget.cap, locale),
@@ -90,7 +94,7 @@ export function Meters({
               })}
             />
             <span
-              className={`shrink-0 font-mono tabular-nums ${budget.exhausted ? "text-status-danger" : "text-muted-foreground"}`}
+              className={`shrink-0 font-mono tabular-nums ${budget.exhausted ? "text-warning" : "text-muted-foreground"}`}
             >
               {Math.round(budget.percent)}%
             </span>

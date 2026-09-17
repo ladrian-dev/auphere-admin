@@ -16,9 +16,11 @@
  */
 
 export const LEVELS = ["critico", "aviso", "informativo"] as const;
+import { countWaiting } from "./waiting.js";
+
 export type Level = (typeof LEVELS)[number];
 
-export type Pending = { action_id: string; level: Level; teammate: string; title: string };
+export type Pending = { action_id: string; level: Level; teammate: string; title: string; can_decide: boolean };
 
 export type Prefs = { silenceAviso: boolean };
 
@@ -29,9 +31,13 @@ export type Effect =
 
 export const DEFAULT_PREFS: Prefs = { silenceAviso: false };
 
-/** El badge cuenta lo que espera de verdad: `informativo` no marca nada. */
+/**
+ * El badge cuenta lo que espera de verdad. **La regla no vive aquí**: vive en
+ * `waiting.ts`, y la comparten las cuatro superficies. Antes cada una tenía la
+ * suya y la ventana podía decir tres cifras distintas del mismo hecho.
+ */
 export function badgeCount(pending: Pending[]): number {
-  return pending.filter((p) => p.level !== "informativo").length;
+  return countWaiting(pending);
 }
 
 /** Un aviso que llega con la aplicación abierta. */

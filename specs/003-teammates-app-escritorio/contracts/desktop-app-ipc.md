@@ -1,5 +1,19 @@
 # Contrato — el canal de la pantalla de operar (`app-ipc.ts`)
 
+> **Enmendado el 2026-09-17 por la spec 010.** La lista crece con doce
+> invocaciones y seis empujes: el armazón (pedir una sección, decir dónde cabe
+> el panel, preferencias de la ventana), el puesto de trabajo absorbido, la
+> entrada por navegador, la puesta en marcha, la instalación de la versión
+> descargada y la vuelta del navegador.
+>
+> **Ninguna de las tres reglas invariantes cambia**: la lista sigue cerrada, la
+> entrada se valida y nada de lo que sale lleva sesión, cookie, token ni
+> credencial. Y la consola **sigue sin `preload`**: quien observa dónde está es
+> el proceso principal, no ella.
+>
+> La lista completa, con las formas nuevas, está en
+> [`specs/010-experiencia-app-escritorio/contracts/desktop-app-ipc-v2.md`](../../010-experiencia-app-escritorio/contracts/desktop-app-ipc-v2.md).
+
 La vista `appView` (partición `auphere-app`, `preload` `app-preload.cjs`) solo
 puede hablar con el proceso principal por **esta lista**. `app-ipc.ts` la
 declara como datos (nombre, forma de entrada, forma de salida) y dos tests la

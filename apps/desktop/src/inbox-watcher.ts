@@ -46,6 +46,9 @@ const asPending = (item: InboxItem): Pending => ({
   level: item.level,
   teammate: item.teammate.name,
   title: item.title,
+  // Lo que esta persona no puede decidir no cuenta para el número (spec 010,
+  // Requisito 5.4): sigue en Pendientes, con a quién pedírselo.
+  can_decide: item.can_decide,
 });
 
 export class InboxWatcher {

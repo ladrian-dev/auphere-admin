@@ -34,7 +34,7 @@ export function Roster({ items, status, selected, onSelect, onRetry, onCreate }:
             onClick={onCreate}
             title={t("roster.create")}
             aria-label={t("roster.create")}
-            className="inline-flex size-7 items-center justify-center rounded-md text-lg leading-none text-muted-foreground transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            className="inline-flex size-7 items-center justify-center rounded-md text-lg leading-none text-muted-foreground transition-colors hover:bg-muted"
           >
             +
           </button>
@@ -79,7 +79,7 @@ export function Roster({ items, status, selected, onSelect, onRetry, onCreate }:
                 type="button"
                 aria-current={selected === tm.id ? "true" : undefined}
                 onClick={() => onSelect(tm.id)}
-                className="flex w-full min-w-0 items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[current=true]:bg-muted"
+                className="flex w-full min-w-0 items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-muted aria-[current=true]:bg-muted"
               >
                 <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
                   {tm.name.slice(0, 1)}

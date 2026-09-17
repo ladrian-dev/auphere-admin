@@ -76,7 +76,7 @@ export function ToolCard({ item, citation }: { item: ToolItem; citation: Citatio
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((v) => !v)}
-        className="mt-1 flex min-h-6 items-center gap-1 rounded-sm text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="mt-1 flex min-h-6 items-center gap-1 rounded-sm text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
         <ChevronRight
           aria-hidden="true"

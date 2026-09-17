@@ -1,7 +1,7 @@
 /**
  * La barra del puesto — Requisito 12 (spec 002). Solo pinta.
  *
- * Todo lo que decide vive en el proceso principal (`bar-state.ts`, `AppRuntime`);
+ * Todo lo que decide vive en el proceso principal (`workstation-state.ts`, `AppRuntime`);
  * aquí llega un `BarState` por `window.auphere.onState` y se traduce a copy y
  * a controles. Es un script sin dependencias a propósito: la vista de la barra
  * carga desde disco y no tiene por qué resolver módulos.
@@ -25,6 +25,8 @@
   const UPDATE_URL = "https://updates.auphere.com/desktop";
 
 const COPY: Record<string, Record<Lang, string>> = {
+    // Spec 010: mientras se averigua, no se afirma nada.
+    "workstation.bar.comprobando": { es: "Comprobando esta máquina…", en: "Checking this machine…" },
     "workstation.bar.sin_emparejar": { es: "Esta máquina no está emparejada", en: "This machine is not paired" },
     "workstation.bar.emparejando": { es: "Comprobando el código…", en: "Checking the code…" },
     "workstation.bar.conectada": { es: "conectada", en: "connected" },
@@ -74,7 +76,7 @@ const COPY: Record<string, Record<Lang, string>> = {
   if (!mount) return;
   const root: HTMLElement = mount;
 
-  let state: BarState = { status: "sin_emparejar", links: [], encryptionAvailable: true };
+  let state: BarState = { status: "comprobando", links: [], encryptionAvailable: true };
   let sheet: "none" | "code" | "directories" = "none";
   let justUnpaired = false;
 

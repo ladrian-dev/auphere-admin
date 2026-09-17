@@ -208,8 +208,17 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
   });
 }
 
-/** La decisión de la puerta de sesión, para la pantalla. Sin credencial dentro. */
-export function sessionForRenderer(decision: GateDecision): { kind: string; locale?: "es" | "en"; reason?: string } {
+/**
+ * La decisión de la puerta de sesión, para la pantalla. Sin credencial dentro.
+ *
+ * `unconfirmed` (spec 010 R3.2) devuelve `null` **a propósito**: no se pudo
+ * preguntar, así que no hay nada nuevo que empujar. Lo que la pantalla tiene
+ * que enterarse en ese caso es de la conexión, y eso viaja por `app:connectivity`.
+ */
+export function sessionForRenderer(
+  decision: GateDecision,
+): { kind: string; locale?: "es" | "en"; reason?: string } | null {
+  if (decision.kind === "unconfirmed") return null;
   if (decision.kind === "start") return { kind: "start", ...(decision.locale ? { locale: decision.locale } : {}) };
   if (decision.kind === "stop") return { kind: "stop", reason: decision.reason };
   return { kind: "pair_needed", ...(decision.locale ? { locale: decision.locale } : {}) };

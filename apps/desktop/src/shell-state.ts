@@ -11,8 +11,15 @@
  * valor: una clave permitida no compra el derecho a llevar un secreto dentro.
  */
 
-/** Comodidades de ventana. Nada más. */
-export const PERSISTABLE_KEYS = ["windowBounds", "workdir", "locale", "theme"] as const;
+/**
+ * Comodidades de ventana. Nada más.
+ *
+ * Spec 010 añade dos, y las dos son eso: comodidades. `section` es la última
+ * sección visitada —sin ella, reabrir la aplicación siempre devuelve al mismo
+ * sitio en vez de a donde estabas (R1.10)— y `sidebarWidth`, lo ancha que la
+ * persona dejó la lista lateral. Ninguna dice nada de quién es ni de qué hace.
+ */
+export const PERSISTABLE_KEYS = ["windowBounds", "workdir", "locale", "theme", "section", "sidebarWidth"] as const;
 
 const _CREDENTIAL_SHAPES: RegExp[] = [
   /sk-ant-[A-Za-z0-9_-]{16,}/,

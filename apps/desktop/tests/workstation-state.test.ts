@@ -19,7 +19,7 @@ import {
   statusTone,
   transition,
   type BarState,
-} from "../src/bar-state.js";
+} from "../src/workstation-state.js";
 
 const connected = (): BarState =>
   transition(transition(initialState(), { kind: "pair_started" }), {
@@ -27,9 +27,11 @@ const connected = (): BarState =>
     machine: { displayName: "MacBook de Luis", hostname: "mac.local" },
   });
 
-describe("los siete estados (12.2)", () => {
+describe("los estados del puesto (12.2)", () => {
   it("son exactamente los del contrato", () => {
     expect([...BAR_STATUSES]).toEqual([
+      // Spec 010: antes del primer veredicto no se afirma nada.
+      "comprobando",
       "sin_emparejar",
       "emparejando",
       "conectada",
@@ -72,11 +74,14 @@ describe("herramientas locales y latido (12.3, 1.3)", () => {
 });
 
 describe("transiciones del contrato", () => {
-  it("arranca sin emparejar, sin máquina y sin ofrecer nada apagado (1.1)", () => {
+  it("arranca comprobando, sin máquina y sin ofrecer nada apagado (1.1)", () => {
+    // Spec 010 R3.6: hasta la spec 009 arrancaba en `sin_emparejar`, es decir,
+    // afirmando algo que todavía no había preguntado. Ahora no ofrece nada
+    // porque todavía no sabe qué hace falta.
     const s = initialState();
-    expect(s.status).toBe("sin_emparejar");
+    expect(s.status).toBe("comprobando");
     expect(s.machine).toBeUndefined();
-    expect(actionsFor(s)).toEqual(["introducir_codigo"]);
+    expect(actionsFor(s)).toEqual([]);
   });
 
   it("emparejar: sin_emparejar → emparejando → conectada", () => {
@@ -231,5 +236,78 @@ describe("el canje del código de sesión (spec 009, R4.7)", () => {
     const tras = transition(base, { kind: "redeem_failed" });
     expect(tras.status).toBe(base.status);
     expect(tras.machine).toEqual(base.machine);
+  });
+});
+
+/**
+ * Spec 010 — lo que faltaba para que el puesto no mienta.
+ *
+ * Tres huecos que la auditoría encontró y que la sesión del 2026-09-17 vio en
+ * vivo: la barra decía «no emparejada» **antes de saberlo**, y se quedó toda la
+ * sesión en `reconectando` sin decir de qué se reconectaba ni desde cuándo,
+ * mientras la consola, en la misma ventana, daba la máquina por emparejada.
+ */
+describe("el primer pintado no adivina (spec 010, 3.6)", () => {
+  it("antes del primer veredicto el estado es `comprobando`", () => {
+    expect(initialState().status).toBe("comprobando");
+  });
+
+  it("y `comprobando` no ofrece emparejar: todavía no se sabe si hace falta", () => {
+    expect(actionsFor(initialState())).toEqual([]);
+  });
+
+  it("sigue siendo un estado, no un error", () => {
+    expect(statusTone("comprobando")).toBe("estado");
+  });
+});
+
+describe("desde cuándo y por qué (spec 010, 3.6 y 3.7)", () => {
+  const t0 = "2026-09-17T20:00:00.000Z";
+
+  it("cada estado sabe desde cuándo lo es", () => {
+    const start = transition(initialState(), { kind: "person" }, { now: t0 });
+    expect(start.since).toBe(t0);
+    const later = transition(start, { kind: "pairing_required" }, { now: "2026-09-17T20:05:00.000Z" });
+    expect(later.since).toBe("2026-09-17T20:05:00.000Z");
+  });
+
+  it("un estado que no cambia conserva su `since`: no se reinicia el reloj", () => {
+    const start = { ...initialState(), status: "reconectando" as const, since: t0 };
+    const same = transition(start, { kind: "link_lost" }, { now: "2026-09-17T21:00:00.000Z" });
+    expect(same.status).toBe("reconectando");
+    expect(same.since).toBe(t0);
+  });
+
+  it("`reconectando` puede decir de qué se reconecta", () => {
+    const sinEjecutor = transition(
+      { ...initialState(), status: "conectada", links: [], encryptionAvailable: true },
+      { kind: "link_lost", cause: "sin_ejecutor" },
+      { now: t0 },
+    );
+    expect(sinEjecutor.status).toBe("reconectando");
+    expect(sinEjecutor.cause).toBe("sin_ejecutor");
+  });
+
+  it("y al recuperar la conexión la causa se olvida", () => {
+    const conMaquina: BarState = {
+      ...initialState(),
+      status: "conectada",
+      machine: { displayName: "MacBook de Luis", hostname: "luis.local" },
+      encryptionAvailable: true,
+      links: [],
+    };
+    const roto = transition(conMaquina, { kind: "link_lost", cause: "sin_red" }, { now: t0 });
+    const bien = transition(roto, { kind: "link_ok" }, { now: t0 });
+    expect(bien.status).toBe("conectada");
+    expect(bien.cause).toBeUndefined();
+  });
+
+  it("sin causa conocida no se inventa ninguna", () => {
+    const roto = transition(
+      { ...initialState(), status: "conectada", encryptionAvailable: true, links: [] },
+      { kind: "link_lost" },
+      { now: t0 },
+    );
+    expect(roto.cause).toBeUndefined();
   });
 });

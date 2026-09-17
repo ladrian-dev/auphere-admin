@@ -8,6 +8,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.app.json",
     "lint": "eslint src tests --max-warnings 0",
+    "test:smoke": "playwright test smoke",
     "build": "node scripts/copy-tokens.mjs && tsc -p tsconfig.build.json && vite build -c vite.app.config.ts && vite build -c vite.preload.config.ts && node scripts/copy-bar-assets.mjs",
     "start": "electron .",
     "package": "electron-builder --dir",
@@ -15,8 +16,7 @@
     "dist": "electron-builder --mac"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

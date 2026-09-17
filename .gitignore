@@ -102,3 +102,7 @@ storybook-static/
 # la superficie de ataque y las rutas de cada hallazgo, que es justo el guion
 # que alguien querría para atacar esto.
 .gstack/
+
+# Playwright (spec 010): humo del binario y revision de accesibilidad
+apps/desktop/test-results/
+apps/desktop/playwright-report/

@@ -289,10 +289,10 @@ function Diff({ lines }: { lines: DiffLine[] }) {
           const text = line.op === "del" ? (line.before ?? "") : (line.after ?? line.before ?? "");
           return (
             <li key={`${line.op}-${line.line}-${i}`} className="flex min-w-0 gap-2 whitespace-pre-wrap">
-              <span className="shrink-0 tabular-nums text-muted-foreground/60">{line.line}</span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">{line.line}</span>
               <span
                 aria-hidden="true"
-                className={`shrink-0 ${line.op === "add" ? "text-status-positive" : line.op === "del" ? "text-status-danger" : "text-muted-foreground/60"}`}
+                className={`shrink-0 ${line.op === "add" ? "text-status-positive" : line.op === "del" ? "text-status-danger" : "text-muted-foreground"}`}
               >
                 {line.op === "add" ? "+" : line.op === "del" ? "−" : " "}
               </span>

@@ -24,7 +24,7 @@ import {
   type BarEvent,
   type BarLink,
   type BarState,
-} from "./bar-state.js";
+} from "./workstation-state.js";
 import type { CredentialStore, StoredCredential } from "./credential-store.js";
 import { declareDirectory, type DirectoryFs } from "./directory-declare.js";
 import { AppUpdateRequired, BridgeRejected, PairingFailed, type HttpTransport, type PolledLink } from "./http-transport.js";
@@ -259,6 +259,9 @@ export class AppRuntime {
 
   /** La puerta de sesión decidió. Es la única forma de arrancar el puente con la 002. */
   async applyGate(decision: GateDecision): Promise<void> {
+    // Spec 010 R3.2: no se pudo preguntar. No se para el puente ni se olvida
+    // nada — conservar lo último que se supo es justamente el arreglo.
+    if (decision.kind === "unconfirmed") return;
     if (decision.kind === "stop") {
       this.stop();
       this.userId = null;

@@ -21,7 +21,7 @@ import {
   initialState,
   localToolsOffered,
   transition,
-} from "../src/bar-state.js";
+} from "../src/workstation-state.js";
 
 const conectada = transition(initialState(), {
   kind: "pair_ok",

@@ -1,10 +1,16 @@
 /**
- * La máquina de estados de la barra del puesto — Requisito 12.2 (spec 002).
+ * La máquina de estados del puesto de trabajo — Requisito 12.2 (spec 002),
+ * enmendado por la spec 010.
  *
- * Siete estados, nombrados en `contracts/desktop-bar.md`, y **ninguno es un
- * error**: perder la conexión en un portátil es lo normal, y pintarlo en rojo
- * enseña a ignorar los rojos. Lo que aquí se decide se prueba sin display; la
- * barra solo pinta.
+ * **Ocho estados** —la spec 008 añadió `version_no_admitida` y la cabecera se
+ * quedó diciendo siete—, nombrados en `contracts/desktop-bar.md`, y **ninguno
+ * es un error**: perder la conexión en un portátil es lo normal, y pintarlo en
+ * rojo enseña a ignorar los rojos. Lo que aquí se decide se prueba sin display;
+ * quien pinta solo pinta.
+ *
+ * Con la spec 010 la barra de 44 px desaparece y este módulo se queda: era
+ * lógica pura con test, y lo que cambia es **quién lo dibuja**, no lo que
+ * decide. De ahí el nombre nuevo.
  *
  * Dos consecuencias viven aquí y no en la pantalla, para que no se puedan
  * olvidar: las herramientas locales **solo** existen en `conectada` (12.3) y
@@ -12,6 +18,15 @@
  */
 
 export const BAR_STATUSES = [
+  /**
+   * Spec 010 R3.6 — **antes del primer veredicto no se afirma nada**.
+   *
+   * La aplicación arrancaba diciendo «esta máquina no está emparejada» antes
+   * de haber preguntado: la primera pintura era una suposición, y cuando
+   * acertaba era por casualidad. `comprobando` es lo que hay mientras se
+   * averigua, y no ofrece ninguna acción porque todavía no se sabe cuál.
+   */
+  "comprobando",
   "sin_emparejar",
   "emparejando",
   "conectada",
@@ -74,6 +89,23 @@ export type BarState = {
   /** Spec 008 R4.2: qué versión exige la plataforma, para poder decirlo. */
   requiredVersion?: string;
   /**
+   * Spec 010 R3.6 — desde cuándo el estado es el que es (ISO-8601).
+   *
+   * Sin esto, `reconectando` no se distingue de `reconectando desde hace tres
+   * horas`, y la persona no tiene forma de saber si esperar o actuar. Sólo
+   * cambia cuando cambia el estado: un latido fallido más no reinicia el reloj.
+   */
+  since?: string;
+  /**
+   * Spec 010 R3.6 — de qué se reconecta, cuando se sabe.
+   *
+   * `sin_ejecutor` es el caso que se vio en vivo: la máquina está emparejada y
+   * no hay nada escuchando en ella, así que la aplicación puede decir **qué
+   * falta** en vez de dejar un «reconectando» perpetuo y mudo. **Ausente
+   * significa que no se sabe**, y entonces no se inventa (§V).
+   */
+  cause?: "sin_red" | "sin_ejecutor" | "sesion_perdida";
+  /**
    * Spec 009 R1 — qué superficie se ve.
    *
    * **Ausente significa la pantalla del equipo**, y con ella no hay nada que
@@ -98,7 +130,7 @@ export type BarEvent =
   | { kind: "pair_ok"; machine: BarMachine }
   | { kind: "pair_failed"; code: string }
   | { kind: "link_ok" }
-  | { kind: "link_lost" }
+  | { kind: "link_lost"; cause?: BarState["cause"] }
   | { kind: "links_updated"; links: BarLink[] }
   | { kind: "session_gone" }
   | { kind: "session_same_person" }
@@ -125,7 +157,8 @@ export type BarEvent =
   | { kind: "redeem_failed" };
 
 export function initialState(encryptionAvailable = true): BarState {
-  return { status: "sin_emparejar", links: [], encryptionAvailable };
+  // `comprobando`, no `sin_emparejar`: al abrir todavía no se ha preguntado.
+  return { status: "comprobando", links: [], encryptionAvailable };
 }
 
 /** Clave de i18n; la barra no incrusta copy en el estado. */
@@ -183,6 +216,9 @@ export function barActions(state: BarState): BarAction[] {
 
 export function actionsFor(state: BarState): BarAction[] {
   if (!state.encryptionAvailable) return [];
+  // Mientras se comprueba no hay nada que ofrecer: ofrecer «introducir código»
+  // aquí sería pedir algo que quizá no hace falta.
+  if (state.status === "comprobando") return [];
   switch (state.status) {
     case "sin_emparejar":
     case "volver_a_emparejar":
@@ -214,7 +250,28 @@ function forget(state: BarState, status: BarStatus): BarState {
   };
 }
 
-export function transition(state: BarState, event: BarEvent): BarState {
+/**
+ * Spec 010 R3.6 — el reloj y la causa se ponen **fuera** del switch.
+ *
+ * `applyEvent` decide el estado, como siempre. Esta envoltura le añade las dos
+ * cosas que la pantalla necesita para no mentir: desde cuándo el estado es el
+ * que es, y de qué se reconecta cuando se sabe. Se hace aquí y no caso por caso
+ * para que no se pueda olvidar en el siguiente evento que alguien añada.
+ */
+export function transition(state: BarState, event: BarEvent, options: { now?: string } = {}): BarState {
+  const next = applyEvent(state, event);
+  const now = options.now ?? new Date().toISOString();
+
+  // El reloj sólo se reinicia cuando el estado cambia: un latido fallido más no
+  // convierte «reconectando desde hace tres horas» en «reconectando ahora».
+  const stamped = next.status !== state.status || next.since === undefined ? { ...next, since: now } : next;
+
+  if (event.kind === "link_lost") return { ...stamped, cause: event.cause };
+  // Recuperar la conexión olvida la causa: ya no hay nada que explicar.
+  return stamped.status === "conectada" ? { ...stamped, cause: undefined } : stamped;
+}
+
+function applyEvent(state: BarState, event: BarEvent): BarState {
   switch (event.kind) {
     // Spec 008 — los dos eventos de actualización **no tocan `status`**, y eso
     // es la decisión entera: son ortogonales a la conexión. Una máquina

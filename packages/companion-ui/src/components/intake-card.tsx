@@ -91,7 +91,7 @@ function SlotChip({ slot, onAnswer }: { slot: IntakeSlot; onAnswer: (slot: Intak
         aria-label={t("companion.intake.answer", { label })}
         className={[
           "flex min-h-8 w-full min-w-0 items-center gap-2 rounded-sm border px-2 py-1 text-left transition-colors",
-          "focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+          "",
           highlighted
             ? "border-status-warning/60 bg-status-warning/5 hover:border-status-warning hover:bg-status-warning/10"
             : "border-border hover:border-primary hover:bg-muted",
@@ -126,7 +126,7 @@ function SlotChip({ slot, onAnswer }: { slot: IntakeSlot; onAnswer: (slot: Intak
       ) : null}
 
       {slot.examples.length > 0 ? (
-        <p className={`mt-1 pl-2 text-xs text-pretty ${highlighted ? "text-muted-foreground" : "text-muted-foreground/80"}`}>
+        <p className={`mt-1 pl-2 text-xs text-pretty ${highlighted ? "text-muted-foreground" : "text-muted-foreground"}`}>
           {t("companion.intake.examples")}: {slot.examples.join(" · ")}
         </p>
       ) : null}

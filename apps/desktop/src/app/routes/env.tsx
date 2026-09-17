@@ -172,7 +172,7 @@ function LocalExecPolicySection({ initial }: { initial: LocalExecPolicy | null }
             aria-pressed={policy.global_mode === mode}
             disabled={saving}
             onClick={() => void save(mode)}
-            className="min-h-8 rounded-md border border-border px-2 text-xs transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[pressed=true]:bg-foreground aria-[pressed=true]:text-background"
+            className="min-h-8 rounded-md border border-border px-2 text-xs transition-colors hover:bg-muted aria-[pressed=true]:bg-foreground aria-[pressed=true]:text-background"
           >
             {t(`policy.${mode}`)}
           </button>

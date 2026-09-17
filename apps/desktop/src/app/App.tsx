@@ -23,6 +23,7 @@ import {
   type Usage,
   bridge,
 } from "./bridge";
+import { countWaiting } from "../waiting";
 import { type Lang, LangProvider, systemLang, useAppT } from "./i18n";
 import { Account } from "./routes/account";
 import { EnvPanel } from "./routes/env";
@@ -212,7 +213,10 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
       alive = false;
     };
   }, [current?.my_thread_id, presence]);
-  const waiting = pending.length;
+  // Requisito 5.4: la misma cifra que el icono de la aplicación, el de la barra
+  // del sistema y Pendientes. Antes esta contaba **todo**, incluido lo
+  // informativo, así que la pestaña decía 4 donde el Dock decía 3.
+  const waiting = countWaiting(pending);
 
   if (session?.kind === "stop") {
     return (
@@ -241,7 +245,7 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
               type="button"
               aria-pressed={view === tab.key}
               onClick={() => setView(tab.key)}
-              className="min-h-8 flex-1 rounded-md px-3 text-sm transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[pressed=true]:bg-muted aria-[pressed=true]:font-medium"
+              className="min-h-8 flex-1 rounded-md px-3 text-sm transition-colors hover:bg-muted aria-[pressed=true]:bg-muted aria-[pressed=true]:font-medium"
             >
               {t(tab.label)}
               {tab.key === "pending" && waiting > 0 ? (

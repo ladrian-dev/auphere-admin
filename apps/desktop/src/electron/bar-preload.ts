@@ -15,7 +15,7 @@
  */
 import { contextBridge, ipcRenderer } from "electron";
 
-import type { BarState } from "../bar-state.js";
+import type { BarState } from "../workstation-state.js";
 
 const api = {
   getState: (): Promise<BarState> => ipcRenderer.invoke("bar:getState"),

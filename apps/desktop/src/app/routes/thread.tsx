@@ -125,7 +125,7 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
         <button
           type="button"
           onClick={onOpenSettings}
-          className="ml-auto min-h-8 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="ml-auto min-h-8 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
         >
           {t("settings.open")}
         </button>

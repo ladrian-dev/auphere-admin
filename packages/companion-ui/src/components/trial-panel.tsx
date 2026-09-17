@@ -203,7 +203,7 @@ function TrialThreadLink({ threadId, clientRef }: { threadId: string | null; cli
       {renderLink({
         href,
         className:
-          "mt-1 inline-flex min-h-6 items-center gap-1 text-xs text-primary underline underline-offset-2 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+          "mt-1 inline-flex min-h-6 items-center gap-1 text-xs text-primary underline underline-offset-2",
         children: (
           <>
             {t("companion.trial.openThread")}

@@ -28,7 +28,14 @@ describe("qué se puede guardar en disco (15.2)", () => {
   it("la lista de lo persistible es corta y no incluye secretos", () => {
     expect(PERSISTABLE_KEYS).not.toContain("token");
     expect(PERSISTABLE_KEYS).not.toContain("session");
-    expect(PERSISTABLE_KEYS.length).toBeLessThanOrEqual(6);
+    // Y las dos de la spec 010 son lo que dicen ser.
+    expect(PERSISTABLE_KEYS).toContain("section");
+    expect(PERSISTABLE_KEYS).toContain("sidebarWidth");
+    // Spec 010 sube el tope a ocho al añadir `section` y `sidebarWidth`. El
+    // tope existe para que la lista siga siendo corta y revisable de un
+    // vistazo: si algún día hacen falta doce claves, la conversación es si de
+    // verdad son comodidades de ventana.
+    expect(PERSISTABLE_KEYS.length).toBeLessThanOrEqual(8);
   });
 
   it("solo sobrevive lo que está en la lista", () => {

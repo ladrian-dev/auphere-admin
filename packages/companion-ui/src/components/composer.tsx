@@ -96,7 +96,7 @@ export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Co
               aria-pressed={mode === m}
               aria-describedby={hintId}
               onClick={() => onMode(m)}
-              className={`min-h-6 rounded-full px-3 text-xs transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none ${
+              className={`min-h-6 rounded-full px-3 text-xs transition-colors ${
                 mode === m ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
               }`}
             >
