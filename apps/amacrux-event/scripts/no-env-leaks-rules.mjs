@@ -10,6 +10,9 @@ export const SECRET_PATTERN = /RESEND_API_KEY|LEADS_TO|LEADS_FROM|SUPABASE_[A-Z_
 export const COUPLING_PATTERN = /from\s+["'](@nexus\/|\.\.\/\.\.\/(api|worker|console|admin)\/|.*packages\/ui)/;
 
 export function isSecretAllowed(relPath) {
+  // Excepción exacta: el test del propio módulo de configuración. No se empaqueta
+  // para el navegador, igual que los tests bajo src/app/api/.
+  if (relPath === "src/lib/__tests__/env.server.test.ts") return true;
   return relPath === "src/lib/env.server.ts" || relPath.startsWith("src/app/api/");
 }
 

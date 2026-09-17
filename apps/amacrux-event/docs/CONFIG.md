@@ -20,7 +20,7 @@ Todas las variables están en `.env.example`. Ninguna clave se expone al navegad
 | `LEADS_WEBHOOK_SECRET` | servidor | texto aleatorio | Cabecera `X-Leads-Secret` que n8n comprueba |
 | `RESEND_API_KEY` | servidor | clave de Resend | Aviso por correo de cada lead |
 | `LEADS_TO` | servidor | `contacto+event@auphere.com` | Destino de cada lead. Admite varias direcciones separadas por comas |
-| `LEADS_FROM` | servidor | `Nombre <correo@dominio-verificado>` | Remitente verificado en Resend |
+| `LEADS_FROM` | servidor | `Amacrux <diagnostico@auphere.com>` | Remitente verificado en Resend. **Solo ASCII**: con tilde en el nombre visible, Resend responde `Invalid from field. The email address contains non-ASCII characters.` y la app lo trata como mala configuración |
 
 ## Qué lleva el correo de cada lead
 Una sección por bloque, para leerlo en el móvil durante el evento, y al final

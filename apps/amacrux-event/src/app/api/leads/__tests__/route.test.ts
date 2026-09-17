@@ -28,7 +28,7 @@ const env = process.env;
 beforeEach(() => {
   _resetForTests();
   sendMock.mockReset();
-  process.env = { ...env, NEXT_PUBLIC_DEMO_MODE: "false", RESEND_API_KEY: "re_test", LEADS_TO: "leads@amacrux.test", LEADS_FROM: "Diagnóstico <d@amacrux.test>" };
+  process.env = { ...env, NEXT_PUBLIC_DEMO_MODE: "false", RESEND_API_KEY: "re_test", LEADS_TO: "leads@amacrux.test", LEADS_FROM: "Diagnostico <d@amacrux.test>" };
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });

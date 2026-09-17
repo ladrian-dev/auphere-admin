@@ -20,6 +20,7 @@ migración se quedan en el repo por si se enciende más adelante.
 
 ## Resend
 - [ ] Dominio del remitente verificado (SPF/DKIM) o, para pruebas, `onboarding@resend.dev`.
+- [ ] `LEADS_FROM` sin tildes ni caracteres no ASCII en el nombre visible: Resend rechaza el envío. Si `/api/health` dice `misconfigured` con todas las variables puestas, es esto.
 - [ ] Clave de API con permiso de envío, creada solo para este proyecto.
 - [ ] Enviar un lead de prueba y confirmar recepción en `contacto+event@auphere.com`.
 - [ ] En ese correo: comprobar que están las cinco secciones y que la fila CSV del final se pega bien en la hoja (40 columnas, sin descuadres).

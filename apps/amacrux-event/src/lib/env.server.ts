@@ -12,6 +12,9 @@ export type LeadDeliveryConfig =
 
 export type LeadStorageConfig = { enabled: false } | { enabled: true; url: string; serviceKey: string };
 
+/** Solo ASCII imprimible: Resend rechaza un `from` con tildes y el fallo saldría en el primer lead. */
+const asciiOnly = (v: string) => /^[\x20-\x7E]+$/.test(v);
+
 /** Correo: `LEADS_TO` admite varias direcciones separadas por comas (Amacrux y Auphere). */
 export function leadDeliveryConfig(env: NodeJS.ProcessEnv = process.env): LeadDeliveryConfig {
   const apiKey = env.RESEND_API_KEY?.trim();
@@ -19,6 +22,9 @@ export function leadDeliveryConfig(env: NodeJS.ProcessEnv = process.env): LeadDe
   const from = env.LEADS_FROM?.trim();
   if (isDemoModeFlag() || !apiKey) return { mode: "demo" };
   if (to.length === 0 || !from) return { mode: "misconfigured" };
+  // Un remitente no ASCII lo rechaza Resend en cada envío: es mala configuración,
+  // y así se ve en /api/health antes del evento en vez de en el primer lead real.
+  if (!asciiOnly(from) || !to.every(asciiOnly)) return { mode: "misconfigured" };
   return { mode: "live", apiKey, to, from };
 }
 
