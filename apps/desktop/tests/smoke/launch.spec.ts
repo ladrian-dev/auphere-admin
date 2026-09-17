@@ -82,6 +82,38 @@ test("las fuentes de marca cargan desde el paquete", async () => {
   expect(cargadas.familiaDelCuerpo).toContain("Inter Tight Variable");
 });
 
+test("el armazón está montado y la franja es la única que arrastra", async () => {
+  /*
+   * El invariante que el spike midió: una sola región de arrastre, y la franja
+   * superior. Se comprueba sobre el **código construido**, que es donde podría
+   * haberse perdido una clase por el camino del empaquetado.
+   *
+   * Se cuentan las **raíces**, no los elementos: `-webkit-app-region` se
+   * hereda, así que el título dentro de la franja también arrastra la ventana
+   * —y debe hacerlo—. Lo que no puede haber es una segunda región **declarada**
+   * en otro sitio del árbol.
+   */
+  const chrome = await window.evaluate(() => {
+    const arrastra = (el: Element | null) =>
+      el !== null && getComputedStyle(el).getPropertyValue("-webkit-app-region") === "drag";
+    const raices = [...document.querySelectorAll("*")].filter((el) => arrastra(el) && !arrastra(el.parentElement));
+    const header = document.querySelector("header");
+    return {
+      arrastrables: raices.length,
+      laFranjaArrastra: header !== null && raices[0] === header,
+      hayListaLateral: document.querySelector("nav") !== null,
+      titulo: document.querySelector("h1")?.textContent ?? "",
+    };
+  });
+
+  expect(chrome.arrastrables, "tiene que haber exactamente una región de arrastre").toBe(1);
+  expect(chrome.laFranjaArrastra).toBe(true);
+  expect(chrome.hayListaLateral).toBe(true);
+  // El título es el objeto en el que se está, nunca el nombre de la aplicación.
+  expect(chrome.titulo).not.toBe("Auphere");
+  expect(chrome.titulo.length).toBeGreaterThan(0);
+});
+
 test("no se pide nada a la red", async () => {
   const peticiones: string[] = [];
   window.on("request", (request) => peticiones.push(request.url()));

@@ -9,6 +9,12 @@
 import type { IpcMain } from "electron";
 
 import { InvalidIpcInput, redact, validateInput } from "../app-ipc.js";
+import type { Section } from "../sections.js";
+
+/** Las comodidades de ventana; su forma y sus defectos viven en el módulo puro. */
+import type { ShellPrefs } from "../shell-prefs.js";
+
+export type { ShellPrefs };
 import { PlatformClient, SessionLost } from "../platform-client.js";
 import type { GateDecision, WhoamiClient } from "../session-gate.js";
 import type { InboxWatcher } from "../inbox-watcher.js";
@@ -24,6 +30,13 @@ export type AppSurfaceOptions = {
   whoami: WhoamiClient;
   push: Push;
   showConsole: (path: string) => void;
+  /* ── El armazón — spec 010 ────────────────────────────────────────────── */
+  /** Muestra una sección: la pinta la pantalla o la consola, según cuál sea. */
+  showSection: (section: Section) => void;
+  /** Dónde cabe el panel, medido por la pantalla (R1.3). Sólo números. */
+  setPanelBounds: (rect: { x: number; y: number; width: number; height: number }) => void;
+  /** Comodidades de ventana; la lista de claves persistibles es cerrada. */
+  shellPrefs: { read(): ShellPrefs; write(next: Partial<ShellPrefs>): ShellPrefs };
   onSessionLost: (reason: "anonymous" | "no_membership") => void;
   inbox: InboxWatcher;
   notificationPrefs: { read(): Prefs; write(next: Prefs): Prefs };
@@ -206,6 +219,20 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
     o.showConsole(input.path);
     return null;
   });
+
+  /* ── El armazón — spec 010 ────────────────────────────────────────────── */
+
+  handle("app:shell.showSection", (input: { section: Section }) => {
+    o.showSection(input.section);
+    return null;
+  });
+
+  handle("app:shell.contentBounds", (input: { x: number; y: number; width: number; height: number }) => {
+    o.setPanelBounds(input);
+    return null;
+  });
+
+  handle("app:shell.prefs", (input: Partial<ShellPrefs> | undefined) => o.shellPrefs.write(input ?? {}));
 }
 
 /**

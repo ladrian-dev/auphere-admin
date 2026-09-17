@@ -29,12 +29,26 @@ describe("isDesktopShellUserAgent", () => {
   });
 });
 
-describe("una sola bifurcación por cáscara en toda la consola", () => {
-  it("`@/lib/shell` se importa exactamente una vez fuera de su módulo y sus tests", () => {
+describe("las bifurcaciones por cáscara están contadas", () => {
+  it("`@/lib/shell` se importa sólo donde una spec lo justificó", () => {
     const src = `${resolve(process.cwd(), "src")}/`;
     const importers = walk(src)
       .filter((p) => /\.(ts|tsx)$/.test(p) && !p.includes("__tests__") && !p.endsWith("/lib/shell.ts") && !p.endsWith("/lib/shell-ua.ts"))
       .filter((p) => /from ["']@\/lib\/shell["']/.test(readFileSync(p, "utf8")));
-    expect(importers.map((p) => p.replace(src, ""))).toEqual(["app/(console)/clients/[ref]/channels/page.tsx"]);
+    /*
+     * Dos, y cada una con su razón escrita:
+     *
+     * * `channels/page.tsx` (spec 002 R12.7) — conectar canales de Meta no
+     *   funciona dentro de la ventana, así que se manda al navegador.
+     * * `(console)/layout.tsx` (spec 010) — el modo embebido: dentro de la
+     *   aplicación la consola no pinta su armazón, porque lo pone la ventana.
+     *
+     * El test sigue existiendo para lo mismo que antes: que una tercera
+     * bifurcación no entre sin que nadie la discuta.
+     */
+    expect(importers.map((p) => p.replace(src, "")).sort()).toEqual([
+      "app/(console)/layout.tsx",
+      "app/(console)/clients/[ref]/channels/page.tsx",
+    ].sort());
   });
 });

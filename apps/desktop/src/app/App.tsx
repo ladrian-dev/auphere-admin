@@ -21,31 +21,40 @@ import {
   type Teammate,
   type ThreadEnv,
   type Usage,
+  type WorkstationView,
   bridge,
 } from "./bridge";
 import { countWaiting } from "../waiting";
 import { type Lang, LangProvider, systemLang, useAppT } from "./i18n";
+import { CONSOLE_SECTIONS, type Section, isConsoleSection } from "../sections";
+import { MIN_SIDEBAR } from "../electron/shell-layout";
+import { Shell } from "./shell/shell";
+import { Sidebar } from "./shell/sidebar";
+import { Palette, type Command } from "./shell/palette";
+import { WorkstationChip } from "./shell/workstation-chip";
+import { Today } from "./routes/today";
+import {
+  type History,
+  current as currentSection,
+  go as goTo,
+  initialHistory,
+} from "./shell/navigation";
 import { Account } from "./routes/account";
 import { EnvPanel } from "./routes/env";
 import { Inbox } from "./routes/inbox";
 import { NewTeammateForm, capOf } from "./routes/new-teammate";
-import { Roster } from "./routes/roster";
 import { TeammateSettings } from "./routes/teammate-settings";
 import { ThreadView } from "./routes/thread";
 
 type RosterStatus = "loading" | "ready" | "error" | "forbidden";
-/** Qué ocupa la columna del medio. «new» y «settings» son pantallas, no diálogos:
- *  crear un teammate es una decisión con cuatro campos, y un modal encima del
- *  hilo escondería lo que la persona estaba leyendo. */
-type View = "team" | "pending" | "new" | "settings" | "account";
 
-/** Las tres pestañas de la izquierda. «Cuenta» es lectura: lo que se administra
- *  vive en la consola, y la pantalla lo dice en vez de pintar controles muertos. */
-const TABS = [
-  { key: "team", label: "nav.team" },
-  { key: "pending", label: "nav.pending" },
-  { key: "account", label: "nav.account" },
-] as const;
+/**
+ * Lo que ocupa el panel cuando la sección es de la pantalla. «new» y «settings»
+ * son pantallas, no diálogos: crear un teammate es una decisión con cuatro
+ * campos, y un modal encima del hilo escondería lo que la persona estaba
+ * leyendo.
+ */
+type Detail = "hilo" | "nuevo" | "ajustes";
 
 export function App() {
   const [lang, setLang] = useState<Lang>(systemLang);
@@ -101,18 +110,27 @@ export function App() {
           </a>
         )}
       >
-        <Shell session={session} presence={presence} permissions={permissions} />
+        <Workspace session={session} presence={presence} permissions={permissions} />
       </CompanionLocaleProvider>
     </LangProvider>
   );
 }
 
-function Shell({ session, presence, permissions }: { session: SessionPush | null; presence: PresencePush | null; permissions: string[] }) {
+/** El título de cada sección. Uno por entrada de la lista canónica. */
+function sectionTitleKey(section: Section): Parameters<ReturnType<typeof useAppT>>[0] {
+  if (section === "hoy") return "shell.today";
+  if (section === "pendientes") return "shell.pending";
+  if (section === "cuenta") return "shell.account";
+  if (section === "puesta_en_marcha") return "shell.setup";
+  if (section === "teammate") return "shell.teammates";
+  return `shell.section.${section}`;
+}
+
+function Workspace({ session, presence, permissions }: { session: SessionPush | null; presence: PresencePush | null; permissions: string[] }) {
   const t = useAppT();
   const [roster, setRoster] = useState<Teammate[]>([]);
   const [rosterStatus, setRosterStatus] = useState<RosterStatus>("loading");
   const [selected, setSelected] = useState<string | null>(null);
-  const [view, setView] = useState<View>("team");
   const [jobs, setJobs] = useState<Jobs | null>(null);
   const [jobsStatus, setJobsStatus] = useState<"loading" | "ready" | "error">("loading");
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -122,6 +140,21 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
   const [accountStatus, setAccountStatus] = useState<"loading" | "ready" | "error">("loading");
   const [pending, setPending] = useState<InboxItem[]>([]);
   const [focus, setFocus] = useState<string | null>(null);
+
+  /* ── El armazón — spec 010 ──────────────────────────────────────────── */
+  const [history, setHistory] = useState<History>(() => initialHistory("hoy"));
+  const section = currentSection(history);
+  const [detail, setDetail] = useState<Detail>("hilo");
+  const [sidebarWidth, setSidebarWidth] = useState(MIN_SIDEBAR);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [workstation, setWorkstation] = useState<WorkstationView | null>(null);
+
+  /** Ir a una sección. Si la pinta la consola, el principal la coloca. */
+  const go = useCallback((next: Section) => {
+    setHistory((h) => goTo(h, next));
+    void bridge.shellShowSection({ section: next });
+    void bridge.shellPrefs({ /* R1.10: reabrir vuelve aquí */ });
+  }, []);
 
   const loadRoster = useCallback(async () => {
     setRosterStatus("loading");
@@ -143,16 +176,48 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
     const offInbox = bridge.on("app:inbox", setPending);
     const offFocus = bridge.on("app:inbox.focus", ({ action_id }) => {
       // Un aviso del sistema abre Pendientes en la tarjeta que lo produjo.
-      setView("pending");
+      setHistory((h) => goTo(h, "pendientes"));
       setFocus(action_id);
     });
     const offTask = bridge.on("app:task.state", () => void loadRoster());
+    // La lista lateral marca dónde está la consola **aunque la navegación haya
+    // ocurrido dentro de ella**, siguiendo uno de sus enlaces (R1.4).
+    const offLocation = bridge.on("app:console.location", ({ section: where }) => {
+      setHistory((h) => goTo(h, where));
+    });
+    const offWorkstation = bridge.on("app:workstation", setWorkstation);
     return () => {
       offInbox();
       offFocus();
       offTask();
+      offLocation();
+      offWorkstation();
     };
   }, [loadRoster]);
+
+  // Lo que pide el menú (R1.7) y el atajo de la búsqueda (R1.8).
+  useEffect(() => {
+    const offToggle = bridge.on("app:shell.toggleSidebar", () => {
+      setSidebarWidth((width) => (width === 0 ? MIN_SIDEBAR : 0));
+    });
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      offToggle();
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  // Las comodidades de ventana y el estado del puesto, al abrir.
+  useEffect(() => {
+    void bridge.shellPrefs({}).then((prefs) => setSidebarWidth(prefs.sidebarWidth || MIN_SIDEBAR));
+    void bridge.workstationState().then(setWorkstation);
+  }, []);
 
   // Los oficios y los modelos se piden **cuando se van a usar**, no al arrancar:
   // la mayoría de las sesiones no crean ningún teammate.
@@ -168,8 +233,8 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
   }, []);
 
   useEffect(() => {
-    if (view === "new" || view === "settings") void loadJobs();
-  }, [view, loadJobs]);
+    if (detail === "nuevo" || detail === "ajustes") void loadJobs();
+  }, [detail, loadJobs]);
 
   const loadAccount = useCallback(async () => {
     setAccountStatus("loading");
@@ -191,8 +256,8 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
   }, []);
 
   useEffect(() => {
-    if (view === "account") void loadAccount();
-  }, [view, loadAccount]);
+    if (section === "cuenta") void loadAccount();
+  }, [section, loadAccount]);
 
   const current = useMemo(() => roster.find((r) => r.id === selected) ?? null, [roster, selected]);
 
@@ -218,6 +283,51 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
   // informativo, así que la pestaña decía 4 donde el Dock decía 3.
   const waiting = countWaiting(pending);
 
+  /**
+   * Lo que la búsqueda ofrece: secciones, teammates y acciones. Cada una con su
+   * atajo cuando lo tiene, que es como se aprenden (R1.8).
+   */
+  const commands: Command[] = useMemo(() => {
+    const secciones: Command[] = [
+      { id: "s:hoy", group: t("shell.command.section"), label: t("shell.today"), run: () => go("hoy") },
+      { id: "s:pendientes", group: t("shell.command.section"), label: t("shell.pending"), run: () => go("pendientes") },
+      { id: "s:cuenta", group: t("shell.command.section"), label: t("shell.account"), shortcut: "⌘,", run: () => go("cuenta") },
+      ...CONSOLE_SECTIONS.filter((x) => x.permission === null || permissions.includes(x.permission)).map((x) => ({
+        id: `s:${x.key}`,
+        group: t("shell.command.section"),
+        label: t(`shell.section.${x.key}` as Parameters<typeof t>[0]),
+        run: () => go(x.key),
+      })),
+    ];
+    const equipo: Command[] = roster.map((r) => ({
+      id: `t:${r.id}`,
+      group: t("shell.command.teammate"),
+      label: r.name,
+      run: () => {
+        setSelected(r.id);
+        setDetail("hilo");
+        go("teammate");
+      },
+    }));
+    const acciones: Command[] = [
+      {
+        id: "a:new",
+        group: t("shell.command.action"),
+        label: t("shell.command.newTeammate"),
+        shortcut: "⌘N",
+        run: () => {
+          setDetail("nuevo");
+          go("teammate");
+        },
+      },
+    ];
+    return [...secciones, ...equipo, ...acciones];
+  }, [t, go, roster, permissions]);
+
+  /** El título de la franja es el objeto en el que se está, nunca «Auphere». */
+  const title =
+    section === "teammate" && current ? current.name : t(sectionTitleKey(section));
+
   if (session?.kind === "stop") {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-8 text-foreground">
@@ -236,43 +346,53 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
   }
 
   return (
-    <main className="grid min-h-screen grid-cols-[minmax(220px,280px)_minmax(0,1fr)_minmax(220px,300px)] bg-background text-foreground">
-      <div className="flex min-w-0 flex-col">
-        <nav className="flex gap-1 border-b border-border p-2" aria-label={t("app.title")}>
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              aria-pressed={view === tab.key}
-              onClick={() => setView(tab.key)}
-              className="min-h-8 flex-1 rounded-md px-3 text-sm transition-colors hover:bg-muted aria-[pressed=true]:bg-muted aria-[pressed=true]:font-medium"
-            >
-              {t(tab.label)}
-              {tab.key === "pending" && waiting > 0 ? (
-                <span className="ml-1 rounded-full bg-primary px-2 text-xs text-primary-foreground">{waiting}</span>
-              ) : null}
-            </button>
-          ))}
-        </nav>
-        <Roster
-          items={roster}
-          status={rosterStatus}
-          selected={selected}
-          onSelect={(id) => {
+    <Shell
+      title={title}
+      status={<WorkstationChip state={workstation} />}
+      onSearch={() => setPaletteOpen(true)}
+      panelBelongsToConsole={isConsoleSection(section)}
+      sidebarWidth={sidebarWidth}
+      onSidebarWidth={(width) => {
+        setSidebarWidth(width);
+        void bridge.shellPrefs({ sidebarWidth: width });
+      }}
+      sidebar={
+        <Sidebar
+          active={section}
+          onSelect={go}
+          permissions={permissions}
+          waiting={waiting}
+          teammates={roster.map((r) => ({ id: r.id, name: r.name, unread: r.my_unread }))}
+          selectedTeammate={selected}
+          onSelectTeammate={(id) => {
             setSelected(id);
-            setView("team");
+            setDetail("hilo");
+            go("teammate");
           }}
-          onRetry={() => void loadRoster()}
-          onCreate={() => setView("new")}
+          footer={
+            <button
+              type="button"
+              onClick={() => go("cuenta")}
+              className="flex min-h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-ui transition-colors hover:bg-muted"
+            >
+              <span className="min-w-0 flex-1 truncate">{t("shell.account")}</span>
+            </button>
+          }
         />
-      </div>
-      <section className="flex min-w-0 flex-col border-x border-border" aria-label={t("app.title")}>
+      }
+    >
+      <Palette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
+
+      {/* Lo que la sección de la pantalla pinta en el panel. Cuando la sección
+          es de administrar, este hueco es de la consola y aquí no va nada. */}
+      <div className="flex h-full min-h-0 flex-col">
         {session?.kind === "pair_needed" ? (
           <p className="border-b border-border bg-muted px-4 py-2 text-sm text-pretty text-muted-foreground" role="status">
             {t("session.pair")}
           </p>
         ) : null}
-        {view === "account" ? (
+
+        {section === "cuenta" ? (
           <Account
             status={accountStatus}
             usage={usage}
@@ -281,74 +401,96 @@ function Shell({ session, presence, permissions }: { session: SessionPush | null
             onRetry={() => void loadAccount()}
             onOpenConsole={(path) => void bridge.openConsole({ path })}
           />
-        ) : view === "pending" ? (
+        ) : section === "pendientes" ? (
           <Inbox
             focus={focus}
             onOpenThread={(teammateId) => {
               setSelected(teammateId);
-              setView("team");
+              setDetail("hilo");
+              go("teammate");
             }}
           />
-        ) : view === "new" ? (
+        ) : section === "hoy" ? (
+          <Today
+            waiting={waiting}
+            teammates={roster}
+            status={rosterStatus}
+            onRetry={() => void loadRoster()}
+            onOpenPending={() => go("pendientes")}
+            onCreate={() => {
+              setDetail("nuevo");
+              go("teammate");
+            }}
+            onOpenTeammate={(id) => {
+              setSelected(id);
+              setDetail("hilo");
+              go("teammate");
+            }}
+          />
+        ) : detail === "nuevo" ? (
           <NewTeammateForm
             status={jobsStatus}
             jobs={jobs?.jobs ?? []}
             models={jobs?.models ?? []}
             onRetry={() => void loadJobs()}
-            onCancel={() => setView("team")}
+            onCancel={() => setDetail("hilo")}
             onSubmit={async (draft) => {
               const res = await bridge.rosterCreate(draft);
               if (!res.ok) return { ok: false as const, error: res.code ?? "unknown", ...capOf(res.body) };
               // Aparece para todo el partner; el hilo lo estrena cada persona.
               await loadRoster();
               setSelected(res.data.id);
-              setView("team");
+              setDetail("hilo");
               return { ok: true as const };
             }}
           />
-        ) : view === "settings" && current ? (
+        ) : detail === "ajustes" && current ? (
           <TeammateSettings
             key={current.id}
             teammate={current}
             jobs={jobs?.jobs ?? []}
             models={jobs?.models ?? []}
-            onClose={() => setView("team")}
+            onClose={() => setDetail("hilo")}
             onSave={async (patch) => {
               const res = await bridge.rosterUpdate({ id: current.id, patch });
               if (!res.ok) return { ok: false as const, error: res.code ?? "unknown" };
               await loadRoster();
-              setView("team");
+              setDetail("hilo");
               return { ok: true as const };
             }}
             onArchive={async () => {
               const res = await bridge.rosterArchive({ id: current.id });
               if (!res.ok) return { ok: false as const, error: res.code ?? "unknown" };
-              // Lo archivado sale del roster: sin selección, la columna del
-              // medio vuelve a «elige un teammate» en vez de pintar un hilo
-              // de alguien que ya no está en el equipo.
+              // Lo archivado sale del roster: sin selección se vuelve a Hoy en
+              // vez de pintar el hilo de alguien que ya no está en el equipo.
               setSelected(null);
               await loadRoster();
+              go("hoy");
               return { ok: true as const };
             }}
           />
         ) : current ? (
-          <ThreadView
-            key={current.id}
-            teammate={current}
-            machinePresent={presence?.presence === "presente"}
-            onRosterChanged={() => void loadRoster()}
-            onOpenSettings={() => setView("settings")}
-          />
+          <div className="flex min-h-0 flex-1">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <ThreadView
+                key={current.id}
+                teammate={current}
+                machinePresent={presence?.presence === "presente"}
+                onRosterChanged={() => void loadRoster()}
+                onOpenSettings={() => setDetail("ajustes")}
+              />
+            </div>
+            <EnvPanel
+              teammate={current}
+              env={env}
+              policy={policy}
+              onOpenConsole={(path) => void bridge.openConsole({ path })}
+            />
+          </div>
         ) : (
           <p className="m-auto max-w-prose p-8 text-center text-pretty text-muted-foreground">{t("thread.pick")}</p>
         )}
-      </section>
-      <EnvPanel
-        teammate={current}
-        env={env}
-        policy={policy}
-        onOpenConsole={(path) => void bridge.openConsole({ path })}
-      />
-    </main>
+      </div>
+    </Shell>
   );
 }

@@ -15,7 +15,7 @@
  * * **No hay credencial por variable de entorno.** La máquina la canjea con un
  *   código, la guarda cifrada con el llavero, y solo late con una persona dentro.
  */
-import { BaseWindow, Menu, Tray, WebContentsView, app, globalShortcut, ipcMain, nativeImage, screen, session } from "electron";
+import { BaseWindow, Menu, Tray, WebContentsView, app, globalShortcut, ipcMain, nativeImage, nativeTheme, screen, session } from "electron";
 import { randomUUID } from "node:crypto";
 import { hostname as osHostname } from "node:os";
 import { dirname, join } from "node:path";
@@ -60,7 +60,12 @@ import {
   userDataFile,
 } from "./adapters.js";
 import { registerAppSurface, sessionForRenderer } from "./app-surface.js";
-import { startUpdater } from "./updater.js";
+import { MIN_SIDEBAR, STRIP_HEIGHT, contentRect } from "./shell-layout.js";
+import { windowBackground } from "./window-colors.js";
+import { type ShellPrefs, mergeShellPrefs, normaliseShellPrefs } from "../shell-prefs.js";
+import { type Section, pathOf, sectionOfPath } from "../sections.js";
+import { startUpdater, type UpdaterHandle } from "./updater.js";
+import { menuCopy } from "../menu-copy.js";
 import type { Activity } from "../update-policy.js";
 
 const CONSOLE_URL = process.env.AUPHERE_CONSOLE_URL ?? "https://console.auphere.com";
@@ -72,9 +77,26 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 type Surface = "app" | "console";
 
-function layout(window: BaseWindow, views: WebContentsView[], barView: WebContentsView): void {
+/**
+ * Spec 010 — la vista de la aplicación ocupa **toda** la ventana: es el
+ * armazón. La consola ya no se coloca aquí, sino en el rectángulo del panel
+ * que la propia pantalla mide (`placeConsole`).
+ *
+ * La barra del puesto sigue abajo hasta que T139 la retire; mientras tanto, el
+ * armazón le deja su franja.
+ */
+/**
+ * El canal de actualización, cuando esté armado.
+ *
+ * Vive aquí, a nivel de módulo, porque lo arma el arranque y lo usa el menú, y
+ * son dos funciones distintas. `null` mientras no haya canal: entonces «Buscar
+ * actualizaciones» no hace nada, que es mejor que fingir que comprueba.
+ */
+let updater: UpdaterHandle | null = null;
+
+function layout(window: BaseWindow, appView: WebContentsView, barView: WebContentsView): void {
   const { width, height } = window.getContentBounds();
-  for (const view of views) view.setBounds({ x: 0, y: 0, width, height: Math.max(0, height - BAR_HEIGHT) });
+  appView.setBounds({ x: 0, y: 0, width, height: Math.max(0, height - BAR_HEIGHT) });
   barView.setBounds({ x: 0, y: Math.max(0, height - BAR_HEIGHT), width, height: BAR_HEIGHT });
 }
 
@@ -115,6 +137,26 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
     minWidth: MIN_WINDOW.width,
     minHeight: MIN_WINDOW.height,
     title: "Auphere",
+    /*
+     * Spec 010 R1.1 — la barra de título la pinta la aplicación.
+     *
+     * Los controles del sistema siguen siendo los del sistema (`hidden` los
+     * conserva en macOS y no los reimplementa), pero el marco es nuestro: la
+     * franja superior y la lista lateral son una sola pieza, como en cualquier
+     * aplicación de escritorio de las que sirven de referencia.
+     *
+     * El spike de la Fase 0 comprobó que arrastrar por esa franja mueve la
+     * ventana **con la consola pintada encima del panel**, que era la duda.
+     */
+    titleBarStyle: "hidden",
+    // Centrado en la franja de 52 px: (52 - 16) / 2 ≈ 18.
+    ...(process.platform === "darwin" ? { trafficLightPosition: { x: 18, y: 18 } } : {}),
+    /*
+     * R2.7 — sin destello. La ventana nace con el color del tema activo, así
+     * que mientras la vista carga no se ve un rectángulo blanco.
+     */
+    backgroundColor: windowBackground(nativeTheme.shouldUseDarkColors),
+    show: false,
   });
   if (placement.maximised) window.maximize();
   const remember = rememberWindow((state) => windowFile.write(Buffer.from(JSON.stringify(state))));
@@ -138,44 +180,199 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   window.contentView.addChildView(consoleView);
   window.contentView.addChildView(appView);
   window.contentView.addChildView(barView);
-  layout(window, [consoleView, appView], barView);
-  window.on("resize", () => layout(window, [consoleView, appView], barView));
+  layout(window, appView, barView);
+  window.on("resize", () => {
+    layout(window, appView, barView);
+    placeConsole();
+  });
 
+  /*
+   * Spec 010 — la consola deja de ser «la otra superficie».
+   *
+   * La vista de la aplicación ocupa la ventana entera y es dueña del armazón;
+   * la de la consola se coloca **dentro del panel de contenido**, en el
+   * rectángulo que la propia pantalla mide y reporta. Ya no se turnan: se ve
+   * el armazón siempre, y la consola dentro de él cuando toca.
+   *
+   * El invariante que hace que esto funcione (Fase 0): la consola **nunca**
+   * invade la franja superior, que es la única región de arrastre. Aquí se
+   * vuelve a acotar aunque la pantalla ya lo respete, porque el arrastre de la
+   * ventana no puede depender de que un renderer mida bien.
+   */
   let surface: Surface = "app";
-  /** Se rellena más abajo, cuando la barra existe. Antes de eso, cambiar de
-   *  superficie no tiene a quién avisar. */
   let onSurfaceChanged: (next: Surface) => void = () => {};
+  /** El último rectángulo que reportó la pantalla. */
+  let panel = contentRect(window.getContentBounds(), MIN_SIDEBAR);
+
+  const placeConsole = () => {
+    const { width, height } = window.getContentBounds();
+    const x = Math.max(0, Math.min(panel.x, width));
+    const y = Math.max(STRIP_HEIGHT, Math.min(panel.y, height));
+    consoleView.setBounds({
+      x,
+      y,
+      width: Math.max(0, Math.min(panel.width, width - x)),
+      height: Math.max(0, Math.min(panel.height, height - y)),
+    });
+  };
+
   const showSurface = (next: Surface) => {
     surface = next;
-    appView.setVisible(next === "app");
+    // La pantalla no se oculta nunca: es el armazón. Lo que aparece y
+    // desaparece dentro de su panel es la consola.
+    appView.setVisible(true);
     consoleView.setVisible(next === "console");
-    // Spec 009 R1: la barra ofrece volver **sólo** con la consola delante, así
-    // que tiene que enterarse de cada cambio. Sin esto la acción se quedaría
-    // pegada a lo que hubiera al arrancar.
+    if (next === "console") placeConsole();
     onSurfaceChanged(next);
   };
+
+  /** Coloca el panel donde la pantalla dice que cabe (R1.3). */
+  const setPanel = (rect: { x: number; y: number; width: number; height: number }) => {
+    panel = rect;
+    if (surface === "console") placeConsole();
+  };
+
   const showConsole = (path: string) => {
     const target = new URL(path, CONSOLE_URL).toString();
     if (consoleView.webContents.getURL() !== target) void consoleView.webContents.loadURL(target);
     showSurface("console");
   };
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
-      { role: "editMenu" as const },
-      {
-        label: "Ver",
-        submenu: [
-          { label: "Equipo", accelerator: "CommandOrControl+1", click: () => showSurface("app") },
-          { label: "Consola", accelerator: "CommandOrControl+2", click: () => showConsole("/") },
-          { type: "separator" },
-          { role: "reload" as const },
-          { role: "togglefullscreen" as const },
-        ],
-      },
-      { role: "windowMenu" as const },
-    ]),
-  );
+
+  /**
+   * Spec 010 R1.3 — la pantalla pide **secciones**, no rutas.
+   *
+   * Si la pinta la consola, se muestra en su ruta; si la pinta la pantalla, la
+   * consola se aparta y el panel vuelve a ser suyo. La persona no elige
+   * superficie: elige sección.
+   */
+  const showSection = (section: Section) => {
+    const path = pathOf(section);
+    if (path === null) {
+      showSurface("app");
+      return;
+    }
+    showConsole(path);
+  };
+
+  /**
+   * Las comodidades de ventana. La lista de claves persistibles es cerrada
+   * (`shell-state.ts`), así que esto no puede crecer sin pasar por ahí.
+   */
+  const prefsFile = userDataFile("shell.json");
+  const readShellPrefs = (): ShellPrefs => {
+    try {
+      const raw = prefsFile.read();
+      return normaliseShellPrefs(raw ? JSON.parse(raw.toString("utf8")) : {});
+    } catch {
+      // Un fichero a medias o de otra versión no impide abrir la aplicación.
+      return normaliseShellPrefs({});
+    }
+  };
+  const shellPrefs = {
+    read: readShellPrefs,
+    write: (next: Partial<ShellPrefs>): ShellPrefs => {
+      const merged = mergeShellPrefs(readShellPrefs(), next);
+      prefsFile.write(Buffer.from(JSON.stringify(merged)));
+      /*
+       * R2.3 — **una sola fuente de tema**. `nativeTheme.themeSource` gobierna
+       * a la vez los marcos nativos y el `prefers-color-scheme` de las tres
+       * superficies, incluida la consola embebida, que hasta ahora tenía su
+       * propio selector y podía quedarse en claro dentro de una ventana oscura.
+       */
+      nativeTheme.themeSource = merged.theme;
+      return merged;
+    },
+  };
+  // El tema guardado se aplica **antes** de que nada pinte.
+  nativeTheme.themeSource = readShellPrefs().theme;
+  /*
+   * Spec 010 R1.7 — el menú es el índice de lo que la aplicación sabe hacer.
+   *
+   * Desaparece «Ver → Equipo / Consola» con ⌘1 y ⌘2: esa distinción ya no
+   * existe para la persona, que elige secciones. A cambio, **todo lo que hace
+   * el armazón tiene su orden aquí**, que es como se descubre un atajo y como
+   * se llega a las cosas sin ratón.
+   *
+   * El menú se reconstruye cuando cambia el idioma de la cuenta: un menú en
+   * español dentro de una aplicación en inglés es de las cosas que más delatan
+   * que nadie miró (R12.2).
+   */
+  const buildMenu = () => {
+    const m = menuCopy(appLocale());
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        ...(process.platform === "darwin"
+          ? [
+              {
+                role: "appMenu" as const,
+                submenu: [
+                  { role: "about" as const, label: m.about },
+                  { type: "separator" as const },
+                  { label: m.settings, accelerator: "CommandOrControl+,", click: () => showSection("cuenta") },
+                  { label: m.checkUpdates, click: () => updater?.check() },
+                  { type: "separator" as const },
+                  { role: "hide" as const },
+                  { role: "hideOthers" as const },
+                  { role: "unhide" as const },
+                  { type: "separator" as const },
+                  { role: "quit" as const },
+                ],
+              },
+            ]
+          : []),
+        {
+          label: m.file,
+          submenu: [{ label: m.newTeammate, accelerator: "CommandOrControl+N", click: () => showSection("hoy") }],
+        },
+        { role: "editMenu" as const, label: m.edit },
+        {
+          label: m.view,
+          submenu: [
+            { label: m.today, click: () => showSection("hoy") },
+            { label: m.pending, click: () => showSection("pendientes") },
+            { type: "separator" as const },
+            { label: m.toggleSidebar, accelerator: "CommandOrControl+B", click: () => pushApp("app:shell.toggleSidebar", {}) },
+            { type: "separator" as const },
+            { role: "resetZoom" as const, label: m.zoomReset },
+            { role: "zoomIn" as const, label: m.zoomIn },
+            { role: "zoomOut" as const, label: m.zoomOut },
+            { type: "separator" as const },
+            { role: "togglefullscreen" as const, label: m.fullscreen },
+            { role: "reload" as const, label: m.reload },
+          ],
+        },
+        { role: "windowMenu" as const, label: m.window },
+        {
+          role: "help" as const,
+          label: m.help,
+          submenu: [{ label: m.releaseNotes, click: () => showSection("hoy") }],
+        },
+      ]),
+    );
+  };
+  buildMenu();
+
+  /*
+   * Spec 010 R1.4 — quién sabe dónde está la consola.
+   *
+   * La consola **no tiene `preload`** y no puede contar nada (002 R12.1). El
+   * que observa es el proceso principal: cada vez que esa vista navega —también
+   * cuando la navegación ocurre dentro de la consola, siguiendo uno de sus
+   * enlaces—, traduce la ruta a una sección de la lista canónica y se la empuja
+   * a la pantalla para que la marque. Una ruta que no conoce no marca nada:
+   * antes que marcar algo falso, no marcar.
+   */
+  const pushConsoleLocation = (url: string) => {
+    try {
+      const { pathname } = new URL(url);
+      const section = sectionOfPath(pathname);
+      if (section) pushApp("app:console.location", { section, path: pathname });
+    } catch {
+      // Una URL que no se puede leer no dice dónde estamos: no se inventa.
+    }
+  };
+  consoleView.webContents.on("did-navigate", (_event, url) => pushConsoleLocation(url));
+  consoleView.webContents.on("did-navigate-in-page", (_event, url) => pushConsoleLocation(url));
 
   // La pantalla de operar no navega: es una página local. Un enlace se abre en
   // la consola (`app:openConsole`) o en el navegador del sistema, nunca dentro
@@ -368,6 +565,9 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
     whoami,
     push: pushApp,
     showConsole,
+    showSection,
+    setPanelBounds: setPanel,
+    shellPrefs,
     onSessionLost: () => void gate.refresh(),
     inbox,
     notificationPrefs,
@@ -435,6 +635,9 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
 
   await barView.webContents.loadFile(join(HERE, "..", "bar", "index.html"));
   await appView.webContents.loadFile(join(HERE, "..", "app", "index.html"));
+  // R2.7 — la ventana aparece **ya pintada**: el armazón está montado y el
+  // fondo es el del tema. Nada de un rectángulo blanco mientras carga.
+  window.show();
   await consoleView.webContents.loadURL(CONSOLE_URL);
   showSurface("app");
   const first = await gate.evaluate();
@@ -548,11 +751,12 @@ if (process.env.NODE_ENV !== "test") {
       // Se traga la excepción a propósito: que el canal no arranque no puede
       // tumbar el puente ni la pantalla, que es para lo que la persona abrió
       // la aplicación. Pero se registra, que es donde alguien va a buscarlo.
-      await startUpdater({
+      updater = await startUpdater({
         readActivity,
         log: (message, detail) => console.info("[updater]", message, detail ?? {}),
       }).catch((error: unknown) => {
         console.error("[updater] no se pudo armar", error);
+        return null;
       });
     });
     app.on("window-all-closed", () => app.quit());

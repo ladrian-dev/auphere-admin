@@ -68,15 +68,21 @@ export type UpdaterPorts = {
 };
 
 /**
- * Arranca el ciclo. Devuelve una función para pararlo, porque una prueba que no
- * pueda parar un `setInterval` deja el proceso colgado.
+ * Lo que el ciclo devuelve.
+ *
+ * `stop` existe porque una prueba que no pueda parar un `setInterval` deja el
+ * proceso colgado. `check` entra con la spec 010: el menú tiene una orden
+ * «Buscar actualizaciones» (R6.5), y sin esto la única forma de comprobar el
+ * canal era esperar al siguiente latido.
  */
-export async function startUpdater(ports: UpdaterPorts): Promise<() => void> {
+export type UpdaterHandle = { stop: () => void; check: () => void };
+
+export async function startUpdater(ports: UpdaterPorts): Promise<UpdaterHandle> {
   const build = await detectBuildKind();
 
   if (!feedIsAcceptable(FEED_URL)) {
     ports.log("updater apagado: el canal no es aceptable", { feed: FEED_URL });
-    return () => {};
+    return { stop: () => {}, check: () => ports.log("el canal no es aceptable", { feed: FEED_URL }) };
   }
 
   const first = decideUpdate({ build, activity: ports.readActivity(), downloaded: null, available: null });
@@ -85,7 +91,9 @@ export async function startUpdater(ports: UpdaterPorts): Promise<() => void> {
     // sola no tiene un botón apagado que lo explique (constitución §V). Queda
     // en el registro, que es donde alguien va a buscarlo.
     ports.log("updater apagado", { reason: first.reason });
-    return () => {};
+    // Sin canal no hay nada que comprobar, y decirlo es más honesto que un
+    // botón que no hace nada (§V).
+    return { stop: () => {}, check: () => ports.log("no hay canal que comprobar", {}) };
   }
 
   // **Por `default`, y no desestructurando el espacio de nombres.**
@@ -149,5 +157,5 @@ export async function startUpdater(ports: UpdaterPorts): Promise<() => void> {
 
   tick();
   const timer = setInterval(tick, CHECK_INTERVAL_MS);
-  return () => clearInterval(timer);
+  return { stop: () => clearInterval(timer), check: tick };
 }

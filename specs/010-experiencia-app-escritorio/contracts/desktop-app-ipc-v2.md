@@ -43,6 +43,7 @@ Las tres reglas que **no** cambian, y sus tests:
 | `app:update` | `UpdateState` (§ Actualización) | Descargada, esperando a que termine el trabajo, no admitida |
 | `app:waiting` | `Waiting` — el **derivado único** (§ Lo que te espera) | Cada cambio de lo que espera decisión. Sustituye a `app:inbox` como fuente del número |
 | `app:connectivity` | `{state: "online"\|"offline"\|"unconfirmed", since}` | Cambios de conectividad, para que «sin red» deje de confundirse con «sin sesión» |
+| `app:shell.toggleSidebar` | `{}` | La orden de menú «Mostrar u ocultar la lista lateral» (⌘B). El menú es del proceso principal y el estado de la lista es de la pantalla: éste es el único camino entre los dos |
 
 `app:inbox`, `app:inbox.focus`, `app:inbox.changed`, `app:event`, `app:task.state`,
 `app:session` y `app:presence` **siguen igual**.

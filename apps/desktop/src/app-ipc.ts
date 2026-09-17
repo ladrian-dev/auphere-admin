@@ -93,6 +93,14 @@ export const APP_PUSH_CHANNELS = [
   "app:update",
   "app:waiting",
   "app:connectivity",
+  /**
+   * Mostrar u ocultar la lista lateral (R1.7).
+   *
+   * La orden vive en el menú porque la guía de escritorio lo pide y porque es
+   * como se descubre el atajo; el estado de la lista lo lleva la pantalla. Es
+   * el único camino para que una orden de menú alcance al armazón.
+   */
+  "app:shell.toggleSidebar",
 ] as const;
 
 export type PushChannel = (typeof APP_PUSH_CHANNELS)[number];

@@ -2,6 +2,7 @@
  * El puente tipado sobre `window.auphere` — lo que el preload expone
  * (`app-ipc.ts`). El renderer no sabe de red: pregunta y recibe.
  */
+import type { Section } from "../sections";
 import type {
   CompanionEvents,
   CompanionResumed,
@@ -137,7 +138,65 @@ type Push = {
   "app:inbox.focus": { action_id: string | null };
   "app:session": SessionPush;
   "app:presence": PresencePush;
+
+  /* ── Spec 010 ─────────────────────────────────────────────────────────── */
+  /** Dónde está la consola, para que la lista lateral lo marque (R1.4). */
+  "app:console.location": { section: Section; path: string };
+  "app:workstation": WorkstationView;
+  "app:signIn": SignInView;
+  "app:update": UpdateView;
+  /** La **única** fuente del número de decisiones que esperan (R5.4). */
+  "app:waiting": WaitingView;
+  /** «Sin red» dicho por su nombre, que no es «sin sesión» (R3.1). */
+  "app:connectivity": ConnectivityView;
+  /** La orden del menú «Mostrar u ocultar la lista lateral» (R1.7). */
+  "app:shell.toggleSidebar": Record<string, never>;
 };
+
+/** Las preferencias de ventana que la cáscara guarda (lista cerrada). */
+export type ShellPrefs = { theme: "system" | "light" | "dark"; sidebarWidth: number; silenceAviso: boolean };
+
+/** El estado del puesto, tal como lo pinta el armazón (spec 010, R3.6). */
+export type WorkstationView = {
+  status:
+    | "comprobando"
+    | "sin_emparejar"
+    | "emparejando"
+    | "conectada"
+    | "reconectando"
+    | "sin_sesion"
+    | "volver_a_emparejar"
+    | "archivada_desde_consola"
+    | "version_no_admitida";
+  machine_name?: string;
+  since?: string;
+  cause?: "sin_red" | "sin_ejecutor" | "sesion_perdida";
+  required_version?: string;
+  missing_directories?: number;
+  actions: Array<"emparejar" | "desemparejar" | "directorios" | "actualizar">;
+};
+
+/** La espera cuando algo ocurre en el navegador (R7.2). */
+export type SignInView = { state: "idle" | "esperando" | "vuelto" | "cancelada" | "caducada" | "error"; since?: string };
+
+/** El ciclo de la descarga. «No admitida» es del puesto, no de aquí (R6.4). */
+export type UpdateView = { state: "idle" | "descargando" | "lista" | "esperando_trabajo"; version?: string };
+
+/** Lo que falta para estar en marcha (R7.6). Derivado, no dato nuevo. */
+export type SetupChecklist = {
+  steps: Array<{
+    key: "cuenta_lista" | "maquina_emparejada" | "ejecutor_presente" | "primer_teammate" | "primer_turno" | "avisos_concedidos";
+    state: "hecho" | "pendiente" | "no_aplica";
+    section?: Section;
+    blocked_reason_key?: string;
+  }>;
+};
+
+/** Cómo está la conexión (R3.1): «no pude preguntar» no es «no hay sesión». */
+export type ConnectivityView = { state: "online" | "offline" | "unconfirmed"; since: string };
+
+/** El derivado único de lo que espera una decisión (R5.4). */
+export type WaitingView = { count: number; items: Array<{ action_id: string; teammate_id: string; level: Level; since: string }> };
 
 export interface AuphereBridge {
   whoami(): Promise<Whoami>;
@@ -165,6 +224,28 @@ export interface AuphereBridge {
   envForThread(input: { thread_id: string }): Promise<Result<ThreadEnv>>;
   team(): Promise<Result<Team>>;
   openConsole(input: { path: string }): Promise<null>;
+
+  /* ── El armazón — spec 010 ────────────────────────────────────────────── */
+  /** Pide mostrar una sección. Secciones, no rutas: la lista es cerrada. */
+  shellShowSection(input: { section: Section }): Promise<null>;
+  /** Dónde cabe el panel, para que el principal coloque ahí la consola. */
+  shellContentBounds(input: { x: number; y: number; width: number; height: number }): Promise<null>;
+  /** Comodidades de ventana: tema, ancho de la lista lateral, ruido de avisos. */
+  shellPrefs(input: { theme?: "system" | "light" | "dark"; sidebarWidth?: number; silenceAviso?: boolean }): Promise<ShellPrefs>;
+
+  /* ── El puesto, absorbido — spec 010 (enmienda de la 002) ─────────────── */
+  workstationState(): Promise<WorkstationView>;
+  workstationPair(input: { code: string }): Promise<Result<{ machine_name: string }>>;
+  workstationUnpair(): Promise<Result<null>>;
+  workstationPickDirectory(input: { client_ref: string }): Promise<Result<{ path_shown: string }>>;
+
+  /* ── Recorridos que salen y vuelven — spec 010 ────────────────────────── */
+  signInStart(): Promise<SignInView>;
+  signInCancel(): Promise<null>;
+  setupStatus(): Promise<Result<SetupChecklist>>;
+  updateInstall(): Promise<{ ok: boolean; error?: "busy" }>;
+  handoffDone(input: { kind: "sign_in" | "payment" }): Promise<null>;
+
   on<K extends keyof Push>(channel: K, callback: (payload: Push[K]) => void): () => void;
 }
 

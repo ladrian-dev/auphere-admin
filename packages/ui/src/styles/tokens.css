@@ -307,6 +307,22 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* ── 4b. Utilidades de escritorio — spec 010 ──────────────────────────
+   La franja superior arrastra la ventana; lo que se puede pulsar dentro de
+   ella, no. Una región de arrastre **ignora todos los eventos de puntero**, así
+   que cada control que la solape tiene que declararse `no-drag` o dejará de
+   poder pulsarse. Van aquí, en el sistema, para que se escriban igual en toda
+   la aplicación. */
+@utility drag {
+  -webkit-app-region: drag;
+  /* Arrastrar una ventana no debería seleccionar el texto de su título. */
+  user-select: none;
+}
+
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}
+
 /* ── 5. Base ──────────────────────────────────────────────────────────── */
 @layer base {
   * {
