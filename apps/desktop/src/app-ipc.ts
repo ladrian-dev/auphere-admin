@@ -88,6 +88,12 @@ export const APP_PUSH_CHANNELS = [
   // Spec 010. `app:waiting` es la **única** fuente del número de decisiones que
   // esperan; `app:connectivity` es lo que separa «sin red» de «sin sesión».
   "app:console.location",
+  /**
+   * La sección de administrar que la consola **no pudo cargar**, o `null`
+   * cuando vuelve a cargar. Sin esto, lo que ocupaba el panel con la red caída
+   * era la página de error de Chromium: en inglés y sin nada que pulsar.
+   */
+  "app:console.failed",
   "app:workstation",
   "app:signIn",
   "app:update",

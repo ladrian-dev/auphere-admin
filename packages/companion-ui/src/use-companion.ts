@@ -207,8 +207,16 @@ export function useCompanion(transport: Transport) {
     return res.data;
   }, [companionClient]);
 
+  /**
+   * Spec 010 R4.5 — `send` **dice si salió**.
+   *
+   * Antes no devolvía nada, así que quien llamaba no tenía forma de saberlo y
+   * la pantalla vaciaba el cuadro de texto antes de tiempo: si el envío
+   * fallaba, lo escrito desaparecía y había que volver a escribirlo de memoria.
+   * Devolver el resultado es aditivo — quien lo ignore sigue funcionando igual.
+   */
   const send = React.useCallback(
-    async (text: string, pageContext: PageContext | null, mode: "consult" | "build") => {
+    async (text: string, pageContext: PageContext | null, mode: "consult" | "build"): Promise<{ ok: boolean }> => {
       let id = threadId;
       if (!id) {
         const created = await companionClient.createThread({
@@ -218,7 +226,7 @@ export function useCompanion(transport: Transport) {
         if (!created.ok) {
           setStatus("error");
           setErrorDetail(created.detail);
-          return;
+          return { ok: false };
         }
         id = created.data.id;
         setThreads((prev) => [created.data, ...prev]);
@@ -244,15 +252,16 @@ export function useCompanion(transport: Transport) {
         if (res.status === 409 && res.code === "budget_paused") {
           const pause = readBudgetPause(res.body);
           if (pause) dispatch({ type: "budget_paused", pause });
-          return;
+          return { ok: false };
         }
         dispatch({ type: "stream_failed", runId: id, detail: res.detail, now: Date.now() });
-        return;
+        return { ok: false };
       }
       const runId = res.data.run_id;
       rememberRunId(id, runId);
       dispatch({ type: "prompt", runId, text, now: Date.now() });
       void streamRun(runId);
+      return { ok: true };
     },
     [streamRun, threadId, companionClient],
   );

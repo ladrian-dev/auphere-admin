@@ -38,6 +38,7 @@ Las tres reglas que **no** cambian, y sus tests:
 | Canal | Payload | Cuándo |
 |---|---|---|
 | `app:console.location` | `{section, path}` — la ruta **de la propia consola**, acotada a rutas conocidas | Cada vez que la vista de la consola navega, para que la lista lateral marque dónde está |
+| `app:console.failed` | `{section, code}` \| `null` | La sección de administrar **no cargó** (`did-fail-load` del marco principal), o volvió a cargar. Sin este canal, el panel enseñaba la página de error de Chromium: en inglés y sin nada que pulsar (R4.1) |
 | `app:workstation` | `WorkstationState` | Cada cambio de estado del puesto (sustituye al empuje de la barra) |
 | `app:signIn` | `SignInState` (§ Entrada) | Cada cambio de la espera del navegador |
 | `app:update` | `UpdateState` (§ Actualización) | Descargada, esperando a que termine el trabajo, no admitida |

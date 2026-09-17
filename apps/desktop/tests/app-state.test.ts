@@ -18,8 +18,10 @@ const base: ThreadFacts = {
 };
 
 describe("deriveThreadState", () => {
-  it("nombra los nueve estados", () => {
-    expect(THREAD_STATES).toHaveLength(9);
+  // Spec 010 R4.7: son diez desde que existe `bloqueado` — esperar a otro
+  // teammate no tenía palabra, y sin palabra caía en `normal`.
+  it("nombra los diez estados", () => {
+    expect(THREAD_STATES).toHaveLength(10);
     expect(deriveThreadState({ ...base, status: "loading" })).toBe("cargando");
     expect(deriveThreadState({ ...base, status: "error" })).toBe("error");
     expect(deriveThreadState({ ...base, reconnecting: true })).toBe("reconectando");

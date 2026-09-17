@@ -171,6 +171,37 @@ export function statusTone(_status: BarStatus): "estado" {
   return "estado";
 }
 
+/**
+ * La forma con la que el puesto viaja a la pantalla — spec 010, R3.6.
+ *
+ * El estado interno lleva cosas que la pantalla no necesita (los enlaces
+ * completos, la preferencia de idioma) y le faltan otras ya derivadas (las
+ * acciones). Esto es lo que se empuja: lo justo para pintarlo y para poder
+ * actuar, sin que la pantalla tenga que volver a decidir nada.
+ */
+export type WorkstationView = {
+  status: BarStatus;
+  machine_name?: string;
+  since?: string;
+  cause?: BarState["cause"];
+  required_version?: string;
+  missing_directories?: number;
+  actions: BarAction[];
+};
+
+export function toWorkstationView(state: BarState): WorkstationView {
+  const missing = state.links.filter((l) => l.needsDirectory).length;
+  return {
+    status: state.status,
+    ...(state.machine ? { machine_name: state.machine.displayName } : {}),
+    ...(state.since ? { since: state.since } : {}),
+    ...(state.cause ? { cause: state.cause } : {}),
+    ...(state.requiredVersion ? { required_version: state.requiredVersion } : {}),
+    ...(missing > 0 ? { missing_directories: missing } : {}),
+    actions: actionsFor(state),
+  };
+}
+
 export function localToolsOffered(status: BarStatus): boolean {
   return status === "conectada";
 }

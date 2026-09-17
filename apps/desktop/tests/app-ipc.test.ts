@@ -28,7 +28,7 @@ const CONTRACT = [
 const PUSH = [
   "app:event", "app:inbox", "app:inbox.focus", "app:stream.end", "app:inbox.changed", "app:task.state", "app:session", "app:presence",
   // Spec 010.
-  "app:console.location", "app:workstation", "app:signIn", "app:update", "app:waiting", "app:connectivity",
+  "app:console.location", "app:console.failed", "app:workstation", "app:signIn", "app:update", "app:waiting", "app:connectivity",
   "app:shell.toggleSidebar",
 ];
 

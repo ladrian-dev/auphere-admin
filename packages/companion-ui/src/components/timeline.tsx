@@ -10,7 +10,7 @@ import { ConfirmCard } from "./confirm-card";
 import { ExecCard, type ExecMode } from "./exec-card";
 import { IntakeCard } from "./intake-card";
 import { PlanCard } from "./plan-card";
-import { type CompanionState, thinkingToolCount, trialClientRef } from "../state";
+import { type CompanionState, thinkingToolCount, trialClientRef, unreadSources } from "../state";
 import { Thinking } from "./thinking";
 import { ToolCard } from "./tool-card";
 import type { Decision, IntakeSlot } from "../types";
@@ -78,6 +78,24 @@ export function Timeline({
     // autoscrolling is a convenience — never a reason for the log to throw.
     bottomRef.current?.scrollIntoView?.({ block: "end" });
   }, [state.items.length]);
+
+  /**
+   * Spec 010 R4.6 — which answer has to bound its own scope.
+   *
+   * The LAST assistant item of each run: that is the one people read as the
+   * turn's conclusion, and the one that would otherwise read as exhaustive
+   * while a tool of that same turn failed above it.
+   */
+  const scopedAnswers = React.useMemo(() => {
+    const last = new Map<string, string>();
+    for (const item of state.items) if (item.kind === "assistant") last.set(item.runId, item.id);
+    const scoped = new Map<string, string[]>();
+    for (const [runId, itemId] of last) {
+      const missing = unreadSources(state, runId);
+      if (missing.length > 0) scoped.set(itemId, missing);
+    }
+    return scoped;
+  }, [state]);
 
   // The one assertive announcement of the whole drawer.
   const awaiting = React.useMemo(
@@ -160,7 +178,26 @@ export function Timeline({
               ) : null}
 
               {item.kind === "assistant" ? (
-                <p className="min-w-0 text-sm whitespace-pre-wrap text-pretty break-words text-foreground">{item.text}</p>
+                <>
+                  <p className="min-w-0 text-sm whitespace-pre-wrap text-pretty break-words text-foreground">{item.text}</p>
+                  {/* Attached to the answer, not to the top of the log: up
+                      there lives the "part of this conversation is missing"
+                      notice, which is about HISTORY, not about scope. Two
+                      notices in the same place means neither gets read. It is
+                      not an error either — the turn did what it could — so it
+                      neither interrupts nor turns red. */}
+                  {scopedAnswers.has(item.id) ? (
+                    <p
+                      data-testid="answer-scope"
+                      className="mt-2 flex min-w-0 items-start gap-2 rounded-sm border border-border bg-muted px-3 py-2 text-xs text-muted-foreground"
+                    >
+                      <Info aria-hidden="true" className="mt-px size-3 shrink-0" />
+                      <span className="min-w-0 text-pretty">
+                        {t("companion.scope.partial", { sources: scopedAnswers.get(item.id)!.join(", ") })}
+                      </span>
+                    </p>
+                  ) : null}
+                </>
               ) : null}
 
               {item.kind === "thinking" ? (
@@ -248,8 +285,31 @@ export function Timeline({
  * Skeleton bubbles sized like real ones — §14 says a skeleton, not a
  * spinner: it tells you what is coming and it does not spin forever.
  */
+/**
+ * Spec 010 R4.8 — el indicador de espera **no aparece en lo inmediato**.
+ *
+ * Un esqueleto que aparece y desaparece en 200 ms se lee como un parpadeo, y
+ * un parpadeo se interpreta como que algo va mal. Por debajo de ese umbral la
+ * respuesta ya está: enseñar que se está esperando es peor que no enseñar nada.
+ *
+ * El umbral sale de la guía clásica de tiempos de respuesta: por debajo de un
+ * segundo la persona no siente que haya esperado.
+ */
+const INDICATOR_DELAY_MS = 400;
+
+function useDelayed(ms: number): boolean {
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => {
+    const timer = setTimeout(() => setReady(true), ms);
+    return () => clearTimeout(timer);
+  }, [ms]);
+  return ready;
+}
+
 function LoadingBubbles() {
   const t = useT();
+  const visible = useDelayed(INDICATOR_DELAY_MS);
+  if (!visible) return null;
   return (
     <div role="status" className="min-w-0 space-y-3" aria-label={t("companion.loading")}>
       <div className="flex justify-end">

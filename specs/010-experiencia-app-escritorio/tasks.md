@@ -115,23 +115,23 @@ sola. Cada tarea cita sus requisitos.
 
 ## Phase 4: US2 — La pantalla no miente (P2)
 
-- [ ] T055 [P] [US2] Test en `apps/desktop/tests/bootstrap-offline.test.ts`: sin red, la puesta en marcha **no aborta** y la ventana queda en «sin conexión» con reintento — _Requisitos: 3.1_
-- [ ] T056 [US2] Desacoplar la carga de la consola del arranque en `apps/desktop/src/electron/main.ts`: veredicto de sesión, vigilante de pendientes y latido arrancan en paralelo y un fallo de red no tumba nada — _Requisitos: 3.1_
-- [ ] T057 [US2] Banner de conectividad en el armazón con reintento manual y recuperación automática, conservando el borrador del hilo — _Requisitos: 3.1, 3.3_
-- [ ] T058 [P] [US2] Test en `apps/desktop/tests/session-expired.test.tsx`: la sesión caducada se dice **en la pantalla actual**, conserva el borrador y ofrece entrar; no salta a la consola sin avisar — _Requisitos: 3.4_
-- [ ] T059 [US2] Implementar ese estado en `apps/desktop/src/app/App.tsx` y retirar el salto automático a la consola de `apps/desktop/src/electron/main.ts` — _Requisitos: 3.4_
-- [ ] T060 [P] [US2] Test en `apps/desktop/tests/thread-open-error.test.tsx`: si abrir el hilo falla, se pinta error con motivo y reintento, **nunca** «vacío» — _Requisitos: 4.2_
-- [ ] T061 [US2] Implementar la rama de error en `apps/desktop/src/app/routes/thread.tsx` y distinguir «vacío de verdad» de «no se pudo leer» — _Requisitos: 4.2_
-- [ ] T062 [P] [US2] Test de los estados del turno en `apps/desktop/tests/turn-states.test.tsx`: enviando, esperando, razonando, herramienta, esperando decisión, terminado, detenido, fallido; detener siempre visible; el indicador de espera no aparece en respuestas inmediatas y dice qué se está haciendo — _Requisitos: 4.3, 4.4, 4.8_
-- [ ] T063 [US2] Implementar en `apps/desktop/src/app/routes/thread.tsx` y `packages/companion-ui/src/components/` lo que falte de esos estados: botón de detener siempre visible mientras trabaja y texto del indicador de espera — _Requisitos: 4.3, 4.4, 4.8_
-- [ ] T064 [US2] Conservar el texto al fallar el envío en `apps/desktop/src/app/routes/thread.tsx` (hoy se vacía antes de saber el resultado) — _Requisitos: 4.5_
-- [ ] T065 [P] [US2] Test en `apps/desktop/tests/window-lifecycle.test.ts`: cerrar la ventana **oculta**, el icono de la barra y los avisos siguen vivos, y salir advierte si hay trabajo vivo — _Requisitos: 3.5_
-- [ ] T066 [US2] Implementar cierre = ocultar, reapertura desde icono y Dock, y orden explícita de salir en `apps/desktop/src/electron/main.ts` — _Requisitos: 3.5_
-- [ ] T067 [US2] Estado del puesto en el pie de la lista lateral y en Hoy, con estado, desde cuándo, causa y acción, alimentado por `app:workstation` — _Requisitos: 3.6, 3.7, 8.1_
-- [ ] T068 [P] [US2] Test de estados por pantalla, parte 1 — Hoy, lista lateral, Pendientes y Cuenta, contra la tabla de `data-model.md` §5 — _Requisitos: 4.1, 4.9_
-- [ ] T069 [P] [US2] Test de estados por pantalla, parte 2 — hilo, entorno, notas de cambio, ajustes del teammate y secciones de administrar — _Requisitos: 4.1, 4.9_
-- [ ] T070 [US2] Implementar los estados que esos dos tests dejen en rojo, pantalla por pantalla — _Requisitos: 4.1, 4.9_
-- [ ] T071 [P] [US2] Estados de «parcial» y «bloqueado»: el alcance acotado se dice en la respuesta y un teammate esperando a otro no se pinta como ocioso — _Requisitos: 4.6, 4.7_
+- [X] T055 [P] [US2] Test en `apps/desktop/tests/bootstrap-offline.test.ts`: sin red, la puesta en marcha **no aborta** y la ventana queda en «sin conexión» con reintento — _Requisitos: 3.1_
+- [X] T056 [US2] Desacoplar la carga de la consola del arranque en `apps/desktop/src/electron/main.ts`: veredicto de sesión, vigilante de pendientes y latido arrancan en paralelo y un fallo de red no tumba nada — _Requisitos: 3.1_
+- [X] T057 [US2] Banner de conectividad en el armazón con reintento manual y recuperación automática, conservando el borrador del hilo — _Requisitos: 3.1, 3.3_
+- [X] T058 [P] [US2] Test en `apps/desktop/tests/session-expired.test.tsx`: la sesión caducada se dice **en la pantalla actual**, conserva el borrador y ofrece entrar; no salta a la consola sin avisar — _Requisitos: 3.4_
+- [X] T059 [US2] Implementar ese estado en `apps/desktop/src/app/App.tsx` y retirar el salto automático a la consola de `apps/desktop/src/electron/main.ts` — _Requisitos: 3.4_
+- [X] T060 [P] [US2] Test en `apps/desktop/tests/thread-open-error.test.tsx`: si abrir el hilo falla, se pinta error con motivo y reintento, **nunca** «vacío» — _Requisitos: 4.2_
+- [X] T061 [US2] Implementar la rama de error en `apps/desktop/src/app/routes/thread.tsx` y distinguir «vacío de verdad» de «no se pudo leer» — _Requisitos: 4.2_
+- [X] T062 [P] [US2] Test de los estados del turno en `apps/desktop/tests/turn-states.test.tsx`: enviando, esperando, razonando, herramienta, esperando decisión, terminado, detenido, fallido; detener siempre visible; el indicador de espera no aparece en respuestas inmediatas y dice qué se está haciendo — _Requisitos: 4.3, 4.4, 4.8_
+- [X] T063 [US2] Implementar en `apps/desktop/src/app/routes/thread.tsx` y `packages/companion-ui/src/components/` lo que falte de esos estados: botón de detener siempre visible mientras trabaja y texto del indicador de espera — _Requisitos: 4.3, 4.4, 4.8_
+- [X] T064 [US2] Conservar el texto al fallar el envío en `apps/desktop/src/app/routes/thread.tsx` (hoy se vacía antes de saber el resultado) — _Requisitos: 4.5_
+- [X] T065 [P] [US2] Test en `apps/desktop/tests/window-lifecycle.test.ts`: cerrar la ventana **oculta**, el icono de la barra y los avisos siguen vivos, y salir advierte si hay trabajo vivo — _Requisitos: 3.5_
+- [X] T066 [US2] Implementar cierre = ocultar, reapertura desde icono y Dock, y orden explícita de salir en `apps/desktop/src/electron/main.ts` — _Requisitos: 3.5_
+- [X] T067 [US2] Estado del puesto en el pie de la lista lateral y en Hoy, con estado, desde cuándo, causa y acción, alimentado por `app:workstation` — _Requisitos: 3.6, 3.7, 8.1_
+- [X] T068 [P] [US2] Test de estados por pantalla, parte 1 — Hoy, lista lateral, Pendientes y Cuenta, contra la tabla de `data-model.md` §5 — _Requisitos: 4.1, 4.9_
+- [X] T069 [P] [US2] Test de estados por pantalla, parte 2 — hilo, entorno, notas de cambio, ajustes del teammate y secciones de administrar — _Requisitos: 4.1, 4.9_
+- [X] T070 [US2] Implementar los estados que esos dos tests dejen en rojo, pantalla por pantalla — _Requisitos: 4.1, 4.9_
+- [X] T071 [P] [US2] Estados de «parcial» y «bloqueado»: el alcance acotado se dice en la respuesta y un teammate esperando a otro no se pinta como ocioso — _Requisitos: 4.6, 4.7_
 
 ---
 

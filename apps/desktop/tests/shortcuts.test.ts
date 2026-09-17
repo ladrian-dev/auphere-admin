@@ -33,19 +33,31 @@ describe("los atajos del sistema no se reutilizan para otra cosa", () => {
   const usados = accelerators();
 
   it("los que la aplicación declara tienen el significado que el sistema les da", () => {
-    // ⌘, son los ajustes y ⌘N es «nuevo»: es lo que hacen aquí. Lo que no puede
-    // pasar es que ⌘W cierre otra cosa o que ⌘Q haga algo distinto de salir.
-    const esperados = new Set(["CommandOrControl+,", "CommandOrControl+N", "CommandOrControl+B"]);
+    // ⌘, son los ajustes, ⌘N es «nuevo» y ⌘Q es salir: es lo que hacen aquí.
+    // ⌘Q lleva acelerador propio porque salir **avisa** si hay trabajo vivo, y
+    // eso exige un manejador en vez del `role` de Electron — pero sigue
+    // significando exactamente lo mismo.
+    const esperados = new Set([
+      "CommandOrControl+,",
+      "CommandOrControl+N",
+      "CommandOrControl+B",
+      "CommandOrControl+Q",
+    ]);
     for (const atajo of usados) {
       expect(esperados.has(atajo), `${atajo} no está entre los previstos`).toBe(true);
     }
   });
 
   it("no se reasignan los reservados del sistema", () => {
-    const reservados = ["CommandOrControl+W", "CommandOrControl+Q", "CommandOrControl+M", "CommandOrControl+H"];
+    const reservados = ["CommandOrControl+W", "CommandOrControl+M", "CommandOrControl+H"];
     for (const reservado of reservados) {
       expect(usados, `${reservado} está reasignado`).not.toContain(reservado);
     }
+  });
+
+  it("⌘Q sigue siendo salir, y sólo salir", () => {
+    const linea = MAIN.split("\n").find((l) => l.includes("CommandOrControl+Q")) ?? "";
+    expect(linea).toMatch(/quitWithWarning/);
   });
 
   it("ya no existen los de cambiar de superficie", () => {

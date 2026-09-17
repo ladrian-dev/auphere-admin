@@ -15,7 +15,7 @@
  * * **No hay credencial por variable de entorno.** La máquina la canjea con un
  *   código, la guarda cifrada con el llavero, y solo late con una persona dentro.
  */
-import { BaseWindow, Menu, Tray, WebContentsView, app, globalShortcut, ipcMain, nativeImage, nativeTheme, screen, session } from "electron";
+import { BaseWindow, Menu, Tray, WebContentsView, app, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, screen, session } from "electron";
 import { randomUUID } from "node:crypto";
 import { hostname as osHostname } from "node:os";
 import { dirname, join } from "node:path";
@@ -42,7 +42,7 @@ import type { InboxItem } from "../inbox-watcher.js";
 import { StreamHub } from "../stream-hub.js";
 import { trayBadge, trayTooltip, type Waiting } from "../tray-badge.js";
 import { countWaiting } from "../waiting.js";
-import { withSurface } from "../workstation-state.js";
+import { toWorkstationView, withSurface } from "../workstation-state.js";
 import { MIN_WINDOW, readWindowState, rememberWindow } from "../window-state.js";
 import { decideWindowOpen, navigationAllowed } from "../window-open-policy.js";
 import {
@@ -85,6 +85,46 @@ type Surface = "app" | "console";
  * La barra del puesto sigue abajo hasta que T139 la retire; mientras tanto, el
  * armazón le deja su franja.
  */
+/**
+ * ¿Se está saliendo de verdad?
+ *
+ * Distingue cerrar la ventana (que la oculta) de salir (que sí termina). Lo
+ * pone la orden de salir del menú y del icono de la barra del sistema.
+ */
+let quitting = false;
+
+/**
+ * Lo que hay en marcha ahora mismo: sesiones de agente abiertas y decisiones
+ * sin tomar. Lo rellena el arranque, y lo usan el actualizador y el aviso de
+ * salida — las dos cosas que no deben pasar por encima de un trabajo vivo.
+ */
+let readActivityNow: (() => Activity) | null = null;
+
+/**
+ * Salir, avisando si hay algo a medias (R3.5).
+ *
+ * Cerrar la ventana la oculta, así que salir es un gesto deliberado; aun así,
+ * salir con una decisión sin tomar o una sesión de agente en vuelo es la clase
+ * de cosa que se hace sin querer al pulsar ⌘Q por costumbre.
+ */
+function quitWithWarning(copy: { title: string; detail: string; quit: string; cancel: string }): void {
+  const activity = readActivityNow?.();
+  const vivo = (activity?.liveSessions ?? 0) + (activity?.pendingApprovals ?? 0);
+  if (vivo > 0) {
+    const choice = dialog.showMessageBoxSync({
+      type: "question",
+      buttons: [copy.cancel, copy.quit],
+      defaultId: 0,
+      cancelId: 0,
+      message: copy.title,
+      detail: copy.detail,
+    });
+    if (choice === 0) return;
+  }
+  quitting = true;
+  app.quit();
+}
+
 /**
  * El canal de actualización, cuando esté armado.
  *
@@ -232,9 +272,25 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
     if (surface === "console") placeConsole();
   };
 
+  /**
+   * Spec 010 R4.1 — una sección que no carga es **un estado de la aplicación**.
+   *
+   * Lo que se veía cuando la consola no respondía era la página de error de
+   * Chromium dentro del panel: en inglés, con pinta de navegador roto y sin
+   * nada que pulsar. Ahora la vista se aparta, la pantalla lo dice en su lengua
+   * y ofrece reintentar. Se recuerda **qué** sección falló para poder nombrarla.
+   */
+  let consoleFailed: Section | null = null;
+
   const showConsole = (path: string) => {
     const target = new URL(path, CONSOLE_URL).toString();
-    if (consoleView.webContents.getURL() !== target) void consoleView.webContents.loadURL(target);
+    // Tras un fallo la vista se queda con la URL de destino puesta, así que
+    // comparar direcciones diría «ya estás ahí» y no reintentaría nada.
+    if (consoleFailed !== null || consoleView.webContents.getURL() !== target) {
+      void consoleView.webContents.loadURL(target).catch(() => {
+        // `did-fail-load` ya lo cuenta; esto solo evita un rechazo suelto.
+      });
+    }
     showSurface("console");
   };
 
@@ -251,7 +307,20 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
       showSurface("app");
       return;
     }
+    if (consoleFailed !== null) announceConsoleFailure(null);
+    consoleSection = section;
     showConsole(path);
+  };
+
+  /** La última sección que se pidió a la consola, para poder nombrarla. */
+  let consoleSection: Section | null = null;
+
+  const announceConsoleFailure = (section: Section | null, code = 0) => {
+    consoleFailed = section;
+    // Con la sección caída el panel vuelve a ser de la pantalla: dejar la vista
+    // delante sería enseñar la página de error del navegador.
+    if (section !== null) showSurface("app");
+    pushApp("app:console.failed", section === null ? null : { section, code });
   };
 
   /**
@@ -315,7 +384,7 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
                   { role: "hideOthers" as const },
                   { role: "unhide" as const },
                   { type: "separator" as const },
-                  { role: "quit" as const },
+                  { label: m.quit, accelerator: "CommandOrControl+Q", click: () => quitWithWarning(m) },
                 ],
               },
             ]
@@ -373,6 +442,17 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   };
   consoleView.webContents.on("did-navigate", (_event, url) => pushConsoleLocation(url));
   consoleView.webContents.on("did-navigate-in-page", (_event, url) => pushConsoleLocation(url));
+  consoleView.webContents.on("did-fail-load", (_event, code, _desc, _url, isMainFrame) => {
+    // Sólo el marco principal, y nunca `ERR_ABORTED` (-3): eso es una carga que
+    // otra navegación reemplazó, que es lo normal al cambiar de sección.
+    if (!isMainFrame || code === -3) return;
+    announceConsoleFailure(consoleSection ?? "inicio", code);
+  });
+  consoleView.webContents.on("did-finish-load", () => {
+    if (consoleFailed === null) return;
+    announceConsoleFailure(null);
+    if (consoleSection !== null) showSurface("console");
+  });
 
   // La pantalla de operar no navega: es una página local. Un enlace se abre en
   // la consola (`app:openConsole`) o en el navegador del sistema, nunca dentro
@@ -495,16 +575,26 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   };
   gate.onDecision((decision) => {
     void runtime.applyGate(decision);
+    // Cada veredicto trae consigo cómo está la conexión: es lo que distingue
+    // «te has desconectado» de «no he podido preguntar» (R3.1).
+    pushApp("app:connectivity", gate.connectivity());
     // `null` = no se pudo preguntar (spec 010 R3.2): no hay veredicto nuevo
     // que empujar, y empujar uno falso es exactamente lo que se está quitando.
     const forRenderer = sessionForRenderer(decision);
     if (forRenderer) pushApp("app:session", forRenderer);
-    // Sin sesión, la pantalla no puede hacer nada útil: se enseña la consola
-    // para que la persona entre; al volver la sesión, vuelve la pantalla.
+    /*
+     * Spec 010 R3.4 — perder la sesión **no cambia de superficie**.
+     *
+     * Antes esto llamaba a `showConsole("/")`: la ventana saltaba al inicio de
+     * sesión sin avisar, y lo que la persona estuviera escribiendo se perdía al
+     * desmontarse el hilo. Ahora la pantalla lo dice en su sitio, conserva el
+     * borrador y ofrece entrar; el salto lo decide la persona.
+     *
+     * Lo que sí se para es el vigilante: sin sesión no hay nada que vigilar.
+     */
     if (decision.kind === "stop") {
       inbox.stop();
       inbox.reset();
-      showConsole("/");
     } else if (surface === "console" && consoleView.webContents.getURL().includes("/login")) showSurface("app");
   });
   gate.watch(sessionCookieWatcher());
@@ -568,6 +658,7 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
     showSection,
     setPanelBounds: setPanel,
     shellPrefs,
+    workstation: { state: () => toWorkstationView(runtime.barState) },
     onSessionLost: () => void gate.refresh(),
     inbox,
     notificationPrefs,
@@ -582,6 +673,16 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
       filesForTask: (taskId) => runtime.taskFiles.forTask(taskId),
     },
   });
+  /*
+   * Spec 010 R3.6/R3.7 — el puesto se ve en el armazón.
+   *
+   * Es lo que sustituye a la barra de 44 px: el mismo estado, con su reloj y su
+   * causa, empujado a la pantalla para que lo pinte junto a la identidad. La
+   * barra sigue existiendo hasta que T139 la retire, y las dos leen **el mismo
+   * objeto**: no hay dos verdades sobre la misma máquina.
+   */
+  runtime.onBarState((state) => pushApp("app:workstation", toWorkstationView(state)));
+
   runtime.onBarState((state) =>
     pushApp("app:presence", {
       machine: state.machine ?? null,
@@ -616,7 +717,7 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
     Menu.buildFromTemplate([
       { label: "Auphere", click: showApp },
       { type: "separator" },
-      { label: "Salir", click: () => app.quit() },
+      { label: menuCopy(appLocale()).quit, click: () => quitWithWarning(menuCopy(appLocale())) },
     ]),
   );
   tray.on("click", showApp);
@@ -638,14 +739,39 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   // R2.7 — la ventana aparece **ya pintada**: el armazón está montado y el
   // fondo es el del tema. Nada de un rectángulo blanco mientras carga.
   window.show();
-  await consoleView.webContents.loadURL(CONSOLE_URL);
   showSurface("app");
+
+  /*
+   * Spec 010 R3.1 — **la consola no bloquea el arranque**.
+   *
+   * Esto era `await consoleView.webContents.loadURL(...)`, y ahí estaba el
+   * fallo: sin red la promesa se rechazaba, `bootstrap()` se abortaba entero y
+   * con él se caían el veredicto de sesión, el vigilante de Pendientes y el
+   * latido. La persona veía esqueletos para siempre y ni un solo mensaje.
+   *
+   * Ahora la carga va por su cuenta y su fallo es **un estado de la ventana**,
+   * no el final de la puesta en marcha: se dice «sin conexión», se puede
+   * reintentar, y todo lo local sigue funcionando.
+   */
+  const announceConnectivity = () => pushApp("app:connectivity", gate.connectivity());
+  void consoleView.webContents
+    .loadURL(CONSOLE_URL)
+    .then(announceConnectivity)
+    .catch((error: unknown) => {
+      console.info("[auphere] la consola no cargó:", error instanceof Error ? error.message : error);
+      announceConnectivity();
+    });
+
   const first = await gate.evaluate();
+  announceConnectivity();
   void runtime.applyGate(first);
   const firstForRenderer = sessionForRenderer(first);
   if (firstForRenderer) pushApp("app:session", firstForRenderer);
+  // Sin sesión **confirmada** se enseña la consola para entrar. Con
+  // `unconfirmed` no: no se ha podido preguntar, y mandar a alguien al inicio
+  // de sesión sin red es la peor versión de un corte de wifi.
   if (first.kind === "stop") showConsole("/");
-  else void inbox.start();
+  else if (first.kind !== "unconfirmed") void inbox.start();
 
   // Evidencia de desarrollo (spec 003, quickstart §3): con
   // `AUPHERE_EVIDENCE_DIR` se guardan capturas y el texto de la pantalla a los
@@ -662,6 +788,23 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   }
 
   const timer = setInterval(() => void runtime.tick(), HEARTBEAT_INTERVAL_MS);
+  /*
+   * Spec 010 R3.5 — **cerrar la ventana oculta; salir es otra cosa.**
+   *
+   * Antes, cerrar la ventana cerraba la aplicación entera: con ella se iban el
+   * icono de la barra del sistema, los avisos de las decisiones pendientes y el
+   * puente. Y la propia pantalla prometía lo contrario —«lo que le pidas sigue
+   * aunque cierres la aplicación»—, así que una de las dos cosas mentía.
+   *
+   * Con la ventana oculta la aplicación sigue viva y avisando, que es lo que
+   * hace de esto una aplicación de escritorio y no una pestaña.
+   */
+  window.on("close", (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    window.hide();
+  });
+
   window.on("closed", () => {
     clearInterval(timer);
     streams.closeAll();
@@ -673,12 +816,12 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   // streams abiertos son sesiones de agente en vuelo, y la lista de espera son
   // decisiones que una persona todavía no ha tomado. `informativo` no cuenta:
   // no espera a nadie, igual que no marca la bandeja.
-  return {
-    readActivity: () => ({
-      liveSessions: streams.liveCount,
-      pendingApprovals: countWaiting(waitingNow),
-    }),
-  };
+  const readActivity = () => ({
+    liveSessions: streams.liveCount,
+    pendingApprovals: countWaiting(waitingNow),
+  });
+  readActivityNow = readActivity;
+  return { readActivity };
 }
 
 async function captureEvidence(
@@ -759,7 +902,28 @@ if (process.env.NODE_ENV !== "test") {
         return null;
       });
     });
-    app.on("window-all-closed", () => app.quit());
+    /*
+     * R3.5 — en macOS, cerrar la última ventana **no** cierra la aplicación:
+     * sigue en la barra del sistema, avisando de lo que espera decisión. En
+     * Windows y Linux la convención es la contraria, y se respeta.
+     */
+    app.on("window-all-closed", () => {
+      if (process.platform !== "darwin") app.quit();
+    });
+
+    // Volver desde el Dock: la ventana estaba oculta, no cerrada.
+    app.on("activate", () => {
+      const [first] = BaseWindow.getAllWindows();
+      if (first) {
+        first.show();
+        first.focus();
+      }
+    });
+
+    // Salir de verdad. Lo llama la orden del menú y la del icono de la barra.
+    app.on("before-quit", () => {
+      quitting = true;
+    });
   }
 }
 

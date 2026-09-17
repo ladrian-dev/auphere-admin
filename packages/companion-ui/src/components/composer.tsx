@@ -34,6 +34,17 @@ type Props = {
   value: string;
   mode: "consult" | "build";
   busy: boolean;
+  /**
+   * Whether there is actually something to stop. Defaults to `busy`, which is
+   * what it always used to mean.
+   *
+   * Spec 010 R4.4 split the two: between "the message left this window" and
+   * "the server opened the turn" the box must already refuse a second send —
+   * that is `busy` — but there is no run to cancel yet, and `stop()` with no
+   * live run returns in silence. A Stop button that quietly does nothing is
+   * the exact failure mode story 3 is about.
+   */
+  stoppable?: boolean;
   blocked: boolean;
   /** The budget snapshot of §6.4, when we have it (the `budget.paused`
    *  event, or the body of the 409). Carries the numbers. */
@@ -54,7 +65,7 @@ type Props = {
 };
 
 export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Composer(
-  { value, mode, busy, blocked, paused, exhausted, onChange, onSend, onStop, onMode },
+  { value, mode, busy, stoppable, blocked, paused, exhausted, onChange, onSend, onStop, onMode },
   ref,
 ) {
   const t = useT();
@@ -62,6 +73,7 @@ export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Co
   const tooLong = value.length > MAX_PROMPT;
   const halted = paused !== null || exhausted;
   const canSend = value.trim().length > 0 && !tooLong && !busy && !blocked && !halted;
+  const canStop = stoppable ?? busy;
   const hintId = React.useId();
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -122,7 +134,7 @@ export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Co
           onKeyDown={onKeyDown}
           className="min-h-16 flex-1 text-sm"
         />
-        {busy ? (
+        {canStop ? (
           <Button variant="outline" size="icon" aria-label={t("companion.composer.stop")} onClick={onStop}>
             <Square aria-hidden="true" />
           </Button>

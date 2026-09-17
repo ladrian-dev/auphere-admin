@@ -8,7 +8,6 @@
  * máquina ausente y el tope son estados, no fallos.
  */
 import { CompanionLocaleProvider } from "@nexus/companion-ui";
-import { Button } from "@nexus/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -21,6 +20,7 @@ import {
   type Teammate,
   type ThreadEnv,
   type Usage,
+  type ConnectivityView,
   type WorkstationView,
   bridge,
 } from "./bridge";
@@ -33,6 +33,8 @@ import { Sidebar } from "./shell/sidebar";
 import { Palette, type Command } from "./shell/palette";
 import { WorkstationChip } from "./shell/workstation-chip";
 import { Today } from "./routes/today";
+import { SessionExpired } from "./routes/session-expired";
+import { ConnectionBanner } from "./shell/connection-banner";
 import {
   type History,
   current as currentSection,
@@ -42,6 +44,7 @@ import {
 import { Account } from "./routes/account";
 import { EnvPanel } from "./routes/env";
 import { Inbox } from "./routes/inbox";
+import { SectionFailed } from "./routes/section-failed";
 import { NewTeammateForm, capOf } from "./routes/new-teammate";
 import { TeammateSettings } from "./routes/teammate-settings";
 import { ThreadView } from "./routes/thread";
@@ -139,6 +142,12 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
   const [env, setEnv] = useState<ThreadEnv | null>(null);
   const [accountStatus, setAccountStatus] = useState<"loading" | "ready" | "error">("loading");
   const [pending, setPending] = useState<InboxItem[]>([]);
+  /**
+   * La sección de administrar que la consola no pudo cargar (R4.1). Mientras
+   * haya una, el panel vuelve a ser de la pantalla: la alternativa era la
+   * página de error de Chromium ocupando la ventana.
+   */
+  const [sectionFailed, setSectionFailed] = useState<Section | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
 
   /* ── El armazón — spec 010 ──────────────────────────────────────────── */
@@ -148,6 +157,7 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
   const [sidebarWidth, setSidebarWidth] = useState(MIN_SIDEBAR);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [workstation, setWorkstation] = useState<WorkstationView | null>(null);
+  const [connectivity, setConnectivity] = useState<ConnectivityView | null>(null);
 
   /** Ir a una sección. Si la pinta la consola, el principal la coloca. */
   const go = useCallback((next: Section) => {
@@ -185,13 +195,17 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
     const offLocation = bridge.on("app:console.location", ({ section: where }) => {
       setHistory((h) => goTo(h, where));
     });
+    const offFailed = bridge.on("app:console.failed", (failure) => setSectionFailed(failure?.section ?? null));
     const offWorkstation = bridge.on("app:workstation", setWorkstation);
+    const offConnectivity = bridge.on("app:connectivity", setConnectivity);
     return () => {
       offInbox();
       offFocus();
       offTask();
       offLocation();
+      offFailed();
       offWorkstation();
+      offConnectivity();
     };
   }, [loadRoster]);
 
@@ -328,14 +342,13 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
   const title =
     section === "teammate" && current ? current.name : t(sectionTitleKey(section));
 
-  if (session?.kind === "stop") {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-8 text-foreground">
-        <p className="max-w-prose text-center text-pretty">{t(session.reason === "no_membership" ? "session.stop.no_membership" : "session.stop.anonymous")}</p>
-        <Button onClick={() => void bridge.openConsole({ path: "/" })}>{t("session.open")}</Button>
-      </main>
-    );
-  }
+  /*
+   * Spec 010 R3.4 — la sesión caducada **no cambia de superficie**.
+   *
+   * Se dice dentro del armazón, con la lista lateral en su sitio, y lo que la
+   * persona estuviera escribiendo sigue montado detrás. Antes esto saltaba a la
+   * consola sin avisar y se llevaba el borrador por delante.
+   */
 
   if (permissions.length > 0 && !permissions.includes("teammates:use")) {
     return (
@@ -350,7 +363,7 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
       title={title}
       status={<WorkstationChip state={workstation} />}
       onSearch={() => setPaletteOpen(true)}
-      panelBelongsToConsole={isConsoleSection(section)}
+      panelBelongsToConsole={isConsoleSection(section) && sectionFailed === null}
       sidebarWidth={sidebarWidth}
       onSidebarWidth={(width) => {
         setSidebarWidth(width);
@@ -362,21 +375,45 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
           onSelect={go}
           permissions={permissions}
           waiting={waiting}
-          teammates={roster.map((r) => ({ id: r.id, name: r.name, unread: r.my_unread }))}
+          teammates={roster.map((r) => ({ id: r.id, name: r.name, unread: r.my_unread, state: r.my_state }))}
+          /* Cargando y vacío no pueden verse igual (R4.1). «Sin permiso» se
+             cuenta como vacío aquí: el motivo largo lo da Hoy, y repetirlo en
+             la lista lateral sería decir dos veces lo mismo en dos sitios. */
+          rosterStatus={
+            rosterStatus === "loading"
+              ? "loading"
+              : rosterStatus === "error"
+                ? "error"
+                : roster.length === 0
+                  ? "empty"
+                  : "ready"
+          }
           selectedTeammate={selected}
           onSelectTeammate={(id) => {
             setSelected(id);
             setDetail("hilo");
             go("teammate");
           }}
+          onCreateTeammate={() => {
+            setDetail("nuevo");
+            go("teammate");
+          }}
+          onRetryRoster={() => void loadRoster()}
           footer={
-            <button
-              type="button"
-              onClick={() => go("cuenta")}
-              className="flex min-h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-ui transition-colors hover:bg-muted"
-            >
-              <span className="min-w-0 flex-1 truncate">{t("shell.account")}</span>
-            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => go("cuenta")}
+                className="flex min-h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-ui transition-colors hover:bg-muted"
+              >
+                <span className="min-w-0 flex-1 truncate">{t("shell.account")}</span>
+              </button>
+              {/* R3.6: el estado de la máquina se ve **sin abrir nada**, que es
+                  lo que hacía la barra de 44 px y lo que se conserva de ella. */}
+              <div className="px-2 py-1">
+                <WorkstationChip state={workstation} />
+              </div>
+            </div>
           }
         />
       }
@@ -386,13 +423,25 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
       {/* Lo que la sección de la pantalla pinta en el panel. Cuando la sección
           es de administrar, este hueco es de la consola y aquí no va nada. */}
       <div className="flex h-full min-h-0 flex-col">
+        <ConnectionBanner connectivity={connectivity} onRetry={() => void bridge.whoami()} />
+        {sectionFailed !== null ? (
+          <SectionFailed
+            section={sectionFailed}
+            onRetry={() => void bridge.shellShowSection({ section: sectionFailed })}
+          />
+        ) : null}
         {session?.kind === "pair_needed" ? (
           <p className="border-b border-border bg-muted px-4 py-2 text-sm text-pretty text-muted-foreground" role="status">
             {t("session.pair")}
           </p>
         ) : null}
 
-        {section === "cuenta" ? (
+        {session?.kind === "stop" ? (
+          <SessionExpired
+            reason={session.reason as "anonymous" | "no_membership" | undefined}
+            onSignIn={() => void bridge.openConsole({ path: "/" })}
+          />
+        ) : section === "cuenta" ? (
           <Account
             status={accountStatus}
             usage={usage}
@@ -412,6 +461,8 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
           />
         ) : section === "hoy" ? (
           <Today
+            workstation={workstation}
+            onOpenWorkstation={() => go("puesto")}
             waiting={waiting}
             teammates={roster}
             status={rosterStatus}

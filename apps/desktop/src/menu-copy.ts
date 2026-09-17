@@ -14,6 +14,11 @@
 export type Lang = "es" | "en";
 
 export type MenuCopy = {
+  /** La orden de salir, y lo que se pregunta si hay trabajo vivo (R3.5). */
+  quit: string;
+  title: string;
+  detail: string;
+  cancel: string;
   about: string;
   settings: string;
   checkUpdates: string;
@@ -35,6 +40,10 @@ export type MenuCopy = {
 };
 
 const ES: MenuCopy = {
+  quit: 'Salir de Auphere',
+  title: 'Hay trabajo en marcha',
+  detail: 'Si sales ahora, las decisiones que esperan se quedan sin tomar y las sesiones en vuelo se cortan. La ventana se puede cerrar sin salir.',
+  cancel: 'No salir',
   about: "Acerca de Auphere",
   settings: "Ajustes…",
   checkUpdates: "Buscar actualizaciones",
@@ -56,6 +65,10 @@ const ES: MenuCopy = {
 };
 
 const EN: MenuCopy = {
+  quit: 'Quit Auphere',
+  title: 'There is work in progress',
+  detail: 'If you quit now, the decisions waiting on you stay untaken and any running sessions are cut off. You can close the window without quitting.',
+  cancel: "Don't quit",
   about: "About Auphere",
   settings: "Settings…",
   checkUpdates: "Check for updates",

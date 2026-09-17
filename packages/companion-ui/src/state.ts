@@ -653,6 +653,27 @@ export function thinkingToolCount(state: CompanionState, thinkingId: string): nu
   return n;
 }
 
+/**
+ * What this turn could NOT read — spec 010, R4.6.
+ *
+ * A tool that failed leaves the answer below it covering less than what was
+ * asked, and the card that says so folds away or scrolls off. Naming the
+ * failed sources next to the answer is what keeps a partial answer from
+ * reading as an exhaustive one.
+ *
+ * Scoped to ONE run on purpose: a read that failed in the previous turn does
+ * not narrow the answer of this one.
+ */
+export function unreadSources(state: CompanionState, runId: string): string[] {
+  const names: string[] = [];
+  for (const item of state.items) {
+    if (item.kind !== "tool" || item.runId !== runId || item.status !== "failed") continue;
+    const name = item.label || item.name;
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
 export function isBusy(state: CompanionState): boolean {
   return state.runStatus === "running" && state.activeRun !== null;
 }

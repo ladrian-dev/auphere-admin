@@ -37,6 +37,8 @@ export type AppSurfaceOptions = {
   setPanelBounds: (rect: { x: number; y: number; width: number; height: number }) => void;
   /** Comodidades de ventana; la lista de claves persistibles es cerrada. */
   shellPrefs: { read(): ShellPrefs; write(next: Partial<ShellPrefs>): ShellPrefs };
+  /** El puesto de trabajo, absorbido en el armazón (enmienda de la spec 002). */
+  workstation: { state(): unknown };
   onSessionLost: (reason: "anonymous" | "no_membership") => void;
   inbox: InboxWatcher;
   notificationPrefs: { read(): Prefs; write(next: Prefs): Prefs };
@@ -233,6 +235,15 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
   });
 
   handle("app:shell.prefs", (input: Partial<ShellPrefs> | undefined) => o.shellPrefs.write(input ?? {}));
+
+  /**
+   * El estado del puesto, a petición (R3.6).
+   *
+   * El empuje llega con cada cambio, pero la pantalla necesita saberlo también
+   * al montarse — si no, hasta el primer cambio no tendría nada que pintar y
+   * volvería a inventarse un estado, que es de lo que veníamos.
+   */
+  handle("app:workstation.state", () => o.workstation.state());
 }
 
 /**

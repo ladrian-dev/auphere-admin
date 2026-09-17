@@ -40,11 +40,14 @@ function renderTimeline(overrides: Partial<React.ComponentProps<typeof Timeline>
 
 /** The five Hurff states — the workspace floor, measured not asserted. */
 describe("Timeline — the five states", () => {
-  it("LOADING renders skeleton bubbles, not a spinner", () => {
+  // Spec 010 R4.8: el esqueleto ya no se pinta al instante — por debajo del
+  // umbral de espera percibida sería un parpadeo. `aria-busy` sí es inmediato.
+  // El umbral en sí se comprueba en `waiting-indicator.test.tsx`.
+  it("LOADING renders skeleton bubbles, not a spinner", async () => {
     renderTimeline({ status: "loading" });
     const log = screen.getByRole("log");
     expect(log).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByLabelText("Cargando la conversación…")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Cargando la conversación…")).toBeInTheDocument();
   });
 
   it("EMPTY offers the three suggestions derived from the page, not generic ones", async () => {

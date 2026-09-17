@@ -105,6 +105,12 @@ export const companionMessages = {
     es: "No hay conexión con la consola. El trabajo del Companion sigue en marcha en el servidor.",
     en: "No connection to the console. The Companion's work carries on server-side.",
   },
+  // Spec 010 R4.6. Distinto de `companion.partial.*`: aquello va de la
+  // conversación que falta, esto del alcance de ESTA respuesta.
+  "companion.scope.partial": {
+    es: "Esta respuesta no cubre todo lo que pediste: falló {sources}.",
+    en: "This answer does not cover everything you asked: {sources} failed.",
+  },
   "companion.partial.title": { es: "Falta parte de esta conversación", en: "Part of this conversation is missing" },
   "companion.partial.body": {
     es: "Esta conversación empezó en otro navegador o dispositivo. Se muestra desde aquí en adelante; lo anterior sigue guardado en el servidor.",

@@ -5,6 +5,12 @@
  * nada se ejecuta antes), error con reintento, parcial —una tarjeta que este
  * rol no puede decidir se muestra y lo dice— e ideal. Decidir aquí quita la
  * tarjeta del hilo, y al revés, sin recargar.
+ *
+ * Spec 010 (R4.1): el **segundo** parcial, el que faltaba. Cuando la lista ya
+ * estaba y el refresco falla, la pantalla se quedaba con la vieja sin decir
+ * nada — y decidir sobre una tarjeta que quizá ya no existe es peor que ver un
+ * error. Ahora lo dice y deja volver a intentarlo, sin borrar lo que hay: el
+ * aviso acota el alcance de lo que se ve, no lo sustituye.
  */
 import { Badge, Button, Skeleton } from "@nexus/ui";
 import { useCallback, useEffect, useState } from "react";
@@ -86,7 +92,17 @@ export function Inbox({ onOpenThread, focus }: Props) {
 
   return (
     <section className="flex flex-col gap-3 p-4" aria-label={t("inbox.title")}>
-      <h2 className="text-sm font-semibold text-balance">{t("inbox.title")}</h2>
+      <div className="flex min-w-0 items-center gap-2">
+        <h2 className="min-w-0 flex-1 text-sm font-semibold text-balance">{t("inbox.title")}</h2>
+        <Button variant="ghost" size="sm" onClick={() => void load()}>
+          {t("inbox.refresh")}
+        </Button>
+      </div>
+      {failed ? (
+        <p role="status" className="rounded-md bg-muted p-3 text-xs text-pretty text-muted-foreground">
+          {t("inbox.stale")}
+        </p>
+      ) : null}
       <ul className="flex flex-col gap-3">
         {items.map((item) => (
           <li

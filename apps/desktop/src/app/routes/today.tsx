@@ -14,10 +14,14 @@
  */
 import { Button } from "@nexus/ui";
 
-import type { Teammate } from "../bridge";
+import type { Teammate, WorkstationView } from "../bridge";
+import { WorkstationChip } from "../shell/workstation-chip";
 import { useAppT } from "../i18n";
 
 export type TodayProps = {
+  /** El estado de la máquina, con su causa y sus acciones (R3.6). */
+  workstation: WorkstationView | null;
+  onOpenWorkstation: () => void;
   waiting: number;
   teammates: readonly Teammate[];
   status: "loading" | "ready" | "error" | "forbidden";
@@ -27,11 +31,44 @@ export type TodayProps = {
   onOpenTeammate: (id: string) => void;
 };
 
-export function Today({ waiting, teammates, status, onRetry, onOpenPending, onCreate, onOpenTeammate }: TodayProps) {
+export function Today({
+  workstation,
+  onOpenWorkstation,
+  waiting,
+  teammates,
+  status,
+  onRetry,
+  onOpenPending,
+  onCreate,
+  onOpenTeammate,
+}: TodayProps) {
   const t = useAppT();
+
+  /*
+   * La máquina sólo ocupa sitio cuando hay algo que decir. Conectada y sin
+   * directorios pendientes no se anuncia: la ausencia se diseña (§V), y una
+   * tarjeta permanente diciendo «todo bien» es ruido que se aprende a ignorar.
+   */
+  const machineNeedsAttention =
+    workstation !== null && workstation.status !== "conectada" && workstation.status !== "comprobando";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
+      {machineNeedsAttention ? (
+        <section aria-labelledby="hoy-maquina" className="flex flex-col gap-2 rounded-md border border-border p-4">
+          <h2 id="hoy-maquina" className="text-base font-semibold">
+            {t("today.machine.title")}
+          </h2>
+          <WorkstationChip state={workstation} />
+          {workstation.actions.length > 0 ? (
+            <div>
+              <Button size="sm" onClick={onOpenWorkstation}>
+                {t(`workstation.action.${workstation.actions[0]!}`)}
+              </Button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <section aria-labelledby="hoy-espera" className="flex flex-col gap-2">
         <h2 id="hoy-espera" className="text-base font-semibold">
           {t("today.waiting.title")}

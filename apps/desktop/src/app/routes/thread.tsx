@@ -15,10 +15,13 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { deriveThreadState, type ThreadState } from "../../app-state";
+import { deriveTurnState, offersStop, turnFactsOf } from "../../turn-state";
 import { type Teammate, type TeammateChange, bridge } from "../bridge";
 import { type AppKey, useAppT } from "../i18n";
 import { ipcTransport } from "../transport-ipc";
 import { ChangeNotes } from "./change-notes";
+import { ThreadOpenError } from "./thread-open-error";
+import { TurnStatus } from "./turn-status";
 
 const BANNER_STATES: ThreadState[] = ["esperandote", "en_pausa_por_tope", "maquina_ausente", "parcial", "reconectando"];
 
@@ -38,6 +41,9 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
   const controller = useCompanion(ipcTransport);
   const { state, status, errorDetail, partial, reconnecting, deciding, decisionFailure, openThread, setThreadId, send, decide } = controller;
   const [text, setText] = useState("");
+  // El hueco que no se veía (R4.3): el mensaje salió de aquí y el servidor
+  // todavía no abrió el turno, así que `runStatus` sigue en reposo.
+  const [sending, setSending] = useState(false);
   const [opening, setOpening] = useState(true);
   // Lo que cambió de este teammate mientras esta persona no miraba (R2.4). Se
   // lee al abrir: no hay evento, y por eso no puede perderse por estar cerrada
@@ -70,23 +76,48 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
     };
   }, [teammate.id]);
 
-  useEffect(() => {
-    let alive = true;
-    void bridge.threadOpen({ teammate_id: teammate.id }).then((res) => {
-      if (!alive) return;
+  /**
+   * Spec 010 R4.2 — abrir el hilo puede fallar, y entonces se dice.
+   *
+   * Antes esto no tenía rama `else`: `useCompanion` arranca en `ready`, el
+   * vacío se decide por «cero elementos», y el resultado era que un fallo de la
+   * plataforma se pintaba como «tu hilo está vacío».
+   */
+  const [openFailed, setOpenFailed] = useState<{ detail?: string } | null>(null);
+
+  const openOnce = useCallback(() => {
+    setOpening(true);
+    setOpenFailed(null);
+    return bridge.threadOpen({ teammate_id: teammate.id }).then((res) => {
       setOpening(false);
       if (res.ok) {
         setThreadId(res.data.thread_id);
         void openThread(res.data.thread_id);
+        return;
       }
+      setOpenFailed({ ...(res.code ? { detail: res.code } : {}) });
+    });
+  }, [teammate.id, openThread, setThreadId]);
+
+  useEffect(() => {
+    let alive = true;
+    void openOnce().then(() => {
+      if (!alive) return;
     });
     return () => {
       alive = false;
     };
-  }, [teammate.id, openThread, setThreadId]);
+  }, [openOnce]);
 
   const pending = pendingAction(state, Date.now());
-  const busy = state.runStatus === "running";
+  /*
+   * Los ocho estados del turno (R4.3). Hasta aquí la pantalla distinguía dos:
+   * el botón de enviar cambiaba a un cuadrado. Razonar, llamar a una
+   * herramienta y esperar la primera palabra del servidor se veían igual.
+   */
+  const turn = useMemo(() => deriveTurnState(turnFactsOf(state, sending)), [state, sending]);
+  // `busy` cierra el envío; detener solo se ofrece cuando hay turno que parar.
+  const busy = sending || state.runStatus === "running";
   const threadState = useMemo(
     () =>
       deriveThreadState({
@@ -103,11 +134,23 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
     [opening, status, state.runStatus, state.items.length, state.paused, reconnecting, partial, teammate.local_exec, machinePresent],
   );
 
+  /**
+   * Spec 010 R4.5 — lo escrito **no se pierde** si el envío falla.
+   *
+   * Antes el cuadro se vaciaba antes de saber el resultado: con la red caída o
+   * la sesión recién perdida, el mensaje desaparecía y había que volver a
+   * escribirlo de memoria. Ahora se vacía **cuando sale**, y si no sale se
+   * queda donde estaba, listo para reintentar.
+   */
   const onSend = () => {
     const value = text.trim();
     if (!value) return;
-    setText("");
-    void send(value, null, "build").then(onRosterChanged);
+    setSending(true);
+    void send(value, null, "build").then((res) => {
+      setSending(false);
+      if (res?.ok !== false) setText("");
+      void onRosterChanged();
+    });
   };
 
   return (
@@ -146,8 +189,10 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
           debajo de la banda de la máquina. Se exige `ready` y no «distinto de
           cargando» porque un hilo que falló al abrirse también tiene cero
           elementos, y decirle «está vacío» sería tapar el error. */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" data-thread-state={threadState}>
-        {!opening && status === "ready" && state.items.length === 0 ? (
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" data-thread-state={openFailed ? "error" : threadState}>
+        {openFailed ? (
+          <ThreadOpenError name={teammate.name} onRetry={() => void openOnce()} {...openFailed} />
+        ) : !opening && status === "ready" && state.items.length === 0 ? (
           <p className="mx-auto max-w-prose py-12 text-center text-pretty text-muted-foreground">
             {t("thread.state.vacio", { name: teammate.name })}
           </p>
@@ -174,11 +219,13 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
         />
         )}
       </div>
+      <TurnStatus state={turn} tool={turnFactsOf(state, sending).tool} />
       <footer className="border-t border-border px-4 py-3">
         <Composer
           value={text}
           mode="build"
           busy={busy}
+          stoppable={offersStop(turn)}
           blocked={!!pending}
           paused={state.paused}
           exhausted={state.budget?.exhausted ?? false}

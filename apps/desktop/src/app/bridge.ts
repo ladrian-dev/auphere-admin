@@ -12,7 +12,11 @@ import type {
   WireEvent,
 } from "@nexus/companion-ui";
 
-export type MyState = "en_marcha" | "esperandote" | "en_pausa_por_tope" | "en_espera";
+/** Los cinco estados. El vocabulario vive en `app-state.ts`, que es donde se
+ *  comprueba cuál de ellos es ocio (R4.7). */
+import type { MyState } from "../app-state";
+
+export type { MyState };
 export type Teammate = {
   id: string;
   name: string;
@@ -142,6 +146,7 @@ type Push = {
   /* ── Spec 010 ─────────────────────────────────────────────────────────── */
   /** Dónde está la consola, para que la lista lateral lo marque (R1.4). */
   "app:console.location": { section: Section; path: string };
+  "app:console.failed": { section: Section; code: number } | null;
   "app:workstation": WorkstationView;
   "app:signIn": SignInView;
   "app:update": UpdateView;

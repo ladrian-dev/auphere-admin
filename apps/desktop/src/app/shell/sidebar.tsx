@@ -28,6 +28,9 @@ import {
   Users,
 } from "lucide-react";
 
+import { Skeleton } from "@nexus/ui";
+
+import { type MyState, isIdle } from "../../app-state";
 import { CONSOLE_SECTIONS, type Section } from "../../sections";
 import { useAppT } from "../i18n";
 
@@ -59,9 +62,19 @@ export type SidebarProps = {
   /** Cuántas decisiones esperan. Sale del derivado único (R5.4). */
   waiting: number;
   /** Los teammates, para navegar a su hilo sin pasar por una lista intermedia. */
-  teammates: ReadonlyArray<{ id: string; name: string; unread: boolean }>;
+  teammates: ReadonlyArray<{ id: string; name: string; unread: boolean; state?: MyState }>;
+  /**
+   * En qué punto está esa lista — spec 010, R4.1.
+   *
+   * El 2026-09-17, con la aplicación instalada, el equipo tardaba en llegar y
+   * esta lista no enseñaba **nada**: exactamente lo mismo que enseña cuando de
+   * verdad no tienes teammates. Cargando y vacío no pueden verse igual.
+   */
+  rosterStatus?: "loading" | "ready" | "empty" | "error";
   selectedTeammate: string | null;
   onSelectTeammate: (id: string) => void;
+  onCreateTeammate?: () => void;
+  onRetryRoster?: () => void;
   /** El pie: identidad, plan y máquina. Lo compone quien tiene esos datos. */
   footer?: React.ReactNode;
 };
@@ -72,11 +85,15 @@ export function Sidebar({
   permissions,
   waiting,
   teammates,
+  rosterStatus,
   selectedTeammate,
   onSelectTeammate,
+  onCreateTeammate,
+  onRetryRoster,
   footer,
 }: SidebarProps) {
   const t = useAppT();
+  const roster = rosterStatus ?? (teammates.length > 0 ? "ready" : "empty");
   const manage = CONSOLE_SECTIONS.filter((s) => s.permission === null || permissions.includes(s.permission));
 
   return (
@@ -93,19 +110,54 @@ export function Sidebar({
           />
         </Group>
 
-        {teammates.length > 0 ? (
-          <Group label={t("shell.teammates")}>
-            {teammates.map((teammate) => (
+        <Group label={t("shell.teammates")}>
+          {roster === "loading" ? (
+            <li role="status" aria-busy="true" className="flex flex-col gap-1 px-2 py-1">
+              <span className="sr-only">{t("roster.loading")}</span>
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-4 w-full" />
+              ))}
+            </li>
+          ) : roster === "error" ? (
+            <li className="flex flex-col items-start gap-1 px-2 py-1">
+              <p className="text-xs text-pretty text-muted-foreground">{t("roster.error")}</p>
+              <button
+                type="button"
+                onClick={onRetryRoster}
+                className="min-h-6 rounded-sm text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                {t("roster.retry")}
+              </button>
+            </li>
+          ) : roster === "empty" ? (
+            /* Un hueco no dice nada. Aquí vive el primer paso, donde se mira. */
+            <li className="flex flex-col items-start gap-1 px-2 py-1">
+              <p className="text-xs text-pretty text-muted-foreground">{t("shell.teammates.empty")}</p>
+              <button
+                type="button"
+                onClick={onCreateTeammate}
+                className="min-h-6 rounded-sm text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                {t("roster.create")}
+              </button>
+            </li>
+          ) : (
+            teammates.map((teammate) => (
               <Item
                 key={teammate.id}
                 label={teammate.name}
                 active={active === "teammate" && selectedTeammate === teammate.id}
                 onSelect={() => onSelectTeammate(teammate.id)}
                 dot={teammate.unread}
+                /* R4.7: una espera se dice con palabras. El ocio no se dice —
+                   la ausencia se diseña—, y así lo que sí se dice se lee. */
+                note={
+                  teammate.state && !isIdle(teammate.state) ? t(`state.${teammate.state}`) : undefined
+                }
               />
-            ))}
-          </Group>
-        ) : null}
+            ))
+          )}
+        </Group>
 
         <Group label={t("shell.sidebar.manage")}>
           {manage.map((section) => (
@@ -140,6 +192,7 @@ function Item({
   onSelect,
   badge,
   dot,
+  note,
   icon: Icon,
 }: {
   label: string;
@@ -147,6 +200,8 @@ function Item({
   onSelect: () => void;
   badge?: number;
   dot?: boolean;
+  /** Lo que está esperando, en palabras. Nunca sólo un color (WCAG 1.4.1). */
+  note?: string;
   icon?: LucideIcon;
 }) {
   return (
@@ -159,6 +214,7 @@ function Item({
       >
         {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
         <span className="min-w-0 flex-1 truncate">{label}</span>
+        {note ? <span className="shrink-0 truncate text-xs text-muted-foreground">{note}</span> : null}
         {dot ? <span className="size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" /> : null}
         {badge !== undefined && badge > 0 ? (
           <span className="shrink-0 rounded-full bg-primary px-2 text-xs tabular-nums text-primary-foreground">{badge}</span>

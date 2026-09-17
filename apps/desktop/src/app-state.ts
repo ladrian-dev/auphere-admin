@@ -17,6 +17,17 @@ export const THREAD_STATES = [
   "esperandote",
   "en_pausa_por_tope",
   "maquina_ausente",
+  /**
+   * Spec 010 R4.7 — esperando a otro. El anexo 04 de la investigación lo dejó
+   * por escrito: «ni `deriveThreadState` ni el roster lo contemplan». Sin la
+   * palabra no había ni dónde poner el arreglo, y un teammate parado esperando
+   * a otro se leía como uno que no tiene nada que hacer.
+   *
+   * La delegación entre teammates todavía no existe en la plataforma, así que
+   * hoy este estado sólo llega si alguien pasa `blockedOn`. Que el vocabulario
+   * lo admita es lo que impide que, cuando llegue, acabe en `normal`.
+   */
+  "bloqueado",
 ] as const;
 export type ThreadState = (typeof THREAD_STATES)[number];
 
@@ -34,6 +45,8 @@ export type ThreadFacts = {
   /** El teammate necesita la máquina y no está presente. */
   machineNeeded: boolean;
   machinePresent: boolean;
+  /** A quién espera, si espera a otro teammate. `null` = no consta. */
+  blockedOn?: string | null;
 };
 
 export function deriveThreadState(f: ThreadFacts): ThreadState {
@@ -41,8 +54,11 @@ export function deriveThreadState(f: ThreadFacts): ThreadState {
   if (f.status === "error") return "error";
   if (f.reconnecting) return "reconectando";
   if (f.budgetPaused || f.runStatus === "paused" || f.taskState === "pausada_por_tope") return "en_pausa_por_tope";
+  // Lo que te espera a ti manda sobre cualquier otra espera: es la única que
+  // tú puedes desbloquear.
   if (f.taskState === "esperandote" || f.runStatus === "waiting") return "esperandote";
   if (f.machineNeeded && !f.machinePresent) return "maquina_ausente";
+  if (f.blockedOn) return "bloqueado";
   if (f.partial) return "parcial";
   if (f.itemCount === 0) return "vacio";
   return "normal";
@@ -53,9 +69,25 @@ export function isFailure(state: ThreadState): boolean {
   return state === "error";
 }
 
+/**
+ * Cómo está un teammate para esta persona — y **cuál de ellos es ocio**.
+ *
+ * `en_espera` significa «no tiene nada que hacer». Los otros tres son esperas:
+ * te espera a ti, espera a que vuelva el pool, espera a otro teammate. Pintar
+ * los cuatro igual —que es lo que hacía la lista lateral, que no pintaba
+ * ninguno— convierte un bloqueo en indiferencia (R4.7).
+ */
+export const MY_STATES = ["en_marcha", "esperandote", "en_pausa_por_tope", "bloqueado", "en_espera"] as const;
+export type MyState = (typeof MY_STATES)[number];
+
+/** Ocioso es **uno** de los cinco, y nunca un bloqueo. */
+export function isIdle(state: MyState): boolean {
+  return state === "en_espera";
+}
+
 export type RosterEntry = {
   id: string;
-  my_state: "en_marcha" | "esperandote" | "en_pausa_por_tope" | "en_espera";
+  my_state: MyState;
   my_unread: boolean;
 };
 
