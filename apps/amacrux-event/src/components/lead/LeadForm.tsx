@@ -14,14 +14,14 @@ import { AnswersSchema, LeadFormSchema, type LeadFormValues } from "@/domain/val
 import { track } from "@/lib/analytics";
 import { readCampaignInfo } from "@/lib/campaign";
 import { newIdempotencyKey } from "@/lib/idempotency";
-import { LeadSubmitError, defaultLeadRepository, type LeadRepository } from "@/lib/leads/repository";
+import { LeadSubmitError, defaultLeadRepository, type DeliveryOutcome, type LeadRepository } from "@/lib/leads/repository";
 
 export interface LeadFormProps {
   result: Result;
   answers: PartialAnswers;
   campaign?: string;
   repository?: LeadRepository;
-  onSubmitted: (delivered: boolean) => void;
+  onSubmitted: (outcome: DeliveryOutcome) => void;
 }
 
 type Status = { kind: "idle" } | { kind: "submitting" } | { kind: "error"; message: string; retryable: boolean };
@@ -91,7 +91,7 @@ export function LeadForm({ result, answers, campaign, repository, onSubmitted }:
       const outcome = await repo.saveLead(lead);
       track("lead_submitted", { intentLevel: result.segment.intent, recommendationCategory: values.interest, campaign });
       setStatus({ kind: "idle" });
-      onSubmitted(outcome.delivered || outcome.stored === true);
+      onSubmitted(outcome.delivered || outcome.stored === true ? "delivered" : outcome.mode === "demo" ? "demo" : "failed");
     } catch (e) {
       const kind = e instanceof LeadSubmitError ? e.kind : "delivery_failed";
       if (e instanceof LeadSubmitError && e.kind === "invalid" && e.fields) {
@@ -150,6 +150,12 @@ export function LeadForm({ result, answers, campaign, repository, onSubmitted }:
           {status.kind === "error" && status.retryable ? "Reintentar" : "Ver mi diagnóstico"}
           <ArrowRightIcon />
         </Button>
+        {/* Si el fallo es nuestro, el diagnóstico no se queda de rehén. */}
+        {status.kind === "error" && status.retryable ? (
+          <Button type="button" variant="ghost" size="lg" full onClick={() => onSubmitted("failed")}>
+            Ver mi diagnóstico igualmente
+          </Button>
+        ) : null}
       </div>
       <p className="mt-4 text-xs text-ink-muted">
         Al enviar aceptas el tratamiento descrito en la{" "}

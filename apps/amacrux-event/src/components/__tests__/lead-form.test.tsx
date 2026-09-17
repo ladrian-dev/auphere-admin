@@ -50,7 +50,7 @@ describe("LeadForm", () => {
     expect(sent.answers).toEqual({ ...PROFILE_A, campaign: "evento" });
     expect(sent.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
     resolve({ delivered: true });
-    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(true));
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith("delivered"));
   });
 
   it("error reintentable conserva los datos y reusa la clave", async () => {
@@ -61,10 +61,29 @@ describe("LeadForm", () => {
     expect(await screen.findByText(/parece que no hay conexión/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/nombre y apellido/i)).toHaveValue("Ana Pérez");
     await user.click(screen.getByRole("button", { name: /reintentar/i }));
-    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(true));
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith("delivered"));
     const k1 = repo.saveLead.mock.calls[0]![0].idempotencyKey;
     const k2 = repo.saveLead.mock.calls[1]![0].idempotencyKey;
     expect(k1).toBe(k2);
   });
 
+  // El diagnóstico no es rehén de nuestra entrega: si falla lo nuestro, se ve igual.
+  it("si el envío falla por nuestro lado, se puede ver el diagnóstico igualmente", async () => {
+    const repo = { saveLead: vi.fn<(l: Lead) => Promise<SaveOutcome>>().mockRejectedValue(new LeadSubmitError("rate_limited")) };
+    const { user, onSubmitted } = setup(repo);
+    await fill(user);
+    await user.click(screen.getByRole("button", { name: /ver mi diagnóstico/i }));
+    expect(await screen.findByText(/varios formularios seguidos/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /ver mi diagnóstico igualmente/i }));
+    expect(onSubmitted).toHaveBeenCalledWith("failed");
+  });
+
+  it("un error de validación no ofrece saltarse el formulario", async () => {
+    const repo = { saveLead: vi.fn<(l: Lead) => Promise<SaveOutcome>>().mockRejectedValue(new LeadSubmitError("invalid", { email: "Correo no válido" })) };
+    const { user } = setup(repo);
+    await fill(user);
+    await user.click(screen.getByRole("button", { name: /ver mi diagnóstico/i }));
+    expect(await screen.findByText(/revisa los campos marcados/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /igualmente/i })).not.toBeInTheDocument();
+  });
 });

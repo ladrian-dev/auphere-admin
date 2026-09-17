@@ -72,10 +72,10 @@ describe("wizard reducer", () => {
       expect(s.step).toBe(step);
     }
     expect(wizardReducer(s, { type: "back" }).step).toBe("investment");
-    s = wizardReducer(s, { type: "submitted", delivered: false });
+    s = wizardReducer(s, { type: "submitted", delivery: "demo" });
     expect(s.step).toBe("processing");
     expect(s.contactDecision).toBe("submitted");
-    expect(s.delivered).toBe(false);
+    expect(s.delivery).toBe("demo");
     s = wizardReducer(s, { type: "processed" });
     expect(s.step).toBe("result");
     const back = wizardReducer(s, { type: "back" });

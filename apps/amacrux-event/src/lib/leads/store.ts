@@ -1,6 +1,8 @@
-import { CATEGORY_LABELS, frictionLabel, goalLabel } from "@/domain/copy";
+import { CATEGORY_LABELS, COMPLEXITY_LABELS, MATURITY_LABELS, PROFILE_SEGMENT_LABELS, frictionLabel, goalLabel } from "@/domain/copy";
+import type { OpportunityCategory } from "@/domain/enums";
 import { OPPORTUNITIES } from "@/domain/opportunities";
 import { optionLabel } from "@/domain/questions";
+import { scoreAnswers } from "@/domain/scoring";
 import type { Answers, Segment, Utm } from "@/domain/types";
 import type { LeadParsed } from "@/domain/validation";
 
@@ -46,11 +48,16 @@ export class LeadStoreError extends Error {
 
 type StorageOn = Extract<LeadStorageConfig, { enabled: true }>;
 
-/** Fila plana para una hoja de cálculo: una columna por dato, listas unidas por comas. */
-export function flattenLeadRow(row: LeadRow): Record<string, string | number | boolean | null> {
+/**
+ * Fila plana: una columna por dato, listas unidas por comas. Es el espejo de
+ * todo lo que guardaría la base, y lo que viaja en el correo como línea CSV.
+ * Las columnas nuevas se añaden al final para no romper hojas ya creadas.
+ */
+export function flattenLeadRow(row: LeadRow, now: Date = new Date()): Record<string, string | number | boolean | null> {
   const l = row.answers_labels;
+  const b = scoreAnswers(row.answers, row.segment).breakdown;
   return {
-    fecha: new Date().toISOString(),
+    fecha: now.toISOString(),
     nombre: row.name,
     empresa: row.company,
     correo: row.email,
@@ -77,6 +84,19 @@ export function flattenLeadRow(row: LeadRow): Record<string, string | number | b
     consentimiento_contacto: row.consent_contact,
     modo: row.mode,
     idempotency_key: row.idempotency_key,
+    cargo: row.role,
+    interes: CATEGORY_LABELS[row.interest as OpportunityCategory] ?? row.interest,
+    consentimiento_marketing: row.consent_marketing,
+    utm_source: row.utm?.source ?? null,
+    utm_medium: row.utm?.medium ?? null,
+    utm_campaign: row.utm?.campaign ?? null,
+    utm_content: row.utm?.content ?? null,
+    segmento_perfil: PROFILE_SEGMENT_LABELS[row.segment.profile],
+    segmento_nivel: MATURITY_LABELS[row.segment.maturity],
+    intencion: row.segment.intent,
+    complejidad: COMPLEXITY_LABELS[row.segment.complexity],
+    categorias_detectadas: row.segment.opportunityCategories.map((c) => CATEGORY_LABELS[c]).join(", "),
+    desglose_puntuacion: `claridad:${b.problemClarity}|impacto:${b.impact}|urgencia:${b.urgency}|capacidad:${b.capacity}|madurez:${b.maturity}|encaje:${b.fit}|intencion:${b.intent}`,
   };
 }
 

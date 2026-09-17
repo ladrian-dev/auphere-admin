@@ -17,7 +17,13 @@ export const dynamic = "force-dynamic";
  * documentado en docs/CONFIG.md); el cliente además bloquea el doble envío.
  */
 const WINDOW_MS = 10 * 60 * 1000;
-const MAX_PER_WINDOW = 5;
+/**
+ * En un evento la sala entera comparte la IP pública del wifi. Un límite bajo
+ * deja fuera a todos menos a los primeros, y como el resultado va detrás del
+ * formulario, esa gente se va sin diagnóstico. Contra los bots están el
+ * honeypot, la validación estricta y la idempotencia; esto es solo un tope.
+ */
+const MAX_PER_WINDOW = 60;
 const hits = new Map<string, number[]>();
 const processed = new Map<string, { at: number; body: Record<string, unknown> }>();
 

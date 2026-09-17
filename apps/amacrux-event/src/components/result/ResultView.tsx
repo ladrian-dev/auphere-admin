@@ -8,20 +8,21 @@ import { ArrowLeftIcon, RefreshIcon } from "@/components/ui/icons";
 import type { Result } from "@/domain/types";
 import { track } from "@/lib/analytics";
 import { isDemoModeFlag } from "@/lib/env";
+import type { DeliveryOutcome } from "@/lib/leads/repository";
 
 import { OpportunityLevel } from "./OpportunityLevel";
 import { RecommendationCard } from "./RecommendationCard";
 
 export interface ResultViewProps {
   result: Result;
-  /** Resultado del envío del contacto: true entregado, false modo demo, undefined desconocido. */
-  delivered?: boolean;
+  /** Qué pasó con el contacto. Sin valor: se llegó aquí sin pasar por el envío. */
+  delivery?: DeliveryOutcome;
   campaign?: string;
   onBack: () => void;
   onRestart: () => void;
 }
 
-export function ResultView({ result, delivered, campaign, onBack, onRestart }: ResultViewProps) {
+export function ResultView({ result, delivery, campaign, onBack, onRestart }: ResultViewProps) {
   useEffect(() => {
     track("result_viewed", {
       profileCategory: result.segment.profile,
@@ -32,7 +33,7 @@ export function ResultView({ result, delivered, campaign, onBack, onRestart }: R
     });
   }, [result, campaign]);
 
-  const demo = delivered === false || (delivered === undefined && isDemoModeFlag());
+  const state: DeliveryOutcome | "unknown" = delivery ?? (isDemoModeFlag() ? "demo" : "unknown");
 
   return (
     <div className="fade-up">
@@ -75,9 +76,11 @@ export function ResultView({ result, delivered, campaign, onBack, onRestart }: R
       <div className="mt-8 rounded-lg bg-surface-strong p-5 text-ink-on-strong shadow-3">
         <h2 className="font-display text-xl font-semibold">Siguiente paso: una DEMO con Amacrux</h2>
         <p className="mt-1 text-sm text-ink-on-strong/80">
-          {demo
-            ? "Modo demostración: tu contacto se ha registrado sin enviar correo. Con la entrega activa, Amacrux recibe este diagnóstico al instante."
-            : "Ya tenemos tu contacto. Amacrux te escribirá en los próximos días para definir una DEMO sobre la primera oportunidad."}
+          {state === "demo"
+            ? "Modo demostración: no se ha enviado ni guardado ningún dato. Con la entrega activa, Amacrux recibe este diagnóstico al instante."
+            : state === "failed"
+              ? "No hemos podido registrar tu contacto, así que Amacrux todavía no lo tiene. Aquí está tu diagnóstico igualmente: acércate al equipo si quieres que te escriban."
+              : "Ya tenemos tu contacto. Amacrux te escribirá en los próximos días para definir una DEMO sobre la primera oportunidad."}
           {/* TODO_COMERCIAL: validar con Amacrux el plazo de respuesta prometido. */}
         </p>
       </div>

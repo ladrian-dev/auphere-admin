@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import "./test-utils";
 import { Wizard } from "../wizard/Wizard";
 
-const demoRepo = { saveLead: vi.fn(async () => ({ delivered: false })) };
+const demoRepo = { saveLead: vi.fn(async () => ({ delivered: false, mode: "demo" as const })) };
 
 type User = ReturnType<typeof userEvent.setup>;
 const pick = async (user: User, name: RegExp | string) => {

@@ -42,9 +42,17 @@ export function leadWebhookConfig(env: NodeJS.ProcessEnv = process.env): LeadWeb
 
 export type DestinationsMode = "demo" | "live" | "misconfigured";
 
-/** Resumen de destinos: demo si no hay ninguno; live si hay base o correo; misconfigured si el correo está a medias y no hay base. */
-export function destinationsMode(storage: LeadStorageConfig, delivery: LeadDeliveryConfig): DestinationsMode {
+/**
+ * Resumen de destinos: live si hay base o correo; demo solo si se pide con la
+ * bandera; misconfigured en el resto.
+ *
+ * En producción, un despliegue sin variables NO cae en demo en silencio: eso
+ * devolvía `ok:true` y tiraba el lead sin que nadie se enterara. Fuera de
+ * producción sí se asume demo, para que `pnpm dev` funcione sin cuentas.
+ */
+export function destinationsMode(storage: LeadStorageConfig, delivery: LeadDeliveryConfig, env: NodeJS.ProcessEnv = process.env): DestinationsMode {
   if (storage.enabled || delivery.mode === "live") return "live";
-  if (delivery.mode === "misconfigured") return "misconfigured";
+  if (isDemoModeFlag()) return "demo";
+  if (delivery.mode === "misconfigured" || env.NODE_ENV === "production") return "misconfigured";
   return "demo";
 }

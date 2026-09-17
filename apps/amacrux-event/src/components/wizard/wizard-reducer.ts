@@ -2,6 +2,7 @@ import type { QuestionStep, WizardStep } from "@/domain/enums";
 import { QUESTION_STEPS } from "@/domain/enums";
 import { ALL_QUESTIONS, questionById, questionIndex, type QuestionId } from "@/domain/questions";
 import type { ContactDecision, PartialAnswers, Result, StoredSession } from "@/domain/types";
+import type { DeliveryOutcome } from "@/lib/leads/repository";
 
 export interface WizardState {
   step: WizardStep;
@@ -9,7 +10,7 @@ export interface WizardState {
   startedAt: number;
   contactDecision?: ContactDecision;
   /** Resultado del envío del contacto (undefined hasta que se envía). */
-  delivered?: boolean;
+  delivery?: DeliveryOutcome;
   result?: Result;
   error: string | null;
   notice: string | null;
@@ -25,7 +26,7 @@ export type WizardAction =
   | { type: "back" }
   | { type: "resultReady"; result: Result }
   | { type: "processed" }
-  | { type: "submitted"; delivered: boolean }
+  | { type: "submitted"; delivery: DeliveryOutcome }
   | { type: "restart"; now: number }
   | { type: "fail"; message: string }
   | { type: "clearError" };
@@ -107,7 +108,7 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
     case "processed":
       return state.step === "processing" ? { ...state, step: "result" } : state;
     case "submitted":
-      return { ...state, step: "processing", contactDecision: "submitted", delivered: action.delivered };
+      return { ...state, step: "processing", contactDecision: "submitted", delivery: action.delivery };
     case "restart":
       return { ...initialState(action.now), hydrated: true };
     case "fail":

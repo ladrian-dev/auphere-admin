@@ -1,9 +1,9 @@
 # Guía de prueba rápida para el evento
 
 ## Antes de abrir puertas (5 minutos)
-1. Abre `https://<dominio>/api/health`: debe responder `{"status":"ok","mode":"live"}` (o `demo` si así se decidió).
+1. Abre `https://<dominio>/api/health`: debe responder `{"status":"ok","mode":"live","email":true}`. Si dice `misconfigured`, falta una variable en Vercel; si dice `demo`, la bandera está puesta y **no se guardará nada**.
 2. Escanea el QR con un celular real: la bienvenida carga en menos de 3 s y se ve la marca.
-3. Recorre el perfil A (abajo): tras la pregunta 12 aparece el formulario (nombre y apellido, empresa, correo, teléfono opcional, consentimiento); envíalo con tu propio correo y comprueba que llega al buzón `LEADS_TO` y que después se muestra el resultado.
+3. Recorre el perfil A (abajo): tras la pregunta 12 aparece el formulario (nombre y apellido, empresa, correo, teléfono opcional, consentimiento); envíalo con tu propio correo y comprueba que llega a `contacto+event@auphere.com` y que después se muestra el resultado.
 4. Pulsa **Reiniciar** → confirma → vuelve a la bienvenida limpia (2 toques).
 
 ## URL del QR
@@ -19,7 +19,7 @@
 | **D · Exploratorio** | Dirección | Otro · 1–10 · Mixto | Inicial · Todavía no · Papel, correos y chats | Otro | Decidir mejor | Sin urgencia · Sin equipo técnico · Solo explorar | Tres recomendaciones "Orientativo", nivel Explorando, CTA "Solicita una DEMO" |
 
 ## Qué hacer si…
-- **El envío del lead falla**: el visitante ve un aviso con "Reintentar"; el resultado no se pierde. Revisa `/api/health` y las variables en Vercel.
+- **El envío del lead falla**: el visitante ve un aviso con "Reintentar" y, debajo, "Ver mi diagnóstico igualmente" — nadie se queda sin su resultado por un fallo nuestro, aunque ese contacto no nos llegue. Revisa `/api/health` y las variables en Vercel.
 - **Alguien recarga a mitad**: vuelve al mismo paso con sus respuestas (misma pestaña).
 - **Otra persona toma el celular**: Reiniciar → confirmar. No queda ningún dato del anterior.
 - **No hay conexión**: el diagnóstico y el resultado funcionan igual; solo el envío del lead necesita red.

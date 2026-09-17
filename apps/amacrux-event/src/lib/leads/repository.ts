@@ -16,6 +16,9 @@ export class LeadSubmitError extends Error {
   }
 }
 
+/** Qué pasó con el contacto: entregado, simulado, o no llegó a ninguna parte. */
+export type DeliveryOutcome = "delivered" | "demo" | "failed";
+
 export interface SaveOutcome {
   delivered: boolean;
   /** Guardado en la base de leads (Supabase). */

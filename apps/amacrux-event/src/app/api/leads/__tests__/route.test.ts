@@ -34,6 +34,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   process.env = env;
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -89,9 +90,11 @@ describe("POST /api/leads", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rate limit: el sexto envío de la misma IP es 429", async () => {
+  // En un evento todos salen por el NAT del recinto: el límite tiene que dar
+  // para la sala entera, no para cinco personas.
+  it("rate limit: aguanta 60 envíos de la misma IP y corta en el 61", async () => {
     sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
-    for (let i = 0; i < 5; i++) expect((await post(lead(), "2.2.2.2")).status).toBe(200);
+    for (let i = 0; i < 60; i++) expect((await post(lead(), "2.2.2.2")).status).toBe(200);
     expect((await post(lead(), "2.2.2.2")).status).toBe(429);
     expect((await post(lead(), "3.3.3.3")).status).toBe(200);
   });
@@ -106,6 +109,23 @@ describe("POST /api/leads", () => {
   it("configuración parcial: 503", async () => {
     delete process.env.LEADS_TO;
     expect((await post(lead())).status).toBe(503);
+  });
+
+  // Un despliegue sin variables no puede fingir que entregó: se cae y se ve.
+  it("en producción, sin destinos y sin bandera de demo: 503", async () => {
+    delete process.env.RESEND_API_KEY;
+    vi.stubEnv("NODE_ENV", "production");
+    const res = await post(lead());
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: "unavailable" });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("en producción con la bandera explícita: modo demo", async () => {
+    delete process.env.RESEND_API_KEY;
+    vi.stubEnv("NODE_ENV", "production");
+    process.env.NEXT_PUBLIC_DEMO_MODE = "true";
+    expect(await (await post(lead())).json()).toMatchObject({ ok: true, mode: "demo" });
   });
 
   it("los logs no contienen datos personales", async () => {

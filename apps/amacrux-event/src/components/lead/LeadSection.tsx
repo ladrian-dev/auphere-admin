@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/Button";
 import { ArrowLeftIcon } from "@/components/ui/icons";
 import type { PartialAnswers, Result } from "@/domain/types";
-import type { LeadRepository } from "@/lib/leads/repository";
+import type { DeliveryOutcome, LeadRepository } from "@/lib/leads/repository";
 
 import { LeadForm } from "./LeadForm";
 
@@ -12,7 +12,7 @@ export interface LeadSectionProps {
   answers: PartialAnswers;
   campaign?: string;
   repository?: LeadRepository;
-  onSubmitted: (delivered: boolean) => void;
+  onSubmitted: (outcome: DeliveryOutcome) => void;
   onBack: () => void;
 }
 

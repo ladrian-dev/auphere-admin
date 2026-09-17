@@ -186,14 +186,14 @@ export function Wizard({ processingMs = 1400, autoAdvanceMs = 220, provider = ru
         campaign={campaign}
         repository={leadRepository}
         onSubmitted={(d) => {
-          dispatch({ type: "submitted", delivered: d });
+          dispatch({ type: "submitted", delivery: d });
           window.scrollTo({ top: 0 });
         }}
         onBack={() => dispatch({ type: "back" })}
       />
     );
   } else if (state.step === "result") {
-    body = <ResultView result={state.result} delivered={state.delivered} campaign={campaign} onBack={() => dispatch({ type: "back" })} onRestart={() => setConfirmRestart(true)} />;
+    body = <ResultView result={state.result} delivery={state.delivery} campaign={campaign} onBack={() => dispatch({ type: "back" })} onRestart={() => setConfirmRestart(true)} />;
   }
 
   return (
