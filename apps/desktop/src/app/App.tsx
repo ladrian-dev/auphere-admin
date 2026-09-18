@@ -16,11 +16,12 @@ import {
   type LocalExecPolicy,
   type PresencePush,
   type SessionPush,
+  type ConnectivityView,
   type Team,
   type Teammate,
   type ThreadEnv,
+  type UpdateView,
   type Usage,
-  type ConnectivityView,
   type WorkstationView,
   bridge,
 } from "./bridge";
@@ -35,6 +36,9 @@ import { WorkstationChip } from "./shell/workstation-chip";
 import { Today } from "./routes/today";
 import { SessionExpired } from "./routes/session-expired";
 import { ConnectionBanner } from "./shell/connection-banner";
+import { StatusRegion } from "./shell/status-region";
+import { UnsupportedVersion } from "./shell/unsupported-version";
+import { UpdateBanner } from "./shell/update-banner";
 import {
   type History,
   current as currentSection,
@@ -44,6 +48,8 @@ import {
 import { Account } from "./routes/account";
 import { EnvPanel } from "./routes/env";
 import { Inbox } from "./routes/inbox";
+import { FeedbackBanners, FeedbackProvider, FeedbackToasts, useNotify } from "./feedback/provider";
+import { NotificationPrefs } from "./routes/notification-prefs";
 import { SectionFailed } from "./routes/section-failed";
 import { NewTeammateForm, capOf } from "./routes/new-teammate";
 import { TeammateSettings } from "./routes/teammate-settings";
@@ -113,7 +119,11 @@ export function App() {
           </a>
         )}
       >
-        <Workspace session={session} presence={presence} permissions={permissions} />
+        {/* Un solo sitio donde se decide cómo se dice cada cosa (R5.1). */}
+        <FeedbackProvider>
+          <Workspace session={session} presence={presence} permissions={permissions} />
+          <FeedbackToasts />
+        </FeedbackProvider>
       </CompanionLocaleProvider>
     </LangProvider>
   );
@@ -131,6 +141,7 @@ function sectionTitleKey(section: Section): Parameters<ReturnType<typeof useAppT
 
 function Workspace({ session, presence, permissions }: { session: SessionPush | null; presence: PresencePush | null; permissions: string[] }) {
   const t = useAppT();
+  const notify = useNotify();
   const [roster, setRoster] = useState<Teammate[]>([]);
   const [rosterStatus, setRosterStatus] = useState<RosterStatus>("loading");
   const [selected, setSelected] = useState<string | null>(null);
@@ -148,6 +159,8 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
    * página de error de Chromium ocupando la ventana.
    */
   const [sectionFailed, setSectionFailed] = useState<Section | null>(null);
+  /** Lo que el updater dice. Sin esto, el ciclo entero sólo hablaba al registro. */
+  const [update, setUpdate] = useState<UpdateView | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
 
   /* ── El armazón — spec 010 ──────────────────────────────────────────── */
@@ -196,6 +209,13 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
       setHistory((h) => goTo(h, where));
     });
     const offFailed = bridge.on("app:console.failed", (failure) => setSectionFailed(failure?.section ?? null));
+    // Salir al navegador deja de ser un silencio (R5.3). Banner y no aviso
+    // efímero: la ventana pierde el foco justo después, y lo que se fue solo
+    // mientras mirabas otra pantalla no se lo dijo a nadie.
+    const offHandoff = bridge.on("app:handoff", () => {
+      notify({ severidad: "info", alcance: "vista", urgencia: "diferible", clave: "feedback.browser" });
+    });
+    const offUpdate = bridge.on("app:update", setUpdate);
     const offWorkstation = bridge.on("app:workstation", setWorkstation);
     const offConnectivity = bridge.on("app:connectivity", setConnectivity);
     return () => {
@@ -204,6 +224,8 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
       offTask();
       offLocation();
       offFailed();
+      offHandoff();
+      offUpdate();
       offWorkstation();
       offConnectivity();
     };
@@ -286,7 +308,16 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
     }
     let alive = true;
     void bridge.envForThread({ thread_id: threadId }).then((res) => {
-      if (alive) setEnv(res.ok ? res.data : null);
+      if (!alive) return;
+      setEnv(res.ok ? res.data : null);
+      /*
+       * R5.3. Un fallo aquí se trataba como «todavía no hay datos», y el panel
+       * de Entorno se quedaba en blanco: indistinguible de un hilo que aún no
+       * ha preguntado a la máquina.
+       */
+      if (!res.ok) {
+        notify({ severidad: "aviso", alcance: "vista", urgencia: "diferible", clave: "feedback.env.failed" });
+      }
     });
     return () => {
       alive = false;
@@ -411,7 +442,7 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
               {/* R3.6: el estado de la máquina se ve **sin abrir nada**, que es
                   lo que hacía la barra de 44 px y lo que se conserva de ella. */}
               <div className="px-2 py-1">
-                <WorkstationChip state={workstation} />
+                <WorkstationChip state={workstation} announce />
               </div>
             </div>
           }
@@ -423,18 +454,35 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
       {/* Lo que la sección de la pantalla pinta en el panel. Cuando la sección
           es de administrar, este hueco es de la consola y aquí no va nada. */}
       <div className="flex h-full min-h-0 flex-col">
-        <ConnectionBanner connectivity={connectivity} onRetry={() => void bridge.whoami()} />
-        {sectionFailed !== null ? (
-          <SectionFailed
-            section={sectionFailed}
-            onRetry={() => void bridge.shellShowSection({ section: sectionFailed })}
-          />
-        ) : null}
-        {session?.kind === "pair_needed" ? (
-          <p className="border-b border-border bg-muted px-4 py-2 text-sm text-pretty text-muted-foreground" role="status">
-            {t("session.pair")}
-          </p>
-        ) : null}
+        {/* R5.7 — **una sola región educada por vista**. Todo lo que se puede
+            estar diciendo a la vez cuelga de aquí; cada banda trae su texto y
+            ninguna su propia región. */}
+        <StatusRegion>
+          <ConnectionBanner connectivity={connectivity} onRetry={() => void bridge.whoami()} />
+          {/* R6.4: la versión no admitida manda sobre el aviso normal — no es
+              «hay una nueva», es «con ésta ya no puedes trabajar». */}
+          {workstation?.status === "version_no_admitida" ? (
+            <UnsupportedVersion
+              required={workstation.required_version ?? null}
+              installed={__APP_VERSION__}
+              update={update}
+            />
+          ) : (
+            <UpdateBanner update={update} />
+          )}
+          <FeedbackBanners />
+          {sectionFailed !== null ? (
+            <SectionFailed
+              section={sectionFailed}
+              onRetry={() => void bridge.shellShowSection({ section: sectionFailed })}
+            />
+          ) : null}
+          {session?.kind === "pair_needed" ? (
+            <p className="border-b border-border bg-muted px-4 py-2 text-sm text-pretty text-muted-foreground">
+              {t("session.pair")}
+            </p>
+          ) : null}
+        </StatusRegion>
 
         {session?.kind === "stop" ? (
           <SessionExpired
@@ -442,14 +490,24 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
             onSignIn={() => void bridge.openConsole({ path: "/" })}
           />
         ) : section === "cuenta" ? (
-          <Account
-            status={accountStatus}
-            usage={usage}
-            team={team}
-            policy={policy}
-            onRetry={() => void loadAccount()}
-            onOpenConsole={(path) => void bridge.openConsole({ path })}
-          />
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <Account
+              status={accountStatus}
+              usage={usage}
+              team={team}
+              policy={policy}
+              onRetry={() => void loadAccount()}
+              onOpenConsole={(path) => void bridge.openConsole({ path })}
+            />
+            {/* R5.8: la preferencia de avisos vive donde vive lo de la cuenta,
+                y no en un ajuste escondido. Va aquí y no dentro de `Account`
+                porque `Account` no habla con el puente: recibe lo que pinta. */}
+            {accountStatus === "ready" ? (
+              <div className="px-6 pb-6">
+                <NotificationPrefs />
+              </div>
+            ) : null}
+          </div>
         ) : section === "pendientes" ? (
           <Inbox
             focus={focus}

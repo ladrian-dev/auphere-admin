@@ -17,6 +17,7 @@ import { Button } from "@nexus/ui";
 import { useEffect, useState } from "react";
 
 import { type ExecMode, type LocalExecPolicy, type Teammate, bridge } from "../bridge";
+import { InlineNotice, useFeedback } from "../feedback/provider";
 import { useAppT } from "../i18n";
 
 export type ThreadEnv = {
@@ -137,8 +138,12 @@ export function EnvPanel({ teammate, env, policy, onOpenConsole }: EnvPanelProps
  * si no coinciden. Enseñar solo lo segundo haría que cambiar la preferencia
  * pareciera que no hace nada.
  */
-function LocalExecPolicySection({ initial }: { initial: LocalExecPolicy | null }) {
+const POLICY_SLOT = "env.policy";
+
+/** Exportada para poder comprobar que guardar **no falla en silencio** (R5.3). */
+export function LocalExecPolicySection({ initial }: { initial: LocalExecPolicy | null }) {
   const t = useAppT();
+  const { notify, clear } = useFeedback();
   const [policy, setPolicy] = useState<LocalExecPolicy | null>(initial);
   const [saving, setSaving] = useState(false);
 
@@ -154,11 +159,27 @@ function LocalExecPolicySection({ initial }: { initial: LocalExecPolicy | null }
 
   if (policy === null) return null;
 
+  /*
+   * R5.3. Guardar fallaba en silencio: el botón se quedaba donde estaba y la
+   * persona se iba creyendo que había cambiado su política de ejecución — que
+   * es de las pocas preferencias que deciden si algo toca tu máquina.
+   */
   const save = async (mode: ExecMode) => {
     setSaving(true);
+    clear(POLICY_SLOT);
     const saved = await bridge.policySetPref({ executable: null, mode });
     setSaving(false);
-    if (saved.ok) setPolicy(saved.data);
+    if (saved.ok) {
+      setPolicy(saved.data);
+      return;
+    }
+    notify({
+      severidad: "error",
+      alcance: "elemento",
+      urgencia: "diferible",
+      slot: POLICY_SLOT,
+      clave: "feedback.policy.failed",
+    });
   };
 
   return (
@@ -178,6 +199,7 @@ function LocalExecPolicySection({ initial }: { initial: LocalExecPolicy | null }
           </button>
         ))}
       </div>
+      <InlineNotice slot={POLICY_SLOT} />
       {policy.capped ? (
         <p className="text-xs text-pretty text-muted-foreground" role="note">
           {t("policy.capped", { effective: t(`policy.${policy.effective}`) })}

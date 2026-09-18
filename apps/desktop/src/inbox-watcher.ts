@@ -12,7 +12,7 @@
  *    comparan las tarjetas contra las que ya se conocían, y solo las nuevas
  *    pasan por la política de avisos.
  */
-import { type Effect, type Level, type Pending, type Prefs, onArrival, onOpen } from "./notifications-policy.js";
+import { type Effect, type Level, type NotifyContext, type Pending, type Prefs, onArrival, onOpen } from "./notifications-policy.js";
 
 export type InboxItem = {
   action_id: string;
@@ -38,6 +38,12 @@ export type WatcherPorts = {
   /** Empuja a la pantalla. */
   push(channel: "app:inbox" | "app:inbox.changed" | "app:task.state", payload: unknown): void;
   prefs(): Prefs;
+  /**
+   * El contexto del aviso — spec 010, R5.5 y R12.2. Se pregunta **al avisar**:
+   * entre reconciliar y avisar la persona pudo volver a la ventana, que es
+   * justo la diferencia entre un aviso útil y uno molesto.
+   */
+  notifyContext(): NotifyContext;
   wait(ms: number): Promise<void>;
 };
 
@@ -73,13 +79,13 @@ export class InboxWatcher {
     if (this.firstPass) {
       // Al abrir: un resumen, no una notificación por tarjeta (R7.3).
       this.firstPass = false;
-      this.ports.apply(onOpen(fresh.map(asPending), this.ports.prefs()));
+      this.ports.apply(onOpen(fresh.map(asPending), this.ports.prefs(), this.ports.notifyContext()));
       return added;
     }
     for (const item of added) {
-      this.ports.apply(onArrival(asPending(item), this.ports.prefs(), fresh.map(asPending)));
+      this.ports.apply(onArrival(asPending(item), this.ports.prefs(), fresh.map(asPending), this.ports.notifyContext()));
     }
-    if (added.length === 0) this.ports.apply(onOpen([], this.ports.prefs()).filter((e) => e.kind === "badge"));
+    if (added.length === 0) this.ports.apply(onOpen([], this.ports.prefs(), this.ports.notifyContext()).filter((e) => e.kind === "badge"));
     return added;
   }
 
@@ -88,7 +94,7 @@ export class InboxWatcher {
     if (!this.known.delete(actionId)) return;
     this.ports.push("app:inbox.changed", { action_id: actionId });
     this.ports.push("app:inbox", this.items);
-    this.ports.apply(onOpen([], this.ports.prefs()).filter((e) => e.kind === "badge"));
+    this.ports.apply(onOpen([], this.ports.prefs(), this.ports.notifyContext()).filter((e) => e.kind === "badge"));
   }
 
   /** Bucle: conectar → reconciliar → escuchar → reconectar. */

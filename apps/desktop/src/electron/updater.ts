@@ -60,11 +60,29 @@ export async function detectBuildKind(): Promise<BuildKind> {
   }
 }
 
+/**
+ * Lo que la pantalla puede decir de la actualización — spec 010, R6.1 y R6.3.
+ *
+ * `esperando_trabajo` existía en el tipo de la barra desde la spec 008 y **no
+ * se pintaba nunca**, porque nadie lo emitía. Ese es exactamente el bug: el
+ * ciclo entero funcionaba y su resultado sólo llegaba al registro.
+ */
+export type UpdateState =
+  | { state: "idle" }
+  | { state: "descargando"; version: string }
+  | { state: "lista"; version: string }
+  | { state: "esperando_trabajo"; version: string };
+
 export type UpdaterPorts = {
   /** Qué está pasando ahora en la máquina. Lo aporta `main.ts`. */
   readActivity: () => Activity;
   /** Para dejar rastro de por qué no se actualizó, que es lo que se pregunta. */
   log: (message: string, detail?: Record<string, unknown>) => void;
+  /**
+   * Cómo se lo cuenta a la persona. Sin esto, `log` era el único destino — y
+   * nadie lee el registro de una aplicación de escritorio.
+   */
+  announce: (state: UpdateState) => void;
 };
 
 /**
@@ -75,14 +93,27 @@ export type UpdaterPorts = {
  * «Buscar actualizaciones» (R6.5), y sin esto la única forma de comprobar el
  * canal era esperar al siguiente latido.
  */
-export type UpdaterHandle = { stop: () => void; check: () => void };
+export type UpdaterHandle = {
+  stop: () => void;
+  check: () => void;
+  /**
+   * Instalar **ahora**, porque la persona lo pidió (R6.2). Devuelve `busy`
+   * cuando hay trabajo vivo: no instala y lo dice, en vez de callar o de
+   * llevarse por delante una decisión sin tomar (R6.3).
+   */
+  install: () => { ok: true } | { error: "busy" | "none" };
+};
 
 export async function startUpdater(ports: UpdaterPorts): Promise<UpdaterHandle> {
   const build = await detectBuildKind();
 
   if (!feedIsAcceptable(FEED_URL)) {
     ports.log("updater apagado: el canal no es aceptable", { feed: FEED_URL });
-    return { stop: () => {}, check: () => ports.log("el canal no es aceptable", { feed: FEED_URL }) };
+    return {
+      stop: () => {},
+      check: () => ports.log("el canal no es aceptable", { feed: FEED_URL }),
+      install: () => ({ error: "none" }),
+    };
   }
 
   const first = decideUpdate({ build, activity: ports.readActivity(), downloaded: null, available: null });
@@ -93,7 +124,11 @@ export async function startUpdater(ports: UpdaterPorts): Promise<UpdaterHandle> 
     ports.log("updater apagado", { reason: first.reason });
     // Sin canal no hay nada que comprobar, y decirlo es más honesto que un
     // botón que no hace nada (§V).
-    return { stop: () => {}, check: () => ports.log("no hay canal que comprobar", {}) };
+    return {
+      stop: () => {},
+      check: () => ports.log("no hay canal que comprobar", {}),
+      install: () => ({ error: "none" }),
+    };
   }
 
   // **Por `default`, y no desestructurando el espacio de nombres.**
@@ -122,9 +157,31 @@ export async function startUpdater(ports: UpdaterPorts): Promise<UpdaterHandle> 
 
   let downloaded: { version: string } | null = null;
 
+  /**
+   * Lo que la pantalla ve. Se recalcula a partir de lo mismo que decide la
+   * instalación, para que no haya dos verdades: «lista» y «esperando a que
+   * termine el trabajo» son la misma descarga vista con la máquina ocupada o
+   * libre, no dos estados que alguien tenga que mantener en sincronía.
+   */
+  const announceCurrent = () => {
+    if (!downloaded) return;
+    const decision = decideUpdate({ build, activity: ports.readActivity(), downloaded, available: null });
+    ports.announce(
+      decision.kind === "wait"
+        ? { state: "esperando_trabajo", version: downloaded.version }
+        : { state: "lista", version: downloaded.version },
+    );
+  };
+
+  autoUpdater.on("update-available", (info: { version: string }) => {
+    ports.announce({ state: "descargando", version: info.version });
+  });
   autoUpdater.on("update-downloaded", (info: { version: string }) => {
     downloaded = { version: info.version };
     ports.log("actualización descargada", { version: info.version });
+    // R6.1: aquí estaba el silencio. La descarga terminaba y sólo lo sabía el
+    // registro; la persona se enteraba al reiniciar, si se enteraba.
+    announceCurrent();
   });
   autoUpdater.on("error", (error: Error) => {
     ports.log("el updater falló", { error: error.message });
@@ -138,6 +195,10 @@ export async function startUpdater(ports: UpdaterPorts): Promise<UpdaterHandle> 
       available: null,
     });
     if (decision.kind === "check") void autoUpdater.checkForUpdates();
+    // Con la descarga hecha, cada latido revisa si el trabajo vivo terminó: es
+    // lo que convierte «esperando a que termines» en «lista» sin que nadie
+    // tenga que recargar nada.
+    announceCurrent();
   };
 
   app.on("before-quit", () => {
@@ -155,7 +216,26 @@ export async function startUpdater(ports: UpdaterPorts): Promise<UpdaterHandle> 
     }
   });
 
+  /**
+   * R6.2 y R6.3 — instalar cuando la persona lo pide.
+   *
+   * Comparte decisión con la salida: si hay trabajo vivo **no instala**, y el
+   * `busy` sube hasta la pantalla para que se diga en vez de que el botón
+   * parezca roto.
+   */
+  const install = (): { ok: true } | { error: "busy" | "none" } => {
+    if (!downloaded) return { error: "none" };
+    const decision = decideUpdate({ build, activity: ports.readActivity(), downloaded, available: null });
+    if (decision.kind !== "install-on-quit") {
+      announceCurrent();
+      return { error: "busy" };
+    }
+    ports.log("instalando a petición", { version: decision.version });
+    autoUpdater.quitAndInstall(true, true);
+    return { ok: true };
+  };
+
   tick();
   const timer = setInterval(tick, CHECK_INTERVAL_MS);
-  return { stop: () => clearInterval(timer), check: tick };
+  return { stop: () => clearInterval(timer), check: tick, install };
 }

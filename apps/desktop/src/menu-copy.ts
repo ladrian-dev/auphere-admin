@@ -22,6 +22,8 @@ export type MenuCopy = {
   about: string;
   settings: string;
   checkUpdates: string;
+  /** Con `{version}` dentro: se sustituye por la que está lista (R6.2). */
+  installUpdate: string;
   file: string;
   newTeammate: string;
   edit: string;
@@ -47,6 +49,7 @@ const ES: MenuCopy = {
   about: "Acerca de Auphere",
   settings: "Ajustes…",
   checkUpdates: "Buscar actualizaciones",
+  installUpdate: "Instalar la versión {version}…",
   file: "Archivo",
   newTeammate: "Nuevo teammate",
   edit: "Edición",
@@ -72,6 +75,7 @@ const EN: MenuCopy = {
   about: "About Auphere",
   settings: "Settings…",
   checkUpdates: "Check for updates",
+  installUpdate: "Install version {version}…",
   file: "File",
   newTeammate: "New teammate",
   edit: "Edit",

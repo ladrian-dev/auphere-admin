@@ -98,8 +98,20 @@ export function TeammateSettings({
     setFailed(null);
     const result = await onSave(patch);
     setSending(false);
-    if (!result.ok) setFailed(result.error);
+    if (!result.ok) {
+      setFailedAction("save");
+      setFailed(result.error);
+    }
   };
+
+  /*
+   * Spec 010 R5.2 — el fallo se dice **con el nombre de lo que se intentaba**.
+   *
+   * Archivar y guardar compartían mensaje: un fallo al archivar decía «No se
+   * pudo guardar. Nada ha cambiado», y quien lo leía se quedaba sin saber si el
+   * teammate estaba archivado o no.
+   */
+  const [failedAction, setFailedAction] = React.useState<"save" | "archive">("save");
 
   const archive = async () => {
     setSending(true);
@@ -107,8 +119,12 @@ export function TeammateSettings({
     const result = await onArchive();
     setSending(false);
     setConfirming(false);
-    if (result.ok) onClose();
-    else setFailed(result.error);
+    if (result.ok) {
+      onClose();
+      return;
+    }
+    setFailedAction("archive");
+    setFailed(result.error);
   };
 
   return (
@@ -192,7 +208,13 @@ export function TeammateSettings({
 
       {failed ? (
         <p className="max-w-prose text-sm text-pretty text-status-warning" role="alert">
-          {t(isKnownError(failed) ? `create.failed.${failed}` : "settings.failed.unknown")}
+          {t(
+            isKnownError(failed)
+              ? `create.failed.${failed}`
+              : failedAction === "archive"
+                ? "settings.failed.archive"
+                : "settings.failed.unknown",
+          )}
         </p>
       ) : null}
 

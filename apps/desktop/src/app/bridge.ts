@@ -147,6 +147,7 @@ type Push = {
   /** Dónde está la consola, para que la lista lateral lo marque (R1.4). */
   "app:console.location": { section: Section; path: string };
   "app:console.failed": { section: Section; code: number } | null;
+  "app:handoff": { url: string };
   "app:workstation": WorkstationView;
   "app:signIn": SignInView;
   "app:update": UpdateView;
@@ -249,6 +250,8 @@ export interface AuphereBridge {
   signInCancel(): Promise<null>;
   setupStatus(): Promise<Result<SetupChecklist>>;
   updateInstall(): Promise<{ ok: boolean; error?: "busy" }>;
+  /** Comprobar el canal ahora (R6.4, R6.5). */
+  updateCheck(): Promise<null>;
   handoffDone(input: { kind: "sign_in" | "payment" }): Promise<null>;
 
   on<K extends keyof Push>(channel: K, callback: (payload: Push[K]) => void): () => void;

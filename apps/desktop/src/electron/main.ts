@@ -64,7 +64,7 @@ import { MIN_SIDEBAR, STRIP_HEIGHT, contentRect } from "./shell-layout.js";
 import { windowBackground } from "./window-colors.js";
 import { type ShellPrefs, mergeShellPrefs, normaliseShellPrefs } from "../shell-prefs.js";
 import { type Section, pathOf, sectionOfPath } from "../sections.js";
-import { startUpdater, type UpdaterHandle } from "./updater.js";
+import { startUpdater, type UpdateState, type UpdaterHandle } from "./updater.js";
 import { menuCopy } from "../menu-copy.js";
 import type { Activity } from "../update-policy.js";
 
@@ -133,6 +133,8 @@ function quitWithWarning(copy: { title: string; detail: string; quit: string; ca
  * actualizaciones» no hace nada, que es mejor que fingir que comprueba.
  */
 let updater: UpdaterHandle | null = null;
+/** Lo último que dijo el updater. Lo lee el menú para poder nombrar la versión. */
+let updateState: UpdateState = { state: "idle" };
 
 function layout(window: BaseWindow, appView: WebContentsView, barView: WebContentsView): void {
   const { width, height } = window.getContentBounds();
@@ -140,7 +142,7 @@ function layout(window: BaseWindow, appView: WebContentsView, barView: WebConten
   barView.setBounds({ x: 0, y: Math.max(0, height - BAR_HEIGHT), width, height: BAR_HEIGHT });
 }
 
-export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
+export async function bootstrap(): Promise<{ readActivity: () => Activity; announce: (state: UpdateState) => void }> {
   // Lo PRIMERO que se dice, antes de nada: contra qué se está hablando. La
   // aplicación apunta a producción salvo que alguien ponga las variables, así
   // que probar contra el entorno equivocado es el caso fácil — y su síntoma es
@@ -368,6 +370,12 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
    */
   const buildMenu = () => {
     const m = menuCopy(appLocale());
+    /*
+     * R6.5 — la versión instalada se ve desde el menú. El panel «Acerca de» es
+     * donde macOS la busca, y decirla ahí es una línea en vez de una entrada de
+     * menú apagada que no hace nada.
+     */
+    app.setAboutPanelOptions({ applicationName: "Auphere", applicationVersion: app.getVersion() });
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         ...(process.platform === "darwin"
@@ -378,7 +386,18 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
                   { role: "about" as const, label: m.about },
                   { type: "separator" as const },
                   { label: m.settings, accelerator: "CommandOrControl+,", click: () => showSection("cuenta") },
-                  { label: m.checkUpdates, click: () => updater?.check() },
+                  /*
+                   * R6.2 y R6.5 — comprobar y, si ya está lista, instalar.
+                   *
+                   * La misma entrada cambia de significado con el estado en vez
+                   * de haber dos, una de ellas siempre apagada: «instalar» sin
+                   * nada descargado no lleva a ninguna parte (§V). Y lleva el
+                   * número, porque «hay una nueva» sin versión no deja
+                   * comprobar nada ni contárselo a soporte.
+                   */
+                  updateState.state === "lista"
+                    ? { label: m.installUpdate.replace("{version}", updateState.version), click: () => updater?.install() }
+                    : { label: m.checkUpdates, click: () => updater?.check() },
                   { type: "separator" as const },
                   { role: "hide" as const },
                   { role: "hideOthers" as const },
@@ -454,12 +473,25 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
     if (consoleSection !== null) showSurface("console");
   });
 
+  /**
+   * Spec 010 R5.3 — **salir al navegador deja de ser un silencio.**
+   *
+   * Había tres sitios llamando a `openExternal` sin decir nada: «Elegir plan»,
+   * «Comprar saldo» y entrar con Google. La ventana se quedaba exactamente
+   * igual mientras el navegador se abría detrás, y quien volvía no tenía forma
+   * de saber si había pulsado bien.
+   */
+  const leaveToBrowser = (url: string) => {
+    void openExternal(url);
+    pushApp("app:handoff", { url });
+  };
+
   // La pantalla de operar no navega: es una página local. Un enlace se abre en
   // la consola (`app:openConsole`) o en el navegador del sistema, nunca dentro
   // de la vista, que es lo que la mantiene siendo una pantalla y no un navegador.
   appView.webContents.setWindowOpenHandler(({ url }) => {
     const decision = decideWindowOpen(url, new URL(CONSOLE_URL).origin);
-    if (decision.action === "open_external") void openExternal(decision.url);
+    if (decision.action === "open_external") leaveToBrowser(decision.url);
     return { action: "deny" };
   });
   appView.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -468,14 +500,14 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
   const consoleOrigin = new URL(CONSOLE_URL).origin;
   consoleView.webContents.setWindowOpenHandler(({ url }) => {
     const decision = decideWindowOpen(url, consoleOrigin);
-    if (decision.action === "open_external") void openExternal(decision.url);
+    if (decision.action === "open_external") leaveToBrowser(decision.url);
     return { action: "deny" };
   });
   consoleView.webContents.on("will-navigate", (event, url) => {
     if (!navigationAllowed(url, consoleOrigin)) {
       event.preventDefault();
       const decision = decideWindowOpen(url, consoleOrigin);
-      if (decision.action === "open_external") void openExternal(decision.url);
+      if (decision.action === "open_external") leaveToBrowser(decision.url);
     }
   });
 
@@ -634,7 +666,21 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
       ),
     apply: (effects) =>
       applyNotificationEffects(effects, (actionId) => {
-        showSurface("app");
+        /*
+         * Spec 010 R5.6 — pulsar un aviso **trae la ventana al frente**.
+         *
+         * Antes esto sólo cambiaba de superficie y empujaba el foco de la
+         * tarjeta. Con la ventana oculta —que desde R3.5 es lo normal al
+         * cerrarla— no pasaba absolutamente nada visible: el aviso parecía
+         * roto, y quien lo pulsa dos veces acaba desactivándolos.
+         */
+        window.show();
+        // En macOS, con la aplicación en segundo plano, `show()` no la pone
+        // delante de la que tiene el foco: eso es `app.focus`.
+        app.focus({ steal: true });
+        // El objeto que lo produjo vive en Pendientes; `app:inbox.focus`
+        // marca cuál dentro de la lista.
+        showSection("pendientes");
         pushApp("app:inbox.focus", { action_id: actionId });
       }),
     push: (channel, payload) => {
@@ -646,6 +692,10 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
       pushApp(channel, payload);
     },
     prefs: () => notificationPrefs.read(),
+    // R5.5: con la ventana delante lo de dentro ya se ve. Se pregunta al
+    // avisar, no al arrancar: es lo único que distingue «estabas mirando» de
+    // «te fuiste a otra aplicación».
+    notifyContext: () => ({ windowFocused: window.isVisible() && window.isFocused(), lang: appLocale() }),
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });
   registerAppSurface({
@@ -662,6 +712,10 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
     onSessionLost: () => void gate.refresh(),
     inbox,
     notificationPrefs,
+    // El updater se arma después de la primera ventana, así que aquí puede no
+    // existir todavía. Sin él no hay nada descargado que instalar: `none`.
+    installUpdate: () => updater?.install() ?? { error: "none" as const },
+    checkUpdate: () => updater?.check(),
     // Lo que solo sabe esta máquina: dónde trabaja cada cliente y qué nombraron
     // los comandos de cada tarea. No sube a la plataforma y no baja a nadie.
     machine: {
@@ -821,7 +875,21 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity }> {
     pendingApprovals: countWaiting(waitingNow),
   });
   readActivityNow = readActivity;
-  return { readActivity };
+  /*
+   * R6.1 — el updater se arma fuera de `bootstrap()` (comprobar la firma
+   * cuesta un proceso y no puede retrasar la primera ventana), así que se lleva
+   * de aquí lo único que necesita para hablar con la pantalla.
+   */
+  return {
+    readActivity,
+    announce: (state: UpdateState) => {
+      updateState = state;
+      pushApp("app:update", state);
+      // La orden del menú dice «Instalar la versión X» sólo cuando la hay, así
+      // que el menú se reconstruye con el estado, igual que con el idioma.
+      buildMenu();
+    },
+  };
 }
 
 async function captureEvidence(
@@ -885,7 +953,7 @@ if (process.env.NODE_ENV !== "test") {
       await bootstrapped;
       // El updater va DESPUÉS de arrancar: comprobar la propia firma cuesta un
       // proceso, y nada de esto debe retrasar la primera ventana.
-      const { readActivity } = await bootstrapped;
+      const { readActivity, announce } = await bootstrapped;
       // **Con `catch`, y a propósito.** Sin él, un fallo al armar el updater
       // quedaba como `UnhandledPromiseRejectionWarning` en un `stderr` que
       // nadie lee en una aplicación de escritorio — que es como v0.1.0 y
@@ -897,6 +965,12 @@ if (process.env.NODE_ENV !== "test") {
       updater = await startUpdater({
         readActivity,
         log: (message, detail) => console.info("[updater]", message, detail ?? {}),
+        /*
+         * R6.1 — aquí estaba el silencio. El ciclo entero funcionaba y su
+         * resultado sólo llegaba al registro: la persona se enteraba de que
+         * había una versión nueva al reiniciar, si se enteraba.
+         */
+        announce,
       }).catch((error: unknown) => {
         console.error("[updater] no se pudo armar", error);
         return null;

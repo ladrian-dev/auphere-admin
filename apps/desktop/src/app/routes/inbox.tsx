@@ -16,6 +16,7 @@ import { Badge, Button, Skeleton } from "@nexus/ui";
 import { useCallback, useEffect, useState } from "react";
 
 import { type InboxItem, type Level, bridge } from "../bridge";
+import { InlineNotice, useFeedback } from "../feedback/provider";
 import { useAppT } from "../i18n";
 
 /** El nivel se pinta con las variantes del sistema; ningún color suelto. */
@@ -27,8 +28,12 @@ const VARIANT: Record<Level, "destructive" | "secondary" | "outline"> = {
 
 type Props = { onOpenThread: (teammateId: string) => void; focus: string | null };
 
+/** Un aviso por tarjeta: el fallo va **donde estaba el botón** (R5.2). */
+const slotOf = (actionId: string) => `inbox.decide:${actionId}`;
+
 export function Inbox({ onOpenThread, focus }: Props) {
   const t = useAppT();
+  const { notify, clear } = useFeedback();
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
@@ -53,11 +58,28 @@ export function Inbox({ onOpenThread, focus }: Props) {
     });
   }, [load]);
 
+  /*
+   * Spec 010 R5.3 — decidir dejó de fallar en silencio.
+   *
+   * Esto era `await bridge.inboxDecide(...)` y nada más: con un 409 —alguien
+   * decidió antes en otra superficie— o con la red caída, el botón se
+   * reactivaba y la tarjeta seguía ahí. Indistinguible de no haber pulsado.
+   */
   const decide = async (item: InboxItem, decision: "confirm" | "cancel") => {
     if (!item.run_id) return;
     setDeciding(item.action_id);
-    await bridge.inboxDecide({ action_id: item.action_id, run_id: item.run_id, decision });
+    clear(slotOf(item.action_id));
+    const res = await bridge.inboxDecide({ action_id: item.action_id, run_id: item.run_id, decision });
     setDeciding(null);
+    // El éxito no se anuncia: la tarjeta se va, y eso ya es la señal.
+    if (res.ok) return;
+    notify({
+      severidad: "error",
+      alcance: "elemento",
+      urgencia: "diferible",
+      slot: slotOf(item.action_id),
+      clave: res.code === "conflict" ? "feedback.decide.conflict" : "feedback.decide.failed",
+    });
   };
 
   if (failed && items === null) {
@@ -143,6 +165,7 @@ export function Inbox({ onOpenThread, focus }: Props) {
                 {t("inbox.cannotDecide")}
               </p>
             )}
+            <InlineNotice slot={slotOf(item.action_id)} />
           </li>
         ))}
       </ul>

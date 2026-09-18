@@ -22,6 +22,7 @@ import "./dom-matchers";
 
 import { THREAD_STATES, type ThreadFacts, deriveThreadState } from "../src/app-state";
 import { SectionFailed } from "../src/app/routes/section-failed";
+import { StatusRegion } from "../src/app/shell/status-region";
 
 afterEach(cleanup);
 
@@ -79,9 +80,18 @@ describe("Hilo — cada celda de la tabla llega a verse", () => {
   });
 });
 
+/**
+ * Se monta como de verdad: dentro de la región educada del armazón (R5.7). La
+ * banda no declara la suya — cuatro bandas con `role="status"` en la misma
+ * vista es cómo se acaba apagando el lector de pantalla.
+ */
+function enElArmazon(ui: React.ReactElement) {
+  return render(<StatusRegion>{ui}</StatusRegion>);
+}
+
 describe("Secciones de administrar — cuando la consola no carga", () => {
   it("se dice en la lengua de la aplicación, no con la página de Chromium", () => {
-    render(<SectionFailed section="clientes" onRetry={() => {}} />);
+    enElArmazon(<SectionFailed section="clientes" onRetry={() => {}} />);
     const dicho = screen.getByRole("status");
     expect(dicho).toHaveTextContent(/no se pudo cargar|could not be loaded/i);
     // Y se nombra **qué** sección: «no se pudo cargar» a secas no deja saber
@@ -91,13 +101,13 @@ describe("Secciones de administrar — cuando la consola no carga", () => {
 
   it("ofrece reintentar, que es la salida que la tabla exige", async () => {
     const onRetry = vi.fn();
-    render(<SectionFailed section="clientes" onRetry={onRetry} />);
+    enElArmazon(<SectionFailed section="clientes" onRetry={onRetry} />);
     await userEvent.click(screen.getByRole("button", { name: /reintentar|retry/i }));
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
   it("no se pinta en rojo: una sección que no carga no es una avería tuya", () => {
-    const { container } = render(<SectionFailed section="clientes" onRetry={() => {}} />);
+    const { container } = enElArmazon(<SectionFailed section="clientes" onRetry={() => {}} />);
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.querySelector(".text-status-danger")).toBeNull();
   });

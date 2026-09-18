@@ -4,14 +4,22 @@
  * Tailwind entra por Vite igual que en la consola, y `@source` apunta a los
  * paquetes del workspace para que sus utilidades existan.
  */
+import { createRequire } from "node:module";
+
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+
+/** La versión instalada, para poder nombrarla en pantalla (R6.4). Sale del
+ *  `package.json` en tiempo de compilación: un canal de puente para leer una
+ *  constante sería más piezas por el mismo dato. */
+const { version } = createRequire(import.meta.url)("./package.json") as { version: string };
 
 export default defineConfig({
   root: "src/app",
   base: "./",
   plugins: [react(), tailwindcss()],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   build: {
     outDir: "../../dist/app",
     emptyOutDir: true,

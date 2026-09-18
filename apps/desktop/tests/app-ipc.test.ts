@@ -23,12 +23,12 @@ const CONTRACT = [
   "app:shell.showSection", "app:shell.contentBounds", "app:shell.prefs",
   "app:signIn.start", "app:signIn.cancel",
   "app:workstation.state", "app:workstation.pair", "app:workstation.unpair", "app:workstation.pickDirectory",
-  "app:setup.status", "app:update.install", "app:handoff.done",
+  "app:setup.status", "app:update.install", "app:update.check", "app:handoff.done",
 ];
 const PUSH = [
   "app:event", "app:inbox", "app:inbox.focus", "app:stream.end", "app:inbox.changed", "app:task.state", "app:session", "app:presence",
   // Spec 010.
-  "app:console.location", "app:console.failed", "app:workstation", "app:signIn", "app:update", "app:waiting", "app:connectivity",
+  "app:console.location", "app:console.failed", "app:handoff", "app:workstation", "app:signIn", "app:update", "app:waiting", "app:connectivity",
   "app:shell.toggleSidebar",
 ];
 

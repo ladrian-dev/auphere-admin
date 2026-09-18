@@ -73,6 +73,12 @@ export const APP_INVOKE_CHANNELS: readonly InvokeChannel[] = [
   { name: "app:workstation.pickDirectory", input: "client_ref" },
   { name: "app:setup.status", input: "none" },
   { name: "app:update.install", input: "none" },
+  /**
+   * Comprobar el canal **ahora**, porque la persona lo pidió (R6.4 y R6.5).
+   * Sin esto, la única salida de «esta versión ya no se admite» era abrir el
+   * directorio crudo del canal en el navegador: una lista de `.zip` y `.yml`.
+   */
+  { name: "app:update.check", input: "none" },
   { name: "app:handoff.done", input: "handoff" },
 ] as const;
 
@@ -94,6 +100,13 @@ export const APP_PUSH_CHANNELS = [
    * era la página de error de Chromium: en inglés y sin nada que pulsar.
    */
   "app:console.failed",
+  /**
+   * La aplicación acaba de **salir al navegador del sistema** (pago, entrada
+   * con Google, cualquier enlace externo). Hasta ahora esto pasaba en silencio:
+   * la ventana se quedaba igual y el navegador se abría detrás o delante sin
+   * que nada dijera por qué (R5.3).
+   */
+  "app:handoff",
   "app:workstation",
   "app:signIn",
   "app:update",

@@ -32,6 +32,7 @@ vi.mock("../src/app/bridge", () => ({
   bridge: { inboxList: () => inboxList(), inboxDecide: () => inboxDecide(), on: () => on() },
 }));
 
+const { FeedbackProvider } = await import("../src/app/feedback/provider");
 const { Today } = await import("../src/app/routes/today");
 const { Inbox } = await import("../src/app/routes/inbox");
 const { Sidebar } = await import("../src/app/shell/sidebar");
@@ -82,6 +83,15 @@ const CUENTA = {
   onRetry: () => {},
   onOpenConsole: () => {},
 };
+
+/** Pendientes avisa por la taxonomía, así que necesita su proveedor. */
+function pendientes() {
+  return render(
+    <FeedbackProvider>
+      <Inbox onOpenThread={() => {}} focus={null} />
+    </FeedbackProvider>,
+  );
+}
 
 /** El texto visible de la pantalla, para poder comparar dos estados enteros. */
 function visible(el: HTMLElement): string {
@@ -150,19 +160,19 @@ describe("Lista lateral — lo que el 2026-09-17 se vio mal", () => {
 describe("Pendientes — y la lista que se quedó vieja", () => {
   it("cargando no es «nada te espera»", async () => {
     inboxList.mockReturnValue(new Promise(() => {}));
-    const { container } = render(<Inbox onOpenThread={() => {}} focus={null} />);
+    const { container } = pendientes();
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
   });
 
   it("vacío dice que nada te espera", async () => {
     inboxList.mockResolvedValue({ ok: true, data: [] });
-    render(<Inbox onOpenThread={() => {}} focus={null} />);
+    pendientes();
     expect(await screen.findByText(/nada te espera|nothing is waiting/i)).toBeInTheDocument();
   });
 
   it("error de primera carga: motivo y reintento", async () => {
     inboxList.mockResolvedValue({ ok: false, code: "network" });
-    render(<Inbox onOpenThread={() => {}} focus={null} />);
+    pendientes();
     expect(await screen.findByRole("button", { name: /reintentar|retry/i })).toBeInTheDocument();
   });
 
@@ -188,7 +198,7 @@ describe("Pendientes — y la lista que se quedó vieja", () => {
         },
       ],
     });
-    render(<Inbox onOpenThread={() => {}} focus={null} />);
+    pendientes();
     await screen.findByText("Enviar el presupuesto");
 
     inboxList.mockResolvedValue({ ok: false, code: "network" });
@@ -217,7 +227,7 @@ describe("Pendientes — y la lista que se quedó vieja", () => {
         },
       ],
     });
-    render(<Inbox onOpenThread={() => {}} focus={null} />);
+    pendientes();
     expect(await screen.findByRole("note")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /aprobar|approve/i })).toBeNull();
   });

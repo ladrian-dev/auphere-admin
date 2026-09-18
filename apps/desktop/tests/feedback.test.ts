@@ -10,7 +10,13 @@
  * La elección deja de tomarse componente a componente: se declara aquí, con la
  * tabla de `contracts/feedback-taxonomia.md` como casos.
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 import { mechanismFor, type Notice } from "../src/app/feedback/notify.js";
 
@@ -85,5 +91,37 @@ describe("un hecho, un mecanismo", () => {
     const desdeElHilo = mechanismFor(aviso({ severidad: "error", alcance: "elemento", clave: "hilo.envio" }), { windowFocused: true });
     const desdeCuenta = mechanismFor(aviso({ severidad: "error", alcance: "elemento", clave: "cuenta.guardar" }), { windowFocused: true });
     expect(desdeElHilo).toBe(desdeCuenta);
+  });
+});
+
+/**
+ * T053 — los avisos no pelean con la política de contenido.
+ *
+ * El anexo 02 de la investigación lo dejó anotado como riesgo concreto:
+ * `sonner`, la librería de avisos efímeros más obvia, crea un `<style>` en
+ * tiempo de ejecución (`__insertCSS`, `dist/index.mjs`). Con `style-src 'self'`
+ * eso lo bloquea el navegador, y el aviso no se ve — pero la acción sí ocurre,
+ * así que el fallo se manifiesta como «no pasó nada», que es justo lo que la
+ * historia 3 existe para eliminar.
+ *
+ * La defensa no es probar sonner con la política puesta: es **no tener nada que
+ * inyecte estilos**. El humo del binario vigila que no haya ni una violación de
+ * la política; esto vigila que la superficie de avisos no pueda causar una.
+ */
+describe("los avisos no inyectan nada en tiempo de ejecución (5.1)", () => {
+  const provider = readFileSync(join(HERE, "..", "src", "app", "feedback", "provider.tsx"), "utf8");
+
+  it("no se crea ningún `<style>` ni se toca `adoptedStyleSheets`", () => {
+    expect(provider).not.toMatch(/createElement\(\s*["']style["']/);
+    expect(provider).not.toMatch(/adoptedStyleSheets|insertRule|CSSStyleSheet/);
+  });
+
+  it("no hay estilos en línea: el aspecto sale de los tokens", () => {
+    expect(provider).not.toMatch(/style=\{\{/);
+  });
+
+  it("y no entra ninguna librería de avisos de terceros", () => {
+    // Si algún día hace falta una, pasa por el contrato y por esta prueba.
+    expect(provider).not.toMatch(/from "(sonner|react-hot-toast|react-toastify)"/);
   });
 });

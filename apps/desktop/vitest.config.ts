@@ -12,9 +12,16 @@
  * local nadie corre entero—, así que se ataja en la configuración y no en la
  * memoria de quien lanza los comandos.
  */
+import { createRequire } from "node:module";
+
 import { defineConfig } from "vitest/config";
 
+/** La misma constante que inyecta `vite.app.config.ts`: sin ella, cualquier
+ *  test que monte un componente que nombre la versión se rompe al importarlo. */
+const { version } = createRequire(import.meta.url)("./package.json") as { version: string };
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(version) },
   test: {
     include: ["tests/**/*.test.{ts,tsx}"],
     exclude: ["node_modules/**", "dist/**", "release/**", "tests/smoke/**", "tests/a11y/**"],

@@ -17,13 +17,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { deriveThreadState, type ThreadState } from "../../app-state";
 import { deriveTurnState, offersStop, turnFactsOf } from "../../turn-state";
 import { type Teammate, type TeammateChange, bridge } from "../bridge";
+import { InlineNotice, useFeedback } from "../feedback/provider";
 import { type AppKey, useAppT } from "../i18n";
 import { ipcTransport } from "../transport-ipc";
 import { ChangeNotes } from "./change-notes";
 import { ThreadOpenError } from "./thread-open-error";
 import { TurnStatus } from "./turn-status";
 
-const BANNER_STATES: ThreadState[] = ["esperandote", "en_pausa_por_tope", "maquina_ausente", "parcial", "reconectando"];
+/*
+ * Spec 010 R5.7 — `en_pausa_por_tope` **no** está aquí, y es a propósito.
+ *
+ * El compositor ya lo dice junto al cuadro que dejó de aceptar texto, con los
+ * números y la salida; esta banda lo decía otra vez arriba, sin ninguna de las
+ * dos cosas y con una salida distinta. Un hecho, un mecanismo.
+ */
+const BANNER_STATES: ThreadState[] = ["esperandote", "maquina_ausente", "parcial", "reconectando", "bloqueado"];
 
 /** El ejecutable de la tarjeta que está esperando, si es de máquina. */
 function pendingExecutable(state: { items: Array<Record<string, unknown>> }): string | null {
@@ -38,6 +46,7 @@ function pendingExecutable(state: { items: Array<Record<string, unknown>> }): st
 
 export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSettings }: { teammate: Teammate; machinePresent: boolean; onRosterChanged: () => void; onOpenSettings: () => void }) {
   const t = useAppT();
+  const { notify, clear } = useFeedback();
   const controller = useCompanion(ipcTransport);
   const { state, status, errorDetail, partial, reconnecting, deciding, decisionFailure, openThread, setThreadId, send, decide } = controller;
   const [text, setText] = useState("");
@@ -62,19 +71,39 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
     // Se guarda **por ejecutable**, no global: decir «siempre» a `make test` no
     // es decírselo a todo lo que un teammate quiera correr mañana.
     const executable = pendingExecutable(state);
+    clear("thread.policy");
     const saved = await bridge.policySetPref({ executable, mode });
-    if (saved.ok) setCapped(saved.data.capped);
-  }, [state]);
+    if (saved.ok) {
+      setCapped(saved.data.capped);
+      return;
+    }
+    // R5.3: sin esto, elegir «siempre» y que no se guardara se veía igual que
+    // haberlo guardado — hasta la siguiente vez que pidiera permiso.
+    notify({
+      severidad: "error",
+      alcance: "elemento",
+      urgencia: "diferible",
+      slot: "thread.policy",
+      clave: "feedback.policy.failed",
+    });
+  }, [state, notify, clear]);
 
   useEffect(() => {
     let alive = true;
     void bridge.rosterChanges({ id: teammate.id }).then((res) => {
-      if (alive && res.ok) setChanges(res.data);
+      if (!alive) return;
+      if (res.ok) {
+        setChanges(res.data);
+        return;
+      }
+      // No es grave —el hilo funciona igual— pero callarlo deja creyendo que
+      // este teammate no ha cambiado, que es una afirmación, no una ausencia.
+      notify({ severidad: "aviso", alcance: "vista", urgencia: "diferible", clave: "feedback.changes.failed" });
     });
     return () => {
       alive = false;
     };
-  }, [teammate.id]);
+  }, [teammate.id, notify]);
 
   /**
    * Spec 010 R4.2 — abrir el hilo puede fallar, y entonces se dice.
@@ -146,9 +175,23 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
     const value = text.trim();
     if (!value) return;
     setSending(true);
+    clear("thread.send");
     void send(value, null, "build").then((res) => {
       setSending(false);
-      if (res?.ok !== false) setText("");
+      if (res?.ok !== false) {
+        setText("");
+        void onRosterChanged();
+        return;
+      }
+      // Conservar el texto (R4.5) sin decir por qué sigue ahí deja pensando
+      // que la tecla no llegó a pulsarse.
+      notify({
+        severidad: "error",
+        alcance: "elemento",
+        urgencia: "diferible",
+        slot: "thread.send",
+        clave: "feedback.send.failed",
+      });
       void onRosterChanged();
     });
   };
@@ -233,6 +276,8 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
           onSend={onSend}
           onStop={() => void controller.stop()}
         />
+        <InlineNotice slot="thread.send" />
+        <InlineNotice slot="thread.policy" />
         <Meters cost={state.cost} context={state.context} budget={state.budget} />
       </footer>
     </div>

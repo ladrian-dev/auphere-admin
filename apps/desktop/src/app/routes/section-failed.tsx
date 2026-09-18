@@ -19,7 +19,8 @@ import { type AppKey, useAppT } from "../i18n";
 export function SectionFailed({ section, onRetry }: { section: Section; onRetry: () => void }) {
   const t = useAppT();
   return (
-    <div className="m-auto flex max-w-prose flex-col items-center gap-3 p-8 text-center" role="status">
+    /* Lo anuncia la región del armazón, donde vive esta banda (R5.7). */
+    <div className="m-auto flex max-w-prose flex-col items-center gap-3 p-8 text-center">
       <p className="text-ui text-pretty">
         {t("section.failed", { name: t(`shell.section.${section}` as AppKey) })}
       </p>

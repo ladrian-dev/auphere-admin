@@ -28,11 +28,8 @@ export function ConnectionBanner({
   if (!connectivity || connectivity.state === "online") return null;
 
   return (
-    <div
-      role="status"
-      className="flex items-center gap-3 border-b border-border bg-muted px-4 py-2"
-      data-connectivity={connectivity.state}
-    >
+    /* Sin `role="status"` propio: lo anuncia la región del armazón (R5.7). */
+    <div className="flex items-center gap-3 border-b border-border bg-muted px-4 py-2" data-connectivity={connectivity.state}>
       <p className="min-w-0 flex-1 text-ui text-pretty text-muted-foreground">
         {t(connectivity.state === "offline" ? "conn.offline" : "conn.unconfirmed")}
       </p>

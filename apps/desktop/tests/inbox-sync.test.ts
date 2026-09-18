@@ -34,6 +34,7 @@ function ports(inboxes: InboxItem[][]) {
     apply: (e) => effects.push(...e),
     push: (c, payload) => pushes.push([c, payload]),
     prefs: () => ({ silenceAviso: false }),
+    notifyContext: () => ({ windowFocused: false, lang: "es" as const }),
     wait: async () => {},
   };
   return { p, effects, pushes, calls: () => n };

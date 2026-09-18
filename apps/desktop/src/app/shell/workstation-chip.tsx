@@ -25,7 +25,21 @@ function ago(since: string | undefined, locale: string): string | null {
   return hours < 24 ? rtf.format(-hours, "hour") : rtf.format(-Math.floor(hours / 24), "day");
 }
 
-export function WorkstationChip({ state }: { state: WorkstationView | null }) {
+export function WorkstationChip({
+  state,
+  announce = false,
+}: {
+  state: WorkstationView | null;
+  /**
+   * Si esto es lo que anuncia el estado de la máquina — spec 010, R5.7.
+   *
+   * El mismo estado se pinta al pie de la lista lateral **y** en Hoy. Con los
+   * dos declarados como región viva, quien usa lector de pantalla oía
+   * «MacBook de Luis · reconectando» dos veces seguidas. Anuncia el pie, que
+   * es el que siempre está; Hoy lo pinta y calla.
+   */
+  announce?: boolean;
+}) {
   const t = useAppT();
   if (!state) return null;
 
@@ -36,7 +50,7 @@ export function WorkstationChip({ state }: { state: WorkstationView | null }) {
   return (
     <span
       className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"
-      role="status"
+      {...(announce ? { role: "status" as const } : {})}
       data-workstation={state.status}
     >
       <span

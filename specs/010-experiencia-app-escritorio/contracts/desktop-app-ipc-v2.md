@@ -31,6 +31,7 @@ Las tres reglas que **no** cambian, y sus tests:
 | `app:workstation.pickDirectory` | `{client_ref}` | `{path_shown}` \| `{error: "invalid"\|"cancelled", reason?}` | Abre el selector nativo y declara el directorio. **El motivo del rechazo se devuelve**: hoy se pierde |
 | `app:setup.status` | — | `SetupChecklist` (§ Puesta en marcha) | Pasos pendientes del partner y de esta máquina, derivados de lo que ya existe |
 | `app:update.install` | — | `void` \| `{error: "busy"}` | Instala la versión descargada. **Si hay trabajo vivo, no instala y lo dice** |
+| `app:update.check` | — | `void` | Comprueba el canal **ahora**. Lo que encuentre llega por `app:update`. Sin esto, la única salida de «esta versión ya no se admite» era abrir el directorio crudo del canal en el navegador (R6.4, R6.5) |
 | `app:handoff.done` | `{kind: "sign_in"\|"payment"}` | `{plan, usage}` refrescados | La persona vuelve del navegador: se relee lo que pudo cambiar, sin reiniciar |
 
 ## Suscripciones que se añaden
@@ -39,6 +40,7 @@ Las tres reglas que **no** cambian, y sus tests:
 |---|---|---|
 | `app:console.location` | `{section, path}` — la ruta **de la propia consola**, acotada a rutas conocidas | Cada vez que la vista de la consola navega, para que la lista lateral marque dónde está |
 | `app:console.failed` | `{section, code}` \| `null` | La sección de administrar **no cargó** (`did-fail-load` del marco principal), o volvió a cargar. Sin este canal, el panel enseñaba la página de error de Chromium: en inglés y sin nada que pulsar (R4.1) |
+| `app:handoff` | `{url}` | La aplicación sale al **navegador del sistema** (pago, entrada con Google, enlace externo). Hasta ahora ocurría en silencio: tres sitios llamaban a `openExternal` sin que la ventana dijera nada (R5.3) |
 | `app:workstation` | `WorkstationState` | Cada cambio de estado del puesto (sustituye al empuje de la barra) |
 | `app:signIn` | `SignInState` (§ Entrada) | Cada cambio de la espera del navegador |
 | `app:update` | `UpdateState` (§ Actualización) | Descargada, esperando a que termine el trabajo, no admitida |

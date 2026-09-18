@@ -106,7 +106,7 @@ sola. Cada tarea cita sus requisitos.
 - [X] T050 [P] [US1] Test en `apps/desktop/tests/navigation.test.ts`: la ruta canónica gobierna lista lateral, historial e inicio, y la última sección se restaura al reabrir — _Requisitos: 1.6, 1.10_
 - [X] T051 [US1] Historial atrás/adelante y ruta canónica interna en `apps/desktop/src/app/shell/navigation.ts` — _Requisitos: 1.6, 1.10_
 - [X] T052 [P] [US1] Iconografía y densidad: sustituir el «+» de texto y los avatares improvisados por iconos de la librería a 16/20 px en `apps/desktop/src/app/routes/`, y acompañar de texto o forma todo estado que hoy se comunica solo con color — _Requisitos: 2.8, 2.6_
-- [ ] T053 ⏳ **Se ejecuta con T072-T073** (US3), que es cuando los avisos se montan de verdad: comprobar «con avisos encendidos» sin avisos encendidos no comprueba nada. El humo ya vigila que no haya **ninguna** violación de la política, así que el día que se enciendan, si bloquea, se verá. Verificar en el humo que con avisos encendidos **no hay violación** de la política de contenido; si la hubiera, sustituir por el primitivo de aviso de la librería de primitivas — _Requisitos: 5.1_
+- [X] T053 **Hecho con T072-T084.** El humo del binario ya exige **cero** violaciones de la política en toda la pantalla; lo que faltaba era que la superficie de avisos no pudiera causar ninguna, y eso se comprueba en `tests/feedback.test.ts`: el proveedor no crea `<style>`, no toca `adoptedStyleSheets`, no usa estilos en línea y no entra ninguna librería de avisos de terceros — que era el riesgo concreto del anexo 02 (`sonner` inyecta CSS en tiempo de ejecución). No hizo falta sustituir nada — _Requisitos: 5.1_
 - [X] T054 [US1] Humo del binario: la franja arrastra la ventana con la consola en el panel, y pulsar dentro de la consola no la mueve (el caso que el spike validó) — _Requisitos: 1.1_
 
 **Checkpoint**: la ventana ya es una aplicación. **MVP.**
@@ -137,19 +137,19 @@ sola. Cada tarea cita sus requisitos.
 
 ## Phase 5: US3 — Avisos que se entienden y un solo número (P3)
 
-- [ ] T072 [US3] Cablear la API de avisos, parte 1 — Pendientes y hilo: decidir, enviar, política local y entorno dejan de fallar en silencio — _Requisitos: 5.2, 5.3_
-- [ ] T073 [US3] Cablear la API de avisos, parte 2 — Cuenta, formulario de teammate, ajustes, puesta en marcha y salidas al navegador — _Requisitos: 5.2, 5.3_
-- [ ] T074 [P] [US3] Test en `apps/desktop/tests/no-silent-failures.test.tsx`: toda acción termina en resultado visible o fallo explicado (los siete silencios documentados) — _Requisitos: 5.3_
-- [ ] T075 [P] [US3] Test en `apps/desktop/tests/waiting-surfaces.test.ts`: las cuatro superficies muestran la misma cifra y bajan a la vez al decidir — _Requisitos: 5.4_
-- [ ] T076 [US3] Avisos del sistema con motivo y sin contenido sensible en `apps/desktop/src/electron/adapters.ts`, agrupados por teammate y en el idioma de la cuenta (hoy el resumen está solo en español) — _Requisitos: 5.6, 12.2_
-- [ ] T077 [US3] Al pulsar un aviso, traer la ventana al frente sobre el objeto que lo produjo en `apps/desktop/src/electron/main.ts` (hoy no restaura la ventana) — _Requisitos: 5.6, 10.4_
-- [ ] T078 [P] [US3] Test en `apps/desktop/tests/notifications-focus.test.ts`: con la ventana enfocada no se emiten avisos del sistema de lo ya visible — _Requisitos: 5.5_
-- [ ] T079 [US3] Pantalla de preferencia de avisos en Cuenta, conectada al canal que ya existe, dejando claro que no silencia lo que espera decisión — _Requisitos: 5.8_
-- [ ] T080 [P] [US3] Test en `apps/desktop/tests/updater-wiring.test.ts`: la versión descargada **emite** estado y llega al armazón; con trabajo vivo no instala y lo dice; y la aplicación no se reinicia por su cuenta en ningún otro caso — _Requisitos: 6.1, 6.3, 6.6_
-- [ ] T081 [US3] Cablear `apps/desktop/src/electron/updater.ts` con el runtime y el armazón — _Requisitos: 6.1, 6.3, 6.6_
-- [ ] T082 [US3] Acción de instalar («volver al mismo sitio») e ítem de menú «Buscar actualizaciones» con la versión instalada, con test — _Requisitos: 6.2, 6.5_
-- [ ] T083 [US3] Versión no admitida: nombrar la versión mínima y llevar la acción a una página útil, no al directorio crudo del canal, con test — _Requisitos: 6.4_
-- [ ] T084 [P] [US3] Revisión de anuncios a tecnologías de apoyo: una región educada y una urgente por vista, sin dobles anuncios (hoy el puesto anuncia dos veces y el composer duplica) — _Requisitos: 5.7_
+- [X] T072 [US3] Cablear la API de avisos, parte 1 — Pendientes y hilo: decidir, enviar, política local y entorno dejan de fallar en silencio — _Requisitos: 5.2, 5.3_
+- [X] T073 [US3] Cablear la API de avisos, parte 2 — Cuenta, formulario de teammate, ajustes, puesta en marcha y salidas al navegador — _Requisitos: 5.2, 5.3_
+- [X] T074 [P] [US3] Test en `apps/desktop/tests/no-silent-failures.test.tsx`: toda acción termina en resultado visible o fallo explicado (los siete silencios documentados) — _Requisitos: 5.3_
+- [X] T075 [P] [US3] Test en `apps/desktop/tests/waiting-surfaces.test.ts`: las cuatro superficies muestran la misma cifra y bajan a la vez al decidir — _Requisitos: 5.4_
+- [X] T076 [US3] Avisos del sistema con motivo y sin contenido sensible en `apps/desktop/src/electron/adapters.ts`, agrupados por teammate y en el idioma de la cuenta (hoy el resumen está solo en español) — _Requisitos: 5.6, 12.2_
+- [X] T077 [US3] Al pulsar un aviso, traer la ventana al frente sobre el objeto que lo produjo en `apps/desktop/src/electron/main.ts` (hoy no restaura la ventana) — _Requisitos: 5.6, 10.4_
+- [X] T078 [P] [US3] Test en `apps/desktop/tests/notifications-focus.test.ts`: con la ventana enfocada no se emiten avisos del sistema de lo ya visible — _Requisitos: 5.5_
+- [X] T079 [US3] Pantalla de preferencia de avisos en Cuenta, conectada al canal que ya existe, dejando claro que no silencia lo que espera decisión — _Requisitos: 5.8_
+- [X] T080 [P] [US3] Test en `apps/desktop/tests/updater-wiring.test.ts`: la versión descargada **emite** estado y llega al armazón; con trabajo vivo no instala y lo dice; y la aplicación no se reinicia por su cuenta en ningún otro caso — _Requisitos: 6.1, 6.3, 6.6_
+- [X] T081 [US3] Cablear `apps/desktop/src/electron/updater.ts` con el runtime y el armazón — _Requisitos: 6.1, 6.3, 6.6_
+- [X] T082 [US3] Acción de instalar («volver al mismo sitio») e ítem de menú «Buscar actualizaciones» con la versión instalada, con test — _Requisitos: 6.2, 6.5_
+- [X] T083 [US3] Versión no admitida: nombrar la versión mínima y llevar la acción a una página útil, no al directorio crudo del canal, con test — _Requisitos: 6.4_
+- [X] T084 [P] [US3] Revisión de anuncios a tecnologías de apoyo: una región educada y una urgente por vista, sin dobles anuncios (hoy el puesto anuncia dos veces y el composer duplica) — _Requisitos: 5.7_
 
 ---
 

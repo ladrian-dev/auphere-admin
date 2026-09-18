@@ -42,6 +42,13 @@ export type AppSurfaceOptions = {
   onSessionLost: (reason: "anonymous" | "no_membership") => void;
   inbox: InboxWatcher;
   notificationPrefs: { read(): Prefs; write(next: Prefs): Prefs };
+  /**
+   * Instalar la versión descargada, porque la persona lo pidió (R6.2). Con
+   * trabajo vivo devuelve `busy`: no instala **y lo dice** (R6.3).
+   */
+  installUpdate: () => { ok: true } | { error: "busy" | "none" };
+  /** Comprobar el canal ahora. Lo que encuentre llega por `app:update`. */
+  checkUpdate: () => void;
   /** Lo que esta máquina sabe: dónde trabaja cada cliente y qué nombraron los
    *  comandos de cada tarea (R11). Lo pone el runtime del puente. */
   machine: {
@@ -162,6 +169,12 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
       ? o.notificationPrefs.read()
       : o.notificationPrefs.write({ silenceAviso: input.silence_aviso === true }),
   );
+  // R6.2 y R6.3. El updater decide; esto sólo lo pide y devuelve lo que diga.
+  handle("app:update.install", () => o.installUpdate());
+  handle("app:update.check", () => {
+    o.checkUpdate();
+    return null;
+  });
   handle("app:policy.prefs", () => o.platform.request("/api/teammates/local-exec-prefs"));
   handle("app:policy.setPref", (input: { executable: string | null; mode: string }) =>
     o.platform.request("/api/teammates/local-exec-prefs", {
