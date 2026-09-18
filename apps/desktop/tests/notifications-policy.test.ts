@@ -27,6 +27,8 @@ const item = (level: Pending["level"], id = "a1", can_decide = true): Pending =>
  * agrupado por teammate viven en `notifications-focus.test.ts`.
  */
 const FONDO = { windowFocused: false, lang: "es" as const };
+/** Con el ruido bajado. El permiso del sistema no entra en esta política. */
+const SILENCIADO = { silenceAviso: true, permission: "concedido" as const };
 
 describe("el número es el mismo que el de las demás superficies (spec 010, 5.4)", () => {
   it("lo que esta persona no puede decidir no marca el icono", () => {
@@ -89,18 +91,25 @@ describe("al abrir con cosas esperando (7.3)", () => {
 describe("la preferencia solo baja el ruido (7.5)", () => {
   it("silenciar `aviso` calla el resumen cuando solo hay avisos", () => {
     const pending = [item("aviso", "a1"), item("aviso", "a2")];
-    expect(onOpen(pending, { silenceAviso: true }, FONDO).some((e) => e.kind === "notify")).toBe(false);
-    expect(onOpen(pending, { silenceAviso: true }, FONDO)).toContainEqual({ kind: "badge", count: 2 });
+    expect(onOpen(pending, SILENCIADO, FONDO).some((e) => e.kind === "notify")).toBe(false);
+    expect(onOpen(pending, SILENCIADO, FONDO)).toContainEqual({ kind: "badge", count: 2 });
   });
 
   it("silenciar `aviso` NO calla lo crítico", () => {
     const pending = [item("critico", "a1"), item("aviso", "a2")];
-    expect(onOpen(pending, { silenceAviso: true }, FONDO).some((e) => e.kind === "notify")).toBe(true);
+    expect(onOpen(pending, SILENCIADO, FONDO).some((e) => e.kind === "notify")).toBe(true);
   });
 
+  // Spec 010 R7.8: estas preferencias llevan además lo que se sabe del permiso
+  // del sistema. `desconocido` es el punto de partida y no se puede fabricar.
   it("no hay forma de subir el nivel de nada: la preferencia es un booleano", () => {
-    expect(normalisePrefs({ silenceAviso: true })).toEqual({ silenceAviso: true });
-    expect(normalisePrefs(undefined)).toEqual({ silenceAviso: false });
-    expect(normalisePrefs({ shout: true } as never)).toEqual({ silenceAviso: false });
+    expect(normalisePrefs(SILENCIADO)).toEqual(SILENCIADO);
+    expect(normalisePrefs(undefined)).toEqual({ silenceAviso: false, permission: "desconocido" });
+    expect(normalisePrefs({ shout: true } as never)).toEqual({ silenceAviso: false, permission: "desconocido" });
+  });
+
+  it("y el permiso guardado sobrevive, salvo que sea uno inventado", () => {
+    expect(normalisePrefs({ silenceAviso: false, permission: "denegado" }).permission).toBe("denegado");
+    expect(normalisePrefs({ silenceAviso: false, permission: "quizá" } as never).permission).toBe("desconocido");
   });
 });

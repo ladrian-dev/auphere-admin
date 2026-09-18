@@ -26,14 +26,22 @@ desde el repositorio.
 | # | Fallo | Estado |
 |---|---|---|
 | 1 | Google no vuelve a la app | **ARREGLADO** · RFC 8252 (loopback + PKCE) · `specs/009-volver-y-entrar-desde-la-app/` |
-| 2 | El banner de «sin emparejar» no se va | **Sin arreglar.** Confirmado: dos superficies leyendo dos fuentes |
+| 2 | El banner de «sin emparejar» no se va | **ARREGLADO** · spec 010 · `onIdentityChanged` refresca la puerta y recarga la consola embebida si está mirando el puesto; ya no hay dos superficies leyendo dos fuentes |
 | 3 | Crear teammate da error genérico | **ARREGLADO** · `.specify/bugs/teammate-tope-de-plan-mensaje-generico/` |
-| 4 | No hay vuelta desde la consola | **Sin arreglar, y el diagnóstico de abajo es falso** — ver corrección |
+| 4 | No hay vuelta desde la consola | **DISUELTO** · spec 010 · ya no hay «vuelta» porque no hay dos superficies: la consola se pinta **dentro del panel** del armazón y la persona elige secciones. ⌘1 y ⌘2 desaparecen |
 | 5 | En otra máquina no funcionó | **RESUELTO el 2026-09-15** · v0.1.3 abre en ese Mac Intel · `.specify/bugs/paquete-se-traga-su-propia-salida/test.md` |
 | 5b | El paquete se traga su propia salida | **ARREGLADO Y VERIFICADO** · el asar de x64 pasa de 1.982.761.659 a 68.668.433 bytes |
 | 6 | El actualizador nunca se arma | **ARREGLADO** · `.specify/bugs/updater-no-arranca/` |
 
-Los tres primeros se publicaron en **0.1.3**. Los fallos 1 y 4 van por la spec 009, todavía sin publicar.
+Los tres primeros se publicaron en **0.1.3**. El 1 lo cerró la spec 009; el 2 y
+el 4, la spec 010.
+
+> **Cerrados con la spec 010** (`specs/010-experiencia-app-escritorio/`), que
+> además arregló los cinco P0 que encontró la evaluación del 2026-09-17 y que no
+> están en esta lista porque son de otra sesión: entrar con proveedor externo sin
+> disparador (`009-T029`), las hojas de la barra fuera de la vista, el arranque
+> que se colgaba sin red, la sesión que se perdía echando a la persona al login,
+> y el hilo que fallaba pintándose como vacío.
 
 **El fallo 6 no estaba en esta lista y es el más grave de los tres arreglados**:
 `electron-updater` es CommonJS y expone `autoUpdater` con un getter perezoso que

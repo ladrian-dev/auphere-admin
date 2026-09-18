@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 
 import { type Pending, onArrival, onOpen } from "../src/notifications-policy.js";
 
-const PREFS = { silenceAviso: false };
+const PREFS = { silenceAviso: false, permission: "concedido" as const };
 const FONDO = { windowFocused: false, lang: "es" as const };
 
 const pending = (over: Partial<Pending> = {}): Pending => ({

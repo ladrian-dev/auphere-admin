@@ -51,9 +51,11 @@ export const companionMessages = {
     es: "Tu rol no puede usar el Companion. Pídele a un administrador el rol de constructor.",
     en: "Your role cannot use the Companion. Ask an administrator for the builder role.",
   },
+  // Spec 010 R12 — glosario único. Era «el tope mensual de tokens», y el pool
+  // es **semanal** desde la spec 004: decía algo falso sobre cuándo vuelve.
   "companion.bubble.disabled.cap": {
-    es: "Se alcanzó el tope mensual de tokens del Companion.",
-    en: "The Companion's monthly token cap has been reached.",
+    es: "Se agotó lo que incluye tu plan esta semana.",
+    en: "What your plan includes this week has run out.",
   },
   "companion.shortcut": { es: "Atajo: ⌘J", en: "Shortcut: ⌘J" },
   "companion.closeBlocked": {
@@ -137,8 +139,8 @@ export const companionMessages = {
   // its tokens and its history — so this says where it got to, not that
   // something broke.
   "companion.notice.paused": {
-    es: "Aquí se paró: se alcanzó el tope mensual de tokens. Lo hecho hasta ahora está arriba y no se pierde.",
-    en: "It stopped here: the monthly token cap was reached. What was done so far is above and is not lost.",
+    es: "Aquí se paró: se agotó lo que incluye tu plan esta semana. Lo hecho hasta ahora está arriba y no se pierde.",
+    en: "It stopped here: what your plan includes this week has run out. What was done so far is above and is not lost.",
   },
 
   // ── thinking (§8.2) ──────────────────────────────────────────────────

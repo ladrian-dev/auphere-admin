@@ -69,9 +69,12 @@ export const workstationMessages = {
   },
   "ws.machines.title": { es: "Máquinas", en: "Machines" },
   "ws.machines.empty.title": { es: "Ninguna máquina emparejada", en: "No machine paired" },
+  // Spec 010 R8.6 — el guion dice lo mismo en las tres superficies, y no pide
+  // algo ya hecho. Esto se lee **dentro de la aplicación de escritorio**, con
+  // la sesión puesta: dos de los tres pasos que decía ya estaban hechos.
   "ws.machines.empty.body": {
-    es: "Instala la aplicación de escritorio, entra con tu cuenta y pide aquí un código. La barra de la aplicación te lo pedirá.",
-    en: "Install the desktop app, sign in with your account and ask for a code here. The app's bar will ask you for it.",
+    es: "Pide aquí un código de emparejamiento y tecléalo en la aplicación de escritorio, en la máquina que quieras emparejar.",
+    en: "Ask for a pairing code here and type it into the desktop app, on the machine you want to pair.",
   },
   "ws.machines.empty.readonly": {
     es: "Nadie de tu equipo ha emparejado una máquina todavía.",
@@ -108,10 +111,10 @@ export const workstationMessages = {
   "ws.clients.add": { es: "Añadir cliente", en: "Add client" },
   "ws.clients.addField": { es: "Cliente", en: "Client" },
   "ws.clients.addHelp": {
-    es: "Después, elige la carpeta de este cliente desde la barra de la aplicación: la consola no teclea rutas.",
-    en: "Then choose this client's folder from the app's bar: the console does not type paths.",
+    es: "Después, elige la carpeta de este cliente en la aplicación de escritorio: la consola no teclea rutas.",
+    en: "Then choose this client's folder in the desktop app: the console does not type paths.",
   },
-  "ws.clients.added": { es: "{name} vinculado. Falta el directorio: elígelo desde la barra de la aplicación.", en: "{name} linked. Directory missing: choose it from the app's bar." },
+  "ws.clients.added": { es: "{name} vinculado. Falta el directorio: elígelo en la aplicación de escritorio.", en: "{name} linked. Directory missing: choose it in the desktop app." },
   "ws.clients.remove": { es: "Quitar", en: "Remove" },
   "ws.clients.removeTitle": { es: "¿Quitar {name} de esta máquina?", en: "Remove {name} from this machine?" },
   "ws.clients.removeBody": {
@@ -129,8 +132,8 @@ export const workstationMessages = {
   "ws.pair.button": { es: "Emparejar esta máquina", en: "Pair this machine" },
   "ws.pair.title": { es: "Emparejar esta máquina", en: "Pair this machine" },
   "ws.pair.intro": {
-    es: "Teclea este código en la barra de la aplicación de escritorio, en esta misma máquina. Vale una sola vez.",
-    en: "Type this code in the desktop app's bar, on this very machine. It is valid once.",
+    es: "Teclea este código en la aplicación de escritorio, en esta misma máquina. Vale una sola vez.",
+    en: "Type this code into the desktop app, on this very machine. It is valid once.",
   },
   "ws.pair.expiresIn": { es: "Caduca en {mmss}", en: "Expires in {mmss}" },
   "ws.pair.expired": { es: "El código caducó. Pide otro.", en: "The code expired. Ask for another." },
@@ -150,7 +153,7 @@ export const workstationMessages = {
   "ws.setup.dismiss": { es: "Cerrar por ahora", en: "Close for now" },
   "ws.setup.step.paired": { es: "Empareja esta máquina", en: "Pair this machine" },
   "ws.setup.step.clients": { es: "Elige a qué clientes sirve", en: "Choose which clients it serves" },
-  "ws.setup.step.directories": { es: "Declara el directorio de cada cliente desde la barra de la aplicación", en: "Declare each client's directory from the app's bar" },
+  "ws.setup.step.directories": { es: "Declara el directorio de cada cliente en la aplicación de escritorio", en: "Declare each client's directory in the desktop app" },
   "ws.setup.step.executables": { es: "Ejecutables habilitados por Auphere", en: "Executables enabled by Auphere" },
   "ws.setup.pending": { es: "{n} pendiente(s)", en: "{n} pending" },
   "ws.setup.executables.help": {

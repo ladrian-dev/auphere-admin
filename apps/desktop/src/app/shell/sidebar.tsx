@@ -112,11 +112,17 @@ export function Sidebar({
 
         <Group label={t("shell.teammates")}>
           {roster === "loading" ? (
-            <li role="status" aria-busy="true" className="flex flex-col gap-1 px-2 py-1">
-              <span className="sr-only">{t("roster.loading")}</span>
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-4 w-full" />
-              ))}
+            <li className="px-2 py-1">
+              {/* El `role` va **dentro** del elemento de lista, no en él: un
+                  `role="status"` encima de un `<li>` le quita su papel de
+                  elemento de lista y la lista deja de ser una lista (axe:
+                  `only-listitems`, grave). */}
+              <div role="status" aria-busy="true" className="flex flex-col gap-1">
+                <span className="sr-only">{t("roster.loading")}</span>
+                {[0, 1, 2].map((i) => (
+                  <Skeleton key={i} className="h-4 w-full" />
+                ))}
+              </div>
             </li>
           ) : roster === "error" ? (
             <li className="flex flex-col items-start gap-1 px-2 py-1">

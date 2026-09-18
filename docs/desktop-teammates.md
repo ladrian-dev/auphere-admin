@@ -5,7 +5,7 @@
 aplicación. Si cambias lo que describe, este documento va **en el mismo commit**
 (`docs/spec-driven-development.md` §3). Especificación de origen:
 `specs/003-teammates-app-escritorio/`. Lo anterior sigue vivo y se lee aparte:
-`docs/desktop-workstation.md` (identidad, emparejamiento, barra, contención).
+`docs/desktop-workstation.md` (identidad, emparejamiento, puesto, contención).
 
 ## La frase que ordena todo
 
@@ -16,24 +16,31 @@ tiene pantallas propias —lo que la 001 prohibía, y por eso ese criterio qued�
 anotado como superado—, y el timeline no se escribe dos veces: se comparte como
 paquete.
 
-## Las tres superficies
+## Una ventana, un armazón
 
 | Vista | Partición | `preload` | Qué carga |
 |---|---|---|---|
-| Consola | `persist:auphere-console` | **ninguno** | la consola, para administrar |
-| Pantalla de operar | `auphere-app` (no persistente) | `app-preload.cjs`, lista cerrada | `dist/app/index.html` |
-| Barra del puesto | `auphere-bar` (no persistente) | `bar-preload.cjs` | `dist/bar/index.html`, 44 px |
+| Armazón | `auphere-app` (no persistente) | `app-preload.cjs`, lista cerrada | `dist/app/index.html`, **toda** la ventana |
+| Consola | `persist:auphere-console` | **ninguno** | la consola, **dentro del panel**, en modo embebido |
 
-La cuarta partición es la del ambiente del agente (`auphere-agent`), que no
-alcanza ninguna de las otras tres. `assertPartitionsAreSeparate()` lo comprueba
+La tercera partición es la del ambiente del agente (`auphere-agent`), que no
+alcanza ninguna de las otras dos. `assertPartitionsAreSeparate()` lo comprueba
 **al arrancar** y aborta si alguien las iguala en un refactor.
 
-Se enseña una superficie u otra, nunca dos: el menú *Ver* (⌘1 / ⌘2) cambia, y
-`app:openConsole` la trae desde la pantalla.
+**Ya no se enseña «una superficie u otra».** Con la spec 010 hay un armazón:
+franja superior con los semáforos integrados, lista lateral única y panel de
+contenido. Las secciones de administrar las pinta la consola **dentro de ese
+panel** —el armazón le dice dónde cabe midiendo el hueco real— y las demás las
+pinta la aplicación. ⌘1 y ⌘2 desaparecen: la persona elige **secciones**, no
+superficies, y la lista canónica vive en `src/sections.ts`.
+
+Cuando la consola no carga, el panel vuelve a ser de la pantalla y se dice en su
+idioma con un reintento (`app:console.failed`): antes se veía la página de error
+de Chromium dentro de la ventana.
 
 ## El canal con el proceso principal
 
-`apps/desktop/src/app-ipc.ts` **es** el contrato: 25 canales de invocación y 8
+`apps/desktop/src/app-ipc.ts` **es** el contrato: 40 canales de invocación y 17
 de empuje, cada uno con la forma de su entrada. El `preload` expone una función
 por canal y nada más — ni `ipcRenderer`, ni `send`, ni `invoke` genérico.
 

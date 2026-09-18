@@ -3,6 +3,8 @@
 import { Clock, ShieldAlert, ShieldCheck, TriangleAlert } from "lucide-react";
 import * as React from "react";
 
+import { ARM_MS } from "../arming";
+
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Textarea } from "@nexus/ui";
 
 
@@ -75,6 +77,30 @@ export function ConfirmCard({ item, currentUserId, busy, failure, onDecide }: Pr
   React.useEffect(() => {
     if (editing) noteRef.current?.focus();
   }, [editing]);
+
+  /*
+   * Spec 010 R10.3 — una pulsación en el instante de aparecer no cuenta.
+   *
+   * La tarjeta llega **en medio de un hilo que se escribe solo** y empuja hacia
+   * abajo lo que había: quien estuviera pulsando ahí acabaría autorizando sin
+   * haber leído nada. No se desactiva el botón —uno apagado que se enciende
+   * solo parece roto— sino que se ignora la respuesta.
+   */
+  const [armed, setArmed] = React.useState(false);
+  React.useEffect(() => {
+    const timer = setTimeout(() => setArmed(true), ARM_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  const decide = React.useCallback(
+    (decision: Decision, note?: string) => {
+      if (!armed) return;
+      // Sin `note` se llama con un solo argumento, como siempre: cambiar la
+      // aridad rompería a quien distinga «sin nota» de «nota vacía».
+      if (note === undefined) onDecide(decision);
+      else onDecide(decision, note);
+    },
+    [armed, onDecide],
+  );
 
   const left = remaining(item.expiresAt, now);
   const expired = left !== null && left === 0;
@@ -158,7 +184,7 @@ export function ConfirmCard({ item, currentUserId, busy, failure, onDecide }: Pr
               />
               <p className="text-xs text-pretty text-muted-foreground">{t("companion.confirm.note.hint")}</p>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" disabled={busy} onClick={() => onDecide("edit", note.trim() || undefined)}>
+                <Button size="sm" disabled={busy} onClick={() => decide("edit", note.trim() || undefined)}>
                   {t("companion.confirm.note.send")}
                 </Button>
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>
@@ -168,13 +194,13 @@ export function ConfirmCard({ item, currentUserId, busy, failure, onDecide }: Pr
             </div>
           ) : (
             <div className="flex min-w-0 flex-wrap gap-2">
-              <Button size="sm" disabled={busy} onClick={() => onDecide("confirm")}>
+              <Button size="sm" disabled={busy} onClick={() => decide("confirm")}>
                 {t("companion.confirm.confirm")}
               </Button>
               <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing(true)}>
                 {t("companion.confirm.edit")}
               </Button>
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => onDecide("cancel")}>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => decide("cancel")}>
                 {t("companion.confirm.cancel")}
               </Button>
             </div>

@@ -44,6 +44,12 @@ export const APP_INVOKE_CHANNELS: readonly InvokeChannel[] = [
   { name: "app:policy.prefs", input: "none" },
   { name: "app:policy.setPref", input: "pref" },
   { name: "app:usage", input: "none" },
+  /**
+   * El plan y lo que admite — spec 010, R9. **Solo lectura**: contratar y
+   * comprar ocurren en el navegador (R9.4), y la aplicación no pide ni enseña
+   * datos de tarjeta en ningún caso (R9.10).
+   */
+  { name: "app:membership", input: "none" },
   { name: "app:team", input: "none" },
   { name: "app:env.forThread", input: "thread_id" },
   { name: "app:openConsole", input: "open_console" },
@@ -79,6 +85,15 @@ export const APP_INVOKE_CHANNELS: readonly InvokeChannel[] = [
    * directorio crudo del canal en el navegador: una lista de `.zip` y `.yml`.
    */
   { name: "app:update.check", input: "none" },
+  /**
+   * Abrir el panel de avisos de Ajustes del sistema — spec 010, R7.10.
+   *
+   * **Sin parámetros, y a propósito.** Un canal que aceptara una dirección le
+   * daría a la pantalla la capacidad de abrir cualquier esquema del sistema
+   * operativo, que es mucho más de lo que hace falta y más de lo que se puede
+   * justificar al ampliar una lista cerrada. El destino está en el principal.
+   */
+  { name: "app:system.openNotificationSettings", input: "none" },
   { name: "app:handoff.done", input: "handoff" },
 ] as const;
 

@@ -16,12 +16,10 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_PARTITION,
   APP_PARTITION,
-  BAR_PARTITION,
   HUMAN_PARTITION,
   agentProcessEnv,
   appWebPreferences,
   assertPartitionsAreSeparate,
-  barWebPreferences,
   consoleWebPreferences,
   sessionCookieNames,
 } from "../src/session-isolation.js";
@@ -75,16 +73,17 @@ describe("el entorno del proceso del agente (15.3 y 7.4)", () => {
   });
 });
 
-describe("la barra es una tercera partición, y solo ella tiene preload (3.5, 14.1)", () => {
-  it("tres particiones distintas, y solo la humana persiste", () => {
-    expect(new Set([HUMAN_PARTITION, AGENT_PARTITION, BAR_PARTITION]).size).toBe(3);
-    expect(BAR_PARTITION.startsWith("persist:")).toBe(false);
-    expect(() => assertPartitionsAreSeparate()).not.toThrow();
-    expect(() => assertPartitionsAreSeparate(HUMAN_PARTITION, AGENT_PARTITION, AGENT_PARTITION)).toThrow();
-    expect(() => assertPartitionsAreSeparate(HUMAN_PARTITION, AGENT_PARTITION, "persist:bar")).toThrow();
-  });
-
-  it("la vista de la consola no tiene preload: la página no puede hablarle a la cáscara", () => {
+/*
+ * Spec 010, T015 — **la partición de la barra se retira con la barra.**
+ *
+ * Eran cuatro; ahora son tres. Lo que la barra hacía vive en el armazón, en la
+ * partición de la pantalla. Se conservan aquí, explícitamente, las dos
+ * afirmaciones que **no** dependían de ella y que siguen siendo las que
+ * importan: que la vista de la consola sigue **sin `preload`**, y que el
+ * arranque aborta si dos particiones se igualan.
+ */
+describe("la vista de la consola sigue sin preload (3.5, 14.1)", () => {
+  it("la página no tiene ninguna vía de hablarle a la cáscara", () => {
     const prefs = consoleWebPreferences();
     expect(prefs.partition).toBe(HUMAN_PARTITION);
     expect(prefs).not.toHaveProperty("preload");
@@ -92,24 +91,17 @@ describe("la barra es una tercera partición, y solo ella tiene preload (3.5, 14
     expect(prefs.nodeIntegration).toBe(false);
     expect(prefs.sandbox).toBe(true);
   });
-
-  it("la barra sí, en su partición, y con el mismo aislamiento", () => {
-    const prefs = barWebPreferences("/ruta/al/preload.js");
-    expect(prefs.partition).toBe(BAR_PARTITION);
-    expect(prefs.preload).toBe("/ruta/al/preload.js");
-    expect(prefs.contextIsolation).toBe(true);
-    expect(prefs.nodeIntegration).toBe(false);
-    expect(prefs.sandbox).toBe(true);
-  });
 });
 
-describe("la pantalla de operar es la cuarta partición (spec 003, 12.1, 12.3, 14.2)", () => {
-  it("cuatro particiones distintas; la de la pantalla no persiste", () => {
-    expect(new Set([HUMAN_PARTITION, AGENT_PARTITION, BAR_PARTITION, APP_PARTITION]).size).toBe(4);
+describe("la pantalla de operar es la tercera partición (spec 003, 12.1, 12.3, 14.2)", () => {
+  it("tres particiones distintas; la de la pantalla no persiste", () => {
+    expect(new Set([HUMAN_PARTITION, AGENT_PARTITION, APP_PARTITION]).size).toBe(3);
     expect(APP_PARTITION.startsWith("persist:")).toBe(false);
     expect(() => assertPartitionsAreSeparate()).not.toThrow();
-    expect(() => assertPartitionsAreSeparate(HUMAN_PARTITION, AGENT_PARTITION, BAR_PARTITION, BAR_PARTITION)).toThrow();
-    expect(() => assertPartitionsAreSeparate(HUMAN_PARTITION, AGENT_PARTITION, BAR_PARTITION, "persist:app")).toThrow();
+    // El arranque aborta si dos se igualan: el fallo de configuración más fácil
+    // de cometer al refactorizar, cazado antes de que haya ninguna fuga.
+    expect(() => assertPartitionsAreSeparate(HUMAN_PARTITION, AGENT_PARTITION, AGENT_PARTITION)).toThrow();
+    expect(() => assertPartitionsAreSeparate(HUMAN_PARTITION, AGENT_PARTITION, "persist:app")).toThrow();
   });
 
   it("la pantalla tiene su preload, sandbox y aislamiento; la consola sigue sin preload", () => {

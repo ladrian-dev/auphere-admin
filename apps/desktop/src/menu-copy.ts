@@ -39,6 +39,10 @@ export type MenuCopy = {
   window: string;
   help: string;
   releaseNotes: string;
+  /** El aviso de prueba que dispara la autorización de macOS (R7.8). */
+  notificationsProbe: string;
+  /** El título del selector nativo de carpetas (R8.4). */
+  pickDirectory: string;
 };
 
 const ES: MenuCopy = {
@@ -65,6 +69,8 @@ const ES: MenuCopy = {
   window: "Ventana",
   help: "Ayuda",
   releaseNotes: "Novedades de esta versión",
+  notificationsProbe: "Los avisos están activados. Así te enterarás de lo que espera tu decisión.",
+  pickDirectory: "Elige el directorio del cliente",
 };
 
 const EN: MenuCopy = {
@@ -91,6 +97,8 @@ const EN: MenuCopy = {
   window: "Window",
   help: "Help",
   releaseNotes: "What's new in this version",
+  notificationsProbe: "Notifications are on. This is how you will hear about what waits on your decision.",
+  pickDirectory: "Choose the client's directory",
 };
 
 export function menuCopy(lang: Lang): MenuCopy {

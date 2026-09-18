@@ -45,6 +45,8 @@ export {
   useT,
 } from "./i18n";
 export { type CompanionMessageKey, type Locale, companionMessages, formatMessage } from "./messages";
+/** Spec 010 R10.3 — el umbral anti-pulsación, para poder esperarlo en test. */
+export { ARM_MS, isArmed } from "./arming";
 export { Composer, MAX_PROMPT } from "./components/composer";
 export { ConfirmCard } from "./components/confirm-card";
 export { ExecCard, type ExecMode, type ExecPreview, readExecPreview } from "./components/exec-card";

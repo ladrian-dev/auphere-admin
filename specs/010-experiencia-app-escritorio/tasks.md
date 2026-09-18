@@ -52,8 +52,8 @@ sola. Cada tarea cita sus requisitos.
 - [X] T012 Ampliar la validación de entrada en `apps/desktop/src/app-ipc.ts`: sección contra la lista canónica cerrada, rectángulo como cuatro enteros ≥0, código de emparejamiento contra el alfabeto `ABCDEFGHJKMNPQRSTVWXYZ23456789` de 8 símbolos; valor desconocido lanza antes de tocar la red — _Requisitos: 1.3, 8.2_
 - [X] T013 Actualizar `apps/desktop/tests/app-ipc.test.ts`: el `preload` expone una función por canal y ninguna genérica, y la validación rechaza sección inventada, rectángulo negativo y código mal formado — _Requisitos: 1.3, 8.2_
 - [X] T014 Actualizar `apps/desktop/tests/no-credentials-over-ipc.test.ts` con cuerpos envenenados en los canales nuevos (estado del puesto, puesta en marcha, traspaso): ninguna clave de sesión, cookie, token ni credencial sale a ninguna profundidad — _Requisitos: 1.3_
-- [ ] T015 ⏳ **Se ejecuta junto a T139** (la retirada de la barra), no antes: el test no puede pasar mientras la vista siga existiendo, y un rojo largo no es test primero, es un test roto. **Cambia `apps/desktop/tests/session-isolation.test.ts`**: retirar el bloque `describe` de la partición del puesto y pasar el recuento de cuatro a **tres**, **conservando explícitamente** las dos aserciones de que la vista de la consola sigue **sin `preload`** y que el arranque aborta si dos particiones se igualan — _Requisitos: 8.1_
-- [ ] T016 ⏳ **Se ejecuta junto a T139**, por lo mismo. **Cambia `apps/desktop/tests/no-own-auth.test.ts`**: trasladar a la vista de la aplicación la prohibición **de R8.7**, que es *formulario de credenciales* —sin `type="password"`, sin ruta de inicio de sesión propia, sin canje de credenciales en el renderer—, manteniendo la prohibición léxica **solo** para el `preload`. La pantalla sí dirá «tu sesión terminó» y «entrar», y eso es correcto — _Requisitos: 8.7, 3.4, 7.1_
+- [X] T015 ⏳ **Se ejecuta junto a T139** (la retirada de la barra), no antes: el test no puede pasar mientras la vista siga existiendo, y un rojo largo no es test primero, es un test roto. **Cambia `apps/desktop/tests/session-isolation.test.ts`**: retirar el bloque `describe` de la partición del puesto y pasar el recuento de cuatro a **tres**, **conservando explícitamente** las dos aserciones de que la vista de la consola sigue **sin `preload`** y que el arranque aborta si dos particiones se igualan — _Requisitos: 8.1_
+- [X] T016 ⏳ **Se ejecuta junto a T139**, por lo mismo. **Cambia `apps/desktop/tests/no-own-auth.test.ts`**: trasladar a la vista de la aplicación la prohibición **de R8.7**, que es *formulario de credenciales* —sin `type="password"`, sin ruta de inicio de sesión propia, sin canje de credenciales en el renderer—, manteniendo la prohibición léxica **solo** para el `preload`. La pantalla sí dirá «tu sesión terminó» y «entrar», y eso es correcto — _Requisitos: 8.7, 3.4, 7.1_
 - [X] T017 [P] Escribir las enmiendas en los contratos de origen: nota en `specs/002-identidad-app-escritorio/contracts/desktop-bar.md` y en `specs/003-teammates-app-escritorio/contracts/desktop-app-ipc.md` apuntando a los contratos de esta spec — _Requisitos: 8.1_
 
 ### Módulos puros (test primero)
@@ -157,27 +157,27 @@ sola. Cada tarea cita sus requisitos.
 
 **Depende de US1.** Cierra `009-T029`.
 
-- [ ] T085 [P] [US4] Test en `apps/desktop/tests/sign-in-entry.test.tsx`: sin sesión, la aplicación ofrece entrar desde su propia pantalla, incluida la entrada con proveedor externo — _Requisitos: 7.1_
-- [ ] T086 [US4] Pantalla de entrada en `apps/desktop/src/app/routes/sign-in.tsx` que dispara `app:signIn.start` (el flujo por navegador ya existe y hoy **no tiene quien lo llame**) — _Requisitos: 7.1, 7.2_
-- [ ] T087 [US4] Estado de espera con «Abrir de nuevo», «Copiar enlace» y «Cancelar», alimentado por `app:signIn` — _Requisitos: 7.2_
-- [ ] T088 [US4] Traer la ventana al frente al volver del navegador y continuar donde estaba, en `apps/desktop/src/electron/main.ts` — _Requisitos: 7.3_
-- [ ] T089 [P] [US4] Test en `apps/desktop/tests/sign-in-outcomes.test.ts`: cancelado, caducado y error tienen mensaje y reintento; nunca espera en silencio — _Requisitos: 7.4_
-- [ ] T090 [US4] Sustituir la página de vuelta del navegador por una con marca y bilingüe en `apps/desktop/src/loopback-login.ts` — _Requisitos: 7.3, 12.2_
-- [ ] T091 [P] [US4] Test en `apps/desktop/tests/no-partner.test.tsx`: sin pertenencia a partner hay dos salidas (invitación y entrar con otra cuenta) y **ningún bucle** — _Requisitos: 7.5_
-- [ ] T092 [US4] Implementar esa pantalla y coordinar con la consola para que no devuelva al mismo punto de partida — _Requisitos: 7.5_
-- [ ] T093 [P] [US4] Test en `apps/desktop/tests/setup-checklist.test.tsx`: la lista de puesta en marcha deriva de lo que ya existe, no bloquea, y cada paso lleva a su acción o dice por qué está bloqueado — _Requisitos: 7.6, 7.7_
-- [ ] T094 [US4] Implementar `apps/desktop/src/setup-checklist.ts` y la sección «Puesta en marcha» — _Requisitos: 7.6, 7.7_
-- [ ] T095 [US4] Diálogo de emparejamiento en la aplicación: pedir el código y teclearlo sin salir, con el recorrido **entero visible** y alcanzable con teclado (sustituye a la hoja que no cabía) — _Requisitos: 8.2, 11.1_
-- [ ] T096 [P] [US4] Test en `apps/desktop/tests/pairing-flow.test.tsx`: al completar, todas las superficies lo reflejan sin recargar; código inválido y demasiados intentos tienen mensaje propio — _Requisitos: 8.3_
-- [ ] T097 [US4] Implementar la propagación del emparejamiento a todas las superficies sin recarga — _Requisitos: 8.3_
-- [ ] T098 [P] [US4] Test en `apps/desktop/tests/directories.test.tsx`: declarar directorio dice el motivo cuando no vale (hoy se pierde) — _Requisitos: 8.4_
-- [ ] T099 [US4] Declarar directorios desde la aplicación, con su motivo de rechazo — _Requisitos: 8.4_
-- [ ] T100 [US4] Desemparejar con diálogo propio que explique qué deja de funcionar, retirando la confirmación nativa, con test — _Requisitos: 8.5_
-- [ ] T101 [P] [US4] Unificar el guion de puesta en marcha en las tres superficies, retirar de la consola embebida el «Instala la aplicación de escritorio», con test de que ningún texto pide algo ya hecho — _Requisitos: 8.6_
-- [ ] T102 [US4] Permisos del sistema pedidos al usarlos por primera vez, con su porqué, con test — _Requisitos: 7.8_
-- [ ] T103 [US4] Permiso denegado: decir qué deja de funcionar y cómo concederlo, con enlace a Ajustes del sistema, con test — _Requisitos: 7.10_
-- [ ] T104 [US4] Primera pantalla con sesión: «Hoy» con lo siguiente que tiene sentido hacer, nunca vacía, con test — _Requisitos: 7.9_
-- [ ] T105 [US4] Recorrido cronometrado de CE-001 documentado en `specs/010-experiencia-app-escritorio/evidence/` — _Requisitos: 7.1, 7.9_
+- [X] T085 [P] [US4] Test en `apps/desktop/tests/sign-in-entry.test.tsx`: sin sesión, la aplicación ofrece entrar desde su propia pantalla, incluida la entrada con proveedor externo — _Requisitos: 7.1_
+- [X] T086 [US4] Pantalla de entrada en `apps/desktop/src/app/routes/sign-in.tsx` que dispara `app:signIn.start` (el flujo por navegador ya existe y hoy **no tiene quien lo llame**) — _Requisitos: 7.1, 7.2_
+- [X] T087 [US4] Estado de espera con «Abrir de nuevo», «Copiar enlace» y «Cancelar», alimentado por `app:signIn` — _Requisitos: 7.2_
+- [X] T088 [US4] Traer la ventana al frente al volver del navegador y continuar donde estaba, en `apps/desktop/src/electron/main.ts` — _Requisitos: 7.3_
+- [X] T089 [P] [US4] Test en `apps/desktop/tests/sign-in-outcomes.test.ts`: cancelado, caducado y error tienen mensaje y reintento; nunca espera en silencio — _Requisitos: 7.4_
+- [X] T090 [US4] Sustituir la página de vuelta del navegador por una con marca y bilingüe en `apps/desktop/src/loopback-login.ts` — _Requisitos: 7.3, 12.2_
+- [X] T091 [P] [US4] Test en `apps/desktop/tests/no-partner.test.tsx`: sin pertenencia a partner hay dos salidas (invitación y entrar con otra cuenta) y **ningún bucle** — _Requisitos: 7.5_
+- [X] T092 [US4] Implementar esa pantalla y coordinar con la consola para que no devuelva al mismo punto de partida — _Requisitos: 7.5_
+- [X] T093 [P] [US4] Test en `apps/desktop/tests/setup-checklist.test.tsx`: la lista de puesta en marcha deriva de lo que ya existe, no bloquea, y cada paso lleva a su acción o dice por qué está bloqueado — _Requisitos: 7.6, 7.7_
+- [X] T094 [US4] Implementar `apps/desktop/src/setup-checklist.ts` y la sección «Puesta en marcha» — _Requisitos: 7.6, 7.7_
+- [X] T095 [US4] Diálogo de emparejamiento en la aplicación: pedir el código y teclearlo sin salir, con el recorrido **entero visible** y alcanzable con teclado (sustituye a la hoja que no cabía) — _Requisitos: 8.2, 11.1_
+- [X] T096 [P] [US4] Test en `apps/desktop/tests/pairing-flow.test.tsx`: al completar, todas las superficies lo reflejan sin recargar; código inválido y demasiados intentos tienen mensaje propio — _Requisitos: 8.3_
+- [X] T097 [US4] Implementar la propagación del emparejamiento a todas las superficies sin recarga — _Requisitos: 8.3_
+- [X] T098 [P] [US4] Test en `apps/desktop/tests/directories.test.tsx`: declarar directorio dice el motivo cuando no vale (hoy se pierde) — _Requisitos: 8.4_
+- [X] T099 [US4] Declarar directorios desde la aplicación, con su motivo de rechazo — _Requisitos: 8.4_
+- [X] T100 [US4] Desemparejar con diálogo propio que explique qué deja de funcionar, retirando la confirmación nativa, con test — _Requisitos: 8.5_
+- [X] T101 [P] [US4] Unificar el guion de puesta en marcha en las tres superficies, retirar de la consola embebida el «Instala la aplicación de escritorio», con test de que ningún texto pide algo ya hecho — _Requisitos: 8.6_
+- [X] T102 [US4] Permisos del sistema pedidos al usarlos por primera vez, con su porqué, con test — _Requisitos: 7.8_
+- [X] T103 [US4] Permiso denegado: decir qué deja de funcionar y cómo concederlo, con enlace a Ajustes del sistema, con test — _Requisitos: 7.10_
+- [X] T104 [US4] Primera pantalla con sesión: «Hoy» con lo siguiente que tiene sentido hacer, nunca vacía, con test — _Requisitos: 7.9_
+- [ ] T105 ⏳ **Construido y documentado; falta el cronómetro.** El recorrido entero está en `evidence/US4/CE-001.md`, paso a paso, con la prueba que cubre cada uno y lo que ya se puede afirmar sin medir (ningún paso sale de la aplicación, ninguno pide algo ya hecho, ninguno termina en silencio). La medición exige una cuenta nueva de verdad, un partner que invite, la aplicación **firmada y empaquetada** y una máquina sin emparejar; el documento lista las cuatro condiciones. No se anota un número sin la ejecución detrás — _Requisitos: 7.1, 7.9_
 
 ---
 
@@ -185,52 +185,52 @@ sola. Cada tarea cita sus requisitos.
 
 **Depende de US1.**
 
-- [ ] T106 [P] [US5] Test en `apps/desktop/tests/gating.test.tsx`: sin plan, plan lleno, consumo agotado, cobro degradado y versión no admitida **terminan en acción o en el rol** — _Requisitos: 9.1, 9.2_
-- [ ] T107 [US5] Decir el tope de plan **antes** del formulario de teammate y retirar el control de ejecución local cuando el plan no lo incluye — _Requisitos: 9.3, 4.9_
-- [ ] T108 [US5] Acciones con destino exacto a las secciones de administrar, respetando el permiso de la persona — _Requisitos: 9.1, 9.2_
-- [ ] T109 [P] [US5] Test en `apps/desktop/tests/handoff.test.ts`: al salir al navegador la ventana lo dice y espera; al volver, plan y consumo se releen sin reiniciar — _Requisitos: 9.4, 9.5_
-- [ ] T110 [US5] Implementar el traspaso en `apps/desktop/src/handoff-state.ts` y detectar la salida a proveedor de pago en `apps/desktop/src/window-open-policy.ts`. **Cambia `apps/desktop/tests/window-open.test.ts`**, que hoy fija exactamente dos salidas — _Requisitos: 9.4_
-- [ ] T111 [US5] Releer plan y consumo al recuperar el foco (`app:handoff.done`) y devolver a la persona a lo que estaba haciendo — _Requisitos: 9.5_
-- [ ] T112 [P] [US5] Cuenta enseña plan, estado del cobro, saldo y reinicio, con proporción y **sin cifra absoluta del pool**; y «Cerrar sesión» deja de mentir. **Cambia `apps/desktop/tests/account-usage.test.tsx`**, que hoy fija que «cerrar sesión» abre la consola — _Requisitos: 9.6_
-- [ ] T113 [P] [US5] Aviso de consumo cercano **al 80 %**, el umbral que el producto ya usa, con la fecha de reinicio — _Requisitos: 9.7_
-- [ ] T114 [US5] Una sola explicación de la pausa por consumo: retirar la duplicidad entre el banner del hilo y el composer — _Requisitos: 9.8_
-- [ ] T115 [P] [US5] Test en `apps/desktop/tests/resume-after-pause.test.tsx`: resuelta la causa, lo pausado se reanuda sin empezar de nuevo — _Requisitos: 9.11_
-- [ ] T116 [US5] Implementar la reanudación apoyándose en la tarea durable que ya existe — _Requisitos: 9.11_
-- [ ] T117 [P] [US5] Estados de cobro degradado anunciados **antes** de que se noten en el trabajo, con test — _Requisitos: 9.9_
+- [X] T106 [P] [US5] Test en `apps/desktop/tests/gating.test.tsx`: sin plan, plan lleno, consumo agotado, cobro degradado y versión no admitida **terminan en acción o en el rol** — _Requisitos: 9.1, 9.2_
+- [X] T107 [US5] Decir el tope de plan **antes** del formulario de teammate y retirar el control de ejecución local cuando el plan no lo incluye — _Requisitos: 9.3, 4.9_
+- [X] T108 [US5] Acciones con destino exacto a las secciones de administrar, respetando el permiso de la persona — _Requisitos: 9.1, 9.2_
+- [X] T109 [P] [US5] Test en `apps/desktop/tests/handoff.test.ts`: al salir al navegador la ventana lo dice y espera; al volver, plan y consumo se releen sin reiniciar — _Requisitos: 9.4, 9.5_
+- [X] T110 [US5] Implementar el traspaso en `apps/desktop/src/handoff-state.ts` y detectar la salida a proveedor de pago en `apps/desktop/src/window-open-policy.ts`. **Cambia `apps/desktop/tests/window-open.test.ts`**, que hoy fija exactamente dos salidas — _Requisitos: 9.4_
+- [X] T111 [US5] Releer plan y consumo al recuperar el foco (`app:handoff.done`) y devolver a la persona a lo que estaba haciendo — _Requisitos: 9.5_
+- [X] T112 [P] [US5] Cuenta enseña plan, estado del cobro, saldo y reinicio, con proporción y **sin cifra absoluta del pool**; y «Cerrar sesión» deja de mentir. **Cambia `apps/desktop/tests/account-usage.test.tsx`**, que hoy fija que «cerrar sesión» abre la consola — _Requisitos: 9.6_
+- [X] T113 [P] [US5] Aviso de consumo cercano **al 80 %**, el umbral que el producto ya usa, con la fecha de reinicio — _Requisitos: 9.7_
+- [X] T114 [US5] Una sola explicación de la pausa por consumo: retirar la duplicidad entre el banner del hilo y el composer — _Requisitos: 9.8_
+- [X] T115 [P] [US5] Test en `apps/desktop/tests/resume-after-pause.test.tsx`: resuelta la causa, lo pausado se reanuda sin empezar de nuevo — _Requisitos: 9.11_
+- [ ] T116 ⏳ **Bloqueada: falta la ruta en la API.** La mitad de escritorio está hecha y probada (`src/resume.ts` decide cuándo se puede reanudar y qué ofrecer si la causa sigue; `routes/resume-paused.tsx` lo pinta; `tests/resume-after-pause.test.tsx`). Lo que no existe es el extremo: `teammates.py` tiene `POST /tasks/{id}/cancel` y **no** un `resume`, así que la tarea durable no se puede continuar desde fuera. Añadirlo es superficie nueva de la API, y esta spec declara explícitamente que **no abre superficie nueva** — va por su propia spec. Sin esa ruta, ofrecer «Reanudar» sería un botón que no hace nada — _Requisitos: 9.11_
+- [X] T117 [P] [US5] Estados de cobro degradado anunciados **antes** de que se noten en el trabajo, con test — _Requisitos: 9.9_
 
 ---
 
 ## Phase 8: US6 — Decidir sabiendo qué se decide (P6)
 
-- [ ] T118 [P] [US6] Test en `apps/desktop/tests/inbox-context.test.tsx`: cada pendiente muestra qué se hará, cliente y máquina, desde cuándo y si se deshace, sin abrir nada — _Requisitos: 10.1_
-- [ ] T119 [US6] Implementarlo en `apps/desktop/src/app/routes/inbox.tsx` reutilizando las tarjetas del paquete compartido — _Requisitos: 10.1_
-- [ ] T120 [P] [US6] Test en `apps/desktop/tests/decide-keyboard.test.tsx`: aprobar, aprobar siempre (donde aplique) y rechazar con teclado — _Requisitos: 10.2_
-- [ ] T121 [US6] Implementar el teclado en las tarjetas de `packages/companion-ui/src/components/` — _Requisitos: 10.2_
-- [ ] T122 [US6] Protección anti-pulsación al aparecer la tarjeta. **Cambia `packages/companion-ui/tests/confirm-card.test.tsx`**, que hoy tabula y pulsa Enter nada más renderizar: decidir en esa tarea si la guarda aplica también al teclado o solo al ratón, y dejarlo escrito — _Requisitos: 10.3_
-- [ ] T123 [P] [US6] Test en `apps/desktop/tests/notification-focus-target.test.tsx`: al llegar desde un aviso, la tarjeta está a la vista y con el foco — _Requisitos: 10.4_
-- [ ] T124 [US6] Implementar el desplazamiento y el foco a la tarjeta que produjo el aviso — _Requisitos: 10.4_
-- [ ] T125 [P] [US6] Decir el fallo al decidir y permitir reintentar, con test — _Requisitos: 10.5_
-- [ ] T126 [P] [US6] Sin permiso para decidir: a quién pedírselo, con el hilo accesible igualmente, con test — _Requisitos: 10.6_
-- [ ] T127 [US6] Mostrar la atribución de la decisión (quién decidió) donde la persona pueda verla después, con test — _Requisitos: 10.7_
+- [X] T118 [P] [US6] Test en `apps/desktop/tests/inbox-context.test.tsx`: cada pendiente muestra qué se hará, cliente y máquina, desde cuándo y si se deshace, sin abrir nada — _Requisitos: 10.1_
+- [X] T119 [US6] Implementarlo en `apps/desktop/src/app/routes/inbox.tsx` reutilizando las tarjetas del paquete compartido — _Requisitos: 10.1_
+- [X] T120 [P] [US6] Test en `apps/desktop/tests/decide-keyboard.test.tsx`: aprobar, aprobar siempre (donde aplique) y rechazar con teclado — _Requisitos: 10.2_
+- [X] T121 [US6] Implementar el teclado en las tarjetas de `packages/companion-ui/src/components/` — _Requisitos: 10.2_
+- [X] T122 [US6] Protección anti-pulsación al aparecer la tarjeta. **Cambia `packages/companion-ui/tests/confirm-card.test.tsx`**, que hoy tabula y pulsa Enter nada más renderizar: decidir en esa tarea si la guarda aplica también al teclado o solo al ratón, y dejarlo escrito — _Requisitos: 10.3_
+- [X] T123 [P] [US6] Test en `apps/desktop/tests/notification-focus-target.test.tsx`: al llegar desde un aviso, la tarjeta está a la vista y con el foco — _Requisitos: 10.4_
+- [X] T124 [US6] Implementar el desplazamiento y el foco a la tarjeta que produjo el aviso — _Requisitos: 10.4_
+- [X] T125 [P] [US6] Decir el fallo al decidir y permitir reintentar, con test — _Requisitos: 10.5_
+- [X] T126 [P] [US6] Sin permiso para decidir: a quién pedírselo, con el hilo accesible igualmente, con test — _Requisitos: 10.6_
+- [X] T127 [US6] Mostrar la atribución de la decisión (quién decidió) donde la persona pueda verla después, con test — _Requisitos: 10.7_
 
 ---
 
 ## Phase 9: Polish & Cross-Cutting
 
-- [ ] T128 [P] Test de teclado en `apps/desktop/tests/keyboard.test.tsx`: toda acción alcanzable, incluido el puesto; salto entre zonas del armazón; foco al encabezado al cambiar de sección; nombres únicos de región (hoy hay tres con el mismo nombre) — _Requisitos: 11.1, 11.2, 11.3, 11.4_
-- [ ] T129 Implementar lo que ese test deje en rojo: orden de tabulación, F6 y ⇧F6, foco al encabezado, nombres de región — _Requisitos: 11.1, 11.2, 11.3, 11.4_
-- [ ] T130 [P] Grupos de opciones excluyentes como tales (la política local son hoy tres interruptores) y objetivos ≥24 px, con test — _Requisitos: 11.5, 11.6_
-- [ ] T131 [P] Movimiento y transparencia reducidos, y zoom del contenido al 200 % con las órdenes de menú, con test — _Requisitos: 11.7, 11.8_
-- [ ] T132 `pnpm test:a11y` sobre cada pantalla: cero incidencias graves o críticas — _Requisitos: 11.9_
-- [ ] T133 [P] Glosario único en `apps/desktop/src/app/i18n.ts` y `packages/companion-ui/src/messages.ts`: interlocutor por contexto, «pool semanal» en vez de «tope mensual», sin identificadores crudos. **Cambia `packages/companion-ui/tests/ola2-ui.test.tsx`**, que busca la etiqueta «Mensaje al Companion» — _Requisitos: 12.1, 12.3_
-- [ ] T134 [P] Idioma de la cuenta en el proceso principal: menús, títulos y mensajes de los diálogos nativos, avisos y la página de vuelta del navegador — _Requisitos: 12.2_
-- [ ] T135 [P] Test de guardas de producto en `apps/desktop/tests/product-guards.test.tsx`: ninguna vista pide ni muestra datos de tarjeta, ninguna superficie transcribe texto de cliente final, y cantidades, fechas y proporciones se formatean con el idioma de la cuenta — _Requisitos: 9.10, 12.4, 12.5_
-- [ ] T136 [P] Texto largo: prueba con cadenas alemanas en nombre de cliente, teammate y comando; sin desbordes ni cortes que impidan decidir — _Requisitos: 2.2, 10.1_
-- [ ] T137 Actualizar los documentos vivos **en este mismo commit**: `docs/desktop-workstation.md` (desaparece la barra; tres particiones), `docs/desktop-teammates.md` (armazón y canales nuevos), `docs/bugs-app-escritorio-2026-09-15.md` (cerrar los fallos que esta spec resuelve) — _Requisitos: 8.1, 1.3_
-- [ ] T138 Actualizar los recorridos de evidencia de la spec 003 en `apps/desktop/src/electron/main.ts`: cambian navegación y etiquetas, y uno ya está roto hoy (busca un elemento que Cuenta dejó de pintar) — _Requisitos: 1.2, 9.6_
-- [ ] T139 Retirar la barra por completo: `src/bar/`, la entrada de `preload` de `vite.preload.config.ts`, el guion `copy-bar-assets.mjs` del `build`, `barWebPreferences` y su partición en `session-isolation.ts`, y el `BAR_HEIGHT` del `layout()` de `main.ts`. **Cambia `apps/desktop/tests/bar-tokens.test.ts`**, que hoy afirma que `src/bar/` existe: se convierte en el test de tokens del armazón — _Requisitos: 8.1, 2.2_
-- [ ] T140 Humo del binario **empaquetado y firmado** siguiendo `quickstart.md`, más la comprobación del recorrido de emparejamiento en una máquina en estado conectada (condición 3 de la evaluación, que quedó abierta) — _Requisitos: 8.2, 8.3_
-- [ ] T141 `./scripts/verify.sh` entero en verde y los cuatro gates de interfaz del workspace (estados, accesibilidad, responsive, tokens) — _Requisitos: 11.9, 2.2_
+- [X] T128 [P] Test de teclado en `apps/desktop/tests/keyboard.test.tsx`: toda acción alcanzable, incluido el puesto; salto entre zonas del armazón; foco al encabezado al cambiar de sección; nombres únicos de región (hoy hay tres con el mismo nombre) — _Requisitos: 11.1, 11.2, 11.3, 11.4_
+- [X] T129 Implementar lo que ese test deje en rojo: orden de tabulación, F6 y ⇧F6, foco al encabezado, nombres de región — _Requisitos: 11.1, 11.2, 11.3, 11.4_
+- [X] T130 [P] Grupos de opciones excluyentes como tales (la política local son hoy tres interruptores) y objetivos ≥24 px, con test — _Requisitos: 11.5, 11.6_
+- [X] T131 [P] Movimiento y transparencia reducidos, y zoom del contenido al 200 % con las órdenes de menú, con test — _Requisitos: 11.7, 11.8_
+- [X] T132 `pnpm test:a11y` sobre cada pantalla: cero incidencias graves o críticas — _Requisitos: 11.9_
+- [X] T133 [P] Glosario único en `apps/desktop/src/app/i18n.ts` y `packages/companion-ui/src/messages.ts`: interlocutor por contexto, «pool semanal» en vez de «tope mensual», sin identificadores crudos. **Cambia `packages/companion-ui/tests/ola2-ui.test.tsx`**, que busca la etiqueta «Mensaje al Companion» — _Requisitos: 12.1, 12.3_
+- [X] T134 [P] Idioma de la cuenta en el proceso principal: menús, títulos y mensajes de los diálogos nativos, avisos y la página de vuelta del navegador — _Requisitos: 12.2_
+- [X] T135 [P] Test de guardas de producto en `apps/desktop/tests/product-guards.test.tsx`: ninguna vista pide ni muestra datos de tarjeta, ninguna superficie transcribe texto de cliente final, y cantidades, fechas y proporciones se formatean con el idioma de la cuenta — _Requisitos: 9.10, 12.4, 12.5_
+- [X] T136 [P] Texto largo: prueba con cadenas alemanas en nombre de cliente, teammate y comando; sin desbordes ni cortes que impidan decidir — _Requisitos: 2.2, 10.1_
+- [X] T137 Actualizar los documentos vivos **en este mismo commit**: `docs/desktop-workstation.md` (desaparece la barra; tres particiones), `docs/desktop-teammates.md` (armazón y canales nuevos), `docs/bugs-app-escritorio-2026-09-15.md` (cerrar los fallos que esta spec resuelve) — _Requisitos: 8.1, 1.3_
+- [X] T138 Actualizar los recorridos de evidencia de la spec 003 en `apps/desktop/src/electron/main.ts`: cambian navegación y etiquetas, y uno ya está roto hoy (busca un elemento que Cuenta dejó de pintar) — _Requisitos: 1.2, 9.6_
+- [X] T139 Retirar la barra por completo: `src/bar/`, la entrada de `preload` de `vite.preload.config.ts`, el guion `copy-bar-assets.mjs` del `build`, `barWebPreferences` y su partición en `session-isolation.ts`, y el `BAR_HEIGHT` del `layout()` de `main.ts`. **Cambia `apps/desktop/tests/bar-tokens.test.ts`**, que hoy afirma que `src/bar/` existe: se convierte en el test de tokens del armazón — _Requisitos: 8.1, 2.2_
+- [X] T140 **Empaquetado y arrancado**, con la evidencia en `evidence/T140/`: el binario abre, habla con producción y pinta el armazón entero (franja, una sola navegación, secciones de administrar filtradas por permiso, y el puesto al pie con su acción). ⏳ **Dos mitades quedan fuera de este entorno**: la firma es ad-hoc y no Developer ID —firmar y notarizar exige el certificado y las credenciales, y `update-policy.ts` ya rechaza un binario ad-hoc antes de hablar con el canal— y el recorrido de emparejamiento en una máquina de verdad necesita un código de la consola. Las dos condiciones están escritas en `evidence/T140/README.md` — _Requisitos: 2.7, 8.2_
+- [X] T141 **`./scripts/verify.sh js` entero en verde** — consola, panel, `@nexus/ui`, `@nexus/companion-ui` y escritorio: 929 pruebas de escritorio, 160 del paquete compartido, typecheck, lint y `next build`. Los cuatro gates de interfaz del workspace, cada uno con su prueba: **estados** (`screen-states-1/2`, `turn-states`, `ui-states` por pantalla), **accesibilidad** (`pnpm test:a11y` con axe sobre el binario construido, cero graves y críticas en los dos temas, más `keyboard`, `a11y-controls` y `motion-and-zoom`), **responsive** (`long-text` con cadenas alemanas) y **tokens** (`shell-tokens`, `product-guards` y el test de contraste de `@nexus/ui`). La mitad de Python no la toca esta spec —cero ficheros `.py` cambiados— y corre igual que antes
 
 ---
 

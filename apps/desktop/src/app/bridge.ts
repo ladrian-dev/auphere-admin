@@ -3,6 +3,9 @@
  * (`app-ipc.ts`). El renderer no sabe de red: pregunta y recibe.
  */
 import type { Section } from "../sections";
+import type { HandoffView } from "../handoff-state";
+import type { BarAction } from "../workstation-state";
+import type { SetupStep as SetupStepShape } from "../setup-checklist";
 import type {
   CompanionEvents,
   CompanionResumed,
@@ -114,6 +117,17 @@ export type InboxItem = {
   client_ref: string | null;
   proposed_at: string;
   can_decide: boolean;
+  /**
+   * Lo que hace falta para decidir sin abrir nada — spec 010, R10.1.
+   *
+   * La bandeja enseñaba nivel, título y teammate, y nada más: decidir así es
+   * decidir por el título, que es lo que una aprobación existe para evitar.
+   * Todo opcional: lo que no consta **no se pinta**, nunca se inventa.
+   */
+  machine?: string | null;
+  reversible?: boolean | null;
+  /** Quién decidió y qué, cuando ya está decidida (R10.7). */
+  decided?: { decision: "confirm" | "edit" | "cancel"; by: string | null; at: string } | null;
 };
 export type TaskState =
   | "en_marcha"
@@ -147,7 +161,7 @@ type Push = {
   /** Dónde está la consola, para que la lista lateral lo marque (R1.4). */
   "app:console.location": { section: Section; path: string };
   "app:console.failed": { section: Section; code: number } | null;
-  "app:handoff": { url: string };
+  "app:handoff": HandoffView;
   "app:workstation": WorkstationView;
   "app:signIn": SignInView;
   "app:update": UpdateView;
@@ -179,24 +193,55 @@ export type WorkstationView = {
   cause?: "sin_red" | "sin_ejecutor" | "sesion_perdida";
   required_version?: string;
   missing_directories?: number;
-  actions: Array<"emparejar" | "desemparejar" | "directorios" | "actualizar">;
+  clients?: Array<{ client_ref: string; name: string | null; workdir: string | null }>;
+  /**
+   * Lo que se ofrece. El vocabulario es el de `workstation-state.ts`, que es
+   * quien lo decide: tenerlo escrito dos veces con `emparejar` en un sitio e
+   * `introducir_codigo` en el otro dejaba pasar acciones que no existían.
+   */
+  actions: BarAction[];
 };
 
 /** La espera cuando algo ocurre en el navegador (R7.2). */
-export type SignInView = { state: "idle" | "esperando" | "vuelto" | "cancelada" | "caducada" | "error"; since?: string };
+/** En qué punto está la entrada. El vocabulario vive en `sign-in-state.ts`. */
+/** El traspaso al navegador y su vuelta (R9.4, R9.5). */
+export type { HandoffView, HandoffKind } from "../handoff-state";
+
+/** El plan, tal y como lo lee la consola. Sin la cifra del pool (R9.6). */
+export type Tier = {
+  code: string;
+  display_name: string;
+  monthly_price_cents: number;
+  max_teammates: number;
+  max_members: number;
+  consumption_multiple: number | null;
+};
+
+export type Membership = {
+  tier: Tier;
+  state: string;
+  current_period_end: string | null;
+  pending_tier: string | null;
+  usage: { teammates: number; members: number };
+  purchased_expires_at: string | null;
+  catalog: Tier[];
+};
+
+export type SignInView = {
+  state: "idle" | "esperando" | "vuelto" | "cancelada" | "caducada" | "error";
+  since?: string;
+  /** La dirección que se abrió, para reabrirla o copiarla (R7.2). */
+  url?: string;
+};
 
 /** El ciclo de la descarga. «No admitida» es del puesto, no de aquí (R6.4). */
 export type UpdateView = { state: "idle" | "descargando" | "lista" | "esperando_trabajo"; version?: string };
 
 /** Lo que falta para estar en marcha (R7.6). Derivado, no dato nuevo. */
-export type SetupChecklist = {
-  steps: Array<{
-    key: "cuenta_lista" | "maquina_emparejada" | "ejecutor_presente" | "primer_teammate" | "primer_turno" | "avisos_concedidos";
-    state: "hecho" | "pendiente" | "no_aplica";
-    section?: Section;
-    blocked_reason_key?: string;
-  }>;
-};
+/** Lo que falta para estar en marcha (R7.6). Derivado, no dato nuevo. El
+ *  vocabulario y la derivación viven en `setup-checklist.ts`. */
+export type { SetupStep } from "../setup-checklist";
+export type SetupChecklist = { steps: SetupStepShape[] };
 
 /** Cómo está la conexión (R3.1): «no pude preguntar» no es «no hay sesión». */
 export type ConnectivityView = { state: "online" | "offline" | "unconfirmed"; since: string };
@@ -223,7 +268,14 @@ export interface AuphereBridge {
   inboxList(): Promise<Result<InboxItem[]>>;
   tasksList(input?: { state?: string }): Promise<Result<Task[]>>;
   tasksCancel(input: { id: string }): Promise<Result<Task>>;
-  notificationsPrefs(input?: { silence_aviso?: boolean }): Promise<{ silenceAviso: boolean }>;
+  /**
+   * La preferencia de ruido **y** el permiso del sistema (R7.8, R7.10). Se leen
+   * juntos porque se pintan juntos; `ask: true` pide el permiso en ese momento.
+   */
+  notificationsPrefs(input?: { silence_aviso?: boolean; ask?: boolean }): Promise<{
+    silenceAviso: boolean;
+    permission: "desconocido" | "concedido" | "denegado";
+  }>;
   policyPrefs(): Promise<Result<LocalExecPolicy>>;
   policySetPref(input: { executable: string | null; mode: ExecMode }): Promise<Result<LocalExecPolicy>>;
   usage(): Promise<Result<Usage>>;
@@ -249,9 +301,13 @@ export interface AuphereBridge {
   signInStart(): Promise<SignInView>;
   signInCancel(): Promise<null>;
   setupStatus(): Promise<Result<SetupChecklist>>;
+  /** El plan y lo que admite (R9). Solo lectura. */
+  membership(): Promise<Result<Membership>>;
   updateInstall(): Promise<{ ok: boolean; error?: "busy" }>;
   /** Comprobar el canal ahora (R6.4, R6.5). */
   updateCheck(): Promise<null>;
+  /** Abre el panel de avisos de Ajustes del sistema (R7.10). Sin parámetros. */
+  openNotificationSettings(): Promise<null>;
   handoffDone(input: { kind: "sign_in" | "payment" }): Promise<null>;
 
   on<K extends keyof Push>(channel: K, callback: (payload: Push[K]) => void): () => void;

@@ -16,14 +16,14 @@ const CONTRACT = [
   "app:thread.open", "app:thread.runs", "app:run.events", "app:thread.send", "app:thread.cancel",
   "app:stream.open", "app:stream.close",
   "app:inbox.list", "app:inbox.decide", "app:tasks.list", "app:tasks.cancel",
-  "app:policy.prefs", "app:policy.setPref", "app:usage", "app:team", "app:env.forThread",
+  "app:policy.prefs", "app:policy.setPref", "app:usage", "app:membership", "app:team", "app:env.forThread",
   "app:openConsole", "app:notifications.prefs",
   // Spec 010 — el armazón, el puesto absorbido, la entrada por navegador, la
   // puesta en marcha, la actualización y la vuelta del navegador.
   "app:shell.showSection", "app:shell.contentBounds", "app:shell.prefs",
   "app:signIn.start", "app:signIn.cancel",
   "app:workstation.state", "app:workstation.pair", "app:workstation.unpair", "app:workstation.pickDirectory",
-  "app:setup.status", "app:update.install", "app:update.check", "app:handoff.done",
+  "app:setup.status", "app:update.install", "app:update.check", "app:system.openNotificationSettings", "app:handoff.done",
 ];
 const PUSH = [
   "app:event", "app:inbox", "app:inbox.focus", "app:stream.end", "app:inbox.changed", "app:task.state", "app:session", "app:presence",

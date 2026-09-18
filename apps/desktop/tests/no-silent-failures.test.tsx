@@ -101,7 +101,7 @@ describe("silencio 2 — guardar la política de ejecución local", () => {
   it("un fallo al guardar se dice junto a los botones", async () => {
     policySetPref.mockResolvedValue({ ok: false, code: "network" } as never);
     conAvisos(<LocalExecPolicySection initial={null} />);
-    await userEvent.click(await screen.findByRole("button", { name: /permitir siempre|always allow/i }));
+    await userEvent.click(await screen.findByRole("radio", { name: /permitir siempre|always allow/i }));
     await waitFor(() => expect(screen.getByText(/no se pudo guardar|could not be saved/i)).toBeInTheDocument());
   });
 
@@ -110,10 +110,11 @@ describe("silencio 2 — guardar la política de ejecución local", () => {
     // la próxima ejecución pediría permiso y nadie entendería por qué.
     policySetPref.mockResolvedValue({ ok: false, code: "network" } as never);
     conAvisos(<LocalExecPolicySection initial={null} />);
-    const siempre = await screen.findByRole("button", { name: /permitir siempre|always allow/i });
+    const siempre = await screen.findByRole("radio", { name: /permitir siempre|always allow/i });
     await userEvent.click(siempre);
     await waitFor(() => expect(screen.getByText(/no se pudo guardar|could not be saved/i)).toBeInTheDocument());
-    expect(siempre).toHaveAttribute("aria-pressed", "false");
+    // Spec 010 R11: esto es una elección entre tres, no tres interruptores.
+    expect(siempre).toHaveAttribute("aria-checked", "false");
   });
 });
 

@@ -19,6 +19,7 @@ import { PlatformClient, SessionLost } from "../platform-client.js";
 import type { GateDecision, WhoamiClient } from "../session-gate.js";
 import type { InboxWatcher } from "../inbox-watcher.js";
 import type { Prefs } from "../notifications-policy.js";
+import { deriveSetup } from "../setup-checklist.js";
 import type { StreamHub } from "../stream-hub.js";
 
 export type Push = (channel: string, payload: unknown) => void;
@@ -38,10 +39,25 @@ export type AppSurfaceOptions = {
   /** Comodidades de ventana; la lista de claves persistibles es cerrada. */
   shellPrefs: { read(): ShellPrefs; write(next: Partial<ShellPrefs>): ShellPrefs };
   /** El puesto de trabajo, absorbido en el armazón (enmienda de la spec 002). */
-  workstation: { state(): unknown };
+  workstation: {
+    state(): unknown;
+    pair(code: string): Promise<unknown>;
+    unpair(): Promise<unknown>;
+    /** `{path_shown}` o `{error, reason}`: el motivo **no se pierde** (R8.4). */
+    pickDirectory(clientRef: string): Promise<unknown>;
+  };
   onSessionLost: (reason: "anonymous" | "no_membership") => void;
   inbox: InboxWatcher;
   notificationPrefs: { read(): Prefs; write(next: Prefs): Prefs };
+  /**
+   * Pedir el permiso de avisos **ahora** (R7.8). Devuelve lo que se sabe
+   * después de intentarlo: macOS no deja preguntarlo de otra manera.
+   */
+  askNotificationPermission: () => Promise<Prefs>;
+  /** Abre el panel de avisos de Ajustes del sistema. Destino fijo (R7.10). */
+  openNotificationSettings: () => void;
+  /** Lo que sólo sabe el proceso principal para derivar la puesta en marcha. */
+  setup: { workstationStatus: () => string; executorPresent: () => boolean };
   /**
    * Instalar la versión descargada, porque la persona lo pidió (R6.2). Con
    * trabajo vivo devuelve `busy`: no instala **y lo dice** (R6.3).
@@ -49,6 +65,16 @@ export type AppSurfaceOptions = {
   installUpdate: () => { ok: true } | { error: "busy" | "none" };
   /** Comprobar el canal ahora. Lo que encuentre llega por `app:update`. */
   checkUpdate: () => void;
+  /**
+   * La entrada por navegador — spec 010, R7.1. Cierra `009-T029`: el flujo
+   * estaba entero y **no tenía quien lo llamara**.
+   *
+   * `start` no espera a que termine: el recorrido dura lo que dure en el
+   * navegador —hasta cinco minutos— y dejar la invocación colgada ahí sería
+   * exactamente la espera muda que R7.4 prohíbe. Lo que pasa después sube por
+   * `app:signIn`.
+   */
+  signIn: { start: () => void; cancel: () => void; state: () => unknown };
   /** Lo que esta máquina sabe: dónde trabaja cada cliente y qué nombraron los
    *  comandos de cada tarea (R11). Lo pone el runtime del puente. */
   machine: {
@@ -164,12 +190,71 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
   handle("app:tasks.cancel", (input: { id: string }) =>
     o.platform.request(`/api/teammates/tasks/${q(input.id)}/cancel`, { method: "POST" }),
   );
-  handle("app:notifications.prefs", (input: { silence_aviso?: boolean } | undefined) =>
-    input === undefined
-      ? o.notificationPrefs.read()
-      : o.notificationPrefs.write({ silenceAviso: input.silence_aviso === true }),
-  );
+  /*
+   * Spec 010 R7.8 y R7.10 — este canal lleva además **el permiso del sistema**.
+   *
+   * Enmienda del canal de la spec 003: la preferencia de ruido y el permiso del
+   * sistema operativo se leen en el mismo sitio porque se pintan juntos, y un
+   * canal aparte para una constante habría sido una pieza más por el mismo
+   * dato. `ask: true` pide el permiso **en ese momento**, que es el único
+   * momento en el que alguien sabe para qué es.
+   */
+  handle("app:notifications.prefs", async (input: { silence_aviso?: boolean; ask?: boolean } | undefined) => {
+    if (input?.ask) return o.askNotificationPermission();
+    if (input === undefined) return o.notificationPrefs.read();
+    return o.notificationPrefs.write({
+      ...o.notificationPrefs.read(),
+      silenceAviso: input.silence_aviso === true,
+    });
+  });
   // R6.2 y R6.3. El updater decide; esto sólo lo pide y devuelve lo que diga.
+  /**
+   * La puesta en marcha — spec 010, R7.6. **Derivada, no almacenada.**
+   *
+   * Cada paso sale de algo que ya se sabe. Un campo «pasos completados» se
+   * desincroniza el primer día —alguien desempareja la máquina y la lista sigue
+   * diciendo que está— y a partir de ahí la lista miente, que es lo peor que
+   * puede hacer una lista de comprobación.
+   */
+  handle("app:setup.status", async () => {
+    const [roster, turns] = await Promise.all([
+      o.platform.request<unknown[]>("/api/teammates"),
+      o.platform.request<unknown[]>("/api/teammates/tasks?state=terminada"),
+    ]);
+    const who = await o.whoami.whoami();
+    const prefs = o.notificationPrefs.read();
+    return {
+      steps: deriveSetup({
+        signedIn: who.kind === "member",
+        hasPartner: who.kind === "member",
+        workstation: o.setup.workstationStatus(),
+        executorPresent: o.setup.executorPresent(),
+        teammates: roster.ok ? roster.data.length : 0,
+        finishedTurns: turns.ok ? turns.data.length : 0,
+        notificationsGranted: prefs.permission === "concedido",
+        /*
+         * Lo que el plan admite llega con la historia 5. Hasta entonces **no se
+         * bloquea nada**: dar por bloqueado un paso sin saberlo es peor que
+         * dejar que el formulario explique el tope cuando llegue, que es lo que
+         * ya hace con `tier_none` y `tier_full`.
+         */
+        planAllowsTeammates: true,
+      }),
+    };
+  });
+
+  handle("app:signIn.start", () => {
+    o.signIn.start();
+    return o.signIn.state();
+  });
+  handle("app:signIn.cancel", () => {
+    o.signIn.cancel();
+    return null;
+  });
+  handle("app:system.openNotificationSettings", () => {
+    o.openNotificationSettings();
+    return null;
+  });
   handle("app:update.install", () => o.installUpdate());
   handle("app:update.check", () => {
     o.checkUpdate();
@@ -186,6 +271,9 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
   // presupuesto del Companion con `by_teammate: []` — un hueco honesto mientras
   // la ruta no existía; ahora existe y se pregunta por ella.
   handle("app:usage", () => o.platform.request("/api/teammates/usage"));
+  // R9: el plan y lo que admite. `billing:read` lo comprueba la consola; sin
+  // él la respuesta es 403 y la pantalla dice a quién pedirlo (R9.2).
+  handle("app:membership", () => o.platform.request("/api/billing/membership"));
   handle("app:team", () => o.platform.request("/api/team"));
 
   /**
@@ -257,6 +345,17 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
    * volvería a inventarse un estado, que es de lo que veníamos.
    */
   handle("app:workstation.state", () => o.workstation.state());
+  handle("app:workstation.pair", (input: { code: string }) => o.workstation.pair(input.code));
+  handle("app:workstation.unpair", () => o.workstation.unpair());
+  /*
+   * Spec 010 R8.4 — **el motivo del rechazo vuelve**. Hasta ahora la barra
+   * llamaba a esto y tiraba el resultado (`bar.ts:219`): el selector se cerraba
+   * y la lista seguía igual, sin que nadie supiera si el directorio no valía o
+   * si la aplicación estaba rota.
+   */
+  handle("app:workstation.pickDirectory", (input: { client_ref: string }) =>
+    o.workstation.pickDirectory(input.client_ref),
+  );
 }
 
 /**

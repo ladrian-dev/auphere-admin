@@ -13,7 +13,7 @@
  * aviso acota el alcance de lo que se ve, no lo sustituye.
  */
 import { Badge, Button, Skeleton } from "@nexus/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { type InboxItem, type Level, bridge } from "../bridge";
 import { InlineNotice, useFeedback } from "../feedback/provider";
@@ -31,12 +31,39 @@ type Props = { onOpenThread: (teammateId: string) => void; focus: string | null 
 /** Un aviso por tarjeta: el fallo va **donde estaba el botón** (R5.2). */
 const slotOf = (actionId: string) => `inbox.decide:${actionId}`;
 
+/** Cuánto lleva esperando, dicho como lo diría una persona (R10.1). */
+function ago(iso: string, locale: string): string | null {
+  const ms = Date.now() - Date.parse(iso);
+  if (Number.isNaN(ms) || ms < 60_000) return null;
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return rtf.format(-minutes, "minute");
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? rtf.format(-hours, "hour") : rtf.format(-Math.floor(hours / 24), "day");
+}
+
 export function Inbox({ onOpenThread, focus }: Props) {
   const t = useAppT();
   const { notify, clear } = useFeedback();
+  /*
+   * R10.4 — al llegar desde un aviso, la tarjeta **recibe el foco**, no sólo se
+   * colorea el borde: quien navega con teclado o lector de pantalla se
+   * encontraba al principio de la lista sin saber cuál era la suya.
+   */
+  const focused = useRef<HTMLLIElement | null>(null);
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
+
+  /*
+   * R10.4 — al llegar desde un aviso, la tarjeta **recibe el foco**, no sólo se
+   * colorea el borde: quien navega con teclado o lector de pantalla se
+   * encontraba al principio de la lista sin saber cuál era la suya. Depende de
+   * `items` porque la lista llega después que el foco pedido.
+   */
+  useEffect(() => {
+    if (focus) focused.current?.focus();
+  }, [focus, items]);
 
   const load = useCallback(async () => {
     const res = await bridge.inboxList();
@@ -129,6 +156,8 @@ export function Inbox({ onOpenThread, focus }: Props) {
         {items.map((item) => (
           <li
             key={item.action_id}
+            ref={focus === item.action_id ? focused : undefined}
+            tabIndex={focus === item.action_id ? -1 : undefined}
             data-level={item.level}
             aria-current={focus === item.action_id ? "true" : undefined}
             className="flex min-w-0 flex-col gap-2 rounded-md border border-border p-3 aria-[current=true]:border-primary"
@@ -139,11 +168,33 @@ export function Inbox({ onOpenThread, focus }: Props) {
                 {item.title}
               </span>
             </div>
+            {/*
+              R10.1 — qué se hará, sobre qué cliente y máquina, desde cuándo
+              espera, y si tiene vuelta atrás. Antes sólo estaban el nivel, el
+              título y el teammate: decidir así es decidir por el título.
+              Lo que no consta **no se pinta**; no se inventa nada.
+            */}
             <p className="min-w-0 text-xs text-pretty text-muted-foreground">
-              {item.teammate.name}
-              {item.client_ref ? ` · ${item.client_ref}` : ""}
+              {[
+                item.teammate.name,
+                item.client_ref,
+                item.machine,
+                ago(item.proposed_at, t("locale.tag")),
+                item.reversible === null || item.reversible === undefined
+                  ? null
+                  : t(item.reversible ? "inbox.reversible" : "inbox.irreversible"),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
-            {item.can_decide ? (
+
+            {/* R10.7 — quién decidió y qué, para poder verlo después. */}
+            {item.decided ? (
+              <p className="min-w-0 text-xs text-pretty text-muted-foreground">
+                {t(`inbox.decided.${item.decided.decision}`, { by: item.decided.by ?? t("inbox.decided.someone") })}
+              </p>
+            ) : null}
+            {item.decided ? null : item.can_decide ? (
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={deciding === item.action_id} onClick={() => void decide(item, "confirm")}>
                   {t("inbox.approve")}
@@ -161,9 +212,19 @@ export function Inbox({ onOpenThread, focus }: Props) {
                 </Button>
               </div>
             ) : (
-              <p className="text-xs text-pretty text-muted-foreground" role="note">
-                {t("inbox.cannotDecide")}
-              </p>
+              /*
+               * R10.6 — el callejón del anexo 04: sin permiso salía sólo «tu rol
+               * no puede decidir esto» y **desaparecía también «Ver el hilo»**.
+               * Ni decides ni puedes leer de qué va.
+               */
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="min-w-0 flex-1 text-xs text-pretty text-muted-foreground" role="note">
+                  {t("inbox.cannotDecide")}
+                </p>
+                <Button size="sm" variant="ghost" onClick={() => onOpenThread(item.teammate.id)}>
+                  {t("inbox.openThread")}
+                </Button>
+              </div>
             )}
             <InlineNotice slot={slotOf(item.action_id)} />
           </li>

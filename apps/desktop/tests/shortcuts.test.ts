@@ -37,11 +37,19 @@ describe("los atajos del sistema no se reutilizan para otra cosa", () => {
     // ⌘Q lleva acelerador propio porque salir **avisa** si hay trabajo vivo, y
     // eso exige un manejador en vez del `role` de Electron — pero sigue
     // significando exactamente lo mismo.
+    // ⌘0, ⌘+ y ⌘− son el zoom del contenido, y llevan acelerador propio porque
+    // amplían **las dos vistas** a la vez: el `role` de Electron sólo amplía la
+    // que tiene el foco, y con el armazón y la consola en la misma ventana eso
+    // deja media pantalla pequeña (R11, WCAG 1.4.4). Significan lo mismo que en
+    // cualquier otra aplicación.
     const esperados = new Set([
       "CommandOrControl+,",
       "CommandOrControl+N",
       "CommandOrControl+B",
       "CommandOrControl+Q",
+      "CommandOrControl+0",
+      "CommandOrControl+Plus",
+      "CommandOrControl+-",
     ]);
     for (const atajo of usados) {
       expect(esperados.has(atajo), `${atajo} no está entre los previstos`).toBe(true);

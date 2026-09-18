@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CompanionLocaleProvider as LocaleProvider } from "../src/i18n";
 
 import { Composer } from "../src/components/composer";
+import { ARM_MS } from "../src/arming";
 import { ConfirmCard } from "../src/components/confirm-card";
 import { type CompanionState, companionReducer, emptyCompanionState, trialClientRef } from "../src/state";
 import { Timeline } from "../src/components/timeline";
@@ -203,6 +204,10 @@ describe("publishing without a trial warns — it does NOT block (v2 §7.1)", ()
     expect(screen.getByText("Vas a publicar sin probarlo")).toBeInTheDocument();
     const confirm = screen.getByRole("button", { name: "Confirmar" });
     expect(confirm).toBeEnabled();
+    // Spec 010 R10.3: la tarjeta no acepta una respuesta en el instante de
+    // aparecer. El botón **nunca** se pinta apagado —lo de arriba sigue siendo
+    // cierto—; lo que hace es ignorar el clic hasta que alguien ha podido leer.
+    await new Promise((resolve) => setTimeout(resolve, ARM_MS + 10));
     await user.click(confirm);
     // Forbidding it would turn the trial into a toll people learn to
     // route around, so the click has to go through.

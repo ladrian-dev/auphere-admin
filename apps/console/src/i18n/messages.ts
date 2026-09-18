@@ -101,8 +101,8 @@ const core = {
   // que importa es la segunda: quien llega aquí no sabe por qué no está ya
   // dentro de la aplicación.
   "desktopCode.what": {
-    es: "Ya has entrado. Escribe este código en la barra de la aplicación de escritorio para entrar también allí.",
-    en: "You are in. Type this code into the bar of the desktop app to sign in there too.",
+    es: "Ya has entrado. Escribe este código en la aplicación de escritorio para entrar también allí.",
+    en: "You are in. Type this code into the desktop app to sign in there too.",
   },
   "desktopCode.aria": { es: "Código para la aplicación de escritorio", en: "Code for the desktop app" },
   "desktopCode.expiry": {

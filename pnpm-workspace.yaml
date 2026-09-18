@@ -1,10 +1,19 @@
 # Root pnpm workspace — PLAN-CONSOLE-V1 (CP-01).
 #
-# Covers the partner console and the shared design system. ``apps/admin``
-# keeps its own workspace (``apps/admin/pnpm-workspace.yaml``, with the
-# ``ucm-*`` packages inside it) until it migrates to ``@nexus/ui``; pnpm
-# resolves the NEAREST ``pnpm-workspace.yaml`` walking up from the cwd, so
+# Covers the partner console, the desktop app and the shared design system.
+# ``apps/admin`` keeps its own workspace (``apps/admin/pnpm-workspace.yaml``,
+# with the ``ucm-*`` packages inside it) until it migrates to ``@nexus/ui``;
+# pnpm resolves the NEAREST ``pnpm-workspace.yaml`` walking up from the cwd, so
 # running ``pnpm`` inside ``apps/admin`` is unaffected by this file.
+#
+# **``apps/desktop`` must NOT have its own ``pnpm-workspace.yaml``.** It had one
+# — a leftover from when it was a separate workspace — and it broke packaging in
+# a way that took a while to read: the file declared no ``packages``, so running
+# pnpm from inside ``apps/desktop`` found a workspace containing only itself and
+# could not resolve ``@nexus/ui@workspace:*`` or ``@nexus/companion-ui@workspace:*``.
+# Everything run from the repo root worked, so the breakage only showed up in
+# ``pnpm package``, which electron-builder starts with its own ``pnpm install``.
+# ``tests/packaging-config.test.ts`` now fails if that file comes back.
 packages:
   - "apps/console"
   - "apps/desktop"

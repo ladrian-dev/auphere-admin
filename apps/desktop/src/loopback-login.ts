@@ -53,6 +53,55 @@ export type LoginReturn =
   | { kind: "denied" }
   | { kind: "timeout" };
 
+/**
+ * La página que ve la persona en el navegador al volver — spec 010, R7.3 y
+ * R12.2.
+ *
+ * Era `text/plain`, en español y con una sola frase: «Ya puedes volver a
+ * Auphere.» Lo primero que se ve de la aplicación después de entrar no puede
+ * ser una página sin estilo, en un idioma que quizá no es el tuyo, y sin decir
+ * qué hacer si la ventana no aparece.
+ *
+ * Sin nada externo: ni fuentes, ni imágenes, ni scripts. Esta página la sirve
+ * un `http://127.0.0.1` efímero, y cualquier recurso remoto aquí sería una
+ * petición desde un origen local a media sesión de inicio.
+ */
+export function returnPage(ok: boolean): string {
+  const es = ok
+    ? { title: "Ya puedes volver a Auphere", body: "Hemos terminado aquí. La aplicación se entera sola; si no aparece, ábrela desde el Dock." }
+    : { title: "No se pudo completar la entrada", body: "Vuelve a la aplicación e inténtalo otra vez. Tu cuenta no ha cambiado." };
+  const en = ok
+    ? { title: "You can go back to Auphere", body: "We are done here. The app notices on its own; if it does not come forward, open it from the Dock." }
+    : { title: "Sign-in could not be completed", body: "Go back to the app and try again. Your account is unchanged." };
+  // Las dos lenguas a la vez: el navegador es de la persona y su idioma no
+  // tiene por qué ser el de la cuenta, así que aquí no se elige — se dicen las
+  // dos, y la segunda queda en gris.
+  return `<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Auphere</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100dvh; display: grid; place-items: center;
+         font: 16px/1.5 ui-sans-serif, system-ui, sans-serif; text-align: center;
+         background: Canvas; color: CanvasText; }
+  main { max-width: 34rem; padding: 2rem; }
+  h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+  p { margin: 0 0 1.5rem; }
+  .en { opacity: .55; font-size: .875rem; }
+  .mark { letter-spacing: .18em; text-transform: uppercase; font-size: .75rem;
+          opacity: .55; margin-bottom: 1.5rem; }
+</style>
+<main>
+  <p class="mark">Auphere</p>
+  <h1>${es.title}</h1>
+  <p>${es.body}</p>
+  <p class="en"><strong>${en.title}.</strong> ${en.body}</p>
+</main>
+</html>`;
+}
+
 export type Listening = {
   /** El `redirect_uri` que hay que mandarle a la consola. */
   redirectUri: string;
@@ -96,8 +145,8 @@ export async function listenForLogin(
     const code = url.searchParams.get("code");
     const returned = url.searchParams.get("state");
     const ok = typeof code === "string" && returned === state;
-    response.writeHead(ok ? 200 : 400, { "Content-Type": "text/plain; charset=utf-8" });
-    response.end(ok ? "Ya puedes volver a Auphere." : "No se pudo completar el inicio de sesión.");
+    response.writeHead(ok ? 200 : 400, { "Content-Type": "text/html; charset=utf-8" });
+    response.end(returnPage(ok));
     // Un `state` que no es el nuestro NO canjea nada, y tampoco cierra el
     // servidor: alguien podría mandarlo justo antes que el bueno.
     if (ok && code) finish({ kind: "code", code });

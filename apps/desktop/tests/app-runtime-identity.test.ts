@@ -258,7 +258,11 @@ describe("desemparejar y directorios (11.2, 7)", () => {
     const { app } = runtime(t);
     await app.applyGate({ kind: "pair_needed", userId: "luis", pairedByOther: false });
     await app.pair("K7MP-4XQ2");
-    expect(app.barState.links).toEqual([{ clientRef: "cultor", clientName: "Cultor", needsDirectory: true }]);
+    // Spec 010 R8.4: el vínculo lleva además **dónde trabaja**, para que el
+    // diálogo de directorios pueda enseñarlo. Aquí todavía no hay ninguno.
+    expect(app.barState.links).toEqual([
+      { clientRef: "cultor", clientName: "Cultor", needsDirectory: true, workdir: null },
+    ]);
     expect(app.workdirFor("cultor")).toBeNull();
     const result = await app.declareDirectory("cultor", async () => "/Users/luis/cultor");
     expect(result).toEqual({ kind: "declared", workdir: "/Users/luis/cultor" });

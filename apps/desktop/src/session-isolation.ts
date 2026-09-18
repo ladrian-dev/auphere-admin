@@ -27,12 +27,14 @@ export const HUMAN_PARTITION = "persist:auphere-console";
 /** Sin `persist:` a propósito — muere con el proceso y no toca el disco. */
 export const AGENT_PARTITION = "auphere-agent";
 
-/**
- * La barra del puesto (spec 002, Requisito 12): la única superficie propia de la
- * aplicación, en su propia partición y **la única con `preload`**. Tampoco
- * persiste: no guarda nada — la credencial vive cifrada aparte.
+/*
+ * Spec 010 — **la partición de la barra desaparece**, y con ella la barra.
+ *
+ * Eran cuatro particiones; ahora son tres. Lo que la barra hacía vive en el
+ * armazón, en la partición de la pantalla: el estado de la máquina al pie de la
+ * lista lateral, y emparejar, declarar directorios y desemparejar como diálogos
+ * de la aplicación. Una superficie menos es una superficie menos que aislar.
  */
-export const BAR_PARTITION = "auphere-bar";
 
 /**
  * La pantalla de operar (spec 003, Requisito 12): la segunda superficie propia,
@@ -56,18 +58,7 @@ export function consoleWebPreferences(): {
   return { partition: HUMAN_PARTITION, contextIsolation: true, nodeIntegration: false, sandbox: true };
 }
 
-/** Las de la barra: mismo aislamiento, su partición, y su `preload`. */
-export function barWebPreferences(preload: string): {
-  partition: string;
-  preload: string;
-  contextIsolation: true;
-  nodeIntegration: false;
-  sandbox: true;
-} {
-  return { partition: BAR_PARTITION, preload, contextIsolation: true, nodeIntegration: false, sandbox: true };
-}
-
-/** Las de la pantalla de operar: mismo aislamiento que la barra, su partición, su `preload`. */
+/** Las de la pantalla de operar: su partición, su `preload`, mismo aislamiento. */
 export function appWebPreferences(preload: string): {
   partition: string;
   preload: string;
@@ -98,10 +89,9 @@ export class SessionIsolationError extends Error {
 export function assertPartitionsAreSeparate(
   human: string = HUMAN_PARTITION,
   agent: string = AGENT_PARTITION,
-  bar: string = BAR_PARTITION,
   appPartition: string = APP_PARTITION,
 ): void {
-  if (new Set([human, agent, bar, appPartition]).size !== 4) {
+  if (new Set([human, agent, appPartition]).size !== 3) {
     throw new SessionIsolationError(
       "dos particiones son la misma: la sesión de la persona sería alcanzable",
     );
@@ -110,9 +100,6 @@ export function assertPartitionsAreSeparate(
     throw new SessionIsolationError(
       "la partición del agente no puede persistir: dejaría una sesión en disco",
     );
-  }
-  if (bar.startsWith("persist:")) {
-    throw new SessionIsolationError("la partición de la barra no puede persistir: no guarda nada");
   }
   if (appPartition.startsWith("persist:")) {
     throw new SessionIsolationError("la partición de la pantalla no puede persistir: su estado vive en la plataforma");

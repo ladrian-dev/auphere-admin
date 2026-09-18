@@ -9,11 +9,11 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.app.json",
     "lint": "eslint src tests --max-warnings 0",
     "test:smoke": "playwright test smoke",
-    "build": "node scripts/copy-tokens.mjs && tsc -p tsconfig.build.json && vite build -c vite.app.config.ts && vite build -c vite.preload.config.ts && node scripts/copy-bar-assets.mjs",
+    "build": "tsc -p tsconfig.build.json && vite build -c vite.app.config.ts && vite build -c vite.preload.config.ts",
     "start": "electron .",
     "package": "electron-builder --dir",
-    "copy-tokens": "node scripts/copy-tokens.mjs",
-    "dist": "electron-builder --mac"
+    "dist": "electron-builder --mac",
+    "test:a11y": "playwright test a11y"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
@@ -25,6 +25,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.2",
+    "axe-core": "^4.13.0",
     "electron": "44.3.0",
     "electron-builder": "26.15.3",
     "eslint": "^9.39.5",

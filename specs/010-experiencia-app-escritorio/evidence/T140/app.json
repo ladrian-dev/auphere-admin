@@ -1,0 +1,10 @@
+{
+  "surface": "app",
+  "consoleUrl": "https://console.auphere.com/",
+  "bridgeType": "object",
+  "roster": "Inicio\nsin emparejar\nBuscar\n⌘K\nOPERAR\nHoy\nPendientes\nTEAMMATES\n\nTodavía no tienes ninguno.\n\nCrear teammate\nADMINISTRAR\nInicio\nClientes\nConocimiento\nPuesto de trabajo\nConsumo\nAuditoría\nNotificaciones\nEquipo\nClaves de API\nFacturación\nCuenta\nsin emparejar\nEmparejar esta máquina",
+  "text": "Teammates\nsin emparejar\nBuscar\n⌘K\nOPERAR\nHoy\nPendientes\nTEAMMATES\n\nTodavía no tienes ninguno.\n\nCrear teammate\nADMINISTRAR\nInicio\nClientes\nConocimiento\nPuesto de trabajo\nConsumo\nAuditoría\nNotificaciones\nEquipo\nClaves de API\nFacturación\nCuenta\nsin emparejar\nEmparejar esta máquina\n\nTu máquina no está emparejada: los teammates trabajan igual, pero no pueden tocar tus archivos hasta que la emparejes. Se empareja desde el pie de la lista lateral.\n\nNuevo teammate\nNombre\nOficio\nCerebro\nSol\nGasta más\nTerra\nGasta lo normal\nLuna\nGasta poco\nQué le dejas hacer\nLeer\nVer clientes, canales, consumo y auditoría. No cambia nada.\nProponer cambios\nPrepara cambios y los prueba; los aplica cuando tú confirmas.\nGastar\nMover el reparto de consumo y elegir modelo de un cliente.\nPublicar\nPoner una versión del agente en producción.\nInvitar y pedir ayuda\nInvitar a alguien al equipo y abrir tickets a Auphere.\nEjecutar en tu máquina\nSolo programas de la lista del cliente, y siempre con tu política delante.\nCrear teammate\nCancelar",
+  "inboxText": "Pendientes\nsin emparejar\nBuscar\n⌘K\nOPERAR\nHoy\nPendientes\nTEAMMATES\n\nTodavía no tienes ninguno.\n\nCrear teammate\nADMINISTRAR\nInicio\nClientes\nConocimiento\nPuesto de trabajo\nConsumo\nAuditoría\nNotificaciones\nEquipo\nClaves de API\nFacturación\nCuenta\nsin emparejar\nEmparejar esta máquina\n\nTu máquina no está emparejada: los teammates trabajan igual, pero no pueden tocar tus archivos hasta que la emparejes. Se empareja desde el pie de la lista lateral.\n\nNada te espera\n\nCuando un teammate necesite permiso para algo que no puede hacer solo, aparece aquí. Nada se ejecuta antes.",
+  "states": [],
+  "logs": []
+}

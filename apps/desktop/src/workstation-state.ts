@@ -69,7 +69,13 @@ export type BarStatus = (typeof BAR_STATUSES)[number];
  */
 export type BarUpdate = { version: string; waiting: boolean };
 
-export type BarLink = { clientRef: string; clientName: string | null; needsDirectory: boolean };
+export type BarLink = {
+  clientRef: string;
+  clientName: string | null;
+  needsDirectory: boolean;
+  /** Dónde trabaja, tal y como se enseña. Sólo de esta máquina (R8.4). */
+  workdir?: string | null;
+};
 export type BarMachine = { displayName: string; hostname: string };
 
 export type BarState = {
@@ -113,17 +119,13 @@ export type BarState = {
    * ocupa la ventana, que es el único momento en que volver lleva a algún
    * sitio.
    */
-  surface?: "console";
 };
 
 export type BarAction =
   | "introducir_codigo"
   | "directorios"
   | "desemparejar"
-  | "actualizar"
-  /** Spec 009 R1. **Ortogonal a los siete estados**, como `update`: depende de
-   *  qué superficie se ve, no de si la máquina está emparejada. */
-  | "volver_a_la_app";
+  | "actualizar";
 
 export type BarEvent =
   | { kind: "pair_started" }
@@ -186,6 +188,14 @@ export type WorkstationView = {
   cause?: BarState["cause"];
   required_version?: string;
   missing_directories?: number;
+  /**
+   * Los clientes de esta máquina, con su directorio — spec 010, R8.4.
+   *
+   * La aplicación los necesita para ofrecer declararlos: con la barra retirada,
+   * el diálogo de directorios es suyo y no puede pedirle la lista a nadie más.
+   * `workdir` no se manda a la plataforma: es de esta máquina.
+   */
+  clients: Array<{ client_ref: string; name: string | null; workdir: string | null }>;
   actions: BarAction[];
 };
 
@@ -198,6 +208,13 @@ export function toWorkstationView(state: BarState): WorkstationView {
     ...(state.cause ? { cause: state.cause } : {}),
     ...(state.requiredVersion ? { required_version: state.requiredVersion } : {}),
     ...(missing > 0 ? { missing_directories: missing } : {}),
+    clients: state.links.map((l) => ({
+      client_ref: l.clientRef,
+      name: l.clientName,
+      // `needsDirectory` es lo que la barra sabía; sin ruta concreta, se dice
+      // que falta en vez de inventar una.
+      workdir: l.needsDirectory ? null : (l.workdir ?? null),
+    })),
     actions: actionsFor(state),
   };
 }
@@ -226,24 +243,14 @@ export function heartbeatRuns(status: BarStatus): boolean {
  * la consola porque su llavero está bloqueado sería un castigo sin causa
  * (R2.4). Por eso se componen aquí y no allí.
  */
-/**
- * El estado que se le empuja a la barra, con la superficie dentro — spec 009 R1.
+/*
+ * Spec 010 — **`withSurface` y `barActions` se van con la barra.**
  *
- * Vive aquí y no en la cáscara porque es una decisión, no pegamento: **qué
- * significa "no hay superficie que decir"**. Y la respuesta es que el campo no
- * está, no que valga `"app"` — la ausencia se diseña (§V), y un `surface:"app"`
- * obligaría a la barra a distinguir dos formas de decir lo mismo.
+ * Existían para que la barra de 44 px pudiera ofrecer «volver al equipo» cuando
+ * la ventana enseñaba la consola. Con el armazón, la consola se pinta **dentro
+ * del panel** y no hay a dónde volver: la persona elige secciones, no
+ * superficies. Una acción que ya no significa nada es peor que ninguna.
  */
-export function withSurface(state: BarState, surface: "app" | "console"): BarState {
-  return surface === "console" ? { ...state, surface: "console" } : { ...state, surface: undefined };
-}
-
-export function barActions(state: BarState): BarAction[] {
-  return [
-    ...(state.surface === "console" ? (["volver_a_la_app"] as const) : []),
-    ...actionsFor(state),
-  ];
-}
 
 export function actionsFor(state: BarState): BarAction[] {
   if (!state.encryptionAvailable) return [];
@@ -276,8 +283,6 @@ function forget(state: BarState, status: BarStatus): BarState {
     links: [],
     encryptionAvailable: state.encryptionAvailable,
     ...(state.locale ? { locale: state.locale } : {}),
-    // Olvidar la credencial no cambia qué superficie se está viendo.
-    ...(state.surface ? { surface: state.surface } : {}),
   };
 }
 

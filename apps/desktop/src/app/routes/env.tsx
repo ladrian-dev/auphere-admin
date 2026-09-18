@@ -185,15 +185,32 @@ export function LocalExecPolicySection({ initial }: { initial: LocalExecPolicy |
   return (
     <section className="flex min-w-0 flex-col gap-2" aria-label={t("policy.title")}>
       <h3 className="text-sm font-semibold text-balance">{t("policy.title")}</h3>
-      <div role="group" aria-label={t("policy.title")} className="flex flex-wrap gap-1">
-        {(["ask", "always", "never"] as const).map((mode) => (
+      {/*
+        Spec 010 R11 — esto es **una elección entre tres**, no tres
+        interruptores. Como `aria-pressed` suelto, un lector de pantalla decía
+        «botón, no presionado» tres veces y nunca que elegir uno apaga los
+        otros. Con `radiogroup` se anuncia «1 de 3» y las flechas funcionan,
+        que es lo que espera quien no usa ratón.
+      */}
+      <div role="radiogroup" aria-label={t("policy.title")} className="flex flex-wrap gap-1">
+        {(["ask", "always", "never"] as const).map((mode, index, todos) => (
           <button
             key={mode}
             type="button"
-            aria-pressed={policy.global_mode === mode}
+            role="radio"
+            aria-checked={policy.global_mode === mode}
+            // Tabulación itinerante: el grupo entra y sale con **una** parada,
+            // y dentro se recorre con las flechas (patrón ARIA de radios).
+            tabIndex={policy.global_mode === mode ? 0 : -1}
             disabled={saving}
             onClick={() => void save(mode)}
-            className="min-h-8 rounded-md border border-border px-2 text-xs transition-colors hover:bg-muted aria-[pressed=true]:bg-foreground aria-[pressed=true]:text-background"
+            onKeyDown={(event) => {
+              const paso = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+              if (paso === 0) return;
+              event.preventDefault();
+              void save(todos[(index + paso + todos.length) % todos.length]!);
+            }}
+            className="min-h-6 rounded-md border border-border px-3 py-1 text-xs transition-colors hover:bg-muted aria-[checked=true]:bg-foreground aria-[checked=true]:text-background"
           >
             {t(`policy.${mode}`)}
           </button>

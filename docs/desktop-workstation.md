@@ -14,22 +14,29 @@ Una **cáscara** de Electron con dos vistas en una `BaseWindow`:
 
 | Vista | Partición | `preload` | Qué carga |
 |---|---|---|---|
-| Consola | `persist:auphere-console` (persistente) | **ninguno** | la consola — para **administrar**; sus pantallas no se reimplementan |
-| Pantalla de operar | `auphere-app` (no persistente) | `app-preload.cjs`, lista cerrada | `dist/app/index.html` (spec 003) |
-| Barra del puesto | `auphere-bar` (no persistente) | `bar-preload.cjs`, **siete** funciones | `dist/bar/index.html`, 44 px, abajo |
+| Armazón | `auphere-app` (no persistente) | `app-preload.cjs`, lista cerrada | `dist/app/index.html` — ocupa **toda** la ventana |
+| Consola | `persist:auphere-console` (persistente) | **ninguno** | la consola, **dentro del panel** del armazón, en modo embebido |
 
-El ambiente del agente vive en una **cuarta** partición (`auphere-agent`, no
-persistente) y no alcanza ninguna de las otras tres. `session-isolation.ts` lo
+El ambiente del agente vive en una **tercera** partición (`auphere-agent`, no
+persistente) y no alcanza ninguna de las otras dos. `session-isolation.ts` lo
 comprueba al arrancar y `tests/session-isolation.test.ts` lo afirma.
+
+> **La barra del puesto de 44 px ya no existe** (spec 010, D2-A). Era una cuarta
+> partición con su propio `preload` de siete funciones, y sus hojas caían fuera
+> de una ventana de 44 px con `overflow: hidden` — el foco iba a un campo
+> invisible y la persona tecleaba a ciegas (P0-2 de la evaluación del
+> 2026-09-17). Lo que hacía vive ahora en el armazón: el estado de la máquina al
+> pie de la lista lateral, y emparejar, declarar directorios y desemparejar como
+> **diálogos de la aplicación**.
 
 > La pantalla de operar y todo lo que cuelga de ella (roster, hilo, Pendientes,
 > Cuenta, ejecución en la máquina) se describen en
 > [`docs/desktop-teammates.md`](desktop-teammates.md). Este documento es la
-> identidad, el emparejamiento, la barra y la contención.
+> identidad, el emparejamiento y la contención.
 
 **La consola no puede hablarle a la cáscara.** Sin `preload` en su vista no hay
-canal. El canal entre la consola y la barra es la persona: la consola muestra un
-código, la persona lo teclea en la barra.
+canal. El canal entre la consola y la aplicación es la persona: la consola
+muestra un código, la persona lo teclea en el diálogo de emparejamiento.
 
 ## Cómo entra una persona
 
@@ -43,9 +50,10 @@ Quién está dentro lo lee el **proceso principal** con
 `GET /api/session/whoami` del BFF, con la cookie de la partición humana, al
 arrancar y en cada cambio de la cookie `nexus-console.session`
 (`src/session-gate.ts`, `src/electron/adapters.ts`). La respuesta trae también el
-idioma de la cuenta, y la barra lo adopta para hablar como la consola:
+idioma de la cuenta, y la aplicación lo adopta entera —menús, diálogos nativos,
+avisos y la bandeja del sistema incluidos (R12.2):
 
-| `whoami` | La barra | El puente |
+| `whoami` | El puesto | El puente |
 |---|---|---|
 | 200 `{user_id, partner_slug, locale}` con credencial guardada para ese `user_id` | `conectada` (en el idioma de la cuenta) | arranca |
 | 200 sin credencial, nadie más emparejó | `sin_emparejar` | parado |
@@ -59,14 +67,14 @@ idioma de la cuenta, y la barra lo adopta para hablar como la consola:
    owner · admin · builder). Código de 8 símbolos del alfabeto
    `ABCDEFGHJKMNPQRSTVWXYZ23456789`, mostrado `XXXX-XXXX`, **una sola vez**;
    la base guarda su hash. Diez minutos; un código vivo por persona.
-2. En la barra, «Introducir código» → `POST /device/pair`
+2. En la aplicación, «Emparejar esta máquina» → `POST /device/pair`
    (`{code, hostname, platform, app_version}`; sin credencial: el código lo es).
    Un solo cuerpo para todo fallo (`404 pairing_code_invalid`); cinco fallos por
    máquina → `429` con `Retry-After` creciente.
 3. La respuesta trae la credencial **una vez**. La aplicación la guarda cifrada
    con `safeStorage` en `userData/credentials.bin`, en un mapa por `user_id`
    (`src/credential-store.ts`). Sin cifrado disponible no se guarda nada y la
-   barra lo dice.
+   aplicación lo dice.
 
 La máquina queda a nombre del **partner y de la persona** que pidió el código
 (`partner_devices.partner_id`, `principal_id`).
@@ -118,9 +126,9 @@ y no está archivada (`services/device_presence.tenant_presence`).
 
 | Acto | Dónde | Qué pasa |
 |---|---|---|
-| Cerrar sesión | Cuenta, en la consola | la cookie cambia → `whoami` 401 → el latido para, la barra dice `sin_sesion`; la credencial se conserva sellada para la misma persona |
-| Desemparejar | la barra | la aplicación **olvida** la credencial y deja de latir; la máquina queda `ausente` hasta que alguien la archive |
-| Archivar | `/workstation` → Archivar, o la pertenencia retirada | `revoked_at` + motivo (`archivada_consola` · `pertenencia_retirada` · `desemparejada`); el siguiente latido recibe `403 device_archived` y la barra pasa a `archivada_desde_consola`. Terminal: se empareja otra |
+| Cerrar sesión | Cuenta, en la consola | la cookie cambia → `whoami` 401 → el latido para, el puesto dice `sin_sesion`; la credencial se conserva sellada para la misma persona |
+| Desemparejar | el diálogo de la aplicación, que explica qué deja de funcionar y qué no (R8.5) | la aplicación **olvida** la credencial y deja de latir; la máquina queda `ausente` hasta que alguien la archive |
+| Archivar | `/workstation` → Archivar, o la pertenencia retirada | `revoked_at` + motivo (`archivada_consola` · `pertenencia_retirada` · `desemparejada`); el siguiente latido recibe `403 device_archived` y el puesto pasa a `archivada_desde_consola`. Terminal: se empareja otra |
 
 ## Cómo se entra, y por dónde vuelve el navegador
 
@@ -129,12 +137,10 @@ y no está archivada (`services/device_presence.tenant_presence`).
 
 Dos cosas que la spec 009 añadió, y la segunda cambió una garantía.
 
-**Volver a la pantalla del equipo.** La barra gana una acción, `volver_a_la_app`,
-y el `preload` una función, `showApp`. Se ofrece **sólo con la consola delante**:
-sin ella no lleva a ningún sitio, y un botón que no lleva a ningún sitio es lo
-que §V prohíbe. No pasa por `actionsFor(state)` a propósito — volver no depende
-de la conexión ni del cifrado, y meterla ahí la haría desaparecer con el llavero
-bloqueado.
+**Volver a la pantalla del equipo.** Existió mientras la ventana enseñaba **una
+superficie u otra**: con la consola delante, la barra ofrecía la vuelta. La spec
+010 lo retiró con la barra — la consola se pinta **dentro del panel** del
+armazón y no hay a dónde volver: la persona elige secciones, no superficies.
 
 **Entrar.** Es **RFC 8252**: *authorization code* + PKCE con retorno a
 `127.0.0.1`, lo mismo que hacen Claude Code, `gh` y `gcloud`. La cáscara genera
@@ -164,7 +170,7 @@ sitio que tiene la credencial y a la vez puede poner la cookie; por eso contesta
 > la misma máquina puede hablarle a ese puerto. Es el riesgo que PKCE cubre — sin
 > el `code_verifier`, que no sale del proceso, el código no vale.
 
-Antes se construyó otra cosa: un código que la persona tecleaba en la barra. Era
+Antes se construyó otra cosa: un código que la persona tecleaba en la aplicación. Era
 un RFC 8628 hecho a mano y al revés, y se retiró. El porqué está en
 `[[ADR-039-volver-y-entrar-desde-la-app-de-escritorio]]`.
 
@@ -241,20 +247,28 @@ dice su versión, o la versión no se puede leer, **pasa**. El riesgo de dejar
 entrar una versión vieja es mucho menor que el de dejar fuera a un partner por
 un guion mal puesto.
 
-## Los siete estados de la barra
+## Los estados del puesto
 
-`sin_emparejar · emparejando · conectada · reconectando · sin_sesion ·
-volver_a_emparejar · archivada_desde_consola` — `src/bar-state.ts`. Ninguno se
-pinta como error; las herramientas locales solo existen en `conectada`; el
-latido solo corre en `conectada` y `reconectando`.
+`comprobando · sin_emparejar · emparejando · conectada · reconectando ·
+sin_sesion · volver_a_emparejar · archivada_desde_consola ·
+version_no_admitida` — `src/workstation-state.ts`. Ninguno se pinta como error;
+las herramientas locales solo existen en `conectada`; el latido solo corre en
+`conectada` y `reconectando`.
+
+`comprobando` entra con la spec 010: al arrancar no consta todavía si la máquina
+está emparejada, y enseñar `sin_emparejar` mientras se comprueba era afirmar algo
+que no se sabe. Cada estado lleva además **desde cuándo** lo es y, cuando se
+sabe, **de qué** se reconecta (`sin_red` · `sin_ejecutor` · `sesion_perdida`): el
+2026-09-17 el puesto pasó horas en `reconectando` sin decir ninguna de las dos
+cosas, mientras la consola daba la máquina por emparejada.
 
 **Y un octavo dato que NO es un estado**: `update`, que dice si hay una versión
 descargada y si está **lista** («se instala al cerrar») o **esperando** («a que
 termine lo que hay vivo»). Va aparte de `status` a propósito: son ortogonales
 —una máquina puede estar `conectada` **y** tener una versión esperando— y
 meterlo en la enumeración obligaría a elegir cuál de las dos cosas se pinta.
-**Ausente significa que no hay nada que decir**: sin versión esperando la barra
-no muestra indicador apagado ni texto explicando lo que no hay.
+**Ausente significa que no hay nada que decir**: sin versión esperando, el
+armazón no muestra indicador apagado ni texto explicando lo que no hay.
 
 ## Lo que la consola sabe de la cáscara
 

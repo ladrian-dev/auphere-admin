@@ -407,6 +407,9 @@ export class AppRuntime {
         clientRef: l.clientRef,
         clientName: l.clientName,
         needsDirectory: l.needsDirectory,
+        // R8.4: dónde trabaja, para poder enseñarlo al declarar. No sube a la
+        // plataforma más allá de lo que `declareLink` ya manda.
+        workdir: l.workdir,
       }));
       this.setBar({ kind: "links_updated", links });
     } catch (error) {

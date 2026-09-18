@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { CompanionLocaleProvider as LocaleProvider } from "../src/i18n";
 
+import { ARM_MS } from "../src/arming";
 import { ConfirmCard } from "../src/components/confirm-card";
 import type { ActionItem } from "../src/state";
 import { companionReducer, emptyCompanionState } from "../src/state";
@@ -34,6 +35,21 @@ function renderCard(item: ActionItem, overrides: Partial<React.ComponentProps<ty
   return { onDecide };
 }
 
+/**
+ * Spec 010 R10.3 — **la tarjeta no acepta una respuesta en el instante de
+ * aparecer**, y estos tests decidían exactamente ahí.
+ *
+ * La protección existe porque la tarjeta llega en medio de un hilo que se
+ * escribe solo y empuja hacia abajo lo que había: quien estuviera pulsando ahí
+ * acabaría autorizando sin haber leído nada. `ARM_MS` son 250 ms, el mismo
+ * umbral que los navegadores usan para los diálogos de permisos.
+ *
+ * Esperar aquí no es un apaño del test: es lo que hace una persona que lee.
+ */
+async function armed(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ARM_MS + 10));
+}
+
 describe("ConfirmCard — the pending decision", () => {
   it("shows the title, the diff, the impact and the three outcomes", () => {
     renderCard(actionFrom(FUTURE));
@@ -49,6 +65,7 @@ describe("ConfirmCard — the pending decision", () => {
   it("is fully operable from the keyboard", async () => {
     const user = userEvent.setup();
     const { onDecide } = renderCard(actionFrom(FUTURE));
+    await armed();
     await user.tab();
     // Tab order reaches Confirm; Enter activates it.
     expect(screen.getByRole("button", { name: "Confirmar" })).toHaveFocus();
@@ -59,6 +76,7 @@ describe("ConfirmCard — the pending decision", () => {
   it("sends the note back with an edit so the model can adjust the plan", async () => {
     const user = userEvent.setup();
     const { onDecide } = renderCard(actionFrom(FUTURE));
+    await armed();
     await user.click(screen.getByRole("button", { name: "Cambiar algo" }));
     const box = screen.getByLabelText("Qué quieres cambiar");
     expect(box).toHaveFocus();
@@ -70,6 +88,7 @@ describe("ConfirmCard — the pending decision", () => {
   it("cancels with no note rather than swallowing the decision", async () => {
     const user = userEvent.setup();
     const { onDecide } = renderCard(actionFrom(FUTURE));
+    await armed();
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(onDecide).toHaveBeenCalledWith("cancel");
   });

@@ -8,6 +8,7 @@
  * máquina ausente y el tope son estados, no fallos.
  */
 import { CompanionLocaleProvider } from "@nexus/companion-ui";
+import { Button } from "@nexus/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -16,7 +17,11 @@ import {
   type LocalExecPolicy,
   type PresencePush,
   type SessionPush,
+  type SetupChecklist,
+  type SignInView,
   type ConnectivityView,
+  type HandoffView,
+  type Membership,
   type Team,
   type Teammate,
   type ThreadEnv,
@@ -32,10 +37,12 @@ import { MIN_SIDEBAR } from "../electron/shell-layout";
 import { Shell } from "./shell/shell";
 import { Sidebar } from "./shell/sidebar";
 import { Palette, type Command } from "./shell/palette";
+import { WorkstationActions, type WorkstationAction } from "./shell/workstation-actions";
 import { WorkstationChip } from "./shell/workstation-chip";
 import { Today } from "./routes/today";
 import { SessionExpired } from "./routes/session-expired";
 import { ConnectionBanner } from "./shell/connection-banner";
+import { HandoffBanner } from "./shell/handoff-banner";
 import { StatusRegion } from "./shell/status-region";
 import { UnsupportedVersion } from "./shell/unsupported-version";
 import { UpdateBanner } from "./shell/update-banner";
@@ -51,6 +58,14 @@ import { Inbox } from "./routes/inbox";
 import { FeedbackBanners, FeedbackProvider, FeedbackToasts, useNotify } from "./feedback/provider";
 import { NotificationPrefs } from "./routes/notification-prefs";
 import { SectionFailed } from "./routes/section-failed";
+import { NoPartner } from "./routes/no-partner";
+import { Directories } from "./routes/directories";
+import { PairDialog } from "./routes/pair-dialog";
+import { Plan } from "./routes/plan";
+import { SetupList } from "./routes/setup";
+import { UnpairDialog } from "./routes/unpair-dialog";
+import { SignIn } from "./routes/sign-in";
+import { CapNotice } from "./routes/cap-notice";
 import { NewTeammateForm, capOf } from "./routes/new-teammate";
 import { TeammateSettings } from "./routes/teammate-settings";
 import { ThreadView } from "./routes/thread";
@@ -161,6 +176,22 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
   const [sectionFailed, setSectionFailed] = useState<Section | null>(null);
   /** Lo que el updater dice. Sin esto, el ciclo entero sólo hablaba al registro. */
   const [update, setUpdate] = useState<UpdateView | null>(null);
+  /** En qué punto está la entrada por navegador (R7.2). */
+  const [signIn, setSignIn] = useState<SignInView | null>(null);
+  /** La puesta en marcha, derivada por el principal (R7.6). */
+  const [setup, setSetup] = useState<SetupChecklist | null>(null);
+  /**
+   * El diálogo de la máquina que está abierto — spec 010, R8.2 a R8.5.
+   *
+   * Con la barra de 44 px retirada, emparejar, declarar directorios y
+   * desemparejar son diálogos de la aplicación. Antes vivían en hojas que
+   * caían fuera de una ventana con `overflow: hidden`.
+   */
+  const [machineDialog, setMachineDialog] = useState<WorkstationAction | null>(null);
+  /** El plan y lo que admite (R9). `null` = todavía no se ha leído, o no hay permiso. */
+  const [membership, setMembership] = useState<Membership | null>(null);
+  /** El traspaso al navegador y su vuelta (R9.4, R9.5). */
+  const [handoff, setHandoff] = useState<HandoffView | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
 
   /* ── El armazón — spec 010 ──────────────────────────────────────────── */
@@ -212,10 +243,28 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
     // Salir al navegador deja de ser un silencio (R5.3). Banner y no aviso
     // efímero: la ventana pierde el foco justo después, y lo que se fue solo
     // mientras mirabas otra pantalla no se lo dijo a nadie.
-    const offHandoff = bridge.on("app:handoff", () => {
-      notify({ severidad: "info", alcance: "vista", urgencia: "diferible", clave: "feedback.browser" });
-    });
+
     const offUpdate = bridge.on("app:update", setUpdate);
+    const offSignIn = bridge.on("app:signIn", setSignIn);
+    /*
+     * Salir al navegador deja de ser un silencio (R5.3) y la espera se cuenta
+     * (R9.4). Una sola suscripción: dos al mismo canal serían dos verdades del
+     * mismo hecho, que es lo que la historia 3 dejó por escrito.
+     */
+    const offHandoff = bridge.on("app:handoff", (view) => {
+      setHandoff(view);
+      // Sin clase reconocida no hay vuelta que preparar: un enlace a la
+      // documentación sólo necesita que se diga que se abrió fuera.
+      if (view.state === "esperando" && view.kind === null) {
+        notify({ severidad: "info", alcance: "vista", urgencia: "diferible", clave: "feedback.browser" });
+      }
+      // R9.5: al volver de pagar se releen plan y consumo. No se recarga la
+      // aplicación: eso tiraría el hilo abierto y el borrador sin enviar.
+      if (view.state === "vuelto" && view.kind === "payment") {
+        void loadAccount();
+        void bridge.membership().then((res) => setMembership(res.ok ? res.data : null));
+      }
+    });
     const offWorkstation = bridge.on("app:workstation", setWorkstation);
     const offConnectivity = bridge.on("app:connectivity", setConnectivity);
     return () => {
@@ -226,6 +275,7 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
       offFailed();
       offHandoff();
       offUpdate();
+      offSignIn();
       offWorkstation();
       offConnectivity();
     };
@@ -292,8 +342,25 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
   }, []);
 
   useEffect(() => {
-    if (section === "cuenta") void loadAccount();
+    if (section !== "cuenta") return;
+    void loadAccount();
+    // Sin `billing:read` esto contesta 403 y el plan no se pinta: la pantalla
+    // dice a quién pedírselo en vez de ofrecer una acción que va a rebotar.
+    void bridge.membership().then((res) => setMembership(res.ok ? res.data : null));
   }, [section, loadAccount]);
+
+  // Se relee al entrar: la lista es una lectura de lo que ya es cierto, y
+  // guardarla en memoria la dejaría diciendo lo de hace media hora.
+  useEffect(() => {
+    if (section !== "puesta_en_marcha") return;
+    let alive = true;
+    void bridge.setupStatus().then((res) => {
+      if (alive && res.ok) setSetup(res.data);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [section]);
 
   const current = useMemo(() => roster.find((r) => r.id === selected) ?? null, [roster, selected]);
 
@@ -441,8 +508,9 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
               </button>
               {/* R3.6: el estado de la máquina se ve **sin abrir nada**, que es
                   lo que hacía la barra de 44 px y lo que se conserva de ella. */}
-              <div className="px-2 py-1">
+              <div className="flex flex-col gap-2 px-2 py-1">
                 <WorkstationChip state={workstation} announce />
+                <WorkstationActions state={workstation} onAction={setMachineDialog} />
               </div>
             </div>
           }
@@ -450,6 +518,35 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
       }
     >
       <Palette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
+
+      {machineDialog !== null && machineDialog !== "actualizar" ? (
+        <div className="fixed inset-0 z-30 flex bg-background/80 p-6">
+          {machineDialog === "introducir_codigo" ? (
+            <PairDialog
+              onDone={() => {
+                setMachineDialog(null);
+                // R8.3: no hay que recargar nada. El principal vuelve a derivar
+                // el veredicto y `app:workstation` llega solo a las superficies.
+              }}
+              onClose={() => setMachineDialog(null)}
+            />
+          ) : machineDialog === "desemparejar" ? (
+            <UnpairDialog onDone={() => setMachineDialog(null)} onClose={() => setMachineDialog(null)} />
+          ) : (
+            <div className="m-auto flex w-full max-w-prose flex-col gap-4 rounded-md border border-border bg-card p-6">
+              <Directories
+                clients={workstation?.clients ?? []}
+                onChanged={() => void bridge.workstationState().then(setWorkstation)}
+              />
+              <div>
+                <Button size="sm" variant="ghost" onClick={() => setMachineDialog(null)}>
+                  {t("dirs.close")}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {/* Lo que la sección de la pantalla pinta en el panel. Cuando la sección
           es de administrar, este hueco es de la consola y aquí no va nada. */}
@@ -470,6 +567,7 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
           ) : (
             <UpdateBanner update={update} />
           )}
+          <HandoffBanner handoff={handoff} onDismiss={() => setHandoff(null)} />
           <FeedbackBanners />
           {sectionFailed !== null ? (
             <SectionFailed
@@ -484,10 +582,25 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
           ) : null}
         </StatusRegion>
 
-        {session?.kind === "stop" ? (
+        {session?.kind === "stop" && session.reason === "no_membership" ? (
+          <NoPartner />
+        ) : session?.kind === "stop" && signIn !== null && signIn.state !== "idle" ? (
+          /*
+           * R7.2 y R7.4 — mientras el navegador tiene la palabra, la ventana
+           * cuenta la espera y sus tres salidas. Antes se quedaba quieta hasta
+           * que el oyente caducaba a los cinco minutos, sin decir nada.
+           */
+          <SignIn state={signIn} />
+        ) : session?.kind === "stop" ? (
+          /*
+           * R7.1 — entrar **desde aquí**. El botón llevaba a la consola, que
+           * llevaba a `/login`, que devolvía a la aplicación sin sesión: el
+           * bucle del anexo 04. El flujo por navegador existía entero y no
+           * tenía quien lo llamara (`009-T029`); ahora éste es quien llama.
+           */
           <SessionExpired
             reason={session.reason as "anonymous" | "no_membership" | undefined}
-            onSignIn={() => void bridge.openConsole({ path: "/" })}
+            onSignIn={() => void bridge.signInStart()}
           />
         ) : section === "cuenta" ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -503,7 +616,19 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
                 y no en un ajuste escondido. Va aquí y no dentro de `Account`
                 porque `Account` no habla con el puente: recibe lo que pinta. */}
             {accountStatus === "ready" ? (
-              <div className="px-6 pb-6">
+              <div className="flex flex-col gap-6 px-6 pb-6">
+                {/* R9.1: el plan vive aquí, que es donde todos los topes
+                    mandan. Antes mandaban a una pantalla sin plan. */}
+                <Plan
+                  membership={membership}
+                  percent={usage?.budget.percent ?? 0}
+                  resetsAt={usage?.budget.resets_at ?? null}
+                  permissions={permissions}
+                  onGo={(destino) => {
+                    if (destino.kind === "console") void bridge.openConsole({ path: destino.path });
+                    else go(destino.section as Section);
+                  }}
+                />
                 <NotificationPrefs />
               </div>
             ) : null}
@@ -515,6 +640,18 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
               setSelected(teammateId);
               setDetail("hilo");
               go("teammate");
+            }}
+          />
+        ) : section === "puesta_en_marcha" ? (
+          <SetupList
+            steps={setup?.steps ?? []}
+            onGo={(destino) => {
+              if (destino === "teammate") {
+                setDetail("nuevo");
+                go("teammate");
+                return;
+              }
+              go(destino);
             }}
           />
         ) : section === "hoy" ? (
@@ -537,6 +674,25 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
             }}
           />
         ) : detail === "nuevo" ? (
+          /*
+           * R9.3 — el tope se dice **antes** de rellenar nada. Se descubría al
+           * enviar: nombre, oficio, cerebro, seis permisos y un interruptor,
+           * y entonces «tu plan admite 0 teammates».
+           */
+          membership !== null && membership.usage.teammates >= membership.tier.max_teammates ? (
+            <CapNotice
+              cap={membership.tier.max_teammates === 0 ? "sin_plan" : "plan_lleno"}
+              permissions={permissions}
+              onGo={(destino) => {
+                if (destino.kind === "console") void bridge.openConsole({ path: destino.path });
+                else go(destino.section as Section);
+              }}
+              onCancel={() => {
+                setDetail("hilo");
+                go("hoy");
+              }}
+            />
+          ) : (
           <NewTeammateForm
             status={jobsStatus}
             jobs={jobs?.jobs ?? []}
@@ -553,6 +709,7 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
               return { ok: true as const };
             }}
           />
+          )
         ) : detail === "ajustes" && current ? (
           <TeammateSettings
             key={current.id}

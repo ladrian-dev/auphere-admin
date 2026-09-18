@@ -14,6 +14,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { LANDMARKS, type Landmark, nextLandmark } from "./landmarks";
 import { bridge } from "../bridge";
 import { Strip } from "./strip";
 
@@ -49,7 +50,35 @@ export function Shell({
   onSidebarWidth,
 }: ShellProps) {
   const panel = useRef<HTMLDivElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  const aside = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+
+  /**
+   * F6 y ⇧F6 — saltar de zona, no recorrerla (R11).
+   *
+   * Tabular de la franja al panel cuesta treinta pulsaciones con la lista
+   * lateral llena. macOS resuelve esto con F6 desde siempre, y es lo que espera
+   * quien no usa ratón. Se lleva al **primer elemento enfocable** de la zona, no
+   * a un contenedor: aterrizar en un `div` no deja hacer nada.
+   */
+  useEffect(() => {
+    const zones = () => [strip.current, aside.current, panel.current] as const;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "F6") return;
+      event.preventDefault();
+      const here = zones().findIndex((zone) => zone?.contains(document.activeElement));
+      const names: Landmark[] = [...LANDMARKS];
+      const target = nextLandmark(here === -1 ? null : names[here]!, event.shiftKey ? -1 : 1);
+      const zone = zones()[names.indexOf(target)];
+      const first = zone?.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      first?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   /**
    * Dónde cabe la consola. Se **mide**, no se calcula: lo que el proceso
@@ -95,10 +124,12 @@ export function Shell({
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
-      <Strip title={title} onSearch={onSearch} status={status} />
+      <div ref={strip}>
+        <Strip title={title} onSearch={onSearch} status={status} />
+      </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="min-h-0 shrink-0" style={{ width: sidebarWidth }}>
+        <div ref={aside} className="min-h-0 shrink-0" style={{ width: sidebarWidth }}>
           {sidebar}
         </div>
 

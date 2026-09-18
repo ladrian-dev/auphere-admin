@@ -23,6 +23,8 @@ import { fileURLToPath } from "node:url";
 
 import { AppRuntime } from "../app-runtime.js";
 import { createPkce, listenForLogin } from "../loopback-login.js";
+import { type HandoffView, handoffKindFor } from "../handoff-state.js";
+import { type SignInView, signInFrom } from "../sign-in-state.js";
 import { describeEnvironment } from "../startup-banner.js";
 import { GatewayApprovals } from "../approvals-client.js";
 import { CredentialStore } from "../credential-store.js";
@@ -35,14 +37,13 @@ import {
   HUMAN_PARTITION,
   appWebPreferences,
   assertPartitionsAreSeparate,
-  barWebPreferences,
   consoleWebPreferences,
 } from "../session-isolation.js";
 import type { InboxItem } from "../inbox-watcher.js";
 import { StreamHub } from "../stream-hub.js";
 import { trayBadge, trayTooltip, type Waiting } from "../tray-badge.js";
 import { countWaiting } from "../waiting.js";
-import { toWorkstationView, withSurface } from "../workstation-state.js";
+import { toWorkstationView } from "../workstation-state.js";
 import { MIN_WINDOW, readWindowState, rememberWindow } from "../window-state.js";
 import { decideWindowOpen, navigationAllowed } from "../window-open-policy.js";
 import {
@@ -64,6 +65,7 @@ import { MIN_SIDEBAR, STRIP_HEIGHT, contentRect } from "./shell-layout.js";
 import { windowBackground } from "./window-colors.js";
 import { type ShellPrefs, mergeShellPrefs, normaliseShellPrefs } from "../shell-prefs.js";
 import { type Section, pathOf, sectionOfPath } from "../sections.js";
+import { losesWhenDenied, nextAfterAttempt } from "../permissions.js";
 import { startUpdater, type UpdateState, type UpdaterHandle } from "./updater.js";
 import { menuCopy } from "../menu-copy.js";
 import type { Activity } from "../update-policy.js";
@@ -71,7 +73,6 @@ import type { Activity } from "../update-policy.js";
 const CONSOLE_URL = process.env.AUPHERE_CONSOLE_URL ?? "https://console.auphere.com";
 const API_URL = process.env.AUPHERE_API_URL ?? "https://api.auphere.com";
 const GATEWAY_URL = process.env.AUPHERE_GATEWAY_URL ?? "http://localhost:5476";
-const BAR_HEIGHT = 44;
 // ESM: no hay `__dirname`; la ruta de este fichero sale de `import.meta.url`.
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -136,10 +137,18 @@ let updater: UpdaterHandle | null = null;
 /** Lo último que dijo el updater. Lo lee el menú para poder nombrar la versión. */
 let updateState: UpdateState = { state: "idle" };
 
-function layout(window: BaseWindow, appView: WebContentsView, barView: WebContentsView): void {
+/**
+ * El armazón ocupa **toda la ventana** — spec 010, R1.1.
+ *
+ * Aquí había una barra de 44 px pegada abajo, con su propia vista, su propio
+ * `preload` y su propia partición. Se absorbió en el armazón (D2-A): el estado
+ * de la máquina vive al pie de la lista lateral, y emparejar y declarar
+ * directorios son diálogos de la aplicación. La barra dejaba sus hojas fuera de
+ * la vista por su propio `overflow: hidden`, que fue el P0-2 de la evaluación.
+ */
+function layout(window: BaseWindow, appView: WebContentsView): void {
   const { width, height } = window.getContentBounds();
-  appView.setBounds({ x: 0, y: 0, width, height: Math.max(0, height - BAR_HEIGHT) });
-  barView.setBounds({ x: 0, y: Math.max(0, height - BAR_HEIGHT), width, height: BAR_HEIGHT });
+  appView.setBounds({ x: 0, y: 0, width, height });
 }
 
 export async function bootstrap(): Promise<{ readActivity: () => Activity; announce: (state: UpdateState) => void }> {
@@ -216,15 +225,11 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
   const appView = new WebContentsView({
     webPreferences: appWebPreferences(join(HERE, "app-preload.cjs")),
   });
-  const barView = new WebContentsView({
-    webPreferences: barWebPreferences(join(HERE, "bar-preload.cjs")),
-  });
   window.contentView.addChildView(consoleView);
   window.contentView.addChildView(appView);
-  window.contentView.addChildView(barView);
-  layout(window, appView, barView);
+  layout(window, appView);
   window.on("resize", () => {
-    layout(window, appView, barView);
+    layout(window, appView);
     placeConsole();
   });
 
@@ -368,6 +373,20 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
    * español dentro de una aplicación en inglés es de las cosas que más delatan
    * que nadie miró (R12.2).
    */
+  /**
+   * El zoom del contenido — R11, WCAG 1.4.4.
+   *
+   * `0` vuelve al tamaño real; los demás son pasos relativos. Se aplica a las
+   * dos vistas a la vez y se acota: por encima de 3 el armazón deja de caber, y
+   * por debajo de -2 el texto es ilegible, así que el control dejaría de
+   * ayudar a quien lo usa.
+   */
+  const applyZoom = (step: number) => {
+    const current = step === 0 ? 0 : Math.min(3, Math.max(-2, appView.webContents.getZoomLevel() + step));
+    appView.webContents.setZoomLevel(current);
+    consoleView.webContents.setZoomLevel(current);
+  };
+
   const buildMenu = () => {
     const m = menuCopy(appLocale());
     /*
@@ -421,9 +440,17 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
             { type: "separator" as const },
             { label: m.toggleSidebar, accelerator: "CommandOrControl+B", click: () => pushApp("app:shell.toggleSidebar", {}) },
             { type: "separator" as const },
-            { role: "resetZoom" as const, label: m.zoomReset },
-            { role: "zoomIn" as const, label: m.zoomIn },
-            { role: "zoomOut" as const, label: m.zoomOut },
+            /*
+             * R11 y WCAG 1.4.4 — se amplía **el contenido**, las dos vistas.
+             *
+             * Los `role` de Electron amplían el `webContents` que tenga el
+             * foco. Con el armazón y la consola en la misma ventana eso deja
+             * la mitad pequeña, que es peor que no ampliar: la persona ve
+             * media pantalla legible y media no.
+             */
+            { label: m.zoomReset, accelerator: "CommandOrControl+0", click: () => applyZoom(0) },
+            { label: m.zoomIn, accelerator: "CommandOrControl+Plus", click: () => applyZoom(+0.5) },
+            { label: m.zoomOut, accelerator: "CommandOrControl+-", click: () => applyZoom(-0.5) },
             { type: "separator" as const },
             { role: "togglefullscreen" as const, label: m.fullscreen },
             { role: "reload" as const, label: m.reload },
@@ -481,10 +508,18 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
    * igual mientras el navegador se abría detrás, y quien volvía no tenía forma
    * de saber si había pulsado bien.
    */
+  let handoff: HandoffView = { state: "idle", kind: null, since: new Date().toISOString() };
   const leaveToBrowser = (url: string) => {
     void openExternal(url);
-    pushApp("app:handoff", { url });
+    /*
+     * R9.4 — la ventana **se queda en espera**, y sabe de qué. Reconocer que la
+     * salida es un pago es lo que deja releer plan y consumo al volver sin
+     * reiniciar nada (R9.5); una salida cualquiera no tiene vuelta que preparar.
+     */
+    handoff = { state: "esperando", kind: handoffKindFor(url), since: new Date().toISOString(), url };
+    pushApp("app:handoff", handoff);
   };
+
 
   // La pantalla de operar no navega: es una página local. Un enlace se abre en
   // la consola (`app:openConsole`) o en el navegador del sistema, nunca dentro
@@ -525,32 +560,15 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
     fs: nodeDirectoryFs,
   });
 
-  // La barra: estado empujado, acciones por IPC. Exactamente las del contrato.
-  // La superficie vive en el principal, no en el runtime: es de la ventana, no
-  // del puente. Quién decide qué significa "no hay superficie que decir" está en
-  // `workstation-state.ts`, con su test; aquí sólo se junta con el estado del puente.
-  const pushState = () => {
-    if (!barView.webContents.isDestroyed()) {
-      barView.webContents.send("bar:state", withSurface(runtime.barState, surface));
-    }
-  };
-  runtime.onBarState(pushState);
-  onSurfaceChanged = () => pushState();
-  ipcMain.handle("bar:getState", () => withSurface(runtime.barState, surface));
-  ipcMain.handle("bar:pair", (_event, code: unknown) => runtime.pair(String(code)));
-  ipcMain.handle("bar:unpair", () => runtime.unpair());
-  ipcMain.handle("bar:pickDirectory", (_event, clientRef: unknown) =>
-    runtime.declareDirectory(String(clientRef), nativeDirectoryPicker(window, "Elige el directorio del cliente")),
-  );
-  // Spec 009 R1.1 — **sin parámetro**: `showApp` sólo sabe volver. Una
-  // `showSurface(name)` parametrizada le daría a la barra la capacidad de
-  // navegar, que es más de lo que hace falta y más de lo que se puede justificar
-  // al ampliar una lista cerrada.
-  ipcMain.handle("bar:showApp", () => showSurface("app"));
-  ipcMain.handle("bar:openInBrowser", (_event, url: unknown) => {
-    const decision = decideWindowOpen(String(url), consoleOrigin);
-    return decision.action === "open_external" ? openExternal(decision.url) : undefined;
-  });
+  /*
+   * Spec 010 — **la barra se retira**. Lo que hacía vive ahora en el armazón:
+   * el estado de la máquina al pie de la lista lateral (R3.6), emparejar,
+   * declarar directorios y desemparejar como diálogos de la aplicación (R8.2 a
+   * R8.5), y volver a la pantalla como una sección más. Sus seis canales
+   * `bar:*` y su partición se van con ella; los reemplazan los `app:workstation.*`
+   * de la lista cerrada, que sí pasan por la validación de entrada.
+   */
+  onSurfaceChanged = () => {};
 
   /**
    * El inicio de sesión de la aplicación — spec 009 (2ª enmienda), RFC 8252.
@@ -572,19 +590,41 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
    * `finally` cierra el oyente pase lo que pase: un servidor que sobrevive al
    * flujo es justo el fallo que la enmienda del Requisito 6 podría introducir.
    */
+  /**
+   * Spec 010 R7.2 y R7.4 — la espera **se cuenta**.
+   *
+   * Hasta aquí este flujo no tenía quien lo llamara (`009-T029`) y, cuando lo
+   * tuviera, habría esperado en silencio: si la persona cancela en el navegador,
+   * el retorno vuelve a `/login` sin destino y el oyente se queda los cinco
+   * minutos enteros. Ahora cada punto del recorrido sube a la ventana, y lo que
+   * se abrió se guarda para poder reabrirlo o copiarlo.
+   */
+  let signIn: SignInView = { state: "idle", since: new Date().toISOString() };
+  let signInListening: { cancel: () => void } | null = null;
+  const setSignIn = (next: SignInView) => {
+    signIn = next;
+    pushApp("app:signIn", next);
+  };
+
   runtime.useBrowserSignIn(async () => {
     const { verifier, challenge } = createPkce();
     const state = randomUUID();
     const listening = await listenForLogin(state);
+    signInListening = listening;
     try {
       const authorize = new URL("/desktop-auth", CONSOLE_URL);
       authorize.searchParams.set("redirect_uri", listening.redirectUri);
       authorize.searchParams.set("state", state);
       authorize.searchParams.set("code_challenge", challenge);
-      await openExternal(authorize.toString());
+      const url = authorize.toString();
+      setSignIn({ state: "esperando", since: new Date().toISOString(), url });
+      await openExternal(url);
 
       const returned = await listening.wait;
-      if (returned.kind !== "code") return { ok: false };
+      if (returned.kind !== "code") {
+        setSignIn(signInFrom(returned, new Date().toISOString()));
+        return { ok: false };
+      }
 
       const response = await session
         .fromPartition(HUMAN_PARTITION)
@@ -593,9 +633,23 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: returned.code, code_verifier: verifier }),
         });
+      setSignIn(
+        signInFrom(response.ok ? { kind: "code" } : { kind: "redeem_failed" }, new Date().toISOString()),
+      );
+      /*
+       * R7.3 — volver del navegador **trae la ventana al frente**. Sin esto la
+       * persona termina en el navegador, la aplicación entra sola por detrás y
+       * no hay nada que se lo diga: la ventana sigue donde la dejó, quizá
+       * oculta desde que la cerró (R3.5).
+       */
+      if (response.ok) {
+        window.show();
+        app.focus({ steal: true });
+      }
       return { ok: response.ok };
     } finally {
       listening.cancel();
+      signInListening = null;
     }
   });
 
@@ -629,6 +683,22 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
       inbox.reset();
     } else if (surface === "console" && consoleView.webContents.getURL().includes("/login")) showSurface("app");
   });
+  /**
+   * R9.5 — volver del navegador.
+   *
+   * Se dispara con el foco de la ventana, que es lo que de verdad significa
+   * «he vuelto»: nadie pulsa un botón para decirlo. Sólo hace algo si había una
+   * espera, y **relee lo que pudo cambiar, no la aplicación entera** — recargar
+   * tiraría el hilo abierto y el borrador sin enviar.
+   */
+  const returnedFromBrowser = () => {
+    if (handoff.state !== "esperando") return;
+    handoff = { ...handoff, state: "vuelto", since: new Date().toISOString() };
+    pushApp("app:handoff", handoff);
+    if (handoff.kind === "sign_in") void gate.refresh();
+  };
+  window.on("focus", returnedFromBrowser);
+
   gate.watch(sessionCookieWatcher());
   // **Emparejar y desemparejar también mueven la puerta.** Son lo único que
   // cambia la credencial guardada sin tocar la cookie ni perder la sesión, así
@@ -639,7 +709,20 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
   // Se refresca en vez de empujar un `app:session` fabricado: la puerta lee la
   // credencial donde está, y una copia mentiría el día que tenga una condición
   // más que mirar.
-  runtime.onIdentityChanged(() => void gate.refresh());
+  /**
+   * Spec 010 R8.3 — el emparejamiento llega a **todas** las superficies.
+   *
+   * La pantalla se entera sola: `onBarState` empuja `app:workstation` en cada
+   * cambio, y `gate.refresh()` vuelve a derivar el veredicto. La consola
+   * embebida no: su página de Puesto de trabajo se quedaba con la lista de
+   * antes y su diálogo seguía con la cuenta atrás de un código ya canjeado
+   * —el anexo 04 lo anotó como dos fuentes de verdad—. Se recarga sola, que es
+   * lo contrario de que la recargue la persona.
+   */
+  runtime.onIdentityChanged(() => {
+    void gate.refresh();
+    if (consoleView.webContents.getURL().includes("/workstation")) consoleView.webContents.reload();
+  });
 
   // La pantalla de operar: el principal habla con el BFF con la sesión de la
   // persona, y le pasa datos ya redactados (R12.2).
@@ -654,6 +737,18 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
   // La bandeja, vigilada desde el principal: el stream acelera, `GET /inbox`
   // manda, y lo que llega nuevo pasa por la política de avisos (R5.3, R7).
   const notificationPrefs = notificationPrefsStore();
+  /**
+   * Lo que se sabe del permiso de avisos — spec 010, R7.8 y R7.10.
+   *
+   * macOS no deja consultarlo, así que sólo un intento real lo mueve. Antes de
+   * eso, `desconocido`: decir «concedido» sin saberlo pondría la lista de
+   * puesta en marcha a dar por hecho algo que quizá nunca ocurrió.
+   */
+  const rememberNotificationAttempt = (shown: boolean) => {
+    const prefs = notificationPrefs.read();
+    const permission = nextAfterAttempt(prefs.permission, { shown });
+    if (permission !== prefs.permission) notificationPrefs.write({ ...prefs, permission });
+  };
   const inbox = new InboxWatcher({
     fetchInbox: async () => {
       const res = await platform.request<InboxItem[]>("/api/teammates/inbox");
@@ -665,7 +760,9 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
         onEvent(event.event, event.data),
       ),
     apply: (effects) =>
-      applyNotificationEffects(effects, (actionId) => {
+      applyNotificationEffects(
+        effects,
+        (actionId) => {
         /*
          * Spec 010 R5.6 — pulsar un aviso **trae la ventana al frente**.
          *
@@ -682,7 +779,11 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
         // marca cuál dentro de la lista.
         showSection("pendientes");
         pushApp("app:inbox.focus", { action_id: actionId });
-      }),
+        },
+        // R7.8: lo único que macOS deja saber del permiso es si un aviso llegó
+        // a mostrarse. Eso mueve el estado; nada más lo mueve.
+        rememberNotificationAttempt,
+      ),
     push: (channel, payload) => {
       // La bandeja del sistema cuenta lo mismo que Pendientes, y solo lo que
       // espera una decisión: lo informativo no sube el número (12.4).
@@ -708,14 +809,79 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
     showSection,
     setPanelBounds: setPanel,
     shellPrefs,
-    workstation: { state: () => toWorkstationView(runtime.barState) },
+    workstation: {
+      state: () => toWorkstationView(runtime.barState),
+      pair: async (code) => {
+        await runtime.pair(code);
+        const state = runtime.barState;
+        // El runtime deja el resultado en su estado; aquí sólo se traduce a lo
+        // que el contrato promete, sin inventar un éxito que no consta.
+        return state.status === "conectada" || state.status === "reconectando"
+          ? { machine_name: state.machine?.displayName ?? "" }
+          : { error: state.lastError?.code ?? "pairing_unavailable" };
+      },
+      unpair: async () => {
+        await runtime.unpair();
+        return { ok: true };
+      },
+      pickDirectory: async (clientRef) => {
+        const result = await runtime.declareDirectory(
+          clientRef,
+          nativeDirectoryPicker(window, menuCopy(appLocale()).pickDirectory),
+        );
+        if (result.kind === "declared") return { path_shown: result.workdir };
+        // R8.4: el motivo viaja. Era exactamente lo que la barra tiraba.
+        return result.kind === "invalid"
+          ? { error: "invalid", reason: result.failed }
+          : { error: "cancelled" };
+      },
+    },
     onSessionLost: () => void gate.refresh(),
     inbox,
     notificationPrefs,
+    /*
+     * R7.8 — se pide **al usarlo**, no al arrancar. En macOS no hay una API que
+     * pregunte: la autorización la dispara el primer aviso que se muestra, así
+     * que pedirlo es mostrar uno y mirar si salió.
+     */
+    askNotificationPermission: async () => {
+      await new Promise<void>((resolve) => {
+        applyNotificationEffects(
+          [{ kind: "notify", title: "Auphere", body: menuCopy(appLocale()).notificationsProbe, actionId: null }],
+          () => {},
+          (shown) => {
+            rememberNotificationAttempt(shown);
+            resolve();
+          },
+        );
+        // Si el sistema no contesta ni con `show` ni con `failed`, no se deja
+        // la llamada colgada: lo que no consta se queda como no consta.
+        setTimeout(resolve, 2000);
+      });
+      return notificationPrefs.read();
+    },
     // El updater se arma después de la primera ventana, así que aquí puede no
     // existir todavía. Sin él no hay nada descargado que instalar: `none`.
     installUpdate: () => updater?.install() ?? { error: "none" as const },
+    signIn: {
+      // Sin `await`: el recorrido dura lo que dure en el navegador, y dejar la
+      // invocación colgada ahí sería la espera muda que R7.4 prohíbe.
+      start: () => void runtime.signInWithBrowser(),
+      cancel: () => {
+        signInListening?.cancel();
+        setSignIn({ state: "cancelada", since: new Date().toISOString() });
+      },
+      state: () => signIn,
+    },
     checkUpdate: () => updater?.check(),
+    // Destino fijo: la pantalla no nombra direcciones del sistema operativo.
+    openNotificationSettings: () => void openExternal(losesWhenDenied("notifications").settings),
+    setup: {
+      workstationStatus: () => runtime.barState.status,
+      // Sin ejecutor no hay nada que corra en esta máquina, y es una causa con
+      // nombre propio desde R3.6: se lee de ahí, no de una copia.
+      executorPresent: () => runtime.barState.cause !== "sin_ejecutor",
+    },
     // Lo que solo sabe esta máquina: dónde trabaja cada cliente y qué nombraron
     // los comandos de cada tarea. No sube a la plataforma y no baja a nadie.
     machine: {
@@ -788,7 +954,6 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
   }
   app.on("will-quit", () => globalShortcut.unregisterAll());
 
-  await barView.webContents.loadFile(join(HERE, "..", "bar", "index.html"));
   await appView.webContents.loadFile(join(HERE, "..", "app", "index.html"));
   // R2.7 — la ventana aparece **ya pintada**: el armazón está montado y el
   // fondo es el del tema. Nada de un rectángulo blanco mientras carga.
@@ -903,9 +1068,20 @@ async function captureEvidence(
   mkdirSync(dir, { recursive: true });
   const bridgeType = await appView.webContents.executeJavaScript("typeof window.auphere").catch(() => "?");
   const roster = await appView.webContents.executeJavaScript("document.body.innerText").catch(() => "");
-  // Abre el hilo del primer teammate: es el recorrido del quickstart §4.1.
+  /*
+   * Abre el hilo del primer teammate (quickstart §4.1).
+   *
+   * Spec 010, T138 — **la navegación cambió**. Era «el último botón de la
+   * lista», que con el roster viejo era un teammate; con el armazón, el último
+   * es una sección de administrar. Ahora se busca el grupo de teammates por su
+   * encabezado, que es lo que de verdad identifica la lista.
+   */
   await appView.webContents
-    .executeJavaScript("Array.from(document.querySelectorAll('nav ul button')).at(-1)?.click(), true")
+    .executeJavaScript(
+      "(() => { const g = Array.from(document.querySelectorAll('nav h2'))" +
+        ".find(h => /Teammates/i.test(h.textContent || ''));" +
+        "const b = g?.parentElement?.querySelector('ul button'); b?.click(); return !!b; })()",
+    )
     .catch(() => false);
   await new Promise((r) => setTimeout(r, 3500));
   const text = await appView.webContents.executeJavaScript("document.body.innerText").catch(() => "");
@@ -1100,14 +1276,28 @@ async function captureUs5(
   );
   await new Promise((r) => setTimeout(r, 2500));
   const text = (await js("document.body.innerText")) as string;
+  /*
+   * Spec 010, T138 — **este recorrido estaba roto**, y en silencio.
+   *
+   * Buscaba un `<meter>` nativo que Cuenta dejó de pintar: no se puede vestir
+   * con los tokens sin pelearse con pseudo-elementos por motor, y se veía como
+   * una barra blanca de otro sistema. Lo que quedó es la semántica —un `div`
+   * con `role="meter"` y sus tres valores— y el color en tokens. El recorrido
+   * seguía «funcionando»: devolvía `null` y nadie miraba.
+   */
   const meter = await js(
-    '(() => { const m = document.querySelector("meter"); return m ? { now: m.getAttribute("aria-valuenow"), max: m.getAttribute("aria-valuemax") } : null; })()',
+    '(() => { const m = document.querySelector(\'[role="meter"]\'); return m ? { now: m.getAttribute("aria-valuenow"), max: m.getAttribute("aria-valuemax") } : null; })()',
+  );
+  // R9 — el plan vive aquí desde la historia 5: es lo que hace que los topes
+  // lleven a alguna parte, y lo que antes no existía en esta pantalla.
+  const plan = await js(
+    '(() => { const s = Array.from(document.querySelectorAll("section")).find((e) => /Tu plan|Your plan/.test(e.getAttribute("aria-label") || "")); return s ? s.innerText : null; })()',
   );
   writeFileSync(join(dir, "account.png"), (await appView.webContents.capturePage()).toPNG());
   writeFileSync(
     join(dir, "app.json"),
     JSON.stringify(
-      { surface, consoleUrl: consoleView.webContents.getURL(), text, meter, logs },
+      { surface, consoleUrl: consoleView.webContents.getURL(), text, meter, plan, logs },
       null,
       2,
     ),

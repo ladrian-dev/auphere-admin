@@ -95,15 +95,28 @@ export function notificationPrefsStore(): { read(): Prefs; write(next: Prefs): P
   };
 }
 
-/** Ejecuta lo que la política decidió. No decide nada por su cuenta. */
+/**
+ * Ejecuta lo que la política decidió. No decide nada por su cuenta.
+ *
+ * `onShown` existe por R7.8: macOS no deja consultar si los avisos están
+ * concedidos, así que lo único que se puede saber es si uno llegó a mostrarse.
+ * Eso, y sólo eso, es lo que mueve el estado del permiso.
+ */
 export function applyNotificationEffects(
   effects: Effect[],
   onClick: (actionId: string | null) => void,
+  onShown?: (shown: boolean) => void,
 ): void {
   for (const effect of effects) {
-    if (effect.kind === "notify" && Notification.isSupported()) {
+    if (effect.kind === "notify") {
+      if (!Notification.isSupported()) {
+        onShown?.(false);
+        continue;
+      }
       const notification = new Notification({ title: effect.title, body: effect.body });
       notification.on("click", () => onClick(effect.actionId));
+      notification.on("failed", () => onShown?.(false));
+      notification.on("show", () => onShown?.(true));
       notification.show();
     }
     if (effect.kind === "badge") {

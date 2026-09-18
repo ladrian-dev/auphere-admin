@@ -10,8 +10,6 @@ import { describe, expect, it } from "vitest";
 import {
   BAR_STATUSES,
   actionsFor,
-  barActions,
-  withSurface,
   heartbeatRuns,
   initialState,
   localToolsOffered,
@@ -150,70 +148,17 @@ describe("transiciones del contrato", () => {
   });
 });
 
-/**
- * Volver a la pantalla del equipo — spec 009, Historia 1.
+/*
+ * Spec 010, T139 — **«volver al equipo» se retira con la barra.**
  *
- * WHILE la superficie visible es la consola, la barra DEBE ofrecer la vuelta.
- * WHILE es la pantalla del equipo, NO DEBE ofrecerla.
+ * Existía porque la ventana enseñaba **una superficie u otra**: con la consola
+ * delante, la barra tenía que ofrecer la vuelta. Con el armazón, la consola se
+ * pinta **dentro del panel** y no hay a dónde volver — la persona elige
+ * secciones, no superficies. `withSurface` y `barActions` se van con ella.
  *
- * **`volver_a_la_app` no pasa por `actionsFor(state)`, y eso es el diseño.**
- * `actionsFor` decide a partir de `status`, que son los siete estados de
- * conexión; volver no depende de si la máquina está emparejada, sino de qué se
- * ve. Meterla ahí la haría desaparecer con el `if (!state.encryptionAvailable)
- * return []`, y encerrar a alguien en la consola porque el llavero está
- * bloqueado sería un castigo sin causa. Por eso existe `barActions`, que
- * compone las dos mitades.
+ * Lo que sí se conserva, y sigue abajo: que `actionsFor` no ofrezca nada sin
+ * cifrado disponible, y que los estados decidan las acciones.
  */
-describe("volver a la pantalla del equipo (spec 009, R1)", () => {
-  it("con la consola delante, la barra ofrece volver", () => {
-    const s: BarState = { ...connected(), surface: "console" };
-    expect(barActions(s)).toContain("volver_a_la_app");
-  });
-
-  it("en la pantalla del equipo no la ofrece: no hay botón que no lleve a ningún sitio", () => {
-    const s = connected();
-    expect(barActions(s)).not.toContain("volver_a_la_app");
-  });
-
-  it("sin cifrado disponible SIGUE ofreciéndose: volver no guarda nada", () => {
-    const s: BarState = {
-      status: "sin_emparejar",
-      links: [],
-      encryptionAvailable: false,
-      surface: "console",
-    };
-    // Lo demás sí desaparece —no se puede emparejar sin dónde guardar— …
-    expect(actionsFor(s)).toEqual([]);
-    // … pero volver, no.
-    expect(barActions(s)).toEqual(["volver_a_la_app"]);
-  });
-
-  it("el estado que se empuja lleva la superficie, y la ausencia es ausencia", () => {
-    const base = connected();
-    expect(withSurface(base, "console").surface).toBe("console");
-    // No `surface: "app"`: **el campo no está**. Dos formas de decir lo mismo
-    // obligarían a la barra a distinguirlas.
-    expect(withSurface(base, "app").surface).toBeUndefined();
-    // Y la vuelta aparece y desaparece con él, que es lo que se ve.
-    expect(barActions(withSurface(base, "console"))).toContain("volver_a_la_app");
-    expect(barActions(withSurface(base, "app"))).not.toContain("volver_a_la_app");
-  });
-
-  it("cambiar de superficie NO toca el estado de conexión", () => {
-    const base = connected();
-    const enConsola = withSurface(base, "console");
-    expect(enConsola.status).toBe(base.status);
-    expect(enConsola.machine).toEqual(base.machine);
-    expect(actionsFor(enConsola)).toEqual(actionsFor(base));
-  });
-
-  it("no se cuela en ninguno de los siete estados cuando no hay consola delante", () => {
-    for (const status of BAR_STATUSES) {
-      const s: BarState = { status, links: [], encryptionAvailable: true };
-      expect(barActions(s)).not.toContain("volver_a_la_app");
-    }
-  });
-});
 
 /**
  * El canje del código de sesión — spec 009, Historia 2.

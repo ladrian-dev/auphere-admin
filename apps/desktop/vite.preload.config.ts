@@ -14,7 +14,6 @@ export default defineConfig({
     lib: {
       entry: {
         "app-preload": resolve(import.meta.dirname, "src/electron/app-preload.ts"),
-        "bar-preload": resolve(import.meta.dirname, "src/electron/bar-preload.ts"),
       },
       formats: ["cjs"],
       fileName: (_format, name) => `${name}.cjs`,

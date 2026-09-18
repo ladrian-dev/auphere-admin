@@ -16,20 +16,31 @@
  */
 
 export const LEVELS = ["critico", "aviso", "informativo"] as const;
+import { PERMISSION_STATES, type PermissionState } from "./permissions.js";
 import { countWaiting } from "./waiting.js";
 
 export type Level = (typeof LEVELS)[number];
 
 export type Pending = { action_id: string; level: Level; teammate: string; title: string; can_decide: boolean };
 
-export type Prefs = { silenceAviso: boolean };
+export type Prefs = {
+  silenceAviso: boolean;
+  /**
+   * Lo que se sabe del permiso del sistema — spec 010, R7.8 y R7.10.
+   *
+   * `desconocido` hasta que se intenta usar: macOS no deja consultarlo, y
+   * asumir «concedido» pondría la puesta en marcha a decir que algo está hecho
+   * sin saberlo. Lo mueve `nextAfterAttempt`, nunca una suposición.
+   */
+  permission: PermissionState;
+};
 
 export type Effect =
   | { kind: "none" }
   | { kind: "notify"; title: string; body: string; actionId: string | null }
   | { kind: "badge"; count: number };
 
-export const DEFAULT_PREFS: Prefs = { silenceAviso: false };
+export const DEFAULT_PREFS: Prefs = { silenceAviso: false, permission: "desconocido" };
 
 /**
  * El badge cuenta lo que espera de verdad. **La regla no vive aquí**: vive en
@@ -123,5 +134,11 @@ export function onOpen(pending: Pending[], prefs: Prefs, context: NotifyContext)
 
 /** La preferencia solo puede bajar el ruido. */
 export function normalisePrefs(input: Partial<Prefs> | undefined): Prefs {
-  return { silenceAviso: input?.silenceAviso === true };
+  const permission = input?.permission;
+  return {
+    silenceAviso: input?.silenceAviso === true,
+    permission: PERMISSION_STATES.includes(permission as PermissionState)
+      ? (permission as PermissionState)
+      : "desconocido",
+  };
 }

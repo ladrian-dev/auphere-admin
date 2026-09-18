@@ -33,7 +33,7 @@ function ports(inboxes: InboxItem[][]) {
     openStream: vi.fn(async () => {}),
     apply: (e) => effects.push(...e),
     push: (c, payload) => pushes.push([c, payload]),
-    prefs: () => ({ silenceAviso: false }),
+    prefs: () => ({ silenceAviso: false, permission: "concedido" as const }),
     notifyContext: () => ({ windowFocused: false, lang: "es" as const }),
     wait: async () => {},
   };
