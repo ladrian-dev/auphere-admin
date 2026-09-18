@@ -19,7 +19,7 @@
  * Son tests de configuración porque el fallo es de configuración: no construyen
  * nada, y por eso pueden correr en cada push.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const HERE = new URL("../", import.meta.url).pathname;
@@ -81,5 +81,55 @@ describe("la cadena de publicación mira donde la salida está", () => {
   it("todas las rutas del workflow apuntan al directorio declarado", () => {
     const wrong = [...new Set(paths)].filter((p) => p !== outputDir);
     expect(wrong).toEqual([]);
+  });
+});
+
+/**
+ * Que `pnpm package` se pueda ejecutar — el fallo del `pnpm-workspace.yaml`
+ * que sobraba.
+ *
+ * `apps/desktop` tenía el suyo, heredado de cuando era un workspace aparte
+ * como `apps/admin`. Ya no lo es: el `pnpm-workspace.yaml` de la raíz lo lista
+ * y sus dependencias (`@nexus/ui`, `@nexus/companion-ui`) viven allí.
+ *
+ * El fichero **declaraba `packages` vacío**, y pnpm resuelve el
+ * `pnpm-workspace.yaml` más cercano subiendo desde el cwd. Resultado: ejecutar
+ * pnpm desde dentro de `apps/desktop` encontraba un workspace de un solo
+ * paquete y no podía resolver `@nexus/companion-ui@workspace:*`.
+ *
+ * Lo tramposo es **dónde se veía**: todo lo que se lanza desde la raíz
+ * —`verify.sh`, `pnpm --filter`, la tubería— funcionaba. Sólo fallaba
+ * `pnpm package`, porque electron-builder arranca con su propio `pnpm install`
+ * dentro del directorio del proyecto. Un fallo que sólo aparece al empaquetar
+ * es un fallo que se descubre el día que hay que publicar.
+ */
+describe("empaquetar se puede hacer, y desde dentro del proyecto", () => {
+  it("`apps/desktop` no declara un workspace propio", () => {
+    expect(
+      existsSync(`${HERE}pnpm-workspace.yaml`),
+      "apps/desktop volvió a tener su pnpm-workspace.yaml: pnpm dejará de ver @nexus/ui y @nexus/companion-ui",
+    ).toBe(false);
+  });
+
+  it("y la raíz sí lo lista, que es donde están sus dependencias", () => {
+    const raiz = readFileSync(`${HERE}../../pnpm-workspace.yaml`, "utf8");
+    expect(raiz).toMatch(/^\s*- "apps\/desktop"$/m);
+  });
+
+  it("el bundle local no exige el certificado de distribución", () => {
+    // `--dir` es «hazme el .app para probarlo aquí». electron-builder firma en
+    // cuanto encuentra una identidad en el llavero, así que sin apagarlo un
+    // bundle de prueba depende de tener delante el certificado de Developer ID.
+    const scripts = (JSON.parse(readFileSync(`${HERE}package.json`, "utf8")) as { scripts: Record<string, string> })
+      .scripts;
+    expect(scripts.package).toContain("--dir");
+    expect(scripts.package).toContain("CSC_IDENTITY_AUTO_DISCOVERY=false");
+  });
+
+  it("pero el que publica sigue firmando y notarizando", () => {
+    const scripts = (JSON.parse(readFileSync(`${HERE}package.json`, "utf8")) as { scripts: Record<string, string> })
+      .scripts;
+    expect(scripts.dist).not.toContain("CSC_IDENTITY_AUTO_DISCOVERY=false");
+    expect((pkg.build.mac as { notarize?: boolean }).notarize).toBe(true);
   });
 });

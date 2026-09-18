@@ -6,7 +6,7 @@
 
 ```bash
 pnpm --filter @nexus/desktop build
-cd apps/desktop && CSC_IDENTITY_AUTO_DISCOVERY=false ./node_modules/.bin/electron-builder --dir
+cd apps/desktop && pnpm package
 AUPHERE_EVIDENCE_DIR=/tmp/auphere-evidence ./release/mac-arm64/Auphere.app/Contents/MacOS/Auphere
 ```
 
@@ -40,10 +40,24 @@ Emparejar esta máquina                  ← la acción, sin barra de 44 px
   `workstation:manage`. La mitad de la aplicación está probada
   (`pairing-flow.test.tsx`, 14 casos); lo que falta es el extremo.
 
-## Nota de empaquetado
+## El `pnpm package` que estaba roto, y ya no
 
-`pnpm package` falla en este repositorio: `electron-builder` lanza un
-`pnpm install` dentro de `apps/desktop`, que tiene su propio
-`pnpm-workspace.yaml` y no ve `@nexus/companion-ui@workspace:*`. Se empaqueta
-invocando el binario directamente —`./node_modules/.bin/electron-builder`— que
-salta esa comprobación. Merece su propio arreglo.
+`apps/desktop` tenía su propio `pnpm-workspace.yaml`, heredado de cuando era un
+workspace aparte como `apps/admin`. Ya no lo es —la raíz lo lista y sus
+dependencias (`@nexus/ui`, `@nexus/companion-ui`) viven allí— y el fichero
+declaraba `packages` **vacío**. Como pnpm resuelve el `pnpm-workspace.yaml` más
+cercano subiendo desde el cwd, ejecutar pnpm desde dentro de `apps/desktop`
+encontraba un workspace de un solo paquete y no podía resolver
+`@nexus/companion-ui@workspace:*`.
+
+Lo tramposo era **dónde se veía**: todo lo lanzado desde la raíz funcionaba.
+Sólo fallaba `pnpm package`, porque electron-builder arranca con su propio
+`pnpm install` dentro del directorio del proyecto — un fallo que sólo aparece al
+empaquetar es un fallo que se descubre el día que hay que publicar.
+
+Y `package` dejó de exigir el certificado de distribución: `--dir` es «hazme el
+`.app` para probarlo aquí», y electron-builder firmaba en cuanto encontraba una
+identidad en el llavero. `dist`, el que publica, sigue firmando y notarizando.
+
+`tests/packaging-config.test.ts` falla si el fichero vuelve o si los dos guiones
+cambian de significado.

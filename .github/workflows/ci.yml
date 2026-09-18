@@ -204,14 +204,15 @@ jobs:
       # cambiarle el nombre la deja apuntando a un check que no existe — y
       # eso no falla, simplemente deja de bloquear.
       #
-      # ``--filter`` desde la RAÍZ, no ``working-directory``, y esto no es
-      # estilo: ``apps/desktop`` tiene su propio ``pnpm-workspace.yaml``
-      # anidado, y pnpm resuelve el más cercano subiendo desde el cwd. Ese
-      # workspace no lista ``packages/companion-ui`` ni ``packages/ui``, de
-      # los que ``apps/desktop`` depende con ``workspace:*``, así que
-      # cualquier ``pnpm`` ejecutado DENTRO de la carpeta muere con
-      # ERR_PNPM_WORKSPACE_PKG_NOT_FOUND antes de llegar a vitest.
-      # Desde la raíz con filtro resuelve el workspace bueno y pasa.
+      # ``--filter`` desde la RAÍZ. **La causa que obligaba a esto ya no está**:
+      # ``apps/desktop`` tenía su propio ``pnpm-workspace.yaml`` anidado, sin
+      # ``packages``, y pnpm resuelve el más cercano subiendo desde el cwd — así
+      # que cualquier ``pnpm`` ejecutado DENTRO de la carpeta moría con
+      # ERR_PNPM_WORKSPACE_PKG_NOT_FOUND al no ver ``packages/companion-ui``.
+      # Ese fichero se retiró con la spec 010 y ``pnpm package`` volvió a
+      # funcionar; ``tests/packaging-config.test.ts`` falla si vuelve. Se sigue
+      # filtrando desde la raíz porque es lo correcto de todas formas: una sola
+      # instalación y un solo lockfile para todo el workspace.
       - name: "@nexus/companion-ui — typecheck + lint + test"
         run: |
           pnpm --filter @nexus/companion-ui typecheck
