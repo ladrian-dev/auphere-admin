@@ -1,37 +1,23 @@
 /**
- * La lista lateral — spec 010, Requisitos 1.2 y 1.4.
+ * La lista lateral — spec 010, Requisito 1.2 (enmendado el 2026-09-18).
  *
- * **Una sola navegación.** Arriba lo que se opera, abajo lo que se administra
- * —que son las mismas secciones que la consola ya ofrece, con sus mismos
- * permisos— y al pie quién eres, tu plan y tu máquina.
+ * **Sólo lo que se opera**: Hoy, Pendientes y tus teammates. Al pie, quién eres
+ * y tu máquina.
  *
- * Lo que esta lista arregla, y que costaba entender antes: las secciones de
- * administrar dejan de vivir en otra superficie a la que se llegaba por el menú
- * Ver. Aquí son entradas como las demás, y la consola se pinta en el panel.
+ * Aquí vivió un grupo «ADMINISTRAR» que espejaba las diez secciones de la
+ * consola. Se construyó, se miró funcionando, y en la misma ventana había **dos
+ * barras laterales, dos buscadores, dos campanas y dos identidades** — y el
+ * glosario ya divergía: la consola decía «Playbook» donde esto decía
+ * «Conocimiento». Dos navegaciones son dos vocabularios que se separan.
  *
- * Una sección que el rol de la persona no permite **no se ofrece**: no hay
- * entrada apagada esperando un clic que dará un «no puedes» (§V).
+ * La consola se abre entera, por una sola puerta, y se vuelve desde la franja.
  */
-import {
-  BarChart3,
-  Bell,
-  BookOpen,
-  Building2,
-  Home,
-  Inbox,
-  KeyRound,
-  Laptop,
-  type LucideIcon,
-  Receipt,
-  ScrollText,
-  Sun,
-  Users,
-} from "lucide-react";
+import { Inbox, type LucideIcon, Sun } from "lucide-react";
 
 import { Skeleton } from "@nexus/ui";
 
 import { type MyState, isIdle } from "../../app-state";
-import { CONSOLE_SECTIONS, type Section } from "../../sections";
+import type { Section } from "../../sections";
 import { useAppT } from "../i18n";
 
 /**
@@ -39,26 +25,11 @@ import { useAppT } from "../i18n";
  * de la misma ventana, «Clientes» no puede ser un edificio en un sitio y otra
  * cosa en el otro.
  */
-const ICONS: Record<string, LucideIcon> = {
-  hoy: Sun,
-  pendientes: Inbox,
-  inicio: Home,
-  clientes: Building2,
-  conocimiento: BookOpen,
-  puesto: Laptop,
-  consumo: BarChart3,
-  auditoria: ScrollText,
-  notificaciones: Bell,
-  equipo: Users,
-  claves: KeyRound,
-  facturacion: Receipt,
-};
+const ICONS: Record<string, LucideIcon> = { hoy: Sun, pendientes: Inbox };
 
 export type SidebarProps = {
   active: Section;
   onSelect: (section: Section) => void;
-  /** Los permisos de la consola que tiene esta persona. */
-  permissions: readonly string[];
   /** Cuántas decisiones esperan. Sale del derivado único (R5.4). */
   waiting: number;
   /** Los teammates, para navegar a su hilo sin pasar por una lista intermedia. */
@@ -82,7 +53,6 @@ export type SidebarProps = {
 export function Sidebar({
   active,
   onSelect,
-  permissions,
   waiting,
   teammates,
   rosterStatus,
@@ -94,7 +64,6 @@ export function Sidebar({
 }: SidebarProps) {
   const t = useAppT();
   const roster = rosterStatus ?? (teammates.length > 0 ? "ready" : "empty");
-  const manage = CONSOLE_SECTIONS.filter((s) => s.permission === null || permissions.includes(s.permission));
 
   return (
     <nav className="flex h-full min-w-0 flex-col border-r border-border bg-sidebar" aria-label={t("shell.sidebar.operate")}>
@@ -165,17 +134,7 @@ export function Sidebar({
           )}
         </Group>
 
-        <Group label={t("shell.sidebar.manage")}>
-          {manage.map((section) => (
-            <Item
-              key={section.key}
-              label={t(`shell.section.${section.key}`)}
-              icon={ICONS[section.key]}
-              active={active === section.key}
-              onSelect={() => onSelect(section.key)}
-            />
-          ))}
-        </Group>
+
       </div>
 
       {footer ? <div className="shrink-0 border-t border-border p-2">{footer}</div> : null}

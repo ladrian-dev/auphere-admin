@@ -282,25 +282,31 @@ del sistema, con teclado y con un fallo forzado.
 una sola navegación, para dejar de saltar entre dos mundos dentro de la misma
 ventana.
 
+> **Enmendado el 2026-09-18** (ver `decision.md`, «D1-A se revierte a medias»).
+> Los criterios 2 a 5 decían que la lista lateral espejaba las secciones de la
+> consola y que ésta se pintaba **dentro del panel**, sin su armazón. Se
+> construyó y se miró funcionando: en la misma ventana había dos barras
+> laterales, dos buscadores, dos campanas y dos identidades. La consola entra
+> entera y hay una sola puerta.
+
 #### Criterios de aceptación
 
 1. La ventana DEBE presentar una franja superior propia que integre los controles
    de ventana del sistema, y esa franja DEBE poder arrastrar la ventana en toda
    su extensión libre.
-2. La ventana DEBE presentar una **única** lista lateral con: lo que se opera
-   (Hoy, Pendientes con su número, los teammates) y lo que se administra; y al
-   pie, la identidad de la persona, su plan y el estado de su máquina.
-   **La parte de administrar DEBE ofrecer todas las secciones que la consola
-   ofrece hoy a esa persona según su rol**: ninguna queda inalcanzable por el
-   hecho de integrarla.
-3. WHEN la persona elige una sección de administrar THEN el sistema DEBE mostrar
-   esa página **dentro del panel de contenido**, sin una segunda navegación
-   propia dentro del panel.
-4. WHILE una sección de administrar está visible el sistema DEBE marcarla como
-   activa en la lista lateral, y DEBE reflejar la navegación que ocurra dentro de
-   la sección.
-5. El sistema NO DEBE ofrecer ningún cambio manual entre «la consola» y «la
-   pantalla de operar»: esa distinción NO DEBE existir para la persona.
+2. La ventana DEBE presentar una **única** lista lateral con **lo que se opera**
+   —Hoy, Pendientes con su número, los teammates— y, al pie, la identidad de la
+   persona y el estado de su máquina. La lista lateral **NO DEBE espejar las
+   secciones de la consola**.
+3. El sistema DEBE ofrecer **una sola puerta** a la consola, y al abrirla la
+   consola DEBE mostrarse **entera y tal cual es** —con su propia navegación,
+   su búsqueda y sus avisos— ocupando todo lo que hay bajo la franja. El
+   sistema NO DEBE pedirle a la consola que se despoje de su armazón para caber.
+4. WHILE la consola está visible el sistema DEBE ofrecer **volver** al equipo de
+   forma explícita, alcanzable con el teclado, y la franja DEBE seguir visible.
+5. Toda capacidad que la consola ya ofrece a esa persona según su rol DEBE
+   seguir siendo alcanzable desde la aplicación; el sistema NO DEBE
+   reimplementarla.
 6. WHEN la persona vuelve a una sección ya visitada THEN el sistema DEBE
    mostrarla sin recargarla desde cero.
 7. El sistema DEBE ofrecer un menú de aplicación completo —con ajustes, ventana,

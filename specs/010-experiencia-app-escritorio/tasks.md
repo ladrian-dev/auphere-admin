@@ -135,6 +135,19 @@ sola. Cada tarea cita sus requisitos.
 
 ---
 
+## Enmienda del 2026-09-18 — la consola entra entera
+
+Ver `decision.md` («D1-A se revierte a medias») y el Requisito 1 de `spec.md`.
+
+- [X] E01 Retirar el grupo `ADMINISTRAR` de la lista lateral; **la lista es sólo lo que se opera** — _Requisitos: 1.2_
+- [X] E02 Una sola puerta a la consola, y la consola ocupa **todo lo que hay bajo la franja**, con su propio armazón — _Requisitos: 1.3_
+- [X] E03 «Volver al equipo» en la franja, que es la única superficie de la aplicación que queda a la vista — _Requisitos: 1.4_
+- [X] E04 Revertir el modo embebido de `apps/console`: la consola vuelve a no saber que la aplicación existe, y `isDesktopShell` vuelve a usarse en un solo sitio — _Requisitos: 1.3_
+- [X] E05 **Cambia `apps/desktop/tests/shell-sections.test.tsx`**, que exigía las diez secciones espejadas: ahora exige que **no** vuelvan, y que la lista no reciba permisos — _Requisitos: 1.2_
+- [X] E06 Retirar el rectángulo medido del panel: la consola ya no se coloca en un hueco — _Requisitos: 1.3_
+
+---
+
 ## Phase 5: US3 — Avisos que se entienden y un solo número (P3)
 
 - [X] T072 [US3] Cablear la API de avisos, parte 1 — Pendientes y hilo: decidir, enviar, política local y entorno dejan de fallar en silencio — _Requisitos: 5.2, 5.3_

@@ -21,22 +21,39 @@ paquete.
 | Vista | Partición | `preload` | Qué carga |
 |---|---|---|---|
 | Armazón | `auphere-app` (no persistente) | `app-preload.cjs`, lista cerrada | `dist/app/index.html`, **toda** la ventana |
-| Consola | `persist:auphere-console` | **ninguno** | la consola, **dentro del panel**, en modo embebido |
+| Consola | `persist:auphere-console` | **ninguno** | la consola **entera**, encima, desde la franja hacia abajo |
 
 La tercera partición es la del ambiente del agente (`auphere-agent`), que no
 alcanza ninguna de las otras dos. `assertPartitionsAreSeparate()` lo comprueba
 **al arrancar** y aborta si alguien las iguala en un refactor.
 
-**Ya no se enseña «una superficie u otra».** Con la spec 010 hay un armazón:
-franja superior con los semáforos integrados, lista lateral única y panel de
-contenido. Las secciones de administrar las pinta la consola **dentro de ese
-panel** —el armazón le dice dónde cabe midiendo el hueco real— y las demás las
-pinta la aplicación. ⌘1 y ⌘2 desaparecen: la persona elige **secciones**, no
-superficies, y la lista canónica vive en `src/sections.ts`.
+**Una ventana, dos superficies, y una puerta entre ellas.** El armazón —franja
+con los semáforos integrados y lista lateral— es lo que se ve por defecto. La
+lista lateral es **sólo lo que se opera**: Hoy, Pendientes y tus teammates, con
+la identidad y la máquina al pie.
 
-Cuando la consola no carga, el panel vuelve a ser de la pantalla y se dice en su
-idioma con un reintento (`app:console.failed`): antes se veía la página de error
-de Chromium dentro de la ventana.
+La consola se abre por **una sola puerta** («Abrir la consola», o cualquier
+sección desde ⌘K) y entra **entera**: su barra, su búsqueda y sus avisos,
+ocupando todo lo que hay bajo la franja. La franja se queda visible porque la
+ventana no tiene barra de título nativa — ahí viven los semáforos, el arrastre y
+**«Volver al equipo»**.
+
+> **Enmienda del 2026-09-18.** La spec 010 construyó otra cosa: la lista lateral
+> espejaba las diez secciones de la consola y ésta se pintaba **dentro del
+> panel**, sin su armazón (modo embebido por user-agent). Se miró funcionando y
+> en la misma ventana había **dos barras laterales, dos buscadores, dos campanas
+> y dos identidades** — con el glosario ya divergiendo: «Playbook» en una,
+> «Conocimiento» en la otra. El modo embebido se retiró y `apps/console` vuelve
+> a no saber que la aplicación existe.
+
+⌘1 y ⌘2 no vuelven: la persona no elige superficie, elige **entrar en la consola
+o volver al equipo**. La lista canónica de secciones sigue en `src/sections.ts`,
+y ahora sirve para una sola cosa: **por qué ruta abrir la consola**, que es lo
+que hace que un tope lleve a `/billing` y no a «búscalo tú».
+
+Cuando la consola no carga, la ventana vuelve al armazón y se dice en su idioma
+con un reintento (`app:console.failed`): antes se veía la página de error de
+Chromium dentro de la ventana.
 
 ## El canal con el proceso principal
 

@@ -11,6 +11,7 @@
  * que todo lo que se pulse aquí va envuelto en `no-drag`. Por eso los controles
  * viven en contenedores marcados, y el test lo comprueba control por control.
  */
+import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useAppT } from "../i18n";
@@ -26,12 +27,22 @@ export function Strip({
   title,
   onSearch,
   status,
+  onBack,
 }: {
   /** El objeto en el que se está: el teammate o la sección. Nunca «Auphere». */
   title: string;
   onSearch: () => void;
   /** El estado de la máquina, que se ve sin abrir nada. */
   status?: ReactNode;
+  /**
+   * Volver al equipo — R1.4, enmendado el 2026-09-18.
+   *
+   * Con la consola delante ocupa todo lo que hay bajo la franja, así que ésta
+   * es la única superficie de la aplicación que queda a la vista: la vuelta
+   * tiene que vivir aquí o no vive en ninguna parte. Sin consola delante no se
+   * pinta — un botón que no lleva a ningún sitio es lo que §V prohíbe.
+   */
+  onBack?: () => void;
 }) {
   const t = useAppT();
 
@@ -41,6 +52,19 @@ export function Strip({
       style={{ paddingLeft: TRAFFIC_LIGHTS }}
       data-traffic-lights={TRAFFIC_LIGHTS}
     >
+      {onBack ? (
+        <div className="no-drag flex shrink-0 items-center">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex min-h-7 items-center gap-1 rounded-sm px-2 text-ui font-medium text-primary transition-colors hover:bg-muted"
+          >
+            <ChevronLeft aria-hidden="true" className="size-4" />
+            {t("shell.backToTeam")}
+          </button>
+        </div>
+      ) : null}
+
       <h1 className="min-w-0 flex-1 truncate text-ui font-medium" title={title}>
         {title}
       </h1>

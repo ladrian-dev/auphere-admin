@@ -7,6 +7,8 @@
  * se compone y se pinta. Ningún estado se pinta en rojo: la sesión perdida, la
  * máquina ausente y el tope son estados, no fallos.
  */
+import { ArrowRight } from "lucide-react";
+
 import { CompanionLocaleProvider } from "@nexus/companion-ui";
 import { Button } from "@nexus/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -51,6 +53,7 @@ import {
   current as currentSection,
   go as goTo,
   initialHistory,
+  restoredSection,
 } from "./shell/navigation";
 import { Account } from "./routes/account";
 import { EnvPanel } from "./routes/env";
@@ -207,7 +210,10 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
   const go = useCallback((next: Section) => {
     setHistory((h) => goTo(h, next));
     void bridge.shellShowSection({ section: next });
-    void bridge.shellPrefs({ /* R1.10: reabrir vuelve aquí */ });
+    // R1.10 — reabrir vuelve aquí. Esto mandaba `{}`: la clave existía en las
+    // preferencias, el comentario prometía lo que había que hacer, y no se
+    // escribía nada. Restaurar la sección no funcionaba desde el primer día.
+    void bridge.shellPrefs({ section: next });
   }, []);
 
   const loadRoster = useCallback(async () => {
@@ -301,7 +307,19 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
 
   // Las comodidades de ventana y el estado del puesto, al abrir.
   useEffect(() => {
-    void bridge.shellPrefs({}).then((prefs) => setSidebarWidth(prefs.sidebarWidth || MIN_SIDEBAR));
+    void bridge.shellPrefs({}).then((prefs) => {
+      setSidebarWidth(prefs.sidebarWidth || MIN_SIDEBAR);
+      /*
+       * R1.10 — se vuelve a donde estabas. `restoredSection` estaba escrita y
+       * probada desde el primer día, y **no la llamaba nadie**: la aplicación
+       * abría siempre en «Hoy». Si la sección la pinta la consola hay que
+       * decírselo al principal, o el panel se queda vacío.
+       */
+      const vuelta = restoredSection(prefs.section);
+      if (vuelta === "hoy") return;
+      setHistory(initialHistory(vuelta));
+      if (isConsoleSection(vuelta)) void bridge.shellShowSection({ section: vuelta });
+    });
     void bridge.workstationState().then(setWorkstation);
   }, []);
 
@@ -461,6 +479,12 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
       title={title}
       status={<WorkstationChip state={workstation} />}
       onSearch={() => setPaletteOpen(true)}
+      /*
+       * R1.4 — con la consola delante, la vuelta vive en la franja: es la única
+       * superficie de la aplicación que queda a la vista. Sin consola delante
+       * no se pinta.
+       */
+      onBack={isConsoleSection(section) ? () => go("hoy") : undefined}
       panelBelongsToConsole={isConsoleSection(section) && sectionFailed === null}
       sidebarWidth={sidebarWidth}
       onSidebarWidth={(width) => {
@@ -471,7 +495,6 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
         <Sidebar
           active={section}
           onSelect={go}
-          permissions={permissions}
           waiting={waiting}
           teammates={roster.map((r) => ({ id: r.id, name: r.name, unread: r.my_unread, state: r.my_state }))}
           /* Cargando y vacío no pueden verse igual (R4.1). «Sin permiso» se
@@ -512,6 +535,20 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
                 <WorkstationChip state={workstation} announce />
                 <WorkstationActions state={workstation} onAction={setMachineDialog} />
               </div>
+              {/*
+                R1.3 — **una sola puerta** a la consola, y entra entera. Aquí
+                hubo un grupo «ADMINISTRAR» con las diez secciones espejadas; se
+                miró funcionando y había dos barras laterales, dos buscadores y
+                dos campanas en la misma ventana.
+              */}
+              <button
+                type="button"
+                onClick={() => go("inicio")}
+                className="flex min-h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-ui transition-colors hover:bg-muted"
+              >
+                <span className="min-w-0 flex-1 truncate">{t("shell.openConsole")}</span>
+                <ArrowRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+              </button>
             </div>
           }
         />

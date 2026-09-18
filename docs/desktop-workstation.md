@@ -15,7 +15,7 @@ Una **cáscara** de Electron con dos vistas en una `BaseWindow`:
 | Vista | Partición | `preload` | Qué carga |
 |---|---|---|---|
 | Armazón | `auphere-app` (no persistente) | `app-preload.cjs`, lista cerrada | `dist/app/index.html` — ocupa **toda** la ventana |
-| Consola | `persist:auphere-console` (persistente) | **ninguno** | la consola, **dentro del panel** del armazón, en modo embebido |
+| Consola | `persist:auphere-console` (persistente) | **ninguno** | la consola **entera**, encima del armazón, desde la franja hacia abajo |
 
 El ambiente del agente vive en una **tercera** partición (`auphere-agent`, no
 persistente) y no alcanza ninguna de las otras dos. `session-isolation.ts` lo

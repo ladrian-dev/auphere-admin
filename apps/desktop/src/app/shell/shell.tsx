@@ -26,6 +26,8 @@ export type ShellProps = {
   children?: ReactNode;
   onSearch: () => void;
   status?: ReactNode;
+  /** Volver al equipo. Sólo con la consola delante (R1.4). */
+  onBack?: () => void;
   /**
    * Cuando la sección activa la pinta la consola, el panel se deja **libre**:
    * la vista de la consola lo ocupa. Sin esto se verían las dos cosas.
@@ -45,6 +47,7 @@ export function Shell({
   children,
   onSearch,
   status,
+  onBack,
   panelBelongsToConsole,
   sidebarWidth,
   onSidebarWidth,
@@ -125,7 +128,7 @@ export function Shell({
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
       <div ref={strip}>
-        <Strip title={title} onSearch={onSearch} status={status} />
+        <Strip title={title} onSearch={onSearch} status={status} onBack={onBack} />
       </div>
 
       <div className="flex min-h-0 flex-1">

@@ -44,7 +44,7 @@ describe("la consola no bloquea la puesta en marcha", () => {
   });
 
   it("su fallo se recoge y se anota, no se propaga", () => {
-    const inicio = at("loadURL(CONSOLE_URL)");
+    const inicio = at("consoleView.webContents\n    .loadURL(");
     expect(MAIN.slice(inicio, inicio + 400)).toMatch(/catch/);
   });
 
@@ -52,7 +52,7 @@ describe("la consola no bloquea la puesta en marcha", () => {
     // Se evalúa después de montar el armazón y **sin** esperar a la consola:
     // la carga de la consola va por su cuenta, sin `await` delante.
     expect(at("gate.evaluate()")).toBeGreaterThan(at("appView.webContents.loadFile"));
-    expect(MAIN.slice(at("loadURL(CONSOLE_URL)") - 120, at("loadURL(CONSOLE_URL)"))).not.toMatch(/await\s*$/);
+    expect(MAIN.slice(at("consoleView.webContents\n    .loadURL(") - 120, at("consoleView.webContents\n    .loadURL("))).not.toMatch(/await\s*$/);
   });
 
   it("la ventana se muestra con el armazón montado, sin esperar a la red", () => {
@@ -61,7 +61,7 @@ describe("la consola no bloquea la puesta en marcha", () => {
     const montaje = at("appView.webContents.loadFile");
     const mostrar = MAIN.indexOf("window.show()", montaje);
     expect(mostrar, "el arranque ya no muestra la ventana").toBeGreaterThan(-1);
-    expect(mostrar).toBeLessThan(at("loadURL(CONSOLE_URL)"));
+    expect(mostrar).toBeLessThan(at("consoleView.webContents\n    .loadURL("));
   });
 });
 

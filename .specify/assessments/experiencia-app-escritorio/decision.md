@@ -57,6 +57,55 @@ cuela: se declara en el encabezado de la spec que salga de aquí.
 | **D3-A** | **Modo oscuro en tinta neutra cálida**, verde como acento | Cambia tokens compartidos: alcanza a `apps/console` y `apps/admin`. Exige test de contraste de pares (texto ≥4,5:1, no textual y foco ≥3:1) en ambos temas |
 | **D4-A** | **Una spec, seis historias priorizadas e independientes** | `specs/010-experiencia-app-escritorio/` con un único `tasks.md`. Accesibilidad WCAG 2.2 AA y el glosario son requisitos ubicuos, no historias |
 
+## Enmienda del 2026-09-18 — D1-A se revierte a medias
+
+**D1-A queda así: una sola ventana, pero la consola NO se pinta dentro del
+panel.** Ocupa todo lo que hay bajo la franja, tal cual es, y se vuelve al
+equipo con una acción explícita.
+
+**Por qué.** Se construyó y se miró funcionando (0.1.5). En la misma ventana
+había **dos barras laterales, dos buscadores, dos campanas y dos identidades**:
+la de la aplicación y la de la consola. Y el glosario ya había empezado a
+separarse —`nav.knowledge` decía «Playbook» donde la aplicación decía
+«Conocimiento»—, que es el síntoma que predice el problema: dos navegaciones son
+dos vocabularios que divergen.
+
+El modo embebido se diseñó justo para eso: quitarle a la consola su armazón para
+que cupiera dentro del otro. Es un cambio en `apps/console` **que existe sólo
+para servir a la aplicación de escritorio**, y obliga a desplegar las dos a la
+vez. Eso es acoplamiento entre dos aplicaciones para conseguir algo que la
+consola ya hacía bien sola.
+
+**Lo que se conserva de D1-A**: una sola ventana, un solo inicio de sesión, un
+solo tema, y que la consola viva dentro de la aplicación en vez de en el
+navegador. **Lo que cae**: el sidebar único con las secciones de administrar
+espejadas, el panel de contenido compartido y el modo embebido.
+
+| Antes (D1-A) | Ahora (D1-A′) |
+|---|---|
+| Sidebar único con `ADMINISTRAR` espejando las diez secciones de la consola | El sidebar es **Hoy · Pendientes · Teammates**, y nada más |
+| La consola en el panel, sin su armazón (modo embebido por user-agent) | La consola **entera**, bajo la franja, con su barra, su buscador y su campana |
+| Ir a una sección de administrar | **Una** puerta: «Abrir la consola», y una vuelta explícita |
+| `apps/console` con `isDesktopShell()` | `apps/console` sin saber que existe la aplicación |
+
+La franja se queda **siempre** visible: la ventana no tiene barra de título
+nativa, así que es donde viven los semáforos, la región de arrastre y la vuelta.
+
+**Lo que esto recupera**: `volver_a_la_app`, que la spec 009 diseñó y la 010
+había borrado por innecesario. Lo era bajo D1-A; deja de serlo aquí.
+
+**Lo que no cambia**: D2-A sigue en pie. El puesto de trabajo —emparejar esta
+máquina, declarar sus directorios, desemparejarla— **no puede irse a la
+consola**: la web no puede tocar tu disco. Se queda al pie del sidebar, y no
+como «sección» sino como lo que la aplicación sabe hacer y la web no. La
+preferencia de avisos del sistema, igual: es un permiso del sistema operativo.
+
+**Consecuencia para el Requisito 9**: los topes ya no llevan a una «Cuenta» a
+medias dentro de la aplicación. Llevan a la consola en su ruta exacta
+(`/billing`), que es un destino más honesto y no obliga a reimplementar nada.
+
+---
+
 Y las ocho transversales de `concept.md` (T-1 cerrar oculta · T-2 un solo
 derivado de pendientes · T-3 API de feedback · T-4 fuentes empaquetadas y CSP ·
 T-5 un solo tema por `nativeTheme` · T-6 capa de densidad y foco ≥3:1 · T-7

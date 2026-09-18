@@ -66,7 +66,6 @@ describe("la lista lateral se recorre entera con el teclado", () => {
       <Sidebar
         active="hoy"
         onSelect={vi.fn()}
-        permissions={["clients:read"]}
         waiting={0}
         teammates={[{ id: "t-1", name: "Sofía", unread: false }]}
         rosterStatus="ready"
@@ -84,7 +83,6 @@ describe("la lista lateral se recorre entera con el teclado", () => {
       <Sidebar
         active="hoy"
         onSelect={vi.fn()}
-        permissions={[]}
         waiting={0}
         teammates={[]}
         rosterStatus="empty"

@@ -61,7 +61,7 @@ import {
   userDataFile,
 } from "./adapters.js";
 import { registerAppSurface, sessionForRenderer } from "./app-surface.js";
-import { MIN_SIDEBAR, STRIP_HEIGHT, contentRect } from "./shell-layout.js";
+import { STRIP_HEIGHT } from "./shell-layout.js";
 import { windowBackground } from "./window-colors.js";
 import { type ShellPrefs, mergeShellPrefs, normaliseShellPrefs } from "../shell-prefs.js";
 import { type Section, pathOf, sectionOfPath } from "../sections.js";
@@ -225,8 +225,24 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
   const appView = new WebContentsView({
     webPreferences: appWebPreferences(join(HERE, "app-preload.cjs")),
   });
-  window.contentView.addChildView(consoleView);
+  /*
+   * **El orden es la profundidad, y aquí decide si la consola se ve.**
+   *
+   * `addChildView` apila: el último va encima. Hasta la spec 010 el armazón iba
+   * arriba y daba igual, porque `showSurface` **ocultaba** la pantalla al
+   * enseñar la consola — se veía una superficie o la otra.
+   *
+   * Ahora la pantalla es el armazón y no se oculta nunca: ocupa la ventana
+   * entera y la consola se pinta **dentro de su panel**. Con el orden viejo eso
+   * dejaba la consola debajo de un armazón opaco de pantalla completa: el panel
+   * se veía negro, sin error y sin nada que pulsar, porque el armazón no pinta
+   * ahí a propósito. Es lo que pasó en la 0.1.4.
+   *
+   * La consola va encima, acotada al panel por `placeConsole()`: la franja y la
+   * lista lateral siguen visibles y se pueden pulsar.
+   */
   window.contentView.addChildView(appView);
+  window.contentView.addChildView(consoleView);
   layout(window, appView);
   window.on("resize", () => {
     layout(window, appView);
@@ -248,18 +264,32 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
    */
   let surface: Surface = "app";
   let onSurfaceChanged: (next: Surface) => void = () => {};
-  /** El último rectángulo que reportó la pantalla. */
-  let panel = contentRect(window.getContentBounds(), MIN_SIDEBAR);
+  /*
+   * El rectángulo que medía la pantalla ya no hace falta: la consola ocupa
+   * **todo** lo que hay bajo la franja desde la enmienda del 2026-09-18. El
+   * canal `app:shell.contentBounds` se conserva —lo llama el armazón— y su
+   * valor deja de usarse para colocar nada.
+   */
 
+  /**
+   * Dónde va la consola — spec 010 R1.3, enmendado el 2026-09-18.
+   *
+   * **Todo lo que hay bajo la franja**, no un panel medido. Antes se metía en
+   * el hueco que dejaba la lista lateral y se le pedía a la consola que se
+   * quitara su propio armazón para caber (modo embebido). El resultado, visto
+   * funcionando: dos barras laterales, dos buscadores, dos campanas y dos
+   * identidades en la misma ventana.
+   *
+   * La franja se queda encima siempre: la ventana no tiene barra de título
+   * nativa, así que es donde viven los semáforos, el arrastre y la vuelta.
+   */
   const placeConsole = () => {
     const { width, height } = window.getContentBounds();
-    const x = Math.max(0, Math.min(panel.x, width));
-    const y = Math.max(STRIP_HEIGHT, Math.min(panel.y, height));
     consoleView.setBounds({
-      x,
-      y,
-      width: Math.max(0, Math.min(panel.width, width - x)),
-      height: Math.max(0, Math.min(panel.height, height - y)),
+      x: 0,
+      y: STRIP_HEIGHT,
+      width,
+      height: Math.max(0, height - STRIP_HEIGHT),
     });
   };
 
@@ -274,8 +304,7 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
   };
 
   /** Coloca el panel donde la pantalla dice que cabe (R1.3). */
-  const setPanel = (rect: { x: number; y: number; width: number; height: number }) => {
-    panel = rect;
+  const setPanel = (_rect: { x: number; y: number; width: number; height: number }) => {
     if (surface === "console") placeConsole();
   };
 
@@ -308,13 +337,20 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
    * consola se aparta y el panel vuelve a ser suyo. La persona no elige
    * superficie: elige sección.
    */
+  /**
+   * Ir a una sección — R1.3, enmendado.
+   *
+   * Las secciones de la aplicación se pintan en la pantalla. Cualquier otra
+   * **es la consola**, y la consola entra entera: la sección sólo dice por qué
+   * ruta abrirla, que es lo que hace que un tope lleve a `/billing` y no a «la
+   * consola, búscalo tú».
+   */
   const showSection = (section: Section) => {
     const path = pathOf(section);
     if (path === null) {
       showSurface("app");
       return;
     }
-    if (consoleFailed !== null) announceConsoleFailure(null);
     consoleSection = section;
     showConsole(path);
   };
@@ -973,8 +1009,18 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
    * reintentar, y todo lo local sigue funcionando.
    */
   const announceConnectivity = () => pushApp("app:connectivity", gate.connectivity());
+  /*
+   * R1.10 — se carga **la sección con la que se cerró**, no siempre la portada.
+   *
+   * Cargar `/` a ciegas tenía un efecto que no se veía venir: `did-navigate`
+   * empuja `app:console.location`, y la pantalla se iba a «Inicio» pisando la
+   * sección restaurada. Reabrir te dejaba en otro sitio del que cerraste, sin
+   * que nadie lo hubiera pedido.
+   */
+  const restored = pathOf(shellPrefs.read().section as Section) ?? "/";
+  if (restored !== "/") consoleSection = shellPrefs.read().section as Section;
   void consoleView.webContents
-    .loadURL(CONSOLE_URL)
+    .loadURL(new URL(restored, CONSOLE_URL).toString())
     .then(announceConnectivity)
     .catch((error: unknown) => {
       console.info("[auphere] la consola no cargó:", error instanceof Error ? error.message : error);

@@ -37,7 +37,6 @@ describe("la lista lateral aguanta un nombre imposible", () => {
       <Sidebar
         active="hoy"
         onSelect={vi.fn()}
-        permissions={[]}
         waiting={12}
         teammates={[{ id: "t-1", name: LARGO, unread: true, state: "esperandote" }]}
         rosterStatus="ready"

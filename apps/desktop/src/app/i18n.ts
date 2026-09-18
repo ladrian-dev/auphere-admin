@@ -215,6 +215,9 @@ const COPY = {
   "shell.pending": { es: "Pendientes", en: "Pending" },
   "shell.teammates": { es: "Teammates", en: "Teammates" },
   "shell.teammates.empty": { es: "Todavía no tienes ninguno.", en: "You do not have any yet." },
+  "shell.backToTeam": { es: "Volver al equipo", en: "Back to your team" },
+  "shell.openConsole": { es: "Abrir la consola", en: "Open the console" },
+  "shell.console": { es: "Consola", en: "Console" },
   "section.failed": { es: "No se pudo cargar «{name}».", en: "Could not load “{name}”." },
   "section.failed.keeps": { es: "Es la pantalla, no tu cuenta: lo que tengas en marcha sigue.", en: "This is the screen, not your account: anything running keeps going." },
   // ── la taxonomía de avisos (US3, R5.2 y 5.3) ──────────────────────────

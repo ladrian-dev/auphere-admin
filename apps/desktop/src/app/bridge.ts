@@ -4,6 +4,7 @@
  */
 import type { Section } from "../sections";
 import type { HandoffView } from "../handoff-state";
+import type { ShellPrefs as ShellPrefsShape } from "../shell-prefs";
 import type { BarAction } from "../workstation-state";
 import type { SetupStep as SetupStepShape } from "../setup-checklist";
 import type {
@@ -174,7 +175,13 @@ type Push = {
 };
 
 /** Las preferencias de ventana que la cáscara guarda (lista cerrada). */
-export type ShellPrefs = { theme: "system" | "light" | "dark"; sidebarWidth: number; silenceAviso: boolean };
+/**
+ * Las comodidades de la ventana. **El tipo es el de `shell-prefs.ts`**, no una
+ * copia: había dos, y a la de aquí le faltaba `section`. Por eso `shellPrefs({})`
+ * compilaba sin que nadie notara que no guardaba la sección — la clave no
+ * existía en la vista que tenía la pantalla del mismo objeto (R1.10).
+ */
+export type { ShellPrefs } from "../shell-prefs";
 
 /** El estado del puesto, tal como lo pinta el armazón (spec 010, R3.6). */
 export type WorkstationView = {
@@ -289,7 +296,7 @@ export interface AuphereBridge {
   /** Dónde cabe el panel, para que el principal coloque ahí la consola. */
   shellContentBounds(input: { x: number; y: number; width: number; height: number }): Promise<null>;
   /** Comodidades de ventana: tema, ancho de la lista lateral, ruido de avisos. */
-  shellPrefs(input: { theme?: "system" | "light" | "dark"; sidebarWidth?: number; silenceAviso?: boolean }): Promise<ShellPrefs>;
+  shellPrefs(input: Partial<ShellPrefsShape>): Promise<ShellPrefsShape>;
 
   /* ── El puesto, absorbido — spec 010 (enmienda de la 002) ─────────────── */
   workstationState(): Promise<WorkstationView>;

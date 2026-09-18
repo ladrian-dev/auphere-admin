@@ -232,8 +232,12 @@ export function validateInput(channel: string, input: unknown): void {
         isRecord(input) &&
           (input.theme === undefined || ["system", "light", "dark"].includes(String(input.theme))) &&
           (input.sidebarWidth === undefined || px(input.sidebarWidth)) &&
+          // R1.10: la sección con la que se cerró. Se valida contra la lista
+          // canónica, como `app:shell.showSection`: una preferencia guardada no
+          // puede llevar a una sección que ya no existe.
+          (input.section === undefined || isSection(input.section)) &&
           (input.silenceAviso === undefined || typeof input.silenceAviso === "boolean"),
-        "theme, sidebarWidth, silenceAviso",
+        "theme, sidebarWidth, section, silenceAviso",
       );
     case "pair_code":
       return need(isRecord(input) && pairingCode(input.code), "code");
