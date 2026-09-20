@@ -32,6 +32,7 @@ from redis.asyncio import Redis
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_mcp._customer import current_customer_or_refuse
 from nexus_mcp._db import tool_session
 from nexus_mcp.base import InputModel, OutputModel, ToolBase, ToolError
 from nexus_mcp.servers.queue.schemas import (
@@ -104,7 +105,8 @@ async def _avg_minutes_from_history(session: AsyncSession) -> int:
 class JoinQueue(ToolBase):
     name = "queue.join_queue"
     description = (
-        "Add a customer to the walk-in queue. Returns their 1-based position and "
+        "Add the person you are talking to to the walk-in queue. Returns their "
+        "1-based position and "
         "an estimated wait time. Idempotent for the same customer: if already in "
         "queue, returns the existing position rather than enqueuing twice."
     )
@@ -115,19 +117,20 @@ class JoinQueue(ToolBase):
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, JoinQueueInput)
         tenant_id = require_current_tenant()
+        customer_id = current_customer_or_refuse("entrar en la cola")
         redis = await _redis()
         list_key = _list_key(tenant_id)
 
         async with tool_session() as session:
-            customer = await session.get(Customer, payload.customer_id)
+            customer = await session.get(Customer, customer_id)
             if customer is None:
-                raise ToolError(f"customer {payload.customer_id} not found for this tenant")
+                raise ToolError(f"customer {customer_id} not found for this tenant")
 
             # Already enqueued? Return the existing entry (idempotent).
-            existing_pos = await _list_position(redis, tenant_id, payload.customer_id)
+            existing_pos = await _list_position(redis, tenant_id, customer_id)
             if existing_pos is not None:
                 # Recover the queue_entry_id from the meta hash.
-                meta_raw = await redis.get(_meta_key(tenant_id, payload.customer_id))
+                meta_raw = await redis.get(_meta_key(tenant_id, customer_id))
                 meta = json.loads(meta_raw) if meta_raw else {}
                 avg = await _avg_minutes_from_history(session)
                 return JoinQueueOutput(
@@ -138,7 +141,7 @@ class JoinQueue(ToolBase):
 
             entry = QueueEntry(
                 tenant_id=tenant_id,
-                customer_id=payload.customer_id,
+                customer_id=customer_id,
                 service_name=payload.service_name,
                 barber_id=payload.barber_id,
                 status=QueueEntryStatus.WAITING,
@@ -151,9 +154,9 @@ class JoinQueue(ToolBase):
 
             avg_minutes = await _avg_minutes_from_history(session)
 
-        await redis.rpush(list_key, str(payload.customer_id))
+        await redis.rpush(list_key, str(customer_id))
         await redis.set(
-            _meta_key(tenant_id, payload.customer_id),
+            _meta_key(tenant_id, customer_id),
             json.dumps(
                 {
                     "queue_entry_id": str(entry_id),
@@ -163,7 +166,7 @@ class JoinQueue(ToolBase):
             ),
             ex=24 * 3600,
         )
-        position = await _list_position(redis, tenant_id, payload.customer_id) or 1
+        position = await _list_position(redis, tenant_id, customer_id) or 1
         return JoinQueueOutput(
             queue_entry_id=entry_id,
             position=position,
@@ -177,7 +180,8 @@ class JoinQueue(ToolBase):
 class GetPosition(ToolBase):
     name = "queue.get_position"
     description = (
-        "Return the customer's current 1-based position in the queue, or null if "
+        "Return the current 1-based position in the queue of the person you are "
+        "talking to, or null if "
         "they are not enqueued. Read-only — does not modify state."
     )
     input_model = GetPositionInput
@@ -186,18 +190,19 @@ class GetPosition(ToolBase):
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, GetPositionInput)
         tenant_id = require_current_tenant()
+        customer_id = current_customer_or_refuse("consultar la posición")
         redis = await _redis()
-        position = await _list_position(redis, tenant_id, payload.customer_id)
+        position = await _list_position(redis, tenant_id, customer_id)
         if position is None:
             return GetPositionOutput(
-                customer_id=payload.customer_id,
+                customer_id=customer_id,
                 position=None,
                 estimated_wait_minutes=None,
             )
         async with tool_session() as session:
             avg = await _avg_minutes_from_history(session)
         return GetPositionOutput(
-            customer_id=payload.customer_id,
+            customer_id=customer_id,
             position=position,
             estimated_wait_minutes=position * avg,
         )
@@ -236,7 +241,7 @@ class GetEstimatedWait(ToolBase):
 class CheckIn(ToolBase):
     name = "queue.check_in"
     description = (
-        "Mark a queued customer as 'arrived at the shop'. Updates the queue entry "
+        "Mark the person you are talking to as 'arrived at the shop'. Updates their queue entry "
         "status to ``checked_in``; the customer remains in queue order until "
         "served. Block F will fire a notification to the barber here."
     )
@@ -247,10 +252,11 @@ class CheckIn(ToolBase):
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, CheckInInput)
         tenant_id = require_current_tenant()
+        customer_id = current_customer_or_refuse("avisar de que has llegado")
         redis = await _redis()
-        meta_raw = await redis.get(_meta_key(tenant_id, payload.customer_id))
+        meta_raw = await redis.get(_meta_key(tenant_id, customer_id))
         if not meta_raw:
-            raise ToolError(f"customer {payload.customer_id} is not in the queue")
+            raise ToolError(f"customer {customer_id} is not in the queue")
         meta = json.loads(meta_raw)
         entry_id = uuid.UUID(meta["queue_entry_id"])
 
@@ -265,7 +271,7 @@ class CheckIn(ToolBase):
             await session.flush()
 
         return CheckInOutput(
-            customer_id=payload.customer_id,
+            customer_id=customer_id,
             queue_entry_id=entry_id,
             status="checked_in",
         )
@@ -277,9 +283,8 @@ class CheckIn(ToolBase):
 class RemoveFromQueue(ToolBase):
     name = "queue.remove_from_queue"
     description = (
-        "Remove a customer from the queue. Records a ``left`` event in the "
-        "history. Use when a walk-in cancels, gets served (operator-initiated), "
-        "or no-shows."
+        "Remove the person you are talking to from the queue — never anyone else. "
+        "Records a ``left`` event in the history. Use when they cancel their walk-in."
     )
     input_model = RemoveFromQueueInput
     output_model = RemoveFromQueueOutput
@@ -288,16 +293,17 @@ class RemoveFromQueue(ToolBase):
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, RemoveFromQueueInput)
         tenant_id = require_current_tenant()
+        customer_id = current_customer_or_refuse("salir de la cola")
         redis = await _redis()
-        meta_raw = await redis.get(_meta_key(tenant_id, payload.customer_id))
+        meta_raw = await redis.get(_meta_key(tenant_id, customer_id))
         entry_id: uuid.UUID | None = None
         if meta_raw:
             meta = json.loads(meta_raw)
             entry_id = uuid.UUID(meta["queue_entry_id"])
 
         # Best-effort Redis cleanup; LREM of 0 if not present is fine.
-        await redis.lrem(_list_key(tenant_id), 0, str(payload.customer_id))
-        await redis.delete(_meta_key(tenant_id, payload.customer_id))
+        await redis.lrem(_list_key(tenant_id), 0, str(customer_id))
+        await redis.delete(_meta_key(tenant_id, customer_id))
 
         if entry_id is not None:
             async with tool_session() as session:
@@ -311,7 +317,7 @@ class RemoveFromQueue(ToolBase):
                     await session.flush()
 
         return RemoveFromQueueOutput(
-            customer_id=payload.customer_id,
+            customer_id=customer_id,
             queue_entry_id=entry_id,
             status="removed",
         )

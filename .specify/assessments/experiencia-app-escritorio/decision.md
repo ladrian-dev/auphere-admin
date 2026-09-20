@@ -59,6 +59,9 @@ cuela: se declara en el encabezado de la spec que salga de aquí.
 
 ## Enmienda del 2026-09-18 — D1-A se revierte a medias
 
+> Registrada como **[[ADR-040-la-consola-entra-entera-en-la-app-de-escritorio]]** en el KB.
+
+
 **D1-A queda así: una sola ventana, pero la consola NO se pinta dentro del
 panel.** Ocupa todo lo que hay bajo la franja, tal cual es, y se vuelve al
 equipo con una acción explícita.

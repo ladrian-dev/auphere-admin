@@ -8,18 +8,25 @@
 
 Convertir tres superficies apiladas en **una aplicación**: una vista a pantalla
 completa que es dueña del armazón (franja superior con los controles del sistema
-integrados + lista lateral única + panel de contenido), con la consola web
-pintada **dentro del panel** en modo embebido y el puesto de trabajo **absorbido**
-en el armazón. Sobre esa base: estados honestos (conexión, sesión, turno),
-taxonomía de avisos con un solo contador, primer arranque que llega solo al
-primer valor, y topes que terminan en una acción con destino exacto.
+integrados + lista lateral única), con la consola web entrando **entera** por una
+sola puerta y el puesto de trabajo **absorbido** en el armazón. Sobre esa base:
+estados honestos (conexión, sesión, turno), taxonomía de avisos con un solo
+contador, primer arranque que llega solo al primer valor, y topes que terminan
+en una acción con destino exacto.
+
+> **Enmendado el 2026-09-18** (ver `decision.md`, «D1-A se revierte a medias»).
+> El plan decía «la consola pintada **dentro del panel** en modo embebido», y
+> así se construyó. Se miró funcionando: en la misma ventana había dos barras
+> laterales, dos buscadores, dos campanas y dos identidades. La consola entra
+> entera, ocupando todo lo que hay bajo la franja, y se vuelve al equipo desde
+> ella. El modo embebido se retiró: `apps/console` vuelve a no saber que la
+> aplicación de escritorio existe.
 
 El enfoque técnico está fijado por la Fase 0 ([research.md](./research.md)): el
 spike confirmó que **el arrastre funciona** con la consola superpuesta si una
-sola vista posee la franja; la consola se integra por **modo embebido detectado
-por user-agent**, sin ganar ningún canal; y el sistema visual crece dentro de
-`@nexus/ui` con seis dependencias pequeñas de licencia permisiva, sin adoptar
-ningún kit.
+sola vista posee la franja —que es lo que sigue sosteniendo la franja permanente
+con la consola delante—; y el sistema visual crece dentro de `@nexus/ui` con seis
+dependencias pequeñas de licencia permisiva, sin adoptar ningún kit.
 
 ## Technical Context
 
@@ -105,7 +112,7 @@ specs/010-experiencia-app-escritorio/
 ├── contracts/
 │   ├── desktop-app-ipc-v2.md                 # canal de la pantalla, enmendado
 │   ├── shell-armazon.md                      # ventana, vistas, franja, tema
-│   ├── console-modo-embebido.md              # qué oculta la consola y cómo se detecta
+│   ├── console-en-la-ventana.md              # cómo entra la consola, y qué NO se le pide
 │   ├── workstation-en-el-armazon.md          # el puesto, absorbido
 │   └── feedback-taxonomia.md                 # qué mecanismo para qué caso
 ├── checklists/requirements.md
@@ -143,22 +150,26 @@ packages/ui/src/
 packages/companion-ui/src/      # glosario por contexto (teammate, no «Companion»), scroll del hilo
 
 apps/console/src/
-├── app/(console)/layout.tsx    # modo embebido: sin armazón propio
-├── lib/shell.ts · lib/shell-ua.ts   # detección por user-agent (ampliada, con test)
-└── components/shell/nav.ts     # la navegación que la lista lateral de la app replica
+└── (sin cambios de armazón desde la enmienda: la consola entra entera)
 ```
 
 **Structure Decision**: se conserva el monorepo tal cual. El armazón vive en
 `apps/desktop`; todo lo reutilizable (tokens, primitivas, densidad, toaster) baja
 a `packages/ui` para que consola y panel de operador hereden el mismo sistema; el
-vocabulario del hilo se parametriza en `packages/companion-ui`. `apps/console`
-solo recibe el modo embebido.
+vocabulario del hilo se parametriza en `packages/companion-ui`.
+
+**`apps/console` no recibe nada de esta spec.** Iba a recibir el modo embebido
+—un armazón alternativo que existía sólo para caber dentro de la aplicación— y se
+retiró con la enmienda del 2026-09-18: obligaba a desplegar las dos aplicaciones
+a la vez para conseguir algo que la consola ya hacía bien sola. `isDesktopShell`
+vuelve a usarse en **un solo sitio**, el de la spec 002, y su test lo vigila.
 
 ## Complexity Tracking
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |---|---|---|
 | Dos enmiendas de contrato (002 y 003) | Una sola navegación exige que la pantalla sepa dónde está la consola; absorber el puesto exige mover sus capacidades | Mantener las tres superficies (plan B) deja en pie el problema que la spec existe para resolver; el spike demostró que no hace falta |
+| Una enmienda de la propia spec, a mitad de camino (D1-A′) | La consola dentro del panel se construyó, se miró funcionando y duplicaba navegación, búsqueda, avisos e identidad | Dejarlo y pulir el modo embebido habría acoplado el despliegue de dos aplicaciones para tapar el síntoma |
 | Cambiar tokens compartidos (alcanza a consola y panel de operador) | El contraste actual incumple AA en pares medidos, y dos tipografías conviven en la misma ventana | Tokens solo para escritorio crearía dos sistemas de diseño divergentes, justo lo que `packages/ui` existe para evitar |
 | Un humo del binario empaquetado con herramienta marcada como experimental | Los fallos que más han dolido (actualizador que no arrancaba, paquete que se tragaba su salida) **solo aparecen empaquetado y firmado** | Probar solo en desarrollo es lo que dejó pasar esos fallos |
 

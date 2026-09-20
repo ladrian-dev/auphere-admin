@@ -8,11 +8,14 @@ from pydantic import Field
 
 from nexus_mcp.base import InputModel, OutputModel
 
+# El cliente NO viaja como argumento en ninguna entrada de este servidor: lo
+# resuelve el servidor desde el contexto del turno (`nexus_mcp/_customer.py`).
+# Sigue apareciendo en las **salidas**, donde es un eco de la identidad ya
+# resuelta y no algo que el modelo pueda elegir.
+
 
 class GetPreferencesInput(InputModel):
-    customer_id: uuid.UUID = Field(
-        description="UUID of the customer (in the local Nexus DB).",
-    )
+    pass
 
 
 class GetPreferencesOutput(OutputModel):
@@ -21,7 +24,6 @@ class GetPreferencesOutput(OutputModel):
 
 
 class UpdatePreferencesInput(InputModel):
-    customer_id: uuid.UUID
     preferences: dict[str, Any] = Field(
         description=(
             "Partial dict to merge into the customer's preferences. Keys are "
@@ -38,7 +40,6 @@ class UpdatePreferencesOutput(OutputModel):
 
 
 class GetHistoryInput(InputModel):
-    customer_id: uuid.UUID
     limit: int = Field(
         default=10,
         ge=1,

@@ -1099,8 +1099,34 @@ def make_execute(toolbelt: ActionPort) -> Callable[[CompanionState], Awaitable[d
         await _tracker(state).enter(PHASE_EXECUTE)
         result = await toolbelt.apply_confirmed(action_id)
         applied = bool(getattr(result, "ok", False))
+
+        # Lo que la acción devolvió va al modelo que responde. Para un
+        # `console.*` es el objeto aplicado; para ``shell_local`` es **lo que
+        # el programa imprimió**, y sin ello el agente contesta a ciegas: no
+        # puede leer un error de compilación ni encadenar el paso siguiente.
+        #
+        # Viaja marcado ``untrusted`` (§III): la salida de un programa es dato,
+        # nunca instrucciones. Un README hostil en el repositorio del partner
+        # no manda sobre la máquina del partner.
+        #
+        # **No se persiste.** ``tool_messages`` vive en el estado del turno; la
+        # auditoría sigue diciendo qué se ejecutó y nunca qué dijo el comando,
+        # que es la condición que legitima guardar el hilo (migración 0090).
+        content = getattr(result, "content", None)
+        tool_messages = list(state.get("tool_messages") or [])
+        if content:
+            tool_messages.append(
+                {
+                    "role": "tool",
+                    "name": getattr(result, "name", "") or state.get("action_kind") or "",
+                    "content": str(content),
+                    "untrusted": True,
+                }
+            )
+
         return {
             "phase": PHASE_EXECUTE,
+            "tool_messages": tool_messages,
             # R4: parar al primer fallo. Con una acción por run es
             # automático — no hay un paso 2 que pudiera correr a ciegas. Lo
             # que faltaba era el "y lo dice": sin este hecho, el nodo de

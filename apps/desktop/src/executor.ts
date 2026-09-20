@@ -15,11 +15,48 @@
  * **Por qué no se guarda la salida.** Es contenido leído (§III) y el hilo de un
  * teammate no transcribe texto de cliente final. Se conserva una muestra acotada
  * para poder diagnosticar, no la transcripción.
+ *
+ * **Por qué la muestra son los dos flujos y las dos puntas.** La primera
+ * versión recogía solo stdout y solo el principio, y las dos mitades del error
+ * se caían por ahí: `make`, `tsc` y `npm test` escriben el motivo del fallo en
+ * **stderr**, y cuando la salida es larga lo que importa está **al final** —el
+ * principio es el banner de la herramienta—. El agente recibía «código 1» y un
+ * encabezado, que no da para arreglar nada: da para adivinar.
+ *
+ * Sigue siendo una muestra acotada: cabe un error dentro, no un `find /`.
  */
 import { spawn } from "node:child_process";
 
-/** Suficiente para ver qué pasó; demasiado poco para ser una transcripción. */
-export const STDOUT_SAMPLE_LIMIT = 2048;
+/**
+ * Cuánto se conserva. Suficiente para que quepa una traza de compilación
+ * entera; demasiado poco para ser la transcripción de nada.
+ */
+export const OUTPUT_SAMPLE_LIMIT = 16_384;
+
+/** @deprecated El nombre de cuando la muestra era solo stdout. */
+export const STDOUT_SAMPLE_LIMIT = OUTPUT_SAMPLE_LIMIT;
+
+const HALF = OUTPUT_SAMPLE_LIMIT / 2;
+
+const mark = (omitted: number) => `\n… [recortado: ${omitted} caracteres omitidos] …\n`;
+
+/**
+ * Las dos puntas, con el hueco **dicho**. Callarlo sería peor que recortar: el
+ * modelo leería el trozo como si fuera la salida entera y sacaría conclusiones
+ * de un final que no ocurrió.
+ *
+ * La marca cuenta **dentro** del techo, no encima: así `OUTPUT_SAMPLE_LIMIT` es
+ * el tamaño de lo que sale de aquí, y no hay que acordarse de sumarle un margen
+ * en cada sitio por donde pasa después.
+ */
+export function clampSample(full: string): string {
+  if (full.length <= OUTPUT_SAMPLE_LIMIT) return full;
+  // Cota superior de la marca: su número nunca es mayor que la salida entera.
+  const budget = OUTPUT_SAMPLE_LIMIT - mark(full.length).length;
+  const head = Math.ceil(budget / 2);
+  const tail = budget - head;
+  return full.slice(0, head) + mark(full.length - budget) + full.slice(-tail);
+}
 
 export type Outcome = "completada" | "expirada" | "terminada" | "denegada";
 
@@ -94,14 +131,20 @@ export async function runContained(request: RunRequest): Promise<RunResult> {
     };
     touchIdle();
 
+    // Los dos flujos, en el orden en que llegan, que es lo que vería la
+    // persona en su terminal. Se acumula entero y se recorta **al final**:
+    // recortar sobre la marcha tiraría precisamente el desenlace.
     const collect = (chunk: Buffer) => {
       touchIdle();
-      if (sample.length < STDOUT_SAMPLE_LIMIT) {
-        sample = (sample + chunk.toString()).slice(0, STDOUT_SAMPLE_LIMIT);
+      sample += chunk.toString();
+      // Techo de memoria, muy por encima de la muestra: un comando que escupe
+      // gigabytes no puede tumbar la aplicación mientras esperamos su final.
+      if (sample.length > OUTPUT_SAMPLE_LIMIT * 8) {
+        sample = sample.slice(0, HALF) + sample.slice(-(OUTPUT_SAMPLE_LIMIT * 4));
       }
     };
     child.stdout?.on("data", collect);
-    child.stderr?.on("data", touchIdle);
+    child.stderr?.on("data", collect);
 
     const finish = (exitCode: number | null) => {
       if (settled) return;
@@ -119,7 +162,15 @@ export async function runContained(request: RunRequest): Promise<RunResult> {
         if (groupIsAlive(pid)) survivors.push(pid);
       }
 
-      resolve({ outcome, exitCode, childrenReaped: reaped, stdoutSample: sample, survivors });
+      resolve({
+        outcome,
+        exitCode,
+        childrenReaped: reaped,
+        // El nombre de cable se queda: `stdout_sample` ya es contrato con el
+        // puente y con el panel de entorno. Lo que cambia es qué lleva dentro.
+        stdoutSample: clampSample(sample),
+        survivors,
+      });
     };
 
     child.on("error", () => finish(null));

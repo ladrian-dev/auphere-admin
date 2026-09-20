@@ -20,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import structlog
-from nexus_api.core.tenant_context import require_current_tenant
+from nexus_api.core.tenant_context import get_current_customer, require_current_tenant
 from nexus_api.db.models import (
     Appointment,
     AppointmentStatus,
@@ -33,6 +33,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_mcp._customer import current_customer_or_refuse
 from nexus_mcp._db import tool_session
 from nexus_mcp.base import InputModel, OutputModel, ToolBase, ToolError
 from nexus_mcp.servers.booking.availability import find_free_slots
@@ -67,6 +68,26 @@ def _to_brief(a: Appointment) -> AppointmentBrief:
     )
 
 
+# ── de quién es este turno ───────────────────────────────────────────────────
+#
+# La agenda tiene dos ejes: el negocio y la persona. La RLS cubre el primero;
+# el segundo, `nexus_mcp/_customer.py`. Ver `tests/isolation/test_35_*`.
+
+
+async def _own_appointment(
+    session: AsyncSession, appointment_id: uuid.UUID, customer_id: uuid.UUID
+) -> Appointment:
+    """La cita de esta persona, o nada.
+
+    Mismo mensaje para «no existe» y «es de otro»: distinguirlos confirmaría
+    la existencia de una cita ajena a quien pregunta por su id.
+    """
+    appt = await session.get(Appointment, appointment_id)
+    if appt is None or appt.customer_id != customer_id:
+        raise ToolError(f"appointment {appointment_id} not found for this customer")
+    return appt
+
+
 # ── Block O helpers ──────────────────────────────────────────────────────────
 
 
@@ -90,6 +111,7 @@ async def _enqueue_async_booking_job(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
+    customer_id: uuid.UUID,
     appointment: Appointment,
     payload: CreateAppointmentInput,
 ) -> None:
@@ -106,7 +128,7 @@ async def _enqueue_async_booking_job(
     """
     job_payload: dict[str, Any] = {
         "appointment_id": str(appointment.id),
-        "customer_id": str(payload.customer_id),
+        "customer_id": str(customer_id),
         "service_name": payload.service_name,
         "starts_at_iso": payload.starts_at.isoformat(),
         "duration_min": payload.duration_min,
@@ -169,7 +191,8 @@ class CheckAvailability(ToolBase):
 class CreateAppointment(ToolBase):
     name = "booking.create_appointment"
     description = (
-        "Book an appointment. Idempotent: a second call with the same "
+        "Book an appointment for the person you are talking to. You cannot book "
+        "on behalf of anyone else. Idempotent: a second call with the same "
         "``idempotency_key`` returns the original row without creating a duplicate "
         "(required because the WhatsApp webhook may retry on transient errors). The "
         "caller should derive a stable key from the conversation turn — for "
@@ -182,6 +205,7 @@ class CreateAppointment(ToolBase):
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, CreateAppointmentInput)
         tenant_id = require_current_tenant()
+        customer_id = current_customer_or_refuse("reservar una cita")
         ends_at = payload.starts_at + timedelta(minutes=payload.duration_min)
 
         async with tool_session() as session:
@@ -210,7 +234,7 @@ class CreateAppointment(ToolBase):
 
             row = Appointment(
                 tenant_id=tenant_id,
-                customer_id=payload.customer_id,
+                customer_id=customer_id,
                 barber_id=payload.barber_id,
                 service_name=payload.service_name,
                 service_duration_min=payload.duration_min,
@@ -261,6 +285,7 @@ class CreateAppointment(ToolBase):
                 await _enqueue_async_booking_job(
                     session,
                     tenant_id=tenant_id,
+                    customer_id=customer_id,
                     appointment=row,
                     payload=payload,
                 )
@@ -279,9 +304,10 @@ class CreateAppointment(ToolBase):
 class ModifyAppointment(ToolBase):
     name = "booking.modify_appointment"
     description = (
-        "Change time, duration, barber or service of an existing appointment. "
-        "All fields are optional — only the fields you pass are changed. Cancelled "
-        "or completed appointments cannot be modified."
+        "Change time, duration, barber or service of an appointment belonging to "
+        "the person you are talking to. All fields are optional — only the fields "
+        "you pass are changed. Cancelled or completed appointments cannot be "
+        "modified. An id that is not theirs reads as not found."
     )
     input_model = ModifyAppointmentInput
     output_model = ModifyAppointmentOutput
@@ -290,10 +316,9 @@ class ModifyAppointment(ToolBase):
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, ModifyAppointmentInput)
         require_current_tenant()
+        customer_id = current_customer_or_refuse("cambiar una cita")
         async with tool_session() as session:
-            appt = await session.get(Appointment, payload.appointment_id)
-            if appt is None:
-                raise ToolError(f"appointment {payload.appointment_id} not found for this tenant")
+            appt = await _own_appointment(session, payload.appointment_id, customer_id)
             if appt.status in (AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED):
                 raise ToolError(f"appointment is {appt.status.value}; cannot be modified")
 
@@ -333,7 +358,8 @@ class ModifyAppointment(ToolBase):
 class CancelAppointment(ToolBase):
     name = "booking.cancel_appointment"
     description = (
-        "Cancel an appointment. Applies the cancellation fee from the tenant's "
+        "Cancel an appointment belonging to the person you are talking to; an id "
+        "that is not theirs reads as not found. Applies the fee from the tenant's "
         "policies if the appointment is within the no-fee window. Idempotent: "
         "cancelling an already-cancelled appointment is a no-op (returns same fee)."
     )
@@ -344,10 +370,9 @@ class CancelAppointment(ToolBase):
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, CancelAppointmentInput)
         require_current_tenant()
+        customer_id = current_customer_or_refuse("cancelar una cita")
         async with tool_session() as session:
-            appt = await session.get(Appointment, payload.appointment_id)
-            if appt is None:
-                raise ToolError(f"appointment {payload.appointment_id} not found for this tenant")
+            appt = await _own_appointment(session, payload.appointment_id, customer_id)
 
             now = datetime.now(UTC)
             hours_to = (appt.starts_at - now).total_seconds() / 3600.0
@@ -380,20 +405,25 @@ class CancelAppointment(ToolBase):
 class GetAppointments(ToolBase):
     name = "booking.get_appointments"
     description = (
-        "List appointments for the tenant, optionally restricted to a customer or a "
-        "date range. Default returns the 20 most recent. Use ``only_upcoming=true`` "
-        "to get future appointments for the customer (most useful for reschedule and "
-        "cancellation flows)."
+        "List the appointments of the person you are talking to — never anyone "
+        "else's, and there is no way to ask for another customer's. Optionally "
+        "restrict to a date range. Default returns the 20 most recent. Use "
+        "``only_upcoming=true`` for their future appointments (most useful for "
+        "reschedule and cancellation flows)."
     )
     input_model = GetAppointmentsInput
     output_model = GetAppointmentsOutput
 
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, GetAppointmentsInput)
+        customer_id = get_current_customer()
+        if customer_id is None:
+            # Sin cliente resuelto no hay nada que enseñar. Devolver la agenda
+            # del negocio sería la respuesta equivocada — mismo criterio que
+            # ``billing.get_my_debt``.
+            return GetAppointmentsOutput(appointments=[])
         async with tool_session() as session:
-            stmt = select(Appointment)
-            if payload.customer_id is not None:
-                stmt = stmt.where(Appointment.customer_id == payload.customer_id)
+            stmt = select(Appointment).where(Appointment.customer_id == customer_id)
             if payload.only_upcoming:
                 stmt = stmt.where(Appointment.starts_at >= datetime.now(UTC))
             else:

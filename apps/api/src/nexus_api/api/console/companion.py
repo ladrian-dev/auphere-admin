@@ -96,6 +96,7 @@ from nexus_api.metering.quota import quota_tokens
 from nexus_api.metering.wallet import companion_wallet_remaining, debit_wallet
 from nexus_api.repositories.teammate_tasks import TeammateTaskRepository
 from nexus_api.repositories.teammates import TeammateRepository
+from nexus_api.services.device_presence import principal_presence
 from nexus_api.services.teammate_catalog import for_teammate, system_prompt_for
 from nexus_api.services.teammate_inbox import publish_inbox_changed
 
@@ -237,6 +238,29 @@ async def _require_teammate(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown teammate")
         session.expunge(teammate)
         return teammate
+
+
+async def _machine_present_for(
+    session: AsyncSession, partner_id: uuid.UUID, principal_id: str
+) -> bool:
+    """¿Le ofrecemos la máquina a esta persona en este turno?
+
+    Estaba escrito a mano como ``False`` en los dos sitios que montan el
+    catálogo, así que ``shell_local`` **no llegaba nunca** — con el puente, la
+    contención y la política en tres capas ya construidos y probados detrás.
+
+    Se deriva del latido y no de una columna: un booleano almacenado seguiría
+    diciendo «conectada» el día que muera el proceso que debía apagarlo. El
+    precio es una consulta por turno; lo que compra es que esa mentira sea
+    imposible en vez de improbable.
+
+    Que salga ``True`` **no autoriza nada**: la puerta única de ejecución
+    vuelve a resolver máquina, lista blanca, techo y preferencia por cliente.
+    Esto solo decide si el modelo puede intentarlo.
+    """
+    async with session.begin():
+        await apply_partner_to_session(session, partner_id, principal_id=principal_id)
+        return await principal_presence(session) == "presente"
 
 
 async def _client_ref_of(session: AsyncSession, thread: CompanionThread) -> str | None:
@@ -881,7 +905,10 @@ async def start_run(
     teammate_prompt: str | None = None
     if teammate_id is not None:
         teammate = await _require_teammate(session, partner.id, principal_id, teammate_id)
-        allowed_tools = frozenset(for_teammate(teammate, mode=mode, machine_present=False))
+        machine_present = await _machine_present_for(session, partner.id, principal_id)
+        allowed_tools = frozenset(
+            for_teammate(teammate, mode=mode, machine_present=machine_present)
+        )
         teammate_prompt = system_prompt_for(teammate)
 
     driver = _make_driver(
@@ -2131,7 +2158,9 @@ async def resume_run(
                 for_teammate(
                     await _require_teammate(session, caller.partner.id, principal_id, teammate_id),
                     mode=mode,
-                    machine_present=False,
+                    machine_present=await _machine_present_for(
+                        session, caller.partner.id, principal_id
+                    ),
                 )
             )
             if teammate_id is not None

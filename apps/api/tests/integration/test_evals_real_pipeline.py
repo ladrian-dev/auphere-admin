@@ -135,7 +135,7 @@ async def test_eval_runner_drives_real_pipeline_against_staged_candidate(db_sess
                 ToolCall(
                     id="t1",
                     name="client.get_history",
-                    arguments={"customer_id": str(uuid.uuid4()), "limit": 5},
+                    arguments={"limit": 5},
                 )
             ]
         return []

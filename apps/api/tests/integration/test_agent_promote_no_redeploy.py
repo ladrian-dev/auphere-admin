@@ -102,13 +102,12 @@ async def test_promote_swaps_active_config_without_restart(db_session):
     # first ReAct iteration, before any tool message exists). With v1's
     # whitelist (booking.* only) the dispatch refuses; with v2's whitelist
     # (client.get_history) it executes.
-    customer_id = cust.id
     provider.tool_caller = lambda c: (
         [
             ToolCall(
                 id="t",
                 name="client.get_history",
-                arguments={"customer_id": str(customer_id), "limit": 5},
+                arguments={"limit": 5},
             )
         ]
         if c.role == "info" and not any(m.get("role") == "tool" for m in c.messages)

@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.config import get_settings
+from nexus_api.core.local_exec_limits import OUTPUT_SAMPLE_CHARS
 from nexus_api.core.partner_context import apply_partner_to_session, partner_context
 from nexus_api.core.tenant_context import apply_tenant_to_session, tenant_context
 from nexus_api.db.models import (
@@ -240,7 +241,9 @@ class ResultIn(BaseModel):
     #: teammate pueda leer el resultado de lo que pidió. **No se persiste**: va
     #: a Redis, de ahí al modelo marcada como dato no confiable, y se descarta.
     #: La auditoría sigue diciendo qué pasó, no qué dijo el comando (§III).
-    stdout_sample: str | None = Field(default=None, max_length=2048)
+    #: El techo vive en `services/local_dispatch`, no aquí: tres copias de un
+    #: número divergen, y estas tres ya divergían de la aplicación.
+    stdout_sample: str | None = Field(default=None, max_length=OUTPUT_SAMPLE_CHARS)
     #: El motivo cuando la contención de la máquina denegó (001-R12).
     denial_code: str | None = Field(default=None, max_length=64)
 
@@ -543,7 +546,7 @@ async def result(
         ExecutionResult(
             outcome=body.outcome,
             exit_code=body.exit_code,
-            stdout_sample=(body.stdout_sample or "")[:2048],
+            stdout_sample=(body.stdout_sample or "")[:OUTPUT_SAMPLE_CHARS],
             denial_code=body.denial_code,
         ),
     )

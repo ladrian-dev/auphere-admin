@@ -12,7 +12,7 @@
  * `volver_a_emparejar` o `archivada_desde_consola` en vez de a `reconectando`.
  */
 import type { Inbound, Outbound, OutboundTransport } from "./bridge.js";
-import { STDOUT_SAMPLE_LIMIT } from "./executor.js";
+import { OUTPUT_SAMPLE_LIMIT } from "./executor.js";
 import type { DirectoryChecks } from "./directory-declare.js";
 
 type FetchLike = (
@@ -276,7 +276,7 @@ export class HttpTransport implements OutboundTransport {
             children_reaped: message.childrenReaped,
             // El servidor la acota a 2 KB; aquí se acota igual para que un
             // cambio de un lado no dependa del otro.
-            stdout_sample: (message.stdoutSample ?? "").slice(0, STDOUT_SAMPLE_LIMIT) || undefined,
+            stdout_sample: (message.stdoutSample ?? "").slice(0, OUTPUT_SAMPLE_LIMIT) || undefined,
             denial_code: message.denialCode,
           },
         ];

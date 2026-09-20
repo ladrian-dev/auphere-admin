@@ -8,7 +8,8 @@ from nexus_mcp.base import InputModel, OutputModel
 
 
 class JoinQueueInput(InputModel):
-    customer_id: uuid.UUID
+    # El cliente lo resuelve el servidor desde el contexto del turno
+    # (`nexus_mcp/_customer.py`): nadie mete ni saca a otra persona de la cola.
     service_name: str = Field(min_length=1, max_length=120)
     barber_id: uuid.UUID | None = Field(
         default=None,
@@ -23,7 +24,7 @@ class JoinQueueOutput(OutputModel):
 
 
 class GetPositionInput(InputModel):
-    customer_id: uuid.UUID
+    pass
 
 
 class GetPositionOutput(OutputModel):
@@ -45,7 +46,7 @@ class GetEstimatedWaitOutput(OutputModel):
 
 
 class CheckInInput(InputModel):
-    customer_id: uuid.UUID
+    pass
 
 
 class CheckInOutput(OutputModel):
@@ -55,7 +56,6 @@ class CheckInOutput(OutputModel):
 
 
 class RemoveFromQueueInput(InputModel):
-    customer_id: uuid.UUID
     reason: str | None = Field(default=None, max_length=200)
 
 

@@ -15,7 +15,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { runContained } from "../src/executor.js";
+import { OUTPUT_SAMPLE_LIMIT, runContained } from "../src/executor.js";
 
 const alive = (pid: number) => {
   try {
@@ -110,6 +110,11 @@ describe("la salida no se guarda (§III, Requisito 8)", () => {
       cwd: process.cwd(),
       timeoutMs: 10_000,
     });
-    expect(result.stdoutSample.length).toBeLessThanOrEqual(2048);
+    // El techo era 2 KB y pasó a 16 KB el 2026-09-20, porque con 2 KB no cabía
+    // una traza de compilación y el agente ejecutaba a ciegas
+    // (`.specify/bugs/el-teammate-no-alcanza-la-maquina/`). **Lo que no cambia
+    // es que haya techo**, que es lo que este test defiende: acotada, no la
+    // transcripción. El margen cubre la línea que declara lo omitido.
+    expect(result.stdoutSample.length).toBeLessThanOrEqual(OUTPUT_SAMPLE_LIMIT);
   });
 });

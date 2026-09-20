@@ -129,10 +129,27 @@ lo aprobaron».
 2. la máquina la recoge en su `GET /device/poll` —`FOR UPDATE SKIP LOCKED` y
    `dispatched_at`: **el mismo trabajo no se entrega dos veces**—;
 3. ejecuta con la contención de la 001 y contesta en `POST /device/result` con
-   el desenlace, el código de salida y una **muestra acotada** de la salida;
+   el desenlace, el código de salida y una **muestra acotada** de la salida —
+   los dos flujos, stdout y stderr, en el orden en que llegaron, hasta 16 KB
+   con cabeza y cola y el hueco declarado (`OUTPUT_SAMPLE_LIMIT`);
 4. la muestra viaja por Redis a quien espera y llega al modelo marcada
    `untrusted: true`. **No se persiste**: la auditoría dice qué pasó, nunca qué
    dijo el comando (§III).
+
+> **Corrección del 2026-09-20.** Los dos puntos de arriba describían una
+> intención, no lo que pasaba. La muestra eran los **primeros 2 KB de stdout**
+> —stderr no se recogía en absoluto—, y el nodo `execute` del grafo se quedaba
+> con el booleano y **tiraba el contenido**: no llegaba al modelo nada. Con 2 KB
+> del principio tampoco habría cabido el motivo de un fallo, que va por stderr y
+> al final. Y antes de todo eso, `shell_local` **no entraba en el catálogo de
+> ningún teammate**: los dos sitios que lo montan pasaban `machine_present=False`
+> escrito a mano, mientras `services/device_presence` tenía el mecanismo entero
+> sin un solo llamador. Arreglado en
+> `.specify/bugs/el-teammate-no-alcanza-la-maquina/`.
+>
+> Sigue pendiente `cwd_relative`: se valida contra fugas y el puente manda `None`,
+> así que **todo corre en la raíz del directorio del cliente**. Necesita columna
+> nueva y migración.
 
 La espera **sondea** en vez de bloquear con `BLPOP`: un bloqueo de quince
 minutos retiene una conexión del pool que comparte el webhook de WhatsApp.

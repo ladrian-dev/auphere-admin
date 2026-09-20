@@ -171,7 +171,7 @@ async def test_hallucinated_tool_call_is_rejected_by_dispatch(
             ToolCall(
                 id="t1",
                 name="queue.join_queue",
-                arguments={"customer_id": "00000000-0000-0000-0000-000000000000"},
+                arguments={},
             )
         ]
         if c.role == "info" and not any(m.get("role") == "tool" for m in c.messages)
@@ -315,7 +315,7 @@ async def test_two_tenants_with_disjoint_whitelists_do_not_leak(
                 ToolCall(
                     id="t",
                     name="client.get_history",
-                    arguments={"customer_id": str(cid), "limit": 5},
+                    arguments={"limit": 5},
                 )
             ]
             if c.role == "info" and not any(m.get("role") == "tool" for m in c.messages)

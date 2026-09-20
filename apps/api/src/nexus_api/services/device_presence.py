@@ -80,11 +80,52 @@ async def tenant_presence(session: AsyncSession, *, now: datetime | None = None)
     return "ausente"
 
 
+async def principal_presence(session: AsyncSession, *, now: datetime | None = None) -> Presence:
+    """¿Tiene esta persona una máquina lista para trabajar?
+
+    La hermana de :func:`tenant_presence`, un eje más arriba. Aquella contesta
+    «¿hay herramientas locales **para este cliente**?»; ésta, «¿tiene sentido
+    ofrecerle ``shell_local`` **a esta persona** en este turno?». Son preguntas
+    distintas porque un teammate no está atado a un cliente: elige el suyo en
+    cada llamada, y la puerta de ejecución vuelve a comprobarlo todo por cliente.
+
+    Corre bajo los GUC del partner (``app.partner_id`` y ``app.principal_id``):
+    la RLS de ``partner_devices`` filtra por persona, así que esto no tiene que
+    nombrarla en el ``WHERE`` — y no poder nombrarla es lo que impide preguntar
+    por la máquina de otro.
+
+    «Lista» son las tres cosas a la vez, y ninguna sobra: late dentro de la
+    ventana, no está revocada, y tiene **algún** cliente con directorio
+    declarado. Sin directorio no hay dónde ejecutar (002-R7.5) y ofrecer la
+    herramienta sería prometer algo que la puerta va a denegar.
+    """
+    rows = (
+        (
+            await session.execute(
+                select(PartnerDevice.last_heartbeat_at)
+                .join(DeviceClientLink, DeviceClientLink.device_id == PartnerDevice.id)
+                .where(
+                    DeviceClientLink.removed_at.is_(None),
+                    DeviceClientLink.workdir.is_not(None),
+                    PartnerDevice.revoked_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for beat in rows:
+        if derive_presence(beat, now=now) == "presente":
+            return "presente"
+    return "ausente"
+
+
 __all__ = [
     "HEARTBEAT_INTERVAL",
     "PRESENCE_EXPIRY",
     "Presence",
     "catalog_includes_local_tools",
     "derive_presence",
+    "principal_presence",
     "tenant_presence",
 ]

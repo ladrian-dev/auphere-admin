@@ -49,7 +49,9 @@ class CheckAvailabilityOutput(OutputModel):
 
 
 class CreateAppointmentInput(InputModel):
-    customer_id: uuid.UUID
+    # El cliente NO viaja como argumento: lo resuelve el servidor desde el
+    # contexto del turno (``core/tenant_context.customer_context``). Aceptarlo
+    # aquí dejaría que el modelo reservara a nombre de otra persona.
     service_name: str = Field(min_length=1, max_length=120)
     starts_at: datetime
     duration_min: int = Field(ge=5, le=480, default=30)
@@ -141,10 +143,8 @@ class CancelAppointmentOutput(OutputModel):
 
 
 class GetAppointmentsInput(InputModel):
-    customer_id: uuid.UUID | None = Field(
-        default=None,
-        description="If provided, restrict to this customer's appointments.",
-    )
+    # Sin eje de cliente: siempre son las citas de la persona con la que se
+    # está hablando. Ver ``CreateAppointmentInput``.
     from_date: Date | None = Field(
         default=None,
         description="Inclusive lower bound (date, tenant TZ).",

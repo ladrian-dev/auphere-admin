@@ -17,7 +17,11 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from nexus_mcp.base import ToolNotInWhitelist
 
-from nexus_api.core.tenant_context import tenant_context, tenant_scoped_session
+from nexus_api.core.tenant_context import (
+    customer_context,
+    tenant_context,
+    tenant_scoped_session,
+)
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     Appointment,
@@ -66,7 +70,7 @@ async def test_escalate_to_human_persists_audit_and_flips_status(
         db_session, tenant_id=a, customer_id=cust.id, provider_identifier="esc-1"
     )
 
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         envelope = await mcp_registry.dispatch(
             "escalate.escalate_to_human",
             {"conversation_id": str(conv.id), "reason": "agente sin contexto"},
@@ -102,10 +106,10 @@ async def test_client_get_preferences_returns_empty_for_new_customer(
 ):
     a = two_tenants["a"]
     cust = await seed_customer(db_session, tenant_id=a)
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         envelope = await mcp_registry.dispatch(
             "client.get_preferences",
-            {"customer_id": str(cust.id)},
+            {},
             whitelist=all_whitelist(),
         )
     assert envelope["result"]["preferences"] == {}
@@ -114,15 +118,15 @@ async def test_client_get_preferences_returns_empty_for_new_customer(
 async def test_client_update_preferences_merges(db_session, two_tenants, mcp_registry):
     a = two_tenants["a"]
     cust = await seed_customer(db_session, tenant_id=a)
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         await mcp_registry.dispatch(
             "client.update_preferences",
-            {"customer_id": str(cust.id), "preferences": {"preferred_barber": "Luis"}},
+            {"preferences": {"preferred_barber": "Luis"}},
             whitelist=all_whitelist(),
         )
         e2 = await mcp_registry.dispatch(
             "client.update_preferences",
-            {"customer_id": str(cust.id), "preferences": {"language": "es"}},
+            {"preferences": {"language": "es"}},
             whitelist=all_whitelist(),
         )
     assert e2["result"]["preferences"] == {"preferred_barber": "Luis", "language": "es"}
@@ -155,10 +159,10 @@ async def test_client_get_history_returns_appointments_in_recent_first_order(
                 )
             )
 
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         env = await mcp_registry.dispatch(
             "client.get_history",
-            {"customer_id": str(cust.id), "limit": 10},
+            {"limit": 10},
             whitelist=all_whitelist(),
         )
     rows = env["result"]["appointments"]
@@ -195,14 +199,13 @@ async def test_booking_create_appointment_idempotent_on_replay(
     a = two_tenants["a"]
     cust = await seed_customer(db_session, tenant_id=a)
     args = {
-        "customer_id": str(cust.id),
         "service_name": "corte",
         "starts_at": (datetime.now(UTC) + timedelta(days=1, hours=2)).isoformat(),
         "duration_min": 30,
         "price_cents": 12000,
         "idempotency_key": "conv:abc:create_appt:hash1",
     }
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         e1 = await mcp_registry.dispatch(
             "booking.create_appointment", args, whitelist=all_whitelist()
         )
@@ -222,11 +225,10 @@ async def test_booking_modify_appointment_changes_starts_at(db_session, two_tena
     cust = await seed_customer(db_session, tenant_id=a)
     starts = datetime.now(UTC) + timedelta(days=1, hours=3)
     new_starts = starts + timedelta(hours=1)
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         created = await mcp_registry.dispatch(
             "booking.create_appointment",
             {
-                "customer_id": str(cust.id),
                 "service_name": "corte",
                 "starts_at": starts.isoformat(),
                 "duration_min": 30,
@@ -253,11 +255,10 @@ async def test_booking_cancel_appointment_applies_fee_for_short_notice(
     a = two_tenants["a"]
     cust = await seed_customer(db_session, tenant_id=a)
     starts = datetime.now(UTC) + timedelta(hours=2)  # <24h → 50% fee
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         created = await mcp_registry.dispatch(
             "booking.create_appointment",
             {
-                "customer_id": str(cust.id),
                 "service_name": "corte",
                 "starts_at": starts.isoformat(),
                 "duration_min": 30,
@@ -302,10 +303,10 @@ async def test_booking_get_appointments_filters_by_customer_and_upcoming(
                 )
             )
 
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         env = await mcp_registry.dispatch(
             "booking.get_appointments",
-            {"customer_id": str(cust.id), "only_upcoming": True},
+            {"only_upcoming": True},
             whitelist=all_whitelist(),
         )
     assert len(env["result"]["appointments"]) == 1
@@ -319,17 +320,17 @@ async def test_queue_join_get_position_estimated_wait_check_in_remove(
 ):
     a = two_tenants["a"]
     cust = await seed_customer(db_session, tenant_id=a)
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         join = await mcp_registry.dispatch(
             "queue.join_queue",
-            {"customer_id": str(cust.id), "service_name": "corte"},
+            {"service_name": "corte"},
             whitelist=all_whitelist(),
         )
         assert join["result"]["position"] == 1
 
         pos = await mcp_registry.dispatch(
             "queue.get_position",
-            {"customer_id": str(cust.id)},
+            {},
             whitelist=all_whitelist(),
         )
         assert pos["result"]["position"] == 1
@@ -343,14 +344,14 @@ async def test_queue_join_get_position_estimated_wait_check_in_remove(
 
         ci = await mcp_registry.dispatch(
             "queue.check_in",
-            {"customer_id": str(cust.id)},
+            {},
             whitelist=all_whitelist(),
         )
         assert ci["result"]["status"] == "checked_in"
 
         rm = await mcp_registry.dispatch(
             "queue.remove_from_queue",
-            {"customer_id": str(cust.id)},
+            {},
             whitelist=all_whitelist(),
         )
         assert rm["result"]["status"] == "removed"
@@ -398,7 +399,7 @@ async def test_commission_calculate_and_reports(db_session, two_tenants, mcp_reg
                 )
             )
 
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         calc = await mcp_registry.dispatch(
             "commission.calculate_commission",
             {"barber_id": str(barber.id), "service_amount_cents": 10000, "tip_amount_cents": 1000},
@@ -442,7 +443,7 @@ async def test_notification_send_template_and_text_and_schedule_and_cancel(
         db_session, tenant_id=a, customer_id=cust.id, provider_identifier="not-1"
     )
 
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         tpl = await mcp_registry.dispatch(
             "notification.send_template",
             {
@@ -526,13 +527,13 @@ async def test_booking_get_appointments_does_not_leak_across_tenants(
 ):
     a, b = two_tenants["a"], two_tenants["b"]
     cust_a = await seed_customer(db_session, tenant_id=a)
+    cust_b = await seed_customer(db_session, tenant_id=b)
 
     # A creates an appointment.
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust_a.id):
         await mcp_registry.dispatch(
             "booking.create_appointment",
             {
-                "customer_id": str(cust_a.id),
                 "service_name": "corte",
                 "starts_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
                 "duration_min": 30,
@@ -542,8 +543,9 @@ async def test_booking_get_appointments_does_not_leak_across_tenants(
             whitelist=all_whitelist(),
         )
 
-    # B asks for appointments — RLS filters out everything from A.
-    with tenant_context(b):
+    # B asks for appointments, con su propio cliente: lo que filtra aquí es la
+    # RLS del tenant, no la falta de cliente en contexto.
+    with tenant_context(b), customer_context(cust_b.id):
         env = await mcp_registry.dispatch(
             "booking.get_appointments",
             {"only_upcoming": True},
@@ -558,11 +560,10 @@ async def test_booking_get_appointments_does_not_leak_across_tenants(
 async def test_dispatch_refuses_outside_whitelist(db_session, two_tenants, mcp_registry):
     a = two_tenants["a"]
     cust = await seed_customer(db_session, tenant_id=a)
-    with tenant_context(a), pytest.raises(ToolNotInWhitelist):
+    with tenant_context(a), customer_context(cust.id), pytest.raises(ToolNotInWhitelist):
         await mcp_registry.dispatch(
             "booking.create_appointment",
             {
-                "customer_id": str(cust.id),
                 "service_name": "corte",
                 "starts_at": datetime.now(UTC).isoformat(),
                 "duration_min": 30,
@@ -587,11 +588,11 @@ async def test_flow1_booking_with_preferred_barber_smoke(db_session, two_tenants
         db_session, tenant_id=a, customer_id=cust.id, provider_identifier="flow1"
     )
 
-    with tenant_context(a):
+    with tenant_context(a), customer_context(cust.id):
         # Step 1: agent checks history (returning customer recognised).
         hist = await mcp_registry.dispatch(
             "client.get_history",
-            {"customer_id": str(cust.id), "limit": 5},
+            {"limit": 5},
             whitelist=all_whitelist(),
         )
         assert hist["result"]["appointments"] == []
@@ -615,7 +616,6 @@ async def test_flow1_booking_with_preferred_barber_smoke(db_session, two_tenants
         created = await mcp_registry.dispatch(
             "booking.create_appointment",
             {
-                "customer_id": str(cust.id),
                 "service_name": "corte",
                 "starts_at": chosen["starts_at"],
                 "duration_min": 30,

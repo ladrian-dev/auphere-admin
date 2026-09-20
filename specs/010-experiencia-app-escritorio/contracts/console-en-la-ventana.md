@@ -1,68 +1,57 @@
-# Contrato — la consola en modo embebido (spec 010)
+# Contrato — la consola dentro de la ventana (spec 010)
 
-La consola es la misma aplicación web de siempre. Dentro de la ventana de
-escritorio se pinta **sin su propio armazón**, porque el armazón ya lo pone la
-aplicación. Este contrato fija qué cambia, cómo se detecta y qué **no** cambia.
+> **Este contrato se reescribió el 2026-09-18.** Se llamaba «la consola en modo
+> embebido» y fijaba qué partes de su armazón se ocultaba la consola al
+> detectar la aplicación de escritorio por user-agent. Ese modo **se retiró**:
+> ver `decision.md`, «D1-A se revierte a medias». Lo que sigue es lo que rige.
 
-## Cómo se detecta
+La consola es la misma aplicación web de siempre, y dentro de la ventana de
+escritorio **se pinta entera y tal cual es**: su barra lateral, su búsqueda, sus
+avisos y su identidad. No se le pide nada.
 
-Por el **user-agent** de la partición humana, que la cáscara ya marca con
-`AuphereDesktop/<versión>`. Es la única señal disponible: la consola **no tiene
-`preload`** y no puede recibir nada de la cáscara (002 R12.1).
+## La regla
 
-- La detección ocurre **en el servidor**, al construir la página, para que no haya
-  parpadeo de un armazón que se monta y se desmonta.
-- La función de detección que ya existe se amplía y gana test propio.
-- Si la detección falla, la consola se pinta **completa**: se ve un armazón
-  duplicado (feo, no roto). Ese es el modo degradado aceptado.
+**`apps/console` no sabe que la aplicación de escritorio existe.** No hay modo,
+no hay bifurcación de armazón, no hay despliegue acoplado. La única detección
+por user-agent que queda en la consola es la de la spec 002 —el control de
+conectar canales de Meta, que dentro de la ventana no funciona— y su test
+afirma que `isDesktopShell` se importa **exactamente una vez** fuera de su
+módulo: una segunda bifurcación exige su propia spec.
 
-## Qué oculta la consola en modo embebido
+## Cómo se coloca
 
-| Elemento | En navegador | En la ventana |
-|---|---|---|
-| Barra lateral de la consola | sí | **no** (la pone la aplicación) |
-| Cabecera con buscador y campana | sí | **no** (la búsqueda es ⌘K de la aplicación; los avisos, del armazón) |
-| Menú de usuario con avatar, idioma y tema | sí | **no** (la identidad y el tema son del armazón) |
-| Migas de pan | sí | sí — son ubicación **dentro** de la sección, no navegación global; R1.3 prohíbe lo segundo |
-| Contenido de la página, sus acciones y sus avisos efímeros | sí | sí |
-| Tarjetas de puesta en marcha propias de la consola | sí | **no**: la puesta en marcha es una sola, la del armazón |
+| | |
+|---|---|
+| **Dónde** | Desde `STRIP_HEIGHT` hacia abajo, a todo lo ancho de la ventana |
+| **Qué queda encima** | La franja, siempre. La ventana no tiene barra de título nativa: ahí viven los semáforos, la región de arrastre y la vuelta |
+| **Apilado** | La vista de la consola se añade **después** de la del armazón, o queda debajo de una vista opaca de pantalla completa y el panel se ve negro. `tests/view-stacking.test.ts` lo vigila |
+| **Visibilidad** | Aparece y desaparece; el armazón no se oculta nunca |
 
-**Regla de oro**: en modo embebido la consola **no pinta navegación global ni
-identidad**. Todo lo demás es idéntico — no se reimplementa ninguna página
-(003 R12.6).
+## Cómo se entra y cómo se vuelve
 
-## Qué no cambia
+**Una sola puerta.** «Abrir la consola» al pie de la lista lateral, o cualquier
+sección desde la búsqueda (⌘K) — que es lo que hace que un tope lleve a
+`/billing` y no a «búscalo tú». La lista canónica de `sections.ts` sirve para
+eso y sólo para eso: **por qué ruta abrir la consola**.
 
-- La consola **sigue sin `preload`**, sin canal y sin conocimiento de la cáscara
-  más allá de ese user-agent.
-- Su sesión sigue viviendo en la cookie de la partición humana.
-- Sus permisos por rol siguen decidiendo qué se ve: si una sección no le
-  corresponde a la persona, **la aplicación no la ofrece en la lista lateral**.
-- Los enlaces externos (pago, proveedores) siguen saliendo al navegador del
-  sistema; lo que cambia es que ahora **la ventana lo dice y espera**.
+**Una sola vuelta.** «Volver al equipo», en la franja, alcanzable con el
+teclado. Vive ahí porque con la consola delante la franja es la única superficie
+de la aplicación que queda a la vista.
 
-## Quién sabe dónde está la consola
+## Lo que la consola sigue sin tener
 
-El **proceso principal** observa la navegación de esa vista y empuja a la
-aplicación `{section, path}`, acotado a la lista de secciones canónicas. Con eso
-la lista lateral marca la sección activa, incluso cuando la navegación ocurrió
-**dentro** de la consola (un enlace de una página a otra).
+**`preload`.** La vista de la consola no tiene ninguna vía de hablarle a la
+cáscara (002 R12.1), y eso no cambia. El canal entre las dos sigue siendo la
+persona.
 
-Si la consola navega a una ruta que no está en la lista canónica, la aplicación
-marca la sección más cercana conocida y no inventa ninguna.
+## Por qué se retiró el modo embebido
 
-## Tema
+Se construyó y se miró funcionando. En la misma ventana había **dos barras
+laterales, dos buscadores, dos campanas y dos identidades**, y el glosario ya
+había empezado a separarse: `nav.knowledge` decía «Playbook» donde la aplicación
+decía «Conocimiento». Dos navegaciones son dos vocabularios que divergen.
 
-El tema lo decide el armazón y se propaga a la vista de la consola por el
-mecanismo del sistema. En modo embebido, la consola **no ofrece** su propio
-selector: hoy es posible tener la consola en claro y el resto de la ventana en
-oscuro, y eso desaparece.
-
-## Tests que este contrato exige
-
-1. La consola en modo embebido **no** renderiza su barra lateral, su cabecera ni
-   su menú de usuario (test de la consola).
-2. Sin la marca de la cáscara, la consola renderiza su armazón completo.
-3. La detección no depende de nada más que del user-agent.
-4. En la ventana, el humo del binario comprueba que en el panel hay contenido de
-   consola y **una sola** navegación visible.
+El modo existía para quitarle a la consola su armazón y que cupiera dentro del
+otro: un cambio en `apps/console` **que existía sólo para servir a la aplicación
+de escritorio**, y que obligaba a desplegar las dos a la vez. Acoplamiento entre
+dos aplicaciones para conseguir algo que la consola ya hacía bien sola.

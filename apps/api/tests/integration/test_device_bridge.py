@@ -202,11 +202,26 @@ async def test_the_result_carries_one_bounded_window_and_the_row_still_has_none(
         "denial_code",
     }
     # La ventana es una y está medida en el borde, no en la confianza de quien
-    # envía: 2048 caracteres, el mismo tope que aplica la app antes de mandarlo.
+    # envía: el mismo tope que aplica la app antes de mandarlo.
+    #
+    # El número subió de 2.048 a 16.384 el 2026-09-20 porque con 2 KB no cabía una
+    # traza de compilación y el agente ejecutaba a ciegas
+    # (`.specify/bugs/el-teammate-no-alcanza-la-maquina/`). **Lo que este test
+    # defiende no es el número, es que haya uno y sea el mismo en todo el viaje**:
+    # por eso se afirma contra la constante y no contra un literal, que es como
+    # llegaron a divergir la aplicación y el borde.
+    from nexus_api.core.local_exec_limits import OUTPUT_SAMPLE_CHARS
+
     sample = ResultIn.model_fields["stdout_sample"]
-    assert any(getattr(m, "max_length", None) == 2048 for m in sample.metadata), sample.metadata
+    assert any(getattr(m, "max_length", None) == OUTPUT_SAMPLE_CHARS for m in sample.metadata), (
+        sample.metadata
+    )
     with pytest.raises(ValidationError):
-        ResultIn(execution_id=uuid.uuid4(), outcome="completada", stdout_sample="x" * 2049)
+        ResultIn(
+            execution_id=uuid.uuid4(),
+            outcome="completada",
+            stdout_sample="x" * (OUTPUT_SAMPLE_CHARS + 1),
+        )
 
     # Y la fila —lo único que sobrevive a la ejecución— no tiene columna alguna
     # donde esa muestra pudiera acabar.

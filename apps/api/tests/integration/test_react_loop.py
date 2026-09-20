@@ -119,7 +119,7 @@ async def test_tool_result_reaches_the_responding_llm(db_session):
                 ToolCall(
                     id="t1",
                     name="client.get_history",
-                    arguments={"customer_id": str(cust.id), "limit": 5},
+                    arguments={"limit": 5},
                 )
             ]
         return []
@@ -217,7 +217,7 @@ async def test_loop_is_bounded_when_model_never_stops(db_session):
             ToolCall(
                 id="t",
                 name="client.get_history",
-                arguments={"customer_id": str(cust.id), "limit": 5},
+                arguments={"limit": 5},
             )
         ]
         if c.role == "info"
