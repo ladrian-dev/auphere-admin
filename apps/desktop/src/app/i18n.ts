@@ -441,7 +441,21 @@ const COPY = {
 export type AppKey = keyof typeof COPY;
 
 export function format(lang: Lang, key: AppKey, vars?: Record<string, string | number>): string {
-  let out: string = COPY[key][lang];
+  const entry = COPY[key];
+  if (!entry) {
+    /*
+     * Una clave que no existe es un defecto, y aquí **no se calla**: se
+     * registra. Lo que no puede hacer es lanzar. `COPY[key][lang]` sobre un
+     * `undefined` tiraba el render, y sin red de seguridad eso es la ventana
+     * en negro — pasó con `t(\`pair.error.${code}\`)` y un código que la tabla
+     * no tenía. El tipo `AppKey` impide el error en el 99 % de los sitios; el
+     * 1 % son las claves que se arman en tiempo de ejecución, que es
+     * exactamente donde nadie mira.
+     */
+    console.error(`[i18n] falta la clave «${key}»`);
+    return String(key);
+  }
+  let out: string = entry[lang];
   if (vars) for (const [k, v] of Object.entries(vars)) out = out.replaceAll(`{${k}}`, String(v));
   return out;
 }

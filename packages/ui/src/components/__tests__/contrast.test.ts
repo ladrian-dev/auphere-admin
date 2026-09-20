@@ -101,3 +101,42 @@ describe("el anillo de foco es el mismo en los dos temas y se ve en los dos", ()
     expect(dark.get("--ring")).toBeDefined();
   });
 });
+
+/**
+ * El borde de marca, que no es el puente de shadcn.
+ *
+ * `--border` es el puente; `--color-border` es el token de marca, y es el que
+ * consume `border-border` de Tailwind — el propio `tokens.css` explica que no
+ * puede espejarlo en `@theme inline` sin crear un `var()` circular.
+ *
+ * El defecto: `--color-border` solo estaba declarado en claro, tinta oscura al
+ * 12 %, y el tema oscuro lo heredaba. En oscuro se pintaba **tinta sobre
+ * tinta**: los bordes no quedaban sutiles, desaparecían, y con ellos la
+ * jerarquía de tarjetas, separadores y campos. En la aplicación, en la consola
+ * y en el panel de operador a la vez, porque las tres beben de este fichero.
+ *
+ * No se le pide 3:1 — es decoración, y el comentario de `PARES` arriba explica
+ * por qué pedírselo dejaría la interfaz cargada. Se le pide **existir por
+ * tema** y **verse**.
+ */
+describe("los bordes de marca se ven en los dos temas", () => {
+  it.each(["--color-border", "--color-border-soft"])("%s se declara para el tema oscuro", (token) => {
+    expect(
+      dark.get(token),
+      `${token} no está en el bloque oscuro: hereda el valor de claro y se pinta tinta sobre tinta`,
+    ).toBeDefined();
+  });
+
+  it.each(["--color-border", "--color-border-soft"])("%s no es el mismo valor en los dos temas", (token) => {
+    expect(resolve(token, dark)).not.toEqual(resolve(token, light));
+  });
+
+  it.each([
+    ["--background", "el fondo"],
+    ["--card", "una tarjeta"],
+  ])("el borde se distingue sobre %s en oscuro", (surface) => {
+    // Un pelo visible, no un borde marcado: por debajo de esto el ojo no lo
+    // separa del fondo, que es exactamente lo que pasaba.
+    expect(ratioOn(resolve("--color-border", dark), resolve(surface, dark))).toBeGreaterThan(1.2);
+  });
+});

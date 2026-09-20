@@ -257,6 +257,21 @@
   --input: oklch(0.971 0.006 185.3 / 0.4);
   --ring: var(--color-primary);
 
+  /*
+    **Y los de marca, que no son los mismos.** `--border` es el puente de
+    shadcn; `--color-border` es el token de marca, y es el que consume
+    `border-border` de Tailwind — el bloque `@theme inline` de abajo explica
+    por qué no puede espejarlo sin crear un `var()` circular.
+
+    Consecuencia: `--color-border` solo estaba declarado en claro, tinta
+    oscura al 12 %, y en oscuro se pintaba **tinta sobre tinta**. Los bordes no
+    quedaban sutiles: desaparecían, y con ellos la jerarquía de tarjetas,
+    separadores y campos. Afectaba a la aplicación, a la consola y al panel de
+    operador a la vez, porque las tres beben de este fichero.
+  */
+  --color-border: oklch(0.971 0.006 185.3 / 0.14);
+  --color-border-soft: oklch(0.971 0.006 185.3 / 0.07);
+
   --sidebar: var(--color-ink-surface);
   --sidebar-foreground: var(--color-bone);
   --sidebar-primary: var(--color-mountain-meadow);

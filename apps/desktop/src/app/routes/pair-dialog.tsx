@@ -24,10 +24,12 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Input } from "@nexus/ui";
 
 import { bridge } from "../bridge";
-import { type AppKey, useAppT } from "../i18n";
+import { useAppT } from "../i18n";
+import { pairErrorKey } from "./pair-errors";
 
 /** El alfabeto del código: sin vocales ni símbolos que se confundan al dictar. */
 const ALPHABET = /^[ABCDEFGHJKMNPQRSTVWXYZ23456789]{8}$/;
+
 
 export function PairDialog({ onDone, onClose }: { onDone: (machine: string) => void; onClose: () => void }) {
   const t = useAppT();
@@ -103,7 +105,14 @@ export function PairDialog({ onDone, onClose }: { onDone: (machine: string) => v
         />
         {failed ? (
           <p className="text-xs text-pretty text-status-danger-text" role="alert">
-            {t(`pair.error.${failed}` as AppKey)}
+            {/*
+              El `as AppKey` es una promesa que el servidor no firmó: el código
+              lo elige la plataforma y la tabla de textos tiene tres. Uno nuevo
+              —o uno viejo que cambie de nombre— dejaba la ventana en negro.
+              Lo desconocido cae en «no se pudo emparejar», que es verdad en
+              todos los casos y no inventa un motivo.
+            */}
+            {t(pairErrorKey(failed))}
           </p>
         ) : null}
       </div>

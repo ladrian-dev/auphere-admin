@@ -228,7 +228,20 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
   }, []);
 
   useEffect(() => {
-    if (session === null || session.kind === "stop") return;
+    if (session === null) return;
+    if (session.kind === "stop") {
+      /*
+       * Sin sesión no hay equipo que cargar, pero **tampoco hay nada que
+       * esperar**. Antes se volvía sin tocar el estado y `rosterStatus` se
+       * quedaba en «loading» para siempre: la lista lateral mostraba su
+       * esqueleto animado de fondo mientras la pantalla decía que entraras.
+       * Un esqueleto es una promesa de que algo está llegando; aquí no llegaba
+       * nada y la ventana parecía a medio cargar en vez de a la espera de ti.
+       */
+      setRoster([]);
+      setRosterStatus("ready");
+      return;
+    }
     void loadRoster();
   }, [session, loadRoster]);
 

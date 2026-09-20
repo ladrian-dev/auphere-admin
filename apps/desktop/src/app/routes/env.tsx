@@ -46,7 +46,23 @@ export function EnvPanel({ teammate, env, policy, onOpenConsole }: EnvPanelProps
   const missingWorkdir = env !== null && env.machine !== null && (link === null || link.workdir === null);
 
   return (
-    <aside className="flex min-w-0 flex-col gap-4 overflow-y-auto p-4" aria-label={t("env.title")}>
+    /*
+     * **Ancho fijo, y se retira cuando no cabe.** Sin ancho declarado este
+     * panel se dimensionaba a su contenido —y su contenido son rutas como
+     * `/Users/adrian/Trabajo/clientes/clinica-boreal-2026/analitica`—, así que
+     * se quedaba con lo que quisiera y el hilo con lo que sobrara: **311 px de
+     * 1280, y 32 px en la ventana mínima**. El chat, que es el producto,
+     * cabía letra a letra.
+     *
+     * Por debajo de `xl` desaparece en vez de encogerse. Es una pérdida real
+     * —el directorio y la máquina dejan de verse— y aun así es estrictamente
+     * mejor que un chat de 32 px. El panel plegable con su control vive en la
+     * 013, que es donde se decide la conversación como producto.
+     */
+    <aside
+      className="hidden w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border p-4 xl:flex"
+      aria-label={t("env.title")}
+    >
       <h2 className="text-sm font-semibold text-balance">{t("env.title")}</h2>
 
       {teammate ? (
