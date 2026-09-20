@@ -4,7 +4,7 @@
 - **Tested**: 2026-09-20
 - **Assessment**: ./assessment.md
 - **Fix**: ./fix.md
-- **Result**: **verified** (D1, D2, D3). D4 sin arreglar y sin test, a propósito.
+- **Result**: **verified**. Los cuatro defectos.
 
 ## Los tests se escribieron primero
 
@@ -35,7 +35,9 @@ casos. Rojo por ausencia: `principal_presence` no existía.
 | D1 | `pytest tests/integration/test_teammate_reaches_the_machine.py` | **pass** | 8 |
 | Escritorio entero | `pnpm --filter @nexus/desktop exec vitest run` | **pass** | 932 en 96 ficheros |
 | Worker | `pytest tests/ -q` | **pass** | 419 |
-| API entera | `pytest tests/ -q -p no:randomly` | **pass** | 3594 |
+| D4 | `pytest tests/integration/test_execution_carries_its_subdirectory.py` | **pass** | 3, rojos antes |
+| Migración 0123 | `alembic upgrade head` → `downgrade -1` → `upgrade head` | **pass** | Ensayada en local, ida y vuelta |
+| API entera | `pytest tests/ -q -p no:randomly` | **pass** | **3597** |
 | `ruff` + `mypy --strict` | `./scripts/verify.sh lint` | **pass** | «Todo verde» |
 
 ## Las tres guardas que el arreglo tocó, y por qué no se borraron
@@ -64,8 +66,5 @@ hubiera hecho fallar nada, no habría habido techo que subir.
   cada uno por su lado. Falta el ensayo entero —emparejar, declarar directorio,
   pedirle a un teammate que corra un build que falla y leer el error en el hilo— y
   eso pide una máquina emparejada y una sesión de verdad.
-- **D4**: `cwd_relative` sigue perdiéndose y no hay test que lo afirme. Ponerlo en
-  rojo ahora dejaría la suite roja sin arreglo detrás, que es justo lo que la
-  constitución prohíbe.
 - **Windows.** La contención tiene su variante NT (T039/T043) y **nunca se ha
   ejecutado**. Este arreglo hace que por fin haya algo que ejecutar ahí.

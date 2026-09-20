@@ -3,13 +3,14 @@
 - **Slug**: el-teammate-no-alcanza-la-maquina
 - **Fixed**: 2026-09-20
 - **Assessment**: ./assessment.md
-- **Status**: applied (D1, D2, D3). **D4 pendiente**, ver abajo.
+- **Status**: applied. **Los cuatro**: D1, D2 y D3 el 2026-09-20; D4 el mismo día, con su migración.
 
 ## Summary
 
-Tres cosas, y las tres hacen falta para que la cuarta —que el teammate trabaje—
+Cuatro cosas, y hacen falta todas para que la quinta —que el teammate trabaje—
 signifique algo: la herramienta llega al catálogo cuando hay máquina, lo que el
-programa imprime llega al modelo, y esa salida ya incluye stderr y el final.
+programa imprime llega al modelo, esa salida ya incluye stderr y el final, y el
+comando corre **donde se pidió** y no siempre en la raíz.
 
 ## Changes
 
@@ -23,10 +24,13 @@ programa imprime llega al modelo, y esa salida ya incluye stderr y el final.
 | `apps/desktop/src/http-transport.ts` · `api/device_bridge.py` · `companion/tools/runner.py` | modificado | Todos apuntan a esa constante |
 | `tests/integration/test_teammate_reaches_the_machine.py` | añadido | 8 casos: latido, caducidad, sin directorio, revocada, sin máquina, y el catálogo siguiendo a la máquina |
 | `tests/unit/test_teammate_sees_what_it_ran.py` | añadido | 2 casos: la salida llega, y llega marcada como dato |
+| `db/models/local_workstation.py` · `alembic/versions/0123_local_execution_cwd.py` | añadido | **D4**: la columna `cwd_relative`, nullable y sin backfill — `NULL` **es** la raíz |
+| `services/local_dispatch.py` · `api/console/workstation.py` · `api/device_bridge.py` | modificado | **D4**: el subdirectorio viaja de la puerta a la máquina |
+| `tests/integration/test_execution_carries_its_subdirectory.py` | añadido | 3 casos: la fila lo recuerda, el poll lo manda, y sin subdirectorio sigue siendo la raíz |
 | `apps/desktop/tests/executor-sample.test.ts` | añadido | 5 casos: stderr, los dos flujos, el final sobrevive, hay techo, y el recorte se declara |
 | `apps/desktop/tests/executor.test.ts` | modificado | La guarda de §III sigue, contra el techo nuevo |
 
-## Las cuatro decisiones que no son obvias
+## Las cinco decisiones que no son obvias
 
 **1. La salida va al modelo pero no a la base de datos.**
 
@@ -72,14 +76,16 @@ Cuando la salida es larga, el motivo está al final; el principio es el banner d
 herramienta. Y el hueco se **declara** («recortado: N caracteres omitidos»): callarlo
 sería peor que recortar, porque el modelo leería el trozo como si fuera todo.
 
+**5. La columna de D4 es nullable y sin backfill.**
+
+`NULL` **es** la raíz del directorio, que es exactamente lo que hicieron todas las
+filas anteriores. No hay nada que reconstruir ni valor por defecto que inventar: el
+histórico ya dice la verdad. Y no lleva `CHECK`: la validación de fugas vive en la
+puerta y la resolución real en la máquina, que es la única que sabe de symlinks. Un
+`CHECK` sería una tercera copia de una regla con dos dueños, y la más débil.
+
 ## Lo que este arreglo NO hace
 
-- **D4 · `cwd_relative` sigue perdiéndose.** La puerta lo valida contra fugas
-  (`..`, rutas absolutas, `~`) y el puente manda `None` fijo, así que todo corre en la
-  raíz del directorio del cliente. Arreglarlo pide **columna nueva en
-  `local_executions` y su migración**, más pasarlo por `dispatch()` y por el poll. Es
-  el único de los cuatro que no impide trabajar, y por eso se separa en vez de
-  colarlo aquí sin ensayar la migración.
 - **No hay continuación autónoma.** Tras aprobar, el turno responde y termina: cada
   paso lo sigue pidiendo una persona. Es de las cosas que Luis pidió el 2026-09-20 y
   entra por `.specify/assessments/teammate-que-trabaja-en-la-terminal/`.

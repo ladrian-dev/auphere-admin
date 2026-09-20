@@ -471,7 +471,7 @@ async def poll(ctx: DeviceContext = Depends(require_device)) -> PollOut:
                     "client_ref": refs[link.tenant_id][0],
                     "executable": row.executable,
                     "args": json.loads(row.argv_signature) if row.argv_signature else [],
-                    "cwd_relative": None,
+                    "cwd_relative": row.cwd_relative,
                     # Spec 003 R11.2 — de qué tarea es este trabajo. Va aquí y no
                     # se deduce en la máquina porque la máquina no tiene de dónde:
                     # sin esto, el panel de entorno no puede decir «en esta tarea».

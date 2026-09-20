@@ -147,9 +147,10 @@ lo aprobaron».
 > sin un solo llamador. Arreglado en
 > `.specify/bugs/el-teammate-no-alcanza-la-maquina/`.
 >
-> Sigue pendiente `cwd_relative`: se valida contra fugas y el puente manda `None`,
-> así que **todo corre en la raíz del directorio del cliente**. Necesita columna
-> nueva y migración.
+> `cwd_relative` también se arregló, con la migración **0123**: la fila de
+> `local_executions` lo guarda y el poll lo manda, así que el comando corre en el
+> subdirectorio que se pidió. Antes se validaba contra fugas y se tiraba, y todo
+> corría en la raíz.
 
 La espera **sondea** en vez de bloquear con `BLPOP`: un bloqueo de quince
 minutos retiene una conexión del pool que comparte el webhook de WhatsApp.

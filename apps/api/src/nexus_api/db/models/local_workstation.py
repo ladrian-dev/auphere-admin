@@ -301,6 +301,12 @@ class LocalExecution(Base):
     )
     executable: Mapped[str] = mapped_column(Text, nullable=False)
     argv_signature: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Subdirectorio **dentro** del directorio declarado para este cliente, o
+    #: ``NULL`` para la raíz. Lo valida la puerta contra fugas (ni absolutas, ni
+    #: ``~``, ni ``..``) y lo resuelve la máquina con ``resolveDirInside``: aquí
+    #: solo viaja. Sin esta columna se validaba y se tiraba, y todo corría en la
+    #: raíz — ``.specify/bugs/el-teammate-no-alcanza-la-maquina/`` (D4).
+    cwd_relative: Mapped[str | None] = mapped_column(Text, nullable=True)
     grant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     outcome: Mapped[str] = mapped_column(Text, nullable=False)
     denial_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

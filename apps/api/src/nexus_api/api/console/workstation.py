@@ -303,6 +303,8 @@ async def run_execution(
             device_id=device.id,
             executable=payload.executable,
             argv_signature=decision.argv_signature,
+            # La puerta ya lo validó contra fugas; aquí solo viaja (D4).
+            cwd_relative=payload.cwd_relative,
             grant_id=decision.grant_id,
             principal_id=principal_id,
         )
@@ -347,6 +349,7 @@ async def _dispatch_now(
     device_id: uuid.UUID,
     executable: str,
     argv_signature: str,
+    cwd_relative: str | None,
     grant_id: uuid.UUID | None,
     principal_id: str,
 ) -> uuid.UUID:
@@ -362,6 +365,7 @@ async def _dispatch_now(
                 device_id=device_id,
                 executable=executable,
                 argv_signature=argv_signature,
+                cwd_relative=cwd_relative,
                 grant_id=grant_id,
                 principal_id=principal_id,
                 teammate_id=None,
