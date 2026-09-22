@@ -131,6 +131,20 @@ class PartnerDevice(Base):
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     #: Lo que la máquina dijo de sí misma al emparejar; propuesto como nombre.
     hostname: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: Qué instalación es ésta (spec 012, R3.7). Lo genera la aplicación la
+    #: primera vez y lo guarda **aparte de la credencial**, para que sobreviva a
+    #: desemparejar: si viviera con la credencial, cada desemparejado crearía una
+    #: máquina nueva al volver, que es justo lo que R3.7 evita.
+    #:
+    #: **No sustituye a `hostname`, que sigue siendo lo que la máquina dice
+    #: llamarse.** `hostname` cambia al renombrar el ordenador y no es único —dos
+    #: «MacBook-Pro» en un partner son normales—, así que no sirve para saber si
+    #: dos registros son el mismo ordenador. Esto sí.
+    #:
+    #: Nullable porque las filas de antes de la 012 no lo tienen y no se inventa:
+    #: siguen valiendo y simplemente no participan de la deduplicación hasta que
+    #: se vuelvan a registrar.
+    install_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     platform: Mapped[str] = mapped_column(Text, nullable=False)
     app_version: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: Sube en cada renovación. La credencial lleva ``gen`` y solo vale la actual

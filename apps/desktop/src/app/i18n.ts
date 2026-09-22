@@ -408,9 +408,17 @@ const COPY = {
   "dirs.invalid.unknown": { es: "Esa carpeta no vale y el motivo no llegó. Prueba con otra.", en: "That folder does not work and the reason did not arrive. Try another." },
   // ── desemparejar (US4, R8.5) ──────────────────────────────────────────
   "unpair.title": { es: "Desemparejar esta máquina", en: "Unpair this machine" },
-  "unpair.loses": { es: "Esta máquina olvidará su credencial: tus teammates dejarán de poder leer y ejecutar aquí hasta que la vuelvas a emparejar.", en: "This machine will forget its credential: your teammates will stop being able to read and run here until you pair it again." },
+  // Decía «…hasta que la vuelvas a emparejar», y era doblemente falso: la
+  // credencial sigue valiendo en el servidor hasta que alguien archive la
+  // máquina (spec 002 R11.2 — desemparejar no llama al servidor, a propósito),
+  // y archivar es **terminal**, así que no se vuelve a emparejar la misma: se
+  // da de alta otra (R11.5). Ahora dice las dos cosas.
+  "unpair.loses": { es: "Esta máquina olvidará su credencial y dejará de trabajar aquí. En la plataforma queda pendiente de archivar desde la consola: hasta que la archives, sigue dada de alta.", en: "This machine will forget its credential and stop working here. On the platform it stays pending archiving from the console: until you archive it, it is still registered." },
+  "unpair.archive": { es: "Archivarla en la consola", en: "Archive it in the console" },
+  "unpair.terminal": { es: "Archivar es definitivo: para volver a usar este ordenador se da de alta de nuevo, no se recupera la máquina archivada.", en: "Archiving is final: to use this computer again you register it anew — an archived machine is not recovered." },
   "unpair.keeps": { es: "Todo lo demás sigue: los hilos, las tareas y lo que ya hicieron viven en el servidor y no se tocan.", en: "Everything else stays: threads, tasks and what was already done live on the server and are untouched." },
   "unpair.cancel": { es: "Cancelar", en: "Cancel" },
+  "unpair.close": { es: "Cerrar", en: "Close" },
   "unpair.confirm": { es: "Desemparejar", en: "Unpair" },
   // ── plan, cobro y saldo (US5, R9) ─────────────────────────────────────
   "plan.title": { es: "Tu plan", en: "Your plan" },

@@ -70,8 +70,15 @@ class PartnerDeviceRepository:
         hostname: str,
         platform: str,
         app_version: str | None = None,
+        install_id: str | None = None,
     ) -> PartnerDevice:
-        """Da de alta la máquina a nombre del partner en contexto y de la persona."""
+        """Da de alta la máquina a nombre del partner en contexto y de la persona.
+
+        ``install_id`` es opcional porque el camino viejo —el código de
+        emparejamiento— no lo manda. Cuando ese camino se retire (spec 012, US6)
+        dejará de serlo de hecho, pero la columna sigue siendo nullable por las
+        filas de antes.
+        """
         partner_id = require_current_partner()
         device = PartnerDevice(
             id=uuid.uuid4(),
@@ -81,6 +88,7 @@ class PartnerDeviceRepository:
             hostname=hostname,
             platform=platform,
             app_version=app_version,
+            install_id=install_id,
         )
         self._session.add(device)
         await self._session.flush()

@@ -983,6 +983,7 @@ async def start_run(
     # Spec 003: el catálogo y la identidad del teammate, leídos bajo el partner.
     allowed_tools: frozenset[str] | None = None
     teammate_prompt: str | None = None
+    teammate_model: str | None = None
     if teammate_id is not None:
         teammate = await _require_teammate(session, partner.id, principal_id, teammate_id)
         machine_present = await _machine_present_for(session, partner.id, principal_id)
@@ -990,6 +991,10 @@ async def start_run(
             for_teammate(teammate, mode=mode, machine_present=machine_present)
         )
         teammate_prompt = system_prompt_for(teammate)
+        # El cerebro que el partner eligió para ESTE teammate. Hasta ahora se
+        # guardaba, se validaba contra su lista y el run lo ignoraba: todos
+        # corrían con ``settings.llm_companion_model``.
+        teammate_model = teammate.model
 
     driver = _make_driver(
         principal=caller.principal,
@@ -998,6 +1003,7 @@ async def start_run(
         tenant_id=tenant_id,
         allowed_tools=allowed_tools,
         teammate_prompt=teammate_prompt,
+        teammate_model=teammate_model,
         task_id=task_id,
         user_message=body.prompt,
         page_context=body.page_context.model_dump() if body.page_context is not None else None,
@@ -1162,6 +1168,7 @@ def _make_driver(
     support_action: uuid.UUID | None = None,
     allowed_tools: frozenset[str] | None = None,
     teammate_prompt: str | None = None,
+    teammate_model: str | None = None,
     task_id: uuid.UUID | None = None,
 ) -> streaming.CompanionDriver:
     """El driver: mueve el grafo y vuelca sus eventos al log durable.
@@ -1256,7 +1263,7 @@ def _make_driver(
         with llm_proxy_partner_scope(principal.partner.id):
             async with _contextlib.AsyncExitStack() as stack:
                 await stack.enter_async_context(toolbelt)
-                graph = _get_companion_graph(toolbelt)
+                graph = _get_companion_graph(toolbelt, model=teammate_model)
                 # ``usage_records`` exige ``tenant_id``, así que un hilo sin
                 # cliente no deja fila ahí. No es un olvido: el tope se mide en
                 # ``companion.runs``, que siempre existe, y relajar la columna a
@@ -1714,7 +1721,7 @@ def _get_provider() -> Any:
     return _provider
 
 
-def _get_companion_graph(toolbelt: Any = None) -> Any:
+def _get_companion_graph(toolbelt: Any = None, *, model: str | None = None) -> Any:
     """El grafo del turno.
 
     **Se compila por run cuando hay herramientas**, y no se cachea: el
@@ -1740,12 +1747,17 @@ def _get_companion_graph(toolbelt: Any = None) -> Any:
     settings = get_settings()
     compiled = build_companion_graph(
         provider=_get_provider(),
-        model=settings.llm_companion_model,
+        # El modelo del teammate si lo hay; si no, el del Companion clásico.
+        # Era decorativo: el partner lo elegía en el formulario, la API lo
+        # validaba contra su lista y el run lo ignoraba.
+        model=model or settings.llm_companion_model,
         checkpointer=get_qa_checkpointer(),
         toolbelt=toolbelt,
         effort=settings.companion_effort,
     )
-    if toolbelt is None:
+    if toolbelt is None and model is None:
+        # Solo se cachea el grafo genérico. Uno compilado con el modelo de un
+        # teammate concreto no vale para el siguiente, que puede tener otro.
         _graph = compiled
     return compiled
 

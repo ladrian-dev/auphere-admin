@@ -20,11 +20,13 @@ import "./dom-matchers";
 
 const workstationPickDirectory = vi.fn(async (_i?: unknown) => ({ ok: true as const, data: { path_shown: "~/clients/boreal" } }));
 const workstationUnpair = vi.fn(async () => ({ ok: true as const, data: null }));
+const openConsole = vi.fn(async (_i?: unknown) => ({ ok: true as const, data: null }));
 
 vi.mock("../src/app/bridge", () => ({
   bridge: {
     workstationPickDirectory: (input: unknown) => workstationPickDirectory(input),
     workstationUnpair: () => workstationUnpair(),
+    openConsole: (input: unknown) => openConsole(input),
   },
 }));
 
@@ -123,5 +125,49 @@ describe("desemparejar se confirma, y sin el diálogo del navegador (8.5)", () =
     await userEvent.click(screen.getByRole("button", { name: /desemparejar|unpair/i }));
     await waitFor(() => expect(workstationUnpair).toHaveBeenCalledOnce());
     expect(onDone).toHaveBeenCalledOnce();
+  });
+});
+
+describe("y dice la verdad sobre lo que queda abierto — spec 012, R2", () => {
+  /**
+   * Desemparejar es un acto **local**: no llama al servidor, y eso lo decidió
+   * la spec 002 (R11.2) con razón —archivar lleva el nombre de quien lo hace, y
+   * la credencial no gana una sexta operación—. La consecuencia es que la
+   * máquina sigue dada de alta hasta que alguien la archive.
+   *
+   * El texto decía lo contrario, y de dos maneras: daba por apagada la
+   * credencial, y prometía «hasta que la vuelvas a emparejar» cuando archivar
+   * es terminal y lo que procede es dar de alta otra (R11.5).
+   */
+
+  it("dice que la máquina queda pendiente de archivar desde la consola", () => {
+    render(<UnpairDialog onDone={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole("dialog").textContent).toMatch(
+      /pendiente de archivar|pending archiving/i,
+    );
+  });
+
+  it("y NO promete volver a emparejar esta misma máquina", () => {
+    // La mitad que se cuela: es fácil añadir la frase nueva y dejar la vieja,
+    // y entonces la pantalla dice las dos cosas a la vez.
+    render(<UnpairDialog onDone={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole("dialog").textContent).not.toMatch(
+      /vuelvas a emparejar|pair it again/i,
+    );
+  });
+
+  it("dice que archivar es definitivo", () => {
+    render(<UnpairDialog onDone={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole("dialog").textContent).toMatch(/definitivo|final/i);
+  });
+
+  it("tras desemparejar, ofrece el camino para archivarla en vez de dejarlo buscando", async () => {
+    render(<UnpairDialog onDone={vi.fn()} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: /desemparejar|unpair/i }));
+
+    const archivar = await screen.findByRole("button", { name: /archivar|archive/i });
+    await userEvent.click(archivar);
+
+    expect(openConsole).toHaveBeenCalledWith({ path: "/workstation" });
   });
 });

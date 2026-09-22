@@ -102,3 +102,41 @@ def test_changing_the_job_changes_what_the_next_turn_sees():
 def test_the_toolbelt_never_publishes_what_the_teammate_was_not_given():
     belt = _belt(["console.whoami"])
     assert _model_sees(belt) == {"console.whoami"}
+
+
+# ── el ciclo se cierra: proponer sin poder aplicar no sirve de nada ─────
+
+
+def test_a_teammate_that_can_propose_can_also_apply_what_was_confirmed() -> None:
+    """`console.apply` no es una capacidad más: es la puerta de confirmación.
+
+    Estaba dentro de `write`, así que un teammate con **publicar** —y sin
+    escribir— recibía `console.propose_publish` y no `console.apply`. Proponía,
+    la persona confirmaba, y la confirmación moría con `not_in_catalog`. Lo
+    mismo con **gastar** (cupo y modelo) y con **contactar** (invitar).
+
+    Tres de los cinco interruptores entregaban un teammate que propone y nunca
+    termina. Aplicar tiene que acompañar a cualquier permiso que proponga,
+    porque sin propuestas confirmadas `console.apply` no puede hacer nada por sí
+    solo: necesita una acción que una persona ya aprobó.
+    """
+    for switch in ("write", "publish", "spend", "contact"):
+        names = set(permissions_to_tool_names({"read": True, switch: True}))
+        propone = {n for n in names if n.startswith("console.propose_")}
+        assert propone, f"«{switch}» no da ninguna propuesta; el caso no aplica"
+        assert "console.apply" in names, (
+            f"con «{switch}» el teammate propone {sorted(propone)} y no puede aplicar: "
+            "la confirmación de la persona moriría en not_in_catalog"
+        )
+
+
+def test_read_only_does_not_get_apply() -> None:
+    """Y al revés: sin nada que proponer, aplicar no pinta nada.
+
+    No es que sea peligroso —`console.apply` exige una acción confirmada, y un
+    teammate de solo lectura no puede crear ninguna—, es que publicar una
+    herramienta que nunca va a tener nada que hacer solo sirve para que el
+    modelo la intente.
+    """
+    names = set(permissions_to_tool_names({"read": True}))
+    assert "console.apply" not in names

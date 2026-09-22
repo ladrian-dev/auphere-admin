@@ -22,6 +22,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -44,8 +45,13 @@ from nexus_api.repositories.local_workstation import (
     DevicePairingCodeRepository,
     PartnerDeviceRepository,
 )
+from nexus_api.services.device_credential import DEFAULT_TTL, issue_device_token
 from nexus_api.services.device_pairing import CODE_TTL, display_code
 from nexus_api.services.device_presence import derive_presence
+from nexus_api.services.machine_registration import (
+    RegistrationRefused,
+    assert_can_register,
+)
 
 from .deps import unknown_client
 from .schemas_workstation import (
@@ -54,6 +60,8 @@ from .schemas_workstation import (
     MachineOut,
     MachineRenameIn,
     PairingCodeOut,
+    RegisteredMachineOut,
+    RegisterMachineIn,
     SetupOut,
     SetupStepOut,
 )
@@ -190,6 +198,148 @@ async def issue_pairing_code(
         code=display_code(code),
         expires_at=row.expires_at,
         ttl_seconds=int(CODE_TTL.total_seconds()),
+    )
+
+
+@router.post(
+    "/machines",
+    response_model=RegisteredMachineOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={401: {"description": "Refused — one body for every reason."}},
+)
+async def register_machine(
+    body: RegisterMachineIn,
+    principal: ConsolePrincipal = Depends(require_console_principal("workstation:pair")),
+    session: AsyncSession = Depends(get_db_session),
+) -> RegisteredMachineOut:
+    """Registra la máquina con la sesión que la aplicación ya tenía (spec 012, R3).
+
+    **No usa `workstation_scope`, y el motivo es de permisos de base de datos.**
+    Aquella dependencia entra en el rol de aplicación, que —correctamente— no
+    puede leer `console_auth`: el rol que sirve peticiones de producto no tiene
+    por qué ver las sesiones de nadie. Y esta ruta necesita mirarlas, porque la
+    frescura de la sesión es la mitad de lo que decide. Así que cruza los dos
+    mundos igual que `services/principal_access.py`, y por la misma razón.
+
+    **Un solo cuerpo para todo rechazo** (R3.4). Sin sesión reciente, sin
+    permiso o en el tope dan lo mismo. El motivo real va a la auditoría, no a la
+    respuesta: eso es lo que permite que un rechazo uniforme siga siendo
+    investigable.
+    """
+    principal_id = principal.user_id
+    reason: str | None = None
+    existing_id: uuid.UUID | None = None
+    try:
+        principal_uuid = uuid.UUID(principal_id)
+    except ValueError:
+        # Una membresía cuyo ``user_id`` no es una cuenta de consola: no hay
+        # sesiones que mirar, así que no se registra.
+        reason = "principal_not_an_account"
+    else:
+        # Las dos puertas van en su **propia** transacción de lectura, antes de
+        # abrir la del alta. Meterlas dentro obligaría a escribir el asiento del
+        # rechazo en una transacción que va a deshacerse, y entonces el motivo
+        # —lo único que queda del intento— se perdería.
+        async with session.begin():
+            try:
+                existing = await assert_can_register(
+                    session,
+                    principal_uuid=principal_uuid,
+                    principal_id=principal_id,
+                    install_id=body.install_id,
+                )
+                existing_id = existing.id if existing is not None else None
+            except RegistrationRefused as exc:
+                reason = exc.reason
+
+    if reason is not None:
+        raise await _registration_refused(session, principal, reason, body)
+
+    async with session.begin():
+        await apply_partner_to_session(session, principal.partner.id, principal_id=principal_id)
+        with partner_context(str(principal.partner.id)):
+            repo = PartnerDeviceRepository(session)
+            device = (
+                await repo.get(existing_id)
+                if existing_id is not None
+                else await repo.pair(
+                    principal_id=principal_id,
+                    display_name=body.hostname,
+                    hostname=body.hostname,
+                    platform=body.platform,
+                    app_version=body.app_version,
+                    install_id=body.install_id,
+                )
+            )
+            if device is None:  # pragma: no cover - carrera con un archivado
+                raise await _registration_refused(session, principal, "vanished", body)
+            token = issue_device_token(
+                device_id=device.id,
+                partner_id=principal.partner.id,
+                generation=device.credential_generation,
+            )
+            session.add(
+                AuditLog(
+                    tenant_id=None,
+                    actor=principal.actor,
+                    action="device.paired",
+                    target=f"partner:{principal.partner.id}",
+                    after_json={
+                        "machine": device.display_name,
+                        "device_id": str(device.id),
+                        "hostname": body.hostname,
+                        "platform": body.platform,
+                        # Si ya existía, no es un alta: es la misma máquina otra vez.
+                        "reused": existing_id is not None,
+                    },
+                )
+            )
+            out = RegisteredMachineOut(
+                device_id=device.id,
+                credential=token,
+                generation=device.credential_generation,
+                # Se acaba de emitir, así que su caducidad es ahora + el TTL. Es
+                # lo mismo que lleva dentro y no obliga a decodificarlo sin
+                # verificar la firma.
+                expires_at=datetime.now(UTC) + DEFAULT_TTL,
+                partner_slug=principal.partner.slug,
+                principal_id=principal_id,
+                display_name=device.display_name,
+            )
+    return out
+
+
+async def _registration_refused(
+    session: AsyncSession,
+    principal: ConsolePrincipal,
+    reason: str,
+    body: RegisterMachineIn,
+) -> HTTPException:
+    """El motivo real a la auditoría; a la persona, siempre lo mismo.
+
+    El asiento va en su propia transacción: el rechazo tiene que quedar escrito
+    aunque lo que lo provocó deshaga todo lo demás.
+    """
+    async with session.begin():
+        session.add(
+            AuditLog(
+                tenant_id=None,
+                actor=principal.actor,
+                action="device.pair_denied",
+                target=f"partner:{principal.partner.id}",
+                after_json={"reason": reason, "hostname": body.hostname},
+            )
+        )
+    if reason == "machine_cap_reached":
+        # Es información **suya**, y saberlo es lo que le dice qué hacer:
+        # retirar una. Uniformarlo no protegía a nadie — quien pregunta ya
+        # presentó su sesión y su membresía.
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="machine_cap_reached")
+    # Lo que sí se mantiene indistinguible: «no hay sesión» y «la sesión
+    # caducó». Las dos llevan al mismo sitio, que es entrar de nuevo, así que
+    # separarlas solo añadiría un detalle sin uso.
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="session_not_recently_confirmed"
     )
 
 

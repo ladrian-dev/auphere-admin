@@ -416,6 +416,27 @@ async def end_session(session: AsyncSession, token: str) -> None:
     )
 
 
+async def end_all_sessions(session: AsyncSession, principal_id: uuid.UUID) -> int:
+    """Todas las de una persona, de golpe. Devuelve cuántas se cerraron.
+
+    Hasta la spec 012 este módulo solo sabía cerrar **las caducadas** y **ésta
+    una, por su token**. Faltaba la tercera, y su ausencia no era un detalle:
+    sin ella no había forma —ni por producto ni a mano— de echar a alguien de
+    una cuenta que se cree comprometida. Cambiar la contraseña tampoco servía,
+    porque no toca las sesiones abiertas.
+
+    Se apoya en el índice ``ix_console_sessions_principal``, así que es barato.
+    Idempotente, como su hermana: cerrar lo que ya no hay no es un error.
+
+    La llama ``services/principal_access.py``, que la combina con archivar las
+    máquinas en una sola transacción.
+    """
+    result = await session.execute(
+        sa.delete(ConsoleSession).where(ConsoleSession.principal_id == principal_id)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
 __all__ = [
     "ACCESS_DISABLED",
     "ACCESS_NO_MEMBERSHIP",
@@ -430,6 +451,7 @@ __all__ = [
     "PrincipalView",
     "authenticate",
     "create_account",
+    "end_all_sessions",
     "end_session",
     "get_by_email",
     "hash_password",

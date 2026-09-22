@@ -43,12 +43,29 @@ _SPEND_NAMES: frozenset[str] = frozenset({"console.propose_allocation", "console
 _CONTACT_NAMES: frozenset[str] = frozenset(
     {"console.propose_invite", "support.request_help", "support.request_capability"}
 )
+#: ``console.apply`` va **aparte de los cinco interruptores**, y acompaña a
+#: cualquiera que proponga.
+#:
+#: Estaba dentro de ``write``, y eso rompía tres de los cinco: un teammate con
+#: **publicar** recibía ``console.propose_publish`` y no ``console.apply``, así
+#: que proponía, la persona confirmaba, y la confirmación moría con
+#: ``not_in_catalog``. Igual con **gastar** (cupo y modelo) y **contactar**
+#: (invitar). Un teammate que propone y no puede terminar no sirve para nada.
+#:
+#: No es una capacidad más: es **la puerta de confirmación**. Por sí sola no
+#: hace nada —exige una acción que una persona ya aprobó—, así que darla con
+#: cualquier permiso de propuesta no amplía lo que el teammate puede decidir.
+_APPLY_NAMES: frozenset[str] = frozenset(t.name for t in APPLY_TOOLS)
+
 _WRITE_NAMES: frozenset[str] = (
-    frozenset(t.name for t in (*PROPOSE_TOOLS, *TRIAL_TOOLS, *APPLY_TOOLS))
+    frozenset(t.name for t in (*PROPOSE_TOOLS, *TRIAL_TOOLS))
     - _PUBLISH_NAMES
     - _SPEND_NAMES
     - _CONTACT_NAMES
 )
+
+#: Los interruptores que dan alguna propuesta, y por tanto necesitan aplicar.
+_SWITCHES_THAT_PROPOSE: tuple[str, ...] = ("write", "publish", "spend", "contact")
 
 #: ``shell_local`` **no** entra por ningún interruptor: depende de
 #: ``local_exec`` y de que haya máquina. Un teammate con permiso de escritura no
@@ -76,6 +93,9 @@ def permissions_to_tool_names(permissions: dict[str, Any]) -> list[str]:
         wanted |= _SPEND_NAMES
     if permissions.get("contact"):
         wanted |= _CONTACT_NAMES
+    # Aplicar acompaña a cualquier permiso que proponga: ver ``_APPLY_NAMES``.
+    if any(permissions.get(switch) for switch in _SWITCHES_THAT_PROPOSE):
+        wanted |= _APPLY_NAMES
     return [t.name for t in ALL_TOOLS if t.name in wanted]
 
 

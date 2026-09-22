@@ -38,6 +38,7 @@ from nexus_api.repositories.partner_membership import (
     PartnerInvitationRepository,
     PartnerMembershipRepository,
 )
+from nexus_api.services import principal_access
 from nexus_api.services.email import send_email
 from nexus_api.services.local_exec_policy import LocalExecPolicyRepository
 from nexus_api.services.membership_limits import (
@@ -291,6 +292,50 @@ async def remove_member(
         except LastOwnerError:
             raise _last_owner() from None
         session.add(_platform_audit(principal, "console.member.remove", email=email))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/members/{membership_id}/access",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "Unknown member."}},
+)
+async def revoke_member_access(
+    membership_id: uuid.UUID,
+    principal: ConsolePrincipal = Depends(require_console_principal("team:manage")),
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Deja fuera a una persona: sus sesiones **y** sus máquinas (spec 012, R1).
+
+    **Vive aquí y no en `/console/workstation/*` por el permiso.** Ahí el
+    permiso es ``workstation:pair``, que tiene el builder porque —como dice su
+    propia declaración— es «reclamar lo que es **tuyo**». Esto es lo contrario:
+    retirarle el acceso a **otra persona**. Con ``workstation:pair`` un builder
+    podría echar a un owner, que es una escalada de privilegio vestida de
+    proximidad de fichero. ``team:manage`` es owner y admin, que es quien
+    administra a los demás.
+
+    **Sobre la propia**: se deja hacer. Quien sospecha que le han entrado en su
+    cuenta necesita poder cerrarlo todo sin pedir permiso a nadie, y el coste de
+    equivocarse es volver a entrar. Por eso no lleva la guarda de
+    ``_self_change()`` que sí llevan cambiar de rol y quitarse del equipo:
+    ahí el error es irreversible y aquí no.
+
+    No retira la pertenencia — eso es ``DELETE /members/{id}``. Esto solo
+    corta lo que está abierto ahora.
+    """
+    async with session.begin():
+        member = await PartnerMembershipRepository(session).get(principal.partner.id, membership_id)
+        if member is None:
+            # Mismo cuerpo que para un identificador inventado: no se confirma
+            # quién pertenece a otro partner.
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown member")
+        await principal_access.revoke_all_access(
+            session,
+            principal_id=uuid.UUID(member.user_id),
+            reason="revoked_by_partner",
+            actor=f"console:{principal.user_id}",
+        )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

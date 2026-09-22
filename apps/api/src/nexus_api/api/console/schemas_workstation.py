@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -99,6 +100,39 @@ class PairingCodeOut(BaseModel):
     code: str
     expires_at: datetime
     ttl_seconds: int
+
+
+class RegisterMachineIn(BaseModel):
+    """Lo que la aplicación sabe de sí misma y la persona no elige.
+
+    **Ningún identificador de persona ni de partner**: ésos salen de la sesión,
+    y ésa es la razón de ser de toda la spec 012. Si aparecieran aquí,
+    volveríamos a tener un dato que decide quién eres y que lo rellena el
+    llamante.
+    """
+
+    hostname: str = Field(min_length=1, max_length=255)
+    platform: Literal["macos", "windows"]
+    #: Qué instalación es. Lo genera la aplicación y sobrevive a desemparejar.
+    install_id: str = Field(min_length=8, max_length=128)
+    app_version: str | None = Field(default=None, max_length=32)
+
+
+class RegisteredMachineOut(BaseModel):
+    """Se devuelve **una sola vez**; la credencial no se puede volver a leer.
+
+    Misma forma que devolvía el canje del código: esa parte no cambia y no hay
+    motivo para que cambie. Lo que cambia es quién demuestra tener derecho a
+    pedirla.
+    """
+
+    device_id: uuid.UUID
+    credential: str
+    generation: int
+    expires_at: datetime
+    partner_slug: str
+    principal_id: str
+    display_name: str
 
 
 class MachineClientOut(BaseModel):

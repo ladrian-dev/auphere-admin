@@ -283,7 +283,38 @@ navegador» — y `shell-detect.test.ts` afirma que no hay un segundo.
 la declaración de directorio, que es del tenant del cliente. Vocabulario:
 `device.pair_code_issued` · `device.paired` · `device.pair_denied` ·
 `device.renewed` (actor `device:<id>`) · `device.link_declared` ·
-`device.link_denied` · `device.unpaired` · `device.archived` (migración `0108`).
+`device.link_denied` · `device.unpaired` · `device.archived` (migración `0108`),
+más `principal.access_revoked` (migración `0124`).
+
+**Dos entradas del vocabulario no las escribe nadie, y es a propósito.**
+`device.unpaired` y el motivo de revocación `desemparejada` se declararon
+cuando se pensaba que desemparejar llamaría al servidor. La enmienda T048 de la
+spec 002 decidió lo contrario —archivar es un acto de persona con su nombre
+(R13.1) y la credencial no gana una sexta operación (R4.2)—, así que
+desemparejar quedó como un acto **local**: la aplicación olvida su credencial y
+la máquina queda pendiente de archivar desde la consola. Las dos entradas se
+quedaron sin escritor y **nadie las limpió**.
+
+Se dejan escritas aquí en vez de retirarlas o inventarles uso, que es lo que
+hace falta: quien las encuentre no descubrió un defecto, encontró el rastro de
+una decisión. Si algún día desemparejar pasa a llamar al servidor, ya tienen
+sitio.
+
+### Retirar todo el acceso de una persona (spec 012)
+
+`DELETE /console/team/members/{id}/access`, permiso **`team:manage`**. Cierra
+**todas** sus sesiones de consola y archiva **todas** sus máquinas, en una
+transacción: o las dos mitades, o ninguna. Deja `principal.access_revoked`.
+
+Vive bajo `/console/team/*` y no bajo `/console/workstation/*` por el permiso:
+allí el permiso es `workstation:pair`, que tiene el builder porque es «reclamar
+lo que es tuyo». Retirarle el acceso a **otra persona** es lo contrario, y con
+aquel permiso un builder podría echar a un owner.
+
+Corre con el rol dueño —es mantenimiento de plataforma, como archivar las
+máquinas de quien pierde la pertenencia—, así que **la RLS no la protege**: lo
+único que la acota es su `WHERE` por persona, y eso lo vigila
+`tests/isolation/test_38_principal_access_revocation_scope.py`.
 
 ## Desarrollo local
 
