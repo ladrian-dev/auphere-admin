@@ -28,16 +28,6 @@ export type HttpTransportOptions = {
   appVersion?: string;
 };
 
-export type PairedCredential = {
-  deviceId: string;
-  credential: string;
-  generation: number;
-  expiresAt: string;
-  partnerSlug: string;
-  principalId: string;
-  displayName: string;
-};
-
 export type PolledLink = {
   clientRef: string;
   clientName: string | null;
@@ -83,17 +73,6 @@ export class AppUpdateRequired extends Error {
   ) {
     super(`la plataforma exige al menos la versión ${minimumVersion ?? "?"}`);
     this.name = "AppUpdateRequired";
-  }
-}
-
-/** El canje del código no valió. Un solo motivo visible, a propósito (3.3). */
-export class PairingFailed extends Error {
-  constructor(
-    readonly code: "pairing_code_invalid" | "pairing_rate_limited",
-    readonly retryAfterSeconds?: number,
-  ) {
-    super(code);
-    this.name = "PairingFailed";
   }
 }
 
@@ -144,35 +123,13 @@ export class HttpTransport implements OutboundTransport {
     return { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" };
   }
 
-  // ── el canje, sin credencial ────────────────────────────────────────────
-
-  async pair(input: { code: string; hostname: string; platform: "macos" | "windows" }): Promise<PairedCredential> {
-    const response = await this.fetch(`${this.baseUrl}/device/pair`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: input.code,
-        hostname: input.hostname,
-        platform: input.platform,
-        app_version: this.appVersion,
-      }),
-    });
-    if (response.status === 404) throw new PairingFailed("pairing_code_invalid");
-    if (response.status === 429) throw new PairingFailed("pairing_rate_limited");
-    if (!response.ok) throw new BridgeUnavailable(`/device/pair respondió ${response.status}`);
-    const body = (await response.json()) as Record<string, unknown>;
-    return {
-      deviceId: String(body.device_id),
-      credential: String(body.credential),
-      generation: Number(body.generation),
-      expiresAt: String(body.expires_at),
-      partnerSlug: String(body.partner_slug),
-      principalId: String(body.principal_id),
-      displayName: String(body.display_name),
-    };
-  }
-
   // ── las cinco operaciones ───────────────────────────────────────────────
+  //
+  // Eran cinco y siguen siendo cinco. Aquí vivía una sexta, `pair()`, que
+  // canjeaba un código contra un endpoint que la spec 012 retiró: el
+  // escritorio conservaba su mitad del cable mucho después de que la otra
+  // dejara de existir, porque nadie la llamaba y nada se ponía rojo. La caza
+  // ahora el barrido de `test_39_no_pairing_code_path.py`, por la ruta.
 
   async send(message: Outbound): Promise<void> {
     const [path, body] = this.encode(message);

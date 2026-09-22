@@ -48,7 +48,6 @@ from nexus_api.core.tenant_context import apply_tenant_to_session, tenant_contex
 from nexus_api.db.models import (
     AuditLog,
     LocalExecution,
-    Partner,
     PartnerDevice,
     PartnerTenant,
     Tenant,
@@ -60,22 +59,17 @@ from nexus_api.desktop_version import (
 )
 from nexus_api.repositories.local_workstation import (
     DeviceClientLinkRepository,
-    DevicePairingCodeRepository,
     LocalExecutionRepository,
     PartnerDeviceRepository,
 )
 from nexus_api.services.device_credential import (
+    DEFAULT_TTL,
     DeviceClaims,
     DeviceCredentialError,
     generation_is_acceptable,
     is_abandoned,
     issue_device_token,
     verify_device_token,
-)
-from nexus_api.services.device_pairing import (
-    PairingRateLimited,
-    PairingRateLimiter,
-    normalize_code,
 )
 from nexus_api.services.local_dispatch import (
     ExecutionResult,
@@ -195,25 +189,6 @@ async def require_device(
 # ── esquemas ────────────────────────────────────────────────────────────
 
 
-class PairIn(BaseModel):
-    code: str = Field(min_length=1, max_length=32)
-    hostname: str = Field(min_length=1, max_length=255)
-    platform: str = Field(pattern="^(macos|windows)$")
-    app_version: str | None = Field(default=None, max_length=64)
-
-
-class PairedOut(BaseModel):
-    """Se devuelve **una sola vez**; la credencial no se puede volver a leer."""
-
-    device_id: uuid.UUID
-    credential: str
-    generation: int
-    expires_at: datetime
-    partner_slug: str
-    principal_id: str
-    display_name: str
-
-
 class HeartbeatIn(BaseModel):
     app_version: str | None = Field(default=None, max_length=64)
 
@@ -291,106 +266,6 @@ def current_minimum_version() -> MinimumVersion | None:
 
 
 # ── el canje del código: la única ruta sin credencial ───────────────────
-
-
-@router.post("/pair", response_model=PairedOut, status_code=status.HTTP_201_CREATED)
-async def pair(
-    body: PairIn,
-    request: Request,
-    session: AsyncSession = Depends(get_db_session),
-    redis: Redis = Depends(get_redis),
-) -> PairedOut | JSONResponse:
-    """Canjea el código por la credencial. Un solo uso; un solo cuerpo para todo fallo."""
-    client_ip = request.client.host if request.client else "?"
-    machine_key = f"{body.hostname}|{client_ip}"
-    limiter = PairingRateLimiter(redis)
-    try:
-        await limiter.check(machine_key)
-    except PairingRateLimited as exc:
-        return JSONResponse(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            content={"code": "pairing_rate_limited"},
-            headers={"Retry-After": str(exc.retry_after_seconds)},
-        )
-
-    async def deny(reason: str) -> JSONResponse:
-        await limiter.record_failure(machine_key)
-        async with session.begin():
-            # Sin partner conocido no hay a quién colgárselo: fila de plataforma.
-            session.add(
-                AuditLog(
-                    tenant_id=None,
-                    actor="device:unpaired",
-                    action="device.pair_denied",
-                    target="platform:device-pairing",
-                    after_json={"reason": reason, "hostname": body.hostname},
-                )
-            )
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND, content={"code": "pairing_code_invalid"}
-        )
-
-    code = normalize_code(body.code)
-    if code is None:
-        return await deny("malformed")
-
-    async with session.begin():
-        row = await DevicePairingCodeRepository(session).consume(code)
-        row_id = row.id if row is not None else None
-        partner_id = row.partner_id if row is not None else None
-        principal_id = row.principal_id if row is not None else None
-    if row_id is None or partner_id is None or principal_id is None:
-        return await deny("unknown_expired_or_used")
-
-    async with session.begin():
-        partner = await session.get(Partner, partner_id)
-        if partner is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-        slug = partner.slug
-        await apply_partner_to_session(session, partner_id, principal_id=principal_id)
-        with partner_context(str(partner_id)):
-            device = await PartnerDeviceRepository(session).pair(
-                principal_id=principal_id,
-                display_name=body.hostname,
-                hostname=body.hostname,
-                platform=body.platform,
-                app_version=body.app_version,
-            )
-            await DevicePairingCodeRepository(session).bind_device(row_id, device.id)
-            token = issue_device_token(
-                device_id=device.id, partner_id=partner_id, generation=device.credential_generation
-            )
-            _audit(
-                session,
-                actor=f"console:{principal_id}",
-                action="device.paired",
-                partner_id=partner_id,
-                machine=device.display_name,
-                device_id=str(device.id),
-                hostname=body.hostname,
-                platform=body.platform,
-            )
-            out = PairedOut(
-                device_id=device.id,
-                credential=token,
-                generation=device.credential_generation,
-                expires_at=_expires_at(token),
-                partner_slug=slug,
-                principal_id=principal_id,
-                display_name=device.display_name,
-            )
-    await limiter.clear(machine_key)
-    return out
-
-
-def _expires_at(token: str) -> datetime:
-    import jwt
-
-    exp = jwt.decode(token, options={"verify_signature": False})["exp"]
-    return datetime.fromtimestamp(int(exp), tz=UTC)
-
-
-# ── las cinco operaciones ───────────────────────────────────────────────
 
 
 @router.post(
@@ -568,7 +443,13 @@ async def renew(ctx: DeviceContext = Depends(require_device)) -> RenewedOut:
         machine=ctx.device.display_name,
         generation=generation,
     )
-    return RenewedOut(credential=token, generation=generation, expires_at=_expires_at(token))
+    # Se acaba de emitir, así que su caducidad es ahora + el TTL. Antes esto
+    # decodificaba el token **sin verificar la firma** para leerle el `exp`:
+    # leer un token sin comprobarlo para saber cuándo caduca era dar por bueno
+    # lo que dice de sí mismo, aunque aquí lo acabáramos de firmar nosotros.
+    return RenewedOut(
+        credential=token, generation=generation, expires_at=datetime.now(UTC) + DEFAULT_TTL
+    )
 
 
 @router.post("/links", status_code=status.HTTP_204_NO_CONTENT)

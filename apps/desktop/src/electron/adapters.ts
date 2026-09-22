@@ -73,6 +73,96 @@ export function consoleWhoami(consoleUrl: string): WhoamiClient {
   };
 }
 
+// ── registrar la máquina con la sesión (spec 012, R3) ───────────────────
+
+/** Lo que la aplicación sabe de sí misma y la persona no elige. */
+export type MachineFacts = {
+  hostname: string;
+  platform: "macos" | "windows";
+  installId: string;
+  appVersion?: string;
+};
+
+/** Lo que el BFF devuelve, **una sola vez**. */
+export type RegisteredMachine = {
+  deviceId: string;
+  credential: string;
+  generation: number;
+  expiresAt: string;
+  partnerSlug: string;
+  displayName: string;
+};
+
+export type RegisterOutcome =
+  | { kind: "registered"; machine: RegisteredMachine }
+  | { kind: "sign_in_again" }
+  | { kind: "at_cap" }
+  | { kind: "unavailable" };
+
+/**
+ * Registra esta máquina con la sesión que la aplicación ya tiene.
+ *
+ * Mismo camino que `consoleWhoami`: la cookie de la partición humana desde el
+ * proceso principal. No hay código que teclear — para poder teclear el de antes,
+ * la aplicación ya tenía esta misma sesión confirmada.
+ *
+ * Los tres rechazos se distinguen porque **llevan a cosas distintas**: entrar de
+ * nuevo, retirar una máquina, o reintentar. Uniformarlos dejaría a la persona
+ * sin saber qué hacer.
+ */
+export function registerMachineWithSession(consoleUrl: string) {
+  const origin = new URL(consoleUrl).origin;
+  return async function register(facts: MachineFacts): Promise<RegisterOutcome> {
+    let response: Response;
+    try {
+      response = await session.fromPartition(HUMAN_PARTITION).fetch(`${origin}/api/desktop/register-machine`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          hostname: facts.hostname,
+          platform: facts.platform,
+          install_id: facts.installId,
+          ...(facts.appVersion ? { app_version: facts.appVersion } : {}),
+        }),
+      });
+    } catch {
+      // Sin red no se decide nada: no es que la sesión sea vieja.
+      return { kind: "unavailable" };
+    }
+
+    if (response.status === 401) return { kind: "sign_in_again" };
+    if (response.status === 409) return { kind: "at_cap" };
+    if (!response.ok) return { kind: "unavailable" };
+
+    let body: {
+      device_id?: string;
+      credential?: string;
+      generation?: number;
+      expires_at?: string;
+      partner_slug?: string;
+      display_name?: string;
+    };
+    try {
+      body = (await response.json()) as typeof body;
+    } catch {
+      return { kind: "unavailable" };
+    }
+    if (!body.device_id || !body.credential) return { kind: "unavailable" };
+
+    return {
+      kind: "registered",
+      machine: {
+        deviceId: String(body.device_id),
+        credential: String(body.credential),
+        generation: Number(body.generation ?? 1),
+        expiresAt: String(body.expires_at ?? ""),
+        partnerSlug: String(body.partner_slug ?? ""),
+        displayName: String(body.display_name ?? facts.hostname),
+      },
+    };
+  };
+}
+
 // ── avisos del sistema y preferencia (spec 003, R7) ─────────────────────
 
 /** La preferencia vive en `userData`: es del ordenador, no de la cuenta. */

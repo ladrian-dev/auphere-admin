@@ -106,7 +106,7 @@ describe("transiciones del contrato", () => {
     expect(transition(r, { kind: "link_ok" }).status).toBe("conectada");
   });
 
-  it("cookie fuera → sin_sesion; misma persona → conectada; otra → oferta de emparejar", () => {
+  it("cookie fuera → sin_sesion; misma persona → conectada; otra → sin máquina y sin nada que teclear", () => {
     const gone = transition(connected(), { kind: "session_gone" });
     expect(gone.status).toBe("sin_sesion");
     expect(actionsFor(gone)).toEqual([]);
@@ -114,7 +114,10 @@ describe("transiciones del contrato", () => {
     const other = transition(gone, { kind: "session_other_person" });
     expect(other.status).toBe("sin_emparejar");
     expect(other.pairedByOther).toBe(true);
-    expect(actionsFor(other)).toEqual(["introducir_codigo"]);
+    // Con la spec 012 aquí no se ofrece nada que teclear: si esa persona puede
+    // tener máquina, se le registra al entrar; y si no, teclear un código
+    // tampoco la habría conseguido.
+    expect(actionsFor(other)).toEqual([]);
   });
 
   it("401 y pairing_required → volver_a_emparejar; device_archived → archivada_desde_consola", () => {

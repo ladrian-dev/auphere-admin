@@ -182,8 +182,8 @@ const COPY = {
   },
   "env.setup.title": { es: "Puesta en marcha", en: "Setup" },
   "env.setup.noMachine": {
-    es: "No hay ninguna máquina emparejada, así que no hay dónde ejecutar. Se empareja desde la consola.",
-    en: "No machine is paired, so there is nowhere to run. Pairing happens in the console.",
+    es: "No hay ninguna máquina dada de alta, así que no hay dónde ejecutar. Se da de alta al entrar en la aplicación de escritorio.",
+    en: "No machine is registered, so there is nowhere to run. A machine registers when you sign in to the desktop app.",
   },
   "env.setup.noWorkdir": {
     es: "Esta máquina está, pero el cliente está sin directorio declarado: hasta que lo declares no hay dónde trabajar.",
@@ -284,8 +284,11 @@ const COPY = {
   "today.waiting.some": { es: "{count} decisiones esperan por ti.", en: "{count} decisions are waiting for you." },
   "today.waiting.open": { es: "Ver Pendientes", en: "Open Pending" },
   "today.team.title": { es: "Tu equipo", en: "Your team" },
+  // Spec 012, R5.1: el acto deliberado es la carpeta, no la caja.
+  "today.machine.needsDirectories": { es: "Hay {count} cliente(s) sin carpeta declarada. Hasta que la declares, tus teammates no pueden tocar sus ficheros aquí.", en: "There are {count} client(s) with no folder declared. Until you declare it, your teammates cannot touch their files here." },
   "today.machine.title": { es: "Tu máquina", en: "Your machine" },
-  "workstation.action.introducir_codigo": { es: "Emparejar esta máquina", en: "Pair this machine" },
+  // Había una cuarta acción, teclear el código. La spec 012 la retiró: la
+  // máquina se da de alta al entrar, así que no queda nada que pulsar para eso.
   "workstation.action.directorios": { es: "Declarar directorios", en: "Declare folders" },
   "workstation.action.desemparejar": { es: "Desemparejar", en: "Unpair" },
   "workstation.action.actualizar": { es: "Actualizar la aplicación", en: "Update the app" },
@@ -331,7 +334,7 @@ const COPY = {
   "env.model": { es: "Modelo", en: "Model" },
   "env.machine": { es: "Máquina", en: "Machine" },
   "env.machine.absent": { es: "sin conectar", en: "not connected" },
-  "env.machine.none": { es: "Sin máquina emparejada — empareja la tuya desde el pie de la lista lateral.", en: "No machine paired — pair yours from the bottom of the sidebar." },
+  "env.machine.none": { es: "Sin máquina dada de alta — el pie de la lista lateral dice qué falta.", en: "No machine registered — the bottom of the sidebar says what is missing." },
   "env.browser.soon": { es: "Navegador: todavía no.", en: "Browser: not yet." },
   "policy.title": { es: "Ejecución en tu máquina", en: "Running on your machine" },
   "policy.ask": { es: "Preguntar", en: "Ask" },
@@ -345,7 +348,10 @@ const COPY = {
   "session.stop.anonymous": { es: "Sin sesión. Entra en la consola para ver tu equipo.", en: "No session. Sign in to the console to see your team." },
   "session.stop.no_membership": { es: "Tu cuenta no pertenece a ningún partner. Esta aplicación es para partners de Auphere.", en: "Your account belongs to no partner. This app is for Auphere partners." },
   "session.open": { es: "Ir a la consola", en: "Go to the console" },
-  "session.pair": { es: "Tu máquina no está emparejada: los teammates trabajan igual, pero no pueden tocar tus archivos hasta que la emparejes. Se empareja desde el pie de la lista lateral.", en: "Your machine is not paired: teammates still work, but cannot touch your files until you pair it. You pair it from the bottom of the sidebar." },
+  // Spec 012 R6.1 — decía «empárejala desde el pie de la lista lateral» y allí
+  // ya no hay nada que pulsar. La máquina se da de alta sola al entrar; si esto
+  // se lee, es que no pudo, y el pie de la lista lateral dice por qué.
+  "session.pair": { es: "Esta máquina no está dada de alta: los teammates trabajan igual, pero no pueden tocar tus archivos. El pie de la lista lateral dice qué pasó.", en: "This machine is not registered: teammates still work, but cannot touch your files. The bottom of the sidebar says what happened." },
   // ── entrar (US4, R7.1-7.4). Cierra `009-T029`. ────────────────────────
   "signin.title": { es: "Entra en tu cuenta de Auphere", en: "Sign in to your Auphere account" },
   "signin.idle": { es: "Se abrirá tu navegador para que entres. Vuelve aquí cuando termines: la aplicación se entera sola.", en: "Your browser will open so you can sign in. Come back here when you are done: the app notices on its own." },
@@ -375,7 +381,8 @@ const COPY = {
   "setup.go": { es: "Ir", en: "Go" },
   "setup.unblock": { es: "Desbloquear", en: "Unblock" },
   "setup.step.cuenta_lista": { es: "Entrar con tu cuenta de partner", en: "Sign in with your partner account" },
-  "setup.step.maquina_emparejada": { es: "Emparejar esta máquina", en: "Pair this machine" },
+  // La clave la nombra `setup-checklist.ts`; el paso ya no es teclear nada.
+  "setup.step.maquina_emparejada": { es: "Dar de alta esta máquina al entrar", en: "Register this machine when you sign in" },
   "setup.step.ejecutor_presente": { es: "Dejar la aplicación abierta para que tu máquina responda", en: "Keep the app open so your machine answers" },
   "setup.step.primer_teammate": { es: "Crear tu primer teammate", en: "Create your first teammate" },
   "setup.step.primer_turno": { es: "Pedirle algo y ver cómo lo hace", en: "Ask it for something and watch it work" },
@@ -384,16 +391,15 @@ const COPY = {
   "setup.state.pendiente": { es: "pendiente", en: "pending" },
   "setup.state.no_aplica": { es: "todavía no aplica", en: "not applicable yet" },
   "setup.blocked.plan": { es: "Tu plan no incluye teammates todavía. Se cambia en Cuenta.", en: "Your plan does not include teammates yet. You change it in Account." },
-  // ── emparejar (US4, R8.2 y 8.3). Sustituye a la hoja de la barra ──────
-  "pair.title": { es: "Emparejar esta máquina", en: "Pair this machine" },
-  "pair.body": { es: "El código se pide en la consola, en Puesto de trabajo, y vale una sola vez. Tecléalo aquí sin salir.", en: "You ask for the code in the console, under Workstation, and it works once. Type it here without leaving." },
-  "pair.ask": { es: "Pedir el código en la consola", en: "Ask for the code in the console" },
-  "pair.code": { es: "Código de emparejamiento", en: "Pairing code" },
-  "pair.submit": { es: "Emparejar", en: "Pair" },
-  "pair.cancel": { es: "Cancelar", en: "Cancel" },
-  "pair.error.pairing_code_invalid": { es: "Ese código ya no vale. Pide otro en la consola: cada uno sirve una sola vez.", en: "That code is no longer valid. Ask for another in the console: each one works once." },
-  "pair.error.pairing_rate_limited": { es: "Demasiados intentos seguidos. Espera un minuto y vuelve a probar.", en: "Too many attempts in a row. Wait a minute and try again." },
-  "pair.error.pairing_unavailable": { es: "No se pudo emparejar ahora mismo. Tu máquina sigue como estaba.", en: "Could not pair right now. Your machine is unchanged." },
+  // ── dar de alta la máquina (spec 012) ─────────────────────────────────
+  //
+  // Aquí vivía el diálogo del código con sus seis textos y dos de sus motivos.
+  // Ya no hay diálogo: la máquina se da de alta sola al entrar, y lo único que
+  // queda es explicar por qué no pudo. Cada motivo dice qué hacer, porque los
+  // tres llevan a sitios distintos.
+  "pair.error.register_sign_in_again": { es: "Hace falta volver a entrar para dar de alta esta máquina. Entra otra vez y se hace solo.", en: "You need to sign in again to register this machine. Sign in and it happens on its own." },
+  "pair.error.register_at_cap": { es: "Ya tienes el máximo de máquinas dadas de alta. Retira una desde la consola, en Puesto de trabajo, y vuelve a abrir la aplicación.", en: "You already have the maximum number of machines registered. Remove one from the console, under Workstation, and reopen the app." },
+  "pair.error.register_unavailable": { es: "No se pudo dar de alta esta máquina ahora mismo. Tu sesión sigue bien; vuelve a intentarlo en un momento.", en: "This machine could not be registered right now. Your session is fine; try again in a moment." },
   // ── directorios (US4, R8.4): cada motivo, su frase ────────────────────
   "dirs.title": { es: "Dónde trabaja cada cliente", en: "Where each client works" },
   "dirs.body": { es: "Un teammate sólo toca el directorio que declares para su cliente. Lo eliges tú, en esta máquina, y no sale de aquí.", en: "A teammate only touches the directory you declare for its client. You pick it, on this machine, and it does not leave here." },

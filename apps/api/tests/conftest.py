@@ -902,3 +902,70 @@ async def drain_wallet(db_session: AsyncSession, partner_id: uuid.UUID, *, leave
         partner.companion_monthly_token_cap = leave
         partner.weekly_pool_tokens = leave
     await db_session.commit()
+
+
+async def register_machine(
+    client: Any,
+    db_session: AsyncSession,
+    world: dict[str, Any],
+    *,
+    hostname: str = "mac.local",
+    install_id: str | None = None,
+) -> dict[str, Any]:
+    """Da de alta una máquina **por el camino nuevo** (spec 012, R3).
+
+    Existe porque varios tests usaban ``/device/pair`` como **preparación** y no
+    como sujeto: lo que probaban era el latido, la auditoría o el medidor, y el
+    emparejamiento solo era la forma de tener una máquina. Al retirar el código
+    (R6) ese arranque se queda sin endpoint, y reescribirlo en cada fichero
+    sería cuatro formas distintas de montar lo mismo.
+
+    Registrar exige una **sesión recién confirmada**, así que aquí se crea una
+    cuenta de consola de verdad, se le reapunta la membresía del partner y se
+    le abre una sesión. Devuelve los encabezados nuevos —los del mundo llevan el
+    ``user_id`` de antes, y con ése no hay membresía—, la credencial y el id.
+    """
+    import uuid as _uuid
+
+    import sqlalchemy as _sa
+
+    from nexus_api.db.models import PartnerMembership
+    from nexus_api.services import console_identity
+
+    account = await console_identity.create_account(
+        db_session,
+        email=f"maq-{_uuid.uuid4().hex[:8]}@example.com",
+        password="una-contrasena-larga",
+        display_name="Dueña de la máquina",
+    )
+    await db_session.commit()
+    await db_session.execute(
+        _sa.update(PartnerMembership)
+        .where(PartnerMembership.partner_id == world["partner_id"])
+        .values(user_id=str(account.id), email=account.email)
+    )
+    await db_session.commit()
+    await console_identity.start_session(db_session, account)
+    await db_session.commit()
+
+    headers = console_headers(user_id=str(account.id), partner_id=world["partner_id"])
+    registered = await client.post(
+        "/console/workstation/machines",
+        json={
+            "hostname": hostname,
+            "platform": "macos",
+            "install_id": install_id or f"instalacion-{_uuid.uuid4().hex[:12]}",
+        },
+        headers=headers,
+    )
+    assert registered.status_code == 201, registered.text
+    body = registered.json()
+    return {
+        "account": account,
+        "headers": lambda **kw: console_headers(
+            user_id=str(account.id), partner_id=world["partner_id"], **kw
+        ),
+        "device_id": body["device_id"],
+        "credential": body["credential"],
+        "body": body,
+    }

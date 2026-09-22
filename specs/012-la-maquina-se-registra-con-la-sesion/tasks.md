@@ -50,7 +50,7 @@ que **H1 no depende de nada de H3**, así que casi nada tiene que ir antes que t
 
 ## Phase 2b: Las puertas de la constitución
 
-- [ ] T005 Escribir el **modelo de amenaza** de la superficie `3a` en `specs/012-la-maquina-se-registra-con-la-sesion/threat-model.md`, **antes de tocar código**, como pidió el intake. Tiene que sostener por escrito la afirmación del encabezado —que esto es **sustitución y no apertura**— y nombrar qué cambia y qué no para un atacante que ya tiene la cookie de la partición humana. **Bloquea US3, no US1**: su objeto es el registro, y US1 no abre superficie — la cierra. _Requisitos: 3.1, 3.2_
+- [X] T005 Escribir el **modelo de amenaza** de la superficie `3a` en `specs/012-la-maquina-se-registra-con-la-sesion/threat-model.md`, **antes de tocar código**, como pidió el intake. Tiene que sostener por escrito la afirmación del encabezado —que esto es **sustitución y no apertura**— y nombrar qué cambia y qué no para un atacante que ya tiene la cookie de la partición humana. **Bloquea US3, no US1**: su objeto es el registro, y US1 no abre superficie — la cierra. _Requisitos: 3.1, 3.2_
 
 - [X] T006 Test de aislamiento en `apps/api/tests/isolation/test_38_principal_access_revocation_scope.py`: retirar el acceso de una persona **no alcanza a otra del mismo partner** (R1.5) ni a nadie de otro partner. Es la puerta de §I y bloquea el merge. **Su razón de ser es concreta**: la operación corre con rol dueño, así que la RLS **no** la protege — lo único que la acota es el `WHERE` por `principal_id`, y eso hay que afirmarlo con un test, no confiarlo. _Requisitos: 1.5_
 
@@ -142,7 +142,7 @@ registrada sin paso intermedio.
 
 ### Tests para US3 ⚠️
 
-- [ ] T023 [P] [US3] Test de la ruta del BFF en `apps/console/src/app/api/desktop/__tests__/register-machine.test.ts`: con cookie válida devuelve la credencial **una vez**; sin cookie, 401. Copiar la forma del test hermano de `redeem`, que existe por un fallo ya desplegado (`401 Missing bearer token`). _Requisitos: 3.1, 7.1_
+- [X] T023 [P] [US3] Test de la ruta del BFF en `apps/console/src/app/api/desktop/__tests__/register-machine.test.ts`: con cookie válida devuelve la credencial **una vez**; sin cookie, 401. Copiar la forma del test hermano de `redeem`, que existe por un fallo ya desplegado (`401 Missing bearer token`). _Requisitos: 3.1, 7.1_
 
 - [X] T024 [P] [US3] Test de integración en `apps/api/tests/integration/test_machine_registration.py`: registrar con sesión confirmada emite credencial, da de alta la máquina y deja asiento `device.paired`. _Requisitos: 3.1, 3.6_
 
@@ -152,9 +152,9 @@ registrada sin paso intermedio.
 
 - [X] T027 [P] [US3] Test en el mismo fichero: registrar **dos veces desde la misma máquina** devuelve la que ya existe y no crea una segunda. _Requisitos: 3.7_
 
-- [ ] T028 [P] [US3] Test en el mismo fichero: hay techo de intentos y responde con espera. _Requisitos: 3.5, 7.3_
+- [X] T028 [P] [US3] Test en el mismo fichero: hay techo de intentos y responde con espera. _Requisitos: 3.5, 7.3_
 
-- [ ] T029 [P] [US3] Test en `apps/desktop/tests/session-gate.test.ts`: tras entrar, la aplicación registra la máquina sola y no muestra ningún paso intermedio. _Requisitos: 3.1_
+- [X] T029 [P] [US3] Test en `apps/desktop/tests/session-gate.test.ts`: tras entrar, la aplicación registra la máquina sola y no muestra ningún paso intermedio. _Requisitos: 3.1_
 
 ### Implementación de US3
 
@@ -164,13 +164,13 @@ registrada sin paso intermedio.
 
 - [X] T032 [US3] Implementar el rechazo uniforme y su límite de intentos, con la clave del limitador por **persona** (ahora hay sesión, así que se puede; el canje viejo usaba `hostname+IP` porque no la tenía). _Requisitos: 3.4, 3.5, 7.2, 7.3_
 
-- [ ] T033 [US3] Crear la ruta del BFF `apps/console/src/app/api/desktop/register-machine/route.ts` según `contracts/registrar-la-maquina.md`, con su comprobación de permiso y **devolviendo cuerpo** — es la única ruta del BFF que entrega un secreto. _Requisitos: 3.1, 3.3, 7.1_
+- [X] T033 [US3] Crear la ruta del BFF `apps/console/src/app/api/desktop/register-machine/route.ts` según `contracts/registrar-la-maquina.md`, con su comprobación de permiso y **devolviendo cuerpo** — es la única ruta del BFF que entrega un secreto. _Requisitos: 3.1, 3.3, 7.1_
 
-- [ ] T034 [US3] Añadir el método en `apps/console/src/lib/backend/workstation.ts` —el *lane* del puesto de trabajo, que `backend.ts` incorpora; no en `backend.ts` directamente— con `mintServiceToken()` (EdDSA, **60 s**, `lib/jwt.ts:45`) y el manejo de error por `BackendError` (`status`, `code`), copiando el patrón de sus hermanos. _Requisitos: 3.1_
+- [X] T034 [US3] Añadir el método en `apps/console/src/lib/backend/workstation.ts` —el *lane* del puesto de trabajo, que `backend.ts` incorpora; no en `backend.ts` directamente— con `mintServiceToken()` (EdDSA, **60 s**, `lib/jwt.ts:45`) y el manejo de error por `BackendError` (`status`, `code`), copiando el patrón de sus hermanos. _Requisitos: 3.1_
 
-- [ ] T035 [US3] Llamar a la ruta nueva desde `apps/desktop/src/electron/adapters.ts` con `session.fromPartition(HUMAN_PARTITION).fetch`, junto a `consoleWhoami` (`adapters.ts:43-74`), que usa **el mismo camino ya abierto y probado** contra `/api/session/whoami`. Cablearlo en `electron/main.ts` como se cablea la puerta de sesión. _Requisitos: 3.1_
+- [X] T035 [US3] Llamar a la ruta nueva desde `apps/desktop/src/electron/adapters.ts` con `session.fromPartition(HUMAN_PARTITION).fetch`, junto a `consoleWhoami` (`adapters.ts:43-74`), que usa **el mismo camino ya abierto y probado** contra `/api/session/whoami`. Cablearlo en `electron/main.ts` como se cablea la puerta de sesión. _Requisitos: 3.1_
 
-- [ ] T036 [US3] Registrar automáticamente tras entrar en `apps/desktop/src/app-runtime.ts` y `session-gate.ts`, y diseñar el estado nuevo **«entré y no se pudo registrar»**, que hoy no existe (research.md §8). _Requisitos: 3.1_
+- [X] T036 [US3] Registrar automáticamente tras entrar en `apps/desktop/src/app-runtime.ts` y `session-gate.ts`, y diseñar el estado nuevo **«entré y no se pudo registrar»**, que hoy no existe (research.md §8). _Requisitos: 3.1_
 
 - [X] T037 [US3] Escribir los asientos `device.paired` y `device.pair_denied` desde la ruta nueva, **con el motivo real en la auditoría aunque no vaya en la respuesta**. Esa distinción es lo que hace que un rechazo uniforme siga siendo investigable. _Requisitos: 3.6_
 
@@ -199,9 +199,9 @@ dos caminos abiertos un tiempo, que es incómodo y seguro.
 
 - [X] T041 [US4] Aplicar el tope en el registro, devolviendo el **mismo cuerpo** que los demás rechazos (T026). _Requisitos: 4.1, 4.2, 3.4_
 
-- [ ] T042 [US4] Que la aplicación explique el tope por la vía normal —hablando con alguien que ya está dentro— en vez de deducirlo del rechazo. _Requisitos: 4.4_
+- [X] T042 [US4] Que la aplicación explique el tope por la vía normal —hablando con alguien que ya está dentro— en vez de deducirlo del rechazo. _Requisitos: 4.4_
 
-- [ ] T042b [P] [US4] Test en `apps/desktop/tests/workstation-state.test.ts`: la aplicación dice cuántas máquinas tiene la persona y que puede retirar una, **sin que ese número salga del cuerpo del rechazo**. Es la mitad de R4 que el análisis cruzado destapó: un rechazo uniforme y una aplicación que explica no son lo mismo, y la spec los tenía mezclados en un solo criterio. _Requisitos: 4.4, 3.4_
+- [X] T042b [P] [US4] Test en `apps/desktop/tests/workstation-state.test.ts`: la aplicación dice cuántas máquinas tiene la persona y que puede retirar una, **sin que ese número salga del cuerpo del rechazo**. Es la mitad de R4 que el análisis cruzado destapó: un rechazo uniforme y una aplicación que explica no son lo mismo, y la spec los tenía mezclados en un solo criterio. _Requisitos: 4.4, 3.4_
 
 **Checkpoint**: el freno que US3 retiró está repuesto.
 
@@ -216,15 +216,15 @@ cliente, no un panel de estado.
 
 ### Tests para US5 ⚠️
 
-- [ ] T043 [P] [US5] Test en `apps/desktop/tests/setup-checklist.test.tsx`: una máquina recién registrada sin directorios ofrece declarar el de un cliente como siguiente paso. _Requisitos: 5.1_
+- [X] T043 [P] [US5] Test en `apps/desktop/tests/setup-checklist.test.tsx`: una máquina recién registrada sin directorios ofrece declarar el de un cliente como siguiente paso. _Requisitos: 5.1_
 
-- [ ] T044 [P] [US5] Test en `apps/desktop/tests/workstation-state.test.ts`: un teammate sin carpeta declarada para su cliente recibe qué falta y cómo declararla, **no un error**. _Requisitos: 5.2_
+- [X] T044 [P] [US5] Test en `apps/desktop/tests/workstation-state.test.ts`: un teammate sin carpeta declarada para su cliente recibe qué falta y cómo declararla, **no un error**. _Requisitos: 5.2_
 
 ### Implementación de US5
 
-- [ ] T045 [US5] Reordenar lo que la aplicación ofrece tras entrar en `apps/desktop/src/app/App.tsx` y el pie de la lista lateral: la carpeta al frente. `POST /device/links` **ya existe** con sus asientos; esto lo saca a la superficie, no lo construye. _Requisitos: 5.1_
+- [X] T045 [US5] Reordenar lo que la aplicación ofrece tras entrar en `apps/desktop/src/app/App.tsx` y el pie de la lista lateral: la carpeta al frente. `POST /device/links` **ya existe** con sus asientos; esto lo saca a la superficie, no lo construye. _Requisitos: 5.1_
 
-- [ ] T046 [US5] Decir qué falta cuando un teammate va a tocar ficheros sin carpeta declarada. _Requisitos: 5.2_
+- [X] T046 [US5] Decir qué falta cuando un teammate va a tocar ficheros sin carpeta declarada. _Requisitos: 5.2_
 
 **Checkpoint**: el acto deliberado está donde importa.
 
@@ -240,33 +240,33 @@ cliente, no un panel de estado.
 
 ### Tests para US6 ⚠️
 
-- [ ] T047 [P] [US6] **Barrido** en `apps/api/tests/isolation/test_39_no_pairing_code_path.py`: recorrer el código fuente y las rutas registradas y fallar si aparece cualquier resto del emparejamiento por código. R6.1 afirma que algo **no existe**, y eso se comprueba **buscando**, no confiando en haberlo borrado — es la lección que dejó `test_37_customer_axis_contract.py`, que encontró un segundo sitio donde nadie había mirado. _Requisitos: 6.1_
+- [X] T047 [P] [US6] **Barrido** en `apps/api/tests/isolation/test_39_no_pairing_code_path.py`: recorrer el código fuente y las rutas registradas y fallar si aparece cualquier resto del emparejamiento por código. R6.1 afirma que algo **no existe**, y eso se comprueba **buscando**, no confiando en haberlo borrado — es la lección que dejó `test_37_customer_axis_contract.py`, que encontró un segundo sitio donde nadie había mirado. _Requisitos: 6.1_
 
-- [ ] T048 [P] [US6] Test en `apps/api/tests/integration/test_device_bridge.py`: una máquina **registrada antes del cambio** sigue funcionando. Nadie vuelve a registrar lo que ya tenía. _Requisitos: 6.2_
+- [X] T048 [P] [US6] Test en `apps/api/tests/integration/test_device_bridge.py`: una máquina **registrada antes del cambio** sigue funcionando. Nadie vuelve a registrar lo que ya tenía. _Requisitos: 6.2_
 
 ### Implementación de US6
 
-- [ ] T049 [P] [US6] Retirar de `apps/api`: `POST /device/pair` con `PairIn`/`PairedOut` (`api/device_bridge.py:198-214, 296-384`), la emisión `POST /pairing-codes` y su asiento `device.pair_code_issued` (`api/console/workstation_partner.py:172-197`), `PairingCodeOut` (`api/console/schemas_workstation.py:96`), `core/pairing_codes.py` entero, `services/device_pairing.py` entero, `DevicePairingCodeRepository` (`repositories/local_workstation.py:222-274`) y el modelo `DevicePairingCode` con sus dos `__all__`. **No se toca** `DeviceRefused("pairing_required")` (`device_bridge.py:190`): eso es «tu credencial ya no vale», no el código. _Requisitos: 6.1, 6.3_
+- [X] T049 [P] [US6] Retirar de `apps/api`: `POST /device/pair` con `PairIn`/`PairedOut` (`api/device_bridge.py:198-214, 296-384`), la emisión `POST /pairing-codes` y su asiento `device.pair_code_issued` (`api/console/workstation_partner.py:172-197`), `PairingCodeOut` (`api/console/schemas_workstation.py:96`), `core/pairing_codes.py` entero, `services/device_pairing.py` entero, `DevicePairingCodeRepository` (`repositories/local_workstation.py:222-274`) y el modelo `DevicePairingCode` con sus dos `__all__`. **No se toca** `DeviceRefused("pairing_required")` (`device_bridge.py:190`): eso es «tu credencial ya no vale», no el código. _Requisitos: 6.1, 6.3_
 
-- [ ] T050 [P] [US6] Retirar de `apps/console`: `components/workstation/pairing-dialog.tsx` y su test, `issuePairingCodeAction` (`app/(console)/workstation/actions.ts:29-33`), `issuePairingCode` y el tipo `PairingCodeOut` (`lib/backend/workstation.ts:94, 104`), y el bloque `ws.pair.*` entero (`i18n/lanes/workstation.ts:132-149`). _Requisitos: 6.1_
+- [X] T050 [P] [US6] Retirar de `apps/console`: `components/workstation/pairing-dialog.tsx` y su test, `issuePairingCodeAction` (`app/(console)/workstation/actions.ts:29-33`), `issuePairingCode` y el tipo `PairingCodeOut` (`lib/backend/workstation.ts:94, 104`), y el bloque `ws.pair.*` entero (`i18n/lanes/workstation.ts:132-149`). _Requisitos: 6.1_
 
-- [ ] T051 [P] [US6] Retirar de `apps/desktop`: `app/routes/pair-dialog.tsx`, `app/routes/pair-errors.ts`, el canal IPC `app:workstation.pair` (`app-ipc.ts:84`, su `Shape` `"pair_code"` y su validación en `:262`), su registro en `electron/app-surface.ts:369`, el estado y la acción `introducir_codigo` de `workstation-state.ts`, y los textos `pair.*` de `app/i18n.ts:387-396`. _Requisitos: 6.1_
+- [X] T051 [P] [US6] Retirar de `apps/desktop`: `app/routes/pair-dialog.tsx`, `app/routes/pair-errors.ts`, el canal IPC `app:workstation.pair` (`app-ipc.ts:84`, su `Shape` `"pair_code"` y su validación en `:262`), su registro en `electron/app-surface.ts:369`, el estado y la acción `introducir_codigo` de `workstation-state.ts`, y los textos `pair.*` de `app/i18n.ts:387-396`. _Requisitos: 6.1_
 
-- [ ] T051b [P] [US6] Retirar **las tres copias del alfabeto**, que no comparten constante: `apps/desktop/src/app-ipc.ts:176`, `apps/desktop/src/app/routes/pair-dialog.tsx:31` y `apps/api/src/nexus_api/core/pairing_codes.py:17`. Tres literales del mismo valor en dos lenguajes es la forma que tenía este defecto de sobrevivir a una búsqueda parcial; si queda uno, T047 lo caza. _Requisitos: 6.1_
+- [X] T051b [P] [US6] Retirar **las tres copias del alfabeto**, que no comparten constante: `apps/desktop/src/app-ipc.ts:176`, `apps/desktop/src/app/routes/pair-dialog.tsx:31` y `apps/api/src/nexus_api/core/pairing_codes.py:17`. Tres literales del mismo valor en dos lenguajes es la forma que tenía este defecto de sobrevivir a una búsqueda parcial; si queda uno, T047 lo caza. _Requisitos: 6.1_
 
-- [ ] T051c [P] [US6] Cambiar —no borrar— los textos que hablan de emparejar **sin ser del código**: `ws.machines.empty.body` en `apps/console/src/i18n/lanes/workstation.ts:75-78` dice literalmente «Pide aquí un código de emparejamiento», y `session.pair` (`apps/desktop/src/app/i18n.ts:348`) manda a «el pie de la lista lateral». Los dos quedarían mintiendo. _Requisitos: 6.1_
+- [X] T051c [P] [US6] Cambiar —no borrar— los textos que hablan de emparejar **sin ser del código**: `ws.machines.empty.body` en `apps/console/src/i18n/lanes/workstation.ts:75-78` dice literalmente «Pide aquí un código de emparejamiento», y `session.pair` (`apps/desktop/src/app/i18n.ts:348`) manda a «el pie de la lista lateral». Los dos quedarían mintiendo. _Requisitos: 6.1_
 
-- [ ] T051d [US6] Revisar lo que sobrevive con otro sentido: el prop `canPair` de `apps/console/src/components/workstation/machines-list.tsx` y la guarda de `workstation-setup.tsx:13` siguen teniendo sentido —el permiso no desaparece, cambia dónde se comprueba (T031, T033)—, y `services/device_pairing.py` **re-exporta `CODE_TTL` y `display_code`** que importa `workstation_partner.py:47`. Deshacer ese re-export antes de borrar el módulo, o el fallo aparece lejos de su causa. _Requisitos: 6.1_
+- [X] T051d [US6] Revisar lo que sobrevive con otro sentido: el prop `canPair` de `apps/console/src/components/workstation/machines-list.tsx` y la guarda de `workstation-setup.tsx:13` siguen teniendo sentido —el permiso no desaparece, cambia dónde se comprueba (T031, T033)—, y `services/device_pairing.py` **re-exporta `CODE_TTL` y `display_code`** que importa `workstation_partner.py:47`. Deshacer ese re-export antes de borrar el módulo, o el fallo aparece lejos de su causa. _Requisitos: 6.1_
 
-- [ ] T052 [US6] Reescribir el **arranque** de los ocho tests que usan `/device/pair` como **preparación y no como sujeto** —`test_device_bridge.py`, `test_device_bridge_inbound.py`, `test_device_renewal.py`, `test_workstation_setup.py`, `test_teammate_reaches_the_machine.py`, `test_identity_acts_do_not_meter.py`, `isolation/test_30_device_partner_scope.py`, `isolation/test_27_local_execution_audit_tenant_tagged.py`— para que registren por el camino nuevo. **No se borran**: lo que prueban sigue haciendo falta, solo cambia cómo llegan a tener una máquina. Si esto se descubre a mitad de la fase, descarrila. _Requisitos: 6.1_
+- [X] T052 [US6] Reescribir el **arranque** de los ocho tests que usan `/device/pair` como **preparación y no como sujeto** —`test_device_bridge.py`, `test_device_bridge_inbound.py`, `test_device_renewal.py`, `test_workstation_setup.py`, `test_teammate_reaches_the_machine.py`, `test_identity_acts_do_not_meter.py`, `isolation/test_30_device_partner_scope.py`, `isolation/test_27_local_execution_audit_tenant_tagged.py`— para que registren por el camino nuevo. **No se borran**: lo que prueban sigue haciendo falta, solo cambia cómo llegan a tener una máquina. Si esto se descubre a mitad de la fase, descarrila. _Requisitos: 6.1_
 
-- [ ] T052b [US6] Retirar los tests cuyo **sujeto** era el código: `apps/api/tests/integration/test_device_pairing.py` (9 casos) y `apps/desktop/tests/pairing-flow.test.tsx`. **Después** de que T047 esté verde, no antes: borrar el test y el código a la vez deja el hueco sin vigilar. _Requisitos: 6.1_
+- [X] T052b [US6] Retirar los tests cuyo **sujeto** era el código: `apps/api/tests/integration/test_device_pairing.py` (9 casos) y `apps/desktop/tests/pairing-flow.test.tsx`. **Después** de que T047 esté verde, no antes: borrar el test y el código a la vez deja el hueco sin vigilar. _Requisitos: 6.1_
 
-- [ ] T053 [US6] **La única migración de la spec**, en `apps/api/alembic/versions/`: elimina `device_pairing_codes` —la tabla, su índice y su **política de RLS**, las tres creadas en `0107_device_owner_and_pairing.py:155-231`—. Es **destructiva**. Se ensaya **arriba, abajo y arriba**, como la 0123. El `downgrade` recrea la tabla **vacía** con su política: no se restauran códigos —son secretos de diez minutos y bajar una versión no debe resucitar credenciales— pero sí la forma, para que bajar no deje el esquema roto. _Requisitos: 6.3_
+- [X] T053 [US6] **La única migración de la spec**, en `apps/api/alembic/versions/`: elimina `device_pairing_codes` —la tabla, su índice y su **política de RLS**, las tres creadas en `0107_device_owner_and_pairing.py:155-231`—. Es **destructiva**. Se ensaya **arriba, abajo y arriba**, como la 0123. El `downgrade` recrea la tabla **vacía** con su política: no se restauran códigos —son secretos de diez minutos y bajar una versión no debe resucitar credenciales— pero sí la forma, para que bajar no deje el esquema roto. _Requisitos: 6.3_
 
-- [ ] T053b [US6] Quitar `device_pairing_codes` del **censo de RLS**, `apps/api/tests/isolation/test_21_rls_covers_every_tenant_table.py:82`. Ese test enumera toda tabla con `tenant_id`/`partner_id` y su política; si la tabla se va y el censo no, el rojo aparece en la suite de aislamiento y **parece** una garantía rota cuando es una entrada obsoleta. Va en el **mismo commit** que T053. _Requisitos: 6.3_
+- [X] T053b [US6] Quitar `device_pairing_codes` del **censo de RLS**, `apps/api/tests/isolation/test_21_rls_covers_every_tenant_table.py:82`. Ese test enumera toda tabla con `tenant_id`/`partner_id` y su política; si la tabla se va y el censo no, el rojo aparece en la suite de aislamiento y **parece** una garantía rota cuando es una entrada obsoleta. Va en el **mismo commit** que T053. _Requisitos: 6.3_
 
-- [ ] T054 [US6] Comprobar que, retirada la tabla, **no queda ningún secreto de registro en reposo** en la base. Se comprueba buscando. _Requisitos: 7.4_
+- [X] T054 [US6] Comprobar que, retirada la tabla, **no queda ningún secreto de registro en reposo** en la base. Se comprueba buscando. _Requisitos: 7.4_
 
 **Checkpoint**: un solo camino, y el que queda es el bueno.
 
@@ -274,15 +274,15 @@ cliente, no un panel de estado.
 
 ## Phase 9: Polish
 
-- [ ] T055 [P] Actualizar `docs/desktop-workstation.md` y `docs/desktop-teammates.md` **en el mismo commit** que cambia lo que describen. Un PR que cambia comportamiento documentado y no toca su documento se devuelve. _Requisitos: —_
+- [X] T055 [P] Actualizar `docs/desktop-workstation.md` y `docs/desktop-teammates.md` **en el mismo commit** que cambia lo que describen. Un PR que cambia comportamiento documentado y no toca su documento se devuelve. _Requisitos: —_
 
-- [ ] T056 [P] Pasar los cuatro gates de interfaz del `CLAUDE.md` del workspace —estados, accesibilidad, responsive y tokens— sobre las pantallas tocadas en la consola y en el escritorio. _Requisitos: 5.1, 2.1_
+- [X] T056 [P] Pasar los cuatro gates de interfaz del `CLAUDE.md` del workspace —estados, accesibilidad, responsive y tokens— sobre las pantallas tocadas en la consola y en el escritorio. _Requisitos: 5.1, 2.1_
 
 - [ ] T057 Ejecutar **`./scripts/verify.sh` entero**: lint (`ruff` + `mypy --strict`), py y js. Este cambio toca API, consola y escritorio a la vez, que es exactamente donde este repositorio ha roto la tubería dos veces — y las dos por no correr el worker, `mypy --strict`, el paquete compartido o el `next build`. **Una sola ejecución de pytest a la vez.** _Requisitos: —_
 
 - [ ] T058 Recorrer `quickstart.md` entero a mano, con la aplicación de verdad y una máquina de verdad. **Lo que salga de ahí manda sobre lo que digan los tests.** Lo firma Luis. _Requisitos: 1.1, 2.1, 3.1, 4.1, 5.1, 6.1_
 
-- [ ] T059 Anotar en la KB (`research/2026-09-19-auditoria-clase-mundial/_index.md` §0) lo entregado y lo aprendido, y dejar dicho a la spec 011 **dónde vive** la pieza que va a reutilizar. _Requisitos: 1.1_
+- [X] T059 Anotar en la KB (`research/2026-09-19-auditoria-clase-mundial/_index.md` §0) lo entregado y lo aprendido, y dejar dicho a la spec 011 **dónde vive** la pieza que va a reutilizar. _Requisitos: 1.1_
 
 ---
 
@@ -411,3 +411,181 @@ en el rol de aplicación, que —correctamente— no tiene permisos sobre
 las sesiones de nadie, y esta ruta necesita mirarlas porque la frescura es la
 mitad de lo que decide. Así que cruza los dos mundos con el patrón del puente,
 igual que `services/principal_access.py` y por la misma razón.
+
+**2026-09-22 (3) — el lado de cliente de US3.** T023, T033, T034, T035, T036.
+
+- **La ruta del BFF** (`apps/console/src/app/api/desktop/register-machine/route.ts`)
+  copia el camino de `redeem` con una diferencia dicha en su cabecera: **ésta sí
+  devuelve cuerpo**, porque entrega una credencial que la aplicación guarda
+  cifrada, no una cookie que viaja sola. 6 tests.
+- **El identificador de instalación** (`apps/desktop/src/install-id.ts`) vive
+  **aparte de la credencial**, que es la decisión: si estuviera en el almacén,
+  desemparejar lo borraría y volver a entrar crearía una máquina nueva cada vez.
+  6 tests, incluidos los tres de fichero corrupto — un fichero que nadie mira no
+  puede dejar a la aplicación sin poder registrarse.
+- **El registro automático** (`app-runtime.ts`): antes de anunciar «sin
+  emparejar», se intenta registrar con la sesión recién confirmada.
+
+### Una tercera enmienda, la misma lección que la de R3.4
+
+Los tres fallos de registro —volver a entrar, estar en el tope, no haber red— se
+distinguen **en la aplicación**, con su texto y su camino, aunque la API los
+uniforme. No es una contradicción: al otro lado de la API puede haber un
+desconocido, y en la aplicación hay alguien que ya presentó su sesión. Decirle
+«no se pudo» a secas le dejaría sin saber qué hacer.
+
+Verde: 968 de escritorio, 6 del BFF, `typecheck` limpio.
+
+**2026-09-22 (4) — US5, la carpeta al frente.** T043, T045.
+
+«Hoy» solo anunciaba la máquina cuando **no** estaba conectada, así que una
+recién registrada y sin ningún directorio declarado quedaba «conectada» y en
+silencio: no podía tocar un fichero y no decía por qué. Con el registro por
+sesión eso deja de ser un caso raro y pasa a ser **el estado normal del primer
+arranque**, porque ya no hay ceremonia de emparejar donde enterarse.
+
+Ahora se anuncia, dice cuántos clientes están sin carpeta y qué se pierde
+mientras tanto, y la acción que ofrece es **declarar la carpeta** y no la
+primera de la lista. 3 tests nuevos; 20 en el fichero.
+
+**Y un error mío que el gate cazó, que es para lo que está**: inventé la forma
+de `PrincipalResolution` en vez de leerla —supuse `{ok, principal}` y es una
+unión discriminada por `kind`—. Typecheck de la consola y `next build` en rojo.
+Corregido en la ruta y en su test, que compartían el error porque los escribí
+seguidos. La suite de escritorio no lo habría visto: era de la consola.
+
+**2026-09-22 (5) — US6, el código desaparece. La spec queda en 59 de 65.**
+
+Retirado: `core/pairing_codes.py`, `services/device_pairing.py`, el modelo y su
+repositorio, `POST /device/pair` con sus dos esquemas, la ruta de emisión, el
+diálogo de la consola y el de la aplicación, el canal IPC, el método `pair()`
+del runtime, la acción `introducir_codigo` y **la tabla**, con la migración
+`0126` ensayada arriba/abajo/arriba. Su `downgrade` recrea la tabla vacía con su
+política: no resucita códigos, pero no deja el esquema roto.
+
+### El barrido evitó romper el inicio de sesión
+
+`test_39_no_pairing_code_path.py` se escribió en rojo y se dejó barrer. Cazó
+tres restos que se me habían pasado — y uno de ellos **no era un resto**:
+
+**`core/pairing_codes.py` no era del emparejamiento.** Los códigos de sesión de
+la spec 009 usaban el mismo generador, así que borrarlo habría roto el inicio de
+sesión de la aplicación. No se ve en ningún test de comportamiento del
+emparejamiento, porque quien lo usaba era otro mecanismo.
+
+Se quedó, renombrado a **`core/one_time_codes.py`**: lo que hace, no quién lo
+estrenó. Un nombre que se refiere al primer llamante miente en cuanto hay un
+segundo. Y el barrido cambió de forma: el alfabeto ya no está en la lista de «no
+puede quedar» —tiene dueño legítimo— sino en un test propio que exige **una sola
+definición**, que era la intención real.
+
+Es la tercera vez en esta sesión que un barrido encuentra algo que enumerar no
+habría encontrado. La primera fue `woocommerce.*` con la garantía 8.
+
+### Lo que cambió de comportamiento, y por qué es correcto
+
+Dos tests del escritorio fijaban que **otra persona en una máquina ajena se
+quedaba fuera**: veía «emparejada por otra persona» y no podía trabajar, porque
+no había forma de darle credencial sin otro código. Ahora **recibe la suya** —es
+el caso límite que la spec declara: dos personas en la misma máquina física,
+cada una con su credencial—. Lo que sigue sin pasar, y es lo que esos tests
+defienden ahora, es que vea la ajena.
+
+Verde: 950 de escritorio, 8 del barrido, `verify.sh lint`.
+
+**2026-09-22 (6) — el cierre, y una tarea que llegó tarde.**
+
+T005 (el modelo de amenaza) decía **«antes de tocar código»** y se escribió
+después de entregar US3. El trabajo que describe se hizo y se probó, pero el
+orden del método existe por algo: escrito después, un modelo de amenaza corre el
+riesgo de justificar lo construido en vez de comprobar si debía construirse.
+
+Está redactado al revés para compensarlo —busca dónde el cambio **empeora** las
+cosas— y el resultado es que nada de lo revisado obliga a cambiar lo entregado:
+cierra un vector (el patrón «teclea este código», que Storm-2372 explotó),
+mejora dos casos, repone el freno que el tope recupera, y deja el resto igual. El
+único punto que sí obligó a corregir algo —el permiso de la revocación— se
+corrigió durante la implementación y tiene test.
+
+También: `docs/desktop-workstation.md` actualizado en el mismo cambio (regla de
+la spec viva), los cuatro gates de interfaz sobre las pantallas tocadas —sin hex
+inline, diálogo con `role`/`aria-modal`/foco en cancelar, `pnpm lint` con las
+reglas de tokens en verde— y la nota de la KB.
+
+**62 de 65.** Lo que queda: `verify.sh` entero (corriendo) y el recorrido manual
+del quickstart, que firma Luis.
+
+**2026-09-22 (7) — T057, y el barrido tenía un agujero del tamaño de la otra
+punta del cable.**
+
+`verify.sh` entero destapó un rojo en la consola, y tirando de él salió una
+tanda entera de restos que **T047 había declarado verde**. El fallo no era del
+código retirado: era de **cómo buscaba el barrido**.
+
+`GONE` eran nombres de símbolos —`DevicePairingCode`, `issuePairingCode`,
+`PairingCodeOut`—, todos del lado que se estaba borrando. Ninguno aparece en el
+escritorio, así que el barrido pasó por `apps/desktop/src` sin ver que allí
+seguía viva **la mitad cliente del cable**: `HttpTransport.pair()` haciendo
+`POST /device/pair` contra un endpoint que ya no existe, con su clase
+`PairingFailed`, sus dos códigos de error y un test verde encima. Código muerto
+con test verde es la peor clase: da confianza y no cubre nada.
+
+La corrección es de una línea conceptual: **se caza por la ruta, no por el
+nombre.** `/device/pair` es lo que R6.1 dice que no existe, y es la única cadena
+que los dos extremos están obligados a compartir. Con ella dentro, el barrido
+pasó de 8 a 13 casos y encontró de golpe:
+
+| Resto | Dónde | Por qué sobrevivió |
+|---|---|---|
+| `HttpTransport.pair()` y `PairedCredential` | `apps/desktop/src/http-transport.ts` | nadie lo llamaba; nada se ponía rojo |
+| `PairingFailed` y sus dos códigos | ídem + `app/routes/pair-errors.ts` | la tabla de motivos tenía seis, tres imposibles |
+| `WorkstationAction` con `introducir_codigo` | `app/shell/workstation-actions.tsx` | **copia local** del vocabulario de `BarAction` |
+| el bloque `ws.pair.*` entero (12 claves) | `apps/console/src/i18n/lanes/workstation.ts` | T050 lo daba por retirado y no lo estaba |
+| `ws.machines.empty.body`, `session.pair`, `env.machine.none` | consola y escritorio | T051c los daba por corregidos y no lo estaban |
+
+El de `WorkstationAction` tiene su propia ironía: `bridge.ts` llevaba escrito
+desde la spec 010 que tener el vocabulario dos veces «dejaba pasar acciones que
+no existían», y la segunda copia estaba tres ficheros más allá haciendo
+exactamente eso. No se arregla con un test — se arregla **borrando la copia**:
+ahora `WorkstationAction = BarAction`, y la deriva es imposible en vez de
+vigilada.
+
+Lo que esto deja dicho para la 015 y las que vengan: **una tarea marcada `[X]`
+no es evidencia.** T050 y T051c estaban marcadas y no estaban hechas. Lo único
+que distinguió lo hecho de lo declarado fue correr la tubería entera — que es,
+literalmente, lo que T057 existe para forzar.
+
+Y el aviso de la primitiva `EmptyState` («EmptyState without action») hizo de
+cuarto gate sin que nadie lo invocara: el vacío de la consola se quedó sin
+acción al retirar el diálogo. La respuesta correcta no era devolver un botón,
+sino `readonly` y decir dónde continúa el camino — desde la 012 la consola **no
+puede** dar de alta una máquina, ni siquiera quien tiene el permiso.
+
+#### Tres tests de la API que T052 no vio, y uno de ellos es una mejora
+
+T052 reescribió los ocho tests que usaban `/device/pair` como **preparación**.
+Quedaron tres donde el emparejamiento era el **sujeto**, y por eso no estaban en
+esa lista ni en la de T052b, que solo retiró las dos suites enteras:
+
+1. **`test_pairing_gives_the_machine_a_credential_that_names_it`.** La propiedad
+   —la credencial nombra máquina, partner y generación, y no nombra tenant—
+   sigue siendo la que importa; lo que cambió es por dónde se pide. Reescrito
+   sobre `register_machine`, no retirado: ninguna otra prueba verificaba los
+   claims del alta.
+2. **`test_two_people_can_pair_the_same_hostname`.** Necesitaba dos personas
+   **de verdad**: `add_console_member` fabrica un `user_id` inventado, que valía
+   mientras la credencial salía de un código —al canje le daba igual quién
+   tecleara— y ya no vale, porque registrar mira si esa persona confirmó quién
+   era hace poco. Es el mismo cambio de fondo que la spec traía, visto desde las
+   pruebas.
+3. **`test_the_only_unauthenticated_route_is_the_pairing_exchange`**, que es el
+   interesante. Afirmaba que `/device/pair` estaba montado **sin credencial**,
+   con su excepción escrita y justificada. Al irse el código, esa excepción se
+   queda sin caso: **el puente no tiene ya ninguna puerta sin llave.**
+
+El tercero no se retira — se le da la vuelta. `UNAUTHENTICATED_BY_DESIGN` sigue
+existiendo, vacío, y el test afirma que está vacío. Su trabajo es el mismo que
+antes: obligar a que una excepción futura se escriba y se razone en vez de
+colarse como un endpoint más. **Es lo que esta spec ganó sin proponérselo**, y
+no estaba en el modelo de amenaza: cerró un vector (A-2) y, de paso, la última
+ruta anónima del puente.

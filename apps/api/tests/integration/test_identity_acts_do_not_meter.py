@@ -25,30 +25,21 @@ async def _ledger_rows(db_session) -> int:
 
 
 async def test_the_five_identity_acts_leave_the_ledger_untouched(client, db_session, console_world):
+    from tests.conftest import register_machine
+
     a = console_world["a"]
     before = await _ledger_rows(db_session)
 
-    # Emparejar: código emitido por la consola y canjeado por la máquina.
-    issued = await client.post("/console/workstation/pairing-codes", headers=a["headers"]())
-    assert issued.status_code == 201, issued.text
-    paired = await client.post(
-        "/device/pair",
-        json={
-            "code": issued.json()["code"],
-            "hostname": "mac.local",
-            "platform": "macos",
-            "app_version": "0.2.0",
-        },
-    )
-    assert paired.status_code == 201, paired.text
-    token = paired.json()["credential"]
-    auth = {"Authorization": f"Bearer {token}"}
+    # Registrar la máquina con la sesión (spec 012). Era el canje de un código;
+    # lo que se prueba aquí no cambia: los actos de identidad no tocan el libro.
+    paired = await register_machine(client, db_session, a)
+    auth = {"Authorization": f"Bearer {paired['credential']}"}
 
     # Renovar, declarar, archivar.
     assert (await client.post("/device/renew", headers=auth)).status_code == 200
     linked = await client.post(
-        f"/console/workstation/devices/{paired.json()['device_id']}/clients",
-        headers=a["headers"](),
+        f"/console/workstation/devices/{paired['device_id']}/clients",
+        headers=paired["headers"](),
         json={"client_ref": a["ref"]},
     )
     assert linked.status_code == 201, linked.text
@@ -63,7 +54,7 @@ async def test_the_five_identity_acts_leave_the_ledger_untouched(client, db_sess
     )
     assert declared.status_code == 204, declared.text
     archived = await client.delete(
-        f"/console/workstation/devices/{paired.json()['device_id']}", headers=a["headers"]()
+        f"/console/workstation/devices/{paired['device_id']}", headers=paired["headers"]()
     )
     assert archived.status_code == 204, archived.text
 

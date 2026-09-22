@@ -63,7 +63,6 @@ import { NotificationPrefs } from "./routes/notification-prefs";
 import { SectionFailed } from "./routes/section-failed";
 import { NoPartner } from "./routes/no-partner";
 import { Directories } from "./routes/directories";
-import { PairDialog } from "./routes/pair-dialog";
 import { Plan } from "./routes/plan";
 import { SetupList } from "./routes/setup";
 import { UnpairDialog } from "./routes/unpair-dialog";
@@ -592,16 +591,7 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
 
       {machineDialog !== null && machineDialog !== "actualizar" ? (
         <div className="fixed inset-0 z-30 flex bg-background/80 p-6">
-          {machineDialog === "introducir_codigo" ? (
-            <PairDialog
-              onDone={() => {
-                setMachineDialog(null);
-                // R8.3: no hay que recargar nada. El principal vuelve a derivar
-                // el veredicto y `app:workstation` llega solo a las superficies.
-              }}
-              onClose={() => setMachineDialog(null)}
-            />
-          ) : machineDialog === "desemparejar" ? (
+          {machineDialog === "desemparejar" ? (
             <UnpairDialog onDone={() => setMachineDialog(null)} onClose={() => setMachineDialog(null)} />
           ) : (
             <div className="m-auto flex w-full max-w-prose flex-col gap-4 rounded-md border border-border bg-card p-6">

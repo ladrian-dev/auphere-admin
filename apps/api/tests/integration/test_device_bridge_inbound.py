@@ -32,15 +32,27 @@ def test_the_only_read_is_the_poll():
     assert gets == {"/device/poll"}
 
 
-#: La única ruta de ``/device/*`` sin credencial: **el código es la credencial de
-#: un solo uso** (spec 002, ``contracts/pairing.md``). Está aquí por nombre para
-#: que añadir una segunda excepción obligue a escribirla — y a justificarla.
-UNAUTHENTICATED_BY_DESIGN = {"/device/pair"}
+#: Las rutas de ``/device/*`` que no piden credencial. **Está vacío, y no es
+#: una casualidad: es lo que la spec 012 ganó sin proponérselo.**
+#:
+#: Había una, ``/device/pair``, y su excepción estaba justificada —el código era
+#: la credencial de un solo uso (spec 002, ``contracts/pairing.md``)—. Al
+#: retirar el código, el alta se mudó a la consola, donde la autoriza una sesión
+#: que ya existía. El puente se quedó **sin una sola puerta sin llave**.
+#:
+#: El conjunto sigue aquí, vacío, porque su trabajo es el mismo que antes:
+#: obligar a que una excepción futura se escriba y se justifique en vez de
+#: colarse como un endpoint más.
+UNAUTHENTICATED_BY_DESIGN: set[str] = set()
 
 
-def test_the_only_unauthenticated_route_is_the_pairing_exchange():
-    paths = {r.path for r in DEVICE_ROUTES}
-    assert paths >= UNAUTHENTICATED_BY_DESIGN, "el canje del código no está montado"
+def test_no_device_route_is_reachable_without_the_credential():
+    """Ninguna puerta sin llave, y la lista de excepciones está vacía."""
+    assert not UNAUTHENTICATED_BY_DESIGN, (
+        "alguien añadió una ruta sin credencial: escríbela aquí con su razón, "
+        "porque el puente lleva desde la spec 012 sin ninguna"
+    )
+    assert "/device/pair" not in {r.path for r in DEVICE_ROUTES}
 
 
 def test_the_credential_opens_exactly_five_operations():

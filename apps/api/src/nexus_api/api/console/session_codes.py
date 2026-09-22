@@ -38,7 +38,7 @@ from nexus_api.core.console_auth import (
     require_console_service,
 )
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.services.device_pairing import PairingRateLimiter
+from nexus_api.services.one_time_code_limits import CodeRateLimiter as PairingRateLimiter
 from nexus_api.services.session_codes import (
     SessionCodeRejected,
     issue_session_code,

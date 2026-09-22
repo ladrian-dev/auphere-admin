@@ -55,9 +55,22 @@ export function Today({
    * La máquina sólo ocupa sitio cuando hay algo que decir. Conectada y sin
    * directorios pendientes no se anuncia: la ausencia se diseña (§V), y una
    * tarjeta permanente diciendo «todo bien» es ruido que se aprende a ignorar.
+   *
+   * **Spec 012, R5.1 — y la carpeta también es algo que decir.** Antes sólo se
+   * anunciaba una máquina que no estaba conectada, así que una recién
+   * registrada y sin ningún directorio declarado no decía nada: quedaba
+   * «conectada» y en silencio, sin poder tocar un fichero y sin decir por qué.
+   *
+   * Con el registro por sesión eso pasa de raro a ser **el estado normal del
+   * primer arranque**, porque ya no hay una ceremonia de emparejar donde
+   * enterarse. Y es la decisión que de verdad importa: qué carpeta toca un
+   * teammate, no qué ordenador es éste.
    */
+  const missingDirectories = workstation?.missing_directories ?? 0;
   const machineNeedsAttention =
-    workstation !== null && workstation.status !== "conectada" && workstation.status !== "comprobando";
+    workstation !== null &&
+    workstation.status !== "comprobando" &&
+    (workstation.status !== "conectada" || missingDirectories > 0);
 
   const enviar = () => {
     const limpio = text.trim();
@@ -133,10 +146,25 @@ export function Today({
             {t("today.machine.title")}
           </h2>
           <WorkstationChip state={workstation} />
+          {missingDirectories > 0 ? (
+            <p className="text-ui text-pretty">
+              {t("today.machine.needsDirectories", { count: String(missingDirectories) })}
+            </p>
+          ) : null}
           {workstation.actions.length > 0 ? (
             <div>
               <Button size="sm" onClick={onOpenWorkstation}>
-                {t(`workstation.action.${workstation.actions[0]!}`)}
+                {/*
+                  Con directorios pendientes, la acción que se ofrece es ésa y
+                  no la primera de la lista: es lo que desbloquea el trabajo.
+                */}
+                {t(
+                  `workstation.action.${
+                    missingDirectories > 0 && workstation.actions.includes("directorios")
+                      ? "directorios"
+                      : workstation.actions[0]!
+                  }`,
+                )}
               </Button>
             </div>
           ) : null}

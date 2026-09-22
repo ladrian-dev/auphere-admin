@@ -5,8 +5,9 @@
 partner. Si cambias lo que describe, este documento va **en el mismo commit**
 (`docs/spec-driven-development.md` §3). Especificaciones de origen:
 `specs/001-puesto-trabajo-partner/` (ejecución local, contención, lista blanca)
-y `specs/002-identidad-app-escritorio/` (identidad, emparejamiento, dueño de la
-máquina).
+`specs/002-identidad-app-escritorio/` (identidad, dueño de la máquina) y
+`specs/012-la-maquina-se-registra-con-la-sesion/` (registro con la sesión, y la
+retirada del código de emparejamiento).
 
 ## Qué es la aplicación
 
@@ -26,8 +27,8 @@ comprueba al arrancar y `tests/session-isolation.test.ts` lo afirma.
 > de una ventana de 44 px con `overflow: hidden` — el foco iba a un campo
 > invisible y la persona tecleaba a ciegas (P0-2 de la evaluación del
 > 2026-09-17). Lo que hacía vive ahora en el armazón: el estado de la máquina al
-> pie de la lista lateral, y emparejar, declarar directorios y desemparejar como
-> **diálogos de la aplicación**.
+> pie de la lista lateral, y declarar directorios y desemparejar como **diálogos
+> de la aplicación**. Emparejar ya no es ninguno: ocurre al entrar.
 
 > La pantalla de operar y todo lo que cuelga de ella (roster, hilo, Pendientes,
 > Cuenta, ejecución en la máquina) se describen en
@@ -35,8 +36,10 @@ comprueba al arrancar y `tests/session-isolation.test.ts` lo afirma.
 > identidad, el emparejamiento y la contención.
 
 **La consola no puede hablarle a la cáscara.** Sin `preload` en su vista no hay
-canal. El canal entre la consola y la aplicación es la persona: la consola
-muestra un código, la persona lo teclea en el diálogo de emparejamiento.
+canal, y sigue sin haberlo. Lo que cambió con la spec 012 es que **ya no hace
+falta**: el canal entre las dos era la persona copiando un código, y ahora la
+cáscara habla con el BFF por su cuenta, desde el proceso principal y con la
+cookie de su partición.
 
 ## Cómo entra una persona
 
@@ -56,28 +59,60 @@ avisos y la bandeja del sistema incluidos (R12.2):
 | `whoami` | El puesto | El puente |
 |---|---|---|
 | 200 `{user_id, partner_slug, locale}` con credencial guardada para ese `user_id` | `conectada` (en el idioma de la cuenta) | arranca |
-| 200 sin credencial, nadie más emparejó | `sin_emparejar` | parado |
-| 200 sin credencial, otra persona emparejó | `sin_emparejar` + «emparejada por otra persona» | parado |
-| 401 (sin sesión) · 403 `no_membership` | `sin_sesion`, sin oferta de emparejar | parado |
+| 200 sin credencial | se **registra sola** con esa sesión; si no se puede, `sin_emparejar` con el motivo | arranca tras registrar |
+| 401 (sin sesión) · 403 `no_membership` | `sin_sesion` | parado |
 
-## Cómo se empareja una máquina
+## Cómo se registra una máquina
 
-1. En la consola, `/workstation` → «Emparejar esta máquina» →
-   `POST /console/workstation/pairing-codes` (permiso `workstation:pair`:
-   owner · admin · builder). Código de 8 símbolos del alfabeto
-   `ABCDEFGHJKMNPQRSTVWXYZ23456789`, mostrado `XXXX-XXXX`, **una sola vez**;
-   la base guarda su hash. Diez minutos; un código vivo por persona.
-2. En la aplicación, «Emparejar esta máquina» → `POST /device/pair`
-   (`{code, hostname, platform, app_version}`; sin credencial: el código lo es).
-   Un solo cuerpo para todo fallo (`404 pairing_code_invalid`); cinco fallos por
-   máquina → `429` con `Retry-After` creciente.
-3. La respuesta trae la credencial **una vez**. La aplicación la guarda cifrada
+**Entrar la deja lista. No hay código que teclear** (spec 012).
+
+1. La persona entra por el navegador (RFC 8252 + PKCE, spec 009). Al volver, la
+   puerta de sesión confirma quién es.
+2. Si esa persona no tiene máquina, la aplicación llama —desde el proceso
+   principal, con la cookie de la partición humana— a
+   `POST /api/desktop/register-machine` del BFF, que reenvía a
+   `POST /console/workstation/machines` con su token de servicio.
+3. La API comprueba el permiso `workstation:pair` (owner · admin · builder) y
+   que la sesión **se abrió hace menos de una hora**. Se mira el momento de
+   apertura, no el de último uso: tener la aplicación abierta mueve el segundo y
+   no demuestra nada.
+4. La respuesta trae la credencial **una vez**. La aplicación la guarda cifrada
    con `safeStorage` en `userData/credentials.bin`, en un mapa por `user_id`
    (`src/credential-store.ts`). Sin cifrado disponible no se guarda nada y la
    aplicación lo dice.
 
-La máquina queda a nombre del **partner y de la persona** que pidió el código
-(`partner_devices.partner_id`, `principal_id`).
+La máquina queda a nombre del **partner y de la persona** que entró
+(`partner_devices.partner_id`, `principal_id`), con su `install_id` — que dice
+qué instalación es y vive **aparte de la credencial**, para que sobreviva a
+desemparejar.
+
+**Tope**: cinco máquinas activas por persona. Las archivadas no cuentan.
+
+### Por qué se retiró el código de 8 símbolos
+
+Para poder teclearlo, la aplicación **ya tenía** la sesión confirmada: `pair()`
+abortaba sin `userId`, y `userId` solo llegaba de un `whoami` con éxito. Eran dos
+actos para probar una sola cosa, y el segundo no probaba nada. Además, «teclea
+este código» es el patrón que explotó Storm-2372 contra el device code flow:
+retirarlo cierra un vector, no abre uno.
+
+Lo que **no** se retiró son sus propiedades, que la spec 009 ya había dejado
+escritas al retirar el otro código: uso único, hash en reposo, rechazo
+indistinguible y techo de intentos. Siguen aplicando al registro.
+
+Y un aviso para quien lea el historial: `core/pairing_codes.py` y
+`services/device_pairing.py` **no eran del emparejamiento**. Los códigos de
+sesión de la spec 009 compartían su generador y su limitador, así que retirarlos
+habría roto el inicio de sesión. Viven renombrados a lo que hacen:
+`core/one_time_codes.py` y `services/one_time_code_limits.py`.
+
+Y el otro aviso, que costó una tanda entera de restos: **retirar un endpoint no
+retira a su cliente.** El escritorio conservó durante toda la retirada su
+`HttpTransport.pair()` contra `POST /device/pair`, con su clase de error y un
+test verde, porque nadie lo llamaba y el barrido buscaba **nombres de símbolos**
+del lado del servidor. Ahora busca también la **ruta**: es la única cadena que
+los dos extremos están obligados a compartir, y por eso es la que los caza a los
+dos (`tests/isolation/test_39_no_pairing_code_path.py`).
 
 ## La credencial y sus cinco operaciones
 
@@ -98,6 +133,12 @@ device_archived` con motivo; generación vieja fuera de la gracia de 60 s →
 | Devolver resultado | `POST /device/result` | tenant del asiento, comprobado dentro del partner |
 | Renovar | `POST /device/renew` | partner · `gen + 1`; la anterior vale 60 s más |
 | Declarar directorio | `POST /device/links` | tenant resuelto desde `client_ref` **dentro del partner**; ajeno → `404` con asiento |
+
+**Son cinco, y desde la spec 012 no hay una sexta ni una ruta anónima.**
+`/device/pair` era la única de `/device/*` montada sin credencial —el código
+*era* la credencial de un solo uso— y al mudarse el alta a la consola esa
+excepción se quedó sin caso. `test_device_bridge_inbound.py` lo vigila con la
+lista de excepciones vacía: añadir una obliga a escribirla y a razonarla.
 
 La máquina renueva sola cuando le quedan menos de 6 h (`AppRuntime.maybeRenew`).
 

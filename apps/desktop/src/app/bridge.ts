@@ -316,7 +316,6 @@ export interface AuphereBridge {
 
   /* ── El puesto, absorbido — spec 010 (enmienda de la 002) ─────────────── */
   workstationState(): Promise<WorkstationView>;
-  workstationPair(input: { code: string }): Promise<Result<{ machine_name: string }>>;
   workstationUnpair(): Promise<Result<null>>;
   workstationPickDirectory(input: { client_ref: string }): Promise<Result<{ path_shown: string }>>;
   /** Spec 013, R4 — varias conversaciones con el mismo teammate. */

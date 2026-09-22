@@ -32,7 +32,6 @@ import { useLocale, useT } from "@/i18n/client";
 import type { MachineOut } from "@/lib/backend/workstation";
 
 import { MachineClients, type ClientOption } from "./machine-clients";
-import { PairingDialog } from "./pairing-dialog";
 
 /**
  * Mis máquinas — Requisitos 5.2, 8.1 y 11 (spec 002).
@@ -106,7 +105,6 @@ export function MachinesList({
         <h2 id="ws-machines" className="text-lg font-semibold">
           {t("ws.machines.title")}
         </h2>
-        {canPair && active.length > 0 ? <PairingDialog variant="outline" /> : null}
       </div>
 
       {failed ? (
@@ -118,8 +116,12 @@ export function MachinesList({
           icon={Laptop}
           title={t("ws.machines.empty.title")}
           description={canPair ? t("ws.machines.empty.body") : t("ws.machines.empty.readonly")}
-          action={canPair ? <PairingDialog /> : undefined}
-          readonly={!canPair}
+          // `readonly` en los dos casos, y no es una excepción a la regla de los
+          // cinco estados: desde la spec 012 la consola no puede registrar una
+          // máquina ni quien tiene el permiso. El siguiente paso se da en la
+          // aplicación de escritorio, y el texto dice cuál es. Un botón aquí
+          // sería una promesa que esta pantalla no puede cumplir.
+          readonly
         />
       ) : (
         <ul className="flex flex-col gap-4">

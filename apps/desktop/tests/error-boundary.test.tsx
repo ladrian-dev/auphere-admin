@@ -53,17 +53,25 @@ describe("una clave de texto que no existe", () => {
   });
 });
 
-describe("la pantalla de emparejamiento", () => {
-  it("explica los códigos que conoce", () => {
-    expect(pairErrorKey("pairing_code_invalid")).toBe("pair.error.pairing_code_invalid");
-    expect(pairErrorKey("pairing_rate_limited")).toBe("pair.error.pairing_rate_limited");
+describe("el alta de la máquina", () => {
+  it("explica los tres motivos que conoce", () => {
+    expect(pairErrorKey("register_sign_in_again")).toBe("pair.error.register_sign_in_again");
+    expect(pairErrorKey("register_at_cap")).toBe("pair.error.register_at_cap");
+    expect(pairErrorKey("register_unavailable")).toBe("pair.error.register_unavailable");
+  });
+
+  it("los códigos del canje retirado ya no son un motivo propio", () => {
+    // La spec 012 se llevó el canje del código. Un motivo que la plataforma ya
+    // no puede emitir no merece frase propia: cae en el genérico, como
+    // cualquier otro desconocido.
+    expect(pairErrorKey("pairing_code_invalid")).toBe("pair.error.register_unavailable");
   });
 
   it("no inventa un motivo para lo que no conoce", () => {
-    // «No se pudo emparejar; tu máquina sigue como estaba» es verdad en
-    // cualquier caso. Decir «el código ya no vale» sin saberlo, no.
-    expect(pairErrorKey("algo_nuevo_del_servidor")).toBe("pair.error.pairing_unavailable");
-    expect(format("es", pairErrorKey("algo_nuevo_del_servidor"))).toContain("sigue como estaba");
+    // «No se pudo dar de alta; tu sesión sigue bien» es verdad en cualquier
+    // caso. Nombrar una causa sin saberla, no.
+    expect(pairErrorKey("algo_nuevo_del_servidor")).toBe("pair.error.register_unavailable");
+    expect(format("es", pairErrorKey("algo_nuevo_del_servidor"))).toContain("Tu sesión sigue bien");
   });
 });
 

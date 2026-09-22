@@ -13,8 +13,10 @@ Tres decisiones que se ven en los modelos y son decisiones, no descuidos:
   «conectada» si muere el proceso que debía actualizarlo.
 * ``credential_generation`` es lo que hace **revocable y rotable** a una credencial
   apátrida: el token lleva ``gen`` y la fila dice cuál vale.
-* ``DevicePairingCode`` guarda un **hash**, nunca el código: el código es la
-  credencial de un solo uso y no puede quedar consultable.
+* ``install_id`` dice **qué instalación** es una máquina, y vive aparte de la
+  credencial para que sobreviva a desemparejar (spec 012). El código de
+  emparejamiento que había antes se retiró: la máquina se registra con la sesión
+  que la aplicación ya tiene.
 * ``LocalExecution`` **no guarda la salida del comando** (§III).
 """
 
@@ -200,29 +202,6 @@ class DeviceClientLink(Base):
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class DevicePairingCode(Base):
-    """El código de emparejamiento: un uso, diez minutos, hash en reposo. Del partner."""
-
-    __tablename__ = "device_pairing_codes"
-    __table_args__ = (Index("ix_device_pairing_codes_partner", "partner_id"),)
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-    partner_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("partners.id", ondelete="CASCADE"), nullable=False
-    )
-    #: Quien pidió el código será la dueña de la máquina que lo canjee.
-    principal_id: Mapped[str] = mapped_column(Text, nullable=False)
-    code_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    consumed_device_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("partner_devices.id", ondelete="SET NULL"), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
 
 
 class LocalExecutable(Base):
@@ -419,7 +398,6 @@ __all__ = [
     "PLATFORMS",
     "REVOKED_REASONS",
     "DeviceClientLink",
-    "DevicePairingCode",
     "LocalArgumentGrant",
     "LocalExecutable",
     "LocalExecution",

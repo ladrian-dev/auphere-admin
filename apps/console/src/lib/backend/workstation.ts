@@ -90,18 +90,36 @@ export type MachineOut = {
   clients: MachineClientOut[];
 };
 
-/** El código, una sola vez. `ttl_seconds` es lo que la cuenta atrás muestra. */
-export type PairingCodeOut = { code: string; expires_at: string; ttl_seconds: number };
-
 export type SetupStepKey = "paired" | "clients" | "directories" | "executables";
 export type SetupStepOut = { key: SetupStepKey; done: boolean; pending: number };
 export type SetupOut = { complete: boolean; steps: SetupStepOut[] };
+
+/** Lo que la aplicación sabe de sí misma y la persona no elige (spec 012, R3). */
+export type RegisterMachineIn = {
+  hostname: string;
+  platform: "macos" | "windows";
+  /** Qué instalación es. La genera la app y sobrevive a desemparejar. */
+  install_id: string;
+  app_version?: string;
+};
+
+/** Se devuelve **una sola vez**: la credencial no se puede volver a leer. */
+export type RegisteredMachineOut = {
+  device_id: string;
+  credential: string;
+  generation: number;
+  expires_at: string;
+  partner_slug: string;
+  principal_id: string;
+  display_name: string;
+};
 
 export function workstationPartnerApi(call: Call) {
   const enc = encodeURIComponent;
   const base = "/console/workstation";
   return {
-    issuePairingCode: () => call<PairingCodeOut>(`${base}/pairing-codes`, { method: "POST" }),
+    registerMachine: (body: RegisterMachineIn) =>
+      call<RegisteredMachineOut>(`${base}/machines`, { method: "POST", body }),
     listMachines: (includeArchived = false) =>
       call<MachineOut[]>(`${base}/devices${includeArchived ? "?include_archived=true" : ""}`),
     renameMachine: (id: string, display_name: string) =>

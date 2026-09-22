@@ -49,7 +49,8 @@ para vender, no.
 
 Lo que hay hecho: `pnpm --filter @nexus/desktop build && … package` produce el
 paquete, los endpoints `/device/pair` y `/device/poll` responden en producción
-(422 y 405 a una petición vacía: existen y validan), y
+(422 y 405 a una petición vacía: existen y validan) —**`/device/pair` ya no
+existe desde la spec 012**; la comprobación equivalente hoy es `/device/poll`—, y
 `NEXUS_DEVICE_TOKEN_SECRET` está aprovisionado —llevaba meses en Terraform sin
 estar en el secreto de prod, y se puso el 2026-09-13—.
 

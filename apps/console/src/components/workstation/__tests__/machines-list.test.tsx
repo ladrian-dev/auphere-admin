@@ -1,16 +1,17 @@
 /**
  * Requisitos 5.2, 8.1, 8.4 y 11 (spec 002) — la lista de máquinas y sus cinco estados.
  *
- * La ausencia se diseña: sin máquinas no hay botón apagado; quien no puede
- * emparejar ve por qué está vacío y nada que pulsar. La presencia nunca se
- * pinta como error.
+ * La ausencia se diseña: sin máquinas no hay botón apagado. Desde la spec 012
+ * (R6.1) tampoco hay botón encendido — la máquina se registra sola al abrir la
+ * aplicación de escritorio, así que el vacío dice dónde se da el siguiente
+ * paso en vez de ofrecer uno que esta pantalla no puede dar. La presencia nunca
+ * se pinta como error.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/(console)/workstation/actions", () => ({
-  issuePairingCodeAction: vi.fn(),
   renameMachineAction: vi.fn(),
   archiveMachineAction: vi.fn(),
   linkClientAction: vi.fn(),
@@ -50,18 +51,25 @@ function list(props: Partial<React.ComponentProps<typeof MachinesList>> = {}) {
 }
 
 describe("vacío — la ausencia se diseña (8.4)", () => {
-  it("quien puede emparejar ve el porqué y el botón de emparejar; ninguno apagado", () => {
+  it("quien puede registrar lee dónde se da el paso, y no hay nada apagado", () => {
     list();
-    expect(screen.getByText(/ninguna máquina emparejada/i)).toBeInTheDocument();
-    const pair = screen.getByRole("button", { name: /emparejar esta máquina/i });
-    expect(pair).toBeEnabled();
+    expect(screen.getByText(/ninguna máquina registrada/i)).toBeInTheDocument();
+    expect(screen.getByText(/abre la aplicación de escritorio/i)).toBeInTheDocument();
     expect(screen.queryAllByRole("button").filter((b) => (b as HTMLButtonElement).disabled)).toHaveLength(0);
   });
 
-  it("quien no puede emparejar ve por qué está vacío y nada que pulsar", () => {
-    list({ canPair: false });
-    expect(screen.getByText(/nadie de tu equipo ha emparejado/i)).toBeInTheDocument();
+  it("nadie ve un botón de emparejar, porque ya no existe (R6.1)", () => {
+    list();
     expect(screen.queryByRole("button", { name: /emparejar/i })).not.toBeInTheDocument();
+    // El aviso de la primitiva delata un vacío sin salida: si aparece, es que
+    // se quitó el botón sin decir dónde continúa el camino.
+    expect(screen.queryByText(/EmptyState without action/i)).not.toBeInTheDocument();
+  });
+
+  it("quien no puede registrar ve por qué está vacío y nada que pulsar", () => {
+    list({ canPair: false });
+    expect(screen.getByText(/nadie de tu equipo ha registrado/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /emparejar|registrar/i })).not.toBeInTheDocument();
   });
 });
 

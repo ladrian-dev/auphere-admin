@@ -153,18 +153,17 @@ async def test_identity_acts_are_tagged_with_partner_and_person(client, db_sessi
     from sqlalchemy import select
 
     from nexus_api.db.models import AuditLog
+    from tests.conftest import register_machine
 
     a, b = console_world["a"], console_world["b"]
-    issued = await client.post("/console/workstation/pairing-codes", headers=a["headers"]())
-    paired = await client.post(
-        "/device/pair",
-        json={"code": issued.json()["code"], "hostname": "mac.local", "platform": "macos"},
-    )
-    assert paired.status_code == 201
-    token = paired.json()["credential"]
-    await client.post("/device/renew", headers={"Authorization": f"Bearer {token}"})
+    # El alta de la máquina es **preparación**, no el sujeto: lo que se prueba
+    # es que cada asiento nombre al partner y a quien lo hizo. Antes se montaba
+    # con el código de emparejamiento; desde la spec 012 se registra con la
+    # sesión.
+    paired = await register_machine(client, db_session, a)
+    await client.post("/device/renew", headers={"Authorization": f"Bearer {paired['credential']}"})
     await client.delete(
-        f"/console/workstation/devices/{paired.json()['device_id']}", headers=a["headers"]()
+        f"/console/workstation/devices/{paired['device_id']}", headers=paired["headers"]()
     )
 
     rows = (
@@ -173,17 +172,16 @@ async def test_identity_acts_are_tagged_with_partner_and_person(client, db_sessi
         .all()
     )
     actions = {r.action for r in rows}
-    assert {
-        "device.pair_code_issued",
-        "device.paired",
-        "device.renewed",
-        "device.archived",
-    } <= actions
+    # ``device.pair_code_issued`` ya no está, y es correcto: con el registro por
+    # sesión no se emite ningún código, así que no hay nada que auditar ahí. El
+    # ciclo de vida sigue cubierto por los otros tres.
+    assert {"device.paired", "device.renewed", "device.archived"} <= actions
+    assert "device.pair_code_issued" not in actions
     for row in rows:
         assert row.target == f"partner:{a['partner_id']}", row.action
         assert row.actor.startswith(("console:", "device:")), row.actor
     renewed = next(r for r in rows if r.action == "device.renewed")
-    assert renewed.actor == f"device:{paired.json()['device_id']}"
+    assert renewed.actor == f"device:{paired['device_id']}"
 
     # La auditoría de B no ve nada de esto (la de consola filtra por partner).
     audit_b = await client.get("/console/audit", headers=b["headers"]())

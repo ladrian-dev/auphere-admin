@@ -49,14 +49,14 @@ describe("el estado del puesto se alcanza con el teclado (8.1)", () => {
     const onAction = vi.fn();
     render(
       <WorkstationActions
-        state={{ status: "sin_emparejar", actions: ["introducir_codigo"], clients: [] }}
+        state={{ status: "conectada", actions: ["directorios"], clients: [] }}
         onAction={onAction}
       />,
     );
     await userEvent.tab();
-    expect(document.activeElement?.textContent).toMatch(/emparejar/i);
+    expect(document.activeElement?.textContent).toMatch(/directorio|folder/i);
     await userEvent.keyboard("{Enter}");
-    expect(onAction).toHaveBeenCalledWith("introducir_codigo");
+    expect(onAction).toHaveBeenCalledWith("directorios");
   });
 });
 

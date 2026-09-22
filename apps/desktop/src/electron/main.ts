@@ -847,15 +847,6 @@ export async function bootstrap(): Promise<{ readActivity: () => Activity; annou
     shellPrefs,
     workstation: {
       state: () => toWorkstationView(runtime.barState),
-      pair: async (code) => {
-        await runtime.pair(code);
-        const state = runtime.barState;
-        // El runtime deja el resultado en su estado; aquí sólo se traduce a lo
-        // que el contrato promete, sin inventar un éxito que no consta.
-        return state.status === "conectada" || state.status === "reconectando"
-          ? { machine_name: state.machine?.displayName ?? "" }
-          : { error: state.lastError?.code ?? "pairing_unavailable" };
-      },
       unpair: async () => {
         await runtime.unpair();
         return { ok: true };

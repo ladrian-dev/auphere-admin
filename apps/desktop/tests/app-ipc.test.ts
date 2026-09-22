@@ -22,7 +22,7 @@ const CONTRACT = [
   // puesta en marcha, la actualización y la vuelta del navegador.
   "app:shell.showSection", "app:shell.contentBounds", "app:shell.prefs",
   "app:signIn.start", "app:signIn.cancel",
-  "app:workstation.state", "app:workstation.pair", "app:workstation.unpair", "app:workstation.pickDirectory",
+  "app:workstation.state", "app:workstation.unpair", "app:workstation.pickDirectory",
   // Spec 013, R3 — lo que escribió un comando ya ejecutado. La salida no se
   // guarda en ninguna tabla: esto la pide mientras dura.
   "app:workstation.execOutput",
@@ -114,16 +114,13 @@ describe("el armazón tampoco adivina", () => {
     expect(() => validateInput("app:shell.contentBounds", { x: 0, y: 0, width: 10 })).toThrow(InvalidIpcInput);
   });
 
-  it("el código de emparejamiento se comprueba contra su alfabeto antes de salir a la red", () => {
-    expect(() => validateInput("app:workstation.pair", { code: "K7MP4XQ2" })).not.toThrow();
-    // Con guion, que es como se enseña, también vale.
-    expect(() => validateInput("app:workstation.pair", { code: "K7MP-4XQ2" })).not.toThrow();
-    // Las letras que el alfabeto excluye a propósito para no confundirse.
-    expect(() => validateInput("app:workstation.pair", { code: "IL0O1234" })).toThrow(InvalidIpcInput);
-    expect(() => validateInput("app:workstation.pair", { code: "corto" })).toThrow(InvalidIpcInput);
-    expect(() => validateInput("app:workstation.pair", {})).toThrow(InvalidIpcInput);
+  it("el canal de emparejar por código ya no existe (spec 012)", () => {
+    // Se retiró con el código: la máquina se registra al entrar, desde el
+    // proceso principal y con la cookie de la partición humana, así que no hay
+    // nada que la ventana tenga que mandar ni que validar aquí.
+    expect(APP_INVOKE_CHANNELS.map((c) => c.name)).not.toContain("app:workstation.pair");
+    expect(() => validateInput("app:workstation.pair", { code: "K7MP4XQ2" })).toThrow();
   });
-
   it("las preferencias de la ventana sólo aceptan lo que la lista permite guardar", () => {
     expect(() => validateInput("app:shell.prefs", { theme: "dark" })).not.toThrow();
     expect(() => validateInput("app:shell.prefs", { sidebarWidth: 260 })).not.toThrow();

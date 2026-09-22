@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
-import type { MachineClientOut, MachineOut, PairingCodeOut } from "@/lib/backend/workstation";
+import type { MachineClientOut, MachineOut } from "@/lib/backend/workstation";
 import { can, requirePrincipal } from "@/lib/principal";
 
 /**
@@ -24,12 +24,6 @@ const ref = z.string().min(1).max(255);
 
 function forbidden<T>(): ActionResult<T> {
   return { ok: false, status: 403, message: "forbidden" };
-}
-
-export async function issuePairingCodeAction(): Promise<ActionResult<PairingCodeOut>> {
-  const principal = await requirePrincipal();
-  if (!can(principal.role, "workstation:pair")) return forbidden();
-  return run(() => backendFor(principal).issuePairingCode());
 }
 
 export async function renameMachineAction(raw: unknown): Promise<ActionResult<MachineOut>> {

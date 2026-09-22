@@ -42,7 +42,6 @@ export type AppSurfaceOptions = {
   /** El puesto de trabajo, absorbido en el armazón (enmienda de la spec 002). */
   workstation: {
     state(): unknown;
-    pair(code: string): Promise<unknown>;
     unpair(): Promise<unknown>;
     /** `{path_shown}` o `{error, reason}`: el motivo **no se pierde** (R8.4). */
     pickDirectory(clientRef: string): Promise<unknown>;
@@ -366,7 +365,6 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
    * volvería a inventarse un estado, que es de lo que veníamos.
    */
   handle("app:workstation.state", () => o.workstation.state());
-  handle("app:workstation.pair", (input: { code: string }) => o.workstation.pair(input.code));
   handle("app:workstation.unpair", () => o.workstation.unpair());
   /*
    * Spec 010 R8.4 — **el motivo del rechazo vuelve**. Hasta ahora la barra

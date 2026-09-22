@@ -33,10 +33,10 @@ from datetime import UTC, datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_api.core.pairing_codes import CODE_TTL, generate_code, hash_code, normalize_code
+from nexus_api.core.one_time_codes import CODE_TTL, generate_code, hash_code, normalize_code
 from nexus_api.db.models.console_identity import ConsoleAccount
 from nexus_api.services import console_identity
-from nexus_api.services.device_pairing import PairingRateLimiter
+from nexus_api.services.one_time_code_limits import CodeRateLimiter as PairingRateLimiter
 
 
 class SessionCodeRejected(Exception):

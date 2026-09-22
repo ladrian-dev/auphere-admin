@@ -44,16 +44,22 @@ async def _paired(db_session, console_world, label: str = "a", *, principal: str
     return device, token
 
 
-async def test_pairing_gives_the_machine_a_credential_that_names_it(client, console_world):
+async def test_registering_gives_the_machine_a_credential_that_names_it(
+    client, db_session, console_world
+):
+    """Lo que se comprueba es la credencial, no por dónde se pidió.
+
+    Antes se pedía canjeando un código; desde la spec 012 se pide con la
+    sesión. La propiedad es la misma y sigue siendo la que importa: **nombra
+    máquina, partner y generación, y no nombra tenant**.
+    """
+    from tests.conftest import register_machine
+
     a = console_world["a"]
-    issued = await client.post("/console/workstation/pairing-codes", headers=a["headers"]())
-    paired = await client.post(
-        "/device/pair",
-        json={"code": issued.json()["code"], "hostname": "mac.local", "platform": "macos"},
-    )
-    assert paired.status_code == 201, paired.text
-    claims = verify_device_token(paired.json()["credential"])
-    assert claims.device_id == uuid.UUID(paired.json()["device_id"])
+    registered = await register_machine(client, db_session, a)
+
+    claims = verify_device_token(registered["credential"])
+    assert claims.device_id == uuid.UUID(registered["device_id"])
     assert claims.partner_id == a["partner_id"]
     assert claims.generation == 1
 
@@ -276,28 +282,90 @@ async def test_removing_a_member_archives_their_machines(client, db_session, con
     assert beat.status_code == 403
 
 
-async def test_two_people_can_pair_the_same_hostname(client, db_session, console_world):
-    """Historia 5: una máquina física, dos emparejamientos, dos dueñas."""
-    from tests.conftest import add_console_member
+async def _real_member(db_session, partner_id, *, role: str):
+    """Una persona con cuenta de consola **de verdad** y sesión recién abierta.
 
+    `add_console_member` fabrica un `user_id` de mentira, que bastaba mientras
+    la credencial salía de un código: al canje le daba igual quién teclease.
+    Registrar con la sesión ya no: mira si esa persona confirmó quién era hace
+    poco, y una cadena inventada no tiene sesión que mirar.
+    """
+    import sqlalchemy as sa
+
+    from nexus_api.db.models import PartnerMembership
+    from nexus_api.services import console_identity
+
+    account = await console_identity.create_account(
+        db_session,
+        email=f"{role}-{uuid.uuid4().hex[:8]}@example.com",
+        password="una-contrasena-larga",
+        display_name=role,
+    )
+    await db_session.commit()
+    existing = (
+        await db_session.execute(
+            sa.select(PartnerMembership).where(
+                PartnerMembership.partner_id == partner_id, PartnerMembership.role == role
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        db_session.add(
+            PartnerMembership(
+                id=uuid.uuid4(),
+                partner_id=partner_id,
+                user_id=str(account.id),
+                email=account.email,
+                display_name=role,
+                role=role,
+                status="active",
+            )
+        )
+    else:
+        existing.user_id = str(account.id)
+        existing.email = account.email
+    await db_session.commit()
+    await console_identity.start_session(db_session, account)
+    await db_session.commit()
+
+    from tests.conftest import console_headers
+
+    return {
+        "user_id": str(account.id),
+        "headers": lambda **kw: console_headers(
+            user_id=str(account.id), partner_id=partner_id, **kw
+        ),
+    }
+
+
+async def test_two_people_can_register_the_same_hostname(client, db_session, console_world):
+    """Historia 5: una máquina física, dos altas, dos dueñas.
+
+    Con el código, la segunda persona se quedaba fuera si la primera ya había
+    emparejado el ordenador. Ahora cada una recibe **la suya**, y lo que sigue
+    sin pasar —y es lo que este test defiende— es que vea la ajena.
+    """
     a = console_world["a"]
-    builder = await add_console_member(db_session, partner_id=a["partner_id"], role="builder")
-    for headers in (a["headers"](), builder["headers"]()):
-        issued = await client.post("/console/workstation/pairing-codes", headers=headers)
-        paired = await client.post(
-            "/device/pair",
+    owner = await _real_member(db_session, a["partner_id"], role="owner")
+    builder = await _real_member(db_session, a["partner_id"], role="builder")
+
+    for who in (owner, builder):
+        registered = await client.post(
+            "/console/workstation/machines",
             json={
-                "code": issued.json()["code"],
                 "hostname": "imac-recepcion.local",
                 "platform": "macos",
+                "install_id": f"instalacion-{uuid.uuid4().hex[:12]}",
             },
+            headers=who["headers"](),
         )
-        assert paired.status_code == 201, paired.text
+        assert registered.status_code == 201, registered.text
+
     # La builder solo ve la suya; la owner (gestora) ve las dos con dueña.
     mine = (await client.get("/console/workstation/devices", headers=builder["headers"]())).json()
     assert [m["mine"] for m in mine] == [True]
-    every = (await client.get("/console/workstation/devices", headers=a["headers"]())).json()
+    every = (await client.get("/console/workstation/devices", headers=owner["headers"]())).json()
     assert len(every) == 2
-    assert {m["owner_user_id"] for m in every} == {a["user_id"], builder["user_id"]}
+    assert {m["owner_user_id"] for m in every} == {owner["user_id"], builder["user_id"]}
     rows = (await db_session.execute(select(PartnerDevice.hostname))).scalars().all()
     assert rows == ["imac-recepcion.local", "imac-recepcion.local"]

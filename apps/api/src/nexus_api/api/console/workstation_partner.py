@@ -42,11 +42,9 @@ from nexus_api.db.models import (
 )
 from nexus_api.repositories.local_workstation import (
     DeviceClientLinkRepository,
-    DevicePairingCodeRepository,
     PartnerDeviceRepository,
 )
 from nexus_api.services.device_credential import DEFAULT_TTL, issue_device_token
-from nexus_api.services.device_pairing import CODE_TTL, display_code
 from nexus_api.services.device_presence import derive_presence
 from nexus_api.services.machine_registration import (
     RegistrationRefused,
@@ -59,7 +57,6 @@ from .schemas_workstation import (
     MachineClientOut,
     MachineOut,
     MachineRenameIn,
-    PairingCodeOut,
     RegisteredMachineOut,
     RegisterMachineIn,
     SetupOut,
@@ -174,31 +171,7 @@ async def _visible_device(scope: WorkstationScope, device_id: uuid.UUID) -> Part
     return device
 
 
-# ── emparejar ───────────────────────────────────────────────────────────
-
-
-@router.post("/pairing-codes", response_model=PairingCodeOut, status_code=status.HTTP_201_CREATED)
-async def issue_pairing_code(
-    scope: WorkstationScope = Depends(workstation_scope("workstation:pair")),
-) -> PairingCodeOut:
-    """Emite el código que la barra canjeará. Uno vivo por persona."""
-    code, row = await DevicePairingCodeRepository(scope.session).issue(
-        principal_id=scope.principal.user_id
-    )
-    scope.session.add(
-        AuditLog(
-            tenant_id=None,
-            actor=scope.principal.actor,
-            action="device.pair_code_issued",
-            target=f"partner:{scope.principal.partner.id}",
-            after_json={"expires_at": row.expires_at.isoformat()},
-        )
-    )
-    return PairingCodeOut(
-        code=display_code(code),
-        expires_at=row.expires_at,
-        ttl_seconds=int(CODE_TTL.total_seconds()),
-    )
+# ── registrar una máquina ───────────────────────────────────────────────
 
 
 @router.post(

@@ -22,12 +22,10 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_api.core.pairing_codes import CODE_TTL, generate_code, hash_code
 from nexus_api.core.partner_context import require_current_partner
 from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.models import (
     DeviceClientLink,
-    DevicePairingCode,
     LocalArgumentGrant,
     LocalExecutable,
     LocalExecution,
@@ -227,60 +225,6 @@ class DeviceClientLinkRepository:
         return True
 
 
-class DevicePairingCodeRepository:
-    """Códigos de emparejamiento. Se guarda el hash; el código se devuelve una vez."""
-
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
-    async def issue(self, *, principal_id: str) -> tuple[str, DevicePairingCode]:
-        """Emite un código nuevo e invalida los vivos de la misma persona (uno por persona)."""
-        partner_id = uuid.UUID(str(require_current_partner()))
-        now = datetime.now(UTC)
-        await self._session.execute(
-            update(DevicePairingCode)
-            .where(
-                DevicePairingCode.partner_id == partner_id,
-                DevicePairingCode.principal_id == principal_id,
-                DevicePairingCode.consumed_at.is_(None),
-                DevicePairingCode.expires_at > now,
-            )
-            .values(expires_at=now)
-        )
-        code = generate_code()
-        row = DevicePairingCode(
-            id=uuid.uuid4(),
-            partner_id=partner_id,
-            principal_id=principal_id,
-            code_hash=hash_code(code),
-            expires_at=now + CODE_TTL,
-        )
-        self._session.add(row)
-        await self._session.flush()
-        return code, row
-
-    async def consume(self, code: str) -> DevicePairingCode | None:
-        """Canje **atómico** y sin partner en contexto: corre con el rol dueño porque
-        todavía no hay credencial. Partner y persona salen de la fila."""
-        now = datetime.now(UTC)
-        stmt = (
-            update(DevicePairingCode)
-            .where(
-                DevicePairingCode.code_hash == hash_code(code),
-                DevicePairingCode.consumed_at.is_(None),
-                DevicePairingCode.expires_at > now,
-            )
-            .values(consumed_at=now)
-            .returning(DevicePairingCode)
-        )
-        return (await self._session.execute(stmt)).scalar_one_or_none()
-
-    async def bind_device(self, code_id: uuid.UUID, device_id: uuid.UUID) -> None:
-        row = await self._session.get(DevicePairingCode, code_id)
-        if row is not None:
-            row.consumed_device_id = device_id
-
-
 class LocalExecutableRepository:
     """La lista blanca. Arranca vacía por tenant y no hay lista global."""
 
@@ -453,7 +397,6 @@ class LocalExecutionRepository:
 __all__ = [
     "GRANT_NAMESPACE",
     "DeviceClientLinkRepository",
-    "DevicePairingCodeRepository",
     "LocalArgumentGrantRepository",
     "LocalExecutableRepository",
     "LocalExecutionRepository",

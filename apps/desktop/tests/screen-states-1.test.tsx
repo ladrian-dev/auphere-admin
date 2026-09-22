@@ -262,3 +262,35 @@ describe("Cuenta — las cuatro celdas que ya existen", () => {
     expect(screen.getByText(/no se pudo leer|could not be read/i)).toBeInTheDocument();
   });
 });
+
+describe("Hoy · la carpeta al frente — spec 012, R5.1", () => {
+  /**
+   * Antes, la máquina solo se anunciaba cuando **no** estaba conectada. Una
+   * recién registrada y sin ningún directorio declarado quedaba «conectada» y
+   * en silencio: no podía tocar un fichero y no decía por qué.
+   *
+   * Con el registro por sesión eso deja de ser raro y pasa a ser el estado
+   * normal del primer arranque, porque ya no hay una ceremonia de emparejar
+   * donde enterarse.
+   */
+  const CONECTADA = {
+    status: "conectada" as const,
+    clients: [],
+    actions: ["directorios", "desemparejar"] as Array<"directorios" | "desemparejar">,
+  };
+
+  it("conectada y sin nada pendiente no se anuncia: la ausencia se diseña", () => {
+    render(<Today {...HOY} status="ready" workstation={{ ...CONECTADA, missing_directories: 0 }} />);
+    expect(screen.queryByText(/sin carpeta declarada|no folder declared/i)).toBeNull();
+  });
+
+  it("conectada pero sin carpeta declarada sí lo dice, y dice qué se pierde", () => {
+    render(<Today {...HOY} status="ready" workstation={{ ...CONECTADA, missing_directories: 2 }} />);
+    expect(screen.getByText(/sin carpeta declarada|no folder declared/i)).toBeInTheDocument();
+  });
+
+  it("y la acción que ofrece es declarar la carpeta, no la primera de la lista", () => {
+    render(<Today {...HOY} status="ready" workstation={{ ...CONECTADA, missing_directories: 1 }} />);
+    expect(screen.getByRole("button", { name: /directorio|folder/i })).toBeInTheDocument();
+  });
+});

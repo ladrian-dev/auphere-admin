@@ -18,7 +18,7 @@ import uuid
 import pytest
 import sqlalchemy as sa
 
-from nexus_api.core.pairing_codes import CODE_LENGTH, normalize_code
+from nexus_api.core.one_time_codes import CODE_LENGTH, normalize_code
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.services.session_codes import (
     SessionCodeRejected,

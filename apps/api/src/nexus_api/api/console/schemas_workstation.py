@@ -94,14 +94,6 @@ class SessionToolCatalogOut(BaseModel):
 # ── spec 002: el puesto de trabajo a nivel de partner ───────────────────
 
 
-class PairingCodeOut(BaseModel):
-    """El código, **una sola vez**; la base guarda su hash."""
-
-    code: str
-    expires_at: datetime
-    ttl_seconds: int
-
-
 class RegisterMachineIn(BaseModel):
     """Lo que la aplicación sabe de sí misma y la persona no elige.
 

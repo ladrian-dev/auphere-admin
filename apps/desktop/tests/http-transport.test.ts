@@ -72,35 +72,19 @@ describe("el resultado no lleva la salida del comando (§III)", () => {
   });
 });
 
-// ── spec 002: el canje, la renovación, los vínculos y los rechazos ─────────
+// ── spec 002: la renovación, los vínculos y los rechazos ───────────────────
+//
+// Aquí vivía «el canje del código», que probaba un método que llamaba a un
+// endpoint retirado por la spec 012. Era un test verde sobre código muerto: la
+// peor clase, porque da confianza y no cubre nada de lo que ocurre de verdad.
+// El registro por sesión no pasa por este transporte — va del proceso
+// principal al BFF con la cookie de la partición humana— y lo prueban
+// `app-runtime-identity.test.ts` y la integración del lado del servidor.
 
-import { BridgeRejected, PairingFailed } from "../src/http-transport.js";
+import { BridgeRejected } from "../src/http-transport.js";
 
 const reply = (status: number, body: unknown = {}) =>
   vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, json: async () => body });
-
-describe("el canje del código (3.2, 3.3)", () => {
-  it("va sin credencial y devuelve la credencial una vez", async () => {
-    const fetch = reply(201, {
-      device_id: "d1", credential: "tok", generation: 1, expires_at: "2026-09-10T00:00:00Z",
-      partner_slug: "p", principal_id: "luis", display_name: "mac.local",
-    });
-    const t = new HttpTransport({ baseUrl: "https://api.auphere.com", fetch, appVersion: "0.2.0" });
-    const paired = await t.pair({ code: "K7MP-4XQ2", hostname: "mac.local", platform: "macos" });
-    expect(paired.deviceId).toBe("d1");
-    const [url, init] = fetch.mock.calls[0] ?? [];
-    expect(String(url)).toContain("/device/pair");
-    expect(init?.headers?.Authorization).toBeUndefined();
-    expect(JSON.parse(String(init?.body))).toMatchObject({ code: "K7MP-4XQ2", app_version: "0.2.0" });
-  });
-
-  it("un 404 es «ese código no vale», y un 429 es «espera»", async () => {
-    const t404 = new HttpTransport({ baseUrl: "https://api.auphere.com", fetch: reply(404, { code: "pairing_code_invalid" }) });
-    await expect(t404.pair({ code: "x", hostname: "h", platform: "macos" })).rejects.toBeInstanceOf(PairingFailed);
-    const t429 = new HttpTransport({ baseUrl: "https://api.auphere.com", fetch: reply(429, { code: "pairing_rate_limited" }) });
-    await expect(t429.pair({ code: "x", hostname: "h", platform: "macos" })).rejects.toMatchObject({ code: "pairing_rate_limited" });
-  });
-});
 
 describe("renovar y declarar (10.1, 7.2)", () => {
   it("renovar rota la credencial que usa el transporte", async () => {

@@ -18,7 +18,7 @@ export type Shape =
   | "none" | "id" | "thread_open" | "thread_id" | "run_events" | "thread_send" | "run" | "stream_open" | "stream_close"
   | "decide" | "tasks_list" | "pref" | "open_console" | "notif_prefs" | "roster_create" | "roster_update"
   // Spec 010 — el armazón y el puesto absorbido.
-  | "section" | "content_bounds" | "shell_prefs" | "pair_code" | "client_ref" | "handoff"
+  | "section" | "content_bounds" | "shell_prefs" | "client_ref" | "handoff"
   | "exec_output" | "search";
 
 export type InvokeChannel = { name: `app:${string}`; input: Shape };
@@ -81,7 +81,6 @@ export const APP_INVOKE_CHANNELS: readonly InvokeChannel[] = [
   { name: "app:signIn.start", input: "none" },
   { name: "app:signIn.cancel", input: "none" },
   { name: "app:workstation.state", input: "none" },
-  { name: "app:workstation.pair", input: "pair_code" },
   { name: "app:workstation.unpair", input: "none" },
   { name: "app:workstation.pickDirectory", input: "client_ref" },
   /**
@@ -173,9 +172,6 @@ const px = (v: unknown): v is number => typeof v === "number" && Number.isIntege
  * para que nadie confunda un carácter al teclearlo. Se comprueba **aquí**,
  * antes de tocar la red, porque un código mal tecleado no es un viaje.
  */
-const PAIRING_ALPHABET = /^[ABCDEFGHJKMNPQRSTVWXYZ23456789]{8}$/;
-const pairingCode = (v: unknown): v is string =>
-  typeof v === "string" && PAIRING_ALPHABET.test(v.replace(/-/g, "").toUpperCase());
 
 /** Valida la entrada de un canal. Lanza `InvalidIpcInput`; nunca adivina. */
 export function validateInput(channel: string, input: unknown): void {
@@ -259,8 +255,6 @@ export function validateInput(channel: string, input: unknown): void {
           (input.silenceAviso === undefined || typeof input.silenceAviso === "boolean"),
         "theme, sidebarWidth, section, silenceAviso",
       );
-    case "pair_code":
-      return need(isRecord(input) && pairingCode(input.code), "code");
     case "client_ref":
       return need(isRecord(input) && str(input.client_ref), "client_ref");
 

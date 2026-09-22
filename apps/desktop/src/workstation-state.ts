@@ -122,7 +122,8 @@ export type BarState = {
 };
 
 export type BarAction =
-  | "introducir_codigo"
+  // `introducir_codigo` se retiró con la spec 012: la máquina se registra al
+  // entrar, así que no hay nada que teclear.
   | "directorios"
   | "desemparejar"
   | "actualizar";
@@ -261,7 +262,7 @@ export function actionsFor(state: BarState): BarAction[] {
     case "sin_emparejar":
     case "volver_a_emparejar":
     case "archivada_desde_consola":
-      return ["introducir_codigo"];
+      return [];
     case "conectada":
       return ["directorios", "desemparejar"];
     // Spec 008 R4.3: se ofrece **actualizar**, y sólo eso. No «introducir

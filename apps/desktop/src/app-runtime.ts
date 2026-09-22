@@ -17,7 +17,6 @@
 import { OutboundBridge, type Inbound, type LinkState, type OutboundTransport } from "./bridge.js";
 import { TaskFiles } from "./task-files.js";
 import {
-  actionsFor,
   initialState,
   localToolsOffered as barOffersTools,
   transition,
@@ -27,7 +26,7 @@ import {
 } from "./workstation-state.js";
 import type { CredentialStore, StoredCredential } from "./credential-store.js";
 import { declareDirectory, type DirectoryFs } from "./directory-declare.js";
-import { AppUpdateRequired, BridgeRejected, PairingFailed, type HttpTransport, type PolledLink } from "./http-transport.js";
+import { AppUpdateRequired, BridgeRejected, type HttpTransport, type PolledLink } from "./http-transport.js";
 import { localToolsAvailable, statusLabel, type StatusLabel } from "./link-state.js";
 import { runExecuteMessage } from "./local-runner.js";
 import { derivePresence, type Presence } from "./presence.js";
@@ -50,9 +49,15 @@ export interface ApprovalsClient {
   answer(id: string, allow: boolean): Promise<boolean>;
 }
 
-/** Lo que el transporte v2 sabe hacer además de latir y sondear. */
+/**
+ * Lo que el transporte v2 sabe hacer además de latir y sondear.
+ *
+ * Tenía un `pair` que canjeaba el código; la spec 012 lo retiró con el
+ * endpoint. El alta de la máquina **no pasa por aquí**: va del proceso
+ * principal al BFF con la cookie de la partición humana, que es el único sitio
+ * donde esa cookie existe.
+ */
 export interface IdentityTransport extends OutboundTransport {
-  pair: HttpTransport["pair"];
   renew: HttpTransport["renew"];
   declareLink: HttpTransport["declareLink"];
   pollAll: HttpTransport["pollAll"];
@@ -73,10 +78,59 @@ export type AppRuntimeOptions = {
   store?: CredentialStore;
   machine?: { hostname: string; platform: "macos" | "windows" };
   fs?: DirectoryFs;
+  /**
+   * Registrar esta máquina con la sesión (spec 012, R3.1).
+   *
+   * Opcional para que lo que ya existe siga arrancando igual: sin esto, la
+   * aplicación se comporta como antes y espera el código.
+   */
+  registerMachine?: (facts: {
+    hostname: string;
+    platform: "macos" | "windows";
+    installId: string;
+  }) => Promise<RegisterOutcome>;
+  /** Qué instalación es ésta. Sobrevive a desemparejar. */
+  installId?: string;
 };
 
+/** Lo que puede pasar al registrar, y a dónde lleva cada cosa. */
+export type RegisterOutcome =
+  | {
+      kind: "registered";
+      machine: {
+        deviceId: string;
+        credential: string;
+        generation: number;
+        expiresAt: string;
+        partnerSlug: string;
+        displayName: string;
+      };
+    }
+  | { kind: "sign_in_again" }
+  | { kind: "at_cap" }
+  | { kind: "unavailable" };
+
+/**
+ * Qué se le dice a la persona cuando registrar no sale (spec 012, R3).
+ *
+ * Tres motivos y tres caminos distintos: entrar de nuevo, retirar una máquina,
+ * o esperar. La API los uniforma porque al otro lado puede haber un
+ * desconocido; aquí no lo hay, y decir «no se pudo» a secas dejaría a la
+ * persona sin saber qué hacer.
+ */
+const REGISTER_FAILURES: Record<"sign_in_again" | "at_cap" | "unavailable", string> = {
+  sign_in_again: "register_sign_in_again",
+  at_cap: "register_at_cap",
+  unavailable: "register_unavailable",
+};
+
+/**
+ * Se preguntaba por `pair`, que ya no existe. Ahora por `renew`: es la
+ * operación que **solo** tiene el transporte v2 y la que el runtime de verdad
+ * necesita de él, así que distingue lo mismo sin depender de un método muerto.
+ */
 function hasIdentity(t: OutboundTransport | IdentityTransport): t is IdentityTransport {
-  return typeof (t as IdentityTransport).pair === "function";
+  return typeof (t as IdentityTransport).renew === "function";
 }
 
 export class AppRuntime {
@@ -88,6 +142,8 @@ export class AppRuntime {
   private readonly store: CredentialStore | undefined;
   private readonly machine: { hostname: string; platform: "macos" | "windows" } | undefined;
   private readonly fs: DirectoryFs | undefined;
+  private readonly registerMachine: AppRuntimeOptions["registerMachine"];
+  private readonly installId: string | undefined;
   private readonly now: () => number;
   private lastHeartbeatAt: number | null = null;
   private bar: BarState;
@@ -124,6 +180,8 @@ export class AppRuntime {
     this.store = options.store;
     this.machine = options.machine;
     this.fs = options.fs;
+    this.registerMachine = options.registerMachine;
+    this.installId = options.installId;
     this.now = options.now ?? Date.now;
     this.bar = initialState(options.store ? options.store.encryptionAvailable : true);
     this.bridge = new OutboundBridge({
@@ -274,6 +332,10 @@ export class AppRuntime {
     if (decision.kind === "pair_needed") {
       this.stop();
       this.credential = null;
+      // Spec 012, R3.1: entrar deja la máquina lista. Antes de anunciar «sin
+      // emparejar» se intenta registrarla con la sesión que acabamos de
+      // confirmar — para eso servía el código, y la sesión ya lo demuestra.
+      if (await this.registerWithSession()) return;
       this.setBar(decision.pairedByOther ? { kind: "session_other_person" } : { kind: "unpaired" });
       return;
     }
@@ -287,44 +349,54 @@ export class AppRuntime {
     else this.setBar({ kind: "session_same_person" });
   }
 
-  /** El canje del código: la persona lo teclea en la barra (3.2). */
-  async pair(code: string): Promise<void> {
-    if (!hasIdentity(this.transport) || !this.store || !this.machine || !this.userId) {
-      this.setBar({ kind: "pair_failed", code: "pairing_unavailable" });
-      return;
+  /**
+   * Registra esta máquina con la sesión recién confirmada (spec 012, R3.1).
+   *
+   * Devuelve `true` si quedó lista, y entonces quien llama no tiene que
+   * anunciar nada: la máquina arranca sola.
+   *
+   * **Los tres fallos se distinguen a propósito**, porque llevan a cosas
+   * distintas: volver a entrar, retirar una máquina, o esperar. Uniformarlos
+   * —que es lo que hace la API con el desconocido del otro lado— aquí dejaría a
+   * la persona sin saber qué hacer, y quien pregunta ya está dentro.
+   */
+  private async registerWithSession(): Promise<boolean> {
+    if (!this.registerMachine || !this.installId || !this.machine || !this.store || !this.userId) {
+      return false;
     }
-    if (!actionsFor(this.bar).includes("introducir_codigo")) return;
     this.setBar({ kind: "pair_started" });
-    try {
-      const paired = await this.transport.pair({
-        code,
-        hostname: this.machine.hostname,
-        platform: this.machine.platform,
-      });
-      const credential: StoredCredential = {
-        deviceId: paired.deviceId,
-        token: paired.credential,
-        generation: paired.generation,
-        expiresAt: paired.expiresAt,
-        partnerSlug: paired.partnerSlug,
-        displayName: paired.displayName,
-      };
-      this.store.put(this.userId, credential);
-      this.credential = credential;
-      this.transport.useToken(credential.token);
-      this.setBar({ kind: "pair_ok", machine: { displayName: paired.displayName, hostname: this.machine.hostname } });
-      if (!this.running) await this.start();
-      // Al final y no antes: quien escuche va a volver a derivar el veredicto, y
-      // debe encontrar el almacén y la barra ya en su sitio.
-      this.announceIdentityChanged();
-    } catch (error) {
-      const code = error instanceof PairingFailed ? error.code : "pairing_unavailable";
-      this.setBar({ kind: "pair_failed", code });
+    const outcome = await this.registerMachine({
+      hostname: this.machine.hostname,
+      platform: this.machine.platform,
+      installId: this.installId,
+    });
+    if (outcome.kind !== "registered") {
+      this.setBar({ kind: "pair_failed", code: REGISTER_FAILURES[outcome.kind] });
+      return false;
     }
+
+    const credential: StoredCredential = {
+      deviceId: outcome.machine.deviceId,
+      token: outcome.machine.credential,
+      generation: outcome.machine.generation,
+      expiresAt: outcome.machine.expiresAt,
+      partnerSlug: outcome.machine.partnerSlug,
+      displayName: outcome.machine.displayName,
+    };
+    this.store.put(this.userId, credential);
+    this.credential = credential;
+    if (hasIdentity(this.transport)) this.transport.useToken(credential.token);
+    this.setBar({
+      kind: "pair_ok",
+      machine: { displayName: credential.displayName, hostname: this.machine.hostname },
+    });
+    this.announceIdentityChanged();
+    if (!this.running) await this.start();
+    return true;
   }
 
   /**
-   * Quién hace el inicio de sesión por el navegador — spec 009, 2ª enmienda.
+   * Cómo se inicia sesión de verdad — spec 009, 2ª enmienda.
    *
    * Se inyecta porque al otro lado hay un oyente en loopback, un navegador del
    * sistema y el `fetch` de una partición de Electron; y el runtime se prueba
@@ -341,8 +413,11 @@ export class AppRuntime {
    *
    * **Este método hace muy poco a propósito.** Ni genera el PKCE, ni levanta el
    * oyente, ni ve ningún token: pide que ocurra y, si sale bien, anuncia que la
-   * identidad cambió para que la puerta vuelva a derivar el veredicto — el
-   * mismo camino que `pair()`.
+   * identidad cambió para que la puerta vuelva a derivar el veredicto.
+   *
+   * Y desde la spec 012 ese veredicto hace más: si la máquina no está
+   * registrada, `applyGate` la registra con la sesión que acaba de confirmarse.
+   * Entrar deja la máquina lista, que era el trabajo del código retirado.
    *
    * Que falle no es una avería: cerrar la pestaña del navegador es una decisión
    * y se cuenta como estado, nunca en rojo.
