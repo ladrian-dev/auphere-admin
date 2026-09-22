@@ -1,6 +1,6 @@
 {
   "name": "@nexus/desktop",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "type": "module",
   "description": "Partner-machine shell. The bridge is outbound-only: nothing from the internet reaches the partner's machine. The one exception is a short-lived loopback listener on 127.0.0.1 that receives the sign-in redirect (RFC 8252); it closes when the sign-in ends.",
