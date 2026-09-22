@@ -186,3 +186,48 @@ class LowStockOutput(OutputModel):
     items: list[ProductVariant] = Field(
         description="Variantes a reponer, las más críticas primero."
     )
+
+
+# ── inventory.register_sale ────────────────────────────────────────────────
+
+
+class RegisterSaleInput(InputModel):
+    sku: str = Field(
+        min_length=1,
+        description=(
+            "SKU EXACTO de la variante que se vende (ej. 'FARM-00005'), tal como "
+            "aparece en el catálogo. Cada variante tiene su propio precio y stock, "
+            "por eso la venta se registra por SKU y no por nombre de producto."
+        ),
+    )
+    cantidad: int = Field(
+        ge=1,
+        description="Número de unidades a vender. Debe ser 1 o más.",
+    )
+
+
+class RegisterSaleOutput(OutputModel):
+    vendido: bool = Field(description="True solo si la venta se registró y el stock se descontó.")
+    encontrado: bool = Field(description="False si el SKU no existe en el catálogo.")
+    sku: str = Field(description="SKU consultado.")
+    nombre: str | None = Field(default=None, description="Nombre del producto vendido.")
+    cantidad: int = Field(default=0, description="Unidades solicitadas.")
+    precio_usd: float | None = Field(
+        default=None, description="Precio unitario de venta (USD) de esta variante."
+    )
+    importe_usd: float | None = Field(
+        default=None, description="Importe total de la venta (precio_usd por cantidad)."
+    )
+    stock_anterior: int | None = Field(
+        default=None, description="Unidades que había antes de la venta."
+    )
+    stock_actual: int | None = Field(
+        default=None, description="Unidades que quedan después de la venta."
+    )
+    motivo: str | None = Field(
+        default=None,
+        description=(
+            "Por qué NO se vendió, cuando vendido=false: 'sku_no_encontrado' o "
+            "'stock_insuficiente'. Null si la venta se hizo."
+        ),
+    )
