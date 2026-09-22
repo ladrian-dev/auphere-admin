@@ -527,14 +527,28 @@ async def test_list_orders_filters(fake_client, tenant_ctx):
         [{"id": 1, "number": "1", "status": "processing", "currency": "CLP", "total": "100"}],
         PaginationMeta(page=1, per_page=20, total_count=1, total_pages=1, has_more=False),
     )
-    await ListOrders().invoke({"status": "processing", "customer": 9})
+    await ListOrders().invoke({"status": "processing"})
     params = fake_client.calls[0][1]["params"]
     assert params["status"] == "processing"
-    assert params["customer"] == 9
     # None fields are dropped — the base client does this.
     # The fake just records what the tool passed; sanity-check no
     # surprise extras are present.
     assert "search" in params  # tool always passes the key; base filters None
+
+
+async def test_list_orders_no_longer_lets_the_model_pick_a_customer(fake_client, tenant_ctx):
+    """Este test **sustituye** a una aserción anterior, y conviene decir por qué.
+
+    Hasta el 2026-09-22 la prueba de arriba comprobaba que ``customer=9`` viajaba
+    hasta WooCommerce: se leía como «el filtro funciona». Funcionaba, y ése era
+    el problema — el 9 lo elige el modelo, y al modelo le escribe quien manda el
+    mensaje (garantía 8).
+
+    Ahora el eje de cliente no es un argumento, así que colarlo es un error de
+    validación y no un filtro que alguien creyó suyo.
+    """
+    with pytest.raises(Exception):  # noqa: B017 — ValidationError envuelto por invoke
+        await ListOrders().invoke({"status": "processing", "customer": 9})
 
 
 async def test_list_categories_returns_count(fake_client, tenant_ctx):

@@ -1,10 +1,16 @@
-"""El octavo eje: dentro de un tenant, cada cliente final ve lo suyo.
+"""Garantía 8, en el eje de reservas: dentro de un tenant, cada cliente ve lo suyo.
 
-Las siete garantías de `architecture/agent-isolation.md` cortan **entre
+Las siete primeras garantías de `architecture/agent-isolation.md` cortan **entre
 tenants**. Este fichero cubre el eje que ninguna de ellas mira: dos clientes
 finales **del mismo negocio**. La RLS no ayuda aquí —las dos citas son del
 mismo tenant y son legítimamente suyas—, así que la única frontera es qué
 cliente resuelve la herramienta, y de dónde lo saca.
+
+Cuando se escribió, ese eje no estaba declarado en ninguna parte: este fichero
+bloqueaba merges sin colgar de ninguna garantía. Desde la spec 014 es **la
+octava**, y `test_37_customer_axis_contract.py` la vigila en todos los servidores
+a la vez. Aquí se prueba el comportamiento con clientes de verdad; allí, que
+ninguna firma deje que el modelo elija persona.
 
 La regla, que ya estaba escrita en dos sitios del código antes de que este
 fichero existiera:

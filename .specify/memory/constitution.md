@@ -13,17 +13,27 @@ procedimiento de §Gobernanza.
 
 ## Principios
 
-### I. El aislamiento entre tenants es la base, no una feature
+### I. El aislamiento es la base, no una feature
 
-Ningún cambio puede debilitar las 7 garantías de aislamiento de
+Ningún cambio puede debilitar las **8 garantías** de aislamiento de
 `architecture/agent-isolation.md`. El `tenant_id` **nunca** llega del llamante:
 se toma del contexto de petición (`SET LOCAL app.tenant_id`) y la RLS decide.
 La lista blanca de herramientas es exhaustiva y por tenant: **no hay globales**.
 
-Consecuencia obligatoria para toda spec: si abre, toca o roza una frontera de
-tenant, la spec **declara** qué garantía toca y el plan **incluye** el test de
-aislamiento correspondiente. Un test de aislamiento en rojo bloquea el merge.
-Sin excepciones y sin "lo añadimos después".
+**Hay dos ejes, no uno.** Las siete primeras separan negocios y las decide la
+RLS. La octava —añadida el 2026-09-22 tras un incidente, spec 014— separa a dos
+clientes finales **del mismo negocio**, que es donde la RLS no llega porque las
+dos filas son legítimamente del mismo tenant. Ahí la regla es la misma un nivel
+más abajo: el cliente del turno lo resuelve el servidor y **no es un argumento**.
+
+Consecuencia obligatoria para toda spec: si abre, toca o roza una frontera —de
+tenant o de persona—, la spec **declara** qué garantía toca y el plan **incluye**
+el test de aislamiento correspondiente. Un test de aislamiento en rojo bloquea el
+merge. Sin excepciones y sin "lo añadimos después".
+
+Y una lección que costó un incidente y medio: **un arreglo que se aplica donde se
+vio el defecto deja el defecto donde no se miró.** El test de una garantía nueva
+no enumera los sitios conocidos — barre, y deja que el código diga dónde más vive.
 
 ### II. El corte es por superficie de confianza, no por feature
 

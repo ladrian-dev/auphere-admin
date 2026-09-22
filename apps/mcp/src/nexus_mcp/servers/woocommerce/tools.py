@@ -31,6 +31,7 @@ from typing import Any, ClassVar
 
 import structlog
 from nexus_api.core.tenant_context import (
+    get_current_customer,
     require_current_tenant,
     tenant_scoped_session,
 )
@@ -41,9 +42,16 @@ from nexus_api.db.models import (
     TenantConnectorStatus,
     TenantCredentials,
 )
+
+# ``Customer`` a secas, en este módulo, ya es el cliente **de la tienda** (el
+# modelo de salida de WooCommerce, importado más abajo desde `schemas`).
+# ``NexusCustomer`` es nuestra fila, que es otra cosa y vive en otra base de
+# datos. Confundir las dos es justo el error que este servidor tenía.
+from nexus_api.db.models import Customer as NexusCustomer
 from sqlalchemy import select
 
 from nexus_mcp.base import ToolBase, ToolError
+from nexus_mcp.servers.woocommerce._ownership import order_belongs_to, own_orders
 from nexus_mcp.servers.woocommerce.client import WooCommerceClient
 from nexus_mcp.servers.woocommerce.errors import (
     WooCommerceAuthError,
@@ -508,6 +516,31 @@ class _WooTool(ToolBase):
         return await _resolve_client(require_current_tenant())
 
 
+async def _person_of_the_turn() -> tuple[str | None, str | None] | None:
+    """Cómo se contacta a quien escribe, o None si no escribe un cliente.
+
+    Devuelve ``(teléfono, correo)`` **de nuestra fila**, que es lo único que
+    puede compararse contra un pedido de la tienda. None significa turno sin
+    cliente resuelto — de operador, o una regresión del runtime; en los dos
+    casos, filtrar por nadie no es lo mismo que no filtrar.
+    """
+    customer_id = get_current_customer()
+    if customer_id is None:
+        return None
+
+    tenant_id = require_current_tenant()
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        row = await session.get(NexusCustomer, customer_id)
+        if row is None:
+            # La RLS ya resolvió el tenant; que no haya fila es un estado que
+            # no debería existir. Falla cerrado.
+            return (None, None)
+        prefs = row.preferences if isinstance(row.preferences, dict) else {}
+        email = prefs.get("email")
+        return (row.identifier, email if isinstance(email, str) else None)
+
+
 # ── read-only tools ──────────────────────────────────────────────────────
 
 
@@ -669,24 +702,40 @@ class ListOrders(_WooTool):
 
     async def run(self, payload: ListOrdersInput) -> ListOrdersOutput:  # type: ignore[override]
         client = await self._client()
+        person = await _person_of_the_turn()
         items_raw, meta = await client.list_paginated(
             "/orders",
             page=payload.page,
             per_page=payload.per_page,
             extra_params={
                 "status": payload.status,
-                "customer": payload.customer,
                 "after": payload.after,
                 "before": payload.before,
                 "search": payload.search,
             },
         )
+        total_count, total_pages = meta.total_count, meta.total_pages
+        if person is not None:
+            # El filtro se aplica aquí y no en la consulta porque WooCommerce
+            # solo sabe filtrar por su propio id de usuario, que un pedido de
+            # invitado no tiene. Consecuencia conocida: la página puede quedar
+            # corta o vacía. Es un recuento incómodo, no una fuga.
+            phone, email = person
+            items_raw = own_orders(items_raw, phone=phone, email=email)
+            # Y los totales se apagan, que es lo único cierto. Los de la tienda
+            # cuentan los pedidos de **todo el mundo**: decírselos a un cliente
+            # final es la misma fuga un nivel más arriba —cardinalidad del
+            # negocio— y además le haría pedir páginas que no son suyas. Un
+            # total propio no lo sabemos: solo vemos esta página. El campo
+            # admite None precisamente para esto, «so the LLM … won't claim
+            # "there are 3 X" when there are actually 300».
+            total_count, total_pages = None, None
         return ListOrdersOutput(
             items=[_order_summary(o) for o in items_raw],
             page=meta.page,
             per_page=meta.per_page,
-            total_count=meta.total_count,
-            total_pages=meta.total_pages,
+            total_count=total_count,
+            total_pages=total_pages,
             has_more=meta.has_more,
         )
 
@@ -703,7 +752,15 @@ class GetOrder(_WooTool):
 
     async def run(self, payload: GetOrderInput) -> GetOrderOutput:  # type: ignore[override]
         client = await self._client()
+        person = await _person_of_the_turn()
         data = await client.get_resource(f"/orders/{payload.id}")
+        if person is not None:
+            phone, email = person
+            if not order_belongs_to(data, phone=phone, email=email):
+                # Misma respuesta que para un número que no existe. Decir «ese
+                # pedido no es tuyo» convierte contar hasta mil en un censo de
+                # la tienda, con dirección de envío incluida.
+                raise WooCommerceNotFound(f"no order with id={payload.id}", status_code=404)
         return GetOrderOutput(order=_order_detail(data))
 
 

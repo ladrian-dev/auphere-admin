@@ -163,7 +163,12 @@ const core = {
   "login.emailInvalid": { es: "Introduce un correo válido.", en: "Enter a valid e-mail." },
   "login.tooMany": { es: "Demasiados intentos. Espera un minuto y vuelve a probar.", en: "Too many attempts. Wait a minute and try again." },
   "login.passwordRequired": { es: "Introduce tu contraseña.", en: "Enter your password." },
-  "login.forgot": { es: "¿Has olvidado la contraseña? Escríbenos.", en: "Forgot your password? Contact us." },
+  // Decía «Escríbenos», sin enlace y sin dirección: una salida que no lleva a
+  // ninguna parte. Y mientras tanto, quien tiene Google podía entrar con el
+  // botón de arriba, porque el vínculo se hace por correo verificado. Hasta que
+  // exista el restablecimiento (evaluación `recuperar-la-contrasena`), esto
+  // dice las dos verdades: la vía que hay y la que no.
+  "login.forgot": { es: "¿Has olvidado la contraseña? Si tu cuenta tiene Google, el botón de arriba te reconoce por tu correo. Si no, restablecerla todavía no es posible desde aquí: pídeselo a Auphere.", en: "Forgot your password? If your account has Google, the button above recognises you by your e-mail. Otherwise there is no way to reset it here yet — ask Auphere." },
   "login.footer": { es: "Auphere", en: "Auphere" },
   "noAccess.title": { es: "Tu cuenta no tiene acceso a ningún partner", en: "Your account has no partner access" },
   "noAccess.body": { es: "Pide a un propietario o administrador de tu partner que te invite, o vuelve a intentarlo con la cuenta correcta.", en: "Ask an owner or admin of your partner to invite you, or try again with the right account." },

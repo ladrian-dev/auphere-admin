@@ -355,8 +355,10 @@ class OrderDetail(OutputModel):
 
 
 class ListOrdersInput(InputModel):
+    # Sin `customer`: el cliente del turno lo resuelve el servidor, no el
+    # modelo (garantía 8 — architecture/agent-isolation §8). `extra="forbid"`
+    # hace que colarlo sea un error de validación, no un filtro ignorado.
     status: OrderStatus | None = None
-    customer: int | None = Field(default=None, ge=0)
     after: str | None = Field(
         default=None,
         description="ISO 8601 — list orders created after this datetime.",

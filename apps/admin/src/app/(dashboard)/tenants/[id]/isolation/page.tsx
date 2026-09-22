@@ -88,12 +88,21 @@ export default async function IsolationPage({
           aria-hidden="true"
         />
         <div className="text-sm">
-          <p className="font-medium">7 garantías estructurales activas.</p>
+          <p className="font-medium">
+            7 garantías entre tenants, activas.
+          </p>
           <p className="text-muted-foreground">
             Cada garantía tiene tests bloqueantes en CI y un contador en
             tiempo real de violaciones de las últimas 24 horas. El primer
             indicador se mantiene en memoria porque la violación ocurriría
             antes de poder atribuirla a un tenant.
+          </p>
+          <p className="text-muted-foreground mt-2">
+            Hay una octava —cada cliente final ve lo suyo dentro de su
+            negocio— que no aparece aquí y no debe: su fallo no ocurre en
+            ejecución sino al escribir una firma de herramienta, así que un
+            contador marcaría cero también el día que vuelva. La vigila un
+            barrido en CI.
           </p>
         </div>
       </div>

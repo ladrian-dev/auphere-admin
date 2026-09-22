@@ -1,6 +1,6 @@
 """Por el resumen de un run viaja texto, y el texto tiene dueño — spec 013.
 
-**Esta no es una de las siete garantías**, y decirlo importa: la 013 no toca
+**Esta no es ninguna de las ocho garantías**, y decirlo importa: la 013 no toca
 ninguna. Lo que hace es cambiar de naturaleza una respuesta que ya existía.
 Hasta ahora `GET …/threads/{id}/runs` devolvía cuatro campos de metadatos —id,
 estado y dos fechas—; desde la 013 devuelve **lo que una persona escribió**.
