@@ -9,7 +9,7 @@
  * confirmación y se dice **antes** lo que pasa: no se borra nada y los hilos
  * siguen legibles. «Borrar» no existe en el producto (R2.6) y la base lo revoca.
  */
-import { Button, Input, Label } from "@nexus/ui";
+import { Button, Input, Label, Textarea } from "@nexus/ui";
 import * as React from "react";
 
 import type { Teammate } from "../bridge";
@@ -21,12 +21,14 @@ import {
   type SubmitResult,
   type TeammatePermissions,
   NAME_MAX,
+  INSTRUCTIONS_MAX,
   isKnownError,
 } from "./new-teammate";
 
 export type TeammatePatch = {
   name?: string;
   job?: string;
+  instructions?: string | null;
   model?: string;
   permissions?: TeammatePermissions;
   local_exec?: boolean;
@@ -52,6 +54,7 @@ export function TeammateSettings({
   const t = useAppT();
   const [name, setName] = React.useState(teammate.name);
   const [job, setJob] = React.useState(teammate.job);
+  const [instructions, setInstructions] = React.useState(teammate.instructions ?? "");
   const [model, setModel] = React.useState(teammate.model);
   const [permissions, setPermissions] = React.useState<TeammatePermissions>(teammate.permissions);
   const [localExec, setLocalExec] = React.useState(teammate.local_exec);
@@ -82,6 +85,9 @@ export function TeammateSettings({
   const patch: TeammatePatch = {
     ...(name.trim() !== teammate.name ? { name: name.trim() } : {}),
     ...(job.trim() !== teammate.job ? { job: job.trim() } : {}),
+    ...(instructions.trim() !== (teammate.instructions ?? "")
+      ? { instructions: instructions.trim() }
+      : {}),
     ...(model !== teammate.model ? { model } : {}),
     ...(samePermissions ? {} : { permissions, local_exec: localExec }),
   };
@@ -160,6 +166,27 @@ export function TeammateSettings({
           ))}
         </datalist>
         <p className="text-xs text-pretty text-muted-foreground">{t("settings.jobHint")}</p>
+      </div>
+
+      {/* Instrucciones propias (spec 015, R6). Opcional; vacío no es pendiente. */}
+      <div className="flex min-w-0 flex-col gap-2">
+        <Label htmlFor="settings-instructions">{t("create.instructions")}</Label>
+        <Textarea
+          id="settings-instructions"
+          value={instructions}
+          rows={4}
+          maxLength={INSTRUCTIONS_MAX}
+          placeholder={t("create.instructions.placeholder")}
+          onChange={(e) => setInstructions(e.target.value.slice(0, INSTRUCTIONS_MAX))}
+        />
+        <p className="min-w-0 text-xs text-pretty text-muted-foreground">
+          {t("create.instructions.hint")}
+        </p>
+        {instructions.length > INSTRUCTIONS_MAX - 200 ? (
+          <p className="text-xs text-status-warning">
+            {t("create.instructions.tooLong", { max: INSTRUCTIONS_MAX, n: instructions.length })}
+          </p>
+        ) : null}
       </div>
 
       <fieldset className="flex min-w-0 flex-col gap-2">

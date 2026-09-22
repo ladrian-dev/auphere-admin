@@ -36,6 +36,15 @@ class TeammateIn(BaseModel):
     model: str = Field(min_length=1, max_length=200)
     permissions: PermissionsIn = Field(default_factory=PermissionsIn)
     local_exec: bool = False
+    #: Lo que el partner escribió sobre cómo trabaja este teammate (spec 015).
+    #: **El tope vive aquí y no en la base**: un tope de producto que cambie no
+    #: debería exigir una migración. 4.000 son ~1.000 tokens, que caben en el
+    #: bloque de identidad sin acercarse al tamaño del texto compartido.
+    #:
+    #: No amplía permisos. Lo que el teammate puede hacer lo siguen decidiendo
+    #: los interruptores, y hay un test de aislamiento que lo intenta a
+    #: propósito (`tests/isolation/test_41_instructions_do_not_widen.py`).
+    instructions: str | None = Field(default=None, max_length=4000)
 
 
 class TeammatePatchIn(BaseModel):
@@ -44,6 +53,9 @@ class TeammatePatchIn(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=200)
     permissions: PermissionsIn | None = None
     local_exec: bool | None = None
+    #: `None` significa «no lo toques»; cadena vacía, «bórralas». Son cosas
+    #: distintas y el formulario tiene que poder decir las dos.
+    instructions: str | None = Field(default=None, max_length=4000)
 
 
 class TeammateOut(BaseModel):
@@ -54,6 +66,7 @@ class TeammateOut(BaseModel):
     tool_names: list[str]
     permissions: dict[str, Any]
     local_exec: bool
+    instructions: str | None = None
     status: str
     created_at: datetime
     archived_at: datetime | None = None

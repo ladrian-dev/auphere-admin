@@ -209,6 +209,79 @@ Lo que **no** se comparte es lo que solo tiene sentido en un sitio: el roster,
 Pendientes, Cuenta y el panel de entorno son de la aplicación; la página de
 equipo con el techo de ejecución es de la consola.
 
+## Qué sabe un teammate de sí mismo (spec 015)
+
+Cada turno le llegan **tres** bloques de sistema, y cuál va dónde no es
+estético:
+
+| # | Bloque | ¿Cacheado? | Por qué ahí |
+|---|---|---|---|
+| 1 | El texto compartido con el Companion | **Sí**, corte 1 | Idéntico para todos: se escribe **una vez** y lo leen todos los teammates |
+| 2 | **Su identidad** | **Sí**, corte 2 | Cambia por teammate pero **no dentro de un hilo** |
+| n | **Su entorno** | No | Cambia cada minuto: arriba invalidaría el corte 2 en cada turno |
+
+La identidad estaba antes pegada delante del bloque de conocimiento, que se
+añade **después de la historia entera**. En un hilo de cuarenta mensajes llegaba
+en la posición 42 mientras «Eres el Companion de Auphere» seguía en la 1: el
+teammate sonaba más genérico cuanto más se trabajaba con él.
+
+**Los dos puntos de corte no son un detalle de implementación.** Sin el corte 1,
+la identidad —que varía por teammate— arrastra consigo los 7 KB compartidos y
+cada teammate escribe su propia copia. Está detrás de `split_header`, **apagado
+por defecto**: el agente de canal y los dos playgrounds comparten ese proveedor
+y son carga viva.
+
+### Lo que dice tener es lo que tiene
+
+La descripción de capacidades **se deriva de `for_teammate`**, el mismo cálculo
+que decide qué herramientas recibe. No hay una segunda lista: que existieran dos
+formas de contestar «qué tiene este teammate» era el defecto.
+
+El texto compartido **ya no afirma capacidades**. No puede: es idéntico para
+todos, y afirmar desde ahí era falso en tres de las cinco combinaciones de
+interruptores — un teammate de solo-publicar tiene **dos** herramientas y se le
+prometían 26; en modo consulta tiene **cero** y se le seguían prometiendo las
+dos familias enteras.
+
+Lo vigila `tests/isolation/test_40_prompt_matches_catalog.py`, que recorre las
+**128 combinaciones** enteras. Y **no busca nombres de herramienta citados en el
+prompt**: se comprobó que eso da cero hallazgos —el texto cita tres nombres y
+los tres existen—, así que habría nacido en verde vigilando nada.
+
+## La frontera: qué se obedece y qué se lee
+
+El principio §III dice que **lo leído es dato, nunca instrucción**. La spec 015
+añade un campo donde el partner escribe instrucciones que el teammate obedece, y
+eso obliga a escribir la línea que hasta ahora estaba cruzada sin decirlo.
+
+**Lo que el partner configura es instrucción, a propósito.** El oficio y las
+instrucciones propias se obedecen. La razón es de coherencia y no de comodidad:
+ese mismo partner ya escribe **entero** el prompt del agente que atiende a sus
+clientes finales, que es mucho más poder que esto. Negarle instrucciones para su
+propio teammate mientras se le da el prompt del agente de su cliente sería una
+frontera sin sentido.
+
+**Lo que el teammate lee es dato, siempre.** Ficheros, salidas de programas,
+contexto de pantalla, resultados de herramienta: todo eso sigue vallado con
+`fence_only`, y el bloque de identidad lo repite en su última frase.
+
+> **Esto regulariza `job`.** El campo lleva desde la spec 003 metiendo 80
+> caracteres escritos por el partner dentro de un `role: "system"` **sin que
+> ninguna spec lo dijera**. No es un defecto que la 015 introduzca: es uno
+> existente que pasa de supuesto a escrito.
+
+### Contra quién NO protege, dicho en voz alta
+
+**No protege del partner comprometido.** Quien controle una cuenta con permiso
+para editar teammates puede escribirles instrucciones, igual que hoy puede
+reescribir el prompt del agente de su cliente. Esa mitigación es de otra capa
+—autenticación, permisos, auditoría— y esta spec ni la mejora ni la empeora.
+
+Lo que sí garantiza, con test de aislamiento que lo intenta a propósito
+(`tests/isolation/test_41_instructions_do_not_widen.py`): **las instrucciones no
+amplían el catálogo**. Que el partner lo pida por escrito —o que el modelo se lo
+crea— no cambia quién decide, que sigue siendo `for_teammate`.
+
 ## Comportarse como una aplicación
 
 Instancia única (`requestSingleInstanceLock`: dos instancias serían dos puentes

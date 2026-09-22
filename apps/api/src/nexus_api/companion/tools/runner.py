@@ -195,16 +195,28 @@ class CompanionToolbelt:
         started = time.perf_counter()
         spec = TOOLS_BY_NAME.get(name)
         if spec is None:
-            # El modelo se inventó una herramienta. Pasa, y la respuesta
-            # tiene que decirle qué existe en vez de dejarlo adivinando.
+            # El modelo se inventó una herramienta. Pasa, y la respuesta tiene
+            # que decirle qué tiene en vez de dejarlo adivinando.
+            #
+            # **Las suyas, no las 44 del catálogo** (spec 015, R2.6). La
+            # intención de antes era buena y el sujeto estaba equivocado: le
+            # decía qué existe *en Auphere*, no qué tiene *él*. Enumerarle
+            # herramientas que no puede llamar es fuga de superficie y una
+            # invitación a reintentar con otra que tampoco tiene.
+            suyas = (
+                sorted(self.allowed_tools)
+                if self.allowed_tools is not None
+                else sorted(TOOLS_BY_NAME)
+            )
+            detalle = (
+                "Las que tienes son: " + ", ".join(suyas)
+                if suyas
+                else "No tienes ninguna herramienta en este modo: dilo y no lo intentes."
+            )
             return self._failed(
                 name,
                 name,
-                ToolError(
-                    "unknown_tool",
-                    f"No existe la herramienta {name!r}. Las que tienes son: "
-                    + ", ".join(sorted(TOOLS_BY_NAME)),
-                ),
+                ToolError("unknown_tool", f"No existe la herramienta {name!r}. {detalle}"),
                 started,
             )
 

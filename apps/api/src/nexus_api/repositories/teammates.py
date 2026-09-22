@@ -53,6 +53,10 @@ class TeammateRepository:
         permissions: dict[str, Any],
         local_exec: bool,
         created_by: str,
+        #: Spec 015, R6. **Nulo por defecto**: nulo es «no escritas», que es lo
+        #: que tienen los teammates anteriores a la spec, y de esa distinción
+        #: depende que sigan comportándose igual.
+        instructions: str | None = None,
     ) -> Teammate:
         row = Teammate(
             id=uuid.uuid4(),
@@ -63,6 +67,7 @@ class TeammateRepository:
             tool_names=list(tool_names),
             permissions=dict(permissions),
             local_exec=local_exec,
+            instructions=instructions,
             status=TEAMMATE_ACTIVE,
             created_by=created_by,
         )

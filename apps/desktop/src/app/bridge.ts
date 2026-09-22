@@ -29,6 +29,14 @@ export type Teammate = {
   tool_names: string[];
   permissions: { read: boolean; write: boolean; spend: boolean; publish: boolean; contact: boolean };
   local_exec: boolean;
+  /**
+   * Cómo trabaja este teammate, escrito por el partner (spec 015, R6).
+   *
+   * `null` es **«no escritas»**, que es lo que tienen los teammates anteriores
+   * a la spec — y no es lo mismo que cadena vacía, que significa «bórralas».
+   * De esa distinción depende que nadie tenga que reconfigurar nada.
+   */
+  instructions: string | null;
   status: "active" | "archived";
   my_state: MyState;
   my_unread: boolean;
@@ -76,7 +84,13 @@ export type Jobs = { jobs: string[]; models: Array<{ id: string; note: string; c
 /** Una nota de «este teammate cambió» (R2.4). Sin valores: solo qué y quién. */
 export type TeammateChange = {
   id: string;
-  fields: Array<"job" | "permissions" | "local_exec" | "model">;
+  /**
+   * El mismo vocabulario vive en **cuatro sitios y dos lenguajes**, sin
+   * constante compartida: el `CHECK` de `teammate_changes`, esta unión, los
+   * textos `changes.field.*` y la frase que los enumera. Crecen a la vez o las
+   * notas de cambio mienten (o revientan al guardar).
+   */
+  fields: Array<"job" | "permissions" | "local_exec" | "model" | "instructions">;
   by: string | null;
   at: string;
 };

@@ -35,6 +35,7 @@ const NILO: Teammate = {
   tool_names: ["console.whoami"],
   permissions: { read: true, write: false, spend: false, publish: false, contact: false },
   local_exec: false,
+  instructions: null,
   status: "active",
   my_state: "en_espera",
   my_unread: false,

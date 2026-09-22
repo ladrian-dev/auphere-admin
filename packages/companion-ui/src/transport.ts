@@ -105,6 +105,24 @@ export function createFetchTransport(base: string, fetchImpl?: typeof fetch): Tr
   };
 }
 
+/**
+ * La zona horaria de quien escribe — spec 015, R5.3.
+ *
+ * La manda el cliente porque **en la base no existe**: ni el partner ni la
+ * persona tienen columna de zona, solo el cliente final. Y el navegador ya la
+ * sabe sin preguntar.
+ *
+ * Si el entorno no la da, se manda `null` y el servidor cae a UTC **diciéndolo**
+ * — nunca fingiendo que sabe la hora local.
+ */
+function localTimezone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
 export function makeCompanionClient(transport: Transport) {
   const enc = encodeURIComponent;
   const call = <T,>(path: string, init?: RequestInitLite) => transport.request<T>(path, init);
@@ -120,7 +138,7 @@ export function makeCompanionClient(transport: Transport) {
     startRun: (threadId: string, prompt: string, pageContext: PageContext | null) =>
       call<CompanionRunStarted>(`/threads/${enc(threadId)}/runs`, {
         method: "POST",
-        body: JSON.stringify({ prompt, page_context: pageContext }),
+        body: JSON.stringify({ prompt, page_context: pageContext, timezone: localTimezone() }),
       }),
     runEvents: (runId: string, sinceSeq = 0) =>
       call<CompanionEvents>(`/runs/${enc(runId)}/events?since_seq=${sinceSeq}`),

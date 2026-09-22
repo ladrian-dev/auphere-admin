@@ -34,9 +34,13 @@ export function ChangeNotes({ changes }: { changes: TeammateChange[] }) {
 }
 
 /**
- * «el oficio», «el oficio y los permisos», «el oficio, los permisos y el
- * modelo». Con `Intl.ListFormat` y no con comas a mano: la conjunción y la
- * coma final cambian entre idiomas, y la app ya habla dos.
+ * «el oficio», «el oficio y los permisos», «el oficio, los permisos y sus
+ * instrucciones». Con `Intl.ListFormat` y no con comas a mano: la conjunción y
+ * la coma final cambian entre idiomas, y la app ya habla dos.
+ *
+ * La clave se arma en tiempo de ejecución, así que un campo nuevo solo necesita
+ * su texto en `i18n.ts` — pero el `CHECK` de la base y la unión de `bridge.ts`
+ * **no** se enteran solos. Son cuatro sitios y crecen juntos.
  */
 export function listFields(
   fields: TeammateChange["fields"],

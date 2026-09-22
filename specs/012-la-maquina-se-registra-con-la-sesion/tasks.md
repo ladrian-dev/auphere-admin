@@ -278,7 +278,7 @@ cliente, no un panel de estado.
 
 - [X] T056 [P] Pasar los cuatro gates de interfaz del `CLAUDE.md` del workspace —estados, accesibilidad, responsive y tokens— sobre las pantallas tocadas en la consola y en el escritorio. _Requisitos: 5.1, 2.1_
 
-- [ ] T057 Ejecutar **`./scripts/verify.sh` entero**: lint (`ruff` + `mypy --strict`), py y js. Este cambio toca API, consola y escritorio a la vez, que es exactamente donde este repositorio ha roto la tubería dos veces — y las dos por no correr el worker, `mypy --strict`, el paquete compartido o el `next build`. **Una sola ejecución de pytest a la vez.** _Requisitos: —_
+- [X] T057 Ejecutar **`./scripts/verify.sh` entero**: lint (`ruff` + `mypy --strict`), py y js. Este cambio toca API, consola y escritorio a la vez, que es exactamente donde este repositorio ha roto la tubería dos veces — y las dos por no correr el worker, `mypy --strict`, el paquete compartido o el `next build`. **Una sola ejecución de pytest a la vez.** _Requisitos: —_
 
 - [ ] T058 Recorrer `quickstart.md` entero a mano, con la aplicación de verdad y una máquina de verdad. **Lo que salga de ahí manda sobre lo que digan los tests.** Lo firma Luis. _Requisitos: 1.1, 2.1, 3.1, 4.1, 5.1, 6.1_
 
@@ -582,6 +582,16 @@ esa lista ni en la de T052b, que solo retiró las dos suites enteras:
    interesante. Afirmaba que `/device/pair` estaba montado **sin credencial**,
    con su excepción escrita y justificada. Al irse el código, esa excepción se
    queda sin caso: **el puente no tiene ya ninguna puerta sin llave.**
+
+**T057 cerrada. Verde, y esta vez la lista entera**: 3.666 de la API · 419 del
+worker · 53 de canales · 113 de MCP · 86 de `@nexus/ui` · 188 de companion-ui ·
+288 de la consola · 949 del escritorio · 123 del panel · `next build` · `ruff` y
+`mypy --strict` en las cuatro aplicaciones de Python · lockfile al día. «Todo
+verde. La tubería debería pasar.»
+
+Queda **T058**, el recorrido manual del quickstart, que firma Luis. Es lo único
+que no puede hacer nadie más: lo que salga de ahí manda sobre lo que digan los
+tests.
 
 El tercero no se retira — se le da la vuelta. `UNAUTHENTICATED_BY_DESIGN` sigue
 existiendo, vacío, y el test afirma que está vacío. Su trabajo es el mismo que

@@ -47,6 +47,7 @@ import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from fastapi.responses import StreamingResponse
+from nexus_worker.runtime.turn_clock import turn_environment
 from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -983,6 +984,7 @@ async def start_run(
     # Spec 003: el catálogo y la identidad del teammate, leídos bajo el partner.
     allowed_tools: frozenset[str] | None = None
     teammate_prompt: str | None = None
+    teammate_environment: str | None = None
     teammate_model: str | None = None
     if teammate_id is not None:
         teammate = await _require_teammate(session, partner.id, principal_id, teammate_id)
@@ -990,11 +992,22 @@ async def start_run(
         allowed_tools = frozenset(
             for_teammate(teammate, mode=mode, machine_present=machine_present)
         )
-        teammate_prompt = system_prompt_for(teammate)
+        # `mode` y `machine_present` entran porque **lo que el teammate puede
+        # hacer depende de los dos** (spec 015, R2). Decírselo sin mirarlos era
+        # el defecto: el prompt prometía dos familias enteras sin comprobar si
+        # las tenía, y era falso en tres de las cinco combinaciones.
+        teammate_prompt = system_prompt_for(teammate, mode=mode, machine_present=machine_present)
         # El cerebro que el partner eligió para ESTE teammate. Hasta ahora se
         # guardaba, se validaba contra su lista y el run lo ignoraba: todos
         # corrían con ``settings.llm_companion_model``.
         teammate_model = teammate.model
+        # El entorno del turno (spec 015, R5). Viaja **aparte** de la identidad
+        # y se inserta lo último antes del mensaje de la persona: cambia cada
+        # minuto, así que arriba invalidaría el corte 2 del caché en cada turno.
+        teammate_environment = turn_environment(
+            timezone_name=body.timezone,
+            machine_present=machine_present,
+        )
 
     driver = _make_driver(
         principal=caller.principal,
@@ -1003,6 +1016,7 @@ async def start_run(
         tenant_id=tenant_id,
         allowed_tools=allowed_tools,
         teammate_prompt=teammate_prompt,
+        teammate_environment=teammate_environment,
         teammate_model=teammate_model,
         task_id=task_id,
         user_message=body.prompt,
@@ -1168,6 +1182,7 @@ def _make_driver(
     support_action: uuid.UUID | None = None,
     allowed_tools: frozenset[str] | None = None,
     teammate_prompt: str | None = None,
+    teammate_environment: str | None = None,
     teammate_model: str | None = None,
     task_id: uuid.UUID | None = None,
 ) -> streaming.CompanionDriver:
@@ -1226,12 +1241,12 @@ def _make_driver(
         except Exception as exc:
             log.warning("companion.knowledge_load_failed", error=type(exc).__name__)
             knowledge_context = ""
-        if teammate_prompt:
-            # La identidad del teammate viaja como mensaje de sistema FUERA del
-            # prefijo cacheado, igual que el conocimiento (spec 003, D1).
-            knowledge_context = teammate_prompt + (
-                "\n\n" + knowledge_context if knowledge_context else ""
-            )
+        # La identidad **ya no viaja pegada al conocimiento** (spec 015, R1).
+        # Iba delante de él, y el conocimiento se añade después de la historia
+        # entera: en un hilo de cuarenta mensajes la identidad llegaba en la
+        # posición 42. Ahora es un mensaje propio en la 2, con su punto de
+        # corte de caché, y el conocimiento se queda donde le toca — cerca del
+        # turno, que es lo que es: material de consulta.
         state = {
             "thread_id": str(thread_id),
             "principal": {
@@ -1241,6 +1256,8 @@ def _make_driver(
             },
             "page_context": page_context,
             "knowledge_context": knowledge_context,
+            "identity": teammate_prompt,
+            "environment": teammate_environment,
             "history": history,
             "user_message": user_message,
             "total_input_tokens": 0,
@@ -1717,7 +1734,14 @@ def _get_provider() -> Any:
         # cachear crece de forma cuadrática. El agente de cliente y los
         # playgrounds comparten la clase pero construyen su propio proveedor,
         # así que su comportamiento no cambia.
-        _provider = LiteLLMProvider(timeout_s=get_settings().llm_improve_timeout_s, cache_tail=True)
+        _provider = LiteLLMProvider(
+            timeout_s=get_settings().llm_improve_timeout_s,
+            cache_tail=True,
+            # Spec 015: el bloque de identidad del teammate va en la cabecera y
+            # varía por teammate. Sin partir la cabecera, arrastra consigo los
+            # 7 KB compartidos y cada teammate escribe su propia copia.
+            split_header=True,
+        )
     return _provider
 
 

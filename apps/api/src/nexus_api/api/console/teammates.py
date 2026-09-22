@@ -155,6 +155,7 @@ async def _out(session: AsyncSession, row: Teammate) -> TeammateOut:
         tool_names=list(row.tool_names),
         permissions=dict(row.permissions),
         local_exec=row.local_exec,
+        instructions=row.instructions,
         status=row.status,
         created_at=row.created_at,
         archived_at=row.archived_at,
@@ -259,6 +260,7 @@ async def create_teammate(
         tool_names=tool_names,
         permissions=permissions,
         local_exec=body.local_exec,
+        instructions=(body.instructions or "").strip() or None,
         created_by=scope.principal.user_id,
     )
     _audit(scope, "teammate.created", teammate, job=teammate.job, model=teammate.model)
@@ -294,6 +296,13 @@ async def update_teammate(
         changes["model"] = body.model
     if body.local_exec is not None and body.local_exec != teammate.local_exec:
         changes["local_exec"] = body.local_exec
+    if body.instructions is not None:
+        # Cadena vacía = borrarlas; `None` (ausente) = no tocarlas. Se guarda
+        # NULL y no "", porque de esa distinción depende que un teammate sin
+        # instrucciones se comporte como antes de la spec 015 (R6.2).
+        nuevas = body.instructions.strip() or None
+        if nuevas != teammate.instructions:
+            changes["instructions"] = nuevas
     if body.permissions is not None:
         permissions = body.permissions.model_dump()
         if permissions != dict(teammate.permissions):

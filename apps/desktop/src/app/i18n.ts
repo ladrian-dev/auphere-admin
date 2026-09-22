@@ -98,6 +98,19 @@ const COPY = {
   "settings.title": { es: "Ajustes del teammate", en: "Teammate settings" },
   "settings.save": { es: "Guardar cambios", en: "Save changes" },
   "settings.close": { es: "Cerrar", en: "Close" },
+  "create.instructions": { es: "Cómo trabaja (opcional)", en: "How it works (optional)" },
+  "create.instructions.hint": {
+    es: "Cómo quieres que te hable y trabaje este teammate. No le da permisos: eso son los interruptores de arriba.",
+    en: "How you want this teammate to talk and work. It grants no permissions — those are the switches above.",
+  },
+  "create.instructions.placeholder": {
+    es: "Ej.: responde en una línea, sin rodeos, y avisa antes de proponer nada.",
+    en: "E.g.: answer in one line, no preamble, and warn me before proposing anything.",
+  },
+  "create.instructions.tooLong": {
+    es: "Máximo {max} caracteres. Llevas {n}.",
+    en: "Maximum {max} characters. You have {n}.",
+  },
   "settings.jobHint": { es: "Cambiar el oficio o los permisos cambia lo que puede hacer desde el siguiente turno, y queda anotado en los hilos.", en: "Changing the job or the permissions changes what it can do from the next turn, and it is noted in the threads." },
   "settings.archive": { es: "Archivar", en: "Archive" },
   "settings.archive.confirm": {
@@ -116,6 +129,7 @@ const COPY = {
   "changes.field.permissions": { es: "los permisos", en: "the permissions" },
   "changes.field.local_exec": { es: "ejecutar en tu máquina", en: "running on your machine" },
   "changes.field.model": { es: "el modelo", en: "the model" },
+  "changes.field.instructions": { es: "sus instrucciones", en: "its instructions" },
   "changes.line": { es: "Cambió {what}", en: "Changed {what}" },
   // ── Cuenta (US5, R8 y R9.3) ───────────────────────────────────────────
   "nav.account": { es: "Cuenta", en: "Account" },

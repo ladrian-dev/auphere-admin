@@ -106,15 +106,10 @@ Nunca vas a leer ni a repetir lo que un cliente final escribió.
 </que_no_eres>
 
 <lo_que_puedes_hacer_ahora>
-Tienes herramientas de **lectura** sobre la consola: puedes consultar el estado \
-real de los clientes del partner, sus agentes, sus políticas, sus herramientas y \
-skills, su conocimiento, sus canales y su diagnóstico, sus plantillas de \
-WhatsApp, el consumo, las estadísticas de conversación, el registro de \
-auditoría, la puesta en marcha, la cuota y la biblioteca de plantillas.
-
-Y tienes herramientas de **propuesta**: dar de alta un cliente, cambiar un \
-prompt, una política, las herramientas o las skills, publicar una versión, \
-etiquetar un canal, ajustar los avisos de consumo, proponer un pack v1 e invitar a alguien al equipo.
+**Lo que puedes hacer te lo dice tu propio bloque, no este texto.** Aquí abajo \
+está solo lo que nadie puede hacer nunca. Las herramientas que recibes en este \
+turno son las tuyas y ninguna más: si algo no está entre ellas, dilo y no \
+busques otro camino.
 
 Un pack es un YAML sobre un grafo padre fijo (send_template, wait_reply, end). Camino conocido y cerrado → pack sin agente. Camino abierto o mixto → no pack en v1. El primer toque por WhatsApp es una plantilla (send_template). Tú propones con console.propose_pack; aplicar es solo el PUT tras confirmar.
 
@@ -352,19 +347,42 @@ def build_messages(
     user_message: str,
     page_context: dict[str, Any] | None,
     knowledge_context: str | None = None,
+    identity: str | None = None,
+    environment: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Prompt de sistema estable → historia → página → playbook/KB → turno.
+    """Prefijo estable → identidad → historia → página → playbook/KB → entorno → turno.
 
     El orden importa y no es estético: todo lo que cambia por turno tiene
     que ir DESPUÉS del prefijo que se quiere cachear.
+
+    **La identidad es la excepción, y tiene su razón** (spec 015, R1). Cambia
+    por teammate pero **no dentro de un hilo**, así que va en la posición 2 y
+    se cachea con su propio punto de corte —el ``corte 2`` de
+    ``llm._with_prompt_caching``—, que es lo que impide que los 7 KB del
+    prefijo compartido se escriban una vez por teammate.
+
+    Antes viajaba pegada delante de ``knowledge_context``, que se añade
+    **después de la historia entera**: en un hilo de cuarenta mensajes la
+    identidad llegaba en la posición 42 mientras «Eres el Companion de Auphere»
+    seguía en la 1. El problema empeoraba según se trabajaba.
+
+    Sin ``identity`` —la persona habla con el Companion— la lista es
+    **exactamente** la de antes de la spec 015.
     """
     messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if identity:
+        messages.append({"role": "system", "content": identity})
     messages.extend(history or [])
     ctx = page_context_message(page_context)
     if ctx is not None:
         messages.append(ctx)
     if knowledge_context:
         messages.append({"role": "system", "content": knowledge_context})
+    # El entorno va **lo último antes del turno**, y no junto a la identidad
+    # (spec 015, R5.1). Cambia cada minuto: arriba invalidaría el corte 2 del
+    # caché en cada turno, y no habría ahorro que defender.
+    if environment:
+        messages.append({"role": "system", "content": environment})
     messages.append({"role": "user", "content": user_message})
     return messages
 

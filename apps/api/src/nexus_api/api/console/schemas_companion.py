@@ -96,6 +96,18 @@ class CompanionRunStartIn(BaseModel):
     # crafted client cannot push a novel through it. Schema-validated —
     # unknown keys are rejected before the run starts.
     page_context: CompanionPageContext | None = None
+    # La zona horaria de la PERSONA que escribe (spec 015, R5.3). La manda la
+    # aplicación porque el navegador ya la sabe y **en la base no existe**: ni
+    # el partner ni la persona tienen columna de zona, solo el cliente final.
+    #
+    # Va aquí y **no dentro de `page_context`**, aunque tentara: ese esquema se
+    # valla con `fence_only` porque lleva nombres escritos por terceros, y una
+    # zona IANA que el servidor valida no lo es. Meterla dentro enseñaría al
+    # modelo a desconfiar de un dato fiable.
+    #
+    # Una zona inválida no rompe el turno: `turn_environment` cae a UTC y lo
+    # dice en voz alta.
+    timezone: str | None = Field(default=None, max_length=64)
 
 
 class CompanionRunStartOut(BaseModel):

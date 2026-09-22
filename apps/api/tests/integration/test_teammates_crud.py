@@ -351,3 +351,76 @@ async def test_the_jobs_endpoint_says_what_each_model_costs(client, db_session, 
     for model in models.values():
         assert model["note"], "un modelo sin nota es una fila que no ayuda a elegir"
         assert model["cost_label"] in ("bajo", "medio", "alto", "desconocido")
+
+
+# ── instrucciones propias (spec 015, Requisito 6) ──────────────────────
+
+
+async def test_instructions_are_optional_and_absent_means_absent(client, console_world):
+    """R6.2 y R6.7: nadie tiene que reconfigurar nada.
+
+    ``NULL`` es «no escritas» y es lo que tienen los teammates anteriores a la
+    spec. De esa distinción —y de que no haya ``server_default``— depende que
+    sigan comportándose igual.
+    """
+    creado = await _create(client, console_world["a"], name="Sin", job="x")
+    assert creado.status_code == 201, creado.text
+
+    assert creado.json()["instructions"] is None
+
+
+async def test_instructions_travel_and_come_back(client, console_world):
+    a = console_world["a"]
+    creado = await _create(client, a, name="Con", job="x", instructions="Responde en una línea.")
+    assert creado.status_code == 201, creado.text
+
+    assert creado.json()["instructions"] == "Responde en una línea."
+
+
+async def test_over_the_cap_is_refused_with_the_limit_and_nothing_is_truncated(
+    client, console_world
+):
+    """R6.5. **No se trunca en silencio**: truncar sin avisar deja al partner
+    creyendo que escribió algo que el teammate nunca va a leer."""
+    a = console_world["a"]
+    response = await _create(client, a, name="Larga", job="x", instructions="x" * 4001)
+
+    assert response.status_code == 422
+    assert "4000" in response.text
+
+
+async def test_changing_them_is_recorded_as_a_field_that_changed(client, db_session, console_world):
+    """R6.6, y es el criterio que **falla contra el CHECK de antes de la 0127**.
+
+    ``teammate_changes`` enumera los campos permitidos en una restricción. Sin
+    ensancharla, esto revienta al guardar — en producción, no en los tests del
+    camino feliz.
+    """
+    a = console_world["a"]
+    creado = await _create(client, a, name="Cambia", job="x")
+    tid = creado.json()["id"]
+
+    patched = await client.patch(
+        f"/console/teammates/{tid}",
+        headers=a["headers"](),
+        json={"instructions": "Avisa antes de proponer nada."},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["instructions"] == "Avisa antes de proponer nada."
+
+    changes = await client.get(f"/console/teammates/{tid}/changes", headers=a["headers"]())
+    campos = {c for row in changes.json() for c in row["fields"]}
+    assert "instructions" in campos
+
+
+async def test_clearing_them_stores_null_and_not_an_empty_string(client, console_world):
+    a = console_world["a"]
+    creado = await _create(client, a, name="Borra", job="x", instructions="algo")
+    tid = creado.json()["id"]
+
+    borrado = await client.patch(
+        f"/console/teammates/{tid}", headers=a["headers"](), json={"instructions": "   "}
+    )
+
+    assert borrado.status_code == 200, borrado.text
+    assert borrado.json()["instructions"] is None

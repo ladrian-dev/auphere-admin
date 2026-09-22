@@ -131,6 +131,17 @@ DRAFT_KINDS: frozenset[str] = frozenset({"prompt", "policy", "tools", "skills"})
 _WORK_KIND_BY_TOOL: dict[str, str] = {tool: work for work, tool in TOOL_BY_WORK_KIND.items()}
 
 
+def _as_text(value: Any) -> str | None:
+    """El estado del grafo es ``dict[str, Any]``; esto no.
+
+    ``build_messages`` recibe la identidad del teammate y la mete en un mensaje
+    de sistema, así que **no puede ser cualquier cosa**: un objeto que no sea
+    texto llegaría al modelo como su ``repr``. Se estrecha aquí, en el límite,
+    que es donde ya se estrecha todo lo que sale del estado.
+    """
+    return value if isinstance(value, str) else None
+
+
 def _tracker(state: CompanionState, *, fresh: bool = False) -> PhaseTracker:
     """La máquina de fases de este run, continuada desde el estado.
 
@@ -246,6 +257,8 @@ def make_investigate(
             user_message=state.get("user_message", ""),
             page_context=state.get("page_context"),
             knowledge_context=state.get("knowledge_context"),
+            identity=_as_text(state.get("identity")),
+            environment=_as_text(state.get("environment")),
         )
         messages: list[dict[str, Any]] = [*base, *(state.get("tool_messages") or [])]
         # §17 del contrato v2.1: el proveedor no admite el punto en el nombre
@@ -907,6 +920,8 @@ async def _answer_after_action(
             user_message=state.get("user_message", ""),
             page_context=state.get("page_context"),
             knowledge_context=state.get("knowledge_context"),
+            identity=_as_text(state.get("identity")),
+            environment=_as_text(state.get("environment")),
         ),
         *(state.get("tool_messages") or []),
         {"role": "system", "content": "\n".join(brief)},
@@ -958,6 +973,8 @@ async def _answer_without_tools(
         user_message=state.get("user_message", ""),
         page_context=state.get("page_context"),
         knowledge_context=state.get("knowledge_context"),
+        identity=_as_text(state.get("identity")),
+        environment=_as_text(state.get("environment")),
     )
     answer, usage = await _stream_final_answer(
         provider,

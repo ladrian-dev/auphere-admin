@@ -202,7 +202,7 @@ def _cache_the_tail(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _with_prompt_caching(
-    messages: list[dict[str, Any]], *, cache_tail: bool = False
+    messages: list[dict[str, Any]], *, cache_tail: bool = False, split_header: bool = False
 ) -> list[dict[str, Any]]:
     """Mark the leading system prefix as an Anthropic cache breakpoint.
 
@@ -215,9 +215,30 @@ def _with_prompt_caching(
     4096 for Haiku) is silently not cached — no error, no cost.
 
     We merge the contiguous leading ``system`` messages into a single
-    system message with text blocks (Anthropic's canonical shape) and put
-    ``cache_control`` on the last block. Non-system messages (history, the
-    user turn, tool round-trips) stay after the breakpoint, uncached.
+    system message with text blocks (Anthropic's canonical shape). Non-system
+    messages (history, the user turn, tool round-trips) stay after the
+    breakpoint, uncached.
+
+    ``split_header`` parte la cabecera en dos (spec 015, R3.1), numerados por
+    posición: el **corte 1** va tras el primer bloque —el texto compartido,
+    idéntico para todos— y el **corte 2** tras el último. El **corte 3** es el
+    móvil de :func:`_cache_the_tail`.
+
+    Sin el corte 1, la fusión de arriba hace daño: el bloque de identidad del
+    teammate cae **dentro** del único punto de corte, así que el prefijo deja
+    de ser común y **los 7 KB compartidos se escriben una vez por teammate**.
+    Con los dos, lo compartido se cachea una vez para todo el mundo y lo único
+    que se escribe por teammate es su delta de unos cientos de caracteres.
+
+    **Apagado por defecto, y por la misma razón que ``cache_tail``**: el agente
+    de cliente y los dos playgrounds usan este proveedor y son carga viva.
+    Cambiarles el reparto de puntos de corte para arreglar un problema del
+    Companion es exactamente cómo se rompe algo que funcionaba — y este fichero
+    ya lo tenía escrito unas líneas más abajo. Lo enciende quien tenga un bloque
+    **estable y otro variable** en la cabecera, que hoy es solo el Companion con
+    teammate.
+
+    Anthropic admite cuatro puntos por petición; con los dos encendidos, tres.
     """
     leading: list[dict[str, Any]] = []
     rest_start = 0
@@ -231,15 +252,27 @@ def _with_prompt_caching(
         return _cache_the_tail(messages) if cache_tail else messages
 
     blocks: list[dict[str, Any]] = []
-    for m in leading:
+    shared_end = 0  # cuántos bloques aporta el PRIMER mensaje de sistema
+    for idx, m in enumerate(leading):
         content = m.get("content")
         if isinstance(content, str):
             blocks.append({"type": "text", "text": content})
         elif isinstance(content, list):
             blocks.extend(content)
+        if idx == 0:
+            shared_end = len(blocks)
     if not blocks:
         return messages
 
+    # Corte 1: cierra el texto compartido. Solo si se pidió y si hay algo
+    # después — si el primer mensaje es el único, el corte 1 y el 2 serían el
+    # mismo punto y gastar dos de los cuatro en el mismo sitio no compra nada.
+    if split_header and 0 < shared_end < len(blocks):
+        blocks[shared_end - 1] = {
+            **blocks[shared_end - 1],
+            "cache_control": {"type": "ephemeral"},
+        }
+    # Corte 2: cierra la cabecera entera.
     blocks[-1] = {**blocks[-1], "cache_control": {"type": "ephemeral"}}
     merged = {"role": "system", "content": blocks}
     rest = messages[rest_start:]
@@ -815,6 +848,12 @@ class LiteLLMProvider:
     #: historial sin cachear crece de forma cuadrática. Se generaliza —o no—
     #: cuando haya semanas de ``cache_read`` medido en producción.
     cache_tail: bool = False
+    #: Parte la cabecera en dos puntos de corte (spec 015, R3.1). **Apagado por
+    #: defecto, por la misma razón que ``cache_tail``**: lo enciende quien tenga
+    #: en la cabecera un bloque estable y otro que varía —hoy solo el Companion
+    #: con teammate—. El agente de cliente y los playgrounds comparten esta
+    #: clase y son carga viva.
+    split_header: bool = False
 
     def __post_init__(self) -> None:
         # Pre-import litellm so the first acomplete() doesn't pay the
@@ -898,7 +937,9 @@ class LiteLLMProvider:
             "model": model,
             # Prompt caching: mark the stable system prefix as a cache
             # breakpoint so repeated turns / loop iterations reuse it.
-            "messages": _with_prompt_caching(messages, cache_tail=self.cache_tail),
+            "messages": _with_prompt_caching(
+                messages, cache_tail=self.cache_tail, split_header=self.split_header
+            ),
             "metadata": {"tenant_id": str(tenant_id), "role": role},
             "timeout": self.timeout_s,
         }
@@ -988,7 +1029,9 @@ class LiteLLMProvider:
 
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _with_prompt_caching(messages, cache_tail=self.cache_tail),
+            "messages": _with_prompt_caching(
+                messages, cache_tail=self.cache_tail, split_header=self.split_header
+            ),
             "metadata": {"tenant_id": str(tenant_id), "role": role},
             "timeout": self.timeout_s,
             "stream": True,
@@ -1075,7 +1118,9 @@ class LiteLLMProvider:
 
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _with_prompt_caching(messages, cache_tail=self.cache_tail),
+            "messages": _with_prompt_caching(
+                messages, cache_tail=self.cache_tail, split_header=self.split_header
+            ),
             "tools": tools,
             "metadata": {"tenant_id": str(tenant_id), "role": role},
             "timeout": self.timeout_s,

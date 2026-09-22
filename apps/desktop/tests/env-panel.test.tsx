@@ -32,6 +32,7 @@ const TEAMMATE = {
   tool_names: [],
   permissions: { read: true, write: false, spend: false, publish: false, contact: false },
   local_exec: false,
+  instructions: null,
   status: "active" as const,
   my_state: "en_espera" as const,
   my_unread: false,

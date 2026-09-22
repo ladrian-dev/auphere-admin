@@ -126,26 +126,34 @@ def test_the_prompt_never_asks_the_model_to_check_its_own_work() -> None:
 
 
 def test_the_prompt_says_it_proposes_but_does_not_apply() -> None:
-    """Una capacidad inventada es una promesa rota con el cliente del
-    partner, y una capacidad NEGADA que sí existe hace que el agente se
-    niegue a usar sus herramientas.
+    """Entre proponer y aplicar hay una persona, y el prefijo lo dice.
 
-    Desde CO-04 la verdad cambió: hay lectura **y** propuesta, y lo que no
-    hay es aplicar por su cuenta. El "todavía no puedes cambiar nada" de
-    CO-02 tenía que irse por el mismo motivo por el que se fue el "no puedes
-    consultar el estado real" de CO-01 — con las nueve ``propose_*`` puestas
-    habría hecho que el agente se negara a usarlas.
+    **Este test cambió de sujeto con la spec 015, no de intención.** Afirmaba
+    además que el prefijo enumera «herramientas de lectura» y «de propuesta»,
+    porque su razón —de CO-04— sigue siendo buena: *una capacidad negada que sí
+    existe hace que el agente se niegue a usar sus herramientas*.
+
+    Lo que cambió es **quién puede decir esa verdad**. El prefijo es idéntico
+    para todos los teammates y para el Companion, así que enumerar familias
+    desde aquí era falso en tres de las cinco combinaciones de interruptores —y
+    callaba ``shell_local`` incluso teniéndolo—. Esa mitad se mudó al bloque por
+    teammate, que sí sabe lo que tiene, y la vigila
+    ``tests/isolation/test_40_prompt_matches_catalog.py``.
+
+    Lo que se queda aquí es lo que **no depende de ningún interruptor**: cómo
+    funciona proponer, y que aplicar lo hace el motor tras una confirmación
+    humana.
     """
     lowered = SYSTEM_PROMPT.lower()
-    assert "herramientas de **lectura**" in lowered
-    assert "herramientas de **propuesta**" in lowered
-    # No aplica: entre proponer y aplicar hay una persona, y el prompt lo
-    # dice en voz alta.
+    # El mecanismo, que es verdad para todos.
     assert "una propuesta **no cambia nada todavía**" in lowered
     assert "no llames a console.apply por" in lowered
-    # Y los dos párrafos que ya no son ciertos no pueden volver.
+    # Y los párrafos que ya no son ciertos no pueden volver — ni los de CO-01
+    # y CO-02, ni los de capacidad que retiró la spec 015.
     assert "no puedes consultar el estado real" not in lowered
     assert "todavía **no puedes cambiar nada**" not in lowered
+    assert "tienes herramientas de **lectura**" not in lowered
+    assert "tienes herramientas de **propuesta**" not in lowered
 
 
 def test_the_prompt_names_the_closed_list_of_what_it_cannot_do() -> None:

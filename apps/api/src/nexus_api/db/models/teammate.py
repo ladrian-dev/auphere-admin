@@ -68,6 +68,12 @@ class Teammate(Base):
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     job: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Lo que el partner escribió sobre cómo trabaja ESTE teammate (spec 015).
+    #: **Nulo, no cadena vacía**: nulo es «no escritas», que es lo que tienen
+    #: los teammates anteriores a la spec, y de esa distinción depende que nadie
+    #: tenga que reconfigurar nada. El tope (4.000) vive en el esquema de
+    #: entrada, no aquí: un tope de producto no debería exigir una migración.
+    instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     model: Mapped[str] = mapped_column(Text, nullable=False)
     #: Subconjunto de ``ALL_TOOLS``. Lo valida ``services.teammate_catalog``.
     tool_names: Mapped[list[str]] = mapped_column(
@@ -94,7 +100,22 @@ class Teammate(Base):
 
 #: Los campos cuyo cambio la persona necesita ver en su hilo (R2.4, migración
 #: 0113). El nombre no está: cambiarlo no cambia lo que el teammate puede hacer.
-CHANGED_FIELDS: tuple[str, ...] = ("job", "permissions", "local_exec", "model")
+#:
+#: **Éste era el quinto sitio, y el plan de la spec 015 solo había enumerado
+#: cuatro.** Lo encontró su test de auditoría: con el `CHECK` ensanchado y los
+#: tres sitios de TypeScript puestos, cambiar las instrucciones **seguía sin
+#: dejar nota**, porque este filtro las descartaba en silencio. Un vocabulario
+#: repetido tiene siempre una copia más de las que se contaron.
+#:
+#: `instructions` sí entra: cambian cómo trabaja el teammate, que es
+#: exactamente lo que la persona necesita ver en su hilo.
+CHANGED_FIELDS: tuple[str, ...] = (
+    "job",
+    "permissions",
+    "local_exec",
+    "model",
+    "instructions",
+)
 
 
 class TeammateChange(Base):
@@ -110,7 +131,13 @@ class TeammateChange(Base):
     __table_args__ = (
         Index("ix_teammate_changes_teammate_at", "teammate_id", "changed_at"),
         CheckConstraint(
-            "fields <@ ARRAY['job', 'permissions', 'local_exec', 'model']::text[] "
+            # `instructions` entró con la spec 015 (migración 0127). **El CHECK
+            # era el sitio que casi se escapa**: sin ensancharlo, registrar ese
+            # cambio revienta al guardar y no en los tests del camino feliz.
+            # El mismo vocabulario está en tres sitios más, en TypeScript, sin
+            # constante compartida — ver `apps/desktop/src/app/bridge.ts`.
+            "fields <@ ARRAY['job', 'permissions', 'local_exec', 'model', "
+            "'instructions']::text[] "
             "AND array_length(fields, 1) >= 1",
             name="teammate_changes_fields_check",
         ),

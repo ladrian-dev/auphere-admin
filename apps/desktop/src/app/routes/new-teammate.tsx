@@ -12,7 +12,7 @@
  * un fallo **conserva lo escrito** — volver a teclear un formulario por un 422
  * es la forma más barata de perder a alguien.
  */
-import { Button, Input, Label, Skeleton } from "@nexus/ui";
+import { Button, Input, Label, Skeleton, Textarea } from "@nexus/ui";
 import * as React from "react";
 
 import { type AppKey, useAppT } from "../i18n";
@@ -34,6 +34,8 @@ export type TeammateDraft = {
   model: string;
   permissions: TeammatePermissions;
   local_exec: boolean;
+  /** Opcional (spec 015, R6.2): sin ellas el teammate se comporta como antes. */
+  instructions?: string;
 };
 
 /**
@@ -59,6 +61,17 @@ export type NewTeammateFormProps = {
 
 /** El límite de la columna (`teammates.name`). Cortar aquí evita un 422 al final. */
 export const NAME_MAX = 80;
+
+/**
+ * El tope de las instrucciones (spec 015, R6.5). **Se anuncia antes de
+ * rebasarlo y nunca se trunca en silencio**: truncar sin avisar deja al partner
+ * creyendo que escribió algo que el teammate no va a leer.
+ *
+ * Vive en el esquema de entrada de la API, no en la base — un tope de producto
+ * que cambie no debería exigir una migración. Aquí se repite para poder avisar
+ * sin esperar al 422.
+ */
+export const INSTRUCTIONS_MAX = 4000;
 
 /** Lo mínimo encendido: leer. Todo lo que cambia algo nace apagado. */
 const SAFE_DEFAULTS: TeammatePermissions = {
@@ -132,6 +145,7 @@ export function NewTeammateForm({
   const t = useAppT();
   const [name, setName] = React.useState("");
   const [job, setJob] = React.useState("");
+  const [instructions, setInstructions] = React.useState("");
   const [model, setModel] = React.useState("");
   const [permissions, setPermissions] = React.useState<TeammatePermissions>(SAFE_DEFAULTS);
   const [localExec, setLocalExec] = React.useState(false);
@@ -203,6 +217,10 @@ export function NewTeammateForm({
       model,
       permissions,
       local_exec: localExec,
+      // Vacío **no viaja**. En la API `null`/ausente significa «no escritas» y
+      // cadena vacía significa «bórralas»: son cosas distintas, y mandar ""
+      // al crear diría «borra lo que no existe». Su test lo cazó.
+      ...(instructions.trim() ? { instructions: instructions.trim() } : {}),
     });
     setSending(false);
     if (!result.ok) {
@@ -246,6 +264,33 @@ export function NewTeammateForm({
             </option>
           ))}
         </datalist>
+      </div>
+
+      {/*
+        Instrucciones propias (spec 015, R6). **Opcional, y su vacío no se
+        pinta como pendiente**: es un campo que se puede no rellenar, no un
+        paso que falte (§V, la ausencia se diseña).
+      */}
+      <div className="flex min-w-0 flex-col gap-2">
+        <Label htmlFor="teammate-instructions">{t("create.instructions")}</Label>
+        <Textarea
+          id="teammate-instructions"
+          value={instructions}
+          rows={4}
+          maxLength={INSTRUCTIONS_MAX}
+          placeholder={t("create.instructions.placeholder")}
+          onChange={(e) => setInstructions(e.target.value.slice(0, INSTRUCTIONS_MAX))}
+        />
+        <p className="min-w-0 text-xs text-pretty text-muted-foreground">
+          {t("create.instructions.hint")}
+        </p>
+        {instructions.length > INSTRUCTIONS_MAX - 200 ? (
+          // Se avisa ANTES de llegar, no al rebasar: si el aviso llega cuando
+          // ya no cabe, lo escrito de más se pierde sin que nadie lo dijera.
+          <p className="text-xs text-status-warning">
+            {t("create.instructions.tooLong", { max: INSTRUCTIONS_MAX, n: instructions.length })}
+          </p>
+        ) : null}
       </div>
 
       <fieldset className="flex min-w-0 flex-col gap-2">
