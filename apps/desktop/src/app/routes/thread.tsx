@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { deriveThreadState, type ThreadState } from "../../app-state";
 import { deriveTurnState, offersStop, turnFactsOf } from "../../turn-state";
-import { type Teammate, type TeammateChange, bridge } from "../bridge";
+import { type Teammate, type TeammateChange, type ThreadRow, bridge } from "../bridge";
 import { InlineNotice, useFeedback } from "../feedback/provider";
 import { type AppKey, useAppT } from "../i18n";
 import { ipcTransport } from "../transport-ipc";
@@ -44,12 +44,37 @@ function pendingExecutable(state: { items: Array<Record<string, unknown>> }): st
   return null;
 }
 
-export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSettings }: { teammate: Teammate; machinePresent: boolean; onRosterChanged: () => void; onOpenSettings: () => void }) {
+export function ThreadView({
+  teammate,
+  machinePresent,
+  onRosterChanged,
+  onOpenSettings,
+  initialText,
+  onDraftUsed,
+}: {
+  teammate: Teammate;
+  machinePresent: boolean;
+  onRosterChanged: () => void;
+  onOpenSettings: () => void;
+  /** Lo que se escribió en Hoy y viene a enviarse aquí (spec 013, R6). */
+  initialText?: string;
+  onDraftUsed?: () => void;
+}) {
   const t = useAppT();
   const { notify, clear } = useFeedback();
   const controller = useCompanion(ipcTransport);
   const { state, status, errorDetail, partial, reconnecting, deciding, decisionFailure, openThread, setThreadId, send, decide } = controller;
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText ?? "");
+
+  /*
+   * Lo escrito en Hoy se consume **una vez**: si se quedara puesto, volver al
+   * hilo repetiría el texto que ya se envió. No hace falta excluir
+   * dependencias — avisar vacía el borrador, así que `initialText` pasa a
+   * indefinido y la guarda cierra el ciclo sola.
+   */
+  useEffect(() => {
+    if (initialText) onDraftUsed?.();
+  }, [initialText, onDraftUsed]);
   // El hueco que no se veía (R4.3): el mensaje salió de aquí y el servidor
   // todavía no abrió el turno, así que `runStatus` sigue en reposo.
   const [sending, setSending] = useState(false);
@@ -114,22 +139,52 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
    */
   const [openFailed, setOpenFailed] = useState<{ detail?: string } | null>(null);
 
-  const openOnce = useCallback(() => {
-    setOpening(true);
-    setOpenFailed(null);
-    return bridge.threadOpen({ teammate_id: teammate.id }).then((res) => {
-      setOpening(false);
-      if (res.ok) {
-        setThreadId(res.data.thread_id);
-        void openThread(res.data.thread_id);
-        return;
-      }
-      setOpenFailed({ ...(res.code ? { detail: res.code } : {}) });
-    });
-  }, [teammate.id, openThread, setThreadId]);
+  /**
+   * Las conversaciones de esta persona con este teammate — spec 013, R4.
+   * Hasta aquí había una sola y eterna.
+   */
+  const [convs, setConvs] = useState<ThreadRow[]>([]);
+  const [convId, setConvId] = useState<string | null>(null);
+
+  const refreshConvs = useCallback(async () => {
+    const r = await bridge.threadList({ teammate_id: teammate.id });
+    if (r.ok) setConvs(r.data.filter((t) => t.archived_at === null));
+  }, [teammate.id]);
+
+  const openOnce = useCallback(
+    (prefer?: string) => {
+      setOpening(true);
+      setOpenFailed(null);
+      return bridge
+        .threadOpen({ teammate_id: teammate.id, ...(prefer ? { prefer } : {}) })
+        .then((res) => {
+          setOpening(false);
+          if (res.ok) {
+            setThreadId(res.data.thread_id);
+            setConvId(res.data.thread_id);
+            void openThread(res.data.thread_id);
+            void refreshConvs();
+            return;
+          }
+          setOpenFailed({ ...(res.code ? { detail: res.code } : {}) });
+        });
+    },
+    [teammate.id, openThread, setThreadId, refreshConvs],
+  );
+
+  /** Empezar una nueva, sin arrastrar lo anterior (R4.1). */
+  const startNew = useCallback(async () => {
+    const r = await bridge.threadCreate({ teammate_id: teammate.id });
+    if (!r.ok) return;
+    setThreadId(r.data.thread_id);
+    setConvId(r.data.thread_id);
+    await openThread(r.data.thread_id);
+    await refreshConvs();
+  }, [teammate.id, openThread, setThreadId, refreshConvs]);
 
   useEffect(() => {
     let alive = true;
+    void refreshConvs();
     void openOnce().then(() => {
       if (!alive) return;
     });
@@ -145,6 +200,20 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
    * herramienta y esperar la primera palabra del servidor se veían igual.
    */
   const turn = useMemo(() => deriveTurnState(turnFactsOf(state, sending)), [state, sending]);
+
+  /**
+   * Por qué ahora mismo no se puede editar ni reintentar (spec 013, R5.3-5.4).
+   *
+   * Lo que la persona tiene que hacer gana: con una confirmación esperando, lo
+   * que toca es decidirla, no reescribir la pregunta. Y con un turno vivo,
+   * rehacerlo desde atrás dejaría dos versiones mezcladas.
+   */
+  const bloqueo: "turno_en_marcha" | "decision_pendiente" | null =
+    turn === "esperando_decision"
+      ? "decision_pendiente"
+      : turn !== null && !["terminado", "detenido", "fallido"].includes(turn)
+        ? "turno_en_marcha"
+        : null;
   // `busy` cierra el envío; detener solo se ofrece cuando hay turno que parar.
   const busy = sending || state.runStatus === "running";
   const threadState = useMemo(
@@ -208,10 +277,38 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
           </h2>
           <p className="truncate text-xs text-muted-foreground">{teammate.job}</p>
         </div>
+        {/*
+          Spec 013, R4 — las conversaciones con este teammate. Solo aparece
+          cuando hay más de una: un selector con un elemento es un control que
+          no decide nada.
+        */}
+        {convs.length > 1 ? (
+          <label className="ml-auto flex min-w-0 items-center gap-2 text-xs">
+            <span className="text-muted-foreground">{t("conv.pick")}</span>
+            <select
+              className="min-h-8 min-w-0 max-w-48 truncate rounded-md border border-border bg-background px-2 text-sm"
+              value={convId ?? ""}
+              onChange={(e) => void openOnce(e.target.value)}
+            >
+              {convs.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title || t("conv.untitled")}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void startNew()}
+          className={`${convs.length > 1 ? "" : "ml-auto "}min-h-8 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-muted`}
+        >
+          {t("conv.new")}
+        </button>
         <button
           type="button"
           onClick={onOpenSettings}
-          className="ml-auto min-h-8 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
+          className="min-h-8 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
         >
           {t("settings.open")}
         </button>
@@ -258,6 +355,18 @@ export function ThreadView({ teammate, machinePresent, onRosterChanged, onOpenSe
           onAnswerSlot={(slot: IntakeSlot) => setText(slot.label || slot.key)}
           onDecide={(actionId: string, decision: Decision, note?: string) => void decide(actionId, decision, note).then(onRosterChanged)}
           onExecPolicy={(mode) => void onExecPolicy(mode)}
+          onEditMessage={(t) => setText(t)}
+          {...(bloqueo ? { actionsBlocked: bloqueo } : {})}
+          onFetchExecOutput={async ({ executionId, clientRef }) => {
+            // El cliente viene con el propio evento de despacho: una ejecución
+            // siempre ocurre dentro del directorio declarado para uno.
+            if (!clientRef) return { available: false };
+            const r = await bridge.workstationExecOutput({
+              client_ref: clientRef,
+              execution_id: executionId,
+            });
+            return r.ok ? r.data : { available: false };
+          }}
           execCapped={capped}
         />
         )}

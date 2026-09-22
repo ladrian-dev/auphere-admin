@@ -37,6 +37,18 @@ export type CompanionRunSummary = {
   status: string;
   started_at: string;
   ended_at: string | null;
+  /**
+   * Lo que la persona escribió para disparar este run — spec 013, R1.
+   *
+   * Vive aquí y no en una segunda lista porque **un run tiene exactamente un
+   * mensaje de persona**: el que lo originó. La relación es 1:1, así que un
+   * campo por run es completo y no una aproximación.
+   *
+   * `null` es la anomalía —no hay fila de mensaje para ese run—, no el caso
+   * normal, y la pantalla lo trata como texto ausente: una burbuja en blanco
+   * diría que alguien escribió algo cuando no escribió nada.
+   */
+  prompt: string | null;
 };
 
 export type CompanionThreadRuns = { thread_id: string; runs: CompanionRunSummary[] };

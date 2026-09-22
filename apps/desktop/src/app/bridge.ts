@@ -38,6 +38,22 @@ export type Teammate = {
 export type Whoami =
   | { kind: "anonymous" | "no_membership" }
   | { kind: "member"; user_id: string; partner_slug: string; locale: "es" | "en" | null; permissions: string[] };
+/** Una conversación, como la lista la plataforma (spec 013, R4). */
+export type ThreadRow = {
+  id: string;
+  title: string;
+  archived_at: string | null;
+  last_run_at: string | null;
+};
+
+/** Una conversación donde apareció lo buscado (spec 013, R7). */
+export type SearchHit = {
+  thread_id: string;
+  title: string;
+  excerpt: string;
+  last_run_at: string | null;
+};
+
 export type SessionPush = { kind: "start" | "stop" | "pair_needed"; locale?: "es" | "en"; reason?: string };
 export type PresencePush = {
   machine: { displayName: string; hostname: string } | null;
@@ -264,7 +280,7 @@ export interface AuphereBridge {
   rosterUpdate(input: { id: string; patch: Record<string, unknown> }): Promise<Result<Teammate>>;
   rosterArchive(input: { id: string }): Promise<Result<null>>;
   rosterChanges(input: { id: string }): Promise<Result<TeammateChange[]>>;
-  threadOpen(input: { teammate_id: string }): Promise<Result<{ thread_id: string }>>;
+  threadOpen(input: { teammate_id: string; prefer?: string }): Promise<Result<{ thread_id: string }>>;
   threadRuns(input: { thread_id: string }): Promise<Result<CompanionThreadRuns>>;
   runEvents(input: { run_id: string; since_seq?: number }): Promise<Result<CompanionEvents>>;
   threadSend(input: { thread_id: string; text: string; client_ref?: string }): Promise<Result<CompanionRunStarted>>;
@@ -303,6 +319,16 @@ export interface AuphereBridge {
   workstationPair(input: { code: string }): Promise<Result<{ machine_name: string }>>;
   workstationUnpair(): Promise<Result<null>>;
   workstationPickDirectory(input: { client_ref: string }): Promise<Result<{ path_shown: string }>>;
+  /** Spec 013, R4 — varias conversaciones con el mismo teammate. */
+  threadCreate(input: { teammate_id: string }): Promise<Result<{ thread_id: string }>>;
+  threadList(input: { teammate_id: string }): Promise<Result<ThreadRow[]>>;
+  /** Spec 013, R7 — buscar dentro de lo hablado. */
+  companionSearch(input: { q: string }): Promise<Result<{ results: SearchHit[] }>>;
+  /** Lo que escribió un comando ya ejecutado, mientras dura (spec 013, R3). */
+  workstationExecOutput(input: {
+    client_ref: string;
+    execution_id: string;
+  }): Promise<Result<{ available: boolean; outcome?: string; exit_code?: number | null; output?: string | null; truncated?: boolean }>>;
 
   /* ── Recorridos que salen y vuelven — spec 010 ────────────────────────── */
   signInStart(): Promise<SignInView>;

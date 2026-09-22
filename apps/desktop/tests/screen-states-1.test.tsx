@@ -54,6 +54,9 @@ const HOY = {
   onOpenPending: () => {},
   onCreate: () => {},
   onOpenTeammate: () => {},
+  // Spec 013, R6 — escribir desde Hoy. Con `teammates: []` no se pinta el
+  // composer, que es justo lo que estos tres estados comprueban.
+  onStart: () => {},
 };
 
 const LATERAL = {

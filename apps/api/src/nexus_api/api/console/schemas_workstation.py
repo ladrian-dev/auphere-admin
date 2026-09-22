@@ -55,6 +55,25 @@ class ExecutionOut(BaseModel):
     children_reaped: int
 
 
+class ExecutionOutputOut(BaseModel):
+    """Lo que el programa escribió, para quien aprobó el comando (013, R3).
+
+    **`available: False` es la respuesta normal** pasados los quince minutos,
+    no un error: es lo que permite decir «la salida no se conserva» en vez de
+    dejar un hueco que parezca un fallo (§V). La salida no está en ninguna
+    tabla — vive solo en Redis y caduca sola.
+    """
+
+    execution_id: uuid.UUID
+    available: bool
+    outcome: str | None = None
+    exit_code: int | None = None
+    #: Los dos flujos, hasta `OUTPUT_SAMPLE_CHARS`, con cabeza y cola.
+    output: str | None = None
+    #: Si se recortó, se dice (R3.5): un trozo sin avisar se lee como el todo.
+    truncated: bool = False
+
+
 class SessionToolEntry(BaseModel):
     """Una fila del catálogo.
 

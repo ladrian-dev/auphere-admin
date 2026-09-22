@@ -18,7 +18,8 @@ export type Shape =
   | "none" | "id" | "thread_open" | "thread_id" | "run_events" | "thread_send" | "run" | "stream_open" | "stream_close"
   | "decide" | "tasks_list" | "pref" | "open_console" | "notif_prefs" | "roster_create" | "roster_update"
   // Spec 010 — el armazón y el puesto absorbido.
-  | "section" | "content_bounds" | "shell_prefs" | "pair_code" | "client_ref" | "handoff";
+  | "section" | "content_bounds" | "shell_prefs" | "pair_code" | "client_ref" | "handoff"
+  | "exec_output" | "search";
 
 export type InvokeChannel = { name: `app:${string}`; input: Shape };
 
@@ -31,6 +32,12 @@ export const APP_INVOKE_CHANNELS: readonly InvokeChannel[] = [
   { name: "app:roster.changes", input: "id" },
   { name: "app:roster.jobs", input: "none" },
   { name: "app:thread.open", input: "thread_open" },
+  //  Spec 013, R4 — varias conversaciones por teammate. La base de datos las
+  //  admite desde la 003; lo que faltaba era poder pedirlas y crearlas.
+  { name: "app:thread.create", input: "thread_open" },
+  { name: "app:thread.list", input: "thread_open" },
+  //  Spec 013, R7 — buscar dentro de lo hablado. ⌘K solo navegaba.
+  { name: "app:companion.search", input: "search" },
   { name: "app:thread.runs", input: "thread_id" },
   { name: "app:run.events", input: "run_events" },
   { name: "app:thread.send", input: "thread_send" },
@@ -77,6 +84,12 @@ export const APP_INVOKE_CHANNELS: readonly InvokeChannel[] = [
   { name: "app:workstation.pair", input: "pair_code" },
   { name: "app:workstation.unpair", input: "none" },
   { name: "app:workstation.pickDirectory", input: "client_ref" },
+  /**
+   * Lo que escribió un comando ya ejecutado (spec 013, R3). Va por el proceso
+   * principal porque la pantalla no tiene credenciales, como todo lo demás. La
+   * salida **no se guarda en ningún sitio**: esto la pide mientras dura.
+   */
+  { name: "app:workstation.execOutput", input: "exec_output" },
   { name: "app:setup.status", input: "none" },
   { name: "app:update.install", input: "none" },
   /**
@@ -179,7 +192,14 @@ export function validateInput(channel: string, input: unknown): void {
     case "run":
       return need(isRecord(input) && uuidish(input.run_id), "run_id");
     case "thread_open":
-      return need(isRecord(input) && uuidish(input.teammate_id), "teammate_id");
+      // `prefer` (013, R4) es opcional; si viene, es un uuid. La entrada se
+      // valida, no se adivina.
+      return need(
+        isRecord(input) &&
+          uuidish(input.teammate_id) &&
+          (input.prefer === undefined || uuidish(input.prefer)),
+        "teammate_id",
+      );
     case "thread_id":
       return need(isRecord(input) && uuidish(input.thread_id), "thread_id");
     case "run_events":
@@ -243,6 +263,15 @@ export function validateInput(channel: string, input: unknown): void {
       return need(isRecord(input) && pairingCode(input.code), "code");
     case "client_ref":
       return need(isRecord(input) && str(input.client_ref), "client_ref");
+
+    case "search":
+      return need(isRecord(input) && typeof input.q === "string", "q");
+
+    case "exec_output":
+      return need(
+        isRecord(input) && str(input.client_ref) && uuidish(input.execution_id),
+        "exec_output",
+      );
     case "handoff":
       return need(isRecord(input) && ["sign_in", "payment"].includes(String(input.kind)), "kind");
   }

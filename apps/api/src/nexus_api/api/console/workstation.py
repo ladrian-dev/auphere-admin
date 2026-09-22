@@ -16,7 +16,7 @@ import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from redis.asyncio import Redis
 from sqlalchemy import select
 
@@ -33,7 +33,7 @@ from nexus_api.repositories.local_workstation import (
     LocalExecutableRepository,
     LocalExecutionRepository,
 )
-from nexus_api.services.local_dispatch import await_result, dispatch
+from nexus_api.services.local_dispatch import await_result, dispatch, read_output_for_screen
 from nexus_api.services.local_exec_gate import LocalExecGate
 from nexus_api.services.local_exec_policy import LocalExecPolicyRepository
 
@@ -45,6 +45,7 @@ from .schemas_workstation import (
     ExecutionIn,
     ExecutionOut,
     ExecutionOutcomeOut,
+    ExecutionOutputOut,
 )
 
 router = APIRouter(prefix="/clients/{ref}/workstation")
@@ -158,6 +159,46 @@ async def recent_executions(
         )
         for r in rows
     ]
+
+
+@router.get("/executions/{execution_id}/output", response_model=ExecutionOutputOut)
+async def execution_output(
+    execution_id: uuid.UUID,
+    scope: ClientScope = Depends(client_scope("workstation:read")),
+    redis: Redis = Depends(get_redis),
+) -> ExecutionOutputOut:
+    """Lo que el comando imprimió — spec 013, Requisito 3.
+
+    **No sale de Postgres.** La fila de `local_executions` sigue diciendo qué
+    se ejecutó, dónde y cómo acabó, y nada más (§III). Esto lee la copia
+    efímera de Redis, que caduca sola a los quince minutos.
+
+    Se pide bajo el alcance de cliente que ya existe, así que la ejecución de
+    otro cliente no se sirve por aquí: el `client_scope` la filtra antes.
+
+    Y va por una ruta propia y no por el flujo de eventos **a propósito**: el
+    contrato congelado `CONTRACT-V3` dice que `exec.completed` viaja «sin
+    salida», y no es un olvido — los eventos llevan hechos estructurados, nunca
+    prosa de un programa. Este camino no lo enmienda: lo respeta.
+    """
+    fila = await LocalExecutionRepository(scope.session).get(execution_id)
+    if fila is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown execution")
+
+    resultado = await read_output_for_screen(redis, execution_id)
+    if resultado is None:
+        # Caducó, o la máquina no ha contestado todavía. Las dos cosas se
+        # dicen igual, y ninguna es un error.
+        return ExecutionOutputOut(execution_id=execution_id, available=False)
+
+    return ExecutionOutputOut(
+        execution_id=execution_id,
+        available=True,
+        outcome=resultado.outcome,
+        exit_code=resultado.exit_code,
+        output=resultado.stdout_sample,
+        truncated="[recortado" in resultado.stdout_sample,
+    )
 
 
 # ── ejecutar en la máquina (spec 003, Requisitos 3.3 y 10) ─────────────

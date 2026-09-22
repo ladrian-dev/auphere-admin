@@ -163,6 +163,8 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
   const [roster, setRoster] = useState<Teammate[]>([]);
   const [rosterStatus, setRosterStatus] = useState<RosterStatus>("loading");
   const [selected, setSelected] = useState<string | null>(null);
+  /** Lo escrito en Hoy, que viaja al hilo y se envía allí (spec 013, R6). */
+  const [draft, setDraft] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Jobs | null>(null);
   const [jobsStatus, setJobsStatus] = useState<"loading" | "ready" | "error">("loading");
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -567,7 +569,26 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
         />
       }
     >
-      <Palette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
+      <Palette
+        open={paletteOpen}
+        commands={commands}
+        onClose={() => setPaletteOpen(false)}
+        onSearch={async (q) => {
+          const r = await bridge.companionSearch({ q });
+          if (!r.ok) return [];
+          return r.data.results.map((hit) => ({
+            id: `c:${hit.thread_id}`,
+            group: t("shell.command.conversation"),
+            // El trozo va en la etiqueta: un resultado sin contexto obliga a
+            // abrir la conversación para saber si era la que se buscaba.
+            label: `${hit.title} — ${hit.excerpt}`,
+            run: () => {
+              setDetail("hilo");
+              go("teammate");
+            },
+          }));
+        }}
+      />
 
       {machineDialog !== null && machineDialog !== "actualizar" ? (
         <div className="fixed inset-0 z-30 flex bg-background/80 p-6">
@@ -722,6 +743,17 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
               setDetail("hilo");
               go("teammate");
             }}
+            /*
+             * Spec 013, R6 — escribir desde Hoy abre la conversación con ese
+             * teammate y lleva lo escrito. El envío ocurre allí, donde vive el
+             * turno: duplicarlo aquí sería un segundo camino para lo mismo.
+             */
+            onStart={(id, text) => {
+              setSelected(id);
+              setDetail("hilo");
+              setDraft(text);
+              go("teammate");
+            }}
           />
         ) : detail === "nuevo" ? (
           /*
@@ -794,6 +826,8 @@ function Workspace({ session, presence, permissions }: { session: SessionPush | 
                 machinePresent={presence?.presence === "presente"}
                 onRosterChanged={() => void loadRoster()}
                 onOpenSettings={() => setDetail("ajustes")}
+                {...(draft ? { initialText: draft } : {})}
+                onDraftUsed={() => setDraft(null)}
               />
             </div>
             <EnvPanel

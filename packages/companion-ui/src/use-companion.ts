@@ -161,8 +161,24 @@ export function useCompanion(transport: Transport) {
         setPartial(true);
       }
 
+      /*
+       * Spec 013, R1 — lo que la persona escribió va **antes** de los eventos
+       * de su run. El mensaje no es un evento: es una fila que el servidor
+       * devuelve en el resumen, así que se inyecta aquí, en el orden en que
+       * ocurrió. Sin esto el hilo recordaba media conversación: las respuestas
+       * sin las preguntas, que son ininteligibles.
+       */
+      const prompts = new Map<string, string>();
+      if (listed.ok) {
+        for (const r of listed.data.runs) if (r.prompt) prompts.set(r.run_id, r.prompt);
+      }
+
       let failed = false;
       for (const runId of runIds) {
+        const asked = prompts.get(runId);
+        if (asked !== undefined) {
+          dispatch({ type: "replayed_prompt", runId, text: asked });
+        }
         const res = await companionClient.runEvents(runId, 0);
         if (!res.ok) {
           // A rotated-away or unknown run is a hole, not a failure of the

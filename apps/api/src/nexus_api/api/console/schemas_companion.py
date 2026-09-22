@@ -133,6 +133,32 @@ class CompanionRunSummaryOut(BaseModel):
     status: str
     started_at: datetime
     ended_at: datetime | None
+    #: Lo que la persona escribió para disparar este run (spec 013, R1).
+    #:
+    #: Es la única excepción a la frase de arriba —«metadata only»— y tiene
+    #: motivo: el mensaje de la persona **no es un evento**, así que sin él la
+    #: pantalla reconstruía el hilo con las respuestas y sin las preguntas. Un
+    #: run tiene exactamente uno, de modo que esto es un `JOIN` y no una
+    #: segunda lista que alguien tendría que casar por `run_id`.
+    #:
+    #: `None` es la anomalía —no hay fila de mensaje para ese run—, no el caso
+    #: normal.
+    prompt: str | None = None
+
+
+class CompanionSearchHit(BaseModel):
+    """Una conversación donde apareció el término (spec 013, R7)."""
+
+    thread_id: uuid.UUID
+    title: str
+    #: Un trozo alrededor de la coincidencia. Sin él, cada resultado obliga a
+    #: abrir la conversación para saber si era la que se buscaba.
+    excerpt: str
+    last_run_at: datetime | None = None
+
+
+class CompanionSearchOut(BaseModel):
+    results: list[CompanionSearchHit]
 
 
 class CompanionThreadRunsOut(BaseModel):

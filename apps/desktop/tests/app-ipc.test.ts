@@ -13,7 +13,7 @@ import { APP_INVOKE_CHANNELS, APP_PUSH_CHANNELS, InvalidIpcInput, validateInput 
 
 const CONTRACT = [
   "app:whoami", "app:roster.list", "app:roster.create", "app:roster.update", "app:roster.archive", "app:roster.changes", "app:roster.jobs",
-  "app:thread.open", "app:thread.runs", "app:run.events", "app:thread.send", "app:thread.cancel",
+  "app:thread.open", "app:thread.create", "app:thread.list", "app:companion.search", "app:thread.runs", "app:run.events", "app:thread.send", "app:thread.cancel",
   "app:stream.open", "app:stream.close",
   "app:inbox.list", "app:inbox.decide", "app:tasks.list", "app:tasks.cancel",
   "app:policy.prefs", "app:policy.setPref", "app:usage", "app:membership", "app:team", "app:env.forThread",
@@ -23,6 +23,9 @@ const CONTRACT = [
   "app:shell.showSection", "app:shell.contentBounds", "app:shell.prefs",
   "app:signIn.start", "app:signIn.cancel",
   "app:workstation.state", "app:workstation.pair", "app:workstation.unpair", "app:workstation.pickDirectory",
+  // Spec 013, R3 — lo que escribió un comando ya ejecutado. La salida no se
+  // guarda en ninguna tabla: esto la pide mientras dura.
+  "app:workstation.execOutput",
   "app:setup.status", "app:update.install", "app:update.check", "app:system.openNotificationSettings", "app:handoff.done",
 ];
 const PUSH = [
@@ -144,5 +147,17 @@ describe("el armazón tampoco adivina", () => {
   it("elegir directorio va por cliente", () => {
     expect(() => validateInput("app:workstation.pickDirectory", { client_ref: "cultor-barber" })).not.toThrow();
     expect(() => validateInput("app:workstation.pickDirectory", {})).toThrow(InvalidIpcInput);
+    // La entrada **se valida, no se adivina**: sin cliente o con un id que no
+    // es un uuid, no se llega a tocar la red.
+    expect(() =>
+      validateInput("app:workstation.execOutput", {
+        client_ref: "cultor-barber",
+        execution_id: "0f9d5a1e-9a21-4a3f-9a1c-2f1b0c3d4e5f",
+      }),
+    ).not.toThrow();
+    expect(() => validateInput("app:workstation.execOutput", { client_ref: "x" })).toThrow(InvalidIpcInput);
+    expect(() =>
+      validateInput("app:workstation.execOutput", { client_ref: "x", execution_id: "no-es-uuid" }),
+    ).toThrow(InvalidIpcInput);
   });
 });

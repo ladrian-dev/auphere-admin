@@ -76,6 +76,26 @@ export type ToolItem = {
   citationId: string | null;
 };
 
+/**
+ * Una ejecución en la máquina de la persona — spec 013, R3.
+ *
+ * Es el **hermano** de la tarjeta de aprobación, no su sustituto: aquélla es
+ * la decisión y ésta el resultado, y ocurren en momentos distintos. Guarda lo
+ * durable —qué se ejecutó y cómo acabó—; **la salida no está aquí**: se pide
+ * aparte y caduca (§III).
+ */
+export type ExecItem = {
+  kind: "exec";
+  id: string;
+  runId: string;
+  executionId: string;
+  executable: string;
+  args: string[];
+  clientRef: string | null;
+  status: "en_marcha" | "completada" | "expirada" | "terminada" | "denegada";
+  exitCode: number | null;
+};
+
 export type ActionItem = {
   kind: "action";
   id: string;
@@ -121,6 +141,7 @@ export type TimelineItem =
        *  notice. Collapsing the two would erase the notice. */
       trial: Trial | null;
     }
+  | ExecItem
   | { kind: "notice"; id: string; runId: string; code: NoticeCode; detail: string | null };
 
 /** Closed set: every notice has copy in the i18n lane. */
@@ -208,6 +229,14 @@ export type CompanionAction =
   | { type: "event"; runId: string; ev: WireEvent; now: number }
   /** The local echo of what the user just sent — it is not an SSE event. */
   | { type: "prompt"; runId: string; text: string; now: number }
+  /**
+   * Lo mismo, pero **reproduciendo un hilo ya ocurrido** (spec 013, R1).
+   *
+   * No es `prompt` porque aquél además marca el run como activo y en marcha,
+   * y al reabrir un hilo viejo eso sería mentira: se pintaría como vivo un
+   * turno que terminó hace días.
+   */
+  | { type: "replayed_prompt"; runId: string; text: string }
   | { type: "run_started"; runId: string }
   | { type: "stream_failed"; runId: string; detail: string; now: number }
   /**
@@ -303,6 +332,13 @@ export function companionReducer(state: CompanionState, action: CompanionAction)
         items: [...state.items, { kind: "user", id: `u:${action.runId}:${action.now}`, runId: action.runId, text: action.text }],
       };
 
+    case "replayed_prompt":
+      // Solo añade. Ni `activeRun` ni `runStatus`: esto ya pasó.
+      return {
+        ...state,
+        items: [...state.items, { kind: "user", id: `u:${action.runId}:replay`, runId: action.runId, text: action.text }],
+      };
+
     case "stream_failed":
       return {
         ...state,
@@ -385,6 +421,54 @@ function applyEvent(state: CompanionState, runId: string, ev: WireEvent, now: nu
       const prev = base.items[idx];
       if (prev?.kind !== "thinking") return base;
       return { ...base, items: replace(base.items, idx, { ...prev, text: prev.text + chunk }) };
+    }
+
+    case "exec.dispatched": {
+      // La plataforma dejó el trabajo para la máquina. **No hay desenlace
+      // todavía**, y no se inventa: hasta que conteste, está en marcha.
+      const executionId = str(d.execution_id);
+      if (!executionId) return base;
+      const execId = `x:${executionId}`;
+      if (base.items.some((i) => i.kind === "exec" && i.id === execId)) return base;
+      const rawArgs = d.args;
+      return {
+        ...base,
+        items: [
+          ...closeThinking(base.items, runId, now),
+          {
+            kind: "exec",
+            id: execId,
+            runId,
+            executionId,
+            executable: str(d.executable),
+            args: Array.isArray(rawArgs) ? rawArgs.filter((a): a is string => typeof a === "string") : [],
+            clientRef: typeof d.client_ref === "string" ? d.client_ref : null,
+            status: "en_marcha",
+            exitCode: null,
+          },
+        ],
+      };
+    }
+
+    case "exec.completed": {
+      // El evento llega **sin salida**, y es deliberado: CONTRACT-V3 dice que
+      // los eventos llevan hechos estructurados, nunca prosa de un programa.
+      // La salida se pide aparte, por su ruta, y caduca.
+      const doneId = `x:${str(d.execution_id)}`;
+      const at = base.items.findIndex((i) => i.kind === "exec" && i.id === doneId);
+      if (at === -1) return base;
+      const before = base.items[at];
+      if (before?.kind !== "exec") return base;
+      const outcome = str(d.outcome, "completada");
+      const known = ["completada", "expirada", "terminada", "denegada"];
+      return {
+        ...base,
+        items: replace(base.items, at, {
+          ...before,
+          status: (known.includes(outcome) ? outcome : "completada") as ExecItem["status"],
+          exitCode: typeof d.exit_code === "number" ? d.exit_code : null,
+        }),
+      };
     }
 
     case "tool.call.started": {

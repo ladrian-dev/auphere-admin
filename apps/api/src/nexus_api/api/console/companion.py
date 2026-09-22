@@ -112,6 +112,8 @@ from .schemas_companion import (
     CompanionRunStartIn,
     CompanionRunStartOut,
     CompanionRunSummaryOut,
+    CompanionSearchHit,
+    CompanionSearchOut,
     CompanionThreadCreateIn,
     CompanionThreadOut,
     CompanionThreadPatchIn,
@@ -591,6 +593,84 @@ async def get_budget(
 
 
 # ── hilos ──────────────────────────────────────────────────────────────
+
+
+@router.get("/companion/search", response_model=CompanionSearchOut)
+async def search_conversations(
+    q: str = Query(default="", max_length=200),
+    limit: int = Query(default=20, ge=1, le=50),
+    caller: CompanionCaller = Depends(companion_reader()),
+    session: AsyncSession = Depends(get_db_session),
+) -> CompanionSearchOut:
+    """Buscar dentro de lo hablado — spec 013, Requisito 7.
+
+    **Sin índice nuevo**, a propósito: R7 es P3 y se resuelve con lo que hay.
+    Si algún día el volumen lo pide, poner un índice es otra decisión con su
+    propio coste, y merece tomarse con datos.
+
+    La frontera no se negocia: se lee bajo ``app.principal_id``, así que lo que
+    salga de aquí es de quien pregunta. Por esta ruta viaja **texto de
+    conversaciones**, y eso la hace más sensible que la mayoría.
+
+    Una consulta vacía devuelve nada, no todo: confundir «no has escrito nada»
+    con «quiero verlo todo» sería volcar el hilo entero encima de alguien.
+    """
+    termino = q.strip()
+    if not termino:
+        return CompanionSearchOut(results=[])
+
+    async with session.begin():
+        await apply_principal_to_session(session, caller.principal_id)
+        patron = f"%{termino}%"
+        rows = (
+            await session.execute(
+                sa.select(
+                    CompanionThread.id,
+                    CompanionThread.title,
+                    CompanionThread.last_run_at,
+                    CompanionMessage.content,
+                )
+                .join(CompanionMessage, CompanionMessage.thread_id == CompanionThread.id)
+                .where(
+                    CompanionThread.archived_at.is_(None),
+                    CompanionMessage.content.ilike(patron),
+                )
+                .order_by(CompanionThread.last_run_at.desc().nullslast())
+                .limit(limit * 5)
+            )
+        ).all()
+
+    # Una conversación aparece **una vez** aunque el término salga cinco: la
+    # lista es de conversaciones, no de coincidencias.
+    vistas: dict[uuid.UUID, CompanionSearchHit] = {}
+    for thread_id, title, last_run_at, content in rows:
+        if thread_id in vistas:
+            continue
+        vistas[thread_id] = CompanionSearchHit(
+            thread_id=thread_id,
+            title=title,
+            excerpt=_excerpt(content, termino),
+            last_run_at=last_run_at,
+        )
+        if len(vistas) >= limit:
+            break
+    return CompanionSearchOut(results=list(vistas.values()))
+
+
+#: Cuánto texto acompaña a la coincidencia. Suficiente para reconocer de qué
+#: iba; no tanto como para que la lista sea la conversación.
+EXCERPT_RADIUS = 60
+
+
+def _excerpt(content: str, termino: str) -> str:
+    """Un trozo alrededor de donde apareció, con sus puntos suspensivos."""
+    limpio = " ".join(content.split())
+    at = limpio.lower().find(termino.lower())
+    if at < 0:
+        return limpio[: EXCERPT_RADIUS * 2]
+    desde = max(0, at - EXCERPT_RADIUS)
+    hasta = min(len(limpio), at + len(termino) + EXCERPT_RADIUS)
+    return f"{'…' if desde else ''}{limpio[desde:hasta]}{'…' if hasta < len(limpio) else ''}"
 
 
 @router.get("/companion/threads", response_model=list[CompanionThreadOut])
@@ -1753,6 +1833,11 @@ async def list_thread_runs(
         # El 404 opaco sale de aquí: un hilo de otro miembro no se
         # distingue de uno que no existe.
         await _thread_row(session, thread_id, caller.principal_id)
+        # Spec 013, R1 — el texto que originó cada run viaja con su resumen.
+        # `outerjoin` y no `join`: un run sin fila de mensaje es una anomalía,
+        # y desaparecer de la lista por ella sería peor que decir `None`.
+        # Un run tiene **exactamente un** mensaje de persona, así que esto no
+        # multiplica filas.
         rows = (
             await session.execute(
                 sa.select(
@@ -1760,6 +1845,14 @@ async def list_thread_runs(
                     CompanionRun.status,
                     CompanionRun.started_at,
                     CompanionRun.ended_at,
+                    CompanionMessage.content,
+                )
+                .outerjoin(
+                    CompanionMessage,
+                    sa.and_(
+                        CompanionMessage.run_id == CompanionRun.id,
+                        CompanionMessage.role == "user",
+                    ),
                 )
                 .where(CompanionRun.thread_id == thread_id)
                 .order_by(CompanionRun.started_at.asc())
@@ -1769,9 +1862,13 @@ async def list_thread_runs(
         thread_id=thread_id,
         runs=[
             CompanionRunSummaryOut(
-                run_id=run_id, status=status_, started_at=started_at, ended_at=ended_at
+                run_id=run_id,
+                status=status_,
+                started_at=started_at,
+                ended_at=ended_at,
+                prompt=prompt,
             )
-            for run_id, status_, started_at, ended_at in rows
+            for run_id, status_, started_at, ended_at, prompt in rows
         ],
     )
 

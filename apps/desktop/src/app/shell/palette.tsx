@@ -27,10 +27,20 @@ export function Palette({
   open,
   commands,
   onClose,
+  onSearch,
 }: {
   open: boolean;
   commands: readonly Command[];
   onClose: () => void;
+  /**
+   * Buscar **dentro de lo hablado** — spec 013, R7. Hasta aquí ⌘K solo
+   * navegaba entre secciones, así que con meses de conversaciones «Boreal» no
+   * encontraba nada y la memoria de la persona era el único índice.
+   *
+   * Es opcional: donde no haya dónde buscar, la paleta sigue navegando y no
+   * se anuncia una capacidad que no está (§V).
+   */
+  onSearch?: (q: string) => Promise<Command[]>;
 }) {
   const t = useAppT();
   const [query, setQuery] = useState("");
@@ -50,6 +60,31 @@ export function Palette({
     if (!needle) return commands;
     return commands.filter((c) => `${c.group} ${c.label}`.toLowerCase().includes(needle));
   }, [commands, query]);
+
+  /*
+   * Lo hablado se busca en el servidor, así que llega después que lo local.
+   * Se espera un poco antes de preguntar: teclear «Boreal» son seis pulsaciones
+   * y seis consultas serían cinco de más.
+   */
+  const [remotos, setRemotos] = useState<Command[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  useEffect(() => {
+    const needle = query.trim();
+    if (!onSearch || needle.length < 2) {
+      setRemotos([]);
+      setBuscando(false);
+      return;
+    }
+    setBuscando(true);
+    const id = window.setTimeout(() => {
+      void onSearch(needle)
+        .then(setRemotos)
+        .finally(() => setBuscando(false));
+    }, 200);
+    return () => window.clearTimeout(id);
+  }, [query, onSearch]);
+
+  const todos = useMemo(() => [...matches, ...remotos], [matches, remotos]);
 
   if (!open) return null;
 
@@ -79,7 +114,7 @@ export function Palette({
             if (event.key === "Escape") onClose();
             if (event.key === "ArrowDown") {
               event.preventDefault();
-              setCursor((c) => Math.min(matches.length - 1, c + 1));
+              setCursor((c) => Math.min(todos.length - 1, c + 1));
             }
             if (event.key === "ArrowUp") {
               event.preventDefault();
@@ -87,7 +122,7 @@ export function Palette({
             }
             if (event.key === "Enter") {
               event.preventDefault();
-              run(matches[cursor]);
+              run(todos[cursor]);
             }
           }}
           placeholder={t("shell.search.placeholder")}
@@ -96,10 +131,14 @@ export function Palette({
         />
 
         <ul className="max-h-80 overflow-y-auto p-1" role="listbox" aria-label={t("shell.search")}>
-          {matches.length === 0 ? (
-            <li className="px-3 py-6 text-center text-sm text-muted-foreground">{t("shell.search.empty")}</li>
+          {todos.length === 0 ? (
+            // §V — «todavía buscando» y «no hay nada» son dos cosas, y
+            // confundirlas hace que la gente cierre antes de que llegue.
+            <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+              {buscando ? t("shell.search.looking") : t("shell.search.empty")}
+            </li>
           ) : (
-            matches.map((command, index) => (
+            todos.map((command, index) => (
               <li key={command.id}>
                 <button
                   type="button"

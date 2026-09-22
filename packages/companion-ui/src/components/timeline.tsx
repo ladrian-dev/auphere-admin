@@ -3,6 +3,10 @@
 import { Info } from "lucide-react";
 import * as React from "react";
 
+import { ExecResultCard, type ExecOutput } from "./exec-result";
+import { Markdown } from "./markdown";
+import { MessageActions } from "./message-actions";
+
 import { Button, EmptyState, ErrorState, Skeleton } from "@nexus/ui";
 
 
@@ -48,6 +52,22 @@ type Props = {
   onSuggestion: (text: string) => void;
   onAnswerSlot: (slot: IntakeSlot) => void;
   onDecide: (actionId: string, decision: Decision, note?: string) => void;
+  /**
+   * Cómo se pide lo que escribió un comando (spec 013, R3). **Opcional**: donde
+   * no se pueda pedir —una superficie sin esa ruta— la tarjeta enseña qué se
+   * ejecutó y cómo acabó, y nada más. Un control que no puede cumplir es una
+   * pantalla que miente.
+   */
+  onFetchExecOutput?: (ref: { executionId: string; clientRef: string | null }) => Promise<ExecOutput>;
+  /**
+   * Volver a poner en el composer lo que se escribió, para cambiarlo y
+   * reenviarlo (spec 013, R5). **Opcional**: donde no se pueda, los controles
+   * no se pintan en vez de fallar al pulsarlos.
+   */
+  onEditMessage?: (text: string) => void;
+  onRetryMessage?: (runId: string) => void;
+  /** Por qué ahora mismo no se puede editar ni reintentar. */
+  actionsBlocked?: "turno_en_marcha" | "decision_pendiente";
   /** Spec 003 — guardar la preferencia de ejecución local. Sin él, no se ofrece. */
   onExecPolicy?: (mode: Exclude<ExecMode, "ask">) => void;
   /** El techo del partner baja lo que esta persona prefiere (R10.4). */
@@ -69,6 +89,10 @@ export function Timeline({
   onSuggestion,
   onAnswerSlot,
   onDecide,
+  onFetchExecOutput,
+  onEditMessage,
+  onRetryMessage,
+  actionsBlocked,
 }: Props) {
   const t = useT();
   const bottomRef = React.useRef<HTMLDivElement | null>(null);
@@ -177,9 +201,31 @@ export function Timeline({
                 </div>
               ) : null}
 
+              {item.kind === "user" && (onEditMessage || onRetryMessage) ? (
+                // Spec 013, R5 — debajo de lo que escribiste, no encima: las
+                // acciones son sobre el mensaje, y leerlo va antes que actuar.
+                <div className="flex justify-end">
+                  <MessageActions
+                    text={item.text}
+                    canEdit={Boolean(onEditMessage) && !actionsBlocked}
+                    canRetry={Boolean(onRetryMessage) && !actionsBlocked}
+                    {...(actionsBlocked ? { blockedReason: actionsBlocked } : {})}
+                    {...(onEditMessage ? { onEdit: onEditMessage } : {})}
+                    {...(onRetryMessage ? { onRetry: () => onRetryMessage(item.runId) } : {})}
+                  />
+                </div>
+              ) : null}
+
               {item.kind === "assistant" ? (
                 <>
-                  <p className="min-w-0 text-sm whitespace-pre-wrap text-pretty break-words text-foreground">{item.text}</p>
+                  {/* Spec 013, R2 — el agente escribe en Markdown porque su
+                      prompt se lo pide, así que hasta aquí el producto
+                      generaba algo que el producto no sabía enseñar: listas
+                      con guiones, tablas hechas de tuberías y las comillas del
+                      cercado a la vista. */}
+                  <div className="min-w-0 text-sm break-words text-foreground">
+                    <Markdown text={item.text} />
+                  </div>
                   {/* Attached to the answer, not to the top of the log: up
                       there lives the "part of this conversation is missing"
                       notice, which is about HISTORY, not about scope. Two
@@ -224,6 +270,20 @@ export function Timeline({
 
               {item.kind === "intake" ? (
                 <IntakeCard slots={item.slots} workKind={item.workKind} onAnswer={onAnswerSlot} />
+              ) : null}
+
+              {item.kind === "exec" && onFetchExecOutput ? (
+                // El resultado, que es otro momento y otra tarjeta: aprobar
+                // ocurre antes de que exista nada que enseñar (spec 013, R3).
+                <ExecResultCard
+                  executionId={item.executionId}
+                  clientRef={item.clientRef}
+                  executable={item.executable}
+                  args={item.args}
+                  status={item.status}
+                  exitCode={item.exitCode}
+                  fetchOutput={onFetchExecOutput}
+                />
               ) : null}
 
               {item.kind === "action" && item.actionKind === "local_exec" ? (

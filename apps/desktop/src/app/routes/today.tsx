@@ -13,6 +13,7 @@
  * disimulado.
  */
 import { Button } from "@nexus/ui";
+import { useState } from "react";
 
 import type { Teammate, WorkstationView } from "../bridge";
 import { WorkstationChip } from "../shell/workstation-chip";
@@ -29,6 +30,8 @@ export type TodayProps = {
   onOpenPending: () => void;
   onCreate: () => void;
   onOpenTeammate: (id: string) => void;
+  /** Escribir lo primero y que eso abra la conversación (spec 013, R6). */
+  onStart: (teammateId: string, text: string) => void;
 };
 
 export function Today({
@@ -41,8 +44,12 @@ export function Today({
   onOpenPending,
   onCreate,
   onOpenTeammate,
+  onStart,
 }: TodayProps) {
   const t = useAppT();
+  const [text, setText] = useState("");
+  const [con, setCon] = useState<string | null>(null);
+  const destinatario = con ?? teammates[0]?.id ?? null;
 
   /*
    * La máquina sólo ocupa sitio cuando hay algo que decir. Conectada y sin
@@ -52,8 +59,74 @@ export function Today({
   const machineNeedsAttention =
     workstation !== null && workstation.status !== "conectada" && workstation.status !== "comprobando";
 
+  const enviar = () => {
+    const limpio = text.trim();
+    // Un botón que no puede cumplir no se pulsa: sin texto o sin teammate no
+    // hay conversación que empezar, y fingir que sí es la pantalla mintiendo.
+    if (!limpio || !destinatario) return;
+    onStart(destinatario, limpio);
+    setText("");
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
+      {/*
+        Spec 013, R6 — **lo primero es escribir.** Antes esta pantalla abría
+        con el estado de la máquina y lo que esperaba decisión: todo cierto y
+        todo administrativo. Lo que decide de qué clase de producto se trata es
+        qué ocupa el centro al abrir.
+
+        Sin teammates no se pinta: un sitio donde escribir que no lleva a
+        ninguna parte es peor que no tenerlo (§V).
+      */}
+      {teammates.length > 0 ? (
+        <section aria-labelledby="hoy-escribir" className="flex flex-col gap-2">
+          <h2 id="hoy-escribir" className="sr-only">
+            {t("today.start.send")}
+          </h2>
+          <div className="flex min-w-0 flex-col gap-2 rounded-md border border-border p-3">
+            <textarea
+              value={text}
+              rows={3}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  enviar();
+                }
+              }}
+              placeholder={t("today.start.placeholder")}
+              className="min-w-0 resize-none rounded-sm bg-transparent text-ui outline-none"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              {teammates.length > 1 ? (
+                <label className="flex min-w-0 items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">{t("today.start.with")}</span>
+                  <select
+                    value={destinatario ?? ""}
+                    onChange={(e) => setCon(e.target.value)}
+                    className="min-h-8 min-w-0 rounded-md border border-border bg-background px-2 text-sm"
+                  >
+                    {teammates.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t("today.start.with")} {teammates[0]?.name}
+                </p>
+              )}
+              <Button size="sm" className="ml-auto" onClick={enviar}>
+                {t("today.start.send")}
+              </Button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {machineNeedsAttention ? (
         <section aria-labelledby="hoy-maquina" className="flex flex-col gap-2 rounded-md border border-border p-4">
           <h2 id="hoy-maquina" className="text-base font-semibold">

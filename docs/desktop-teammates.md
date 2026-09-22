@@ -57,7 +57,7 @@ Chromium dentro de la ventana.
 
 ## El canal con el proceso principal
 
-`apps/desktop/src/app-ipc.ts` **es** el contrato: 40 canales de invocación y 17
+`apps/desktop/src/app-ipc.ts` **es** el contrato: 41 canales de invocación y 17
 de empuje, cada uno con la forma de su entrada. El `preload` expone una función
 por canal y nada más — ni `ipcRenderer`, ni `send`, ni `invoke` genérico.
 
@@ -183,6 +183,20 @@ Desde la 004:
   puede vaciar el pool de la aplicación.
 - En pantalla, el partner ve **una barra y una fecha**, no la cifra del pool.
   El panel de operador sigue viendo las cifras: las necesita para conciliar.
+
+## La conversación (spec 013)
+
+Lo que la 013 cambió de la pantalla, que es lo que el partner vive a diario:
+
+| | |
+|---|---|
+| **El hilo recuerda** | El resumen de cada run lleva el texto que lo originó, así que al reabrir se ven las preguntas y no solo las respuestas. El mensaje **ya se guardaba**; lo que faltaba era devolverlo |
+| **Se lee** | Markdown, código y tablas con su formato (`react-markdown` sin `rehype-raw`: se construyen elementos de React, no HTML, así que un mensaje no puede ejecutar nada **por construcción**) |
+| **Se ve lo que el comando hizo** | Una tarjeta de **resultado**, hermana de la de aprobación. La salida se pide por su ruta —nunca por el stream, que el contrato reserva a hechos— y **caduca a los quince minutos**: no entra en ninguna tabla |
+| **Varias conversaciones** | Por teammate y por persona. Sin migración: `companion.threads` ya lo admitía desde la 003; lo que lo impedía era coger siempre el primer hilo no archivado |
+| **Al abrir se escribe** | «Hoy» abre con el composer. Sin teammates no se pinta: un sitio donde escribir que no lleva a ninguna parte es peor que no tenerlo |
+| **Copiar, editar, reintentar** | Se copia el original, no lo pintado. Con un turno vivo o una confirmación esperando, los controles no aparecen y se dice por qué |
+| **Buscar** | ⌘K encuentra dentro de lo hablado, bajo `app.principal_id`. Sin índice nuevo |
 
 ## Qué se comparte y qué no
 

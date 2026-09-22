@@ -364,6 +364,11 @@ class LocalExecutionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def get(self, execution_id: uuid.UUID) -> LocalExecution | None:
+        """Una ejecución **de este cliente**. La RLS filtra por tenant, así que
+        el id de otro cliente sencillamente no existe aquí."""
+        return await self._session.get(LocalExecution, execution_id)
+
     async def record_denial(
         self,
         *,

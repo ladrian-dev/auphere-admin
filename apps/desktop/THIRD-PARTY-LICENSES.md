@@ -43,6 +43,38 @@ distribuidas. `electron-builder` incluye los avisos de las dependencias en el
 paquete; la tarea de empaquetado (`T070`) comprueba que el fichero de licencias
 viaja dentro.
 
+## Las tres que entran con la spec 013 (el Markdown)
+
+Van en `packages/companion-ui`, así que viajan **en la aplicación y en la
+consola**. Licencias verificadas contra `registry.npmjs.org` y contra el fichero
+de licencia del repositorio oficial, antes de instalar:
+
+| Dependencia | Versión | Licencia |
+|---|---|---|
+| `react-markdown` | 10.1.0 | MIT |
+| `remark-gfm` | 4.0.1 | MIT |
+| `remend` | 1.3.1 | **Apache-2.0** |
+
+MIT ya está citada arriba. El párrafo de `remend`, del `LICENSE` de
+`vercel/streamdown`:
+
+> Copyright 2023 Vercel, Inc. **Licensed under the Apache License, Version 2.0**
+> (the "License"); you may not use this file except in compliance with the
+> License. You may obtain a copy of the License at
+> http://www.apache.org/licenses/LICENSE-2.0
+
+Es la **Apache-2.0 estándar**, no una «Apache modificada»: el texto coincide con
+el de apache.org y §VIII la admite sin lectura adicional. Sin cláusula de red y
+sin restricción de multi-tenant. Lo que obliga es conservar el aviso y señalar
+los ficheros modificados —no se modifica ninguno—.
+
+**Por qué `remend` y no `streamdown`**, que resuelve lo mismo y es del mismo
+autor: sus valores por defecto traen `rehype-raw` y admiten imágenes de cualquier
+origen, más permisivos que nuestra superficie de amenaza —texto de desconocidos
+por WhatsApp—. Habría que apagar tres cosas para volver al punto de partida, y
+son 144 kB frente a 4,3. Razonamiento en
+`specs/013-la-conversacion-es-el-producto/research.md` §5.
+
 ## Las dos que no son MIT y por qué se aceptan
 
 **OFL-1.1** (las dos fuentes). El texto leído del paquete instalado dice:

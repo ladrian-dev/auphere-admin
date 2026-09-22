@@ -659,16 +659,34 @@ async def test_a_paused_run_appears_as_still_running(client, console_world, comp
 
 
 async def test_the_run_listing_carries_no_transcript(client, console_world, companion_provider):
-    """Metadatos y nada más. Los cuerpos viven en ``…/events``, que tiene su
-    propio guardián; duplicarlos aquí sería abrir una segunda puerta sin
-    portero."""
+    """Sin transcripción. **Con** la pregunta de la persona (spec 013, R1).
+
+    Decía «metadatos y nada más», y el motivo era bueno: los cuerpos viven en
+    ``…/events``, que tiene su propio guardián, y duplicarlos aquí sería abrir
+    una segunda puerta sin portero.
+
+    La 013 lo enmienda **solo para el mensaje de la persona**, y por la razón
+    exacta que el argumento original no cubría: ese mensaje **no está en
+    ``events`` ni lo ha estado nunca**. No hay primera puerta que duplicar —
+    hay una fila de ``companion.messages`` que no devolvía nadie, y por eso el
+    hilo se reabría con las respuestas y sin las preguntas.
+
+    Portero, hay: el 404 opaco de ``_thread_row``, que el test de abajo prueba
+    y que ``tests/isolation/test_36_thread_text_scope.py`` vuelve a probar
+    ahora que por aquí viaja prosa.
+
+    Lo que **sigue sin poder salir por aquí** es lo que el agente respondió.
+    """
     a = console_world["a"]
     thread_id, _r, _action = await _propose_prompt(client, a, companion_provider)
     listed = await client.get(
         f"/console/companion/threads/{thread_id}/runs", headers=a["headers"]()
     )
     for run in listed.json()["runs"]:
-        assert set(run) == {"run_id", "status", "started_at", "ended_at"}
+        assert set(run) == {"run_id", "status", "started_at", "ended_at", "prompt"}
+        # La frontera que no se mueve: ni respuesta del modelo, ni razonamiento,
+        # ni resultado de herramienta. Solo lo que escribió la persona.
+        assert "answer" not in run and "events" not in run and "content" not in run
 
 
 async def test_another_members_thread_runs_are_an_opaque_404(

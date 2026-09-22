@@ -58,6 +58,19 @@ def result_key(execution_id: uuid.UUID) -> str:
     return f"{RESULT_KEY_PREFIX}{execution_id}"
 
 
+def screen_key(execution_id: uuid.UUID) -> str:
+    """Lo mismo, para quien **mira** en vez de para quien espera.
+
+    Hacen falta dos claves y no una porque el turno lee con ``LPOP``: se lleva
+    el payload. Si la pantalla leyera de ahí, el que llegara segundo no
+    encontraría nada — y cuál de los dos llega antes no lo decide nadie.
+
+    Ésta se lee sin consumir y caduca sola. **No es un almacén**: es el mismo
+    dato con el mismo reloj, visible mientras dura (spec 013, R3).
+    """
+    return f"{RESULT_KEY_PREFIX}screen:{execution_id}"
+
+
 @dataclass(frozen=True)
 class ExecutionResult:
     outcome: str
@@ -109,12 +122,42 @@ async def publish_result(redis: Redis, execution_id: uuid.UUID, result: Executio
         "stdout_sample": result.stdout_sample,
         "denial_code": result.denial_code,
     }
+    raw = json.dumps(payload)
     key = result_key(execution_id)
     try:
-        await redis.rpush(key, json.dumps(payload))
+        await redis.rpush(key, raw)
         await redis.expire(key, RESULT_TTL_SECONDS)
+        # Y la copia que mira la persona que aprobó el comando (spec 013, R3).
+        # Va en su propia clave y **no se consume al leerla**, porque el turno
+        # sí consume la suya. Mismo reloj, ningún otro sitio: nunca Postgres.
+        await redis.set(screen_key(execution_id), raw, ex=RESULT_TTL_SECONDS)
     except Exception:  # pragma: no cover - la fila ya se cerró; esto es el aviso
         log.warning("local_exec.publish_failed", execution_id=str(execution_id))
+
+
+async def read_output_for_screen(redis: Redis, execution_id: uuid.UUID) -> ExecutionResult | None:
+    """Lo que el programa escribió, para enseñárselo a quien lo aprobó.
+
+    ``None`` es la respuesta **normal** pasados los quince minutos, no un
+    error: es lo que permite que la pantalla diga «la salida no se conserva» en
+    vez de dejar un hueco que parezca un fallo (R3.3, y §V).
+
+    Lee sin consumir: el turno tiene su propia cola y no se le toca.
+    """
+    try:
+        raw = await redis.get(screen_key(execution_id))
+    except Exception:  # pragma: no cover - sin Redis no hay nada que enseñar
+        log.warning("local_exec.screen_read_failed", execution_id=str(execution_id))
+        return None
+    if raw is None:
+        return None
+    data = json.loads(raw if isinstance(raw, str) else raw.decode())
+    return ExecutionResult(
+        outcome=str(data.get("outcome") or "expirada"),
+        exit_code=data.get("exit_code"),
+        stdout_sample=str(data.get("stdout_sample") or ""),
+        denial_code=data.get("denial_code"),
+    )
 
 
 async def await_result(

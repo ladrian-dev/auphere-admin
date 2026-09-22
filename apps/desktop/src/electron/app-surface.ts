@@ -16,6 +16,7 @@ import type { ShellPrefs } from "../shell-prefs.js";
 
 export type { ShellPrefs };
 import { PlatformClient, SessionLost } from "../platform-client.js";
+import { type ThreadRow, chooseThread, titleFrom } from "../thread-selection.js";
 import type { GateDecision, WhoamiClient } from "../session-gate.js";
 import type { InboxWatcher } from "../inbox-watcher.js";
 import type { Prefs } from "../notifications-policy.js";
@@ -136,21 +137,41 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
     o.platform.request(`/api/teammates/${q(input.id)}/changes`),
   );
 
-  // El hilo de la persona con ese teammate: se busca, y si no hay, se abre.
-  handle("app:thread.open", async (input: { teammate_id: string }) => {
-    const listed = await o.platform.request<Array<{ id: string; archived_at: string | null }>>(
+  /**
+   * La conversación de esta persona con ese teammate — spec 013, R4.
+   *
+   * Antes cogía **el primer hilo no archivado** y, si no había, creaba uno
+   * llamado literalmente «Hilo». Eso era el hilo eterno: todo lo hablado con
+   * alguien, para siempre, en el mismo sitio. La base de datos admitía varias
+   * desde la 003; lo que lo impedía era esta elección.
+   *
+   * Ahora decide `chooseThread`, que es puro y está probado aparte: respeta la
+   * última en la que se estuvo **si sigue viva**, y si no cae a la más
+   * reciente. Crear sigue siendo decisión de aquí, no suya.
+   */
+  handle("app:thread.open", async (input: { teammate_id: string; prefer?: string }) => {
+    const listed = await o.platform.request<ThreadRow[]>(
       `/api/companion/threads?teammate_id=${q(input.teammate_id)}`,
     );
     if (listed.ok) {
-      const open = listed.data.find((t) => !t.archived_at);
-      if (open) return { ok: true, data: { thread_id: open.id } };
+      const elegido = chooseThread(listed.data, input.prefer ?? null);
+      if (elegido) return { ok: true, data: { thread_id: elegido } };
     }
-    const created = await o.platform.request<{ id: string }>("/api/companion/threads", {
-      method: "POST",
-      body: { title: "Hilo", mode: "build", teammate_id: input.teammate_id },
-    });
-    return created.ok ? { ok: true, data: { thread_id: created.data.id } } : created;
+    return createThread(o, input.teammate_id);
   });
+
+  /** Empezar una conversación nueva con el mismo teammate (R4.1). */
+  handle("app:thread.create", (input: { teammate_id: string }) => createThread(o, input.teammate_id));
+
+  /** Buscar dentro de lo hablado (R7). Lo que salga es de quien pregunta. */
+  handle("app:companion.search", (input: { q: string }) =>
+    o.platform.request(`/api/companion/search?q=${encodeURIComponent(input.q)}`),
+  );
+
+  /** Las conversaciones de esta persona con ese teammate, para elegir (R4.4). */
+  handle("app:thread.list", (input: { teammate_id: string }) =>
+    o.platform.request(`/api/companion/threads?teammate_id=${q(input.teammate_id)}`),
+  );
   handle("app:thread.runs", (input: { thread_id: string }) =>
     o.platform.request(`/api/companion/threads/${q(input.thread_id)}/runs`),
   );
@@ -356,6 +377,31 @@ export function registerAppSurface(o: AppSurfaceOptions): void {
   handle("app:workstation.pickDirectory", (input: { client_ref: string }) =>
     o.workstation.pickDirectory(input.client_ref),
   );
+  /**
+   * Lo que escribió un comando (spec 013, R3). La salida **no está en ninguna
+   * tabla**: la plataforma la sirve de su copia efímera mientras dura, y
+   * pasados los quince minutos contesta que ya no está — que no es un error.
+   */
+  handle("app:workstation.execOutput", (input: { client_ref: string; execution_id: string }) =>
+    o.platform.request(
+      `/console/clients/${q(input.client_ref)}/workstation/executions/${q(input.execution_id)}/output`,
+    ),
+  );
+}
+
+/**
+ * Una conversación nueva, sin título todavía.
+ *
+ * El título **no se le pide al modelo**: sería un turno de más y un gasto por
+ * una etiqueta. Sale de lo primero que se escriba, y hasta entonces se dice
+ * que no lo tiene — que es más honesto que llamarlas todas «Hilo».
+ */
+async function createThread(o: AppSurfaceOptions, teammateId: string) {
+  const created = await o.platform.request<{ id: string }>("/api/companion/threads", {
+    method: "POST",
+    body: { title: titleFrom(""), mode: "build", teammate_id: teammateId },
+  });
+  return created.ok ? { ok: true as const, data: { thread_id: created.data.id } } : created;
 }
 
 /**

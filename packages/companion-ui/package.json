@@ -22,6 +22,9 @@
   "dependencies": {
     "@nexus/ui": "workspace:*",
     "lucide-react": "^1.16.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "remend": "^1.3.1",
     "use-stick-to-bottom": "1.1.6"
   },
   "devDependencies": {
