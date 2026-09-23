@@ -7,7 +7,7 @@ import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import type { Allocation, Wallet } from "@/lib/backend/home-usage";
 import { can, requirePrincipal } from "@/lib/principal";
-import { barsFromSeries, cumulativeWithProjection, topMeters } from "@/lib/usage-projection";
+import { barsFromSeries, cumulativeWithProjection, includedRemainingPercent, topMeters } from "@/lib/usage-projection";
 
 import { AllocationCapForm } from "./allocation-cap";
 import { AssignAllocationForm } from "./assign-allocation";
@@ -56,8 +56,9 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
   ]);
   const n = (v: number) => formatNumber(v, locale);
   // R7.1: la proporción la calcula la API, que es quien conoce el tamaño del
-  // pool. Aquí solo se pinta.
-  const walletPercent = Math.round(wallet.included_percent_used ?? 0);
+  // pool. Aquí se pinta lo que QUEDA, que es lo que dice la etiqueta: un
+  // pool entero es 100 %, no 0 %.
+  const walletPercent = includedRemainingPercent(wallet);
   const totals = Object.entries(report.totals_by_meter);
   const month = report.month;
   const today = new Date().toISOString().slice(0, 10);
@@ -118,8 +119,8 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
           value={`${walletPercent}%`}
           hint={
             wallet.included_expires_at
-              ? t("hu.usage.wallet.expires", { date: formatDateTime(wallet.included_expires_at, locale) })
-              : t("hu.usage.wallet.expires.none")
+              ? t("hu.usage.wallet.included.hint", { remaining: n(wallet.included_remaining), date: formatDateTime(wallet.included_expires_at, locale) })
+              : t("hu.usage.wallet.included.hint.none", { remaining: n(wallet.included_remaining) })
           }
         />
         <Metric label={t("hu.usage.wallet.purchased")} value={n(wallet.purchased_remaining)} hint={t("hu.usage.wallet.tokens")} />

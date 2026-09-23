@@ -83,3 +83,25 @@ export function cumulativeWithProjection(
   }
   return out;
 }
+
+/**
+ * Included pool as the share that is still AVAILABLE (0–100), never the
+ * share consumed. The API sends ``included_percent_used`` (spec 004, R7.1);
+ * the card is titled "remaining", so the number it shows must be the
+ * remainder — a full pool reads 100 %, not 0 %. Falls back to the raw
+ * figures when the API omits the percentage; with no pool at all there is
+ * nothing left to show, so 0.
+ */
+export function includedRemainingPercent(wallet: {
+  included_remaining: number;
+  pool_size?: number;
+  included_percent_used?: number;
+}): number {
+  if (typeof wallet.included_percent_used === "number" && Number.isFinite(wallet.included_percent_used)) {
+    return Math.min(100, Math.max(0, Math.round(100 - wallet.included_percent_used)));
+  }
+  if (wallet.pool_size && wallet.pool_size > 0) {
+    return Math.min(100, Math.max(0, Math.round((wallet.included_remaining * 100) / wallet.pool_size)));
+  }
+  return 0;
+}

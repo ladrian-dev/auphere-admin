@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { barsFromSeries, cumulativeWithProjection, percentOf, projectMonth, seriesTotal, topMeters, type SeriesPoint } from "../usage-projection";
+import { barsFromSeries, cumulativeWithProjection, includedRemainingPercent, percentOf, projectMonth, seriesTotal, topMeters, type SeriesPoint } from "../usage-projection";
 
 describe("projectMonth / percentOf (CP-22)", () => {
   it("projects linearly over the elapsed days", () => {
@@ -39,5 +39,24 @@ describe("series shaping", () => {
     // 30 over 2 days → 15/day; projection joins at today (30) then 45, 60, 75.
     expect(line.map((p) => p.projected)).toEqual([null, 30, 45, 60, 75]);
     expect(line.at(-1)?.projected).toBe(projectMonth(30, 2, 5));
+  });
+});
+
+describe("includedRemainingPercent (bug: la tarjeta «Incluido restante» pintaba lo usado)", () => {
+  it("a full pool reads 100 %, not 0 %", () => {
+    expect(includedRemainingPercent({ included_remaining: 115_000, pool_size: 115_000, included_percent_used: 0 })).toBe(100);
+  });
+  it("is the complement of what the API says was used", () => {
+    expect(includedRemainingPercent({ included_remaining: 30_000, pool_size: 100_000, included_percent_used: 70 })).toBe(30);
+    expect(includedRemainingPercent({ included_remaining: 0, pool_size: 100_000, included_percent_used: 100 })).toBe(0);
+    expect(includedRemainingPercent({ included_remaining: 1, pool_size: 3, included_percent_used: 66.67 })).toBe(33);
+  });
+  it("derives from the raw figures when the API omits the percentage", () => {
+    expect(includedRemainingPercent({ included_remaining: 25_000, pool_size: 100_000 })).toBe(25);
+  });
+  it("clamps and treats a missing pool as nothing left", () => {
+    expect(includedRemainingPercent({ included_remaining: 5, pool_size: 0 })).toBe(0);
+    expect(includedRemainingPercent({ included_remaining: 5 })).toBe(0);
+    expect(includedRemainingPercent({ included_remaining: 5, pool_size: 10, included_percent_used: -5 })).toBe(100);
   });
 });
