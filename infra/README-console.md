@@ -33,7 +33,7 @@ Igual que `infra/vercel/README.md` describe para el admin:
 | `NEXUS_CONSOLE_JWT_ISSUER` | `nexus-console` | Debe coincidir con la API. |
 | `NEXUS_CONSOLE_JWT_AUDIENCE` | `nexus-api` | Idem. |
 | `NEXUS_CONSOLE_ORIGIN` | `https://console.staging.auphere.com` | Origen propio (CSP/cookies). |
-| `NEXUS_META_APP_ID`, `NEXUS_META_CONFIG_ID_WA_CLOUD_API`, `NEXUS_META_CONFIG_ID_WA_COEXISTENCE`, `NEXUS_META_GRAPH_API_VERSION` | de la app de Meta | Opcionales: sin ellas el botón de Embedded Signup sale deshabilitado con motivo. |
+| `NEXUS_META_APP_ID`, `NEXUS_META_CONFIG_ID_WA_CLOUD_API`, `NEXUS_META_CONFIG_ID_WA_COEXISTENCE`, `NEXUS_META_GRAPH_API_VERSION` | de la app de Meta (los mismos valores que `meta_app_id` / `meta_config_id_*` de la API en ese entorno) | Opcionales: sin ellas Canales muestra la nota «el número lo conecta Auphere», sin botón (spec 016, R1.3). Con ellas, el botón real de Embedded Signup. |
 
 **No hay ninguna variable de Postgres.** Si ves `NEXUS_CONSOLE_DATABASE_URL`
 en algún sitio, es de antes de ADR-032 y sobra.
