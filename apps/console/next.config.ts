@@ -25,7 +25,12 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          // same-origin would sever ``window.opener`` of the Meta Embedded
+          // Signup popup, and the FB SDK then reports «denied» three seconds
+          // in, before the person touches the window (bug
+          // meta-no-devuelve-el-codigo). allow-popups keeps the protection
+          // against pages that open US while letting the popups WE open talk back.
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
         ],
       },
     ];

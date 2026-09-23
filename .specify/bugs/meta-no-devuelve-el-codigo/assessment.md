@@ -35,7 +35,19 @@ API (signup, activación, 409, transacción) y la nota de ausencia; lo que nadie
 probó fue **la vuelta** del código en un entorno con CSP, porque en local no hay
 claves de Meta y en tests el SDK es un doble.
 
+**Segunda causa, encontrada al reproducir tras arreglar la primera.** Con el
+frame ya permitido, el aviso seguía llegando a los 3 segundos de abrir la
+ventana, y el frame de `staticxx` ni siquiera se pedía. `next.config.ts` envía
+`Cross-Origin-Opener-Policy: same-origin`, que corta `window.opener` entre la
+consola y la ventana emergente de Meta (otro origen). El SDK abre la ventana con
+`relation=opener` y, al no poder hablar con quien la abrió, da la respuesta por
+denegada sin esperar a la persona. El panel de operador tampoco envía esta
+cabecera.
+
 ## Fix
 
-Añadir `https://staticxx.facebook.com` a `frame-src`. Guardarlo con un test
-sobre las directivas de la CSP para que el host no desaparezca en una limpieza.
+1. Añadir `https://staticxx.facebook.com` a `frame-src`, con un test sobre las
+   directivas de la CSP para que el host no desaparezca en una limpieza.
+2. `Cross-Origin-Opener-Policy: same-origin-allow-popups`: conserva la
+   protección frente a páginas que nos abran a nosotros y deja que las ventanas
+   que abrimos nosotros respondan.

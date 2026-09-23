@@ -7,14 +7,18 @@
 
 ## Summary
 
-`frame-src` de la consola admite `https://staticxx.facebook.com`, el frame por el
-que el SDK de Facebook devuelve el código de autorización del Embedded Signup.
+Dos cabeceras de la consola impedían que el SDK de Facebook devolviera el código
+del Embedded Signup: `frame-src` no admitía `staticxx.facebook.com` (el frame de
+vuelta) y `Cross-Origin-Opener-Policy: same-origin` cortaba `window.opener` con
+la ventana de Meta. Ahora `frame-src` admite el host y la COOP es
+`same-origin-allow-popups`.
 
 ## Changes
 
 | File | Change | Notes |
 |------|--------|-------|
 | `apps/console/src/proxy.ts` | modificado | `staticxx.facebook.com` en `frame-src`, con el porqué al lado |
+| `apps/console/next.config.ts` | modificado | COOP `same-origin-allow-popups`, con el porqué al lado |
 | `apps/console/src/__tests__/csp.test.ts` | añadido | las tres piezas del SDK (script, connect, frames) están en la CSP que emite el proxy |
 
 ## Verification
