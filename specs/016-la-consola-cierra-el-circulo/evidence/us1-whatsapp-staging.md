@@ -5,8 +5,10 @@ Canales muestra la nota «El número lo conecta Auphere» sin botón (ausencia
 diseñada, R1.3). Cubierto por `whatsapp-connect.test.tsx` y por el test de
 `shell-detect` (la ruta «continuar en el navegador» apunta a esta misma página).
 
-**Staging (pendiente)**: requiere las claves de Meta en Vercel y un número de
-prueba. Recorrido a documentar aquí con capturas:
+**Staging (2026-09-23)**: variables de Meta ampliadas a Preview en Vercel y
+dominios de la consola en la app de Meta; Canales muestra el **botón real**
+(ver `staging-2026-09-23.md`). Falta el clic final, que requiere un número de
+prueba y a alguien con acceso a su Meta Business Manager. Recorrido a documentar aquí con capturas:
 
 1. Canales → «Conectar WhatsApp» → ventana de Meta → volver.
 2. Tarjeta del número activa; toast «Número … conectado. El cliente ya está
