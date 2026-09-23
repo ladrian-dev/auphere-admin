@@ -76,7 +76,7 @@ export function TemplatesSection({ refId, list, error, manage }: { refId: string
           <h2 id="tpl-title" className="text-base font-medium">
             {t("tpl.title")}
           </h2>
-          <p className="max-w-prose text-sm text-muted-foreground">{t("tpl.description")}</p>
+          <p className=" text-sm text-muted-foreground">{t("tpl.description")}</p>
         </div>
         {manage && list ? <Button onClick={() => setCreateOpen(true)}>{t("tpl.new")}</Button> : null}
       </div>

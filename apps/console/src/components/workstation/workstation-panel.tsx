@@ -89,7 +89,7 @@ export function WorkstationPanel({
           <CardHeader className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <CardTitle id="workstation-allowlist">{t("workstation.allowlist.title")}</CardTitle>
-              <p className="mt-1 max-w-prose text-sm text-pretty text-muted-foreground">
+              <p className="mt-1 text-sm text-pretty text-muted-foreground">
                 {t("workstation.allowlist.help")}
               </p>
             </div>

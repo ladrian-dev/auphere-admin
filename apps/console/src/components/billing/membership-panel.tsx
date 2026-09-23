@@ -52,30 +52,14 @@ type Props = {
 /** Estados que piden acción. `current` no pinta nada: no hay nada que arreglar. */
 const TROUBLED: readonly SubscriptionState[] = ["payment_failed", "unpaid", "canceled"];
 
-/**
- * The plan to point at (owner, 2026-09-23): the cheapest paid tier that fits
- * the agents the partner already runs — Pro up to two, Team up to six,
- * Business beyond — and never the current tier or one below it. Nothing is
- * recommended when the partner is already on the tier that fits.
- */
-export function recommendedTier(catalog: TierOut[], current: TierOut, activeAgents: number): TierOut["code"] | null {
-  const needed = Math.max(1, activeAgents);
-  const paid = catalog.filter((c) => c.monthly_price_cents > 0).sort((a, b) => a.monthly_price_cents - b.monthly_price_cents);
-  const fit = paid.find((c) => c.max_teammates >= needed) ?? paid[paid.length - 1];
-  if (!fit || fit.code === current.code || fit.monthly_price_cents <= current.monthly_price_cents) return null;
-  return fit.code;
-}
-
 function TierCard({
   tier,
   current,
-  recommended,
   onChoose,
   busy,
 }: {
   tier: TierOut;
   current: boolean;
-  recommended: boolean;
   onChoose?: (code: string) => Promise<void> | void;
   busy: boolean;
 }) {
@@ -83,15 +67,13 @@ function TierCard({
   const locale = useLocale();
   return (
     <Card
-      className={current ? "ring-2 ring-primary" : recommended ? "ring-2 ring-status-info-border" : undefined}
+      className={current ? "ring-2 ring-primary" : undefined}
       aria-current={current ? "true" : undefined}
-      data-recommended={recommended || undefined}
     >
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center justify-between gap-2">
           <span>{tier.display_name}</span>
           {current ? <StatusBadge tone="positive">{t("membership.currentBadge")}</StatusBadge> : null}
-          {recommended ? <StatusBadge tone="info">{t("membership.recommendedBadge")}</StatusBadge> : null}
         </CardTitle>
         <CardDescription>
           {tier.monthly_price_cents === 0
@@ -122,7 +104,6 @@ function TierCard({
         {!current && onChoose ? (
           <Button
             size="sm"
-            variant={recommended ? "default" : "outline"}
             disabled={busy}
             onClick={() => void onChoose(tier.code)}
           >
@@ -141,7 +122,6 @@ export function MembershipPanel({ membership, onChoose, onFixCard, onCancel }: P
 
   const { tier, state, usage, catalog } = membership;
   const troubled = TROUBLED.includes(state);
-  const recommended = recommendedTier(catalog, tier, usage.teammates);
 
   async function choose(code: string) {
     if (!onChoose) return;
@@ -204,7 +184,7 @@ export function MembershipPanel({ membership, onChoose, onFixCard, onCancel }: P
           <h2 id="free-h" className="text-lg font-semibold text-balance">
             {t("membership.free.title")}
           </h2>
-          <p className="text-muted-foreground max-w-prose text-sm text-pretty">
+          <p className="text-muted-foreground text-sm text-pretty">
             {t("membership.free.body")}
           </p>
         </section>
@@ -246,14 +226,14 @@ export function MembershipPanel({ membership, onChoose, onFixCard, onCancel }: P
           {t("membership.catalog")}
         </h2>
         {/* Side by side (owner, 2026-09-23): four plans in one row on a wide
-            screen, two by two on a tablet, stacked on a phone. */}
+            screen, two by two on a tablet, stacked on a phone. All alike: no
+            «recommended» — the partner decides (owner, 2026-09-24). */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {catalog.map((entry) => (
             <TierCard
               key={entry.code}
               tier={entry}
               current={entry.code === tier.code}
-              recommended={entry.code === recommended}
               onChoose={entry.code === "free" ? undefined : choose}
               busy={busy}
             />

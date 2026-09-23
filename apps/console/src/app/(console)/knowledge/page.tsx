@@ -20,7 +20,7 @@ export default async function PlaybookPage() {
     <section className="flex min-w-0 flex-col gap-4" aria-label={t("playbook.title")}>
       <div className="flex min-w-0 flex-col gap-1">
         <h1 className="text-base font-medium text-balance">{t("playbook.title")}</h1>
-        <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("playbook.description")}</p>
+        <p className=" text-sm text-pretty text-muted-foreground">{t("playbook.description")}</p>
       </div>
       <KnowledgeTable
         refId=""

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import {
+  BrandLockup,
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -14,7 +15,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarTrigger,
   useSidebar,
 } from "@nexus/ui";
 
@@ -41,15 +41,10 @@ export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
   return (
     <Sidebar variant="inset" collapsible="icon" aria-label="Primary">
       <SidebarHeader>
-        {/* The toggle lives here, not in the top bar (owner, 2026-09-23). Expanded:
-            wordmark + toggle; collapsed: only the toggle, which is also the way back. */}
-        <div className={collapsed ? "flex h-10 items-center justify-center" : "flex h-10 min-w-0 items-center justify-between gap-2 px-2"}>
-          {!collapsed ? (
-            <span className="font-mono text-sm font-semibold text-primary-deep" aria-label="Auphere">
-              auphere
-            </span>
-          ) : null}
-          <SidebarTrigger />
+        {/* The full logo (owner, 2026-09-24). Collapsed, only the mark stays,
+            at the same size, so nothing jumps; the toggle lives in the top bar. */}
+        <div className={collapsed ? "flex h-10 items-center justify-center" : "flex h-10 min-w-0 items-center px-2"}>
+          <BrandLockup markOnly={collapsed} />
         </div>
       </SidebarHeader>
       <SidebarContent>

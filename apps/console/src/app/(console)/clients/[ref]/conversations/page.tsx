@@ -31,7 +31,7 @@ export default async function ConversationsPage({ params, searchParams }: { para
   ]);
   return (
     <section className="flex min-w-0 flex-col gap-4" aria-label={t("conv.title")}>
-      <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("conv.description")}</p>
+      <p className=" text-sm text-pretty text-muted-foreground">{t("conv.description")}</p>
       {stats ? (
         <div className="grid gap-4 md:grid-cols-4">
           <Metric label={t("conv.stats.total")} value={formatNumber(stats.conversations, locale)} />

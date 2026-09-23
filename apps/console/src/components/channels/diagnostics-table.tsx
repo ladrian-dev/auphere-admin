@@ -146,7 +146,7 @@ export function DiagnosticsTable({ refId, data, manage }: { refId: string; data:
           <h2 id="diag-test" className="text-sm font-medium">
             {t("diag.test.title")}
           </h2>
-          <p className="max-w-prose text-xs text-muted-foreground">{t("diag.test.description")}</p>
+          <p className=" text-xs text-muted-foreground">{t("diag.test.description")}</p>
           <form
             noValidate
             className="flex flex-wrap items-end gap-2"

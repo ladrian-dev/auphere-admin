@@ -33,7 +33,7 @@ function PageHeader({ eyebrow, title, description, actions, context, className }
         {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
         <h1 className="min-w-0 text-2xl font-semibold text-balance md:text-3xl">{title}</h1>
         {description ? (
-          <p className="max-w-prose text-base text-pretty text-muted-foreground">{description}</p>
+          <p className="text-base text-pretty text-muted-foreground">{description}</p>
         ) : null}
       </div>
       {actions ? (

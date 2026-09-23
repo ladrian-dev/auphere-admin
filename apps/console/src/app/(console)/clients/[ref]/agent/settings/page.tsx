@@ -35,7 +35,7 @@ export default async function AgentSettingsPage({ params }: { params: Promise<{ 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 className="text-base font-medium text-balance">{t("agentSettings.title")}</h1>
-          <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("agentSettings.description")}</p>
+          <p className=" text-sm text-pretty text-muted-foreground">{t("agentSettings.description")}</p>
         </div>
         <Button nativeButton={false} render={<Link href={`${base}/agent`} />} variant="outline" size="sm">
           <ArrowLeft aria-hidden="true" />

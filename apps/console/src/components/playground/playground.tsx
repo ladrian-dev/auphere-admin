@@ -325,7 +325,7 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
               {!selected ? (
                 <p className="m-auto text-sm text-muted-foreground">{t("playground.threads.select")}</p>
               ) : turns.length === 0 ? (
-                <p className="m-auto max-w-prose text-center text-sm text-pretty text-muted-foreground">{t("playground.transcript.empty")}</p>
+                <p className="m-auto text-center text-sm text-pretty text-muted-foreground">{t("playground.transcript.empty")}</p>
               ) : (
                 <ol className="flex flex-col gap-3">
                   {turns.map((turn) => (

@@ -17,7 +17,7 @@ export default async function KnowledgePage({ params }: { params: Promise<{ ref:
     <section className="flex min-w-0 flex-col gap-4" aria-label={t("knowledge.title")}>
       <div className="flex min-w-0 flex-col gap-1">
         <h1 className="text-base font-medium text-balance">{t("knowledge.title")}</h1>
-        <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("knowledge.description")}</p>
+        <p className=" text-sm text-pretty text-muted-foreground">{t("knowledge.description")}</p>
       </div>
       <KnowledgeTable refId={ref} data={data} canWrite={can(principal.role, "knowledge:write")} />
     </section>

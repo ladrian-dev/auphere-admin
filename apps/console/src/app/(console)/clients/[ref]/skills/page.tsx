@@ -16,7 +16,7 @@ export default async function SkillsPage({ params }: { params: Promise<{ ref: st
     <section className="flex min-w-0 flex-col gap-4" aria-label={t("skills.title")}>
       <div className="flex min-w-0 flex-col gap-1">
         <h1 className="text-base font-medium text-balance">{t("skills.title")}</h1>
-        <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("skills.description")}</p>
+        <p className=" text-sm text-pretty text-muted-foreground">{t("skills.description")}</p>
       </div>
       <SkillsGrid refId={ref} data={data} canWrite={can(principal.role, "agents:write")} />
     </section>

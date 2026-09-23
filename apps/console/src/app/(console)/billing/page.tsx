@@ -33,7 +33,7 @@ export default async function BillingPage() {
               otro documento donde se busca. */}
           <ProviderInvoicesLink hasSubscription={membership.tier.code !== "free"} />
         </div>
-        <p className="text-muted-foreground max-w-prose text-sm text-pretty">
+        <p className="text-muted-foreground text-sm text-pretty">
           {t("membership.invoices.help")}
         </p>
         {billing.receipts.length === 0 ? (
