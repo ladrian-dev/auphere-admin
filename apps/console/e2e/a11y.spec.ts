@@ -142,6 +142,34 @@ test.describe("CP-30 — axe + overflow on every main view", () => {
     }
   });
 
+  // Spec 016 (T059): the dialogs of the block, opened, under axe.
+  test("spec 016: the move-quota dialog and the model card pass axe when open", async ({ page }) => {
+    await page.goto(`/clients/${encodeURIComponent(ref)}/agent/settings`);
+    await expect(page.locator("main#main")).toBeVisible();
+    const model = page.getByRole("radiogroup", { name: /Modelo|Model/ });
+    if (await model.count()) {
+      await model.getByRole("radio").last().click();
+    }
+    let axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "best-practice"]).exclude("iframe").analyze();
+    expect(axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
+
+    await page.goto("/usage");
+    await expect(page.locator("main#main")).toBeVisible();
+    const qty = page.getByLabel(/Créditos a mover|Credits to move/);
+    if ((await qty.count()) === 0) {
+      // The move form needs two clients; the seeded partner may have one.
+      test.info().annotations.push({ type: "skipped-part", description: "move dialog: the partner has fewer than two clients" });
+      return;
+    }
+    await qty.fill("1");
+    await page.getByRole("button", { name: /^Mover cupo$|^Move quota$/ }).click();
+    const dialog = page.getByRole("alertdialog").or(page.getByRole("dialog"));
+    await expect(dialog).toBeVisible();
+    axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "best-practice"]).exclude("iframe").analyze();
+    expect(axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
+    await page.keyboard.press("Escape");
+  });
+
   test("keyboard: skip link and command palette", async ({ page }) => {
     await page.goto("/");
     await page.keyboard.press("Tab");
