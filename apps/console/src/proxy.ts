@@ -59,8 +59,11 @@ export function proxy(request: NextRequest) {
     "font-src 'self' data:",
     // Dev only: Next's HMR websocket is a different scheme, so 'self' does not cover it.
     `connect-src 'self' https://graph.facebook.com https://www.facebook.com${isDev ? " ws://localhost:* wss://localhost:*" : ""}`,
-    // facebook.com → the hidden frame the FB SDK mounts (CP-17).
-    "frame-src 'self' https://www.facebook.com https://web.facebook.com",
+    // facebook.com → the login dialog; staticxx.facebook.com → the hidden
+    // xd_arbiter frame through which the FB SDK hands the OAuth code back
+    // (CP-17). Without staticxx the popup completes and the console still
+    // gets «Meta no devolvió el código» (bug meta-no-devuelve-el-codigo).
+    "frame-src 'self' https://www.facebook.com https://web.facebook.com https://staticxx.facebook.com",
     "frame-ancestors 'none'",
     "form-action 'self'",
     "base-uri 'self'",
