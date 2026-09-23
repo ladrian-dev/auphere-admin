@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
+import sqlalchemy as sa
 from langgraph.checkpoint.memory import MemorySaver
 from nexus_worker.runtime.companion import build_companion_graph
 from nexus_worker.runtime.llm import InMemoryProvider
@@ -636,3 +637,168 @@ async def test_quota_state_matches_the_channel_gate(client, console_world, db_se
     assert (await quota_state(ghost, [a["tenant_id"]]))[a["tenant_id"]] is True
     # Un tenant ajeno no aparece con cupo por error: también agotado.
     assert (await quota_state(a["partner_id"], [_uuid.uuid4()])) != {}
+
+
+# ── spec 016 · mover tope en una transacción (R3.1-R3.3) ─────────────────────
+
+
+async def _caps(client, headers) -> dict[str, tuple[int, int]]:
+    rows = (await client.get("/console/wallet/allocations", headers=headers)).json()
+    return {r["client_ref"]: (r["cap"], r["remaining"]) for r in rows}
+
+
+async def test_move_allocation_lowers_and_raises_in_one_call(
+    client, console_world, db_session
+) -> None:
+    """CE-003: la suma de topes no cambia; el destino sin fila nace con ``qty``."""
+    a = console_world["a"]
+    other = "client-a-move-to"
+    await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=other)
+    before = await _caps(client, a["headers"]())
+    assert other not in before
+    total_before = sum(cap for cap, _ in before.values())
+
+    resp = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": a["ref"], "to_ref": other, "qty": 20_000},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["from"]["client_ref"] == a["ref"]
+    assert body["from"]["cap"] == before[a["ref"]][0] - 20_000
+    assert body["from"]["remaining"] == min(before[a["ref"]][1], body["from"]["cap"])
+    assert body["to"] == {"client_ref": other, "cap": 20_000, "remaining": 20_000}
+    assert "tenant_id" not in resp.text and "partner_id" not in resp.text
+
+    after = await _caps(client, a["headers"]())
+    assert sum(cap for cap, _ in after.values()) == total_before
+    assert after[other] == (20_000, 20_000)
+
+    # Recorte del restante: un origen que ya gastó no puede quedar con
+    # ``remaining > cap`` (misma regla que ``set_allocation``).
+    from nexus_api.db.models import PartnerAllocation
+
+    row = await db_session.scalar(
+        sa.select(PartnerAllocation).where(PartnerAllocation.tenant_id == a["tenant_id"])
+    )
+    assert row is not None and row.remaining <= row.cap
+
+    from nexus_api.db.models import AuditLog
+
+    audit = (
+        await db_session.scalars(
+            sa.select(AuditLog).where(AuditLog.action == "console.allocation.move")
+        )
+    ).all()
+    assert len(audit) == 1
+    assert audit[0].actor.startswith("console:")
+    assert audit[0].target == f"partner:{a['partner_id']}"
+    assert audit[0].after_json == {"from": a["ref"], "to": other, "qty": 20_000}
+
+
+async def test_move_allocation_errors_by_code_and_nothing_changes(
+    client, console_world, db_session
+) -> None:
+    a = console_world["a"]
+    other = "client-a-move-err"
+    await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=other)
+    before = await _caps(client, a["headers"]())
+    cap_a = before[a["ref"]][0]
+
+    same = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": a["ref"], "to_ref": a["ref"], "qty": 1},
+    )
+    assert same.status_code == 422, same.text
+    assert same.json()["detail"] == {"code": "same_client"}
+
+    too_much = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": a["ref"], "to_ref": other, "qty": cap_a + 1},
+    )
+    assert too_much.status_code == 422, too_much.text
+    assert too_much.json()["detail"] == {
+        "code": "insufficient_cap",
+        "cap": cap_a,
+        "qty": cap_a + 1,
+    }
+
+    # El destino sin fila tampoco puede ser origen: su tope es 0.
+    empty_source = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": other, "to_ref": a["ref"], "qty": 1},
+    )
+    assert empty_source.status_code == 422, empty_source.text
+    assert empty_source.json()["detail"]["code"] == "insufficient_cap"
+    assert empty_source.json()["detail"]["cap"] == 0
+
+    for qty in (0, -5):
+        bad = await client.post(
+            "/console/wallet/allocations/move",
+            headers=a["headers"](),
+            json={"from_ref": a["ref"], "to_ref": other, "qty": qty},
+        )
+        assert bad.status_code == 422, bad.text
+
+    extra = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": a["ref"], "to_ref": other, "qty": 1, "partner_id": "x"},
+    )
+    assert extra.status_code == 422, extra.text
+
+    assert await _caps(client, a["headers"]()) == before
+
+
+async def test_move_allocation_forbidden_without_usage_write(
+    client, console_world, db_session
+) -> None:
+    from tests.conftest import add_console_member
+
+    a = console_world["a"]
+    analyst = await add_console_member(db_session, partner_id=a["partner_id"], role="analyst")
+    resp = await client.post(
+        "/console/wallet/allocations/move",
+        headers=analyst["headers"](),
+        json={"from_ref": a["ref"], "to_ref": "x", "qty": 1},
+    )
+    assert resp.status_code == 403, resp.text
+
+
+async def test_move_allocation_is_atomic(client, console_world, db_session, monkeypatch) -> None:
+    """CE-003: si el destino falla después de que el origen ya bajó, la
+    transacción se deshace y ningún tope cambia."""
+    from nexus_api.metering import wallet as wallet_module
+
+    a = console_world["a"]
+    other = "client-a-move-atomic"
+    await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=other)
+    before = await _caps(client, a["headers"]())
+
+    def _boom(row, qty):
+        raise RuntimeError("destino roto")
+
+    monkeypatch.setattr(wallet_module, "_credit_allocation", _boom)
+    # El transporte de pruebas relanza la excepción del servidor (en
+    # producción sería un 500): lo que importa es lo que queda en el libro.
+    with pytest.raises(RuntimeError, match="destino roto"):
+        await client.post(
+            "/console/wallet/allocations/move",
+            headers=a["headers"](),
+            json={"from_ref": a["ref"], "to_ref": other, "qty": 20_000},
+        )
+    assert await _caps(client, a["headers"]()) == before
+
+    from nexus_api.db.models import AuditLog
+
+    assert (
+        await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(AuditLog)
+            .where(AuditLog.action == "console.allocation.move")
+        )
+    ) == 0

@@ -467,3 +467,53 @@ async def test_tickets_admin_unscoped_sees_a_and_b(db_session) -> None:
             (await session.execute(sa.text("SELECT ticket_ref FROM tickets"))).scalars().all()
         )
         assert {ref_a, ref_b} <= visible
+
+
+# ── spec 016 (garantía 1): mover tope no cruza partners ──────────────────────
+
+
+async def _caps_total(client, headers) -> int:
+    rows = (await client.get("/console/wallet/allocations", headers=headers)).json()
+    return sum(int(r["cap"]) for r in rows)
+
+
+async def test_moving_quota_to_or_from_another_partners_client_is_an_opaque_404(
+    client, console_world
+) -> None:
+    """A no puede mover tope hacia (ni desde) un cliente de B: el mismo 404
+    que un ref inexistente, y la suma de topes de los dos partners no cambia."""
+    a, b = console_world["a"], console_world["b"]
+    total_a, total_b = (
+        await _caps_total(client, a["headers"]()),
+        await _caps_total(client, b["headers"]()),
+    )
+    missing = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": a["ref"], "to_ref": "does-not-exist", "qty": 1000},
+    )
+    for payload in (
+        {"from_ref": a["ref"], "to_ref": b["ref"], "qty": 1000},
+        {"from_ref": b["ref"], "to_ref": a["ref"], "qty": 1000},
+    ):
+        foreign = await client.post(
+            "/console/wallet/allocations/move", headers=a["headers"](), json=payload
+        )
+        assert foreign.status_code == 404, foreign.text
+        assert foreign.json() == missing.json() == {"detail": "Unknown client reference"}
+    assert await _caps_total(client, a["headers"]()) == total_a
+    assert await _caps_total(client, b["headers"]()) == total_b
+
+
+async def test_quota_state_never_reads_another_partners_client_as_served(
+    console_world,
+) -> None:
+    """Un ``tenant_id`` ajeno nunca sale con cupo: la fila de B es invisible
+    bajo el partner A, y lo invisible lee como «sin cupo» (cerrado)."""
+    from nexus_api.metering.wallet import quota_state
+
+    a, b = console_world["a"], console_world["b"]
+    states = await quota_state(a["partner_id"], [a["tenant_id"], b["tenant_id"]])
+    assert states[a["tenant_id"]] is False
+    assert states[b["tenant_id"]] is True
+    assert (await quota_state(b["partner_id"], [b["tenant_id"]]))[b["tenant_id"]] is False
