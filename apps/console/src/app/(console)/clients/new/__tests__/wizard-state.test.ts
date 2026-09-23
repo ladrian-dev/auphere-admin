@@ -28,15 +28,20 @@ describe("wizard-state", () => {
       "pending",
       "skipped",
       "skipped",
+      "skipped",
       "pending",
     ]);
     expect(planStages({ seed_template: "generic_v1", publish_now: false }).map((s) => s.status)).toEqual([
       "pending",
       "pending",
       "skipped",
+      "skipped",
       "pending",
     ]);
-    expect(planStages({ seed_template: "generic_v1", publish_now: true }).every((s) => s.status === "pending")).toBe(true);
+    // Spec 016 (R4.1): publish and activate are two stages.
+    const full = planStages({ seed_template: "generic_v1", publish_now: true });
+    expect(full.map((s) => s.key)).toEqual(["create", "seed", "publish", "activate", "channel"]);
+    expect(full.every((s) => s.status === "pending")).toBe(true);
   });
 
   it("reduces stage events and reports the outcome", () => {
@@ -145,5 +150,20 @@ describe("wizard timezone (QA-06)", () => {
     expect(isIanaTimeZone("America/Los_Angeles")).toBe(true);
     expect(isIanaTimeZone("")).toBe(false);
     expect(isIanaTimeZone("Caracas Venezuela")).toBe(false);
+  });
+
+  it("retrying «activate» touches no earlier stage (spec 016, R4.2)", () => {
+    let st = planStages({ seed_template: "generic_v1", publish_now: true });
+    for (const key of ["create", "seed", "publish"] as const) {
+      st = stageReducer(st, { type: "start", key, at: 1 });
+      st = stageReducer(st, { type: "done", key, at: 2 });
+    }
+    st = stageReducer(st, { type: "start", key: "activate", at: 2 });
+    st = stageReducer(st, { type: "fail", key: "activate", at: 3, error: "boom" });
+    expect(runOutcome(st)).toBe("partial");
+    expect(nextStage(st)).toBe("activate");
+    const retried = stageReducer(st, { type: "reset", key: "activate" });
+    expect(retried.filter((s) => s.key !== "activate").map((s) => s.status)).toEqual(["done", "done", "done", "pending"]);
+    expect(nextStage(retried)).toBe("activate");
   });
 });

@@ -9,11 +9,12 @@ import { toast } from "sonner";
 import { Button, Checkbox, ConfirmDialog, Input, Label, cn } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
+import { actionErrorText } from "@/lib/action-error";
 import { messages, type MessageKey } from "@/i18n/messages";
 import type { Quota } from "@/lib/backend";
 import type { SeedPlaceholder, SeedTemplate } from "@/lib/backend/onboarding";
 
-import { wizardCheckRefAction, wizardCreateClientAction, wizardPublishAndActivateAction, wizardSeedAgentAction } from "./actions";
+import { wizardActivateAction, wizardCheckRefAction, wizardCreateClientAction, wizardPublishAction, wizardSeedAgentAction } from "./actions";
 import {
   browserIanaTimeZone,
   isIanaTimeZone,
@@ -50,6 +51,7 @@ const STAGE_LABEL: Record<StageKey, MessageKey> = {
   create: "wizard.stage.create",
   seed: "wizard.stage.seed",
   publish: "wizard.stage.publish",
+  activate: "wizard.stage.activate",
   channel: "wizard.stage.channel",
 };
 
@@ -249,8 +251,12 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
           return res.ok ? done() : fail(res.message);
         }
         if (key === "publish") {
-          const res = await wizardPublishAndActivateAction({ ref: values.external_client_ref });
-          return res.ok ? done() : fail(res.message);
+          const res = await wizardPublishAction({ ref: values.external_client_ref });
+          return res.ok ? done() : fail(actionErrorText(res, t));
+        }
+        if (key === "activate") {
+          const res = await wizardActivateAction({ ref: values.external_client_ref });
+          return res.ok ? done() : fail(actionErrorText(res, t));
         }
         return done(); // channel: informational, connect afterwards
       } catch (err) {
@@ -273,7 +279,9 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
     setRunning(false);
     if (runOutcome(st) === "done") {
       toast.success(t("clients.create.done"));
-      router.push(`/clients/${encodeURIComponent(values.external_client_ref)}`);
+      // Spec 016 (R4.4): land on the card, on the setup state — what is
+      // missing is named there with the action a click away.
+      router.push(`/clients/${encodeURIComponent(values.external_client_ref)}#setup`);
     }
   }
 
