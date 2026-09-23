@@ -9,6 +9,7 @@ import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogH
 
 import { whatsappSignupAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useT } from "@/i18n/client";
+import { actionErrorText } from "@/lib/action-error";
 import { SignupError, loginWithMeta, type SignupMode } from "@/lib/meta-fb-sdk";
 
 /** Meta Embedded Signup config handed down by the server component (env). */
@@ -25,8 +26,9 @@ export const SELECT_CLASS =
 /**
  * "Connect WhatsApp" — opens Meta's popup (FB.login with our config id),
  * waits for code + WABA ids, posts them to the console API. Disabled with
- * the reason when the client's channel quota is full or when the
- * environment has no Meta app configured.
+ * the reason when the client's channel quota is full. The page only renders
+ * it when Meta is configured (``connectChoice``); without keys the note
+ * ``WhatsAppConnectByAuphere`` takes its place (spec 016, R1.3).
  */
 export function WhatsAppConnect({
   refId,
@@ -46,11 +48,10 @@ export function WhatsAppConnect({
   const t = useT();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const [mode, setMode] = React.useState<SignupMode>("cloud_api");
+  const [mode, setMode] = React.useState<SignupMode>(meta.configIdCloudApi ? "cloud_api" : "coexistence");
   const [working, setWorking] = React.useState(false);
-  const configured = !!meta.appId && !!(meta.configIdCloudApi || meta.configIdCoexistence);
   const configId = mode === "coexistence" ? meta.configIdCoexistence : meta.configIdCloudApi;
-  const disabledReason = !canConnect ? t("ch.quota.full", { used, max }) : !configured ? t("ch.connect.notConfigured") : null;
+  const disabledReason = !canConnect ? t("ch.quota.full", { used, max }) : null;
 
   async function start() {
     if (!meta.appId || !configId) return;
@@ -58,8 +59,16 @@ export function WhatsAppConnect({
     try {
       const envelope = await loginWithMeta({ appId: meta.appId, version: meta.graphVersion, configId, mode });
       const res = await whatsappSignupAction({ ref: refId, mode, ...envelope });
-      if (!res.ok) return void toast.error(res.message);
-      toast.success(t("ch.connect.done", { phone: res.data.display_phone_number }));
+      if (!res.ok) {
+        // R1.4: the number is someone else's — say so, not «error».
+        if (res.code === "number_in_use") return void toast.error(t("ch.connect.numberInUse"));
+        return void toast.error(actionErrorText(res, t));
+      }
+      // R1.2: the card, the list and the onboarding are recomputed on the
+      // server; the toast says what changed for the client right now.
+      toast.success(
+        res.data.client_status === "active" ? t("ch.connect.done.active", { phone: res.data.display_phone_number }) : t("ch.connect.done", { phone: res.data.display_phone_number }),
+      );
       setOpen(false);
       router.refresh();
     } catch (err) {

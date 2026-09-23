@@ -1,3 +1,4 @@
+import type { ClientHealth } from "../backend";
 import type { Call } from "../backend";
 
 /**
@@ -49,6 +50,9 @@ export type WhatsAppSignupResult = {
   mode: string;
   used_channels: number;
   max_channels: number;
+  /** Spec 016 (R1.2): what the number changed for the client. */
+  client_status: "provisioning" | "active" | "paused" | "archived" | (string & {});
+  health: ClientHealth;
 };
 
 export const SUGGESTED_ACTIONS = [
