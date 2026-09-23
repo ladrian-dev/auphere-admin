@@ -22,6 +22,8 @@ un conector por clave exige un segundo clic que nadie espera.
 Esta spec cierra ese círculo: **un partner deja a un cliente atendiendo de
 verdad, y enterándose de lo que le falta, sin que nadie de Auphere intervenga.**
 
+Vocabulario: **créditos** es la unidad de consumo (decisión del owner); **cupo** es el tope de créditos asignado a un cliente dentro de la cartera del partner; «cuota» no se usa en pantalla.
+
 Depende de las specs **004** (medidor y pool semanal: el cupo por cliente y la
 puerta `allow_channel_turn` existen), **005** (membresías y cobro: el crédito
 se compra de verdad) y del Bloque A del plan (ya en `develop`: las pantallas
@@ -183,7 +185,7 @@ hace falta pulsar «Sincronizar».
 1. **Dado** AgendaPro sin enlazar, **cuando** el partner pega la URL pública de reservas del cliente y guarda, **entonces** el conector pasa a conectado y las herramientas de citas aparecen activables.
 2. **Dado** un conector por clave de API, **cuando** el partner guarda la clave, **entonces** el conector se sincroniza sin más clics y el resultado (conectado / parcial / error con motivo) se ve en el mismo sitio.
 3. **Dado** cualquier formulario de credenciales, **cuando** se muestra, **entonces** las etiquetas de los campos están en el idioma del partner.
-4. **Dado** un conector que devuelve error de credenciales, **cuando** el partner guarda, **entonces** ve el motivo en su idioma y nada queda guardado como conectado.
+4. **Dado** un conector que rechaza la clave, **cuando** el partner guarda, **entonces** ve el motivo en su idioma y el conector no queda como conectado; **dado** que el proveedor no responde, **entonces** la clave queda guardada, el conector conectado con la sincronización en error, y puede reintentar sin teclearla otra vez.
 
 ---
 
@@ -284,7 +286,8 @@ hace falta pulsar «Sincronizar».
 
 1. WHEN el partner guarda la clave de un conector THEN el sistema DEBE sincronizarlo en la misma operación y DEBE mostrar el resultado (conectado / parcial / error con motivo) en el mismo sitio, sin exigir «Sincronizar».
 2. El sistema DEBE mostrar las etiquetas y ayudas de los campos de credenciales en el idioma del partner.
-3. IF la sincronización falla tras guardar la clave THEN el sistema DEBE dejar el conector en un estado que diga qué pasó y DEBE ofrecer reintentar la sincronización sin volver a pedir la clave.
+3. IF el proveedor rechaza la clave al sincronizar THEN el sistema DEBE dejar el conector como «necesita otra clave» (no conectado), DEBE conservar lo tecleado solo para corregirlo y NO DEBE mostrar ninguna herramienta como disponible.
+4. IF el proveedor no está disponible al sincronizar (no rechazó la clave) THEN el sistema DEBE dejar la clave guardada, el conector conectado con la última sincronización en error y su motivo, y DEBE ofrecer reintentar la sincronización sin volver a pedir la clave.
 
 ### Requisito 8 — Cada acción de la consola comprueba el rol y está probada
 

@@ -14,7 +14,7 @@ Cómo demostrar que el círculo cierra. Local para todo menos WhatsApp; staging 
 # API: cupo, salud, avisos, modelo, AgendaPro, conectores
 cd apps/api && uv run pytest tests/integration/test_console_wallet.py tests/integration/test_wallet_alerts.py \
   tests/integration/test_console_models.py tests/unit/test_endpoint_console_channels.py \
-  tests/unit/test_endpoint_console_home_usage.py tests/unit/test_endpoint_console_tools.py -q
+  tests/unit/test_endpoint_console_home_usage.py tests/unit/test_endpoint_console_agent_tools.py -q
 # Aislamiento (bloquea el merge)
 cd apps/api && uv run pytest tests/isolation -q
 # Worker: turno saltado → aviso

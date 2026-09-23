@@ -70,9 +70,9 @@ Permiso `agents:write`.
 ### `POST /console/clients/{ref}/connectors/{slug}/api-key` — cambia el efecto y la respuesta
 Guarda la clave **y sincroniza**. Respuesta 200 = `ConnectorOut` con:
 ```json
-{ "…": "…", "last_sync": { "status": "ok" | "error", "added": 12, "deprecated": 0, "reason": null | "auth_expired" | "provider_unavailable", "at": "…" } }
+{ "…": "…", "last_sync": { "status": "ok" | "error", "added": 12, "deprecated": 0, "reason": null | "auth_rejected" | "provider_unavailable", "at": "…" } }
 ```
-Si la sincronización falla, la clave queda guardada, `status` = `connected`, `last_sync.status` = `error`. Auditoría `console.connector.connect` con `{slug, sync_status}`.
+Dos fallos distintos: si el proveedor **rechaza la clave** (`reason: auth_rejected`), `status` = `needs_reauth`, ninguna herramienta habilitada, y la respuesta lo dice; si el proveedor **no está disponible** (`reason: provider_unavailable`), la clave queda guardada, `status` = `connected`, `last_sync.status` = `error` y «Reintentar» (el endpoint `sync`) resuelve. Auditoría `console.connector.connect` con `{slug, sync_status}`.
 
 ### `POST /console/clients/{ref}/connectors/{slug}/sync` — sin cambios
 Es el «Reintentar» de R7.3.
