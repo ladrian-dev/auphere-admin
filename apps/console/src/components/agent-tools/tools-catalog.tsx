@@ -30,14 +30,17 @@ import {
   connectorStatusAction,
   resetToolModeAction,
   saveToolsAction,
+  setAgendaProUrlAction,
   setToolModeAction,
   startConsentAction,
   syncConnectorAction,
 } from "@/app/(console)/clients/[ref]/tools/actions";
 import { useLocale, useT } from "@/i18n/client";
-import { TOOL_MODES, type ConnectorOut, type ConsentOut, type ToolCatalogOut, type ToolMode, type ToolOut } from "@/lib/backend/agent-tools-types";
+import { messages } from "@/i18n/messages";
+import { actionErrorText } from "@/lib/action-error";
+import { TOOL_MODES, type ConnectorOut, type ConsentOut, type LastSync, type ToolCatalogOut, type ToolMode, type ToolOut } from "@/lib/backend/agent-tools-types";
 
-import { connectorStatusKey, connectorTone, groupToolsByConnector, splitCredentials } from "./lib";
+import { connectorStatusKey, connectorTone, credentialFieldLabel, groupToolsByConnector, lastSyncKey, splitCredentials } from "./lib";
 
 const SELECT_CLASS =
   "h-7 min-w-40 rounded-md border border-input bg-transparent px-2 text-xs focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -237,8 +240,13 @@ function ConnectorHeader({
   const [consent, setConsent] = React.useState<ConsentOut | null>(null);
   const [disconnecting, setDisconnecting] = React.useState(false);
   const [apiKeyOpen, setApiKeyOpen] = React.useState(false);
+  // Spec 016 (R7.3): the outcome of the connect that just happened. It is
+  // not in the list (the API says it once); it lives here until refresh.
+  const [lastSync, setLastSync] = React.useState<LastSync | null>(null);
   const status = connector?.status ?? tools[0]?.connector_status ?? null;
   const name = connector?.display_name ?? displayName ?? slug ?? t("tools.group.native");
+  const publicLink = connector?.auth_kind === "public_url";
+  const apiKey = connector?.auth_kind === "api_key";
 
   function connect() {
     if (!slug) return;
@@ -275,8 +283,14 @@ function ConnectorHeader({
   if (!slug) {
     return <h2 className="text-sm font-medium">{t("tools.group.native")}</h2>;
   }
+  if (connector && publicLink) {
+    // Spec 016 (R6): AgendaPro is linked by its public booking page. No
+    // credentials form, no consent, no sync — a URL, and «unlink».
+    return <PublicLinkHeader refId={refId} connector={connector} canWrite={canWrite} />;
+  }
   const installed = connector?.installed ?? Boolean(status);
   const connected = status === "connected";
+  const syncKey = lastSyncKey(lastSync);
   return (
     <div className="flex min-w-0 flex-col gap-2" aria-busy={pending}>
       <div className="flex flex-wrap items-center gap-2">
@@ -299,7 +313,7 @@ function ConnectorHeader({
                 {installed ? t("connectors.reconnect") : t("connectors.connect")}
               </Button>
             ) : null}
-            {installed ? (
+            {installed && !apiKey ? (
               <Button size="xs" variant="outline" onClick={sync} disabled={pending}>
                 {t("connectors.sync")}
               </Button>
@@ -322,6 +336,23 @@ function ConnectorHeader({
           </span>
         ) : null}
       </div>
+      {syncKey && connector ? (
+        <p className="flex flex-wrap items-center gap-2 text-xs" role="status">
+          <span className={syncKey === "connectors.lastSync.ok" ? "text-muted-foreground" : "text-destructive"}>
+            {t(syncKey, { n: connector.tools_total })}
+          </span>
+          {syncKey === "connectors.lastSync.provider_unavailable" ? (
+            <Button size="xs" variant="outline" onClick={sync} disabled={pending}>
+              {t("connectors.lastSync.retry")}
+            </Button>
+          ) : null}
+          {syncKey === "connectors.lastSync.auth_rejected" ? (
+            <Button size="xs" variant="outline" onClick={() => setApiKeyOpen(true)} disabled={pending}>
+              {t("connectors.lastSync.fix")}
+            </Button>
+          ) : null}
+        </p>
+      ) : null}
       {consent ? (
         <p className="text-xs text-muted-foreground">
           {t("connectors.consent.blocked")}{" "}
@@ -341,12 +372,144 @@ function ConnectorHeader({
         destructive
         onConfirm={() => status_("disconnect")}
       />
-      {connector ? <ApiKeyDialog refId={refId} connector={connector} open={apiKeyOpen} onOpenChange={setApiKeyOpen} /> : null}
+      {connector ? <ApiKeyDialog refId={refId} connector={connector} open={apiKeyOpen} onOpenChange={setApiKeyOpen} onConnected={setLastSync} /> : null}
     </div>
   );
 }
 
-function ApiKeyDialog({ refId, connector, open, onOpenChange }: { refId: string; connector: ConnectorOut; open: boolean; onOpenChange: (o: boolean) => void }) {
+/**
+ * Spec 016 (R6): AgendaPro — «Enlazar la agenda». The public booking page is
+ * what the runtime needs; nothing secret is asked for, ever.
+ */
+function PublicLinkHeader({ refId, connector, canWrite }: { refId: string; connector: ConnectorOut; canWrite: boolean }) {
+  const t = useT();
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  const [open, setOpen] = React.useState(false);
+  const [unlinking, setUnlinking] = React.useState(false);
+  const [value, setValue] = React.useState(connector.public_url ?? "");
+  const [error, setError] = React.useState<string | null>(null);
+  const linked = Boolean(connector.public_url);
+  const name = connector.display_name;
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const url = value.trim();
+    if (!/^https:\/\/([a-z0-9-]+\.)*agendapro\.com(\/|$)/i.test(url)) return void setError(t("connectors.agendapro.invalid"));
+    setError(null);
+    startTransition(async () => {
+      const res = await setAgendaProUrlAction({ ref: refId, public_url: url });
+      if (!res.ok) return void setError(res.code === "invalid_url" ? t("connectors.agendapro.invalid") : actionErrorText(res, t));
+      toast.success(t("connectors.agendapro.linked"));
+      setOpen(false);
+      router.refresh();
+    });
+  }
+  function unlink() {
+    startTransition(async () => {
+      const res = await setAgendaProUrlAction({ ref: refId, public_url: null });
+      if (!res.ok) return void toast.error(actionErrorText(res, t));
+      toast.success(t("connectors.agendapro.unlinked"));
+      setUnlinking(false);
+      setValue("");
+      router.refresh();
+    });
+  }
+
+  const fieldId = `agendapro-url-${refId}`;
+  return (
+    <div className="flex min-w-0 flex-col gap-2" aria-busy={pending}>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="min-w-0 truncate text-sm font-medium" title={name}>
+          {name}
+        </h2>
+        <StatusBadge tone={connectorTone(connector.status)}>{t(connectorStatusKey(connector.status))}</StatusBadge>
+        {linked ? (
+          <a href={connector.public_url ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex min-w-0 items-center gap-1 truncate text-xs text-muted-foreground underline underline-offset-4">
+            <span className="truncate">{connector.public_url}</span>
+            <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+          </a>
+        ) : null}
+        {canWrite ? (
+          <span className="ml-auto flex flex-wrap gap-2">
+            <Button size="xs" onClick={() => setOpen(true)} disabled={pending}>
+              {linked ? t("connectors.agendapro.relink") : t("connectors.agendapro.link")}
+            </Button>
+            {linked ? (
+              <Button size="xs" variant="destructive" onClick={() => setUnlinking(true)} disabled={pending}>
+                {t("connectors.agendapro.unlink")}
+              </Button>
+            ) : null}
+          </span>
+        ) : null}
+      </div>
+      <p className="text-xs text-muted-foreground text-pretty">{t("connectors.agendapro.body")}</p>
+      <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("connectors.agendapro.title")}</DialogTitle>
+            <DialogDescription>{t("connectors.agendapro.help")}</DialogDescription>
+          </DialogHeader>
+          <form className="grid gap-3" onSubmit={submit} noValidate aria-busy={pending}>
+            <div className="grid gap-1">
+              <Label htmlFor={fieldId}>{t("connectors.agendapro.field")}</Label>
+              <Input
+                id={fieldId}
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={t("connectors.agendapro.placeholder")}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? `${fieldId}-err` : undefined}
+                required
+              />
+              {error ? (
+                <p id={`${fieldId}-err`} className="text-xs text-destructive" aria-live="polite">
+                  {error}
+                </p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit" disabled={pending}>
+                {t("connectors.agendapro.link")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <ConfirmDialog
+        open={unlinking}
+        onOpenChange={setUnlinking}
+        title={t("connectors.agendapro.unlink.title", { name })}
+        description={t("connectors.agendapro.unlink.body")}
+        confirmLabel={t("connectors.agendapro.unlink")}
+        cancelLabel={t("common.cancel")}
+        destructive
+        onConfirm={unlink}
+      />
+    </div>
+  );
+}
+
+function ApiKeyDialog({
+  refId,
+  connector,
+  open,
+  onOpenChange,
+  onConnected,
+}: {
+  refId: string;
+  connector: ConnectorOut;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onConnected?: (sync: LastSync | null) => void;
+}) {
   const t = useT();
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -371,8 +534,15 @@ function ApiKeyDialog({ refId, connector, open, onOpenChange }: { refId: string;
     const body = splitCredentials(fields, values);
     startTransition(async () => {
       const res = await connectApiKeyAction({ ref: refId, slug: connector.slug, ...body });
-      if (!res.ok) return void toast.error(res.message);
-      toast.success(t("connectors.apiKey.connected", { name: connector.display_name }));
+      if (!res.ok) return void toast.error(actionErrorText(res, t));
+      // Spec 016 (R7.1/R7.3): saving IS connecting; the API syncs in the same
+      // call and says how it went. No second click.
+      const sync = res.data.last_sync ?? null;
+      onConnected?.(sync);
+      const name = connector.display_name;
+      if (sync?.status === "error" && sync.reason === "auth_rejected") toast.error(t("connectors.apiKey.rejected", { name }));
+      else if (sync?.status === "error") toast.warning(t("connectors.apiKey.savedButNotSynced", { name }));
+      else toast.success(t("connectors.apiKey.connected", { name }));
       close(false);
       router.refresh();
     });
@@ -393,7 +563,7 @@ function ApiKeyDialog({ refId, connector, open, onOpenChange }: { refId: string;
               const id = `cred-${connector.slug}-${f.field}`;
               return (
                 <div key={f.field} className="grid gap-1">
-                  <Label htmlFor={id}>{f.label ?? f.field}</Label>
+                  <Label htmlFor={id}>{credentialFieldLabel(connector.slug, f, messages, (k) => t(k as Parameters<typeof t>[0]))}</Label>
                   <Input
                     id={id}
                     type={f.secret ? "password" : "text"}

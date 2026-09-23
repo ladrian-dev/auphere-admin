@@ -6,6 +6,7 @@ import { z } from "zod";
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
 import { TOOL_MODES, type ConnectorOut, type ConnectorSyncOut, type ConsentOut, type ToolModeOut, type ToolsSaved } from "@/lib/backend/agent-tools";
+import type { AgendaProPublicUrlOut } from "@/lib/backend/agent-tools-types";
 import { can, requirePrincipal } from "@/lib/principal";
 
 /** Server Actions of lane `agent-tools` — tools whitelist, per-tool mode and
@@ -88,6 +89,16 @@ export async function connectApiKeyAction(raw: unknown): Promise<ActionResult<Co
   const principal = await requirePrincipal();
   if (!can(principal.role, "agents:write")) return forbidden();
   const res = await run(() => backendFor(principal).connectApiKey(body.ref, body.slug, { secrets: body.secrets, endpoint_meta: body.endpoint_meta }));
+  if (res.ok) revalidatePath(toolsPath(body.ref));
+  return res;
+}
+
+/** Spec 016 (R6): link or unlink the client's public AgendaPro page. No credentials, ever. */
+export async function setAgendaProUrlAction(raw: unknown): Promise<ActionResult<AgendaProPublicUrlOut>> {
+  const body = z.object({ ref, public_url: z.string().max(500).nullable() }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "agents:write")) return forbidden();
+  const res = await run(() => backendFor(principal).setAgendaProUrl(body.ref, body.public_url));
   if (res.ok) revalidatePath(toolsPath(body.ref));
   return res;
 }
