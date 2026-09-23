@@ -54,7 +54,8 @@ export function BuyCreditForm() {
       const res = await buyCreditAction({ amount_cents: amount * 100 });
       if (!res.ok) {
         // Nunca el mensaje crudo del backend: la pantalla escribe la frase.
-        toast.error(t("membership.error.unavailable"));
+        // Y "no puedes" no es "no funciona": un rol sin permiso lo oye claro.
+        toast.error(res.status === 403 ? t("common.forbidden") : t("membership.error.unavailable"));
         return;
       }
       if (res.data.url) window.location.assign(res.data.url);

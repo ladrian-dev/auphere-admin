@@ -8,6 +8,7 @@ import { Button, Input } from "@nexus/ui";
 import { useT } from "@/i18n/client";
 
 import { moveAllocationAction } from "./actions";
+import { actionErrorText } from "@/lib/action-error";
 
 type Row = { ref: string; name: string; cap: number };
 
@@ -44,7 +45,7 @@ export function MoveAllocationForm({ sources, destinations }: { sources: Row[]; 
       });
       if (!res.ok) {
         if (res.status === 409) return void toast.error(t("hu.usage.allocations.over"));
-        return void toast.error(res.status === 403 ? t("common.forbidden") : res.message);
+        return void toast.error(actionErrorText(res, t));
       }
       setValue("");
       toast.success(t("hu.usage.allocations.move.saved"));

@@ -24,13 +24,15 @@ type Search = { days?: string; client?: string; source?: string; meter?: string 
 
 const METER_GROUPS: Record<string, string> = { "channel.message": "channel.message", llm: "llm.", media: "media.", voice: "voice." };
 
-const EMPTY_WALLET: Wallet = {
+// When the ledger cannot be read the page says so; it never paints "0 %"
+// or "exhausted", which would be a lie a partner acts on (buys credit).
+const UNREADABLE_WALLET: Wallet = {
   included_remaining: 0,
   purchased_remaining: 0,
   available: 0,
   reserve: 0,
   included_expires_at: null,
-  exhausted: true,
+  exhausted: false,
 };
 
 export default async function UsagePage({ searchParams }: { searchParams: Promise<Search> }) {
@@ -48,14 +50,16 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
   const days = [7, 30, 90].includes(Number(sp.days)) ? Number(sp.days) : 30;
   const meterPrefix = sp.meter && METER_GROUPS[sp.meter] ? METER_GROUPS[sp.meter] : undefined;
   const api = backendFor(principal);
-  const [report, series, monthSeries, clients, wallet, allocations] = await Promise.all([
+  const [report, series, monthSeries, clients, walletRead, allocations] = await Promise.all([
     api.usageV2({ days, client: sp.client, source: sp.source }),
     api.usageSeries({ days, client: sp.client, source: sp.source || "channel", meter: meterPrefix }).catch(() => null),
     api.usageSeries({ days: 31, client: sp.client, source: "channel", meter: "channel.message" }).catch(() => null),
     can(principal.role, "clients:read") ? api.listClients({ limit: 200 }).catch(() => null) : null,
-    api.getWallet().catch((): Wallet => EMPTY_WALLET),
+    api.getWallet().then((w) => ({ ok: true as const, wallet: w })).catch(() => ({ ok: false as const, wallet: UNREADABLE_WALLET })),
     api.listAllocations().catch((): Allocation[] => []),
   ]);
+  const wallet = walletRead.wallet;
+  const walletUnreadable = !walletRead.ok;
   const n = (v: number) => formatNumber(v, locale);
   // R7.1: la proporción la calcula la API, que es quien conoce el tamaño del
   // pool. Aquí se pinta lo que QUEDA, que es lo que dice la etiqueta: un
@@ -111,6 +115,11 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
           </AlertDescription>
         </Alert>
       ) : null}
+      {walletUnreadable ? (
+        <Alert>
+          <AlertDescription>{t("hu.usage.wallet.unreadable")}</AlertDescription>
+        </Alert>
+      ) : null}
       <section className="grid gap-4 md:grid-cols-3" aria-label={t("hu.usage.wallet")}>
         {/* Spec 004 (R7.1): el consumo INCLUIDO se presenta como proporción,
             no como cifra. El partner ve cuánto le queda y cuándo vuelve.
@@ -118,15 +127,17 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
             que pagó y tiene derecho a verificar. */}
         <Metric
           label={t("hu.usage.wallet.included")}
-          value={`${walletPercent}%`}
+          value={walletUnreadable ? "—" : `${walletPercent}%`}
           hint={
-            wallet.included_expires_at
+            walletUnreadable
+              ? t("hu.usage.wallet.unreadable.hint")
+              : wallet.included_expires_at
               ? t("hu.usage.wallet.included.hint", { remaining: n(wallet.included_remaining), date: formatDateTime(wallet.included_expires_at, locale) })
               : t("hu.usage.wallet.included.hint.none", { remaining: n(wallet.included_remaining) })
           }
         />
-        <Metric label={t("hu.usage.wallet.purchased")} value={n(wallet.purchased_remaining)} hint={t("hu.usage.wallet.tokens")} />
-        <Metric label={t("hu.usage.wallet.reserve")} value={n(wallet.reserve)} hint={t("hu.usage.wallet.reserve.hint")} />
+        <Metric label={t("hu.usage.wallet.purchased")} value={walletUnreadable ? "—" : n(wallet.purchased_remaining)} hint={t("hu.usage.wallet.tokens")} />
+        <Metric label={t("hu.usage.wallet.reserve")} value={walletUnreadable ? "—" : n(wallet.reserve)} hint={t("hu.usage.wallet.reserve.hint")} />
       </section>
       {/* Spec 005: la recarga sin cobro desapareció. Lo que hay ahora es una
           compra de verdad — el saldo sube cuando el pago se confirma, nunca

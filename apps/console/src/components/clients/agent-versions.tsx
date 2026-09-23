@@ -21,6 +21,7 @@ import {
 
 import { publishAgentAction, rollbackAgentAction, stageAgentAction } from "@/app/(console)/clients/actions";
 import { useLocale, useT } from "@/i18n/client";
+import { actionErrorText } from "@/lib/action-error";
 import type { AgentBundle, AgentVersion } from "@/lib/backend";
 
 import { PromptDiff } from "./prompt-diff";
@@ -36,6 +37,7 @@ export function AgentVersions({ refId, bundle, canWrite }: Props) {
   const [draft, setDraft] = React.useState<string>(active?.system_prompt ?? "");
   const [draftOpen, setDraftOpen] = React.useState(bundle.versions.length === 0);
   const [publishing, setPublishing] = React.useState<AgentVersion | null>(null);
+  const [rollingBack, setRollingBack] = React.useState<AgentVersion | null>(null);
   const [expanded, setExpanded] = React.useState<number | null>(null);
   const versions = [...bundle.versions].sort((a, b) => b.version - a.version);
 
@@ -46,20 +48,24 @@ export function AgentVersions({ refId, bundle, canWrite }: Props) {
     }
     startTransition(async () => {
       const res = await stageAgentAction({ ref: refId, system_prompt: draft });
-      if (!res.ok) return void toast.error(res.message);
+      if (!res.ok) return void toast.error(actionErrorText(res, t));
       toast.success(t("agent.draft.saved", { v: res.data.version }));
       setDraftOpen(false);
       router.refresh();
     });
   }
 
-  function rollback(v: AgentVersion) {
-    startTransition(async () => {
-      const res = await rollbackAgentAction({ ref: refId, version: v.version });
-      if (!res.ok) return void toast.error(res.message);
-      toast.success(t("agent.rolledBack", { v: v.version }));
-      router.refresh();
-    });
+  // Rolling back swaps what answers customers, like publishing does, so it
+  // asks the same way (Nielsen 5: publish confirmed, roll back did not).
+  async function rollback(v: AgentVersion) {
+    const res = await rollbackAgentAction({ ref: refId, version: v.version });
+    if (!res.ok) {
+      toast.error(actionErrorText(res, t));
+      return;
+    }
+    toast.success(t("agent.rolledBack", { v: v.version }));
+    setRollingBack(null);
+    router.refresh();
   }
 
   return (
@@ -141,7 +147,7 @@ export function AgentVersions({ refId, bundle, canWrite }: Props) {
                       </Button>
                     ) : null}
                     {canWrite && !isActive && v.status !== "staged" ? (
-                      <Button size="sm" variant="outline" onClick={() => rollback(v)} disabled={pending}>
+                      <Button size="sm" variant="outline" onClick={() => setRollingBack(v)} disabled={pending}>
                         {t("agent.rollback")}
                       </Button>
                     ) : null}
@@ -180,12 +186,23 @@ export function AgentVersions({ refId, bundle, canWrite }: Props) {
           if (!publishing) return;
           const res = await publishAgentAction({ ref: refId, version: publishing.version });
           if (!res.ok) {
-            toast.error(res.message);
+            toast.error(actionErrorText(res, t));
             return;
           }
           toast.success(t("agent.published", { v: publishing.version }));
           setPublishing(null);
           router.refresh();
+        }}
+      />
+      <ConfirmDialog
+        open={rollingBack !== null}
+        onOpenChange={(o) => !o && setRollingBack(null)}
+        title={t("agent.rollback.title", { v: rollingBack?.version ?? "" })}
+        description={t("agent.rollback.body", { v: rollingBack?.version ?? "", active: active?.version ?? "" })}
+        confirmLabel={t("agent.rollback.confirm")}
+        cancelLabel={t("common.cancel")}
+        onConfirm={async () => {
+          if (rollingBack) await rollback(rollingBack);
         }}
       />
     </div>

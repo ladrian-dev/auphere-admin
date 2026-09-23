@@ -9,6 +9,7 @@ import { useT } from "@/i18n/client";
 
 import { saveAllocationAction } from "./actions";
 import { parseCapInput } from "./parse-cap-input";
+import { actionErrorText } from "@/lib/action-error";
 
 export function AllocationCapForm({ clientRef, cap }: { clientRef: string; cap: number }) {
   const t = useT();
@@ -31,7 +32,7 @@ export function AllocationCapForm({ clientRef, cap }: { clientRef: string; cap: 
       const res = await saveAllocationAction({ client_ref: clientRef, cap: parsed.n });
       if (!res.ok) {
         if (res.status === 409) return void toast.error(t("hu.usage.allocations.over"));
-        return void toast.error(res.status === 403 ? t("common.forbidden") : res.message);
+        return void toast.error(actionErrorText(res, t));
       }
       toast.success(t("hu.usage.allocations.saved"));
     });

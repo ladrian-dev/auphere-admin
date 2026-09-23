@@ -66,6 +66,8 @@ export const homeUsageMessages = {
   "hu.usage.wallet.tokens": { es: "Créditos comprados", en: "Purchased credits" },
   "hu.usage.wallet.included.hint": { es: "{remaining} créditos · se renueva el {date}", en: "{remaining} credits · renews on {date}" },
   "hu.usage.wallet.included.hint.none": { es: "{remaining} créditos", en: "{remaining} credits" },
+  "hu.usage.wallet.unreadable": { es: "No hemos podido leer tu saldo ahora mismo. Los topes de abajo siguen siendo válidos; vuelve a cargar la página en un momento.", en: "We could not read your balance right now. The caps below are still valid; reload the page in a moment." },
+  "hu.usage.wallet.unreadable.hint": { es: "Saldo no disponible", en: "Balance unavailable" },
   "hu.usage.wallet.reserve.hint": { es: "Disponible menos la suma de topes", en: "Available minus the sum of caps" },
   "hu.usage.allocations": { es: "Asignaciones", en: "Allocations" },
   "hu.usage.allocations.cap": { es: "Tope", en: "Cap" },

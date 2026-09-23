@@ -9,8 +9,9 @@ import { Button, ConfirmDialog } from "@nexus/ui";
 import { useT } from "@/i18n/client";
 
 import { deleteClientAction, setClientStatusAction } from "@/app/(console)/clients/actions";
+import { actionErrorText } from "@/lib/action-error";
 
-import { statusActionNeedsConfirm } from "./lifecycle-status";
+import { deleteIsOffered, statusActionNeedsConfirm } from "./lifecycle-status";
 
 type Props = { refId: string; status: string; name: string; canDelete: boolean };
 type StatusNext = "active" | "paused" | "archived";
@@ -27,7 +28,7 @@ export function ClientLifecycleActions({ refId, status, name, canDelete }: Props
     startTransition(async () => {
       const res = await setClientStatusAction({ ref: refId, status: next });
       if (!res.ok) {
-        toast.error(res.message);
+        toast.error(actionErrorText(res, t));
         return;
       }
       setConfirmStatus(null);
@@ -86,16 +87,12 @@ export function ClientLifecycleActions({ refId, status, name, canDelete }: Props
           if (confirmStatus) applyStatus(confirmStatus);
         }}
       />
-      {canDelete ? (
+      {deleteIsOffered(status, canDelete) ? (
         <>
           <Button
             variant="destructive"
             size="sm"
             onClick={() => {
-              if (status !== "archived") {
-                toast.error(t("clients.delete.mustArchive"));
-                return;
-              }
               setDeleteError(null);
               setConfirmDelete(true);
             }}
@@ -116,7 +113,7 @@ export function ClientLifecycleActions({ refId, status, name, canDelete }: Props
             onConfirm={async () => {
               const res = await deleteClientAction({ ref: refId, confirm_name: name });
               if (!res.ok) {
-                setDeleteError(res.message);
+                setDeleteError(actionErrorText(res, t));
                 return;
               }
               setConfirmDelete(false);

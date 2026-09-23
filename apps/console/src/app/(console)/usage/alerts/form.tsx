@@ -10,6 +10,7 @@ import type { UsageAlerts } from "@/lib/backend/home-usage";
 import { parseAlertsForm } from "@/lib/usage-alerts-form";
 
 import { saveUsageAlertsAction } from "./actions";
+import { actionErrorText } from "@/lib/action-error";
 
 export function UsageAlertsForm({ initial, canManage }: { initial: UsageAlerts; canManage: boolean }) {
   const t = useT();
@@ -29,7 +30,7 @@ export function UsageAlertsForm({ initial, canManage }: { initial: UsageAlerts; 
     setError(null);
     start(async () => {
       const res = await saveUsageAlertsAction(parsed.value);
-      if (!res.ok) return void toast.error(res.status === 403 ? t("common.forbidden") : res.message);
+      if (!res.ok) return void toast.error(actionErrorText(res, t));
       toast.success(t("hu.alerts.saved"));
     });
   }

@@ -5,7 +5,11 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor, type AgentVersion, type Client, type ClientCreated } from "@/lib/backend";
-import { requirePrincipal } from "@/lib/principal";
+import { can, requirePrincipal } from "@/lib/principal";
+
+// Every action checks the role here, like the other lanes do, so a
+// member without the permission gets the console's own "you cannot"
+// instead of the API's raw 403 (the API re-checks regardless).
 
 /**
  * Server Actions for the clients area. Every input is Zod-validated on
@@ -23,6 +27,7 @@ const createSchema = z.object({
 export async function createClientAction(raw: unknown): Promise<ActionResult<ClientCreated>> {
   const body = createSchema.parse(raw);
   const principal = await requirePrincipal();
+  if (!can(principal.role, "clients:write")) return { ok: false, status: 403, message: "forbidden" };
   const res = await run(() => backendFor(principal).createClient(body));
   if (res.ok) revalidatePath("/clients");
   return res;
@@ -32,6 +37,7 @@ const updateSchema = z.object({ ref, name: z.string().min(1).max(255).optional()
 export async function updateClientAction(raw: unknown): Promise<ActionResult<Client>> {
   const { ref: r, ...body } = updateSchema.parse(raw);
   const principal = await requirePrincipal();
+  if (!can(principal.role, "clients:write")) return { ok: false, status: 403, message: "forbidden" };
   const res = await run(() => backendFor(principal).updateClient(r, body));
   if (res.ok) revalidatePath(`/clients/${r}`);
   return res;
@@ -41,6 +47,7 @@ const statusSchema = z.object({ ref, status: z.enum(["active", "paused", "archiv
 export async function setClientStatusAction(raw: unknown): Promise<ActionResult<Client>> {
   const { ref: r, status } = statusSchema.parse(raw);
   const principal = await requirePrincipal();
+  if (!can(principal.role, "clients:write")) return { ok: false, status: 403, message: "forbidden" };
   const res = await run(() => backendFor(principal).setClientStatus(r, status));
   if (res.ok) {
     revalidatePath(`/clients/${r}`);
@@ -53,6 +60,7 @@ const deleteSchema = z.object({ ref, confirm_name: z.string().min(1).max(255) })
 export async function deleteClientAction(raw: unknown): Promise<ActionResult<null>> {
   const { ref: r, confirm_name } = deleteSchema.parse(raw);
   const principal = await requirePrincipal();
+  if (!can(principal.role, "clients:delete")) return { ok: false, status: 403, message: "forbidden" };
   const res = await run(() => backendFor(principal).deleteClient(r, confirm_name));
   if (res.ok) revalidatePath("/clients");
   return res;
@@ -62,6 +70,7 @@ const draftSchema = z.object({ ref, system_prompt: z.string().min(1).max(200_000
 export async function stageAgentAction(raw: unknown): Promise<ActionResult<AgentVersion>> {
   const { ref: r, system_prompt } = draftSchema.parse(raw);
   const principal = await requirePrincipal();
+  if (!can(principal.role, "agents:write")) return { ok: false, status: 403, message: "forbidden" };
   const res = await run(() => backendFor(principal).stageAgentVersion(r, { system_prompt }));
   if (res.ok) revalidatePath(`/clients/${r}/agent`);
   return res;
@@ -71,6 +80,7 @@ const versionSchema = z.object({ ref, version: z.number().int().positive() });
 export async function publishAgentAction(raw: unknown): Promise<ActionResult<AgentVersion>> {
   const { ref: r, version } = versionSchema.parse(raw);
   const principal = await requirePrincipal();
+  if (!can(principal.role, "agents:write")) return { ok: false, status: 403, message: "forbidden" };
   const res = await run(() => backendFor(principal).publishAgentVersion(r, version));
   if (res.ok) revalidatePath(`/clients/${r}`);
   return res;
@@ -78,6 +88,7 @@ export async function publishAgentAction(raw: unknown): Promise<ActionResult<Age
 export async function rollbackAgentAction(raw: unknown): Promise<ActionResult<AgentVersion>> {
   const { ref: r, version } = versionSchema.parse(raw);
   const principal = await requirePrincipal();
+  if (!can(principal.role, "agents:write")) return { ok: false, status: 403, message: "forbidden" };
   const res = await run(() => backendFor(principal).rollbackAgentVersion(r, version));
   if (res.ok) revalidatePath(`/clients/${r}`);
   return res;

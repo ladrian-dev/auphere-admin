@@ -6,3 +6,12 @@
 export function statusActionNeedsConfirm(next: "active" | "paused" | "archived"): boolean {
   return next === "paused" || next === "archived";
 }
+
+/**
+ * Delete is offered only once the client is archived (the API refuses it
+ * otherwise). A red button that answers "archive first" when pressed is a
+ * trap, not an affordance.
+ */
+export function deleteIsOffered(status: string, canDelete: boolean): boolean {
+  return canDelete && status === "archived";
+}
