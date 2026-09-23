@@ -26,8 +26,10 @@ from nexus_api.api.admin import connectors as admin_connectors
 from nexus_api.db.models import (
     AgentConfig,
     AgentConfigStatus,
+    AuditLog,
     KnowledgeDocument,
     TenantConnector,
+    TenantCredentials,
 )
 from nexus_api.services.connectors import catalog as connector_catalog
 from nexus_api.services.connectors.composio_client import ComposioTool, FakeComposioClient
@@ -574,3 +576,176 @@ async def test_knowledge_upload_too_large_is_413(client, console_world) -> None:
         files={"file": ("big.txt", big, "text/plain")},
     )
     assert r.status_code == 413
+
+
+# ── spec 016 · AgendaPro enlazada por su agenda pública (R6) ─────────────────
+
+
+async def test_agendapro_is_linked_by_public_url_never_by_credentials(
+    client, console_world, db_session, seeded_connectors, fake_composio
+) -> None:
+    from tests.conftest import add_console_member
+
+    a = console_world["a"]
+    h = a["headers"]
+    base = f"/console/clients/{a['ref']}"
+    url_path = f"{base}/integrations/agendapro/public-url"
+
+    before = {c["slug"]: c for c in (await client.get(f"{base}/connectors", headers=h())).json()}
+    assert before["agendapro"]["auth_kind"] == "public_url"
+    assert before["agendapro"]["public_url"] is None
+    assert before["agendapro"]["status"] is None
+    assert before["agendapro"]["credentials_form"] == []
+
+    good = "https://cultorbarber.site.agendapro.com/cl/sucursal"
+    linked = await client.put(url_path, headers=h(), json={"public_url": good})
+    assert linked.status_code == 200, linked.text
+    assert linked.json()["public_url"] == good
+    assert linked.json()["integration"] == "agendapro"
+    after = {c["slug"]: c for c in (await client.get(f"{base}/connectors", headers=h())).json()}
+    assert after["agendapro"]["status"] == "connected"
+    assert after["agendapro"]["public_url"] == good
+    assert after["agendapro"]["installed"] is True
+    assert "credentials_ref" not in after["agendapro"]
+    # The booking tools are native: they need no connector row to be usable.
+    booking = [
+        t
+        for t in (await client.get(f"{base}/tools", headers=h())).json()["tools"]
+        if t["name"].startswith("booking.")
+    ]
+    assert booking and all(t["connector_required"] is False for t in booking)
+
+    for bad, reason in (
+        ("http://cultorbarber.site.agendapro.com/cl", "scheme"),
+        ("https://evil.example.com/agendapro.com", "host"),
+        ("https://agendapro.com.evil.example", "host"),
+        ("not a url", "scheme"),
+    ):
+        resp = await client.put(url_path, headers=h(), json={"public_url": bad})
+        assert resp.status_code == 422, (bad, resp.text)
+        assert resp.json()["detail"] == {"code": "invalid_url", "reason": reason}
+    extra = await client.put(url_path, headers=h(), json={"public_url": good, "login": "x"})
+    assert extra.status_code == 422, extra.text
+    still = (await client.get(f"{base}/connectors", headers=h())).json()
+    assert next(c for c in still if c["slug"] == "agendapro")["public_url"] == good
+
+    cleared = await client.put(url_path, headers=h(), json={"public_url": ""})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["public_url"] is None
+    gone = {c["slug"]: c for c in (await client.get(f"{base}/connectors", headers=h())).json()}
+    assert gone["agendapro"]["status"] is None and gone["agendapro"]["public_url"] is None
+
+    analyst = await add_console_member(db_session, partner_id=a["partner_id"], role="analyst")
+    denied = await client.put(url_path, headers=analyst["headers"](), json={"public_url": good})
+    assert denied.status_code == 403, denied.text
+
+    rows = (
+        await db_session.execute(
+            sa.select(AuditLog.after_json, AuditLog.actor)
+            .where(
+                AuditLog.action == "console.integration.agendapro_url",
+                AuditLog.tenant_id == a["tenant_id"],
+            )
+            .order_by(AuditLog.created_at)
+        )
+    ).all()
+    assert [r.after_json for r in rows] == [
+        {"set": True, "public_url": good},
+        {"set": False, "public_url": None},
+    ]
+    assert all(r.actor.startswith("console:") for r in rows)
+
+
+# ── spec 016 · la clave se guarda y sincroniza de una vez (R7) ───────────────
+
+
+async def _needs_reauth(db_session, tenant_id, integration: str) -> bool | None:
+    return await db_session.scalar(
+        sa.select(TenantCredentials.needs_reauth).where(
+            TenantCredentials.tenant_id == tenant_id, TenantCredentials.integration == integration
+        )
+    )
+
+
+async def test_api_key_connect_syncs_in_the_same_request_and_says_what_happened(
+    client, console_world, db_session, seeded_connectors, fake_composio, monkeypatch
+) -> None:
+    from nexus_api.api.console import tools as tools_router
+    from nexus_api.services.connectors.composio_client import (
+        ComposioAuthExpired,
+        ComposioUnavailable,
+    )
+
+    a = console_world["a"]
+    h = a["headers"]
+    base = f"/console/clients/{a['ref']}/connectors"
+    body = {
+        "secrets": {"consumer_key": "ck_1", "consumer_secret": "cs_1"},
+        "endpoint_meta": {"store_url": "https://s.example"},
+    }
+    enabled_calls: list[str] = []
+    real_enable = tools_router.connector_service.auto_enable_connector_tools
+
+    async def _spy_enable(session, **kw):
+        enabled_calls.append(kw["connector"].slug)
+        return await real_enable(session, **kw)
+
+    monkeypatch.setattr(tools_router.connector_service, "auto_enable_connector_tools", _spy_enable)
+
+    ok = await client.post(f"{base}/woocommerce/api-key", headers=h(), json=body)
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["status"] == "connected"
+    assert ok.json()["last_sync"]["status"] == "ok"
+    assert ok.json()["last_sync"]["reason"] is None
+    assert {"added", "deprecated", "at"} <= set(ok.json()["last_sync"])
+    assert "ck_1" not in ok.text and "cs_1" not in ok.text
+    assert enabled_calls == ["woocommerce"]
+    assert await _needs_reauth(db_session, a["tenant_id"], "woocommerce") is False
+    # The list does not repeat the outcome of a past connect.
+    listed = next(
+        c for c in (await client.get(base, headers=h())).json() if c["slug"] == "woocommerce"
+    )
+    assert listed["last_sync"] is None
+
+    async def _down(session, **kw):
+        raise ComposioUnavailable("fake: composio down")
+
+    monkeypatch.setattr(tools_router.connector_service, "sync_tools_for", _down)
+    unavailable = await client.post(f"{base}/woocommerce/api-key", headers=h(), json=body)
+    assert unavailable.status_code == 201, unavailable.text
+    assert unavailable.json()["status"] == "connected"
+    assert unavailable.json()["last_sync"] == {
+        **unavailable.json()["last_sync"],
+        "status": "error",
+        "reason": "provider_unavailable",
+    }
+    assert enabled_calls == ["woocommerce", "woocommerce"]
+    assert await _needs_reauth(db_session, a["tenant_id"], "woocommerce") is False
+
+    async def _rejected(session, **kw):
+        raise ComposioAuthExpired("fake: 401")
+
+    monkeypatch.setattr(tools_router.connector_service, "sync_tools_for", _rejected)
+    rejected = await client.post(f"{base}/woocommerce/api-key", headers=h(), json=body)
+    assert rejected.status_code == 201, rejected.text
+    assert rejected.json()["status"] == "needs_reauth"
+    assert rejected.json()["last_sync"]["status"] == "error"
+    assert rejected.json()["last_sync"]["reason"] == "auth_rejected"
+    assert enabled_calls == ["woocommerce", "woocommerce"], "a rejected key enables nothing"
+    assert await _needs_reauth(db_session, a["tenant_id"], "woocommerce") is True
+
+    audits = (
+        await db_session.execute(
+            sa.select(AuditLog.after_json)
+            .where(
+                AuditLog.action == "console.connector.connect", AuditLog.tenant_id == a["tenant_id"]
+            )
+            .order_by(AuditLog.created_at)
+        )
+    ).all()
+    assert [r.after_json for r in audits] == [
+        {"slug": "woocommerce", "sync_status": "ok", "reason": None},
+        {"slug": "woocommerce", "sync_status": "error", "reason": "provider_unavailable"},
+        {"slug": "woocommerce", "sync_status": "error", "reason": "auth_rejected"},
+    ]
+    # «Reintentar» is the sync endpoint, unchanged.

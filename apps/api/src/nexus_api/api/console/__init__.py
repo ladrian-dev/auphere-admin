@@ -32,6 +32,7 @@ from nexus_api.api.console import (
     conversations,
     diagnostics,
     home,
+    integrations,
     invitations,
     keys,
     knowledge,
@@ -97,6 +98,7 @@ router.include_router(diagnostics.router)
 # lane agent-tools (CP-11/13/14/15/31)
 router.include_router(agent_settings.router)
 router.include_router(tools.router)
+router.include_router(integrations.router)
 router.include_router(skills.router)
 router.include_router(knowledge.router)
 router.include_router(playbook.router)

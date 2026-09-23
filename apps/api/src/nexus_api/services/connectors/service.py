@@ -856,6 +856,7 @@ async def bootstrap_api_key(
     secret_payload: dict[str, str],
     endpoint_meta: dict[str, Any],
     actor: str,
+    auto_enable: bool = True,
 ) -> TenantConnector:
     """Wire up an ``api_key`` connector by encrypting the secret in
     ``tenant_credentials`` and pointing ``tenant_connectors.credentials_ref``
@@ -942,9 +943,12 @@ async def bootstrap_api_key(
             "auth_kind": "api_key",
         },
     )
-    await auto_enable_connector_tools(
-        session, tenant_id=tenant.id, connector=connector, actor=actor
-    )
+    # ``auto_enable=False`` lets a caller that validates the key first (the
+    # console's connect-and-sync, spec 016 R7.4) decide after the outcome.
+    if auto_enable:
+        await auto_enable_connector_tools(
+            session, tenant_id=tenant.id, connector=connector, actor=actor
+        )
     return tc
 
 

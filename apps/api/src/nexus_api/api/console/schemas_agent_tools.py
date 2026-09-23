@@ -100,6 +100,14 @@ class ToolModeOut(BaseModel):
     updated_at: datetime
 
 
+class LastSyncOut(BaseModel):
+    status: Literal["ok", "error"]
+    added: int = 0
+    deprecated: int = 0
+    reason: Literal["auth_rejected", "provider_unavailable"] | None = None
+    at: datetime
+
+
 class ConnectorOut(BaseModel):
     """A connector as the partner sees it. Never ``credentials_ref``,
     never a consent token."""
@@ -123,6 +131,13 @@ class ConnectorOut(BaseModel):
     )
     tools_total: int
     tools_enabled: int
+    #: Spec 016 (R6): AgendaPro is linked by its public booking page, not by
+    #: credentials. ``auth_kind`` reads ``public_url`` for it and this carries
+    #: the page (it is public; nothing secret travels).
+    public_url: str | None = None
+    #: Spec 016 (R7): what happened to the sync that ran with the connect.
+    #: Only on the connect response; the list does not repeat it.
+    last_sync: LastSyncOut | None = None
 
 
 class ConsentOut(BaseModel):
@@ -242,3 +257,18 @@ __all__ = [
     "ToolsIn",
     "ToolsSaved",
 ]
+
+
+class AgendaProPublicUrlIn(BaseModel):
+    """Spec 016 (R6): the client's public AgendaPro booking page. ``""`` or
+    ``null`` unlinks. Never credentials."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    public_url: str | None = Field(default=None, max_length=500)
+
+
+class AgendaProPublicUrlOut(BaseModel):
+    integration: str = "agendapro"
+    public_url: str | None
+    updated_at: datetime
