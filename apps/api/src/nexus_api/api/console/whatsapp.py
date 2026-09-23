@@ -17,7 +17,7 @@ adds what is console-specific:
   ``console.channel.connect``.
 - ``connect-owned`` (permanent System User token) is NOT exposed: that
   token is a permanent secret and never crosses a partner surface.
-- **Spec 016 (R1.2–R1.6)**: after the number is in, the client is
+- **Spec 016 (R1.2-R1.6)**: after the number is in, the client is
   activated when it can operate (``activate_tenant_if_ready``), the
   response carries ``client_status`` and ``health``, a number that already
   belongs to another client is a 409 ``number_in_use`` with no effects, and
