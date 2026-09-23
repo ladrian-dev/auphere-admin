@@ -2,7 +2,7 @@
 
 import { Ban, Check, Loader2, Wrench, X } from "lucide-react";
 
-import { Badge, formatLatency, formatNumber } from "@nexus/ui";
+import { Badge, DescriptionList, formatLatency, formatNumber } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 
@@ -35,16 +35,7 @@ export function TurnInspector({ turn }: { turn: Turn | null }) {
   ];
   return (
     <div className="flex flex-col gap-4" aria-busy={running}>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-        {rows.map(([k, v]) => (
-          <div key={k} className="contents">
-            <dt className="text-muted-foreground">{k}</dt>
-            <dd className="min-w-0 truncate text-right font-mono text-xs tabular-nums" title={v}>
-              {v}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <DescriptionList layout="inline" dense items={rows.map(([k, v]) => ({ key: k, term: k, detail: v, mono: true, truncate: true, align: "end" }))} />
       <div className="flex flex-col gap-2">
         <h4 className="text-xs font-medium tracking-eyebrow text-muted-foreground uppercase">{t("playground.inspector.tools")}</h4>
         {turn.tools.length === 0 ? (

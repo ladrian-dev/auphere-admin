@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
-import { Button, Input } from "@nexus/ui";
+import { Button, Input, NativeSelect } from "@nexus/ui";
 
 import { auditActionOptions, type AuditActionOption } from "@/components/audit/audit-actions";
 import { useLocale, useT } from "@/i18n/client";
@@ -47,19 +47,14 @@ export function AuditControls({ actor, action, after, before, nextCursor, csvHre
       }}
     >
       <Input value={a} onChange={(e) => setA(e.target.value)} placeholder={t("audit.filter.actor")} aria-label={t("audit.filter.actor")} className="w-56" />
-      <select
-        value={act}
-        onChange={(e) => setAct(e.target.value)}
-        aria-label={t("audit.filter.action")}
-        className="h-8 max-w-xs rounded-md border border-input bg-transparent px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
+      <NativeSelect value={act} onChange={(e) => setAct(e.target.value)} aria-label={t("audit.filter.action")} wrapperClassName="max-w-xs">
         <option value="">{t("audit.filter.action.all")}</option>
         {options.map((o) => (
           <option key={o.action} value={o.action}>
             {o.label}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       <Input type="date" lang={dateLang} value={from} onChange={(e) => setFrom(e.target.value)} aria-label={t("hu.audit.after")} className="w-40" />
       <Input type="date" lang={dateLang} value={to} onChange={(e) => setTo(e.target.value)} aria-label={t("hu.audit.before")} className="w-40" />
       <Button type="submit" variant="outline" size="sm">

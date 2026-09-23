@@ -4,13 +4,12 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { StatusBadge, formatDateTime } from "@nexus/ui";
+import { DescriptionList, NativeSelect, StatusBadge, formatDateTime } from "@nexus/ui";
 
 import { setChannelRoleAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useLocale, useT } from "@/i18n/client";
 import type { ChannelDetail, ChannelRole } from "@/lib/backend/channels";
 
-import { SELECT_CLASS } from "./whatsapp-connect";
 
 const TONE = { active: "positive", paused: "warning", degraded: "warning", disconnected: "danger" } as const;
 const QUALITY_TONE = { GREEN: "positive", YELLOW: "warning", RED: "danger" } as const;
@@ -45,53 +44,38 @@ export function ChannelCard({ refId, channel, manage, showRoles }: { refId: stri
         <span className="font-medium">{channel.type === "whatsapp" ? t("ch.card.whatsapp") : channel.type}</span>
         <StatusBadge tone={TONE[channel.status as keyof typeof TONE] ?? "muted"}>{t(`status.${channel.status}` as "status.active")}</StatusBadge>
       </div>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-muted-foreground">{t("ch.card.number")}</dt>
-        <dd className="min-w-0 truncate font-mono" title={channel.provider_identifier}>
-          {channel.provider_identifier}
-        </dd>
-        {channel.verified_name ? (
-          <>
-            <dt className="text-muted-foreground">{t("ch.card.name")}</dt>
-            <dd className="min-w-0 truncate" title={channel.verified_name}>
-              {channel.verified_name}
-            </dd>
-          </>
-        ) : null}
-        <dt className="text-muted-foreground">{t("ch.card.quality")}</dt>
-        <dd>
-          <StatusBadge tone={qualityTone(channel.quality_rating)}>{t(qualityKey)}</StatusBadge>
-        </dd>
-        <dt className="text-muted-foreground">{t("ch.card.tier")}</dt>
-        <dd className="font-mono text-xs">{channel.messaging_tier ?? "—"}</dd>
-        {channel.mode ? (
-          <>
-            <dt className="text-muted-foreground">{t("ch.card.mode")}</dt>
-            <dd className="font-mono text-xs">{channel.mode}</dd>
-          </>
-        ) : null}
-        <dt className="text-muted-foreground">{t("ch.card.role")}</dt>
-        <dd>
-          {manage && showRoles && channel.type === "whatsapp" ? (
-            <>
-              <label htmlFor={roleId} className="sr-only">
-                {t("ch.card.role")}
-              </label>
-              <select id={roleId} className={SELECT_CLASS} value={channel.role ?? ""} onChange={(e) => changeRole(e.target.value)} disabled={pending}>
-                <option value="">{t("ch.role.none")}</option>
-                <option value="agent">{t("ch.role.agent")}</option>
-                <option value="notifications">{t("ch.role.notifications")}</option>
-              </select>
-            </>
-          ) : (
-            <span>{channel.role ? t(`ch.role.${channel.role}` as "ch.role.agent") : t("ch.role.none")}</span>
-          )}
-        </dd>
-        <dt className="text-muted-foreground">{t("ch.card.health")}</dt>
-        <dd className="tabular-nums">{channel.last_health_check_at ? formatDateTime(channel.last_health_check_at, locale) : t("ch.card.never")}</dd>
-        <dt className="text-muted-foreground">{t("common.created")}</dt>
-        <dd className="tabular-nums">{formatDateTime(channel.created_at, locale)}</dd>
-      </dl>
+      <DescriptionList
+        layout="inline"
+        dense
+        items={[
+          { key: "number", term: t("ch.card.number"), detail: channel.provider_identifier, mono: true, truncate: true },
+          ...(channel.verified_name ? [{ key: "name", term: t("ch.card.name"), detail: channel.verified_name, truncate: true }] : []),
+          { key: "quality", term: t("ch.card.quality"), detail: <StatusBadge tone={qualityTone(channel.quality_rating)}>{t(qualityKey)}</StatusBadge> },
+          { key: "tier", term: t("ch.card.tier"), detail: channel.messaging_tier ?? "—", mono: true },
+          ...(channel.mode ? [{ key: "mode", term: t("ch.card.mode"), detail: channel.mode, mono: true }] : []),
+          {
+            key: "role",
+            term: t("ch.card.role"),
+            detail:
+              manage && showRoles && channel.type === "whatsapp" ? (
+                <>
+                  <label htmlFor={roleId} className="sr-only">
+                    {t("ch.card.role")}
+                  </label>
+                  <NativeSelect id={roleId} wrapperClassName="w-full" value={channel.role ?? ""} onChange={(e) => changeRole(e.target.value)} disabled={pending}>
+                    <option value="">{t("ch.role.none")}</option>
+                    <option value="agent">{t("ch.role.agent")}</option>
+                    <option value="notifications">{t("ch.role.notifications")}</option>
+                  </NativeSelect>
+                </>
+              ) : (
+                <span>{channel.role ? t(`ch.role.${channel.role}` as "ch.role.agent") : t("ch.role.none")}</span>
+              ),
+          },
+          { key: "health", term: t("ch.card.health"), detail: <span className="tabular-nums">{channel.last_health_check_at ? formatDateTime(channel.last_health_check_at, locale) : t("ch.card.never")}</span> },
+          { key: "created", term: t("common.created"), detail: <span className="tabular-nums">{formatDateTime(channel.created_at, locale)}</span> },
+        ]}
+      />
     </li>
   );
 }

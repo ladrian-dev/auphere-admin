@@ -85,8 +85,8 @@ function Meter({
         <p className="text-sm text-muted-foreground">{noMaxLabel}</p>
       ) : (
         <progress
-          value={Math.round(percent)}
-          max={100}
+          value={Math.min(value, max as number)}
+          max={max as number}
           aria-label={typeof label === "string" ? label : undefined}
           aria-valuetext={valueLabel}
           className={cn(

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Input } from "@nexus/ui";
+import { Button, Input, NativeSelect } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 
@@ -47,13 +47,9 @@ export function AssignAllocationForm({ clients }: { clients: Client[] }) {
     });
   }
 
-  const selectClass =
-    "h-8 rounded-md border border-input bg-transparent px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
-
   return (
     <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
-      <select
-        className={selectClass}
+      <NativeSelect
         value={clientRef}
         onChange={(e) => setClientRef(e.target.value)}
         disabled={pending}
@@ -64,7 +60,7 @@ export function AssignAllocationForm({ clients }: { clients: Client[] }) {
             {c.name}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       <Input
         aria-label={t("hu.usage.allocations.cap")}
         inputMode="numeric"

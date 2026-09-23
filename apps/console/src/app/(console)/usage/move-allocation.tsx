@@ -3,7 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, ConfirmDialog, Input, formatNumber } from "@nexus/ui";
+import { Button, ConfirmDialog, Input, NativeSelect, formatNumber } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 
@@ -71,14 +71,11 @@ export function MoveAllocationForm({ sources, destinations }: { sources: Row[]; 
     });
   }
 
-  const selectClass =
-    "h-8 max-w-56 rounded-md border border-input bg-transparent px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
-
   return (
     <>
       <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
-        <select
-          className={selectClass}
+        <NativeSelect
+          wrapperClassName="max-w-56"
           value={fromRef}
           onChange={(e) => setFromRef(e.target.value)}
           disabled={pending}
@@ -89,9 +86,9 @@ export function MoveAllocationForm({ sources, destinations }: { sources: Row[]; 
               {c.name}
             </option>
           ))}
-        </select>
-        <select
-          className={selectClass}
+        </NativeSelect>
+        <NativeSelect
+          wrapperClassName="max-w-56"
           value={toRef}
           onChange={(e) => setToRef(e.target.value)}
           disabled={pending}
@@ -104,7 +101,7 @@ export function MoveAllocationForm({ sources, destinations }: { sources: Row[]; 
                 {c.name}
               </option>
             ))}
-        </select>
+        </NativeSelect>
         <Input
           aria-label={t("hu.usage.allocations.move.qty")}
           inputMode="numeric"

@@ -12,7 +12,6 @@ import {
   knowledgeStatusTone,
   knowledgeUsageRatio,
   splitCredentials,
-  usageWidthClass,
 } from "../lib";
 
 const tool = (name: string, slug: string | null, display: string | null = slug): ToolOut => ({
@@ -83,12 +82,5 @@ describe("knowledge helpers", () => {
     expect(knowledgeUsageRatio(50, 100)).toBe(0.5);
     expect(knowledgeUsageRatio(500, 100)).toBe(1);
     expect(knowledgeUsageRatio(5, 0)).toBe(0);
-  });
-  it("width class steps", () => {
-    expect(usageWidthClass(0)).toBe("w-0");
-    expect(usageWidthClass(0.01)).toBe("w-1/12");
-    expect(usageWidthClass(0.5)).toBe("w-6/12");
-    expect(usageWidthClass(1)).toBe("w-full");
-    expect(usageWidthClass(3)).toBe("w-full");
   });
 });

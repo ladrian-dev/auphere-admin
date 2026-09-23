@@ -14,6 +14,8 @@ type ChecklistItem = {
   href?: string;
   /** One line under the label: what happened, or what is missing. */
   detail?: ReactNode;
+  /** A short word at the end of the row («en curso», «omitido»). */
+  meta?: ReactNode;
   onRetry?: () => void;
   retryLabel?: ReactNode;
 };
@@ -68,6 +70,7 @@ function Checklist({ items, ariaLabel, renderLink, dense, className }: Checklist
           <>
             <Icon status={item.status} />
             <span className={cn("min-w-0 flex-1 text-pretty", (done || skipped) && "text-muted-foreground", done && "line-through")}>{item.label}</span>
+            {item.meta ? <span className="shrink-0 font-mono text-xs text-muted-foreground">{item.meta}</span> : null}
           </>
         );
         const rowCls = "flex min-w-0 items-center gap-2 rounded-sm px-1 py-1 text-sm";

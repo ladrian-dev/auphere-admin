@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Label } from "@nexus/ui";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Label, NativeSelect } from "@nexus/ui";
 
 import { whatsappSignupAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useT } from "@/i18n/client";
@@ -19,9 +19,6 @@ export type MetaSignupConfig = {
   configIdCloudApi: string | null;
   configIdCoexistence: string | null;
 };
-
-export const SELECT_CLASS =
-  "h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 /**
  * "Connect WhatsApp" — opens Meta's popup (FB.login with our config id),
@@ -103,10 +100,10 @@ export function WhatsAppConnect({
           </DialogHeader>
           <div className="flex flex-col gap-2">
             <Label htmlFor="ch-mode">{t("ch.connect.mode")}</Label>
-            <select id="ch-mode" className={SELECT_CLASS} value={mode} onChange={(e) => setMode(e.target.value as SignupMode)} disabled={working}>
+            <NativeSelect id="ch-mode" wrapperClassName="w-full" value={mode} onChange={(e) => setMode(e.target.value as SignupMode)} disabled={working}>
               {meta.configIdCloudApi ? <option value="cloud_api">{t("ch.connect.mode.cloud_api")}</option> : null}
               {meta.configIdCoexistence ? <option value="coexistence">{t("ch.connect.mode.coexistence")}</option> : null}
-            </select>
+            </NativeSelect>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} disabled={working}>

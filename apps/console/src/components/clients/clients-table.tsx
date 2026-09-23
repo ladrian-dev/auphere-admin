@@ -90,7 +90,7 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
             {/* Spec 016 (R2.7): «sin cupo» is visible from the list. The dot
                 carries its name for the reader who cannot see the colour. */}
             {c.row.original.out_of_quota ? (
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={t("hu.usage.allocations.outOfQuota")}>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <StatusDot tone="warning" label={t("hu.usage.allocations.outOfQuota")} />
                 {t("hu.usage.allocations.outOfQuota")}
               </span>

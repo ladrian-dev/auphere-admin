@@ -33,6 +33,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  DescriptionList,
   StatusBadge,
   formatCurrency,
   formatDate,
@@ -81,24 +82,25 @@ function TierCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-          <dt className="text-muted-foreground">{t("membership.teammates")}</dt>
-          <dd className="tabular-nums">{tier.max_teammates}</dd>
-          <dt className="text-muted-foreground">{t("membership.members")}</dt>
-          <dd className="tabular-nums">{tier.max_members}</dd>
-          {/* El múltiplo, nunca la cifra. `null` en el gratuito: «0,2× el de
-              Pro» no le dice nada a quien todavía no tiene plan. */}
-          {tier.consumption_multiple !== null ? (
-            <>
-              <dt className="text-muted-foreground">{t("membership.consumption")}</dt>
-              <dd>
-                {tier.consumption_multiple === 1
-                  ? t("membership.multiple.base")
-                  : t("membership.multiple", { n: tier.consumption_multiple })}
-              </dd>
-            </>
-          ) : null}
-        </dl>
+        <DescriptionList
+          layout="inline"
+          dense
+          items={[
+            { key: "teammates", term: t("membership.teammates"), detail: <span className="tabular-nums">{tier.max_teammates}</span> },
+            { key: "members", term: t("membership.members"), detail: <span className="tabular-nums">{tier.max_members}</span> },
+            // El múltiplo, nunca la cifra. `null` en el gratuito: «0,2× el de
+            // Pro» no le dice nada a quien todavía no tiene plan.
+            ...(tier.consumption_multiple !== null
+              ? [
+                  {
+                    key: "consumption",
+                    term: t("membership.consumption"),
+                    detail: tier.consumption_multiple === 1 ? t("membership.multiple.base") : t("membership.multiple", { n: tier.consumption_multiple }),
+                  },
+                ]
+              : []),
+          ]}
+        />
         {!current && onChoose ? (
           <Button
             size="sm"

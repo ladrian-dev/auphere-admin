@@ -2,14 +2,15 @@
 
 import { AlertTriangle } from "lucide-react";
 
-import { Alert, AlertDescription, AlertTitle, formatDate, formatNumber } from "@nexus/ui";
+import { Alert, AlertDescription, AlertTitle, Meter, formatDate, formatNumber } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 import type { PlaygroundBudget } from "@/lib/backend/playground";
 
 /**
  * Monthly cap of the playground, in tokens (C9). Three looks: normal,
- * near the cap (≥ 80 %), reached (input disabled elsewhere).
+ * near the cap (≥ 80 %), reached (input disabled elsewhere). The bar is
+ * the DS Meter (Bloque C); this file keeps the copy and the two notices.
  */
 export function BudgetBar({ budget, error, onRetry }: { budget: PlaygroundBudget | null; error?: boolean; onRetry?: () => void }) {
   const t = useT();
@@ -27,17 +28,10 @@ export function BudgetBar({ budget, error, onRetry }: { budget: PlaygroundBudget
     );
   }
   if (!budget) {
-    return <div className="h-2 w-full animate-pulse rounded-full bg-muted" aria-hidden="true" />;
+    return <Meter label={t("playground.budget")} labelHidden value={0} max={1} loading />;
   }
   const pct = Math.min(100, Math.max(0, budget.percent));
   const near = !budget.exhausted && pct >= 80;
-  // Native <progress>: semantics + a11y for free, and no inline style for
-  // the dynamic width (the value IS the width). Tone via pseudo-elements.
-  const tone = budget.exhausted
-    ? "[&::-webkit-progress-value]:bg-status-danger [&::-moz-progress-bar]:bg-status-danger"
-    : near
-      ? "[&::-webkit-progress-value]:bg-status-warning [&::-moz-progress-bar]:bg-status-warning"
-      : "[&::-webkit-progress-value]:bg-primary [&::-moz-progress-bar]:bg-primary";
   const label = t("playground.budget.usage", {
     used: formatNumber(budget.used, locale),
     cap: formatNumber(budget.cap, locale),
@@ -45,26 +39,14 @@ export function BudgetBar({ budget, error, onRetry }: { budget: PlaygroundBudget
   });
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-2 text-sm">
-        <span className="font-medium">{t("playground.budget")}</span>
-        <span className="truncate font-mono text-xs tabular-nums text-muted-foreground" title={label}>
-          {label}
-        </span>
-      </div>
-      <progress
-        value={Math.round(pct)}
-        max={100}
-        aria-label={t("playground.budget")}
-        aria-valuetext={label}
-        className={[
-          "h-2 w-full appearance-none overflow-hidden rounded-full bg-muted",
-          "[&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:rounded-full [&::-moz-progress-bar]:rounded-full",
-          tone,
-        ].join(" ")}
+      <Meter
+        label={t("playground.budget")}
+        value={budget.used}
+        max={budget.cap}
+        tone={budget.exhausted ? "danger" : "auto"}
+        valueLabel={label}
+        hint={t("playground.budget.resets", { date: formatDate(budget.resets_at, locale) })}
       />
-      <p className="text-xs text-muted-foreground">
-        {t("playground.budget.resets", { date: formatDate(budget.resets_at, locale) })}
-      </p>
       {near ? (
         <p className="text-xs text-warning" role="status">
           {t("playground.budget.near", { remaining: formatNumber(budget.remaining, locale) })}

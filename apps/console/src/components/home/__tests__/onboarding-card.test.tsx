@@ -32,7 +32,8 @@ describe("OnboardingCardClient", () => {
         <OnboardingCardClient data={data} role="owner" />
       </LocaleProvider>,
     );
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
+    expect(screen.getByRole("progressbar")).toHaveAttribute("value", "2");
+    expect(screen.getByRole("progressbar")).toHaveAttribute("max", "5");
     expect(screen.getByText("2 de 5 completados")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Publica un agente/ })).toHaveAttribute("href", "/clients/acme/agent");
     expect(screen.queryByRole("link", { name: /Invita a tu equipo/ })).toBeNull(); // done → not a link

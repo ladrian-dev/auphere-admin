@@ -26,6 +26,9 @@ describe("Meter", () => {
     rerender(<Meter label="Créditos" value={130} max={100} />);
     expect(screen.getByRole("progressbar").closest("[data-slot=meter]")).toHaveAttribute("data-tone", "danger");
     expect(screen.getByRole("progressbar")).toHaveAttribute("value", "100");
+    rerender(<Meter label="Pasos" value={2} max={5} />);
+    expect(screen.getByRole("progressbar")).toHaveAttribute("value", "2");
+    expect(screen.getByRole("progressbar")).toHaveAttribute("max", "5");
   });
   it("a fixed tone wins over the thresholds", () => {
     render(<Meter label="Docs" value={100} max={100} tone="info" />);
@@ -189,6 +192,15 @@ describe("DescriptionList", () => {
     expect(dd.tagName).toBe("DD");
     expect(dd).toHaveClass("font-mono", "truncate");
     expect(dd).toHaveAttribute("title", "abc");
+  });
+});
+
+describe("DescriptionList inline", () => {
+  it("keeps term and detail on one row, detail right-aligned when asked", () => {
+    render(<DescriptionList layout="inline" items={[{ term: "Latencia", detail: "820 ms", mono: true, align: "end" }]} />);
+    expect(screen.getByText("Latencia").tagName).toBe("DT");
+    expect(screen.getByText("820 ms")).toHaveClass("text-right", "font-mono");
+    expect(screen.getByText("Latencia").closest("dl")).toHaveAttribute("data-layout", "inline");
   });
 });
 

@@ -19,8 +19,10 @@ import {
   DialogHeader,
   DialogTitle,
   EmptyState,
+  HelpHint,
   Input,
   Label,
+  NativeSelect,
   StatusBadge,
   formatDateTime,
 } from "@nexus/ui";
@@ -41,9 +43,6 @@ import { actionErrorText } from "@/lib/action-error";
 import { TOOL_MODES, type ConnectorOut, type ConsentOut, type LastSync, type ToolCatalogOut, type ToolMode, type ToolOut } from "@/lib/backend/agent-tools-types";
 
 import { connectorStatusKey, connectorTone, credentialFieldLabel, groupToolsByConnector, lastSyncKey, splitCredentials } from "./lib";
-
-const SELECT_CLASS =
-  "h-7 min-w-40 rounded-md border border-input bg-transparent px-2 text-xs focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
 
 type Props = { refId: string; catalog: ToolCatalogOut; connectors: ConnectorOut[]; connectorsError: string | null; canWrite: boolean };
 
@@ -189,9 +188,12 @@ function ToolRow({ refId, tool, checked, onToggle, canWrite }: { refId: string; 
             {tool.read_only ? <StatusBadge tone="muted" dot={false}>{t("tools.readOnly")}</StatusBadge> : null}
             {tool.destructive ? <StatusBadge tone="danger" dot={false}>{t("tools.destructive")}</StatusBadge> : null}
             {tool.connector_required && tool.connector_status !== "connected" ? (
-              <StatusBadge tone="warning" dot={false} title={t("tools.notUsable")}>
-                {t("tools.needsConnector", { name: tool.connector_display_name ?? tool.connector_slug ?? "" })}
-              </StatusBadge>
+              <>
+                <StatusBadge tone="warning" dot={false} className="min-w-0 max-w-full">
+                  {t("tools.needsConnector", { name: tool.connector_display_name ?? tool.connector_slug ?? "" })}
+                </StatusBadge>
+                <HelpHint>{t("tools.notUsable")}</HelpHint>
+              </>
             ) : null}
             {tool.capability_tags.map((tag) => (
               <span key={tag} className="font-mono text-xs text-muted-foreground">
@@ -205,14 +207,15 @@ function ToolRow({ refId, tool, checked, onToggle, canWrite }: { refId: string; 
         <label htmlFor={modeId} className="sr-only">
           {t("tools.mode")}
         </label>
-        <select id={modeId} className={SELECT_CLASS} value={value} onChange={(e) => changeMode(e.target.value)} disabled={!canWrite || pending} title={tool.override_mode ? t("tools.mode.override") : undefined}>
+        {tool.override_mode ? <HelpHint>{t("tools.mode.override")}</HelpHint> : null}
+        <NativeSelect id={modeId} size="sm" className="text-xs" wrapperClassName="min-w-40" value={value} onChange={(e) => changeMode(e.target.value)} disabled={!canWrite || pending}>
           <option value="__default">{t("tools.mode.default", { mode: t(`tools.mode.${tool.default_mode}`) })}</option>
           {TOOL_MODES.map((m) => (
             <option key={m} value={m}>
               {t(`tools.mode.${m}`)}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
     </li>
   );

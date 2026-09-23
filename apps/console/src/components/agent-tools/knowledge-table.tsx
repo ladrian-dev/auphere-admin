@@ -15,6 +15,7 @@ import {
   EmptyState,
   Input,
   Label,
+  Meter,
   StatusBadge,
   Table,
   TableBody,
@@ -31,7 +32,7 @@ import { addKnowledgeUrlAction, deleteKnowledgeAction, reindexKnowledgeAction, u
 import { useLocale, useT } from "@/i18n/client";
 import { KNOWLEDGE_MAX_UPLOAD_BYTES, type KnowledgeDocumentOut, type KnowledgeListOut } from "@/lib/backend/agent-tools-types";
 
-import { knowledgeErrorKey, knowledgeStatusTone, knowledgeUsageRatio, usageWidthClass } from "./lib";
+import { knowledgeErrorKey, knowledgeStatusTone, knowledgeUsageRatio } from "./lib";
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; status: number; message: string };
 
@@ -93,23 +94,15 @@ export function KnowledgeTable({ refId, data, canWrite, actions, emptyCopy }: Pr
       {!canWrite ? <p className="text-xs text-muted-foreground">{t("knowledge.readonly")}</p> : null}
       {forms}
 
-      <div className="flex min-w-0 flex-col gap-1" role="group" aria-label={t("knowledge.usage.label")}>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground tabular-nums">
-          <span>{t("knowledge.usage", { used: formatNumber(data.indexed_chars, locale), cap: formatNumber(data.prompt_char_cap, locale) })}</span>
-          <span>{formatNumber(ratio, locale, { style: "percent", maximumFractionDigits: 0 })}</span>
-        </div>
-        <div
-          role="progressbar"
-          aria-label={t("knowledge.usage.label")}
-          aria-valuemin={0}
-          aria-valuemax={data.prompt_char_cap}
-          aria-valuenow={Math.min(data.indexed_chars, data.prompt_char_cap)}
-          className="h-2 w-full overflow-hidden rounded-full bg-muted"
-        >
-          <div className={["h-full rounded-full transition-[width]", usageWidthClass(ratio), over ? "bg-status-danger" : ratio > 0.8 ? "bg-status-warning" : "bg-primary"].join(" ")} />
-        </div>
-        {over ? <p className="text-xs text-destructive">{t("knowledge.usage.over")}</p> : null}
-      </div>
+      <Meter
+        label={t("knowledge.usage.label")}
+        value={data.indexed_chars}
+        max={data.prompt_char_cap > 0 ? data.prompt_char_cap : null}
+        tone={over ? "danger" : "auto"}
+        valueLabel={`${t("knowledge.usage", { used: formatNumber(data.indexed_chars, locale), cap: formatNumber(data.prompt_char_cap, locale) })} · ${formatNumber(ratio, locale, { style: "percent", maximumFractionDigits: 0 })}`}
+        noMaxLabel={t("knowledge.usage", { used: formatNumber(data.indexed_chars, locale), cap: formatNumber(data.prompt_char_cap, locale) })}
+        hint={over ? <span className="text-destructive">{t("knowledge.usage.over")}</span> : undefined}
+      />
 
       {data.items.length === 0 ? (
         <EmptyState icon={BookOpen} title={emptyCopy?.title ?? t("knowledge.empty.title")} description={emptyCopy?.body ?? t("knowledge.empty.body")} readonly />

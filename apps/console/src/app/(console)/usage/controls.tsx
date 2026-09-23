@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { Button } from "@nexus/ui";
+import { Button, NativeSelect } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 
@@ -31,7 +31,6 @@ export function UsageControls({ days, client, source, meter, clients, csvHref }:
     }
     router.push(`${pathname}?${next.toString()}`);
   }
-  const selectClass = "h-8 rounded-md border border-input bg-transparent px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div role="group" aria-label={t("usage.period", { days })} className="flex gap-1">
@@ -42,28 +41,28 @@ export function UsageControls({ days, client, source, meter, clients, csvHref }:
         ))}
       </div>
       {clients.length ? (
-        <select className={selectClass} value={client} onChange={(e) => set({ client: e.target.value || undefined })} aria-label={t("usage.client")}>
+        <NativeSelect value={client} onChange={(e) => set({ client: e.target.value || undefined })} aria-label={t("usage.client")}>
           <option value="">{t("usage.all")}</option>
           {clients.map((c) => (
             <option key={c.ref} value={c.ref}>
               {c.name}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       ) : null}
-      <select className={selectClass} value={source} onChange={(e) => set({ source: e.target.value || undefined })} aria-label={t("usage.source")}>
+      <NativeSelect value={source} onChange={(e) => set({ source: e.target.value || undefined })} aria-label={t("usage.source")}>
         <option value="">{t("usage.source")}: —</option>
         <option value="channel">{t("usage.source.channel")}</option>
         <option value="qa">{t("usage.source.qa")}</option>
-      </select>
-      <select className={selectClass} value={meter} onChange={(e) => set({ meter: e.target.value || undefined })} aria-label={t("hu.usage.meter.filter")}>
+      </NativeSelect>
+      <NativeSelect value={meter} onChange={(e) => set({ meter: e.target.value || undefined })} aria-label={t("hu.usage.meter.filter")}>
         <option value="">{t("hu.usage.meter.all")}</option>
         {METER_OPTIONS.map((m) => (
           <option key={m} value={m}>
             {t(`hu.usage.meter.${m}` as "hu.usage.meter.llm")}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       <Button nativeButton={false} variant="outline" size="sm" className="ml-auto" render={<a href={csvHref} download />}>
         {t("hu.usage.export.server")}
       </Button>

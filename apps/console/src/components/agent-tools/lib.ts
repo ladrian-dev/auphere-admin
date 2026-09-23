@@ -87,16 +87,6 @@ export function knowledgeUsageRatio(indexedChars: number, cap: number): number {
   return Math.min(1, Math.max(0, indexedChars / cap));
 }
 
-const WIDTH_STEPS = ["w-0", "w-1/12", "w-2/12", "w-3/12", "w-4/12", "w-5/12", "w-6/12", "w-7/12", "w-8/12", "w-9/12", "w-10/12", "w-11/12", "w-full"] as const;
-
-/** Meter fill as a Tailwind fraction class (no inline styles): 13 steps, never 0 when > 0. */
-export function usageWidthClass(ratio: number): (typeof WIDTH_STEPS)[number] {
-  const r = Math.min(1, Math.max(0, ratio));
-  if (r === 0) return "w-0";
-  const idx = Math.max(1, Math.round(r * 12));
-  return WIDTH_STEPS[idx] ?? "w-full";
-}
-
 /** Spec 016 (R7.2): the label of a credential field in the partner's
  *  language — `connectors.field.{slug}.{field}` when the dictionary has it,
  *  the seed's English label otherwise, the field name as a last resort. */

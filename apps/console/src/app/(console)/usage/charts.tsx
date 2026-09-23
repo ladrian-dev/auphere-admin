@@ -1,6 +1,6 @@
 "use client";
 
-import { CapGauge, ProjectionLineChart, StackedBarChart, formatDate, formatNumber } from "@nexus/ui";
+import { Meter, ProjectionLineChart, StackedBarChart, formatDate, formatNumber } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 
@@ -31,13 +31,12 @@ export function UsageCharts({ bars, barSeries, line, cap, monthUnits, percent }:
       </section>
       <div className="flex min-w-0 flex-col gap-6">
         <section aria-label={t("hu.usage.gauge")} className="rounded-md bg-card p-4 ring-1 ring-foreground/10">
-          <CapGauge
+          <Meter
             label={t("hu.usage.gauge")}
             value={monthUnits}
             max={cap}
-            valueLabel={cap != null ? `${n(monthUnits)} / ${n(cap)}` : n(monthUnits)}
-            percentLabel={percent != null ? t("hu.usage.month.percent", { percent: n(percent) }) : undefined}
-            noCapLabel={t("hu.usage.month.nocap")}
+            valueLabel={cap != null ? `${n(monthUnits)} / ${n(cap)}${percent != null ? ` · ${t("hu.usage.month.percent", { percent: n(percent) })}` : ""}` : n(monthUnits)}
+            noMaxLabel={t("hu.usage.month.nocap")}
           />
         </section>
         <section aria-label={t("hu.usage.chart.projection")} className="min-w-0 rounded-md bg-card p-4 ring-1 ring-foreground/10">

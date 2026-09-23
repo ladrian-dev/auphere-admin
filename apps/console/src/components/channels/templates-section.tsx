@@ -17,6 +17,7 @@ import {
   EmptyState,
   Input,
   Label,
+  NativeSelect,
   StatusBadge,
   Table,
   TableBody,
@@ -31,7 +32,6 @@ import { createTemplateAction, deleteTemplateAction } from "@/app/(console)/clie
 import { useT } from "@/i18n/client";
 import type { TemplateButton, TemplateList, TemplateRow } from "@/lib/backend/channels";
 
-import { SELECT_CLASS } from "./whatsapp-connect";
 
 const STATUS_TONE: Record<string, "positive" | "warning" | "danger" | "info" | "muted"> = {
   APPROVED: "positive",
@@ -237,13 +237,13 @@ function CreateTemplateDialog({ refId, open, onOpenChange }: { refId: string; op
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="tpl-cat">{t("tpl.form.category")}</Label>
-              <select id="tpl-cat" className={SELECT_CLASS} value={category} onChange={(e) => setCategory(e.target.value as typeof category)}>
+              <NativeSelect id="tpl-cat" wrapperClassName="w-full" value={category} onChange={(e) => setCategory(e.target.value as typeof category)}>
                 {(["UTILITY", "MARKETING", "AUTHENTICATION"] as const).map((c) => (
                   <option key={c} value={c}>
                     {t(`tpl.category.${c}` as "tpl.category.UTILITY")}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
           <div className="flex flex-col gap-1">
@@ -262,8 +262,7 @@ function CreateTemplateDialog({ refId, open, onOpenChange }: { refId: string; op
             <legend className="text-sm font-medium">{t("tpl.form.buttons")}</legend>
             {buttons.map((b, i) => (
               <div key={i} className="grid gap-2 sm:grid-cols-[auto_1fr_1fr_auto]">
-                <select
-                  className={SELECT_CLASS}
+                <NativeSelect
                   value={b.type}
                   aria-label={t("tpl.form.buttons")}
                   onChange={(e) => setButtons((prev) => prev.map((x, j) => (j === i ? { ...x, type: e.target.value as ButtonDraft["type"] } : x)))}
@@ -273,7 +272,7 @@ function CreateTemplateDialog({ refId, open, onOpenChange }: { refId: string; op
                       {t(`tpl.form.button.${k}` as "tpl.form.button.URL")}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
                 <Input
                   aria-label={t("tpl.form.button.label")}
                   placeholder={t("tpl.form.button.label")}

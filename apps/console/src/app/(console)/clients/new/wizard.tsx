@@ -1,12 +1,11 @@
 "use client";
 
-import { AlertTriangle, Check, CircleDashed, Loader2, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Checkbox, ConfirmDialog, Input, Label, cn } from "@nexus/ui";
+import { Button, Checkbox, Checklist, type ChecklistItem, ConfirmDialog, DescriptionList, Input, Label, NativeSelect, Stepper, cn } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 import { actionErrorText } from "@/lib/action-error";
@@ -296,32 +295,12 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       {/* step indicator */}
-      <ol aria-label={t("wizard.steps.label")} className="flex flex-wrap gap-2 font-mono text-xs">
-        {STEPS.map((s, i) => {
-          const state = i < stepIndex ? "done" : i === stepIndex ? "current" : "todo";
-          return (
-            <li
-              key={s}
-              aria-current={state === "current" ? "step" : undefined}
-              className={cn(
-                "flex items-center gap-2 rounded-full border px-3 py-1",
-                state === "current" && "border-foreground text-foreground",
-                state === "done" && "border-primary/40 bg-primary/10 text-foreground",
-                state === "todo" && "border-border text-muted-foreground",
-              )}
-            >
-              <span className="tabular-nums" aria-hidden="true">
-                {i + 1}
-              </span>
-              <span>{t(STEP_LABEL[s])}</span>
-              {state === "done" ? <Check className="size-3" aria-hidden="true" /> : null}
-            </li>
-          );
-        })}
-      </ol>
-      <p className="sr-only" aria-live="polite">
-        {t("wizard.stepOf", { n: stepIndex + 1, total: STEPS.length })}
-      </p>
+      <Stepper
+        ariaLabel={t("wizard.steps.label")}
+        steps={STEPS.map((s) => ({ key: s, label: t(STEP_LABEL[s]) }))}
+        current={stepIndex}
+        stepOfLabel={(n, total) => t("wizard.stepOf", { n, total })}
+      />
 
       {full ? (
         <p role="alert" className="rounded-md border border-status-warning/40 bg-status-warning/10 px-4 py-3 text-sm">
@@ -377,9 +356,10 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="wz-tz">{t("clients.timezone")}</Label>
-              <select
+              <NativeSelect
                 id="wz-tz"
-                className="h-8 w-full rounded-md border border-input bg-transparent px-3 font-mono text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                wrapperClassName="w-full"
+                className="font-mono"
                 value={values.timezone}
                 aria-invalid={!!errors.timezone}
                 onChange={(e) => set("timezone", e.target.value)}
@@ -390,7 +370,7 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
                     {tz}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               {errors.timezone ? <p className="text-sm text-destructive">{errors.timezone}</p> : null}
             </div>
           </div>
@@ -500,22 +480,16 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
 
         {step === "review" ? (
           <div className="flex flex-col gap-6">
-            <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
-              <dt className="text-muted-foreground">{t("common.name")}</dt>
-              <dd className="min-w-0 truncate" title={values.name}>
-                {values.name}
-              </dd>
-              <dt className="text-muted-foreground">{t("clients.ref")}</dt>
-              <dd className="min-w-0 truncate font-mono" title={values.external_client_ref}>
-                {values.external_client_ref}
-              </dd>
-              <dt className="text-muted-foreground">{t("clients.timezone")}</dt>
-              <dd className="font-mono">{values.timezone}</dd>
-              <dt className="text-muted-foreground">{t("wizard.review.template")}</dt>
-              <dd className="min-w-0 truncate">{template ? `${template.display_name} (${template.name})` : t("wizard.template.none")}</dd>
-              <dt className="text-muted-foreground">{t("wizard.review.channel")}</dt>
-              <dd>{t(values.channel === "whatsapp" ? "wizard.review.channel.whatsapp" : "wizard.review.channel.later")}</dd>
-            </dl>
+            <DescriptionList
+              layout="inline"
+              items={[
+                { key: "name", term: t("common.name"), detail: values.name, truncate: true },
+                { key: "ref", term: t("clients.ref"), detail: values.external_client_ref, mono: true, truncate: true },
+                { key: "tz", term: t("clients.timezone"), detail: values.timezone, mono: true },
+                { key: "template", term: t("wizard.review.template"), detail: template ? `${template.display_name} (${template.name})` : t("wizard.template.none"), truncate: true },
+                { key: "channel", term: t("wizard.review.channel"), detail: t(values.channel === "whatsapp" ? "wizard.review.channel.whatsapp" : "wizard.review.channel.later") },
+              ]}
+            />
             {template && canPublish ? (
               <div className="flex items-start gap-3">
                 <Checkbox
@@ -539,47 +513,33 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
               <h3 id="wz-progress" className="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase">
                 {t("wizard.progress.title")}
               </h3>
-              <ol className="flex flex-col gap-2">
-                {stages.map((s) => (
-                  <li key={s.key} className="flex min-w-0 items-start gap-3 text-sm">
-                    <StageIcon status={s.status} />
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      <div className="flex min-w-0 items-center justify-between gap-2">
-                        <span className={cn("min-w-0 truncate", s.status === "skipped" && "text-muted-foreground line-through")}>{t(STAGE_LABEL[s.key])}</span>
-                        <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                          {t(
-                            s.status === "pending"
-                              ? "wizard.stage.pending"
-                              : s.status === "running"
-                                ? "wizard.stage.running"
-                                : s.status === "done"
-                                  ? "wizard.stage.done"
-                                  : s.status === "skipped"
-                                    ? "wizard.stage.skipped"
-                                    : "wizard.stage.failed",
-                          )}
-                        </span>
-                      </div>
-                      {s.key === "channel" && s.status === "done" ? (
-                        <span className="text-xs text-muted-foreground text-pretty">
-                          {t(values.channel === "whatsapp" ? "wizard.stage.channel.whatsapp" : "wizard.stage.channel.later")}
-                        </span>
-                      ) : null}
-                      {s.status === "failed" ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span role="alert" className="min-w-0 text-xs text-destructive text-pretty">
-                            {s.error}
-                          </span>
-                          <Button type="button" size="sm" variant="outline" disabled={running} onClick={() => void retry(s.key)}>
-                            <RotateCcw className="size-3" aria-hidden="true" />
-                            {t("wizard.stage.retry")}
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ol>
+              <Checklist
+                ariaLabel={t("wizard.progress.title")}
+                items={stages.map<ChecklistItem>((s) => ({
+                  key: s.key,
+                  label: t(STAGE_LABEL[s.key]),
+                  status: s.status === "pending" ? "todo" : s.status,
+                  meta: t(
+                    s.status === "pending"
+                      ? "wizard.stage.pending"
+                      : s.status === "running"
+                        ? "wizard.stage.running"
+                        : s.status === "done"
+                          ? "wizard.stage.done"
+                          : s.status === "skipped"
+                            ? "wizard.stage.skipped"
+                            : "wizard.stage.failed",
+                  ),
+                  detail:
+                    s.status === "failed"
+                      ? s.error
+                      : s.key === "channel" && s.status === "done"
+                        ? t(values.channel === "whatsapp" ? "wizard.stage.channel.whatsapp" : "wizard.stage.channel.later")
+                        : undefined,
+                  onRetry: s.status === "failed" && !running ? () => void retry(s.key) : undefined,
+                  retryLabel: t("wizard.stage.retry"),
+                }))}
+              />
               {outcome === "done" ? (
                 <div className="mt-2 flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/10 p-3" role="status">
                   <p className="text-sm font-medium">{t("wizard.done.title")}</p>
@@ -624,13 +584,11 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
           </Button>
         )}
         {step !== "review" ? (
-          <Button type="button" onClick={() => void goNext()} disabled={full || checkingRef}>
-            {checkingRef ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+          <Button type="button" onClick={() => void goNext()} disabled={full} loading={checkingRef}>
             {t("wizard.next")}
           </Button>
         ) : outcome === "idle" ? (
-          <Button type="button" onClick={() => void runAll()} disabled={full || running}>
-            {running ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+          <Button type="button" onClick={() => void runAll()} disabled={full} loading={running}>
             {running ? t("wizard.running") : t("wizard.run")}
           </Button>
         ) : null}
@@ -652,20 +610,6 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
       />
     </div>
   );
-}
-
-function StageIcon({ status }: { status: Stage["status"] }) {
-  const cls = "mt-1 size-4 shrink-0";
-  switch (status) {
-    case "running":
-      return <Loader2 className={cn(cls, "animate-spin text-primary-text")} aria-hidden="true" />;
-    case "done":
-      return <Check className={cn(cls, "text-primary-text")} aria-hidden="true" />;
-    case "failed":
-      return <AlertTriangle className={cn(cls, "text-destructive")} aria-hidden="true" />;
-    default:
-      return <CircleDashed className={cn(cls, "text-muted-foreground")} aria-hidden="true" />;
-  }
 }
 
 function PlaceholderField({ ph, value, error, onChange }: { ph: SeedPlaceholder; value: string; error?: string; onChange: (v: string) => void }) {

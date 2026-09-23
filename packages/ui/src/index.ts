@@ -7,7 +7,6 @@ export * from "./components/button";
 export * from "./components/callout";
 export * from "./components/card";
 export * from "./components/chart-bars";
-export * from "./components/chart-gauge";
 export * from "./components/chart-line";
 export * from "./components/chart-theme";
 export * from "./components/checkbox";
