@@ -161,6 +161,8 @@ export const onboardingMessages = {
   "notif.kind.client.activated.cannot_serve.whatsapp": { es: "Cliente {client} ya tiene agente publicado, pero falta conectar WhatsApp: todavía no puede atender", en: "Client {client} has a published agent, but WhatsApp is not connected yet — it cannot serve anyone" },
   "notif.kind.client.activated.cannot_serve.both": { es: "Cliente {client} ya tiene agente publicado, pero faltan WhatsApp y cuota: todavía no puede atender", en: "Client {client} has a published agent, but WhatsApp and quota are missing — it cannot serve anyone" },
   "notif.kind.client.activated.first": { es: "¡Tu primer cliente activo!", en: "Your first active client!" },
+  "notif.kind.client.out_of_quota": { es: "{client} se ha quedado sin cupo: sus mensajes no se atienden. Asígnale créditos en Consumo.", en: "{client} is out of quota: its messages are not answered. Assign it credits in Usage." },
+  "notif.kind.client.model_reset": { es: "El modelo de {client} pasó a {to_model} porque tu plan ya no incluye {from_model}.", en: "{client}'s model changed to {to_model} because your plan no longer includes {from_model}." },
   "notif.kind.channel.degraded": { es: "Canal de {client} degradado ({channel_status})", en: "Channel of {client} degraded ({channel_status})" },
   "notif.kind.template.rejected": { es: "Meta rechazó la plantilla {template_name} de {client}", en: "Meta rejected template {template_name} of {client}" },
   "notif.kind.member.joined": { es: "{email} se ha unido al equipo como {role}", en: "{email} joined the team as {role}" },

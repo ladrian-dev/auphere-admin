@@ -484,6 +484,44 @@ async def allow_channel_turn(tenant_id: uuid.UUID) -> bool:
         return False
 
 
+async def quota_state(partner_id: uuid.UUID, tenant_ids: list[uuid.UUID]) -> dict[uuid.UUID, bool]:
+    """``tenant_id → out_of_quota`` for a batch of a partner's clients.
+
+    The ONE definition of "this client cannot take a turn for lack of
+    quota", with the same reading as ``allow_channel_turn``: no wallet, an
+    empty wallet, no allocation row, or ``remaining <= 0`` → ``True``. The
+    console's health, list, home and the out-of-quota notice all read this
+    so the screen and the gate never disagree (spec 016, R2.1/R2.5).
+
+    Opens its own partner-scoped session: ``partner_allocations`` is FORCE
+    RLS by ``app.partner_id`` and is invisible from a tenant-scoped one.
+    Fails closed — an unreadable ledger reads as out of quota, which is
+    what the gate does too. A tenant that is not the partner's is simply
+    absent from the result.
+    """
+    if not tenant_ids:
+        return {}
+    try:
+        sm = get_sessionmaker()
+        async with sm() as session, session.begin():
+            await apply_partner_to_session(session, partner_id)
+            row = await session.get(PartnerWallet, partner_id)
+            wallet_empty = row is None or _snapshot(row).empty
+            rows = await session.execute(
+                sa.select(PartnerAllocation.tenant_id, PartnerAllocation.remaining).where(
+                    PartnerAllocation.partner_id == partner_id,
+                    PartnerAllocation.tenant_id.in_(tenant_ids),
+                )
+            )
+            remaining = {tid: _as_int(rem) for tid, rem in rows.all()}
+        return {
+            tid: wallet_empty or tid not in remaining or remaining[tid] <= 0 for tid in tenant_ids
+        }
+    except Exception as exc:
+        log.warning("wallet.quota_state_unreadable", partner_id=str(partner_id), error=str(exc))
+        return dict.fromkeys(tenant_ids, True)
+
+
 async def add_purchased(partner_id: uuid.UUID, qty: int) -> WalletSnapshot:
     """Recarga manual: suma al cubo purchased. No caduca. Staging / admin."""
     if qty <= 0:

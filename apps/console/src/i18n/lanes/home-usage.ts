@@ -15,6 +15,7 @@ export const homeUsageMessages = {
   "hu.home.incidents.def": { es: "Cliente activo con WhatsApp degradado o desconectado, sin agente publicado, o con mensajes fallidos en 24 h.", en: "Active client with WhatsApp degraded or disconnected, no published agent, or failed messages in the last 24 h." },
   "hu.home.issue.whatsapp_degraded": { es: "WhatsApp degradado o desconectado", en: "WhatsApp degraded or disconnected" },
   "hu.home.issue.no_active_agent": { es: "Sin agente publicado", en: "No published agent" },
+  "hu.home.issue.out_of_quota": { es: "Sin cupo: sus mensajes no se atienden", en: "Out of quota: its messages are not answered" },
   "hu.home.issue.failed_messages_24h": { es: "{count} mensaje(s) fallido(s) en 24 h", en: "{count} failed message(s) in 24 h" },
   "hu.home.pending": { es: "Acciones pendientes", en: "Pending actions" },
   "hu.home.pending.none": { es: "Nada pendiente", en: "Nothing pending" },
@@ -89,6 +90,11 @@ export const homeUsageMessages = {
   "hu.usage.allocations.move.qty": { es: "Tokens a mover", en: "Tokens to move" },
   "hu.usage.allocations.move.pick": { es: "Elige dos clientes distintos.", en: "Pick two different clients." },
   "hu.usage.allocations.move.invalid": { es: "La cantidad debe ser un entero > 0.", en: "The amount must be an integer > 0." },
+  "hu.usage.allocations.move.confirm": { es: "Mover {qty} créditos de {from} a {to}", en: "Move {qty} credits from {from} to {to}" },
+  "hu.usage.allocations.move.done": { es: "{qty} créditos movidos de {from} a {to}.", en: "{qty} credits moved from {from} to {to}." },
+  "hu.usage.allocations.move.same_client": { es: "Elige dos clientes distintos.", en: "Pick two different clients." },
+  "hu.usage.allocations.move.insufficient_cap": { es: "{from} solo tiene {cap} de tope.", en: "{from} only has a cap of {cap}." },
+  "hu.usage.allocations.outOfQuota": { es: "Sin cupo", en: "Out of quota" },
   "hu.usage.allocations.move.saved": { es: "Cupo movido.", en: "Quota moved." },
 
   // ── usage alerts (CP-24) ─────────────────────────────────────────

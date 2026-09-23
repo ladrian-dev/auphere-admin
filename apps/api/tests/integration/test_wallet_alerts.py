@@ -117,39 +117,46 @@ async def test_alerts_do_not_repeat_within_the_month(db_session) -> None:
 
 async def test_a_client_out_of_quota_is_reported_even_with_partner_balance(db_session) -> None:
     """El caso más difícil de ver desde fuera: el partner tiene saldo y un
-    cliente concreto ya no contesta porque agotó su asignación."""
+    cliente concreto ya no contesta porque agotó su asignación.
+
+    Spec 016 (R2.1): «sin cupo» significa lo mismo que en la puerta del canal,
+    así que un tope de 0 también cuenta — la puerta no distingue «apagado a
+    propósito» de «agotado», y la pantalla no puede decir otra cosa. Devuelve
+    refs, que es lo que guardan los avisos.
+    """
     partner = await _partner(db_session, available=CAP)
-    tenant_id = uuid.uuid4()
-    db_session.add(
-        Tenant(
-            id=tenant_id,
-            name="Cliente Sin Cuota",
-            slug=f"sin-cuota-{tenant_id.hex[:8]}",
-            status=TenantStatus.ACTIVE,
-            partner_id=partner.id,
+
+    async def _client(name: str, *, cap: int, remaining: int) -> str:
+        tenant_id = uuid.uuid4()
+        ref = f"{name}-{tenant_id.hex[:8]}"
+        db_session.add(
+            Tenant(
+                id=tenant_id,
+                name=name,
+                slug=ref,
+                status=TenantStatus.ACTIVE,
+                partner_id=partner.id,
+            )
         )
-    )
-    await db_session.flush()
-    db_session.add(
-        PartnerAllocation(partner_id=partner.id, tenant_id=tenant_id, cap=50_000, remaining=0)
-    )
-    # Un cap de 0 es una decisión del partner, no una incidencia.
-    otro = uuid.uuid4()
-    db_session.add(
-        Tenant(
-            id=otro,
-            name="Cliente Apagado",
-            slug=f"apagado-{otro.hex[:8]}",
-            status=TenantStatus.ACTIVE,
-            partner_id=partner.id,
+        await db_session.flush()
+        db_session.add(
+            PartnerTenant(partner_id=partner.id, external_client_ref=ref, tenant_id=tenant_id)
         )
-    )
-    await db_session.flush()
-    db_session.add(PartnerAllocation(partner_id=partner.id, tenant_id=otro, cap=0, remaining=0))
+        db_session.add(
+            PartnerAllocation(
+                partner_id=partner.id, tenant_id=tenant_id, cap=cap, remaining=remaining
+            )
+        )
+        return ref
+
+    agotado = await _client("sin-cuota", cap=50_000, remaining=0)
+    apagado = await _client("apagado", cap=0, remaining=0)
+    con_cupo = await _client("con-cupo", cap=50_000, remaining=10)
     await db_session.commit()
 
     out = await clients_without_quota(db_session, partner.id)
-    assert out == [str(tenant_id)]
+    assert out == sorted([agotado, apagado])
+    assert con_cupo not in out
 
 
 async def test_activation_says_when_the_client_cannot_serve(db_session) -> None:

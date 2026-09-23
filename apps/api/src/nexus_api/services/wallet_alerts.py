@@ -41,7 +41,6 @@ from nexus_api.db.models import (
     NotificationKind,
     NotificationSeverity,
     Partner,
-    PartnerAllocation,
 )
 from nexus_api.metering.wallet import read_wallet
 from nexus_api.services.console_reporting import month_bounds
@@ -76,20 +75,29 @@ def _percent_used(available: int, cap: int) -> float:
 
 
 async def clients_without_quota(session: AsyncSession, partner_id: uuid.UUID) -> list[str]:
-    """Clientes del partner cuya asignación está agotada.
+    """Clientes del partner que ya no contestan por falta de cupo, como refs.
 
-    Son los que ya no contestan aunque el partner tenga saldo. La consulta
-    va por ``remaining <= 0`` y no por ``cap``: un cap de 0 es una decisión
-    del partner (cliente apagado a propósito) y no una incidencia.
+    Misma definición que la puerta del canal (``quota_state``): sin fila, con
+    ``remaining <= 0`` o con la cartera vacía. Antes excluía ``cap = 0`` como
+    «apagado a propósito»; la spec 016 (R2.1) pide que la ficha, el aviso y
+    la puerta digan lo mismo, y la puerta no distingue. Devuelve
+    ``external_client_ref`` porque ``console_notifications`` nunca guarda
+    ``tenant_id``.
     """
-    rows = await session.execute(
-        sa.select(PartnerAllocation.tenant_id).where(
-            PartnerAllocation.partner_id == partner_id,
-            PartnerAllocation.cap > 0,
-            PartnerAllocation.remaining <= 0,
+    from nexus_api.db.models import PartnerTenant
+    from nexus_api.metering.wallet import quota_state
+
+    mappings = (
+        await session.execute(
+            sa.select(PartnerTenant.tenant_id, PartnerTenant.external_client_ref).where(
+                PartnerTenant.partner_id == partner_id
+            )
         )
-    )
-    return [str(r[0]) for r in rows.all()]
+    ).all()
+    if not mappings:
+        return []
+    states = await quota_state(partner_id, [tid for tid, _ in mappings])
+    return sorted(ref for tid, ref in mappings if states.get(tid, True))
 
 
 async def evaluate_partner_wallet_alerts(

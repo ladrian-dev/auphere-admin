@@ -18,7 +18,7 @@ export type HomeUsage = {
   projected_month_units: number;
   basis_days: number;
 };
-export type IncidentIssue = "whatsapp_degraded" | "no_active_agent" | "failed_messages_24h";
+export type IncidentIssue = "whatsapp_degraded" | "no_active_agent" | "failed_messages_24h" | "out_of_quota";
 export type IncidentClient = {
   external_client_ref: string;
   client_name: string | null;

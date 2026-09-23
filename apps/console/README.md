@@ -89,5 +89,29 @@ Vite 8 / rolldown exigen **Node ≥ 22.12** (`require(esm)`). Con un Node 22.11
 `pnpm test` arranca con `NODE_OPTIONS=--experimental-require-module`; mejor
 subir Node. En macOS no existe `timeout`: no lo uses en scripts locales.
 
+### Probar una acción de servidor
+
+Cada acción hace tres cosas: resuelve el principal, comprueba el rol y llama
+al backend. El arnés `src/test/actions.ts` finge la primera y la tercera para
+que el test afirme la segunda — el «no puedes» de la consola, no el 403 de la
+API — y lo que se le pidió al backend:
+
+```ts
+const h = await vi.hoisted(async () => (await import("@/test/actions")).actionHarness());
+vi.mock("@/lib/principal", () => h.principalModule);
+vi.mock("@/lib/backend", () => h.backendModule);
+vi.mock("next/cache", () => h.cacheModule);
+const { saveAllocationAction } = await import("../actions");
+
+h.setRole("analyst");
+expect(await saveAllocationAction({ client_ref: "a", cap: 1 })).toEqual(h.denied());
+expect(h.backend.setAllocation).not.toHaveBeenCalled();
+```
+
+`h.backend.<método>` es un `vi.fn` que existe sin declararlo y resuelve `{}`;
+`h.fail("método", 422, "detalle", "código")` hace fallar la siguiente llamada
+como la vería `run()`. Un fichero `__tests__/actions.test.ts` por carpeta de
+acciones (spec 016, R8).
+
 La suite `companion.spec.ts` se **salta** (no falla) si el partner de prueba
 no tiene `companion_enabled`; la `a11y.spec.ts` exige un cliente ya creado.

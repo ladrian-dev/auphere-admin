@@ -175,7 +175,8 @@ export type ClientHealth = {
   agent_version: number | null;
   agent_configured: boolean;
   ready: boolean;
-  missing: string[];
+  /** ``agent`` · ``whatsapp`` · ``quota`` · ``activation`` — in that order (spec 016, R2.7). */
+  missing: Array<"agent" | "whatsapp" | "quota" | "activation" | (string & {})>;
 };
 export type Client = ClientSummary & { health: ClientHealth };
 export type ClientPage = { items: ClientSummary[]; total: number; limit: number; offset: number };

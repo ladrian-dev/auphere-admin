@@ -33,7 +33,7 @@ Igual que `infra/vercel/README.md` describe para el admin:
 | `NEXUS_CONSOLE_JWT_ISSUER` | `nexus-console` | Debe coincidir con la API. |
 | `NEXUS_CONSOLE_JWT_AUDIENCE` | `nexus-api` | Idem. |
 | `NEXUS_CONSOLE_ORIGIN` | `https://console.staging.auphere.com` | Origen propio (CSP/cookies). |
-| `NEXUS_META_APP_ID`, `NEXUS_META_CONFIG_ID`, `NEXUS_META_GRAPH_VERSION` | de la app de Meta | Opcionales: sin ellas el botón de Embedded Signup sale deshabilitado con motivo. |
+| `NEXUS_META_APP_ID`, `NEXUS_META_CONFIG_ID_WA_CLOUD_API`, `NEXUS_META_CONFIG_ID_WA_COEXISTENCE`, `NEXUS_META_GRAPH_API_VERSION` | de la app de Meta | Opcionales: sin ellas el botón de Embedded Signup sale deshabilitado con motivo. |
 
 **No hay ninguna variable de Postgres.** Si ves `NEXUS_CONSOLE_DATABASE_URL`
 en algún sitio, es de antes de ADR-032 y sobra.

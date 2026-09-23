@@ -594,3 +594,45 @@ async def test_admin_recharge_works_in_prod_and_leaves_an_audit_row(
 # la puerta seguía cerrada en producción, y la puerta ya no existe en ningún
 # entorno. Comprobar que un 404 sigue siendo 404 cuando la ruta se borró es un
 # test que pasa por la razón equivocada.
+
+
+# ── spec 016 · una sola definición de «sin cupo» ───────────────────────
+
+
+async def test_quota_state_matches_the_channel_gate(client, console_world, db_session) -> None:
+    """R2.1 / R2.5: ``quota_state`` (lote, lo que pinta la consola) dice lo
+    mismo que ``allow_channel_turn`` (la puerta del canal) en los cuatro
+    casos: con cupo, cupo agotado, sin fila y sin cartera."""
+    import uuid as _uuid
+
+    from nexus_api.metering.wallet import allow_channel_turn, quota_state
+
+    a = console_world["a"]
+    unalloc_ref = "client-a-noquota"
+    unalloc_tid = await _add_unallocated_client(
+        db_session, partner_id=a["partner_id"], ref=unalloc_ref
+    )
+    ok = await client.put(
+        f"/console/clients/{a['ref']}/allocation", headers=a["headers"](), json={"cap": 50_000}
+    )
+    assert ok.status_code == 200, ok.text
+
+    states = await quota_state(a["partner_id"], [a["tenant_id"], unalloc_tid])
+    assert states[a["tenant_id"]] is False
+    assert states[unalloc_tid] is True
+    assert await allow_channel_turn(a["tenant_id"]) is True
+    assert await allow_channel_turn(unalloc_tid) is False
+
+    # Agotado: el tope baja a lo consumido (0) y la fila sigue existiendo.
+    zero = await client.put(
+        f"/console/clients/{a['ref']}/allocation", headers=a["headers"](), json={"cap": 0}
+    )
+    assert zero.status_code == 200, zero.text
+    assert (await quota_state(a["partner_id"], [a["tenant_id"]]))[a["tenant_id"]] is True
+    assert await allow_channel_turn(a["tenant_id"]) is False
+
+    # Sin cartera: un partner que no existe lee como agotado (fail closed).
+    ghost = _uuid.uuid4()
+    assert (await quota_state(ghost, [a["tenant_id"]]))[a["tenant_id"]] is True
+    # Un tenant ajeno no aparece con cupo por error: también agotado.
+    assert (await quota_state(a["partner_id"], [_uuid.uuid4()])) != {}
