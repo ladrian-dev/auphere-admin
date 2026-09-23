@@ -36,4 +36,13 @@ describe("notifications/render", () => {
     expect(text).toContain("no puede responder");
     expect(text).not.toContain("primer cliente");
   });
+  it("names the missing piece when the client has an agent but no channel", () => {
+    const wa = notificationText("es", { kind: "client.activated", data: { first: true, can_serve: false, missing: ["whatsapp"] }, external_client_ref: "acme" });
+    expect(wa).toContain("falta conectar WhatsApp");
+    expect(wa).not.toContain("cuota");
+    const both = notificationText("es", { kind: "client.activated", data: { can_serve: false, missing: ["quota", "whatsapp"] }, external_client_ref: "acme" });
+    expect(both).toContain("WhatsApp y cuota");
+    const quota = notificationText("es", { kind: "client.activated", data: { can_serve: false, missing: ["quota"] }, external_client_ref: "acme" });
+    expect(quota).toContain("sin cuota");
+  });
 });

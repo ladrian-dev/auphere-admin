@@ -15,10 +15,15 @@ from nexus_api.api.console.seed_templates import describe_placeholders
 from nexus_api.db.models import (
     AgentConfig,
     AgentConfigStatus,
+    Channel,
+    ChannelStatus,
+    ChannelType,
     ConsoleNotification,
     NotificationKind,
     Partner,
+    PartnerTenant,
     Tenant,
+    TenantPlan,
     TenantStatus,
 )
 from nexus_api.services.console_notifications import emit, record_client_activation
@@ -424,3 +429,85 @@ async def test_status_active_with_published_agent_activates_partner(
 async def test_agent_config_versions_status_enum_is_used(console_world) -> None:
     # Guard: the enum name this lane relies on for "published".
     assert AgentConfigStatus.ACTIVE.value == "active"
+
+
+async def test_activation_names_what_is_missing_channel_wise(db_session, console_world) -> None:
+    """Bug ``.specify/bugs/activado-no-significa-que-atienda``: «¡Tu primer
+    cliente activo!» llegaba con ``can_serve: true`` sin ningún canal. Ahora
+    la notificación dice qué falta: ``whatsapp`` cuando no hay canal de
+    clientes (el del Playground no cuenta), ``quota`` cuando la puerta del
+    libro está cerrada."""
+    import uuid as _uuid
+
+    a = console_world["a"]
+
+    async def _client(ref: str) -> _uuid.UUID:
+        tid = _uuid.uuid4()
+        db_session.add(
+            Tenant(
+                id=tid,
+                name=ref,
+                slug=f"t-{ref}-{tid.hex[:6]}",
+                plan=TenantPlan.PRO,
+                status=TenantStatus.ACTIVE,
+                partner_id=a["partner_id"],
+            )
+        )
+        await db_session.flush()
+        db_session.add(
+            PartnerTenant(
+                partner_id=a["partner_id"], external_client_ref=ref, tenant_id=tid, client_name=ref
+            )
+        )
+        await db_session.flush()
+        return tid
+
+    no_channel = await _client("sin-canal")
+    with_wa = await _client("con-whatsapp")
+    only_qa = await _client("solo-playground")
+    db_session.add(
+        Channel(
+            id=_uuid.uuid4(),
+            tenant_id=with_wa,
+            type=ChannelType.WHATSAPP,
+            provider="meta",
+            provider_identifier=f"+3460000{_uuid.uuid4().int % 10000:04d}",
+            config={},
+            status=ChannelStatus.ACTIVE,
+        )
+    )
+    db_session.add(
+        Channel(
+            id=_uuid.uuid4(),
+            tenant_id=only_qa,
+            type=ChannelType.WEB,
+            provider="qa_playground",
+            provider_identifier=f"qa_playground:{only_qa}",
+            config={"qa_playground": True},
+            status=ChannelStatus.ACTIVE,
+        )
+    )
+    await db_session.commit()
+    assert no_channel and with_wa and only_qa
+
+    async with db_session.begin():
+        for ref in ("sin-canal", "con-whatsapp", "solo-playground"):
+            await record_client_activation(
+                db_session, partner_id=a["partner_id"], external_client_ref=ref
+            )
+
+    rows = (
+        await db_session.execute(
+            sa.select(ConsoleNotification).where(
+                ConsoleNotification.partner_id == a["partner_id"],
+                ConsoleNotification.kind == "client.activated",
+            )
+        )
+    ).scalars()
+    by_ref = {r.payload["external_client_ref"]: r for r in rows}
+    assert by_ref["sin-canal"].payload["can_serve"] is False
+    assert "whatsapp" in by_ref["sin-canal"].payload["missing"]
+    assert "whatsapp" in by_ref["solo-playground"].payload["missing"]
+    assert "whatsapp" not in by_ref["con-whatsapp"].payload["missing"]
+    for r in by_ref.values():
+        assert r.severity == "warning"  # ninguno tiene cuota: la puerta sigue cerrada

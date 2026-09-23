@@ -171,7 +171,7 @@ async def record_client_activation(
     # no, la notificación lo dice (``can_serve``) y sube a ``warning``, que
     # es lo que la hace visible en la consola en vez de pasar por un
     # «todo bien» más.
-    can_serve = await _client_can_serve(session, partner_id, external_client_ref)
+    can_serve, missing = await _client_can_serve(session, partner_id, external_client_ref)
     await emit(
         session,
         partner_id=partner_id,
@@ -180,6 +180,10 @@ async def record_client_activation(
             "external_client_ref": external_client_ref,
             "first": first,
             "can_serve": can_serve,
+            # What stands between "activated" and "answering": ``quota``
+            # (the wallet gate is closed) and/or ``whatsapp`` (no customer-
+            # facing channel). The console names the missing piece.
+            "missing": missing,
         },
         severity=(NotificationSeverity.INFO if can_serve else NotificationSeverity.WARNING),
         external_client_ref=external_client_ref,
@@ -190,16 +194,23 @@ async def record_client_activation(
 
 async def _client_can_serve(
     session: AsyncSession, partner_id: uuid.UUID, external_client_ref: str
-) -> bool:
-    """¿Contestaría este cliente a un mensaje que llegase ahora?
+) -> tuple[bool, list[str]]:
+    """¿Contestaría este cliente a un mensaje que llegase ahora? Y si no, ¿qué falta?
+
+    Dos cosas pueden faltar: cuota (``allow_channel_turn`` es la misma
+    puerta que abre o cierra el dispatcher) y un canal por el que llegue el
+    mensaje (un canal de clientes activo; el del Playground no cuenta).
 
     No lanza: un fallo leyendo el libro no puede tumbar una activación. En
     la duda devuelve ``False`` y la notificación avisa de más, que es el
     lado seguro — el otro es el silencio del 31-ago.
     """
-    from nexus_api.db.models import PartnerTenant
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.models import Channel, ChannelStatus, PartnerTenant
     from nexus_api.metering.wallet import allow_channel_turn
+    from nexus_api.services.console_traffic import customer_facing_channel
 
+    missing: list[str] = []
     try:
         tenant_id = await session.scalar(
             sa.select(PartnerTenant.tenant_id).where(
@@ -208,8 +219,21 @@ async def _client_can_serve(
             )
         )
         if tenant_id is None:
-            return False
-        return await allow_channel_turn(tenant_id)
+            return False, ["quota", "whatsapp"]
+        if not await allow_channel_turn(tenant_id):
+            missing.append("quota")
+        factory = get_sessionmaker()
+        async with factory() as scoped, tenant_scoped_session(scoped, tenant_id):
+            has_channel = (
+                await scoped.scalar(
+                    sa.select(Channel.id)
+                    .where(Channel.status == ChannelStatus.ACTIVE, customer_facing_channel())
+                    .limit(1)
+                )
+            ) is not None
+        if not has_channel:
+            missing.append("whatsapp")
+        return not missing, missing
     except Exception as exc:
         log.warning(
             "notifications.can_serve_unreadable",
@@ -217,7 +241,7 @@ async def _client_can_serve(
             client=external_client_ref,
             error=str(exc),
         )
-        return False
+        return False, missing or ["quota", "whatsapp"]
 
 
 async def record_client_activation_detached(**kwargs: Any) -> bool:

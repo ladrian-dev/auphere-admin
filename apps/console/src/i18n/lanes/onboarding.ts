@@ -158,6 +158,8 @@ export const onboardingMessages = {
   "notif.kind.wallet.empty": { es: "Saldo agotado ({period}): tus agentes han dejado de responder", en: "Balance exhausted ({period}) — your agents have stopped replying" },
   "notif.kind.client.activated": { es: "Cliente {client} activado con agente publicado", en: "Client {client} activated with a published agent" },
   "notif.kind.client.activated.cannot_serve": { es: "Cliente {client} activado, pero sin cuota asignada: todavía no puede responder", en: "Client {client} activated, but with no quota assigned — it cannot reply yet" },
+  "notif.kind.client.activated.cannot_serve.whatsapp": { es: "Cliente {client} ya tiene agente publicado, pero falta conectar WhatsApp: todavía no puede atender", en: "Client {client} has a published agent, but WhatsApp is not connected yet — it cannot serve anyone" },
+  "notif.kind.client.activated.cannot_serve.both": { es: "Cliente {client} ya tiene agente publicado, pero faltan WhatsApp y cuota: todavía no puede atender", en: "Client {client} has a published agent, but WhatsApp and quota are missing — it cannot serve anyone" },
   "notif.kind.client.activated.first": { es: "¡Tu primer cliente activo!", en: "Your first active client!" },
   "notif.kind.channel.degraded": { es: "Canal de {client} degradado ({channel_status})", en: "Channel of {client} degraded ({channel_status})" },
   "notif.kind.template.rejected": { es: "Meta rechazó la plantilla {template_name} de {client}", en: "Meta rejected template {template_name} of {client}" },

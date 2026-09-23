@@ -21,7 +21,18 @@ export function notificationText(locale: Locale, n: Pick<Notification, "kind" | 
   if (!("client" in vars)) vars.client = n.external_client_ref ?? (typeof vars.external_client_ref === "string" ? vars.external_client_ref : "—");
   // D8 — una activación que no puede atender no se anuncia como un éxito.
   if (n.kind === "client.activated" && n.data?.can_serve === false) {
-    return translate(locale, "notif.kind.client.activated.cannot_serve", vars);
+    // D8 + A4 — name the missing piece: a channel, quota, or both. Older
+    // notifications carry no ``missing`` and keep the quota wording.
+    const missing = Array.isArray(n.data?.missing) ? (n.data.missing as unknown[]).map(String) : [];
+    const noChannel = missing.includes("whatsapp");
+    const noQuota = missing.includes("quota");
+    const key: MessageKey =
+      noChannel && noQuota
+        ? "notif.kind.client.activated.cannot_serve.both"
+        : noChannel
+          ? "notif.kind.client.activated.cannot_serve.whatsapp"
+          : "notif.kind.client.activated.cannot_serve";
+    return translate(locale, key, vars);
   }
   if (n.kind === "client.activated" && n.data?.first === true) {
     return `${translate(locale, "notif.kind.client.activated.first")} ${translate(locale, "notif.kind.client.activated", vars)}`;
