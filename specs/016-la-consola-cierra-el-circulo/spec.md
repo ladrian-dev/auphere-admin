@@ -32,29 +32,25 @@ dejaron de mentir sobre cupo, Playground y activación).
 | Campo | Valor |
 |---|---|
 | **Superficie de confianza** | **`0`** — API de la consola. No abre ninguna clase nueva: todo lo que aquí se pide ya existe como endpoint de operador (`/admin`) o como endpoint de consola sin pantalla. La única pieza nueva de verdad es un endpoint transaccional para mover cupo, dentro de la misma superficie |
-| **Garantías de aislamiento tocadas** | **1. Postgres RLS** — el cupo, el estado «sin cupo», el modelo y las credenciales de un conector son por tenant dentro de un partner; mover cupo lee y escribe dos tenants **del mismo partner** en una transacción y no puede alcanzar un tercero · **2. Tool whitelist por agente** — conectar AgendaPro o un conector por clave enciende herramientas del catálogo solo para ese tenant · **4. Acción consecuente con rastro** (constitución §IV) — conectar un canal, mover cupo, cambiar el modelo y conectar un conector con credenciales de un cliente final son acciones de una persona y la auditoría la nombra · **6. Log + trace tagging** — ninguna credencial de AgendaPro ni token de Meta aparece en logs ni en la respuesta de la API |
+| **Garantías de aislamiento tocadas** | **1. Postgres RLS** — el cupo, el estado «sin cupo», el modelo y las credenciales de un conector son por tenant dentro de un partner; mover cupo lee y escribe dos tenants **del mismo partner** en una transacción y no puede alcanzar un tercero · **2. Tool whitelist por agente** — conectar AgendaPro o un conector por clave enciende herramientas del catálogo solo para ese tenant · **4. Acción consecuente con rastro** (constitución §IV) — conectar un canal, mover cupo, cambiar el modelo, enlazar la agenda y conectar un conector son acciones de una persona y la auditoría la nombra · **6. Log + trace tagging** — ninguna clave de conector ni token de Meta aparece en logs ni en la respuesta de la API |
 | **Nota de KB que la justifica** | `[[nexus/PLAN-ACCION-CONSOLA-2026-09-22]]` (decisiones del owner del 2026-09-23) y `[[nexus/INFORME-AUDITORIA-CONSOLA-2026-09-22]]`, en `/Users/matos/workspace/kb/Auphere/nexus/` (ruta real del vault; las plantillas citan una antigua) |
 | **Qué se mide** | **Nada nuevo.** Los turnos siguen entrando en el medidor de la spec 004 y el crédito en el de la 005. El selector de modelo cambia **qué** se mide por turno (los pesos por carril de la spec 007 ya lo cubren), no si se mide. Las alertas «sin cupo» y los correos que las acompañan se limitan por ritmo (una por cliente y día), no por medidor |
 
 > **Por qué esto no es una superficie nueva.** Conectar WhatsApp por Embedded
 > Signup ya funciona desde el panel de operador y desde la API pública de
-> partners (`POST /partners/clients/{ref}/whatsapp/signup`); AgendaPro por
-> credenciales ya se conecta desde `/admin`; el modelo por cliente ya se lee y
+> partners (`POST /partners/clients/{ref}/whatsapp/signup`); la agenda pública de
+> AgendaPro ya se enlaza desde `/admin`; el modelo por cliente ya se lee y
 > se escribe por `/console`. Lo que falta es la mitad barata: pantallas y una
 > transacción. La constitución §II pide agotar la superficie abierta antes de
 > abrir otra, y esto es exactamente eso.
 
-> **Credenciales de un cliente final en manos del partner.** AgendaPro exige el
-> usuario y la contraseña con los que el cliente entra en AgendaPro. El owner
-> decidió que el partner las introduzca desde la consola. Lo que contiene el
-> riesgo, y son requisitos de esta spec: se cifran en reposo como las demás
-> credenciales de conector, **no se devuelven nunca** (ni completas ni
-> enmascaradas), la pantalla dice antes de guardar que son las del cliente y no
-> las del partner, quedan en la auditoría como «conectó AgendaPro» sin ningún
-> dato, y el agente las usa solo dentro del navegador aislado que ya existe para
-> este conector, nunca en el prompt (constitución, restricción «ninguna credencial
-> de cliente final entra en el ambiente de un agente»: entran en el conector, no
-> en el agente).
+> **Credenciales de un cliente final: ninguna nueva.** La primera versión de esta
+> spec preveía que el partner introdujera las credenciales de AgendaPro de su
+> cliente. La Fase 0 encontró que ningún runtime del repo las consume: lo que
+> atiende citas es la URL pública de reservas. Esta spec **no guarda ninguna
+> credencial de cliente final**; las claves de los conectores por API son del
+> negocio del cliente (WooCommerce, Amigable) y siguen cifradas y sin lectura de
+> vuelta, como hasta ahora.
 
 ---
 
@@ -62,6 +58,7 @@ dejaron de mentir sobre cupo, Playground y activación).
 
 ### Sesión 2026-09-23
 
+- **Hallazgo de la Fase 0 que cambia R6 (pendiente de confirmación del owner).** En el repo no existe ningún runtime que use credenciales de AgendaPro: lo que atiende citas hoy es la **URL pública de reservas** del cliente (`tenants.agendapro_public_url`, que fija el operador desde el panel de admin), y el camino «credenciales de navegador» es un seed sin consumidor (nada crea la fila, nada la valida, nada marca «necesita reautorizar»). Guardar credenciales que nada usa sería un botón que promete lo que no hace (§V) y credenciales de cliente final en reposo sin propósito (§III). **Decisión del plan**: R6 se cumple enlazando la URL pública de AgendaPro desde la consola, con auditoría; el formulario de credenciales queda fuera hasta que exista el runtime (spec aparte, superficie `1`). Ver `research.md` R6.
 - Barrido completo sin preguntas: las tres dudas de alcance las cerró el owner el 2026-09-23 (alerta al partner sin cambiar el mensaje al cliente final; AgendaPro con las credenciales del cliente desde la consola; unidad «créditos»). Dos dudas menores quedan como supuestos, no como marcas: el rol que conecta AgendaPro es el mismo que conecta los demás conectores (escritura sobre el agente), y «sin cupo» se recalcula a partir del mismo libro que cierra la puerta del canal, no de una copia.
 
 ---
@@ -168,22 +165,22 @@ y comprobar que el inspector muestra el modelo nuevo.
 
 ### Historia 5 — Conectar AgendaPro y los conectores por clave sin fricción (Prioridad: P3)
 
-El partner conecta AgendaPro introduciendo las credenciales de su cliente en
-la consola, con una advertencia clara de que son las del cliente; al guardar,
-el conector queda conectado y sus herramientas disponibles para el agente. Para
+El partner enlaza la agenda de AgendaPro de su cliente pegando la URL pública
+de reservas en la consola; al guardar, el conector queda conectado y sus
+herramientas de citas disponibles para el agente. Para
 WooCommerce, Amigable Cobro y Amigable Venta, al guardar la clave el conector
 se sincroniza solo, y los campos del formulario están en su idioma.
 
 **Por qué esta prioridad**: es la última pieza del «operativo de verdad» para
 los verticales de citas y de venta; lo demás ya funciona por trazado.
 
-**Prueba independiente**: conectar AgendaPro con credenciales de prueba y ver
+**Prueba independiente**: enlazar AgendaPro con una URL pública de prueba y ver
 las herramientas de citas activables; conectar WooCommerce y comprobar que no
 hace falta pulsar «Sincronizar».
 
 **Escenarios de aceptación**:
 
-1. **Dado** AgendaPro sin conectar, **cuando** el partner introduce usuario y contraseña del cliente y guarda, **entonces** el conector pasa a conectado, las herramientas de citas aparecen activables y en ningún sitio de la consola vuelven a verse las credenciales.
+1. **Dado** AgendaPro sin enlazar, **cuando** el partner pega la URL pública de reservas del cliente y guarda, **entonces** el conector pasa a conectado y las herramientas de citas aparecen activables.
 2. **Dado** un conector por clave de API, **cuando** el partner guarda la clave, **entonces** el conector se sincroniza sin más clics y el resultado (conectado / parcial / error con motivo) se ve en el mismo sitio.
 3. **Dado** cualquier formulario de credenciales, **cuando** se muestra, **entonces** las etiquetas de los campos están en el idioma del partner.
 4. **Dado** un conector que devuelve error de credenciales, **cuando** el partner guarda, **entonces** ve el motivo en su idioma y nada queda guardado como conectado.
@@ -197,7 +194,7 @@ hace falta pulsar «Sincronizar».
 - El aviso «sin cupo» de un cliente al que el partner ya reasignó cupo un minuto antes: no se envía (el estado se recalcula antes de avisar).
 - Un cliente sin cupo **y** sin canal: la ficha nombra las dos cosas, en ese orden (sin canal primero: no llega nada que responder).
 - El plan del partner deja de permitir el modelo elegido (baja de plan): el siguiente turno usa el modelo por defecto del plan y el partner ve un aviso, no un error.
-- AgendaPro rechaza las credenciales tras haberlas aceptado (cambio de contraseña): el conector pasa a «necesita reautorizar» y el partner ve cómo volver a conectar; el agente deja de ofrecer citas y lo dice.
+- La URL pública de AgendaPro deja de responder (el cliente cambió de plan o de página): el conector lo muestra en su diagnóstico y el agente escala la cita al dueño en vez de inventarla.
 - Rol sin permiso de escritura en cualquiera de las cinco historias: la acción **no aparece** (constitución §V), y si llega por otra vía, la consola responde con su propio «no puedes».
 - Meta no configurada en el entorno (sin claves): la ausencia se diseña — un texto que dice quién conecta y cómo pedirlo, sin botón.
 
@@ -265,18 +262,19 @@ hace falta pulsar «Sincronizar».
 3. El sistema NO DEBE listar modelos que el plan no permite; si el plan deja de permitir el elegido, el sistema DEBE usar el modelo por defecto del plan y avisar al partner.
 4. WHERE el Playground muestra el detalle de un turno EL sistema DEBE mostrar el modelo que respondió.
 
-### Requisito 6 — AgendaPro se conecta con las credenciales del cliente
+### Requisito 6 — AgendaPro se enlaza desde la consola
 
-**Historia de usuario:** Como partner, quiero conectar AgendaPro con las credenciales de mi cliente desde la consola, para que el agente gestione sus citas.
+**Historia de usuario:** Como partner, quiero enlazar la agenda de AgendaPro de mi cliente desde la consola, para que el agente gestione sus citas sin pedírselo a Auphere.
+
+> Reescrito tras la Fase 0 (ver Clarificaciones): la agenda se enlaza con la **URL pública de reservas** del cliente, que es lo único que el runtime de citas usa hoy. El formulario de credenciales queda fuera hasta que exista un runtime que las consuma.
 
 #### Criterios de aceptación
 
-1. WHEN el partner abre conectar AgendaPro THEN el sistema DEBE pedir usuario y contraseña indicando de forma explícita que son los del cliente final y para qué se usan.
-2. WHEN el partner guarda THEN el sistema DEBE cifrar las credenciales en reposo como las demás credenciales de conector, DEBE comprobarlas contra AgendaPro y, si valen, DEBE dejar el conector conectado con sus herramientas activables.
-3. El sistema NO DEBE devolver las credenciales por ningún medio (ni completas ni enmascaradas), NO DEBE escribirlas en logs ni en la auditoría, y NO DEBE incluirlas en el prompt del agente.
-4. IF AgendaPro rechaza las credenciales THEN el sistema DEBE mostrar el motivo en el idioma del partner y NO DEBE dejar el conector como conectado.
-5. WHEN AgendaPro deja de aceptar unas credenciales ya guardadas THEN el sistema DEBE pasar el conector a «necesita reautorizar», mostrar cómo volver a conectar y el agente NO DEBE ofrecer citas mientras tanto.
-6. El sistema DEBE registrar en la auditoría quién conectó o reconectó AgendaPro sobre qué cliente, sin ningún dato de la credencial.
+1. WHEN el partner abre enlazar AgendaPro THEN el sistema DEBE pedir la URL pública de reservas del cliente, con un ejemplo y la explicación de dónde se obtiene.
+2. WHEN el partner guarda una URL válida THEN el sistema DEBE dejar el conector como conectado, las herramientas de citas activables, y DEBE registrar en la auditoría quién enlazó la agenda de qué cliente.
+3. IF la URL no es segura (https) o no es de AgendaPro THEN el sistema DEBE rechazarla con un motivo legible y NO DEBE cambiar el estado del conector.
+4. WHEN el partner desenlaza THEN el sistema DEBE pedir confirmación, dejar el conector desconectado y el agente NO DEBE ofrecer citas.
+5. El sistema NO DEBE ofrecer ningún formulario de credenciales de AgendaPro mientras no exista un runtime que las use (la ausencia se diseña).
 
 ### Requisito 7 — Conectar un conector por clave sincroniza solo y habla el idioma del partner
 
@@ -304,7 +302,7 @@ hace falta pulsar «Sincronizar».
 - **Asignación de cupo**: tope y restante de un cliente dentro de la cartera del partner; por tenant dentro de un partner. Mover cupo toca dos asignaciones del mismo partner a la vez.
 - **Estado «sin cupo»**: derivado (restante ≤ 0 o sin asignación); no se guarda, se calcula, y el aviso que provoca lleva una clave de deduplicación por cliente y día.
 - **Modelo del agente**: elección por tenant entre los permitidos al partner; con auditoría de quién lo cambió.
-- **Credenciales de conector**: cifradas, por tenant e integración; nunca se leen de vuelta. Para AgendaPro son las de un cliente final.
+- **Credenciales de conector**: cifradas, por tenant e integración; nunca se leen de vuelta (conectores por clave). AgendaPro no guarda credenciales: guarda la URL pública de reservas del cliente.
 - **Aviso al partner**: por partner, con cliente, tipo «sin cupo», severidad de aviso y deduplicación por cliente y día; se muestra en la consola y opcionalmente por correo.
 
 ## Criterios de éxito *(obligatorio)*
@@ -314,7 +312,7 @@ hace falta pulsar «Sincronizar».
 - **CE-003**: mover cupo entre dos clientes nunca deja la suma de topes distinta de la de partida, ni cuando la operación falla (prueba de fallo inyectado).
 - **CE-004**: un fallo en la última etapa del alta se reintenta sin publicar una segunda versión, en el 100 % de los intentos de prueba.
 - **CE-005**: el partner cambia el modelo y el siguiente turno del Playground muestra el modelo nuevo.
-- **CE-006**: AgendaPro se conecta desde la consola y ninguna búsqueda en logs, auditoría ni respuestas de la API encuentra la credencial.
+- **CE-006**: AgendaPro se enlaza desde la consola en una sola acción y la auditoría nombra quién lo hizo; la consola no pide ni guarda ninguna credencial de AgendaPro.
 - **CE-007**: conectar un conector por clave pasa de dos clics a uno, y el 100 % de las etiquetas del formulario están traducidas en ES y EN.
 - **CE-008**: la suite de acciones de servidor cubre el 100 % de las acciones de la consola con un caso permitido y uno denegado.
 
@@ -333,7 +331,7 @@ hace falta pulsar «Sincronizar».
 - Los destinatarios del correo «sin cupo» son los mismos que ya reciben los avisos de saldo del partner (spec 004); no se crea otra lista.
 - La lista de modelos permitidos por plan es la que ya expone la API de la consola (allowlist por partner); no se define aquí ninguna política de precios nueva.
 - «Coste relativo en créditos» se expresa con los pesos por carril de la spec 007 (por ejemplo «×1», «×4»), no en dólares.
-- La comprobación de credenciales de AgendaPro reutiliza la que ya hace el panel de operador (arranque del navegador aislado); si esa comprobación tarda, la consola lo muestra como «comprobando» y no bloquea la navegación.
+- La URL pública de AgendaPro se valida por forma (https y dominio de AgendaPro), no abriendo la página: es lo mismo que hace hoy el panel de operador.
 - El aviso «sin cupo» reutiliza el canal de avisos existente (consola + correo con deduplicación), añadiendo un tipo nuevo por cliente.
-- Conectar AgendaPro exige el mismo permiso que conectar cualquier otro conector (escritura sobre el agente); no se crea un permiso nuevo.
+- Enlazar AgendaPro exige el mismo permiso que conectar cualquier otro conector (escritura sobre el agente); no se crea un permiso nuevo.
 - El estado «sin cupo» se deriva del mismo libro de cupo que decide si un turno se atiende; no existe una copia que pueda discrepar.
