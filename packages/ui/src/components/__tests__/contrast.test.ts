@@ -80,6 +80,23 @@ const PARES: Par[] = [
   { fg: "--color-primary-text", bg: "--card", min: TEXTO, nota: "primario como texto sobre tarjeta" },
   // El token de marca que leen las gráficas para los ejes, en los dos temas.
   { fg: "--color-fg-muted", bg: "--card", min: TEXTO, nota: "tinta apagada de marca sobre tarjeta" },
+  // Bloque C: cada tono de estado **escrito** llega a AA sobre el fondo y
+  // sobre la tarjeta, en los dos temas. Sin esto, «sin cupo» en aviso o un
+  // «pendiente» en info se pintaban con el sólido, a 2,97:1.
+  { fg: "--color-status-positive-text", bg: "--background", min: TEXTO, nota: "positivo como texto sobre el fondo" },
+  { fg: "--color-status-positive-text", bg: "--card", min: TEXTO, nota: "positivo como texto sobre tarjeta" },
+  { fg: "--color-status-warning-text", bg: "--background", min: TEXTO, nota: "aviso como texto sobre el fondo" },
+  { fg: "--color-status-warning-text", bg: "--card", min: TEXTO, nota: "aviso como texto sobre tarjeta" },
+  { fg: "--color-status-danger-text", bg: "--background", min: TEXTO, nota: "peligro como texto sobre el fondo" },
+  { fg: "--color-status-danger-text", bg: "--card", min: TEXTO, nota: "peligro como texto sobre tarjeta" },
+  { fg: "--color-status-info-text", bg: "--background", min: TEXTO, nota: "info como texto sobre el fondo" },
+  { fg: "--color-status-info-text", bg: "--card", min: TEXTO, nota: "info como texto sobre tarjeta" },
+  // El sólido de info se usa como punto e icono junto al positivo: tiene que
+  // verse sobre la tarjeta. El positivo (Mountain Meadow, 2,09:1 sobre bone)
+  // no se mide aquí a propósito: es el primario de la marca y el punto nunca
+  // va solo — lleva halo y etiqueta (`StatusBadge`), y su versión como texto
+  // sí se mide arriba.
+  { fg: "--color-status-info", bg: "--card", min: NO_TEXTUAL, nota: "punto de info sobre tarjeta" },
   { fg: "--ring", bg: "--background", min: NO_TEXTUAL, nota: "anillo de foco" },
   { fg: "--ring", bg: "--card", min: NO_TEXTUAL, nota: "anillo de foco sobre tarjeta" },
   // WCAG 1.4.11 pide 3:1 a lo que **identifica un componente**: el borde de un
@@ -144,5 +161,25 @@ describe("los bordes de marca se ven en los dos temas", () => {
     // Un pelo visible, no un borde marcado: por debajo de esto el ojo no lo
     // separa del fondo, que es exactamente lo que pasaba.
     expect(ratioOn(resolve("--color-border", dark), resolve(surface, dark))).toBeGreaterThan(1.2);
+  });
+});
+
+
+/**
+ * Bloque C: `info` y `positive` significan cosas distintas (pendiente frente
+ * a hecho) y se ven juntos en una misma fila. Eran dos verdes a 6° de matiz.
+ */
+describe("info y positivo son dos colores, no dos verdes", () => {
+  function hue(token: string): number {
+    const raw = theme.get(token) ?? "";
+    const direct = raw.match(/oklch\(\s*[\d.]+\s+[\d.]+\s+([\d.]+)/);
+    if (direct) return Number(direct[1]);
+    const alias = raw.match(/var\((--[\w-]+)/)?.[1];
+    if (!alias) throw new Error(`${token}: ${raw}`);
+    return hue(alias);
+  }
+  it("distan al menos 30° de matiz", () => {
+    const delta = Math.abs(hue("--color-status-info") - hue("--color-status-positive"));
+    expect(Math.min(delta, 360 - delta)).toBeGreaterThanOrEqual(30);
   });
 });

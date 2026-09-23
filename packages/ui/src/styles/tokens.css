@@ -108,11 +108,42 @@
   --color-border-soft: oklch(0.161 0.033 115.3 / 0.06);
   --color-border-strong: var(--color-primary-deep);
 
-  /* Status — the only four. Everything that says "state" uses one. */
+  /* Status — the only four. Everything that says "state" uses one.
+     Bloque C (console-design-system §4): each tone means ONE thing —
+     positive = active/done · warning = near a limit or needs action ·
+     danger = error or irreversible · info = pending/draft. `info` used to be
+     mint, six degrees of hue from the positive green, and the two sat in the
+     same row meaning different things; it is now a blue-green that reads as
+     «not yet», not as «ok». */
   --color-status-positive: var(--color-primary);
   --color-status-warning: oklch(0.655 0.097 72.5); /* #B5874A */
   --color-status-danger: oklch(0.519 0.134 28.3); /* #A8443A */
-  --color-status-info: var(--color-mint);
+  --color-status-info: oklch(0.62 0.1 215); /* blue-green, not the brand green */
+
+  /* Each tone as **text** (AA on bone and on the card; dark theme overrides
+     below). The solid above is for fills, dots and icons; when the state is
+     a sentence, this is the colour it is written in. */
+  --color-status-positive-text: var(--color-bangladesh-green);
+  --color-status-info-text: oklch(0.43 0.09 215);
+  /* And as a soft **surface** with its border: the tint of a badge, a callout
+     or a meter track. Mixed from the solid so a tone stays one token. */
+  --color-status-positive-bg: color-mix(in oklab, var(--color-status-positive) 12%, transparent);
+  --color-status-positive-border: color-mix(in oklab, var(--color-status-positive) 32%, transparent);
+  --color-status-warning-bg: color-mix(in oklab, var(--color-status-warning) 12%, transparent);
+  --color-status-warning-border: color-mix(in oklab, var(--color-status-warning) 32%, transparent);
+  --color-status-danger-bg: color-mix(in oklab, var(--color-status-danger) 12%, transparent);
+  --color-status-danger-border: color-mix(in oklab, var(--color-status-danger) 32%, transparent);
+  --color-status-info-bg: color-mix(in oklab, var(--color-status-info) 12%, transparent);
+  --color-status-info-border: color-mix(in oklab, var(--color-status-info) 32%, transparent);
+
+  /* ── Surfaces, named (Bloque C) ─────────────────────────────────────
+     base = the page · raised = a card · overlay = a popover or dialog ·
+     scrim = what dims the page under an overlay (was `bg-black/10` by hand
+     in dialog, sheet and palette; in dark it has to be much stronger). */
+  --color-surface-base: var(--color-bg);
+  --color-surface-raised: var(--color-bg-elevated);
+  --color-surface-overlay: var(--color-bg-elevated);
+  --color-scrim: oklch(0.161 0.033 115.3 / 0.16);
 
   /* ── Typography ───────────────────────────────────────────────────── */
   /* The app sets --font-inter-tight / --font-jetbrains-mono via next/font;
@@ -160,6 +191,12 @@
   --size-sidebar-max: 320px;
   --size-strip: 52px;
 
+  /* Leading, named (brand-system §2). Tailwind's `leading-*` reads these. */
+  --leading-tight: 1.2;
+  --leading-snug: 1.3;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
   --tracking-tightest: -0.04em;
   --tracking-tighter: -0.03em;
   --tracking-tight: -0.02em;
@@ -169,6 +206,34 @@
 
   /* ── Spacing: 4 px grid via Tailwind's multiplier. See header. ─────── */
   --spacing: 0.25rem;
+
+  /* ── Semantic spacing (Bloque C) ─────────────────────────────────────
+     Space as hierarchy: `--space-section` between sections, `--space-block`
+     inside one, `--space-stack` between a control and its help, `--space-
+     inline` between siblings on a row. Prefix `--space-`, NEVER `--spacing-`
+     (see the header for why). Consumed as `gap-(--space-block)`. */
+  --space-page-x: 24px;
+  --space-page-y: 24px;
+  --space-section: 40px;
+  --space-block: 24px;
+  --space-stack: 12px;
+  --space-inline: 8px;
+  --space-card: 24px;
+
+  /* Content widths: the app, a narrow form, a paragraph. `w-(--width-narrow)`. */
+  --width-content: 1280px;
+  --width-narrow: 720px;
+  --width-prose: 65ch;
+
+  /* Larger controls and the touch target (WCAG 2.5.5 AAA, 2.5.8 AA is 24). */
+  --size-control-lg: 40px;
+  --size-target-touch: 44px;
+
+  /* Layers, named. `z-(--z-popover)` instead of a bare 50 everywhere. */
+  --z-sticky: 10;
+  --z-overlay: 30;
+  --z-popover: 40;
+  --z-toast: 50;
 
   /* ── Radius: the enum. Others are removed. ─────────────────────────── */
   --radius-none: 0px;
@@ -186,6 +251,14 @@
   --shadow-1: 0 1px 2px oklch(0.2 0.02 180 / 0.04);
   --shadow-2: 0 4px 16px oklch(0.2 0.02 180 / 0.06);
   --shadow-3: 0 16px 48px oklch(0.2 0.02 180 / 0.1);
+  /* Tailwind's `shadow-sm/md/lg` ARE the brand's three (Bloque C): a popover
+     with `shadow-md` no longer gets Tailwind's default grey. Nothing else. */
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
+  --shadow-xs: initial;
+  --shadow-xl: initial;
+  --shadow-2xl: initial;
 
   /* ── Motion — ≤300 ms for UI transitions ──────────────────────────── */
   --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
@@ -193,6 +266,16 @@
   --duration-instant: 80ms;
   --duration-fast: 160ms;
   --duration-base: 240ms;
+  /* With intention (Bloque C): name the moment, not the number. Enter is
+     quick and decided, exit quicker still; hover is a nudge; a state change
+     (open, select, toggle) gets the full beat. No spring, no overshoot —
+     the brand is not playful (brand-system §10). */
+  --duration-hover: 160ms;
+  --duration-state: 240ms;
+  --duration-enter: 200ms;
+  --duration-exit: 120ms;
+  --ease-enter: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-exit: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 /* ── 3. shadcn bridge — light ─────────────────────────────────────────── */
@@ -271,6 +354,16 @@
   --color-bg-elevated: var(--color-ink-raised);
   --color-bg-sunken: var(--color-ink-sunken);
   --color-primary-text: var(--color-mountain-meadow);
+  /* The tones written as text, on ink (Bloque C). */
+  --color-status-positive-text: var(--color-mountain-meadow);
+  --color-status-warning-text: var(--color-status-warning-text-dark);
+  --color-status-danger-text: var(--color-status-danger-text-dark);
+  --color-status-info-text: oklch(0.8 0.08 215);
+  /* Surfaces: the dark scrim has to be much stronger than the light one. */
+  --color-surface-base: var(--color-ink-surface);
+  --color-surface-raised: var(--color-ink-raised);
+  --color-surface-overlay: var(--color-ink-raised);
+  --color-scrim: oklch(0 0 0 / 0.55);
 
   /*
     **Y los de marca, que no son los mismos.** `--border` es el puente de
