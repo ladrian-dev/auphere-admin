@@ -37,6 +37,7 @@ export * from "./components/tabs";
 export * from "./components/textarea";
 export * from "./components/theme-provider";
 export * from "./components/tooltip";
+export * from "./components/ui-copy";
 export * from "./lib/format";
 export * from "./lib/use-mobile";
 export * from "./lib/utils";

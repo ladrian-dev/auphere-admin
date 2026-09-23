@@ -17,6 +17,16 @@ import { workstationMessages } from "./lanes/workstation";
 
 const core = {
   // shell
+  // ── Words the design system says on its own (UiCopyProvider) ──────
+  "ui.confirm": { es: "Confirmar", en: "Confirm" },
+  "ui.cancel": { es: "Cancelar", en: "Cancel" },
+  "ui.close": { es: "Cerrar", en: "Close" },
+  "ui.more": { es: "Más", en: "More" },
+  "ui.loading": { es: "Cargando", en: "Loading" },
+  "ui.retry": { es: "Reintentar", en: "Retry" },
+  "ui.nothingHere": { es: "Todavía no hay nada aquí", en: "Nothing here yet" },
+  "ui.toggleSidebar": { es: "Mostrar u ocultar el menú", en: "Toggle sidebar" },
+  "ui.typeToConfirm": { es: "Escribe {word} para confirmar", en: "Type {word} to confirm" },
   "nav.home": { es: "Inicio", en: "Home" },
   "nav.clients": { es: "Clientes", en: "Clients" },
   "clients.one": { es: "Cliente", en: "Client" },

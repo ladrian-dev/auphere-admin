@@ -15,10 +15,10 @@ function Skeleton({ className, ...props }: ComponentProps<"div">) {
 }
 
 /** Table-shaped skeleton: header + ``rows`` rows with ``columns`` cells. */
-function TableSkeleton({ rows = 6, columns = 4, className }: { rows?: number; columns?: number; className?: string }) {
+function TableSkeleton({ rows = 6, columns = 4, className, label = "Loading" }: { rows?: number; columns?: number; className?: string; label?: string }) {
   const template = `2fr ${"1fr ".repeat(Math.max(columns - 1, 0))}`.trim();
   return (
-    <div data-slot="table-skeleton" role="status" aria-label="Loading" className={cn("w-full min-w-0 space-y-2", className)}>
+    <div data-slot="table-skeleton" role="status" aria-label={label} className={cn("w-full min-w-0 space-y-2", className)}>
       <div className="grid gap-4 border-b border-border pb-2" style={{ gridTemplateColumns: template }}>
         {Array.from({ length: columns }).map((_, i) => (
           <Skeleton key={i} className="h-4 w-20" />
@@ -36,9 +36,9 @@ function TableSkeleton({ rows = 6, columns = 4, className }: { rows?: number; co
 }
 
 /** Eyebrow + title + description, mirroring PageHeader. */
-function HeaderSkeleton({ className }: { className?: string }) {
+function HeaderSkeleton({ className, label = "Loading" }: { className?: string; label?: string }) {
   return (
-    <div data-slot="header-skeleton" role="status" aria-label="Loading" className={cn("space-y-3 border-b border-border pb-6", className)}>
+    <div data-slot="header-skeleton" role="status" aria-label={label} className={cn("space-y-3 border-b border-border pb-6", className)}>
       <Skeleton className="h-3 w-24" />
       <Skeleton className="h-8 w-72 max-w-full" />
       <Skeleton className="h-4 w-1/2" />
@@ -47,9 +47,9 @@ function HeaderSkeleton({ className }: { className?: string }) {
 }
 
 /** Card-shaped skeleton with ``lines`` text lines. */
-function CardSkeleton({ lines = 4, className }: { lines?: number; className?: string }) {
+function CardSkeleton({ lines = 4, className, label = "Loading" }: { lines?: number; className?: string; label?: string }) {
   return (
-    <div data-slot="card-skeleton" role="status" aria-label="Loading" className={cn("space-y-3 rounded-md bg-card p-4 ring-1 ring-foreground/10", className)}>
+    <div data-slot="card-skeleton" role="status" aria-label={label} className={cn("space-y-3 rounded-md bg-card p-4 ring-1 ring-foreground/10", className)}>
       <Skeleton className="h-4 w-1/3" />
       {Array.from({ length: lines }).map((_, i) => (
         <Skeleton key={i} className={cn("h-3", i % 3 === 2 ? "w-2/3" : "w-full")} />

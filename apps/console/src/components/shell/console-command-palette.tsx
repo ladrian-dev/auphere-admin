@@ -4,7 +4,7 @@ import { BarChart3, Bell, Bot, Building2, FlaskConical, KeyRound, Plus, Radio, S
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
-import { Button, CommandPalette, Kbd, filterCommandItems, type CommandItem } from "@nexus/ui";
+import { Button, CommandPalette, ShortcutKbd, filterCommandItems, type CommandItem } from "@nexus/ui";
 
 import { searchClientsAction } from "@/app/(console)/notifications/actions";
 import { useT } from "@/i18n/client";
@@ -83,7 +83,7 @@ export function ConsoleCommandPalette({ role }: { role: Role }) {
     <>
       <Button type="button" variant="outline" size="sm" className="hidden gap-2 text-muted-foreground sm:inline-flex" onClick={() => setOpen(true)} aria-keyshortcuts="Meta+K Control+K">
         <span>{t("cmdk.open")}</span>
-        <Kbd aria-hidden="true">⌘K</Kbd>
+        <ShortcutKbd keyName="K" aria-hidden="true" />
       </Button>
       <Button type="button" variant="ghost" size="icon-sm" className="sm:hidden" onClick={() => setOpen(true)} aria-label={t("cmdk.title")}>
         <Search className="size-4" aria-hidden="true" />

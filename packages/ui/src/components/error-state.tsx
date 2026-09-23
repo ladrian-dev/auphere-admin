@@ -1,8 +1,11 @@
+"use client";
+
 import { AlertTriangle } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "../lib/utils";
 import { Button } from "./button";
+import { useUiCopy } from "./ui-copy";
 
 type ErrorStateProps = {
   title: ReactNode;
@@ -18,7 +21,9 @@ type ErrorStateProps = {
  * "Error with retry". Same frame as EmptyState so the eye reads both as
  * "nothing to show here, and here is what to do".
  */
-function ErrorState({ title, description, onRetry, retryLabel = "Retry", className }: ErrorStateProps) {
+function ErrorState({ title, description, onRetry, retryLabel, className }: ErrorStateProps) {
+  const copy = useUiCopy();
+  const retryText = retryLabel ?? copy.retry;
   return (
     <div
       data-slot="error-state"
@@ -37,7 +42,7 @@ function ErrorState({ title, description, onRetry, retryLabel = "Retry", classNa
       ) : null}
       {onRetry ? (
         <Button className="mt-2" variant="outline" size="sm" onClick={onRetry}>
-          {retryLabel}
+          {retryText}
         </Button>
       ) : null}
     </div>

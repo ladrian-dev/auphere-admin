@@ -13,6 +13,7 @@ import {
 } from "./dialog";
 import { Input } from "./input";
 import { Label } from "./label";
+import { splitTemplate, useUiCopy } from "./ui-copy";
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -44,14 +45,17 @@ function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  confirmLabel: confirmLabelProp,
+  cancelLabel: cancelLabelProp,
   destructive = false,
   typeToConfirm,
   typeToConfirmLabel,
   onConfirm,
   error,
 }: ConfirmDialogProps) {
+  const copy = useUiCopy();
+  const confirmLabel = confirmLabelProp ?? copy.confirm;
+  const cancelLabel = cancelLabelProp ?? copy.cancel;
   const [typed, setTyped] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const inputId = React.useId();
@@ -93,7 +97,9 @@ function ConfirmDialog({
             <Label htmlFor={inputId}>
               {typeToConfirmLabel ?? (
                 <>
-                  Type <span className="font-mono font-semibold">{typeToConfirm}</span> to confirm
+                  {splitTemplate(copy.typeToConfirm)[0]}
+                  <span className="font-mono font-semibold">{typeToConfirm}</span>
+                  {splitTemplate(copy.typeToConfirm)[1]}
                 </>
               )}
             </Label>

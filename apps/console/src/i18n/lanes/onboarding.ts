@@ -111,7 +111,7 @@ export const onboardingMessages = {
   "ph.policies.payment.binance.pay_id": { es: "Binance Pay ID", en: "Binance Pay ID" },
 
   // ── ⌘K (CP-07) ────────────────────────────────────────────────────
-  "cmdk.open": { es: "Buscar… (⌘K)", en: "Search… (⌘K)" },
+  "cmdk.open": { es: "Buscar…", en: "Search…" },
   "cmdk.title": { es: "Buscar y navegar", en: "Search and navigate" },
   "cmdk.placeholder": { es: "Cliente, agente, acción…", en: "Client, agent, action…" },
   "cmdk.hint": { es: "↑↓ navegar · ↵ abrir · Esc cerrar", en: "↑↓ navigate · ↵ open · Esc close" },

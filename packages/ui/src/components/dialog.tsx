@@ -4,6 +4,7 @@ import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "../lib/utils"
+import { useUiCopy } from "./ui-copy"
 import { Button } from "./button"
 import { XIcon } from "lucide-react"
 
@@ -47,6 +48,7 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
 }) {
+  const copy = useUiCopy();
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -72,7 +74,7 @@ function DialogContent({
           >
             <XIcon
             />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{copy.close}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>
