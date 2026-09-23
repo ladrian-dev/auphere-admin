@@ -164,6 +164,19 @@ async def _process_inbound(
 
     if not await allow_channel_turn(event.tenant_id):
         log.info("pipeline.skipped.wallet_empty", tenant_id=str(event.tenant_id))
+        # Spec 016 (R2.2): el silencio se ve. El partner recibe «{cliente} se
+        # ha quedado sin cupo» (uno por cliente y día); el cliente final no
+        # recibe nada distinto de antes (R2.6). El aviso nunca tumba el turno.
+        try:
+            from nexus_api.services.wallet_alerts import notify_client_out_of_quota_detached
+
+            await notify_client_out_of_quota_detached(event.tenant_id)
+        except Exception as exc:
+            log.warning(
+                "pipeline.out_of_quota_notice_failed",
+                tenant_id=str(event.tenant_id),
+                error=str(exc),
+            )
         return {"skipped": "wallet_empty"}
 
     from nexus_api.core.llm_proxy import (

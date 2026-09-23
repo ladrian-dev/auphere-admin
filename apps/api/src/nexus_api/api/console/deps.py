@@ -15,6 +15,7 @@ contextvar ceremony, different way of choosing the tenant.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 
@@ -138,8 +139,25 @@ def partner_scope(*required: str) -> Callable[..., AsyncIterator[PartnerScope]]:
 # ── health (used by list, detail and create) ───────────────────────────
 
 
-async def client_health(session: AsyncSession, tenant: Tenant) -> ClientHealthOut:
-    """Must run inside a tenant-scoped transaction for ``tenant``."""
+async def out_of_quota(partner_id: uuid.UUID, tenant_id: uuid.UUID) -> bool:
+    """Spec 016 (R2.1): the ONE reading of «this client cannot take a turn
+    for lack of quota» — ``quota_state``, the same the channel gate uses.
+    Opens its own partner-scoped session (the ledger is invisible from a
+    tenant-scoped one). Fails closed."""
+    from nexus_api.metering.wallet import quota_state
+
+    return (await quota_state(partner_id, [tenant_id])).get(tenant_id, True)
+
+
+async def client_health(
+    session: AsyncSession, tenant: Tenant, *, out_of_quota: bool = False
+) -> ClientHealthOut:
+    """Must run inside a tenant-scoped transaction for ``tenant``.
+
+    ``out_of_quota`` adds ``"quota"`` to ``missing`` (after ``"whatsapp"``,
+    before ``"activation"``) but does NOT clear ``ready``: a ready client can
+    run out of quota, and the screen must say both things.
+    """
     phone = await session.scalar(
         sa.select(Channel.provider_identifier)
         .where(Channel.type == ChannelType.WHATSAPP, Channel.status == ChannelStatus.ACTIVE)
@@ -155,6 +173,8 @@ async def client_health(session: AsyncSession, tenant: Tenant) -> ClientHealthOu
         missing.append("agent")
     if phone is None:
         missing.append("whatsapp")
+    if out_of_quota:
+        missing.append("quota")
     if tenant.status is not TenantStatus.ACTIVE:
         missing.append("activation")
     return ClientHealthOut(
@@ -162,7 +182,7 @@ async def client_health(session: AsyncSession, tenant: Tenant) -> ClientHealthOu
         display_phone_number=phone,
         agent_version=agent_version,
         agent_configured=agent_version is not None,
-        ready=not missing,
+        ready=not [m for m in missing if m != "quota"],
         missing=missing,
     )
 
@@ -186,6 +206,7 @@ __all__ = [
     "client_health",
     "client_scope",
     "health_for_tenant",
+    "out_of_quota",
     "partner_scope",
     "resolve_mapping",
     "unknown_client",

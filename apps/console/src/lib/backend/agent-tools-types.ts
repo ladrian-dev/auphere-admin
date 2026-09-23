@@ -91,7 +91,13 @@ export type ConnectorOut = {
   credentials_form: CredentialsField[];
   tools_total: number;
   tools_enabled: number;
+  /** Spec 016 (R6): AgendaPro is linked by its public booking page (``auth_kind: "public_url"``). */
+  public_url?: string | null;
+  /** Spec 016 (R7): the outcome of the sync that ran with the connect. Only on the connect response. */
+  last_sync?: LastSync | null;
 };
+export type LastSync = { status: "ok" | "error"; added: number; deprecated: number; reason: "auth_rejected" | "provider_unavailable" | null; at: string };
+export type AgendaProPublicUrlOut = { integration: "agendapro"; public_url: string | null; updated_at: string };
 export type ConsentOut = { slug: string; signed_consent_url: string; expires_at: string };
 export type ConnectorSyncOut = { slug: string; added: string[]; deprecated: string[]; unchanged_count: number };
 export type ConnectApiKeyBody = { secrets: Record<string, string>; endpoint_meta: Record<string, unknown> };

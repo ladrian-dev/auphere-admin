@@ -24,7 +24,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .schemas import ChannelOut
+from .schemas import ChannelOut, ClientHealthOut
 
 # ── channels overview (CP-17) ──────────────────────────────────────────
 
@@ -91,6 +91,11 @@ class WhatsAppSignupOut(BaseModel):
     mode: str
     used_channels: int
     max_channels: int
+    #: Spec 016 (R1.2): what the number changed for the client — activated
+    #: when the partner auto-activates and an agent is published — and the
+    #: health the card will show, so the screen does not have to guess.
+    client_status: str
+    health: ClientHealthOut
 
 
 # ── templates (CP-18) ──────────────────────────────────────────────────

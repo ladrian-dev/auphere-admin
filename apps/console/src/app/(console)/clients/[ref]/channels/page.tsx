@@ -7,18 +7,22 @@ import { Alert, AlertDescription, AlertTitle, Button, EmptyState } from "@nexus/
 import { ChannelCard } from "@/components/channels/channel-card";
 import { TemplatesSection } from "@/components/channels/templates-section";
 import { f2ChannelCounter, f2VisibleChannels } from "@/components/channels/visible-channels";
-import { WhatsAppConnectUnavailable } from "@/components/channels/whatsapp-connect-unavailable";
+import { connectChoice, metaSignupConfig } from "@/components/channels/connect-choice";
+import { WhatsAppConnect } from "@/components/channels/whatsapp-connect";
+import { WhatsAppConnectByAuphere } from "@/components/channels/whatsapp-connect-by-auphere";
 import { WhatsAppContinueInBrowser } from "@/components/channels/whatsapp-continue-in-browser";
 import { getT } from "@/i18n/server";
 import { BackendError, backendFor } from "@/lib/backend";
 import type { TemplateList } from "@/lib/backend/channels";
+import { env } from "@/lib/env";
 import { can, requirePrincipal } from "@/lib/principal";
 import { isDesktopShell } from "@/lib/shell";
 
 /**
- * Channels centre (CP-17/18). F2: WhatsApp cards only; Connect CTA disabled
- * (no Embedded Signup). Quality + roles, templates, diagnostics link.
- * Templates with Meta's literal rejection reason and a link to diagnostics.
+ * Channels centre (CP-17/18). WhatsApp cards, quality + roles, templates,
+ * diagnostics link. Spec 016 (R1): the real Embedded Signup button when the
+ * environment has Meta configured; the «lo conecta Auphere» note when it
+ * does not; «continue in the browser» inside the desktop shell.
  */
 export default async function ChannelsPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
@@ -49,11 +53,15 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
   // de Meta no vuelve, así que el control **no existe** ahí y en su lugar se
   // ofrece continuar en el navegador. Es la única bifurcación por cáscara de
   // toda la consola; `shell-detect.test.ts` lo vigila.
+  const meta = metaSignupConfig(env());
+  const choice = connectChoice({ manage, meta });
   const connect = (await isDesktopShell()) ? (
     <WhatsAppContinueInBrowser href={`${base}/channels`} />
-  ) : (
-    <WhatsAppConnectUnavailable used={n} />
-  );
+  ) : choice === "connect" ? (
+    <WhatsAppConnect refId={ref} meta={meta} canConnect={overview.can_connect} used={n} max={m} />
+  ) : choice === "by_auphere" ? (
+    <WhatsAppConnectByAuphere />
+  ) : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-6">

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert, AlertDescription, Button, EmptyState, Metric, PageHeader, formatDateTime, formatNumber } from "@nexus/ui";
+import { Alert, AlertDescription, Button, EmptyState, Metric, PageHeader, StatusBadge, StatusDot, formatDateTime, formatNumber } from "@nexus/ui";
 
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
@@ -170,17 +170,43 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
                 </td>
               </tr>
             ) : (
-              allocations.map((row) => (
-                <tr key={row.client_ref} className="border-b last:border-0">
-                  <td className="max-w-64 truncate p-2" title={names.get(row.client_ref) ?? row.client_ref}>
-                    {names.get(row.client_ref) ?? row.client_ref}
-                  </td>
-                  <td className="p-2 text-right tabular-nums">
-                    {canWrite ? <AllocationCapForm key={`${row.client_ref}-${row.cap}`} clientRef={row.client_ref} cap={row.cap} /> : n(row.cap)}
-                  </td>
-                  <td className="p-2 text-right tabular-nums">{n(row.remaining)}</td>
-                </tr>
-              ))
+              allocations.map((row) => {
+                // Spec 016 (R2.4): the row says «sin cupo» and the cap field
+                // right next to it IS the «asignar» action. ``?client=`` (the
+                // link from the client's card) lands on the row.
+                const outOfQuota = row.remaining <= 0 || walletUnreadable || wallet.exhausted;
+                const focused = sp.client === row.client_ref;
+                return (
+                  <tr
+                    key={row.client_ref}
+                    id={`allocation-${row.client_ref}`}
+                    className={`border-b last:border-0 ${focused ? "bg-muted/40" : ""}`}
+                    aria-current={focused ? "true" : undefined}
+                  >
+                    <td className="max-w-64 truncate p-2" title={names.get(row.client_ref) ?? row.client_ref}>
+                      <span className="inline-flex items-center gap-2">
+                        {outOfQuota ? <StatusDot tone="warning" label={t("hu.usage.allocations.outOfQuota")} /> : null}
+                        {names.get(row.client_ref) ?? row.client_ref}
+                      </span>
+                    </td>
+                    <td className="p-2 text-right tabular-nums">
+                      {canWrite ? <AllocationCapForm key={`${row.client_ref}-${row.cap}`} clientRef={row.client_ref} cap={row.cap} /> : n(row.cap)}
+                    </td>
+                    <td className="p-2 text-right tabular-nums">
+                      {outOfQuota ? (
+                        <span className="inline-flex items-center gap-2">
+                          <StatusBadge tone="warning" dot={false}>
+                            {t("hu.usage.allocations.outOfQuota")}
+                          </StatusBadge>
+                          {n(row.remaining)}
+                        </span>
+                      ) : (
+                        n(row.remaining)
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

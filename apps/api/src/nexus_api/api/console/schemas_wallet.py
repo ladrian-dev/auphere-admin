@@ -27,6 +27,25 @@ class AllocationOut(BaseModel):
     remaining: int
 
 
+class MoveAllocationIn(BaseModel):
+    """Spec 016 (R3.1): mover tope entre dos clientes propios, de una vez."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_ref: str = Field(min_length=1, max_length=120)
+    to_ref: str = Field(min_length=1, max_length=120)
+    qty: int = Field(ge=1)
+
+
+class MoveAllocationOut(BaseModel):
+    """Los dos topes después del movimiento. ``from``/``to`` como en el body."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: AllocationOut = Field(alias="from")
+    to: AllocationOut
+
+
 class AllocationIn(BaseModel):
     """Solo el tope. El cliente es ``{ref}``; el partner sale del principal."""
 

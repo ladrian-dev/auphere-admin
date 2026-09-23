@@ -139,18 +139,26 @@ async def home(
             until=until,
         )
         if "clients:read" in perms:
+            # Spec 016 (R2.7): «sin cupo» is an incident. One ledger read for
+            # the page, the same reading as the channel gate.
+            from nexus_api.metering.wallet import quota_state
+
+            quota = await quota_state(principal.partner.id, active_ids)
             refs: list[IncidentClientOut] = []
             for tid in active_ids:
                 s = snap.snapshots.get(tid)
-                if s is None or not s.issues:
+                issues = list(s.issues) if s is not None else []
+                if quota.get(tid, True):
+                    issues.append("out_of_quota")
+                if not issues:
                     continue
                 ref, name, _ = by_tenant[tid]
                 refs.append(
                     IncidentClientOut(
                         external_client_ref=ref,
                         client_name=name,
-                        issues=s.issues,
-                        failed_messages_24h=s.failed_messages_24h,
+                        issues=issues,
+                        failed_messages_24h=s.failed_messages_24h if s is not None else 0,
                         href=f"/clients/{ref}",
                     )
                 )

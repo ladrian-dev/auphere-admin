@@ -54,21 +54,27 @@ export function LocalExecCeiling({ ceiling, manage }: { ceiling: ExecMode; manag
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-3">
         <p className="text-sm text-pretty text-muted-foreground">{t("team.localExec.description")}</p>
-        <div role="group" aria-label={t("team.localExec.title")} className="flex min-w-0 flex-wrap gap-2">
-          {MODES.map((mode) => (
-            <Button
-              key={mode}
-              type="button"
-              size="sm"
-              variant={current === mode ? "default" : "outline"}
-              aria-pressed={current === mode}
-              disabled={!manage || pending}
-              onClick={() => choose(mode)}
-            >
-              {t(`team.localExec.${mode}`)}
-            </Button>
-          ))}
-        </div>
+        {manage ? (
+          <div role="group" aria-label={t("team.localExec.title")} className="flex min-w-0 flex-wrap gap-2">
+            {MODES.map((mode) => (
+              <Button
+                key={mode}
+                type="button"
+                size="sm"
+                variant={current === mode ? "default" : "outline"}
+                aria-pressed={current === mode}
+                disabled={pending}
+                onClick={() => choose(mode)}
+              >
+                {t(`team.localExec.${mode}`)}
+              </Button>
+            ))}
+          </div>
+        ) : (
+          // Spec 016 (R8.3): without the permission the control does not
+          // exist — the value is shown, nothing is greyed out.
+          <p className="text-sm font-medium">{t(`team.localExec.${current}`)}</p>
+        )}
         <p className="text-xs text-pretty text-muted-foreground">{t("team.localExec.note")}</p>
         {failed ? (
           <p className="text-sm text-pretty text-warning" role="status">

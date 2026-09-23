@@ -70,7 +70,7 @@ export function pickWizardTimezone(browserTz: string, options: string[]): string
 export type StepKey = (typeof STEPS)[number];
 
 export type ChannelChoice = "whatsapp" | "later";
-export type StageKey = "create" | "seed" | "publish" | "channel";
+export type StageKey = "create" | "seed" | "publish" | "activate" | "channel";
 export type StageStatus = "pending" | "running" | "done" | "skipped" | "failed";
 export type Stage = { key: StageKey; status: StageStatus; error?: string; startedAt?: number; endedAt?: number };
 
@@ -88,17 +88,24 @@ export const initialStages = (): Stage[] => [
   { key: "create", status: "pending" },
   { key: "seed", status: "pending" },
   { key: "publish", status: "pending" },
+  { key: "activate", status: "pending" },
   { key: "channel", status: "pending" },
 ];
 
-/** Which stages actually run for these values (seed/publish may be skipped). */
+/**
+ * Which stages actually run for these values. Spec 016 (R4.1): publish and
+ * activate are two stages with their own retry — activating cannot happen
+ * without a published agent, so they are skipped together.
+ */
 export function planStages(values: Pick<WizardValues, "seed_template" | "publish_now">): Stage[] {
   const stages = initialStages();
   if (!values.seed_template) {
     stages[1]!.status = "skipped";
     stages[2]!.status = "skipped";
+    stages[3]!.status = "skipped";
   } else if (!values.publish_now) {
     stages[2]!.status = "skipped";
+    stages[3]!.status = "skipped";
   }
   // The channel stage is informational (connect afterwards) — it completes
   // as soon as the client exists.

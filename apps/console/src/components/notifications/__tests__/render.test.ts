@@ -50,4 +50,19 @@ describe("notifications/render", () => {
     expect(notificationText("es", n, { "panaderia-la-espiga": "Panadería La Espiga" })).toContain("Panadería La Espiga");
     expect(notificationText("es", n)).toContain("panaderia-la-espiga");
   });
+  it("names the client that ran out of quota and where to fix it (spec 016)", () => {
+    const n = { kind: "client.out_of_quota", data: { external_client_ref: "panaderia-la-espiga", remaining: 0 }, external_client_ref: "panaderia-la-espiga" };
+    const es = notificationText("es", n, { "panaderia-la-espiga": "Panadería La Espiga" });
+    expect(es).toContain("Panadería La Espiga");
+    expect(es).toContain("sin cupo");
+    expect(es).toContain("Consumo");
+    expect(notificationText("en", n)).toContain("out of quota");
+  });
+  it("explains a model reset with both models (spec 016)", () => {
+    const n = { kind: "client.model_reset", data: { from_model: "Sol", to_model: "Luna" }, external_client_ref: "acme" };
+    const es = notificationText("es", n);
+    expect(es).toContain("acme");
+    expect(es).toContain("Luna");
+    expect(es).toContain("Sol");
+  });
 });

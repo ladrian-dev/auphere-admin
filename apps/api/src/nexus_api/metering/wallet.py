@@ -484,6 +484,44 @@ async def allow_channel_turn(tenant_id: uuid.UUID) -> bool:
         return False
 
 
+async def quota_state(partner_id: uuid.UUID, tenant_ids: list[uuid.UUID]) -> dict[uuid.UUID, bool]:
+    """``tenant_id → out_of_quota`` for a batch of a partner's clients.
+
+    The ONE definition of "this client cannot take a turn for lack of
+    quota", with the same reading as ``allow_channel_turn``: no wallet, an
+    empty wallet, no allocation row, or ``remaining <= 0`` → ``True``. The
+    console's health, list, home and the out-of-quota notice all read this
+    so the screen and the gate never disagree (spec 016, R2.1/R2.5).
+
+    Opens its own partner-scoped session: ``partner_allocations`` is FORCE
+    RLS by ``app.partner_id`` and is invisible from a tenant-scoped one.
+    Fails closed — an unreadable ledger reads as out of quota, which is
+    what the gate does too. A tenant that is not the partner's is simply
+    absent from the result.
+    """
+    if not tenant_ids:
+        return {}
+    try:
+        sm = get_sessionmaker()
+        async with sm() as session, session.begin():
+            await apply_partner_to_session(session, partner_id)
+            row = await session.get(PartnerWallet, partner_id)
+            wallet_empty = row is None or _snapshot(row).empty
+            rows = await session.execute(
+                sa.select(PartnerAllocation.tenant_id, PartnerAllocation.remaining).where(
+                    PartnerAllocation.partner_id == partner_id,
+                    PartnerAllocation.tenant_id.in_(tenant_ids),
+                )
+            )
+            remaining = {tid: _as_int(rem) for tid, rem in rows.all()}
+        return {
+            tid: wallet_empty or tid not in remaining or remaining[tid] <= 0 for tid in tenant_ids
+        }
+    except Exception as exc:
+        log.warning("wallet.quota_state_unreadable", partner_id=str(partner_id), error=str(exc))
+        return dict.fromkeys(tenant_ids, True)
+
+
 async def add_purchased(partner_id: uuid.UUID, qty: int) -> WalletSnapshot:
     """Recarga manual: suma al cubo purchased. No caduca. Staging / admin."""
     if qty <= 0:
@@ -636,6 +674,94 @@ async def set_allocation(
         await session.flush()
         await session.refresh(row)
         return row
+
+
+class SameClient(Exception):
+    """Origen y destino del movimiento son el mismo cliente."""
+
+
+class InsufficientCap(Exception):
+    """El origen no tiene tope suficiente para ceder ``qty``."""
+
+    def __init__(self, cap: int, qty: int) -> None:
+        super().__init__(f"cap {cap} < qty {qty}")
+        self.cap = cap
+        self.qty = qty
+
+
+def _credit_allocation(row: PartnerAllocation, qty: int) -> None:
+    """Sube el tope del destino.
+
+    Función aparte a propósito: el test de atomicidad (spec 016, CE-003) la
+    hace fallar después de que el origen ya ha bajado y comprueba que la
+    transacción lo deshace. Si se pliega dentro de ``move_allocation`` el
+    test deja de poder inyectar el fallo en el punto que importa.
+    """
+    row.cap = _as_int(row.cap) + qty
+    row.remaining = _as_int(row.remaining) + qty
+    row.updated_at = _now()
+
+
+async def move_allocation(
+    partner_id: uuid.UUID, from_tenant: uuid.UUID, to_tenant: uuid.UUID, qty: int
+) -> tuple[PartnerAllocation, PartnerAllocation]:
+    """Mueve ``qty`` de tope de un cliente a otro **en una transacción**.
+
+    Spec 016 (R3.1): antes eran dos ``PUT`` seguidos, y si el segundo fallaba
+    el partner perdía el tope que acababa de quitar al primero. Aquí las dos
+    filas se bloquean en orden de ``tenant_id`` (dos movimientos cruzados no
+    se interbloquean) y o cambian las dos o no cambia ninguna.
+
+    Origen: ``cap -= qty`` y ``remaining`` recortado al tope nuevo, como en
+    ``set_allocation``. Destino: ``cap += qty`` y ``remaining += qty``; si no
+    tenía fila, nace con ``qty``. ``SameClient`` e ``InsufficientCap(cap,
+    qty)`` son los dos errores de negocio; ``OverAllocation`` sigue
+    significando «este partner no tiene libro».
+    """
+    if qty <= 0:
+        raise ValueError("qty must be > 0")
+    if from_tenant == to_tenant:
+        raise SameClient("from and to are the same tenant")
+    sm = get_sessionmaker()
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        wallet = await _load_wallet_for_update(session, partner_id)
+        if wallet is None:
+            raise OverAllocation("no wallet")
+        rows = (
+            (
+                await session.execute(
+                    sa.select(PartnerAllocation)
+                    .where(
+                        PartnerAllocation.partner_id == partner_id,
+                        PartnerAllocation.tenant_id.in_([from_tenant, to_tenant]),
+                    )
+                    .order_by(PartnerAllocation.tenant_id)
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_tenant = {row.tenant_id: row for row in rows}
+        source = by_tenant.get(from_tenant)
+        source_cap = _as_int(source.cap) if source is not None else 0
+        if source is None or source_cap < qty:
+            raise InsufficientCap(source_cap, qty)
+        target = by_tenant.get(to_tenant)
+        if target is None:
+            target = PartnerAllocation(
+                partner_id=partner_id, tenant_id=to_tenant, cap=0, remaining=0
+            )
+            session.add(target)
+        source.cap = source_cap - qty
+        source.remaining = min(_as_int(source.remaining), source.cap)
+        source.updated_at = _now()
+        _credit_allocation(target, qty)
+        await session.flush()
+        await session.refresh(source)
+        await session.refresh(target)
+        return source, target
 
 
 async def debit_wallet(

@@ -168,6 +168,9 @@ export type ClientSummary = {
   timezone: string;
   created_at: string;
   updated_at: string;
+  /** Spec 016 (R2.1): the channel gate is closed for this client — same
+   *  reading as ``health.missing`` containing ``quota``. */
+  out_of_quota?: boolean;
 };
 export type ClientHealth = {
   whatsapp_connected: boolean;
@@ -175,7 +178,8 @@ export type ClientHealth = {
   agent_version: number | null;
   agent_configured: boolean;
   ready: boolean;
-  missing: string[];
+  /** ``agent`` · ``whatsapp`` · ``quota`` · ``activation`` — in that order (spec 016, R2.7). */
+  missing: Array<"agent" | "whatsapp" | "quota" | "activation" | (string & {})>;
 };
 export type Client = ClientSummary & { health: ClientHealth };
 export type ClientPage = { items: ClientSummary[]; total: number; limit: number; offset: number };
@@ -366,6 +370,7 @@ import { agentToolsApi } from "./backend/agent-tools";
 import { channelsApi } from "./backend/channels";
 import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
+import { modelsApi } from "./backend/models";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
 import { teammatesApi } from "./backend/teammates";
@@ -406,6 +411,7 @@ export function backendFor(principal: Principal) {
     ...channelsApi(call),
     ...companionApi(call),
     ...homeUsageApi(call),
+    ...modelsApi(call),
     ...onboardingApi(call),
     ...workstationApi(call),
     ...workstationPartnerApi(call),

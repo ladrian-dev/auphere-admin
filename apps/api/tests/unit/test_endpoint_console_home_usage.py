@@ -611,3 +611,86 @@ async def test_playground_channel_and_conversation_do_not_count_anywhere(
     r = await client.get(f"/console/clients/{ref}/conversations/stats", headers=h())
     assert r.status_code == 200, r.text
     assert r.json()["conversations"] == 0 and r.json()["failed_messages"] == 0
+
+
+# ── spec 016 · «sin cupo» en ficha, lista y portada (R2.1, R2.7) ─────────────
+
+
+async def _make_ready(db_session, tenant_id: uuid.UUID) -> None:
+    """Canal de WhatsApp activo + agente publicado: el cliente está «listo»."""
+    db_session.add(
+        Channel(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            type=ChannelType.WHATSAPP,
+            provider="meta",
+            provider_identifier=f"+3461000{uuid.uuid4().int % 10000:04d}",
+            config={},
+            status=ChannelStatus.ACTIVE,
+        )
+    )
+    db_session.add(
+        AgentConfig(
+            tenant_id=tenant_id,
+            version=1,
+            status=AgentConfigStatus.ACTIVE,
+            system_prompt_rendered="x",
+            tools=[],
+        )
+    )
+    await db_session.commit()
+
+
+async def test_out_of_quota_shows_in_detail_list_and_home_and_does_not_block_ready(
+    client, console_world, db_session
+) -> None:
+    a = console_world["a"]
+    h = a["headers"]
+    await _make_ready(db_session, a["tenant_id"])
+    bare = "bare-1"
+    await _add_client(db_session, a["partner_id"], bare, TenantStatus.ACTIVE)
+
+    # Con cupo (el mundo siembra la asignación del cliente A): nada de «quota».
+    detail = (await client.get(f"/console/clients/{a['ref']}", headers=h())).json()
+    assert detail["health"]["ready"] is True
+    assert detail["health"]["missing"] == []
+    assert detail["out_of_quota"] is False
+
+    # Agotado: el tope baja a 0. Sigue «listo», pero le falta cupo.
+    zero = await client.put(f"/console/clients/{a['ref']}/allocation", headers=h(), json={"cap": 0})
+    assert zero.status_code == 200, zero.text
+    detail = (await client.get(f"/console/clients/{a['ref']}", headers=h())).json()
+    assert detail["health"]["ready"] is True
+    assert detail["health"]["missing"] == ["quota"]
+    assert detail["out_of_quota"] is True
+
+    # Sin fila de asignación, sin agente ni canal: «quota» va tras «whatsapp».
+    bare_detail = (await client.get(f"/console/clients/{bare}", headers=h())).json()
+    assert bare_detail["health"]["ready"] is False
+    assert bare_detail["health"]["missing"] == ["agent", "whatsapp", "quota"]
+
+    page = (await client.get("/console/clients", headers=h())).json()
+    by_ref = {row["external_client_ref"]: row for row in page["items"]}
+    assert by_ref[a["ref"]]["out_of_quota"] is True
+    assert by_ref[bare]["out_of_quota"] is True
+    assert "tenant_id" not in by_ref[bare]
+
+    home = (await client.get("/console/home", headers=h())).json()
+    incidents = {r["external_client_ref"]: r for r in home["agents_with_incidents"]["refs"]}
+    assert incidents[a["ref"]]["issues"] == ["out_of_quota"]
+    assert "out_of_quota" in incidents[bare]["issues"]
+
+    # Asignar cupo lo quita de los tres sitios.
+    back = await client.put(
+        f"/console/clients/{a['ref']}/allocation", headers=h(), json={"cap": 50_000}
+    )
+    assert back.status_code == 200, back.text
+    detail = (await client.get(f"/console/clients/{a['ref']}", headers=h())).json()
+    assert detail["health"]["missing"] == []
+    page = (await client.get("/console/clients", headers=h())).json()
+    assert (
+        next(r for r in page["items"] if r["external_client_ref"] == a["ref"])["out_of_quota"]
+        is False
+    )
+    home = (await client.get("/console/home", headers=h())).json()
+    assert a["ref"] not in {r["external_client_ref"] for r in home["agents_with_incidents"]["refs"]}

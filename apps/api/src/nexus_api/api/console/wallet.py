@@ -18,12 +18,25 @@ from nexus_api.api.deps import get_db_session
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import PartnerTenant
+from nexus_api.db.models import AuditLog, PartnerTenant
 from nexus_api.db.models.partner_wallet import PartnerAllocation
-from nexus_api.metering.wallet import OverAllocation, read_wallet, set_allocation
+from nexus_api.metering.wallet import (
+    InsufficientCap,
+    OverAllocation,
+    SameClient,
+    move_allocation,
+    read_wallet,
+    set_allocation,
+)
 
 from .deps import ClientRef, resolve_mapping, unknown_client
-from .schemas_wallet import AllocationIn, AllocationOut, WalletOut
+from .schemas_wallet import (
+    AllocationIn,
+    AllocationOut,
+    MoveAllocationIn,
+    MoveAllocationOut,
+    WalletOut,
+)
 
 router = APIRouter()
 log = structlog.get_logger(__name__)
@@ -176,7 +189,8 @@ async def put_client_allocation(
 ) -> AllocationOut:
     """Fija el cap de un cliente propio. El de otro partner es 404 opaco.
 
-    Mover cuota es dos PUT (bajar uno, subir el otro). No hay endpoint de move.
+    Para mover tope entre dos clientes está ``POST /wallet/allocations/move``
+    (spec 016): una transacción, no dos PUT.
     """
     mapping = await resolve_mapping(session, principal, ref)
     try:
@@ -187,6 +201,74 @@ async def put_client_allocation(
             detail={"code": "over_allocated"},
         ) from None
     return AllocationOut(client_ref=ref, cap=int(row.cap), remaining=int(row.remaining))
+
+
+@router.post(
+    "/wallet/allocations/move",
+    response_model=MoveAllocationOut,
+    responses={
+        404: {"description": "Unknown client reference."},
+        422: {"description": "same_client · insufficient_cap {cap, qty} · qty."},
+    },
+)
+async def move_wallet_allocation(
+    body: MoveAllocationIn,
+    principal: ConsolePrincipal = Depends(require_console_principal("usage:write")),
+    session: AsyncSession = Depends(get_db_session),
+) -> MoveAllocationOut:
+    """Mueve ``qty`` de tope de un cliente propio a otro, de una vez.
+
+    Spec 016 (R3.1-R3.3). Los dos refs se resuelven ANTES de la transacción:
+    un ref ajeno o inexistente es el mismo 404 opaco de siempre y no toca
+    nada. En cualquier error ningún tope cambia. Deja ``console.allocation.move``
+    en la auditoría del partner.
+    """
+    source = await resolve_mapping(session, principal, body.from_ref)
+    target = await resolve_mapping(session, principal, body.to_ref)
+    if source.tenant_id == target.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "same_client"},
+        )
+    try:
+        from_row, to_row = await move_allocation(
+            principal.partner.id, source.tenant_id, target.tenant_id, body.qty
+        )
+    except SameClient:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "same_client"},
+        ) from None
+    except InsufficientCap as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "insufficient_cap", "cap": exc.cap, "qty": exc.qty},
+        ) from None
+    except OverAllocation:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "over_allocated"},
+        ) from None
+    async with session.begin():
+        session.add(
+            AuditLog(
+                tenant_id=None,
+                actor=principal.actor,
+                action="console.allocation.move",
+                target=f"partner:{principal.partner.id}",
+                after_json={"from": body.from_ref, "to": body.to_ref, "qty": body.qty},
+            )
+        )
+    return MoveAllocationOut.model_validate(
+        {
+            "from": AllocationOut(
+                client_ref=body.from_ref, cap=int(from_row.cap), remaining=int(from_row.remaining)
+            ),
+            "to": AllocationOut(
+                client_ref=body.to_ref, cap=int(to_row.cap), remaining=int(to_row.remaining)
+            ),
+        }
+    )
 
 
 # ``POST /wallet/purchased`` vivía aquí y **se borró con la spec 005**.

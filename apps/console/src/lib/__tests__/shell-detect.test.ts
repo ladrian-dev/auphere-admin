@@ -37,4 +37,10 @@ describe("una sola bifurcación por cáscara en toda la consola", () => {
       .filter((p) => /from ["']@\/lib\/shell["']/.test(readFileSync(p, "utf8")));
     expect(importers.map((p) => p.replace(src, ""))).toEqual(["app/(console)/clients/[ref]/channels/page.tsx"]);
   });
+  it("«continuar en el navegador» apunta a la misma página de canales, donde vive el botón real (spec 016)", () => {
+    const page = readFileSync(resolve(process.cwd(), "src/app/(console)/clients/[ref]/channels/page.tsx"), "utf8");
+    expect(page).toMatch(/<WhatsAppContinueInBrowser href=\{`\$\{base\}\/channels`\} \/>/);
+    expect(page).toContain("<WhatsAppConnect ");
+    expect(page).not.toContain("WhatsAppConnectUnavailable");
+  });
 });

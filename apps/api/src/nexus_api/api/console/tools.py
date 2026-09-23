@@ -17,6 +17,7 @@ channels, not tools — the Channels tab owns them.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import sqlalchemy as sa
@@ -32,6 +33,7 @@ from nexus_api.db.models import (
     TenantConnector,
     TenantConnectorStatus,
     TenantConnectorToolOverride,
+    TenantCredentials,
     ToolCatalog,
     ToolStatus,
 )
@@ -62,6 +64,7 @@ from .schemas_agent_tools import (
     ConnectorOut,
     ConnectorSyncOut,
     ConsentOut,
+    LastSyncOut,
     ToolCatalogOut,
     ToolMode,
     ToolModeIn,
@@ -74,6 +77,8 @@ from .schemas_agent_tools import (
 router = APIRouter(prefix="/clients/{ref}")
 
 EXCLUDED_CONNECTOR_SLUGS = frozenset({"tiktok_bm"})
+#: Linked by public page (spec 016, R6), never by credentials from the console.
+AGENDAPRO_SLUG = "agendapro"
 _CONNECTED = frozenset({TenantConnectorStatus.CONNECTED.value, TenantConnectorStatus.PARTIAL.value})
 
 
@@ -262,17 +267,27 @@ async def _connectors(
         tc = installs.get(e.slug)
         total, on = tool_counts.get(e.slug, (0, 0))
         form = e.provider_meta.get("credentials_form") if e.auth_kind == "api_key" else None
+        # Spec 016 (R6): AgendaPro is linked by its public page, and that is
+        # what «connected» means for it. The seed keeps ``browser_credentials``
+        # (the operator path still exists); the console never sees that kind.
+        public_link = e.slug == AGENDAPRO_SLUG
+        public_url = scope.tenant.agendapro_public_url if public_link else None
+        auth_kind = "public_url" if public_link else e.auth_kind
+        status_value = tc.status if tc else None
+        if public_link:
+            status_value = "connected" if public_url else status_value
         out.append(
             ConnectorOut(
                 slug=e.slug,
                 display_name=e.display_name,
                 vendor=e.vendor,
                 category=e.category,
-                auth_kind=e.auth_kind,
+                auth_kind=auth_kind,
                 logo_url=_logo(e.provider_meta),
                 capabilities=list(e.capabilities or []),
-                installed=tc is not None,
-                status=tc.status if tc else None,
+                installed=tc is not None or bool(public_url),
+                status=status_value,
+                public_url=public_url,
                 scopes_granted=list(tc.scopes_granted or []) if tc else [],
                 connected_at=tc.connected_at if tc else None,
                 last_synced_at=tc.last_synced_at if tc else None,
@@ -547,17 +562,29 @@ async def connect_api_key(
     scope: ClientScope = Depends(client_scope("agents:write")),
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> ConnectorOut:
-    """Bootstrap an ``api_key`` connector. ``secrets`` are encrypted into
-    ``tenant_credentials`` and never returned."""
+    """Bootstrap an ``api_key`` connector and sync it in the same request.
+
+    Spec 016 (R7.1/R7.3/R7.4): ``secrets`` are encrypted into
+    ``tenant_credentials`` and never returned; the sync that used to be a
+    second click runs here and its outcome travels in ``last_sync``:
+
+    - provider rejects the key → ``needs_reauth``, no tool enabled,
+      ``reason = auth_rejected``;
+    - provider unavailable → credential saved, ``connected``, tools enabled,
+      ``last_sync.status = error`` with ``reason = provider_unavailable``
+      («Reintentar» is ``POST …/sync``);
+    - otherwise ``ok`` with the counts.
+    """
     slug = _guard_slug(slug)
     try:
-        await connector_service.bootstrap_api_key(
+        tc = await connector_service.bootstrap_api_key(
             scope.session,
             tenant=scope.tenant,
             connector_slug=slug,
             secret_payload=body.secrets,
             endpoint_meta=body.endpoint_meta or {"_": "console"},
             actor=scope.principal.actor,
+            auto_enable=False,
         )
     except ConnectorNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -565,7 +592,78 @@ async def connect_api_key(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return await _one(scope, composio, slug)
+    connector = await scope.session.scalar(sa.select(Connector).where(Connector.slug == slug))
+    assert connector is not None  # bootstrap just loaded it
+    last_sync = await _sync_after_connect(scope, composio, tc, connector)
+    if last_sync.reason != "auth_rejected":
+        await connector_service.auto_enable_connector_tools(
+            scope.session,
+            tenant_id=scope.tenant.id,
+            connector=connector,
+            actor=scope.principal.actor,
+        )
+    scope.session.add(
+        AuditLog(
+            tenant_id=scope.tenant.id,
+            actor=scope.principal.actor,
+            action="console.connector.connect",
+            target=f"connector:{slug}",
+            after_json={"slug": slug, "sync_status": last_sync.status, "reason": last_sync.reason},
+        )
+    )
+    await scope.session.flush()
+    out = await _one(scope, composio, slug)
+    out.last_sync = last_sync
+    return out
+
+
+async def _sync_after_connect(
+    scope: ClientScope,
+    composio: ComposioClientProtocol,
+    tc: TenantConnector,
+    connector: Connector,
+) -> LastSyncOut:
+    """The sync of ``sync_connector`` with its outcome as data, not as HTTP."""
+    now = datetime.now(UTC)
+    try:
+        reconciled = await connector_service.reconcile_connector_status(
+            scope.session,
+            tenant_connector=tc,
+            connector=connector,
+            composio=composio,
+            actor=scope.principal.actor,
+        )
+        if reconciled is not None:
+            return LastSyncOut(
+                status="ok",
+                added=len(reconciled.tools_added),
+                deprecated=len(reconciled.tools_deprecated),
+                at=now,
+            )
+        result = await connector_service.sync_tools_for(
+            scope.session,
+            tenant_connector=tc,
+            connector=connector,
+            composio=composio,
+            actor=scope.principal.actor,
+        )
+    except ComposioUnavailable:
+        return LastSyncOut(status="error", reason="provider_unavailable", at=now)
+    except ComposioAuthExpired:
+        tc.status = TenantConnectorStatus.NEEDS_REAUTH.value
+        cred = await scope.session.scalar(
+            sa.select(TenantCredentials).where(
+                TenantCredentials.tenant_id == scope.tenant.id,
+                TenantCredentials.integration == connector.slug,
+            )
+        )
+        if cred is not None:
+            cred.needs_reauth = True
+        await scope.session.flush()
+        return LastSyncOut(status="error", reason="auth_rejected", at=now)
+    return LastSyncOut(
+        status="ok", added=len(result.added), deprecated=len(result.deprecated), at=now
+    )
 
 
 __all__ = ["router"]

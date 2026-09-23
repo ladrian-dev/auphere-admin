@@ -18,7 +18,7 @@ export type HomeUsage = {
   projected_month_units: number;
   basis_days: number;
 };
-export type IncidentIssue = "whatsapp_degraded" | "no_active_agent" | "failed_messages_24h";
+export type IncidentIssue = "whatsapp_degraded" | "no_active_agent" | "failed_messages_24h" | "out_of_quota";
 export type IncidentClient = {
   external_client_ref: string;
   client_name: string | null;
@@ -100,6 +100,8 @@ export type Wallet = {
   included_percent_used?: number;
 };
 export type Allocation = { client_ref: string; cap: number; remaining: number };
+/** Spec 016 (R3.1): both caps after an atomic move. */
+export type AllocationMove = { from: Allocation; to: Allocation };
 
 export type UsageQuery = { days?: number; client?: string; source?: string };
 export type AuditQuery = {
@@ -131,6 +133,13 @@ export function homeUsageApi(call: Call) {
       call<Allocation>(`/console/clients/${encodeURIComponent(ref)}/allocation`, {
         method: "PUT",
         body: { cap },
+      }),
+    // Spec 016 (R3.1): one call, one transaction. Two PUTs could lose quota
+    // when the second one failed.
+    moveAllocation: (from_ref: string, to_ref: string, qty: number) =>
+      call<AllocationMove>("/console/wallet/allocations/move", {
+        method: "POST",
+        body: { from_ref, to_ref, qty },
       }),
     usageSeries: (p: UsageQuery & { meter?: string } = {}) => call<UsageSeries>(`/console/usage/series${q(p)}`),
     usageAlerts: () => call<UsageAlerts>("/console/usage/alerts"),

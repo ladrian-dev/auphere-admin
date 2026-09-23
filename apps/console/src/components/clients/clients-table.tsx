@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
-import { Button, DataTable, EmptyState, Input, formatRelative, type ColumnDef } from "@nexus/ui";
+import { Button, DataTable, EmptyState, Input, StatusDot, formatRelative, type ColumnDef } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 import type { Locale } from "@/i18n/messages";
@@ -84,7 +84,19 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
       {
         accessorKey: "status",
         header: t("common.status"),
-        cell: (c) => <ClientStatusBadge status={String(c.getValue())} locale={locale} />,
+        cell: (c) => (
+          <span className="inline-flex items-center gap-2">
+            <ClientStatusBadge status={String(c.getValue())} locale={locale} />
+            {/* Spec 016 (R2.7): «sin cupo» is visible from the list. The dot
+                carries its name for the reader who cannot see the colour. */}
+            {c.row.original.out_of_quota ? (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={t("hu.usage.allocations.outOfQuota")}>
+                <StatusDot tone="warning" label={t("hu.usage.allocations.outOfQuota")} />
+                {t("hu.usage.allocations.outOfQuota")}
+              </span>
+            ) : null}
+          </span>
+        ),
       },
       { accessorKey: "timezone", header: t("clients.timezone"), cell: (c) => <span className="font-mono text-xs">{String(c.getValue())}</span> },
       {

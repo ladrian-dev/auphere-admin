@@ -270,7 +270,8 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
                       ].join(" ")}
                     >
                       <span className="truncate">{th.title || t("playground.threads.untitled")}</span>
-                      <span className="shrink-0 font-mono tabular-nums opacity-70">
+                      {/* No opacity on top of muted-foreground: the pair fails AA (axe color-contrast on /playground). */}
+                      <span className="shrink-0 font-mono tabular-nums">
                         {th.turn_count === 1 ? t("playground.threads.turn") : t("playground.threads.turns", { n: th.turn_count })}
                       </span>
                     </button>
