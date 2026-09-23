@@ -639,3 +639,211 @@ async def test_internal_qa_channel_is_neither_listed_nor_counted(
     assert r.status_code == 200, r.text
     assert r.json()["channels"] == []
     assert r.json()["used_channels"] == 0
+
+
+# ── spec 016 · el número activa al cliente; el fallo no deja nada (R1.2-R1.6) ───
+
+
+def _signup_stub(*, channel: Channel | None = None, then=None):
+    """Orquestador falso que escribe en la MISMA sesión del endpoint, como el
+    real: un canal (y credenciales) y, si ``then`` viene, falla después."""
+
+    async def _fake(**kw):
+        session = kw["session"]
+        if channel is not None:
+            channel.tenant_id = kw["tenant_id"]
+            session.add(channel)
+            await session.flush()
+        if then is not None:
+            await then(session, kw["tenant_id"])
+        assert channel is not None
+        return SignupServiceResult(
+            result=SignupResult(
+                channel_id=channel.id,
+                waba_id=kw["payload"].waba_id,
+                phone_number_id="PN",
+                display_phone_number="+34600000009",
+                mode=kw["payload"].mode,
+                bisuat_expires_at=None,
+            ),
+            audit_log_id=uuid.uuid4(),
+        )
+
+    return _fake
+
+
+async def _provisioning_with_agent(db_session, world, *, agent: bool) -> None:
+    from nexus_api.db.models import AgentConfig, AgentConfigStatus, Partner, Tenant, TenantStatus
+
+    partner = await db_session.get(Partner, world["partner_id"])
+    assert partner is not None
+    partner.auto_activate = True
+    tenant = await db_session.get(Tenant, world["tenant_id"])
+    assert tenant is not None
+    tenant.status = TenantStatus.PROVISIONING
+    if agent:
+        db_session.add(
+            AgentConfig(
+                tenant_id=world["tenant_id"],
+                version=1,
+                status=AgentConfigStatus.ACTIVE,
+                system_prompt_rendered="x",
+                tools=[],
+            )
+        )
+    await db_session.commit()
+
+
+async def _rows_for(db_session, tenant_id: uuid.UUID) -> tuple[int, int]:
+    channels = await db_session.scalar(
+        sa.select(sa.func.count()).select_from(Channel).where(Channel.tenant_id == tenant_id)
+    )
+    creds = await db_session.scalar(
+        sa.select(sa.func.count())
+        .select_from(TenantCredentials)
+        .where(TenantCredentials.tenant_id == tenant_id)
+    )
+    return int(channels or 0), int(creds or 0)
+
+
+async def test_signup_activates_a_provisioning_client_with_a_published_agent(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    from nexus_api.db.models import ConsoleNotification
+
+    a = console_world["a"]
+    await _provisioning_with_agent(db_session, a, agent=True)
+    monkeypatch.setattr(
+        wa_router, "complete_meta_signup", _signup_stub(channel=_channel(a["tenant_id"]))
+    )
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/whatsapp/signup",
+        headers=a["headers"](),
+        json={"code": "abc", "waba_id": "W1", "phone_number_id": "PN", "mode": "cloud_api"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["client_status"] == "active"
+    assert body["health"]["ready"] is True
+    assert body["health"]["missing"] == []
+    assert body["health"]["whatsapp_connected"] is True
+    assert "tenant_id" not in body
+
+    detail = (await client.get(f"/console/clients/{a['ref']}", headers=a["headers"]())).json()
+    assert detail["status"] == "active"
+    assert detail["health"]["ready"] is True
+    # CP-29 keeps working from this path: the «activated» notice exists and
+    # says the client can serve.
+    notice = await db_session.scalar(
+        sa.select(ConsoleNotification).where(
+            ConsoleNotification.partner_id == a["partner_id"],
+            ConsoleNotification.kind == "client.activated",
+        )
+    )
+    assert notice is not None
+    assert notice.payload["can_serve"] is True
+
+
+async def test_signup_without_a_published_agent_leaves_the_client_provisioning(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    await _provisioning_with_agent(db_session, a, agent=False)
+    monkeypatch.setattr(
+        wa_router, "complete_meta_signup", _signup_stub(channel=_channel(a["tenant_id"]))
+    )
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/whatsapp/signup",
+        headers=a["headers"](),
+        json={"code": "abc", "waba_id": "W1", "mode": "cloud_api"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["client_status"] == "provisioning"
+    assert body["health"]["ready"] is False
+    assert body["health"]["missing"] == ["agent", "activation"]
+
+
+async def test_a_number_that_belongs_to_another_client_is_409_and_changes_nothing(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """R1.4: la UNIQUE(type, provider_identifier) de ``channels`` habla como
+    409 ``number_in_use``; el otro cliente no cambia y éste no gana nada."""
+    a, b = console_world["a"], console_world["b"]
+    taken = _channel(b["tenant_id"])
+    taken_id, taken_number = taken.id, taken.provider_identifier
+    db_session.add(taken)
+    await db_session.commit()
+    dup = _channel(a["tenant_id"])
+    dup.provider_identifier = taken_number
+    monkeypatch.setattr(wa_router, "complete_meta_signup", _signup_stub(channel=dup))
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/whatsapp/signup",
+        headers=a["headers"](),
+        json={"code": "abc", "waba_id": "W1", "mode": "cloud_api"},
+    )
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"] == {"code": "number_in_use"}
+    assert await _rows_for(db_session, a["tenant_id"]) == (0, 0)
+    still = (
+        await db_session.execute(
+            sa.select(Channel.tenant_id, Channel.status).where(Channel.id == taken_id)
+        )
+    ).one()
+    assert still.tenant_id == b["tenant_id"]
+    assert still.status is ChannelStatus.ACTIVE
+
+
+async def test_a_failure_after_the_code_leaves_no_channel_and_no_credentials(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """R1.5: el orquestador ya escribió canal y credenciales cuando Meta falla
+    en ``subscribe_app``. Nada queda, y el segundo intento entra."""
+    from fastapi import HTTPException
+
+    a = console_world["a"]
+
+    async def _write_creds_then_fail(session, tenant_id):
+        creds = MetaCredentials(
+            bisuat="EAA-partial",
+            waba_id="W1",
+            phone_number_id="PN",
+            business_id="BIZ",
+            display_phone_number="+34600000009",
+            verify_token="v" * 32,
+        )
+        session.add(
+            TenantCredentials(
+                tenant_id=tenant_id,
+                integration="meta_whatsapp",
+                encrypted_payload=creds.to_payload(),
+                needs_reauth=False,
+            )
+        )
+        await session.flush()
+        raise HTTPException(status_code=502, detail="Meta unreachable during subscribe_app")
+
+    monkeypatch.setattr(
+        wa_router,
+        "complete_meta_signup",
+        _signup_stub(channel=_channel(a["tenant_id"]), then=_write_creds_then_fail),
+    )
+    first = await client.post(
+        f"/console/clients/{a['ref']}/channels/whatsapp/signup",
+        headers=a["headers"](),
+        json={"code": "abc", "waba_id": "W1", "mode": "cloud_api"},
+    )
+    assert first.status_code == 502, first.text
+    assert "subscribe_app" in first.json()["detail"]
+    assert await _rows_for(db_session, a["tenant_id"]) == (0, 0)
+
+    monkeypatch.setattr(
+        wa_router, "complete_meta_signup", _signup_stub(channel=_channel(a["tenant_id"]))
+    )
+    second = await client.post(
+        f"/console/clients/{a['ref']}/channels/whatsapp/signup",
+        headers=a["headers"](),
+        json={"code": "abc2", "waba_id": "W1", "mode": "cloud_api"},
+    )
+    assert second.status_code == 201, second.text
+    assert await _rows_for(db_session, a["tenant_id"]) == (1, 0)

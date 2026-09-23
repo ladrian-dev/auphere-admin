@@ -147,6 +147,7 @@ async def record_client_activation(
     partner_id: uuid.UUID,
     external_client_ref: str,
     now: datetime | None = None,
+    serving: tuple[bool, list[str]] | None = None,
 ) -> bool:
     """A client of ``partner_id`` is ACTIVE with a published agent.
 
@@ -171,7 +172,13 @@ async def record_client_activation(
     # no, la notificación lo dice (``can_serve``) y sube a ``warning``, que
     # es lo que la hace visible en la consola en vez de pasar por un
     # «todo bien» más.
-    can_serve, missing = await _client_can_serve(session, partner_id, external_client_ref)
+    # ``serving`` lets a caller that KNOWS pass the answer: the WhatsApp
+    # signup (spec 016, R1.2) activates inside its own transaction, and a
+    # fresh session would not see the channel it just created.
+    if serving is not None:
+        can_serve, missing = serving
+    else:
+        can_serve, missing = await _client_can_serve(session, partner_id, external_client_ref)
     await emit(
         session,
         partner_id=partner_id,
