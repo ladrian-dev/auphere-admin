@@ -161,10 +161,10 @@ function Nav({ current, compact, hide = [] }: { current: string; compact?: boole
     );
   }
   return (
-    <nav aria-label="Sección de la ficha" className="flex flex-wrap gap-x-8 gap-y-2 border-b border-border">
+    <nav aria-label="Sección de la ficha" className="flex flex-wrap gap-x-10 gap-y-2 border-b border-border">
       {groups.map((g) => (
-        <div key={g.label} className="flex items-baseline gap-3">
-          <span className="text-xs font-medium text-muted-foreground">{g.label}</span>
+        <div key={g.label} className="flex flex-col gap-1">
+          <span className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{g.label}</span>
           <ul className="flex gap-1">
             {g.items.map((i) => (
               <li key={i}>
