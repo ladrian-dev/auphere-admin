@@ -24,7 +24,7 @@ vi.mock("@/app/(console)/billing/actions", () => ({
 import { LocaleProvider } from "@/i18n/client";
 import type { MembershipOut, TierOut } from "@/lib/backend/membership";
 
-import { MembershipPanel } from "../membership-panel";
+import { MembershipPanel, recommendedTier } from "../membership-panel";
 
 const tier = (over: Partial<TierOut> = {}): TierOut => ({
   code: "pro",
@@ -160,5 +160,34 @@ describe("cancelar dice lo que pasa con el dinero (R7.4)", () => {
   it("una cuenta ya cancelada no ofrece cancelar otra vez", () => {
     panel({ state: "canceled" });
     expect(screen.queryByRole("button", { name: /cancelar/i })).toBeNull();
+  });
+});
+
+describe("el plan recomendado (owner, 2026-09-23)", () => {
+  const free = tier({ code: "free", display_name: "Free", monthly_price_cents: 0, max_teammates: 0, consumption_multiple: null });
+  const pro = tier({ code: "pro", max_teammates: 2 });
+  const team = tier({ code: "team", display_name: "Team", monthly_price_cents: 6000, max_teammates: 6 });
+  const business = tier({ code: "business", display_name: "Business", monthly_price_cents: 15000, max_teammates: 12 });
+  const catalog = [free, pro, team, business];
+
+  it("Pro hasta dos agentes, Team hasta seis, Business después", () => {
+    expect(recommendedTier(catalog, free, 0)).toBe("pro");
+    expect(recommendedTier(catalog, free, 2)).toBe("pro");
+    expect(recommendedTier(catalog, free, 3)).toBe("team");
+    expect(recommendedTier(catalog, free, 7)).toBe("business");
+  });
+  it("nunca el plan actual ni uno por debajo", () => {
+    expect(recommendedTier(catalog, pro, 1)).toBeNull();
+    expect(recommendedTier(catalog, team, 1)).toBeNull();
+    expect(recommendedTier(catalog, pro, 4)).toBe("team");
+  });
+  it("se ve como «Recomendado» en la tarjeta, y solo en una", () => {
+    render(
+      <LocaleProvider locale="es">
+        <MembershipPanel membership={{ ...membership(), tier: free, catalog, usage: { teammates: 0, members: 1 } } as MembershipOut} />
+      </LocaleProvider>,
+    );
+    expect(screen.getAllByText("Recomendado")).toHaveLength(1);
+    expect(screen.getByText("Recomendado").closest("[data-recommended]")).toHaveTextContent("Pro");
   });
 });

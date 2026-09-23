@@ -33,6 +33,7 @@ export const membershipMessages = {
   "membership.catalog": { es: "Planes", en: "Plans" },
   "membership.choose": { es: "Elegir {tier}", en: "Choose {tier}" },
   "membership.currentBadge": { es: "Tu plan", en: "Your plan" },
+  "membership.recommendedBadge": { es: "Recomendado", en: "Recommended" },
   "membership.pending": {
     es: "Has pedido cambiar a {tier}. El cambio se aplica el {date} y puedes anularlo hasta entonces.",
     en: "You asked to move to {tier}. The change applies on {date} and you can undo it until then.",
