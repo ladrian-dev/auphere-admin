@@ -28,8 +28,8 @@ const DRAWER = '[data-slot="sheet-content"]';
 // feature the partner simply does not have: the honest verdict is skip.
 test.beforeEach(async ({ page }) => {
   const res = await page.request.get("/api/companion/enabled");
-  const body = (await res.json().catch(() => ({}))) as { enabled?: boolean };
-  test.skip(res.ok() && body.enabled === false, "the Companion is not enabled for this partner");
+  const body = (await res.json().catch(() => ({}))) as { companion_enabled?: boolean };
+  test.skip(res.ok() && body.companion_enabled === false, "the Companion is not enabled for this partner");
 });
 
 /**
