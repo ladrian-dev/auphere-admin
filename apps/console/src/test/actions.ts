@@ -19,8 +19,9 @@
  *   expect(await saveAllocationAction({ client_ref: "a", cap: 1 })).toEqual(h.denied());
  *   expect(h.backend.setAllocation).not.toHaveBeenCalled();
  */
-import { vi } from "vitest";
+import { vi, type Mock } from "vitest";
 
+import type { backendFor } from "@/lib/backend";
 import { PERMISSIONS, can, type Role } from "@/lib/permissions";
 
 class FakeBackendError extends Error {
@@ -37,11 +38,14 @@ class FakeBackendError extends Error {
   }
 }
 
-export type BackendFns = Record<string, ReturnType<typeof vi.fn>>;
+/** Every method of the real backend, as a mock — typed by name so a test
+ *  can say ``h.backend.moveAllocation`` without a lookup that may be
+ *  ``undefined``. The runtime is a Proxy: any name exists on first use. */
+export type BackendFns = { [K in keyof ReturnType<typeof backendFor>]: Mock };
 
 export function actionHarness(initialRole: Role = "owner") {
   const state = { role: initialRole };
-  const backend: BackendFns = {};
+  const fns: Record<string, Mock> = {};
 
   const principal = () => ({
     userId: "u-1",
@@ -58,13 +62,13 @@ export function actionHarness(initialRole: Role = "owner") {
 
   // Every backend method exists and resolves to `{}` until a test says
   // otherwise with `h.backend.method.mockResolvedValue(...)`.
-  const backendProxy = new Proxy({} as Record<string, unknown>, {
+  const backend = new Proxy({} as Record<string, Mock>, {
     get(_target, name) {
       const key = String(name);
       if (key === "then") return undefined;
-      return (backend[key] ??= vi.fn(async () => ({})));
+      return (fns[key] ??= vi.fn(async () => ({})));
     },
-  });
+  }) as unknown as BackendFns;
 
   return {
     state,
@@ -78,7 +82,7 @@ export function actionHarness(initialRole: Role = "owner") {
     },
     /** Make the next backend call fail the way `run()` would see it. */
     fail(method: string, status: number, detail = "", code: string | null = null) {
-      (backend[method] ??= vi.fn()).mockRejectedValueOnce(new FakeBackendError(status, detail, code));
+      (fns[method] ??= vi.fn()).mockRejectedValueOnce(new FakeBackendError(status, detail, code));
     },
     principalModule: {
       requirePrincipal: vi.fn(async () => principal()),
@@ -87,7 +91,7 @@ export function actionHarness(initialRole: Role = "owner") {
       PERMISSIONS,
     },
     backendModule: {
-      backendFor: () => backendProxy,
+      backendFor: () => backend,
       BackendError: FakeBackendError,
     },
     cacheModule: {

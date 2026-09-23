@@ -1,4 +1,5 @@
 import Link from "next/link";
+import * as React from "react";
 import { Suspense } from "react";
 
 import { Alert, AlertDescription, Button, CardSkeleton, EmptyState, Metric, PageHeader, formatNumber } from "@nexus/ui";
@@ -99,9 +100,21 @@ export default async function HomePage() {
                   {r.client_name ?? r.external_client_ref}
                 </Link>
                 <span className="min-w-0 flex-1 text-sm text-muted-foreground text-pretty">
-                  {r.issues
-                    .map((i) => (i === "failed_messages_24h" ? t("hu.home.issue.failed_messages_24h", { count: n(r.failed_messages_24h) }) : t(`hu.home.issue.${i}`)))
-                    .join(" · ")}
+                  {r.issues.map((i, idx) => (
+                    <React.Fragment key={i}>
+                      {idx > 0 ? " · " : null}
+                      {i === "failed_messages_24h" ? (
+                        t("hu.home.issue.failed_messages_24h", { count: n(r.failed_messages_24h) })
+                      ) : i === "out_of_quota" ? (
+                        // Spec 016 (R2.7): the fix is one click away, in Consumo.
+                        <Link href={`/usage?client=${encodeURIComponent(r.external_client_ref)}`} className="underline underline-offset-4 hover:text-foreground">
+                          {t("hu.home.issue.out_of_quota")}
+                        </Link>
+                      ) : (
+                        t(`hu.home.issue.${i}`)
+                      )}
+                    </React.Fragment>
+                  ))}
                 </span>
               </li>
             ))}

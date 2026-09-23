@@ -168,6 +168,9 @@ export type ClientSummary = {
   timezone: string;
   created_at: string;
   updated_at: string;
+  /** Spec 016 (R2.1): the channel gate is closed for this client — same
+   *  reading as ``health.missing`` containing ``quota``. */
+  out_of_quota?: boolean;
 };
 export type ClientHealth = {
   whatsapp_connected: boolean;

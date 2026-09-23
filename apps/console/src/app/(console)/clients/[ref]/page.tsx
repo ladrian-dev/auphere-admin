@@ -1,7 +1,8 @@
 import Link from "next/link";
 
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Metric, StatusDot, formatNumber } from "@nexus/ui";
+import { Alert, AlertDescription, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Metric, StatusDot, formatNumber } from "@nexus/ui";
 
+import { missingItems } from "@/components/clients/health";
 import { ClientLifecycleActions } from "@/components/clients/lifecycle-actions";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
@@ -19,15 +20,21 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
     can(principal.role, "conversations:read") ? api.conversationStats(ref, 30).catch(() => null) : null,
   ]);
   const h = client.health;
-  const missingLabels = h.missing.map((m) => t(`clients.detail.missing.${m}` as "clients.detail.missing.agent"));
+  // Spec 016 (R2.1/R2.4): what is missing, each piece with the click that
+  // fixes it. «Sin cupo» is its own line: it does not block «listo», but the
+  // client is not answering, and the card must say both things.
+  const items = missingItems(h, ref);
+  const blocking = items.filter((m) => m.blocking);
+  const outOfQuota = items.some((m) => m.key === "quota");
+  const missingLabels = blocking.map((m) => t(m.label));
   const base = `/clients/${encodeURIComponent(ref)}`;
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
-      <Card className="lg:col-span-3">
+      <Card className="lg:col-span-3" id="setup">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <StatusDot tone={h.ready ? "positive" : "warning"} />
+            <StatusDot tone={h.ready ? (outOfQuota ? "warning" : "positive") : "warning"} />
             {h.ready ? t("clients.detail.ready") : t("clients.detail.missing", { items: missingLabels.join(", ") })}
           </CardTitle>
           <CardDescription>
@@ -35,13 +42,34 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
             {t("clients.detail.whatsapp")}: {h.whatsapp_connected ? t("status.connected") : t("status.disconnected")}
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {can(principal.role, "agents:write") ? (
-            <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`${base}/agent`} />}>
-              {t("clients.tabs.agent")}
-            </Button>
+        <CardContent className="flex flex-col gap-3">
+          {outOfQuota ? (
+            <Alert role="status" className="border-status-warning/40">
+              <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>{t("clients.health.outOfQuota")}</span>
+                {can(principal.role, "usage:write") ? (
+                  <Link href={`/usage?client=${encodeURIComponent(ref)}`} className="font-medium underline underline-offset-4">
+                    {t("clients.health.fix.quota")}
+                  </Link>
+                ) : null}
+              </AlertDescription>
+            </Alert>
           ) : null}
-          {can(principal.role, "clients:write") ? <ClientLifecycleActions refId={ref} status={client.status} name={client.name} canDelete={can(principal.role, "clients:delete")} /> : null}
+          <div className="flex flex-wrap gap-2">
+            {blocking
+              .filter((m) => m.href && can(principal.role, m.permission))
+              .map((m) => (
+                <Button key={m.key} variant="outline" size="sm" nativeButton={false} render={<Link href={m.href!} />}>
+                  {t(m.fix)}
+                </Button>
+              ))}
+            {h.ready && can(principal.role, "agents:write") ? (
+              <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`${base}/agent`} />}>
+                {t("clients.tabs.agent")}
+              </Button>
+            ) : null}
+            {can(principal.role, "clients:write") ? <ClientLifecycleActions refId={ref} status={client.status} name={client.name} canDelete={can(principal.role, "clients:delete")} /> : null}
+          </div>
         </CardContent>
       </Card>
       {stats ? (
