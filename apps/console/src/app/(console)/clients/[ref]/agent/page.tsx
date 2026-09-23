@@ -15,7 +15,7 @@ export default async function AgentPage({ params }: { params: Promise<{ ref: str
   const bundle = await backendFor(principal).getAgent(ref);
   return (
     <section className="flex min-w-0 flex-col gap-4" aria-label={t("agent.title")}>
-      <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("agent.description")}</p>
+      <p className=" text-sm text-pretty text-muted-foreground">{t("agent.description")}</p>
       {/* lane agent-tools (CP-11): structured settings live on their own page */}
       <Link
         href={`/clients/${encodeURIComponent(ref)}/agent/settings`}

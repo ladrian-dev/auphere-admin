@@ -31,7 +31,7 @@ export default async function ToolsPage({ params }: { params: Promise<{ ref: str
     <section className="flex min-w-0 flex-col gap-4" aria-label={t("tools.title")}>
       <div className="flex min-w-0 flex-col gap-1">
         <h1 className="text-base font-medium text-balance">{t("tools.title")}</h1>
-        <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("tools.description")}</p>
+        <p className=" text-sm text-pretty text-muted-foreground">{t("tools.description")}</p>
       </div>
       <ToolsCatalog refId={ref} catalog={catalog} connectors={connectorsRes.connectors} connectorsError={connectorsRes.error} canWrite={can(principal.role, "agents:write")} />
     </section>

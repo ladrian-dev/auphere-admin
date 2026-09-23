@@ -71,7 +71,7 @@ function TierCard({
       aria-current={current ? "true" : undefined}
     >
       <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
+        <CardTitle className="flex flex-wrap items-center justify-between gap-2">
           <span>{tier.display_name}</span>
           {current ? <StatusBadge tone="positive">{t("membership.currentBadge")}</StatusBadge> : null}
         </CardTitle>
@@ -184,7 +184,7 @@ export function MembershipPanel({ membership, onChoose, onFixCard, onCancel }: P
           <h2 id="free-h" className="text-lg font-semibold text-balance">
             {t("membership.free.title")}
           </h2>
-          <p className="text-muted-foreground max-w-prose text-sm text-pretty">
+          <p className="text-muted-foreground text-sm text-pretty">
             {t("membership.free.body")}
           </p>
         </section>
@@ -225,7 +225,10 @@ export function MembershipPanel({ membership, onChoose, onFixCard, onCancel }: P
         <h2 id="catalog-h" className="text-lg font-semibold">
           {t("membership.catalog")}
         </h2>
-        <div className="grid gap-4 @md:grid-cols-2 @4xl:grid-cols-4">
+        {/* Side by side (owner, 2026-09-23): four plans in one row on a wide
+            screen, two by two on a tablet, stacked on a phone. All alike: no
+            «recommended» — the partner decides (owner, 2026-09-24). */}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {catalog.map((entry) => (
             <TierCard
               key={entry.code}

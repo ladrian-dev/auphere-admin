@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import {
+  BrandLockup,
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -40,19 +41,10 @@ export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
   return (
     <Sidebar variant="inset" collapsible="icon" aria-label="Primary">
       <SidebarHeader>
-        <div className={collapsed ? "flex h-10 items-center justify-center" : "flex h-10 min-w-0 flex-col justify-center px-2"}>
-          {collapsed ? (
-            <span className="font-mono text-sm font-semibold text-primary-deep" aria-label="Auphere">
-              a.
-            </span>
-          ) : (
-            <>
-              <span className="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase">{t("shell.partner")}</span>
-              <span className="min-w-0 truncate text-sm font-semibold" title={partnerName}>
-                {partnerName}
-              </span>
-            </>
-          )}
+        {/* The full logo (owner, 2026-09-24). Collapsed, only the mark stays,
+            at the same size, so nothing jumps; the toggle lives in the top bar. */}
+        <div className={collapsed ? "flex h-10 items-center justify-center" : "flex h-10 min-w-0 items-center px-2"}>
+          <BrandLockup markOnly={collapsed} />
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -85,7 +77,7 @@ export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
         ))}
       </SidebarContent>
       <SidebarFooter>
-        <UserMenu user={user} role={role} partnerSlug={partnerSlug} collapsed={collapsed} />
+        <UserMenu user={user} role={role} partnerName={partnerName} partnerSlug={partnerSlug} collapsed={collapsed} />
       </SidebarFooter>
     </Sidebar>
   );

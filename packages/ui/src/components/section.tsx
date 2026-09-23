@@ -39,7 +39,7 @@ function Section({ title, description, actions, headingLevel = 2, padded = true,
                 {title}
               </Heading>
             ) : null}
-            {description ? <p className="max-w-(--width-prose) text-sm text-muted-foreground text-pretty">{description}</p> : null}
+            {description ? <p className="text-sm text-muted-foreground text-pretty">{description}</p> : null}
           </div>
           {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </div>

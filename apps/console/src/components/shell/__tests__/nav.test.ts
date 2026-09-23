@@ -5,7 +5,9 @@ import { isActive, navForRole } from "../nav";
 describe("nav", () => {
   it("filters items by role", () => {
     const billing = navForRole("billing").flatMap((g) => g.items.map((i) => i.href));
-    expect(billing).toEqual(["/", "/usage", "/notifications", "/team", "/billing"]);
+    expect(billing).toEqual(["/", "/usage", "/team", "/billing"]);
+    // Notifications live in the top-bar bell, not in the sidebar.
+    expect(navForRole("owner").flatMap((g) => g.items.map((i) => i.href))).not.toContain("/notifications");
     const builder = navForRole("builder").flatMap((g) => g.items.map((i) => i.href));
     expect(builder).not.toContain("/billing");
     expect(builder).toContain("/keys");

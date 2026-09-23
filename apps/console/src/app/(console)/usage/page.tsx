@@ -147,7 +147,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
         <section className="space-y-2" aria-label={t("membership.credit.title")}>
           <p className="text-sm font-medium">{t("membership.credit.title")}</p>
           <BuyCreditForm />
-          <p className="text-muted-foreground max-w-prose text-sm text-pretty">
+          <p className="text-muted-foreground text-sm text-pretty">
             {t("membership.credit.help")}
           </p>
         </section>

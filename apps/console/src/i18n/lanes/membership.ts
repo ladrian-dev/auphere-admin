@@ -16,7 +16,7 @@ export const membershipMessages = {
   // El múltiplo es lo que se publica en vez de la cifra del pool: las cifras
   // son provisionales y un número en una tabla de precios convierte cada
   // ajuste de capacidad en un recorte o un regalo visible (research D9).
-  "membership.multiple": { es: "{n}× el de Pro", en: "{n}× that of Pro" },
+  "membership.multiple": { es: "×{n} el de Pro", en: "×{n} that of Pro" },
   "membership.multiple.base": { es: "Consumo base", en: "Base consumption" },
   "membership.usage": { es: "Estás usando {teammates} de {maxTeammates} agentes y {members} de {maxMembers} personas.", en: "You are using {teammates} of {maxTeammates} agents and {members} of {maxMembers} people." },
   "membership.renews": { es: "Se renueva el {date}.", en: "Renews on {date}." },

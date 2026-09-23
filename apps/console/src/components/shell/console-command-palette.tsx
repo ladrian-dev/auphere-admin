@@ -81,8 +81,8 @@ export function ConsoleCommandPalette({ role }: { role: Role }) {
 
   return (
     <>
-      <Button type="button" variant="outline" size="sm" className="hidden gap-2 text-muted-foreground sm:inline-flex" onClick={() => setOpen(true)} aria-keyshortcuts="Meta+K Control+K">
-        <span>{t("cmdk.open")}</span>
+      <Button type="button" variant="outline" size="sm" className="hidden w-64 justify-between gap-2 text-muted-foreground sm:inline-flex" onClick={() => setOpen(true)} aria-keyshortcuts="Meta+K Control+K">
+        <span className="min-w-0 truncate">{t("cmdk.open")}</span>
         <ShortcutKbd keyName="K" aria-hidden="true" />
       </Button>
       <Button type="button" variant="ghost" size="icon-sm" className="sm:hidden" onClick={() => setOpen(true)} aria-label={t("cmdk.title")}>

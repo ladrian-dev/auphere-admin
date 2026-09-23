@@ -1,4 +1,4 @@
-import { Separator, SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
 
 import { CompanionLauncher } from "@/components/companion/companion-launcher";
 import { AppSidebar } from "@/components/shell/app-sidebar";
@@ -31,12 +31,11 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
       />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          {/* The toggle on the left of the bar (owner, 2026-09-24); the partner
+              name lives in the user menu. The rest is global: search (⌘K) and
+              the notifications bell (CP-07 / CP-29). */}
           <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <div className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={principal.partnerName}>
-            {principal.partnerName}
-          </div>
-          {/* lane onboarding: ⌘K + notifications bell (CP-07 / CP-29) */}
+          <div className="flex-1" />
           <ConsoleCommandPalette role={principal.role} />
           <NotificationsBell initialUnread={null} />
         </header>

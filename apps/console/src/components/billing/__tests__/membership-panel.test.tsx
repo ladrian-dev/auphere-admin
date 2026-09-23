@@ -97,13 +97,13 @@ describe("la cifra del pool no sale a pantalla (D9)", () => {
 
   it("lo que se ve de cada nivel son sus topes y su múltiplo", () => {
     panel();
-    expect(screen.getAllByText(/4×|4x/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/12×|12x/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/×4|x4/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/×12|x12/).length).toBeGreaterThan(0);
   });
 
   it("el nivel gratuito no enseña un múltiplo absurdo", () => {
     const { container } = panel();
-    expect(container.textContent).not.toContain("0,2×");
+    expect(container.textContent).not.toContain("×0,2");
     expect(container.textContent).not.toContain("0.2x");
   });
 });
