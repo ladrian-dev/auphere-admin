@@ -22,7 +22,8 @@ columnas que ya existen:
 
 Una migración de **datos**: `0129_console_audit_vocab_017`, que añade al
 vocabulario las acciones nuevas (`console.capability.update`,
-`console.agent.publish_from_bar`, `console.billing.email_update`) con sus
+`console.billing.email_update`; publicar desde la barra reutiliza
+`console.agent.publish` con `after_json.from`) con sus
 plantillas ES/EN y su categoría, y etiqueta ES/EN de cada categoría existente.
 
 ## Entidades expuestas por la API (nuevas o ampliadas)

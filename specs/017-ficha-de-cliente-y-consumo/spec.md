@@ -294,7 +294,7 @@ y leer la causa.
 - ¿Qué ve un `billing` que abre la URL de una ficha? No puede leer clientes: la respuesta es la de hoy (redirección a la portada), sin una ficha vacía.
 - ¿Qué pasa en la lista cuando un cliente tiene más de 999 conversaciones en 7 días? Se muestra la cifra completa con separador de miles, sin recortar.
 - ¿Qué pasa con las pestañas cuando un rol solo puede leer un grupo entero? El grupo se muestra igual, con las pestañas en solo lectura; un grupo sin ninguna pestaña legible no se pinta.
-- ¿Qué ve el usuario cuando una capacidad **no está disponible** para su plan o su sector? No hay tarjeta apagada: la capacidad no aparece en la vista por defecto y, en «Ver todas», aparece con su motivo en una línea y sin conmutador (constitución §V: la ausencia se diseña).
+- ¿Qué ve el usuario cuando una capacidad **no está disponible**? Hoy solo hay dos motivos: no es de su sector (no aparece por defecto; en «Ver todas» aparece marcada y sigue siendo activable) o necesita una integración no conectada (aparece con «Necesita {integración} · Conectar» y sin conmutador). No hay tarjeta apagada (constitución §V: la ausencia se diseña). Capacidades por plan no existen; si algún día existen, son otra spec.
 - ¿Qué pasa a 360 px? Los tres grupos de la ficha se convierten en un selector; la barra de borrador se queda pegada abajo; Reparto por cliente apila la barra bajo el nombre; nada desborda.
 
 ## Requisitos *(obligatorio)*
@@ -464,7 +464,7 @@ y leer la causa.
 
 - **CE-001**: el partner ve cuánto cupo le queda a un cliente con **0 clics** desde cualquier pestaña de su ficha (hoy 3).
 - **CE-002**: publicar un cambio de ajustes cuesta **2 clics** desde la pantalla donde se hizo (hoy 5).
-- **CE-003**: crear un cliente con agente publicado cuesta **4 clics + 1 campo + los campos obligatorios de la plantilla (2 en la de referencia)**; ningún campo de plantilla aparece antes de elegirla.
+- **CE-003**: crear un cliente con agente publicado cuesta **4 clics + 1 campo + los campos obligatorios de la plantilla (2 en la de panadería, la de `panaderia-la-espiga` del quickstart)**; ningún campo de plantilla aparece antes de elegirla.
 - **CE-004**: un cliente de panadería ve por defecto **solo** capacidades de su sector y comunes (ninguna etiqueta de otro sector) y ningún nombre interno como título; con «Ver todas» ve el catálogo completo.
 - **CE-005**: la tabla de paridad de cada pantalla tiene el **100 %** de sus filas en «se conserva» o «se mueve a …», o «se retira» con decisión escrita del owner; el recorrido E2E completo sigue en verde tras cada iteración.
 - **CE-006**: la suite de accesibilidad automática da **0 violaciones** y **0 desbordamientos** a 360 y 1 920 px, en español e inglés, en todas las vistas tocadas.
