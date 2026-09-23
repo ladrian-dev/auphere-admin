@@ -2,3 +2,21 @@
 @import "tw-animate-css";
 @import "../src/styles/tokens.css";
 @source "../src";
+
+@font-face {
+  font-family: "Helvena";
+  src: url("./fonts/Helvena-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Storybook's preview stylesheet puts Nunito Sans on the body with more
+   specificity than the tokens' base layer; the stories must show the
+   product's family. */
+body,
+.sb-wrapper,
+#storybook-root,
+#storybook-docs {
+  font-family: var(--font-sans) !important;
+}

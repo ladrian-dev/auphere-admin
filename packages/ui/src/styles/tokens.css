@@ -146,12 +146,16 @@
   --color-scrim: oklch(0.161 0.033 115.3 / 0.16);
 
   /* ── Typography ───────────────────────────────────────────────────── */
-  /* The app sets --font-inter-tight / --font-jetbrains-mono via next/font;
-     Storybook and tests fall back to the stack. */
+  /* Helvena is the brand family (brand-system §2). The console sets
+     --font-helvena via next/font/local; Storybook declares the @font-face;
+     the desktop app still sets --font-inter-tight, which stays in the chain
+     until it ships Helvena too. Tests fall back to the stack. */
   --font-sans:
-    var(--font-inter-tight, "Inter Tight"), "Helvena", ui-sans-serif, system-ui, sans-serif;
+    var(--font-helvena, "Helvena"), var(--font-inter-tight, "Inter Tight"), ui-sans-serif,
+    system-ui, sans-serif;
   --font-display:
-    var(--font-inter-tight, "Inter Tight"), "Helvena", ui-sans-serif, system-ui, sans-serif;
+    var(--font-helvena, "Helvena"), var(--font-inter-tight, "Inter Tight"), ui-sans-serif,
+    system-ui, sans-serif;
   --font-mono:
     var(--font-jetbrains-mono, "JetBrains Mono"), "SF Mono", ui-monospace, Menlo, monospace;
 
