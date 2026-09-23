@@ -28,6 +28,9 @@ export type Turn = {
   latencyMs: number | null;
   status: TurnStatus;
   error: string | null;
+  /** Why the turn failed, as a stable code from the API (``llm_failed``,
+   * ``empty_response``); the human sentence lives in i18n. */
+  failureReason: string | null;
   lastSeq: number;
   gap: boolean;
 };
@@ -58,6 +61,7 @@ export function newTurn(runId: string, prompt: string): Turn {
     latencyMs: null,
     status: "pending",
     error: null,
+    failureReason: null,
     lastSeq: 0,
     gap: false,
   };
@@ -187,6 +191,7 @@ function applyEvent(state: TranscriptState, runId: string, ev: SseEvent, now: nu
           ...t,
           status: final,
           error: str(d.error),
+          failureReason: str(d.reason),
           endedAt,
           latencyMs: t.startedAt !== null ? Math.max(0, endedAt - t.startedAt) : null,
         };

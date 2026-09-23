@@ -656,7 +656,9 @@ async def stream_run(
     stream starts. Events: ``run.started``, ``text.delta``,
     ``reasoning.delta``, ``cost.updated``, ``tool.call.started``,
     ``tool.call.completed``, ``audit.blocked``, ``ucm.final``,
-    ``budget.updated``, ``run.completed``, ``resume.gap``, ``ping``.
+    ``turn.failed`` (the handler fell back to the emergency text; the run
+    then closes as ``error`` with a ``reason``), ``budget.updated``,
+    ``run.completed``, ``resume.gap``, ``ping``.
     """
     operator_token = _current_operator.set(pg.operator_id)
     try:

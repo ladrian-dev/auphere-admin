@@ -66,6 +66,14 @@ class AgentState(TypedDict, total=False):
     # ``respond`` node is gone.
     response: str
     response_model: str
+    # Set by the handler when ``response`` is the neutral fallback text
+    # rather than something the model said: the router exhausted every
+    # model (``kind="llm_failed"``, ``detail`` = provider error) or the
+    # model answered nothing (``kind="empty_response"``). The customer
+    # still gets the fallback — that is deliberate — but whoever is
+    # watching the turn (the Playground, a trace) must see a failed turn,
+    # not "completed · 0 tokens". ``None`` on a healthy turn.
+    turn_failure: dict[str, Any] | None
 
     # Phase 2 (ADR-020): filled by ``ucm_formatter`` when
     # ``settings.use_ucm_formatter`` is True. ``ucm`` is the UCM v1.0.0

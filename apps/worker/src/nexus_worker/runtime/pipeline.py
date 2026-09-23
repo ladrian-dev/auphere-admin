@@ -1078,6 +1078,8 @@ def make_handler_node(
                     respond_fallbacks = ()
 
             _turn_started = time.perf_counter()
+            # Why the fallback text was used, if it was. See ``AgentState.turn_failure``.
+            turn_failure: dict[str, Any] | None = None
             for iteration in range(MAX_TOOL_ITERATIONS):
                 # The last iteration is tool-free: the model MUST answer.
                 last = iteration == MAX_TOOL_ITERATIONS - 1
@@ -1130,6 +1132,7 @@ def make_handler_node(
                         error=str(exc),
                     )
                     final_text = _EMPTY_RESPONSE_FALLBACK
+                    turn_failure = {"kind": "llm_failed", "detail": str(exc)}
                     break
 
                 cleaned_text = _clean_model_text(response.text)
@@ -1225,6 +1228,7 @@ def make_handler_node(
                     iterations=iteration + 1,
                 )
                 final_text = _EMPTY_RESPONSE_FALLBACK
+                turn_failure = turn_failure or {"kind": "empty_response", "detail": None}
 
             # Per-turn latency summary. ``iterations`` x per-call latency (see
             # ``llm.call_complete``) is the whole story of a slow turn: a turn
@@ -1245,6 +1249,7 @@ def make_handler_node(
                 "tool_calls": envelopes,
                 "response": final_text,
                 "response_model": llm.respond_model,
+                "turn_failure": turn_failure,
                 # Empty dict (not ``None``) for state-merge stability:
                 # LangGraph keeps the field present on every turn and
                 # downstream nodes ``if state.get("interactive_payload")``

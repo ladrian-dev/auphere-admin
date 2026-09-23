@@ -57,6 +57,8 @@ export const playgroundMessages = {
   "playground.transcript.live": { es: "Transcripción en directo", en: "Live transcript" },
   "playground.run.cancelled": { es: "Turno detenido", en: "Turn stopped" },
   "playground.run.error": { es: "El turno falló", en: "The turn failed" },
+  "playground.run.reason.llm_failed": { es: "El modelo no respondió. Lo que ves es el texto de emergencia que recibiría un cliente. Revisa el modelo del cliente o inténtalo de nuevo.", en: "The model did not answer. What you see is the emergency text a customer would get. Check the client's model or try again." },
+  "playground.run.reason.empty_response": { es: "El modelo devolvió una respuesta vacía; se envió el texto de emergencia. Inténtalo de nuevo.", en: "The model returned an empty answer; the emergency text was sent. Try again." },
   "playground.run.gap": {
     es: "Se perdió parte del stream al reconectar. Envía otro mensaje para continuar.",
     en: "Part of the stream was lost while reconnecting. Send another message to continue.",

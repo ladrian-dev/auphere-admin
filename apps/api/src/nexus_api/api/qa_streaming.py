@@ -125,6 +125,10 @@ def _json_default(value: object) -> object:
 class _TranslatorState:
     """Mutable state the translator carries between LangGraph events."""
 
+    # ``turn.failed`` goes out once per run even though the handler node and
+    # the graph both end with ``turn_failure`` in their output.
+    turn_failure_emitted: bool = False
+
     # Message id currently being streamed by the chat model. LangGraph
     # uses the same chunk.id across all chunks of one assistant turn.
     current_message_id: str | None = None
@@ -203,14 +207,28 @@ def translate_event(event: dict[str, Any], state: _TranslatorState) -> list[Pend
         return [(f"custom.{name}", dict(payload))]
 
     if ev == "on_chain_end":
+        emitted: list[PendingSSE] = []
+        output = data.get("output") or {}
+        # A handler that fell back to the neutral text records why in
+        # ``turn_failure`` (worker ``AgentState``). The bubble still shows
+        # the fallback — that is what a customer would get — but the run
+        # must close as a failure, not as "completed · 0 tokens".
+        failure = output.get("turn_failure") if isinstance(output, dict) else None
+        if isinstance(failure, dict) and failure.get("kind") and not state.turn_failure_emitted:
+            state.turn_failure_emitted = True
+            emitted.append(
+                (
+                    "turn.failed",
+                    {"reason": str(failure["kind"]), "detail": failure.get("detail")},
+                )
+            )
         # The ``ucm_formatter`` node ends after producing the UCM. We
         # surface that fast so the bubble renders before run.completed.
         name = event.get("name")
         if name == "ucm_formatter":
-            output = data.get("output") or {}
             ucm = output.get("ucm") if isinstance(output, dict) else None
             if ucm:
-                return [
+                emitted.append(
                     (
                         "ucm.final",
                         {
@@ -219,8 +237,8 @@ def translate_event(event: dict[str, Any], state: _TranslatorState) -> list[Pend
                             "intent": output.get("intent") if isinstance(output, dict) else None,
                         },
                     )
-                ]
-        return []
+                )
+        return emitted
 
     # Many other on_* events fire (chain_start, retriever, etc.). We
     # ignore them; the SSE protocol only carries what the Playground UI
@@ -327,6 +345,11 @@ class RunHandle:
     # driver exits (or raises). ``None`` while running.
     final_status: str | None = None
     final_error: str | None = None
+    # Set when a ``turn.failed`` event goes through ``_push_event``: the
+    # driver finished cleanly but the turn itself did not. ``start_run``
+    # then closes the run as ``error`` and carries the reason on
+    # ``run.completed`` so the client can say why, not just that.
+    failure_reason: str | None = None
 
 
 _runs: dict[uuid.UUID, RunHandle] = {}
@@ -344,6 +367,11 @@ def _next_seq(handle: RunHandle) -> int:
 
 def _push_event(handle: RunHandle, ev: SSEEvent) -> None:
     """Append to buffer + broadcast to all live subscribers."""
+    if ev.event == "turn.failed":
+        reason = str(ev.data.get("reason") or "turn_failed")
+        detail = ev.data.get("detail")
+        handle.failure_reason = reason
+        handle.final_error = str(detail) if detail else reason
     if len(handle.buffer) == handle.buffer.maxlen:
         # About to evict — track the new minimum sequence retained.
         handle.min_seq_in_buffer = handle.buffer[0].seq + 1
@@ -461,6 +489,12 @@ async def _run_with_lifecycle(
         status = "error"
         error = str(exc)
         log.exception("qa.streaming.run_failed", run_id=str(run_id))
+    else:
+        if handle.failure_reason:
+            # The driver ran to the end, but the turn fell back to the
+            # neutral text (``turn.failed``). That is a failed run.
+            status = "error"
+            error = handle.final_error or handle.failure_reason
     finally:
         handle.final_status = status
         handle.final_error = error
@@ -480,6 +514,7 @@ async def _run_with_lifecycle(
                 "ended_at": time.time(),
                 "status": status,
                 **({"error": error} if error else {}),
+                **({"reason": handle.failure_reason} if handle.failure_reason else {}),
             },
         )
         handle.buffer.append(completed)

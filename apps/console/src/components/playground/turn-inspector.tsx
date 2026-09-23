@@ -8,6 +8,15 @@ import { useLocale, useT } from "@/i18n/client";
 
 import type { ToolCall, Turn } from "./transcript";
 
+// Failure codes the API can put on ``run.completed.reason``, each with its
+// sentence; anything else falls back to the (already humanised) ``error``.
+const REASON_KEY = {
+  llm_failed: "playground.run.reason.llm_failed",
+  empty_response: "playground.run.reason.empty_response",
+} as const;
+type KnownReason = keyof typeof REASON_KEY;
+const isKnownReason = (r: string): r is KnownReason => r in REASON_KEY;
+
 /** Per-turn side panel: tools invoked (with dry-run blocks), tokens in/out
  * (units, never USD), client-measured latency, run status. */
 export function TurnInspector({ turn }: { turn: Turn | null }) {
@@ -48,9 +57,10 @@ export function TurnInspector({ turn }: { turn: Turn | null }) {
           </ul>
         )}
       </div>
-      {turn.error ? (
-        <p className="text-sm text-status-danger" role="alert">
-          {t("playground.run.error")}: <span className="font-mono text-xs">{turn.error}</span>
+      {turn.status === "error" || turn.error ? (
+        <p className="text-sm text-destructive" role="alert">
+          <span className="font-medium">{t("playground.run.error")}.</span>{" "}
+          {turn.failureReason && isKnownReason(turn.failureReason) ? t(REASON_KEY[turn.failureReason]) : turn.error}
         </p>
       ) : null}
     </div>
