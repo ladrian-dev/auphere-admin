@@ -369,11 +369,12 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
                         <div key={trigger} className="flex items-center gap-2">
                           <Checkbox
                             id={id}
+                            aria-labelledby={`${id}-label`}
                             checked={on}
                             disabled={!canWrite || !escalationEnabled}
                             onCheckedChange={(c) => field.onChange(toggle(field.value, trigger, c))}
                           />
-                          <Label htmlFor={id} className="font-normal">
+                          <Label id={`${id}-label`} htmlFor={id} className="font-normal">
                             {t(`agentSettings.escalation.trigger.${trigger}`)}
                           </Label>
                         </div>

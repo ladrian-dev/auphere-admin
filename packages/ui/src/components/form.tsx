@@ -62,6 +62,10 @@ function useFormField() {
     id,
     name: fieldContext.name,
     formItemId: `${id}-form-item`,
+    // The label carries this id so a control that is not a native input
+    // (Base UI's checkbox is a <span role="checkbox">) has an accessible
+    // name in the server-rendered HTML, not only after hydration.
+    formLabelId: `${id}-form-item-label`,
     formDescriptionId: `${id}-form-item-description`,
     formMessageId: `${id}-form-item-message`,
     ...fieldState,
@@ -85,12 +89,13 @@ function FormLabel({
   className,
   ...props
 }: React.ComponentProps<typeof Label>) {
-  const { error, formItemId } = useFormField();
+  const { error, formItemId, formLabelId } = useFormField();
   return (
     <Label
       data-slot="form-label"
       data-error={!!error}
       className={cn("data-[error=true]:text-destructive", className)}
+      id={formLabelId}
       htmlFor={formItemId}
       {...props}
     />
@@ -102,10 +107,11 @@ type FormControlProps = React.HTMLAttributes<HTMLElement> & {
 };
 
 function FormControl({ children, ...props }: FormControlProps) {
-  const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
+  const { error, formItemId, formLabelId, formDescriptionId, formMessageId } = useFormField();
   const controlProps = {
     "data-slot": "form-control",
     id: formItemId,
+    "aria-labelledby": formLabelId,
     "aria-describedby": !error ? `${formDescriptionId}` : `${formDescriptionId} ${formMessageId}`,
     "aria-invalid": !!error,
   };

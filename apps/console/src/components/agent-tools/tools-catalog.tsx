@@ -168,9 +168,12 @@ function ToolRow({ refId, tool, checked, onToggle, canWrite }: { refId: string; 
   return (
     <li className="flex min-w-0 flex-col gap-2 py-3 first:pt-0 last:pb-0 md:flex-row md:items-start md:gap-4" aria-busy={pending}>
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <Checkbox id={id} checked={checked} onCheckedChange={(c) => onToggle(c)} disabled={!canWrite} className="mt-1" />
+        {/* aria-labelledby, not only htmlFor: the checkbox is a <span role="checkbox">,
+            and its name has to exist in the server-rendered HTML (axe
+            aria-toggle-field-name), not only once Base UI hydrates. */}
+        <Checkbox id={id} aria-labelledby={`${id}-label`} checked={checked} onCheckedChange={(c) => onToggle(c)} disabled={!canWrite} className="mt-1" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <Label htmlFor={id} className="min-w-0 truncate font-mono text-sm" title={tool.name}>
+          <Label id={`${id}-label`} htmlFor={id} className="min-w-0 truncate font-mono text-sm" title={tool.name}>
             {tool.name}
           </Label>
           <p className="text-xs text-pretty text-muted-foreground">{tool.description}</p>
