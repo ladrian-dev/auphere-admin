@@ -749,3 +749,47 @@ async def test_api_key_connect_syncs_in_the_same_request_and_says_what_happened(
         {"slug": "woocommerce", "sync_status": "error", "reason": "auth_rejected"},
     ]
     # «Reintentar» is the sync endpoint, unchanged.
+
+
+# ── spec 016 (garantía 2): conectar enciende herramientas SOLO en ese tenant ──
+
+
+async def test_connecting_enables_tools_only_for_that_tenant(
+    client, console_world, db_session, seeded_connectors, fake_composio
+) -> None:
+    a, b = console_world["a"], console_world["b"]
+    await _stage_and_publish(client, a)
+    await _stage_and_publish(client, b)
+    tools_b_before = (await _active(db_session, b["tenant_id"])).tools
+
+    key = await client.post(
+        f"/console/clients/{a['ref']}/connectors/woocommerce/api-key",
+        headers=a["headers"](),
+        json={
+            "secrets": {"consumer_key": "ck", "consumer_secret": "cs"},
+            "endpoint_meta": {"store_url": "https://s"},
+        },
+    )
+    assert key.status_code == 201, key.text
+    url = await client.put(
+        f"/console/clients/{a['ref']}/integrations/agendapro/public-url",
+        headers=a["headers"](),
+        json={"public_url": "https://a.site.agendapro.com/cl/x"},
+    )
+    assert url.status_code == 200, url.text
+
+    # B: same agent tools as before, no WooCommerce install, no AgendaPro page.
+    db_session.expire_all()
+    assert (await _active(db_session, b["tenant_id"])).tools == tools_b_before
+    b_conn = {
+        c["slug"]: c
+        for c in (
+            await client.get(f"/console/clients/{b['ref']}/connectors", headers=b["headers"]())
+        ).json()
+    }
+    assert b_conn["woocommerce"]["installed"] is False
+    assert b_conn["agendapro"]["public_url"] is None and b_conn["agendapro"]["status"] is None
+    b_versions = (
+        await client.get(f"/console/clients/{b['ref']}/agent", headers=b["headers"]())
+    ).json()["versions"]
+    assert all(v["status"] != "staged" for v in b_versions), "no draft was staged on B"

@@ -161,3 +161,75 @@ async def test_the_resolver_only_returns_the_active_tenants_bindings(db_session)
         bindings = await load_bindings(session, b)
     assert set(bindings) == {"respond", "classify"}
     assert bindings["respond"].model_id == "anthropic/claude-haiku-4-5"
+
+
+# ── spec 016 (garantía 1): el modelo de un cliente no cruza partners ──────────
+
+
+async def _binding_of(db_session, tenant_id: uuid.UUID) -> str | None:
+    row = (
+        await db_session.execute(
+            sa.text(
+                "SELECT p.model_id FROM tenant_model_bindings b "
+                "JOIN model_profiles p ON p.id = b.model_profile_id "
+                "WHERE b.tenant_id = :t AND b.role = 'respond'"
+            ),
+            {"t": str(tenant_id)},
+        )
+    ).first()
+    return None if row is None else str(row[0])
+
+
+async def test_console_put_model_never_touches_another_partners_binding(
+    client, console_world, db_session
+) -> None:
+    a, b = console_world["a"], console_world["b"]
+    sol, luna = "openai/gpt-5.6-sol", "openai/gpt-5.6-luna"
+    ok_b = await client.put(
+        "/console/clients/{}/model".format(b["ref"]),
+        headers=b["headers"](),
+        json={"model_id": luna},
+    )
+    assert ok_b.status_code == 200, ok_b.text
+    # A escribe el suyo; con el ref de B es el 404 opaco y B no cambia.
+    ok_a = await client.put(
+        "/console/clients/{}/model".format(a["ref"]), headers=a["headers"](), json={"model_id": sol}
+    )
+    assert ok_a.status_code == 200, ok_a.text
+    foreign = await client.put(
+        "/console/clients/{}/model".format(b["ref"]), headers=a["headers"](), json={"model_id": sol}
+    )
+    assert foreign.status_code == 404
+    assert await _binding_of(db_session, a["tenant_id"]) == sol
+    assert await _binding_of(db_session, b["tenant_id"]) == luna
+
+
+async def test_reconciling_one_partners_allowlist_leaves_the_other_partners_bindings(
+    client, console_world, db_session, admin_headers
+) -> None:
+    from nexus_api.db.models import ConsoleNotification
+
+    a, b = console_world["a"], console_world["b"]
+    sol = "openai/gpt-5.6-sol"
+    for w in (a, b):
+        ok = await client.put(
+            "/console/clients/{}/model".format(w["ref"]),
+            headers=w["headers"](),
+            json={"model_id": sol},
+        )
+        assert ok.status_code == 200, ok.text
+    shrink = await client.put(
+        f"/admin/partners/{a['partner_id']}/models",
+        headers=admin_headers,
+        json={"model_ids": ["openai/gpt-5.6-luna"]},
+    )
+    assert shrink.status_code == 200, shrink.text
+    assert await _binding_of(db_session, a["tenant_id"]) is None
+    assert await _binding_of(db_session, b["tenant_id"]) == sol
+    assert (
+        await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(ConsoleNotification)
+            .where(ConsoleNotification.partner_id == b["partner_id"])
+        )
+    ) == 0

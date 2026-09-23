@@ -83,19 +83,18 @@ describe("el techo de ejecución local", () => {
     expect(button("Nadie ejecuta")).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("quien solo puede leerlo lo ve, deshabilitado y explicado", async () => {
-    const user = userEvent.setup();
+  it("quien solo puede leerlo ve el techo como valor, sin botones, y explicado", () => {
+    // Spec 016 (R8.3): sin permiso el control no existe — ni gris ni apagado.
     paint({ ceiling: "ask" as ExecMode, manage: false });
 
-    expect(button("Nadie ejecuta")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Nadie ejecuta" })).toBeNull();
+    expect(screen.queryByRole("group")).toBeNull();
     expect(screen.getByRole("note")).toHaveTextContent(
       "Solo el propietario y los administradores",
     );
     // Y sigue diciendo cuál es el techo: es lo que explica por qué su app le
     // pregunta siempre.
-    expect(button("Preguntar siempre")).toHaveAttribute("aria-pressed", "true");
-
-    await user.click(button("Nadie ejecuta"));
+    expect(screen.getByText("Preguntar siempre")).toBeInTheDocument();
     expect(setCeiling).not.toHaveBeenCalled();
   });
 
