@@ -81,5 +81,13 @@ Embedded Signup. Ver `infra/README-console.md`.
 pnpm typecheck && pnpm lint && pnpm test && pnpm check:no-admin-token
 pnpm build
 # accesibilidad + responsive sobre la app real (API y consola arriba)
+pnpm exec playwright install chromium        # una vez por máquina
 E2E_EMAIL=... E2E_PASSWORD=... pnpm test:e2e
 ```
+
+Vite 8 / rolldown exigen **Node ≥ 22.12** (`require(esm)`). Con un Node 22.11
+`pnpm test` arranca con `NODE_OPTIONS=--experimental-require-module`; mejor
+subir Node. En macOS no existe `timeout`: no lo uses en scripts locales.
+
+La suite `companion.spec.ts` se **salta** (no falla) si el partner de prueba
+no tiene `companion_enabled`; la `a11y.spec.ts` exige un cliente ya creado.

@@ -6,7 +6,7 @@ import { messages } from "@/i18n/messages";
 import { DIAGNOSTIC_KEYS, WHAT_TO_DO, SUGGESTED_ACTIONS, type Diagnostics } from "@/lib/backend/channels";
 
 import { qualityTone } from "../channel-card";
-import { DiagnosticsTable, renderDetail, rowLabelKey, todoKey } from "../diagnostics-table";
+import { DiagnosticsTable, renderDetail, rowLabelKey, sharedBlocker, todoKey } from "../diagnostics-table";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({ testSendAction: vi.fn() }));
@@ -31,7 +31,7 @@ describe("DiagnosticsTable (CP-19)", () => {
     );
     expect(screen.getByText("Hay fallos que atender")).toBeInTheDocument();
     expect(screen.getByText("Credenciales de Meta (token)")).toBeInTheDocument();
-    expect(screen.getByText("Conecta WhatsApp desde la pestaña Canales.")).toBeInTheDocument();
+    expect(screen.getByText("Falta conectar WhatsApp. Si en tu entorno el botón de Canales no está disponible, escríbenos y lo conectamos contigo.")).toBeInTheDocument();
     expect(screen.getByText("YELLOW")).toBeInTheDocument();
     expect(screen.getAllByText("Abrir en Meta")).toHaveLength(2);
     expect(screen.getByLabelText("Número destino (E.164)")).toBeInTheDocument();
@@ -59,5 +59,25 @@ describe("DiagnosticsTable (CP-19)", () => {
     expect(qualityTone("GREEN")).toBe("positive");
     expect(qualityTone("RED")).toBe("danger");
     expect(qualityTone(null)).toBe("muted");
+  });
+
+  it("folds rows that fail for one reason into a single blocker (A12)", () => {
+    const rows: Diagnostics["rows"] = [
+      { key: "credentials", state: "fail", what_to_do: "connect_whatsapp", detail: null, link: null },
+      { key: "channel", state: "fail", what_to_do: "connect_whatsapp", detail: null, link: null },
+      { key: "webhook", state: "unknown", what_to_do: "connect_whatsapp", detail: null, link: null },
+      { key: "roles", state: "ok", what_to_do: "none", detail: null, link: null },
+      { key: "billing", state: "unknown", what_to_do: "check_meta_billing", detail: null, link: null },
+    ];
+    expect(sharedBlocker(rows)).toEqual({ code: "connect_whatsapp", count: 3 });
+    expect(sharedBlocker(data.rows)).toBeNull();
+    render(
+      <LocaleProvider locale="es">
+        <DiagnosticsTable refId="demo" data={{ ...data, rows }} manage={false} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText("Una sola causa explica 3 comprobaciones")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ir a Canales" })).toHaveAttribute("href", "/clients/demo/channels");
+    expect(screen.getAllByText("Depende de lo de arriba.")).toHaveLength(3);
   });
 });

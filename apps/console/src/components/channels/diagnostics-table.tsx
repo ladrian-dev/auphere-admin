@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Input, Label, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatDateTime } from "@nexus/ui";
+import Link from "next/link";
+
+import { Alert, AlertDescription, AlertTitle, Button, Input, Label, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatDateTime } from "@nexus/ui";
 
 import { testSendAction } from "@/app/(console)/clients/[ref]/channels/actions";
+import { actionErrorText } from "@/lib/action-error";
 import { useLocale, useT } from "@/i18n/client";
 import type { DiagnosticRow, DiagnosticState, Diagnostics } from "@/lib/backend/channels";
 
@@ -40,6 +43,22 @@ export function todoKey(code: string): `diag.todo.${string}` {
   return (TODO_KEYS.has(code) ? `diag.todo.${code}` : "diag.todo.none") as `diag.todo.${string}`;
 }
 
+/**
+ * When several checks fail for the same reason there is one thing to do,
+ * not six. Returns the shared remedy and how many rows it explains, or
+ * null when the rows point in different directions.
+ */
+export function sharedBlocker(rows: DiagnosticRow[]): { code: string; count: number } | null {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    if (r.state === "ok" || r.what_to_do === "none") continue;
+    counts.set(r.what_to_do, (counts.get(r.what_to_do) ?? 0) + 1);
+  }
+  let best: { code: string; count: number } | null = null;
+  for (const [code, count] of counts) if (!best || count > best.count) best = { code, count };
+  return best && best.count >= 2 ? best : null;
+}
+
 export function DiagnosticsTable({ refId, data, manage }: { refId: string; data: Diagnostics; manage: boolean }) {
   const t = useT();
   const locale = useLocale();
@@ -48,11 +67,13 @@ export function DiagnosticsTable({ refId, data, manage }: { refId: string; data:
   const [to, setTo] = React.useState("");
   const [sending, startSend] = React.useTransition();
   const toValid = /^\+?[0-9]{5,20}$/.test(to);
+  const blocker = sharedBlocker(data.rows);
+  const channelsHref = `/clients/${encodeURIComponent(refId)}/channels`;
 
   function send() {
     startSend(async () => {
       const res = await testSendAction({ ref: refId, to });
-      if (!res.ok) return void toast.error(res.message);
+      if (!res.ok) return void toast.error(actionErrorText(res, t));
       toast.success(t("diag.test.sent", { wamid: res.data.wamid }));
     });
   }
@@ -72,6 +93,19 @@ export function DiagnosticsTable({ refId, data, manage }: { refId: string; data:
           {t("diag.refresh")}
         </Button>
       </div>
+      {blocker ? (
+        <Alert>
+          <AlertTitle>{t("diag.blocker.title", { count: blocker.count })}</AlertTitle>
+          <AlertDescription>
+            {t(todoKey(blocker.code) as "diag.todo.none")}{" "}
+            {blocker.code === "connect_whatsapp" || blocker.code === "reconnect_whatsapp" ? (
+              <Link href={channelsHref} className="underline underline-offset-4">
+                {t("diag.blocker.goToChannels")}
+              </Link>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div className="overflow-x-auto rounded-md ring-1 ring-foreground/10">
         <Table>
           <TableHeader>
@@ -93,7 +127,8 @@ export function DiagnosticsTable({ refId, data, manage }: { refId: string; data:
                   {renderDetail(row, locale)}
                 </TableCell>
                 <TableCell className="max-w-96 text-xs text-pretty">
-                  <span>{t(todoKey(row.what_to_do) as "diag.todo.none")}</span>
+                  {/* Rows the shared blocker already explains point up to it. */}
+                  <span>{blocker && row.what_to_do === blocker.code ? t("diag.blocker.sameAsAbove") : t(todoKey(row.what_to_do) as "diag.todo.none")}</span>
                   {row.link ? (
                     <a href={row.link} target="_blank" rel="noopener noreferrer" className="ml-2 inline-flex items-center gap-1 underline">
                       {t("diag.open")}

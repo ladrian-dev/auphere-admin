@@ -23,6 +23,15 @@ import { type Page, expect, test } from "@playwright/test";
  */
 const DRAWER = '[data-slot="sheet-content"]';
 
+// ``partners.companion_enabled`` is off by default. Without the flag the
+// drawer cannot open, and eleven failures would say "broken" about a
+// feature the partner simply does not have: the honest verdict is skip.
+test.beforeEach(async ({ page }) => {
+  const res = await page.request.get("/api/companion/enabled");
+  const body = (await res.json().catch(() => ({}))) as { enabled?: boolean };
+  test.skip(res.ok() && body.enabled === false, "the Companion is not enabled for this partner");
+});
+
 /**
  * Wait for the opening orchestration to finish.
  *
