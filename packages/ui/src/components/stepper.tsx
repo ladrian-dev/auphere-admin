@@ -23,7 +23,7 @@ type StepperProps = {
 function Stepper({ steps, current, ariaLabel, stepOfLabel, variant = "pills", className }: StepperProps) {
   return (
     <nav aria-label={ariaLabel} className={cn("min-w-0", className)} data-slot="stepper">
-      <ol className={cn("flex flex-wrap font-mono text-xs", variant === "pills" ? "gap-2" : "gap-4")}>
+      <ol className={cn("flex flex-wrap text-sm", variant === "pills" ? "gap-2" : "gap-x-6 gap-y-2")}>
         {steps.map((s, i) => {
           const state = i < current ? "done" : i === current ? "current" : "todo";
           return (
@@ -37,17 +37,31 @@ function Stepper({ steps, current, ariaLabel, stepOfLabel, variant = "pills", cl
                 variant === "pills" && state === "current" && "border-foreground text-foreground",
                 variant === "pills" && state === "done" && "border-status-positive-border bg-status-positive-bg text-foreground",
                 variant === "pills" && state === "todo" && "border-border text-muted-foreground",
-                variant === "line" && "border-b-2 pb-1",
-                variant === "line" && state === "current" && "border-foreground text-foreground",
-                variant === "line" && state === "done" && "border-primary text-foreground",
-                variant === "line" && state === "todo" && "border-border text-muted-foreground",
+                variant === "line" && state === "current" && "font-medium text-foreground",
+                variant === "line" && state === "done" && "text-foreground",
+                variant === "line" && state === "todo" && "text-muted-foreground",
               )}
             >
-              <span className="tabular-nums" aria-hidden="true">
-                {i + 1}
-              </span>
+              {variant === "line" ? (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "grid size-6 shrink-0 place-items-center rounded-full border text-xs tabular-nums",
+                    state === "done" && "border-primary bg-primary text-primary-foreground",
+                    state === "current" && "border-foreground text-foreground",
+                    state === "todo" && "border-border text-muted-foreground",
+                  )}
+                >
+                  {state === "done" ? <Check className="size-3" /> : i + 1}
+                </span>
+              ) : (
+                <span className="tabular-nums" aria-hidden="true">
+                  {i + 1}
+                </span>
+              )}
               <span>{s.label}</span>
-              {state === "done" ? <Check className="size-3" aria-hidden="true" /> : null}
+              {variant === "pills" && state === "done" ? <Check className="size-3" aria-hidden="true" /> : null}
+              {variant === "line" && i < steps.length - 1 ? <span aria-hidden="true" className="ml-2 hidden h-px w-6 bg-border sm:block" /> : null}
             </li>
           );
         })}

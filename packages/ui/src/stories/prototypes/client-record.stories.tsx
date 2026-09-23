@@ -16,7 +16,7 @@ import { NativeSelect } from "../../components/native-select";
 import { Section } from "../../components/section";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/sheet";
 import { StatusBadge } from "../../components/status-badge";
-import { StatusDot } from "../../components/status-dot";
+import { Stepper } from "../../components/stepper";
 
 /**
  * Prototipo · iteración 1 (spec 017, R1–R3): la cabecera de la ficha, la
@@ -44,33 +44,59 @@ const NEXT_ACTION: Record<StepKey, string> = {
   activation: "Activar",
 };
 
-function SetupSteps({ setup, canAct }: { setup: Setup; canAct: boolean }) {
-  const done: Record<StepKey, boolean> = { agent: setup.agent, channel: setup.channel, quota: setup.quota, activation: setup.active };
+const STEP_ORDER: StepKey[] = ["agent", "channel", "quota", "activation"];
+
+/** «Puesta en marcha» como stepper: los hechos con check, el actual marcado,
+ *  y debajo una sola frase con el siguiente paso y su botón. */
+function SetupBlock({ setup, canAct }: { setup: Setup; canAct: boolean }) {
+  const current = setup.next ? STEP_ORDER.indexOf(setup.next) : STEP_ORDER.length;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <ol aria-label="Puesta en marcha" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        {(Object.keys(STEP_LABEL) as StepKey[]).map((k) => (
-          <li key={k} className="inline-flex items-center gap-2" aria-current={setup.next === k ? "step" : undefined}>
-            <StatusDot tone={done[k] ? "positive" : k === setup.next ? "warning" : "muted"} label={done[k] ? "hecho" : "pendiente"} />
-            <span className={done[k] ? "text-muted-foreground" : "font-medium"}>{STEP_LABEL[k]}</span>
-          </li>
-        ))}
-      </ol>
-      {setup.next && canAct ? <Button size="sm">{NEXT_ACTION[setup.next]}</Button> : null}
-      {setup.next === null ? <span className="text-sm text-status-positive-text">Atendiendo desde el 23 sept 2026</span> : null}
-    </div>
+    <Section title="Puesta en marcha" description={setup.next ? "Lo que falta para que el agente atienda." : undefined} className="min-w-0">
+      <Stepper
+        variant="line"
+        ariaLabel="Puesta en marcha"
+        current={current}
+        steps={STEP_ORDER.map((k) => ({ key: k, label: STEP_LABEL[k] }))}
+        stepOfLabel={(n, t) => `Paso ${n} de ${t}`}
+      />
+      {setup.next ? (
+        <div className="flex flex-wrap items-center justify-between gap-(--space-stack) pt-2">
+          <p className="text-sm text-muted-foreground">Siguiente paso</p>
+          {canAct ? <Button size="sm">{NEXT_ACTION[setup.next]}</Button> : <p className="text-sm font-medium">{NEXT_ACTION[setup.next]}</p>}
+        </div>
+      ) : (
+        <p className="pt-2 text-sm text-status-positive-text">Atendiendo desde el 23 sept 2026.</p>
+      )}
+    </Section>
+  );
+}
+
+function QuotaBlock({ quota, canAct }: { quota: { cap: number; remaining: number } | null; canAct: boolean }) {
+  return (
+    <Section title="Cupo" className="min-w-0">
+      {quota ? (
+        <Meter label="Cupo" labelHidden value={quota.cap - quota.remaining} max={quota.cap} valueLabel={`${quota.remaining.toLocaleString("es")} de ${quota.cap.toLocaleString("es")} créditos`} hint="Se renueva el 1 de octubre." />
+      ) : (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground">Sin cupo asignado.</p>
+          {canAct ? (
+            <div>
+              <Button size="sm" variant="outline">
+                Asignar cupo
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </Section>
   );
 }
 
 function Header({
-  setup,
-  quota,
   status,
   phone,
   role,
 }: {
-  setup: Setup;
-  quota: { cap: number; remaining: number } | null;
   status: "active" | "paused" | "archived";
   phone?: string;
   role: "owner" | "analyst";
@@ -79,7 +105,7 @@ function Header({
   const tone = status === "active" ? "positive" : status === "paused" ? "warning" : "muted";
   const label = status === "active" ? "Activo" : status === "paused" ? "En pausa" : "Archivado";
   return (
-    <header className="flex flex-col gap-(--space-stack) border-b border-border pb-4">
+    <header className="flex flex-col gap-(--space-stack)">
       <nav aria-label="Migas" className="text-xs text-muted-foreground">
         Clientes <span aria-hidden="true">/</span> <span className="text-foreground">Panadería La Espiga</span>
       </nav>
@@ -109,14 +135,6 @@ function Header({
           </DropdownMenu>
         ) : null}
       </div>
-      <div className="grid gap-(--space-stack) md:grid-cols-[1fr_minmax(16rem,20rem)] md:items-center">
-        <SetupSteps setup={setup} canAct={canWrite} />
-        {quota ? (
-          <Meter label="Cupo" value={quota.cap - quota.remaining} max={quota.cap} valueLabel={`${quota.remaining.toLocaleString("es")} de ${quota.cap.toLocaleString("es")} créditos`} />
-        ) : (
-          <p className="text-sm text-muted-foreground">Sin cupo asignado{canWrite ? " · Asignar cupo" : ""}</p>
-        )}
-      </div>
     </header>
   );
 }
@@ -143,7 +161,7 @@ function Nav({ current, compact, hide = [] }: { current: string; compact?: boole
     );
   }
   return (
-    <nav aria-label="Sección de la ficha" className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border">
+    <nav aria-label="Sección de la ficha" className="flex flex-wrap gap-x-8 gap-y-2 border-b border-border">
       {groups.map((g) => (
         <div key={g.label} className="flex items-baseline gap-3">
           <span className="text-xs font-medium text-muted-foreground">{g.label}</span>
@@ -224,14 +242,21 @@ function Page({
   draft?: string[];
   compact?: boolean;
 }) {
+  const canWrite = role === "owner";
   return (
-    <div className={compact ? "mx-auto flex w-96 flex-col gap-(--space-block) p-4" : "mx-auto flex max-w-(--width-content) flex-col gap-(--space-block) p-6"}>
-      <Header setup={setup} quota={quota} status={status} phone={phone} role={role} />
-      <Nav current="Resumen" compact={compact} hide={role === "analyst" ? ["Playground"] : []} />
-      {draft.length ? <DraftBar screens={draft} canPublish={role === "owner"} /> : null}
-      <Section title="Resumen" description="Lo esencial de este cliente.">
-        <p className="text-sm text-muted-foreground">(contenido de la pestaña)</p>
-      </Section>
+    <div className={compact ? "mx-auto flex w-96 flex-col gap-(--space-section) p-4" : "mx-auto flex max-w-(--width-content) flex-col gap-(--space-section) p-8"}>
+      <Header status={status} phone={phone} role={role} />
+      <div className={compact ? "flex flex-col gap-(--space-block)" : "grid gap-(--space-block) lg:grid-cols-[2fr_1fr]"}>
+        <SetupBlock setup={setup} canAct={canWrite} />
+        <QuotaBlock quota={quota} canAct={canWrite} />
+      </div>
+      <div className="flex flex-col gap-(--space-block)">
+        <Nav current="Resumen" compact={compact} hide={role === "analyst" ? ["Playground"] : []} />
+        {draft.length ? <DraftBar screens={draft} canPublish={canWrite} /> : null}
+        <Section title="Resumen" description="Lo esencial de este cliente.">
+          <p className="text-sm text-muted-foreground">(contenido de la pestaña)</p>
+        </Section>
+      </div>
     </div>
   );
 }
