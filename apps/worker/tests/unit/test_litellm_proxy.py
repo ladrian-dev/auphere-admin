@@ -269,6 +269,14 @@ class TestWalletVsProxySkip:
             "nexus_api.metering.wallet.allow_channel_turn",
             AsyncMock(return_value=False),
         )
+        # Spec 016 (R2.2): el turno saltado también avisa al partner. Aquí el
+        # aviso es un doble: abrir el libro de verdad ataría el motor de la BD
+        # al bucle de este test y rompería el siguiente («attached to a
+        # different loop»). Lo que se prueba es el motivo del salto.
+        monkeypatch.setattr(
+            "nexus_api.services.wallet_alerts.notify_client_out_of_quota_detached",
+            AsyncMock(return_value=None),
+        )
         monkeypatch.setattr(
             "nexus_api.core.llm_proxy.partner_id_for_tenant_standalone",
             AsyncMock(return_value=PARTNER_A),

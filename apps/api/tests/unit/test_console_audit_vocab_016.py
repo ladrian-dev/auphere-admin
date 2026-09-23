@@ -36,13 +36,9 @@ ACTIONS = (
 SECRETS = ("ck_secret_016", "cs_secret_016", "META-CODE-016", "EAA-bisuat")
 
 
+@pytest.mark.usefixtures("seeded_connectors", "fake_composio")
 async def test_the_five_actions_leave_a_trail_without_secrets(
-    client,
-    console_world,
-    db_session,
-    seeded_connectors,
-    fake_composio,
-    monkeypatch,  # noqa: F811
+    client, console_world, db_session, monkeypatch
 ) -> None:
     from tests.integration.test_console_wallet import _add_unallocated_client
 

@@ -21,9 +21,11 @@ class ConsoleModelOut(BaseModel):
     model_id: str
     display_name: str
     #: Spec 016 (R5.1): peso de salida normalizado al menor de la lista —
-    #: «×N créditos». Entero; el más económico es 1.
+    #: «xN créditos». Entero; el más económico es 1.
     relative_cost: int = 1
-    weights: ModelWeightsOut = Field(default_factory=lambda: ModelWeightsOut(input=1, cache_read=1, output=1))
+    weights: ModelWeightsOut = Field(
+        default_factory=lambda: ModelWeightsOut(input=1, cache_read=1, output=1)
+    )
 
 
 class ClientModelOut(BaseModel):
