@@ -1,4 +1,4 @@
-import { Separator, SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
+import { SidebarInset, SidebarProvider } from "@nexus/ui";
 
 import { CompanionLauncher } from "@/components/companion/companion-launcher";
 import { AppSidebar } from "@/components/shell/app-sidebar";
@@ -30,13 +30,10 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
         user={{ name: principal.name, email: principal.email }}
       />
       <SidebarInset>
-        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <div className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={principal.partnerName}>
-            {principal.partnerName}
-          </div>
-          {/* lane onboarding: ⌘K + notifications bell (CP-07 / CP-29) */}
+        <header className="sticky top-0 z-30 flex h-12 items-center justify-end gap-2 border-b border-border bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          {/* The sidebar toggle lives in the sidebar and the partner name in
+              the user menu (owner, 2026-09-23): the bar keeps only what is
+              global — search (⌘K) and the notifications bell (CP-07 / CP-29). */}
           <ConsoleCommandPalette role={principal.role} />
           <NotificationsBell initialUnread={null} />
         </header>

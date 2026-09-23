@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { BarChart3, Bell, BookOpen, Building2, KeyRound, Laptop, LayoutDashboard, Receipt, ScrollText, Users } from "lucide-react";
+import { BarChart3, BookOpen, Building2, KeyRound, Laptop, LayoutDashboard, Receipt, ScrollText, Users } from "lucide-react";
 
 import type { MessageKey } from "@/i18n/messages";
 import { can, type Permission, type Role } from "@/lib/permissions";
@@ -18,7 +18,7 @@ export const NAV: NavGroup[] = [
       { href: "/workstation", labelKey: "nav.workstation", icon: Laptop, permission: "workstation:read" },
       { href: "/usage", labelKey: "nav.usage", icon: BarChart3, permission: "usage:read" },
       { href: "/audit", labelKey: "nav.audit", icon: ScrollText, permission: "audit:read" },
-      { href: "/notifications", labelKey: "nav.notifications", icon: Bell, permission: "partner:read" },
+      // Notifications are reached from the bell in the top bar (owner, 2026-09-23): one place, not two.
     ],
   },
   {

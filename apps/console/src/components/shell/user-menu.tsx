@@ -19,9 +19,9 @@ import { roleKey } from "@/i18n/messages";
 import { signOutAction } from "@/lib/auth-actions";
 import type { Role } from "@/lib/principal";
 
-type Props = { user: { name: string; email: string }; role: Role; partnerSlug: string; collapsed: boolean };
+type Props = { user: { name: string; email: string }; role: Role; partnerName: string; partnerSlug: string; collapsed: boolean };
 
-export function UserMenu({ user, role, collapsed }: Props) {
+export function UserMenu({ user, role, partnerName, collapsed }: Props) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
@@ -61,6 +61,9 @@ export function UserMenu({ user, role, collapsed }: Props) {
           <DropdownMenuLabel className="truncate font-normal">
             <span className="block truncate text-sm font-medium">{user.name}</span>
             <span className="block truncate font-mono text-xs text-muted-foreground">{user.email}</span>
+            <span className="mt-1 block truncate text-xs text-muted-foreground" title={partnerName}>
+              {t("shell.partner")}: {partnerName}
+            </span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>{t("shell.theme")}</DropdownMenuLabel>
