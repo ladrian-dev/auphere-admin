@@ -1,6 +1,6 @@
 # Especificación: la consola cierra el círculo
 
-**Rama**: `016-la-consola-cierra-el-circulo` · **Creada**: 2026-09-23 · **Estado**: Borrador
+**Rama**: `016-la-consola-cierra-el-circulo` · **Creada**: 2026-09-23 · **Estado**: Clarificada — cero marcas abiertas, lista para `/speckit-plan`
 
 **Entrada**: auditoría de la consola de partners (Fase 1, KB
 `nexus/INFORME-AUDITORIA-CONSOLA-2026-09-22.md`, tabla E2E filas a, b, c, d1,
@@ -55,6 +55,14 @@ dejaron de mentir sobre cupo, Playground y activación).
 > este conector, nunca en el prompt (constitución, restricción «ninguna credencial
 > de cliente final entra en el ambiente de un agente»: entran en el conector, no
 > en el agente).
+
+---
+
+## Clarificaciones
+
+### Sesión 2026-09-23
+
+- Barrido completo sin preguntas: las tres dudas de alcance las cerró el owner el 2026-09-23 (alerta al partner sin cambiar el mensaje al cliente final; AgendaPro con las credenciales del cliente desde la consola; unidad «créditos»). Dos dudas menores quedan como supuestos, no como marcas: el rol que conecta AgendaPro es el mismo que conecta los demás conectores (escritura sobre el agente), y «sin cupo» se recalcula a partir del mismo libro que cierra la puerta del canal, no de una copia.
 
 ---
 
@@ -327,3 +335,5 @@ hace falta pulsar «Sincronizar».
 - «Coste relativo en créditos» se expresa con los pesos por carril de la spec 007 (por ejemplo «×1», «×4»), no en dólares.
 - La comprobación de credenciales de AgendaPro reutiliza la que ya hace el panel de operador (arranque del navegador aislado); si esa comprobación tarda, la consola lo muestra como «comprobando» y no bloquea la navegación.
 - El aviso «sin cupo» reutiliza el canal de avisos existente (consola + correo con deduplicación), añadiendo un tipo nuevo por cliente.
+- Conectar AgendaPro exige el mismo permiso que conectar cualquier otro conector (escritura sobre el agente); no se crea un permiso nuevo.
+- El estado «sin cupo» se deriva del mismo libro de cupo que decide si un turno se atiende; no existe una copia que pueda discrepar.
