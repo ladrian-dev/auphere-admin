@@ -1,6 +1,6 @@
 # Especificación: la ficha de cliente y el consumo, por flujo
 
-**Rama**: `017-ficha-de-cliente-y-consumo` · **Creada**: 2026-09-23 · **Estado**: Borrador
+**Rama**: `017-ficha-de-cliente-y-consumo` · **Creada**: 2026-09-23 · **Estado**: Clarificada — tres preguntas cerradas, cero marcas, lista para `/speckit-plan`
 
 **Entrada**: Bloque D del plan aprobado por el owner (KB
 `nexus/PLAN-ACCION-CONSOLA-2026-09-22.md`, tabla «Bloque D» y decisiones 3, 4 y
@@ -36,6 +36,9 @@ no se distingue); **integración** es un sistema externo conectado (WooCommerce,
 AgendaPro, Amigable…); **sector** es el tipo de negocio del cliente (el de la
 plantilla con la que se sembró su agente); **puesta en marcha** son los cuatro
 pasos que separan a un cliente de «atendiendo»: agente, canal, cupo, activo.
+**Canal** es cualquier vía por la que el agente atiende a clientes finales:
+hoy WhatsApp; Instagram y Messenger llegarán después, y nada en esta spec
+nombra WhatsApp donde cabe «canal».
 
 Depende de las specs **016** (WhatsApp, «sin cupo», etapas del alta, modelo,
 AgendaPro), **005** (crédito comprado y su precio), **004** (medidor y cupo por
@@ -50,6 +53,14 @@ cliente) y del Bloque C (los bloques `Meter`, `Checklist`, `Stepper`, `Section`,
 | **Garantías de aislamiento tocadas** | **1. Postgres RLS** — el estado de puesta en marcha, el cupo restante, el borrador pendiente y las capacidades de un cliente son por tenant dentro de un partner; ninguna vista agregada (lista, portada, reparto) enseña un cliente de otro partner · **2. Tool whitelist por agente** — «Capacidades» enciende o apaga herramientas y habilidades **solo para ese tenant**; el filtro por sector es una vista sobre el catálogo, **no** un permiso ni un recorte del catálogo |
 | **Nota de KB que la justifica** | `[[nexus/PLAN-ACCION-CONSOLA-2026-09-22]]` (Bloque D y decisiones 3, 4, 5) y `[[nexus/AUDITORIA-UX-CONSOLA-2026-09-22]]`, en `/Users/matos/workspace/kb/Auphere/nexus/` |
 | **Qué se mide** | **Nada nuevo.** Los turnos siguen entrando en el medidor de la spec 004 y el crédito en el de la 005. «Créditos» es el nombre en pantalla de la unidad que ya se descuenta y una **conversión** a USD y a mensajes aproximados; no es una unidad nueva de cobro ni cambia ningún precio |
+
+## Clarificaciones
+
+### Sesión 2026-09-24
+
+- Q: Al activar o desactivar una capacidad con un clic, ¿se guarda en el borrador en ese clic o se acumulan cambios hasta «Guardar»? → A: **Cada clic guarda en el borrador al instante**; no hay botón «Guardar» en Capacidades; publicar sigue exigiendo confirmación (R5.4).
+- Q: ¿El paso «Canal» del alta desaparece o se mantiene un paso que conecta WhatsApp? → A: **Desaparece, y el canal no se llama WhatsApp**: el paso de puesta en marcha es «Conectar un canal» (hoy solo WhatsApp; Instagram y Messenger vendrán en otra spec) y la consola guía al partner a conectarlo para que el agente pueda atender (R1.1, R7.4, R7.5, R8.1).
+- Q: «Ver diferencias» en la barra de borrador, ¿por pantalla o solo la comparación del prompt? → A: **Por pantalla, con las palabras de cada pantalla**; el prompt completo queda como detalle plegado (R3.2).
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -77,7 +88,7 @@ no pueda usar, y que «Eliminar» no existe hasta archivar.
 
 **Escenarios de aceptación**:
 
-1. **Dado** un cliente con agente publicado y sin canal, **cuando** el partner abre su ficha, **entonces** la cabecera muestra los cuatro pasos con «canal» como el primero pendiente y un botón «Conectar WhatsApp» que lleva a Canales.
+1. **Dado** un cliente con agente publicado y sin canal, **cuando** el partner abre su ficha, **entonces** la cabecera muestra los cuatro pasos con «canal» como el primero pendiente y un botón «Conectar un canal» que lleva a Canales, donde hoy el único canal es WhatsApp.
 2. **Dado** un cliente con un tope de 5 000 créditos y 1 200 gastados, **cuando** el partner abre cualquier pestaña de la ficha, **entonces** ve «3 800 de 5 000 créditos» como barra en la cabecera sin haber hecho ningún clic.
 3. **Dado** un usuario con rol `analyst`, **cuando** abre la ficha, **entonces** ve Observar y las pestañas de solo lectura de Configurar y Conectar, y ninguna acción de escritura ni el menú «Más».
 4. **Dado** un cliente activo, **cuando** el partner abre «Más», **entonces** ve Pausar y Archivar y **no** ve Eliminar; **cuando** el cliente está archivado, **entonces** ve Reactivar y Eliminar.
@@ -176,21 +187,21 @@ viene propuesta; la referencia queda en «Avanzado»), elige el **sector** entre
 tarjetas con una frase («Restaurante: reservas y consultas de carta») sin que
 haya ninguna preseleccionada, rellena solo los datos que esa plantilla pide con
 los obligatorios primero, revisa y lanza. El alta termina **en la ficha del
-cliente**, con «Conectar WhatsApp» como siguiente paso a la vista.
+cliente**, con «Conectar un canal» como siguiente paso a la vista.
 
 **Por qué esta prioridad**: es el primer minuto de cada cliente nuevo; hoy la
 preselección abre veintitrés campos y el paso de canal promete lo que no hace.
 
 **Prueba independiente**: crear un cliente contando clics y campos (objetivo: 4
 clics, 1 campo, 2 campos de plantilla) y comprobar que termina en la ficha con
-«Conectar WhatsApp» como acción.
+«Conectar un canal» como acción.
 
 **Escenarios de aceptación**:
 
 1. **Dado** el paso 1, **cuando** el partner lo abre, **entonces** ve Nombre y Zona horaria (propuesta desde su navegador) y la referencia solo si despliega «Avanzado».
 2. **Dado** el paso 2, **cuando** el partner lo abre, **entonces** ninguna plantilla está elegida, cada tarjeta muestra el sector y una frase, y no aparece ningún identificador técnico ni recuento de herramientas.
 3. **Dado** una plantilla elegida con 2 datos obligatorios y 11 opcionales, **cuando** el partner sigue, **entonces** ve los 2 obligatorios primero y los opcionales plegados.
-4. **Dado** el alta lanzada, **cuando** todas las etapas terminan, **entonces** el partner está en la ficha del cliente y la cabecera señala «Conectar WhatsApp» como siguiente paso.
+4. **Dado** el alta lanzada, **cuando** todas las etapas terminan, **entonces** el partner está en la ficha del cliente y la cabecera señala «Conectar un canal» como siguiente paso.
 5. **Dado** el alta, **cuando** el partner la recorre, **entonces** no existe un paso «Canal» que le pida elegir nada.
 
 ---
@@ -375,7 +386,7 @@ y leer la causa.
 2. WHEN abre el paso 2 THEN ninguna plantilla DEBE estar elegida; cada tarjeta DEBE mostrar el sector y una frase, y NO DEBE mostrar identificadores técnicos ni recuentos de herramientas.
 3. WHEN elige una plantilla THEN el sistema DEBE pedir sus datos con los obligatorios primero y los opcionales plegados, y NO DEBE pedir ninguno antes de elegir.
 4. El sistema NO DEBE tener un paso de canal; la revisión DEBE mantener «Publicar y activar» como opción con las etapas visibles y reintentables de la spec 016.
-5. WHEN todas las etapas terminan THEN el sistema DEBE llevar al partner a la ficha del cliente, cuya cabecera señala el siguiente paso pendiente (normalmente «Conectar WhatsApp»).
+5. WHEN todas las etapas terminan THEN el sistema DEBE llevar al partner a la ficha del cliente, cuya cabecera señala el siguiente paso pendiente (normalmente «Conectar un canal»); la pestaña Canales DEBE listar los canales disponibles con su acción, de modo que añadir Instagram o Messenger mañana no cambie la ficha ni el alta.
 6. El sistema DEBE conservar la guardia de salida con cambios y el cierre por cuota de clientes que existen hoy.
 
 ### Requisito 8 — La portada tiene una lista de tareas, no dos
@@ -384,7 +395,7 @@ y leer la causa.
 
 #### Criterios de aceptación
 
-1. El sistema DEBE mostrar una única tarjeta «Ponte en marcha» con los pasos pendientes del partner y una acción por paso que lleve al control real (Conectar WhatsApp lleva al botón de conectar del cliente).
+1. El sistema DEBE mostrar una única tarjeta «Ponte en marcha» con los pasos pendientes del partner y una acción por paso que lleve al control real («Conectar un canal» lleva a la pestaña Canales del cliente, con la acción de cada canal disponible).
 2. WHERE el plan del partner incluye teammates EL sistema DEBE mostrar «Tu puesto de trabajo» como parte de la misma tarjeta o justo debajo; WHERE no los incluye NO DEBE mostrarla.
 3. La puesta en marcha DEBE contar como canal solo canales de cliente final y como conversación solo las de canal; el Playground NO DEBE marcar ningún paso.
 4. Las métricas DEBEN llevar etiqueta en texto normal y una línea de contexto solo cuando añada información; NO DEBEN mostrar tiempos de cálculo.
@@ -465,6 +476,7 @@ y leer la causa.
 
 - **Conmutador de tema y respeto a `prefers-color-scheme`** — ya existe en el menú de usuario (claro, oscuro, sistema) desde el Bloque A; esta spec no lo toca. Solo se exige que las pantallas nuevas se vean bien en los dos temas.
 - **Conectar WhatsApp, «sin cupo», etapas del alta, modelo, AgendaPro, conectores por clave** — spec 016, ya entregada; aquí solo se recolocan.
+- **Instagram y Messenger como canales** — otra spec; esta deja la ficha, el alta y Canales preparados para listar más de un canal sin cambiar de forma.
 - **Nuevos bloques del sistema de diseño** (`NavTabs`, `RowActions`, `Kbd`, densidad por token) — se crean dentro de esta spec como parte de la pantalla que los necesita, sin spec propia; sus reglas están en `console-design-system.md`.
 - **Implementar «Requiere aprobación» en el agente** — se retira de la pantalla porque el agente no lo cumple; implementarlo es otra spec.
 - **Cambiar precios, la unidad de cobro o la venta de crédito** — spec 005; «créditos» es nombre y conversión.
