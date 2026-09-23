@@ -9,8 +9,9 @@ import { can, requirePrincipal } from "@/lib/principal";
 import { auditActionLabel, auditActionOptions } from "@/components/audit/audit-actions";
 
 import { AuditControls } from "./controls";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Auditoría" };
+export const generateMetadata = () => pageTitle("nav.audit");
 
 type Search = { actor?: string; action?: string; client?: string; cursor?: string; after?: string; before?: string };
 

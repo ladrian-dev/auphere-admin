@@ -5,8 +5,9 @@ import { getT } from "@/i18n/server";
 import { consoleService } from "@/lib/backend";
 
 import { AcceptForm } from "./accept-form";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Invitación" };
+export const generateMetadata = () => pageTitle("invite.meta");
 
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;

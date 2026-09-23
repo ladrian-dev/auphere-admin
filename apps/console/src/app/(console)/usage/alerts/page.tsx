@@ -7,8 +7,9 @@ import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
 
 import { UsageAlertsForm } from "./form";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Alertas de consumo" };
+export const generateMetadata = () => pageTitle("hu.alerts.title");
 
 export default async function UsageAlertsPage() {
   const principal = await requirePrincipal("/usage/alerts");

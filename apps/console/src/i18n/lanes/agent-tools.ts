@@ -80,7 +80,7 @@ export const agentToolsMessages = {
 
   // ── tools (CP-13) ────────────────────────────────────────────────
   "tools.title": { es: "Herramientas", en: "Tools" },
-  "tools.description": { es: "Lo que el agente puede hacer. La lista blanca es exhaustiva: lo que no marques, el agente no lo ve. Guardar crea o actualiza el borrador; publicar sigue siendo explícito.", en: "What the agent can do. The whitelist is exhaustive: whatever you leave unticked, the agent never sees. Saving creates or updates the draft; publishing stays explicit." },
+  "tools.description": { es: "Lo que el agente puede hacer. Lo que no marques, el agente no lo ve. Guardar crea o actualiza el borrador; publicar sigue siendo explícito.", en: "What the agent can do. Whatever you leave unticked, the agent never sees. Saving creates or updates the draft; publishing stays explicit." },
   "tools.readonly": { es: "Tu rol solo permite ver las herramientas.", en: "Your role can only view tools." },
   "tools.empty.title": { es: "El catálogo de herramientas está vacío", en: "The tool catalogue is empty" },
   "tools.empty.body": { es: "Auphere todavía no ha publicado herramientas para este entorno.", en: "Auphere has not published any tools for this environment yet." },
@@ -101,7 +101,7 @@ export const agentToolsMessages = {
   "tools.mode.saved": { es: "Modo de {tool} actualizado.", en: "Mode of {tool} updated." },
   "tools.mode.reset": { es: "Modo de {tool} restablecido al valor por defecto.", en: "Mode of {tool} reset to default." },
   "tools.selected": { es: "{n} de {total} herramientas marcadas", en: "{n} of {total} tools ticked" },
-  "tools.save": { es: "Guardar lista blanca", en: "Save whitelist" },
+  "tools.save": { es: "Guardar herramientas", en: "Save tools" },
   "tools.saved": { es: "Lista blanca guardada en el borrador v{v}.", en: "Whitelist saved to draft v{v}." },
   "tools.selectAll": { es: "Marcar todas", en: "Tick all" },
   "tools.clearAll": { es: "Desmarcar todas", en: "Untick all" },
@@ -160,6 +160,8 @@ export const agentToolsMessages = {
   "knowledge.description": { es: "Documentos y páginas que el agente consulta. El texto extraído no se muestra aquí; solo su estado y tamaño.", en: "Documents and pages the agent consults. The extracted text is not shown here; only its state and size." },
   "knowledge.readonly": { es: "Tu rol solo permite ver el conocimiento.", en: "Your role can only view knowledge." },
   "knowledge.empty.title": { es: "Este cliente aún no tiene conocimiento", en: "This client has no knowledge yet" },
+  "playbook.empty.title": { es: "Tu guía está vacía", en: "Your playbook is empty" },
+  "playbook.empty.body": { es: "Sube las reglas y documentos comunes a todos tus clientes (PDF, TXT, MD o HTML hasta 10 MB) o añade una URL pública.", en: "Upload the rules and documents shared by all your clients (PDF, TXT, MD or HTML up to 10 MB) or add a public URL." },
   "knowledge.empty.body": { es: "Sube un PDF, TXT, MD o HTML (hasta 10 MB) o añade una URL pública.", en: "Upload a PDF, TXT, MD or HTML (up to 10 MB) or add a public URL." },
   "knowledge.usage": { es: "{used} de {cap} caracteres indexados en el prompt", en: "{used} of {cap} indexed characters in the prompt" },
   "knowledge.usage.label": { es: "Uso del presupuesto del prompt", en: "Prompt budget usage" },
@@ -197,6 +199,6 @@ export const agentToolsMessages = {
   "knowledge.delete.title": { es: "Eliminar «{title}»", en: "Delete \"{title}\"" },
   "knowledge.delete.body": { es: "El agente dejará de consultar este documento de inmediato. No se puede deshacer.", en: "The agent stops consulting this document immediately. This cannot be undone." },
   "knowledge.deleted": { es: "«{title}» eliminado.", en: "\"{title}\" deleted." },
-  "playbook.title": { es: "Playbook del partner", en: "Partner playbook" },
-  "playbook.description": { es: "Reglas y documentos comunes a todos tus clientes. El agente de WhatsApp de un cliente no ve este playbook; el Companion sí. El texto extraído no sale de aquí.", en: "Rules and documents shared across your clients. A client WhatsApp agent does not see this playbook; the Companion does. Extracted text never leaves this page." },
+  "playbook.title": { es: "Guía del partner", en: "Partner playbook" },
+  "playbook.description": { es: "Reglas y documentos comunes a todos tus clientes. El agente de WhatsApp de un cliente no ve esta guía; el Companion sí. El texto extraído no sale de aquí.", en: "Rules and documents shared across your clients. A client WhatsApp agent does not see this playbook; the Companion does. Extracted text never leaves this page." },
 } as const;

@@ -7,8 +7,9 @@ import { ProviderInvoicesLink } from "@/components/billing/provider-invoices-lin
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Facturación" };
+export const generateMetadata = () => pageTitle("nav.billing");
 
 export default async function BillingPage() {
   const principal = await requirePrincipal("/billing");

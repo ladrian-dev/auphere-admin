@@ -12,13 +12,16 @@ export function severityTone(sev: NotificationSeverity | string): Tone {
 }
 
 /** Localized one-liner for a notification. Unknown kinds degrade to a generic line. */
-export function notificationText(locale: Locale, n: Pick<Notification, "kind" | "data" | "external_client_ref">): string {
+export function notificationText(locale: Locale, n: Pick<Notification, "kind" | "data" | "external_client_ref">, clientNames?: Record<string, string>): string {
   const vars: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(n.data ?? {})) {
     if (v == null) continue;
     vars[k] = typeof v === "number" || typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : JSON.stringify(v);
   }
-  if (!("client" in vars)) vars.client = n.external_client_ref ?? (typeof vars.external_client_ref === "string" ? vars.external_client_ref : "—");
+  // The client's name when the page knows it; the reference is an API
+  // identifier and reads like one ("panaderia-la-espiga").
+  const ref = n.external_client_ref ?? (typeof vars.external_client_ref === "string" ? vars.external_client_ref : null);
+  if (!("client" in vars)) vars.client = (ref && clientNames?.[ref]) ?? ref ?? "—";
   // D8 — una activación que no puede atender no se anuncia como un éxito.
   if (n.kind === "client.activated" && n.data?.can_serve === false) {
     // D8 + A4 — name the missing piece: a channel, quota, or both. Older

@@ -42,7 +42,7 @@ export type KnowledgeTableActions = {
   reindex: (body: { id: string; ref?: string }) => Promise<ActionResult<KnowledgeDocumentOut>>;
 };
 
-type Props = { refId: string; data: KnowledgeListOut; canWrite: boolean; actions?: KnowledgeTableActions };
+type Props = { refId: string; data: KnowledgeListOut; canWrite: boolean; actions?: KnowledgeTableActions; emptyCopy?: { title: string; body: string } };
 
 const ACCEPT = ".pdf,.txt,.md,.html,.htm,application/pdf,text/plain,text/markdown,text/html";
 
@@ -50,7 +50,7 @@ const ACCEPT = ".pdf,.txt,.md,.html,.htm,application/pdf,text/plain,text/markdow
  * Knowledge (CP-15): upload + URL forms, prompt-budget meter and the
  * document table (metadata only). Delete asks; reindex is one click.
  */
-export function KnowledgeTable({ refId, data, canWrite, actions }: Props) {
+export function KnowledgeTable({ refId, data, canWrite, actions, emptyCopy }: Props) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
@@ -112,7 +112,7 @@ export function KnowledgeTable({ refId, data, canWrite, actions }: Props) {
       </div>
 
       {data.items.length === 0 ? (
-        <EmptyState icon={BookOpen} title={t("knowledge.empty.title")} description={t("knowledge.empty.body")} readonly />
+        <EmptyState icon={BookOpen} title={emptyCopy?.title ?? t("knowledge.empty.title")} description={emptyCopy?.body ?? t("knowledge.empty.body")} readonly />
       ) : (
         <div className="overflow-x-auto rounded-md bg-card ring-1 ring-foreground/10">
           <Table>

@@ -45,4 +45,9 @@ describe("notifications/render", () => {
     const quota = notificationText("es", { kind: "client.activated", data: { can_serve: false, missing: ["quota"] }, external_client_ref: "acme" });
     expect(quota).toContain("sin cuota");
   });
+  it("uses the client's name when the page knows it, the reference otherwise", () => {
+    const n = { kind: "client.activated", data: { can_serve: true }, external_client_ref: "panaderia-la-espiga" };
+    expect(notificationText("es", n, { "panaderia-la-espiga": "Panadería La Espiga" })).toContain("Panadería La Espiga");
+    expect(notificationText("es", n)).toContain("panaderia-la-espiga");
+  });
 });

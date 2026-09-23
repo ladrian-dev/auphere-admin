@@ -7,6 +7,7 @@ import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import type { Allocation, Wallet } from "@/lib/backend/home-usage";
 import { can, requirePrincipal } from "@/lib/principal";
+import { meterLabel } from "@/lib/meter-label";
 import { barsFromSeries, cumulativeWithProjection, includedRemainingPercent, topMeters } from "@/lib/usage-projection";
 
 import { AllocationCapForm } from "./allocation-cap";
@@ -15,8 +16,9 @@ import { MoveAllocationForm } from "./move-allocation";
 import { BuyCreditForm } from "@/components/billing/buy-credit-form";
 import { UsageCharts } from "./charts";
 import { UsageControls } from "./controls";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Consumo" };
+export const generateMetadata = () => pageTitle("nav.usage");
 
 type Search = { days?: string; client?: string; source?: string; meter?: string };
 
@@ -66,7 +68,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
 
   const { keys, hasOther } = series ? topMeters(series.points) : { keys: [], hasOther: false };
   const bars = series ? barsFromSeries(series.points, keys) : [];
-  const barSeries = [...keys.map((k) => ({ key: k, label: k })), ...(hasOther ? [{ key: "other", label: "…" }] : [])];
+  const barSeries = [...keys.map((k) => ({ key: k, label: meterLabel(k, t) })), ...(hasOther ? [{ key: "other", label: "…" }] : [])];
   const line = monthSeries ? cumulativeWithProjection(monthSeries.points, "channel.message", month.since, month.days_in_month, today) : [];
 
   const csvHref = `/api/usage/export?days=${days}${sp.client ? `&client=${encodeURIComponent(sp.client)}` : ""}${sp.source ? `&source=${sp.source}` : ""}&lang=${locale}`;
@@ -233,7 +235,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
                   <td className="max-w-64 truncate p-2" title={b.client_name ?? b.external_client_ref ?? ""}>
                     {b.client_name ?? b.external_client_ref ?? "—"}
                   </td>
-                  <td className="p-2 font-mono text-xs">{b.meter}</td>
+                  <td className="p-2" title={b.meter}>{meterLabel(b.meter, t)}</td>
                   <td className="p-2">{t(`usage.source.${b.source}` as "usage.source.channel")}</td>
                   <td className="p-2 text-right tabular-nums">{n(b.quantity)}</td>
                   <td className="p-2 text-right tabular-nums">{b.source === "qa" ? "—" : n(b.billable_qty)}</td>

@@ -6,6 +6,7 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import {
+  formatDateTime,
   Alert,
   AlertDescription,
   AlertTitle,
@@ -107,7 +108,9 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
 
   async function createThread() {
     setBusy(true);
-    const res = await createThreadAction({ ref: refId });
+    // Named at birth so the list never reads "Untitled": the date is what a
+    // partner uses to tell one test apart from another.
+    const res = await createThreadAction({ ref: refId, title: t("playground.threads.autoTitle", { date: formatDateTime(new Date().toISOString(), locale) }) });
     setBusy(false);
     if (!res.ok) return void toast.error(res.message);
     setThreads((prev) => [res.data, ...prev]);

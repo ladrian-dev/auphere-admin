@@ -19,10 +19,11 @@ const core = {
   // shell
   "nav.home": { es: "Inicio", en: "Home" },
   "nav.clients": { es: "Clientes", en: "Clients" },
+  "clients.one": { es: "Cliente", en: "Client" },
   "nav.workstation": { es: "Puesto de trabajo", en: "Workstation" },
   "nav.usage": { es: "Consumo", en: "Usage" },
   "nav.audit": { es: "Auditoría", en: "Audit" },
-  "nav.knowledge": { es: "Playbook", en: "Playbook" },
+  "nav.knowledge": { es: "Guía del partner", en: "Playbook" },
   "nav.team": { es: "Equipo", en: "Team" },
   "nav.keys": { es: "Claves de API", en: "API keys" },
   "nav.billing": { es: "Facturación", en: "Billing" },
@@ -139,6 +140,7 @@ const core = {
     en: "It may have expired, been used, or been replaced by a newer one. Request a new one.",
   },
   "signup.finish.title": { es: "Ya casi.", en: "Almost there." },
+  "signup.finish.meta": { es: "Crea tu cuenta", en: "Create your account" },
   "signup.finish.body": {
     es: "Sólo falta cómo se llama tu empresa y una contraseña.",
     en: "Just your company name and a password.",
@@ -174,6 +176,7 @@ const core = {
   "noAccess.body": { es: "Pide a un propietario o administrador de tu partner que te invite, o vuelve a intentarlo con la cuenta correcta.", en: "Ask an owner or admin of your partner to invite you, or try again with the right account." },
   "noAccess.disabled": { es: "La consola aún no está activada para tu partner. Auphere la enciende partner a partner durante el piloto.", en: "The console is not enabled for your partner yet. Auphere turns it on partner by partner during the pilot." },
   "invite.title": { es: "Te han invitado a la consola", en: "You've been invited to the console" },
+  "invite.meta": { es: "Invitación", en: "Invitation" },
   "invite.body": { es: "{partner} te invita a entrar como {role}. Crea tu contraseña para aceptar.", en: "{partner} invites you to join as {role}. Create your password to accept." },
   "invite.expires": { es: "La invitación caduca el {date}.", en: "The invitation expires on {date}." },
   "invite.name": { es: "Tu nombre", en: "Your name" },
@@ -253,7 +256,6 @@ const core = {
   "clients.settings.title": { es: "Ajustes del cliente", en: "Client settings" },
   "clients.settings.saved": { es: "Ajustes guardados", en: "Settings saved" },
   "clients.settings.danger": { es: "Zona de riesgo", en: "Danger zone" },
-  "clients.channels.empty": { es: "Este cliente aún no tiene canales. La conexión de WhatsApp llega en el siguiente paquete (CP-17).", en: "This client has no channels yet. WhatsApp connection ships in the next package (CP-17)." },
   "clients.channels.number": { es: "Número", en: "Number" },
   "clients.channels.role": { es: "Rol del canal", en: "Channel role" },
 

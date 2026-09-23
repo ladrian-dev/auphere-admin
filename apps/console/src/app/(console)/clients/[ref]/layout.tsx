@@ -15,7 +15,8 @@ export async function generateMetadata({ params }: { params: Promise<{ ref: stri
   const { ref } = await params;
   const principal = await requirePrincipal();
   const client = await getClientCached(principal, ref).catch(() => null);
-  return { title: client?.name ?? "Cliente" };
+  const { t } = await getT();
+  return { title: client?.name ?? t("clients.one") };
 }
 
 export default async function ClientLayout({ params, children }: { params: Promise<{ ref: string }>; children: React.ReactNode }) {

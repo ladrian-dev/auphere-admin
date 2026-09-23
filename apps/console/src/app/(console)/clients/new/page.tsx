@@ -7,8 +7,9 @@ import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
 
 import { NewClientWizard } from "./wizard";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Nuevo cliente" };
+export const generateMetadata = () => pageTitle("wizard.title");
 
 /**
  * New-client wizard (CP-10): four steps, real per-stage progress. Quota is

@@ -6,8 +6,9 @@ import { env } from "@/lib/env";
 import { consoleService } from "@/lib/backend";
 
 import { FinishForm } from "./finish-form";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Crea tu cuenta" };
+export const generateMetadata = () => pageTitle("signup.finish.meta");
 
 /**
  * El segundo acto (Requisitos 2.1 y 3).

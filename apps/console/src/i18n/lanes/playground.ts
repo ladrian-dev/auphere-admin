@@ -23,6 +23,7 @@ export const playgroundMessages = {
     en: "Create a test thread and write as a customer would. Only you can see your threads.",
   },
   "playground.threads.untitled": { es: "Sin título", en: "Untitled" },
+  "playground.threads.autoTitle": { es: "Prueba · {date}", en: "Test · {date}" },
   "playground.threads.turns": { es: "{n} turnos", en: "{n} turns" },
   "playground.threads.turn": { es: "1 turno", en: "1 turn" },
   "playground.threads.rename": { es: "Renombrar", en: "Rename" },

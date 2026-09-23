@@ -8,8 +8,9 @@ import { ClientsTable } from "@/components/clients/clients-table";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Clientes" };
+export const generateMetadata = () => pageTitle("nav.clients");
 
 type Search = { q?: string; status?: string; sort?: string; order?: string; page?: string };
 

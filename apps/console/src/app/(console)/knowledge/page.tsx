@@ -1,11 +1,14 @@
 import { redirect } from "next/navigation";
 
 import { KnowledgeTable } from "@/components/agent-tools/knowledge-table";
+import { pageTitle } from "@/i18n/metadata";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
 
 import { addPlaybookUrlAction, deletePlaybookAction, reindexPlaybookAction, uploadPlaybookAction } from "./actions";
+
+export const generateMetadata = () => pageTitle("nav.knowledge");
 
 /** Partner playbook at /console/knowledge. Client KB stays under the client. */
 export default async function PlaybookPage() {
@@ -23,6 +26,7 @@ export default async function PlaybookPage() {
         refId=""
         data={data}
         canWrite={can(principal.role, "playbook:write")}
+        emptyCopy={{ title: t("playbook.empty.title"), body: t("playbook.empty.body") }}
         actions={{
           upload: uploadPlaybookAction,
           addUrl: addPlaybookUrlAction,

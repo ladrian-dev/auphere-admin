@@ -15,7 +15,7 @@ import { notificationText, severityTone } from "./render";
 
 type Filter = "all" | "unread";
 
-export function NotificationsList({ initial, initialFilter }: { initial: NotificationPage; initialFilter: Filter }) {
+export function NotificationsList({ initial, initialFilter, clientNames }: { initial: NotificationPage; initialFilter: Filter; clientNames?: Record<string, string> }) {
   const t = useT();
   const locale = useLocale();
   const [filter, setFilter] = React.useState<Filter>(initialFilter);
@@ -130,12 +130,9 @@ export function NotificationsList({ initial, initialFilter }: { initial: Notific
                 {t(n.severity === "critical" ? "notif.severity.critical" : n.severity === "warning" ? "notif.severity.warning" : "notif.severity.info")}
               </StatusBadge>
               <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <p className={cn("min-w-0 text-sm text-pretty", !n.read && "font-medium")}>{notificationText(locale, n)}</p>
+                <p className={cn("min-w-0 text-sm text-pretty", !n.read && "font-medium")}>{notificationText(locale, n, clientNames)}</p>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground">
                   <time dateTime={n.created_at}>{formatDateTime(n.created_at, locale)}</time>
-                  <span className="truncate" title={n.kind}>
-                    {n.kind}
-                  </span>
                   {n.external_client_ref ? (
                     <Link className="underline underline-offset-4 hover:text-foreground" href={`/clients/${encodeURIComponent(n.external_client_ref)}`}>
                       {t("notif.openClient")}
