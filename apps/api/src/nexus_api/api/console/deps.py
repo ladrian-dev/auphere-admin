@@ -40,7 +40,7 @@ from nexus_api.db.models import (
 )
 from nexus_api.repositories.partner import PartnerTenantRepository
 
-from .schemas import ClientHealthOut
+from .schemas import ClientHealthOut, ClientSetupDetailOut, ClientSetupOut, SetupStep
 
 #: Path parameter every client-scoped route uses.
 ClientRef = Path(
@@ -187,6 +187,67 @@ async def client_health(
     )
 
 
+def sector_of(seed_template_ref: str | None) -> str | None:
+    """Spec 017 (R1, R5): the sector is the vertical of the template the
+    agent was seeded from — the same reading ``GET /console/seed-templates``
+    gives (``panaderia_v1`` → ``panaderia``). ``None`` for a hand-written agent."""
+    if not seed_template_ref:
+        return None
+    name = seed_template_ref
+    return name.rsplit("_v", 1)[0] if "_v" in name else name
+
+
+async def client_sector(session: AsyncSession) -> str | None:
+    """Inside a tenant-scoped transaction: the active version's template,
+    or the newest staged one when nothing is active yet."""
+    ref = await session.scalar(
+        sa.select(AgentConfig.seed_template_ref)
+        .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
+        .order_by(AgentConfig.version.desc())
+        .limit(1)
+    )
+    if ref is None:
+        ref = await session.scalar(
+            sa.select(AgentConfig.seed_template_ref)
+            .where(AgentConfig.status == AgentConfigStatus.STAGED)
+            .order_by(AgentConfig.version.desc())
+            .limit(1)
+        )
+    return sector_of(ref)
+
+
+_SETUP_ORDER: tuple[SetupStep, ...] = ("agent", "channel", "quota", "activation")
+
+
+def client_setup(*, agent: bool, channel: bool, quota: bool, active: bool) -> ClientSetupOut:
+    """Spec 017 (R9.1): the four steps as the list shows them."""
+    return ClientSetupOut(agent=agent, channel=channel, quota=quota, active=active)
+
+
+def client_setup_detail(
+    *, agent: bool, channel: bool, quota: bool, active: bool
+) -> ClientSetupDetailOut:
+    """Spec 017 (R1.1/R1.3): the four steps and the first pending one, in
+    the fixed order agent → channel → quota → activation; ``None`` when
+    the client is serving."""
+    done = {"agent": agent, "channel": channel, "quota": quota, "activation": active}
+    nxt: SetupStep | None = next((k for k in _SETUP_ORDER if not done[k]), None)
+    return ClientSetupDetailOut(agent=agent, channel=channel, quota=quota, active=active, next=nxt)
+
+
+async def active_customer_channel(session: AsyncSession) -> bool:
+    """Inside a tenant-scoped transaction: is there any ACTIVE channel that
+    faces customers? (WhatsApp today; the Playground never counts.)"""
+    from nexus_api.services.console_traffic import customer_facing_channel
+
+    found = await session.scalar(
+        sa.select(Channel.id)
+        .where(Channel.status == ChannelStatus.ACTIVE, customer_facing_channel())
+        .limit(1)
+    )
+    return found is not None
+
+
 async def health_for_tenant(session: AsyncSession, tenant: Tenant) -> ClientHealthOut:
     """Own short scoped transaction — for callers outside a client scope
     (the list endpoint iterates the partner's clients)."""
@@ -203,8 +264,12 @@ __all__ = [
     "ClientRef",
     "ClientScope",
     "PartnerScope",
+    "active_customer_channel",
     "client_health",
     "client_scope",
+    "client_sector",
+    "client_setup",
+    "client_setup_detail",
     "health_for_tenant",
     "out_of_quota",
     "partner_scope",

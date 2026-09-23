@@ -522,6 +522,33 @@ async def quota_state(partner_id: uuid.UUID, tenant_ids: list[uuid.UUID]) -> dic
         return dict.fromkeys(tenant_ids, True)
 
 
+async def allocations_for(
+    partner_id: uuid.UUID, tenant_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[int, int]]:
+    """``tenant_id → (cap, remaining)`` for a batch of a partner's clients
+    (spec 017, R1.2/R9.1). A tenant without an allocation row is absent —
+    «sin cupo asignado». Same partner-scoped session as ``quota_state``;
+    fails closed to «nothing readable»."""
+    if not tenant_ids:
+        return {}
+    try:
+        sm = get_sessionmaker()
+        async with sm() as session, session.begin():
+            await apply_partner_to_session(session, partner_id)
+            rows = await session.execute(
+                sa.select(
+                    PartnerAllocation.tenant_id, PartnerAllocation.cap, PartnerAllocation.remaining
+                ).where(
+                    PartnerAllocation.partner_id == partner_id,
+                    PartnerAllocation.tenant_id.in_(tenant_ids),
+                )
+            )
+            return {tid: (_as_int(cap), _as_int(rem)) for tid, cap, rem in rows.all()}
+    except Exception as exc:
+        log.warning("wallet.allocations_unreadable", partner_id=str(partner_id), error=str(exc))
+        return {}
+
+
 async def add_purchased(partner_id: uuid.UUID, qty: int) -> WalletSnapshot:
     """Recarga manual: suma al cubo purchased. No caduca. Staging / admin."""
     if qty <= 0:

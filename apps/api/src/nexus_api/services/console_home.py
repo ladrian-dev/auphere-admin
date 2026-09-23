@@ -50,7 +50,7 @@ from nexus_api.db.models import (
     Message,
     MessageStatus,
 )
-from nexus_api.services.console_traffic import customer_conversation_ids
+from nexus_api.services.console_traffic import customer_conversation_ids, customer_facing_channel
 
 log = structlog.get_logger(__name__)
 
@@ -66,6 +66,9 @@ class TenantSnapshot:
     agent_version: int | None
     whatsapp_channels: int
     whatsapp_bad: int  # degraded | disconnected
+    #: Spec 017 (R1.1): any ACTIVE customer-facing channel counts as «canal»
+    #: (WhatsApp today; Instagram and Messenger tomorrow). The Playground never.
+    active_channels: int = 0
 
     @property
     def issues(self) -> list[str]:
@@ -87,7 +90,7 @@ class SnapshotResult:
 
 def _snapshot_stmt(
     month_start: datetime, since_24h: datetime
-) -> sa.Select[tuple[int, int, int | None, int, int]]:
+) -> sa.Select[tuple[int, int, int | None, int, int, int]]:
     # Playground traffic is not customer traffic (``console_traffic``).
     conversations = (
         sa.select(sa.func.count())
@@ -130,7 +133,13 @@ def _snapshot_stmt(
         )
         .scalar_subquery()
     )
-    return sa.select(conversations, failed, agent, wa_total, wa_bad)
+    active_channels = (
+        sa.select(sa.func.count())
+        .select_from(Channel)
+        .where(Channel.status == ChannelStatus.ACTIVE, customer_facing_channel())
+        .scalar_subquery()
+    )
+    return sa.select(conversations, failed, agent, wa_total, wa_bad, active_channels)
 
 
 async def tenant_snapshots(
@@ -167,6 +176,7 @@ async def tenant_snapshots(
             agent_version=int(row[2]) if row[2] is not None else None,
             whatsapp_channels=int(row[3] or 0),
             whatsapp_bad=int(row[4] or 0),
+            active_channels=int(row[5] or 0),
         )
 
     await asyncio.gather(*(_one(t) for t in tenant_ids))

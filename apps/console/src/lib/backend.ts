@@ -171,6 +171,10 @@ export type ClientSummary = {
   /** Spec 016 (R2.1): the channel gate is closed for this client — same
    *  reading as ``health.missing`` containing ``quota``. */
   out_of_quota?: boolean;
+  /** Spec 017 (R9.1): read once per page; absent on older API responses. */
+  setup?: ClientSetup;
+  quota?: ClientQuota | null;
+  conversations_7d?: number;
 };
 export type ClientHealth = {
   whatsapp_connected: boolean;
@@ -181,7 +185,20 @@ export type ClientHealth = {
   /** ``agent`` · ``whatsapp`` · ``quota`` · ``activation`` — in that order (spec 016, R2.7). */
   missing: Array<"agent" | "whatsapp" | "quota" | "activation" | (string & {})>;
 };
-export type Client = ClientSummary & { health: ClientHealth };
+/** Spec 017 (R1.1, R9.1): the four steps between a client and «atendiendo». */
+export type ClientSetup = { agent: boolean; channel: boolean; quota: boolean; active: boolean };
+export type SetupStep = "agent" | "channel" | "quota" | "activation";
+/** The record adds the first pending step in the fixed order; `null` when serving. */
+export type ClientSetupDetail = ClientSetup & { next: SetupStep | null };
+/** Spec 017 (R1.2): cap and what is left, in credits; `null` = no quota assigned. */
+export type ClientQuota = { cap: number; remaining: number };
+export type Client = ClientSummary & {
+  health: ClientHealth;
+  /** The sector of the template the agent was seeded from; `null` for a hand-written agent. */
+  sector: string | null;
+  setup: ClientSetupDetail;
+  quota: ClientQuota | null;
+};
 export type ClientPage = { items: ClientSummary[]; total: number; limit: number; offset: number };
 export type ClientCreated = {
   external_client_ref: string;

@@ -14,6 +14,7 @@ opens the RLS-scoped transaction.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import sqlalchemy as sa
@@ -44,8 +45,12 @@ from nexus_api.services.tenant_lifecycle import TenantDeleteBlocked, hard_delete
 
 from .deps import (
     ClientScope,
+    active_customer_channel,
     client_health,
     client_scope,
+    client_sector,
+    client_setup,
+    client_setup_detail,
     health_for_tenant,
     out_of_quota,
     resolve_mapping,
@@ -57,6 +62,7 @@ from .schemas import (
     ClientDeleteIn,
     ClientOut,
     ClientPageOut,
+    ClientQuotaOut,
     ClientStatusIn,
     ClientSummaryOut,
     ClientUpdateIn,
@@ -87,12 +93,29 @@ def _summary(
 
 
 async def _detail(scope: ClientScope) -> ClientOut:
-    """Summary + health with the quota reading (spec 016, R2.1)."""
-    no_quota = await out_of_quota(scope.principal.partner.id, scope.tenant.id)
+    """Summary + health with the quota reading (spec 016, R2.1) + the four
+    setup steps, the sector and the quota (spec 017, R1)."""
+    from nexus_api.metering.wallet import allocations_for
+
+    partner_id = scope.principal.partner.id
+    no_quota = await out_of_quota(partner_id, scope.tenant.id)
     health = await client_health(scope.session, scope.tenant, out_of_quota=no_quota)
+    allocation = (await allocations_for(partner_id, [scope.tenant.id])).get(scope.tenant.id)
+    setup = client_setup_detail(
+        agent=health.agent_configured,
+        channel=await active_customer_channel(scope.session),
+        quota=not no_quota,
+        active=scope.tenant.status is TenantStatus.ACTIVE,
+    )
+    summary = _summary(scope.mapping, scope.tenant, out_of_quota=no_quota).model_dump(
+        exclude={"setup", "quota"}
+    )
     return ClientOut(
-        **_summary(scope.mapping, scope.tenant, out_of_quota=no_quota).model_dump(),
+        **summary,
         health=health,
+        sector=await client_sector(scope.session),
+        setup=setup,
+        quota=ClientQuotaOut(cap=allocation[0], remaining=allocation[1]) if allocation else None,
     )
 
 
@@ -148,14 +171,40 @@ async def list_clients(
                 .offset(offset)
             )
         ).all()
-    from nexus_api.metering.wallet import quota_state
+    from nexus_api.metering.wallet import allocations_for, quota_state
+    from nexus_api.services.console_home import tenant_snapshots
 
-    quota = await quota_state(principal.partner.id, [tenant.id for _, tenant in rows])
+    ids = [tenant.id for _, tenant in rows]
+    quota = await quota_state(principal.partner.id, ids)
+    # Spec 017 (R9.1): who is ready and how much is left, read once per page
+    # — the ledger in one partner-scoped query and the per-tenant snapshot
+    # the home page already uses (channels and conversations have no
+    # reporting policy, so it is one scoped statement per tenant, bounded
+    # by the page size, never one HTTP call per row).
+    allocations = await allocations_for(principal.partner.id, ids)
+    snap = await tenant_snapshots(ids, month_start=datetime.now(UTC) - timedelta(days=7))
+
+    def _row(mapping: PartnerTenant, tenant: Tenant) -> ClientSummaryOut:
+        s = snap.snapshots.get(tenant.id)
+        no_quota = quota.get(tenant.id, True)
+        allocation = allocations.get(tenant.id)
+        return _summary(mapping, tenant, out_of_quota=no_quota).model_copy(
+            update={
+                "setup": client_setup(
+                    agent=bool(s and s.agent_version is not None),
+                    channel=bool(s and s.active_channels > 0),
+                    quota=not no_quota,
+                    active=tenant.status is TenantStatus.ACTIVE,
+                ),
+                "quota": ClientQuotaOut(cap=allocation[0], remaining=allocation[1])
+                if allocation
+                else None,
+                "conversations_7d": s.conversations_month if s else 0,
+            }
+        )
+
     return ClientPageOut(
-        items=[
-            _summary(mapping, tenant, out_of_quota=quota.get(tenant.id, True))
-            for mapping, tenant in rows
-        ],
+        items=[_row(mapping, tenant) for mapping, tenant in rows],
         total=int(total or 0),
         limit=limit,
         offset=offset,

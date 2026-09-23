@@ -48,6 +48,30 @@ router = APIRouter(prefix="/audit")
 VOCAB_TTL_S = 300.0
 _LANGS = ("es", "en")
 
+#: Spec 017 (R11.5): every category of ``console_audit_vocabulary`` has a
+#: business name in both languages, so the console can offer «filtrar por
+#: categoría». A category seeded without a label fails
+#: ``test_console_audit_vocab_017``.
+CATEGORY_LABELS: dict[str, dict[str, str]] = {
+    "admin": {"es": "Operador", "en": "Operator"},
+    "agents": {"es": "Agentes", "en": "Agents"},
+    "auth": {"es": "Acceso", "en": "Access"},
+    "billing": {"es": "Facturación", "en": "Billing"},
+    "channels": {"es": "Canales", "en": "Channels"},
+    "clients": {"es": "Clientes", "en": "Clients"},
+    "critical": {"es": "Incidencias", "en": "Incidents"},
+    "info": {"es": "Actividad", "en": "Activity"},
+    "keys": {"es": "Claves de API", "en": "API keys"},
+    "knowledge": {"es": "Conocimiento", "en": "Knowledge"},
+    "notifications": {"es": "Notificaciones", "en": "Notifications"},
+    "support": {"es": "Soporte", "en": "Support"},
+    "team": {"es": "Equipo", "en": "Team"},
+    "teammates": {"es": "Teammates", "en": "Teammates"},
+    "usage": {"es": "Consumo", "en": "Usage"},
+    "warning": {"es": "Avisos", "en": "Warnings"},
+    "workstation": {"es": "Puesto de trabajo", "en": "Workstation"},
+}
+
 
 @dataclass(frozen=True)
 class VocabEntry:

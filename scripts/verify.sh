@@ -111,12 +111,25 @@ run_js() {
   step "consola · next build" pnpm --dir "$ROOT/apps/console" build
 }
 
+# Constitución §VIII (spec 017, T-LIC): ninguna dependencia nueva entra sin
+# su licencia leída. En una rama de feature los lockfiles no cambian respecto
+# a develop; si cambian, la tarea de licencias tiene que existir.
+run_locks() {
+  local branch base
+  branch="$(git -C "$ROOT" branch --show-current)"
+  base="$(git -C "$ROOT" rev-parse --verify -q origin/develop || git -C "$ROOT" rev-parse -q --verify develop)"
+  if [ -n "$base" ] && [ "$branch" != "develop" ] && [ "$branch" != "main" ]; then
+    step "locks · sin cambios vs develop" git -C "$ROOT" diff --quiet "$base" -- pnpm-lock.yaml apps/api/uv.lock uv.lock
+  fi
+}
+
 case "${1:-all}" in
   lint) run_lint ;;
   py)   run_py ;;
   js)   run_js ;;
-  all)  run_lint; run_py; run_js ;;
-  *)    echo "uso: $0 [all|lint|py|js]" >&2; exit 2 ;;
+  locks) run_locks ;;
+  all)  run_locks; run_lint; run_py; run_js ;;
+  *)    echo "uso: $0 [all|lint|py|js|locks]" >&2; exit 2 ;;
 esac
 
 printf '\n'

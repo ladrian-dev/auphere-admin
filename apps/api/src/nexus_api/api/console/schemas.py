@@ -61,6 +61,35 @@ class MeOut(BaseModel):
 ClientStatus = Literal["provisioning", "active", "paused", "archived"]
 
 
+SetupStep = Literal["agent", "channel", "quota", "activation"]
+
+
+class ClientSetupOut(BaseModel):
+    """Spec 017 (R1.1): the four steps between a client and «atendiendo».
+    A READING of what exists — active version, a customer-facing channel,
+    the ledger, the tenant status — never a state machine. The list carries
+    this shape; the record adds ``next``."""
+
+    agent: bool
+    channel: bool
+    quota: bool
+    active: bool
+
+
+class ClientSetupDetailOut(ClientSetupOut):
+    """The record's reading: ``next`` is the first pending step in the fixed
+    order agent → channel → quota → activation; ``None`` when serving."""
+
+    next: SetupStep | None = None
+
+
+class ClientQuotaOut(BaseModel):
+    """Spec 017 (R1.2): the client's cap and what is left, in credits."""
+
+    cap: int
+    remaining: int
+
+
 class ClientSummaryOut(BaseModel):
     """One row of the client list. Cheap fields only."""
 
@@ -73,6 +102,11 @@ class ClientSummaryOut(BaseModel):
     #: Spec 016 (R2.1): the list shows the «sin cupo» dot without one scoped
     #: transaction per row — it is ``quota_state`` read once per page.
     out_of_quota: bool = False
+    #: Spec 017 (R9.1): the list says who is ready and how much is left,
+    #: read once per page (snapshots + ledger), never per row.
+    setup: ClientSetupOut | None = None
+    quota: ClientQuotaOut | None = None
+    conversations_7d: int = 0
 
 
 class ClientHealthOut(BaseModel):
@@ -85,9 +119,14 @@ class ClientHealthOut(BaseModel):
 
 
 class ClientOut(ClientSummaryOut):
-    """Client detail: summary + health."""
+    """Client detail: summary + health (+ spec 017: sector, setup with
+    ``next``, quota)."""
 
     health: ClientHealthOut
+    #: Spec 017 (R1, R5): the sector of the template the agent was seeded
+    #: from; ``None`` for a hand-written agent.
+    sector: str | None = None
+    setup: ClientSetupDetailOut | None = None
 
 
 class ClientPageOut(BaseModel):
