@@ -29,8 +29,10 @@ Esta spec rediseña la consola **por flujo y sin perder ningún dato ni acción*
 **el partner encuentra lo que le falta, lo arregla desde donde está y entiende
 lo que ve, con las palabras de su negocio.**
 
-Vocabulario: **créditos** es la unidad de consumo; **cupo** es el tope de
-créditos de un cliente dentro del saldo del partner; **capacidad** es algo que
+Vocabulario: **créditos** es la unidad de consumo y también la palabra de
+pantalla para lo asignado a un cliente («Crédito: 3 800 de 5 000», «Asignar
+crédito», «Sin crédito asignado»); **cupo** es el nombre interno del tope por
+cliente y no aparece en la interfaz (decisión del owner, 2026-09-24); **capacidad** es algo que
 el agente sabe hacer (por dentro, una herramienta o una habilidad; en pantalla
 no se distingue); **integración** es un sistema externo conectado (WooCommerce,
 AgendaPro, Amigable…); **sector** es el tipo de negocio del cliente (el de la
@@ -61,6 +63,7 @@ cliente) y del Bloque C (los bloques `Meter`, `Checklist`, `Stepper`, `Section`,
 - Q: Al activar o desactivar una capacidad con un clic, ¿se guarda en el borrador en ese clic o se acumulan cambios hasta «Guardar»? → A: **Cada clic guarda en el borrador al instante**; no hay botón «Guardar» en Capacidades; publicar sigue exigiendo confirmación (R5.4).
 - Q: ¿El paso «Canal» del alta desaparece o se mantiene un paso que conecta WhatsApp? → A: **Desaparece, y el canal no se llama WhatsApp**: el paso de puesta en marcha es «Conectar un canal» (hoy solo WhatsApp; Instagram y Messenger vendrán en otra spec) y la consola guía al partner a conectarlo para que el agente pueda atender (R1.1, R7.4, R7.5, R8.1).
 - Q: «Ver diferencias» en la barra de borrador, ¿por pantalla o solo la comparación del prompt? → A: **Por pantalla, con las palabras de cada pantalla**; el prompt completo queda como detalle plegado (R3.2).
+- Q (prototipo it. 1): ¿«Cupo» o «Crédito» en pantalla? → A: **«Crédito»** en toda la consola («Asignar crédito», «Sin crédito asignado», «Mover crédito»); «cupo» queda como nombre interno. Las claves de la 016 que dicen «cupo» se renombran en la iteración de cada pantalla (ficha en la 1, Consumo en la 3, portada y lista en la 5).
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 

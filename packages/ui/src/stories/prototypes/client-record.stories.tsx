@@ -24,7 +24,7 @@ import { Stepper } from "../../components/stepper";
  * son los de la consola en español, pero nada aquí importa i18n ni router.
  * Lo que este prototipo fija y el código tendrá que respetar:
  *   - cuatro puntos de puesta en marcha con nombre, y UN botón (el del primero pendiente);
- *   - el cupo como barra en la cabecera, o «Sin cupo asignado»;
+ *   - el crédito como barra, o «Sin crédito asignado» (owner, 2026-09-24: en pantalla se dice «crédito», nunca «cupo»);
  *   - ciclo de vida en «Más»; Eliminar solo archivado;
  *   - tres grupos con nombre; a menos de 768 px, un selector con optgroup;
  *   - la barra de borrador pegada bajo la navegación, con «Ver diferencias» y «Publicar».
@@ -36,11 +36,11 @@ type Story = StoryObj;
 type StepKey = "agent" | "channel" | "quota" | "activation";
 type Setup = { agent: boolean; channel: boolean; quota: boolean; active: boolean; next: StepKey | null };
 
-const STEP_LABEL: Record<StepKey, string> = { agent: "Agente", channel: "Canal", quota: "Cupo", activation: "Activo" };
+const STEP_LABEL: Record<StepKey, string> = { agent: "Agente", channel: "Canal", quota: "Crédito", activation: "Activo" };
 const NEXT_ACTION: Record<StepKey, string> = {
   agent: "Preparar el agente",
   channel: "Conectar un canal",
-  quota: "Asignar cupo",
+  quota: "Asignar crédito",
   activation: "Activar",
 };
 
@@ -73,16 +73,16 @@ function SetupBlock({ setup, canAct }: { setup: Setup; canAct: boolean }) {
 
 function QuotaBlock({ quota, canAct }: { quota: { cap: number; remaining: number } | null; canAct: boolean }) {
   return (
-    <Section title="Cupo" className="min-w-0">
+    <Section title="Crédito" className="min-w-0">
       {quota ? (
-        <Meter label="Cupo" labelHidden value={quota.cap - quota.remaining} max={quota.cap} valueLabel={`${quota.remaining.toLocaleString("es")} de ${quota.cap.toLocaleString("es")} créditos`} hint="Se renueva el 1 de octubre." />
+        <Meter label="Crédito" labelHidden value={quota.cap - quota.remaining} max={quota.cap} valueLabel={`${quota.remaining.toLocaleString("es")} de ${quota.cap.toLocaleString("es")} créditos`} hint="Se renueva el 1 de octubre." />
       ) : (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">Sin cupo asignado.</p>
+          <p className="text-sm text-muted-foreground">Sin crédito asignado.</p>
           {canAct ? (
             <div>
               <Button size="sm" variant="outline">
-                Asignar cupo
+                Asignar crédito
               </Button>
             </div>
           ) : null}
@@ -267,7 +267,7 @@ export const FaltaCanal: Story = {
 export const Atendiendo: Story = {
   render: () => <Page setup={{ agent: true, channel: true, quota: true, active: true, next: null }} quota={{ cap: 5000, remaining: 3800 }} phone="+34 653 32 16 93" />,
 };
-export const SinCupoAsignado: Story = {
+export const SinCreditoAsignado: Story = {
   render: () => <Page setup={{ agent: true, channel: true, quota: false, active: true, next: "quota" }} quota={null} phone="+34 653 32 16 93" />,
 };
 export const ConBorrador: Story = {
