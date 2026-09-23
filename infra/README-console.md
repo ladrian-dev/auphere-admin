@@ -43,6 +43,13 @@ ventana de Embedded Signup se abre y Meta la rechaza. Añadidos el 2026-09-23:
 identificadores de configuración están en «Configuraciones» de esa misma
 sección (Cloud API `1976547999669619`, Coexistencia `27787800820807899`).
 
+**Ojo con el ámbito en Vercel**: `console.staging.auphere.com` lo sirve el
+entorno **Preview** (rama `develop`) del proyecto `auphere-console-staging`;
+`Production` de ese proyecto es `auphere-console-staging.vercel.app` (rama
+`main`). Una variable marcada solo «Production» no llega a staging. Las tres de
+Meta estuvieron así desde el 19-ago hasta el 23-sep-2026, cuando se ampliaron a
+«Production and Preview».
+
 **No hay ninguna variable de Postgres.** Si ves `NEXUS_CONSOLE_DATABASE_URL`
 en algún sitio, es de antes de ADR-032 y sobra.
 
