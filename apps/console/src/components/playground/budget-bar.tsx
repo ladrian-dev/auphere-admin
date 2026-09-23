@@ -66,7 +66,7 @@ export function BudgetBar({ budget, error, onRetry }: { budget: PlaygroundBudget
         {t("playground.budget.resets", { date: formatDate(budget.resets_at, locale) })}
       </p>
       {near ? (
-        <p className="text-xs text-status-warning" role="status">
+        <p className="text-xs text-warning" role="status">
           {t("playground.budget.near", { remaining: formatNumber(budget.remaining, locale) })}
         </p>
       ) : null}

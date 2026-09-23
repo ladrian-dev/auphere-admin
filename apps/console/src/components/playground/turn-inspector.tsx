@@ -72,7 +72,7 @@ function ToolRow({ call }: { call: ToolCall }) {
   const locale = useLocale();
   const status =
     call.status === "blocked"
-      ? { label: t("playground.inspector.tool.blocked"), icon: Ban, variant: "outline" as const, cls: "text-status-warning" }
+      ? { label: t("playground.inspector.tool.blocked"), icon: Ban, variant: "outline" as const, cls: "text-warning" }
       : call.status === "running"
         ? { label: t("playground.inspector.tool.running"), icon: Loader2, variant: "secondary" as const, cls: "animate-spin" }
         : call.status === "error"

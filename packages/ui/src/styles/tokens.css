@@ -82,6 +82,10 @@
   --color-primary-mid: var(--color-mint);
   --color-primary-deep: var(--color-bangladesh-green);
   --color-primary-bright: var(--color-caribbean-green);
+  /* El primario **como texto o icono**. Mountain Meadow sobre bone da 2,09:1:
+     vale para rellenar un botón, no para escribir con él. Para un enlace, un
+     icono de «hecho» o un badge de texto se usa este, que llega a AA. */
+  --color-primary-text: var(--color-bangladesh-green);
   --color-ink: var(--color-rich-black);
   --color-bone: var(--color-anti-flash);
 
@@ -256,6 +260,17 @@
   --border: oklch(0.971 0.006 185.3 / 0.14);
   --input: oklch(0.971 0.006 185.3 / 0.4);
   --ring: var(--color-primary);
+
+  /* Los tokens de marca que los componentes leen directamente (gráficas,
+     `text-fg-muted`, superficies) también cambian con el tema; sin esto los
+     ticks de las gráficas eran tinta oscura sobre tarjeta oscura. */
+  --color-fg: var(--color-bone);
+  --color-fg-muted: oklch(0.971 0.006 185.3 / 0.78);
+  --color-fg-subtle: oklch(0.971 0.006 185.3 / 0.55);
+  --color-bg: var(--color-ink-surface);
+  --color-bg-elevated: var(--color-ink-raised);
+  --color-bg-sunken: var(--color-ink-sunken);
+  --color-primary-text: var(--color-mountain-meadow);
 
   /*
     **Y los de marca, que no son los mismos.** `--border` es el puente de

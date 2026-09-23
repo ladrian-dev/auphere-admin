@@ -108,7 +108,7 @@ export function KnowledgeTable({ refId, data, canWrite, actions, emptyCopy }: Pr
         >
           <div className={["h-full rounded-full transition-[width]", usageWidthClass(ratio), over ? "bg-status-danger" : ratio > 0.8 ? "bg-status-warning" : "bg-primary"].join(" ")} />
         </div>
-        {over ? <p className="text-xs text-status-danger">{t("knowledge.usage.over")}</p> : null}
+        {over ? <p className="text-xs text-destructive">{t("knowledge.usage.over")}</p> : null}
       </div>
 
       {data.items.length === 0 ? (
@@ -152,7 +152,7 @@ export function KnowledgeTable({ refId, data, canWrite, actions, emptyCopy }: Pr
                       <StatusBadge tone={knowledgeStatusTone(doc.status)} pulse={doc.status === "pending"}>
                         {t(`knowledge.status.${doc.status}`)}
                       </StatusBadge>
-                      {doc.status === "failed" ? <span className="max-w-64 text-xs text-pretty text-status-danger">{t(knowledgeErrorKey(doc.error_code))}</span> : null}
+                      {doc.status === "failed" ? <span className="max-w-64 text-xs text-pretty text-destructive">{t(knowledgeErrorKey(doc.error_code))}</span> : null}
                     </div>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{formatBytes(doc.size_bytes, locale)}</TableCell>

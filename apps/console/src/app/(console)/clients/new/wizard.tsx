@@ -650,9 +650,9 @@ function StageIcon({ status }: { status: Stage["status"] }) {
   const cls = "mt-1 size-4 shrink-0";
   switch (status) {
     case "running":
-      return <Loader2 className={cn(cls, "animate-spin text-primary")} aria-hidden="true" />;
+      return <Loader2 className={cn(cls, "animate-spin text-primary-text")} aria-hidden="true" />;
     case "done":
-      return <Check className={cn(cls, "text-primary")} aria-hidden="true" />;
+      return <Check className={cn(cls, "text-primary-text")} aria-hidden="true" />;
     case "failed":
       return <AlertTriangle className={cn(cls, "text-destructive")} aria-hidden="true" />;
     default:
@@ -672,7 +672,7 @@ function PlaceholderField({ ph, value, error, onChange }: { ph: SeedPlaceholder;
           {label}
         </span>
         {!ph.required ? <span className="ml-1 font-normal text-muted-foreground">({t("wizard.placeholders.optional")})</span> : null}
-        {ph.secret ? <span className="ml-1 font-normal text-status-warning">· {t("wizard.placeholders.secret")}</span> : null}
+        {ph.secret ? <span className="ml-1 font-normal text-warning">· {t("wizard.placeholders.secret")}</span> : null}
       </Label>
       <Input
         id={id}

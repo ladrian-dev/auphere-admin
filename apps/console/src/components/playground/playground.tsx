@@ -344,10 +344,10 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
                             ) : turn.status === "cancelled" ? (
                               <span className="text-muted-foreground">{t("playground.run.cancelled")}</span>
                             ) : turn.status === "error" ? (
-                              <span className="text-status-danger">{t("playground.run.error")}</span>
+                              <span className="text-destructive">{t("playground.run.error")}</span>
                             ) : null)}
                           {turn.reply && turn.status === "cancelled" ? <span className="block text-xs text-muted-foreground">{t("playground.run.cancelled")}</span> : null}
-                          {turn.gap ? <span className="block text-xs text-status-warning">{t("playground.run.gap")}</span> : null}
+                          {turn.gap ? <span className="block text-xs text-warning">{t("playground.run.gap")}</span> : null}
                         </div>
                       </div>
                     </li>
@@ -358,7 +358,7 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
             </CardContent>
             <div className="border-t border-border p-3">
               {exhausted ? (
-                <p className="mb-2 text-sm text-status-danger" role="status">
+                <p className="mb-2 text-sm text-destructive" role="status">
                   {t("playground.composer.disabledCap")}
                 </p>
               ) : null}
@@ -394,7 +394,7 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
                 )}
               </div>
               {text.length > MAX_PROMPT ? (
-                <p className="mt-1 text-xs text-status-danger" role="alert">
+                <p className="mt-1 text-xs text-destructive" role="alert">
                   {t("playground.composer.tooLong")}
                 </p>
               ) : null}

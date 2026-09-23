@@ -90,7 +90,7 @@ export function SkillsGrid({ refId, data, canWrite }: Props) {
               <p className="line-clamp-3 text-xs text-pretty text-muted-foreground" title={skill.description}>
                 {skill.description}
               </p>
-              {!skill.activatable ? <p className="text-xs text-status-warning">{t("skills.notActivatable")}</p> : null}
+              {!skill.activatable ? <p className="text-xs text-warning">{t("skills.notActivatable")}</p> : null}
             </li>
           );
         })}

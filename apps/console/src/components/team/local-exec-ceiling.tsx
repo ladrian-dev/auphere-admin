@@ -71,7 +71,7 @@ export function LocalExecCeiling({ ceiling, manage }: { ceiling: ExecMode; manag
         </div>
         <p className="text-xs text-pretty text-muted-foreground">{t("team.localExec.note")}</p>
         {failed ? (
-          <p className="text-sm text-pretty text-status-warning" role="status">
+          <p className="text-sm text-pretty text-warning" role="status">
             {t("team.localExec.failed")}
           </p>
         ) : null}

@@ -87,7 +87,7 @@ export function OnboardingCardClient({ data, role }: { data: Onboarding | null; 
               const canFollow = s.key === "team" ? can(role, "team:read") : can(role, "clients:read");
               const inner = (
                 <>
-                  {s.done ? <Check className="size-4 shrink-0 text-primary" aria-hidden="true" /> : <CircleDashed className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+                  {s.done ? <Check className="size-4 shrink-0 text-primary-text" aria-hidden="true" /> : <CircleDashed className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
                   <span className={cn("min-w-0 truncate", s.done && "text-muted-foreground line-through")}>{t(STEP_LABEL[s.key])}</span>
                 </>
               );

@@ -74,6 +74,12 @@ const PARES: Par[] = [
   // (relleno e icono por un lado, texto por otro) desde la spec 010.
   { fg: "--warning", bg: "--background", min: TEXTO, nota: "aviso sobre el fondo" },
   { fg: "--warning", bg: "--card", min: TEXTO, nota: "aviso sobre tarjeta" },
+  // El primario escrito (enlaces, iconos de estado, badges de texto): el
+  // sólido daba 2,09:1 en claro y nadie lo medía porque se medía el relleno.
+  { fg: "--color-primary-text", bg: "--background", min: TEXTO, nota: "primario como texto sobre el fondo" },
+  { fg: "--color-primary-text", bg: "--card", min: TEXTO, nota: "primario como texto sobre tarjeta" },
+  // El token de marca que leen las gráficas para los ejes, en los dos temas.
+  { fg: "--color-fg-muted", bg: "--card", min: TEXTO, nota: "tinta apagada de marca sobre tarjeta" },
   { fg: "--ring", bg: "--background", min: NO_TEXTUAL, nota: "anillo de foco" },
   { fg: "--ring", bg: "--card", min: NO_TEXTUAL, nota: "anillo de foco sobre tarjeta" },
   // WCAG 1.4.11 pide 3:1 a lo que **identifica un componente**: el borde de un

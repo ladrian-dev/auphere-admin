@@ -63,7 +63,7 @@ export function WorkstationSetupCard({ setup }: { setup: SetupOut | null }) {
             {setup.steps.map((s) => {
               const inner = (
                 <>
-                  {s.done ? <Check className="size-4 shrink-0 text-primary" aria-hidden="true" /> : <CircleDashed className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+                  {s.done ? <Check className="size-4 shrink-0 text-primary-text" aria-hidden="true" /> : <CircleDashed className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
                   <span className={cn("min-w-0 text-pretty", s.done && "text-muted-foreground line-through")}>{t(`ws.setup.step.${s.key}`)}</span>
                   {!s.done && s.pending > 1 ? <span className="text-xs text-muted-foreground">{t("ws.setup.pending", { n: s.pending })}</span> : null}
                 </>

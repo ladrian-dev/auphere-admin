@@ -152,7 +152,7 @@ export function WorkstationPanel({
             {devicesFailed ? (
               // `parcial` (§V): se acota el alcance de lo que se afirma. Lo de
               // arriba sigue siendo cierto; esto es lo que no se pudo leer.
-              <p role="status" className="text-sm text-pretty text-status-warning">
+              <p role="status" className="text-sm text-pretty text-warning">
                 {t("workstation.devices.unavailable")}
               </p>
             ) : devices.length === 0 ? (
@@ -205,7 +205,7 @@ export function WorkstationPanel({
               spellCheck={false}
             />
             {invalid ? (
-              <p id="workstation-executable-error" role="alert" className="text-sm text-status-danger">
+              <p id="workstation-executable-error" role="alert" className="text-sm text-destructive">
                 {t("workstation.allowlist.invalid")}
               </p>
             ) : null}

@@ -28,7 +28,7 @@ export const viewport: Viewport = {
     // eslint-disable-next-line nexus-ui/no-raw-colors
     { media: "(prefers-color-scheme: light)", color: "oklch(0.971 0.006 185.3)" },
     // eslint-disable-next-line nexus-ui/no-raw-colors
-    { media: "(prefers-color-scheme: dark)", color: "oklch(0.229 0.036 191.9)" },
+    { media: "(prefers-color-scheme: dark)", color: "oklch(0.185 0.012 170)" },
   ],
   width: "device-width",
   initialScale: 1,

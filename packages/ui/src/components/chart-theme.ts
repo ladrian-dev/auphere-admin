@@ -14,7 +14,7 @@ export const CHART_SERIES_COLORS: readonly string[] = [
 ];
 
 export const chartAxisProps = {
-  tick: { fill: "var(--color-fg-muted)", fontSize: 11 },
+  tick: { fill: "var(--muted-foreground)", fontSize: 11 },
   axisLine: { stroke: "var(--color-border)" },
   tickLine: false as const,
 };
@@ -22,7 +22,7 @@ export const chartAxisProps = {
 export const chartTooltipStyle: React.CSSProperties = {
   background: "var(--color-bg-elevated)",
   border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius-md, 6px)",
+  borderRadius: "var(--radius-md)",
   color: "var(--color-fg)",
   fontSize: 12,
 };
