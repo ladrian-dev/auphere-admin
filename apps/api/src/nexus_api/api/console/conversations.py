@@ -30,6 +30,7 @@ from nexus_api.db.models import (
     MessageDirection,
     MessageStatus,
 )
+from nexus_api.services.console_traffic import customer_conversation_ids, customer_facing_channel
 
 from .deps import ClientScope, client_scope
 from .schemas import ConversationMetaOut, ConversationPageOut, ConversationStatsOut
@@ -83,7 +84,8 @@ async def list_conversations(
         sa.select(Conversation, Channel.type.label("channel_type"), stats)
         .outerjoin(stats, stats.c.cid == Conversation.id)
         .outerjoin(Channel, Channel.id == Conversation.channel_id)
-        .where(*filters)
+        # The Playground's channel is not a customer (``console_traffic``).
+        .where(sa.or_(Channel.id.is_(None), customer_facing_channel()), *filters)
     )
     if with_errors is True:
         base = base.where(sa.func.coalesce(stats.c.failed, 0) > 0)
@@ -144,7 +146,10 @@ async def conversation_stats(
                 sa.func.count(Conversation.id).filter(
                     Conversation.status == ConversationStatus.CLOSED
                 ),
-            ).where(Conversation.created_at >= since)
+            ).where(
+                Conversation.created_at >= since,
+                Conversation.id.in_(customer_conversation_ids()),
+            )
         )
     ).one()
     msg_row = (
@@ -153,7 +158,10 @@ async def conversation_stats(
                 sa.func.count(Message.id),
                 sa.func.count(Message.id).filter(Message.status == MessageStatus.FAILED),
                 sa.func.avg(Message.latency_ms),
-            ).where(Message.created_at >= since)
+            ).where(
+                Message.created_at >= since,
+                Message.conversation_id.in_(customer_conversation_ids()),
+            )
         )
     ).one()
     return ConversationStatsOut(

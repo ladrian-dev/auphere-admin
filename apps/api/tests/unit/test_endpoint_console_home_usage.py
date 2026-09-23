@@ -527,3 +527,87 @@ async def test_audit_renders_from_vocabulary_in_both_languages_with_dates_and_cs
     # Partner B sees nothing of A.
     b = console_world["b"]
     assert (await client.get("/console/audit", headers=b["headers"]())).json()["items"] == []
+
+
+# ── Playground traffic is not customer traffic ─────────────────────────
+
+
+async def test_playground_channel_and_conversation_do_not_count_anywhere(
+    client, console_world, db_session
+) -> None:
+    """Bug ``.specify/bugs/el-playground-cuenta-como-canal-y-conversacion``.
+
+    The QA Playground creates a real ``web`` channel (``provider=qa_playground``)
+    and conversations on it. Before the fix, one dry run made the onboarding
+    say "channel connected" and "first conversation", the home count one
+    conversation, and the conversations lane list it as a ``web`` channel.
+    """
+    a = console_world["a"]
+    db_session.add(
+        AgentConfig(
+            tenant_id=a["tenant_id"],
+            version=1,
+            status=AgentConfigStatus.ACTIVE,
+            system_prompt_rendered="x",
+            tools=[],
+        )
+    )
+    qa = Channel(
+        id=uuid.uuid4(),
+        tenant_id=a["tenant_id"],
+        type=ChannelType.WEB,
+        provider="qa_playground",
+        provider_identifier=f"qa_playground:{a['tenant_id']}",
+        config={"qa_playground": True},
+        status=ChannelStatus.ACTIVE,
+    )
+    db_session.add(qa)
+    cust = Customer(
+        id=uuid.uuid4(), tenant_id=a["tenant_id"], identifier="qa:owner", preferences={}
+    )
+    db_session.add(cust)
+    await db_session.flush()
+    conv = Conversation(
+        id=uuid.uuid4(),
+        tenant_id=a["tenant_id"],
+        channel_id=qa.id,
+        customer_id=cust.id,
+        status=ConversationStatus.OPEN,
+    )
+    db_session.add(conv)
+    await db_session.flush()
+    db_session.add(
+        Message(
+            tenant_id=a["tenant_id"],
+            conversation_id=conv.id,
+            direction=MessageDirection.OUTBOUND,
+            status=MessageStatus.FAILED,
+            content="x",
+        )
+    )
+    await db_session.commit()
+
+    h = a["headers"]
+    r = await client.get("/console/onboarding", headers=h())
+    assert r.status_code == 200, r.text
+    steps = {s["key"]: s["done"] for s in r.json()["steps"]}
+    assert steps["agent_published"] is True
+    assert steps["channel_connected"] is False
+    assert steps["first_conversation"] is False
+
+    r = await client.get("/console/home", headers=h())
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["conversations_period"]["count"] == 0
+    assert not any(
+        "failed_messages_24h" in inc.get("issues", [])
+        for inc in body.get("incidents", {}).get("refs", [])
+    )
+
+    ref = quote(a["ref"], safe="")
+    r = await client.get(f"/console/clients/{ref}/conversations", headers=h())
+    assert r.status_code == 200, r.text
+    assert r.json()["total"] == 0 and r.json()["items"] == []
+    r = await client.get(f"/console/clients/{ref}/conversations/stats", headers=h())
+    assert r.status_code == 200, r.text
+    assert r.json()["conversations"] == 0 and r.json()["failed_messages"] == 0

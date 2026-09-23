@@ -31,7 +31,6 @@ from nexus_api.db.models import (
     AgentConfigStatus,
     Channel,
     ChannelStatus,
-    Conversation,
     InvitationStatus,
     MembershipStatus,
     Partner,
@@ -42,6 +41,7 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
+from nexus_api.services.console_traffic import customer_conversation_ids, customer_facing_channel
 
 from .schemas_onboarding import OnboardingOut, OnboardingStepOut
 
@@ -126,13 +126,16 @@ async def onboarding(
                     channel_connected = (
                         await session.scalar(
                             sa.select(Channel.id)
-                            .where(Channel.status == ChannelStatus.ACTIVE)
+                            .where(
+                                Channel.status == ChannelStatus.ACTIVE, customer_facing_channel()
+                            )
                             .limit(1)
                         )
                     ) is not None
                 if not conversations:
+                    # A Playground dry run is not the first conversation.
                     conversations = (
-                        await session.scalar(sa.select(Conversation.id).limit(1))
+                        await session.scalar(customer_conversation_ids().limit(1))
                     ) is not None
         finally:
             _current_tenant.reset(token)

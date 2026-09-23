@@ -50,6 +50,7 @@ from nexus_api.db.models import (
     Message,
     MessageStatus,
 )
+from nexus_api.services.console_traffic import customer_conversation_ids
 
 log = structlog.get_logger(__name__)
 
@@ -87,16 +88,24 @@ class SnapshotResult:
 def _snapshot_stmt(
     month_start: datetime, since_24h: datetime
 ) -> sa.Select[tuple[int, int, int | None, int, int]]:
+    # Playground traffic is not customer traffic (``console_traffic``).
     conversations = (
         sa.select(sa.func.count())
         .select_from(Conversation)
-        .where(Conversation.created_at >= month_start)
+        .where(
+            Conversation.created_at >= month_start,
+            Conversation.id.in_(customer_conversation_ids()),
+        )
         .scalar_subquery()
     )
     failed = (
         sa.select(sa.func.count())
         .select_from(Message)
-        .where(Message.status == MessageStatus.FAILED, Message.created_at >= since_24h)
+        .where(
+            Message.status == MessageStatus.FAILED,
+            Message.created_at >= since_24h,
+            Message.conversation_id.in_(customer_conversation_ids()),
+        )
         .scalar_subquery()
     )
     agent = (

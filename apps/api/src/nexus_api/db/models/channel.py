@@ -13,6 +13,13 @@ from nexus_api.db.models._enum import pg_enum
 from nexus_api.db.models._mixins import TenantScopedMixin, TimestampMixin, UUIDPrimaryKey
 from nexus_api.db.types import FernetEncrypted
 
+# The Playground's own ``web`` channel (see ``api/qa.py``). It is a real
+# ``channels`` row so QA conversations have somewhere to live, but it never
+# carries customer traffic: onboarding, home figures and the conversations
+# lane must not count it, or the screen says "channel connected" and
+# "first conversation" after a dry run.
+QA_PLAYGROUND_PROVIDER = "qa_playground"
+
 
 class ChannelType(str, enum.Enum):
     WHATSAPP = "whatsapp"
