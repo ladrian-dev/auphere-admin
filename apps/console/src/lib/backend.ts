@@ -370,6 +370,7 @@ import { agentToolsApi } from "./backend/agent-tools";
 import { channelsApi } from "./backend/channels";
 import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
+import { modelsApi } from "./backend/models";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
 import { teammatesApi } from "./backend/teammates";
@@ -410,6 +411,7 @@ export function backendFor(principal: Principal) {
     ...channelsApi(call),
     ...companionApi(call),
     ...homeUsageApi(call),
+    ...modelsApi(call),
     ...onboardingApi(call),
     ...workstationApi(call),
     ...workstationPartnerApi(call),
