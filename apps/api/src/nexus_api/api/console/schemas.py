@@ -70,6 +70,9 @@ class ClientSummaryOut(BaseModel):
     timezone: str
     created_at: datetime
     updated_at: datetime
+    #: Spec 016 (R2.1): the list shows the «sin cupo» dot without one scoped
+    #: transaction per row — it is ``quota_state`` read once per page.
+    out_of_quota: bool = False
 
 
 class ClientHealthOut(BaseModel):

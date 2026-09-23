@@ -49,7 +49,8 @@ class HomeUsageOut(BaseModel):
 class IncidentClientOut(BaseModel):
     """A client with at least one incident. ``issues`` is a closed vocabulary:
     ``whatsapp_degraded`` (degraded OR disconnected) · ``no_active_agent``
-    · ``failed_messages_24h``."""
+    · ``failed_messages_24h`` · ``out_of_quota`` (spec 016: the channel gate
+    is closed for this client)."""
 
     external_client_ref: str
     client_name: str | None

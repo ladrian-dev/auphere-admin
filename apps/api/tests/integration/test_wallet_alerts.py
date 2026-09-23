@@ -26,6 +26,7 @@ from nexus_api.db.models import (
 from nexus_api.services.wallet_alerts import (
     clients_without_quota,
     evaluate_partner_wallet_alerts,
+    notify_client_out_of_quota_detached,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -236,3 +237,89 @@ async def test_a_caller_with_an_open_transaction_fails_loudly(db_session) -> Non
 
     with pytest.raises(Exception, match="already begun"):
         await evaluate_partner_wallet_alerts(db_session, partner)
+
+
+# ── spec 016 · aviso por cliente «sin cupo» (R2.2, R2.3, R2.5) ───────────────
+
+
+async def _mapped_client(db_session, partner: Partner, name: str, *, cap: int, remaining: int):
+    tenant_id = uuid.uuid4()
+    ref = f"{name}-{tenant_id.hex[:8]}"
+    db_session.add(
+        Tenant(
+            id=tenant_id,
+            name=name,
+            slug=ref,
+            status=TenantStatus.ACTIVE,
+            partner_id=partner.id,
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        PartnerTenant(partner_id=partner.id, external_client_ref=ref, tenant_id=tenant_id)
+    )
+    db_session.add(
+        PartnerAllocation(partner_id=partner.id, tenant_id=tenant_id, cap=cap, remaining=remaining)
+    )
+    await db_session.commit()
+    return tenant_id, ref
+
+
+async def test_out_of_quota_notice_is_once_per_client_and_day_and_emails(
+    db_session, monkeypatch
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from nexus_api.services import wallet_alerts
+
+    partner = await _partner(db_session, available=CAP)
+    partner.usage_alert_recipients = ["ops@example.com"]
+    await db_session.commit()
+    tenant_id, ref = await _mapped_client(db_session, partner, "agotado", cap=50_000, remaining=0)
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        wallet_alerts, "send_email", AsyncMock(side_effect=lambda **kw: sent.append(kw))
+    )
+
+    row = await notify_client_out_of_quota_detached(tenant_id)
+    assert row is not None
+    assert row.kind == "client.out_of_quota"
+    assert row.severity == NotificationSeverity.WARNING.value
+    assert row.external_client_ref == ref
+    assert row.payload == {"external_client_ref": ref, "remaining": 0}
+    assert row.dedupe_key == (
+        f"partner:{partner.id}:client.out_of_quota:{ref}:{datetime.now(UTC):%Y-%m-%d}"
+    )
+    assert len(sent) == 1
+    assert sent[0]["to"] == ["ops@example.com"]
+    assert ref in sent[0]["subject"]
+
+    # Un segundo turno saltado el mismo día no crea otro aviso ni otro correo.
+    assert await notify_client_out_of_quota_detached(tenant_id) is None
+    count = await db_session.scalar(
+        sa.select(sa.func.count())
+        .select_from(ConsoleNotification)
+        .where(
+            ConsoleNotification.partner_id == partner.id,
+            ConsoleNotification.kind == "client.out_of_quota",
+        )
+    )
+    assert count == 1
+    assert len(sent) == 1
+
+
+async def test_out_of_quota_notice_rechecks_the_gate_before_speaking(db_session) -> None:
+    """R2.5: si al recomprobar el cliente ya tiene cupo, no hay aviso."""
+    partner = await _partner(db_session, available=CAP)
+    tenant_id, _ref = await _mapped_client(
+        db_session, partner, "con-cupo", cap=50_000, remaining=10
+    )
+    assert await notify_client_out_of_quota_detached(tenant_id) is None
+    count = await db_session.scalar(
+        sa.select(sa.func.count())
+        .select_from(ConsoleNotification)
+        .where(ConsoleNotification.partner_id == partner.id)
+    )
+    assert count == 0
+    # Un tenant sin partner no tiene a quién avisar.
+    assert await notify_client_out_of_quota_detached(uuid.uuid4()) is None

@@ -42,7 +42,14 @@ from nexus_api.services.partner_clients import (
 )
 from nexus_api.services.tenant_lifecycle import TenantDeleteBlocked, hard_delete_tenant
 
-from .deps import ClientScope, client_health, client_scope, health_for_tenant, resolve_mapping
+from .deps import (
+    ClientScope,
+    client_health,
+    client_scope,
+    health_for_tenant,
+    out_of_quota,
+    resolve_mapping,
+)
 from .me import quota_out
 from .schemas import (
     ClientCreateIn,
@@ -65,7 +72,9 @@ _SORTABLE = {
 }
 
 
-def _summary(mapping: PartnerTenant, tenant: Tenant) -> ClientSummaryOut:
+def _summary(
+    mapping: PartnerTenant, tenant: Tenant, *, out_of_quota: bool = False
+) -> ClientSummaryOut:
     return ClientSummaryOut(
         external_client_ref=mapping.external_client_ref,
         name=tenant.name,
@@ -73,6 +82,17 @@ def _summary(mapping: PartnerTenant, tenant: Tenant) -> ClientSummaryOut:
         timezone=tenant.timezone,
         created_at=tenant.created_at,
         updated_at=tenant.updated_at,
+        out_of_quota=out_of_quota,
+    )
+
+
+async def _detail(scope: ClientScope) -> ClientOut:
+    """Summary + health with the quota reading (spec 016, R2.1)."""
+    no_quota = await out_of_quota(scope.principal.partner.id, scope.tenant.id)
+    health = await client_health(scope.session, scope.tenant, out_of_quota=no_quota)
+    return ClientOut(
+        **_summary(scope.mapping, scope.tenant, out_of_quota=no_quota).model_dump(),
+        health=health,
     )
 
 
@@ -128,8 +148,14 @@ async def list_clients(
                 .offset(offset)
             )
         ).all()
+    from nexus_api.metering.wallet import quota_state
+
+    quota = await quota_state(principal.partner.id, [tenant.id for _, tenant in rows])
     return ClientPageOut(
-        items=[_summary(mapping, tenant) for mapping, tenant in rows],
+        items=[
+            _summary(mapping, tenant, out_of_quota=quota.get(tenant.id, True))
+            for mapping, tenant in rows
+        ],
         total=int(total or 0),
         limit=limit,
         offset=offset,
@@ -224,8 +250,7 @@ async def create_client(
 
 @router.get("/{ref}", response_model=ClientOut)
 async def get_client(scope: ClientScope = Depends(client_scope("clients:read"))) -> ClientOut:
-    health = await client_health(scope.session, scope.tenant)
-    return ClientOut(**_summary(scope.mapping, scope.tenant).model_dump(), health=health)
+    return await _detail(scope)
 
 
 @router.patch("/{ref}", response_model=ClientOut)
@@ -253,8 +278,7 @@ async def update_client(
     await scope.session.flush()
     # ``updated_at`` is a server-side ``onupdate``: reload before serialising.
     await scope.session.refresh(scope.tenant)
-    health = await client_health(scope.session, scope.tenant)
-    return ClientOut(**_summary(scope.mapping, scope.tenant).model_dump(), health=health)
+    return await _detail(scope)
 
 
 _ALLOWED: dict[TenantStatus, set[str]] = {
@@ -279,8 +303,7 @@ async def set_client_status(
     agent version — otherwise there is nothing to serve."""
     current = scope.tenant.status
     if body.status == current.value:
-        health = await client_health(scope.session, scope.tenant)
-        return ClientOut(**_summary(scope.mapping, scope.tenant).model_dump(), health=health)
+        return await _detail(scope)
     if body.status not in _ALLOWED[current]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -317,8 +340,7 @@ async def set_client_status(
             partner_id=scope.principal.partner.id,
             external_client_ref=scope.ref,
         )
-    health = await client_health(scope.session, scope.tenant)
-    return ClientOut(**_summary(scope.mapping, scope.tenant).model_dump(), health=health)
+    return await _detail(scope)
 
 
 @router.delete(
