@@ -22,7 +22,7 @@ import { CardSkeleton, Skeleton } from "../../components/skeleton";
 import { StatusBadge } from "../../components/status-badge";
 import { StatusDot } from "../../components/status-dot";
 import { Stepper, type StepState } from "../../components/stepper";
-import { TooltipProvider } from "../../components/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/tooltip";
 
 /**
  * Prototipo · iteración 1 (spec 017, R1–R3): la cabecera de la ficha, la
@@ -109,14 +109,20 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
         </nav>
         {/* Para quien abre veinte fichas al día: anterior, siguiente, salto directo y la lista de atajos. */}
         <nav aria-label="Otros clientes" className="flex flex-wrap items-center gap-1">
-          <Button variant="ghost" size="xs" aria-label="Cliente anterior: Clínica Boreal">
-            <ChevronLeft aria-hidden="true" /> Clínica Boreal <Kbd aria-hidden="true">[</Kbd>
-          </Button>
-          <Button variant="ghost" size="xs" aria-label="Cliente siguiente: Taller Ruiz">
-            Taller Ruiz <Kbd aria-hidden="true">]</Kbd> <ChevronRight aria-hidden="true" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Cliente anterior: Clínica Boreal" />}>
+              <ChevronLeft aria-hidden="true" />
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Anterior: Clínica Boreal · tecla [</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Cliente siguiente: Taller Ruiz" />}>
+              <ChevronRight aria-hidden="true" />
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Siguiente: Taller Ruiz · tecla ]</TooltipContent>
+          </Tooltip>
           <Button variant="outline" size="xs" aria-label="Ir a otro cliente">
-            <Search aria-hidden="true" /> Ir a cliente… <Kbd aria-hidden="true">⌘K</Kbd>
+            <Search aria-hidden="true" /> Ir a cliente… <Kbd aria-hidden="true" className="hidden sm:inline-flex">⌘K</Kbd>
           </Button>
           <Button variant="ghost" size="xs" nativeButton={false} render={<a href="#" />}>
             Guía de la ficha
@@ -132,37 +138,50 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
             {phone ? <span className="text-muted-foreground">WhatsApp {phone}</span> : null}
           </div>
         </div>
-        {canWrite ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline" size="sm" aria-label="Más acciones">
-                  <MoreHorizontal aria-hidden="true" /> Más
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end" className="w-64">
-              {status === "active" ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button variant="outline" size="sm" aria-label="Más acciones">
+                <MoreHorizontal aria-hidden="true" /> Más
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end" className="w-64">
+            {canWrite && status === "active" ? (
+              <>
                 <DropdownMenuItem>
                   <span className="flex flex-col">
                     Pausar
                     <span className="text-xs text-muted-foreground">Deja de atender; se reactiva cuando quieras.</span>
                   </span>
                 </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem>Reactivar</DropdownMenuItem>
-              )}
-              {status !== "archived" ? (
                 <DropdownMenuItem>
                   <span className="flex flex-col">
                     Archivar
                     <span className="text-xs text-muted-foreground">Sale de la lista; nada se borra.</span>
                   </span>
                 </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Copiar referencia</DropdownMenuItem>
-              {status === "archived" ? (
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            {canWrite && status === "paused" ? (
+              <>
+                <DropdownMenuItem>
+                  <span className="flex flex-col">
+                    Archivar
+                    <span className="text-xs text-muted-foreground">Sale de la lista; nada se borra.</span>
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            <DropdownMenuItem>
+              <span className="flex flex-col">
+                Copiar referencia
+                <span className="text-xs text-muted-foreground">El identificador que usa la API: panaderia-la-espiga.</span>
+              </span>
+            </DropdownMenuItem>
+            {canWrite && status === "archived" ? (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem variant="destructive">
@@ -172,10 +191,9 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
                     </span>
                   </DropdownMenuItem>
                 </>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );
@@ -187,14 +205,14 @@ function IncidentNotice({ incident, role }: { incident: Exclude<Incident, null>;
   const canAct = role === "owner";
   if (incident === "channel_down") {
     return (
-      <Callout tone="danger" title="WhatsApp desconectado desde ayer a las 18:40" action={canAct ? <Button size="sm">Reconectar WhatsApp</Button> : <Button size="sm" variant="outline">Avisar al propietario</Button>}>
-        Meta cerró la sesión del número. Los mensajes que lleguen mientras tanto no se responden. Reconectar tarda un minuto y no cambia nada más; si no funciona, Canales explica qué mirar en Meta.
+      <Callout tone="danger" title="WhatsApp desconectado desde ayer a las 18:40" action={canAct ? <Button size="sm">Reconectar WhatsApp</Button> : undefined}>
+        Meta cerró la sesión del número. Los mensajes que lleguen mientras tanto no se responden. Reconectar tarda un minuto y no cambia nada más; si no funciona, Canales explica qué mirar en Meta.{canAct ? "" : " Lo hace el propietario, un administrador o un builder."}
       </Callout>
     );
   }
   return (
-    <Callout tone="danger" title="Crédito agotado: el agente no responde" action={canAct ? <Button size="sm">Asignar crédito</Button> : <Button size="sm" variant="outline">Avisar al propietario</Button>}>
-      Se gastaron los {n(5000)} créditos del mes el 22 de septiembre. Asigna más, o mueve crédito desde otro cliente; el agente vuelve a atender al instante.
+    <Callout tone="danger" title="Crédito agotado: el agente no responde" action={canAct ? <Button size="sm">Asignar crédito</Button> : undefined}>
+      Se gastaron los {n(5000)} créditos del mes el 22 de septiembre. Asigna más, o mueve crédito desde otro cliente; el agente vuelve a atender al instante.{canAct ? "" : " Lo hace el propietario, un administrador o un builder."}
     </Callout>
   );
 }
@@ -203,7 +221,7 @@ function LifecycleNotice({ status, role }: { status: Exclude<Status, "active">; 
   const isArchived = status === "archived";
   return (
     <Callout tone={isArchived ? "neutral" : "warning"} title={isArchived ? "Archivado el 12 sept 2026" : "En pausa desde el 12 sept 2026"} action={role === "owner" ? <Button size="sm" variant="outline">Reactivar</Button> : undefined}>
-      El agente no atiende {isArchived ? "y el canal sigue reservado para este cliente" : "mientras el cliente esté en pausa"}. Reactivar lo devuelve a como estaba.
+      El agente no atiende {isArchived ? "y el canal sigue reservado para este cliente" : "mientras el cliente esté en pausa"}. Reactivar lo devuelve a como estaba, con la versión 3 del agente.
     </Callout>
   );
 }
@@ -233,10 +251,10 @@ function SetupCard({ setup, role }: { setup: Setup; role: Role }) {
             ) : (
               <>
                 <span className="text-sm">
-                  {NEXT_ACTION[setup.next]} <span className="text-muted-foreground">(lo hace el propietario)</span>
+                  {NEXT_ACTION[setup.next]} <span className="text-muted-foreground">(lo hace el propietario, un administrador o un builder)</span>
                 </span>
                 <Button size="sm" variant="outline">
-                  Avisar al propietario
+                  Avisar por correo
                 </Button>
               </>
             )}
@@ -254,9 +272,10 @@ function creditTone(remaining: number, cap: number): MeterTone {
   return "positive";
 }
 
-function CreditCard({ quota, status, role }: { quota: { cap: number; remaining: number } | null; status: Status; role: Role }) {
+function CreditCard({ quota, status, role, incident }: { quota: { cap: number; remaining: number } | null; status: Status; role: Role; incident: Incident }) {
   const consumed = quota ? quota.cap - quota.remaining : 0;
   const live = status === "active";
+  const exhausted = quota !== null && quota.remaining <= 0;
   return (
     <Section
       title={
@@ -264,7 +283,7 @@ function CreditCard({ quota, status, role }: { quota: { cap: number; remaining: 
           Crédito <HelpHint label="Ayuda: crédito">Lo que este cliente puede gastar cada mes. Un mensaje respondido cuesta unos 3 créditos. Se renueva el día 1; lo que sobra no se acumula.</HelpHint>
         </span>
       }
-      actions={role === "owner" && quota && live ? <Button size="xs" variant="ghost">Ajustar</Button> : undefined}
+      actions={role === "owner" && quota && live && !incident ? <Button size="xs" variant="ghost">Cambiar crédito</Button> : undefined}
       className="min-w-0"
     >
       {quota ? (
@@ -276,6 +295,7 @@ function CreditCard({ quota, status, role }: { quota: { cap: number; remaining: 
           tone={creditTone(quota.remaining, quota.cap)}
           valueLabel={`Quedan ${n(quota.remaining)} de ${n(quota.cap)} créditos`}
           hint={live ? `${n(consumed)} gastados este mes · se renueva el 1 de octubre.` : `${n(consumed)} gastados este mes.`}
+          className={exhausted ? "[&_progress]:bg-status-danger-bg [&_progress::-webkit-progress-bar]:bg-status-danger-bg" : undefined}
         />
       ) : (
         <p className="text-sm text-muted-foreground">Sin crédito asignado. El agente no puede atender hasta que se le asigne.</p>
@@ -388,31 +408,42 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<DraftState>(initial);
   const successRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
-  // Focus moves to the success notice so a keyboard user does not land on body.
+  // A keyboard user never lands on body: the bar takes focus while it
+  // publishes, the success notice when it is done.
   useEffect(() => {
     if (state === "published") successRef.current?.focus();
+    if (state === "publishing") barRef.current?.focus();
   }, [state]);
+
+  function publish() {
+    setOpen(false);
+    setState("publishing");
+    window.setTimeout(() => {
+      setState("published");
+      onPublished?.();
+    }, 1200);
+  }
 
   if (state === "published") {
     return (
       <div ref={successRef} tabIndex={-1} className="outline-none">
-        <Callout tone="positive" title="Versión 4 publicada hace un momento" action={canPublish ? <Button size="sm" variant="outline" onClick={() => setState("pending")}>Deshacer · vuelve a la versión 3</Button> : undefined}>
-          El agente ya responde con los cambios de Ajustes y Capacidades. Puedes deshacerlo durante 10 minutos; este aviso se cierra solo cuando pase el plazo.
+        <Callout tone="positive" title="Versión 4 publicada hace un momento" action={canPublish ? <Button size="sm" variant="outline" onClick={() => setState("pending")}>Deshacer (9 min) · vuelve a la versión 3</Button> : undefined}>
+          El agente ya responde con los cambios de Ajustes y Capacidades. Este aviso se cierra solo cuando termine el plazo para deshacer.
         </Callout>
       </div>
     );
   }
-  if (state === "failed") {
-    return (
-      <Callout tone="danger" title="No se pudo publicar la versión 4" action={canPublish ? <Button size="sm" onClick={() => setState("pending")}>Reintentar</Button> : undefined}>
-        La versión activa sigue siendo la 3 y el borrador no se ha perdido. El servidor no respondió; suele resolverse al reintentar. Si vuelve a fallar, escríbenos desde Ayuda con la hora y el nombre del cliente.
-      </Callout>
-    );
-  }
   return (
-    <div role="status" aria-live="polite" aria-busy={state === "publishing"} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-status-info-border bg-status-info-bg px-3 py-2 text-sm">
+    <div className="flex flex-col gap-2">
+      {state === "failed" ? (
+        <Callout tone="danger" title="No se pudo publicar la versión 4" action={canPublish ? <Button size="sm" onClick={publish}>Reintentar</Button> : undefined}>
+          La versión activa sigue siendo la 3 y el borrador no se ha perdido. El servidor no respondió; suele resolverse al reintentar. Si vuelve a fallar, escríbenos desde Ayuda con la hora y el nombre del cliente.
+        </Callout>
+      ) : null}
+    <div ref={barRef} tabIndex={-1} role="status" aria-live="polite" aria-busy={state === "publishing"} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-status-info-border bg-status-info-bg px-3 py-2 text-sm outline-none">
       <span className="inline-flex items-center gap-2">
         <StatusDot tone="info" pulse={state === "publishing"} label="borrador" />
         <span>
@@ -427,8 +458,8 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
         </span>
       </span>
       {canPublish ? (
-        <Button size="sm" variant={primary ? "default" : "outline"} onClick={() => setOpen(true)} loading={state === "publishing"} aria-haspopup="dialog">
-          Revisar y publicar
+        <Button size="sm" variant={primary && state !== "failed" ? "default" : "outline"} onClick={() => setOpen(true)} loading={state === "publishing"} aria-haspopup="dialog">
+          {state === "failed" ? "Ver los cambios" : "Revisar y publicar"}
         </Button>
       ) : (
         <Button size="sm" variant="ghost" onClick={() => setOpen(true)} aria-haspopup="dialog">
@@ -447,7 +478,7 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
             <DescriptionList layout="inline" items={[{ term: "Horario", detail: "Atiende siempre → L–V 9–18" }, { term: "Idiomas", detail: "español → español, inglés" }]} />
           </Section>
           <Section title="Capacidades" headingLevel={3} flat>
-            <DescriptionList layout="inline" items={[{ term: "Reservas", detail: "apagada → activada" }, { term: "Consultar pedido", detail: "modo siempre → nunca" }]} />
+            <DescriptionList layout="inline" items={[{ term: "Reservas", detail: "apagada → activada" }, { term: "Consultar pedido", detail: "permitida siempre → nunca" }]} />
           </Section>
           <p className="text-sm text-muted-foreground">
             El prompt completo se lee en <a href="#" className="underline underline-offset-4">Agente · versión 4</a>.
@@ -464,24 +495,12 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
               <Button variant="outline" onClick={() => setOpen(false)}>
                 Cerrar
               </Button>
-              {canPublish ? (
-                <Button
-                  onClick={() => {
-                    setOpen(false);
-                    setState("publishing");
-                    window.setTimeout(() => {
-                      setState("published");
-                      onPublished?.();
-                    }, 1200);
-                  }}
-                >
-                  Publicar la versión 4
-                </Button>
-              ) : null}
+              {canPublish ? <Button onClick={publish}>Publicar la versión 4</Button> : null}
             </span>
           </SheetFooter>
         </SheetContent>
       </Sheet>
+    </div>
     </div>
   );
 }
@@ -522,7 +541,7 @@ function Page({
 
       <div className={compact ? "flex flex-col gap-(--space-block)" : "grid gap-(--space-block) lg:grid-cols-[2fr_1fr]"}>
         {pending ? <SetupCard setup={setup} role={role} /> : <ActivityCard status={status} />}
-        <CreditCard quota={quota} status={status} role={role} />
+        <CreditCard quota={quota} status={status} role={role} incident={incident} />
       </div>
 
       <div className="flex flex-col gap-(--space-block)">
