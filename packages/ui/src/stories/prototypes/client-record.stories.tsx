@@ -121,6 +121,9 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
           <Button variant="ghost" size="xs" aria-label="Ver los atajos de teclado">
             Atajos <Kbd aria-hidden="true">?</Kbd>
           </Button>
+          <Button variant="ghost" size="xs" nativeButton={false} render={<a href="#" />}>
+            Guía de la ficha
+          </Button>
         </nav>
       </div>
       <div className="flex flex-wrap items-start justify-between gap-(--space-stack)">
@@ -350,7 +353,7 @@ function Nav({ current, compact, hide = [], marked = [], alert = [] }: { current
     );
   }
   return (
-    <nav aria-label="Sección de la ficha" className="flex flex-wrap items-end justify-between gap-x-10 gap-y-2 border-b border-border">
+    <nav aria-label="Sección de la ficha" className="flex flex-wrap gap-x-10 gap-y-2 border-b border-border">
       <div className="flex flex-wrap gap-x-10 gap-y-2">
         {groups.map((g) => (
           <div key={g.label} className="flex flex-col gap-1">
@@ -384,9 +387,6 @@ function Nav({ current, compact, hide = [], marked = [], alert = [] }: { current
           </div>
         ))}
       </div>
-      <a href="#" className="inline-flex items-center gap-1 pb-2 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-        Guía de la ficha
-      </a>
     </nav>
   );
 }
