@@ -106,3 +106,6 @@ storybook-static/
 # Playwright (spec 010): humo del binario y revision de accesibilidad
 apps/desktop/test-results/
 apps/desktop/playwright-report/
+
+# impeccable (design critiques, local)
+.impeccable/

@@ -73,7 +73,7 @@ function Meter({
         <div className="flex items-baseline justify-between gap-(--space-inline)">
           {labelNode}
           {valueLabel ? (
-            <span className="min-w-0 truncate font-mono text-xs text-muted-foreground tabular-nums" title={valueLabel}>
+            <span className="min-w-0 truncate text-xs text-muted-foreground tabular-nums" title={valueLabel}>
               {valueLabel}
             </span>
           ) : null}
