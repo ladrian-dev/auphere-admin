@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../../components/button";
 import { Callout } from "../../components/callout";
-import { DescriptionList } from "../../components/description-list";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,7 +17,7 @@ import { Meter, type MeterTone } from "../../components/meter";
 import { NativeSelect } from "../../components/native-select";
 import { Section } from "../../components/section";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "../../components/sheet";
-import { CardSkeleton, Skeleton } from "../../components/skeleton";
+import { Skeleton } from "../../components/skeleton";
 import { StatusBadge } from "../../components/status-badge";
 import { StatusDot } from "../../components/status-dot";
 import { Stepper, type StepState } from "../../components/stepper";
@@ -83,6 +82,8 @@ const NEXT_WHY: Record<StepKey, string> = {
   activation: "El último clic: a partir de ahí el agente atiende.",
 };
 const MISSING: Record<StepKey, string> = { agent: "falta el agente", channel: "falta el canal", quota: "falta crédito", activation: "falta activarlo" };
+/** Una incidencia también deja al cliente sin atender: la insignia lo dice. */
+const INCIDENT_CAUSE: Record<Exclude<Incident, null>, string> = { channel_down: "WhatsApp caído", credit_exhausted: "crédito agotado" };
 const STEP_ORDER: StepKey[] = ["agent", "channel", "quota", "activation"];
 
 /** «5 000», también con cuatro cifras (es-ES no agrupa 4 dígitos por defecto). */
@@ -93,7 +94,7 @@ const n = (v: number) => new Intl.NumberFormat("es-ES", { minimumFractionDigits:
 function ServingBadge({ status, setup, incident }: { status: Status; setup: Setup; incident: Incident }) {
   if (status === "paused") return <StatusBadge tone="muted">En pausa</StatusBadge>;
   if (status === "archived") return <StatusBadge tone="muted">Archivado</StatusBadge>;
-  if (incident) return <StatusBadge tone="danger">Con incidencia</StatusBadge>;
+  if (incident) return <StatusBadge tone="danger">Sin atender · {INCIDENT_CAUSE[incident]}</StatusBadge>;
   if (setup.next) return <StatusBadge tone="warning">Sin atender · {MISSING[setup.next]}</StatusBadge>;
   return <StatusBadge tone="positive">Atendiendo</StatusBadge>;
 }
@@ -101,12 +102,12 @@ function ServingBadge({ status, setup, incident }: { status: Status; setup: Setu
 function Header({ status, setup, phone, role, incident }: { status: Status; setup: Setup; phone?: string; role: Role; incident: Incident }) {
   const canWrite = role === "owner";
   const serving = status === "active" && setup.next === null && !incident;
-  const lifecycleItems = canWrite && status !== "archived";
   return (
     <header className="flex flex-col gap-(--space-stack)">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
         <nav aria-label="Migas" className="mr-auto">
-          <a href="#" className="hover:text-foreground">
+          {/* Subrayado: en una línea de texto del mismo color, la posición no basta para decir «esto es un enlace». */}
+          <a href="#" className="underline decoration-muted-foreground/50 underline-offset-4 hover:text-foreground">
             Clientes
           </a>{" "}
           <span aria-hidden="true">/</span> <span className="text-foreground">Panadería La Espiga</span>
@@ -118,7 +119,7 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
               <ChevronLeft aria-hidden="true" />
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              Anterior: Clínica Boreal <Kbd>[</Kbd>
+              Anterior: Clínica Boreal <Kbd>Alt ←</Kbd>
             </TooltipContent>
           </Tooltip>
           <Tooltip>
@@ -126,10 +127,11 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
               <ChevronRight aria-hidden="true" />
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              Siguiente: Taller Ruiz <Kbd>]</Kbd>
+              Siguiente: Taller Ruiz <Kbd>Alt →</Kbd>
             </TooltipContent>
           </Tooltip>
-          <Button variant="outline" size="xs" aria-label="Ir a otro cliente">
+          {/* Sin `aria-label`: el nombre accesible debe empezar por el texto visible (WCAG 2.5.3). */}
+          <Button variant="outline" size="xs">
             <Search aria-hidden="true" /> Ir a cliente… <ShortcutKbd keyName="K" aria-hidden="true" className="hidden sm:inline-flex" />
           </Button>
         </nav>
@@ -148,11 +150,8 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
             {phone ? <span className="text-muted-foreground">WhatsApp {phone}</span> : null}
           </div>
         </div>
-        {!lifecycleItems && status !== "archived" ? (
-          <Button variant="ghost" size="sm">
-            Copiar referencia
-          </Button>
-        ) : (
+        {/* El mismo control en el mismo sitio para todos los roles: dentro
+            solo aparece lo que quien mira puede hacer. */}
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -200,7 +199,6 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
             ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
-        )}
       </div>
     </header>
   );
@@ -213,13 +211,21 @@ function IncidentNotice({ incident, role }: { incident: Exclude<Incident, null>;
   if (incident === "channel_down") {
     return (
       <Callout tone="danger" title="WhatsApp desconectado desde ayer a las 18:40" action={canAct ? <Button size="sm">Reconectar WhatsApp</Button> : <Button size="sm" variant="outline">Avisar por correo al propietario</Button>}>
-        Meta cerró la sesión del número. Los mensajes que lleguen mientras tanto no se responden. Reconectar tarda un minuto y no cambia nada más; si no funciona, Canales explica qué mirar en Meta.{canAct ? "" : " Lo hace el propietario, un administrador o un builder."}
+        <span className="block max-w-prose text-pretty">
+          Meta cerró la sesión del número. Los mensajes que lleguen mientras tanto no se responden. Reconectar tarda un minuto y no cambia nada más; si no funciona,{" "}
+          <a href="#" className="underline underline-offset-4">
+            Canales
+          </a>{" "}
+          explica qué mirar en Meta.{canAct ? "" : " Lo hace el propietario, un administrador o un editor."}
+        </span>
       </Callout>
     );
   }
   return (
     <Callout tone="danger" title="Crédito agotado: el agente no responde" action={canAct ? <Button size="sm">Añadir crédito</Button> : <Button size="sm" variant="outline">Avisar por correo al propietario</Button>}>
-      Se gastaron los {n(5000)} créditos del mes el 22 de septiembre. Añade crédito, o muévelo desde otro cliente que lo tenga de sobra; el agente vuelve a atender al instante.{canAct ? "" : " Lo hace el propietario, un administrador o un builder."}
+      <span className="block max-w-prose text-pretty">
+        Se gastaron los {n(5000)} créditos del mes el 22 de septiembre. Añade crédito, o muévelo desde otro cliente que lo tenga de sobra; el agente vuelve a atender al instante.{canAct ? "" : " Lo hace el propietario, un administrador o un editor."}
+      </span>
     </Callout>
   );
 }
@@ -228,7 +234,9 @@ function LifecycleNotice({ status, role }: { status: Exclude<Status, "active">; 
   const isArchived = status === "archived";
   return (
     <Callout tone={isArchived ? "neutral" : "warning"} title={isArchived ? "Archivado el 12 sept 2026" : "En pausa desde el 12 sept 2026"} action={role === "owner" ? <Button size="sm" variant="outline">Reactivar</Button> : undefined}>
-      El agente no atiende {isArchived ? "y el canal sigue reservado para este cliente" : "mientras el cliente esté en pausa"}. Reactivar lo devuelve a como estaba, con la versión 3 del agente.
+      <span className="block max-w-prose text-pretty">
+        El agente no atiende {isArchived ? "y el canal sigue reservado para este cliente" : "mientras el cliente esté en pausa"}. Reactivar lo devuelve a como estaba, con la versión 3 del agente.
+      </span>
     </Callout>
   );
 }
@@ -258,7 +266,7 @@ function SetupCard({ setup, role }: { setup: Setup; role: Role }) {
             ) : (
               <>
                 <span className="text-sm">
-                  {NEXT_ACTION[setup.next]} <span className="text-muted-foreground">(lo hace el propietario, un administrador o un builder)</span>
+                  {NEXT_ACTION[setup.next]} <span className="text-muted-foreground">(lo hace el propietario, un administrador o un editor)</span>
                 </span>
                 <Button size="sm" variant="outline">
                   Avisar por correo al propietario
@@ -279,10 +287,13 @@ function creditTone(remaining: number, cap: number): MeterTone {
   return "positive";
 }
 
-function CreditCard({ quota, status, role, incident, pending }: { quota: { cap: number; remaining: number } | null; status: Status; role: Role; incident: Incident; pending: boolean }) {
+function CreditCard({ quota, status, role, pending }: { quota: { cap: number; remaining: number } | null; status: Status; role: Role; pending: boolean }) {
   const consumed = quota ? quota.cap - quota.remaining : 0;
   const live = status === "active" && !pending;
   const exhausted = quota !== null && quota.remaining <= 0;
+  // La acción sigue al dato y al rol, no al estado de incidencia: el crédito
+  // se toca igual con el canal caído. Archivado, el verbo es mover, que es la
+  // decisión que toca.
   return (
     <Section
       title={
@@ -290,7 +301,13 @@ function CreditCard({ quota, status, role, incident, pending }: { quota: { cap: 
           Crédito <HelpHint label="Ayuda: crédito">Lo que este cliente puede gastar cada mes. Un mensaje respondido cuesta unos 3 créditos. Se renueva el día 1; lo que sobra no se acumula.</HelpHint>
         </span>
       }
-      actions={role === "owner" && quota && live && !incident ? <Button size="xs" variant="ghost">Cambiar crédito</Button> : undefined}
+      actions={
+        role === "owner" ? (
+          <Button size="xs" variant="ghost">
+            {!quota ? "Asignar crédito" : status === "archived" ? "Mover crédito" : "Cambiar crédito"}
+          </Button>
+        ) : undefined
+      }
       className="min-w-0"
     >
       {quota ? (
@@ -301,11 +318,19 @@ function CreditCard({ quota, status, role, incident, pending }: { quota: { cap: 
           max={quota.cap}
           tone={live ? creditTone(quota.remaining, quota.cap) : exhausted ? "danger" : "neutral"}
           valueLabel={`Quedan ${n(quota.remaining)} de ${n(quota.cap)} créditos`}
-          hint={live ? `${n(consumed)} gastados este mes · se renueva el 1 de octubre.` : consumed ? `${n(consumed)} gastados este mes.` : "Todavía sin gasto: el agente aún no atiende."}
+          hint={
+            status === "archived"
+              ? `${n(quota.remaining)} siguen reservados para este cliente y no se renuevan el día 1: muévelos a otro cliente si no vas a reactivarlo.`
+              : live
+                ? `${n(consumed)} gastados este mes · se renueva el 1 de octubre.`
+                : consumed
+                  ? `${n(consumed)} gastados este mes.`
+                  : "Todavía sin gasto: el agente aún no atiende."
+          }
           className={exhausted ? "[&_progress]:bg-status-danger-bg [&_progress::-webkit-progress-bar]:bg-status-danger-bg" : undefined}
         />
       ) : (
-        <p className="text-sm text-muted-foreground">Sin crédito asignado. El agente no puede atender hasta que se le asigne.</p>
+        <p className="max-w-prose text-sm text-pretty text-muted-foreground">Sin crédito asignado. El agente no puede atender hasta que se le asigne.</p>
       )}
     </Section>
   );
@@ -328,22 +353,30 @@ function ActivityCard({ status, incident }: { status: Status; incident: Incident
       }
       className="min-w-0"
     >
-      <DescriptionList
-        layout="inline"
-        dense
-        items={
-          live
-            ? [
-                { key: "conv", term: "Conversaciones (7 días)", detail: incident ? "4" : "12" },
-                { key: "last", term: "Último mensaje", detail: last },
-                { key: "esc", term: "Escaladas a una persona (7 días)", detail: "1" },
-              ]
-            : [
-                { key: "conv", term: "Conversaciones (7 días)", detail: "0" },
-                { key: "last", term: "Último mensaje", detail: "12 sept 2026" },
-              ]
-        }
-      />
+      {/* Tres cifras en fila, no tres frases: la tarjeta existe para
+          responder «¿va bien esto?» de un vistazo. La fila nunca desaparece;
+          cuando no hay dato, dice «—». */}
+      <dl className="grid grid-cols-3 gap-4">
+        {[
+          { key: "conv", term: "Conversaciones", note: "7 días", value: live ? (incident ? "4" : "12") : "0", count: true },
+          { key: "esc", term: "Escaladas a una persona", note: "7 días", value: live ? "1" : "—", count: true },
+          // Una hora no es una cifra: si se pone a 24 px, manda sobre los
+          // números que sí se comparan.
+          { key: "last", term: "Último mensaje", note: null, value: live ? last : "12 sept 2026", count: false },
+        ].map((m) => (
+          // `flex-col-reverse`: la cifra manda a la vista, pero en el DOM el
+          // término va primero, que es lo que pide un `dl`.
+          // `justify-end` en un eje invertido empaqueta arriba: las tres
+          // cifras comparten el borde superior aunque midan distinto.
+          <div key={m.key} className="flex min-w-0 flex-col-reverse justify-end gap-1">
+            <dt className="text-xs text-pretty text-muted-foreground">
+              {m.term}
+              {m.note ? <span className="block">({m.note})</span> : null}
+            </dt>
+            <dd className={m.count ? "text-2xl leading-tight font-semibold tabular-nums" : "text-base leading-tight font-medium"}>{m.value}</dd>
+          </div>
+        ))}
+      </dl>
     </Section>
   );
 }
@@ -377,7 +410,9 @@ function Nav({ current, compact, hide = [], marked = [], alert = [] }: { current
         {groups.map((g) => (
           <div key={g.label} className="flex flex-col gap-1">
             <span className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{g.label}</span>
-            <ul className="flex gap-1">
+            {/* El `nav` envolvía, el grupo no: a 390 px «Conocimiento» se
+                salía 51 px sin scroll con el que rescatarlo. */}
+            <ul className="flex flex-wrap gap-1">
               {g.items.map((i) => (
                 <li key={i} className="inline-flex items-center">
                   <a
@@ -411,6 +446,12 @@ function DiffTable({ title, rows }: { title: string; rows: DiffRow[] }) {
   return (
     <Section title={title} headingLevel={3} flat>
       <table className="w-full text-sm">
+        {/* «Antes» y «Ahora» al mismo ancho: la comparación es entre iguales. */}
+        <colgroup>
+          <col className="w-[30%]" />
+          <col className="w-[35%]" />
+          <col className="w-[35%]" />
+        </colgroup>
         <thead>
           <tr className="text-left text-xs text-muted-foreground">
             <th scope="col" className="pb-1 font-medium">
@@ -477,19 +518,27 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
     return (
       <div ref={successRef} tabIndex={-1} className="outline-none">
         <Callout tone="positive" title="Versión 4 publicada hace un momento" action={canPublish ? <Button size="sm" variant="outline" onClick={() => setState("pending")}>Deshacer</Button> : undefined}>
-          El agente ya responde con los cambios de Ajustes y Capacidades. Deshacer vuelve a la versión 3; quedan 9 minutos y este aviso se cierra solo al terminar.
+          <span className="block max-w-prose text-pretty">
+            El agente ya responde con los cambios de Ajustes y Capacidades. Deshacer vuelve a la versión 3; puedes hacerlo durante los próximos diez minutos, y este aviso se cierra solo al terminar.
+          </span>
         </Callout>
       </div>
     );
   }
   return (
     <div className="flex flex-col gap-2">
+    {/* Los anuncios viven en dos regiones fijas y separadas: cambiar el
+        `role` de un nodo ya montado, o marcarlo `aria-busy` mientras habla,
+        es exactamente cómo se pierde un anuncio. */}
+    <p className="sr-only" role="status">
+      {state === "publishing" ? "Publicando la versión 4…" : state === "pending" ? `Cambios sin publicar en ${screens.join(" y ")}.` : ""}
+    </p>
+    <p className="sr-only" role="alert">
+      {failed ? "No se pudo publicar la versión 4. La versión activa sigue siendo la 3 y el borrador no se ha perdido." : ""}
+    </p>
     <div
       ref={barRef}
       tabIndex={-1}
-      role={failed ? "alert" : "status"}
-      aria-live="polite"
-      aria-busy={state === "publishing"}
       className={[
         "flex flex-col gap-2 rounded-md border px-3 py-2 text-sm outline-none",
         failed ? "border-status-danger-border bg-status-danger-bg" : "border-status-info-border bg-status-info-bg",
@@ -502,7 +551,9 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
             {state === "publishing" ? (
               "Publicando la versión 4…"
             ) : failed ? (
-              <strong>No se pudo publicar la versión 4</strong>
+              <>
+                <strong>No se pudo publicar la versión 4</strong> · hace 3 min
+              </>
             ) : (
               <>
                 Cambios sin publicar en <strong>{screens.join(" y ")}</strong> · Marta, hace 40 min
@@ -529,7 +580,7 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
         </span>
       </div>
       {failed ? (
-        <p className="text-xs text-pretty">
+        <p className="max-w-prose text-xs text-pretty">
           La versión activa sigue siendo la 3 y el borrador no se ha perdido. El servidor no respondió; suele resolverse al reintentar. Si vuelve a fallar,{" "}
           <a href="#" className="underline underline-offset-4">
             avisa a soporte
@@ -538,7 +589,10 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
         </p>
       ) : null}
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent initialFocus={titleRef} className="flex flex-col gap-(--space-block) overflow-y-auto">
+        {/* Es la pantalla donde se decide sobre cambios que recortan el
+            servicio: en escritorio necesita ancho para que «Antes» y «Ahora»
+            se comparen en una línea. */}
+        <SheetContent initialFocus={titleRef} className="flex flex-col gap-(--space-block) overflow-y-auto data-[side=right]:sm:max-w-2xl">
           <SheetHeader>
             <SheetTitle ref={titleRef} tabIndex={-1} className="outline-none">
               Publicar la versión 4
@@ -621,7 +675,7 @@ function Page({
 
       <div className={compact ? "flex flex-col gap-(--space-block)" : "grid gap-(--space-block) lg:grid-cols-[2fr_1fr]"}>
         {pending ? <SetupCard setup={setup} role={role} /> : <ActivityCard status={status} incident={incident} />}
-        <CreditCard quota={quota} status={status} role={role} incident={incident} pending={pending} />
+        <CreditCard quota={quota} status={status} role={role} pending={pending} />
       </div>
 
       <div className="flex flex-col gap-(--space-block)">
@@ -635,20 +689,48 @@ function Page({
   );
 }
 
+/** La silueta de una tarjeta, sin región viva propia: el anuncio es uno solo
+ *  y lo pone la página. */
+function CardShape({ lines }: { lines: number }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-md bg-card p-4 ring-1 ring-foreground/10">
+      <Skeleton className="h-4 w-32" />
+      {Array.from({ length: lines }, (_, i) => (
+        <Skeleton key={i} className={i === lines - 1 ? "h-3 w-2/3" : "h-3 w-full"} />
+      ))}
+    </div>
+  );
+}
+
 function LoadingPage() {
   return (
-    <div className="mx-auto flex max-w-(--width-content) flex-col gap-(--space-section) p-8" aria-busy="true" aria-label="Cargando la ficha">
+    /* Un solo anuncio: `aria-label` sobre un `div` sin rol lo ignoran los
+       lectores de pantalla, y tres «Cargando» seguidos son ruido. */
+    <div role="status" aria-label="Cargando la ficha" aria-busy="true" className="mx-auto flex max-w-(--width-content) flex-col gap-(--space-section) p-8">
       <div className="flex flex-col gap-3">
         <Skeleton className="h-3 w-48" />
         <Skeleton className="h-8 w-80" />
         <Skeleton className="h-5 w-64" />
       </div>
       <div className="grid gap-(--space-block) lg:grid-cols-[2fr_1fr]">
-        <CardSkeleton lines={3} label="Cargando" />
-        <CardSkeleton lines={2} label="Cargando" />
+        <CardShape lines={3} />
+        <CardShape lines={2} />
       </div>
-      <Skeleton className="h-10 w-full" />
-      <CardSkeleton lines={2} label="Cargando" />
+      {/* La franja de pestañas, no una barra maciza: el esqueleto promete la
+          forma que va a llegar. */}
+      <div className="flex flex-wrap gap-x-10 gap-y-2 border-b border-border pb-2">
+        {[3, 4, 3].map((count, group) => (
+          <div key={group} className="flex flex-col gap-2">
+            <Skeleton className="h-2 w-16" />
+            <div className="flex gap-1">
+              {Array.from({ length: count }, (_, i) => (
+                <Skeleton key={i} className="h-4 w-20" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <CardShape lines={2} />
     </div>
   );
 }
