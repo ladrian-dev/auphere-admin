@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ChevronLeft, ChevronRight, MoreHorizontal, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleHelp, MoreHorizontal, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../../components/button";
@@ -23,6 +23,7 @@ import { StatusBadge } from "../../components/status-badge";
 import { StatusDot } from "../../components/status-dot";
 import { Stepper, type StepState } from "../../components/stepper";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/tooltip";
+import { UiCopyProvider } from "../../components/ui-copy";
 
 /**
  * Prototipo · iteración 1 (spec 017, R1–R3): la cabecera de la ficha, la
@@ -51,9 +52,11 @@ const meta = {
   parameters: { layout: "fullscreen" },
   decorators: [
     (Story) => (
-      <TooltipProvider>
-        <Story />
-      </TooltipProvider>
+      <UiCopyProvider copy={{ close: "Cerrar", cancel: "Cancelar", confirm: "Confirmar", loading: "Cargando" }}>
+        <TooltipProvider>
+          <Story />
+        </TooltipProvider>
+      </UiCopyProvider>
     ),
   ],
 } satisfies Meta;
@@ -98,6 +101,7 @@ function ServingBadge({ status, setup, incident }: { status: Status; setup: Setu
 function Header({ status, setup, phone, role, incident }: { status: Status; setup: Setup; phone?: string; role: Role; incident: Incident }) {
   const canWrite = role === "owner";
   const serving = status === "active" && setup.next === null && !incident;
+  const lifecycleItems = canWrite && status !== "archived";
   return (
     <header className="flex flex-col gap-(--space-stack)">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -110,22 +114,22 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
         {/* Para quien abre veinte fichas al día: anterior, siguiente, salto directo y la lista de atajos. */}
         <nav aria-label="Otros clientes" className="flex flex-wrap items-center gap-1">
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Cliente anterior: Clínica Boreal" />}>
-              <ChevronLeft aria-hidden="true" />
+            <TooltipTrigger render={<Button variant="ghost" size="xs" aria-label="Cliente anterior: Clínica Boreal" />}>
+              <ChevronLeft aria-hidden="true" /> <Kbd aria-hidden="true" className="hidden sm:inline-flex">[</Kbd>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Anterior: Clínica Boreal · tecla [</TooltipContent>
+            <TooltipContent side="bottom">Anterior: Clínica Boreal</TooltipContent>
           </Tooltip>
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Cliente siguiente: Taller Ruiz" />}>
-              <ChevronRight aria-hidden="true" />
+            <TooltipTrigger render={<Button variant="ghost" size="xs" aria-label="Cliente siguiente: Taller Ruiz" />}>
+              <Kbd aria-hidden="true" className="hidden sm:inline-flex">]</Kbd> <ChevronRight aria-hidden="true" />
             </TooltipTrigger>
-            <TooltipContent side="bottom">Siguiente: Taller Ruiz · tecla ]</TooltipContent>
+            <TooltipContent side="bottom">Siguiente: Taller Ruiz</TooltipContent>
           </Tooltip>
           <Button variant="outline" size="xs" aria-label="Ir a otro cliente">
             <Search aria-hidden="true" /> Ir a cliente… <Kbd aria-hidden="true" className="hidden sm:inline-flex">⌘K</Kbd>
           </Button>
           <Button variant="ghost" size="xs" nativeButton={false} render={<a href="#" />}>
-            Guía de la ficha
+            <CircleHelp aria-hidden="true" /> Guía de la ficha
           </Button>
         </nav>
       </div>
@@ -138,6 +142,11 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
             {phone ? <span className="text-muted-foreground">WhatsApp {phone}</span> : null}
           </div>
         </div>
+        {!lifecycleItems && status !== "archived" ? (
+          <Button variant="ghost" size="sm">
+            Copiar referencia
+          </Button>
+        ) : (
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -147,24 +156,15 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
             }
           />
           <DropdownMenuContent align="end" className="w-64">
-            {canWrite && status === "active" ? (
-              <>
-                <DropdownMenuItem>
-                  <span className="flex flex-col">
-                    Pausar
-                    <span className="text-xs text-muted-foreground">Deja de atender; se reactiva cuando quieras.</span>
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <span className="flex flex-col">
-                    Archivar
-                    <span className="text-xs text-muted-foreground">Sale de la lista; nada se borra.</span>
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
+            {canWrite && serving ? (
+              <DropdownMenuItem>
+                <span className="flex flex-col">
+                  Pausar
+                  <span className="text-xs text-muted-foreground">Deja de atender; se reactiva cuando quieras.</span>
+                </span>
+              </DropdownMenuItem>
             ) : null}
-            {canWrite && status === "paused" ? (
+            {canWrite && status !== "archived" ? (
               <>
                 <DropdownMenuItem>
                   <span className="flex flex-col">
@@ -178,7 +178,7 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
             <DropdownMenuItem>
               <span className="flex flex-col">
                 Copiar referencia
-                <span className="text-xs text-muted-foreground">El identificador que usa la API: panaderia-la-espiga.</span>
+                <span className="text-xs text-muted-foreground">El identificador de este cliente en la API.</span>
               </span>
             </DropdownMenuItem>
             {canWrite && status === "archived" ? (
@@ -194,6 +194,7 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
             ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
+        )}
       </div>
     </header>
   );
@@ -235,7 +236,7 @@ function SetupCard({ setup, role }: { setup: Setup; role: Role }) {
     <Section
       title={
         <span className="inline-flex items-center gap-1">
-          Puesta en marcha <HelpHint label="Ayuda: puesta en marcha">Cuatro pasos, en cualquier orden, que separan a este cliente de atender. Se hacen una vez; después este bloque desaparece.</HelpHint>
+          Puesta en marcha <HelpHint label="Ayuda: puesta en marcha" side="top">Cuatro pasos, en cualquier orden, que separan a este cliente de atender. Se hacen una vez; después este bloque desaparece.</HelpHint>
         </span>
       }
       description="Lo que falta para que el agente atienda."
@@ -272,9 +273,9 @@ function creditTone(remaining: number, cap: number): MeterTone {
   return "positive";
 }
 
-function CreditCard({ quota, status, role, incident }: { quota: { cap: number; remaining: number } | null; status: Status; role: Role; incident: Incident }) {
+function CreditCard({ quota, status, role, incident, pending }: { quota: { cap: number; remaining: number } | null; status: Status; role: Role; incident: Incident; pending: boolean }) {
   const consumed = quota ? quota.cap - quota.remaining : 0;
-  const live = status === "active";
+  const live = status === "active" && !pending;
   const exhausted = quota !== null && quota.remaining <= 0;
   return (
     <Section
@@ -292,9 +293,9 @@ function CreditCard({ quota, status, role, incident }: { quota: { cap: number; r
           labelHidden
           value={quota.remaining}
           max={quota.cap}
-          tone={creditTone(quota.remaining, quota.cap)}
+          tone={live ? creditTone(quota.remaining, quota.cap) : exhausted ? "danger" : "neutral"}
           valueLabel={`Quedan ${n(quota.remaining)} de ${n(quota.cap)} créditos`}
-          hint={live ? `${n(consumed)} gastados este mes · se renueva el 1 de octubre.` : `${n(consumed)} gastados este mes.`}
+          hint={live ? `${n(consumed)} gastados este mes · se renueva el 1 de octubre.` : consumed ? `${n(consumed)} gastados este mes.` : "Todavía sin gasto: el agente aún no atiende."}
           className={exhausted ? "[&_progress]:bg-status-danger-bg [&_progress::-webkit-progress-bar]:bg-status-danger-bg" : undefined}
         />
       ) : (
@@ -304,8 +305,9 @@ function CreditCard({ quota, status, role, incident }: { quota: { cap: number; r
   );
 }
 
-function ActivityCard({ status }: { status: Status }) {
+function ActivityCard({ status, incident }: { status: Status; incident: Incident }) {
   const live = status === "active";
+  const last = incident === "channel_down" ? "ayer, 18:35" : incident === "credit_exhausted" ? "22 sept 2026" : "hace 2 h";
   return (
     <Section
       title={
@@ -326,8 +328,8 @@ function ActivityCard({ status }: { status: Status }) {
         items={
           live
             ? [
-                { key: "conv", term: "Conversaciones (7 días)", detail: "12" },
-                { key: "last", term: "Último mensaje", detail: "hace 2 h" },
+                { key: "conv", term: "Conversaciones (7 días)", detail: incident ? "4" : "12" },
+                { key: "last", term: "Último mensaje", detail: last },
                 { key: "esc", term: "Escaladas a una persona", detail: "1" },
               ]
             : [
@@ -347,11 +349,6 @@ const GROUPS = [
   { label: "Configurar", items: ["Agente", "Ajustes", "Capacidades", "Conocimiento"] },
   { label: "Conectar", items: ["Canales", "Integraciones", "Puesto de trabajo"] },
 ];
-const TAB_HELP: Record<string, string> = {
-  Playground: "Prueba el agente sin gastar el crédito del cliente ni escribir a nadie.",
-  "Puesto de trabajo": "La máquina del partner que el agente puede usar para este cliente.",
-  Integraciones: "Sistemas externos conectados: tienda, agenda, cobros.",
-};
 
 function Nav({ current, compact, hide = [], marked = [], alert = [] }: { current: string; compact?: boolean; hide?: string[]; marked?: string[]; alert?: string[] }) {
   const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !hide.includes(i)) })).filter((g) => g.items.length);
@@ -389,7 +386,6 @@ function Nav({ current, compact, hide = [], marked = [], alert = [] }: { current
                     {marked.includes(i) ? <StatusDot tone="info" label="cambios sin publicar" /> : null}
                     {alert.includes(i) ? <StatusDot tone="danger" label="incidencia" /> : null}
                   </a>
-                  {TAB_HELP[i] ? <HelpHint label={`Ayuda: ${i}`}>{TAB_HELP[i]}</HelpHint> : null}
                 </li>
               ))}
             </ul>
@@ -401,6 +397,49 @@ function Nav({ current, compact, hide = [], marked = [], alert = [] }: { current
 }
 
 // ── Borrador ────────────────────────────────────────────────────────────
+
+type DiffRow = { term: string; before: string; after: string; narrows?: string };
+
+/** Antes / ahora en dos columnas; lo que recorta lleva su aviso. */
+function DiffTable({ title, rows }: { title: string; rows: DiffRow[] }) {
+  return (
+    <Section title={title} headingLevel={3} flat>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground">
+            <th scope="col" className="pb-1 font-medium">
+              Qué
+            </th>
+            <th scope="col" className="pb-1 font-medium">
+              Antes
+            </th>
+            <th scope="col" className="pb-1 font-medium">
+              Ahora
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.term} className="border-t border-border align-top">
+              <th scope="row" className="py-2 pr-3 text-left font-normal text-muted-foreground">
+                {r.term}
+              </th>
+              <td className="py-2 pr-3 text-muted-foreground line-through decoration-border">{r.before}</td>
+              <td className="py-2 font-medium">
+                {r.after}
+                {r.narrows ? (
+                  <span className="mt-1 flex items-start gap-1 text-xs font-normal text-warning">
+                    <StatusDot tone="warning" label="recorta" className="mt-1" /> {r.narrows}
+                  </span>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Section>
+  );
+}
 
 type DraftState = "pending" | "publishing" | "failed" | "published";
 
@@ -430,8 +469,8 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
   if (state === "published") {
     return (
       <div ref={successRef} tabIndex={-1} className="outline-none">
-        <Callout tone="positive" title="Versión 4 publicada hace un momento" action={canPublish ? <Button size="sm" variant="outline" onClick={() => setState("pending")}>Deshacer (9 min) · vuelve a la versión 3</Button> : undefined}>
-          El agente ya responde con los cambios de Ajustes y Capacidades. Este aviso se cierra solo cuando termine el plazo para deshacer.
+        <Callout tone="positive" title="Versión 4 publicada hace un momento" action={canPublish ? <Button size="sm" variant="outline" onClick={() => setState("pending")}>Deshacer</Button> : undefined}>
+          El agente ya responde con los cambios de Ajustes y Capacidades. Deshacer vuelve a la versión 3; quedan 9 minutos y este aviso se cierra solo al terminar.
         </Callout>
       </div>
     );
@@ -459,7 +498,7 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
       </span>
       {canPublish ? (
         <Button size="sm" variant={primary && state !== "failed" ? "default" : "outline"} onClick={() => setOpen(true)} loading={state === "publishing"} aria-haspopup="dialog">
-          {state === "failed" ? "Ver los cambios" : "Revisar y publicar"}
+          {state === "publishing" ? "Publicando…" : state === "failed" ? "Ver los cambios" : "Revisar y publicar"}
         </Button>
       ) : (
         <Button size="sm" variant="ghost" onClick={() => setOpen(true)} aria-haspopup="dialog">
@@ -474,29 +513,38 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
             </SheetTitle>
             <SheetDescription>Esto es lo que cambia respecto a la versión 3, la que atiende ahora. Al publicar, el agente lo aplica al instante; podrás deshacerlo durante 10 minutos.</SheetDescription>
           </SheetHeader>
-          <Section title="Ajustes" headingLevel={3} flat>
-            <DescriptionList layout="inline" items={[{ term: "Horario", detail: "Atiende siempre → L–V 9–18" }, { term: "Idiomas", detail: "español → español, inglés" }]} />
-          </Section>
-          <Section title="Capacidades" headingLevel={3} flat>
-            <DescriptionList layout="inline" items={[{ term: "Reservas", detail: "apagada → activada" }, { term: "Consultar pedido", detail: "permitida siempre → nunca" }]} />
-          </Section>
+          <DiffTable
+            title="Ajustes"
+            rows={[
+              { term: "Horario", before: "Atiende siempre", after: "Lunes a viernes, 9–18", narrows: "Fuera de ese horario el agente no responderá." },
+              { term: "Idiomas", before: "español", after: "español, inglés" },
+            ]}
+          />
+          <DiffTable
+            title="Capacidades"
+            rows={[
+              { term: "Reservas", before: "apagada", after: "activada" },
+              { term: "Consultar pedido", before: "permitida siempre", after: "nunca", narrows: "Los clientes finales dejarán de poder consultar sus pedidos." },
+            ]}
+          />
           <p className="text-sm text-muted-foreground">
             El prompt completo se lee en <a href="#" className="underline underline-offset-4">Agente · versión 4</a>.
-          </p>
-          <SheetFooter className="flex-row flex-wrap items-center justify-between gap-2">
             {canPublish ? (
-              <Button variant="ghost" size="sm" className="text-destructive">
-                Descartar el borrador…
-              </Button>
-            ) : (
-              <span />
-            )}
-            <span className="flex gap-2">
-              <Button variant="outline" onClick={() => setOpen(false)}>
-                Cerrar
-              </Button>
-              {canPublish ? <Button onClick={publish}>Publicar la versión 4</Button> : null}
-            </span>
+              <>
+                {" "}
+                Si no quieres estos cambios,{" "}
+                <button type="button" className="text-destructive underline underline-offset-4">
+                  descarta el borrador
+                </button>
+                .
+              </>
+            ) : null}
+          </p>
+          <SheetFooter className="mt-0 flex-row justify-end gap-2 px-0">
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cerrar
+            </Button>
+            {canPublish ? <Button onClick={publish}>Publicar la versión 4</Button> : null}
           </SheetFooter>
         </SheetContent>
       </Sheet>
@@ -540,8 +588,8 @@ function Page({
       {status !== "active" ? <LifecycleNotice status={status} role={role} /> : null}
 
       <div className={compact ? "flex flex-col gap-(--space-block)" : "grid gap-(--space-block) lg:grid-cols-[2fr_1fr]"}>
-        {pending ? <SetupCard setup={setup} role={role} /> : <ActivityCard status={status} />}
-        <CreditCard quota={quota} status={status} role={role} incident={incident} />
+        {pending ? <SetupCard setup={setup} role={role} /> : <ActivityCard status={status} incident={incident} />}
+        <CreditCard quota={quota} status={status} role={role} incident={incident} pending={pending} />
       </div>
 
       <div className="flex flex-col gap-(--space-block)">
@@ -567,7 +615,7 @@ function LoadingPage() {
         <CardSkeleton lines={3} label="Cargando" />
         <CardSkeleton lines={2} label="Cargando" />
       </div>
-      <Nav current="Resumen" />
+      <Skeleton className="h-10 w-full" />
       <CardSkeleton lines={2} label="Cargando" />
     </div>
   );
@@ -577,7 +625,7 @@ const QUOTA = { cap: 5000, remaining: 3800 };
 const SERVING: Setup = { agent: true, channel: true, quota: true, active: true, next: null };
 
 export const FaltaCanal: Story = {
-  render: () => <Page setup={{ agent: true, channel: false, quota: true, active: false, next: "channel" }} quota={QUOTA} />,
+  render: () => <Page setup={{ agent: true, channel: false, quota: true, active: false, next: "channel" }} quota={{ cap: 5000, remaining: 5000 }} />,
 };
 export const Atendiendo: Story = {
   render: () => <Page setup={SERVING} quota={QUOTA} phone="+34 653 32 16 93" />,
@@ -601,12 +649,12 @@ export const CreditoAgotado: Story = {
   render: () => <Page setup={SERVING} quota={{ cap: 5000, remaining: 0 }} phone="+34 653 32 16 93" incident="credit_exhausted" />,
 };
 export const Analyst: Story = {
-  render: () => <Page role="analyst" setup={{ agent: true, channel: false, quota: true, active: false, next: "channel" }} quota={QUOTA} draft={["Ajustes"]} />,
+  render: () => <Page role="analyst" setup={{ agent: true, channel: false, quota: true, active: false, next: "channel" }} quota={{ cap: 5000, remaining: 5000 }} draft={["Ajustes"]} />,
 };
 export const Archivado: Story = {
   render: () => <Page status="archived" setup={{ agent: true, channel: true, quota: true, active: false, next: "activation" }} quota={QUOTA} phone="+34 653 32 16 93" />,
 };
 export const Cargando: Story = { render: () => <LoadingPage /> };
 export const Movil: Story = {
-  render: () => <Page compact setup={{ agent: true, channel: false, quota: true, active: false, next: "channel" }} quota={QUOTA} draft={["Ajustes"]} />,
+  render: () => <Page compact setup={{ agent: true, channel: false, quota: true, active: false, next: "channel" }} quota={{ cap: 5000, remaining: 5000 }} draft={["Ajustes"]} />,
 };
