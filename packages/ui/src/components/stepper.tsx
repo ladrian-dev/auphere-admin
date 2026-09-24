@@ -3,9 +3,13 @@ import type { ReactNode } from "react";
 
 import { cn } from "../lib/utils";
 
+type StepState = "done" | "current" | "todo";
+
 type StepperProps = {
-  steps: { key: string; label: ReactNode }[];
-  /** Index of the current step. */
+  /** ``state`` overrides the position rule for that step: steps are not
+   *  always sequential (a client can have credit before a channel). */
+  steps: { key: string; label: ReactNode; state?: StepState }[];
+  /** Index of the current step (used for every step without ``state``). */
   current: number;
   ariaLabel: string;
   /** Screen-reader sentence for the live region: «Paso 2 de 4». */
@@ -25,7 +29,7 @@ function Stepper({ steps, current, ariaLabel, stepOfLabel, variant = "pills", cl
     <nav aria-label={ariaLabel} className={cn("min-w-0", className)} data-slot="stepper">
       <ol className={cn("flex flex-wrap text-sm", variant === "pills" ? "gap-2" : "gap-x-6 gap-y-2")}>
         {steps.map((s, i) => {
-          const state = i < current ? "done" : i === current ? "current" : "todo";
+          const state: StepState = s.state ?? (i < current ? "done" : i === current ? "current" : "todo");
           return (
             <li
               key={s.key}
@@ -73,4 +77,4 @@ function Stepper({ steps, current, ariaLabel, stepOfLabel, variant = "pills", cl
   );
 }
 
-export { Stepper, type StepperProps };
+export { Stepper, type StepperProps, type StepState };

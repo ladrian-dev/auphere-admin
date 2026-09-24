@@ -12,10 +12,12 @@ import {
 } from "./tooltip";
 
 type HelpHintProps = {
-  /** The explanation. Also the accessible name of the trigger. */
+  /** The explanation, shown in the tooltip. */
   children: ReactNode;
-  /** Screen-reader name when ``children`` is not plain text. */
+  /** The accessible name of the «?» («Ayuda: Crédito»). Falls back to the
+   *  text of the explanation. */
   label?: string;
+  side?: "top" | "bottom";
   className?: string;
 };
 
@@ -24,7 +26,7 @@ type HelpHintProps = {
  * Replaces the ``title=`` attributes nobody could reach from a keyboard or
  * a phone: the trigger is a real button, so it has focus and a name.
  */
-function HelpHint({ children, label, className }: HelpHintProps) {
+function HelpHint({ children, label, side = "bottom", className }: HelpHintProps) {
   const name = label ?? (typeof children === "string" ? children : undefined);
   return (
     <TooltipProvider delay={300}>
@@ -39,7 +41,7 @@ function HelpHint({ children, label, className }: HelpHintProps) {
         >
           <CircleHelp className="size-4" aria-hidden="true" />
         </TooltipTrigger>
-        <TooltipContent className="max-w-64 text-pretty">
+        <TooltipContent side={side} role="tooltip" className="max-w-64 text-pretty">
           {children}
         </TooltipContent>
       </Tooltip>
