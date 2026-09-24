@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/dropdown-menu";
 import { HelpHint } from "../../components/help-hint";
-import { Kbd } from "../../components/kbd";
+import { Kbd, ShortcutKbd } from "../../components/kbd";
 import { Meter, type MeterTone } from "../../components/meter";
 import { NativeSelect } from "../../components/native-select";
 import { Section } from "../../components/section";
@@ -104,8 +104,8 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
   const lifecycleItems = canWrite && status !== "archived";
   return (
     <header className="flex flex-col gap-(--space-stack)">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <nav aria-label="Migas">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
+        <nav aria-label="Migas" className="mr-auto">
           <a href="#" className="hover:text-foreground">
             Clientes
           </a>{" "}
@@ -114,20 +114,26 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
         {/* Para quien abre veinte fichas al día: anterior, siguiente, salto directo y la lista de atajos. */}
         <nav aria-label="Otros clientes" className="flex flex-wrap items-center gap-1">
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="xs" aria-label="Cliente anterior: Clínica Boreal" />}>
-              <ChevronLeft aria-hidden="true" /> <Kbd aria-hidden="true" className="hidden sm:inline-flex">[</Kbd>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Cliente anterior: Clínica Boreal" />}>
+              <ChevronLeft aria-hidden="true" />
             </TooltipTrigger>
-            <TooltipContent side="bottom">Anterior: Clínica Boreal</TooltipContent>
+            <TooltipContent side="bottom">
+              Anterior: Clínica Boreal <Kbd>[</Kbd>
+            </TooltipContent>
           </Tooltip>
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="xs" aria-label="Cliente siguiente: Taller Ruiz" />}>
-              <Kbd aria-hidden="true" className="hidden sm:inline-flex">]</Kbd> <ChevronRight aria-hidden="true" />
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Cliente siguiente: Taller Ruiz" />}>
+              <ChevronRight aria-hidden="true" />
             </TooltipTrigger>
-            <TooltipContent side="bottom">Siguiente: Taller Ruiz</TooltipContent>
+            <TooltipContent side="bottom">
+              Siguiente: Taller Ruiz <Kbd>]</Kbd>
+            </TooltipContent>
           </Tooltip>
           <Button variant="outline" size="xs" aria-label="Ir a otro cliente">
-            <Search aria-hidden="true" /> Ir a cliente… <Kbd aria-hidden="true" className="hidden sm:inline-flex">⌘K</Kbd>
+            <Search aria-hidden="true" /> Ir a cliente… <ShortcutKbd keyName="K" aria-hidden="true" className="hidden sm:inline-flex" />
           </Button>
+        </nav>
+        <nav aria-label="Ayuda" className="flex items-center">
           <Button variant="ghost" size="xs" nativeButton={false} render={<a href="#" />}>
             <CircleHelp aria-hidden="true" /> Guía de la ficha
           </Button>
@@ -206,14 +212,14 @@ function IncidentNotice({ incident, role }: { incident: Exclude<Incident, null>;
   const canAct = role === "owner";
   if (incident === "channel_down") {
     return (
-      <Callout tone="danger" title="WhatsApp desconectado desde ayer a las 18:40" action={canAct ? <Button size="sm">Reconectar WhatsApp</Button> : undefined}>
+      <Callout tone="danger" title="WhatsApp desconectado desde ayer a las 18:40" action={canAct ? <Button size="sm">Reconectar WhatsApp</Button> : <Button size="sm" variant="outline">Avisar por correo al propietario</Button>}>
         Meta cerró la sesión del número. Los mensajes que lleguen mientras tanto no se responden. Reconectar tarda un minuto y no cambia nada más; si no funciona, Canales explica qué mirar en Meta.{canAct ? "" : " Lo hace el propietario, un administrador o un builder."}
       </Callout>
     );
   }
   return (
-    <Callout tone="danger" title="Crédito agotado: el agente no responde" action={canAct ? <Button size="sm">Asignar crédito</Button> : undefined}>
-      Se gastaron los {n(5000)} créditos del mes el 22 de septiembre. Asigna más, o mueve crédito desde otro cliente; el agente vuelve a atender al instante.{canAct ? "" : " Lo hace el propietario, un administrador o un builder."}
+    <Callout tone="danger" title="Crédito agotado: el agente no responde" action={canAct ? <Button size="sm">Añadir crédito</Button> : <Button size="sm" variant="outline">Avisar por correo al propietario</Button>}>
+      Se gastaron los {n(5000)} créditos del mes el 22 de septiembre. Añade crédito, o muévelo desde otro cliente que lo tenga de sobra; el agente vuelve a atender al instante.{canAct ? "" : " Lo hace el propietario, un administrador o un builder."}
     </Callout>
   );
 }
@@ -255,7 +261,7 @@ function SetupCard({ setup, role }: { setup: Setup; role: Role }) {
                   {NEXT_ACTION[setup.next]} <span className="text-muted-foreground">(lo hace el propietario, un administrador o un builder)</span>
                 </span>
                 <Button size="sm" variant="outline">
-                  Avisar por correo
+                  Avisar por correo al propietario
                 </Button>
               </>
             )}
@@ -330,7 +336,7 @@ function ActivityCard({ status, incident }: { status: Status; incident: Incident
             ? [
                 { key: "conv", term: "Conversaciones (7 días)", detail: incident ? "4" : "12" },
                 { key: "last", term: "Último mensaje", detail: last },
-                { key: "esc", term: "Escaladas a una persona", detail: "1" },
+                { key: "esc", term: "Escaladas a una persona (7 días)", detail: "1" },
               ]
             : [
                 { key: "conv", term: "Conversaciones (7 días)", detail: "0" },
@@ -424,7 +430,7 @@ function DiffTable({ title, rows }: { title: string; rows: DiffRow[] }) {
               <th scope="row" className="py-2 pr-3 text-left font-normal text-muted-foreground">
                 {r.term}
               </th>
-              <td className="py-2 pr-3 text-muted-foreground line-through decoration-border">{r.before}</td>
+              <td className="py-2 pr-3 text-muted-foreground">{r.before}</td>
               <td className="py-2 font-medium">
                 {r.after}
                 {r.narrows ? (
@@ -466,6 +472,7 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
     }, 1200);
   }
 
+  const failed = state === "failed";
   if (state === "published") {
     return (
       <div ref={successRef} tabIndex={-1} className="outline-none">
@@ -477,41 +484,66 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
   }
   return (
     <div className="flex flex-col gap-2">
-      {state === "failed" ? (
-        <Callout tone="danger" title="No se pudo publicar la versión 4" action={canPublish ? <Button size="sm" onClick={publish}>Reintentar</Button> : undefined}>
-          La versión activa sigue siendo la 3 y el borrador no se ha perdido. El servidor no respondió; suele resolverse al reintentar. Si vuelve a fallar, escríbenos desde Ayuda con la hora y el nombre del cliente.
-        </Callout>
-      ) : null}
-    <div ref={barRef} tabIndex={-1} role="status" aria-live="polite" aria-busy={state === "publishing"} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-status-info-border bg-status-info-bg px-3 py-2 text-sm outline-none">
-      <span className="inline-flex items-center gap-2">
-        <StatusDot tone="info" pulse={state === "publishing"} label="borrador" />
-        <span>
-          {state === "publishing" ? (
-            "Publicando la versión 4…"
+    <div
+      ref={barRef}
+      tabIndex={-1}
+      role={failed ? "alert" : "status"}
+      aria-live="polite"
+      aria-busy={state === "publishing"}
+      className={[
+        "flex flex-col gap-2 rounded-md border px-3 py-2 text-sm outline-none",
+        failed ? "border-status-danger-border bg-status-danger-bg" : "border-status-info-border bg-status-info-bg",
+      ].join(" ")}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-2">
+          <StatusDot tone={failed ? "danger" : "info"} pulse={state === "publishing"} label={failed ? "fallo" : "borrador"} />
+          <span>
+            {state === "publishing" ? (
+              "Publicando la versión 4…"
+            ) : failed ? (
+              <strong>No se pudo publicar la versión 4</strong>
+            ) : (
+              <>
+                Cambios sin publicar en <strong>{screens.join(" y ")}</strong> · Marta, hace 40 min
+                {canPublish ? null : " · Puede publicar: propietario, administrador o builder"}
+              </>
+            )}
+          </span>
+        </span>
+        <span className="flex gap-2">
+          {failed && canPublish ? (
+            <Button size="sm" variant="outline" onClick={() => setOpen(true)} aria-haspopup="dialog">
+              Ver los cambios
+            </Button>
+          ) : null}
+          {canPublish ? (
+            <Button size="sm" variant={primary ? "default" : "outline"} onClick={failed ? publish : () => setOpen(true)} loading={state === "publishing"} aria-haspopup={failed ? undefined : "dialog"}>
+              {failed ? "Reintentar" : "Revisar y publicar"}
+            </Button>
           ) : (
-            <>
-              Cambios sin publicar en <strong>{screens.join(" y ")}</strong>
-              {canPublish ? null : " · Puede publicar: propietario, administrador o builder"}
-            </>
+            <Button size="sm" variant="ghost" onClick={() => setOpen(true)} aria-haspopup="dialog">
+              Ver los cambios
+            </Button>
           )}
         </span>
-      </span>
-      {canPublish ? (
-        <Button size="sm" variant={primary && state !== "failed" ? "default" : "outline"} onClick={() => setOpen(true)} loading={state === "publishing"} aria-haspopup="dialog">
-          {state === "publishing" ? "Publicando…" : state === "failed" ? "Ver los cambios" : "Revisar y publicar"}
-        </Button>
-      ) : (
-        <Button size="sm" variant="ghost" onClick={() => setOpen(true)} aria-haspopup="dialog">
-          Ver los cambios
-        </Button>
-      )}
+      </div>
+      {failed ? (
+        <p className="text-xs text-pretty">
+          La versión activa sigue siendo la 3 y el borrador no se ha perdido. El servidor no respondió; suele resolverse al reintentar. Si vuelve a fallar,{" "}
+          <a href="#" className="underline underline-offset-4">
+            avisa a soporte
+          </a>{" "}
+          (el aviso ya lleva el cliente, la versión y la hora).
+        </p>
+      ) : null}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent initialFocus={titleRef} className="flex flex-col gap-(--space-block) overflow-y-auto">
           <SheetHeader>
             <SheetTitle ref={titleRef} tabIndex={-1} className="outline-none">
               Publicar la versión 4
             </SheetTitle>
-            <SheetDescription>Esto es lo que cambia respecto a la versión 3, la que atiende ahora. Al publicar, el agente lo aplica al instante; podrás deshacerlo durante 10 minutos.</SheetDescription>
+            <SheetDescription>Cuatro cambios de Marta (hace 40 min) respecto a la versión 3, la que atiende ahora; dos recortan el servicio. Al publicar, el agente los aplica al instante; podrás deshacerlo durante 10 minutos.</SheetDescription>
           </SheetHeader>
           <DiffTable
             title="Ajustes"
@@ -534,9 +566,9 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
                 {" "}
                 Si no quieres estos cambios,{" "}
                 <button type="button" className="text-destructive underline underline-offset-4">
-                  descarta el borrador
-                </button>
-                .
+                  descarta el borrador…
+                </button>{" "}
+                (te pedirá confirmar; se pierden los cuatro cambios).
               </>
             ) : null}
           </p>
@@ -652,7 +684,7 @@ export const Analyst: Story = {
   render: () => <Page role="analyst" setup={{ agent: true, channel: false, quota: true, active: false, next: "channel" }} quota={{ cap: 5000, remaining: 5000 }} draft={["Ajustes"]} />,
 };
 export const Archivado: Story = {
-  render: () => <Page status="archived" setup={{ agent: true, channel: true, quota: true, active: false, next: "activation" }} quota={QUOTA} phone="+34 653 32 16 93" />,
+  render: () => <Page status="archived" setup={{ agent: true, channel: true, quota: true, active: false, next: null }} quota={QUOTA} phone="+34 653 32 16 93" />,
 };
 export const Cargando: Story = { render: () => <LoadingPage /> };
 export const Movil: Story = {
