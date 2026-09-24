@@ -41,8 +41,8 @@ import { TooltipProvider } from "../../components/tooltip";
  *   - publicar pasa siempre por la hoja («Revisar y publicar»); se puede
  *     deshacer 10 minutos y el aviso no se cierra mientras dure; los puntos
  *     «sin publicar» desaparecen al publicar;
- *   - aceleradores descubribles: anterior/siguiente, «Ir a cliente…», atajo
- *     visible en cada pestaña al enfocarla, y «?» para la lista;
+ *   - solo los atajos que hacen falta (owner, 2026-09-24): anterior y
+ *     siguiente cliente, e «Ir a cliente…»; las pestañas no llevan atajo;
  *   - cada término de negocio lleva una ayuda alcanzable y hay guía;
  *   - un solo botón primario por vista; en pantalla se dice «crédito».
  */
@@ -117,9 +117,6 @@ function Header({ status, setup, phone, role, incident }: { status: Status; setu
           </Button>
           <Button variant="outline" size="xs" aria-label="Ir a otro cliente">
             <Search aria-hidden="true" /> Ir a cliente… <Kbd aria-hidden="true">⌘K</Kbd>
-          </Button>
-          <Button variant="ghost" size="xs" aria-label="Ver los atajos de teclado">
-            Atajos <Kbd aria-hidden="true">?</Kbd>
           </Button>
           <Button variant="ghost" size="xs" nativeButton={false} render={<a href="#" />}>
             Guía de la ficha
@@ -338,7 +335,6 @@ const TAB_HELP: Record<string, string> = {
 
 function Nav({ current, compact, hide = [], marked = [], alert = [] }: { current: string; compact?: boolean; hide?: string[]; marked?: string[]; alert?: string[] }) {
   const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !hide.includes(i)) })).filter((g) => g.items.length);
-  const all = groups.flatMap((g) => g.items);
   if (compact) {
     return (
       <NativeSelect aria-label="Sección de la ficha" defaultValue={current} wrapperClassName="w-full">
@@ -359,30 +355,23 @@ function Nav({ current, compact, hide = [], marked = [], alert = [] }: { current
           <div key={g.label} className="flex flex-col gap-1">
             <span className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{g.label}</span>
             <ul className="flex gap-1">
-              {g.items.map((i) => {
-                const shortcut = (all.indexOf(i) + 1) % 10;
-                return (
-                  <li key={i} className="inline-flex items-center">
-                    <a
-                      href="#"
-                      aria-current={i === current ? "page" : undefined}
-                      aria-keyshortcuts={`g ${shortcut}`}
-                      className={[
-                        "group -mb-px inline-flex items-center gap-2 border-b-2 px-2 py-2 text-sm",
-                        i === current ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-                      ].join(" ")}
-                    >
-                      {i}
-                      {marked.includes(i) ? <StatusDot tone="info" label="cambios sin publicar" /> : null}
-                      {alert.includes(i) ? <StatusDot tone="danger" label="incidencia" /> : null}
-                      <Kbd aria-hidden="true" className="hidden group-hover:inline-flex group-focus-visible:inline-flex">
-                        g{shortcut}
-                      </Kbd>
-                    </a>
-                    {TAB_HELP[i] ? <HelpHint label={`Ayuda: ${i}`}>{TAB_HELP[i]}</HelpHint> : null}
-                  </li>
-                );
-              })}
+              {g.items.map((i) => (
+                <li key={i} className="inline-flex items-center">
+                  <a
+                    href="#"
+                    aria-current={i === current ? "page" : undefined}
+                    className={[
+                      "-mb-px inline-flex items-center gap-2 border-b-2 px-2 py-2 text-sm",
+                      i === current ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    {i}
+                    {marked.includes(i) ? <StatusDot tone="info" label="cambios sin publicar" /> : null}
+                    {alert.includes(i) ? <StatusDot tone="danger" label="incidencia" /> : null}
+                  </a>
+                  {TAB_HELP[i] ? <HelpHint label={`Ayuda: ${i}`}>{TAB_HELP[i]}</HelpHint> : null}
+                </li>
+              ))}
             </ul>
           </div>
         ))}
