@@ -38,7 +38,7 @@ const FILL: Record<MeterTone, string> = {
   warning: "[&::-webkit-progress-value]:bg-status-warning [&::-moz-progress-bar]:bg-status-warning",
   danger: "[&::-webkit-progress-value]:bg-status-danger [&::-moz-progress-bar]:bg-status-danger",
   info: "[&::-webkit-progress-value]:bg-status-info [&::-moz-progress-bar]:bg-status-info",
-  neutral: "[&::-webkit-progress-value]:bg-foreground/60 [&::-moz-progress-bar]:bg-foreground/60",
+  neutral: "[&::-webkit-progress-value]:bg-muted-foreground/40 [&::-moz-progress-bar]:bg-muted-foreground/40",
 };
 
 /**
