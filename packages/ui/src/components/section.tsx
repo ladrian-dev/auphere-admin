@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { cn } from "../lib/utils";
 
-type SectionProps = React.ComponentProps<"section"> & {
+type SectionProps = Omit<React.ComponentProps<"section">, "title"> & {
   title?: React.ReactNode;
   description?: React.ReactNode;
   /** Right-aligned controls next to the title. */
