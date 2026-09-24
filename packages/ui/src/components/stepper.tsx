@@ -64,6 +64,10 @@ function Stepper({ steps, current, ariaLabel, stepOfLabel, variant = "pills", cl
                 </span>
               )}
               <span>{s.label}</span>
+              {/* El estado solo vivía en el icono, que está oculto: con un
+                  lector de pantalla se oían los pasos pero no cuáles están
+                  hechos. */}
+              <span className="sr-only">{state === "done" ? " (hecho)" : state === "current" ? " (siguiente)" : " (pendiente)"}</span>
               {variant === "pills" && state === "done" ? <Check className="size-3" aria-hidden="true" /> : null}
               {variant === "line" && i < steps.length - 1 ? <span aria-hidden="true" className="ml-2 hidden h-px w-8 bg-foreground/20 sm:block" /> : null}
             </li>

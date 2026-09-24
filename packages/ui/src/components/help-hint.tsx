@@ -1,7 +1,7 @@
 "use client";
 
 import { CircleHelp } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 import { cn } from "../lib/utils";
 import {
@@ -28,12 +28,18 @@ type HelpHintProps = {
  */
 function HelpHint({ children, label, side = "bottom", className }: HelpHintProps) {
   const name = label ?? (typeof children === "string" ? children : undefined);
+  // Es un botón: quien lo pulsa espera que pase algo. Sin esto solo se abría
+  // al pasar el ratón o al llegar con el tabulador, y en una pantalla táctil
+  // no se abría nunca.
+  const [open, setOpen] = useState(false);
   return (
     <TooltipProvider delay={300}>
-      <Tooltip>
+      <Tooltip open={open} onOpenChange={setOpen}>
         <TooltipTrigger
           data-slot="help-hint"
           aria-label={name}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
           className={cn(
             "inline-flex size-6 shrink-0 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
             className,
