@@ -218,7 +218,21 @@ export type AgentVersion = {
   promoted_at: string | null;
   promoted_by: string | null;
 };
-export type AgentBundle = { active_version: number | null; versions: AgentVersion[] };
+/** Spec 017 R3.1: qué pantallas de la ficha difieren entre el borrador y la
+ *  versión activa, para que la pestaña lleve su punto. Vacío sin borrador. */
+export type DraftScreen = "settings" | "capabilities" | "knowledge" | "prompt";
+
+export type AgentBundle = { active_version: number | null; versions: AgentVersion[]; draft_screens: DraftScreen[] };
+
+/** Spec 017 R3.2: qué cambia el borrador respecto a la versión que atiende
+ *  ahora. Claves, no frases: la consola las traduce. */
+export type DraftDiff = {
+  version: { draft: number; active: number | null };
+  settings: { field: string; before: unknown; after: unknown }[];
+  capabilities: { name: string; kind: "tool" | "skill"; change: "enabled" | "disabled"; before: unknown; after: unknown }[];
+  knowledge: { id: string; title: string; change: "added" | "removed" }[];
+  prompt: { before: string; after: string };
+};
 export type Channel = {
   id: string;
   type: string;
@@ -449,6 +463,7 @@ export function backendFor(principal: Principal) {
       call<null>(`/console/clients/${enc(ref)}`, { method: "DELETE", body: { confirm_name: confirmName } }),
 
     getAgent: (ref: string) => call<AgentBundle>(`/console/clients/${enc(ref)}/agent`),
+    getDraftDiff: (ref: string) => call<DraftDiff>(`/console/clients/${enc(ref)}/agent/draft-diff`),
     stageAgentVersion: (ref: string, body: { system_prompt: string; tools?: string[] }) =>
       call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions`, { method: "POST", body }),
     publishAgentVersion: (ref: string, version: number) =>

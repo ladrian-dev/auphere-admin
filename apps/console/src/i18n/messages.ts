@@ -13,6 +13,7 @@ import { homeUsageMessages } from "./lanes/home-usage";
 import { membershipMessages } from "./lanes/membership";
 import { onboardingMessages } from "./lanes/onboarding";
 import { playgroundMessages } from "./lanes/playground";
+import { recordMessages } from "./lanes/record";
 import { workstationMessages } from "./lanes/workstation";
 
 const core = {
@@ -442,6 +443,7 @@ const messages = {
   ...homeUsageMessages,
   ...onboardingMessages,
   ...companionMessages,
+  ...recordMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;
