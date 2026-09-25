@@ -59,8 +59,8 @@ Monorepo: API en `apps/api/src/nexus_api/`, migraciones en `apps/api/alembic/ver
 
 ### Bloques del DS (test primero)
 
-- [ ] T012 [P] [US1] Tests `packages/ui/src/components/__tests__/nav-tabs.test.tsx`: grupos con nombre, `aria-current="page"` en uno solo, `renderLink` para el router, modo compacto (`NativeSelect` con `optgroup`) por debajo del breakpoint, grupo vacío no se pinta. _Requisitos: 2.1, 2.2, 2.3, 2.4_
-- [ ] T013 [US1] Implementar `packages/ui/src/components/nav-tabs.tsx` (`NavTabs {groups, current, renderLink?, compact?, ariaLabel}`) sobre `Section`/tokens, exportarlo en `src/index.ts`, story en `src/stories/building-blocks.stories.tsx`. _Requisitos: 2.1, 2.3, 2.4_
+- [X] T012 [P] [US1] Tests `packages/ui/src/components/__tests__/nav-tabs.test.tsx`: grupos con nombre, `aria-current="page"` en uno solo, `renderLink` para el router, modo compacto (`NativeSelect` con `optgroup`) por debajo del breakpoint, grupo vacío no se pinta. _Requisitos: 2.1, 2.2, 2.3, 2.4_ Entregado: rama 017, 2026-09-25 (6 casos; la marca por pestaña se anuncia con `aria-label`, no con texto).
+- [X] T013 [US1] Implementar `packages/ui/src/components/nav-tabs.tsx` (`NavTabs {groups, current, renderLink?, compact?, ariaLabel}`) sobre `Section`/tokens, exportarlo en `src/index.ts`, story en `src/stories/building-blocks.stories.tsx`. _Requisitos: 2.1, 2.3, 2.4_ Entregado: rama 017, 2026-09-25 (`marks`/`markSuffix` para el punto de borrador o incidencia; el `ul` envuelve).
 - [ ] T014 [P] [US2] Tests `packages/ui/src/components/__tests__/draft-bar.test.tsx`: nombra las pantallas con cambios, «Ver diferencias» y «Publicar» como acciones, variante sin permiso (frase + quién puede, sin botón), pegada abajo en móvil (`data-placement`), `role="status"`. _Requisitos: 3.1, 3.4_
 - [ ] T015 [US2] Implementar `packages/ui/src/components/draft-bar.tsx` (`DraftBar {screens, canPublish, whoCanPublish, onDiff, onPublish, labels}`), exportar, story. _Requisitos: 3.1, 3.4_
 
