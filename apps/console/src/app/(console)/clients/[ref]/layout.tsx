@@ -6,6 +6,7 @@ import { PageHeader } from "@nexus/ui";
 import { ClientStatusBadge } from "@/components/clients/status-badge";
 import { ClientNav } from "@/components/clients/client-nav";
 import { ClientSetup } from "@/components/clients/client-setup";
+import { DraftBarClient } from "@/components/clients/draft-bar-client";
 import { getT } from "@/i18n/server";
 import { BackendError } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
@@ -73,6 +74,16 @@ export default async function ClientLayout({ params, children }: { params: Promi
         draftScreens={bundle?.draft_screens ?? []}
         incidents={client.health.whatsapp_connected ? [] : ["channels"]}
       />
+      {/* Spec 017 R3: el borrador se ve y se publica desde cualquier
+          pestaña. Sin versión no hay nada que publicar. */}
+      {bundle?.draft_screens.length && bundle.versions[0] ? (
+        <DraftBarClient
+          refId={client.external_client_ref}
+          screens={bundle.draft_screens}
+          version={bundle.versions[0].version}
+          canPublish={can(principal.role, "agents:write")}
+        />
+      ) : null}
       {children}
     </>
   );

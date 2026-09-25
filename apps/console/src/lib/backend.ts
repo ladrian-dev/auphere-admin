@@ -466,8 +466,14 @@ export function backendFor(principal: Principal) {
     getDraftDiff: (ref: string) => call<DraftDiff>(`/console/clients/${enc(ref)}/agent/draft-diff`),
     stageAgentVersion: (ref: string, body: { system_prompt: string; tools?: string[] }) =>
       call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions`, { method: "POST", body }),
-    publishAgentVersion: (ref: string, version: number) =>
-      call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/publish`, { method: "POST" }),
+    /** `origin` (spec 017 R3.3) dice desde qué superficie se pulsó: la barra
+     *  del borrador o la pestaña «Agente». Es contexto de auditoría, no un
+     *  interruptor de comportamiento — publicar es el mismo acto. */
+    publishAgentVersion: (ref: string, version: number, origin?: "draft_bar" | "agent_tab") =>
+      call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/publish`, {
+        method: "POST",
+        ...(origin ? { body: JSON.stringify({ from: origin }) } : {}),
+      }),
     rollbackAgentVersion: (ref: string, version: number) =>
       call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/rollback`, { method: "POST" }),
 
