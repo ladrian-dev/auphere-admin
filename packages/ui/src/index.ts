@@ -18,6 +18,7 @@ export * from "./components/data-table";
 export * from "./components/description-list";
 export * from "./components/dialog";
 export * from "./components/draft-badge";
+export * from "./components/draft-bar";
 export * from "./components/dropdown-menu";
 export * from "./components/empty-state";
 export * from "./components/error-state";

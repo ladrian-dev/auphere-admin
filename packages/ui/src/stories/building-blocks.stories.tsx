@@ -10,6 +10,8 @@ import { Field } from "../components/field";
 import { HelpHint } from "../components/help-hint";
 import { Input } from "../components/input";
 import { Meter } from "../components/meter";
+import { DraftBar, type DraftBarLabels } from "../components/draft-bar";
+import { NavTabs, type NavTabGroup } from "../components/nav-tabs";
 import { NativeSelect } from "../components/native-select";
 import { Section } from "../components/section";
 import { Stepper } from "../components/stepper";
@@ -118,5 +120,82 @@ export const Descriptions: Story = {
       />
       <DraftBadge draft={null} active={null} draftLabel={(v) => `Borrador v${v}`} activeLabel={(v) => `Activa v${v}`} noneLabel="Sin publicar" />
     </Section>
+  ),
+};
+
+// ── Spec 017 · la ficha de cliente ──────────────────────────────────────
+
+const RECORD_GROUPS: NavTabGroup[] = [
+  {
+    key: "observe",
+    label: "Observar",
+    items: [
+      { key: "summary", label: "Resumen", href: "#" },
+      { key: "conversations", label: "Conversaciones", href: "#" },
+      { key: "playground", label: "Playground", href: "#" },
+    ],
+  },
+  {
+    key: "configure",
+    label: "Configurar",
+    items: [
+      { key: "agent", label: "Agente", href: "#" },
+      { key: "settings", label: "Ajustes", href: "#", mark: "draft" },
+      { key: "capabilities", label: "Capacidades", href: "#", mark: "draft" },
+      { key: "knowledge", label: "Conocimiento", href: "#" },
+    ],
+  },
+  {
+    key: "connect",
+    label: "Conectar",
+    items: [
+      { key: "channels", label: "Canales", href: "#", mark: "incident" },
+      { key: "integrations", label: "Integraciones", href: "#" },
+      { key: "workstation", label: "Puesto de trabajo", href: "#" },
+    ],
+  },
+];
+
+const RECORD_MARKS = { draft: "cambios sin publicar", incident: "incidencia" };
+const RECORD_SUFFIX = { draft: "sin publicar", incident: "incidencia" };
+
+export const Tabs: Story = {
+  render: () => (
+    <div className="flex flex-col gap-8">
+      <NavTabs ariaLabel="Sección de la ficha" groups={RECORD_GROUPS} current="summary" marks={RECORD_MARKS} />
+      <NavTabs ariaLabel="Sección de la ficha (analista)" groups={RECORD_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => i.key !== "playground") }))} current="agent" marks={RECORD_MARKS} />
+      <div className="max-w-80">
+        <NavTabs ariaLabel="Sección de la ficha" groups={RECORD_GROUPS} current="settings" compact marks={RECORD_MARKS} markSuffix={RECORD_SUFFIX} />
+      </div>
+    </div>
+  ),
+};
+
+const DRAFT_LABELS: DraftBarLabels = {
+  unpublishedIn: "Cambios sin publicar en",
+  and: "y",
+  diff: "Ver los cambios",
+  publish: "Revisar y publicar",
+  publishing: "Publicando la versión 4…",
+  retry: "Reintentar",
+  whoCanPublish: "Puede publicar: el propietario, un administrador o un editor",
+  announce: "Hay cambios sin publicar en Ajustes y Capacidades.",
+  failureAnnounce: "No se pudo publicar la versión 4. La versión activa sigue siendo la 3.",
+};
+
+export const Drafts: Story = {
+  render: () => (
+    <div className="flex max-w-3xl flex-col gap-4">
+      <DraftBar screens={["Ajustes", "Capacidades"]} canPublish labels={DRAFT_LABELS} author="Marta" age="hace 40 min" />
+      <DraftBar screens={["Ajustes", "Capacidades"]} canPublish labels={DRAFT_LABELS} state="publishing" />
+      <DraftBar
+        screens={["Ajustes", "Capacidades"]}
+        canPublish
+        labels={DRAFT_LABELS}
+        state="failed"
+        failure={<>La versión activa sigue siendo la 3 y el borrador no se ha perdido. El servidor no respondió; suele resolverse al reintentar.</>}
+      />
+      <DraftBar screens={["Ajustes"]} canPublish={false} labels={DRAFT_LABELS} author="Marta" age="hace 40 min" />
+    </div>
   ),
 };
