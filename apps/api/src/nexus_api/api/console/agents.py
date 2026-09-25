@@ -28,9 +28,9 @@ from nexus_api.services.agent_console_policy import (
     with_disclosure_default,
 )
 
-from .agent_drafts import copy_runtime_fields
+from .agent_drafts import copy_runtime_fields, draft_diff, draft_screens, load_view
 from .deps import ClientScope, client_scope
-from .schemas import AgentBundleOut, AgentDraftIn, AgentVersionOut
+from .schemas import AgentBundleOut, AgentDraftIn, AgentPublishIn, AgentVersionOut, DraftDiffOut
 
 router = APIRouter(prefix="/clients/{ref}/agent")
 
@@ -56,6 +56,9 @@ async def _bundle(scope: ClientScope) -> AgentBundleOut:
     return AgentBundleOut(
         active_version=active.version if active else None,
         versions=[_version_out(v) for v in versions],
+        # Spec 017 R3.1: la ficha necesita saber DÓNDE está el cambio sin
+        # abrir cada pantalla a ver si difiere.
+        draft_screens=draft_screens(await load_view(scope)),
     )
 
 
@@ -77,6 +80,24 @@ async def _publish_promote(redis: Redis, scope: ClientScope) -> None:
 @router.get("", response_model=AgentBundleOut)
 async def get_agent(scope: ClientScope = Depends(client_scope("agents:read"))) -> AgentBundleOut:
     return await _bundle(scope)
+
+
+@router.get(
+    "/draft-diff",
+    response_model=DraftDiffOut,
+    responses={404: {"description": "There is no draft to compare."}},
+)
+async def get_draft_diff(scope: ClientScope = Depends(client_scope("agents:read"))) -> DraftDiffOut:
+    """What the draft changes against the version serving right now (R3.2).
+
+    Reading it is a read: an analyst who cannot publish still has to be able
+    to see what someone else staged. Publishing is a different permission on
+    a different route.
+    """
+    view = await load_view(scope)
+    if view.draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no_draft")
+    return DraftDiffOut.model_validate(draft_diff(view))
 
 
 @router.post(
@@ -138,6 +159,7 @@ EMPTY_PROMPT_DETAIL = "This version has an empty system prompt. Write the prompt
 )
 async def publish_version(
     version: int,
+    body: AgentPublishIn | None = None,
     scope: ClientScope = Depends(client_scope("agents:write")),
     redis: Redis = Depends(get_redis),
 ) -> AgentVersionOut:
@@ -158,7 +180,9 @@ async def publish_version(
     if not (target.system_prompt_rendered or "").strip():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=EMPTY_PROMPT_DETAIL)
     try:
-        cfg = await service.promote(version, actor=scope.principal.actor)
+        cfg = await service.promote(
+            version, actor=scope.principal.actor, origin=(body or AgentPublishIn()).origin
+        )
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=_conflict_status(exc), detail=str(exc)) from exc
     await _publish_promote(redis, scope)

@@ -16,6 +16,7 @@ versions are leftovers of previous edits and are ignored.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from nexus_api.db.models import AgentConfig, AgentConfigStatus
 from nexus_api.services.agent_config_service import AgentConfigService
@@ -95,3 +96,100 @@ async def ensure_draft(scope: ClientScope) -> tuple[AgentConfig, bool]:
 
 
 __all__ = ["DraftView", "copy_runtime_fields", "ensure_draft", "load_view"]
+
+
+# ── qué cambia el borrador (spec 017, R3.1/R3.2) ───────────────────────
+#
+# Dos lecturas derivadas, sin estado nuevo: `draft_screens` dice QUÉ
+# pantallas de la ficha difieren, para que la pestaña pueda llevar un
+# punto; `draft_diff` dice EN QUÉ difieren, en claves estables. Las frases
+# las pone la consola: la API no sabe en qué idioma mira el partner.
+
+DraftScreen = Literal["settings", "capabilities", "knowledge", "prompt"]
+SCREEN_ORDER: tuple[DraftScreen, ...] = ("settings", "capabilities", "knowledge", "prompt")
+
+
+def _console_policy(cfg: AgentConfig | None) -> dict[str, object]:
+    if cfg is None:
+        return {}
+    raw = (cfg.policies or {}).get("console")
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _capabilities(cfg: AgentConfig | None) -> set[tuple[str, str]]:
+    """Lo que el agente puede hacer, herramientas y habilidades juntas:
+    para el partner son la misma pregunta («¿qué sabe hacer?»)."""
+    if cfg is None:
+        return set()
+    caps = {(name, "tool") for name in (cfg.tools or [])}
+    for skill in cfg.runtime_skills or []:
+        name = skill.get("name")
+        if name:
+            caps.add((name, "skill"))
+    return caps
+
+
+def settings_changes(active: AgentConfig | None, draft: AgentConfig) -> list[dict[str, object]]:
+    """Una fila por campo de `policies.console` que difiere. `schema_version`
+    no es un ajuste: es fontanería y no se enseña."""
+    before, after = _console_policy(active), _console_policy(draft)
+    rows: list[dict[str, object]] = []
+    for field in sorted(set(before) | set(after)):
+        if field == "schema_version":
+            continue
+        if before.get(field) != after.get(field):
+            rows.append({"field": field, "before": before.get(field), "after": after.get(field)})
+    return rows
+
+
+def capability_changes(active: AgentConfig | None, draft: AgentConfig) -> list[dict[str, object]]:
+    before, after = _capabilities(active), _capabilities(draft)
+    rows: list[dict[str, object]] = []
+    for name, kind in sorted(after - before):
+        rows.append(
+            {"name": name, "kind": kind, "change": "enabled", "before": False, "after": True}
+        )
+    for name, kind in sorted(before - after):
+        rows.append(
+            {"name": name, "kind": kind, "change": "disabled", "before": True, "after": False}
+        )
+    return rows
+
+
+def prompt_change(active: AgentConfig | None, draft: AgentConfig) -> dict[str, str]:
+    return {
+        "before": active.system_prompt_rendered if active else "",
+        "after": draft.system_prompt_rendered,
+    }
+
+
+def draft_screens(view: DraftView) -> list[DraftScreen]:
+    """Las pantallas de la ficha en las que el borrador difiere de la activa,
+    en el orden en que se leen. Vacío sin borrador."""
+    if view.draft is None:
+        return []
+    screens: list[DraftScreen] = []
+    if settings_changes(view.active, view.draft):
+        screens.append("settings")
+    if capability_changes(view.active, view.draft):
+        screens.append("capabilities")
+    # Los documentos de conocimiento no se versionan con el agente, así que
+    # entre borrador y activa no hay nada que comparar todavía.
+    if prompt_change(view.active, view.draft)["before"] != view.draft.system_prompt_rendered:
+        screens.append("prompt")
+    return screens
+
+
+def draft_diff(view: DraftView) -> dict[str, object]:
+    """El borrador contra la activa, en claves. Llamar solo con borrador."""
+    assert view.draft is not None
+    return {
+        "version": {
+            "draft": view.draft.version,
+            "active": view.active.version if view.active else None,
+        },
+        "settings": settings_changes(view.active, view.draft),
+        "capabilities": capability_changes(view.active, view.draft),
+        "knowledge": [],
+        "prompt": prompt_change(view.active, view.draft),
+    }

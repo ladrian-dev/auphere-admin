@@ -275,7 +275,9 @@ async def test_agent_stage_publish_rollback_with_audit(client, console_world, db
     a = console_world["a"]
     h = a["headers"]
     empty = await client.get(f"/console/clients/{a['ref']}/agent", headers=h())
-    assert empty.status_code == 200 and empty.json() == {"active_version": None, "versions": []}
+    # ``draft_screens`` (spec 017 R3.1) amplía el bundle: sin borrador, vacío.
+    assert empty.status_code == 200
+    assert empty.json() == {"active_version": None, "versions": [], "draft_screens": []}
 
     v1 = await client.post(
         f"/console/clients/{a['ref']}/agent/versions",

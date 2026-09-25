@@ -107,15 +107,21 @@ class AgentConfigService:
         )
         return await self.promote(staged.version, actor=actor)
 
-    async def promote(self, version: int, *, actor: str) -> AgentConfig:
+    async def promote(self, version: int, *, actor: str, origin: str | None = None) -> AgentConfig:
+        """``origin`` (spec 017 R3.3) says which surface the partner pressed:
+        the draft bar or the agent tab. It is audit context, never a
+        behaviour switch — promoting is the same act either way."""
         before = await self.configs.get_active()
         config = await self.configs.promote(version, promoted_by=actor)
+        after: dict[str, Any] = {"version": config.version}
+        if origin is not None:
+            after["from"] = origin
         await self.audit.record(
             actor=actor,
             action="agent_config.promote",
             target=str(config.id),
             before={"version": before.version} if before else None,
-            after={"version": config.version},
+            after=after,
         )
         return config
 

@@ -208,6 +208,65 @@ class AgentVersionOut(BaseModel):
 class AgentBundleOut(BaseModel):
     active_version: int | None
     versions: list[AgentVersionOut]
+    #: Spec 017 R3.1: qué pantallas de la ficha difieren entre el borrador y
+    #: la versión activa, para que la pestaña lleve su punto. Vacío sin
+    #: borrador.
+    draft_screens: list[Literal["settings", "capabilities", "knowledge", "prompt"]] = Field(
+        default_factory=list
+    )
+
+
+class AgentPublishIn(BaseModel):
+    """Spec 017 R3.3: de dónde salió el clic. Publicar desde la barra del
+    borrador y desde la pestaña «Agente» es el mismo acto, pero la auditoría
+    los distingue — sin eso no hay forma de saber si la barra sirve."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    origin: Literal["draft_bar", "agent_tab"] = Field(default="agent_tab", alias="from")
+
+
+class DraftSettingChangeOut(BaseModel):
+    """Un ajuste que cambia, en su clave: la frase la pone la consola."""
+
+    field: str
+    before: Any = None
+    after: Any = None
+
+
+class DraftCapabilityChangeOut(BaseModel):
+    name: str
+    kind: Literal["tool", "skill"]
+    change: Literal["enabled", "disabled"]
+    before: Any = None
+    after: Any = None
+
+
+class DraftKnowledgeChangeOut(BaseModel):
+    id: str
+    title: str
+    change: Literal["added", "removed"]
+
+
+class DraftPromptChangeOut(BaseModel):
+    before: str
+    after: str
+
+
+class DraftVersionsOut(BaseModel):
+    draft: int
+    active: int | None
+
+
+class DraftDiffOut(BaseModel):
+    """Spec 017 R3.2: qué cambia el borrador respecto a la versión que
+    atiende ahora. Claves, no frases; el orden es el de lectura de la ficha."""
+
+    version: DraftVersionsOut
+    settings: list[DraftSettingChangeOut]
+    capabilities: list[DraftCapabilityChangeOut]
+    knowledge: list[DraftKnowledgeChangeOut]
+    prompt: DraftPromptChangeOut
 
 
 class AgentDraftIn(BaseModel):
