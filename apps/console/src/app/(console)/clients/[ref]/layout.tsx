@@ -5,6 +5,7 @@ import { PageHeader } from "@nexus/ui";
 
 import { ClientStatusBadge } from "@/components/clients/status-badge";
 import { ClientNav } from "@/components/clients/client-nav";
+import { ClientSetup } from "@/components/clients/client-setup";
 import { getT } from "@/i18n/server";
 import { BackendError } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
@@ -56,6 +57,16 @@ export default async function ClientLayout({ params, children }: { params: Promi
       />
       {/* Spec 017 R2/R3.1: tres grupos por rol, y un punto en la pestaña
           donde vive lo que aún no se ha publicado o lo que está roto. */}
+      {/* Spec 017 R1: qué falta para que atienda, con UN solo botón, y el
+          crédito al lado. Cuando ya atiende, la puesta en marcha se va. */}
+      <ClientSetup
+        refId={client.external_client_ref}
+        name={client.name}
+        status={client.status}
+        role={principal.role}
+        setup={client.setup ?? null}
+        quota={client.quota ?? null}
+      />
       <ClientNav
         refId={client.external_client_ref}
         role={principal.role}
