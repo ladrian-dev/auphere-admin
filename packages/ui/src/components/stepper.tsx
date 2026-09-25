@@ -15,6 +15,10 @@ type StepperProps = {
   /** Screen-reader sentence for the live region: «Paso 2 de 4». */
   stepOfLabel: (n: number, total: number) => string;
   variant?: "pills" | "line";
+  /** `false` when the steps can be done in any order: no ordinals and no
+   *  connecting rules, because both are the grammar of a sequence and a
+   *  «paso 3 hecho, paso 2 no» reads as impossible. */
+  ordered?: boolean;
   className?: string;
 };
 
@@ -24,7 +28,7 @@ type StepperProps = {
  * polite live region says «paso n de N» when it changes so the position is
  * announced without reading the whole list.
  */
-function Stepper({ steps, current, ariaLabel, stepOfLabel, variant = "pills", className }: StepperProps) {
+function Stepper({ steps, current, ariaLabel, stepOfLabel, variant = "pills", ordered = true, className }: StepperProps) {
   return (
     <nav aria-label={ariaLabel} className={cn("min-w-0", className)} data-slot="stepper">
       <ol className={cn("flex flex-wrap text-sm", variant === "pills" ? "gap-2" : "gap-x-6 gap-y-2")}>
@@ -56,7 +60,7 @@ function Stepper({ steps, current, ariaLabel, stepOfLabel, variant = "pills", cl
                     state === "todo" && "border-border text-muted-foreground",
                   )}
                 >
-                  {state === "done" ? <Check className="size-3" /> : i + 1}
+                  {state === "done" ? <Check className="size-3" /> : ordered ? i + 1 : state === "current" ? <span className="size-2 rounded-full bg-foreground" /> : null}
                 </span>
               ) : (
                 <span className="tabular-nums" aria-hidden="true">
@@ -69,7 +73,7 @@ function Stepper({ steps, current, ariaLabel, stepOfLabel, variant = "pills", cl
                   hechos. */}
               <span className="sr-only">{state === "done" ? " (hecho)" : state === "current" ? " (siguiente)" : " (pendiente)"}</span>
               {variant === "pills" && state === "done" ? <Check className="size-3" aria-hidden="true" /> : null}
-              {variant === "line" && i < steps.length - 1 ? <span aria-hidden="true" className="ml-2 hidden h-px w-8 bg-foreground/20 sm:block" /> : null}
+              {variant === "line" && ordered && i < steps.length - 1 ? <span aria-hidden="true" className="ml-2 hidden h-px w-8 bg-foreground/20 sm:block" /> : null}
             </li>
           );
         })}

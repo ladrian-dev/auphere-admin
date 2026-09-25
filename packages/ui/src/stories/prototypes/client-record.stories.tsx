@@ -222,7 +222,26 @@ function IncidentNotice({ incident, role }: { incident: Exclude<Incident, null>;
     );
   }
   return (
-    <Callout tone="danger" title="Crédito agotado: el agente no responde" action={canAct ? <Button size="sm">Añadir crédito</Button> : <Button size="sm" variant="outline">Avisar por correo al propietario</Button>}>
+    <Callout
+      tone="danger"
+      title="Crédito agotado: el agente no responde"
+      /* Las dos salidas que el texto promete existen como botón: antes decía
+         «o muévelo desde otro cliente» y no había dónde. */
+      action={
+        canAct ? (
+          <span className="flex flex-wrap gap-2">
+            <Button size="sm">Añadir crédito</Button>
+            <Button size="sm" variant="outline">
+              Mover desde otro cliente
+            </Button>
+          </span>
+        ) : (
+          <Button size="sm" variant="outline">
+            Avisar por correo al propietario
+          </Button>
+        )
+      }
+    >
       <span className="block max-w-prose text-pretty">
         Se gastaron los {n(5000)} créditos del mes el 22 de septiembre. Añade crédito, o muévelo desde otro cliente que lo tenga de sobra; el agente vuelve a atender al instante.{canAct ? "" : " Lo hace el propietario, un administrador o un editor."}
       </span>
@@ -253,10 +272,10 @@ function SetupCard({ setup, role }: { setup: Setup; role: Role }) {
           Puesta en marcha <HelpHint label="Ayuda: puesta en marcha" side="top">Cuatro pasos, en cualquier orden, que separan a este cliente de atender. Se hacen una vez; después este bloque desaparece.</HelpHint>
         </span>
       }
-      description="Lo que falta para que el agente atienda."
+      description="Lo que falta para que el agente atienda. Los cuatro pasos se pueden hacer en cualquier orden."
       className="min-w-0"
     >
-      <Stepper variant="line" ariaLabel="Puesta en marcha" current={-1} steps={steps} stepOfLabel={() => `${STEP_ORDER.filter((k) => done[k]).length} de 4 pasos hechos`} />
+      <Stepper variant="line" ordered={false} ariaLabel="Puesta en marcha" current={-1} steps={steps} stepOfLabel={() => `${STEP_ORDER.filter((k) => done[k]).length} de 4 pasos hechos`} />
       {setup.next ? (
         <div className="flex flex-col gap-2 pt-1">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -557,7 +576,7 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
             ) : (
               <>
                 Cambios sin publicar en <strong>{screens.join(" y ")}</strong> · Marta, hace 40 min
-                {canPublish ? null : " · Puede publicar: propietario, administrador o builder"}
+                {canPublish ? null : " · Puede publicar: el propietario, un administrador o un editor"}
               </>
             )}
           </span>
@@ -619,7 +638,7 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
             ]}
           />
           <p className="text-sm text-muted-foreground">
-            El prompt completo se lee en <a href="#" className="underline underline-offset-4">Agente · versión 4</a>.
+            Las instrucciones completas se leen en <a href="#" className="underline underline-offset-4">Agente · versión 4</a>.
             {canPublish ? (
               <>
                 {" "}
@@ -633,8 +652,9 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
           </p>
           </div>
           <SheetFooter className="flex-row justify-end gap-2 border-t border-border">
+            {/* «Cancelar», no «Cerrar»: la «✕» de la hoja ya se anuncia así. */}
             <Button variant="outline" onClick={() => setOpen(false)}>
-              Cerrar
+              Cancelar
             </Button>
             {canPublish ? <Button onClick={publish}>Publicar la versión 4</Button> : null}
           </SheetFooter>

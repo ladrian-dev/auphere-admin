@@ -55,7 +55,7 @@ Monorepo: API en `apps/api/src/nexus_api/`, migraciones en `apps/api/alembic/ver
 
 ### Prototipo (R12.4)
 
-- [ ] T011 [US1] Story `packages/ui/src/stories/prototypes/client-record.stories.tsx` con la cabecera (nombre, estado, teléfono, cuatro puntos de puesta en marcha con botón del primer pendiente, `Meter` del cupo, menú «Más»), `NavTabs` con los tres grupos, `DraftBar` y la hoja «Ver diferencias», en los estados: falta canal · atendiendo · sin tope · analyst (solo lectura) · archivado · móvil 375 px. Addon a11y en verde. **Aprobación del owner** anotada en `evidence/iteracion-1.md`. _Requisitos: 12.4_
+- [X] T011 [US1] Story `packages/ui/src/stories/prototypes/client-record.stories.tsx` con la cabecera (nombre, estado, teléfono, cuatro puntos de puesta en marcha con botón del primer pendiente, `Meter` del cupo, menú «Más»), `NavTabs` con los tres grupos, `DraftBar` y la hoja «Ver diferencias», en los estados: falta canal · atendiendo · sin tope · analyst (solo lectura) · archivado · móvil 375 px. Addon a11y en verde. **Aprobación del owner** anotada en `evidence/iteracion-1.md`. _Requisitos: 12.4_ Entregado: rama 017, aprobado por el owner 2026-09-25 (doce estados, ocho pasadas, crítica medida en dos agentes aislados).
 
 ### Bloques del DS (test primero)
 
