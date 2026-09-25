@@ -592,13 +592,18 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
         {/* Es la pantalla donde se decide sobre cambios que recortan el
             servicio: en escritorio necesita ancho para que «Antes» y «Ahora»
             se comparen en una línea. */}
-        <SheetContent initialFocus={titleRef} className="flex flex-col gap-(--space-block) overflow-y-auto data-[side=right]:sm:max-w-2xl">
+        <SheetContent initialFocus={titleRef} className="flex flex-col gap-0 overflow-hidden data-[side=right]:sm:max-w-2xl">
           <SheetHeader>
             <SheetTitle ref={titleRef} tabIndex={-1} className="outline-none">
               Publicar la versión 4
             </SheetTitle>
             <SheetDescription>Cuatro cambios de Marta (hace 40 min) respecto a la versión 3, la que atiende ahora; dos recortan el servicio. Al publicar, el agente los aplica al instante; podrás deshacerlo durante 10 minutos.</SheetDescription>
           </SheetHeader>
+          {/* Una sola sangría para todo el cuerpo, la misma que la cabecera:
+              antes las tablas iban pegadas al borde (1 px) mientras el título
+              entraba a 17 px. Y solo el cuerpo hace scroll, para que el pie
+              no se vaya con él. */}
+          <div className="flex min-h-0 flex-1 flex-col gap-(--space-block) overflow-y-auto px-4 pb-4">
           <DiffTable
             title="Ajustes"
             rows={[
@@ -626,7 +631,8 @@ function DraftBar({ screens, canPublish, primary, initial = "pending", onPublish
               </>
             ) : null}
           </p>
-          <SheetFooter className="mt-0 flex-row justify-end gap-2 px-0">
+          </div>
+          <SheetFooter className="flex-row justify-end gap-2 border-t border-border">
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cerrar
             </Button>
