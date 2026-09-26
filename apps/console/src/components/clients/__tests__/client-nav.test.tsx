@@ -26,6 +26,7 @@ describe("las pestañas de la ficha", () => {
       "settings",
       "client",
       "capabilities",
+      "skills",
       "knowledge",
       "channels",
       "integrations",
@@ -36,7 +37,7 @@ describe("las pestañas de la ficha", () => {
   it("agrupa en observar, configurar y conectar, en ese orden", () => {
     const groups = navGroupsFor("owner", base, {});
     expect(groups.map((g) => g.key)).toEqual(["observe", "configure", "connect"]);
-    expect(groups.flatMap((g) => g.items)).toHaveLength(11);
+    expect(groups.flatMap((g) => g.items)).toHaveLength(12);
   });
 
   it("el propietario lo ve todo; el analista pierde el Playground", () => {
@@ -62,7 +63,11 @@ describe("las pestañas de la ficha", () => {
     expect(items.find((i) => i.key === "client")?.href).toBe(`${base}/settings`);
     // Iteración 1: «Capacidades» aún vive en la pantalla de herramientas.
     expect(items.find((i) => i.key === "capabilities")?.href).toBe(`${base}/tools`);
-    expect(items.find((i) => i.key === "integrations")?.href).toBe(`${base}/tools#integraciones`);
+    // Integraciones tiene URL propia: antes apuntaba a un ancla que no
+    // existía en ningún elemento, así que el enlace no llevaba a ninguna parte.
+    expect(items.find((i) => i.key === "integrations")?.href).toBe(`${base}/integrations`);
+    // Habilidades sigue alcanzable hasta que la iteración 2 la fusione.
+    expect(items.find((i) => i.key === "skills")?.href).toBe(`${base}/skills`);
   });
 
   it("marca con un punto la pestaña donde vive el cambio sin publicar", () => {

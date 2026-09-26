@@ -45,9 +45,14 @@ export const RECORD_TABS: readonly RecordTab[] = [
   { key: "settings", label: "clients.nav.agentSettings", group: "configure", seg: "agent/settings", needs: "agents:read" },
   { key: "client", label: "clients.nav.clientData", group: "configure", seg: "settings", needs: "clients:read" },
   { key: "capabilities", label: "clients.nav.capabilities", group: "configure", seg: "tools", needs: "agents:read" },
+  // «Habilidades» se fusiona en Capacidades en la iteración 2 (T037). Hasta
+  // que eso ocurra sigue teniendo su pestaña: una pantalla a la que solo se
+  // llega escribiendo la URL es una pantalla perdida, y aquí no se pierde
+  // nada sin decisión escrita.
+  { key: "skills", label: "clients.tabs.skills", group: "configure", seg: "skills", needs: "agents:read" },
   { key: "knowledge", label: "clients.tabs.knowledge", group: "configure", seg: "knowledge", needs: "knowledge:read" },
   { key: "channels", label: "clients.tabs.channels", group: "connect", seg: "channels", needs: "channels:read" },
-  { key: "integrations", label: "clients.nav.integrations", group: "connect", seg: "tools#integraciones", needs: "agents:read" },
+  { key: "integrations", label: "clients.nav.integrations", group: "connect", seg: "integrations", needs: "agents:read" },
   { key: "workstation", label: "clients.tabs.workstation", group: "connect", seg: "workstation", needs: "workstation:read" },
 ] as const;
 

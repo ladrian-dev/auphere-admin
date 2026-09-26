@@ -79,10 +79,12 @@ test.describe("spec 017 · la ficha de cliente", () => {
     await expect(nav).toBeVisible();
     for (const group of GROUPS) await expect(nav.getByText(group)).toBeVisible();
 
-    // El propietario ve las once de hoy (las diez de siempre más los datos
-    // del cliente, que dejaron de compartir pestaña con los ajustes).
+    // El propietario ve las doce de hoy: las diez de siempre, más los datos
+    // del cliente (que dejaron de compartir pestaña con los ajustes del
+    // agente) y más Habilidades, que vuelve hasta que la iteración 2 la
+    // fusione en Capacidades.
     const links = nav.getByRole("link");
-    await expect(links).toHaveCount(11);
+    await expect(links).toHaveCount(12);
     // Exactamente una es la actual.
     await expect(nav.locator('a[aria-current="page"]')).toHaveCount(1);
   });
@@ -132,17 +134,21 @@ test.describe("spec 017 · la ficha de cliente", () => {
     await expect(sheet).toHaveCount(0);
   });
 
-  test("«Capacidades» ya tiene su URL definitiva, aunque la pantalla siga siendo la de herramientas", async ({ page }) => {
-    // Spec 017 R2: fijarla en la iteración 1 hace que un enlace guardado hoy
-    // siga valiendo cuando la iteración 2 construya la pantalla (T037).
+  for (const destino of ["capabilities", "integrations"] as const) {
+  test(`«${destino}» ya tiene su URL definitiva, aunque la pantalla siga siendo la de herramientas`, async ({ page }) => {
+    // Spec 017 R2/R4: fijarlas en la iteración 1 hace que un enlace guardado
+    // hoy siga valiendo cuando la iteración 2 construya las pantallas (T037).
     const ref = await firstClientRef(page);
-    const res = await page.goto(`/clients/${encodeURIComponent(ref)}/capabilities`);
-    expect(res?.status(), "la URL existe").toBeLessThan(400);
-    // La redirección la resuelve el servidor y puede tardar bajo carga:
-    // esperarla es más honesto que afirmarla y fallar por el reloj.
+    // La redirección la resuelve el servidor y puede abortar la navegación
+    // inicial —comportamiento normal de Next—, así que lo que se afirma es
+    // dónde se acaba, no qué devolvió el primer `goto`.
+    await page
+      .goto(`/clients/${encodeURIComponent(ref)}/${destino}`, { waitUntil: "commit" })
+      .catch(() => undefined);
     await page.waitForURL(new RegExp(`/clients/${ref}/tools$`), { timeout: 30_000 });
     await expect(page.locator("main#main")).toBeVisible();
   });
+  }
 
   for (const role of ["builder", "analyst"] as const) {
     test(`la ficha vista por un ${role}`, async ({ browser }) => {
