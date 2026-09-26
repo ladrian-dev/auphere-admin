@@ -312,11 +312,21 @@ async def test_tools_enable_and_publish(
     bundle = (await client.get(f"{base}/agent", headers=h())).json()
     assert bundle["active_version"] == v
 
+    # Spec 017 (R5.7): «requiere aprobación» se retira. Se comportaba como un
+    # bloqueo y engañaba a quien lo elegía, así que pedirlo ya no se guarda:
+    # se contesta por qué.
+    refused = await client.put(
+        f"{base}/tools/booking.check_availability/mode",
+        headers=h(),
+        json={"mode": "needs_approval"},
+    )
+    assert refused.status_code == 422 and refused.json()["detail"] == "mode_not_supported"
+
     # Gating override: immediate, not versioned.
     mode = await client.put(
         f"{base}/tools/booking.check_availability/mode",
         headers=h(),
-        json={"mode": "needs_approval"},
+        json={"mode": "blocked"},
     )
     assert mode.status_code == 200 and mode.json()["set_by"] == "console:owner-a@example.com"
     t = next(
@@ -324,7 +334,7 @@ async def test_tools_enable_and_publish(
         for x in (await client.get(f"{base}/tools", headers=h())).json()["tools"]
         if x["name"] == "booking.check_availability"
     )
-    assert t["effective_mode"] == "needs_approval" and t["override_mode"] == "needs_approval"
+    assert t["effective_mode"] == "blocked" and t["override_mode"] == "blocked"
     gone = await client.delete(f"{base}/tools/booking.check_availability/mode", headers=h())
     assert gone.status_code == 204
     assert (

@@ -202,8 +202,17 @@ async def put_tool_mode(
     body: ToolModeIn,
     scope: ClientScope = Depends(client_scope("agents:write")),
 ) -> ToolModeOut:
-    """Per-client gating override (``always`` / ``needs_approval`` /
-    ``blocked``). Takes effect immediately — it is not part of a version."""
+    """Per-client gating override (``always`` / ``blocked``). Takes effect
+    immediately — it is not part of a version.
+
+    Spec 017 (R5.7): ``needs_approval`` ya no se acepta. Se comportaba como
+    un bloqueo y engañaba a quien lo elegía; las versiones antiguas que lo
+    tengan siguen leyéndose por su modo efectivo real.
+    """
+    if body.mode == "needs_approval":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="mode_not_supported"
+        )
     try:
         row = await connector_service.upsert_override(
             scope.session,

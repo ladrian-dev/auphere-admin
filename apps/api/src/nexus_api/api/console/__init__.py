@@ -27,6 +27,7 @@ from nexus_api.api.console import (
     auth_google,
     billing,
     capabilities,
+    capabilities_client,
     channels,
     companion,
     conversations,
@@ -100,6 +101,8 @@ router.include_router(agent_settings.router)
 router.include_router(tools.router)
 router.include_router(integrations.router)
 router.include_router(skills.router)
+# Spec 017 (R5): herramientas y habilidades, en una sola lectura.
+router.include_router(capabilities_client.router)
 router.include_router(knowledge.router)
 router.include_router(playbook.router)
 router.include_router(seed_templates.router)
