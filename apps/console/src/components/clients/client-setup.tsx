@@ -26,6 +26,8 @@ export function ClientSetup({
   role,
   setup,
   quota,
+  agentVersion,
+  phone,
 }: {
   refId: string;
   name: string;
@@ -33,6 +35,9 @@ export function ClientSetup({
   role: Role;
   setup: ClientSetupDetail | null;
   quota: ClientQuota | null;
+  /** Paridad fila 7: el dato de cada paso hecho, a la vista. */
+  agentVersion?: number | null;
+  phone?: string | null;
 }) {
   const t = useT();
   const base = `/clients/${encodeURIComponent(refId)}`;
@@ -40,6 +45,12 @@ export function ClientSetup({
   const pending = setup?.next ?? null;
   const action = nextAction(setup, role, base);
   const doneCount = steps.filter((s) => s.done).length;
+
+  function stepDetail(step: string): string | null {
+    if (step === "agent" && agentVersion) return t("clients.setup.detail.agent", { version: agentVersion });
+    if (step === "channel" && phone) return phone;
+    return null;
+  }
 
   return (
     <div className="grid gap-(--space-block) lg:grid-cols-[2fr_1fr]">
@@ -53,9 +64,19 @@ export function ClientSetup({
             ordered={false}
             ariaLabel={t("clients.setup.title")}
             current={-1}
+            // Un paso hecho dice CUÁL: «Agente · versión 3», «Canal · +34…».
+            // El dato iba en un tooltip, y lo que solo existe al pasar el
+            // ratón no existe en una pantalla táctil ni en un lector.
             steps={steps.map((s) => ({
               key: s.step,
-              label: t(s.label),
+              label: (
+                <span className="inline-flex flex-wrap items-baseline gap-x-1">
+                  {t(s.label)}
+                  {s.done && stepDetail(s.step) ? (
+                    <span className="text-xs text-muted-foreground">· {stepDetail(s.step)}</span>
+                  ) : null}
+                </span>
+              ),
               state: (s.done ? "done" : s.next ? "current" : "todo") as StepState,
             }))}
             stepOfLabel={() => t("clients.setup.done", { done: doneCount, total: steps.length })}

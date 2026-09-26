@@ -54,6 +54,7 @@ from .deps import (
     health_for_tenant,
     out_of_quota,
     resolve_mapping,
+    serving_since,
 )
 from .me import quota_out
 from .schemas import (
@@ -116,6 +117,9 @@ async def _detail(scope: ClientScope) -> ClientOut:
         sector=await client_sector(scope.session),
         setup=setup,
         quota=ClientQuotaOut(cap=allocation[0], remaining=allocation[1]) if allocation else None,
+        # Solo cuando de verdad atiende: una fecha con un paso pendiente
+        # diría que atendía antes de poder hacerlo.
+        serving_since=(await serving_since(scope.session)) if setup.next is None else None,
     )
 
 

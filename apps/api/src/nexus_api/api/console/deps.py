@@ -18,6 +18,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 import sqlalchemy as sa
 from fastapi import Depends, HTTPException, Path, status
@@ -246,6 +247,32 @@ async def active_customer_channel(session: AsyncSession) -> bool:
         .limit(1)
     )
     return found is not None
+
+
+async def serving_since(session: AsyncSession) -> datetime | None:
+    """Spec 017 (R1): desde cuándo atiende este cliente.
+
+    Nadie guarda ese instante, así que se deriva de la última pieza que se
+    lo permitió: la versión que se publicó o el canal de cliente final que
+    se conectó, la más tardía de las dos. Devuelve ``None`` si falta
+    cualquiera; decir una fecha entonces sería afirmar que atendía antes de
+    poder hacerlo.
+    """
+    from nexus_api.services.console_traffic import customer_facing_channel
+
+    promoted = await session.scalar(
+        sa.select(sa.func.max(AgentConfig.promoted_at)).where(
+            AgentConfig.status == AgentConfigStatus.ACTIVE
+        )
+    )
+    connected = await session.scalar(
+        sa.select(sa.func.min(Channel.created_at)).where(
+            Channel.status == ChannelStatus.ACTIVE, customer_facing_channel()
+        )
+    )
+    if promoted is None or connected is None:
+        return None
+    return max(promoted, connected)
 
 
 async def health_for_tenant(session: AsyncSession, tenant: Tenant) -> ClientHealthOut:

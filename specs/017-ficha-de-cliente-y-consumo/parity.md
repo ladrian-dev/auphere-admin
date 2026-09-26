@@ -14,13 +14,13 @@ Fuente: `apps/console/src/app/(console)/clients/[ref]/layout.tsx`, `page.tsx`,
 
 | # | Hoy (antes) | Después | Estado | Revisado contra el código (2026-09-26) |
 |---|---|---|---|---|
-| 1 | Migas «Clientes / {referencia}» en mono | Migas «Clientes / {nombre}»; la referencia vive en Datos del cliente (copiable) | ➡️ | ⏳ **pendiente**: las migas siguen con la referencia en mono. La referencia ya es copiable desde «Más». |
+| 1 | Migas «Clientes / {referencia}» en mono | Migas «Clientes / {nombre}»; la referencia vive en Datos del cliente (copiable) | ➡️ | ✅ migas «Clientes / {nombre}», sin mono. La referencia es copiable desde «Más» y editable en Datos del cliente |
 | 2 | Título: nombre del cliente | Igual | ✅ | ✅ `layout.tsx` |
 | 3 | Badge de estado del ciclo de vida | Igual, en la cabecera | ✅ | ✅ `ClientStatusBadge` en la cabecera |
-| 4 | Zona horaria en mono junto al estado | Datos del cliente | ➡️ | ⏳ **pendiente**: sigue en la cabecera en mono |
-| 5 | Teléfono conectado en mono | En la cabecera, en texto normal, si hay canal | ✅ | ⏳ **pendiente**: sigue en mono |
+| 4 | Zona horaria en mono junto al estado | Datos del cliente | ➡️ | ✅ fuera de la cabecera; se lee y se edita en Datos del cliente |
+| 5 | Teléfono conectado en mono | En la cabecera, en texto normal, si hay canal | ✅ | ✅ en texto normal junto al estado |
 | 6 | Tarjeta «Listo para atender / Falta: …» con cada elemento enlazado | Cuatro puntos con nombre + un botón con el primer paso pendiente | ✅ | ✅ `ClientSetup` + `client-header-model` (8 casos). Sin ordinales ni conectores: los pasos son independientes |
-| 7 | Descripción «Agente: v3 · WhatsApp: conectado» | El punto «agente» muestra «v3» al pasar/enfocar; el de «canal», el número | ✅ | ⏳ **pendiente**: los pasos no llevan detalle al pasar el ratón. El dato sigue visible en la tarjeta de salud de Resumen |
+| 7 | Descripción «Agente: v3 · WhatsApp: conectado» | El punto «agente» muestra «v3» al pasar/enfocar; el de «canal», el número | ✅ | ✅ el dato va **a la vista**, no en un tooltip: «Agente · versión 1», «Canal · +34…». Lo que solo existe al pasar el ratón no existe en táctil ni en un lector |
 | 8 | Aviso «Sin cupo» con enlace a Consumo (016 R2) | Punto «crédito» + botón «Asignar crédito» que abre el diálogo aquí mismo | ✅ | ⚠️ **parcial**: el botón existe y lleva a `/usage`, que es la pantalla que lo asigna hoy. El diálogo sin salir de la ficha es de la iteración 3 |
 | 9 | Botón «Ir a Agente» de la tarjeta | Botón del primer paso pendiente | ➡️ | ✅ `nextAction()` |
 | 10 | Botones Pausar / Reactivar / Archivar en la tarjeta | Menú «Más» en la cabecera | ➡️ | ✅ movidos; la fila suelta de la tarjeta de Resumen se retira para no ofrecer dos veces lo mismo. El componente conserva las dos formas |
@@ -33,17 +33,21 @@ Fuente: `apps/console/src/app/(console)/clients/[ref]/layout.tsx`, `page.tsx`,
 | 17 | Redirección al entrar en la URL raíz | Resumen sin redirección visible | ✅ | ✅ la raíz es Resumen; no hay `redirect` en `page.tsx` |
 | 18 | Toast «Borrador guardado · Ir a publicar» en Ajustes, Herramientas, Habilidades | Barra de borrador en todas las pestañas + toast que solo confirma | ✅ | ✅ barra en el layout; los toasts pasan a «Borrador v{v} creado.» |
 | 19 | Publicar y Revertir en Agente con confirmación | Se conservan; Publicar también desde la barra | ✅ | ✅ intactos + `publishFromBarAction` con `from: "draft_bar"` en la auditoría |
-| 20 | Diff del prompt en Agente (`prompt-diff.tsx`) | Se conserva, y «Ver los cambios» lo incluye plegado | ✅ | ⚠️ **parcial**: `prompt-diff.tsx` intacto en Agente; la hoja dice «Las instrucciones del agente cambian» pero aún no lo pliega dentro |
+| 20 | Diff del prompt en Agente (`prompt-diff.tsx`) | Se conserva, y «Ver los cambios» lo incluye plegado | ✅ | ✅ intacto en Agente, y la hoja lo pliega dentro con el mismo componente |
 | 21 | — | Crédito restante como barra en la cabecera | ➕ | ✅ `Meter`; la barra mide lo que QUEDA y su tono va con ella |
-| 22 | — | «Atendiendo desde el {fecha}» cuando está listo | ➕ | ⏳ **pendiente**: la fecha de inicio de servicio no la devuelve la API |
+| 22 | — | «Atendiendo desde el {fecha}» cuando está listo | ➕ | ✅ `serving_since` derivado de la última pieza que lo permitió (versión publicada o canal conectado), sin migración; `null` mientras falte algo |
 | 23 | — | Barra de borrador con «Ver los cambios» por pantalla | ➕ | ✅ `DraftBar` + hoja con el `draft-diff` real |
 
-**Cierre de la iteración 1 (2026-09-26)**: 16 filas cerradas, 2 parciales
-(8 y 20), 5 pendientes (1, 4, 5, 7, 22) y 2 diferidas a la iteración 2 (14,
-15). Ninguna fila retira nada sin decisión escrita. Las cinco pendientes son
-de colocación y de un dato que la API no da; ninguna bloquea el uso de la
-ficha, pero **la iteración no se da por cerrada hasta que el owner decida**
-si entran ahora o se difieren.
+**Cierre de la iteración 1 (2026-09-26)**: **21 filas cerradas**, 1 parcial
+(8: asignar crédito lleva a Consumo; el diálogo sin salir de la ficha es de
+la iteración 3, por alcance) y 2 diferidas a la iteración 2 (14 y 15, con la
+URL `/capabilities` ya fijada y redirigiendo). Ninguna fila retira nada sin
+decisión escrita.
+
+El owner decidió el 2026-09-26 que las cinco pendientes entraban en esta
+iteración, y entraron. La fila 7 se resolvió **a la vista** y no con un
+tooltip, que es lo que pedía la tabla: un dato que solo aparece al pasar el
+ratón no existe en una pantalla táctil ni para un lector de pantalla.
 
 ## Iteración 2 · Capacidades e Integraciones
 

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { PageHeader } from "@nexus/ui";
+import { formatDate, PageHeader } from "@nexus/ui";
 
 import { ClientStatusBadge } from "@/components/clients/status-badge";
 import { ClientNav } from "@/components/clients/client-nav";
@@ -40,12 +40,12 @@ export default async function ClientLayout({ params, children }: { params: Promi
     <>
       <PageHeader
         context={
-          <nav aria-label="Breadcrumb" className="font-mono text-xs uppercase">
-            <Link href="/clients" className="hover:underline">
+          <nav aria-label="Breadcrumb" className="text-xs">
+            <Link href="/clients" className="underline decoration-muted-foreground/50 underline-offset-4 hover:text-foreground">
               {t("nav.clients")}
             </Link>
             <span aria-hidden="true"> / </span>
-            <span className="text-foreground">{client.external_client_ref}</span>
+            <span className="text-foreground">{client.name}</span>
           </nav>
         }
         title={client.name}
@@ -64,8 +64,15 @@ export default async function ClientLayout({ params, children }: { params: Promi
         description={
           <span className="flex flex-wrap items-center gap-2">
             <ClientStatusBadge status={client.status} locale={locale} />
-            <span className="font-mono text-xs">{client.timezone}</span>
-            {client.health.display_phone_number ? <span className="font-mono text-xs">{client.health.display_phone_number}</span> : null}
+            {/* Paridad fila 22: solo cuando de verdad atiende. */}
+            {client.serving_since ? (
+              <span className="text-sm text-muted-foreground">
+                {t("clients.servingSince", { date: formatDate(client.serving_since, locale) })}
+              </span>
+            ) : null}
+            {client.health.display_phone_number ? (
+              <span className="text-sm text-muted-foreground">{client.health.display_phone_number}</span>
+            ) : null}
           </span>
         }
       />
@@ -78,6 +85,8 @@ export default async function ClientLayout({ params, children }: { params: Promi
         role={principal.role}
         setup={client.setup ?? null}
         quota={client.quota ?? null}
+        agentVersion={client.health.agent_version}
+        phone={client.health.display_phone_number}
       />
       {/* Spec 017 R2/R3.1: tres grupos por rol, y un punto en la pestaña
           donde vive lo que aún no se ha publicado o lo que está roto. */}

@@ -127,6 +127,10 @@ class ClientOut(ClientSummaryOut):
     #: from; ``None`` for a hand-written agent.
     sector: str | None = None
     setup: ClientSetupDetailOut | None = None
+    #: Spec 017 (R1): desde cuándo atiende, derivado de la última pieza que
+    #: se lo permitió (versión publicada o canal conectado). ``None`` si le
+    #: falta algo.
+    serving_since: datetime | None = None
 
 
 class ClientPageOut(BaseModel):

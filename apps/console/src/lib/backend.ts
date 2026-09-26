@@ -194,6 +194,9 @@ export type ClientSetupDetail = ClientSetup & { next: SetupStep | null };
 export type ClientQuota = { cap: number; remaining: number };
 export type Client = ClientSummary & {
   health: ClientHealth;
+  /** Spec 017 R1: desde cuándo atiende, derivado de la última pieza que se lo
+   *  permitió (versión publicada o canal conectado). `null` si le falta algo. */
+  serving_since?: string | null;
   /** The sector of the template the agent was seeded from; `null` for a hand-written agent. */
   sector: string | null;
   setup: ClientSetupDetail;

@@ -193,3 +193,38 @@ async def test_the_list_never_shows_another_partners_figures(
     assert b["ref"] not in refs
     row = next(i for i in r.json()["items"] if i["external_client_ref"] == a["ref"])
     assert row["setup"]["agent"] is False and row["setup"]["channel"] is False
+
+
+async def test_serving_since_is_when_the_last_piece_landed(
+    client, console_world, db_session
+) -> None:
+    """Spec 017 (R1, paridad fila 22): «Atendiendo desde el {fecha}».
+
+    Nadie guarda ese instante, así que se deriva: un cliente atiende desde
+    que llegó la última pieza que se lo permitía — la versión que se publicó
+    o el canal que se conectó, la más tardía de las dos. Mientras le falte
+    algo no atiende, y entonces la fecha no existe: inventarla sería decir
+    que atiende desde antes de poder hacerlo.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    a = console_world["a"]
+    promoted = datetime(2026, 9, 20, 10, 0, tzinfo=UTC)
+    agent = _agent(a["tenant_id"], seed=None)
+    agent.promoted_at = promoted
+    db_session.add(agent)
+    await db_session.commit()
+
+    # Sin canal todavía: no atiende, así que no hay fecha.
+    body = (await client.get(f"/console/clients/{a['ref']}", headers=a["headers"]())).json()
+    assert body["setup"]["next"] == "channel"
+    assert body["serving_since"] is None
+
+    # El canal llega después que la versión: manda el canal.
+    channel = _channel(a["tenant_id"])
+    channel.created_at = promoted + timedelta(days=2)
+    db_session.add(channel)
+    await db_session.commit()
+    body = (await client.get(f"/console/clients/{a['ref']}", headers=a["headers"]())).json()
+    assert body["setup"]["next"] is None
+    assert body["serving_since"].startswith("2026-09-22T10:00")

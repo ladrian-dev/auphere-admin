@@ -95,10 +95,24 @@ construyen datos limpios:
    selector de modelo se salía de 360 px con una traducción más larga, y el
    interruptor de alertas de consumo no tenía nombre accesible.
 
-### Lo que queda antes de cerrar la iteración
+### Cierre de la paridad (2026-09-26)
 
-Ver `parity.md`: 5 filas pendientes (migas, zona horaria, teléfono, detalle
-al pasar por un paso, «Atendiendo desde») y 2 parciales (asignar crédito sin
-salir de la ficha, y plegar el diff del prompt dentro de la hoja). Ninguna
-bloquea el uso; **falta la decisión del owner** sobre si entran ahora o se
-difieren.
+El owner decidió que las cinco filas pendientes entraban en esta iteración.
+Entraron, y con ellas la fila 20:
+
+- migas «Clientes / {nombre}» en vez de la referencia en mono;
+- zona horaria fuera de la cabecera, a Datos del cliente;
+- teléfono en texto normal;
+- **el dato de cada paso hecho, a la vista** («Agente · versión 1»), no en
+  un tooltip: lo que solo aparece al pasar el ratón no existe en una
+  pantalla táctil ni para un lector de pantalla;
+- `serving_since` derivado de la última pieza que permitió atender —versión
+  publicada o canal conectado, la más tardía— sin columna nueva, y `null`
+  mientras falte algo: dar una fecha antes sería decir que atendía sin poder;
+- el diff del prompt plegado dentro de la hoja, con el mismo componente que
+  usa Agente.
+
+Queda **una sola fila parcial**, la 8: asignar crédito lleva a Consumo, que
+es la pantalla que lo asigna hoy; hacerlo sin salir de la ficha es alcance
+de la iteración 3. Y dos diferidas a la iteración 2 (Capacidades e
+Integraciones), con la URL `/capabilities` ya fijada y redirigiendo.

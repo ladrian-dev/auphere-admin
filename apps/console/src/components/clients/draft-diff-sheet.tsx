@@ -8,6 +8,7 @@ import type { MessageKey } from "@/i18n/messages";
 import type { DraftDiff } from "@/lib/backend";
 
 import { settingValue } from "./draft-setting-value";
+import { PromptDiff } from "./prompt-diff";
 
 type Row = { term: string; before: string; after: string };
 
@@ -78,9 +79,16 @@ export function DraftDiffSheet({
           {settings.length ? <DiffTable title={t("draft.screen.settings")} rows={settings} /> : null}
           {capabilities.length ? <DiffTable title={t("draft.screen.capabilities")} rows={capabilities} /> : null}
           {knowledge.length ? <DiffTable title={t("draft.screen.knowledge")} rows={knowledge} /> : null}
-          {promptChanged ? (
+          {promptChanged && diff ? (
             <Section title={t("draft.screen.prompt")} headingLevel={3} flat>
               <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("draft.diff.promptChanged")}</p>
+              {/* Plegado: son miles de caracteres y casi nadie los lee antes
+                  de publicar, pero quien quiera verlos no debería tener que
+                  irse a otra pantalla. Es el mismo componente que Agente. */}
+              <details className="text-sm">
+                <summary className="cursor-pointer text-muted-foreground">{t("draft.diff.promptOpen")}</summary>
+                <PromptDiff before={diff.prompt.before} after={diff.prompt.after} noneLabel={t("draft.diff.empty")} />
+              </details>
             </Section>
           ) : null}
         </div>
