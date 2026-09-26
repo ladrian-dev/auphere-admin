@@ -3,7 +3,6 @@ import Link from "next/link";
 import { Alert, AlertDescription, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Metric, StatusDot, formatNumber } from "@nexus/ui";
 
 import { missingItems } from "@/components/clients/health";
-import { ClientLifecycleActions } from "@/components/clients/lifecycle-actions";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
@@ -68,7 +67,10 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
                 {t("clients.tabs.agent")}
               </Button>
             ) : null}
-            {can(principal.role, "clients:write") ? <ClientLifecycleActions refId={ref} status={client.status} name={client.name} canDelete={can(principal.role, "clients:delete")} /> : null}
+            {/* Spec 017 R1.6 (paridad, fila 10): pausar, archivar y eliminar
+                se mudaron al menú «Más» de la cabecera, que está en todas las
+                pestañas. Dejarlos aquí además era ofrecer dos veces lo mismo
+                en la misma pantalla. */}
           </div>
         </CardContent>
       </Card>

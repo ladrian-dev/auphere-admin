@@ -43,6 +43,11 @@ test.describe("spec 017 · la ficha de cliente", () => {
     const ref = await firstClientRef(page);
     await page.goto(`/clients/${encodeURIComponent(ref)}`);
     await expect(page.locator("main#main")).toBeVisible();
+    // La rama depende de si el cliente ya atiende, así que hay que esperar a
+    // que la página esté entera antes de decidirla: contar antes de hidratar
+    // es contar otra cosa.
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+    await expect(page.getByRole("navigation", { name: /sección de la ficha|record section/i })).toBeVisible();
 
     const setup = page.getByRole("navigation", { name: /puesta en marcha|getting started/i });
     const serving = (await setup.count()) === 0;

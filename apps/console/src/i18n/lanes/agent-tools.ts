@@ -6,8 +6,8 @@ export const agentToolsMessages = {
   "clients.tabs.knowledge": { es: "Conocimiento", en: "Knowledge" },
 
   // ── shared draft/publish vocabulary ──────────────────────────────
-  "agentSettings.draft.saved": { es: "Borrador v{v} creado. Publícalo cuando lo hayas probado.", en: "Draft v{v} created. Publish it once tested." },
-  "agentSettings.draft.updated": { es: "Borrador v{v} actualizado. Publícalo cuando lo hayas probado.", en: "Draft v{v} updated. Publish it once tested." },
+  "agentSettings.draft.saved": { es: "Borrador v{v} creado.", en: "Draft v{v} created." },
+  "agentSettings.draft.updated": { es: "Borrador v{v} actualizado.", en: "Draft v{v} updated." },
   "agentSettings.draft.publishLink": { es: "Ir a publicar", en: "Go to publish" },
   "agentSettings.draft.editing": { es: "Editas el borrador v{v}. La versión activa es la v{a}.", en: "Editing draft v{v}. Active version is v{a}." },
   "agentSettings.draft.editingNoActive": { es: "Editas el borrador v{v}. Todavía no hay versión activa.", en: "Editing draft v{v}. There is no active version yet." },
