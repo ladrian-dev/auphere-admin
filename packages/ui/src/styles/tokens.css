@@ -146,18 +146,26 @@
   --color-scrim: oklch(0.161 0.033 115.3 / 0.16);
 
   /* ── Typography ───────────────────────────────────────────────────── */
-  /* Helvena is the brand family (brand-system §2). The console sets
-     --font-helvena via next/font/local; Storybook declares the @font-face;
-     the desktop app still sets --font-inter-tight, which stays in the chain
-     until it ships Helvena too. Tests fall back to the stack. */
+  /* Outfit es la familia del producto (owner, 2026-09-26). Helvena sigue
+     siendo la de la marca (brand-system §2) y manda en la web y en lo
+     impreso; en pantalla, sostenida durante horas, se leía cuadrada y
+     angular, así que la consola usa Outfit. Se sirve desde el repo:
+     --font-outfit lo pone next/font/local y Storybook declara su @font-face.
+     La cadena conserva Helvena e Inter Tight detrás para quien aún no haya
+     cargado Outfit; los tests caen al stack del sistema.
+
+     Y no hay segunda familia: JetBrains Mono se retira entera (owner,
+     2026-09-26). --font-mono existe todavía porque muchas utilidades lo
+     citan, pero apunta a la MISMA familia: una referencia o una clave se
+     distinguen con `tabular-nums` y tracking, no cambiando de letra. */
   --font-sans:
-    var(--font-helvena, "Helvena"), var(--font-inter-tight, "Inter Tight"), ui-sans-serif,
-    system-ui, sans-serif;
+    var(--font-outfit, "Outfit"), var(--font-helvena, "Helvena"), var(--font-inter-tight, "Inter Tight"),
+    ui-sans-serif, system-ui, sans-serif;
   --font-display:
-    var(--font-helvena, "Helvena"), var(--font-inter-tight, "Inter Tight"), ui-sans-serif,
-    system-ui, sans-serif;
+    var(--font-outfit, "Outfit"), var(--font-helvena, "Helvena"), var(--font-inter-tight, "Inter Tight"),
+    ui-sans-serif, system-ui, sans-serif;
   --font-mono:
-    var(--font-jetbrains-mono, "JetBrains Mono"), "SF Mono", ui-monospace, Menlo, monospace;
+    var(--font-outfit, "Outfit"), var(--font-helvena, "Helvena"), ui-sans-serif, system-ui, sans-serif;
 
   --text-xs: 12px;
   --text-xs--line-height: 1.5;

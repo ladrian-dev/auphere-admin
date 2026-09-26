@@ -4,6 +4,16 @@
 @source "../src";
 
 @font-face {
+  font-family: "Outfit";
+  src: url("./fonts/Outfit-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Helvena se queda declarada: es la familia de la marca y algunas historias
+   la muestran a propósito. El producto usa Outfit. */
+@font-face {
   font-family: "Helvena";
   src: url("./fonts/Helvena-Variable.woff2") format("woff2");
   font-weight: 100 900;

@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { JetBrains_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import { headers } from "next/headers";
 
@@ -12,17 +11,20 @@ import { resolvePrincipal } from "@/lib/principal";
 
 import "./globals.css";
 
-// Helvena is the brand's one family (brand-system §2); Inter Tight was the
-// stand-in until the console could ship it (owner, 2026-09-24). The file is
-// the same variable woff2 the public site serves.
-const helvena = localFont({
-  src: [{ path: "../../public/fonts/Helvena-Variable.woff2", weight: "100 900", style: "normal" }],
-  variable: "--font-helvena",
+// Outfit es la familia del producto (owner, 2026-09-26). Helvena sigue siendo
+// la de la marca y manda fuera de la pantalla; aquí, sostenida durante horas,
+// se leía cuadrada y angular. Se sirve desde el repo, no desde Google.
+//
+// Y no hay una segunda familia: JetBrains Mono se retira entera. Una
+// referencia o una clave se distinguen con `tabular-nums` y tracking, no
+// cambiando de letra.
+const outfit = localFont({
+  src: [{ path: "../../public/fonts/Outfit-Variable.woff2", weight: "100 900", style: "normal" }],
+  variable: "--font-outfit",
   display: "swap",
   preload: true,
   fallback: ["system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
 });
-const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Consola · Auphere", template: "%s · Consola Auphere" },
@@ -67,7 +69,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html
       lang={locale}
-      className={`${helvena.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${outfit.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full">
