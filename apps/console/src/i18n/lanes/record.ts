@@ -42,6 +42,19 @@ export const recordMessages = {
   "clients.setup.who.usage": { es: "Lo hace el propietario o un administrador.", en: "The owner or an admin does this." },
   "clients.setup.who.clients": { es: "Lo hace el propietario, un administrador o un editor.", en: "The owner, an admin or a builder does this." },
 
+  // ── menú «Más» de la cabecera (R1.6) ──────────────────────────────
+  "clients.more.label": { es: "Más", en: "More" },
+  "clients.more.aria": { es: "Más acciones", en: "More actions" },
+  "clients.more.copyRef": { es: "Copiar referencia", en: "Copy reference" },
+  "clients.more.copyRef.done": { es: "Referencia copiada.", en: "Reference copied." },
+  "clients.more.why.pause": { es: "Deja de atender; se reactiva cuando quieras.", en: "Stops serving; reactivate whenever you want." },
+  "clients.more.why.resume": { es: "Vuelve a atender con la versión que tenía.", en: "Serves again with the version it had." },
+  "clients.more.why.activate": { es: "A partir de ese clic, el agente atiende.", en: "From that click on, the agent serves." },
+  "clients.more.why.archive": { es: "Sale de la lista; nada se borra.", en: "Leaves the list; nothing is deleted." },
+  "clients.more.why.unarchive": { es: "Vuelve a la lista, como estaba.", en: "Back to the list, as it was." },
+  "clients.more.why.copyRef": { es: "El identificador de este cliente en la API.", en: "This client's identifier in the API." },
+  "clients.more.why.delete": { es: "Pide escribir el nombre. No se puede deshacer.", en: "Asks you to type the name. Cannot be undone." },
+
   // ── crédito del cliente (R1.2) ────────────────────────────────────
   "clients.quota.title": { es: "Crédito", en: "Credit" },
   "clients.quota.label": { es: "Crédito restante", en: "Credit left" },
