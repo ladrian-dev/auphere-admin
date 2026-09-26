@@ -27,7 +27,11 @@ export const CONSOLE_SECTIONS = [
   { key: "puesto", path: "/workstation", permission: "workstation:read" },
   { key: "consumo", path: "/usage", permission: "usage:read" },
   { key: "auditoria", path: "/audit", permission: "audit:read" },
-  { key: "notificaciones", path: "/notifications", permission: "partner:read" },
+  // «Notificaciones» salió de la lista lateral de la consola el 2026-09-24
+  // por decisión del owner: se ven en UN solo sitio, la campana de la barra
+  // superior. Esta lista sigue a la consola, no al revés, así que aquí
+  // tampoco está. La ruta /notifications sigue existiendo y se llega por la
+  // campana.
   { key: "equipo", path: "/team", permission: "team:read" },
   { key: "claves", path: "/keys", permission: "keys:read" },
   { key: "facturacion", path: "/billing", permission: "billing:read" },
