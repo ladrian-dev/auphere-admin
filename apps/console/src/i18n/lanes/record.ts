@@ -82,6 +82,18 @@ export const recordMessages = {
     en: "The serving version has not changed and the draft is not lost. Trying again usually resolves it.",
   },
   "draft.bar.published": { es: "Publicado. El agente ya responde con los cambios.", en: "Published. The agent now answers with the changes." },
+  "draft.published.title": { es: "Versión {version} publicada", en: "Version {version} published" },
+  "draft.published.body": {
+    es: "El agente ya responde con los cambios. Deshacer vuelve a la versión {previous}.",
+    en: "The agent already answers with the changes. Undoing returns to version {previous}.",
+  },
+  "draft.published.bodyFirst": {
+    es: "El agente ya responde con los cambios. Era la primera versión, así que no hay ninguna anterior a la que volver.",
+    en: "The agent already answers with the changes. It was the first version, so there is none to go back to.",
+  },
+  "draft.published.undo": { es: "Deshacer", en: "Undo" },
+  "draft.published.left": { es: "quedan {minutes} min", en: "{minutes} min left" },
+  "draft.published.undone": { es: "Se ha vuelto a la versión {version}.", en: "Back to version {version}." },
 
   // ── la hoja que revisa antes de publicar (R3.2) ───────────────────
   "draft.diff.title": { es: "Publicar la versión {version}", en: "Publish version {version}" },

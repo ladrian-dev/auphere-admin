@@ -89,11 +89,15 @@ export default async function ClientLayout({ params, children }: { params: Promi
       />
       {/* Spec 017 R3: el borrador se ve y se publica desde cualquier
           pestaña. Sin versión no hay nada que publicar. */}
-      {bundle?.draft_screens.length && bundle.versions[0] ? (
+      {/* Se monta siempre que haya agente, aunque no haya borrador: así el
+          aviso de «publicado» sobrevive al refresco y su ventana de
+          deshacer corre entera. Sin nada que decir, no pinta nada. */}
+      {bundle && bundle.versions[0] ? (
         <DraftBarClient
           refId={client.external_client_ref}
           screens={bundle.draft_screens}
           version={bundle.versions[0].version}
+          activeVersion={bundle.active_version}
           canPublish={can(principal.role, "agents:write")}
         />
       ) : null}

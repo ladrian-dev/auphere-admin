@@ -4,14 +4,18 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { DraftBar } from "@nexus/ui";
+import { Button, Callout, DraftBar } from "@nexus/ui";
 
+import { rollbackAgentAction } from "@/app/(console)/clients/actions";
 import { draftDiffAction, publishFromBarAction } from "@/app/(console)/clients/[ref]/agent/actions";
 import { useT } from "@/i18n/client";
 import { actionErrorText } from "@/lib/action-error";
 import type { DraftDiff, DraftScreen } from "@/lib/backend";
 
 import { DraftDiffSheet } from "./draft-diff-sheet";
+
+/** Diez minutos, los que promete la hoja antes de publicar. */
+const UNDO_SECONDS = 10 * 60;
 
 /**
  * La barra del borrador, montada en el layout de la ficha (spec 017, R3):
@@ -24,11 +28,13 @@ export function DraftBarClient({
   refId,
   screens,
   version,
+  activeVersion,
   canPublish,
 }: {
   refId: string;
   screens: DraftScreen[];
   version: number;
+  activeVersion: number | null;
   canPublish: boolean;
 }) {
   const t = useT();
@@ -37,6 +43,24 @@ export function DraftBarClient({
   const [diff, setDiff] = React.useState<DraftDiff | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [state, setState] = React.useState<"pending" | "publishing" | "failed">("pending");
+  // R3: publicar es reversible durante diez minutos, y el aviso no se cierra
+  // mientras dure. El contador corre de verdad: prometer un plazo sin
+  // enseñarlo obliga a vigilarlo o a perderlo.
+  const [published, setPublished] = React.useState<{ version: number; previous: number | null } | null>(null);
+  const [secondsLeft, setSecondsLeft] = React.useState(UNDO_SECONDS);
+
+  React.useEffect(() => {
+    if (!published) return;
+    const id = window.setInterval(() => {
+      setSecondsLeft((s) => {
+        const left = s - 1;
+        // El aviso se cierra solo al terminar el plazo, como promete la hoja.
+        if (left <= 0) setPublished(null);
+        return Math.max(0, left);
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [published]);
   const [, startTransition] = React.useTransition();
 
   // El diff se pide al abrir, no al montar: la mayoría de las visitas a la
@@ -67,12 +91,58 @@ export function DraftBarClient({
       }
       setOpen(false);
       setState("pending");
-      toast.success(t("draft.bar.published"));
-      // La barra vive en el layout: al publicar desaparece de todas las
-      // pestañas, no solo de la que estaba abierta.
+      setPublished({ version, previous: activeVersion });
+      setSecondsLeft(UNDO_SECONDS);
+      // La barra vive en el layout: al publicar, el punto de «sin publicar»
+      // desaparece de todas las pestañas. El aviso sobrevive al refresco
+      // porque el layout sigue montando este componente.
       router.refresh();
     });
   }
+
+  function undo() {
+    const previous = published?.previous;
+    if (previous == null) return;
+    startTransition(async () => {
+      const res = await rollbackAgentAction({ ref: refId, version: previous });
+      if (!res.ok) {
+        toast.error(actionErrorText(res, t));
+        return;
+      }
+      setPublished(null);
+      toast.success(t("draft.published.undone", { version: previous }));
+      router.refresh();
+    });
+  }
+
+  if (published) {
+    const minutes = Math.ceil(secondsLeft / 60);
+    return (
+      <Callout
+        tone="positive"
+        title={t("draft.published.title", { version: published.version })}
+        action={
+          published.previous != null && canPublish ? (
+            <span className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={undo}>
+                {t("draft.published.undo")}
+              </Button>
+              <span className="text-xs text-muted-foreground tabular-nums">{t("draft.published.left", { minutes })}</span>
+            </span>
+          ) : undefined
+        }
+      >
+        <span className="block max-w-prose text-pretty">
+          {published.previous == null
+            ? t("draft.published.bodyFirst")
+            : t("draft.published.body", { previous: published.previous })}
+        </span>
+      </Callout>
+    );
+  }
+
+  // Sin borrador y sin nada recién publicado, la barra no existe.
+  if (screens.length === 0) return null;
 
   return (
     <>

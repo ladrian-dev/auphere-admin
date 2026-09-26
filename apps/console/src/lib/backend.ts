@@ -472,7 +472,9 @@ export function backendFor(principal: Principal) {
     publishAgentVersion: (ref: string, version: number, origin?: "draft_bar" | "agent_tab") =>
       call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/publish`, {
         method: "POST",
-        ...(origin ? { body: JSON.stringify({ from: origin }) } : {}),
+        // `body` va como objeto: el ayudante es quien serializa. Pasarlo ya
+        // serializado lo codifica dos veces y la API responde 422.
+        ...(origin ? { body: { from: origin } } : {}),
       }),
     rollbackAgentVersion: (ref: string, version: number) =>
       call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/rollback`, { method: "POST" }),
