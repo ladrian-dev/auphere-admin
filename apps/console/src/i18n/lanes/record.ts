@@ -117,6 +117,7 @@ export const recordMessages = {
   "draft.diff.added": { es: "añadido", en: "added" },
   "draft.diff.removed": { es: "quitado", en: "removed" },
   "draft.diff.promptChanged": { es: "Las instrucciones del agente cambian.", en: "The agent's instructions change." },
+  "agent.changes": { es: "Cambia", en: "Changes" },
   "draft.screen.settings": { es: "Ajustes", en: "Settings" },
   "draft.screen.capabilities": { es: "Capacidades", en: "Capabilities" },
   "draft.screen.knowledge": { es: "Conocimiento", en: "Knowledge" },

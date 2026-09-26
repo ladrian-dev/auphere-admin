@@ -24,6 +24,7 @@ import { useLocale, useT } from "@/i18n/client";
 import { actionErrorText } from "@/lib/action-error";
 import type { AgentBundle, AgentVersion } from "@/lib/backend";
 
+import { changedScreens } from "./agent-history";
 import { PromptDiff } from "./prompt-diff";
 
 type Props = { refId: string; bundle: AgentBundle; canWrite: boolean };
@@ -126,6 +127,9 @@ export function AgentVersions({ refId, bundle, canWrite }: Props) {
           {versions.map((v) => {
             const isActive = v.version === bundle.active_version;
             const open = expanded === v.version;
+            // R3.6: la entrada del borrador dice QUÉ cambia, no solo cuándo
+            // se guardó; para eso ya existe la lectura por pantallas.
+            const changes = changedScreens(v, bundle);
             return (
               <li key={v.version} className="rounded-md bg-card p-4 ring-1 ring-foreground/10">
                 <div className="flex flex-wrap items-center gap-2">
@@ -137,6 +141,12 @@ export function AgentVersions({ refId, bundle, canWrite }: Props) {
                     {formatDateTime(v.created_at, locale)}
                     {v.created_by ? ` · ${t("agent.by", { who: v.created_by.replace(/^console:/, "") })}` : ""}
                   </span>
+                  {changes.length ? (
+                    <span className="text-xs text-muted-foreground">
+                      {t("agent.changes")}:{" "}
+                      <span className="text-foreground">{changes.map((c) => t(`draft.screen.${c}`)).join(", ")}</span>
+                    </span>
+                  ) : null}
                   <span className="ml-auto flex flex-wrap gap-2">
                     <Button variant="ghost" size="sm" onClick={() => setExpanded(open ? null : v.version)} aria-expanded={open}>
                       {t("agent.viewPrompt")}
