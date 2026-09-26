@@ -22,7 +22,7 @@ export function UsageCharts({ bars, barSeries, line, cap, monthUnits, percent }:
   return (
     <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
       <section aria-label={t("hu.usage.chart.daily")} className="min-w-0 rounded-md bg-card p-4 ring-1 ring-foreground/10">
-        <h3 className="mb-2 font-mono text-xs tracking-eyebrow text-muted-foreground uppercase">{t("hu.usage.chart.daily")}</h3>
+        <h3 className="mb-2 text-xs font-medium tracking-eyebrow text-muted-foreground uppercase">{t("hu.usage.chart.daily")}</h3>
         {bars.length === 0 || barSeries.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("hu.usage.chart.empty")}</p>
         ) : (
@@ -40,7 +40,7 @@ export function UsageCharts({ bars, barSeries, line, cap, monthUnits, percent }:
           />
         </section>
         <section aria-label={t("hu.usage.chart.projection")} className="min-w-0 rounded-md bg-card p-4 ring-1 ring-foreground/10">
-          <h3 className="mb-2 font-mono text-xs tracking-eyebrow text-muted-foreground uppercase">{t("hu.usage.chart.projection")}</h3>
+          <h3 className="mb-2 text-xs font-medium tracking-eyebrow text-muted-foreground uppercase">{t("hu.usage.chart.projection")}</h3>
           <ProjectionLineChart
             ariaLabel={t("hu.usage.chart.projection")}
             data={line}

@@ -510,7 +510,7 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
 
             {/* progress */}
             <section aria-labelledby="wz-progress" aria-live="polite" className="flex flex-col gap-2 rounded-md border border-border bg-card p-4">
-              <h3 id="wz-progress" className="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase">
+              <h3 id="wz-progress" className="text-xs font-medium tracking-eyebrow text-muted-foreground uppercase">
                 {t("wizard.progress.title")}
               </h3>
               <Checklist

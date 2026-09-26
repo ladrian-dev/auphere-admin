@@ -24,7 +24,8 @@ type MetricProps = {
 function Metric({ label, value, hint, loading, href, className }: MetricProps) {
   const body = (
     <>
-      <p className="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase">{label}</p>
+      {/* El nombre de una métrica es texto de interfaz: Helvena, no mono. */}
+      <p className="text-xs font-medium tracking-eyebrow text-muted-foreground uppercase">{label}</p>
       {loading ? (
         <Skeleton className="h-8 w-24" />
       ) : (

@@ -52,7 +52,7 @@ export function UserMenu({ user, role, partnerName, collapsed }: Props) {
         {!collapsed ? (
           <span className="flex min-w-0 flex-col">
             <span className="truncate text-sm font-medium">{user.name || user.email}</span>
-            <span className="truncate font-mono text-xs text-muted-foreground">{t(roleKey(role))}</span>
+            <span className="truncate text-xs text-muted-foreground">{t(roleKey(role))}</span>
           </span>
         ) : null}
       </DropdownMenuTrigger>

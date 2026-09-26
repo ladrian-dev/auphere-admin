@@ -50,7 +50,7 @@ export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
       <SidebarContent>
         {groups.map((group) => (
           <SidebarGroup key={group.labelKey}>
-            <SidebarGroupLabel className="font-mono text-xs tracking-eyebrow uppercase">{t(group.labelKey)}</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-xs font-medium tracking-eyebrow uppercase">{t(group.labelKey)}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
