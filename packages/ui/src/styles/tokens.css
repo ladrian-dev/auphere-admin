@@ -146,26 +146,29 @@
   --color-scrim: oklch(0.161 0.033 115.3 / 0.16);
 
   /* ── Typography ───────────────────────────────────────────────────── */
-  /* Outfit es la familia del producto (owner, 2026-09-26). Helvena sigue
-     siendo la de la marca (brand-system §2) y manda en la web y en lo
-     impreso; en pantalla, sostenida durante horas, se leía cuadrada y
-     angular, así que la consola usa Outfit. Se sirve desde el repo:
-     --font-outfit lo pone next/font/local y Storybook declara su @font-face.
-     La cadena conserva Helvena e Inter Tight detrás para quien aún no haya
-     cargado Outfit; los tests caen al stack del sistema.
+  /* Inter es la familia del producto (owner, 2026-09-26).
+     Libre (OFL) y diseñada para interfaz: da el aire de la letra de sistema
+     de Apple sin usar sus archivos —que su licencia no deja servir en web—
+     y con la ventaja de verse IGUAL en un Mac, en Windows y en Android, que
+     la pila del sistema no garantiza. Next la auto-aloja en el build, así
+     que se sirve desde nuestro origen, no desde Google.
 
-     Y no hay segunda familia: JetBrains Mono se retira entera (owner,
+     Helvena sigue siendo la de la marca (brand-system §2) y manda en la web
+     y en lo impreso.
+
+     Y no hay segunda familia: JetBrains Mono se retiró entera (owner,
      2026-09-26). --font-mono existe todavía porque muchas utilidades lo
-     citan, pero apunta a la MISMA familia: una referencia o una clave se
+     citan, pero apunta a la MISMA pila: una referencia o una clave se
      distinguen con `tabular-nums` y tracking, no cambiando de letra. */
   --font-sans:
-    var(--font-outfit, "Outfit"), var(--font-helvena, "Helvena"), var(--font-inter-tight, "Inter Tight"),
+    var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     ui-sans-serif, system-ui, sans-serif;
   --font-display:
-    var(--font-outfit, "Outfit"), var(--font-helvena, "Helvena"), var(--font-inter-tight, "Inter Tight"),
+    var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     ui-sans-serif, system-ui, sans-serif;
   --font-mono:
-    var(--font-outfit, "Outfit"), var(--font-helvena, "Helvena"), ui-sans-serif, system-ui, sans-serif;
+    var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    ui-sans-serif, system-ui, sans-serif;
 
   --text-xs: 12px;
   --text-xs--line-height: 1.5;

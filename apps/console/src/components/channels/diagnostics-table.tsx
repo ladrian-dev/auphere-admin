@@ -81,11 +81,14 @@ export function DiagnosticsTable({ refId, data, manage }: { refId: string; data:
   return (
     <div className="flex min-w-0 flex-col gap-4" aria-busy={pending}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
+        {/* Envuelve y encoge: la fecha junto a la insignia no baja de su
+            anchura mínima, y con una traducción más larga se salía de una
+            pantalla de 360 px. */}
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           <StatusBadge tone={data.healthy ? "positive" : "danger"} pulse={!data.healthy}>
             {data.healthy ? t("diag.healthy") : t("diag.unhealthy")}
           </StatusBadge>
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="min-w-0 text-xs text-muted-foreground tabular-nums">
             {t("diag.checkedAt")}: {formatDateTime(data.checked_at, locale)}
           </span>
         </div>

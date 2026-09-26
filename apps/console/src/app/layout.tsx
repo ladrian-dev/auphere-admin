@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import localFont from "next/font/local";
+import { Inter } from "next/font/google";
 import { headers } from "next/headers";
 
 import { ThemeProvider, Toaster, UiCopyProvider } from "@nexus/ui";
@@ -11,20 +11,11 @@ import { resolvePrincipal } from "@/lib/principal";
 
 import "./globals.css";
 
-// Outfit es la familia del producto (owner, 2026-09-26). Helvena sigue siendo
-// la de la marca y manda fuera de la pantalla; aquí, sostenida durante horas,
-// se leía cuadrada y angular. Se sirve desde el repo, no desde Google.
-//
-// Y no hay una segunda familia: JetBrains Mono se retira entera. Una
-// referencia o una clave se distinguen con `tabular-nums` y tracking, no
-// cambiando de letra.
-const outfit = localFont({
-  src: [{ path: "../../public/fonts/Outfit-Variable.woff2", weight: "100 900", style: "normal" }],
-  variable: "--font-outfit",
-  display: "swap",
-  preload: true,
-  fallback: ["system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
-});
+// Inter es la familia del producto (owner, 2026-09-26). Libre y diseñada para
+// interfaz: da el aire de la letra de sistema de Apple sin tocar sus archivos,
+// y se ve igual en todas las máquinas. Next la auto-aloja en el build, así que
+// se sirve desde nuestro origen y no desde Google.
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Consola · Auphere", template: "%s · Consola Auphere" },
@@ -69,7 +60,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html
       lang={locale}
-      className={`${outfit.variable} h-full antialiased`}
+      className={`${inter.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full">

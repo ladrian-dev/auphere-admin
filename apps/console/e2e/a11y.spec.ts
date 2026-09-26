@@ -94,8 +94,11 @@ async function auditView(page: Page, path: string) {
     await page.waitForTimeout(150);
     expect(await overflowOffenders(page), `${path} @${width}px overflows`).toEqual([]);
   }
-  // "German string" test: every visible text node inside <main> grows ~30 %
-  // (the expansion ES/EN → DE) and the layout must still not overflow at 360 px.
+  // Prueba de «texto largo»: cada nodo visible dentro de <main> crece ~30 %
+  // y el layout no puede desbordarse a 360 px. La app solo habla español e
+  // inglés; esto NO añade un idioma, simula que una traducción sale más
+  // larga que la otra, que entre esos dos ya pasa. Es lo que caza los
+  // desbordamientos antes de que los vea un partner.
   await page.setViewportSize({ width: 360, height: 900 });
   await page.evaluate(() => {
     const walker = document.createTreeWalker(document.querySelector("main#main") ?? document.body, NodeFilter.SHOW_TEXT);
@@ -106,14 +109,14 @@ async function auditView(page: Page, path: string) {
       if (t.trim().length < 4) continue;
       // Chart labels (SVG) come from data, not copy — not subject to translation growth.
       if (n.parentElement?.closest("svg")) continue;
-      // Realistic German: long words (12 chars) separated by spaces, +30 % length.
+      // Palabras largas de verdad (14 caracteres), separadas por espacios.
       const extra = Math.ceil(t.trim().length * 0.3);
-      const words = Math.max(1, Math.round(extra / 13));
-      n.textContent = t + " Überprüfungs".repeat(words);
+      const words = Math.max(1, Math.round(extra / 15));
+      n.textContent = t + " adicionalmente".repeat(words);
     }
   });
   await page.waitForTimeout(100);
-  expect(await overflowOffenders(page), `${path} @360px overflows with +30 % text`).toEqual([]);
+  expect(await overflowOffenders(page), `${path} @360px se desborda con el texto un 30 % más largo`).toEqual([]);
   await page.setViewportSize({ width: 1280, height: 800 });
 }
 

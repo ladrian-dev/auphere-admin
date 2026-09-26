@@ -78,7 +78,12 @@ function FormItem({ className, ...props }: React.ComponentProps<"div">) {
     <FormItemContext.Provider value={{ id }}>
       <div
         data-slot="form-item"
-        className={cn("grid gap-2", className)}
+        /* Un ítem de rejilla no baja por defecto de la anchura mínima de su
+           contenido, así que una etiqueta con una palabra larga —una
+           traducción al alemán, sin ir más lejos— empuja el campo fuera de
+           una pantalla de 360 px. Hace falta en el campo Y en sus hijos, que
+           también son ítems de rejilla. Lo cazó la barrida de la spec 017. */
+        className={cn("grid min-w-0 gap-2 [&>*]:min-w-0", className)}
         {...props}
       />
     </FormItemContext.Provider>

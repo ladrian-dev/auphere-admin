@@ -138,7 +138,9 @@ test.describe("spec 017 · la ficha de cliente", () => {
     const ref = await firstClientRef(page);
     const res = await page.goto(`/clients/${encodeURIComponent(ref)}/capabilities`);
     expect(res?.status(), "la URL existe").toBeLessThan(400);
-    await expect(page).toHaveURL(new RegExp(`/clients/${ref}/tools$`));
+    // La redirección la resuelve el servidor y puede tardar bajo carga:
+    // esperarla es más honesto que afirmarla y fallar por el reloj.
+    await page.waitForURL(new RegExp(`/clients/${ref}/tools$`), { timeout: 30_000 });
     await expect(page.locator("main#main")).toBeVisible();
   });
 

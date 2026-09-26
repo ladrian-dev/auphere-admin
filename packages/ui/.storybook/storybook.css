@@ -3,16 +3,11 @@
 @import "../src/styles/tokens.css";
 @source "../src";
 
-@font-face {
-  font-family: "Outfit";
-  src: url("./fonts/Outfit-Variable.woff2") format("woff2");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
+/* Storybook toma Inter de Google; la consola la auto-aloja con next/font. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap");
 
 /* Helvena se queda declarada: es la familia de la marca y algunas historias
-   la muestran a propósito. El producto usa Outfit. */
+   la muestran a propósito. El producto usa Inter. */
 @font-face {
   font-family: "Helvena";
   src: url("./fonts/Helvena-Variable.woff2") format("woff2");
