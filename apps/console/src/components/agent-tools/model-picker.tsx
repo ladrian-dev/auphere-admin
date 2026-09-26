@@ -88,11 +88,15 @@ export function ModelPicker({ refId, models, current, canWrite }: Props) {
           </div>
         )}
         {canWrite ? (
-          <div className="flex items-center gap-3">
+          // `min-w-0` y `flex-wrap`: sin ellos este párrafo no baja de su
+          // anchura mínima y, con una traducción más larga que la nuestra,
+          // se sale de una pantalla de 360 px. Lo cazó la barrida de la
+          // spec 017 al auditar la ficha entera.
+          <div className="flex flex-wrap items-center gap-3">
             <Button type="button" size="sm" onClick={save} disabled={!dirty || pending} aria-busy={pending}>
               {t("agent.model.save")}
             </Button>
-            <p className="text-xs text-muted-foreground text-pretty">{t("agent.model.hint")}</p>
+            <p className="min-w-0 text-xs text-pretty text-muted-foreground">{t("agent.model.hint")}</p>
           </div>
         ) : null}
       </CardContent>
