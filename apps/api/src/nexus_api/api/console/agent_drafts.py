@@ -129,16 +129,36 @@ def _capabilities(cfg: AgentConfig | None) -> set[tuple[str, str]]:
     return caps
 
 
+def _policy_defaults() -> dict[str, object]:
+    from nexus_api.services.agent_console_policy import ConsolePolicy
+
+    return ConsolePolicy().model_dump(mode="json")
+
+
 def settings_changes(active: AgentConfig | None, draft: AgentConfig) -> list[dict[str, object]]:
     """Una fila por campo de `policies.console` que difiere. `schema_version`
-    no es un ajuste: es fontanería y no se enseña."""
+    no es un ajuste: es fontanería y no se enseña.
+
+    Y un campo que **no existía** en la activa y en el borrador trae
+    exactamente el valor por defecto tampoco es un cambio: el formulario de
+    ajustes escribe la política entera, así que tocar el nombre del agente
+    hacía aparecer seis filas con «Antes: —». El partner no podía distinguir
+    lo que decidió él de lo que rellenó el formulario solo, que es justo lo
+    que la hoja de revisión existe para evitar. Si la activa SÍ tenía un
+    valor y el borrador lo devuelve al de por defecto, eso es una decisión y
+    se enseña.
+    """
     before, after = _console_policy(active), _console_policy(draft)
+    defaults = _policy_defaults()
     rows: list[dict[str, object]] = []
     for field in sorted(set(before) | set(after)):
         if field == "schema_version":
             continue
-        if before.get(field) != after.get(field):
-            rows.append({"field": field, "before": before.get(field), "after": after.get(field)})
+        if before.get(field) == after.get(field):
+            continue
+        if field not in before and after.get(field) == defaults.get(field):
+            continue
+        rows.append({"field": field, "before": before.get(field), "after": after.get(field)})
     return rows
 
 

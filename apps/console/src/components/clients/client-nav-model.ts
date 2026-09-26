@@ -37,7 +37,13 @@ export const RECORD_TABS: readonly RecordTab[] = [
   { key: "conversations", label: "clients.tabs.conversations", group: "observe", seg: "conversations", needs: "conversations:read" },
   { key: "playground", label: "clients.tabs.playground", group: "observe", seg: "playground", needs: "playground:run" },
   { key: "agent", label: "clients.tabs.agent", group: "configure", seg: "agent", needs: "agents:read" },
-  { key: "settings", label: "clients.tabs.settings", group: "configure", seg: "settings", needs: "agents:read" },
+  // «Ajustes» es lo que configura al AGENTE —horario, idiomas, escalado—,
+  // que es lo que el borrador marca como `settings`. Los datos del cliente
+  // (nombre, zona horaria) son otra cosa y tienen su propia pestaña: si
+  // compartieran una, el punto de «sin publicar» señalaría una pantalla
+  // que no ha cambiado.
+  { key: "settings", label: "clients.nav.agentSettings", group: "configure", seg: "agent/settings", needs: "agents:read" },
+  { key: "client", label: "clients.nav.clientData", group: "configure", seg: "settings", needs: "clients:read" },
   { key: "capabilities", label: "clients.nav.capabilities", group: "configure", seg: "tools", needs: "agents:read" },
   { key: "knowledge", label: "clients.tabs.knowledge", group: "configure", seg: "knowledge", needs: "knowledge:read" },
   { key: "channels", label: "clients.tabs.channels", group: "connect", seg: "channels", needs: "channels:read" },

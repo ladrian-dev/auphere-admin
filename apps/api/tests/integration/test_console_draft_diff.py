@@ -294,3 +294,72 @@ async def test_an_unknown_origin_is_refused(client, console_world, db_session) -
         json={"from": "wherever"},
     )
     assert r.status_code == 422
+
+
+async def test_the_form_filling_in_blanks_is_not_a_change(
+    client, console_world, db_session
+) -> None:
+    """Guardar los ajustes escribe la política ENTERA, con sus valores por
+    defecto, sobre una versión activa que no los tenía. Sin esto, cambiar el
+    nombre del agente aparecía como seis cambios con «Antes: —», y el
+    partner no podía distinguir lo que decidió él de lo que rellenó el
+    formulario solo — que es justo lo que la hoja existe para evitar."""
+    from nexus_api.services.agent_console_policy import ConsolePolicy
+
+    a = console_world["a"]
+    # Activa sin `policies.console`: el caso real de un agente sembrado.
+    db_session.add(
+        _version(a["tenant_id"], version=1, status=AgentConfigStatus.ACTIVE, policies={})
+    )
+
+    # Borrador: la política completa por defecto, con UN campo decidido.
+    full = ConsolePolicy().model_dump(mode="json")
+    full["identity"] = {**full["identity"], "name": "Espiga"}
+    db_session.add(
+        _version(
+            a["tenant_id"], version=2, status=AgentConfigStatus.STAGED, policies={"console": full}
+        )
+    )
+    await db_session.commit()
+
+    body = (
+        await client.get(f"/console/clients/{a['ref']}/agent/draft-diff", headers=a["headers"]())
+    ).json()
+    assert [row["field"] for row in body["settings"]] == ["identity"]
+    assert body["settings"][0]["after"]["name"] == "Espiga"
+
+    # Y la pestaña que se marca es solo la que de verdad cambia.
+    bundle = (await client.get(f"/console/clients/{a['ref']}/agent", headers=a["headers"]())).json()
+    assert bundle["draft_screens"] == ["settings"]
+
+
+async def test_a_default_the_partner_chose_on_purpose_still_counts(
+    client, console_world, db_session
+) -> None:
+    """El filtro solo tapa el hueco que nunca existió. Si la activa YA tenía
+    un valor y el borrador lo devuelve al de por defecto, eso es una
+    decisión y se enseña."""
+    from nexus_api.services.agent_console_policy import ConsolePolicy
+
+    a = console_world["a"]
+    full = ConsolePolicy().model_dump(mode="json")
+    db_session.add(
+        _version(
+            a["tenant_id"],
+            version=1,
+            status=AgentConfigStatus.ACTIVE,
+            policies={"console": {**full, "identity": {**full["identity"], "name": "Espiga"}}},
+        )
+    )
+    db_session.add(
+        _version(
+            a["tenant_id"], version=2, status=AgentConfigStatus.STAGED, policies={"console": full}
+        )
+    )
+    await db_session.commit()
+
+    body = (
+        await client.get(f"/console/clients/{a['ref']}/agent/draft-diff", headers=a["headers"]())
+    ).json()
+    assert [row["field"] for row in body["settings"]] == ["identity"]
+    assert body["settings"][0]["before"]["name"] == "Espiga"

@@ -7,6 +7,8 @@ import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { DraftDiff } from "@/lib/backend";
 
+import { settingValue } from "./draft-setting-value";
+
 type Row = { term: string; before: string; after: string };
 
 /**
@@ -41,8 +43,8 @@ export function DraftDiffSheet({
 
   const settings: Row[] = (diff?.settings ?? []).map((row) => ({
     term: label(t, `draft.field.${row.field}`, row.field),
-    before: show(row.before),
-    after: show(row.after),
+    before: settingValue(t, row.field, row.before),
+    after: settingValue(t, row.field, row.after),
   }));
   const capabilities: Row[] = (diff?.capabilities ?? []).map((row) => ({
     term: row.name,
@@ -141,20 +143,4 @@ function DiffTable({ title, rows }: { title: string; rows: Row[] }) {
 function label(t: (k: MessageKey) => string, key: string, fallback: string): string {
   const translated = t(key as MessageKey);
   return translated === key ? fallback : translated;
-}
-
-/** El valor tal cual lo devuelve la API, legible. No interpreta: un
- *  objeto que la consola no sepa nombrar se enseña entero antes que
- *  resumirse mal. */
-function show(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "boolean") return value ? "✓" : "—";
-  if (typeof value === "string" || typeof value === "number") return String(value);
-  if (Array.isArray(value)) return value.map(show).join(", ") || "—";
-  if (typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([k, v]) => `${k}: ${show(v)}`)
-      .join(" · ");
-  }
-  return String(value);
 }

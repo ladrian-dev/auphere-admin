@@ -10,6 +10,8 @@ export const recordMessages = {
   "clients.nav.group.connect": { es: "Conectar", en: "Connect" },
   "clients.nav.capabilities": { es: "Capacidades", en: "Capabilities" },
   "clients.nav.integrations": { es: "Integraciones", en: "Integrations" },
+  "clients.nav.agentSettings": { es: "Ajustes", en: "Settings" },
+  "clients.nav.clientData": { es: "Datos del cliente", en: "Client details" },
   "clients.nav.mark.draft": { es: "cambios sin publicar", en: "unpublished changes" },
   "clients.nav.mark.incident": { es: "incidencia", en: "incident" },
   "clients.nav.suffix.draft": { es: "sin publicar", en: "unpublished" },
@@ -101,4 +103,20 @@ export const recordMessages = {
   "draft.field.languages": { es: "Idiomas", en: "Languages" },
   "draft.field.escalation": { es: "Escalado a una persona", en: "Escalation to a human" },
   "draft.field.ai_disclosure": { es: "Aviso de que es una IA", en: "Disclosure that it is an AI" },
+
+  // Cada ajuste dicho en una frase. La API contesta con su JSON; enseñarlo
+  // en crudo («triggers: user_asks_human, angry…») no es revisar nada.
+  "draft.value.none": { es: "sin definir", en: "not set" },
+  "draft.value.identity": { es: "Se presenta como «{name}»", en: "Introduces itself as “{name}”" },
+  "draft.value.identity.none": { es: "Sin nombre propio", en: "No name of its own" },
+  "draft.value.tone": { es: "Estilo {style}", en: "{style} style" },
+  "draft.value.objective": { es: "«{text}»", en: "“{text}”" },
+  "draft.value.objective.none": { es: "Sin objetivo escrito", en: "No objective written" },
+  "draft.value.schedule.always": { es: "Atiende siempre", en: "Serves at all hours" },
+  "draft.value.schedule.hours": { es: "Con horario: {days} días con franja ({timezone})", en: "On a schedule: {days} days with hours ({timezone})" },
+  "draft.value.languages": { es: "Responde en {primary}; admite {allowed}", en: "Answers in {primary}; accepts {allowed}" },
+  "draft.value.escalation.on": { es: "Pasa a una persona en {count} situaciones", en: "Hands over to a human in {count} situations" },
+  "draft.value.escalation.off": { es: "Nunca pasa a una persona", en: "Never hands over to a human" },
+  "draft.value.disclosure.on": { es: "Avisa de que es una IA", en: "Says it is an AI" },
+  "draft.value.disclosure.off": { es: "No avisa de que es una IA", en: "Does not say it is an AI" },
 } as const;

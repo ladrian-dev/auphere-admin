@@ -14,14 +14,17 @@ import { navGroupsFor, RECORD_TABS } from "../client-nav-model";
 const base = "/clients/panaderia";
 
 describe("las pestañas de la ficha", () => {
-  it("cubre las diez pestañas de hoy: ninguna desaparece", () => {
-    expect(RECORD_TABS).toHaveLength(10);
+  it("cubre todas las pestañas de hoy: ninguna desaparece", () => {
+    // Once, no diez: los ajustes del AGENTE y los datos del cliente son dos
+    // pantallas distintas, y compartir una pestaña hacía que el punto de
+    // «sin publicar» señalara la que no había cambiado.
     expect(RECORD_TABS.map((t) => t.key)).toEqual([
       "overview",
       "conversations",
       "playground",
       "agent",
       "settings",
+      "client",
       "capabilities",
       "knowledge",
       "channels",
@@ -33,7 +36,7 @@ describe("las pestañas de la ficha", () => {
   it("agrupa en observar, configurar y conectar, en ese orden", () => {
     const groups = navGroupsFor("owner", base, {});
     expect(groups.map((g) => g.key)).toEqual(["observe", "configure", "connect"]);
-    expect(groups.flatMap((g) => g.items)).toHaveLength(10);
+    expect(groups.flatMap((g) => g.items)).toHaveLength(11);
   });
 
   it("el propietario lo ve todo; el analista pierde el Playground", () => {
@@ -54,6 +57,9 @@ describe("las pestañas de la ficha", () => {
     const items = navGroupsFor("owner", base, {}).flatMap((g) => g.items);
     expect(items.find((i) => i.key === "overview")?.href).toBe(base);
     expect(items.find((i) => i.key === "agent")?.href).toBe(`${base}/agent`);
+    // El borrador cambia los ajustes del AGENTE, no el nombre del cliente.
+    expect(items.find((i) => i.key === "settings")?.href).toBe(`${base}/agent/settings`);
+    expect(items.find((i) => i.key === "client")?.href).toBe(`${base}/settings`);
     // Iteración 1: «Capacidades» aún vive en la pantalla de herramientas.
     expect(items.find((i) => i.key === "capabilities")?.href).toBe(`${base}/tools`);
     expect(items.find((i) => i.key === "integrations")?.href).toBe(`${base}/tools#integraciones`);
