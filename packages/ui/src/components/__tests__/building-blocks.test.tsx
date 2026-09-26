@@ -13,6 +13,7 @@ import { Meter, meterToneFor } from "../meter";
 import { NativeSelect } from "../native-select";
 import { Section } from "../section";
 import { Stepper } from "../stepper";
+import { Switch } from "../switch";
 
 describe("Meter", () => {
   it("is a native progress whose tone follows the CP-24 thresholds", () => {
@@ -230,5 +231,28 @@ describe("Button loading", () => {
     expect(btn).toHaveAttribute("aria-busy", "true");
     await userEvent.click(btn);
     expect(onClick).not.toHaveBeenCalled();
+  });
+});
+
+describe("Switch", () => {
+  it("se anuncia como interruptor, no como casilla: el clic ya guarda", async () => {
+    const onCheckedChange = vi.fn();
+    render(<Switch aria-label="Reservas" onCheckedChange={onCheckedChange} />);
+    const control = screen.getByRole("switch", { name: "Reservas" });
+    expect(control).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(control);
+    expect(onCheckedChange).toHaveBeenCalledWith(true, expect.anything());
+  });
+
+  it("apagado no cambia de estado, y sigue diciendo en cuál está", async () => {
+    // En la pantalla de Capacidades el rol que no puede escribir NO ve
+    // interruptor (spec 017 R5.4); esto cubre el resto de los casos, como
+    // una capacidad que aún se está guardando.
+    const onCheckedChange = vi.fn();
+    render(<Switch aria-label="Reservas" checked disabled onCheckedChange={onCheckedChange} />);
+    const control = screen.getByRole("switch", { name: "Reservas" });
+    expect(control).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(control);
+    expect(onCheckedChange).not.toHaveBeenCalled();
   });
 });

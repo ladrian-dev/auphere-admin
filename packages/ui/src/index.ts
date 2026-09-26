@@ -44,6 +44,7 @@ export * from "./components/sonner";
 export * from "./components/status-badge";
 export * from "./components/status-dot";
 export * from "./components/stepper";
+export * from "./components/switch";
 export * from "./components/table";
 export * from "./components/tabs";
 export * from "./components/textarea";

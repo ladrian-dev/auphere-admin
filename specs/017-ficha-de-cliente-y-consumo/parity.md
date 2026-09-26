@@ -49,9 +49,79 @@ iteración, y entraron. La fila 7 se resolvió **a la vista** y no con un
 tooltip, que es lo que pedía la tabla: un dato que solo aparece al pasar el
 ratón no existe en una pantalla táctil ni para un lector de pantalla.
 
-## Iteración 2 · Capacidades e Integraciones
+## Iteración 2 · Capacidades e Integraciones (`/capabilities`, `/integrations`)
 
-_Se completa al empezar la iteración, desde `tools-catalog.tsx` y `skills-grid.tsx`._
+Fuente: `components/agent-tools/tools-catalog.tsx` (603 L), `skills-grid.tsx`,
+`lib.ts`, las cuatro páginas de `/tools` y `/skills` con su `loading`/`error`,
+sus dos `actions.ts` y `i18n/lanes/agent-tools.ts`. Inventariado el 2026-09-26
+antes de escribir una línea de la pantalla nueva.
+
+### Lo que hoy hay en Herramientas
+
+| # | Hoy (antes) | Después | Estado |
+|---|---|---|---|
+| 24 | Nombre técnico en mono (`booking.check_availability`) como único nombre | Nombre de negocio y descripción en el idioma del partner; el técnico pasa a detalle plegado | ➡️ detalle |
+| 25 | Descripción libre | Igual, bajo el nombre de negocio | ✅ |
+| 26 | Casilla por fila, **no guarda hasta pulsar «Guardar herramientas»** | Conmutador que guarda con el clic, sin «Guardar» aparte (R5.4) | ➡️ (decisión escrita: R5.4) |
+| 27 | «Marcar todas» / «Desmarcar todas» (solo estado local) | Se conservan, ahora sobre **las visibles** del filtro actual, guardando | ✅ |
+| 28 | Insignia «En la versión activa» | Se conserva | ✅ |
+| 29 | Insignia «Aún no publicada» | Se conserva | ✅ |
+| 30 | Insignias «Solo lectura» y «Destructiva» | Se conservan | ✅ |
+| 31 | Insignia «Requiere conectar {X}» + ayuda «Marcada pero inutilizable» | Se conserva y además enlaza a conectarlo; no cuenta como utilizable (R5.8) | ✅ (mejor) |
+| 32 | Etiquetas `#tag` de capacidad | Al detalle plegado, con el nombre técnico y la versión (R5.6) | ➡️ detalle |
+| 33 | Selector de modo por fila: `__default` · Siempre · **Requiere aprobación** · Bloqueada | Siempre y Bloqueada se conservan con sus nombres; **«Requiere aprobación» se retira** (R5.7) y una versión anterior que lo tuviera muestra su modo efectivo real | ❌ (decisión escrita: R5.7) |
+| 34 | El modo **guarda con el clic**, sin botón | Igual | ✅ |
+| 35 | Ayuda «Modo forzado por ti» cuando hay `override_mode` | Se conserva | ✅ |
+| 36 | Contador «{n} de {total} herramientas marcadas», `aria-live` | Se conserva, por la vista actual | ✅ |
+| 37 | Aviso de solo lectura + casillas deshabilitadas sin `agents:write` | El conmutador **no existe** y el estado se lee igual (R5.4) | ➡️ (mejor: sin controles muertos) |
+| 38 | Agrupación por conector, nativas primero | Agrupación **por función** (Citas, Pedidos, Mensajes, Escalado, Conocimiento, Otras); el conector se dice en la tarjeta | ➡️ (R5.1) |
+| 39 | Sin buscador, sin filtros | Buscador por nombre de negocio y descripción (R5.5) + filtro por sector con «Ver todas» y cuántas oculta (R5.2) | ➕ |
+| 40 | Sin marca de «recomendada» | «Recomendada para tu sector» en las que la plantilla enciende (R5.3) | ➕ |
+| 41 | Alerta inline cuando los conectores no cargan, y la lista sigue | Se conserva: una fuente que falla no puede tumbar la pantalla | ✅ |
+| 42 | **El estado vacío del catálogo oculta también los conectores** | Se corrige: sin catálogo, las integraciones siguen a la vista | ✅ (fallo de hoy) |
+| 43 | Toast «Lista blanca guardada en el borrador v{v}» con enlace a publicar | Solo confirma; la barra de borrador es quien lleva a publicar (fila 18) | ➡️ |
+
+### Integraciones (hoy dentro de Herramientas)
+
+| # | Hoy (antes) | Después | Estado |
+|---|---|---|---|
+| 44 | Cabecera por conector: nombre, estado con sus 8 tonos, «{on} de {total} activas», última sincronización | A la pestaña **Integraciones**, y como bloque superior de Capacidades cuando algo visible dependa de uno sin conectar (R4.1) | ➡️ |
+| 45 | Conectar / Reconectar (consentimiento firmado en ventana nueva, con enlace de respaldo si el navegador la bloquea) | Se conserva entero | ✅ |
+| 46 | Diálogo de clave de API con campos traducidos, obligatorios validados, secretos como contraseña; «Guardar y conectar» sincroniza en la misma llamada | Se conserva entero | ✅ |
+| 47 | AgendaPro por URL pública: enlazar, cambiar, desenlazar, validación `agendapro.com`, textos propios | Se conserva entero | ✅ |
+| 48 | Sincronizar · Pausar · Reanudar · Desconectar (con confirmación) | Se conservan | ✅ |
+| 49 | Tira del último sync con «Reintentar» y «Corregir» | Se conserva | ✅ |
+| 50 | — | Qué desbloquea cada integración, en lenguaje de negocio (R4.2) | ➕ |
+| 51 | — | Al conectar, lo que dependía pasa a utilizable **sin recargar a mano** (R4.3) | ➕ |
+
+### Lo que hoy hay en Habilidades
+
+| # | Hoy (antes) | Después | Estado |
+|---|---|---|---|
+| 52 | Pantalla propia en rejilla de tarjetas | Se fusiona en Capacidades; `/skills` redirige | ➡️ (R5.1) |
+| 53 | Nombre técnico como único nombre | Nombre de negocio; el técnico al detalle | ➡️ detalle |
+| 54 | Descripción recortada a 3 líneas con `title` | Se conserva | ✅ |
+| 55 | «Versión {v}» por tarjeta | Al detalle plegado, como fecha (R5.6) | ➡️ detalle |
+| 56 | Insignia «En la versión activa» | Se conserva | ✅ |
+| 57 | «No activable en esta versión…» **bloquea la casilla** | **Decisión pendiente**: hoy las herramientas avisan y dejan marcar, las habilidades bloquean. Una pantalla no puede tener dos políticas ante el mismo problema | ⚠️ pendiente |
+| 58 | Casilla, guardar con botón «Guardar habilidades» | Conmutador que guarda con el clic (R5.4) | ➡️ |
+| 59 | Contador «{n} de {total} activadas» | Se funde con el de herramientas | ➡️ |
+| 60 | Aviso de solo lectura | Igual que en herramientas: sin conmutador | ➡️ |
+| 61 | Sin «marcar todas», sin buscador, sin modo | Los hereda de la pantalla unificada; el modo **no** (las habilidades no lo tienen) | ➕ |
+| 62 | Estado vacío propio («para este vertical») e icono `Sparkles` | Un solo estado vacío, que distinga catálogo vacío de filtro sin resultados | ➡️ |
+
+### Decisiones que faltan antes de implementar
+
+1. **Fila 57** — qué hace una capacidad que no se puede activar: ¿avisar y dejar
+   marcar, como las herramientas, o bloquear, como las habilidades? Afecta a
+   las dos mitades de la pantalla.
+2. **Modos**: los valores reales son `always`, `needs_approval`, `blocked`. La
+   spec (R5.7) habla de «siempre» y «nunca»; «nunca» es `blocked`. Hay que
+   fijar el nombre visible antes de escribir el copy.
+3. **Dónde vive cada cosa**: qué parte de los conectores se queda como bloque
+   superior de Capacidades y qué parte solo existe en Integraciones (R4.1).
+
+
 
 ## Iteración 3 · Consumo
 
