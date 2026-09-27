@@ -169,6 +169,32 @@
    }
   },
   {
+   "id": "f1-get-client-capabilities",
+   "family": "known_answer",
+   "title": "Qué sabe hacer el agente se contesta en lenguaje de negocio",
+   "user_message": "¿Qué puede hacer el agente de $a.ref?",
+   "principal": "a",
+   "trajectory": [
+    {
+     "tool": "console.get_client_capabilities",
+     "args": {
+      "client_ref": "$a.ref"
+     }
+    },
+    {
+     "text": "Te resumo lo que sabe hacer, agrupado por lo que consigue."
+    }
+   ],
+   "expect": {
+    "reads_ok": 1,
+    "tool_body_contains": [
+     "\"groups\"",
+     "hidden_by_sector"
+    ],
+    "unsupported": false
+   }
+  },
+  {
    "id": "f1-list-skills",
    "family": "known_answer",
    "title": "Las skills disponibles salen del catálogo real",

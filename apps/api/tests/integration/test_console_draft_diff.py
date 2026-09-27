@@ -382,4 +382,6 @@ async def test_turning_a_skill_on_counts_as_a_change(client, console_world, db_s
     diff = (
         await client.get(f"/console/clients/{a['ref']}/agent/draft-diff", headers=a["headers"]())
     ).json()
-    assert any(row["kind"] == "skill" and row["change"] == "enabled" for row in diff["capabilities"])
+    assert any(
+        row["kind"] == "skill" and row["change"] == "enabled" for row in diff["capabilities"]
+    )
