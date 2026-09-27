@@ -183,6 +183,13 @@ export const companionMessages = {
   "companion.tool.name.console.get_policy": { es: "Leyendo la política", en: "Reading the policy" },
   "companion.tool.name.console.list_tools": { es: "Listando las herramientas activas", en: "Listing the active tools" },
   "companion.tool.name.console.list_skills": { es: "Listando las skills", en: "Listing the skills" },
+  // Spec 017 (R5): lo que el agente de un cliente sabe hacer. Dice «este
+  // agente» y no «la plataforma» para que no se confunda con
+  // `console.get_capabilities`, que está más abajo.
+  "companion.tool.name.console.get_client_capabilities": {
+    es: "Leyendo lo que sabe hacer este agente",
+    en: "Reading what this agent can do",
+  },
   "companion.tool.name.console.list_knowledge": { es: "Listando el conocimiento", en: "Listing the knowledge base" },
   "companion.tool.name.console.list_channels": { es: "Listando los canales", en: "Listing the channels" },
   "companion.tool.name.console.channel_diagnostics": { es: "Diagnosticando el canal", en: "Diagnosing the channel" },

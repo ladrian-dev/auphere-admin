@@ -302,17 +302,64 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
         max_chars=6_000,
     ),
     ToolSpec(
+        # No es ``console.get_capabilities``: ese nombre ya es el documento de
+        # plataforma (`/console/capabilities`, «qué existe y qué no en
+        # Auphere»), y dos herramientas de soporte lo citan por su nombre. Se
+        # llama como ``console.get_client_model``, que es lo que es: algo de
+        # un cliente concreto.
+        name="console.get_client_capabilities",
+        path="/console/clients/{client_ref}/capabilities",
+        label="Capacidades del agente",
+        description=(
+            "Devuelve lo que el agente de un cliente sabe hacer, con el nombre que "
+            "el negocio entiende ('Reservar una cita', no booking.create_appointment), "
+            "agrupado por lo que se quiere conseguir, y diciendo de cada una si está "
+            "encendida, si está en la versión publicada y si le falta una integración "
+            "para funcionar de verdad. Llama a esto cuando el usuario pregunte qué "
+            "puede hacer el agente de un cliente, por qué no hace algo que espera, o "
+            "qué le falta para hacerlo: devuelve las palabras que él usa. Junta "
+            "herramientas y habilidades, así que no las separes en tu respuesta si él "
+            "no las separa. Distingue 'encendida' de 'funciona': una capacidad "
+            "encendida a la que le falta su conector viene con usable en false, y "
+            "decir que ya funciona sería mentir. Filtra por el sector del cliente y "
+            "dice cuántas esconde; pide all si el usuario pregunta por algo que no "
+            "aparece. No lo confundas con console.get_capabilities, que es el "
+            "documento de qué existe en la plataforma y no habla de ningún cliente."
+        ),
+        params=(
+            _ref_param("el cliente cuyas capacidades quieres leer"),
+            ToolParam(
+                name="all",
+                type="boolean",
+                description=(
+                    "Incluye también las capacidades de otros sectores, marcadas "
+                    "como tales. Por defecto solo las del sector del cliente."
+                ),
+            ),
+            ToolParam(
+                name="lang",
+                type="string",
+                description="Idioma de los nombres de negocio. Por defecto español.",
+                enum=("es", "en"),
+            ),
+        ),
+        max_chars=16_000,
+    ),
+    ToolSpec(
         name="console.list_tools",
         path="/console/clients/{client_ref}/tools",
         label="Herramientas del agente",
         description=(
             "Devuelve el catálogo real de herramientas disponibles para un cliente "
-            "y cuáles tiene activas su agente, más el estado de sus conectores. "
-            "Llama a esto cuando el usuario pregunte qué puede hacer el agente de "
-            "un cliente, por qué no hace algo que espera, o qué herramienta le "
-            "falta. Es también la respuesta correcta a '¿qué integraciones "
-            "tenéis?', porque es el catálogo vivo y no un manual que envejece. No "
-            "inventes nombres de herramienta que no salgan aquí."
+            "y cuáles tiene activas su agente, más el estado de sus conectores, con "
+            "sus nombres técnicos. Llama a esto cuando el usuario pregunte '¿qué "
+            "integraciones tenéis?' —es el catálogo vivo y no un manual que "
+            "envejece—, cuando nombre una herramienta por su nombre técnico, y "
+            "cuando necesites el estado de un conector para explicar un fallo. "
+            "Para hablar de lo que el agente sabe hacer usa "
+            "console.get_client_capabilities, "
+            "que trae los nombres que el usuario entiende y las habilidades en la "
+            "misma lista. No inventes nombres de herramienta que no salgan aquí."
         ),
         params=(_ref_param("el cliente cuyo catálogo quieres leer"),),
         max_chars=12_000,
