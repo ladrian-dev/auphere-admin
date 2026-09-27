@@ -30,6 +30,8 @@ mira el dato del otro lado.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -85,11 +87,18 @@ async def _catalogue(db_session, *, visible: bool = True) -> set[str]:
     return set((await db_session.scalars(stmt)).all())
 
 
-async def _hidden_tool(db_session, *, status: ToolStatus) -> str:
+@asynccontextmanager
+async def _hidden_tool(db_session, *, status: ToolStatus) -> AsyncIterator[str]:
     """Una herramienta que está en el catálogo y **no** se ofrece.
 
     El catálogo sembrado cambia según el entorno, así que el test se la crea
     en vez de confiar en que alguna esté marcada así.
+
+    **Y se la lleva al salir.** `tool_catalog` es global, no por tenant: una
+    fila `DEPRECATED` que se quede puesta hace fallar a
+    `tests/unit/test_repo_tool_catalog.py`, que da por hecho que todo lo
+    sembrado está activo. Un test que ensucia la base rompe a otro que no
+    tiene nada que ver, y el orden decide a cuál.
     """
     name = f"oculta.{status.value.lower()}_{uuid.uuid4().hex[:8]}"
     db_session.add(
@@ -108,7 +117,11 @@ async def _hidden_tool(db_session, *, status: ToolStatus) -> str:
         )
     )
     await db_session.commit()
-    return name
+    try:
+        yield name
+    finally:
+        await db_session.execute(sa.delete(ToolCatalog).where(ToolCatalog.name == name))
+        await db_session.commit()
 
 
 # ── 1. por partner ─────────────────────────────────────────────────────
@@ -237,18 +250,18 @@ async def test_a_tool_the_screen_hides_cannot_be_turned_on_through_it(
     porque lo que acaba de escribir no sale en la lista que lee después.
     """
     a = console_world["a"]
-    nombre = await _hidden_tool(db_session, status=status)
     await _seed(db_session, a["tenant_id"], tools=[])
 
-    r = await client.put(
-        f"/console/clients/{a['ref']}/capabilities",
-        headers=a["headers"](),
-        json={"key": nombre, "kind": "tool", "enabled": True},
-    )
-    assert r.status_code == 404, f"{status.value} se aceptó: {r.text}"
-
-    for borrador in await _drafts(db_session, a["tenant_id"]):
-        assert nombre not in (borrador.tools or []), (
-            f"{nombre} ({status.value}) quedó en la lista blanca aunque la respuesta fue "
-            f"{r.status_code}: el rechazo llegó después de escribir"
+    async with _hidden_tool(db_session, status=status) as nombre:
+        r = await client.put(
+            f"/console/clients/{a['ref']}/capabilities",
+            headers=a["headers"](),
+            json={"key": nombre, "kind": "tool", "enabled": True},
         )
+        assert r.status_code == 404, f"{status.value} se aceptó: {r.text}"
+
+        for borrador in await _drafts(db_session, a["tenant_id"]):
+            assert nombre not in (borrador.tools or []), (
+                f"{nombre} ({status.value}) quedó en la lista blanca aunque la respuesta fue "
+                f"{r.status_code}: el rechazo llegó después de escribir"
+            )
