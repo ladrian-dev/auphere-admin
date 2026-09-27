@@ -295,6 +295,23 @@ async def update_capability(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="nothing_to_change"
         )
 
+    # Se comprueba **antes** de escribir, y con el mismo filtro que la
+    # lectura: lo que la pantalla esconde (`INTERNAL`, `DEPRECATED`) no se
+    # puede encender a través de ella. Hacerlo después dejaba el rechazo en
+    # manos del rollback, y por el camino ya había borrador y fila de
+    # auditoría de un cambio que no ocurrió.
+    if body.kind == "tool":
+        offered = await scope.session.scalar(
+            sa.select(ToolCatalog.name)
+            .where(
+                ToolCatalog.name == body.key,
+                ToolCatalog.status.notin_([ToolStatus.INTERNAL, ToolStatus.DEPRECATED]),
+            )
+            .limit(1)
+        )
+        if offered is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_capability")
+
     draft, created = await ensure_draft(scope)
     before: dict[str, Any] = {}
 
@@ -302,13 +319,6 @@ async def update_capability(
         if body.kind == "tool":
             names = list(draft.tools or [])
             before["enabled"] = body.key in names
-            exists = await scope.session.scalar(
-                sa.select(ToolCatalog.name).where(ToolCatalog.name == body.key).limit(1)
-            )
-            if exists is None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail="unknown_capability"
-                )
             if body.enabled and body.key not in names:
                 names.append(body.key)
             elif not body.enabled and body.key in names:
