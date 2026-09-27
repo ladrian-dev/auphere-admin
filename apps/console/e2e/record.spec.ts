@@ -79,12 +79,12 @@ test.describe("spec 017 · la ficha de cliente", () => {
     await expect(nav).toBeVisible();
     for (const group of GROUPS) await expect(nav.getByText(group)).toBeVisible();
 
-    // El propietario ve las doce de hoy: las diez de siempre, más los datos
-    // del cliente (que dejaron de compartir pestaña con los ajustes del
-    // agente) y más Habilidades, que vuelve hasta que la iteración 2 la
-    // fusione en Capacidades.
+    // El propietario ve once: las diez de siempre, más los datos del cliente
+    // (que dejaron de compartir pestaña con los ajustes del agente). No son
+    // doce porque «Habilidades» se fusionó en Capacidades en la iteración 2
+    // y su pestaña habría rebotado a esa misma pantalla.
     const links = nav.getByRole("link");
-    await expect(links).toHaveCount(12);
+    await expect(links).toHaveCount(11);
     // Exactamente una es la actual.
     await expect(nav.locator('a[aria-current="page"]')).toHaveCount(1);
   });
@@ -128,27 +128,69 @@ test.describe("spec 017 · la ficha de cliente", () => {
     const sheet = page.getByRole("dialog");
     await expect(sheet).toBeVisible();
     await expect(sheet).toContainText(/publicar la versión|publish version/i);
-    await expect(sheet.getByRole("columnheader", { name: /antes|before/i })).toBeVisible();
-    await expect(sheet.getByRole("columnheader", { name: /ahora|now/i })).toBeVisible();
+    // Una tabla por pantalla que cambió, así que puede haber varias: desde
+    // la iteración 2, tocar Ajustes y Capacidades da dos bloques. Lo que se
+    // afirma es que el diff está, no cuántos grupos trae.
+    await expect(sheet.getByRole("columnheader", { name: /antes|before/i }).first()).toBeVisible();
+    await expect(sheet.getByRole("columnheader", { name: /ahora|now/i }).first()).toBeVisible();
     await page.getByRole("button", { name: /^cancelar$|^cancel$/i }).click();
     await expect(sheet).toHaveCount(0);
   });
 
   for (const destino of ["capabilities", "integrations"] as const) {
-  test(`«${destino}» ya tiene su URL definitiva, aunque la pantalla siga siendo la de herramientas`, async ({ page }) => {
-    // Spec 017 R2/R4: fijarlas en la iteración 1 hace que un enlace guardado
-    // hoy siga valiendo cuando la iteración 2 construya las pantallas (T037).
-    const ref = await firstClientRef(page);
-    // La redirección la resuelve el servidor y puede abortar la navegación
-    // inicial —comportamiento normal de Next—, así que lo que se afirma es
-    // dónde se acaba, no qué devolvió el primer `goto`.
-    await page
-      .goto(`/clients/${encodeURIComponent(ref)}/${destino}`, { waitUntil: "commit" })
-      .catch(() => undefined);
-    await page.waitForURL(new RegExp(`/clients/${ref}/tools$`), { timeout: 30_000 });
-    await expect(page.locator("main#main")).toBeVisible();
-  });
+    test(`«${destino}» es su propia pantalla`, async ({ page }) => {
+      const ref = await firstClientRef(page);
+      await page.goto(`/clients/${encodeURIComponent(ref)}/${destino}`);
+      await expect(page).toHaveURL(new RegExp(`/clients/${ref}/${destino}$`));
+      await expect(page.locator("main#main")).toBeVisible();
+    });
   }
+
+  for (const vieja of ["tools", "skills"] as const) {
+    test(`«${vieja}» sigue llevando a alguna parte: redirige a Capacidades`, async ({ page }) => {
+      // Spec 017 (R5.1): las dos pantallas se fundieron, pero sus URLs están
+      // en correos, marcadores y capturas. Quien abra una tiene que acabar
+      // donde está lo que buscaba, no en un 404.
+      //
+      // La redirección la resuelve el servidor y puede abortar la navegación
+      // inicial —comportamiento normal de Next—, así que lo que se afirma es
+      // dónde se acaba, no qué devolvió el primer `goto`.
+      const ref = await firstClientRef(page);
+      await page
+        .goto(`/clients/${encodeURIComponent(ref)}/${vieja}`, { waitUntil: "commit" })
+        .catch(() => undefined);
+      await page.waitForURL(new RegExp(`/clients/${ref}/capabilities$`), { timeout: 30_000 });
+      await expect(page.locator("main#main")).toBeVisible();
+    });
+  }
+
+  test("encender una capacidad se guarda sola y la barra de borrador lo recoge", async ({ page }) => {
+    // Spec 017 (R5.4): el recorrido entero de la iteración 2 — un clic
+    // guarda, sin botón «Guardar», y el cambio aparece en la barra que
+    // lleva a publicar desde cualquier pestaña.
+    const ref = await firstClientRef(page);
+    await page.goto(`/clients/${encodeURIComponent(ref)}/capabilities`);
+
+    const conmutadores = page.getByRole("switch");
+    const primero = conmutadores.first();
+    await expect(primero).toBeVisible();
+    const antes = await primero.getAttribute("aria-checked");
+
+    await primero.click();
+    // Un solo clic basta: no hay que buscar un «Guardar» después.
+    await expect(page.getByRole("button", { name: /^Guardar|^Save/ })).toHaveCount(0);
+    await expect(primero).toHaveAttribute("aria-checked", antes === "true" ? "false" : "true");
+
+    // Y el cambio no se queda en esta pantalla: la barra de borrador lo dice
+    // y ofrece publicar.
+    await expect(
+      page.getByRole("button", { name: /revisar y publicar|review and publish/i }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Se deja como estaba: este cliente lo comparten los demás tests.
+    await primero.click();
+    await expect(primero).toHaveAttribute("aria-checked", antes ?? "false");
+  });
 
   for (const role of ["builder", "analyst"] as const) {
     test(`la ficha vista por un ${role}`, async ({ browser }) => {

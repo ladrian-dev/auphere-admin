@@ -20,8 +20,12 @@ const CLIENT_VIEWS = [
   "",
   "/agent",
   "/agent/settings",
-  "/tools",
-  "/skills",
+  // Iteración 2 de la spec 017: `/tools` y `/skills` son ahora redirección
+  // permanente a `/capabilities`, así que auditarlas sería auditar dos veces
+  // la misma pantalla. Se audita donde vive cada cosa.
+  "/capabilities",
+  "/capabilities?all=1",
+  "/integrations",
   "/knowledge",
   "/playground",
   "/channels",
