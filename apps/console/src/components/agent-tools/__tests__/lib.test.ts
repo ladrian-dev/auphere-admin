@@ -54,7 +54,16 @@ describe("connector helpers", () => {
     for (const s of CONNECTOR_STATUS_KEYS) expect(connectorStatusKey(s) in messages, s).toBe(true);
     expect(connectorStatusKey(null)).toBe("connectors.status.none");
     expect(connectorStatusKey("weird")).toBe("connectors.status.none");
-    for (const m of TOOL_MODES) expect(`tools.mode.${m}` in messages, m).toBe(true);
+  });
+  it("los modos se dicen en el carril de Capacidades, y «requiere aprobación» ya no se dice", () => {
+    // Antes esto recorría `TOOL_MODES` exigiendo `tools.mode.{m}`. Esa
+    // pantalla ya no existe y su copy se borró; los modos se leen en
+    // Capacidades, donde **a propósito falta** `needs_approval` (R5.7): se
+    // comportaba como un bloqueo y engañaba a quien lo elegía. Exigir la
+    // clave de los tres obligaría a resucitar la que se retiró.
+    for (const m of ["always", "blocked"] as const) expect(`cap.mode.${m}` in messages, m).toBe(true);
+    expect(TOOL_MODES).toContain("needs_approval");
+    expect("cap.mode.needs_approval" in messages).toBe(false);
   });
   it("splits credentials into secrets vs endpoint_meta and drops blanks", () => {
     const out = splitCredentials(

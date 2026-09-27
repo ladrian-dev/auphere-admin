@@ -77,6 +77,31 @@ export const capabilitiesMessages = {
     en: "Pausing, disconnecting or syncing is done in Integrations.",
   },
 
+  // ── la pantalla de Integraciones (R4) ─────────────────────────────
+  //
+  // Prefijo `int.` y no `cap.int.`: eso último es el bloque que avisa dentro
+  // de Capacidades, y son dos sitios distintos con dos trabajos distintos.
+  "int.title": { es: "Integraciones", en: "Integrations" },
+  "int.description": {
+    es: "Lo que conecta al agente con lo que el negocio ya usa. Mientras una integración no esté conectada, las capacidades que dependen de ella se pueden encender, pero el agente no las usa.",
+    en: "What connects the agent to what the business already uses. While an integration is not connected, the capabilities that depend on it can be switched on, but the agent does not use them.",
+  },
+  "int.count": { es: "{on} de {total} conectadas", en: "{on} of {total} connected" },
+  "int.unlocks": { es: "Desbloquea {n} capacidades", en: "Unlocks {n} capabilities" },
+  "int.unlocksOne": { es: "Desbloquea 1 capacidad", en: "Unlocks 1 capability" },
+  "int.readonly": {
+    es: "Tu rol permite ver las integraciones, no conectarlas.",
+    en: "Your role lets you see integrations, not connect them.",
+  },
+  "int.empty.title": {
+    es: "Auphere todavía no ha publicado integraciones para este entorno",
+    en: "Auphere has not published integrations for this environment yet",
+  },
+  "int.empty.body": {
+    es: "En cuanto las publiquemos aparecerán aquí, con lo que desbloquea cada una.",
+    en: "They will show up here as soon as we publish them, each with what it unlocks.",
+  },
+
   // ── vacíos ────────────────────────────────────────────────────────
   "cap.empty.title": { es: "Auphere todavía no ha publicado capacidades para este entorno", en: "Auphere has not published capabilities for this environment yet" },
   "cap.empty.body": {

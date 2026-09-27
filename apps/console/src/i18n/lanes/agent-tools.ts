@@ -1,8 +1,6 @@
 /** ES/EN messages of lane `agent-tools` (CP-11 · CP-13 · CP-14 · CP-15 · CP-31). Spread into `i18n/messages.ts`. */
 export const agentToolsMessages = {
   // ── tabs ─────────────────────────────────────────────────────────
-  "clients.tabs.tools": { es: "Herramientas", en: "Tools" },
-  "clients.tabs.skills": { es: "Habilidades", en: "Skills" },
   "clients.tabs.knowledge": { es: "Conocimiento", en: "Knowledge" },
 
   // ── shared draft/publish vocabulary ──────────────────────────────
@@ -89,39 +87,15 @@ export const agentToolsMessages = {
   "agentSettings.validation.language": { es: "Usa un código de idioma (2–8 caracteres).", en: "Use a language code (2–8 chars)." },
 
   // ── tools (CP-13) ────────────────────────────────────────────────
-  "tools.title": { es: "Herramientas", en: "Tools" },
-  "tools.description": { es: "Lo que el agente puede hacer. Lo que no marques, el agente no lo ve. Guardar crea o actualiza el borrador; publicar sigue siendo explícito.", en: "What the agent can do. Whatever you leave unticked, the agent never sees. Saving creates or updates the draft; publishing stays explicit." },
-  "tools.readonly": { es: "Tu rol solo permite ver las herramientas.", en: "Your role can only view tools." },
-  "tools.empty.title": { es: "El catálogo de herramientas está vacío", en: "The tool catalogue is empty" },
-  "tools.empty.body": { es: "Auphere todavía no ha publicado herramientas para este entorno.", en: "Auphere has not published any tools for this environment yet." },
-  "tools.group.native": { es: "Herramientas de la plataforma", en: "Platform tools" },
-  "tools.enabled": { es: "Activa en el borrador", en: "On in the draft" },
-  "tools.enabledInActive": { es: "En la versión activa", en: "In the active version" },
-  "tools.notInActive": { es: "Aún no publicada", en: "Not published yet" },
-  "tools.readOnly": { es: "Solo lectura", en: "Read-only" },
-  "tools.destructive": { es: "Destructiva", en: "Destructive" },
-  "tools.needsConnector": { es: "Requiere conectar {name}", en: "Requires connecting {name}" },
-  "tools.notUsable": { es: "Marcada pero inutilizable hasta conectar el conector.", en: "Ticked but unusable until the connector is connected." },
-  "tools.mode": { es: "Modo de ejecución", en: "Execution mode" },
-  "tools.mode.always": { es: "Siempre", en: "Always" },
-  "tools.mode.needs_approval": { es: "Requiere aprobación", en: "Needs approval" },
   // El valor de la API se llama `blocked`, pero en pantalla es «Nunca»
   // (owner, 2026-09-26): dice lo que el agente hará, no cómo lo guarda el
   // servidor. Es el par de «Siempre».
-  "tools.mode.blocked": { es: "Nunca", en: "Never" },
-  "tools.mode.default": { es: "Por defecto ({mode})", en: "Default ({mode})" },
-  "tools.mode.override": { es: "Modo forzado por ti", en: "Overridden by you" },
-  "tools.mode.saved": { es: "Modo de {tool} actualizado.", en: "Mode of {tool} updated." },
-  "tools.mode.reset": { es: "Modo de {tool} restablecido al valor por defecto.", en: "Mode of {tool} reset to default." },
-  "tools.selected": { es: "{n} de {total} herramientas marcadas", en: "{n} of {total} tools ticked" },
-  "tools.save": { es: "Guardar herramientas", en: "Save tools" },
-  "tools.saved": { es: "Lista blanca guardada en el borrador v{v}.", en: "Whitelist saved to draft v{v}." },
-  "tools.selectAll": { es: "Marcar todas", en: "Tick all" },
-  "tools.clearAll": { es: "Desmarcar todas", en: "Untick all" },
 
   // ── connectors ───────────────────────────────────────────────────
-  "connectors.title": { es: "Conectores", en: "Connectors" },
-  "connectors.error": { es: "No se pudieron cargar los conectores; las herramientas siguen disponibles.", en: "Could not load connectors; tools remain available." },
+  // Ya no hay una lista de herramientas detrás que «siga disponible»: las
+  // integraciones son la pantalla, así que el texto dice lo que de verdad
+  // pasa y qué hacer.
+  "connectors.error": { es: "No se pudieron cargar las integraciones. Vuelve a intentarlo en un momento; lo que ya estaba conectado sigue funcionando.", en: "Could not load the integrations. Try again in a moment; whatever was already connected keeps working." },
   "connectors.status.none": { es: "No conectado", en: "Not connected" },
   "connectors.status.connected": { es: "Conectado", en: "Connected" },
   "connectors.status.pending": { es: "Pendiente de consentimiento", en: "Awaiting consent" },
@@ -182,18 +156,6 @@ export const agentToolsMessages = {
   "connectors.apiKey.required": { es: "Campo obligatorio.", en: "Required field." },
 
   // ── skills (CP-14) ───────────────────────────────────────────────
-  "skills.title": { es: "Habilidades", en: "Skills" },
-  "skills.description": { es: "Paquetes de comportamiento del vertical. Activar una habilidad la añade al borrador; publicar sigue siendo explícito.", en: "Vertical behaviour packs. Enabling a skill adds it to the draft; publishing stays explicit." },
-  "skills.readonly": { es: "Tu rol solo permite ver las habilidades.", en: "Your role can only view skills." },
-  "skills.empty.title": { es: "No hay habilidades disponibles", en: "No skills available" },
-  "skills.empty.body": { es: "Auphere todavía no ha publicado habilidades para este vertical.", en: "Auphere has not published skills for this vertical yet." },
-  "skills.version": { es: "Versión {v}", en: "Version {v}" },
-  "skills.enable": { es: "Activar {name}", en: "Enable {name}" },
-  "skills.notActivatable": { es: "No activable en esta versión (requiere una herramienta o canal que falta).", en: "Not activatable in this version (requires a missing tool or channel)." },
-  "skills.inActive": { es: "En la versión activa", en: "In the active version" },
-  "skills.selected": { es: "{n} de {total} activadas", en: "{n} of {total} enabled" },
-  "skills.save": { es: "Guardar habilidades", en: "Save skills" },
-  "skills.saved": { es: "Habilidades guardadas en el borrador v{v}.", en: "Skills saved to draft v{v}." },
 
   // ── knowledge (CP-15) ────────────────────────────────────────────
   "knowledge.title": { es: "Conocimiento", en: "Knowledge" },

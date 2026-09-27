@@ -44,12 +44,12 @@ export const RECORD_TABS: readonly RecordTab[] = [
   // que no ha cambiado.
   { key: "settings", label: "clients.nav.agentSettings", group: "configure", seg: "agent/settings", needs: "agents:read" },
   { key: "client", label: "clients.nav.clientData", group: "configure", seg: "settings", needs: "clients:read" },
+  // «Capacidades» ya incluye las habilidades (iteración 2, T037), así que la
+  // pestaña de Habilidades se retira: dejarla habría sido una entrada que
+  // rebota a esta misma pantalla. `/skills` y `/tools` siguen existiendo como
+  // redirección permanente, porque las URLs viejas están en correos y
+  // marcadores.
   { key: "capabilities", label: "clients.nav.capabilities", group: "configure", seg: "capabilities", needs: "agents:read" },
-  // «Habilidades» se fusiona en Capacidades en la iteración 2 (T037). Hasta
-  // que eso ocurra sigue teniendo su pestaña: una pantalla a la que solo se
-  // llega escribiendo la URL es una pantalla perdida, y aquí no se pierde
-  // nada sin decisión escrita.
-  { key: "skills", label: "clients.tabs.skills", group: "configure", seg: "skills", needs: "agents:read" },
   { key: "knowledge", label: "clients.tabs.knowledge", group: "configure", seg: "knowledge", needs: "knowledge:read" },
   { key: "channels", label: "clients.tabs.channels", group: "connect", seg: "channels", needs: "channels:read" },
   { key: "integrations", label: "clients.nav.integrations", group: "connect", seg: "integrations", needs: "agents:read" },
