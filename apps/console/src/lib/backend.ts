@@ -401,6 +401,7 @@ export type { Opts };
  * merge hotspot of every package.
  */
 import { agentToolsApi } from "./backend/agent-tools";
+import { capabilitiesApi } from "./backend/capabilities";
 import { channelsApi } from "./backend/channels";
 import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
@@ -441,6 +442,8 @@ export function backendFor(principal: Principal) {
       call<{ code: string }>("/console/auth/session-code", { method: "POST", body }),
     // lane modules — each lane owns its file under lib/backend/
     ...agentToolsApi(call),
+    // Spec 017 (R5): herramientas y habilidades, en una sola lectura.
+    ...capabilitiesApi(call),
     ...playgroundApi(call),
     ...channelsApi(call),
     ...companionApi(call),

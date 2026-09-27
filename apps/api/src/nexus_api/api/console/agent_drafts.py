@@ -123,9 +123,13 @@ def _capabilities(cfg: AgentConfig | None) -> set[tuple[str, str]]:
         return set()
     caps = {(name, "tool") for name in (cfg.tools or [])}
     for skill in cfg.runtime_skills or []:
-        name = skill.get("name")
-        if name:
-            caps.add((name, "skill"))
+        # Las entradas guardan `skill_id`, no `name`: leer `name` hacía que
+        # encender una habilidad no contara como cambio y la barra de
+        # borrador no se enterara. `name` se acepta por si una fila antigua
+        # lo trae.
+        key = skill.get("skill_id") or skill.get("name")
+        if key:
+            caps.add((str(key), "skill"))
     return caps
 
 

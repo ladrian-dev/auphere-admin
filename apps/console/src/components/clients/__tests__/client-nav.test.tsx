@@ -61,8 +61,8 @@ describe("las pestañas de la ficha", () => {
     // El borrador cambia los ajustes del AGENTE, no el nombre del cliente.
     expect(items.find((i) => i.key === "settings")?.href).toBe(`${base}/agent/settings`);
     expect(items.find((i) => i.key === "client")?.href).toBe(`${base}/settings`);
-    // Iteración 1: «Capacidades» aún vive en la pantalla de herramientas.
-    expect(items.find((i) => i.key === "capabilities")?.href).toBe(`${base}/tools`);
+    // Iteración 2: «Capacidades» ya tiene su pantalla.
+    expect(items.find((i) => i.key === "capabilities")?.href).toBe(`${base}/capabilities`);
     // Integraciones tiene URL propia: antes apuntaba a un ancla que no
     // existía en ningún elemento, así que el enlace no llevaba a ninguna parte.
     expect(items.find((i) => i.key === "integrations")?.href).toBe(`${base}/integrations`);

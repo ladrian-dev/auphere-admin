@@ -363,3 +363,23 @@ async def test_a_default_the_partner_chose_on_purpose_still_counts(
     ).json()
     assert [row["field"] for row in body["settings"]] == ["identity"]
     assert body["settings"][0]["before"]["name"] == "Espiga"
+
+
+async def test_turning_a_skill_on_counts_as_a_change(client, console_world, db_session) -> None:
+    """Las entradas de habilidad guardan `skill_id`, no `name`. Leer la clave
+    equivocada hacía que encender una habilidad no apareciera como cambio: la
+    barra de borrador no se enteraba y la pestaña no llevaba su punto."""
+    a = console_world["a"]
+    await _seed_active(db_session, a["tenant_id"])
+    draft = _version(a["tenant_id"], version=2, status=AgentConfigStatus.STAGED)
+    draft.runtime_skills = [{"skill_id": "abc-123", "version": "latest"}]
+    db_session.add(draft)
+    await db_session.commit()
+
+    body = (await client.get(f"/console/clients/{a['ref']}/agent", headers=a["headers"]())).json()
+    assert "capabilities" in body["draft_screens"]
+
+    diff = (
+        await client.get(f"/console/clients/{a['ref']}/agent/draft-diff", headers=a["headers"]())
+    ).json()
+    assert any(row["kind"] == "skill" and row["change"] == "enabled" for row in diff["capabilities"])

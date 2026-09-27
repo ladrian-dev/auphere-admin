@@ -105,7 +105,10 @@ export const agentToolsMessages = {
   "tools.mode": { es: "Modo de ejecución", en: "Execution mode" },
   "tools.mode.always": { es: "Siempre", en: "Always" },
   "tools.mode.needs_approval": { es: "Requiere aprobación", en: "Needs approval" },
-  "tools.mode.blocked": { es: "Bloqueada", en: "Blocked" },
+  // El valor de la API se llama `blocked`, pero en pantalla es «Nunca»
+  // (owner, 2026-09-26): dice lo que el agente hará, no cómo lo guarda el
+  // servidor. Es el par de «Siempre».
+  "tools.mode.blocked": { es: "Nunca", en: "Never" },
   "tools.mode.default": { es: "Por defecto ({mode})", en: "Default ({mode})" },
   "tools.mode.override": { es: "Modo forzado por ti", en: "Overridden by you" },
   "tools.mode.saved": { es: "Modo de {tool} actualizado.", en: "Mode of {tool} updated." },
