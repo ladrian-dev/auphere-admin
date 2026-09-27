@@ -62,7 +62,11 @@ tmp/
 .local/
 
 # Claude Code workspace (agents, skills, rules, instructions)
-.claude/
+# `launch.json` sí se comparte: dice cómo se levanta cada app de este repo,
+# y eso es del equipo, no de una máquina. El resto (ajustes locales, skills)
+# sigue fuera.
+.claude/*
+!.claude/launch.json
 CLAUDE.md
 **/CLAUDE.md
 .claude.json
