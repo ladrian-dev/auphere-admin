@@ -404,3 +404,61 @@ async def test_another_partner_sees_nothing(client, console_world, db_session) -
     await _seed(db_session, a["tenant_id"], seed=None)
     r = await client.get(f"/console/clients/{a['ref']}/capabilities", headers=b["headers"]())
     assert r.status_code == 404
+
+
+async def test_booking_says_it_needs_agendapro_even_though_the_catalogue_does_not_link_it(
+    client, console_world, db_session
+) -> None:
+    """AgendaPro no se conecta con una fila de conector: se pega la URL
+    pública de la agenda en el cliente. Por eso sus dos herramientas figuran
+    como nativas en el catálogo, y la pantalla las daba por utilizables.
+
+    Solo son dos: `check_availability` y `create_appointment` leen esa URL
+    (`api/admin/integrations.py`). Cancelar, modificar y consultar citas
+    están fuera del flujo público —el agente las escala al dueño—, así que
+    no dependen de la agenda y no deben pedirla.
+    """
+    from nexus_api.db.models import Tenant
+
+    a = console_world["a"]
+    await _seed(
+        db_session,
+        a["tenant_id"],
+        tools=["booking.create_appointment", "booking.cancel_appointment"],
+        seed=None,
+    )
+
+    def find(body, key):
+        return next(i for g in body["groups"] for i in g["items"] if i["key"] == key)
+
+    body = (
+        await client.get(f"/console/clients/{a['ref']}/capabilities", headers=a["headers"]())
+    ).json()
+
+    crear = find(body, "booking.create_appointment")
+    assert crear["connector"] is not None, (
+        "sin agenda enlazada, reservar no puede darse por utilizable"
+    )
+    assert crear["connector"]["slug"] == "agendapro"
+    assert crear["connector"]["status"] != "connected"
+    assert crear["enabled"] is True and crear["usable"] is False
+
+    # Cancelar no pasa por la agenda: no debe pedirla.
+    cancelar = find(body, "booking.cancel_appointment")
+    assert cancelar["connector"] is None
+    assert cancelar["usable"] is True
+
+    # Con la agenda enlazada, reservar pasa a utilizable sin tocar nada más.
+    await db_session.execute(
+        sa.update(Tenant)
+        .where(Tenant.id == a["tenant_id"])
+        .values(agendapro_public_url="https://negocio.site.agendapro.com/cl/sucursal")
+    )
+    await db_session.commit()
+
+    body = (
+        await client.get(f"/console/clients/{a['ref']}/capabilities", headers=a["headers"]())
+    ).json()
+    crear = find(body, "booking.create_appointment")
+    assert crear["connector"]["status"] == "connected"
+    assert crear["usable"] is True

@@ -44,7 +44,14 @@ from nexus_api.services.skills_catalog import list_skills
 from nexus_api.services.templating.seed_templates import load_seed_template
 
 from .agent_drafts import DraftView, ensure_draft, load_view
-from .capability_names import FUNCTIONS, business_name, description_of, function_of, sectors_of
+from .capability_names import (
+    FUNCTIONS,
+    business_name,
+    description_of,
+    function_of,
+    requires_connector,
+    sectors_of,
+)
 from .deps import ClientScope, client_scope, client_sector
 from .schemas_capabilities_client import (
     CapabilitiesOut,
@@ -113,6 +120,25 @@ async def _overrides(scope: ClientScope) -> dict[str, str]:
     return {r.tool_name: r.mode for r in rows}
 
 
+async def _connector_by_slug(scope: ClientScope, slug: str) -> tuple[str, str] | None:
+    """(nombre visible, estado) de una integración que no se enlaza por
+    `connector_id`. Hoy solo AgendaPro, y «conectada» significa que el
+    cliente tiene pegada la URL pública de su agenda — no que exista una
+    fila de conector, que para ella nunca se crea."""
+    display = (
+        await scope.session.execute(
+            sa.select(Connector.display_name).where(Connector.slug == slug).limit(1)
+        )
+    ).scalar_one_or_none()
+    # La dependencia la dice el código de la herramienta, no el catálogo: si
+    # la ficha del conector no está sembrada en este entorno, se nombra por
+    # su slug antes que callar que hace falta.
+    display = display or slug
+    if slug == "agendapro":
+        return display, "connected" if scope.tenant.agendapro_public_url else "none"
+    return display, "none"
+
+
 async def _all_capabilities(
     scope: ClientScope, view: DraftView, sector: str | None, lang: str
 ) -> list[CapabilityOut]:
@@ -127,6 +153,18 @@ async def _all_capabilities(
     for tool, slug, display_name, install_status in await _rows(scope):
         tags = list(tool.capability_tags or [])
         connected = install_status in _CONNECTED
+        # Una herramienta puede necesitar una integración que el catálogo no
+        # enlaza: AgendaPro se conecta pegando la URL de la agenda, así que
+        # sus dos herramientas figuran como nativas. Sin esto la pantalla las
+        # daría por utilizables y mentiría.
+        if slug is None:
+            needed = requires_connector(tool.name, "tool")
+            if needed:
+                found = await _connector_by_slug(scope, needed)
+                if found:
+                    slug, display_name = needed, found[0]
+                    install_status = found[1]
+                    connected = install_status in _CONNECTED
         override = overrides.get(tool.name)
         default = _mode(tool.default_mode)
         enabled = tool.name in enabled_tools

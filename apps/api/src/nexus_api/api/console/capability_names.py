@@ -41,6 +41,11 @@ class CapabilityName(TypedDict, total=False):
     #: Solo para habilidades, que no traen etiquetas de catálogo; las
     #: herramientas lo deducen de las suyas.
     sectors: list[str]
+    #: La integración que hace falta cuando el catálogo no la enlaza por
+    #: `connector_id`. Hoy solo AgendaPro: se conecta pegando la URL pública
+    #: de la agenda en el tenant, no con una fila de conector, así que sus
+    #: herramientas quedaron sueltas y la pantalla no podía avisar.
+    requires: str
 
 
 def _t(
@@ -50,6 +55,7 @@ def _t(
     en_desc: str,
     function: Function,
     sectors: list[str] | None = None,
+    requires: str | None = None,
 ) -> CapabilityName:
     entry: CapabilityName = {
         "name": {"es": es_name, "en": en_name},
@@ -58,6 +64,8 @@ def _t(
     }
     if sectors is not None:
         entry["sectors"] = sectors
+    if requires is not None:
+        entry["requires"] = requires
     return entry
 
 
@@ -87,6 +95,7 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Deja la cita puesta en la agenda del negocio.",
         "Puts the appointment in the business's calendar.",
         "appointments",
+        requires="agendapro",
     ),
     ("tool", "booking.check_availability"): _t(
         "Consultar disponibilidad",
@@ -94,6 +103,7 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Mira qué huecos quedan antes de proponer nada.",
         "Looks at what slots are free before proposing anything.",
         "appointments",
+        requires="agendapro",
     ),
     ("tool", "booking.modify_appointment"): _t(
         "Cambiar una cita",
@@ -622,3 +632,20 @@ def sectors_of(key: str, kind: Kind, tags: list[str] | None) -> list[str]:
     if entry is not None and "sectors" in entry:
         return list(entry["sectors"])
     return [t for t in (tags or []) if t in VERTICALS]
+
+
+def requires_connector(key: str, kind: Kind) -> str | None:
+    """Qué integración hace falta cuando el catálogo no la enlaza.
+
+    `booking.check_availability` y `booking.create_appointment` leen
+    `tenants.agendapro_public_url`, así que sin la agenda enlazada no
+    funcionan — pero en `tool_catalog` figuran como nativas, sin
+    `connector_id`, porque AgendaPro no se conecta con una fila de conector.
+    Sin esto la pantalla las daría por utilizables y mentiría.
+
+    Cancelar, modificar y consultar citas NO entran: están fuera del flujo
+    público y el agente las escala al dueño, así que no dependen de la
+    agenda (`api/admin/integrations.py`).
+    """
+    entry = CAPABILITY_NAMES.get((kind, key))
+    return entry.get("requires") if entry else None
