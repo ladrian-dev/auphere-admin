@@ -76,15 +76,16 @@ export default async function ClientLayout({ params, children }: { params: Promi
           </span>
         }
       />
-      {/* Spec 017 R1: qué falta para que atienda, con UN solo botón, y el
-          crédito al lado. Cuando ya atiende, la puesta en marcha se va. */}
+      {/* Spec 018 (R6): qué falta para que atienda, con UN solo botón —y
+          nada más—. El crédito se fue al Resumen: compartir fila con los
+          cuatro pasos es lo que hacía esta tarjeta pesada, y además el
+          crédito le sobrevive. Cuando ya atiende, esto desaparece. */}
       <ClientSetup
         refId={client.external_client_ref}
         name={client.name}
         status={client.status}
         role={principal.role}
         setup={client.setup ?? null}
-        quota={client.quota ?? null}
         agentVersion={client.health.agent_version}
         phone={client.health.display_phone_number}
       />

@@ -25,25 +25,23 @@ type RecordTab = {
 };
 
 /**
- * Las diez pestañas de hoy. Ninguna desaparece en esta spec: cambia dónde
- * se leen, no si existen.
- *
- * Iteración 1: «Capacidades» e «Integraciones» apuntan a la pantalla de
- * herramientas, que es la que hay; sus rutas propias las crea la
- * iteración 2 (T037), y entonces solo cambia `seg`.
+ * Las nueve pestañas de la ficha. Eran once: la spec 018 retiró «Ajustes»
+ * (los del agente viven dentro de «Agente») y «Datos del cliente» (se editan
+ * en el Resumen). Ninguna función se perdió — `parity.md`, filas 22–37— y
+ * las dos URLs siguen vivas como redirección permanente.
  */
 export const RECORD_TABS: readonly RecordTab[] = [
   { key: "overview", label: "clients.tabs.overview", group: "observe", seg: "", needs: "clients:read" },
   { key: "conversations", label: "clients.tabs.conversations", group: "observe", seg: "conversations", needs: "conversations:read" },
   { key: "playground", label: "clients.tabs.playground", group: "observe", seg: "playground", needs: "playground:run" },
   { key: "agent", label: "clients.tabs.agent", group: "configure", seg: "agent", needs: "agents:read" },
-  // «Ajustes» es lo que configura al AGENTE —horario, idiomas, escalado—,
-  // que es lo que el borrador marca como `settings`. Los datos del cliente
-  // (nombre, zona horaria) son otra cosa y tienen su propia pestaña: si
-  // compartieran una, el punto de «sin publicar» señalaría una pantalla
-  // que no ha cambiado.
-  { key: "settings", label: "clients.nav.agentSettings", group: "configure", seg: "agent/settings", needs: "agents:read" },
-  { key: "client", label: "clients.nav.clientData", group: "configure", seg: "settings", needs: "clients:read" },
+  // Spec 018 (R2/R3): dos pestañas menos. Los ajustes del agente viven
+  // dentro de «Agente» —eran dos mitades de lo mismo— y los datos del
+  // cliente se editan en el Resumen, que es donde ya se leían.
+  //
+  // Esto no deshace lo que la spec 017 separó: aquello apartó los datos DEL
+  // CLIENTE de los ajustes DEL AGENTE, y esa distinción es justo la que hace
+  // que el punto de «sin publicar» siga señalando la pantalla que cambió.
   // «Capacidades» ya incluye las habilidades (iteración 2, T037), así que la
   // pestaña de Habilidades se retira: dejarla habría sido una entrada que
   // rebota a esta misma pantalla. `/skills` y `/tools` siguen existiendo como
@@ -60,7 +58,10 @@ const GROUP_ORDER: readonly GroupKey[] = ["observe", "configure", "connect"];
 
 /** En qué pestaña se lee cada pantalla del borrador. */
 const DRAFT_SCREEN_TAB: Record<string, string> = {
-  settings: "settings",
+  // Spec 018 (R3.2): los ajustes del agente ya no tienen pestaña propia, así
+  // que su borrador marca «Agente», que es donde ahora se editan. Apuntar a
+  // una pestaña retirada habría dejado el punto sin dueño y en silencio.
+  settings: "agent",
   capabilities: "capabilities",
   knowledge: "knowledge",
   // El prompt no tiene pestaña propia: se lee en el historial del agente.

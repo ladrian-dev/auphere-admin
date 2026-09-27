@@ -51,21 +51,21 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 
 ### Prototipo
 
-- [ ] T007 [US1] Prototipo `packages/ui/src/stories/prototypes/client-summary.stories.tsx` (`Prototipos/Resumen del cliente`) con los estados que hay que decidir mirando: atendiendo con datos · recién creado sin actividad · una lectura caída · sin crédito · analista (sin controles de escritura) · a medio configurar (con puesta en marcha) · móvil. Revisado con el addon a11y. **Aprobación del owner antes de escribir código**, anotada en `evidence/iteracion-1.md`. _Requisitos: 1.1, 1.2, 1.6, 1.7, 6.1, 6.2_
+- [X] T007 [US1] Prototipo `packages/ui/src/stories/prototypes/client-summary.stories.tsx` (`Prototipos/Resumen del cliente`) con los estados que hay que decidir mirando: atendiendo con datos · recién creado sin actividad · una lectura caída · sin crédito · analista (sin controles de escritura) · a medio configurar (con puesta en marcha) · móvil. Revisado con el addon a11y. **Aprobación del owner antes de escribir código**, anotada en `evidence/iteracion-1.md`. _Requisitos: 1.1, 1.2, 1.6, 1.7, 6.1, 6.2_ Entregado: develop, **aprobado por el owner el 2026-09-27**. Cazó que la pantalla se contradecía en dos líneas («falta conectar un canal» / «WhatsApp conectado»).
 
 ### Tests primero
 
-- [ ] T008 [P] [US1] Tests `apps/console/src/components/clients/summary/__tests__/summary.test.tsx`: los cuatro bloques con sus cifras y sus enlaces; sin actividad dice que no hay datos y **no** enseña ceros; una lectura caída pinta su bloque en error con reintento y los otros tres siguen; el analista no ve controles de escritura. _Requisitos: 1.1–1.7_
+- [X] T008 [P] [US1] Tests `apps/console/src/components/clients/summary/__tests__/summary.test.tsx`: los cuatro bloques con sus cifras y sus enlaces; sin actividad dice que no hay datos y **no** enseña ceros; una lectura caída pinta su bloque en error con reintento y los otros tres siguen; el analista no ve controles de escritura. _Requisitos: 1.1–1.7_ Entregado: develop, 2026-09-27 (12 casos).
 - [ ] T008b [P] [US1] Test de que el Resumen se arma con **exactamente cuatro lecturas por ficha, pedidas en paralelo**, y que ninguna se repite ni se lanza por bloque. Se cuentan las llamadas al backend desde el arnés, como la spec 017 contó consultas en la lista de clientes. Sin esto, R1.8 es una intención y no un criterio: nada impediría que una refactor metiera una quinta llamada o las pusiera en serie. _Requisitos: 1.8_
 - [ ] T009 [P] [US2] Tests en el arnés de server actions para editar nombre y zona horaria desde el Resumen, incluido el caso que importa: **no crea ni toca el borrador del agente**. _Requisitos: 2.1, 2.4_
-- [ ] T010 [P] [US2] Tests `apps/console/src/components/clients/__tests__/client-nav.test.tsx`: la ficha tiene **nueve** pestañas, «Datos del cliente» y «Ajustes» ya no están, y el punto de borrador de los ajustes del agente señala «Agente». _Requisitos: 2.2, 3.1, 3.2_
+- [X] T010 [P] [US2] Tests `apps/console/src/components/clients/__tests__/client-nav.test.tsx`: la ficha tiene **nueve** pestañas, «Datos del cliente» y «Ajustes» ya no están, y el punto de borrador de los ajustes del agente señala «Agente». _Requisitos: 2.2, 3.1, 3.2_ Entregado: develop, 2026-09-27. El mapa `DRAFT_SCREEN_TAB` apuntaba a la pestaña retirada: sin corregirlo el punto se habría quedado sin dueño, en silencio.
 
 ### Implementación
 
-- [ ] T011 [US1] Implementar `apps/console/src/components/clients/summary/` (los cuatro bloques) y rehacer `app/(console)/clients/[ref]/page.tsx` para pedir las cuatro lecturas **en paralelo**, cada una con su fallo propio. _Requisitos: 1.1–1.8_
-- [ ] T012 [US2] Bloque editable de nombre y zona horaria dentro del Resumen, con su server action (`can()` + test). _Requisitos: 2.1, 2.4_
-- [ ] T013 [US2] `settings/page.tsx` y `agent/settings/page.tsx` pasan a `permanentRedirect`; los ajustes del agente se montan dentro de `agent/page.tsx`; `client-nav-model.ts` baja a nueve pestañas y el mapa del punto de borrador apunta a «Agente». _Requisitos: 2.2, 2.3, 3.1, 3.2, 3.3, 3.4_
-- [ ] T014 [US5] Repartir la tarjeta de puesta en marcha: «qué falta» se queda como cabecera de la ficha mientras falte algo; el crédito pasa a ser bloque del Resumen y sobrevive cuando la puesta en marcha desaparece. _Requisitos: 6.1, 6.2, 6.3_
+- [X] T011 [US1] Implementar `apps/console/src/components/clients/summary/` (los cuatro bloques) y rehacer `app/(console)/clients/[ref]/page.tsx` para pedir las cuatro lecturas **en paralelo**, cada una con su fallo propio. _Requisitos: 1.1–1.8_ Entregado: develop, 2026-09-27.
+- [X] T012 [US2] Bloque editable de nombre y zona horaria dentro del Resumen, con su server action (`can()` + test). _Requisitos: 2.1, 2.4_ Entregado: develop, 2026-09-27 — se reutiliza `SettingsForm` y `updateClientAction`, que ya existían: mismos campos y misma validación en su sitio nuevo, que es paridad y no rehacerlo.
+- [X] T013 [US2] `settings/page.tsx` y `agent/settings/page.tsx` pasan a `permanentRedirect`; los ajustes del agente se montan dentro de `agent/page.tsx`; `client-nav-model.ts` baja a nueve pestañas y el mapa del punto de borrador apunta a «Agente». _Requisitos: 2.2, 2.3, 3.1, 3.2, 3.3, 3.4_ Entregado: develop, 2026-09-27. También el texto de la barra de borrador, que seguía mandando a «Ajustes».
+- [X] T014 [US5] Repartir la tarjeta de puesta en marcha: «qué falta» se queda como cabecera de la ficha mientras falte algo; el crédito pasa a ser bloque del Resumen y sobrevive cuando la puesta en marcha desaparece. _Requisitos: 6.1, 6.2, 6.3_ Entregado: develop, 2026-09-27.
 
 ### Cierre
 

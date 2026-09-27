@@ -121,7 +121,10 @@ export const recordMessages = {
   "draft.diff.promptOpen": { es: "Ver las instrucciones línea a línea", en: "See the instructions line by line" },
   "draft.diff.promptChanged": { es: "Las instrucciones del agente cambian.", en: "The agent's instructions change." },
   "agent.changes": { es: "Cambia", en: "Changes" },
-  "draft.screen.settings": { es: "Ajustes", en: "Settings" },
+  // Spec 018 (R3.1): «Ajustes» ya no es una pestaña, así que la barra no
+  // puede mandar a una pantalla que no existe. El borrador de los ajustes
+  // del agente se revisa y se publica desde «Agente», que es donde viven.
+  "draft.screen.settings": { es: "Agente", en: "Agent" },
   "draft.screen.capabilities": { es: "Capacidades", en: "Capabilities" },
   "draft.screen.knowledge": { es: "Conocimiento", en: "Knowledge" },
   "draft.screen.prompt": { es: "Instrucciones", en: "Instructions" },

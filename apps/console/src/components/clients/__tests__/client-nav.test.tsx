@@ -15,16 +15,15 @@ const base = "/clients/panaderia";
 
 describe("las pestañas de la ficha", () => {
   it("cubre todas las pestañas de hoy: ninguna desaparece", () => {
-    // Once, no diez: los ajustes del AGENTE y los datos del cliente son dos
-    // pantallas distintas, y compartir una pestaña hacía que el punto de
-    // «sin publicar» señalara la que no había cambiado.
+    // Nueve. Eran once: la spec 018 retiró «Ajustes» (los del agente viven
+    // dentro de «Agente», que son dos mitades de lo mismo) y «Datos del
+    // cliente» (se editan en el Resumen, que es donde ya se leían). Ninguna
+    // función se perdió: `parity.md`, filas 22–37.
     expect(RECORD_TABS.map((t) => t.key)).toEqual([
       "overview",
       "conversations",
       "playground",
       "agent",
-      "settings",
-      "client",
       "capabilities",
       "knowledge",
       "channels",
@@ -36,8 +35,7 @@ describe("las pestañas de la ficha", () => {
   it("agrupa en observar, configurar y conectar, en ese orden", () => {
     const groups = navGroupsFor("owner", base, {});
     expect(groups.map((g) => g.key)).toEqual(["observe", "configure", "connect"]);
-    // Once: «Habilidades» se fue dentro de Capacidades (T037).
-    expect(groups.flatMap((g) => g.items)).toHaveLength(11);
+    expect(groups.flatMap((g) => g.items)).toHaveLength(9);
   });
 
   it("el propietario lo ve todo; el analista pierde el Playground", () => {
@@ -58,9 +56,10 @@ describe("las pestañas de la ficha", () => {
     const items = navGroupsFor("owner", base, {}).flatMap((g) => g.items);
     expect(items.find((i) => i.key === "overview")?.href).toBe(base);
     expect(items.find((i) => i.key === "agent")?.href).toBe(`${base}/agent`);
-    // El borrador cambia los ajustes del AGENTE, no el nombre del cliente.
-    expect(items.find((i) => i.key === "settings")?.href).toBe(`${base}/agent/settings`);
-    expect(items.find((i) => i.key === "client")?.href).toBe(`${base}/settings`);
+    // Los ajustes del agente y los datos del cliente ya no son pestañas: sus
+    // URLs siguen vivas como redirección, pero no se ofrecen dos veces.
+    expect(items.find((i) => i.key === "settings")).toBeUndefined();
+    expect(items.find((i) => i.key === "client")).toBeUndefined();
     // Iteración 2: «Capacidades» ya tiene su pantalla.
     expect(items.find((i) => i.key === "capabilities")?.href).toBe(`${base}/capabilities`);
     // Integraciones tiene URL propia: antes apuntaba a un ancla que no
@@ -74,7 +73,7 @@ describe("las pestañas de la ficha", () => {
   it("marca con un punto la pestaña donde vive el cambio sin publicar", () => {
     const groups = navGroupsFor("owner", base, { draftScreens: ["settings", "capabilities"] });
     const marked = groups.flatMap((g) => g.items).filter((i) => i.mark === "draft");
-    expect(marked.map((i) => i.key)).toEqual(["settings", "capabilities"]);
+    expect(marked.map((i) => i.key)).toEqual(["agent", "capabilities"]);
   });
 
   it("«prompt» sin publicar se señala en Agente, que es donde se lee", () => {
@@ -87,6 +86,8 @@ describe("las pestañas de la ficha", () => {
     const groups = navGroupsFor("owner", base, { draftScreens: ["settings"], incidents: ["channels"] });
     const items = groups.flatMap((g) => g.items);
     expect(items.find((i) => i.key === "channels")?.mark).toBe("incident");
-    expect(items.find((i) => i.key === "settings")?.mark).toBe("draft");
+    // R3.2: el borrador de los ajustes del agente marca «Agente», que es
+    // donde ahora se editan.
+    expect(items.find((i) => i.key === "agent")?.mark).toBe("draft");
   });
 });

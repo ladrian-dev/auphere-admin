@@ -2,22 +2,28 @@
 
 import Link from "next/link";
 
-import { Button, HelpHint, Meter, type MeterTone, Section, Stepper, type StepState } from "@nexus/ui";
+import { Button, Section, Stepper, type StepState } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
-import type { ClientQuota, ClientSetupDetail } from "@/lib/backend";
-import { can, type Role } from "@/lib/permissions";
+import type { ClientSetupDetail } from "@/lib/backend";
+import type { Role } from "@/lib/permissions";
 
 import { ClientLifecycleActions } from "./lifecycle-actions";
 import { nextAction, setupSteps, whoCanResolve } from "./client-header-model";
 
 /**
- * Las dos tarjetas de la cabecera de la ficha (spec 017, R1.1–R1.3): qué
- * falta para que el cliente atienda, y cuánto crédito le queda.
+ * «Puesta en marcha»: qué le falta al cliente para atender (spec 017 R1.1;
+ * aligerada por la spec 018 R6).
  *
- * Mientras falta algo, «Puesta en marcha» con UN solo botón — el del paso
- * pendiente — y una línea que dice por qué importa. En cuanto atiende, el
- * bloque desaparece: ya no hay nada que poner en marcha.
+ * Un solo botón —el del paso pendiente— y una línea que dice por qué
+ * importa. En cuanto atiende, el bloque desaparece: ya no hay nada que poner
+ * en marcha.
+ *
+ * **El crédito ya no está aquí.** Compartía fila con los cuatro pasos y eso
+ * era lo que hacía la tarjeta pesada, pero la razón de fondo es otra: el
+ * crédito **sobrevive** a la puesta en marcha. Sigue importando cuando los
+ * cuatro pasos están hechos y este bloque ya no existe, así que su sitio es
+ * el Resumen.
  */
 export function ClientSetup({
   refId,
@@ -25,7 +31,6 @@ export function ClientSetup({
   status,
   role,
   setup,
-  quota,
   agentVersion,
   phone,
 }: {
@@ -34,7 +39,6 @@ export function ClientSetup({
   status: string;
   role: Role;
   setup: ClientSetupDetail | null;
-  quota: ClientQuota | null;
   /** Paridad fila 7: el dato de cada paso hecho, a la vista. */
   agentVersion?: number | null;
   phone?: string | null;
@@ -52,11 +56,14 @@ export function ClientSetup({
     return null;
   }
 
+  // R6.2: cuando los cuatro pasos están hechos no hay nada que poner en
+  // marcha, y el bloque entero desaparece. El crédito NO se va con él: vive
+  // en el Resumen, porque le sobrevive.
+  if (!pending) return null;
+
   return (
-    <div className="grid gap-(--space-block) lg:grid-cols-[2fr_1fr]">
-      {pending ? (
-        <Section title={t("clients.setup.title")} description={t("clients.setup.description")} className="min-w-0">
-          {/* `ordered={false}`: los cuatro pasos son independientes, y los
+    <Section title={t("clients.setup.title")} description={t("clients.setup.description")} className="min-w-0">
+      {/* `ordered={false}`: los cuatro pasos son independientes, y los
               ordinales con línea de unión son la gramática de una secuencia
               — un «paso 3 hecho, paso 2 no» se leería como imposible. */}
           <Stepper
@@ -100,48 +107,8 @@ export function ClientSetup({
             </div>
             <p className="text-xs text-muted-foreground">{t(whyLabel(pending))}</p>
           </div>
-        </Section>
-      ) : null}
-
-      <Section
-        title={
-          <span className="inline-flex items-center gap-1">
-            {t("clients.quota.title")} <HelpHint label={t("clients.quota.title")}>{t("clients.quota.help")}</HelpHint>
-          </span>
-        }
-        actions={
-          can(role, "usage:write") ? (
-            <Button size="xs" variant="ghost" nativeButton={false} render={<Link href="/usage" />}>
-              {t("clients.quota.manage")}
-            </Button>
-          ) : undefined
-        }
-        className="min-w-0"
-      >
-        {quota ? (
-          <Meter
-            label={t("clients.quota.label")}
-            labelHidden
-            value={quota.remaining}
-            max={quota.cap}
-            tone={creditTone(quota)}
-            valueLabel={t("clients.quota.value", { remaining: quota.remaining, cap: quota.cap })}
-            hint={t("clients.quota.spent", { spent: quota.cap - quota.remaining })}
-          />
-        ) : (
-          <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("clients.quota.none")}</p>
-        )}
-      </Section>
-    </div>
+    </Section>
   );
-}
-
-/** La barra mide lo que QUEDA, así que su tono también: verde mientras
- *  sobra, aviso por debajo del 20 %, rojo cuando se agotó. */
-function creditTone({ cap, remaining }: ClientQuota): MeterTone {
-  if (remaining <= 0) return "danger";
-  if (cap > 0 && remaining / cap <= 0.2) return "warning";
-  return "positive";
 }
 
 function pendingLabel(step: NonNullable<ClientSetupDetail["next"]>) {

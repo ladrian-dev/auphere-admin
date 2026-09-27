@@ -15,6 +15,7 @@ import { membershipMessages } from "./lanes/membership";
 import { onboardingMessages } from "./lanes/onboarding";
 import { playgroundMessages } from "./lanes/playground";
 import { recordMessages } from "./lanes/record";
+import { summaryMessages } from "./lanes/summary";
 import { workstationMessages } from "./lanes/workstation";
 
 const core = {
@@ -445,6 +446,7 @@ const messages = {
   ...onboardingMessages,
   ...companionMessages,
   ...recordMessages,
+  ...summaryMessages,
   ...capabilitiesMessages,
 } as const;
 
