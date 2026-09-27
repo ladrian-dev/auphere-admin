@@ -18,8 +18,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 const CLIENT_VIEWS = [
   "",
+  // Spec 018 (R3.1): los ajustes del agente viven dentro de «Agente», así
+  // que auditar `/agent/settings` sería auditar dos veces la misma pantalla.
   "/agent",
-  "/agent/settings",
   // Iteración 2 de la spec 017: `/tools` y `/skills` son ahora redirección
   // permanente a `/capabilities`, así que auditarlas sería auditar dos veces
   // la misma pantalla. Se audita donde vive cada cosa.
@@ -31,7 +32,8 @@ const CLIENT_VIEWS = [
   "/channels",
   "/channels/diagnostics",
   "/conversations",
-  "/settings",
+  // `/settings` se fue: los datos del cliente se editan en el Resumen, que
+  // es la vista `""` de arriba y ya se audita.
 ] as const;
 
 const PARTNER_VIEWS = [
@@ -151,7 +153,8 @@ test.describe("CP-30 — axe + overflow on every main view", () => {
 
   // Spec 016 (T059): the dialogs of the block, opened, under axe.
   test("spec 016: the move-quota dialog and the model card pass axe when open", async ({ page }) => {
-    await page.goto(`/clients/${encodeURIComponent(ref)}/agent/settings`);
+    // Spec 018 (R3.1): la tarjeta de modelo vive ahora dentro de «Agente».
+    await page.goto(`/clients/${encodeURIComponent(ref)}/agent`);
     await expect(page.locator("main#main")).toBeVisible();
     const model = page.getByRole("radiogroup", { name: /Modelo|Model/ });
     if (await model.count()) {

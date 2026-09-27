@@ -72,19 +72,17 @@ test.describe("spec 017 · la ficha de cliente", () => {
     ).toBeVisible();
   });
 
-  test("las diez pestañas viven en tres grupos y ninguna desaparece", async ({ page }) => {
+  test("las pestañas viven en tres grupos y ninguna desaparece", async ({ page }) => {
     const ref = await firstClientRef(page);
     await page.goto(`/clients/${encodeURIComponent(ref)}`);
     const nav = page.getByRole("navigation", { name: /sección de la ficha|record section/i });
     await expect(nav).toBeVisible();
     for (const group of GROUPS) await expect(nav.getByText(group)).toBeVisible();
 
-    // El propietario ve once: las diez de siempre, más los datos del cliente
-    // (que dejaron de compartir pestaña con los ajustes del agente). No son
-    // doce porque «Habilidades» se fusionó en Capacidades en la iteración 2
-    // y su pestaña habría rebotado a esa misma pantalla.
+    // Nueve. El recuento y las redirecciones que lo explican tienen su
+    // propio caso más abajo; aquí lo que importa son los tres grupos.
     const links = nav.getByRole("link");
-    await expect(links).toHaveCount(11);
+    await expect(links).toHaveCount(9);
     // Exactamente una es la actual.
     await expect(nav.locator('a[aria-current="page"]')).toHaveCount(1);
   });
@@ -145,6 +143,48 @@ test.describe("spec 017 · la ficha de cliente", () => {
       await expect(page.locator("main#main")).toBeVisible();
     });
   }
+
+  test("el Resumen contesta las cuatro preguntas sin abrir nada", async ({ page }) => {
+    // Spec 018 (R1): lo que el owner pidió — saber cómo va un cliente sin
+    // recorrer la ficha. Se comprueba que las cuatro respuestas están en la
+    // misma pantalla, no que estén bonitas.
+    const ref = await firstClientRef(page);
+    await page.goto(`/clients/${encodeURIComponent(ref)}`);
+    const main = page.locator("main#main");
+    for (const bloque of [
+      /Atendiendo|Sin atender|Answering|Not answering/,
+      /Crédito y consumo|Credit and usage/,
+      /Conversaciones|Conversations/,
+      /Lo que tiene conectado|What it has connected/,
+      /Datos del cliente|Client details/,
+    ]) {
+      await expect(main.getByText(bloque).first()).toBeVisible();
+    }
+  });
+
+  test("la ficha tiene nueve pestañas, y las dos retiradas siguen llevando a alguna parte", async ({ page }) => {
+    const ref = await firstClientRef(page);
+    const nav = page.getByRole("navigation", { name: /sección de la ficha|record section/i });
+
+    await page.goto(`/clients/${encodeURIComponent(ref)}`);
+    await expect(nav.getByRole("link")).toHaveCount(9);
+
+    // Spec 018 (R2.3, R3.3): las URLs viejas están en correos y marcadores.
+    // La redirección la resuelve el servidor y puede abortar la navegación
+    // inicial, así que lo que se afirma es dónde se acaba.
+    for (const [vieja, destino] of [
+      ["settings", ""],
+      ["agent/settings", "/agent"],
+    ] as const) {
+      await page
+        .goto(`/clients/${encodeURIComponent(ref)}/${vieja}`, { waitUntil: "commit" })
+        .catch(() => undefined);
+      await page.waitForURL(new RegExp(`/clients/${ref}${destino}$`), { timeout: 30_000 });
+      await expect(page.locator("main#main")).toBeVisible();
+    }
+    // Y los ajustes del agente se leen dentro de «Agente».
+    await expect(page.getByText(/Identidad|Identity/).first()).toBeVisible();
+  });
 
   for (const vieja of ["tools", "skills"] as const) {
     test(`«${vieja}» sigue llevando a alguna parte: redirige a Capacidades`, async ({ page }) => {

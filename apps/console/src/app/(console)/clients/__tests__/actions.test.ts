@@ -8,6 +8,25 @@ vi.mock("next/cache", () => h.cacheModule);
 const { createClientAction, updateClientAction, setClientStatusAction, deleteClientAction, stageAgentAction, publishAgentAction, rollbackAgentAction } = await import("../actions");
 
 describe("client actions (spec 016, R8 — the seven of Bloque A11)", () => {
+  it("editar el cliente no toca el borrador del agente (spec 018, R2.4)", async () => {
+    // El nombre y la zona horaria se editan desde el Resumen desde la spec
+    // 018. El partner ha aprendido que en esta ficha casi todo lo que toca
+    // acaba en un borrador; esto no, y el bloque lo dice en voz alta. Si
+    // algún día lo tocara, la frase pasaría a ser mentira.
+    h.setRole("builder");
+    for (const n of ["stageAgentVersion", "getAgent", "publishAgentVersion", "putAgentSettings"] as const) h.backend[n].mockClear();
+    h.cacheModule.revalidatePath.mockClear();
+
+    expect(await updateClientAction({ ref: "demo", name: "Otro nombre" })).toMatchObject({ ok: true });
+
+    for (const n of ["stageAgentVersion", "getAgent", "publishAgentVersion", "putAgentSettings"] as const) {
+      expect(h.backend[n], `${n} no tiene nada que ver con el nombre del cliente`).not.toHaveBeenCalled();
+    }
+    // Y revalida la ficha entera: el nombre se pinta en la cabecera, que es
+    // del layout, no de la página.
+    expect(h.cacheModule.revalidatePath).toHaveBeenCalledWith("/clients/demo", "layout");
+  });
+
   it("builder: create, update, status and the agent versions", async () => {
     h.setRole("builder");
     h.backend.createClient.mockResolvedValueOnce({ external_client_ref: "demo" });

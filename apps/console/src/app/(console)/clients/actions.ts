@@ -39,7 +39,10 @@ export async function updateClientAction(raw: unknown): Promise<ActionResult<Cli
   const principal = await requirePrincipal();
   if (!can(principal.role, "clients:write")) return { ok: false, status: 403, message: "forbidden" };
   const res = await run(() => backendFor(principal).updateClient(r, body));
-  if (res.ok) revalidatePath(`/clients/${r}`);
+  // Spec 018 (R2.1): el nombre se edita en el Resumen, pero se pinta también
+  // en la cabecera y en la miga de pan, que viven en el layout de la ficha.
+  // Revalidar solo la página dejaba el nombre viejo arriba.
+  if (res.ok) revalidatePath(`/clients/${r}`, "layout");
   return res;
 }
 

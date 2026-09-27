@@ -9,7 +9,11 @@ decisión escrita · ⚠️ pendiente de decidir.
 
 ---
 
-## Iteración 1 · La ficha (US1, US2, US5)
+## Iteración 1 · La ficha (US1, US2, US5) — **cerrada el 2026-09-27**
+
+Filas 1–37, todas. Comprobadas sobre la aplicación real, no sobre el
+código: nueve pestañas, las dos URLs retiradas caen donde deben, y los
+ajustes del agente se leen dentro de «Agente».
 
 ### Lo que hoy hay en el Resumen (`clients/[ref]/page.tsx`)
 

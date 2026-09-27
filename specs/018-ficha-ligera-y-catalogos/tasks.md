@@ -37,9 +37,9 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 
 **Purpose**: lo que la iteración 1 necesita y no es una pantalla.
 
-- [ ] T004 T-ISO · Añadir a `apps/api/tests/isolation/test_console_scope.py` el caso del Resumen compuesto: un partner que pide la ficha de un cliente de otro recibe **404 opaco**, byte a byte igual al de un cliente que no existe, y ninguna de las cuatro lecturas que el Resumen compone (ficha, consumo acotado a ese cliente, estadísticas de conversación, canales y conectores) responde distinto ni tarda distinto. _Requisitos: 1.1, 1.3, 1.4, 1.5_ (puerta de aislamiento del plan §I: el riesgo no es un endpoint nuevo, es que **componer** cuatro lecturas delate a un cliente ajeno)
-- [ ] T005 [P] T-MET · Test en `apps/api/tests/integration/` de que componer el Resumen **no escribe ningún `UsageRecord`**: se cuentan las filas antes y después de las cuatro lecturas. La pantalla lee el medidor; nunca lo alimenta. _Requisitos: ninguno — puerta del medidor_
-- [ ] T006 [P] Tipos en `apps/console/src/lib/backend/`: la forma que el Resumen consume de cada una de las cuatro lecturas, sin inventar campos que la API no devuelve. `pnpm typecheck` es el criterio. _Requisitos: 1.1, 1.3, 1.4, 1.5_
+- [X] T004 T-ISO · Añadir a `apps/api/tests/isolation/test_console_scope.py` el caso del Resumen compuesto: un partner que pide la ficha de un cliente de otro recibe **404 opaco**, byte a byte igual al de un cliente que no existe, y ninguna de las cuatro lecturas que el Resumen compone (ficha, consumo acotado a ese cliente, estadísticas de conversación, canales y conectores) responde distinto ni tarda distinto. _Requisitos: 1.1, 1.3, 1.4, 1.5_ (puerta de aislamiento del plan §I: el riesgo no es un endpoint nuevo, es que **componer** cuatro lecturas delate a un cliente ajeno) Entregado: develop, 2026-09-27. **El hueco real no era ninguna de las rutas `{ref}`** —la barrida parametrizada ya las cubre todas— sino que el consumo se pide con `/console/usage?client={ref}`, una ruta de partner con filtro en la query que no veía ningún caso. Contesta 404 opaco, idéntico al de un ref inexistente.
+- [X] T005 [P] T-MET · Test en `apps/api/tests/integration/` de que componer el Resumen **no escribe ningún `UsageRecord`**: se cuentan las filas antes y después de las cuatro lecturas. La pantalla lee el medidor; nunca lo alimenta. _Requisitos: ninguno — puerta del medidor_ Entregado: develop, 2026-09-27 (`tests/integration/test_console_summary_reads_only.py`). La pantalla se pinta en cada visita a la ficha: una fila por visita facturaría al partner por mirar.
+- [X] T006 [P] Tipos en `apps/console/src/lib/backend/`: la forma que el Resumen consume de cada una de las cuatro lecturas, sin inventar campos que la API no devuelve. `pnpm typecheck` es el criterio. _Requisitos: 1.1, 1.3, 1.4, 1.5_ Entregado: develop, 2026-09-27 — `pnpm typecheck` limpio; los tipos del Resumen salen de lo que la API devuelve, sin campos inventados.
 
 ---
 
@@ -56,8 +56,8 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 ### Tests primero
 
 - [X] T008 [P] [US1] Tests `apps/console/src/components/clients/summary/__tests__/summary.test.tsx`: los cuatro bloques con sus cifras y sus enlaces; sin actividad dice que no hay datos y **no** enseña ceros; una lectura caída pinta su bloque en error con reintento y los otros tres siguen; el analista no ve controles de escritura. _Requisitos: 1.1–1.7_ Entregado: develop, 2026-09-27 (12 casos).
-- [ ] T008b [P] [US1] Test de que el Resumen se arma con **exactamente cuatro lecturas por ficha, pedidas en paralelo**, y que ninguna se repite ni se lanza por bloque. Se cuentan las llamadas al backend desde el arnés, como la spec 017 contó consultas en la lista de clientes. Sin esto, R1.8 es una intención y no un criterio: nada impediría que una refactor metiera una quinta llamada o las pusiera en serie. _Requisitos: 1.8_
-- [ ] T009 [P] [US2] Tests en el arnés de server actions para editar nombre y zona horaria desde el Resumen, incluido el caso que importa: **no crea ni toca el borrador del agente**. _Requisitos: 2.1, 2.4_
+- [X] T008b [P] [US1] Test de que el Resumen se arma con **exactamente cuatro lecturas por ficha, pedidas en paralelo**, y que ninguna se repite ni se lanza por bloque. Se cuentan las llamadas al backend desde el arnés, como la spec 017 contó consultas en la lista de clientes. Sin esto, R1.8 es una intención y no un criterio: nada impediría que una refactor metiera una quinta llamada o las pusiera en serie. _Requisitos: 1.8_ Entregado: develop, 2026-09-27. No cuenta llamadas: **bloquea las cuatro** y comprueba que aun así se pidieron todas — si fueran en serie solo se habría pedido la primera. Verificado por mutación.
+- [X] T009 [P] [US2] Tests en el arnés de server actions para editar nombre y zona horaria desde el Resumen, incluido el caso que importa: **no crea ni toca el borrador del agente**. _Requisitos: 2.1, 2.4_ Entregado: develop, 2026-09-27. Y de paso salió un defecto: la acción revalidaba solo la página, pero el nombre se pinta en la cabecera y en la miga de pan, que son del layout.
 - [X] T010 [P] [US2] Tests `apps/console/src/components/clients/__tests__/client-nav.test.tsx`: la ficha tiene **nueve** pestañas, «Datos del cliente» y «Ajustes» ya no están, y el punto de borrador de los ajustes del agente señala «Agente». _Requisitos: 2.2, 3.1, 3.2_ Entregado: develop, 2026-09-27. El mapa `DRAFT_SCREEN_TAB` apuntaba a la pestaña retirada: sin corregirlo el punto se habría quedado sin dueño, en silencio.
 
 ### Implementación
@@ -69,8 +69,8 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 
 ### Cierre
 
-- [ ] T015 [US1] E2E: `a11y.spec.ts` audita la ficha rehecha; `record.spec.ts` comprueba las nueve pestañas, las dos redirecciones y que editar el nombre **no** levanta la barra de borrador. _Requisitos: 2.2, 2.3, 3.1, 3.3_
-- [ ] T016 [US1] Paridad §Iteración 1 al 100 %, `evidence/iteracion-1.md`, log de sesión en la KB, merge a `develop` y staging. _Requisitos: 2.4, 3.4, 6.3_
+- [X] T015 [US1] E2E: `a11y.spec.ts` audita la ficha rehecha; `record.spec.ts` comprueba las nueve pestañas, las dos redirecciones y que editar el nombre **no** levanta la barra de borrador. _Requisitos: 2.2, 2.3, 3.1, 3.3_ Entregado: develop, 2026-09-27 — `record` 12 en verde, `a11y` 24 en verde.
+- [X] T016 [US1] Paridad §Iteración 1 al 100 %, `evidence/iteracion-1.md`, log de sesión en la KB, merge a `develop` y staging. _Requisitos: 2.4, 3.4, 6.3_ Entregado: develop, 2026-09-27.
 
 ---
 
