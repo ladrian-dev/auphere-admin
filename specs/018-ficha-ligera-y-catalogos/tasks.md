@@ -37,7 +37,7 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 
 **Purpose**: lo que la iteración 1 necesita y no es una pantalla.
 
-- [ ] T004 T-ISO · Añadir a `apps/api/tests/isolation/test_console_scope.py` el caso del Resumen compuesto: un partner que pide la ficha de un cliente de otro recibe **404 opaco**, byte a byte igual al de un cliente que no existe, y ninguna de las cuatro lecturas que el Resumen compone (ficha, consumo acotado a ese cliente, estadísticas de conversación, canales y conectores) responde distinto ni tarda distinto. _Requisitos: 12 §I del plan_
+- [ ] T004 T-ISO · Añadir a `apps/api/tests/isolation/test_console_scope.py` el caso del Resumen compuesto: un partner que pide la ficha de un cliente de otro recibe **404 opaco**, byte a byte igual al de un cliente que no existe, y ninguna de las cuatro lecturas que el Resumen compone (ficha, consumo acotado a ese cliente, estadísticas de conversación, canales y conectores) responde distinto ni tarda distinto. _Requisitos: 1.1, 1.3, 1.4, 1.5_ (puerta de aislamiento del plan §I: el riesgo no es un endpoint nuevo, es que **componer** cuatro lecturas delate a un cliente ajeno)
 - [ ] T005 [P] T-MET · Test en `apps/api/tests/integration/` de que componer el Resumen **no escribe ningún `UsageRecord`**: se cuentan las filas antes y después de las cuatro lecturas. La pantalla lee el medidor; nunca lo alimenta. _Requisitos: ninguno — puerta del medidor_
 - [ ] T006 [P] Tipos en `apps/console/src/lib/backend/`: la forma que el Resumen consume de cada una de las cuatro lecturas, sin inventar campos que la API no devuelve. `pnpm typecheck` es el criterio. _Requisitos: 1.1, 1.3, 1.4, 1.5_
 
@@ -56,6 +56,7 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 ### Tests primero
 
 - [ ] T008 [P] [US1] Tests `apps/console/src/components/clients/summary/__tests__/summary.test.tsx`: los cuatro bloques con sus cifras y sus enlaces; sin actividad dice que no hay datos y **no** enseña ceros; una lectura caída pinta su bloque en error con reintento y los otros tres siguen; el analista no ve controles de escritura. _Requisitos: 1.1–1.7_
+- [ ] T008b [P] [US1] Test de que el Resumen se arma con **exactamente cuatro lecturas por ficha, pedidas en paralelo**, y que ninguna se repite ni se lanza por bloque. Se cuentan las llamadas al backend desde el arnés, como la spec 017 contó consultas en la lista de clientes. Sin esto, R1.8 es una intención y no un criterio: nada impediría que una refactor metiera una quinta llamada o las pusiera en serie. _Requisitos: 1.8_
 - [ ] T009 [P] [US2] Tests en el arnés de server actions para editar nombre y zona horaria desde el Resumen, incluido el caso que importa: **no crea ni toca el borrador del agente**. _Requisitos: 2.1, 2.4_
 - [ ] T010 [P] [US2] Tests `apps/console/src/components/clients/__tests__/client-nav.test.tsx`: la ficha tiene **nueve** pestañas, «Datos del cliente» y «Ajustes» ya no están, y el punto de borrador de los ajustes del agente señala «Agente». _Requisitos: 2.2, 3.1, 3.2_
 
@@ -112,7 +113,7 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 ### Tests primero
 
 - [ ] T027 [P] [US4] Test de que en el diccionario de la consola no queda visible «Capacidades» ni «Integraciones» en ninguno de los dos idiomas, y de que existen «Habilidades» y «Conectores». _Requisitos: 5.1_
-- [ ] T028 [P] [US4] Tests de las dos cabeceras: Conocimiento dice que lo lee el agente de **ese** cliente; Guía del partner dice que lo lee el asistente de la consola y que el agente **no** lo ve. _Requisitos: 5.2, 5.3_
+- [ ] T028 [P] [US4] Tests de las dos cabeceras (CE-005 **no** lo puede comprobar un test: que alguien ajeno al producto acierte se verifica a mano en el quickstart; aquí se fija que el texto que lo hace posible existe): Conocimiento dice que lo lee el agente de **ese** cliente; Guía del partner dice que lo lee el asistente de la consola y que el agente **no** lo ve. _Requisitos: 5.2, 5.3_
 
 ### Implementación
 
@@ -121,15 +122,16 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 
 ### Cierre
 
-- [ ] T031 [US4] Paridad §Iteración 3, `evidence/iteracion-3.md`, log de sesión, merge y staging. _Requisitos: 5.1–5.4_
+- [ ] T031 [P] [US4] E2E: pasar `a11y.spec.ts` sobre las pantallas renombradas, en ES y EN. Esta iteración solo cambia texto, y **por eso mismo** hace falta: una palabra más larga desborda donde antes cabía, y el barrido mide a 360 px con el texto al 130 %. _Requisitos: 5.1, CE-006_
+- [ ] T032 [US4] Paridad §Iteración 3, `evidence/iteracion-3.md`, log de sesión, merge y staging. _Requisitos: 5.1–5.4_
 
 ---
 
 ## Phase Final: Polish
 
-- [ ] T032 [P] Comprobar CE-007 de punta a punta: recorrer todas las direcciones que la consola tenía antes de esta spec y confirmar que ninguna responde «no existe». _Requisitos: CE-007_
-- [ ] T033 [P] Barrido de claves de i18n huérfanas en los carriles que esta spec toca, con el precedente de la spec 017: al mover y renombrar pantallas, el copy que se queda sin dueño describe un producto que ya no existe. _Requisitos: 5.1_
-- [ ] T034 Actualizar `architecture/console-map.md` en la KB: la ficha tiene nueve pestañas, el Resumen compone cuatro lecturas, y los tres catálogos comparten patrón. _Requisitos: ninguno — §IX_
+- [ ] T033 [P] Comprobar CE-007 de punta a punta: recorrer todas las direcciones que la consola tenía antes de esta spec y confirmar que ninguna responde «no existe». _Requisitos: CE-007_
+- [ ] T034 [P] Barrido de claves de i18n huérfanas en los carriles que esta spec toca, con el precedente de la spec 017: al mover y renombrar pantallas, el copy que se queda sin dueño describe un producto que ya no existe. _Requisitos: 5.1_
+- [ ] T035 Actualizar `architecture/console-map.md` en la KB: la ficha tiene nueve pestañas, el Resumen compone cuatro lecturas, y los tres catálogos comparten patrón. _Requisitos: ninguno — §IX_
 
 ---
 
@@ -145,10 +147,10 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 
 - T002 ∥ T003 tras T001.
 - T005 ∥ T006 tras T004.
-- T008 ∥ T009 ∥ T010 tras T007.
+- T008 ∥ T008b ∥ T009 ∥ T010 tras T007.
 - T018 ∥ T019 tras T017; T024 tras T021–T023.
-- T027 ∥ T028; T030 ∥ T029.
-- T032 ∥ T033 al final.
+- T027 ∥ T028; T030 ∥ T029; T031 tras T029–T030.
+- T033 ∥ T034 al final.
 
 ## Estrategia
 
