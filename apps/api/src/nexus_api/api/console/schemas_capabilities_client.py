@@ -64,6 +64,15 @@ class CapabilityOut(BaseModel):
     #: encendida sin su conector no es utilizable, pero sí es una decisión
     #: legítima del partner (owner, 2026-09-26).
     usable: bool
+    #: Se puede encender **hoy, en este despliegue** (paridad fila 57).
+    #:
+    #: Una capacidad a la que le falta su integración sí se puede: encenderla
+    #: es decir «la quiero» y empieza a funcionar al conectarla. Una habilidad
+    #: que Auphere no ha subido todavía al workspace, no: el runtime necesita
+    #: su `skill_id` y sin él no hay nada que escribir. La diferencia no es de
+    #: política, es de si existe el dato — por eso se dice, en vez de dejar
+    #: que la pantalla la dé por encendible y falle al pulsar.
+    activatable: bool = True
     connector: CapabilityConnectorOut | None = None
     mode: CapabilityModeOut | None = None
     read_only: bool = False
@@ -104,7 +113,13 @@ class CapabilityUpdateIn(BaseModel):
     #: `needs_approval` **sí** se acepta en el tipo, para poder contestar
     #: «mode_not_supported» y no un volcado de validación: quien lo pide
     #: merece saber por qué no, no que el servidor le hable en esquema.
-    mode: Literal["always", "blocked", "needs_approval"] | None = None
+    #:
+    #: `default` no es un modo: es **dejar de fijar uno**. Hace falta un
+    #: valor propio porque `None` ya significa «no toques el modo», y sin él
+    #: la pantalla solo podía guardar el valor por defecto como si lo
+    #: hubieras elegido tú — con lo que la tarjeta seguía diciendo «lo has
+    #: fijado tú» y la elección dejaba de poder deshacerse.
+    mode: Literal["always", "blocked", "needs_approval", "default"] | None = None
 
 
 class CapabilityUpdatedOut(BaseModel):

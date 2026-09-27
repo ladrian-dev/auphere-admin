@@ -217,6 +217,7 @@ async def _all_capabilities(
                 # Una habilidad no depende de un conector, pero sí puede no
                 # ser activable todavía en este despliegue.
                 usable=enabled and skill.activatable,
+                activatable=skill.activatable,
                 # Las habilidades no tienen modo: no se inventa una columna
                 # vacía para que la tabla quede simétrica.
                 mode=None,
@@ -327,9 +328,16 @@ async def update_capability(
         else:
             catalogue = {s.name: s for s in list_skills()}
             skill = catalogue.get(body.key)
-            if skill is None or skill.skill_id is None:
+            if skill is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, detail="unknown_capability"
+                )
+            if skill.skill_id is None:
+                # Existe y se sabe cuál es: lo que falta es que Auphere la
+                # haya subido al workspace. Decir «no existe» era mentir, y
+                # mandaba a buscar el error donde no estaba.
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail="skill_not_published"
                 )
             entries = [dict(s) for s in (draft.runtime_skills or [])]
             before["enabled"] = any(str(s.get("skill_id")) == skill.skill_id for s in entries)
@@ -352,14 +360,25 @@ async def update_capability(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="mode_not_supported"
             )
-        await connector_service.upsert_override(
-            scope.session,
-            tenant=scope.tenant,
-            tool_name=body.key,
-            mode=ConnectorToolMode(body.mode),
-            reason=None,
-            actor=scope.principal.actor,
-        )
+        if body.mode == "default":
+            # Volver al defecto es **borrar** lo fijado, no guardar el valor
+            # por defecto como si se hubiera elegido. Si no había nada fijado
+            # ya estábamos donde se pedía: es un no-op, no un 404.
+            await connector_service.delete_override(
+                scope.session,
+                tenant=scope.tenant,
+                tool_name=body.key,
+                actor=scope.principal.actor,
+            )
+        else:
+            await connector_service.upsert_override(
+                scope.session,
+                tenant=scope.tenant,
+                tool_name=body.key,
+                mode=ConnectorToolMode(body.mode),
+                reason=None,
+                actor=scope.principal.actor,
+            )
 
     await scope.session.flush()
     await AuditRepository(scope.session).record(

@@ -53,6 +53,15 @@ export const capabilitiesMessages = {
     es: "Puedes encenderla igual: empieza a funcionar en cuanto conectes {name}. Hasta entonces el agente no la usa.",
     en: "You can switch it on anyway: it starts working as soon as you connect {name}. Until then the agent does not use it.",
   },
+  // Paridad fila 57. El texto viejo decía «No activable en esta versión
+  // (requiere una herramienta o canal que falta)», y eso era falso: no falta
+  // nada del cliente, falta que la publiquemos nosotros. Mandaba al partner
+  // a buscar en su configuración un problema que no estaba ahí.
+  "cap.unavailable.badge": { es: "Aún no disponible", en: "Not available yet" },
+  "cap.unavailable": {
+    es: "Todavía no la hemos publicado en este entorno. No depende de ti: en cuanto esté, podrás encenderla aquí.",
+    en: "We have not published it in this environment yet. It is not on you: as soon as it is there, you can switch it on here.",
+  },
   "cap.mode.label": { es: "Cuándo la usa", en: "When it uses it" },
   "cap.mode.always": { es: "Siempre", en: "Always" },
   "cap.mode.blocked": { es: "Nunca", en: "Never" },

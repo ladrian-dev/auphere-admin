@@ -44,6 +44,10 @@ export type Capability = {
   /** Encendida **y** con lo que necesita para funcionar. Encenderla sin su
    *  integración es una decisión legítima: queda encendida y no utilizable. */
   usable: boolean;
+  /** Se puede encender hoy. Falso solo en una habilidad que Auphere aún no
+   *  ha subido: al runtime le falta su `skill_id` y no hay nada que escribir,
+   *  así que no es que no queramos, es que no se puede. */
+  activatable: boolean;
   connector: CapabilityConnector | null;
   /** Las habilidades no tienen modo; no se inventa una columna vacía. */
   mode: CapabilityModeInfo | null;
@@ -70,11 +74,16 @@ export type CapabilityUpdated = {
   version: number | null;
 };
 
+/** `"default"` no es un modo: es dejar de fijar uno y volver al del
+ *  catálogo. Va aparte de `CapabilityMode` porque no se puede *estar* en él,
+ *  solo pedirlo. */
+export type CapabilityModeChange = CapabilityMode | "default";
+
 export type CapabilityUpdateBody = {
   key: string;
   kind: CapabilityKind;
   enabled?: boolean;
-  mode?: CapabilityMode;
+  mode?: CapabilityModeChange;
 };
 
 export function capabilitiesApi(call: Call) {

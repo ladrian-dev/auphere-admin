@@ -24,7 +24,11 @@ const schema = z
     enabled: z.boolean().optional(),
     // `needs_approval` no está: la pantalla no puede ni pedirlo (R5.7). La
     // API lo rechaza igualmente, pero el error más barato es el que no sale.
-    mode: z.enum(["always", "blocked"]).optional(),
+    //
+    // `default` sí: es «deja de fijar un modo». Sin él, elegir «Por defecto»
+    // guardaba el valor por defecto como si lo hubieras elegido tú, y la
+    // tarjeta se quedaba diciendo «lo has fijado tú» para siempre.
+    mode: z.enum(["always", "blocked", "default"]).optional(),
   })
   .refine((v) => v.enabled !== undefined || v.mode !== undefined, {
     message: "nothing_to_change",

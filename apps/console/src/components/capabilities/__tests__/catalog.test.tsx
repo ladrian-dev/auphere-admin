@@ -41,6 +41,7 @@ function cap(over: Partial<Capability> & { key: string }): Capability {
     enabled: false,
     enabled_in_active: false,
     usable: true,
+    activatable: true,
     connector: null,
     mode: null,
     read_only: false,
@@ -237,6 +238,22 @@ describe("Capacidades · lo que le falta para funcionar", () => {
     expect(screen.getAllByRole("switch")).toHaveLength(3);
   });
 
+  it("una habilidad que Auphere no ha publicado dice de quién depende, y no finge un control", () => {
+    // Paridad fila 57. Aquí NO vale «avisar y dejar encender»: con una
+    // integración que falta, encenderla es una decisión que se cumple al
+    // conectarla; aquí no hay `skill_id` que escribir hasta que la subamos,
+    // así que un conmutador siempre fallaría.
+    const sinPublicar = { ...escalar, activatable: false, usable: false };
+    mount(out({ groups: [{ function: "escalation", items: [sinPublicar] }] }));
+
+    expect(screen.queryAllByRole("switch")).toHaveLength(0);
+    expect(screen.getByText("Aún no disponible")).toBeInTheDocument();
+    expect(screen.getByText(/No depende de ti/)).toBeInTheDocument();
+    // Y no se cuela el texto viejo, que mandaba a buscar el problema en la
+    // configuración del cliente.
+    expect(screen.queryByText(/requiere una herramienta o canal/i)).toBeNull();
+  });
+
   it("el bloque de integraciones dice cuántas desbloquea cada una y no duplica su pestaña", () => {
     mount();
     expect(screen.getByText(/Falta una integración/)).toBeInTheDocument();
@@ -276,6 +293,30 @@ describe("Capacidades · modo y detalle técnico", () => {
       kind: "tool",
       mode: "blocked",
     });
+  });
+
+  it("volver a «Por defecto» pide borrar lo fijado, no guardar el defecto", async () => {
+    // Paridad fila 35. Guardar el valor por defecto como override dejaba la
+    // ayuda «Lo has fijado tú» puesta para siempre: la elección se volvía
+    // irreversible desde la propia pantalla que la ofrecía.
+    const fijada = {
+      ...reservar,
+      mode: { default: "always" as const, override: "blocked" as const, effective: "blocked" as const, options: ["always", "blocked"] as const },
+    };
+    mount(out({ groups: [{ function: "appointments", items: [fijada as never] }] }));
+
+    // Con override hay dos cosas con esa etiqueta: el selector y la ayuda
+    // que explica que lo fijaste tú. Aquí se quiere el selector.
+    const selector = screen.getByLabelText("Cuándo la usa", { selector: "select" });
+    fireEvent.change(selector, { target: { value: "__default" } });
+    await waitFor(() => expect(setCapabilityAction).toHaveBeenCalledTimes(1));
+    expect(setCapabilityAction).toHaveBeenCalledWith({
+      ref: "demo",
+      key: "booking.create_appointment",
+      kind: "tool",
+      mode: "default",
+    });
+    expect(setCapabilityAction.mock.calls[0]![0].mode).not.toBe("always");
   });
 
   it("una habilidad no inventa un modo vacío para que la tabla quede simétrica", () => {

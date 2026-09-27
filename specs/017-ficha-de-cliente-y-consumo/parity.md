@@ -103,7 +103,7 @@ antes de escribir una línea de la pantalla nueva.
 | 54 | Descripción recortada a 3 líneas con `title` | Se conserva | ✅ |
 | 55 | «Versión {v}» por tarjeta | Al detalle plegado, como fecha (R5.6) | ➡️ detalle |
 | 56 | Insignia «En la versión activa» | Se conserva | ✅ |
-| 57 | «No activable en esta versión…» **bloquea la casilla** | **Decisión pendiente**: hoy las herramientas avisan y dejan marcar, las habilidades bloquean. Una pantalla no puede tener dos políticas ante el mismo problema | ⚠️ pendiente |
+| 57 | «No activable en esta versión…» **bloquea la casilla** | Sigue sin poder encenderse, **porque no se puede**: sin `skill_id` no hay nada que escribir. Lo que cambia es que se dice la verdad — la lectura la marca `activatable: false`, la tarjeta pone «Aún no disponible» y explica que la publica Auphere, y el intento directo contesta 409 `skill_not_published` en vez de 404 «no existe». El texto viejo («requiere una herramienta o canal que falta») era falso y mandaba a buscar el fallo en la configuración del cliente | ✅ (resuelta 2026-09-27) |
 | 58 | Casilla, guardar con botón «Guardar habilidades» | Conmutador que guarda con el clic (R5.4) | ➡️ |
 | 59 | Contador «{n} de {total} activadas» | Se funde con el de herramientas | ➡️ |
 | 60 | Aviso de solo lectura | Igual que en herramientas: sin conmutador | ➡️ |

@@ -9,7 +9,7 @@ import { HelpHint, NativeSelect, StatusBadge, Switch } from "@nexus/ui";
 import { setCapabilityAction } from "@/app/(console)/clients/[ref]/capabilities/actions";
 import { useT } from "@/i18n/client";
 import { actionErrorText } from "@/lib/action-error";
-import type { Capability, CapabilityMode } from "@/lib/backend/capabilities";
+import type { Capability, CapabilityModeChange } from "@/lib/backend/capabilities";
 
 /**
  * Una capacidad (spec 017, R5). Por dentro puede ser una herramienta o una
@@ -51,7 +51,7 @@ export function CapabilityCard({
     setEnabled(cap.enabled);
   }
 
-  function save(change: { enabled?: boolean; mode?: CapabilityMode }) {
+  function save(change: { enabled?: boolean; mode?: CapabilityModeChange }) {
     startTransition(async () => {
       const res = await setCapabilityAction({ ref: refId, key: cap.key, kind: cap.kind, ...change });
       if (!res.ok) {
@@ -84,7 +84,14 @@ export function CapabilityCard({
           </div>
           <p className="max-w-prose text-sm text-pretty text-muted-foreground">{cap.description}</p>
         </div>
-        {canWrite ? (
+        {!cap.activatable ? (
+          // Paridad fila 57. No es «avisar y dejar encender» como con una
+          // integración que falta: allí encenderla es una decisión que se
+          // cumple al conectar, aquí no hay nada que escribir hasta que
+          // Auphere la suba. Un conmutador que siempre falla es peor que
+          // ninguno, así que se dice de quién depende y se quita.
+          <StatusBadge tone="muted">{t("cap.unavailable.badge")}</StatusBadge>
+        ) : canWrite ? (
           <Switch
             aria-labelledby={nameId}
             checked={enabled}
@@ -101,6 +108,10 @@ export function CapabilityCard({
           </StatusBadge>
         )}
       </div>
+
+      {!cap.activatable ? (
+        <p className="text-xs text-muted-foreground">{t("cap.unavailable")}</p>
+      ) : null}
 
       {cap.connector && cap.connector.status !== "connected" ? (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-warning">
@@ -128,7 +139,10 @@ export function CapabilityCard({
               wrapperClassName="w-52"
               onChange={(e) => {
                 const v = e.target.value;
-                save({ mode: (v === "__default" ? cap.mode?.default : v) as CapabilityMode });
+                // «Por defecto» pide **borrar** lo fijado, no guardar el
+                // valor por defecto: guardarlo dejaba la ayuda «lo has
+                // fijado tú» puesta para siempre.
+                save({ mode: (v === "__default" ? "default" : v) as CapabilityModeChange });
               }}
             >
               <option value="__default">

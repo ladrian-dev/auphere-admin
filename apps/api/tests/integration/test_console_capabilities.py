@@ -361,6 +361,43 @@ async def test_needs_approval_is_refused(client, console_world, db_session) -> N
     assert old.json()["detail"] == "mode_not_supported"
 
 
+async def test_going_back_to_the_default_removes_the_override(
+    client, console_world, db_session
+) -> None:
+    """Paridad fila 35: «Por defecto» tiene que **borrar** lo fijado, no
+    guardar el valor por defecto como si lo hubieras elegido tú.
+
+    La diferencia se ve en la pantalla: mientras haya override, la tarjeta
+    dice «Lo has fijado tú; si no, seguiría el valor por defecto». Escribir
+    el defecto como override deja esa frase puesta para siempre y convierte
+    una elección reversible en una que no se puede deshacer.
+    """
+    from nexus_api.db.models import TenantConnectorToolOverride
+
+    a = console_world["a"]
+    await _seed(db_session, a["tenant_id"], seed=None)
+    url = f"/console/clients/{a['ref']}/capabilities"
+    body = {"key": "booking.create_appointment", "kind": "tool"}
+
+    puesto = await client.put(url, headers=a["headers"](), json={**body, "mode": "blocked"})
+    assert puesto.status_code == 200, puesto.text
+    assert puesto.json()["capability"]["mode"]["override"] == "blocked"
+
+    vuelto = await client.put(url, headers=a["headers"](), json={**body, "mode": "default"})
+    assert vuelto.status_code == 200, vuelto.text
+    modo = vuelto.json()["capability"]["mode"]
+    assert modo["override"] is None, "volver al defecto tiene que borrar lo fijado"
+    assert modo["effective"] == modo["default"]
+
+    filas = (await db_session.scalars(sa.select(TenantConnectorToolOverride))).all()
+    assert [f for f in filas if f.tool_name == body["key"]] == []
+
+    # Y pedirlo cuando no había nada fijado no es un error: es lo que ya pasa.
+    otra_vez = await client.put(url, headers=a["headers"](), json={**body, "mode": "default"})
+    assert otra_vez.status_code == 200, otra_vez.text
+    assert otra_vez.json()["capability"]["mode"]["override"] is None
+
+
 async def test_a_skill_switches_too(client, console_world, db_session) -> None:
     a = console_world["a"]
     await _seed(db_session, a["tenant_id"], seed=None)
@@ -372,6 +409,57 @@ async def test_a_skill_switches_too(client, console_world, db_session) -> None:
     )
     assert r.status_code == 200, r.text
     assert r.json()["capability"]["enabled"] is True
+
+
+async def test_a_skill_auphere_has_not_published_says_so_instead_of_pretending(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Paridad fila 57, y la diferencia que la resuelve.
+
+    A una capacidad sin su integración se la deja encender: encenderla es
+    decir «la quiero» y empieza a funcionar al conectarla. Una habilidad que
+    no se ha subido al workspace **no se puede** encender: el runtime
+    necesita su `skill_id` y sin él no hay nada que escribir. No es política,
+    es que falta el dato.
+
+    Lo que sí se puede arreglar es cómo se dice. Antes: 404
+    «unknown_capability» —la habilidad existe, así que mandaba a buscar el
+    error donde no estaba— y en la pantalla, nada. Ahora la lectura la marca
+    `activatable: false` y el intento contesta qué pasa de verdad.
+    """
+    from nexus_api.api.console import capabilities_client
+    from nexus_api.services.skills_catalog import SkillEntry
+
+    sin_subir = SkillEntry(
+        name="agenda-inteligente",
+        description="Propone huecos mirando la agenda.",
+        local_version="0.3.0",
+        skill_id=None,
+        uploaded_version=None,
+    )
+    monkeypatch.setattr(capabilities_client, "list_skills", lambda: [sin_subir])
+
+    a = console_world["a"]
+    await _seed(db_session, a["tenant_id"], seed=None)
+    url = f"/console/clients/{a['ref']}/capabilities"
+
+    body = (await client.get(url, headers=a["headers"]())).json()
+    item = next(i for g in body["groups"] for i in g["items"] if i["key"] == sin_subir.name)
+    assert item["activatable"] is False
+    assert item["usable"] is False
+
+    r = await client.put(
+        url, headers=a["headers"](), json={"key": sin_subir.name, "kind": "skill", "enabled": True}
+    )
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"] == "skill_not_published"
+
+    # Y una que no existe sigue siendo un 404: son dos cosas distintas.
+    falsa = await client.put(
+        url, headers=a["headers"](), json={"key": "no-existe", "kind": "skill", "enabled": True}
+    )
+    assert falsa.status_code == 404
+    assert falsa.json()["detail"] == "unknown_capability"
 
 
 async def test_reading_needs_only_agents_read_and_writing_does_not(
