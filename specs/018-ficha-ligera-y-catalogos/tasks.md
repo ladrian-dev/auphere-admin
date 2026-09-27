@@ -27,9 +27,9 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 
 **Purpose**: lo compartido, sin cambiar comportamiento.
 
-- [ ] T001 Crear `specs/018-ficha-ligera-y-catalogos/parity.md` con el inventario **antes de tocar una línea**: qué enseña y qué permite hoy el Resumen (`clients/[ref]/page.tsx`), «Datos del cliente» (`settings/page.tsx`), «Ajustes» del agente (`agent/settings/`), la tarjeta de puesta en marcha, y las tres pantallas de catálogo (`capabilities/`, `integrations/`, `channels/`). Una fila por cosa, con su destino. _Requisitos: 2.4, 3.4, 6.3_
-- [ ] T002 [P] Crear `specs/018-ficha-ligera-y-catalogos/evidence/README.md` con una entrada por iteración (prototipo, aprobación del owner con fecha, capturas, suites, paridad), siguiendo el precedente de la spec 017. _Requisitos: ninguno — ritual de cierre_
-- [ ] T003 [P] T-LIC · Comprobar con `scripts/verify.sh locks` que `pnpm-lock.yaml` y `uv.lock` no cambian en toda la spec, y dejarlo anotado en `plan.md` §Puertas. _Requisitos: ninguno — puerta §VIII_
+- [X] T001 Crear `specs/018-ficha-ligera-y-catalogos/parity.md` con el inventario **antes de tocar una línea**: qué enseña y qué permite hoy el Resumen (`clients/[ref]/page.tsx`), «Datos del cliente» (`settings/page.tsx`), «Ajustes» del agente (`agent/settings/`), la tarjeta de puesta en marcha, y las tres pantallas de catálogo (`capabilities/`, `integrations/`, `channels/`). Una fila por cosa, con su destino. _Requisitos: 2.4, 3.4, 6.3_ Entregado: develop, 2026-09-27 — **65 filas** inventariadas leyendo las pantallas de hoy. Tres decisiones quedan citables: dos pantallas se retiran sin perder ninguna función (filas 24 y 36), el crédito deja de compartir fila con la puesta en marcha porque le sobrevive (filas 18–19), y un canal que no se puede conectar no se enseña apagado (fila 60).
+- [X] T002 [P] Crear `specs/018-ficha-ligera-y-catalogos/evidence/README.md` con una entrada por iteración (prototipo, aprobación del owner con fecha, capturas, suites, paridad), siguiendo el precedente de la spec 017. _Requisitos: ninguno — ritual de cierre_ Entregado: develop, 2026-09-27.
+- [X] T003 [P] T-LIC · Comprobar con `scripts/verify.sh locks` que `pnpm-lock.yaml` y `uv.lock` no cambian en toda la spec, y dejarlo anotado en `plan.md` §Puertas. _Requisitos: ninguno — puerta §VIII_ Entregado: develop, 2026-09-27 — en verde al abrir la spec; se vuelve a correr al cerrar cada iteración.
 
 ---
 
