@@ -30,6 +30,7 @@ estimado.
 | Campos de la plantilla marcada **por defecto** | **23 en pantalla, 12 obligatorios** |
 | Placeholders por plantilla | de 3 a **24**; mediana 10 |
 | Herramientas del Companion | 41, **todas de solo lectura** |
+| Campos que el renderizador **exige de verdad** | **2** en 10 plantillas · **0** en 3 · **12** en `aesthetic_clinic_v1` |
 
 Cuatro hechos que la spec ataca:
 
@@ -45,9 +46,24 @@ Cuatro hechos que la spec ataca:
    servidor ni queda en el cliente (`case "channel": return done(); //
    informational`). Solo cambia qué botón sale al final: un cuarto del asistente
    dedicado a una pregunta cuya respuesta se descarta.
-4. **«Publicar ahora» aparece la última.** Es la decisión que más pesa —determina
+4. **Casi todo lo que se pide es opcional, y se pide igual.** Ejecutando el
+   renderizador contra las trece semillas con los campos vacíos, **diez piden
+   exactamente dos** —`tenant.address` y `tenant.business_hours_label`— y tres
+   no piden ninguno. Solo `aesthetic_clinic_v1` exige doce. No son trece
+   problemas distintos: casi todos los prompts mencionan la dirección y el
+   horario, y nada más. Lo demás que el formulario enseña tiene valor por
+   defecto y podría no preguntarse.
+5. **«Publicar ahora» aparece la última.** Es la decisión que más pesa —determina
    si el agente nace vivo o en borrador— y se enseña en el paso 4, junto a un
    resumen de lo que el usuario acaba de escribir.
+
+## Clarifications
+
+### Session 2026-09-28
+
+- Q: Si el alta deja de pedir los datos del negocio, ¿dónde se piden después? → A: un paso más en la tarjeta «Pasos para activar tu agente», con su propia barra.
+- Q: ¿Dónde vive la ayuda del Companion durante el alta? → A: una caja en el propio alta; el panel no escribe en la página.
+- Q: Si una plantilla no da un agente coherente sin rellenar nada, ¿qué hacemos? → A: esa conserva sus campos mínimos, anotado en paridad.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -174,16 +190,27 @@ formulario largo, para que empezar no cueste más que continuar.
 
 #### Criterios de aceptación
 
-1. El sistema DEBE permitir crear un cliente con **tres datos**: a qué se dedica
-   el negocio, cómo se llama y su zona horaria.
-2. WHEN el partner no rellena ningún campo de los que la plantilla admite THEN el
-   sistema DEBE crear el cliente igual, usando los valores por defecto de la
-   plantilla.
-3. El sistema NO DEBE pedir en el alta ningún dato que la ficha del cliente ya
+1. El sistema DEBE permitir crear un cliente con **a qué se dedica el negocio,
+   cómo se llama, su zona horaria y solo los campos que el renderizador exige
+   para esa plantilla** — medido el 2026-09-28: dos en diez plantillas
+   (dirección y horario), ninguno en tres, doce en `aesthetic_clinic_v1`.
+2. El sistema NO DEBE pedir en el alta **ningún campo que tenga valor por
+   defecto**. Hoy la plantilla marcada enseña 23 y solo 12 hacen falta; las once
+   restantes tienen defecto y se piden igual.
+3. IF una plantilla exige más campos de los que caben sin pesar THEN esa
+   plantilla DEBE conservar solo los imprescindibles, y la excepción DEBE quedar
+   anotada en paridad con el número. *(Aclaración 2026-09-28. Medido: la única
+   que hoy cae aquí es `aesthetic_clinic_v1`, con doce. Darle valores por
+   defecto a esos doce es trabajo de la plantilla en la API y queda fuera de
+   alcance.)*
+4. El sistema NO DEBE pedir en el alta ningún dato que la ficha del cliente ya
    sepa pedir después.
-4. WHERE un dato del negocio es necesario para que el agente atienda EL sistema
-   DEBE pedirlo en la ficha, donde vive la tarjeta de pasos, y NO en el alta.
-5. WHEN el cupo de clientes está agotado THEN el sistema DEBE decirlo antes de
+5. WHERE un dato del negocio es necesario para que el agente atienda EL sistema
+   DEBE pedirlo como **un paso más de «Pasos para activar tu agente»**, con su
+   barra y su cuenta de cuántos faltan, y NO en el alta. *(Aclaración
+   2026-09-28: la tarjeta pasa de tres pasos a cuatro; es el sitio donde el
+   partner ya mira qué le falta, y una barra a medias dice cuánto queda.)*
+6. WHEN el cupo de clientes está agotado THEN el sistema DEBE decirlo antes de
    pedir el primer dato.
 
 ### Requisito 2 — La plantilla se elige la primera, y a conciencia
@@ -238,8 +265,11 @@ palabras y que alguien me prepare el borrador, para no empezar de cero.
 
 #### Criterios de aceptación
 
-1. WHEN el partner describe el negocio en texto libre THEN el sistema DEBE
-   proponer una plantilla y DEBE explicar en una línea por qué esa.
+1. WHEN el partner describe el negocio en texto libre **en una caja del propio
+   alta** THEN el sistema DEBE proponer una plantilla y DEBE explicar en una
+   línea por qué esa. *(Aclaración 2026-09-28: la ayuda vive en la pantalla, no
+   en el panel del Companion. El panel **no** escribe en la página: ese
+   acoplamiento se evita a propósito.)*
 2. El sistema DEBE proponer valores para los datos del negocio que la plantilla
    admite, y DEBE distinguir en pantalla **lo propuesto de lo escrito por el
    partner**.
@@ -276,8 +306,11 @@ de RLS cambian.
 
 ## Criterios de éxito *(obligatorio)*
 
-- **CE-001**: crear un cliente utilizable requiere **tres datos y ningún campo
-  de plantilla**; hoy la plantilla por defecto pide 23 campos, 12 obligatorios.
+- **CE-001**: crear un cliente utilizable requiere, en **diez de las trece
+  plantillas**, una elección y **cuatro campos** —nombre, zona horaria,
+  dirección y horario—; hoy la plantilla marcada por defecto enseña 23 campos.
+  En tres plantillas son **dos campos**. La excepción medida es
+  `aesthetic_clinic_v1`, que conserva doce y queda anotada.
 - **CE-002**: el alta tiene **tres pasos o menos**, y ninguno cuya respuesta se
   descarte; hoy tiene cuatro y uno se descarta.
 - **CE-003**: ningún partner puede terminar el alta con una plantilla que no
@@ -308,11 +341,12 @@ de RLS cambian.
 
 ## Supuestos
 
-- Los valores por defecto de cada plantilla producen un agente **coherente aunque
-  nadie rellene nada**. Es lo que ya hace hoy quien deja los campos opcionales en
-  blanco (`cleanPlaceholders` los descarta para que caigan al valor por defecto);
-  esta spec lo extiende a los obligatorios y el plan lo verifica plantilla a
-  plantilla antes de escribir código.
+- **Ya no es un supuesto: está medido.** Se ejecutó el renderizador de semillas
+  contra las trece plantillas con los campos vacíos, contando qué exige cada una
+  antes de poder renderizar. Diez exigen dos campos, tres no exigen ninguno y
+  `aesthetic_clinic_v1` exige doce. Un campo sin valor y sin defecto **no produce
+  un agente incoherente: levanta `SeedTemplatePlaceholderMissing`**, así que la
+  frontera es dura y comprobable, no un juicio de calidad.
 - El partner sabe a qué se dedica el negocio que está dando de alta. Es su
   cliente.
 - Las trece plantillas caben en un catálogo buscable sin agrupar por categoría;
