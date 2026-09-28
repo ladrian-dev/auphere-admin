@@ -206,16 +206,9 @@ formulario largo, para que empezar no cueste más que continuar.
    2026-09-28: la tarjeta pasa de tres pasos a cuatro; es el sitio donde el
    partner ya mira qué le falta, y una barra a medias dice cuánto queda.)*
 6. WHEN el cupo de clientes está agotado THEN el sistema DEBE decirlo antes de
-   pedir el primer dato, y DEBE ofrecer **las dos salidas que existen**:
-   ampliar el plan y archivar un cliente. *(Owner, 2026-09-28. Hoy solo ofrece
-   «Ver mis clientes», que no es una salida — es una lista.)*
-7. WHEN el partner elige ampliar el plan THEN el sistema DEBE resolverlo **sin
-   sacarlo del alta**: un diálogo con los planes por encima del actual, y al
-   cerrarlo sigue donde estaba. NO DEBE llevarlo a otra pantalla. *(Owner,
-   2026-09-28: «deberías poder solucionar todo desde este flujo sin cambiarle
-   el foco».)*
-8. El diálogo DEBE decir hasta cuántos clientes lleva cada plan y cuántos
-   sitios añade sobre el actual, y NO DEBE ofrecer el plan que ya se tiene.
+   pedir el primer dato, y DEBE ofrecer la salida que existe: archivar un
+   cliente. NO DEBE ofrecer comprar nada — **a un partner no se le cobra por
+   añadir un cliente** (owner, 2026-09-28).
 
 ### Requisito 7 — Lo que se pide, se pide con el control que le corresponde
 
@@ -393,27 +386,6 @@ de RLS cambian.
   dice; hoy nace con 50 000 que nadie decidió.
 - **CE-009**: ninguna pantalla del alta mezcla idiomas.
 
-## Lo que esta spec **no puede** entregar sola
-
-R1.7 pide un diálogo que amplíe el plan. La interfaz cabe aquí, **lo de debajo
-no existe** y conviene que esté escrito antes de planificar:
-
-| Qué falta | Dónde se ve |
-|---|---|
-| El partner **no tiene plan** | `partners.max_clients` es una columna que fija Auphere, con `quota_notes` al lado |
-| No hay catálogo de planes de partner | `billing_plans` existe, pero `tenants.billing_plan_id` apunta ahí: es de tenant |
-| No hay pasarela de pago | El modelo de facturación lo dice: «Stripe integration lands later, the `stripe_*` columns are intentionally absent until then» |
-
-Así que «Ampliar» puede hacer **dos cosas**, y es una decisión de producto:
-
-- **Pedirlo, y que Auphere lo aplique.** Resuelve el foco hoy —el partner no
-  sale del alta y recibe respuesta— sin inventar facturación. Cabe en esta spec.
-- **Cobrarlo de verdad.** Planes de partner, catálogo, endpoint de cambio y
-  pago. Es una spec con su ADR, y no cabe aquí.
-
-Los precios del prototipo son un hueco a propósito. Inventarlos sería la
-pantalla afirmando algo que nadie ha decidido.
-
 ## Fuera de alcance
 
 - **Dar escritura al Companion** — es una decisión de seguridad (capa 2 del
@@ -429,6 +401,21 @@ pantalla afirmando algo que nadie ha decidido.
 - **Rehacer la ficha del cliente** — la tarjeta de pasos ya existe y ya pide lo
   que falta (spec 018, R6).
 - **Importar clientes en lote** — nadie lo ha pedido y multiplicaría el alcance.
+
+## Una contradicción que queda abierta
+
+El owner dice (2026-09-28) que **los partners no tienen límite de clientes**.
+El código sí lo tiene: `partners.max_clients` vale **5** por defecto
+(`server_default="5"`, migración 0081), y `provision_partner_client` bloquea
+con un **409** bajo un bloqueo de fila antes de crear nada.
+
+Las dos cosas no pueden ser ciertas. O el límite es real y la pantalla de cupo
+lleno hace falta, o es vestigial y **sobra entera** — junto con el contador
+«{used} de {max} clientes» de la lista y el aviso del alta.
+
+Esta spec **no lo decide**: deja la pantalla diciendo la verdad de hoy y lo
+anota para que se resuelva a sabiendas. Si el límite se retira, es un cambio en
+el modelo de partner con su propia tarea.
 
 ## Supuestos
 
