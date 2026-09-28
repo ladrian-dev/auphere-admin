@@ -146,7 +146,7 @@ function subSteps({
   locale: "es" | "en";
 }): SubStep[] {
   const publicado = Boolean(agentVersion);
-  return [
+  const pasos: SubStep[] = [
     {
       // Escribirlo y publicarlo son dos cosas, y la segunda es la que el
       // agente necesita para saber qué decir.
@@ -174,13 +174,16 @@ function subSteps({
       // una cadena que casualmente tiene dígitos.
       detail: quota ? formatNumber(quota.remaining, locale) : null,
     },
-    {
-      step: "activation",
-      label: "clients.setup.activation",
-      done: status === "active" ? 1 : 0,
-      of: 1,
-    },
   ];
+  // «Activación» solo es un paso cuando de verdad falta. Un cliente se crea
+  // ya activo, así que este segmento nacía verde y no volvía a moverse: un
+  // tramo permanentemente lleno enseña al ojo a ignorar la barra entera. Si
+  // alguien pausa o archiva el cliente, entonces sí es lo que le falta, y
+  // entonces aparece.
+  if (status !== "active") {
+    pasos.push({ step: "activation", label: "clients.setup.activation", done: 0, of: 1 });
+  }
+  return pasos;
 }
 
 function pendingLabel(step: NonNullable<ClientSetupDetail["next"]>) {

@@ -248,8 +248,12 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
             <ol className="grid gap-3" aria-label={t("agentSettings.section.schedule")}>
               {groupSlotsByDay(weeklyValues ?? []).map(({ day, slots }) => (
                 <li key={day} className="grid gap-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{t(`agentSettings.day.${day}`)}</span>
+                  {/* El día en una columna de ancho fijo: con
+                      `justify-between` el «Cerrado» caía a una x distinta en
+                      cada fila —la que dejara el nombre del día— y las siete
+                      filas quedaban escalonadas. */}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span className="w-24 shrink-0 text-sm font-medium">{t(`agentSettings.day.${day}`)}</span>
                     {slots.length === 0 ? <span className="text-xs text-muted-foreground">{t("agentSettings.schedule.closed")}</span> : null}
                     {canWrite ? (
                       <Button
@@ -257,6 +261,7 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
                         variant="ghost"
                         size="xs"
                         disabled={(weeklyValues?.length ?? 0) >= 21}
+                        className="ml-auto"
                         onClick={() => weekly.append({ day, open: "09:00", close: "18:00" })}
                         aria-label={`${t("agentSettings.schedule.addSlot")} · ${t(`agentSettings.day.${day}`)}`}
                       >

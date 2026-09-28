@@ -469,8 +469,16 @@
 
   html {
     /* The body never scrolls horizontally: wide content scrolls inside
-       its own overflow-x:auto container (DataTable, code, diagrams). */
-    overflow-x: hidden;
+       its own overflow-x:auto container (DataTable, code, diagrams).
+
+       `clip`, not `hidden`. `overflow-x: hidden` turns the *other* axis
+       into `auto`, which makes the element a scroll container — and a
+       scroll container between a `position: sticky` element and the real
+       scroller captures it, so the sticky binds to something that never
+       moves and rides away with the content. That is exactly what was
+       happening to the console's top bar. `clip` refuses the overflow
+       without creating the container. */
+    overflow-x: clip;
   }
 
   body {
@@ -481,7 +489,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-width: 0;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   h1,

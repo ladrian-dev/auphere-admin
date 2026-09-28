@@ -83,7 +83,12 @@ function FormItem({ className, ...props }: React.ComponentProps<"div">) {
            traducción al alemán, sin ir más lejos— empuja el campo fuera de
            una pantalla de 360 px. Hace falta en el campo Y en sus hijos, que
            también son ítems de rejilla. Lo cazó la barrida de la spec 017. */
-        className={cn("grid min-w-0 gap-2 [&>*]:min-w-0", className)}
+        // `content-start`: en una rejilla de dos columnas, el ítem se
+        // estira a la altura de la fila y, siendo él mismo una rejilla,
+        // repartía el hueco sobrante entre sus filas. Resultado: dos campos
+        // lado a lado con las etiquetas alineadas y los inputs a distinta
+        // altura, porque uno tenía texto de ayuda y el otro no.
+        className={cn("grid min-w-0 content-start gap-2 [&>*]:min-w-0", className)}
         {...props}
       />
     </FormItemContext.Provider>
