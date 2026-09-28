@@ -162,6 +162,18 @@ export function CatalogBrowser<T extends CatalogItem>({
   const activeCount = visible.filter((i) => i.active).length;
   const filtered = needle !== "" || category !== null || tab === "active";
 
+  // Sin nada que recorrer no hay nada que buscar: un buscador y dos pestañas
+  // sobre una lista vacía son tres controles que no pueden hacer nada. Igual
+  // que las pastillas cuando hay una sola categoría, se callan solos.
+  if (items.length === 0) {
+    return (
+      <div className={cn("flex flex-col gap-(--space-section)", className)}>
+        {notice}
+        {empty}
+      </div>
+    );
+  }
+
   return (
     <div className={cn("flex flex-col gap-(--space-section)", className)}>
       <div className="flex flex-col gap-3">
@@ -230,12 +242,7 @@ export function CatalogBrowser<T extends CatalogItem>({
         {notice}
       </div>
 
-      {items.length === 0 ? (
-        // Catálogo vacío: no hay nada que enseñar, y quitar un filtro no lo
-        // arregla. Otro cartel, otro texto, y **sin** ofrecer quitar filtros:
-        // mandaría a buscar una causa que no existe.
-        empty
-      ) : visible.length === 0 ? (
+      {visible.length === 0 ? (
         <EmptyState
           icon={Search}
           title={labels.noResults}

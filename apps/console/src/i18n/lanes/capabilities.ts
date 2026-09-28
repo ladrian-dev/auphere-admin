@@ -92,7 +92,18 @@ export const capabilitiesMessages = {
     es: "Lo que conecta al agente con lo que el negocio ya usa. Mientras un conector no esté conectado, las habilidades que dependen de él se pueden encender, pero el agente no las usa.",
     en: "What connects the agent to what the business already uses. While a connector is not connected, the skills that depend on it can be switched on, but the agent does not use them.",
   },
-  "int.count": { es: "{on} de {total} conectadas", en: "{on} of {total} connected" },
+  // Las categorías con las que se agrupan y se filtran (spec 018, R4.1). Una
+  // que no esté aquí cae en «El resto»: enseñar su clave interna sería
+  // colar jerga en la pantalla, y juntarlas todas bajo un nombre honesto
+  // dice la verdad sin inventarles una categoría (R4.5).
+  "int.cat.booking": { es: "Citas", en: "Appointments" },
+  "int.cat.calendar": { es: "Calendario", en: "Calendar" },
+  "int.cat.billing": { es: "Cobros", en: "Payments" },
+  "int.cat.catalog": { es: "Catálogo y ventas", en: "Catalog and sales" },
+  "int.cat.ecommerce": { es: "Tienda", en: "Store" },
+  "int.cat.messaging": { es: "Mensajería", en: "Messaging" },
+  "int.cat.docs": { es: "Documentos", en: "Documents" },
+  "int.cat.crm": { es: "Clientes", en: "Customers" },
   "int.unlocks": { es: "Desbloquea {n} habilidades", en: "Unlocks {n} skills" },
   "int.unlocksOne": { es: "Desbloquea 1 habilidad", en: "Unlocks 1 skill" },
   "int.readonly": {

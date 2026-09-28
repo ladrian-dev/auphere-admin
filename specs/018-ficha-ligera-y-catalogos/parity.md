@@ -83,20 +83,20 @@ Fuente: 86 líneas. Todo lo que enseña, enumerado.
 | # | Hoy (antes) | Después | Estado |
 |---|---|---|---|
 | 38 | Buscador por nombre de negocio y descripción | Se conserva, dentro del patrón común | ✅ |
-| 39 | Contador «n de N encendidas» con `aria-live` | Se conserva | ✅ |
+| 39 | Contador «n de N encendidas» con `aria-live` | Pasa a ser el del patrón, «{visibles} de {total} · {activos} activos», con el mismo `aria-live`. Dice **más**: cuántos hay en total, que es lo que «1» a secas se callaba | ➡️ |
 | 40 | Agrupación por función, sin grupos vacíos | Se conserva: la función pasa a ser **la categoría** del patrón | ✅ |
 | 41 | Filtro por sector con «Ver todas» y cuántas oculta, en la URL | Se conserva **dentro** del patrón nuevo, no al lado | ➡️ |
 | 42 | «Encender / apagar las visibles» | Se conserva | ✅ |
 | 43 | Bloque de integraciones que estorban, arriba | Se conserva | ✅ |
 | 44 | Conmutador que guarda al clic; modo; insignias; detalle técnico plegado | Se conservan enteros | ✅ |
 | 45 | — | Pestañas para ver solo lo activo o todo | ➕ |
-| 46 | — | Filtro desplegable por categoría | ➕ |
+| 46 | — | Filtro por categoría, en pastillas con su cuenta: además de filtrar, son el mapa de lo que hay dentro | ➕ |
 
 ### Conectores (hoy «Integraciones», `integrations/`)
 
 | # | Hoy (antes) | Después | Estado |
 |---|---|---|---|
-| 47 | Contador «n de N conectadas» | Se conserva | ✅ |
+| 47 | Contador «n de N conectadas» | El mismo contador del patrón que en Habilidades, palabra por palabra (R4.6) | ➡️ |
 | 48 | Orden por lo que necesita atención | Se conserva **dentro de cada grupo** | ➡️ |
 | 49 | «Desbloquea N capacidades» por integración | Se conserva (dirá «habilidades») | ✅ |
 | 50 | Conectar · reconectar · sincronizar · pausar · reanudar · desconectar con confirmación | Se conservan enteros | ✅ |

@@ -180,6 +180,32 @@ test.describe("CP-30 — axe + overflow on every main view", () => {
     await page.keyboard.press("Escape");
   });
 
+  // Spec 018 (T025): los tres catálogos **con filtro puesto**. La barra sin
+  // filtrar ya la audita el barrido de arriba; lo que aquí se mira es el
+  // estado que solo existe al filtrar — pastilla marcada, contador movido, y
+  // el cartel de «nada coincide» con su salida.
+  test("spec 018: the three catalogs pass axe with a filter on", async ({ page }) => {
+    const base = `/clients/${encodeURIComponent(ref)}`;
+    for (const path of [
+      `${base}/capabilities?tab=active`,
+      `${base}/capabilities?q=zzzz`,
+      `${base}/integrations?tab=active`,
+      `${base}/channels?tab=active`,
+    ]) {
+      await page.goto(path);
+      await expect(page.locator("main#main")).toBeVisible();
+      const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "best-practice"]).exclude("iframe").analyze();
+      expect(
+        axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id),
+        `${path} con filtro puesto`,
+      ).toEqual([]);
+      // Y a 360 px, que es donde la barra de tres gestos tiene que envolver.
+      await page.setViewportSize({ width: 360, height: 800 });
+      expect(await overflowOffenders(page), `${path} @360px se desborda`).toEqual([]);
+      await page.setViewportSize({ width: 1280, height: 800 });
+    }
+  });
+
   test("keyboard: skip link and command palette", async ({ page }) => {
     await page.goto("/");
     await page.keyboard.press("Tab");

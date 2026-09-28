@@ -86,20 +86,20 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 
 ### Tests primero
 
-- [ ] T018 [P] [US3] Tests `packages/ui/src/components/__tests__/catalog-browser.test.tsx`: buscar reduce y el contador lo dice; la pestaña de activos enseña solo lo activo y se puede volver; filtrar sin resultados dice con qué se filtró y ofrece quitarlo, con un mensaje **distinto** del catálogo vacío; un elemento sin categoría cae en un grupo con nombre propio; el componente **no sabe** qué es una habilidad, un conector ni un canal. _Requisitos: 4.1, 4.2, 4.3, 4.5_
-- [ ] T019 [P] [US3] Tests de que el estado (búsqueda, pestaña, filtro) viaja en la dirección de la página y que volver atrás restituye lo que se veía. _Requisitos: 4.4_
+- [X] T018 [P] [US3] Tests `packages/ui/src/components/__tests__/catalog-browser.test.tsx`: buscar reduce y el contador lo dice; la pestaña de activos enseña solo lo activo y se puede volver; filtrar sin resultados dice con qué se filtró y ofrece quitarlo, con un mensaje **distinto** del catálogo vacío; un elemento sin categoría cae en un grupo con nombre propio; el componente **no sabe** qué es una habilidad, un conector ni un canal. _Requisitos: 4.1, 4.2, 4.3, 4.5_ Entregado: develop, 2026-09-28 — 13 casos. Uno lee la **fuente** del componente y falla si aparece el nombre de cualquiera de los tres catálogos: es la frontera «navega, no actúa» comprobada y no prometida.
+- [X] T019 [P] [US3] Tests de que el estado (búsqueda, pestaña, filtro) viaja en la dirección de la página y que volver atrás restituye lo que se veía. _Requisitos: 4.4_ Entregado: develop, 2026-09-28 — 10 casos sobre `catalog-url.ts`. Uno de ellos cazó el defecto que `tsc` había dicho y yo no leí: la cadena de la dirección entrando por la rama del objeto salía recorrida carácter a carácter.
 
 ### Implementación
 
-- [ ] T020 [US3] Implementar `packages/ui/src/components/catalog-browser.tsx`, extraído de lo que la pantalla de Capacidades ya hace, más las pestañas y el filtro por categoría que le faltan. Exportarlo en el índice del paquete. _Requisitos: 4.1–4.6_
-- [ ] T021 [US3] `capabilities/page.tsx` pasa a usarlo, con la función como categoría; el filtro por sector de la spec 017 se conserva dentro del patrón nuevo. _Requisitos: 4.1, 4.4, 4.6_
-- [ ] T022 [US3] `integrations/page.tsx` pasa a usarlo, con la categoría del conector; el orden por lo que necesita atención se conserva dentro de cada grupo. _Requisitos: 4.1, 4.6_
-- [ ] T023 [US3] `channels/page.tsx` pasa a usarlo, **sin enseñar canales que todavía no se pueden conectar** (§V: la ausencia se diseña; Messenger, Instagram o Telegram no aparecen apagados ni prometidos). _Requisitos: 4.1, 4.6, 4.7_
-- [ ] T024 [P] [US3] Tests de componente de las tres pantallas: los tres llaman igual a lo mismo y lo colocan en el mismo sitio. _Requisitos: 4.6_
+- [X] T020 [US3] Implementar `packages/ui/src/components/catalog-browser.tsx`, extraído de lo que la pantalla de Capacidades ya hace, más las pestañas y el filtro por categoría que le faltan. Exportarlo en el índice del paquete. _Requisitos: 4.1–4.6_ Entregado: develop, 2026-09-28.
+- [X] T021 [US3] `capabilities/page.tsx` pasa a usarlo, con la función como categoría; el filtro por sector de la spec 017 se conserva dentro del patrón nuevo. _Requisitos: 4.1, 4.4, 4.6_ Entregado: develop, 2026-09-28 — el filtro por sector se conserva y tiene test propio de que teclear no lo borra.
+- [X] T022 [US3] `integrations/page.tsx` pasa a usarlo, con la categoría del conector; el orden por lo que necesita atención se conserva dentro de cada grupo. _Requisitos: 4.1, 4.6_ Entregado: develop, 2026-09-28 — el orden por urgencia vive ahora dentro de cada grupo. Una categoría que la consola no sabe nombrar cae en «El resto» en vez de enseñar su clave interna.
+- [X] T023 [US3] `channels/page.tsx` pasa a usarlo, **sin enseñar canales que todavía no se pueden conectar** (§V: la ausencia se diseña; Messenger, Instagram o Telegram no aparecen apagados ni prometidos). _Requisitos: 4.1, 4.6, 4.7_ Entregado: develop, 2026-09-28 — `f2VisibleChannels` ya dejaba fuera lo que no se puede conectar; ahora, además, sin nada que recorrer la barra no se pinta.
+- [X] T024 [P] [US3] Tests de componente de las tres pantallas: los tres llaman igual a lo mismo y lo colocan en el mismo sitio. _Requisitos: 4.6_ Entregado: develop, 2026-09-28 — `same-in-three.test.tsx` monta las tres y compara lo que se ve. Verificado por mutación.
 
 ### Cierre
 
-- [ ] T025 [US3] E2E: `a11y.spec.ts` audita los tres catálogos con filtro puesto; un recorrido de «buscar → filtrar → compartir el enlace» en `record.spec.ts`. _Requisitos: 4.1–4.4_
+- [X] T025 [US3] E2E: `a11y.spec.ts` audita los tres catálogos con filtro puesto; un recorrido de «buscar → filtrar → compartir el enlace» en `record.spec.ts`. _Requisitos: 4.1–4.4_ Entregado: develop, 2026-09-28 — axe sobre los tres con filtro puesto (y a 360 px), más el recorrido «buscar → filtrar → compartir el enlace → atrás».
 - [ ] T026 [US3] Paridad §Iteración 2, `evidence/iteracion-2.md`, log de sesión, merge y staging. _Requisitos: 4.6_
 
 ---

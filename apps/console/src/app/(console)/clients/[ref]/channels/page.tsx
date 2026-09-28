@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle, Button, EmptyState } from "@nexus/ui";
 
-import { ChannelCard } from "@/components/channels/channel-card";
+import { ChannelsList } from "@/components/channels/channels-list";
 import { TemplatesSection } from "@/components/channels/templates-section";
 import { f2ChannelCounter, f2VisibleChannels } from "@/components/channels/visible-channels";
 import { connectChoice, metaSignupConfig } from "@/components/channels/connect-choice";
@@ -85,15 +85,24 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
           <AlertDescription>{t("ch.roles.required.body")}</AlertDescription>
         </Alert>
       ) : null}
-      {visible.length === 0 ? (
-        <EmptyState icon={MessageCircle} title={t("ch.empty.title")} description={t("ch.empty.description")} action={manage ? connect : undefined} readonly={!manage} />
-      ) : (
-        <ul className="grid gap-3 md:grid-cols-2" aria-label={t("ch.title")}>
-          {visible.map((ch) => (
-            <ChannelCard key={ch.id} refId={ref} channel={ch} manage={manage} showRoles={visible.filter((c) => c.status === "active").length > 1} />
-          ))}
-        </ul>
-      )}
+      {/* Spec 018 (R4): el mismo patrón de navegación que Habilidades y
+          Conectores. Los canales que todavía no se pueden conectar no están
+          en `visible`, así que tampoco están en la lista: §V, la ausencia se
+          diseña y no se enseña apagada. */}
+      <ChannelsList
+        refId={ref}
+        channels={visible}
+        manage={manage}
+        empty={
+          <EmptyState
+            icon={MessageCircle}
+            title={t("ch.empty.title")}
+            description={t("ch.empty.description")}
+            action={manage ? connect : undefined}
+            readonly={!manage}
+          />
+        }
+      />
       <TemplatesSection refId={ref} list={templates} error={templatesError} manage={manage} />
     </div>
   );

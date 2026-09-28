@@ -77,18 +77,71 @@ día dos catálogos compartieran página.
 Medido además a 360 px: `scrollWidth` 360 sobre `clientWidth` 360 — sin
 scroll horizontal.
 
-## Suites
+## Lo entregado (T018–T025)
 
-Pendientes: la iteración no ha escrito código todavía.
+| Tarea | Qué |
+|---|---|
+| T018–T019 | Tests en rojo primero: 13 del componente, 10 del cableado a la dirección |
+| T020 | `packages/ui/src/components/catalog-browser.tsx` |
+| T021 | Habilidades pasa a usarlo, con el filtro por sector conservado |
+| T022 | Conectores, con el orden por urgencia **dentro de cada grupo** |
+| T023 | Canales, sin enseñar lo que todavía no se puede conectar |
+| T024 | `same-in-three.test.tsx`: las tres pantallas montadas y comparadas |
+| T025 | axe sobre los tres **con filtro puesto**, y el recorrido de compartir el enlace |
+
+### Dos decisiones que no estaban en el prototipo
+
+1. **Una categoría que la consola no sabe nombrar cae en «El resto».** Los
+   conectores traen su categoría del catálogo de Composio, que puede añadir
+   una cualquiera. Enseñar su clave interna sería colar jerga en la pantalla;
+   juntarlas bajo un nombre honesto dice la verdad sin inventarles una
+   categoría (R4.5).
+2. **Sin nada que recorrer, la barra no se pinta.** Un buscador y dos
+   pestañas sobre una lista vacía son tres controles que no pueden hacer
+   nada. Es la misma regla que ya se había aprobado para las pastillas
+   —«con una sola categoría no se pintan»— llevada a su conclusión. Se ve en
+   Canales de un cliente sin canal: solo el cartel y su botón.
+
+## Suites (2026-09-28, rama `develop`, Node 24.14)
 
 | Suite | Resultado |
 |---|---|
-| `@nexus/ui` lint · typecheck | limpios con la story nueva |
+| `apps/console` (vitest) | 79 ficheros, **463 tests** en verde |
+| `@nexus/ui` (vitest) | 13 ficheros, **162 tests** en verde |
+| `e2e/a11y.spec.ts` | **25** en verde, incluida la auditoría nueva de los tres catálogos con filtro |
+| `e2e/record.spec.ts` | **13** en verde, incluido «buscar → filtrar → compartir el enlace» |
+| lint · typecheck (consola y DS) | limpios |
+
+**Accesibilidad**: cero violaciones serias o críticas en los tres catálogos
+con filtro puesto, y sin desbordamiento a 360 px, que es donde la barra de
+tres gestos tiene que envolver.
+
+**Comprobado por mutación**, porque un test que no sabe fallar no es
+evidencia:
+
+| Mutación | Qué se puso rojo |
+|---|---|
+| El componente nombra una habilidad en un comentario | «no sabe qué es una habilidad, un conector ni un canal» |
+| `catalogHref` reconstruye la dirección desde cero | 3 casos, incluido el del filtro por sector |
+| Conectores pone su propia etiqueta de buscador | «el buscador se llama igual en los tres» |
+
+**Una caída en la corrida completa, y no es del cambio**: `client view
+/knowledge` agotó los 120 s del `goto` dentro del barrido entero, y vuelve a
+pasar sola en 6,6 s. Es el servidor de desarrollo compilando esa ruta en
+frío —sus respuestas se ven en 15-20 s en el registro—, no una regresión:
+esta iteración no toca Conocimiento.
 
 ## Paridad
 
-Pendiente. Las filas del catálogo (`parity.md`) se cierran al entregar
-T021–T024.
+Filas 38–60 de `parity.md` cerradas. Tres cambian de «se conserva» a «se
+mueve», y quedan dichas en su fila:
+
+- **39 y 47 · los contadores.** Pasan a ser el del patrón, igual en los tres.
+  Dice **más** que el de antes: cuántos hay en total, que es lo que «1 de 3
+  encendidas» se callaba cuando el filtro escondía veinte.
+- **41 · el filtro por sector.** Se conserva, dentro del patrón y no al lado:
+  ensancha el catálogo en vez de estrecharlo, así que no es una pastilla.
+  `catalogHref` tiene un test dedicado a que no lo borre al teclear.
 
 ## Lo que queda fuera a propósito
 

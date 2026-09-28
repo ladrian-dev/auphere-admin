@@ -155,6 +155,10 @@ describe("CatalogBrowser · los dos vacíos no son el mismo", () => {
     // Y **no** ofrece quitar filtros: no hay filtro que quitar, y ofrecerlo
     // mandaría a buscar una causa que no existe.
     expect(screen.queryByRole("button", { name: "Quitar los filtros" })).toBeNull();
+    // Ni buscador ni pestañas: tres controles que no pueden hacer nada sobre
+    // una lista vacía. Se callan solos, igual que las pastillas.
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Qué se ve" })).toBeNull();
   });
 
   it("vacío por filtro dice con qué se filtró y ofrece quitarlo", async () => {

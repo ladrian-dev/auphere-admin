@@ -186,6 +186,48 @@ test.describe("spec 017 · la ficha de cliente", () => {
     await expect(page.getByText(/Identidad|Identity/).first()).toBeVisible();
   });
 
+  test("buscar, filtrar y compartir el enlace lleva a lo mismo", async ({ page }) => {
+    // Spec 018 (R4.1–R4.4), el recorrido entero de la iteración 2. Lo que
+    // se comprueba no es que el filtro funcione —eso lo cubren los tests de
+    // componente— sino que **el estado está en la dirección**: que copiar el
+    // enlace y abrirlo en otra pestaña enseña lo mismo, y que «atrás»
+    // deshace el filtro en vez de salir de la pantalla.
+    const ref = await firstClientRef(page);
+    const base = `/clients/${encodeURIComponent(ref)}/capabilities`;
+    await page.goto(base);
+    await expect(page.locator("main#main")).toBeVisible();
+
+    // 1 · Buscar. El contador se mueve y la dirección recoge lo tecleado,
+    // sin apilar una entrada de historia por letra.
+    const buscador = page.getByRole("searchbox", { name: /Buscar en la lista|Search the list/ });
+    await buscador.fill("cita");
+    await page.waitForURL(/[?&]q=cita/, { timeout: 15_000 });
+
+    // 2 · Filtrar por categoría: eso sí es una navegación.
+    const pastilla = page.getByRole("link", { name: /·\s\d+$/ }).first();
+    const nombrePastilla = (await pastilla.textContent())?.split(" ·")[0] ?? "";
+    await pastilla.click();
+    await page.waitForURL(/[?&]cat=/, { timeout: 15_000 });
+    await expect(pastilla).toHaveAttribute("aria-current", "true");
+
+    // 3 · Compartir el enlace: otra pestaña, la misma pantalla.
+    const compartido = page.url();
+    const otra = await page.context().newPage();
+    await otra.goto(compartido);
+    await expect(otra.locator("main#main")).toBeVisible();
+    await expect(otra.getByRole("searchbox", { name: /Buscar en la lista|Search the list/ })).toHaveValue("cita");
+    await expect(otra.getByRole("link", { name: new RegExp(`^${nombrePastilla} ·`) })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    await otra.close();
+
+    // 4 · Atrás deshace **el filtro**, no la búsqueda letra a letra.
+    await page.goBack();
+    await page.waitForURL((url) => !url.search.includes("cat="), { timeout: 15_000 });
+    await expect(page.locator("main#main")).toBeVisible();
+  });
+
   for (const vieja of ["tools", "skills"] as const) {
     test(`«${vieja}» sigue llevando a alguna parte: redirige a Capacidades`, async ({ page }) => {
       // Spec 017 (R5.1): las dos pantallas se fundieron, pero sus URLs están
