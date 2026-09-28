@@ -142,6 +142,22 @@ describe("CatalogBrowser · categorías", () => {
     expect(screen.getByRole("link", { name: "Pedidos · 2" })).toHaveAttribute("href", "/catalogo");
   });
 
+  it("un grupo por elemento no es una agrupación: se calla el encabezado, no la categoría", () => {
+    // Cuatro conectores en cuatro categorías daban cuatro títulos y cuatro
+    // tarjetas solas en su fila (owner, 2026-09-28). Las pastillas siguen
+    // ahí y siguen filtrando: lo único que desaparece es el encabezado.
+    const sueltos = ITEMS.map((i, n) => ({ ...i, category: `cat${n}` }));
+    mount({ items: sueltos });
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+    expect(screen.getAllByRole("listitem")).toHaveLength(sueltos.length);
+    expect(screen.getByRole("link", { name: "cat0 · 1" })).toBeInTheDocument();
+  });
+
+  it("en cuanto un grupo tiene dos, se agrupa", () => {
+    mount();
+    expect(screen.getAllByRole("heading", { level: 2 }).length).toBeGreaterThan(0);
+  });
+
   it("con una sola categoría no se pintan: no filtrarían nada", () => {
     mount({ items: [ITEMS[0]!, { ...ITEMS[1]!, category: "citas" }] });
     expect(screen.queryByRole("link", { name: /Citas/ })).toBeNull();

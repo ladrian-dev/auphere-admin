@@ -159,6 +159,11 @@ export function CatalogBrowser<T extends CatalogItem>({
     return [...byCat.entries()];
   }, [visible]);
 
+  // Se agrupa **solo cuando agrupar dice algo**: si cada grupo tuviera un
+  // elemento, los títulos serían los nombres otra vez y cada tarjeta se
+  // quedaría sola en su fila, desperdiciando el ancho. Las pastillas siguen
+  // filtrando igual: lo que se calla es el encabezado, no la categoría.
+  const grouped = groups.some(([, group]) => group.length > 1);
   const activeCount = visible.filter((i) => i.active).length;
   const filtered = needle !== "" || category !== null || tab === "active";
 
@@ -253,7 +258,7 @@ export function CatalogBrowser<T extends CatalogItem>({
             </Button>
           }
         />
-      ) : (
+      ) : grouped ? (
         <div className="flex flex-col gap-(--space-section)">
           {groups.map(([key, group]) => (
             <Section
@@ -262,14 +267,21 @@ export function CatalogBrowser<T extends CatalogItem>({
               headingLevel={2}
               flat
             >
-              <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">{group.map(renderItem)}</ul>
+              <ul className={GRID}>{group.map(renderItem)}</ul>
             </Section>
           ))}
         </div>
+      ) : (
+        // Un grupo por elemento no es una agrupación: son los mismos nombres
+        // dos veces y cada tarjeta sola en su fila. Se aprovecha el ancho.
+        <ul className={GRID}>{visible.map(renderItem)}</ul>
       )}
     </div>
   );
 }
+
+/** La rejilla de las tarjetas, igual dentro y fuera de los grupos. */
+const GRID = "grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3";
 
 /** La clave del grupo de los que no traen categoría. No es una categoría: es
  *  el sitio donde van los que no la tienen, y por eso lleva un nombre que

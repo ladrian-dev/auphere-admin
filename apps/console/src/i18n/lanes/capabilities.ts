@@ -104,6 +104,42 @@ export const capabilitiesMessages = {
   "int.cat.messaging": { es: "Mensajería", en: "Messaging" },
   "int.cat.docs": { es: "Documentos", en: "Documents" },
   "int.cat.crm": { es: "Clientes", en: "Customers" },
+
+  // Qué hace cada conector, en una línea (owner, 2026-09-28: la tarjeta
+  // tiene que decir para qué sirve, no solo cómo se llama). La API no trae
+  // descripción y las semillas tampoco, así que vive aquí: son cinco, son
+  // nuestras, y el copy de producto es de la consola. Un conector que no
+  // esté en esta lista cae en la frase de reserva, que **no inventa** nada
+  // sobre él.
+  "connectors.desc.fallback": {
+    es: "Conéctalo para que el agente pueda usarlo.",
+    en: "Connect it so the agent can use it.",
+  },
+  "connectors.desc.woocommerce": {
+    es: "La tienda del negocio: productos, precios y estado de los pedidos.",
+    en: "The business's store: products, prices and order status.",
+  },
+  "connectors.desc.agendapro": {
+    es: "La agenda del negocio, para consultar huecos y reservar una cita.",
+    en: "The business's calendar, to check slots and book an appointment.",
+  },
+  "connectors.desc.amigable_cobro": {
+    es: "Cobros y enlaces de pago, para cerrar la venta en la conversación.",
+    en: "Payments and payment links, to close the sale inside the conversation.",
+  },
+  "connectors.desc.amigable_venta": {
+    es: "Catálogo y presupuestos, para responder qué hay y cuánto cuesta.",
+    en: "Catalog and quotes, to answer what there is and what it costs.",
+  },
+  "connectors.desc.whatsapp_meta": {
+    es: "El número de WhatsApp por el que el agente atiende.",
+    en: "The WhatsApp number the agent answers on.",
+  },
+  // El estado, dicho en la tarjeta y no solo en una insignia.
+  "connectors.state.connected": { es: "Conectado", en: "Connected" },
+  "connectors.state.notConnected": { es: "Sin conectar", en: "Not connected" },
+  "connectors.more": { es: "Más opciones de {name}", en: "More options for {name}" },
+  "connectors.connect.aria": { es: "Conectar {name}", en: "Connect {name}" },
   "int.unlocks": { es: "Desbloquea {n} habilidades", en: "Unlocks {n} skills" },
   "int.unlocksOne": { es: "Desbloquea 1 habilidad", en: "Unlocks 1 skill" },
   "int.readonly": {

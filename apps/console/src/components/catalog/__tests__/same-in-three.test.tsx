@@ -58,8 +58,10 @@ const CAPS: CapabilitiesOut = {
   has_draft: false,
   version: 1,
   active_version: 1,
+  // Dos en «Citas» a propósito: el patrón no agrupa cuando cada grupo
+  // tendría uno, así que un arnés de uno por grupo no probaría nada.
   groups: [
-    { function: "appointments", items: [cap("Reservar", "appointments", true)] },
+    { function: "appointments", items: [cap("Reservar", "appointments", true), cap("Cancelar", "appointments", false)] },
     { function: "orders", items: [cap("Pedir", "orders", false)] },
   ],
 };
@@ -164,7 +166,7 @@ describe("Los tres catálogos · las mismas palabras", () => {
       unmount();
     }
     expect(contadores).toEqual({
-      Habilidades: "2 de 2 · 1 activos",
+      Habilidades: "3 de 3 · 1 activos",
       Conectores: "2 de 2 · 1 activos",
       Canales: "1 de 1 · 1 activos",
     });
@@ -177,18 +179,24 @@ describe("Los tres catálogos · las categorías", () => {
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Citas", "Pedidos"]);
     unmount();
 
+    // Conectores: dos categorías con uno cada una, así que el patrón **no**
+    // agrupa —serían dos títulos para dos tarjetas—. Lo que sí se conserva
+    // es el orden por urgencia: sin conectar antes que funcionando.
     mount("Conectores");
-    // Y el orden por urgencia se conserva: lo que está sin conectar antes de
-    // lo que funciona.
-    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Citas", "Tienda"]);
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "AgendaPro",
+      "WooCommerce",
+    ]);
   });
 
   it("con una sola categoría no hay pastillas: no filtrarían nada", () => {
     mount("Canales");
     // Canales tiene un solo tipo hoy. El patrón se calla las pastillas él
     // solo; la pantalla no tiene que saberlo.
-    expect(screen.queryByRole("heading", { level: 2 })).not.toBeNull();
     expect(screen.queryByRole("link", { name: /·\s\d+$/ })).toBeNull();
+    // Y la tarjeta está: callarse el encabezado no es callarse la lista.
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
   });
 });
 

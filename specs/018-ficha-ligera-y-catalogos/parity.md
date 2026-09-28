@@ -99,10 +99,12 @@ Fuente: 86 líneas. Todo lo que enseña, enumerado.
 | 47 | Contador «n de N conectadas» | El mismo contador del patrón que en Habilidades, palabra por palabra (R4.6) | ➡️ |
 | 48 | Orden por lo que necesita atención | Se conserva **dentro de cada grupo** | ➡️ |
 | 49 | «Desbloquea N capacidades» por integración | Se conserva (dirá «habilidades») | ✅ |
-| 50 | Conectar · reconectar · sincronizar · pausar · reanudar · desconectar con confirmación | Se conservan enteros | ✅ |
+| 50 | Conectar · reconectar · sincronizar · pausar · reanudar · desconectar con confirmación | Se conservan **todas**, con otra forma: conectar es un `+`, reconectar sigue siendo un botón con texto —un error tiene que poder leerse— y el resto vive en «Más», como en la cabecera de la ficha (owner, 2026-09-28) | ➡️ |
 | 51 | Diálogo de clave de API con campos traducidos; AgendaPro por URL pública | Se conservan enteros | ✅ |
 | 52 | Alerta cuando los conectores no cargan | Se conserva | ✅ |
 | 53 | Sin buscador, sin filtros, sin categorías | Los gana del patrón | ➕ |
+| 53b | La tarjeta era nombre + cuatro datos en una línea + hasta cinco botones | Icono de la aplicación, nombre, **para qué sirve** y una acción; lo que se sabe de él, debajo y en gris (owner, 2026-09-28) | ➡️ |
+| 53c | El estado solo en una insignia | Punto en el icono **y** palabra en la línea de abajo; la insignia se reserva para lo que necesita explicación —pausado, roto, caducado— (owner, 2026-09-28) | ➡️ |
 
 ### Canales (`channels/`)
 

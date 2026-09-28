@@ -65,6 +65,15 @@ const reservar = cap({
   recommended: true,
   mode: { default: "always", override: null, effective: "always", options: ["always", "blocked"] },
 });
+// Un segundo elemento en «Citas»: sin él, cada grupo tendría uno y el patrón
+// **no agrupa** —tres títulos para tres tarjetas no son una agrupación—. Un
+// catálogo de verdad tiene varios por función, así que el arnés también.
+const cancelar = cap({
+  key: "booking.cancel_appointment",
+  business_name: "Cancelar una cita",
+  description: "Anula la reserva y libera el hueco.",
+  function: "appointments",
+});
 const pedidos = cap({
   key: "woocommerce.list_orders",
   business_name: "Consultar un pedido",
@@ -92,6 +101,19 @@ function out(over: Partial<CapabilitiesOut> = {}): CapabilitiesOut {
   return { sector: "barbershop", has_draft: false, version: 2, active_version: 1, hidden_by_sector: 0, ...over, groups };
 }
 
+/** Con dos en «Citas»: el patrón **no agrupa** cuando cada grupo tendría uno
+ *  —tres títulos para tres tarjetas no son una agrupación—, así que los dos
+ *  tests que miran los encabezados necesitan un catálogo que los merezca. */
+function conGrupos(): CapabilitiesOut {
+  return out({
+    groups: [
+      { function: "appointments" as CapabilityFunction, items: [reservar, cancelar] },
+      { function: "orders" as CapabilityFunction, items: [pedidos] },
+      { function: "escalation" as CapabilityFunction, items: [escalar] },
+    ],
+  });
+}
+
 function mount(data: CapabilitiesOut = out(), canWrite = true) {
   return render(
     <LocaleProvider locale="es">
@@ -113,7 +135,7 @@ beforeEach(() => {
 
 describe("Capacidades · agrupación y sector", () => {
   it("agrupa por lo que el negocio quiere conseguir, no por herramienta o habilidad", () => {
-    mount();
+    mount(conGrupos());
     // Los encabezados son los de la función, en el orden en que se leen.
     const titulos = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
     expect(titulos).toEqual(["Citas", "Pedidos", "Escalado"]);
@@ -153,19 +175,19 @@ describe("Capacidades · agrupación y sector", () => {
 
 describe("Capacidades · buscador", () => {
   it("filtra por el nombre de negocio y por la descripción, y cuenta lo que queda", () => {
-    mount();
+    mount(conGrupos());
     // Desde la spec 018 el buscador, el contador y los carteles son los del
     // patrón compartido: las mismas palabras que en Conectores y en Canales.
     // Y el contador dice **de cuántos** quedan los que se ven; «1» a secas no
     // decía si sobraban veinte o ninguno.
-    expect(screen.getByText("3 de 3 · 1 activos")).toBeInTheDocument();
+    expect(screen.getByText("4 de 4 · 1 activos")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Buscar en la lista"), { target: { value: "cita" } });
     expect(screen.getByText("Reservar una cita")).toBeInTheDocument();
     expect(screen.queryByText("Consultar un pedido")).toBeNull();
     // Los grupos vacíos desaparecen con lo que contenían.
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Citas"]);
-    expect(screen.getByText("1 de 3 · 0 activos")).toBeInTheDocument();
+    expect(screen.getByText("2 de 4 · 0 activos")).toBeInTheDocument();
 
     // También busca en la descripción, no solo en el título.
     fireEvent.change(screen.getByLabelText("Buscar en la lista"), { target: { value: "agenda" } });

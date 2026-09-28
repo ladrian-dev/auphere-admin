@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, MoreHorizontal, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -15,9 +15,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Input,
   Label,
   StatusBadge,
+  StatusDot,
+  cn,
   formatDateTime,
 } from "@nexus/ui";
 
@@ -36,23 +42,34 @@ import {
   splitCredentials,
 } from "@/components/agent-tools/lib";
 import { useLocale, useT } from "@/i18n/client";
-import { messages } from "@/i18n/messages";
+import { messages, type MessageKey } from "@/i18n/messages";
 import { actionErrorText } from "@/lib/action-error";
 import type { ConnectorOut, ConsentOut, LastSync } from "@/lib/backend/agent-tools-types";
 
 /**
- * Una integración (spec 017, R4). Viene de la cabecera de conector que vivía
- * dentro de la pantalla de Herramientas: mismas cuatro formas de conectar,
- * mismos diálogos, misma validación. Lo que cambia es dónde está y qué dice
- * de sí misma.
+ * Un conector (spec 017 R4; rehecho con el owner el 2026-09-28).
  *
- * Lo que esta tarjeta decide:
+ * **Se lee de un vistazo: icono, nombre, para qué sirve, y un botón.** Antes
+ * era un nombre, cuatro datos sueltos en la misma línea y hasta cinco
+ * botones en fila; había que leerla entera para saber si estaba conectada.
+ * Ahora la tarjeta tiene la forma de un directorio de aplicaciones, que es
+ * lo que es.
  *
- * - **Dice qué desbloquea**, en número de capacidades. Es lo que convierte
+ * Lo que decide:
+ *
+ * - **El estado no depende de una insignia.** Un punto en la esquina del
+ *   icono y una palabra en la línea de abajo lo dicen; la insignia se
+ *   reserva para cuando hay algo que explicar —roto, pausado, caducado—,
+ *   que es cuando hacen falta palabras. Quien no distingue el color lee la
+ *   palabra; quien no lee la línea ve el punto.
+ * - **Una sola acción a la vista.** Conectar es un `+`, como en cualquier
+ *   directorio. Lo demás —sincronizar, pausar, reanudar, desconectar— vive
+ *   en «Más», igual que en la cabecera de la ficha. Ninguna se ha perdido.
+ * - **Un conector roto pide palabras, no un icono.** Ahí la acción vuelve a
+ *   ser un botón con texto: «Reconectar» tiene que poder leerse.
+ * - **Dice qué desbloquea**, en número de habilidades. Es lo que convierte
  *   «conectar WooCommerce» de tarea administrativa en decisión fácil (R4.2).
- * - **Lo que necesita atención se ve sin leer**: el estado va en su insignia
- *   y la acción que lo arregla es el botón primario.
- * - **Desconectar sigue pidiendo confirmación.** Corta capacidades que están
+ * - **Desconectar sigue pidiendo confirmación.** Corta habilidades que están
  *   funcionando, y eso no puede pasar por un clic distraído.
  */
 export function ConnectorCard({
@@ -133,38 +150,50 @@ export function ConnectorCard({
     return <PublicLinkCard refId={refId} connector={connector} canWrite={canWrite} />;
   }
 
-  return (
-    <CardShell name={name} refId={refId} connector={connector} pending={pending}>
-      {canWrite ? (
-        <span className="flex flex-wrap gap-2">
-          {!connected ? (
-            <Button size="xs" onClick={connect} disabled={pending}>
-              {installed ? t("connectors.reconnect") : t("connectors.connect")}
+  const broken = status === "error" || status === "revoked" || status === "expired";
+  const actions = !canWrite ? null : !installed ? (
+    // Sin conectar: el `+` de cualquier directorio. Lleva su nombre
+    // accesible porque un icono solo no dice a qué conector pertenece.
+    <Button size="icon-sm" onClick={connect} disabled={pending} aria-label={t("connectors.connect.aria", { name })}>
+      <Plus aria-hidden="true" />
+    </Button>
+  ) : (
+    <span className="flex shrink-0 items-center gap-2">
+      {/* Roto: la salida se lee, no se adivina. */}
+      {broken ? (
+        <Button size="xs" onClick={connect} disabled={pending}>
+          {t("connectors.reconnect")}
+        </Button>
+      ) : null}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button size="icon-sm" variant="ghost" disabled={pending} aria-label={t("connectors.more", { name })}>
+              <MoreHorizontal aria-hidden="true" />
             </Button>
+          }
+        />
+        <DropdownMenuContent align="end">
+          {!connected && !broken ? (
+            <DropdownMenuItem onClick={connect}>{t("connectors.reconnect")}</DropdownMenuItem>
           ) : null}
-          {installed && !apiKey ? (
-            <Button size="xs" variant="outline" onClick={sync} disabled={pending}>
-              {t("connectors.sync")}
-            </Button>
-          ) : null}
+          {!apiKey ? <DropdownMenuItem onClick={sync}>{t("connectors.sync")}</DropdownMenuItem> : null}
           {connected ? (
-            <Button size="xs" variant="outline" onClick={() => changeStatus("pause")} disabled={pending}>
-              {t("connectors.pause")}
-            </Button>
+            <DropdownMenuItem onClick={() => changeStatus("pause")}>{t("connectors.pause")}</DropdownMenuItem>
           ) : null}
           {status === "paused" ? (
-            <Button size="xs" variant="outline" onClick={() => changeStatus("resume")} disabled={pending}>
-              {t("connectors.resume")}
-            </Button>
+            <DropdownMenuItem onClick={() => changeStatus("resume")}>{t("connectors.resume")}</DropdownMenuItem>
           ) : null}
-          {installed ? (
-            <Button size="xs" variant="destructive" onClick={() => setDisconnecting(true)} disabled={pending}>
-              {t("connectors.disconnect")}
-            </Button>
-          ) : null}
-        </span>
-      ) : null}
+          <DropdownMenuItem variant="destructive" onClick={() => setDisconnecting(true)}>
+            {t("connectors.disconnect")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  );
 
+  return (
+    <CardShell name={name} refId={refId} connector={connector} pending={pending} actions={actions}>
       {syncKey ? (
         <p className="flex flex-wrap items-center gap-2 text-xs" role="status">
           <span
@@ -223,59 +252,147 @@ export function ConnectorCard({
   );
 }
 
-/** La cabecera común: nombre, estado, qué desbloquea y cuándo se sincronizó. */
+/**
+ * El armazón común: icono, nombre, para qué sirve, la acción, y debajo lo
+ * que se sabe de él.
+ */
 function CardShell({
   name,
   refId,
   connector,
   pending,
+  actions,
   children,
 }: {
   name: string;
   refId: string;
   connector: ConnectorOut;
   pending: boolean;
+  /** Lo que se puede hacer con él: un `+`, un «Más», o nada. */
+  actions?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   const t = useT();
   const locale = useLocale();
   const unlocks = connector.tools_total;
+  const status = connector.status;
+  const connected = status === "connected";
+  const broken = status === "error" || status === "revoked" || status === "expired";
+  // La insignia se reserva para lo que necesita explicación. «Conectado» y
+  // «sin conectar» ya los dicen el punto y la palabra de la línea de abajo;
+  // repetirlos en una insignia es ruido que compite con el que sí importa.
+  const badge = connector.installed && !connected;
+
   return (
     <li
-      className="flex min-w-0 flex-col gap-2 rounded-md bg-card p-4 ring-1 ring-foreground/10"
+      className={cn(
+        "flex min-w-0 flex-col gap-3 rounded-md bg-card p-4 ring-1 ring-foreground/10",
+        // Lo roto se ve antes de leerlo, también en la tarjeta entera.
+        broken && "ring-destructive/30",
+      )}
       aria-busy={pending}
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-        <h3 className="min-w-0 truncate font-medium" title={name}>
-          {name}
-        </h3>
-        <StatusBadge tone={connectorTone(connector.status)}>
-          {t(connectorStatusKey(connector.status))}
-        </StatusBadge>
-        {/* R4.2: qué desbloquea, que es lo que convierte la tarea en decisión.
-            Sin catálogo sincronizado todavía no se puede contar, y decir «0
-            capacidades» sonaría a que no sirve para nada. */}
+      <div className="flex min-w-0 items-start gap-3">
+        <ConnectorIcon connector={connector} />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h3 className="min-w-0 truncate font-medium" title={name}>
+            {name}
+          </h3>
+          {/* Para qué sirve, que es lo que decide si merece la pena
+              conectarlo. La API no lo trae; el copy es nuestro. */}
+          <p className="text-sm text-pretty text-muted-foreground">{t(descKey(connector.slug))}</p>
+        </div>
+        {actions}
+      </div>
+
+      {/* Lo que se sabe de él: el estado en palabras, qué desbloquea, cuántas
+          están encendidas y cuándo se sincronizó. Todo en una línea, en
+          gris, porque se consulta — no se decide con ello. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-2">
+          <StatusDot tone={connectorTone(status)} />
+          {connected
+            ? t("connectors.state.connected")
+            : connector.installed
+              ? t(connectorStatusKey(status))
+              : t("connectors.state.notConnected")}
+        </span>
+        {badge ? (
+          <StatusBadge tone={connectorTone(status)}>{t(connectorStatusKey(status))}</StatusBadge>
+        ) : null}
         {unlocks > 0 ? (
           <Link
             href={`/clients/${encodeURIComponent(refId)}/capabilities`}
-            className="text-xs text-muted-foreground underline underline-offset-4"
+            className="underline underline-offset-4"
           >
             {unlocks === 1 ? t("int.unlocksOne") : t("int.unlocks", { n: unlocks })}
           </Link>
         ) : null}
         {connector.tools_enabled > 0 ? (
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="tabular-nums">
             {t("connectors.tools", { on: connector.tools_enabled, total: connector.tools_total })}
           </span>
         ) : null}
         {connector.last_synced_at ? (
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="tabular-nums">
             {t("connectors.lastSync")}: {formatDateTime(connector.last_synced_at, locale)}
           </span>
         ) : null}
       </div>
       {children}
     </li>
+  );
+}
+
+/** La descripción del conector, si la tenemos escrita. Se comprueba contra
+ *  el diccionario como ya hacen `statusKey` y `roleKey`: un conector nuevo
+ *  del catálogo cae en la frase de reserva en vez de pintar su clave. */
+function descKey(slug: string): MessageKey {
+  const key = `connectors.desc.${slug}` as MessageKey;
+  return key in messages ? key : "connectors.desc.fallback";
+}
+
+/**
+ * El icono de la aplicación, con su estado en la esquina.
+ *
+ * El logotipo lo sirve el propio proveedor —es lo que trae el catálogo—, así
+ * que se pide sin referente: el navegador del partner no le cuenta a
+ * WooCommerce desde qué dirección de la consola se está mirando. Cuando no
+ * hay logotipo, la inicial sobre un cuadro tintado; un hueco gris no
+ * distingue una tarjeta de otra.
+ */
+function ConnectorIcon({ connector }: { connector: ConnectorOut }) {
+  const inicial = connector.display_name.trim().charAt(0).toUpperCase();
+  return (
+    <span data-slot="connector-icon" className="relative shrink-0">
+      <span className="flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted ring-1 ring-foreground/10">
+        {connector.logo_url ? (
+          /* El catálogo puede traer el logotipo de cualquier dominio, y
+             `next/image` exige declararlos uno a uno: se rompería con el
+             primer conector que Auphere publique. */
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={connector.logo_url}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="size-10 object-contain"
+          />
+        ) : (
+          <span aria-hidden="true" className="text-sm font-medium text-muted-foreground">
+            {inicial}
+          </span>
+        )}
+      </span>
+      {/* Solo cuando hay algo que decir: un punto sobre un conector sin
+          conectar sería un estado inventado. */}
+      {connector.installed ? (
+        <StatusDot
+          tone={connectorTone(connector.status)}
+          className="absolute -right-1 -bottom-1 ring-2 ring-card"
+        />
+      ) : null}
+    </span>
   );
 }
 
@@ -331,8 +448,38 @@ function PublicLinkCard({
   }
 
   const fieldId = `agendapro-url-${refId}`;
+  // La misma gramática que el resto: sin enlazar, un `+`; enlazado, «Más».
+  // Su acción es distinta —una URL pública, no credenciales— pero eso no es
+  // razón para que la tarjeta se lea distinta.
+  const actions = !canWrite ? null : !linked ? (
+    <Button
+      size="icon-sm"
+      onClick={() => setOpen(true)}
+      disabled={pending}
+      aria-label={t("connectors.agendapro.link")}
+    >
+      <Plus aria-hidden="true" />
+    </Button>
+  ) : (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button size="icon-sm" variant="ghost" disabled={pending} aria-label={t("connectors.more", { name })}>
+            <MoreHorizontal aria-hidden="true" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setOpen(true)}>{t("connectors.agendapro.relink")}</DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onClick={() => setUnlinking(true)}>
+          {t("connectors.agendapro.unlink")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
-    <CardShell name={name} refId={refId} connector={connector} pending={pending}>
+    <CardShell name={name} refId={refId} connector={connector} pending={pending} actions={actions}>
       {linked ? (
         <a
           href={connector.public_url ?? undefined}
@@ -343,19 +490,6 @@ function PublicLinkCard({
           <span className="truncate">{connector.public_url}</span>
           <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
         </a>
-      ) : null}
-      <p className="text-xs text-pretty text-muted-foreground">{t("connectors.agendapro.body")}</p>
-      {canWrite ? (
-        <span className="flex flex-wrap gap-2">
-          <Button size="xs" onClick={() => setOpen(true)} disabled={pending}>
-            {linked ? t("connectors.agendapro.relink") : t("connectors.agendapro.link")}
-          </Button>
-          {linked ? (
-            <Button size="xs" variant="destructive" onClick={() => setUnlinking(true)} disabled={pending}>
-              {t("connectors.agendapro.unlink")}
-            </Button>
-          ) : null}
-        </span>
       ) : null}
 
       <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)}>
