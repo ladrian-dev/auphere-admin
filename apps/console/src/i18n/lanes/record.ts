@@ -8,8 +8,8 @@ export const recordMessages = {
   "clients.nav.group.observe": { es: "Observar", en: "Observe" },
   "clients.nav.group.configure": { es: "Configurar", en: "Configure" },
   "clients.nav.group.connect": { es: "Conectar", en: "Connect" },
-  "clients.nav.capabilities": { es: "Capacidades", en: "Capabilities" },
-  "clients.nav.integrations": { es: "Integraciones", en: "Integrations" },
+  "clients.nav.capabilities": { es: "Habilidades", en: "Skills" },
+  "clients.nav.integrations": { es: "Conectores", en: "Connectors" },
   "clients.nav.agentSettings": { es: "Ajustes", en: "Settings" },
   "clients.nav.clientData": { es: "Datos del cliente", en: "Client details" },
   "clients.nav.mark.draft": { es: "cambios sin publicar", en: "unpublished changes" },
@@ -125,7 +125,7 @@ export const recordMessages = {
   // puede mandar a una pantalla que no existe. El borrador de los ajustes
   // del agente se revisa y se publica desde «Agente», que es donde viven.
   "draft.screen.settings": { es: "Agente", en: "Agent" },
-  "draft.screen.capabilities": { es: "Capacidades", en: "Capabilities" },
+  "draft.screen.capabilities": { es: "Habilidades", en: "Skills" },
   "draft.screen.knowledge": { es: "Conocimiento", en: "Knowledge" },
   "draft.screen.prompt": { es: "Instrucciones", en: "Instructions" },
   "draft.field.identity": { es: "Identidad", en: "Identity" },

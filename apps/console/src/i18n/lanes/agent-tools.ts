@@ -95,7 +95,7 @@ export const agentToolsMessages = {
   // Ya no hay una lista de herramientas detrás que «siga disponible»: las
   // integraciones son la pantalla, así que el texto dice lo que de verdad
   // pasa y qué hacer.
-  "connectors.error": { es: "No se pudieron cargar las integraciones. Vuelve a intentarlo en un momento; lo que ya estaba conectado sigue funcionando.", en: "Could not load the integrations. Try again in a moment; whatever was already connected keeps working." },
+  "connectors.error": { es: "No se pudieron cargar los conectores. Vuelve a intentarlo en un momento; lo que ya estaba conectado sigue funcionando.", en: "Could not load the connectors. Try again in a moment; whatever was already connected keeps working." },
   "connectors.status.none": { es: "No conectado", en: "Not connected" },
   "connectors.status.connected": { es: "Conectado", en: "Connected" },
   "connectors.status.pending": { es: "Pendiente de consentimiento", en: "Awaiting consent" },

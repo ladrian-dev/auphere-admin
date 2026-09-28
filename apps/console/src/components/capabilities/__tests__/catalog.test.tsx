@@ -118,7 +118,7 @@ describe("Capacidades · agrupación y sector", () => {
 
   it("dice cuántas esconde el sector y ofrece verlas, con un enlace compartible", () => {
     mount(out({ hidden_by_sector: 7 }));
-    expect(screen.getByText(/7 capacidades son de otros sectores/)).toBeInTheDocument();
+    expect(screen.getByText(/7 habilidades son de otros sectores/)).toBeInTheDocument();
     const verTodas = screen.getByRole("link", { name: "Ver todas" });
     // Viaja en la URL, no en estado del cliente: así se puede compartir y
     // volver atrás hace lo que el partner espera.
@@ -127,7 +127,7 @@ describe("Capacidades · agrupación y sector", () => {
 
   it("una sola escondida se dice en singular", () => {
     mount(out({ hidden_by_sector: 1 }));
-    expect(screen.getByText(/1 capacidad es de otro sector/)).toBeInTheDocument();
+    expect(screen.getByText(/1 habilidad es de otro sector/)).toBeInTheDocument();
   });
 
   it("sin sector no filtra nada y lo explica en vez de callarse", () => {
@@ -150,7 +150,7 @@ describe("Capacidades · buscador", () => {
     mount();
     expect(screen.getByText("1 de 3 encendidas")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Buscar una capacidad"), { target: { value: "cita" } });
+    fireEvent.change(screen.getByLabelText("Buscar una habilidad"), { target: { value: "cita" } });
     expect(screen.getByText("Reservar una cita")).toBeInTheDocument();
     expect(screen.queryByText("Consultar un pedido")).toBeNull();
     // Los grupos vacíos desaparecen con lo que contenían.
@@ -158,14 +158,14 @@ describe("Capacidades · buscador", () => {
     expect(screen.getByText("0 de 1 encendidas")).toBeInTheDocument();
 
     // También busca en la descripción, no solo en el título.
-    fireEvent.change(screen.getByLabelText("Buscar una capacidad"), { target: { value: "agenda" } });
+    fireEvent.change(screen.getByLabelText("Buscar una habilidad"), { target: { value: "agenda" } });
     expect(screen.getByText("Reservar una cita")).toBeInTheDocument();
   });
 
   it("sin resultados lo dice con la palabra buscada y deja salir", () => {
     mount();
-    fireEvent.change(screen.getByLabelText("Buscar una capacidad"), { target: { value: "zzz" } });
-    expect(screen.getByText(/Ninguna capacidad coincide con «zzz»/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Buscar una habilidad"), { target: { value: "zzz" } });
+    expect(screen.getByText(/Ninguna habilidad coincide con «zzz»/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Ver todas" }));
     expect(screen.getByText("Reservar una cita")).toBeInTheDocument();
   });
@@ -256,11 +256,11 @@ describe("Capacidades · lo que le falta para funcionar", () => {
 
   it("el bloque de integraciones dice cuántas desbloquea cada una y no duplica su pestaña", () => {
     mount();
-    expect(screen.getByText(/Falta una integración/)).toBeInTheDocument();
+    expect(screen.getByText(/Falta un conector/)).toBeInTheDocument();
     expect(screen.getByText("desbloquea 1 de las que ves")).toBeInTheDocument();
     // Pausar, desconectar y sincronizar viven solo en Integraciones: hacerlo
     // desde aquí rompería en silencio lo que se está mirando.
-    expect(screen.getByText(/Pausar, desconectar o sincronizar se hace en Integraciones/)).toBeInTheDocument();
+    expect(screen.getByText(/Pausar, desconectar o sincronizar se hace en Conectores/)).toBeInTheDocument();
     for (const nombre of ["Sincronizar", "Desconectar", "Pausar"]) {
       expect(screen.queryByRole("button", { name: nombre })).toBeNull();
     }
@@ -269,7 +269,7 @@ describe("Capacidades · lo que le falta para funcionar", () => {
   it("si todo está conectado, el bloque no ocupa sitio", () => {
     const conectado = { ...pedidos, connector: { slug: "woocommerce", display_name: "WooCommerce", status: "connected" }, usable: true };
     mount(out({ groups: [{ function: "orders", items: [conectado] }] }));
-    expect(screen.queryByText(/Falta una integración/)).toBeNull();
+    expect(screen.queryByText(/Falta un conector/)).toBeNull();
     expect(screen.queryByText(/Necesita WooCommerce/)).toBeNull();
   });
 });
@@ -333,7 +333,10 @@ describe("Capacidades · modo y detalle técnico", () => {
 
     fireEvent.click(screen.getByText("Detalle técnico"));
     expect(screen.getByText("escalation-policy")).toBeInTheDocument();
-    expect(screen.getByText("Habilidad")).toBeInTheDocument();
+    // «Skill» y no «Habilidad»: la pantalla entera se llama Habilidades desde
+    // el 2026-09-28, así que el detalle técnico usa el nombre interno — que
+    // es de lo que va ese bloque— en vez de repetir el de la pantalla.
+    expect(screen.getByText("Skill")).toBeInTheDocument();
     expect(screen.getByText("1.2.0")).toBeInTheDocument();
   });
 
@@ -353,7 +356,7 @@ describe("Capacidades · solo lectura", () => {
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Encender las visibles" })).toBeNull();
     expect(screen.queryByLabelText("Cuándo la usa")).toBeNull();
-    expect(screen.getByText(/Tu rol permite ver las capacidades, no cambiarlas/)).toBeInTheDocument();
+    expect(screen.getByText(/Tu rol permite ver las habilidades, no cambiarlas/)).toBeInTheDocument();
     // El estado sigue siendo legible: dos apagadas y la de pedidos encendida.
     expect(screen.getAllByText("Apagada")).toHaveLength(2);
     expect(screen.getByText("Encendida")).toBeInTheDocument();
@@ -361,7 +364,7 @@ describe("Capacidades · solo lectura", () => {
 
   it("sin catálogo, las integraciones siguen arriba en vez de esconderse con el vacío", () => {
     mount(out({ groups: [], hidden_by_sector: 0 }));
-    expect(screen.getByText(/todavía no ha publicado capacidades/)).toBeInTheDocument();
+    expect(screen.getByText(/todavía no ha publicado habilidades/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Encender las visibles" })).toBeNull();
   });
 });
