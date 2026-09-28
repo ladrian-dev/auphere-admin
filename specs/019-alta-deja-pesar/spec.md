@@ -66,6 +66,9 @@ Cuatro hechos que la spec ataca:
 - Q: Si una plantilla no da un agente coherente sin rellenar nada, ¿qué hacemos? → A: esa conserva sus campos mínimos, anotado en paridad. **Revocada el 2026-09-28** (ver abajo).
 - Q: ¿Qué se rellena en el alta y qué no? → A: **lo básico aquí, lo avanzado en los ajustes del agente**. Precios, formas de pago, credenciales del titular y teléfonos de referencia no son datos de alta. Consecuencia: `aesthetic_clinic_v1` deja de ser la excepción y **las trece plantillas piden lo mismo**; su semilla lleva valores por defecto seguros, y esa tarea entra en alcance.
 - Q: ¿El horario se escribe o se elige? → A: se elige, con controles de hora. Y eso **disuelve el campo «Sábados»**, que solo existía porque el horario era texto libre.
+- Q: ¿Se pregunta si publicar al crear? → A: **no**. El cliente no atiende hasta estar configurado y con canal, así que elegirlo al crear no adelanta nada. Publicar es un paso de la ficha. **Historia 4 y R6 quedan retiradas.**
+- Q: ¿Con cuánto crédito nace un cliente? → A: **cero**. El partner se lo asigna cuando lo vea.
+- Q: ¿El horario empieza resumido o día a día? → A: **día a día**, con la opción de resumirlo. Casi ningún negocio abre los siete días igual.
 - Q: ¿La dirección permite elegir en un mapa? → A: **pendiente**. Añade un script de terceros, una clave de API y manda la dirección del cliente a Google; cambia la superficie de confianza que esta spec declara.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
@@ -148,24 +151,13 @@ propuestos.
 
 ---
 
-### Historia 4 — Publicar se decide cuando se elige la plantilla (Prioridad: P3)
+### Historia 4 — *(retirada el 2026-09-28)*
 
-La decisión de si el agente nace publicado o en borrador se toma junto a la
-plantilla, que es lo que la hace entendible, y no en un resumen final.
-
-**Por qué esta prioridad**: es una mejora de orden; el alta ya funciona sin
-ella.
-
-**Prueba independiente**: el partner ve la elección antes de escribir nada, y el
-resumen final se limita a resumir.
-
-**Escenarios de aceptación**:
-
-1. **Dado** que el partner ha elegido plantilla, **cuando** se le ofrece
-   publicar, **entonces** la elección está en la misma pantalla y dice qué pasa
-   con cada opción.
-2. **Dado** que el rol no puede publicar, **cuando** llega ahí, **entonces** no
-   ve un control muerto y el alta no promete lo que no va a ocurrir.
+Decía que publicar se decidiera junto a la plantilla. El owner la retiró
+entera: **la elección no tenía consecuencia**. Un cliente no atiende hasta
+estar configurado y con canal, así que «publícalo ahora» no adelantaba el día
+siguiente — solo obligaba a elegir entre dos palabras. El agente nace en
+borrador y se publica desde la ficha.
 
 ---
 
@@ -307,8 +299,8 @@ palabras y que alguien me prepare el borrador, para no empezar de cero.
 
 ### Requisito 6 — Lo que se crea se ve mientras se crea
 
-**Historia de usuario:** Como partner, quiero saber qué está pasando y qué quedó
-hecho si algo falla, para no tener que adivinar si repetir.
+**Historia de usuario:** Como partner, quiero saber qué está pasando y qué
+quedó hecho si algo falla, para no tener que adivinar si repetir.
 
 #### Criterios de aceptación
 
@@ -317,6 +309,49 @@ hecho si algo falla, para no tener que adivinar si repetir.
    y DEBE ofrecer reintentar **solo** lo que falló.
 3. WHEN el alta termina THEN el sistema DEBE decir qué se creó y ofrecer el
    siguiente paso real, que es conectar el canal.
+4. El sistema NO DEBE preguntar si publicar el agente. *(Owner, 2026-09-28: el
+   cliente no atiende hasta estar configurado y con canal, así que la elección
+   no adelantaba nada. El agente nace en borrador y se publica desde la ficha,
+   donde la tarjeta de pasos ya lo pide.)*
+
+### Requisito 8 — Un cliente nace sin crédito
+
+**Historia de usuario:** Como partner, quiero decidir yo cuánto crédito lleva
+cada cliente, para no repartir sin querer lo que he comprado.
+
+#### Criterios de aceptación
+
+1. WHEN se crea un cliente THEN el sistema DEBE asignarle **cero créditos**.
+2. El sistema DEBE crear igualmente su fila de cupo. *(Una fila con tope 0 es
+   visible y explicable; **la ausencia de fila es el silencio que costó el corte
+   del 31-ago** — `seed_default_allocation` existe por eso y no se toca.)*
+3. WHEN el alta termina THEN el sistema DEBE decir que el cliente empieza sin
+   crédito y dónde se le asigna.
+
+### Requisito 9 — Todo en un idioma
+
+**Historia de usuario:** Como partner, quiero leer la consola en mi idioma sin
+palabras sueltas del otro, para no tener que traducir a medias.
+
+#### Criterios de aceptación
+
+1. El sistema NO DEBE mezclar idiomas en una misma pantalla. *(Medido el
+   2026-09-28: «Spa (belleza y wellness)» y «Clínica estética (medspa +
+   cirugía)» en una pantalla en español.)*
+2. WHERE un nombre de plantilla lleva una palabra del otro idioma EL sistema
+   DEBE cambiarla en la semilla, que es de donde sale.
+3. Un nombre de marca —WooCommerce, WhatsApp— NO es una palabra en inglés y se
+   deja como es.
+
+### Requisito 10 — Cada tipo de negocio se reconoce sin leerlo
+
+**Historia de usuario:** Como partner, quiero reconocer el rubro de mi cliente
+de un vistazo, para no leer trece nombres.
+
+#### Criterios de aceptación
+
+1. Cada plantilla DEBE llevar un icono de su rubro.
+2. El icono NO DEBE ser la única señal: el nombre y para qué sirve siguen ahí.
 
 ### Entidades clave
 
@@ -345,6 +380,9 @@ de RLS cambian.
   ninguna pantalla menciona una ayuda que no está.
 - **CE-007**: ninguna dirección que la consola tenía antes de esta spec responde
   «no existe».
+- **CE-008**: un cliente recién creado tiene **cero créditos** y su ficha lo
+  dice; hoy nace con 50 000 que nadie decidió.
+- **CE-009**: ninguna pantalla del alta mezcla idiomas.
 
 ## Fuera de alcance
 

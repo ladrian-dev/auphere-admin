@@ -67,7 +67,9 @@ un solo campo de medicina estética.
 - [ ] T010 [P] [US2] Tests del selector de plantilla: nada preseleccionado, no se puede continuar sin elegir, buscar reduce y dice cuántas quedan, y «sin plantilla» existe como opción nombrada que dice qué implica. _Requisitos: 2.1–2.4_
 - [ ] T011 [P] [US1] Tests del alta: **tres pasos**, ninguno de canal, y el paso del negocio enseña exactamente los campos que la plantilla exige — ni uno opcional. _Requisitos: 1.2, 1.3, 3.1, 3.3_
 - [ ] T012 [P] [US1] Tests de la referencia: se deriva del nombre, vive plegada, y un duplicado se dice **antes** de intentar crear proponiendo una libre. _Requisitos: 4.1–4.3_
-- [ ] T013 [P] [US4] Tests de publicar: la elección está junto al resumen, y quien no puede publicar no ve un control muerto ni una promesa. _Requisitos: 6.1, 6.2_ *(historia 4)*
+- [ ] T013 [P] [US1] Test de que **el alta no pregunta si publicar**: el agente nace en borrador y la ficha lo pide. Se queda como guardia para que la pregunta no vuelva sin decisión escrita. _Requisitos: 6.4_
+- [ ] T013c [P] [US1] Tests del crédito: un cliente nace con **cero**, su fila de cupo **sí se crea** —la ausencia de fila es el silencio del 31-ago— y el alta dice dónde se asigna. _Requisitos: 8.1–8.3 · CE-008_
+- [ ] T013d [P] Test de que ninguna cadena visible del alta mezcla idiomas, incluidos los nombres de plantilla que vienen de la semilla. Un nombre de marca no cuenta. _Requisitos: 9.1–9.3 · CE-009_
 
 ### Implementación
 
@@ -76,7 +78,10 @@ un solo campo de medicina estética.
 - [ ] T014b [US1] El control de horario y el campo de dirección, con la salida en el formato que la plantilla espera (`tenant.business_hours_label`). _Requisitos: 7.1–7.4_
 - [ ] T015 [US1] Rehacer `wizard.tsx` a tres pasos y `wizard-state.ts` en consecuencia: fuera `ChannelChoice` y su etapa, dentro `requiredPlaceholders`. _Requisitos: 1.1–1.6, 3.1–3.3_
 - [ ] T016 [US1] La referencia, derivada y plegada, con la comprobación de duplicado antes de crear. _Requisitos: 4.1–4.4_
-- [ ] T017 [US4] Publicar junto al resumen, y la ejecución por etapas con su reintento por etapa, que ya existe y se conserva. _Requisitos: 6.1–6.3_
+- [ ] T017 [US1] La ejecución por etapas con su reintento por etapa, que ya existe y se conserva. Sin etapa de publicar. _Requisitos: 6.1–6.4_
+- [ ] T017b Crédito inicial a **cero**: `partner_default_client_allocation_tokens` pasa de 50 000 a 0. La fila se sigue sembrando. _Requisitos: 8.1, 8.2_
+- [ ] T017c Nombres de plantilla sin inglés en la semilla («wellness» → «bienestar», «medspa» → «con cirugía») y en la KB. _Requisitos: 9.1, 9.2_
+- [ ] T017d Icono por rubro en las trece plantillas. _Requisitos: 10.1, 10.2_
 
 ### Cierre
 

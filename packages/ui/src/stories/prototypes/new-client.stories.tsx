@@ -1,11 +1,29 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Search } from "lucide-react";
+import {
+  Brush,
+  Flower2,
+  HeartPulse,
+  MessageCircle,
+  Package,
+  PenLine,
+  Plus,
+  Receipt,
+  Scissors,
+  Search,
+  ShoppingCart,
+  Smile,
+  Sparkles,
+  Stethoscope,
+  Syringe,
+  UtensilsCrossed,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "../../components/button";
 import { Checklist, type ChecklistItem } from "../../components/checklist";
 import { Combobox } from "../../components/combobox";
-import { DescriptionList } from "../../components/description-list";
 import { EmptyState } from "../../components/empty-state";
 import { Input } from "../../components/input";
 import { Label } from "../../components/label";
@@ -77,41 +95,28 @@ type Plantilla = {
   nombre: string;
   para: string;
   habilidades: number;
-  /** Lo que el renderizador exige. Medido, no estimado. */
-  campos: string[];
+  /** El rubro, de un vistazo. Trece nombres en una rejilla se leen uno a uno;
+   *  con icono se reconoce el tuyo sin leerlos todos (owner, 2026-09-28). */
+  icono: LucideIcon;
 };
 
-/** Lo que el alta pide, y es **lo mismo para las trece** (owner, 2026-09-28):
- *  dónde está el negocio y cuándo abre. Todo lo demás —precios, formas de
- *  pago, credenciales del titular— es dato avanzado y se rellena en los
- *  ajustes del agente. */
-const CAMPOS_COMUNES = ["Dirección", "Horario"];
-
 const PLANTILLAS: Plantilla[] = [
-  { id: "barbershop", nombre: "Barbería / Peluquería", para: "Reserva de citas, precios y horarios.", habilidades: 18, campos: CAMPOS_COMUNES },
-  { id: "beauty", nombre: "Salón de belleza", para: "Citas y tratamientos, con sus tiempos.", habilidades: 14, campos: CAMPOS_COMUNES },
-  { id: "nail", nombre: "Estudio de uñas", para: "Citas, diseños y depósitos.", habilidades: 19, campos: CAMPOS_COMUNES },
-  { id: "spa", nombre: "Spa (belleza y wellness)", para: "Reservas y paquetes.", habilidades: 14, campos: CAMPOS_COMUNES },
-  { id: "dental", nombre: "Clínica dental", para: "Citas, urgencias y presupuestos.", habilidades: 14, campos: CAMPOS_COMUNES },
-  { id: "clinica", nombre: "Clínica / Consultorio", para: "Citas y preguntas frecuentes.", habilidades: 13, campos: CAMPOS_COMUNES },
-  { id: "medspa", nombre: "Medicina estética (sin cirugía)", para: "Citas y valoraciones.", habilidades: 14, campos: CAMPOS_COMUNES },
-  { id: "restaurante", nombre: "Restaurante (reservas)", para: "Reservas, carta y horarios.", habilidades: 13, campos: CAMPOS_COMUNES },
-  { id: "generic", nombre: "Genérica (asistente básico)", para: "Responde lo básico del negocio.", habilidades: 5, campos: CAMPOS_COMUNES },
-  {
-    id: "aesthetic",
-    nombre: "Clínica estética (medspa + cirugía)",
-    para: "Citas, valoraciones y referencias quirúrgicas.",
-    habilidades: 15,
-    // Era la excepción: pedía doce campos porque su prompt los exige. El
-    // owner lo cortó el 2026-09-28 — precios, formas de pago, credenciales
-    // del titular y teléfonos de referencia **no se rellenan en el alta**.
-    // Van a los ajustes del agente, y la semilla lleva mientras tanto una
-    // respuesta segura («consúltalo con recepción»), no un hueco vacío.
-    campos: CAMPOS_COMUNES,
-  },
-  { id: "cobranza", nombre: "Cobranza / Asistente del administrador", para: "Recordatorios y estado de pagos.", habilidades: 12, campos: CAMPOS_COMUNES },
-  { id: "inventario", nombre: "Inventario / Asistente de almacén", para: "Stock y entradas y salidas.", habilidades: 5, campos: CAMPOS_COMUNES },
-  { id: "woocommerce", nombre: "Ventas / Tienda WooCommerce", para: "Catálogo, pedidos y envíos.", habilidades: 9, campos: CAMPOS_COMUNES },
+  { id: "barbershop", nombre: "Barbería / Peluquería", para: "Reserva de citas, precios y horarios.", habilidades: 18, icono: Scissors },
+  { id: "beauty", nombre: "Salón de belleza", para: "Citas y tratamientos, con sus tiempos.", habilidades: 14, icono: Sparkles },
+  { id: "nail", nombre: "Estudio de uñas", para: "Citas, diseños y depósitos.", habilidades: 19, icono: Brush },
+  // «wellness» era inglés dentro de una pantalla en español (owner,
+  // 2026-09-28). El nombre vive en la semilla, así que se cambia allí.
+  { id: "spa", nombre: "Spa (belleza y bienestar)", para: "Reservas y paquetes.", habilidades: 14, icono: Flower2 },
+  { id: "dental", nombre: "Clínica dental", para: "Citas, urgencias y presupuestos.", habilidades: 14, icono: Smile },
+  { id: "clinica", nombre: "Clínica / Consultorio", para: "Citas y preguntas frecuentes.", habilidades: 13, icono: Stethoscope },
+  { id: "medspa", nombre: "Medicina estética (sin cirugía)", para: "Citas y valoraciones.", habilidades: 14, icono: Syringe },
+  { id: "restaurante", nombre: "Restaurante (reservas)", para: "Reservas, carta y horarios.", habilidades: 13, icono: UtensilsCrossed },
+  { id: "generic", nombre: "Genérica (asistente básico)", para: "Responde lo básico del negocio.", habilidades: 5, icono: MessageCircle },
+  // «medspa» también era inglés.
+  { id: "aesthetic", nombre: "Clínica estética (con cirugía)", para: "Citas, valoraciones y referencias quirúrgicas.", habilidades: 15, icono: HeartPulse },
+  { id: "cobranza", nombre: "Cobranza / Asistente del administrador", para: "Recordatorios y estado de pagos.", habilidades: 12, icono: Receipt },
+  { id: "inventario", nombre: "Inventario / Asistente de almacén", para: "Control de existencias, entradas y salidas.", habilidades: 5, icono: Package },
+  { id: "woocommerce", nombre: "Ventas / Tienda WooCommerce", para: "Catálogo, pedidos y envíos.", habilidades: 9, icono: ShoppingCart },
 ];
 
 const ZONAS = ["Europe/Madrid", "Europe/Lisbon", "America/Bogota", "America/Santiago", "America/Mexico_City"];
@@ -180,15 +185,16 @@ function PasoPlantilla({
               onClick={() => setElegida(p.id)}
               className="flex min-w-0 flex-col items-start gap-1 rounded-md border border-border px-3 py-2 text-left transition-colors hover:bg-muted/60 aria-checked:border-foreground aria-checked:bg-muted"
             >
-              <span className="min-w-0 truncate font-medium">{p.nombre}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <p.icono aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 truncate font-medium">{p.nombre}</span>
+              </span>
               {/* Para qué sirve y cuánto trae: es lo que convierte trece
                   nombres en una decisión. Hoy la tarjeta enseña su clave
-                  interna y el número de herramientas. */}
+                  interna y el número de herramientas. Ya no dice «te pedirá N
+                  datos» porque las trece piden lo mismo. */}
               <span className="text-sm text-pretty text-muted-foreground">{p.para}</span>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                Enciende {p.habilidades} habilidades
-                {p.campos.length > 0 ? ` · te pedirá ${p.campos.length} ${p.campos.length === 1 ? "dato" : "datos"}` : " · no te pedirá nada más"}
-              </span>
+              <span className="text-xs text-muted-foreground tabular-nums">Enciende {p.habilidades} habilidades</span>
             </button>
           ))}
           <button
@@ -198,7 +204,10 @@ function PasoPlantilla({
             onClick={() => setElegida("ninguna")}
             className="flex min-w-0 flex-col items-start gap-1 rounded-md border border-dashed border-border px-3 py-2 text-left transition-colors hover:bg-muted/60 aria-checked:border-foreground aria-checked:bg-muted"
           >
-            <span className="font-medium">Ninguna de estas</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <PenLine aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+              <span className="font-medium">Ninguna de estas</span>
+            </span>
             <span className="text-sm text-pretty text-muted-foreground">
               El agente nace vacío y lo escribes tú. Puedes elegir una plantilla más adelante.
             </span>
@@ -299,79 +308,113 @@ function Direccion() {
 }
 
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"] as const;
+type Dia = (typeof DIAS)[number];
+type Tramo = { abre: string; cierra: string } | null;
+
+const POR_DEFECTO: Record<Dia, Tramo> = {
+  Lunes: { abre: "10:00", cierra: "19:00" },
+  Martes: { abre: "10:00", cierra: "19:00" },
+  Miércoles: { abre: "10:00", cierra: "19:00" },
+  Jueves: { abre: "10:00", cierra: "19:00" },
+  Viernes: { abre: "10:00", cierra: "19:00" },
+  Sábado: { abre: "10:00", cierra: "14:00" },
+  Domingo: null,
+};
 
 /**
  * El horario, con controles de hora en vez de texto libre.
  *
- * **Esto es lo que mata el campo «Sábados»** (owner, 2026-09-28). Ese campo
- * existe porque el horario es una cadena que alguien escribe a mano, y los
- * sábados no cabían en ella. Con un horario de verdad, el sábado es un día
- * más y el campo sobra.
+ * **Esto es lo que mató el campo «Sábados»** (owner, 2026-09-28). Ese campo
+ * existía porque el horario era una cadena que alguien escribía a mano y los
+ * sábados no cabían en ella. Aquí el sábado es un día más.
  *
- * Empieza por lo que casi siempre vale —un tramo de lunes a viernes— y solo
- * se abre día a día si el negocio lo necesita. Es un campo hasta que deja de
- * serlo.
+ * **Día a día primero** (owner, 2026-09-28). El resumido parecía más amable,
+ * pero mentía por omisión: casi ningún negocio abre los siete días igual, así
+ * que empezar por «de lunes a viernes» obliga a descubrir dónde se corrige. Se
+ * enseña la verdad y se ofrece resumirla.
+ *
+ * **Un día cerrado se quita, no se apaga.** La «X» lo saca de la lista y deja
+ * un «+» para volver a ponerlo. Un interruptor «Abre / Cerrado» con dos horas
+ * al lado que ya no significan nada era una fila que se contradecía.
  */
 function Horario() {
-  const [detallado, setDetallado] = useState(false);
-  const [abre, setAbre] = useState("10:00");
-  const [cierra, setCierra] = useState("19:00");
-  const [sabado, setSabado] = useState(true);
+  const [dias, setDias] = useState<Record<Dia, Tramo>>(POR_DEFECTO);
+  const [resumido, setResumido] = useState(false);
+
+  function cambiar(dia: Dia, tramo: Tramo) {
+    setDias((d) => ({ ...d, [dia]: tramo }));
+  }
 
   return (
     <fieldset className="flex flex-col gap-3">
       <legend className="text-sm font-medium">Horario</legend>
 
-      {detallado ? (
-        <div className="flex flex-col gap-2">
-          {DIAS.map((dia) => (
-            <div key={dia} className="flex flex-wrap items-center gap-2">
-              <span className="w-24 shrink-0 text-sm">{dia}</span>
-              <Input type="time" defaultValue="10:00" aria-label={`${dia}: abre`} className="w-32" />
-              <span className="text-sm text-muted-foreground">a</span>
-              <Input type="time" defaultValue="19:00" aria-label={`${dia}: cierra`} className="w-32" />
-            </div>
-          ))}
+      {resumido ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-32 shrink-0 text-sm">Todos los días</span>
+          <Input type="time" defaultValue="10:00" aria-label="Abre" className="w-32" />
+          <span className="text-sm text-muted-foreground">a</span>
+          <Input type="time" defaultValue="19:00" aria-label="Cierra" className="w-32" />
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="w-32 shrink-0 text-sm">De lunes a viernes</span>
-            <Input type="time" value={abre} onChange={(e) => setAbre(e.target.value)} aria-label="Abre" className="w-32" />
-            <span className="text-sm text-muted-foreground">a</span>
-            <Input type="time" value={cierra} onChange={(e) => setCierra(e.target.value)} aria-label="Cierra" className="w-32" />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="w-32 shrink-0 text-sm">Sábados</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={sabado}
-              aria-label="Abre los sábados"
-              onClick={() => setSabado((v) => !v)}
-              className="rounded-md border border-border px-3 py-1 text-sm aria-checked:border-foreground aria-checked:bg-muted"
-            >
-              {sabado ? "Abre" : "Cerrado"}
-            </button>
-            {sabado ? (
-              <>
-                <Input type="time" defaultValue="10:00" aria-label="Sábados: abre" className="w-32" />
-                <span className="text-sm text-muted-foreground">a</span>
-                <Input type="time" defaultValue="14:00" aria-label="Sábados: cierra" className="w-32" />
-              </>
-            ) : null}
-          </div>
-          <p className="text-sm text-muted-foreground">Domingos, cerrado.</p>
+          {DIAS.map((dia) => {
+            const tramo = dias[dia];
+            return (
+              <div key={dia} className="flex flex-wrap items-center gap-2">
+                <span className="w-24 shrink-0 text-sm">{dia}</span>
+                {tramo ? (
+                  <>
+                    <Input
+                      type="time"
+                      value={tramo.abre}
+                      onChange={(e) => cambiar(dia, { ...tramo, abre: e.target.value })}
+                      aria-label={`${dia}: abre`}
+                      className="w-32"
+                    />
+                    <span className="text-sm text-muted-foreground">a</span>
+                    <Input
+                      type="time"
+                      value={tramo.cierra}
+                      onChange={(e) => cambiar(dia, { ...tramo, cierra: e.target.value })}
+                      aria-label={`${dia}: cierra`}
+                      className="w-32"
+                    />
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`${dia}: cerrado`}
+                      onClick={() => cambiar(dia, null)}
+                    >
+                      <X aria-hidden="true" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm text-muted-foreground">Cerrado</span>
+                    <Button
+                      size="icon-sm"
+                      variant="outline"
+                      aria-label={`${dia}: abrir`}
+                      onClick={() => cambiar(dia, { abre: "10:00", cierra: "19:00" })}
+                    >
+                      <Plus aria-hidden="true" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
       <button
         type="button"
-        onClick={() => setDetallado((v) => !v)}
-        aria-expanded={detallado}
+        onClick={() => setResumido((v) => !v)}
+        aria-expanded={!resumido}
         className="self-start text-sm text-muted-foreground underline underline-offset-4"
       >
-        {detallado ? "Volver al horario sencillo" : "Cada día es distinto"}
+        {resumido ? "Poner un horario por día" : "Todos los días son iguales"}
       </button>
     </fieldset>
   );
@@ -390,58 +433,60 @@ function slug(s: string): string {
 
 type EstadoEtapa = "todo" | "running" | "done" | "failed" | "skipped";
 
+/**
+ * Confirmar.
+ *
+ * **Ya no se pregunta si publicar** (owner, 2026-09-28). Era una decisión sin
+ * consecuencia: el cliente no atiende hasta estar configurado y con canal, así
+ * que «publícalo ahora» no adelantaba nada — solo obligaba a elegir entre dos
+ * palabras que no cambiaban el día siguiente. Publicar es un paso de la ficha,
+ * donde la tarjeta ya lo pide.
+ *
+ * **Y el resumen dejó de ser una lista de términos.** Repetir «Nombre:
+ * Barbería El Corte» debajo de donde acabas de escribirlo no informa. Lo que
+ * falta saber es **qué va a pasar al pulsar**, así que eso es lo que se
+ * enseña: qué se crea, con qué agente, y con qué **no** nace.
+ */
 function PasoConfirmar({
-  publicarInicial = true,
   etapas,
 }: {
-  publicarInicial?: boolean;
   etapas?: Array<{ key: string; label: string; status: EstadoEtapa; detail?: string }>;
 }) {
-  const [publicar, setPublicar] = useState(publicarInicial);
-  const corriendo = etapas?.some((e) => e.status === "running") ?? false;
+  const plantilla = PLANTILLAS[0]!;
   const fallida = etapas?.find((e) => e.status === "failed");
 
   return (
     <div className="flex flex-col gap-4">
-      <DescriptionList
-        layout="inline"
-        items={[
-          { key: "tipo", term: "Tipo de negocio", detail: "Barbería / Peluquería" },
-          { key: "nombre", term: "Nombre", detail: "Barbería El Corte" },
-          { key: "ref", term: "Referencia", detail: "barberia-el-corte", mono: true },
-          { key: "tz", term: "Zona horaria", detail: "Europe/Madrid", mono: true },
-        ]}
-      />
-
-      {/* Las dos salidas escritas, no una casilla que hay que interpretar.
-          Es la decisión que más pesa del alta. */}
-      <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">¿Empieza a atender en cuanto exista?</legend>
-        {/* Una al lado de la otra (owner, 2026-09-28): son dos caminos que se
-            comparan, no una lista que se recorre. Apiladas, la segunda se lee
-            después de haber decidido con la primera. */}
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {(
-          [
-            [true, "Sí, publícalo", "El agente queda vivo. Le faltará conectar el canal para recibir mensajes."],
-            [false, "No, déjalo en borrador", "Lo revisas y lo publicas tú cuando quieras."],
-          ] as const
-        ).map(([valor, titulo, cuerpo]) => (
-          <button
-            key={String(valor)}
-            type="button"
-            role="radio"
-            aria-checked={publicar === valor}
-            onClick={() => setPublicar(valor)}
-            disabled={Boolean(etapas)}
-            className="flex min-w-0 flex-col items-start gap-1 rounded-md border border-border px-3 py-2 text-left transition-colors hover:bg-muted/60 disabled:opacity-60 aria-checked:border-foreground aria-checked:bg-muted"
-          >
-            <span className="font-medium">{titulo}</span>
-            <span className="text-sm text-pretty text-muted-foreground">{cuerpo}</span>
-          </button>
-        ))}
+      {/* Quién es, con la cara de su rubro. */}
+      <div className="flex min-w-0 items-start gap-3 rounded-md bg-card p-4 ring-1 ring-foreground/10">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
+          <plantilla.icono aria-hidden="true" className="size-5 text-muted-foreground" />
+        </span>
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="font-medium">Barbería El Corte</span>
+          <span className="text-sm text-muted-foreground">
+            {plantilla.nombre} · Europe/Madrid · Calle Mayor 3, Madrid
+          </span>
+          <span className="text-sm text-muted-foreground">De lunes a viernes 10:00–19:00 · sábados 10:00–14:00</span>
         </div>
-      </fieldset>
+      </div>
+
+      {/* Qué va a pasar. Esto es lo que el resumen de términos no decía. */}
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-medium">Al crearlo</h3>
+        <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+          <li>Se crea el cliente y se escribe su agente con {plantilla.habilidades} habilidades encendidas.</li>
+          <li>Queda en borrador: lo revisas y lo publicas tú desde su ficha.</li>
+          {/* Owner, 2026-09-28: nace con cero créditos y los asigna el partner
+              cuando lo vea. Decirlo aquí evita la pregunta «¿por qué no
+              contesta?» del día siguiente. */}
+          <li>
+            <strong className="font-medium text-foreground">Empieza sin créditos.</strong> Se los asignas tú cuando
+            quieras, desde Consumo.
+          </li>
+          <li>Le faltará conectar un canal para recibir mensajes.</li>
+        </ul>
+      </div>
 
       {etapas ? (
         <section aria-label="Creando el cliente" aria-live="polite" className="flex flex-col gap-2 rounded-md bg-card p-4 ring-1 ring-foreground/10">
@@ -459,15 +504,13 @@ function PasoConfirmar({
           {fallida ? (
             // §V: lo que quedó hecho no se pierde, y se dice.
             <p className="text-sm text-pretty text-muted-foreground">
-              El cliente ya existe y su agente está escrito. Lo único que falta es publicarlo, y puedes
-              reintentarlo aquí o hacerlo desde su ficha.
+              El cliente ya existe y su agente está escrito. Puedes reintentar aquí o seguir desde su ficha.
             </p>
           ) : null}
         </section>
-      ) : null}
-
-      {etapas ? null : <Navegacion atras siguiente="Crear el cliente" siguienteActivo />}
-      {corriendo ? <p className="text-sm text-muted-foreground">Creando…</p> : null}
+      ) : (
+        <Navegacion atras siguiente="Crear el cliente" siguienteActivo />
+      )}
     </div>
   );
 }
@@ -586,8 +629,7 @@ export const Creando: Story = {
         etapas={[
           { key: "crear", label: "Crear el cliente", status: "done" },
           { key: "sembrar", label: "Escribir el agente", status: "running" },
-          { key: "publicar", label: "Publicarlo", status: "todo" },
-          { key: "activar", label: "Activarlo", status: "todo" },
+          { key: "cupo", label: "Preparar su cupo", status: "todo" },
         ]}
       />
     </Marco>
@@ -602,8 +644,7 @@ export const UnaEtapaFalla: Story = {
         etapas={[
           { key: "crear", label: "Crear el cliente", status: "done" },
           { key: "sembrar", label: "Escribir el agente", status: "done" },
-          { key: "publicar", label: "Publicarlo", status: "failed", detail: "El servidor no respondió." },
-          { key: "activar", label: "Activarlo", status: "todo" },
+          { key: "cupo", label: "Preparar su cupo", status: "failed", detail: "El servidor no respondió." },
         ]}
       />
     </Marco>
