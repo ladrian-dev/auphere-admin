@@ -81,37 +81,81 @@ export type SummaryProps = {
 
 export function ClientSummary(props: SummaryProps) {
   const { refId, role, client, usage, conversations, connected, notConnected = 0 } = props;
-  const t = useT();
   const base = `/clients/${encodeURIComponent(refId)}`;
 
   return (
     <div className="flex flex-col gap-(--space-section)">
-      <Serving refId={refId} role={role} client={client} />
+      {/* El orden cuenta una historia: **quién es** este cliente, **si
+          atiende**, **cuánto gasta** y **con qué está conectado**. Los datos
+          van primero porque son la identidad —y porque es el único bloque
+          que se edita, así que enterrarlo al final obligaba a recorrer la
+          pantalla entera para cambiar un nombre (owner, 2026-09-28). */}
+      <ClientIdentity refId={refId} role={role} client={client} />
 
-      <div className="grid gap-(--space-block) lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-(--space-block) lg:grid-cols-2">
         <Credit refId={refId} role={role} quota={client.quota} usage={usage} />
         {conversations ? <Conversations base={base} block={conversations} /> : null}
       </div>
 
       <Connected refId={refId} block={connected} notConnected={notConnected} />
-
-      <Section title={t("sum.data")} description={t("sum.data.help")} className="min-w-0">
-        {can(role, "clients:write") ? (
-          <SettingsForm refId={refId} name={client.name} timezone={client.timezone} />
-        ) : (
-          <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="inline text-muted-foreground">{t("common.name")}: </dt>
-              <dd className="inline">{client.name}</dd>
-            </div>
-            <div>
-              <dt className="inline text-muted-foreground">{t("clients.timezone")}: </dt>
-              <dd className="inline">{client.timezone}</dd>
-            </div>
-          </dl>
-        )}
-      </Section>
     </div>
+  );
+}
+
+/**
+ * Quién es este cliente, y si atiende.
+ *
+ * Antes eran dos bloques y decían lo mismo tres veces: la insignia de la
+ * cabecera, la tarjeta de pasos —que ya nombra lo que falta— y un «Sin
+ * atender · falta canal» debajo. Aquí queda **una** frase de estado, junto a
+ * los datos que la explican, y los hechos sueltos (versión del agente,
+ * canal) viven en la tarjeta de pasos, que es donde se resuelven.
+ */
+function ClientIdentity({ refId, role, client }: Pick<SummaryProps, "refId" | "role" | "client">) {
+  const t = useT();
+  const h = client.health;
+  const base = `/clients/${encodeURIComponent(refId)}`;
+
+  return (
+    <Section
+      title={t("sum.data")}
+      description={t("sum.data.help")}
+      actions={
+        can(role, "agents:read") ? (
+          <Button size="xs" variant="ghost" nativeButton={false} render={<Link href={`${base}/agent`} />}>
+            {t("sum.seeAgent")}
+          </Button>
+        ) : undefined
+      }
+      className="min-w-0"
+    >
+      {can(role, "clients:write") ? (
+        <SettingsForm refId={refId} name={client.name} timezone={client.timezone} />
+      ) : (
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="inline text-muted-foreground">{t("common.name")}: </dt>
+            <dd className="inline">{client.name}</dd>
+          </div>
+          <div>
+            <dt className="inline text-muted-foreground">{t("clients.timezone")}: </dt>
+            <dd className="inline">{client.timezone}</dd>
+          </div>
+        </dl>
+      )}
+
+      {/* La línea de estado, debajo de los datos: una sola, y la única de
+          toda la ficha que dice si el agente está atendiendo. */}
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-sm">
+        <span className="inline-flex items-center gap-2">
+          <StatusDot tone={h.ready ? "positive" : "warning"} />
+          {h.ready ? t("sum.serving") : t("sum.notServing", { what: missingWhat(t, h) })}
+        </span>
+        {client.sector ? (
+          <span className="text-muted-foreground">{t("sum.sector", { sector: client.sector })}</span>
+        ) : null}
+      </p>
+    </Section>
   );
 }
 
@@ -133,47 +177,8 @@ function Failed({ what }: { what: string }) {
   );
 }
 
-// ── 1 · ¿atiende? ───────────────────────────────────────────────────────
-
-function Serving({ refId, role, client }: Pick<SummaryProps, "refId" | "role" | "client">) {
-  const t = useT();
-  const h = client.health;
-  const base = `/clients/${encodeURIComponent(refId)}`;
-  const channel = h.whatsapp_connected
-    ? t("sum.channel.on", { phone: h.display_phone_number ?? "" })
-    : t("sum.channel.off");
-
-  return (
-    <Section
-      title={
-        <span className="inline-flex items-center gap-2">
-          <StatusDot tone={h.ready ? "positive" : "warning"} />
-          {h.ready ? t("sum.serving") : t("sum.notServing", { what: missingWhat(t, h) })}
-        </span>
-      }
-      description={
-        h.agent_version
-          ? t("sum.agentLine", { v: h.agent_version, channel })
-          : t("sum.agentLine.noAgent")
-      }
-      actions={
-        can(role, "agents:read") ? (
-          <Button size="xs" variant="ghost" nativeButton={false} render={<Link href={`${base}/agent`} />}>
-            {t("sum.seeAgent")}
-          </Button>
-        ) : undefined
-      }
-      className="min-w-0"
-    >
-      {client.sector ? (
-        <p className="text-sm text-muted-foreground">{t("sum.sector", { sector: client.sector })}</p>
-      ) : null}
-    </Section>
-  );
-}
-
-/** Lo que falta, en una palabra. La lista completa vive en la puesta en
- *  marcha; aquí solo se nombra para que el título no sea un «no» seco. */
+/** Lo que falta, en una palabra. La lista entera vive en la tarjeta de
+ *  pasos; aquí solo se nombra para que el estado no sea un «no» seco. */
 function missingWhat(t: ReturnType<typeof useT>, h: SummaryProps["client"]["health"]): string {
   if (!h.agent_version) return t("clients.setup.agent").toLowerCase();
   if (!h.whatsapp_connected) return t("clients.setup.channel").toLowerCase();

@@ -58,9 +58,15 @@ describe("Resumen · las cuatro preguntas", () => {
   it("contesta las cuatro, cada una en su bloque", () => {
     mount();
     const titulos = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    // Los datos del cliente son el quinto bloque: se leen aquí porque aquí se
-    // editan, y por eso «Datos del cliente» deja de ser una pestaña.
-    expect(titulos).toEqual(["Atendiendo", "Crédito y consumo", "Conversaciones", "Lo que tiene conectado", "Datos del cliente"]);
+    // El orden cuenta una historia: quién es, cuánto gasta, cómo va la
+    // conversación y con qué está conectado. Los datos van primero porque
+    // son la identidad y porque son lo único que se edita aquí.
+    expect(titulos).toEqual(["Datos del cliente", "Crédito y consumo", "Conversaciones", "Lo que tiene conectado"]);
+    // Y el estado de atención es UNA línea dentro del primer bloque, no un
+    // bloque propio: la cabecera y la tarjeta de pasos ya lo decían, y
+    // decirlo tres veces es lo que hacía el Resumen confuso.
+    const identidad = screen.getByRole("region", { name: "Datos del cliente" });
+    expect(within(identidad).getByText(/Atendiendo|Sin atender/)).toBeInTheDocument();
   });
 
   it("cada cifra lleva a su detalle: la cifra responde, el clic explica", () => {
@@ -121,7 +127,7 @@ describe("Resumen · una lectura caída no tumba la pantalla", () => {
     // Las otras tres preguntas siguen contestadas.
     expect(screen.getByText("128")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Lo que tiene conectado" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Atendiendo" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Datos del cliente" })).toBeInTheDocument();
   });
 
   it("si caen dos, caen dos: no se esconde una detrás de la otra", () => {
@@ -156,7 +162,10 @@ describe("Resumen · lo que cada rol ve", () => {
     // El formulario es el mismo que tenía la pestaña retirada: mismos campos
     // y misma validación, en su sitio nuevo. Eso es paridad, no rehacerlo.
     expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveValue("Panadería La Espiga");
-    expect(screen.getByRole("textbox", { name: "Zona horaria" })).toHaveValue("Europe/Madrid");
+    // `combobox`, no `textbox`: el campo lleva una lista de zonas IANA, así
+    // que el navegador lo expone como elegible. Ese rol ES la mejora — se
+    // puede teclear y autocompletar en vez de escribir la zona a ciegas.
+    expect(screen.getByRole("combobox", { name: "Zona horaria" })).toHaveValue("Europe/Madrid");
     expect(screen.getByRole("button", { name: "Guardar" })).toBeInTheDocument();
     // Y la pantalla dice que esto NO crea un borrador, porque cambiar el
     // nombre del negocio no es cambiar lo que el agente hace.
