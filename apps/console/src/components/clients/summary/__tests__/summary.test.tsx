@@ -162,9 +162,9 @@ describe("Resumen · lo que cada rol ve", () => {
     // El formulario es el mismo que tenía la pestaña retirada: mismos campos
     // y misma validación, en su sitio nuevo. Eso es paridad, no rehacerlo.
     expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveValue("Panadería La Espiga");
-    // `combobox`, no `textbox`: el campo lleva una lista de zonas IANA, así
-    // que el navegador lo expone como elegible. Ese rol ES la mejora — se
-    // puede teclear y autocompletar en vez de escribir la zona a ciegas.
+    // `combobox`, no `textbox`: la zona se elige de una lista desplegada
+    // bajo el campo y se teclea para filtrarla. Ese rol ES la mejora — lo
+    // que queda guardado sale de la lista, no de lo que alguien escriba.
     expect(screen.getByRole("combobox", { name: "Zona horaria" })).toHaveValue("Europe/Madrid");
     expect(screen.getByRole("button", { name: "Guardar" })).toBeInTheDocument();
     // Y la pantalla dice que esto NO crea un borrador, porque cambiar el

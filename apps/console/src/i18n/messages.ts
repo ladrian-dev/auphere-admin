@@ -72,6 +72,7 @@ const core = {
   "common.copy": { es: "Copiar", en: "Copy" },
   "common.copied": { es: "Copiado", en: "Copied" },
   "common.forbidden": { es: "Tu rol no permite esta acción.", en: "Your role does not allow this action." },
+  "common.noMatches": { es: "Nada coincide con lo que has escrito.", en: "Nothing matches what you typed." },
 
   // validation
   "validation.required": { es: "Este campo es obligatorio.", en: "This field is required." },

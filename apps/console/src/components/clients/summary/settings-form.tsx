@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { Button, Form, FormControl, FormField, FormItem, FormLabel, FormMessage, Input } from "@nexus/ui";
+import { Button, Combobox, Form, FormControl, FormField, FormItem, FormLabel, FormMessage, Input } from "@nexus/ui";
 
 import { updateClientAction } from "@/app/(console)/clients/actions";
 import { useT } from "@/i18n/client";
@@ -21,14 +21,13 @@ function ianaZones(): string[] {
     const supported = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf;
     return supported ? supported("timeZone") : [];
   } catch {
-    // Un navegador que no la tenga se queda con el campo de texto de
-    // siempre: sin sugerencias, pero sin romperse.
+    // Un navegador que no la tenga se queda sin lista. El campo sigue
+    // existiendo y la validación sigue mandando; simplemente no sugiere.
     return [];
   }
 }
 
 export function SettingsForm({ refId, name, timezone }: { refId: string; name: string; timezone: string }) {
-  const zonesId = React.useId();
   const zones = React.useMemo(() => ianaZones(), []);
   const t = useT();
   const router = useRouter();
@@ -82,13 +81,23 @@ export function SettingsForm({ refId, name, timezone }: { refId: string; name: s
             <FormItem>
               <FormLabel>{t("clients.timezone")}</FormLabel>
               <FormControl>
-                {/* Elegible, no escrita a mano. La lista es la de zonas IANA
-                    que el propio navegador conoce, así que no hay tabla
-                    nuestra que se quede vieja ni dependencia nueva; el campo
-                    sigue siendo un input, así que se puede teclear y se
-                    autocompleta. La validación de la zona no se toca: esto
-                    reduce el error humano, no lo sustituye. */}
-                <Input className="font-mono" list={zonesId} autoComplete="off" spellCheck={false} {...field} />
+                {/* Se elige de una lista desplegada bajo el campo, y se
+                    teclea para filtrarla. La lista son las zonas IANA que
+                    el propio navegador conoce, así que no hay tabla nuestra
+                    que se quede vieja. Lo que queda escrito sale siempre de
+                    la lista: ése era el encargo —evitar el error humano—, y
+                    un campo de texto con sugerencias no lo cumple porque
+                    acepta cualquier cosa. */}
+                <Combobox
+                  items={zones}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  onBlur={field.onBlur}
+                  inputRef={field.ref}
+                  name={field.name}
+                  placeholder={t("clients.timezone.placeholder")}
+                  emptyLabel={t("common.noMatches")}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -108,11 +117,6 @@ export function SettingsForm({ refId, name, timezone }: { refId: string; name: s
             {t("common.save")}
           </Button>
         </div>
-        <datalist id={zonesId}>
-          {zones.map((z) => (
-            <option key={z} value={z} />
-          ))}
-        </datalist>
       </form>
     </Form>
   );
