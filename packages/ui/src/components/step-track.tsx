@@ -1,4 +1,3 @@
-import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "../lib/utils";
@@ -16,9 +15,12 @@ type Step = {
   detail?: ReactNode;
   /** El que toca ahora. Solo puede haber uno. */
   current?: boolean;
-  /** Dónde se resuelve. Convierte la etiqueta del paso pendiente en el
-   *  enlace que lleva allí, en vez de un botón suelto debajo. */
+  /** Dónde se resuelve. El enlace va en la línea del detalle —el mismo
+   *  sitio donde los pasos hechos dicen «v1» o «50.000»—, de modo que esa
+   *  línea contesta siempre lo mismo: qué hay, o qué falta hacer. */
   href?: string;
+  /** El texto del enlace: «Conectar canal», «Asignar crédito». */
+  hrefLabel?: ReactNode;
 };
 
 type StepTrackProps = {
@@ -43,9 +45,10 @@ type StepTrackProps = {
  *   sus partes, y el resultado fue ilegible: tres barras de anchos
  *   distintos sobre un contador que decía «4 de 5» — el ojo cuenta barras,
  *   así que el contador tiene que contar lo mismo.
- * - **El paso pendiente lleva su enlace.** La flecha en su etiqueta dice
- *   dónde se resuelve, en el sitio donde estás mirando el problema, en vez
- *   de un botón al pie de la tarjeta.
+ * - **El paso pendiente lleva su enlace donde los demás llevan su dato.**
+ *   La línea de debajo de la barra dice «v1» o «50.000» cuando el paso está
+ *   hecho y «Conectar canal» cuando falta: una sola línea que siempre
+ *   contesta lo mismo, en vez de un botón al pie de la tarjeta.
  * - **El estado está en texto, no solo en la barra.** Cada paso lleva su
  *   detalle debajo y el conjunto su frase de resumen: quien no distingue el
  *   relleno lee lo mismo.
@@ -70,37 +73,33 @@ function StepTrack({ steps, ariaLabel, summary, className }: StepTrackProps) {
             className="flex min-w-0 flex-1 basis-40 flex-col gap-2"
             {...(s.current ? { "aria-current": "step" as const } : {})}
           >
-            {s.href ? (
-              <a
-                href={s.href}
-                className={cn(
-                  "inline-flex min-w-0 items-center gap-1 text-sm underline-offset-4 hover:underline",
-                  state === "todo" ? "text-foreground" : "font-medium text-foreground",
-                )}
-              >
-                <span className="truncate">{s.label}</span>
-                <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
-              </a>
-            ) : (
-              <span
-                className={cn(
-                  "truncate text-sm",
-                  state === "todo" ? "text-muted-foreground" : "font-medium text-foreground",
-                )}
-              >
-                {s.label}
-              </span>
-            )}
-            <span className="h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
+            <span
+              className={cn(
+                "truncate text-sm",
+                state === "todo" ? "opacity-80" : "font-medium",
+              )}
+            >
+              {s.label}
+            </span>
+            {/* La pista se tiñe del color del texto: así el componente sirve
+                igual sobre una tarjeta blanca que sobre el verde oscuro, sin
+                saber en cuál está. */}
+            <span className="h-2 w-full overflow-hidden rounded-full bg-current/15" aria-hidden="true">
               <span
                 className={cn(
                   "block h-full rounded-full transition-[width] duration-(--duration-slow)",
-                  state === "done" ? "bg-primary" : "bg-primary/60",
+                  state === "done" ? "bg-mountain-meadow" : "bg-mountain-meadow/60",
                 )}
                 style={{ width: `${pct}%` }}
               />
             </span>
-            {s.detail ? <span className="truncate text-xs text-muted-foreground">{s.detail}</span> : null}
+            {s.href ? (
+              <a href={s.href} className="truncate text-xs underline underline-offset-4 hover:no-underline">
+                {s.hrefLabel ?? s.label}
+              </a>
+            ) : s.detail ? (
+              <span className="truncate text-xs opacity-75">{s.detail}</span>
+            ) : null}
           </div>
         );
       })}

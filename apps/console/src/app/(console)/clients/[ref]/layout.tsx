@@ -52,18 +52,23 @@ export default async function ClientLayout({ params, children }: { params: Promi
         /* Spec 017 R1.6: un solo «Más», en el mismo sitio para todos los
            roles; dentro, solo lo que quien mira puede hacer. */
         actions={
-          <ClientLifecycleActions
-            layout="menu"
-            refId={client.external_client_ref}
-            status={client.status}
-            name={client.name}
-            canWrite={can(principal.role, "clients:write")}
-            canDelete={can(principal.role, "clients:delete")}
-          />
+          <>
+            {/* El estado, a la altura del nombre y junto a «Más» (owner,
+                2026-09-28). Se queda como insignia —sin hover ni borde de
+                botón— para que no se lea como un control más del grupo. */}
+            <ClientStatusBadge status={client.status} locale={locale} />
+            <ClientLifecycleActions
+              layout="menu"
+              refId={client.external_client_ref}
+              status={client.status}
+              name={client.name}
+              canWrite={can(principal.role, "clients:write")}
+              canDelete={can(principal.role, "clients:delete")}
+            />
+          </>
         }
         description={
           <span className="flex flex-wrap items-center gap-2">
-            <ClientStatusBadge status={client.status} locale={locale} />
             {/* Paridad fila 22: solo cuando de verdad atiende. */}
             {client.serving_since ? (
               <span className="text-sm text-muted-foreground">

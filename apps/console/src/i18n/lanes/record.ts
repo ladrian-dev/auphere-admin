@@ -18,13 +18,13 @@ export const recordMessages = {
   "clients.nav.suffix.incident": { es: "incidencia", en: "incident" },
 
   // ── puesta en marcha (R1) ─────────────────────────────────────────
-  "clients.setup.title": { es: "Puesta en marcha", en: "Getting started" },
+  // «Puesta en marcha» es cómo lo llamamos nosotros; el partner lo que
+  // quiere saber es qué le falta para que su agente empiece a trabajar. El
+  // título lo dice, y la descripción quita la ansiedad del orden.
+  "clients.setup.title": { es: "Pasos para activar tu agente", en: "Steps to get your agent live" },
   "clients.setup.description": {
-    // Sin «cuatro»: los pasos que se enseñan dependen del cliente
-    // —«Activación» solo aparece si falta—, y una cifra a fuego encima de
-    // tres barras es la misma contradicción que tenía el contador.
-    es: "Lo que falta para que el agente atienda. Se pueden hacer en cualquier orden.",
-    en: "What stands between this client and a working agent. They can be done in any order.",
+    es: "Cuando estén hechos, tu agente empieza a atender. Puedes hacerlos en el orden que quieras.",
+    en: "Once these are done, your agent starts answering. You can do them in any order.",
   },
   "clients.setup.done": { es: "{done} de {total} pasos hechos", en: "{done} of {total} steps done" },
   "clients.setup.agent": { es: "Agente", en: "Agent" },

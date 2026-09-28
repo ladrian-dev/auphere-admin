@@ -70,12 +70,16 @@ export function ClientSetup({
 
   return (
     <Section
+      // El único panel de la ficha en verde oscuro: es lo que hay que hacer
+      // ahora mismo, y compite con seis bloques blancos. Un segundo panel
+      // en este tono y ninguno de los dos destacaría.
+      tone="spotlight"
       title={t("clients.setup.title")}
       description={t("clients.setup.description")}
       // El recuento a la derecha del título: equilibra la cabecera y es lo
       // primero que se quiere saber al volver a un cliente a medias.
       actions={
-        <span className="text-sm text-muted-foreground tabular-nums">
+        <span className="text-sm text-pistachio tabular-nums">
           {t("clients.setup.done", { done: hechos, total })}
         </span>
       }
@@ -90,6 +94,7 @@ export function ClientSetup({
           detail: s.detail,
           current: s.step === pending,
           href: s.step === pending && action?.kind === "link" ? action.href : undefined,
+          hrefLabel: s.step === pending && action?.kind === "link" ? t(action.label) : undefined,
         }))}
         ariaLabel={t("clients.setup.title")}
         summary={t("clients.setup.done", { done: hechos, total })}
@@ -105,7 +110,7 @@ export function ClientSetup({
           <ClientLifecycleActions refId={refId} status={status} name={name} canDelete={false} />
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">{t(whoCanResolve(pending))}</p>
+        <p className="text-sm text-pistachio">{t(whoCanResolve(pending))}</p>
       )}
     </Section>
   );

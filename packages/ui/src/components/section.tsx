@@ -12,6 +12,14 @@ type SectionProps = Omit<React.ComponentProps<"section">, "title"> & {
   padded?: boolean;
   /** Plain block: no card surface, just the title + spacing. */
   flat?: boolean;
+  /**
+   * `spotlight`: fondo verde oscuro de marca, para el **único** panel que
+   * tiene que destacar sobre los demás de la pantalla. Dos a la vista y
+   * ninguno destaca, así que no es un tono decorativo: es una jerarquía.
+   * La descripción y los detalles pasan a pistacho, que da 9:1 sobre ese
+   * fondo; el texto secundario en gris se perdería.
+   */
+  tone?: "default" | "spotlight";
 };
 
 /**
@@ -19,7 +27,7 @@ type SectionProps = Omit<React.ComponentProps<"section">, "title"> & {
  * ``rounded-md bg-card p-4 ring-1`` blocks: one surface, one heading level,
  * ``aria-labelledby`` wired so the region has a name.
  */
-function Section({ title, description, actions, headingLevel = 2, padded = true, flat, className, children, id, ...props }: SectionProps) {
+function Section({ title, description, actions, headingLevel = 2, padded = true, flat, tone = "default", className, children, id, ...props }: SectionProps) {
   const generated = React.useId();
   const headingId = title ? `${id ?? generated}-title` : undefined;
   const Heading = headingLevel === 2 ? "h2" : "h3";
@@ -28,7 +36,14 @@ function Section({ title, description, actions, headingLevel = 2, padded = true,
       data-slot="section"
       id={id}
       aria-labelledby={headingId}
-      className={cn("flex min-w-0 flex-col gap-(--space-stack)", !flat && "rounded-md bg-card ring-1 ring-foreground/10", !flat && padded && "p-4", className)}
+      data-tone={tone}
+      className={cn(
+        "flex min-w-0 flex-col gap-(--space-stack)",
+        !flat && "rounded-md bg-card ring-1 ring-foreground/10",
+        !flat && padded && "p-4",
+        tone === "spotlight" && "bg-dark-green text-anti-flash ring-0",
+        className,
+      )}
       {...props}
     >
       {title || actions ? (
@@ -39,7 +54,11 @@ function Section({ title, description, actions, headingLevel = 2, padded = true,
                 {title}
               </Heading>
             ) : null}
-            {description ? <p className="text-sm text-muted-foreground text-pretty">{description}</p> : null}
+            {description ? (
+              <p className={cn("text-sm text-pretty", tone === "spotlight" ? "text-pistachio" : "text-muted-foreground")}>
+                {description}
+              </p>
+            ) : null}
           </div>
           {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </div>
