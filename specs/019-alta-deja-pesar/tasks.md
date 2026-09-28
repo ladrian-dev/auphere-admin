@@ -71,7 +71,9 @@ un solo campo de medicina estética.
 
 ### Implementación
 
+- [ ] T013b [P] [US1] Tests del horario: se elige con controles de hora, **no hay campo «Sábados» aparte**, y el detalle por día se abre solo si se pide. _Requisitos: 7.1–7.3_
 - [ ] T014 [US2] `template-picker.tsx`: catálogo buscable, nada marcado, «sin plantilla» nombrada, y qué trae cada una (para qué sirve y cuántas habilidades enciende). _Requisitos: 2.1–2.5_
+- [ ] T014b [US1] El control de horario y el campo de dirección, con la salida en el formato que la plantilla espera (`tenant.business_hours_label`). _Requisitos: 7.1–7.4_
 - [ ] T015 [US1] Rehacer `wizard.tsx` a tres pasos y `wizard-state.ts` en consecuencia: fuera `ChannelChoice` y su etapa, dentro `requiredPlaceholders`. _Requisitos: 1.1–1.6, 3.1–3.3_
 - [ ] T016 [US1] La referencia, derivada y plegada, con la comprobación de duplicado antes de crear. _Requisitos: 4.1–4.4_
 - [ ] T017 [US4] Publicar junto al resumen, y la ejecución por etapas con su reintento por etapa, que ya existe y se conserva. _Requisitos: 6.1–6.3_
@@ -141,7 +143,7 @@ encendido, ningún campo llega en blanco y se distingue quién escribió cada un
 - [ ] T033 [P] Barrido de claves de i18n huérfanas: el paso del canal se lleva las suyas, y los campos que se mueven a la ficha cambian de dueño, no de idioma. _Requisitos: ninguno_
 - [ ] T034 [P] CE-007: recorrer las direcciones que la consola tenía antes de esta spec y confirmar que ninguna responde «no existe». _Requisitos: CE-007_
 - [ ] T035 Actualizar `architecture/console-map.md` en la KB: el alta tiene tres pasos y la tarjeta de la ficha tiene cuatro. _Requisitos: ninguno — §IX_
-- [ ] T036 **Abrir tarea fuera de esta spec**: dar valores por defecto a los doce campos de `aesthetic_clinic_v1` en su semilla y en la KB. Es lo que arreglaría el caso peor, se hace en la API y **no** entra aquí. Queda nombrada para que no se pierda. _Requisitos: 1.3_
+- [ ] T036 **Entra en alcance (owner, 2026-09-28)**: valores por defecto **seguros** para los campos avanzados de `aesthetic_clinic_v1` en su semilla y en la KB — una respuesta que un agente bien educado daría mientras no se lo hayan dicho («consúltalo con recepción»), no un hueco vacío. Sin esto, «lo avanzado no se pide en el alta» no se puede cumplir: el renderizador levanta `SeedTemplatePlaceholderMissing`. **Bloquea T015.** _Requisitos: 1.2, 1.3_
 
 ---
 

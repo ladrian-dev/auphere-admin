@@ -81,6 +81,10 @@ type Plantilla = {
   campos: string[];
 };
 
+/** Lo que el alta pide, y es **lo mismo para las trece** (owner, 2026-09-28):
+ *  dónde está el negocio y cuándo abre. Todo lo demás —precios, formas de
+ *  pago, credenciales del titular— es dato avanzado y se rellena en los
+ *  ajustes del agente. */
 const CAMPOS_COMUNES = ["Dirección", "Horario"];
 
 const PLANTILLAS: Plantilla[] = [
@@ -98,24 +102,16 @@ const PLANTILLAS: Plantilla[] = [
     nombre: "Clínica estética (medspa + cirugía)",
     para: "Citas, valoraciones y referencias quirúrgicas.",
     habilidades: 15,
-    // La excepción medida: doce. Queda anotada en paridad.
-    campos: [
-      ...CAMPOS_COMUNES,
-      "Sábados",
-      "Profesional titular",
-      "Credencial del titular",
-      "Clínica de referencia",
-      "Teléfono de referencia",
-      "Instagram",
-      "Teléfono de recepción",
-      "Precio de la consulta",
-      "Tabla de precios",
-      "Formas de pago",
-    ],
+    // Era la excepción: pedía doce campos porque su prompt los exige. El
+    // owner lo cortó el 2026-09-28 — precios, formas de pago, credenciales
+    // del titular y teléfonos de referencia **no se rellenan en el alta**.
+    // Van a los ajustes del agente, y la semilla lleva mientras tanto una
+    // respuesta segura («consúltalo con recepción»), no un hueco vacío.
+    campos: CAMPOS_COMUNES,
   },
-  { id: "cobranza", nombre: "Cobranza / Asistente del administrador", para: "Recordatorios y estado de pagos.", habilidades: 12, campos: [] },
-  { id: "inventario", nombre: "Inventario / Asistente de almacén", para: "Stock y entradas y salidas.", habilidades: 5, campos: [] },
-  { id: "woocommerce", nombre: "Ventas / Tienda WooCommerce", para: "Catálogo, pedidos y envíos.", habilidades: 9, campos: [] },
+  { id: "cobranza", nombre: "Cobranza / Asistente del administrador", para: "Recordatorios y estado de pagos.", habilidades: 12, campos: CAMPOS_COMUNES },
+  { id: "inventario", nombre: "Inventario / Asistente de almacén", para: "Stock y entradas y salidas.", habilidades: 5, campos: CAMPOS_COMUNES },
+  { id: "woocommerce", nombre: "Ventas / Tienda WooCommerce", para: "Catálogo, pedidos y envíos.", habilidades: 9, campos: CAMPOS_COMUNES },
 ];
 
 const ZONAS = ["Europe/Madrid", "Europe/Lisbon", "America/Bogota", "America/Santiago", "America/Mexico_City"];
@@ -220,20 +216,21 @@ function PasoPlantilla({
 
 // ── Paso 2 · El negocio ─────────────────────────────────────────────────
 
-function PasoNegocio({ plantilla }: { plantilla: Plantilla }) {
+function PasoNegocio() {
   const [nombre, setNombre] = useState("");
   const [zona, setZona] = useState("Europe/Madrid");
   const [avanzadas, setAvanzadas] = useState(false);
-  const total = 2 + plantilla.campos.length;
 
   return (
     <div className="flex flex-col gap-4">
       {/* La frase que hace corto un formulario corto. Sin ella, cuatro
           campos se leen como «cuatro, de momento». */}
+      {/* Una sola frase para las trece, porque las trece piden lo mismo. Lo
+          avanzado —precios, formas de pago, credenciales— vive en los ajustes
+          del agente (owner, 2026-09-28). */}
       <p className="text-sm text-pretty text-muted-foreground">
-        {plantilla.campos.length === 0
-          ? `«${plantilla.nombre}» no necesita nada más del negocio. Solo esto y ya existe.`
-          : `Esto es todo lo que «${plantilla.nombre}» necesita para empezar: ${total} datos. El resto se lo puedes ir contando desde su ficha.`}
+        Esto es todo lo que hace falta para empezar: dónde está el negocio y cuándo abre. Los precios, las
+        formas de pago y lo demás se rellenan en los ajustes del agente, cuando quieras.
       </p>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -245,13 +242,13 @@ function PasoNegocio({ plantilla }: { plantilla: Plantilla }) {
           <Label htmlFor="pn-zona">Zona horaria</Label>
           <Combobox id="pn-zona" items={ZONAS} value={zona} onValueChange={setZona} emptyLabel="Nada coincide." />
         </div>
-        {plantilla.campos.map((campo) => (
-          <div key={campo} className="grid min-w-0 content-start gap-2">
-            <Label htmlFor={`pn-${campo}`}>{campo}</Label>
-            <Input id={`pn-${campo}`} />
-          </div>
-        ))}
+        <div className="grid min-w-0 content-start gap-2 sm:col-span-2">
+          <Label htmlFor="pn-dir">Dirección</Label>
+          <Direccion />
+        </div>
       </div>
+
+      <Horario />
 
       {/* La referencia, fuera del camino. Se deriva del nombre y casi nadie
           quiere tocarla; hoy es el segundo campo del alta. */}
@@ -277,6 +274,106 @@ function PasoNegocio({ plantilla }: { plantilla: Plantilla }) {
 
       <Navegacion atras siguiente="Continuar" siguienteActivo={nombre.trim() !== ""} />
     </div>
+  );
+}
+
+/**
+ * La dirección. **Pendiente de decisión** (owner, 2026-09-28): se pidió elegir
+ * la ubicación exacta en Google Maps, y eso no es un control más — es un
+ * script de terceros en el navegador del partner, una clave de API y la
+ * dirección de su cliente viajando a Google. Cambia la superficie de confianza
+ * que la spec declara, así que se pregunta antes de construirlo.
+ *
+ * Mientras tanto, el campo es lo que el agente necesita de verdad: **la
+ * dirección en texto**, que es lo que le dirá a quien pregunte cómo llegar.
+ */
+function Direccion() {
+  return (
+    <>
+      <Input id="pn-dir" placeholder="Calle, número, ciudad" autoComplete="street-address" />
+      <p className="text-sm text-muted-foreground">
+        El agente la usa para decirle a la gente dónde estáis.
+      </p>
+    </>
+  );
+}
+
+const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"] as const;
+
+/**
+ * El horario, con controles de hora en vez de texto libre.
+ *
+ * **Esto es lo que mata el campo «Sábados»** (owner, 2026-09-28). Ese campo
+ * existe porque el horario es una cadena que alguien escribe a mano, y los
+ * sábados no cabían en ella. Con un horario de verdad, el sábado es un día
+ * más y el campo sobra.
+ *
+ * Empieza por lo que casi siempre vale —un tramo de lunes a viernes— y solo
+ * se abre día a día si el negocio lo necesita. Es un campo hasta que deja de
+ * serlo.
+ */
+function Horario() {
+  const [detallado, setDetallado] = useState(false);
+  const [abre, setAbre] = useState("10:00");
+  const [cierra, setCierra] = useState("19:00");
+  const [sabado, setSabado] = useState(true);
+
+  return (
+    <fieldset className="flex flex-col gap-3">
+      <legend className="text-sm font-medium">Horario</legend>
+
+      {detallado ? (
+        <div className="flex flex-col gap-2">
+          {DIAS.map((dia) => (
+            <div key={dia} className="flex flex-wrap items-center gap-2">
+              <span className="w-24 shrink-0 text-sm">{dia}</span>
+              <Input type="time" defaultValue="10:00" aria-label={`${dia}: abre`} className="w-32" />
+              <span className="text-sm text-muted-foreground">a</span>
+              <Input type="time" defaultValue="19:00" aria-label={`${dia}: cierra`} className="w-32" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-32 shrink-0 text-sm">De lunes a viernes</span>
+            <Input type="time" value={abre} onChange={(e) => setAbre(e.target.value)} aria-label="Abre" className="w-32" />
+            <span className="text-sm text-muted-foreground">a</span>
+            <Input type="time" value={cierra} onChange={(e) => setCierra(e.target.value)} aria-label="Cierra" className="w-32" />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-32 shrink-0 text-sm">Sábados</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sabado}
+              aria-label="Abre los sábados"
+              onClick={() => setSabado((v) => !v)}
+              className="rounded-md border border-border px-3 py-1 text-sm aria-checked:border-foreground aria-checked:bg-muted"
+            >
+              {sabado ? "Abre" : "Cerrado"}
+            </button>
+            {sabado ? (
+              <>
+                <Input type="time" defaultValue="10:00" aria-label="Sábados: abre" className="w-32" />
+                <span className="text-sm text-muted-foreground">a</span>
+                <Input type="time" defaultValue="14:00" aria-label="Sábados: cierra" className="w-32" />
+              </>
+            ) : null}
+          </div>
+          <p className="text-sm text-muted-foreground">Domingos, cerrado.</p>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setDetallado((v) => !v)}
+        aria-expanded={detallado}
+        className="self-start text-sm text-muted-foreground underline underline-offset-4"
+      >
+        {detallado ? "Volver al horario sencillo" : "Cada día es distinto"}
+      </button>
+    </fieldset>
   );
 }
 
@@ -320,6 +417,10 @@ function PasoConfirmar({
           Es la decisión que más pesa del alta. */}
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium">¿Empieza a atender en cuanto exista?</legend>
+        {/* Una al lado de la otra (owner, 2026-09-28): son dos caminos que se
+            comparan, no una lista que se recorre. Apiladas, la segunda se lee
+            después de haber decidido con la primera. */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {(
           [
             [true, "Sí, publícalo", "El agente queda vivo. Le faltará conectar el canal para recibir mensajes."],
@@ -339,6 +440,7 @@ function PasoConfirmar({
             <span className="text-sm text-pretty text-muted-foreground">{cuerpo}</span>
           </button>
         ))}
+        </div>
       </fieldset>
 
       {etapas ? (
@@ -443,41 +545,30 @@ export const SinResultados: Story = {
   ),
 };
 
-/** El caso normal: diez de las trece plantillas piden exactamente esto. */
-export const NegocioDosCampos: Story = {
-  name: "2 · El negocio (cuatro campos)",
+/** El único caso: **las trece plantillas piden exactamente esto**. */
+export const Negocio: Story = {
+  name: "2 · El negocio",
   render: () => (
     <Marco paso={1}>
-      <PasoNegocio plantilla={PLANTILLAS[0]!} />
-    </Marco>
-  ),
-};
-
-/** Tres plantillas no piden nada del negocio. */
-export const NegocioSinCampos: Story = {
-  name: "2 · El negocio (dos campos)",
-  render: () => (
-    <Marco paso={1}>
-      <PasoNegocio plantilla={PLANTILLAS.find((p) => p.id === "cobranza")!} />
+      <PasoNegocio />
     </Marco>
   ),
 };
 
 /**
- * La excepción medida: `aesthetic_clinic_v1` exige doce campos y no se puede
- * evitar sin tocar su semilla. Se enseña **tal cual es** en vez de esconderla:
- * si el prototipo solo mostrara el caso bonito, la aprobación valdría para una
- * pantalla que no existe.
+ * **Ya no hay caso pesado.** Lo hubo: `aesthetic_clinic_v1` pedía doce campos
+ * porque su prompt los exige, y este prototipo llegó a enseñarlos. El owner lo
+ * cortó el 2026-09-28 con una regla que vale para las trece: **lo básico se
+ * rellena aquí, lo avanzado en los ajustes del agente**.
+ *
+ * Precios, formas de pago, credenciales del titular y teléfonos de referencia
+ * no son datos de alta: son configuración del agente. La semilla lleva
+ * mientras tanto una respuesta segura —«consúltalo con recepción»—, que es lo
+ * que un agente bien educado contesta cuando aún no se lo han dicho.
+ *
+ * Consecuencia: **las trece plantillas piden lo mismo**, y el estado de arriba
+ * las cubre todas.
  */
-export const NegocioCasoPesado: Story = {
-  name: "2 · El negocio (la excepción: catorce campos)",
-  render: () => (
-    <Marco paso={1}>
-      <PasoNegocio plantilla={PLANTILLAS.find((p) => p.id === "aesthetic")!} />
-    </Marco>
-  ),
-};
-
 export const Confirmar: Story = {
   name: "3 · Confirmar",
   render: () => (
@@ -541,7 +632,7 @@ export const Movil: Story = {
   parameters: { viewport: { defaultViewport: "mobile2" } },
   render: () => (
     <Marco paso={1}>
-      <PasoNegocio plantilla={PLANTILLAS[0]!} />
+      <PasoNegocio />
     </Marco>
   ),
 };

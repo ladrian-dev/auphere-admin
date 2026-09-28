@@ -63,7 +63,10 @@ Cuatro hechos que la spec ataca:
 
 - Q: Si el alta deja de pedir los datos del negocio, ¿dónde se piden después? → A: un paso más en la tarjeta «Pasos para activar tu agente», con su propia barra.
 - Q: ¿Dónde vive la ayuda del Companion durante el alta? → A: una caja en el propio alta; el panel no escribe en la página.
-- Q: Si una plantilla no da un agente coherente sin rellenar nada, ¿qué hacemos? → A: esa conserva sus campos mínimos, anotado en paridad.
+- Q: Si una plantilla no da un agente coherente sin rellenar nada, ¿qué hacemos? → A: esa conserva sus campos mínimos, anotado en paridad. **Revocada el 2026-09-28** (ver abajo).
+- Q: ¿Qué se rellena en el alta y qué no? → A: **lo básico aquí, lo avanzado en los ajustes del agente**. Precios, formas de pago, credenciales del titular y teléfonos de referencia no son datos de alta. Consecuencia: `aesthetic_clinic_v1` deja de ser la excepción y **las trece plantillas piden lo mismo**; su semilla lleva valores por defecto seguros, y esa tarea entra en alcance.
+- Q: ¿El horario se escribe o se elige? → A: se elige, con controles de hora. Y eso **disuelve el campo «Sábados»**, que solo existía porque el horario era texto libre.
+- Q: ¿La dirección permite elegir en un mapa? → A: **pendiente**. Añade un script de terceros, una clave de API y manda la dirección del cliente a Google; cambia la superficie de confianza que esta spec declara.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -190,19 +193,19 @@ formulario largo, para que empezar no cueste más que continuar.
 
 #### Criterios de aceptación
 
-1. El sistema DEBE permitir crear un cliente con **a qué se dedica el negocio,
-   cómo se llama, su zona horaria y solo los campos que el renderizador exige
-   para esa plantilla** — medido el 2026-09-28: dos en diez plantillas
-   (dirección y horario), ninguno en tres, doce en `aesthetic_clinic_v1`.
-2. El sistema NO DEBE pedir en el alta **ningún campo que tenga valor por
-   defecto**. Hoy la plantilla marcada enseña 23 y solo 12 hacen falta; las once
-   restantes tienen defecto y se piden igual.
-3. IF una plantilla exige más campos de los que caben sin pesar THEN esa
-   plantilla DEBE conservar solo los imprescindibles, y la excepción DEBE quedar
-   anotada en paridad con el número. *(Aclaración 2026-09-28. Medido: la única
-   que hoy cae aquí es `aesthetic_clinic_v1`, con doce. Darle valores por
-   defecto a esos doce es trabajo de la plantilla en la API y queda fuera de
-   alcance.)*
+1. El sistema DEBE permitir crear un cliente con **cuatro datos, iguales para
+   las trece plantillas**: a qué se dedica el negocio, cómo se llama, dónde
+   está y cuándo abre. *(Owner, 2026-09-28: «los datos básicos los rellenamos
+   acá y los datos más avanzados en los ajustes del agente».)*
+2. El sistema NO DEBE pedir en el alta **ningún dato avanzado**: precios,
+   formas de pago, credenciales profesionales, teléfonos de referencia ni
+   tablas. Son configuración del agente y van a sus ajustes.
+3. WHERE una plantilla exige un dato avanzado para renderizar EL sistema DEBE
+   traerlo de un **valor por defecto seguro en su semilla** —una respuesta que
+   un agente bien educado daría mientras no se lo hayan dicho, no un hueco
+   vacío— y NO DEBE pedirlo en el alta. *(Revoca la aclaración anterior: la
+   excepción de `aesthetic_clinic_v1` se arregla en la semilla, no en la
+   pantalla.)*
 4. El sistema NO DEBE pedir en el alta ningún dato que la ficha del cliente ya
    sepa pedir después.
 5. WHERE un dato del negocio es necesario para que el agente atienda EL sistema
@@ -212,6 +215,24 @@ formulario largo, para que empezar no cueste más que continuar.
    partner ya mira qué le falta, y una barra a medias dice cuánto queda.)*
 6. WHEN el cupo de clientes está agotado THEN el sistema DEBE decirlo antes de
    pedir el primer dato.
+
+### Requisito 7 — Lo que se pide, se pide con el control que le corresponde
+
+**Historia de usuario:** Como partner, quiero decir cuándo abre el negocio sin
+inventarme un formato, para que el agente diga la hora bien.
+
+#### Criterios de aceptación
+
+1. El horario DEBE elegirse con controles de hora, NO escribirse como texto
+   libre.
+2. El sistema NO DEBE tener un campo «Sábados» aparte: el sábado es un día del
+   horario. *(Ese campo solo existía porque el horario era una cadena que
+   alguien escribía a mano y los sábados no cabían en ella.)*
+3. El horario DEBE empezar por el caso corriente —un tramo de lunes a viernes y
+   el sábado— y DEBE poder abrirse día a día para quien lo necesite.
+4. La dirección DEBE ser lo que el agente necesita para decir dónde está el
+   negocio. *(Si se elige en un mapa o se escribe, está pendiente de decisión:
+   un mapa de terceros cambia la superficie de confianza de esta spec.)*
 
 ### Requisito 2 — La plantilla se elige la primera, y a conciencia
 
@@ -306,11 +327,11 @@ de RLS cambian.
 
 ## Criterios de éxito *(obligatorio)*
 
-- **CE-001**: crear un cliente utilizable requiere, en **diez de las trece
-  plantillas**, una elección y **cuatro campos** —nombre, zona horaria,
+- **CE-001**: crear un cliente utilizable requiere una elección y **cuatro
+  datos, los mismos para las trece plantillas** —nombre, zona horaria,
   dirección y horario—; hoy la plantilla marcada por defecto enseña 23 campos.
-  En tres plantillas son **dos campos**. La excepción medida es
-  `aesthetic_clinic_v1`, que conserva doce y queda anotada.
+  **Sin excepciones**: si una plantilla exige más para renderizar, lo trae de su
+  semilla.
 - **CE-002**: el alta tiene **tres pasos o menos**, y ninguno cuya respuesta se
   descarte; hoy tiene cuatro y uno se descarta.
 - **CE-003**: ningún partner puede terminar el alta con una plantilla que no
@@ -332,9 +353,11 @@ de RLS cambian.
   propia spec con su ADR.
 - **Conectar el canal desde el alta** — el canal se conecta en su pantalla, con
   su ventana de Meta. Traerlo aquí es la superficie de la spec 016, no ésta.
-- **Cambiar las plantillas o sus campos** — esta spec cambia **cuándo** se
-  piden, no qué pide cada plantilla. Adelgazar `aesthetic_clinic_v1` es trabajo
-  de la plantilla, en la KB.
+- **Reescribir los prompts de las plantillas** — esta spec cambia **cuándo** se
+  piden los datos y **de dónde salen si no se piden**. Dar valores por defecto
+  seguros a los campos avanzados de `aesthetic_clinic_v1` **sí entra** desde el
+  2026-09-28: sin ellos, la regla «lo avanzado no se pide en el alta» no se
+  puede cumplir.
 - **Rehacer la ficha del cliente** — la tarjeta de pasos ya existe y ya pide lo
   que falta (spec 018, R6).
 - **Importar clientes en lote** — nadie lo ha pedido y multiplicaría el alcance.
