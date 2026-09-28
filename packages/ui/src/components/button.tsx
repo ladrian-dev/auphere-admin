@@ -15,9 +15,21 @@ import { cn } from "../lib/utils";
  * All on the 4 px grid; radius is ``rounded-sm`` (4 px) per the brand
  * system. There are no other sizes — if a design needs one, it is a design
  * change, not a className.
+ *
+ * ``no-underline`` en la base: un Button que se pinta como enlace
+ * (``render={<Link/>}``) es un ``<a href>``, y eso lo expone a todo lo que
+ * en esta base de código subraya anclas. La variante ``link`` lo recupera en
+ * hover, que es donde sí lo quiere.
+ *
+ * No basta con esto, y conviene saberlo: ``Callout`` y ``Alert`` subrayaban
+ * **toda** ancla que contuvieran (``[&_a]:underline``), y ese selector gana
+ * en especificidad. Salía en tres botones «Conectar» de la tarjeta de
+ * conectores que estorban (owner, 2026-09-28). Ahora esos dos excluyen
+ * ``[data-slot=button]``: un aviso subraya los enlaces de su texto, no los
+ * botones que lleva dentro.
  */
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-sm border border-transparent bg-clip-padding text-sm font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-(--duration-fast) select-none focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-sm border border-transparent bg-clip-padding text-sm font-medium no-underline transition-[background-color,color,border-color,box-shadow,transform] duration-(--duration-fast) select-none focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {

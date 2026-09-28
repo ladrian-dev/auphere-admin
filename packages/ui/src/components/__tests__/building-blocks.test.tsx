@@ -256,3 +256,18 @@ describe("Switch", () => {
     expect(onCheckedChange).not.toHaveBeenCalled();
   });
 });
+
+describe("Button", () => {
+  it("no se subraya aunque se pinte como enlace", () => {
+    // El navegador subraya `<a href>` por su cuenta. Salía en tres botones
+    // «Conectar» de la tarjeta de integraciones (owner, 2026-09-28), y el
+    // arreglo va en la base del componente y no en cada sitio que lo usa.
+    render(
+      <Button nativeButton={false} render={<a href="/x" />}>
+        Conectar
+      </Button>,
+    );
+    // Base UI le pone `role="button"` al ancla, así que se busca por ahí.
+    expect(screen.getByRole("button", { name: "Conectar" }).className).toContain("no-underline");
+  });
+});
