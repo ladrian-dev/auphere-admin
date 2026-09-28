@@ -9,7 +9,6 @@ import { Button, Checklist, type ChecklistItem, Combobox, ConfirmDialog, Input, 
 
 import { useT } from "@/i18n/client";
 import { messages, type MessageKey } from "@/i18n/messages";
-import type { Quota } from "@/lib/backend";
 import type { SeedTemplate } from "@/lib/backend/onboarding";
 
 import { HoursField } from "@/components/clients/new/hours-field";
@@ -40,7 +39,7 @@ import {
   type WizardValues,
 } from "./wizard-state";
 
-type Props = { quota: Quota; templates: SeedTemplate[] | null };
+type Props = { templates: SeedTemplate[] | null };
 
 const STEP_LABEL: Record<StepKey, MessageKey> = {
   template: "wizard.template.title",
@@ -59,10 +58,9 @@ function placeholderLabel(t: ReturnType<typeof useT>, key: string): string {
   return resolvePlaceholderLabel(key, messages, (k) => t(k as MessageKey));
 }
 
-export function NewClientWizard({ quota, templates }: Props) {
+export function NewClientWizard({ templates }: Props) {
   const t = useT();
   const router = useRouter();
-  const full = quota.remaining_clients === 0;
 
   const [step, setStep] = React.useState<StepKey>("template");
   // Spec 019 R7: el horario se elige. Lo que la plantilla recibe es la cadena
@@ -309,12 +307,6 @@ export function NewClientWizard({ quota, templates }: Props) {
         stepOfLabel={(n, total) => t("wizard.stepOf", { n, total })}
       />
 
-      {full ? (
-        <p role="alert" className="rounded-md border border-status-warning/40 bg-status-warning/10 px-4 py-3 text-sm">
-          {t("wizard.quota.blocked", { used: quota.used_clients, max: quota.max_clients })}
-        </p>
-      ) : null}
-
       <section aria-labelledby="wizard-step-title" className="flex flex-col gap-4">
         <h2 id="wizard-step-title" ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-balance outline-none">
           {t(STEP_LABEL[step])}
@@ -515,13 +507,13 @@ export function NewClientWizard({ quota, templates }: Props) {
           <Button
             type="button"
             onClick={() => void goNext()}
-            disabled={full || (step === "template" && !templateChosen)}
+            disabled={step === "template" && !templateChosen}
             loading={checkingRef}
           >
             {t("wizard.next")}
           </Button>
         ) : outcome === "idle" ? (
-          <Button type="button" onClick={() => void runAll()} disabled={full} loading={running}>
+          <Button type="button" onClick={() => void runAll()} loading={running}>
             {running ? t("wizard.running") : t("wizard.run")}
           </Button>
         ) : null}

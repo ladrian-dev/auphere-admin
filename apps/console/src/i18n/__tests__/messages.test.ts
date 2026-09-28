@@ -12,8 +12,11 @@ describe("i18n messages", () => {
     }
   });
   it("interpolates variables", () => {
-    expect(t("es", "clients.quota", { used: 3, max: 5 })).toBe("3 de 5 clientes");
-    expect(t("en", "clients.quota", { used: 3, max: 5 })).toBe("3 of 5 clients");
+    // `clients.quota` («{used} de {max} clientes») era el ejemplo hasta que
+    // el límite de clientes se retiró (spec 019): el crédito interpola igual
+    // y sí existe.
+    expect(t("es", "clients.quota.value", { remaining: 3, cap: 5 })).toBe("Quedan 3 de 5 créditos");
+    expect(t("en", "clients.quota.value", { remaining: 3, cap: 5 })).toBe("3 of 5 credits left");
   });
   it("partner-facing copy never names env vars, proxy keys, or sk-", () => {
     for (const [key, entry] of Object.entries(messages)) {

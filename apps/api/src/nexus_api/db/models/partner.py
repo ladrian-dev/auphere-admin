@@ -131,7 +131,15 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
     )
     # Migration 0081 — provisioning quota (PLAN-CONSOLE-V1 CP-06). Checked
     # BEFORE anything is created, under a row lock on the partner.
-    max_clients: Mapped[int] = mapped_column(Integer, nullable=False, default=5, server_default="5")
+    #
+    # **Ya no es una cuota de producto** (spec 019, owner 2026-09-28): añadir
+    # un cliente no se cobra, así que un tope bajo no defendía ningún precio
+    # y solo frenaba al partner que crecía. Lo que queda es la guarda —
+    # comprobar algo antes de crear acota el daño de una clave filtrada o un
+    # bucle— y por eso el techo sube (migración 0130) en vez de irse.
+    max_clients: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=10_000, server_default="10000"
+    )
     max_channels_per_client: Mapped[int] = mapped_column(
         Integer, nullable=False, default=2, server_default="2"
     )

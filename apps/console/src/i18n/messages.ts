@@ -247,8 +247,6 @@ const core = {
   "clients.ref": { es: "Referencia", en: "Reference" },
   "clients.timezone": { es: "Zona horaria", en: "Time zone" },
   "clients.timezone.placeholder": { es: "Elige una zona horaria", en: "Pick a time zone" },
-  "clients.quota": { es: "{used} de {max} clientes", en: "{used} of {max} clients" },
-  "clients.quota.full": { es: "Has alcanzado tu cuota de clientes. Archiva uno o pide a Auphere que la amplíe.", en: "You've reached your client quota. Archive one or ask Auphere to raise it." },
   "clients.count": { es: "{count} cliente(s)", en: "{count} client(s)" },
   "clients.filter.all": { es: "Todos", en: "All" },
   "clients.create.title": { es: "Nuevo cliente", en: "New client" },

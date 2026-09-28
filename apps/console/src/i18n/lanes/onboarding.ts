@@ -109,7 +109,6 @@ export const onboardingMessages = {
   "wizard.done.open": { es: "Abrir el cliente", en: "Open the client" },
   "wizard.done.playground": { es: "Probar en el playground", en: "Try in the playground" },
   "wizard.done.partial": { es: "El cliente existe pero alguna etapa falló. Reintenta o termina desde su ficha.", en: "The client exists but a stage failed. Retry or finish from its page." },
-  "wizard.quota.blocked": { es: "No puedes crear más clientes: {used} de {max} en uso.", en: "You cannot create more clients: {used} of {max} in use." },
   "wizard.leave": { es: "Cancelar", en: "Cancel" },
   "wizard.dirty.title": { es: "¿Salir sin terminar?", en: "Leave without finishing?" },
   "wizard.dirty.body": { es: "Si sales ahora, se pierden los datos que has escrito.", en: "If you leave now, the details you entered will be lost." },
