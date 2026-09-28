@@ -93,6 +93,7 @@ export default async function ClientLayout({ params, children }: { params: Promi
         setup={client.setup ?? null}
         quota={client.quota ?? null}
         hasAgentVersion={Boolean(bundle?.versions?.length)}
+        draftScreens={bundle?.draft_screens?.length ?? 0}
         agentVersion={client.health.agent_version}
         phone={client.health.display_phone_number}
       />

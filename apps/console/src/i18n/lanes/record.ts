@@ -28,6 +28,9 @@ export const recordMessages = {
   },
   "clients.setup.done": { es: "{done} de {total} pasos hechos", en: "{done} of {total} steps done" },
   "clients.setup.agent": { es: "Agente", en: "Agent" },
+  // El dato del paso «Agente» cuando queda un borrador: lo publicado es lo
+  // que el agente dice, así que un borrador abierto es trabajo sin terminar.
+  "clients.setup.agent.draft": { es: "v{v} · cambios sin publicar", en: "v{v} · unpublished changes" },
   "clients.setup.channel": { es: "Canal", en: "Channel" },
   "clients.setup.quota": { es: "Crédito", en: "Credit" },
   "clients.setup.activation": { es: "Activación", en: "Activation" },

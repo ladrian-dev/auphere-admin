@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/i18n/client";
@@ -112,6 +112,17 @@ function conGrupos(): CapabilitiesOut {
       { function: "escalation" as CapabilityFunction, items: [escalar] },
     ],
   });
+}
+
+/**
+ * Abre la ficha de una habilidad. Desde el 2026-09-28 la tarjeta pesa poco
+ * —nombre, una línea y el interruptor— y todo lo demás (insignias, qué le
+ * falta, cuándo la usa, el nombre interno) vive aquí: se lee cuando se va a
+ * decidir si se enciende, no de golpe en un muro de treinta y siete.
+ */
+async function abrirFicha(nombre: RegExp | string) {
+  fireEvent.click(screen.getByRole("button", { name: nombre }));
+  return within(await screen.findByRole("dialog"));
 }
 
 function mount(data: CapabilitiesOut = out(), canWrite = true) {
@@ -251,20 +262,22 @@ describe("Capacidades · un clic guarda", () => {
 });
 
 describe("Capacidades · lo que le falta para funcionar", () => {
-  it("una capacidad sin su integración se puede encender igual, y se dice qué falta", () => {
+  it("una capacidad sin su integración se puede encender igual, y se dice qué falta", async () => {
     mount();
     // Decisión del owner (2026-09-26): avisar, no bloquear. Encenderla es
     // decir «la quiero». T036 pedía lo contrario (tarjeta sin conmutador) y
     // esa parte de la tarea quedó fuera a propósito.
     expect(screen.getByText("Necesita WooCommerce para funcionar.")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Conectarlo" })[0]).toHaveAttribute(
+    expect(screen.getAllByRole("switch")).toHaveLength(3);
+    // Adónde ir a arreglarlo se lee en la ficha, con su ayuda al lado.
+    const ficha = await abrirFicha(/Consultar un pedido/);
+    expect(ficha.getByRole("link", { name: "Conectarlo" })).toHaveAttribute(
       "href",
       "/clients/demo/integrations",
     );
-    expect(screen.getAllByRole("switch")).toHaveLength(3);
   });
 
-  it("una habilidad que Auphere no ha publicado dice de quién depende, y no finge un control", () => {
+  it("una habilidad que Auphere no ha publicado dice de quién depende, y no finge un control", async () => {
     // Paridad fila 57. Aquí NO vale «avisar y dejar encender»: con una
     // integración que falta, encenderla es una decisión que se cumple al
     // conectarla; aquí no hay `skill_id` que escribir hasta que la subamos,
@@ -273,36 +286,38 @@ describe("Capacidades · lo que le falta para funcionar", () => {
     mount(out({ groups: [{ function: "escalation", items: [sinPublicar] }] }));
 
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
+    // Que no se pueda encender se dice **en la tarjeta**: cambia la decisión
+    // antes de abrirla, así que no puede esperar dentro.
     expect(screen.getByText("Aún no disponible")).toBeInTheDocument();
-    expect(screen.getByText(/No depende de ti/)).toBeInTheDocument();
+    const ficha = await abrirFicha(/Avisar a una persona/);
+    expect(ficha.getByText(/No depende de ti/)).toBeInTheDocument();
     // Y no se cuela el texto viejo, que mandaba a buscar el problema en la
     // configuración del cliente.
     expect(screen.queryByText(/requiere una herramienta o canal/i)).toBeNull();
   });
 
-  it("el bloque de integraciones dice cuántas desbloquea cada una y no duplica su pestaña", () => {
+  it("no hay un bloque de conectores que faltan: lo dice cada tarjeta", () => {
+    // Retirado por decisión del owner el 2026-09-28. Encabezaba la pantalla
+    // repitiendo lo que la tarjeta ya dice de sí misma —«Necesita
+    // WooCommerce», con su enlace— y empujaba el catálogo hacia abajo.
     mount();
-    expect(screen.getByText(/Falta un conector/)).toBeInTheDocument();
-    expect(screen.getByText("desbloquea 1 de las que ves")).toBeInTheDocument();
-    // Pausar, desconectar y sincronizar viven solo en Integraciones: hacerlo
-    // desde aquí rompería en silencio lo que se está mirando.
-    expect(screen.getByText(/Pausar, desconectar o sincronizar se hace en Conectores/)).toBeInTheDocument();
-    for (const nombre of ["Sincronizar", "Desconectar", "Pausar"]) {
-      expect(screen.queryByRole("button", { name: nombre })).toBeNull();
-    }
+    expect(screen.queryByText(/Falta un conector|Faltan \d+ conectores/)).toBeNull();
+    expect(screen.queryByText(/desbloquea .* de las que ves/)).toBeNull();
+    // Lo que sí sigue: la tarjeta dice qué le falta y adónde ir.
+    expect(screen.getByText("Necesita WooCommerce para funcionar.")).toBeInTheDocument();
   });
 
-  it("si todo está conectado, el bloque no ocupa sitio", () => {
+  it("si está conectado, la tarjeta no avisa de nada", () => {
     const conectado = { ...pedidos, connector: { slug: "woocommerce", display_name: "WooCommerce", status: "connected" }, usable: true };
     mount(out({ groups: [{ function: "orders", items: [conectado] }] }));
-    expect(screen.queryByText(/Falta un conector/)).toBeNull();
     expect(screen.queryByText(/Necesita WooCommerce/)).toBeNull();
   });
 });
 
 describe("Capacidades · modo y detalle técnico", () => {
-  it("«Requiere aprobación» no se puede ni pedir: solo Siempre y Nunca", () => {
+  it("«Requiere aprobación» no se puede ni pedir: solo Siempre y Nunca", async () => {
     mount();
+    await abrirFicha(/Reservar una cita/);
     const select = screen.getByLabelText("Cuándo la usa") as HTMLSelectElement;
     const opciones = [...select.options].map((o) => o.textContent);
     expect(opciones).toEqual(["Por defecto (Siempre)", "Siempre", "Nunca"]);
@@ -311,6 +326,7 @@ describe("Capacidades · modo y detalle técnico", () => {
 
   it("cambiar el modo guarda solo el modo", async () => {
     mount();
+    await abrirFicha(/Reservar una cita/);
     fireEvent.change(screen.getByLabelText("Cuándo la usa"), { target: { value: "blocked" } });
     await waitFor(() => expect(setCapabilityAction).toHaveBeenCalledTimes(1));
     expect(setCapabilityAction).toHaveBeenCalledWith({
@@ -330,6 +346,7 @@ describe("Capacidades · modo y detalle técnico", () => {
       mode: { default: "always" as const, override: "blocked" as const, effective: "blocked" as const, options: ["always", "blocked"] as const },
     };
     mount(out({ groups: [{ function: "appointments", items: [fijada as never] }] }));
+    await abrirFicha(/Reservar una cita/);
 
     // Con override hay dos cosas con esa etiqueta: el selector y la ayuda
     // que explica que lo fijaste tú. Aquí se quiere el selector.
@@ -345,13 +362,15 @@ describe("Capacidades · modo y detalle técnico", () => {
     expect(setCapabilityAction.mock.calls[0]![0].mode).not.toBe("always");
   });
 
-  it("una habilidad no inventa un modo vacío para que la tabla quede simétrica", () => {
+  it("una habilidad no inventa un modo vacío para que la tabla quede simétrica", async () => {
     mount(out({ groups: [{ function: "escalation", items: [escalar] }] }));
+    await abrirFicha(/Avisar a una persona/);
     expect(screen.queryByLabelText("Cuándo la usa")).toBeNull();
   });
 
-  it("el nombre interno existe pero llega plegado, sin competir con el del negocio", () => {
+  it("el nombre interno existe pero llega plegado, sin competir con el del negocio", async () => {
     mount(out({ groups: [{ function: "escalation", items: [escalar] }] }));
+    await abrirFicha(/Avisar a una persona/);
     const detalle = document.querySelector("details");
     expect(detalle).not.toBeNull();
     expect((detalle as HTMLDetailsElement).open).toBe(false);
@@ -366,13 +385,19 @@ describe("Capacidades · modo y detalle técnico", () => {
     expect(screen.getByText("1.2.0")).toBeInTheDocument();
   });
 
-  it("las insignias dicen el estado de publicación sin que haya que ir a otra pestaña", () => {
+  it("las insignias dicen el estado de publicación sin que haya que ir a otra pestaña", async () => {
     const enViva = { ...reservar, enabled: true, enabled_in_active: true };
     const sinPublicar = { ...escalar, enabled: true };
     mount(out({ groups: [{ function: "appointments", items: [enViva] }, { function: "escalation", items: [sinPublicar] }] }));
-    expect(screen.getByText("En la versión activa")).toBeInTheDocument();
-    expect(screen.getByText("Aún no publicada")).toBeInTheDocument();
-    expect(screen.getByText("Recomendada para tu sector")).toBeInTheDocument();
+    // «Otra pestaña» sigue siendo lo que no hace falta: la ficha se abre aquí
+    // mismo, sin salir del catálogo ni perder el filtro puesto.
+    const viva = await abrirFicha(/Reservar una cita/);
+    expect(viva.getByText("En la versión activa")).toBeInTheDocument();
+    expect(viva.getByText("Recomendada para tu sector")).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+    const borrador = await abrirFicha(/Avisar a una persona/);
+    expect(borrador.getByText("Aún no publicada")).toBeInTheDocument();
   });
 });
 

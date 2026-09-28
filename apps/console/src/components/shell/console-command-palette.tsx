@@ -81,7 +81,10 @@ export function ConsoleCommandPalette({ role }: { role: Role }) {
 
   return (
     <>
-      <Button type="button" variant="outline" size="sm" className="hidden w-64 justify-between gap-2 text-muted-foreground sm:inline-flex" onClick={() => setOpen(true)} aria-keyshortcuts="Meta+K Control+K">
+      <Button type="button" variant="outline" size="sm" // `pr-1`: el atajo es un adorno pegado al borde, y con el `px-3` del
+        // botón tenía 12 px a la derecha contra los 4 que le quedan arriba y
+        // abajo. Cuatro por los tres lados (owner, 2026-09-28).
+        className="hidden w-64 justify-between gap-2 pr-1 text-muted-foreground sm:inline-flex" onClick={() => setOpen(true)} aria-keyshortcuts="Meta+K Control+K">
         <span className="min-w-0 truncate">{t("cmdk.open")}</span>
         <ShortcutKbd keyName="K" aria-hidden="true" />
       </Button>

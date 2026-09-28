@@ -11,7 +11,6 @@ import { useCatalog, useCatalogLabels } from "@/components/catalog/use-catalog";
 import { useT } from "@/i18n/client";
 import type { CapabilitiesOut } from "@/lib/backend/capabilities";
 
-import { BlockingIntegrations } from "./blocking-integrations";
 import { CapabilityCard } from "./capability-card";
 
 /**
@@ -22,6 +21,12 @@ import { CapabilityCard } from "./capability-card";
  * Lo que esta pantalla aporta al patrón es lo suyo y nada más: la función de
  * negocio como categoría, la tarjeta con su interruptor y el filtro por
  * sector. El patrón no sabe nada de eso.
+ *
+ * **Tampoco hay un aviso de conectores que faltan** (owner, 2026-09-28).
+ * Lo hubo, encabezando la pantalla: una lista de los conectores sin conectar
+ * con lo que desbloquea cada uno. Repetía lo que cada tarjeta ya dice de sí
+ * misma —«necesita WooCommerce», con su enlace— y lo repetía arriba del todo,
+ * empujando el catálogo entero hacia abajo. Conectores es su pantalla.
  *
  * **No hay encendido en bloque** (owner, 2026-09-28). Lo hubo: dos botones
  * que encendían o apagaban «las visibles». Actuaban sobre un conjunto que
@@ -70,28 +75,10 @@ export function CapabilitiesCatalog({
     [all],
   );
 
-  // Lo que el patrón enseñaría ahora mismo. Se calcula aquí porque el aviso
-  // de conectores que estorban habla de **lo que se está mirando**: filtrar
-  // a «Citas» y seguir viendo que falta WooCommerce para los pedidos sería
-  // el aviso contestando a otra pregunta.
-  const visible = React.useMemo(() => {
-    const needle = catalog.query.trim().toLowerCase();
-    return items
-      .filter((i) => {
-        if (catalog.tab === "active" && !i.active) return false;
-        if (catalog.category !== null && i.category !== catalog.category) return false;
-        if (needle && !`${i.name} ${i.search ?? ""}`.toLowerCase().includes(needle)) return false;
-        return true;
-      })
-      .map((i) => i.cap);
-  }, [items, catalog.query, catalog.tab, catalog.category]);
-
   const viewingAll = data.hidden_by_sector === 0 && data.sector !== null;
 
   return (
     <div className="flex flex-col gap-(--space-section)">
-      <BlockingIntegrations refId={refId} items={visible} />
-
       <CatalogBrowser
         {...catalog}
         items={items}

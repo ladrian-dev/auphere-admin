@@ -3,6 +3,7 @@
 import { Section, StepTrack, formatNumber } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
+import { t as translate } from "@/i18n/messages";
 import type { ClientQuota, ClientSetupDetail } from "@/lib/backend";
 import type { Role } from "@/lib/permissions";
 
@@ -38,6 +39,7 @@ export function ClientSetup({
   agentVersion,
   phone,
   hasAgentVersion = false,
+  draftScreens = 0,
 }: {
   refId: string;
   name: string;
@@ -50,6 +52,8 @@ export function ClientSetup({
   phone?: string | null;
   /** Hay alguna versión escrita, aunque no esté publicada. */
   hasAgentVersion?: boolean;
+  /** Cuántas pantallas del agente tienen cambios sin publicar. */
+  draftScreens?: number;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -61,7 +65,7 @@ export function ClientSetup({
   // marcha, y el bloque entero desaparece.
   if (!pending) return null;
 
-  const steps = subSteps({ setup, quota, agentVersion, phone, hasAgentVersion, status, locale });
+  const steps = subSteps({ setup, quota, agentVersion, phone, hasAgentVersion, draftScreens, status, locale });
   // Se cuentan **pasos**, no partes: hay tantas barras como pasos, y un
   // contador que cuente otra cosa no cuadra con lo que se ve. Las partes
   // siguen existiendo, pero solo para rellenar la barra a medias.
@@ -135,6 +139,7 @@ function subSteps({
   agentVersion,
   phone,
   hasAgentVersion,
+  draftScreens,
   status,
   locale,
 }: {
@@ -143,19 +148,28 @@ function subSteps({
   agentVersion?: number | null;
   phone?: string | null;
   hasAgentVersion: boolean;
+  draftScreens: number;
   status: string;
   locale: "es" | "en";
 }): SubStep[] {
   const publicado = Boolean(agentVersion);
+  const sinPublicar = draftScreens > 0;
   const pasos: SubStep[] = [
     {
-      // Escribirlo y publicarlo son dos cosas, y la segunda es la que el
-      // agente necesita para saber qué decir.
+      // Tres cosas, no una: escribirlo, publicarlo, y no dejarse cambios sin
+      // publicar por el camino. La tercera importa porque **lo publicado es
+      // lo que el agente dice**: con un borrador abierto, la barra llena
+      // afirmaría que ya está configurado lo que todavía nadie ha subido
+      // (owner, 2026-09-28).
       step: "agent",
       label: "clients.setup.agent",
-      done: (hasAgentVersion || publicado ? 1 : 0) + (publicado ? 1 : 0),
-      of: 2,
-      detail: publicado ? `v${agentVersion}` : hasAgentVersion ? null : null,
+      done: (hasAgentVersion || publicado ? 1 : 0) + (publicado ? 1 : 0) + (publicado && !sinPublicar ? 1 : 0),
+      of: 3,
+      detail: publicado
+        ? sinPublicar
+          ? translate(locale, "clients.setup.agent.draft", { v: agentVersion ?? 0 })
+          : `v${agentVersion}`
+        : null,
     },
     {
       step: "channel",

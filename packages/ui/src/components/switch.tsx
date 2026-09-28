@@ -21,17 +21,23 @@ function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
     <SwitchPrimitive.Root
       data-slot="switch"
       className={cn(
-        // El área de pulsación se estira con `after:` más allá del dibujo, que
-        // mide 36×20: en una pantalla táctil un objetivo de 20 px de alto no
-        // se acierta (WCAG 2.5.8 pide 24).
-        "peer relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-input transition-colors outline-none after:absolute after:-inset-x-1 after:-inset-y-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 data-checked:bg-primary",
+        // 44×24 con un pulgar de 16: **4 px por los cuatro lados**, apagado y
+        // encendido. Medía 36×20 con el mismo pulgar, así que dejaba 2 px
+        // arriba y abajo contra 4 a los lados y se leía aplastado (owner,
+        // 2026-09-28). Sin borde transparente: con `box-sizing: border-box`
+        // se comía 1 px por lado y volvía a descuadrar la cuenta.
+        //
+        // De paso, 24 px de alto es el objetivo mínimo que pide WCAG 2.5.8
+        // sin depender del área extra de `after:`, que se queda porque en
+        // una pantalla táctil sigue ayudando.
+        "peer relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full bg-input transition-colors outline-none after:absolute after:-inset-x-1 after:-inset-y-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 data-checked:bg-primary",
         className,
       )}
       {...props}
     >
       <SwitchPrimitive.Thumb
         data-slot="switch-thumb"
-        className="pointer-events-none block size-4 translate-x-1 rounded-full bg-background shadow-sm transition-transform data-checked:translate-x-4"
+        className="pointer-events-none block size-4 translate-x-1 rounded-full bg-background shadow-sm transition-transform data-checked:translate-x-6"
       />
     </SwitchPrimitive.Root>
   );

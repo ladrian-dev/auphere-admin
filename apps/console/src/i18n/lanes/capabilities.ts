@@ -71,20 +71,12 @@ export const capabilitiesMessages = {
   "cap.technical.tags": { es: "Etiquetas", en: "Tags" },
 
   // ── integraciones que estorban (R4.1) ─────────────────────────────
-  "cap.int.title": { es: "Falta un conector para poder usar todo esto", en: "One connector is missing to use all of this" },
-  "cap.int.titleMany": { es: "Faltan {n} conectores para poder usar todo esto", en: "{n} connectors are missing to use all of this" },
-  "cap.int.unlocks": { es: "desbloquea {n} de las que ves", en: "unlocks {n} of the ones you see" },
-  "cap.int.connect": { es: "Conectar", en: "Connect" },
-  "cap.int.reconnect": { es: "Reconectar", en: "Reconnect" },
-  "cap.int.elsewhere": {
-    es: "Pausar, desconectar o sincronizar se hace en Conectores.",
-    en: "Pausing, disconnecting or syncing is done in Connectors.",
-  },
 
-  // ── la pantalla de Integraciones (R4) ─────────────────────────────
+  // ── la pantalla de Conectores (R4) ────────────────────────────────
   //
-  // Prefijo `int.` y no `cap.int.`: eso último es el bloque que avisa dentro
-  // de Capacidades, y son dos sitios distintos con dos trabajos distintos.
+  // Hubo un prefijo `cap.int.` para un aviso de conectores que faltaban
+  // dentro de Habilidades. Se retiró con el aviso (owner, 2026-09-28):
+  // repetía lo que cada tarjeta ya dice de sí misma.
   "int.title": { es: "Conectores", en: "Connectors" },
   "int.description": {
     es: "Lo que conecta al agente con lo que el negocio ya usa. Mientras un conector no esté conectado, las habilidades que dependen de él se pueden encender, pero el agente no las usa.",

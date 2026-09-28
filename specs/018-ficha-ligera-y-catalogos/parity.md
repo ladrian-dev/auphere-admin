@@ -87,8 +87,8 @@ Fuente: 86 líneas. Todo lo que enseña, enumerado.
 | 40 | Agrupación por función, sin grupos vacíos | Se conserva: la función pasa a ser **la categoría** del patrón | ✅ |
 | 41 | Filtro por sector con «Ver todas» y cuántas oculta, en la URL | Se conserva **dentro** del patrón nuevo, no al lado | ➡️ |
 | 42 | «Encender / apagar las visibles» | **Retirado** por decisión del owner (2026-09-28). Actuaba sobre un conjunto que dependía del filtro puesto: un filtro que no se había mirado volteaba las 37 de una vez, con una llamada por cada una. Lo que se pierde es encender muchas de golpe tras filtrar; se hace una a una | ❌ |
-| 43 | Bloque de integraciones que estorban, arriba | Se conserva | ✅ |
-| 44 | Conmutador que guarda al clic; modo; insignias; detalle técnico plegado | Se conservan enteros | ✅ |
+| 43 | Bloque de integraciones que estorban, arriba | **Retirado** por decisión del owner (2026-09-28). Repetía lo que cada tarjeta ya dice de sí misma —«Necesita WooCommerce», con su enlace— y lo hacía encabezando la pantalla, empujando el catálogo hacia abajo | ❌ |
+| 44 | Conmutador que guarda al clic; modo; insignias; detalle técnico plegado | Se conservan enteros, y **todo salvo el conmutador se mueve a una ficha** que se abre al pulsar la tarjeta (owner, 2026-09-28): con treinta y siete en pantalla, seis insignias por tarjeta no son una lista sino un muro. Se leen donde se usan, al decidir si se enciende | ➡️ |
 | 45 | — | Pestañas para ver solo lo activo o todo | ➕ |
 | 46 | — | Filtro por categoría, en pastillas con su cuenta: además de filtrar, son el mapa de lo que hay dentro | ➕ |
 
