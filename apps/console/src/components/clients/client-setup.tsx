@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
-
-import { Button, Section, StepTrack, formatNumber } from "@nexus/ui";
+import { Section, StepTrack, formatNumber } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 import type { ClientQuota, ClientSetupDetail } from "@/lib/backend";
@@ -64,8 +62,11 @@ export function ClientSetup({
   if (!pending) return null;
 
   const steps = subSteps({ setup, quota, agentVersion, phone, hasAgentVersion, status, locale });
-  const hechas = steps.reduce((n, s) => n + s.done, 0);
-  const total = steps.reduce((n, s) => n + s.of, 0);
+  // Se cuentan **pasos**, no partes: hay tantas barras como pasos, y un
+  // contador que cuente otra cosa no cuadra con lo que se ve. Las partes
+  // siguen existiendo, pero solo para rellenar la barra a medias.
+  const hechos = steps.filter((s) => s.done >= s.of).length;
+  const total = steps.length;
 
   return (
     <Section
@@ -75,7 +76,7 @@ export function ClientSetup({
       // primero que se quiere saber al volver a un cliente a medias.
       actions={
         <span className="text-sm text-muted-foreground tabular-nums">
-          {t("clients.setup.partsDone", { done: hechas, total })}
+          {t("clients.setup.done", { done: hechos, total })}
         </span>
       }
       className="min-w-0"
@@ -88,29 +89,24 @@ export function ClientSetup({
           of: s.of,
           detail: s.detail,
           current: s.step === pending,
+          href: s.step === pending && action?.kind === "link" ? action.href : undefined,
         }))}
         ariaLabel={t("clients.setup.title")}
-        summary={t("clients.setup.partsDone", { done: hechas, total })}
+        summary={t("clients.setup.done", { done: hechos, total })}
       />
 
-      {/* La acción y su porqué en una fila: la razón a la derecha del botón
-          en vez de debajo, que es lo que dejaba la mitad derecha vacía. */}
-      <div className="flex flex-wrap items-center gap-x-(--space-block) gap-y-2 pt-1">
-        {action?.kind === "link" ? (
-          <Button nativeButton={false} render={<Link href={action.href} />}>
-            {t(action.label)}
-          </Button>
-        ) : action?.kind === "activate" ? (
+      {/* Ni botón ni explicación al pie: la flecha del paso pendiente ya
+          dice dónde se resuelve, y la tarjeta se lee de un vistazo en vez
+          de pedir que se lea entera (owner, 2026-09-28). Lo único que
+          sobrevive es quién puede resolverlo cuando tú no puedes: sin esa
+          frase, a ese rol la tarjeta no le dice nada. */}
+      {action?.kind === "link" ? null : action?.kind === "activate" ? (
+        <div className="pt-1">
           <ClientLifecycleActions refId={refId} status={status} name={name} canDelete={false} />
-        ) : (
-          // Un botón que da 403 es peor que ningún botón: se dice quién
-          // puede resolverlo.
-          <span className="text-sm">
-            {t(pendingLabel(pending))} <span className="text-muted-foreground">{t(whoCanResolve(pending))}</span>
-          </span>
-        )}
-        <p className="min-w-0 flex-1 text-sm text-pretty text-muted-foreground">{t(whyLabel(pending))}</p>
-      </div>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t(whoCanResolve(pending))}</p>
+      )}
     </Section>
   );
 }
@@ -186,10 +182,3 @@ function subSteps({
   return pasos;
 }
 
-function pendingLabel(step: NonNullable<ClientSetupDetail["next"]>) {
-  return `clients.setup.next.${step}` as const;
-}
-
-function whyLabel(step: NonNullable<ClientSetupDetail["next"]>) {
-  return `clients.setup.why.${step}` as const;
-}

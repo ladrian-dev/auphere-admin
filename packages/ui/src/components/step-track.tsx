@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "../lib/utils";
@@ -7,13 +8,17 @@ type Step = {
   label: ReactNode;
   /** Partes hechas de este paso. */
   done: number;
-  /** De cuántas partes consta. Es también su peso en el ancho: un paso con
-   *  más partes ocupa más, que es lo que enseña cuál cuesta más. */
+  /** De cuántas partes consta: da el relleno parcial de la barra. **No** da
+   *  el ancho — todas las barras miden igual. Anchos distintos hacían que
+   *  el ojo contara pasos de distinto tamaño y el contador no cuadrara. */
   of: number;
   /** Lo que se sabe de él: «versión 1», «+34 600…», «50.000 créditos». */
   detail?: ReactNode;
   /** El que toca ahora. Solo puede haber uno. */
   current?: boolean;
+  /** Dónde se resuelve. Convierte la etiqueta del paso pendiente en el
+   *  enlace que lleva allí, en vez de un botón suelto debajo. */
+  href?: string;
 };
 
 type StepTrackProps = {
@@ -34,10 +39,13 @@ type StepTrackProps = {
  *
  * Tres decisiones que lo sostienen:
  *
- * - **El ancho lo da el número de partes, no la estética.** Un paso de dos
- *   partes ocupa el doble que uno de una. Así la barra enseña dónde está el
- *   trabajo sin que nadie tenga que afirmar cuánto tarda cada cosa, que es
- *   un dato que no tenemos.
+ * - **Todas las barras miden igual.** Un primer intento las ensanchó según
+ *   sus partes, y el resultado fue ilegible: tres barras de anchos
+ *   distintos sobre un contador que decía «4 de 5» — el ojo cuenta barras,
+ *   así que el contador tiene que contar lo mismo.
+ * - **El paso pendiente lleva su enlace.** La flecha en su etiqueta dice
+ *   dónde se resuelve, en el sitio donde estás mirando el problema, en vez
+ *   de un botón al pie de la tarjeta.
  * - **El estado está en texto, no solo en la barra.** Cada paso lleva su
  *   detalle debajo y el conjunto su frase de resumen: quien no distingue el
  *   relleno lee lo mismo.
@@ -59,19 +67,30 @@ function StepTrack({ steps, ariaLabel, summary, className }: StepTrackProps) {
           <div
             key={s.key}
             data-state={state}
-            // El peso: un paso de dos partes ocupa el doble de ancho.
-            style={{ flexGrow: s.of, flexBasis: `${s.of * 5}rem` }}
-            className="flex min-w-0 flex-col gap-2"
+            className="flex min-w-0 flex-1 basis-40 flex-col gap-2"
             {...(s.current ? { "aria-current": "step" as const } : {})}
           >
-            <span
-              className={cn(
-                "truncate text-sm",
-                state === "todo" ? "text-muted-foreground" : "font-medium text-foreground",
-              )}
-            >
-              {s.label}
-            </span>
+            {s.href ? (
+              <a
+                href={s.href}
+                className={cn(
+                  "inline-flex min-w-0 items-center gap-1 text-sm underline-offset-4 hover:underline",
+                  state === "todo" ? "text-foreground" : "font-medium text-foreground",
+                )}
+              >
+                <span className="truncate">{s.label}</span>
+                <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
+              </a>
+            ) : (
+              <span
+                className={cn(
+                  "truncate text-sm",
+                  state === "todo" ? "text-muted-foreground" : "font-medium text-foreground",
+                )}
+              >
+                {s.label}
+              </span>
+            )}
             <span className="h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
               <span
                 className={cn(

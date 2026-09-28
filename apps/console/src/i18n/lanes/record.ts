@@ -20,13 +20,13 @@ export const recordMessages = {
   // ── puesta en marcha (R1) ─────────────────────────────────────────
   "clients.setup.title": { es: "Puesta en marcha", en: "Getting started" },
   "clients.setup.description": {
-    es: "Lo que falta para que el agente atienda. Los cuatro pasos se pueden hacer en cualquier orden.",
-    en: "What stands between this client and a working agent. The four steps can be done in any order.",
+    // Sin «cuatro»: los pasos que se enseñan dependen del cliente
+    // —«Activación» solo aparece si falta—, y una cifra a fuego encima de
+    // tres barras es la misma contradicción que tenía el contador.
+    es: "Lo que falta para que el agente atienda. Se pueden hacer en cualquier orden.",
+    en: "What stands between this client and a working agent. They can be done in any order.",
   },
   "clients.setup.done": { es: "{done} de {total} pasos hechos", en: "{done} of {total} steps done" },
-  // El recuento pasa a ser por PARTES, no por pasos: «Agente» son dos cosas
-  // y «Activación» una, y decir «3 de 4 pasos» escondía justo eso.
-  "clients.setup.partsDone": { es: "{done} de {total} hechos", en: "{done} of {total} done" },
   "clients.setup.agent": { es: "Agente", en: "Agent" },
   "clients.setup.channel": { es: "Canal", en: "Channel" },
   "clients.setup.quota": { es: "Crédito", en: "Credit" },

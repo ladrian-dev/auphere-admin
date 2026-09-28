@@ -16,7 +16,10 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
   const principal = await requirePrincipal();
   const { t } = await getT(principal.locale);
   return (
-    <SidebarProvider defaultOpen>
+    // El shell mide exactamente la ventana. Sin esto, el inset medía la
+    // ventana entera **más** sus 8 px de margen arriba y abajo, y esos 16 px
+    // de scroll movían todo el marco, barra incluida.
+    <SidebarProvider defaultOpen className="h-svh min-h-0 overflow-hidden">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-sm focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
@@ -34,8 +37,8 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           `sticky` sobre el scroll del documento la barra se iba con el
           contenido, y además un panel blanco que sube por detrás de la barra
           rompe el marco justo donde tiene que verse. */}
-      <SidebarInset className="h-svh min-h-0 overflow-hidden bg-sidebar">
-        <header className="flex h-12 shrink-0 items-center gap-2 bg-sidebar px-4">
+      <SidebarInset className="min-h-0 overflow-hidden bg-sidebar">
+        <header className="flex h-12 shrink-0 items-center gap-2 px-4">
           {/* The toggle on the left of the bar (owner, 2026-09-24); the partner
               name lives in the user menu. The rest is global: search (⌘K) and
               the notifications bell (CP-07 / CP-29). */}
@@ -47,7 +50,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
         {/* El contenido, en blanco, enmarcado por el color del lateral y de
             la barra —que ahora comparten tono y se leen como una sola pieza—.
             Es también el único contenedor que scrollea. */}
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-tl-md border-t border-l border-border bg-card">
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-card">
           <main
             id="main"
             tabIndex={-1}
