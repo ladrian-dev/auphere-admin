@@ -205,10 +205,9 @@ formulario largo, para que empezar no cueste más que continuar.
    barra y su cuenta de cuántos faltan, y NO en el alta. *(Aclaración
    2026-09-28: la tarjeta pasa de tres pasos a cuatro; es el sitio donde el
    partner ya mira qué le falta, y una barra a medias dice cuánto queda.)*
-6. WHEN el cupo de clientes está agotado THEN el sistema DEBE decirlo antes de
-   pedir el primer dato, y DEBE ofrecer la salida que existe: archivar un
-   cliente. NO DEBE ofrecer comprar nada — **a un partner no se le cobra por
-   añadir un cliente** (owner, 2026-09-28).
+6. El sistema NO DEBE limitar cuántos clientes puede crear un partner, y NO
+   DEBE enseñar ningún contador ni aviso de cupo en el alta. *(Owner,
+   2026-09-28: «crear un cliente no tiene limitantes para los partners».)*
 
 ### Requisito 7 — Lo que se pide, se pide con el control que le corresponde
 
@@ -402,22 +401,28 @@ de RLS cambian.
   que falta (spec 018, R6).
 - **Importar clientes en lote** — nadie lo ha pedido y multiplicaría el alcance.
 
-## Una contradicción que queda abierta
+## El límite de clientes se retira
 
-El owner dice (2026-09-28) que **los partners no tienen límite de clientes**.
-El código sí lo tiene: `partners.max_clients` vale **5** por defecto
-(`server_default="5"`, migración 0081), y `provision_partner_client` bloquea
-con un **409** bajo un bloqueo de fila antes de crear nada.
+El owner decidió el 2026-09-28 que **crear un cliente no tiene limitantes para
+los partners**. Hoy sí lo tiene, y en tres sitios:
 
-Las dos cosas no pueden ser ciertas. O el límite es real y la pantalla de cupo
-lleno hace falta, o es vestigial y **sobra entera** — junto con el contador
-«{used} de {max} clientes» de la lista y el aviso del alta.
+| Dónde | Qué hace |
+|---|---|
+| `partners.max_clients` | Columna con `server_default="5"` (migración 0081) |
+| `provision_partner_client` | **409** bajo bloqueo de fila, antes de crear nada |
+| Consola | Contador «{used} de {max} clientes» en la lista, aviso en el alta, estado de cupo lleno |
 
-Esta spec **no lo decide**: deja la pantalla diciendo la verdad de hoy y lo
-anota para que se resuelva a sabiendas. Si el límite se retira, es un cambio en
-el modelo de partner con su propia tarea.
+**Una cosa que conviene no perder al quitarlo.** El límite tiene una segunda
+vida que nadie escribió: se comprueba **antes de crear nada y bajo bloqueo de
+fila**, así que hoy acota el daño si una clave se filtra o un bucle se
+descontrola. Sin ninguna comprobación, nada impide crear diez mil tenants.
 
-## Supuestos
+Por eso la retirada se plantea como **quitar el límite de producto, no la
+guarda**: desaparece de la consola —contador, aviso y pantalla— y el modelo
+conserva un techo de cordura alto que ningún partner real alcanza. Si el owner
+prefiere retirarlo del todo, es una línea menos y queda anotado aquí.
+
+## Supuestos## Supuestos
 
 - **Ya no es un supuesto: está medido.** Se ejecutó el renderizador de semillas
   contra las trece plantillas con los campos vacíos, contando qué exige cada una

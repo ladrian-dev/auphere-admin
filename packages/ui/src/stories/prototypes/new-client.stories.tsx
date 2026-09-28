@@ -16,7 +16,6 @@ import {
   Stethoscope,
   Syringe,
   UtensilsCrossed,
-  Users,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -680,34 +679,15 @@ export const UnaEtapaFalla: Story = {
   ),
 };
 
-/**
- * El cupo se dice **antes** de pedir el primer dato, no después del
- * formulario.
+/*
+ * Aquí había un estado «Cupo lleno». Se retiró el 2026-09-28 por decisión del
+ * owner: **crear un cliente no tiene limitantes para los partners**. No es que
+ * la pantalla estuviera mal hecha — es que no tiene que existir.
  *
- * **No hay plan que comprar** (owner, 2026-09-28): a un partner no se le cobra
- * por añadir un cliente. Así que la pantalla no vende nada — dice la única
- * salida que existe hoy y quién puede dar la otra, con las mismas palabras
- * que usa la API al rechazar: «Archive a client you no longer need or ask
- * Auphere to raise the limit».
- *
- * **Y queda una pregunta abierta.** El owner cree que los partners no tienen
- * límite de clientes; `partners.max_clients` existe, vale 5 por defecto y
- * bloquea con un 409 antes de crear nada. Si el límite no debe existir, esta
- * pantalla sobra entera. Mientras exista, tiene que decir algo.
+ * El límite sigue en el código (`partners.max_clients`, 5 por defecto, 409
+ * bajo bloqueo de fila) y su retirada es una tarea propia, porque además del
+ * alta toca el contador de la lista de clientes y `/console/me`.
  */
-export const CupoLleno: Story = {
-  name: "Cupo lleno",
-  render: () => (
-    <Marco paso={0}>
-      <EmptyState
-        icon={Users}
-        title="Has llegado a tus 5 clientes"
-        description="Archiva uno que ya no uses para dejar un sitio libre, o escríbenos y te ampliamos el límite."
-        action={<Button variant="outline">Archivar un cliente</Button>}
-      />
-    </Marco>
-  ),
-};
 
 export const Movil: Story = {
   name: "Móvil",
