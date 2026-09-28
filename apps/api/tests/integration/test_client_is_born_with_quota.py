@@ -1,4 +1,4 @@
-"""D1: un cliente recién creado puede atender sin pasar por Consumo.
+"""D1: un cliente recién creado tiene **fila de cupo**, y con cero dentro.
 
 El agujero que costó el corte del 31-ago: ``allow_channel_turn`` exige una
 fila en ``partner_allocations`` y **nadie la escribía** — ni el wizard, ni
@@ -7,7 +7,12 @@ fila en ``partner_allocations`` y **nadie la escribía** — ni el wizard, ni
 mudo, sin error, sin aviso y con el checklist de Primeros pasos diciendo que
 todo iba bien.
 
-El criterio de «hecho» de D1 no es que exista la fila: es que el canal abra.
+Lo que cura ese corte es **que la fila se escriba**, no lo que lleve dentro.
+La spec 004 R6 (2026-09-12) sembraba además la cuota entera para que el
+cliente contestara el día que nacía; la spec 019 lo revierte a cero (owner,
+2026-09-28): 50 000 créditos comprados por alta los repartía el sistema, y
+repartirlos es decisión del partner. El cliente nace sin contestar **y se ve
+que es así** — que es lo contrario del silencio de agosto.
 """
 
 from __future__ import annotations
@@ -58,7 +63,8 @@ def _body(ref: str) -> dict:
     }
 
 
-async def test_new_client_gets_the_default_quota(client, db_session) -> None:
+async def test_new_client_is_born_with_a_row_and_zero_credit(client, db_session) -> None:
+    """La fila existe; el tope es cero (spec 019, R8.1 y R8.2)."""
     world = await _bare_partner(db_session)
     ref = f"cliente-{uuid.uuid4().hex[:8]}"
 
@@ -77,14 +83,25 @@ async def test_new_client_gets_the_default_quota(client, db_session) -> None:
             PartnerAllocation.tenant_id == mapping.tenant_id,
         )
     )
-    assert alloc is not None, "el cliente nació sin cuota: vuelve a nacer mudo"
-    expected = get_settings().partner_default_client_allocation_tokens
-    assert int(alloc.cap) == expected
-    assert int(alloc.remaining) == expected
+    assert alloc is not None, (
+        "el cliente nació sin fila de cupo: eso es el silencio del 31-ago, "
+        "y es lo único que esta parte nunca puede perder"
+    )
+    assert int(alloc.cap) == 0
+    assert int(alloc.remaining) == 0
+    # Y el defecto es cero de verdad, no un número que alguien subió sin
+    # tocar la spec: R8.1 se afirma contra el ajuste, no contra la fila.
+    assert get_settings().partner_default_client_allocation_tokens == 0
 
 
-async def test_new_client_can_actually_answer(client, db_session) -> None:
-    """El criterio de verdad: la puerta del canal abre sin tocar Consumo."""
+async def test_new_client_stays_quiet_until_the_partner_assigns_credit(client, db_session) -> None:
+    """El criterio de verdad, ahora en dos tiempos.
+
+    Nace callado —es lo que el owner pidió— pero **se destraba asignando
+    crédito y nada más**: sin migraciones, sin tocar otra fila y sin que
+    nadie tenga que acordarse de crear la que faltaba. Esa es la diferencia
+    con el corte del 31-ago, donde no había fila que subir.
+    """
     from nexus_api.metering.wallet import allow_channel_turn
 
     world = await _bare_partner(db_session)
@@ -98,23 +115,30 @@ async def test_new_client_can_actually_answer(client, db_session) -> None:
     mapping = await db_session.get(PartnerTenant, (world["partner_id"], ref))
     assert mapping is not None
 
+    assert await allow_channel_turn(mapping.tenant_id) is False
+
+    alloc = await db_session.scalar(
+        sa.select(PartnerAllocation).where(
+            PartnerAllocation.partner_id == world["partner_id"],
+            PartnerAllocation.tenant_id == mapping.tenant_id,
+        )
+    )
+    assert alloc is not None
+    alloc.cap = 50_000
+    alloc.remaining = 50_000
+    await db_session.commit()
+
     assert await allow_channel_turn(mapping.tenant_id) is True
 
 
 async def test_provisioning_survives_an_exhausted_wallet(client, db_session) -> None:
-    """Sin saldo, el cliente nace **con su cuota entera**, no con cero.
+    """Sin saldo, el alta **no falla**: el cliente nace con su fila en cero.
 
-    Spec 004 (R6, decidido 2026-09-12). Antes se sembraba «lo que quedara», que
-    con el libro vacío era 0, y se aceptaba porque una fila con cap 0 al menos
-    es visible en Consumo. Pero seguía siendo un cliente que no contesta el día
-    que lo dan de alta, y cuando el partner recarga tampoco arranca solo: la
-    fila ya sembrada no se vuelve a tocar.
-
-    El tope dejó de ser una reserva sobre el saldo y pasó a ser un límite de
-    gasto, así que se siembra completo. Lo que decide si un turno pasa es
-    ``allow_channel_turn``, que mira el saldo real en cada turno — de modo que
-    un partner sin créditos sigue sin poder gastar, pero **en cuanto recarga,
-    su cliente contesta sin que nadie toque una fila**.
+    Lo que aquí se cuida no es el número —desde la spec 019 el defecto es cero
+    para todos— sino que un libro vacío no rompa el alta ni la deje a medias.
+    El tope es un límite de gasto y no una reserva sobre el saldo: quien
+    decide si un turno pasa es ``allow_channel_turn``, que mira el saldo real
+    en cada turno.
     """
     from nexus_api.db.models import PartnerWallet
 
@@ -145,9 +169,5 @@ async def test_provisioning_survives_an_exhausted_wallet(client, db_session) -> 
             PartnerAllocation.tenant_id == mapping.tenant_id,
         )
     )
-    assert alloc is not None
-    assert int(alloc.cap) > 0, (
-        "el cliente nació con cuota cero porque el partner no tenía saldo. "
-        "El tope es un límite de gasto, no una reserva: se siembra entero y el "
-        "saldo lo comprueba cada turno"
-    )
+    assert alloc is not None, "sin saldo el alta se quedó sin escribir la fila"
+    assert int(alloc.cap) == 0
