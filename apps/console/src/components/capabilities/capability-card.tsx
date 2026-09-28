@@ -65,7 +65,7 @@ export function CapabilityCard({
   }
 
   return (
-    <li className="flex flex-col gap-2 rounded-md bg-card p-4 ring-1 ring-foreground/10" aria-busy={pending}>
+    <li className="flex min-w-0 flex-col gap-2 rounded-md bg-card p-4 ring-1 ring-foreground/10" aria-busy={pending}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

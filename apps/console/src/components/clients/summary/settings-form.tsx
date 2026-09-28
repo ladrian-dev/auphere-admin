@@ -32,7 +32,10 @@ export function SettingsForm({ refId, name, timezone }: { refId: string; name: s
       <form
         noValidate
         aria-busy={pending}
-        className="flex flex-col gap-4"
+        // Spec 018 (owner, 2026-09-28): dos campos cortos uno debajo de
+        // otro desperdiciaban el ancho entero de la ficha y añadían scroll
+        // por nada. En una columna estrecha vuelven a apilarse solos.
+        className="grid gap-4 sm:grid-cols-2 sm:items-start"
         onSubmit={form.handleSubmit((values) =>
           startTransition(async () => {
             const res = await updateClientAction({ ref: refId, ...values });
@@ -68,7 +71,7 @@ export function SettingsForm({ refId, name, timezone }: { refId: string; name: s
             </FormItem>
           )}
         />
-        <div>
+        <div className="sm:col-span-2">
           <Button type="submit" disabled={pending || !form.formState.isDirty}>
             {t("common.save")}
           </Button>

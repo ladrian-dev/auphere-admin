@@ -2,28 +2,33 @@
 
 import Link from "next/link";
 
-import { Button, Section, Stepper, type StepState } from "@nexus/ui";
+import { Button, Section, StepTrack, formatNumber } from "@nexus/ui";
 
-import { useT } from "@/i18n/client";
-import type { ClientSetupDetail } from "@/lib/backend";
+import { useLocale, useT } from "@/i18n/client";
+import type { ClientQuota, ClientSetupDetail } from "@/lib/backend";
 import type { Role } from "@/lib/permissions";
 
 import { ClientLifecycleActions } from "./lifecycle-actions";
-import { nextAction, setupSteps, whoCanResolve } from "./client-header-model";
+import { nextAction, whoCanResolve } from "./client-header-model";
 
 /**
  * «Puesta en marcha»: qué le falta al cliente para atender (spec 017 R1.1;
- * aligerada por la spec 018 R6).
+ * aligerada por la spec 018 R6 y rehecha el 2026-09-28 con el owner).
  *
- * Un solo botón —el del paso pendiente— y una línea que dice por qué
- * importa. En cuanto atiende, el bloque desaparece: ya no hay nada que poner
- * en marcha.
+ * **Lo que cambió y por qué.** Eran cuatro palomas verdes —hecho o no
+ * hecho— alineadas a la izquierda de una tarjeta ancha: mucho blanco a la
+ * derecha, todo el peso a un lado, y una mentira por omisión. «Agente» son
+ * dos cosas (escribirlo y publicarlo) y «Activación» una sola, y con una
+ * paloma cada uno el partner no podía saber cuál le iba a costar.
  *
- * **El crédito ya no está aquí.** Compartía fila con los cuatro pasos y eso
- * era lo que hacía la tarjeta pesada, pero la razón de fondo es otra: el
- * crédito **sobrevive** a la puesta en marcha. Sigue importando cuando los
- * cuatro pasos están hechos y este bloque ya no existe, así que su sitio es
- * el Resumen.
+ * Ahora cada paso lleva su barra con **cuánto lleva hecho**, y su ancho sale
+ * del número de partes que tiene. Eso contesta «¿cuál es el que cuesta?» sin
+ * afirmar cuánto tarda cada uno, que es un dato que no tenemos.
+ *
+ * **El crédito no está aquí.** Compartía fila con los pasos y eso hacía la
+ * tarjeta pesada, pero la razón de fondo es que le **sobrevive**: sigue
+ * importando cuando los cuatro pasos están hechos y este bloque ya no
+ * existe, así que vive en el Resumen.
  */
 export function ClientSetup({
   refId,
@@ -31,84 +36,151 @@ export function ClientSetup({
   status,
   role,
   setup,
+  quota,
   agentVersion,
   phone,
+  hasAgentVersion = false,
 }: {
   refId: string;
   name: string;
   status: string;
   role: Role;
   setup: ClientSetupDetail | null;
+  quota: ClientQuota | null;
   /** Paridad fila 7: el dato de cada paso hecho, a la vista. */
   agentVersion?: number | null;
   phone?: string | null;
+  /** Hay alguna versión escrita, aunque no esté publicada. */
+  hasAgentVersion?: boolean;
 }) {
   const t = useT();
+  const locale = useLocale();
   const base = `/clients/${encodeURIComponent(refId)}`;
-  const steps = setupSteps(setup);
   const pending = setup?.next ?? null;
   const action = nextAction(setup, role, base);
-  const doneCount = steps.filter((s) => s.done).length;
-
-  function stepDetail(step: string): string | null {
-    if (step === "agent" && agentVersion) return t("clients.setup.detail.agent", { version: agentVersion });
-    if (step === "channel" && phone) return phone;
-    return null;
-  }
 
   // R6.2: cuando los cuatro pasos están hechos no hay nada que poner en
-  // marcha, y el bloque entero desaparece. El crédito NO se va con él: vive
-  // en el Resumen, porque le sobrevive.
+  // marcha, y el bloque entero desaparece.
   if (!pending) return null;
 
+  const steps = subSteps({ setup, quota, agentVersion, phone, hasAgentVersion, status, locale });
+  const hechas = steps.reduce((n, s) => n + s.done, 0);
+  const total = steps.reduce((n, s) => n + s.of, 0);
+
   return (
-    <Section title={t("clients.setup.title")} description={t("clients.setup.description")} className="min-w-0">
-      {/* `ordered={false}`: los cuatro pasos son independientes, y los
-              ordinales con línea de unión son la gramática de una secuencia
-              — un «paso 3 hecho, paso 2 no» se leería como imposible. */}
-          <Stepper
-            variant="line"
-            ordered={false}
-            ariaLabel={t("clients.setup.title")}
-            current={-1}
-            // Un paso hecho dice CUÁL: «Agente · versión 3», «Canal · +34…».
-            // El dato iba en un tooltip, y lo que solo existe al pasar el
-            // ratón no existe en una pantalla táctil ni en un lector.
-            steps={steps.map((s) => ({
-              key: s.step,
-              label: (
-                <span className="inline-flex flex-wrap items-baseline gap-x-1">
-                  {t(s.label)}
-                  {s.done && stepDetail(s.step) ? (
-                    <span className="text-xs text-muted-foreground">· {stepDetail(s.step)}</span>
-                  ) : null}
-                </span>
-              ),
-              state: (s.done ? "done" : s.next ? "current" : "todo") as StepState,
-            }))}
-            stepOfLabel={() => t("clients.setup.done", { done: doneCount, total: steps.length })}
-          />
-          <div className="flex flex-col gap-2 pt-1">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <span className="text-sm text-muted-foreground">{t("clients.setup.next")}</span>
-              {action?.kind === "link" ? (
-                <Button nativeButton={false} render={<Link href={action.href} />}>
-                  {t(action.label)}
-                </Button>
-              ) : action?.kind === "activate" ? (
-                <ClientLifecycleActions refId={refId} status={status} name={name} canDelete={false} />
-              ) : (
-                // Un botón que da 403 es peor que ningún botón: se dice
-                // quién puede resolverlo.
-                <span className="text-sm">
-                  {t(pendingLabel(pending))} <span className="text-muted-foreground">{t(whoCanResolve(pending))}</span>
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">{t(whyLabel(pending))}</p>
-          </div>
+    <Section
+      title={t("clients.setup.title")}
+      description={t("clients.setup.description")}
+      // El recuento a la derecha del título: equilibra la cabecera y es lo
+      // primero que se quiere saber al volver a un cliente a medias.
+      actions={
+        <span className="text-sm text-muted-foreground tabular-nums">
+          {t("clients.setup.partsDone", { done: hechas, total })}
+        </span>
+      }
+      className="min-w-0"
+    >
+      <StepTrack
+        steps={steps.map((s) => ({
+          key: s.step,
+          label: t(s.label),
+          done: s.done,
+          of: s.of,
+          detail: s.detail,
+          current: s.step === pending,
+        }))}
+        ariaLabel={t("clients.setup.title")}
+        summary={t("clients.setup.partsDone", { done: hechas, total })}
+      />
+
+      {/* La acción y su porqué en una fila: la razón a la derecha del botón
+          en vez de debajo, que es lo que dejaba la mitad derecha vacía. */}
+      <div className="flex flex-wrap items-center gap-x-(--space-block) gap-y-2 pt-1">
+        {action?.kind === "link" ? (
+          <Button nativeButton={false} render={<Link href={action.href} />}>
+            {t(action.label)}
+          </Button>
+        ) : action?.kind === "activate" ? (
+          <ClientLifecycleActions refId={refId} status={status} name={name} canDelete={false} />
+        ) : (
+          // Un botón que da 403 es peor que ningún botón: se dice quién
+          // puede resolverlo.
+          <span className="text-sm">
+            {t(pendingLabel(pending))} <span className="text-muted-foreground">{t(whoCanResolve(pending))}</span>
+          </span>
+        )}
+        <p className="min-w-0 flex-1 text-sm text-pretty text-muted-foreground">{t(whyLabel(pending))}</p>
+      </div>
     </Section>
   );
+}
+
+type SubStep = {
+  step: NonNullable<ClientSetupDetail["next"]>;
+  label: Parameters<ReturnType<typeof useT>>[0];
+  done: number;
+  of: number;
+  detail?: string | null;
+};
+
+/**
+ * Las partes de cada paso, **derivadas de lo que la ficha ya sabe**. Ninguna
+ * necesita una lectura nueva, y ninguna afirma un dato que no tenemos: el
+ * ancho lo da el número de partes, no una estimación de esfuerzo.
+ */
+function subSteps({
+  setup,
+  quota,
+  agentVersion,
+  phone,
+  hasAgentVersion,
+  status,
+  locale,
+}: {
+  setup: ClientSetupDetail | null;
+  quota: ClientQuota | null;
+  agentVersion?: number | null;
+  phone?: string | null;
+  hasAgentVersion: boolean;
+  status: string;
+  locale: "es" | "en";
+}): SubStep[] {
+  const publicado = Boolean(agentVersion);
+  return [
+    {
+      // Escribirlo y publicarlo son dos cosas, y la segunda es la que el
+      // agente necesita para saber qué decir.
+      step: "agent",
+      label: "clients.setup.agent",
+      done: (hasAgentVersion || publicado ? 1 : 0) + (publicado ? 1 : 0),
+      of: 2,
+      detail: publicado ? `v${agentVersion}` : hasAgentVersion ? null : null,
+    },
+    {
+      step: "channel",
+      label: "clients.setup.channel",
+      done: setup?.channel ? 1 : 0,
+      of: 1,
+      detail: phone ?? null,
+    },
+    {
+      // Tener tope y tener saldo no es lo mismo: un cliente con el cupo
+      // agotado tiene el paso hecho y al agente callado.
+      step: "quota",
+      label: "clients.setup.quota",
+      done: (quota ? 1 : 0) + (quota && quota.remaining > 0 ? 1 : 0),
+      of: 2,
+      // Toda cifra pasa por Intl: «50000» en crudo no es un número, es
+      // una cadena que casualmente tiene dígitos.
+      detail: quota ? formatNumber(quota.remaining, locale) : null,
+    },
+    {
+      step: "activation",
+      label: "clients.setup.activation",
+      done: status === "active" ? 1 : 0,
+      of: 1,
+    },
+  ];
 }
 
 function pendingLabel(step: NonNullable<ClientSetupDetail["next"]>) {

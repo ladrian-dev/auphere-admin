@@ -159,7 +159,11 @@ export function CapabilitiesCatalog({
         <div className="flex flex-col gap-(--space-section)">
           {groups.map((g) => (
             <Section key={g.fn} title={t(`cap.fn.${g.fn}`)} headingLevel={2} flat>
-              <ul className="flex flex-col gap-2">
+              {/* Spec 018 (owner, 2026-09-28): rejilla, no una tarjeta por
+                  fila. Sesenta habilidades en una columna son sesenta
+                  pantallas de scroll, y cada tarjeta ocupaba un ancho que
+                  no necesita. */}
+              <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
                 {g.items.map((cap) => (
                   <CapabilityCard
                     key={`${cap.kind}:${cap.key}`}

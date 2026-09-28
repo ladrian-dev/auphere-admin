@@ -76,7 +76,10 @@ export function IntegrationsList({
             {t("int.count", { on, total: connectors.length })}
           </p>
           {!canWrite ? <p className="text-sm text-muted-foreground">{t("int.readonly")}</p> : null}
-          <ul className="flex flex-col gap-3">
+          {/* En rejilla: la lista va a tener decenas, y una tarjeta por
+              fila deja el ancho entero sin usar (owner, 2026-09-28). El
+              orden por urgencia se lee igual de izquierda a derecha. */}
+          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {ordered.map((c) => (
               <ConnectorCard key={c.slug} refId={refId} connector={c} canWrite={canWrite} />
             ))}

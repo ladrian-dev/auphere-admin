@@ -24,6 +24,9 @@ export const recordMessages = {
     en: "What stands between this client and a working agent. The four steps can be done in any order.",
   },
   "clients.setup.done": { es: "{done} de {total} pasos hechos", en: "{done} of {total} steps done" },
+  // El recuento pasa a ser por PARTES, no por pasos: «Agente» son dos cosas
+  // y «Activación» una, y decir «3 de 4 pasos» escondía justo eso.
+  "clients.setup.partsDone": { es: "{done} de {total} hechos", en: "{done} of {total} done" },
   "clients.setup.agent": { es: "Agente", en: "Agent" },
   "clients.setup.channel": { es: "Canal", en: "Channel" },
   "clients.setup.quota": { es: "Crédito", en: "Credit" },
