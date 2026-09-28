@@ -82,13 +82,28 @@ function StepTrack({ steps, ariaLabel, summary, className }: StepTrackProps) {
               {s.label}
             </span>
             {/* La pista se tiñe del color del texto: así el componente sirve
-                igual sobre una tarjeta blanca que sobre el verde oscuro, sin
-                saber en cuál está. */}
+                igual sobre una tarjeta clara que sobre el verde oscuro, sin
+                saber en cuál está.
+
+                **El relleno también tiene que seguir al fondo.** Medido el
+                2026-09-28 sobre la tarjeta en modo oscuro: el verde de marca
+                contra su propia pista daba **1,01:1** — el progreso no se
+                veía. Aclarar el fondo no lo arreglaba: incluso sobre blanco
+                puro se quedaba en 2,27:1, porque el que no contrasta es el
+                relleno, no el fondo. Con el relleno teñido del mismo color
+                que el texto: **7,22:1** en oscuro y 4,83:1 en claro.
+
+                El parcial va al **75 %** y no al 60: a 60 se quedaba en
+                2,72:1 en modo claro, por debajo del 3:1 que pide un elemento
+                gráfico (WCAG 1.4.11). A 75 son 3,40:1 en claro y 4,49:1 en
+                oscuro, y sigue distinguiéndose del hecho. */}
             <span className="h-2 w-full overflow-hidden rounded-full bg-current/15" aria-hidden="true">
               <span
                 className={cn(
                   "block h-full rounded-full transition-[width] duration-(--duration-slow)",
-                  state === "done" ? "bg-mountain-meadow" : "bg-mountain-meadow/60",
+                  state === "done"
+                    ? "bg-mountain-meadow dark:bg-dark-green"
+                    : "bg-mountain-meadow/75 dark:bg-dark-green/75",
                 )}
                 style={{ width: `${pct}%` }}
               />
