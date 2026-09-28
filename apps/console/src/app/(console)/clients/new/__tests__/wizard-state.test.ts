@@ -36,7 +36,7 @@ describe("wizard-state", () => {
   });
 
   it("reduces stage events and reports the outcome", () => {
-    let st = planStages({ seed_template: "generic_v1", publish_now: false });
+    let st = planStages({ seed_template: "generic_v1" });
     expect(runOutcome(st)).toBe("idle");
     expect(nextStage(st)).toBe("create");
     st = stageReducer(st, { type: "start", key: "create", at: 1000 });
@@ -49,8 +49,6 @@ describe("wizard-state", () => {
     expect(st[1]!.error).toBe("missing placeholder");
     st = stageReducer(st, { type: "start", key: "seed", at: 3000 });
     st = stageReducer(st, { type: "done", key: "seed", at: 3400 });
-    st = stageReducer(st, { type: "start", key: "channel", at: 3400 });
-    st = stageReducer(st, { type: "done", key: "channel", at: 3400 });
     expect(runOutcome(st)).toBe("done");
     expect(nextStage(st)).toBeNull();
     expect(elapsedSeconds(st)).toBe(2.4);

@@ -27,7 +27,7 @@ export default async function NewClientPage() {
   return (
     <>
       <PageHeader eyebrow={t("nav.clients")} title={t("wizard.title")} description={t("wizard.subtitle")} />
-      <NewClientWizard quota={me.quota} templates={templates} canPublish={can(principal.role, "agents:write")} />
+      <NewClientWizard quota={me.quota} templates={templates} />
     </>
   );
 }
