@@ -16,8 +16,8 @@ contiene lo mismo:
 
 | Iteración | Fichero | Estado |
 |---|---|---|
-| 1 · El Resumen contesta | `iteracion-1.md` | pendiente |
-| 2 · Los catálogos se navegan | `iteracion-2.md` | pendiente |
+| 1 · El Resumen contesta | `iteracion-1.md` | **cerrada** 2026-09-27 (prototipo repasado el 2026-09-28) |
+| 2 · Los catálogos se navegan | `iteracion-2.md` | **cerrada** 2026-09-28 |
 | 3 · Las palabras dicen lo que son | `iteracion-3.md` | pendiente |
 
 **Precedente**: `specs/017-ficha-de-cliente-y-consumo/evidence/`, que es de

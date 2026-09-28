@@ -100,7 +100,7 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 ### Cierre
 
 - [X] T025 [US3] E2E: `a11y.spec.ts` audita los tres catálogos con filtro puesto; un recorrido de «buscar → filtrar → compartir el enlace» en `record.spec.ts`. _Requisitos: 4.1–4.4_ Entregado: develop, 2026-09-28 — axe sobre los tres con filtro puesto (y a 360 px), más el recorrido «buscar → filtrar → compartir el enlace → atrás».
-- [ ] T026 [US3] Paridad §Iteración 2, `evidence/iteracion-2.md`, log de sesión, merge y staging. _Requisitos: 4.6_
+- [X] T026 [US3] Paridad §Iteración 2, `evidence/iteracion-2.md`, log de sesión, merge y staging. _Requisitos: 4.6_ Entregado: develop, 2026-09-28 — paridad 38–60 cerrada (tres filas pasan de «se conserva» a «se mueve», y quedan dichas), evidencia, log de sesión en la KB y empujado a `develop`, que despliega staging.
 
 ---
 
