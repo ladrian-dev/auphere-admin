@@ -70,6 +70,7 @@ Cuatro hechos que la spec ataca:
 - Q: ¿Con cuánto crédito nace un cliente? → A: **cero**. El partner se lo asigna cuando lo vea.
 - Q: ¿El horario empieza resumido o día a día? → A: **día a día**, con la opción de resumirlo. Casi ningún negocio abre los siete días igual.
 - Q: ¿La dirección permite elegir en un mapa? → A: **pendiente**. Añade un script de terceros, una clave de API y manda la dirección del cliente a Google; cambia la superficie de confianza que esta spec declara.
+- Q: ¿Qué contesta un agente al que nadie le ha configurado sus políticas? → A: **calla y deriva**. Si el valor no lo puso el partner, la política **no entra en el prompt** y en su lugar va una frase de derivación al equipo. Un defecto de plantilla no es una respuesta: hoy una clínica que no toca nada tiene un agente diciendo por WhatsApp que el no-show se cobra al 100 % y la seña de quirófano es el 30 %, cifras que nadie le dio. El mismo prompt ya le prohíbe inventar promociones y improvisar la tasa de cambio; esto es la misma regla. *(owner, 2026-09-28 — redefine T036, cuya premisa original era falsa: medido, las trece plantillas renderizan sin esos campos.)*
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 

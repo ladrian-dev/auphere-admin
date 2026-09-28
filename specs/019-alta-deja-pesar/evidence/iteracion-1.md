@@ -77,9 +77,43 @@ sitio queda decidido ahora, para que luego no aparezca donde quepa.
 | Desbordamiento a 360 px | ninguno — `scrollWidth` 360 sobre `clientWidth` 360 |
 | lint · typecheck (`@nexus/ui`) | limpios |
 
+## Lo que la implementación cambió respecto al prototipo
+
+Tres cosas se midieron al implementar y cambiaron lo escrito:
+
+- **El crédito cero llega más lejos de lo que decía la spec.** El defecto vive
+  en `partner_default_client_allocation_tokens`, que lee una sola función
+  —`provision_partner_client`— compartida por la consola y por
+  `POST /v1/partners/clients`. No había forma de que el cero valiera «solo en
+  el alta de la consola» sin duplicar el camino. El owner lo decidió el
+  2026-09-28: **en todas partes**, también para los clientes que Amacrux o
+  Barber Supply creen por integración. Eso revierte la spec 004 R6, y sus dos
+  tests se reescribieron: un cliente nace **con fila y sin crédito**, y
+  asignarle crédito basta para que el canal abra — que es la diferencia con el
+  corte del 31-ago, donde no había fila que subir.
+- **T036 no bloqueaba nada.** Se midió el renderizador contra las trece
+  plantillas con solo sus campos obligatorios: **las trece renderizan**. El
+  riesgo real es otro y es peor — los opcionales traen defectos concretos
+  (24 h de cancelación gratis, 30 % de depósito de cirugía, 100 % de no-show),
+  así que un agente recién creado afirma como política de la clínica unas
+  condiciones comerciales que nadie le dijo. Queda anotado en T036 para el
+  owner.
+- **El límite de clientes se retiró como producto, no como guarda.** Migración
+  0130: el techo sube a 10 000 y pasa a llamarse guarda. De la consola
+  desaparecen el contador «{used} de {max}», el aviso del alta y el estado de
+  cupo lleno, y `/clients` deja de llamar a `/console/me` — era lo único que
+  leía de ahí.
+
 ## Suites
 
-Pendientes: la iteración no ha escrito código todavía.
+| Suite | Resultado |
+|---|---|
+| `@nexus/ui` | 168 ✅ |
+| consola (vitest) | 505 ✅ |
+| consola lint · typecheck | limpios |
+| API · `test_client_is_born_with_quota` | 3 ✅ (reescritos) |
+| API · `test_seed_templates` | 17 ✅ (uno nuevo: ningún nombre mezcla idiomas) |
+| API · ruff | limpio en lo tocado |
 
 ## Paridad
 
