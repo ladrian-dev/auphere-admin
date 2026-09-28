@@ -1,11 +1,22 @@
 /**
- * Pure state of the new-client wizard (CP-10): four steps, four run
- * stages with real per-stage status, and the placeholder validation. No
- * React, no fetch — unit-tested in ``__tests__/wizard-state.test.ts``.
+ * El estado puro del alta (CP-10; rehecho por la spec 019). Sin React y sin
+ * fetch — se prueba entero en ``__tests__/wizard-state.test.ts``.
+ *
+ * **Tres pasos, no cuatro, y dos etapas, no cinco.** Lo que se fue, y por qué:
+ *
+ * - **El paso «Canal»**: su respuesta no viajaba al servidor ni quedaba en el
+ *   cliente (``case "channel": return done()``). Un cuarto del asistente para
+ *   una pregunta que se descartaba.
+ * - **Publicar y activar**: elegirlo al crear no adelantaba nada, porque un
+ *   cliente no atiende hasta estar configurado y con canal. El agente nace en
+ *   borrador y se publica desde la ficha (owner, 2026-09-28).
+ *
+ * **La plantilla va primera** porque decide el prompt, las herramientas y qué
+ * campos existen siquiera: elegirla antes estrecha todo lo demás.
  */
-import type { SeedPlaceholder } from "@/lib/backend/onboarding";
+import type { SeedPlaceholder, SeedTemplate } from "@/lib/backend/onboarding";
 
-export const STEPS = ["details", "template", "channel", "review"] as const;
+export const STEPS = ["template", "details", "review"] as const;
 
 /** QA-06: empty until the browser IANA is known and is on the select list. */
 export const WIZARD_TIMEZONE_INITIAL = "";
@@ -69,8 +80,7 @@ export function pickWizardTimezone(browserTz: string, options: string[]): string
 }
 export type StepKey = (typeof STEPS)[number];
 
-export type ChannelChoice = "whatsapp" | "later";
-export type StageKey = "create" | "seed" | "publish" | "activate" | "channel";
+export type StageKey = "create" | "seed";
 export type StageStatus = "pending" | "running" | "done" | "skipped" | "failed";
 export type Stage = { key: StageKey; status: StageStatus; error?: string; startedAt?: number; endedAt?: number };
 
@@ -80,35 +90,24 @@ export type WizardValues = {
   timezone: string;
   seed_template: string | null;
   placeholders: Record<string, string>;
-  channel: ChannelChoice;
-  publish_now: boolean;
 };
 
 export const initialStages = (): Stage[] => [
   { key: "create", status: "pending" },
   { key: "seed", status: "pending" },
-  { key: "publish", status: "pending" },
-  { key: "activate", status: "pending" },
-  { key: "channel", status: "pending" },
 ];
 
 /**
- * Which stages actually run for these values. Spec 016 (R4.1): publish and
- * activate are two stages with their own retry — activating cannot happen
- * without a published agent, so they are skipped together.
+ * Qué etapas corren de verdad. Son **las dos que llaman al servidor**: crear
+ * el cliente y escribirle el agente. Sin plantilla no hay nada que escribir, y
+ * la segunda se salta en voz alta en vez de desaparecer.
+ *
+ * El cupo **no es una etapa**: se siembra dentro de la misma transacción que
+ * crea el cliente. Pintarlo aparte sería enseñar un paso que no existe.
  */
-export function planStages(values: Pick<WizardValues, "seed_template" | "publish_now">): Stage[] {
+export function planStages(values: Pick<WizardValues, "seed_template">): Stage[] {
   const stages = initialStages();
-  if (!values.seed_template) {
-    stages[1]!.status = "skipped";
-    stages[2]!.status = "skipped";
-    stages[3]!.status = "skipped";
-  } else if (!values.publish_now) {
-    stages[2]!.status = "skipped";
-    stages[3]!.status = "skipped";
-  }
-  // The channel stage is informational (connect afterwards) — it completes
-  // as soon as the client exists.
+  if (!values.seed_template) stages[1]!.status = "skipped";
   return stages;
 }
 
@@ -147,6 +146,26 @@ export function runOutcome(stages: Stage[]): "idle" | "running" | "done" | "part
 export function nextStage(stages: Stage[]): StageKey | null {
   const s = stages.find((x) => x.status === "pending" || x.status === "failed");
   return s ? s.key : null;
+}
+
+/**
+ * Los campos que el alta pide de verdad para una plantilla (spec 019, R1.1).
+ *
+ * **Sale de la plantilla, no de una lista escrita a mano.** El dato ya viaja
+ * en `required` y el asistente ya lo usaba para validar — lo que hacía era
+ * **pintar también los opcionales**. Medido el 2026-09-28: la plantilla que
+ * venía marcada por defecto enseñaba 23 campos y solo 12 hacían falta.
+ *
+ * La frontera no es un juicio de calidad: un `{a.b.c}` sin valor y sin
+ * defecto hace que `render_seed_template` levante
+ * `SeedTemplatePlaceholderMissing`. O renderiza o no, y eso es lo que
+ * `required` marca.
+ *
+ * Todo lo demás —precios, formas de pago, credenciales— es dato avanzado y
+ * vive en los ajustes del agente (owner, 2026-09-28).
+ */
+export function requiredPlaceholders(template: SeedTemplate | null): SeedPlaceholder[] {
+  return (template?.placeholders ?? []).filter((p) => p.required);
 }
 
 /** Missing required placeholders (trimmed empty counts as missing). */
