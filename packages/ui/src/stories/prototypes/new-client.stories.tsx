@@ -16,6 +16,7 @@ import {
   Stethoscope,
   Syringe,
   UtensilsCrossed,
+  Users,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -679,19 +680,35 @@ export const UnaEtapaFalla: Story = {
   ),
 };
 
-/** El cupo se dice **antes** de pedir el primer dato, no después del formulario. */
+/**
+ * El cupo se dice **antes** de pedir el primer dato, no después del
+ * formulario.
+ *
+ * **Y ofrece las dos salidas que existen** (owner, 2026-09-28): ampliar el
+ * plan, o liberar un sitio archivando un cliente que ya no se usa. Antes solo
+ * ofrecía «Ver mis clientes», que no es una salida — es una lista.
+ *
+ * Aviso para quien implemente esto: **ampliar el plan no es autoservicio
+ * hoy.** La propia consola lo dice en otra pantalla («Archiva uno o pide a
+ * Auphere que la amplíe») y Facturación no tiene control de plan. El botón
+ * tiene que llevar a algo que de verdad amplíe el cupo, no a una pantalla
+ * donde tampoco se pueda. Está pendiente de decidir a dónde.
+ */
 export const CupoLleno: Story = {
   name: "Cupo lleno",
   render: () => (
     <Marco paso={0}>
-      <div className="flex flex-col gap-4">
-        <EmptyState
-          title="Has llegado a tus 5 clientes"
-          description="Para dar de alta otro, archiva uno que ya no uses o amplía tu plan."
-          action={<Button variant="outline">Ver mis clientes</Button>}
-          readonly
-        />
-      </div>
+      <EmptyState
+        icon={Users}
+        title="Has llegado a tus 5 clientes"
+        description="Puedes ampliar tu plan para dar de alta más, o dejar libre un sitio archivando uno que ya no uses."
+        action={
+          <span className="flex flex-wrap items-center justify-center gap-2">
+            <Button>Ampliar el plan</Button>
+            <Button variant="outline">Archivar un cliente</Button>
+          </span>
+        }
+      />
     </Marco>
   ),
 };

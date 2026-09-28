@@ -206,7 +206,15 @@ formulario largo, para que empezar no cueste más que continuar.
    2026-09-28: la tarjeta pasa de tres pasos a cuatro; es el sitio donde el
    partner ya mira qué le falta, y una barra a medias dice cuánto queda.)*
 6. WHEN el cupo de clientes está agotado THEN el sistema DEBE decirlo antes de
-   pedir el primer dato.
+   pedir el primer dato, y DEBE ofrecer **las dos salidas que existen**:
+   ampliar el plan y archivar un cliente. *(Owner, 2026-09-28. Hoy solo ofrece
+   «Ver mis clientes», que no es una salida — es una lista.)*
+7. WHERE se ofrezca ampliar el plan EL sistema DEBE llevar a algo que de verdad
+   amplíe el cupo. **Hoy ampliar no es autoservicio**: la propia consola dice
+   en otra pantalla «Archiva uno o pide a Auphere que la amplíe», y Facturación
+   no tiene control de plan. Un botón que lleve a una pantalla donde tampoco se
+   pueda es el mismo callejón un clic más lejos (§V). *(Destino pendiente de
+   decisión.)*
 
 ### Requisito 7 — Lo que se pide, se pide con el control que le corresponde
 
