@@ -47,7 +47,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
         {/* El contenido, en blanco, enmarcado por el color del lateral y de
             la barra —que ahora comparten tono y se leen como una sola pieza—.
             Es también el único contenedor que scrollea. */}
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-tl-lg border-t border-l border-border bg-card">
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-tl-md border-t border-l border-border bg-card">
           <main
             id="main"
             tabIndex={-1}
