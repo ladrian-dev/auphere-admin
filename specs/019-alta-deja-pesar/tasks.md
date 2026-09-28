@@ -59,7 +59,7 @@ un solo campo de medicina estética.
 
 ### Prototipo
 
-- [ ] T008 [US1] Prototipo `packages/ui/src/stories/prototypes/new-client.stories.tsx` con los estados que hay que decidir mirando: elegir plantilla (vacío, buscando, sin resultados) · el negocio con dos campos · el negocio con doce (`aesthetic_clinic_v1`) · confirmar · ejecutando · una etapa fallida · cupo lleno · móvil. **Aprobación del owner antes de escribir código**, anotada en `evidence/iteracion-1.md`. _Requisitos: 1.1–1.6, 2.1–2.5, 4.1–4.4_
+- [X] T008 [US1] Prototipo `packages/ui/src/stories/prototypes/new-client.stories.tsx` con los estados que hay que decidir mirando: elegir plantilla (vacío, buscando, sin resultados) · el negocio con dos campos · el negocio con doce (`aesthetic_clinic_v1`) · confirmar · ejecutando · una etapa fallida · cupo lleno · móvil. **Aprobación del owner antes de escribir código**, anotada en `evidence/iteracion-1.md`. _Requisitos: 1.1–1.6, 2.1–2.5, 4.1–4.4_ Entregado: rama 019, 2026-09-28 — **aprobado por el owner el 2026-09-28** tras siete rondas. Las siete cambiaron la spec, no solo la pantalla, y quedan en `evidence/iteracion-1.md`.
 
 ### Tests primero
 

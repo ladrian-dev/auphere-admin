@@ -1,7 +1,8 @@
 # Iteración 1 · El alta cabe en tres pasos — evidencia
 
-> **Estado: abierta.** Solo el prototipo (T008) está entregado, y está
-> **esperando la aprobación del owner**. Hasta esa fecha no se escribe código.
+> **Estado: abierta.** El prototipo (T008) está **aprobado el 2026-09-28**
+> («ahora sí lo veo perfecto») tras siete rondas de correcciones. Empieza el
+> código.
 
 ## Prototipo (T008)
 
@@ -12,9 +13,27 @@
   cupo lleno · móvil.
 - Cómo verlo: Storybook sobre Node 24 →
   `http://localhost:6006/?path=/story/prototipos-alta-de-cliente--elegir-plantilla`.
-- **Aprobación del owner: pendiente.**
+- **Aprobación del owner: 2026-09-28.**
 
-### Lo que el prototipo somete a aprobación
+### Las siete rondas, y qué cambió cada una
+
+El prototipo llegó a la aprobación **muy distinto** de como salió. Lo que
+cambió, en orden, porque cada una enseña algo:
+
+| # | Lo que dijo el owner | Qué cambió |
+|---|---|---|
+| 1 | Lo básico aquí, lo avanzado en los ajustes del agente | **Deshizo la excepción**: `aesthetic_clinic_v1` dejó de pedir doce campos y las trece plantillas pasaron a pedir lo mismo. La tarea de los valores por defecto de la semilla entró en alcance |
+| 2 | El horario con selector, ¿para qué el campo «Sábados»? | El selector **mató el campo**: existía solo porque el horario era texto libre |
+| 3 | Las opciones una al lado de la otra | Dos caminos que se comparan, no una lista que se recorre |
+| 4 | Sin inglés, iconos por rubro, horario día a día, «X» en vez de «Abre» | «wellness» y «medspa» salían de las semillas. El horario resumido **mentía por omisión** |
+| 5 | Confirmar es insípido, publicar no sirve, cero créditos | **Retiró la historia 4 entera**: elegir publicar no tenía consecuencia |
+| 6 | Organiza ese texto | No eran cuatro cosas, eran dos: lo que se crea y lo que faltará. Y esos tres pendientes **son los tres pasos de la ficha** |
+| 7 | Cupo lleno debería dejar subir de plan → *me equivoqué, no hay límite* | El estado desapareció entero. Y salió a la luz que el límite **sí existe en el código** |
+
+**Lo que esto dice del prototipo como puerta**: ninguna de las siete se habría
+visto leyendo una spec. Se vieron mirando una pantalla.
+
+### Lo que el prototipo fija
 
 **Tres pasos y cuatro campos**, contra cuatro pasos y veintitrés.
 
