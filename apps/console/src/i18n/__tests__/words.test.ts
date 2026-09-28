@@ -53,6 +53,21 @@ describe("Las palabras · Habilidades y Conectores", () => {
   });
 });
 
+describe("Las palabras · cómo se puntúan", () => {
+  it("ninguna pantalla usa punto y coma", () => {
+    // Regla del owner (2026-09-28). No es capricho tipográfico: el punto y
+    // coma pide una pausa que el lector de una interfaz no hace. O son dos
+    // frases —y entonces llevan punto— o es una sola, y entonces lleva coma.
+    //
+    // Se barrieron 27 cadenas para llegar aquí. Sin este test, la número 28
+    // entra con el siguiente retoque y nadie se entera.
+    const culpables = visible()
+      .filter(([, , text]) => text.includes(";"))
+      .map(([key, locale, text]) => `${key} [${locale}] → ${text}`);
+    expect(culpables, "quedan pantallas con punto y coma").toEqual([]);
+  });
+});
+
 describe("Las palabras · quién lee cada cosa", () => {
   it("Conocimiento dice que lo lee el agente de ESE cliente, y solo ése", () => {
     // Sin el «de este cliente» la frase es cierta y no sirve: el partner

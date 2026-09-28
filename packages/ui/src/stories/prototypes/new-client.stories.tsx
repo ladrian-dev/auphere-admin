@@ -512,7 +512,7 @@ function PasoConfirmar({
               },
             ]}
           />
-          <p className="text-sm text-muted-foreground">Su ficha te los irá pidiendo; no hace falta que los recuerdes.</p>
+          <p className="text-sm text-muted-foreground">Su ficha te los irá pidiendo, no hace falta que los recuerdes.</p>
         </div>
       </div>
 
