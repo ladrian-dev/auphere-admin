@@ -6,8 +6,6 @@ export const capabilitiesMessages = {
     es: "Lo que el agente sabe hacer. Lo que dejes apagado, el agente no lo ve. Cada cambio se guarda en el borrador; publicar sigue siendo un paso aparte.",
     en: "What the agent can do. Whatever you leave off, the agent does not see. Each change is saved to the draft; publishing is still a separate step.",
   },
-  "cap.enableVisible": { es: "Encender las visibles", en: "Turn on the visible ones" },
-  "cap.disableVisible": { es: "Apagar las visibles", en: "Turn off the visible ones" },
   "cap.readonly": { es: "Tu rol permite ver las habilidades, no cambiarlas.", en: "Your role lets you see skills, not change them." },
 
   // ── sector ────────────────────────────────────────────────────────

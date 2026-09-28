@@ -238,24 +238,15 @@ describe("Capacidades · un clic guarda", () => {
     expect(conmutador).toHaveAttribute("aria-checked", "false");
   });
 
-  it("el lote llama una vez por capacidad, y solo por las que cambian", async () => {
+  it("no hay encendido en bloque: cada habilidad se decide una a una", () => {
+    // Retirado por decisión del owner el 2026-09-28. Eran dos botones que
+    // encendían o apagaban «las visibles», y ése era el problema: el
+    // conjunto dependía del filtro puesto, así que un filtro que no se
+    // había mirado volteaba el catálogo entero de una vez. El test se queda
+    // —no se borra— para que no vuelva sin una decisión escrita.
     mount();
-    fireEvent.click(screen.getByRole("button", { name: "Encender las visibles" }));
-
-    // Tres visibles, una ya encendida: dos llamadas, no tres.
-    await waitFor(() => expect(setCapabilityAction).toHaveBeenCalledTimes(2));
-    const claves = setCapabilityAction.mock.calls.map((c) => c[0].key);
-    expect(claves).toEqual(["booking.create_appointment", "escalation-policy"]);
-    expect(claves).not.toContain("woocommerce.list_orders");
-    await waitFor(() => expect(refresh).toHaveBeenCalled());
-  });
-
-  it("el lote se detiene en el primer fallo en vez de insistir", async () => {
-    setCapabilityAction.mockResolvedValue({ ok: false, status: 500, message: "boom" });
-    mount();
-    fireEvent.click(screen.getByRole("button", { name: "Encender las visibles" }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
-    expect(setCapabilityAction).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /Encender|Apagar/ })).toBeNull();
+    expect(screen.getAllByRole("switch").length).toBeGreaterThan(0);
   });
 });
 

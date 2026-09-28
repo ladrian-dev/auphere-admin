@@ -4,15 +4,12 @@ import { Wrench } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
-import { toast } from "sonner";
 
-import { Button, CatalogBrowser, EmptyState } from "@nexus/ui";
+import { CatalogBrowser, EmptyState } from "@nexus/ui";
 
-import { setCapabilityAction } from "@/app/(console)/clients/[ref]/capabilities/actions";
 import { useCatalog, useCatalogLabels } from "@/components/catalog/use-catalog";
 import { useT } from "@/i18n/client";
-import { actionErrorText } from "@/lib/action-error";
-import type { CapabilitiesOut, Capability } from "@/lib/backend/capabilities";
+import type { CapabilitiesOut } from "@/lib/backend/capabilities";
 
 import { BlockingIntegrations } from "./blocking-integrations";
 import { CapabilityCard } from "./capability-card";
@@ -23,8 +20,14 @@ import { CapabilityCard } from "./capability-card";
  * Canales — buscar, activos/todo, filtrar por categoría.
  *
  * Lo que esta pantalla aporta al patrón es lo suyo y nada más: la función de
- * negocio como categoría, la tarjeta con su interruptor, el filtro por sector
- * y el encendido en bloque. El patrón no sabe nada de eso.
+ * negocio como categoría, la tarjeta con su interruptor y el filtro por
+ * sector. El patrón no sabe nada de eso.
+ *
+ * **No hay encendido en bloque** (owner, 2026-09-28). Lo hubo: dos botones
+ * que encendían o apagaban «las visibles». Actuaban sobre un conjunto que
+ * dependía del filtro puesto, así que un filtro que no se había mirado
+ * volteaba treinta y siete habilidades de una vez, con una llamada por cada
+ * una. Encender de una en una es más lento y no se equivoca.
  *
  * El buscador filtra en cliente sobre lo ya cargado: la lista completa son
  * decenas de elementos, no miles, y filtrar en el servidor añadiría una ida
@@ -51,8 +54,6 @@ export function CapabilitiesCatalog({
     title: t("cap.title"),
     category: (key) => t(`cap.fn.${key}` as "cap.fn.other"),
   });
-  const [bulk, startBulk] = React.useTransition();
-
   const all = React.useMemo(() => data.groups.flatMap((g) => g.items), [data.groups]);
   // La forma que el patrón entiende. El orden de los grupos lo pone la API,
   // y se conserva porque los elementos llegan en él.
@@ -69,28 +70,10 @@ export function CapabilitiesCatalog({
     [all],
   );
 
-  /** Encender o apagar todas las visibles: una llamada por capacidad, que es
-   *  lo que la API acepta, y solo las que de verdad cambian. */
-  function setAllVisible(targets: Capability[], enabled: boolean) {
-    const changing = targets.filter((c) => c.enabled !== enabled);
-    if (changing.length === 0) return;
-    startBulk(async () => {
-      let failed = 0;
-      for (const cap of changing) {
-        const res = await setCapabilityAction({ ref: refId, key: cap.key, kind: cap.kind, enabled });
-        if (!res.ok) {
-          failed += 1;
-          toast.error(actionErrorText(res, t));
-          break;
-        }
-      }
-      if (failed === 0) toast.success(t("cap.saved"));
-      router.refresh();
-    });
-  }
-
-  // Lo que el patrón enseñaría ahora mismo: es sobre eso que actúan los dos
-  // botones de encendido en bloque, y por eso se calcula aquí y no dentro.
+  // Lo que el patrón enseñaría ahora mismo. Se calcula aquí porque el aviso
+  // de conectores que estorban habla de **lo que se está mirando**: filtrar
+  // a «Citas» y seguir viendo que falta WooCommerce para los pedidos sería
+  // el aviso contestando a otra pregunta.
   const visible = React.useMemo(() => {
     const needle = catalog.query.trim().toLowerCase();
     return items
@@ -106,7 +89,7 @@ export function CapabilitiesCatalog({
   const viewingAll = data.hidden_by_sector === 0 && data.sector !== null;
 
   return (
-    <div className="flex flex-col gap-(--space-section)" aria-busy={bulk}>
+    <div className="flex flex-col gap-(--space-section)">
       <BlockingIntegrations refId={refId} items={visible} />
 
       <CatalogBrowser
@@ -127,42 +110,30 @@ export function CapabilitiesCatalog({
           <EmptyState icon={Wrench} title={t("cap.empty.title")} description={t("cap.empty.body")} readonly />
         }
         notice={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-col gap-1">
-              {/* El sector es un filtro de esta pantalla, no del patrón: no
-                  estrecha lo que hay, **ensancha** el catálogo entero. Por eso
-                  vive al lado y no entre las pastillas. */}
-              {data.sector === null ? (
-                <p className="text-sm text-muted-foreground">{t("cap.sector.none")}</p>
-              ) : viewingAll ? (
-                <p className="text-sm text-muted-foreground">
-                  {t("cap.sector.viewingAll")}{" "}
-                  <Link href={seeOwnHref} className="underline underline-offset-4">
-                    {t("cap.sector.seeOwn")}
-                  </Link>
-                </p>
-              ) : data.hidden_by_sector > 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {data.hidden_by_sector === 1
-                    ? t("cap.sector.hiddenOne")
-                    : t("cap.sector.hidden", { n: data.hidden_by_sector })}{" "}
-                  <Link href={seeAllHref} className="underline underline-offset-4">
-                    {t("cap.sector.seeAll")}
-                  </Link>
-                </p>
-              ) : null}
-              {!canWrite ? <p className="text-sm text-muted-foreground">{t("cap.readonly")}</p> : null}
-            </div>
-            {canWrite && visible.length > 0 ? (
-              <span className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" disabled={bulk} onClick={() => setAllVisible(visible, true)}>
-                  {t("cap.enableVisible")}
-                </Button>
-                <Button variant="ghost" size="sm" disabled={bulk} onClick={() => setAllVisible(visible, false)}>
-                  {t("cap.disableVisible")}
-                </Button>
-              </span>
+          <div className="flex min-w-0 flex-col gap-1">
+            {/* El sector es un filtro de esta pantalla, no del patrón: no
+                estrecha lo que hay, **ensancha** el catálogo entero. Por eso
+                vive aquí y no entre las pastillas. */}
+            {data.sector === null ? (
+              <p className="text-sm text-muted-foreground">{t("cap.sector.none")}</p>
+            ) : viewingAll ? (
+              <p className="text-sm text-muted-foreground">
+                {t("cap.sector.viewingAll")}{" "}
+                <Link href={seeOwnHref} className="underline underline-offset-4">
+                  {t("cap.sector.seeOwn")}
+                </Link>
+              </p>
+            ) : data.hidden_by_sector > 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {data.hidden_by_sector === 1
+                  ? t("cap.sector.hiddenOne")
+                  : t("cap.sector.hidden", { n: data.hidden_by_sector })}{" "}
+                <Link href={seeAllHref} className="underline underline-offset-4">
+                  {t("cap.sector.seeAll")}
+                </Link>
+              </p>
             ) : null}
+            {!canWrite ? <p className="text-sm text-muted-foreground">{t("cap.readonly")}</p> : null}
           </div>
         }
       />

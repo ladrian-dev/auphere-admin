@@ -86,7 +86,7 @@ Fuente: 86 líneas. Todo lo que enseña, enumerado.
 | 39 | Contador «n de N encendidas» con `aria-live` | Pasa a ser el del patrón, «{visibles} de {total} · {activos} activos», con el mismo `aria-live`. Dice **más**: cuántos hay en total, que es lo que «1» a secas se callaba | ➡️ |
 | 40 | Agrupación por función, sin grupos vacíos | Se conserva: la función pasa a ser **la categoría** del patrón | ✅ |
 | 41 | Filtro por sector con «Ver todas» y cuántas oculta, en la URL | Se conserva **dentro** del patrón nuevo, no al lado | ➡️ |
-| 42 | «Encender / apagar las visibles» | Se conserva | ✅ |
+| 42 | «Encender / apagar las visibles» | **Retirado** por decisión del owner (2026-09-28). Actuaba sobre un conjunto que dependía del filtro puesto: un filtro que no se había mirado volteaba las 37 de una vez, con una llamada por cada una. Lo que se pierde es encender muchas de golpe tras filtrar; se hace una a una | ❌ |
 | 43 | Bloque de integraciones que estorban, arriba | Se conserva | ✅ |
 | 44 | Conmutador que guarda al clic; modo; insignias; detalle técnico plegado | Se conservan enteros | ✅ |
 | 45 | — | Pestañas para ver solo lo activo o todo | ➕ |
