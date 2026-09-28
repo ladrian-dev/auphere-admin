@@ -25,6 +25,14 @@ import { useMemo, useState } from "react";
 import { Button } from "../../components/button";
 import { Checklist, type ChecklistItem } from "../../components/checklist";
 import { Combobox } from "../../components/combobox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/dialog";
 import { EmptyState } from "../../components/empty-state";
 import { Input } from "../../components/input";
 import { Label } from "../../components/label";
@@ -688,15 +696,44 @@ export const UnaEtapaFalla: Story = {
  * plan, o liberar un sitio archivando un cliente que ya no se usa. Antes solo
  * ofrecía «Ver mis clientes», que no es una salida — es una lista.
  *
- * Aviso para quien implemente esto: **ampliar el plan no es autoservicio
- * hoy.** La propia consola lo dice en otra pantalla («Archiva uno o pide a
- * Auphere que la amplíe») y Facturación no tiene control de plan. El botón
- * tiene que llevar a algo que de verdad amplíe el cupo, no a una pantalla
- * donde tampoco se pueda. Está pendiente de decidir a dónde.
+ * **Ampliar se resuelve aquí, sin cambiar de pantalla** (owner, 2026-09-28).
+ * Un modal con los planes por encima del actual: se elige, se confirma, y el
+ * alta sigue donde estaba. Llevarlo a Facturación le haría perder el hilo.
+ *
+ * **Aviso duro para quien implemente esto.** Detrás no hay nada de esto
+ * todavía:
+ *
+ * - **el partner no tiene plan.** `partners.max_clients` es una columna que
+ *   fija Auphere, con un `quota_notes` al lado. El catálogo `billing_plans`
+ *   que sí existe es **de tenant**, no de partner;
+ * - **no hay pasarela de pago.** El propio modelo de facturación lo dice:
+ *   «Stripe integration lands later, the `stripe_*` columns are intentionally
+ *   absent until then».
+ *
+ * Los precios de este prototipo son un hueco («—») a propósito: inventarlos
+ * aquí sería la pantalla afirmando algo que nadie ha decidido.
+ *
+ * Así que «Ampliar» puede hacer dos cosas, y es una decisión de producto, no
+ * de interfaz: **pedirlo y que Auphere lo aplique** —resuelve el foco hoy, sin
+ * inventar facturación— o **cobrarlo de verdad**, que es una spec con su ADR:
+ * planes de partner, catálogo, endpoint de cambio y pago.
  */
 export const CupoLleno: Story = {
   name: "Cupo lleno",
-  render: () => (
+  render: () => <CupoLlenoDemo />,
+};
+
+const PLANES = [
+  { id: "10", clientes: 10, precio: "—" },
+  { id: "25", clientes: 25, precio: "—" },
+  { id: "50", clientes: 50, precio: "—" },
+];
+
+function CupoLlenoDemo() {
+  const [abierto, setAbierto] = useState(false);
+  const [elegido, setElegido] = useState<string | null>(null);
+
+  return (
     <Marco paso={0}>
       <EmptyState
         icon={Users}
@@ -704,14 +741,52 @@ export const CupoLleno: Story = {
         description="Puedes ampliar tu plan para dar de alta más, o dejar libre un sitio archivando uno que ya no uses."
         action={
           <span className="flex flex-wrap items-center justify-center gap-2">
-            <Button>Ampliar el plan</Button>
+            <Button onClick={() => setAbierto(true)}>Ampliar el plan</Button>
             <Button variant="outline">Archivar un cliente</Button>
           </span>
         }
       />
+
+      {/* El modal resuelve el atasco **sin sacar al partner del alta**: cuando
+          cierra, sigue donde estaba (owner, 2026-09-28). Llevarlo a
+          Facturación le haría perder el hilo de lo que estaba haciendo. */}
+      <Dialog open={abierto} onOpenChange={setAbierto}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ampliar tu plan</DialogTitle>
+            <DialogDescription>Ahora puedes tener 5 clientes. Elige hasta cuántos quieres llegar.</DialogDescription>
+          </DialogHeader>
+
+          <div role="radiogroup" aria-label="Planes" className="flex flex-col gap-2">
+            {PLANES.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="radio"
+                aria-checked={elegido === p.id}
+                onClick={() => setElegido(p.id)}
+                className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left transition-colors hover:bg-muted/60 aria-checked:border-foreground aria-checked:bg-muted"
+              >
+                <span className="flex flex-col">
+                  <span className="font-medium">Hasta {p.clientes} clientes</span>
+                  <span className="text-sm text-muted-foreground">{p.clientes - 5} sitios más de los que tienes</span>
+                </span>
+                <span className="shrink-0 text-sm tabular-nums text-muted-foreground">{p.precio}</span>
+              </button>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAbierto(false)}>
+              Cancelar
+            </Button>
+            <Button disabled={elegido === null}>Ampliar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Marco>
-  ),
-};
+  );
+}
 
 export const Movil: Story = {
   name: "Móvil",

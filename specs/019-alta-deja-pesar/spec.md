@@ -209,12 +209,13 @@ formulario largo, para que empezar no cueste más que continuar.
    pedir el primer dato, y DEBE ofrecer **las dos salidas que existen**:
    ampliar el plan y archivar un cliente. *(Owner, 2026-09-28. Hoy solo ofrece
    «Ver mis clientes», que no es una salida — es una lista.)*
-7. WHERE se ofrezca ampliar el plan EL sistema DEBE llevar a algo que de verdad
-   amplíe el cupo. **Hoy ampliar no es autoservicio**: la propia consola dice
-   en otra pantalla «Archiva uno o pide a Auphere que la amplíe», y Facturación
-   no tiene control de plan. Un botón que lleve a una pantalla donde tampoco se
-   pueda es el mismo callejón un clic más lejos (§V). *(Destino pendiente de
-   decisión.)*
+7. WHEN el partner elige ampliar el plan THEN el sistema DEBE resolverlo **sin
+   sacarlo del alta**: un diálogo con los planes por encima del actual, y al
+   cerrarlo sigue donde estaba. NO DEBE llevarlo a otra pantalla. *(Owner,
+   2026-09-28: «deberías poder solucionar todo desde este flujo sin cambiarle
+   el foco».)*
+8. El diálogo DEBE decir hasta cuántos clientes lleva cada plan y cuántos
+   sitios añade sobre el actual, y NO DEBE ofrecer el plan que ya se tiene.
 
 ### Requisito 7 — Lo que se pide, se pide con el control que le corresponde
 
@@ -391,6 +392,27 @@ de RLS cambian.
 - **CE-008**: un cliente recién creado tiene **cero créditos** y su ficha lo
   dice; hoy nace con 50 000 que nadie decidió.
 - **CE-009**: ninguna pantalla del alta mezcla idiomas.
+
+## Lo que esta spec **no puede** entregar sola
+
+R1.7 pide un diálogo que amplíe el plan. La interfaz cabe aquí, **lo de debajo
+no existe** y conviene que esté escrito antes de planificar:
+
+| Qué falta | Dónde se ve |
+|---|---|
+| El partner **no tiene plan** | `partners.max_clients` es una columna que fija Auphere, con `quota_notes` al lado |
+| No hay catálogo de planes de partner | `billing_plans` existe, pero `tenants.billing_plan_id` apunta ahí: es de tenant |
+| No hay pasarela de pago | El modelo de facturación lo dice: «Stripe integration lands later, the `stripe_*` columns are intentionally absent until then» |
+
+Así que «Ampliar» puede hacer **dos cosas**, y es una decisión de producto:
+
+- **Pedirlo, y que Auphere lo aplique.** Resuelve el foco hoy —el partner no
+  sale del alta y recibe respuesta— sin inventar facturación. Cabe en esta spec.
+- **Cobrarlo de verdad.** Planes de partner, catálogo, endpoint de cambio y
+  pago. Es una spec con su ADR, y no cabe aquí.
+
+Los precios del prototipo son un hueco a propósito. Inventarlos sería la
+pantalla afirmando algo que nadie ha decidido.
 
 ## Fuera de alcance
 
