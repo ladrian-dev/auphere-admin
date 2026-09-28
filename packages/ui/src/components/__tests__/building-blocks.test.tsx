@@ -271,3 +271,27 @@ describe("Button", () => {
     expect(screen.getByRole("button", { name: "Conectar" }).className).toContain("no-underline");
   });
 });
+
+describe("Section · el tono que destaca se invierte con el tema", () => {
+  it("lleva el fondo de claro y el de oscuro, no solo uno", () => {
+    // Lo que destaca no es el color, es el **contraste con lo que tiene al
+    // lado**. En claro, verde oscuro sobre tarjetas claras. En oscuro, ese
+    // mismo verde se fundía con el fondo y la tarjeta dejaba de hacer su
+    // trabajo (owner, 2026-09-28), así que ahí va en pistacho.
+    //
+    // Es una decisión de CSS y jsdom no calcula temas, así que lo que se
+    // afirma son las dos clases. Medido en la consola: 15.44:1 en claro y
+    // 9.6:1 en oscuro para el título.
+    const { container } = render(<Section tone="spotlight" title="Pasos" description="Qué falta" />);
+    const section = container.querySelector("section")!;
+    expect(section.className).toContain("bg-dark-green");
+    expect(section.className).toContain("dark:bg-pistachio");
+    // Y el texto sigue al fondo, no al tema.
+    expect(section.className).toContain("dark:text-dark-green");
+  });
+
+  it("el tono normal no lleva ninguno de los dos", () => {
+    const { container } = render(<Section title="Normal" />);
+    expect(container.querySelector("section")!.className).not.toContain("dark:bg-pistachio");
+  });
+});
