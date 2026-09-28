@@ -12,6 +12,7 @@ export * from "./components/chart-line";
 export * from "./components/chart-theme";
 export * from "./components/checkbox";
 export * from "./components/checklist";
+export * from "./components/combobox";
 export * from "./components/command-palette";
 export * from "./components/confirm-dialog";
 export * from "./components/data-table";
