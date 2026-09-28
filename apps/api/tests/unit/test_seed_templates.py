@@ -321,3 +321,40 @@ def test_woocommerce_sales_v1_override_currency() -> None:
     )
     assert rendered.policies["store"]["currency"] == "USD"
     assert "USD" in rendered.system_prompt
+
+
+def test_no_template_name_mixes_languages() -> None:
+    """El nombre que ve el partner está en un solo idioma (spec 019, R9).
+
+    El alta enseña trece nombres en una rejilla y son lo único que hay para
+    decidir. Dos llegaban a medio traducir —«Spa (belleza y wellness)» y
+    «Clínica estética (medspa + cirugía)»—, y una palabra suelta del otro
+    idioma en una lista de trece obliga a traducir mentalmente justo donde
+    hay que comparar.
+
+    Lo que se prohíbe son palabras inglesas **de vocabulario**. Una marca no
+    cuenta: «WooCommerce» es el nombre del producto, no una traducción
+    pendiente, y «spa» está en el diccionario de la RAE.
+    """
+    prohibidas = {
+        "wellness",
+        "medspa",
+        "beauty",
+        "salon",
+        "store",
+        "sales",
+        "clinic",
+        "shop",
+        "booking",
+        "basic",
+    }
+    marcas = {"woocommerce"}
+    culpables: list[tuple[str, str]] = []
+    for name in list_seed_templates():
+        display = load_seed_template(name).display_name
+        palabras = {p.strip("()/+.,").lower() for p in display.replace("/", " ").split()}
+        for mala in palabras & prohibidas:
+            if mala in marcas:
+                continue
+            culpables.append((name, display))
+    assert not culpables, f"nombres a medio traducir: {culpables}"

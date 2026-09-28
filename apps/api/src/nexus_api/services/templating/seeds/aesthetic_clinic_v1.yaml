@@ -60,7 +60,7 @@
 #     cuando ADR-022 Stripe materialice el tool en tool_catalog).
 
 version: "1.0.0"
-display_name: "Clínica estética (medspa + cirugía)"
+display_name: "Clínica estética (con cirugía)"
 
 agent:
   name_default: "Luciana"
