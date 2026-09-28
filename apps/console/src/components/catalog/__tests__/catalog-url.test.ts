@@ -71,6 +71,17 @@ describe("catalogHref · escribir la dirección", () => {
     );
   });
 
+  it("acepta la cadena de la dirección, que es lo que tiene a mano quien la llama", () => {
+    // El defecto que esto fija: una cadena entrando por la rama del objeto
+    // se recorría **carácter a carácter** y salía una dirección con
+    // seiscientos parámetros (`?0=t&1=a&2=b…`). `tsc` lo dijo; yo no lo leí
+    // hasta verlo en la pantalla.
+    expect(catalogHref(base, "all=1&cat=citas", { tab: "active" })).toBe(
+      "/clients/demo/capabilities?all=1&cat=citas&tab=active",
+    );
+    expect(catalogHref(base, "", { q: "pan" })).toBe("/clients/demo/capabilities?q=pan");
+  });
+
   it("las claves que el patrón se reserva están dichas en un sitio", () => {
     // Para que una pantalla que añada un parámetro propio sepa cuáles no
     // puede usar.

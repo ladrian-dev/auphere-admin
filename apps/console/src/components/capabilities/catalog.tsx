@@ -1,27 +1,30 @@
 "use client";
 
-import { Search, Wrench } from "lucide-react";
+import { Wrench } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, EmptyState, Input, Section } from "@nexus/ui";
+import { Button, CatalogBrowser, EmptyState } from "@nexus/ui";
 
 import { setCapabilityAction } from "@/app/(console)/clients/[ref]/capabilities/actions";
+import { useCatalog, useCatalogLabels } from "@/components/catalog/use-catalog";
 import { useT } from "@/i18n/client";
 import { actionErrorText } from "@/lib/action-error";
-import type { CapabilitiesOut, CapabilityFunction } from "@/lib/backend/capabilities";
+import type { CapabilitiesOut, Capability } from "@/lib/backend/capabilities";
 
 import { BlockingIntegrations } from "./blocking-integrations";
 import { CapabilityCard } from "./capability-card";
 
 /**
- * Capacidades (spec 017, R5): una pantalla donde antes había dos.
+ * Habilidades (spec 017 R5; spec 018 R4): una pantalla donde antes había dos,
+ * y desde la spec 018 con **el mismo patrón de navegación** que Conectores y
+ * Canales — buscar, activos/todo, filtrar por categoría.
  *
- * Agrupa por lo que el negocio quiere conseguir, no por si por dentro es
- * herramienta o habilidad. El sector del cliente decide qué se ve por
- * defecto, y la pantalla dice cuántas esconde para que «Ver todas» sea una
- * elección informada.
+ * Lo que esta pantalla aporta al patrón es lo suyo y nada más: la función de
+ * negocio como categoría, la tarjeta con su interruptor, el filtro por sector
+ * y el encendido en bloque. El patrón no sabe nada de eso.
  *
  * El buscador filtra en cliente sobre lo ya cargado: la lista completa son
  * decenas de elementos, no miles, y filtrar en el servidor añadiría una ida
@@ -42,29 +45,38 @@ export function CapabilitiesCatalog({
 }) {
   const t = useT();
   const router = useRouter();
-  const [q, setQ] = React.useState("");
+  const base = `/clients/${encodeURIComponent(refId)}/capabilities`;
+  const catalog = useCatalog(base);
+  const labels = useCatalogLabels({
+    title: t("cap.title"),
+    category: (key) => t(`cap.fn.${key}` as "cap.fn.other"),
+  });
   const [bulk, startBulk] = React.useTransition();
 
   const all = React.useMemo(() => data.groups.flatMap((g) => g.items), [data.groups]);
-  const needle = q.trim().toLowerCase();
-  const visible = React.useMemo(
+  // La forma que el patrón entiende. El orden de los grupos lo pone la API,
+  // y se conserva porque los elementos llegan en él.
+  const items = React.useMemo(
     () =>
-      needle
-        ? all.filter((c) => `${c.business_name} ${c.description}`.toLowerCase().includes(needle))
-        : all,
-    [all, needle],
+      all.map((cap) => ({
+        id: `${cap.kind}:${cap.key}`,
+        name: cap.business_name,
+        search: cap.description,
+        category: cap.function,
+        active: cap.enabled,
+        cap,
+      })),
+    [all],
   );
-  const on = visible.filter((c) => c.enabled).length;
-  const viewingAll = data.hidden_by_sector === 0 && data.sector !== null;
 
   /** Encender o apagar todas las visibles: una llamada por capacidad, que es
    *  lo que la API acepta, y solo las que de verdad cambian. */
-  function setAllVisible(enabled: boolean) {
-    const targets = visible.filter((c) => c.enabled !== enabled);
-    if (targets.length === 0) return;
+  function setAllVisible(targets: Capability[], enabled: boolean) {
+    const changing = targets.filter((c) => c.enabled !== enabled);
+    if (changing.length === 0) return;
     startBulk(async () => {
       let failed = 0;
-      for (const cap of targets) {
+      for (const cap of changing) {
         const res = await setCapabilityAction({ ref: refId, key: cap.key, kind: cap.kind, enabled });
         if (!res.ok) {
           failed += 1;
@@ -77,107 +89,83 @@ export function CapabilitiesCatalog({
     });
   }
 
-  const groups = React.useMemo(() => {
-    const byFn = new Map<CapabilityFunction, typeof visible>();
-    for (const c of visible) byFn.set(c.function, [...(byFn.get(c.function) ?? []), c]);
-    return data.groups.filter((g) => byFn.has(g.function)).map((g) => ({ fn: g.function, items: byFn.get(g.function)! }));
-  }, [data.groups, visible]);
+  // Lo que el patrón enseñaría ahora mismo: es sobre eso que actúan los dos
+  // botones de encendido en bloque, y por eso se calcula aquí y no dentro.
+  const visible = React.useMemo(() => {
+    const needle = catalog.query.trim().toLowerCase();
+    return items
+      .filter((i) => {
+        if (catalog.tab === "active" && !i.active) return false;
+        if (catalog.category !== null && i.category !== catalog.category) return false;
+        if (needle && !`${i.name} ${i.search ?? ""}`.toLowerCase().includes(needle)) return false;
+        return true;
+      })
+      .map((i) => i.cap);
+  }, [items, catalog.query, catalog.tab, catalog.category]);
+
+  const viewingAll = data.hidden_by_sector === 0 && data.sector !== null;
 
   return (
     <div className="flex flex-col gap-(--space-section)" aria-busy={bulk}>
       <BlockingIntegrations refId={refId} items={visible} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <label htmlFor="cap-q" className="sr-only">
-            {t("cap.search.label")}
-          </label>
-          <span className="relative inline-flex items-center">
-            <Search aria-hidden="true" className="absolute left-3 size-4 text-muted-foreground" />
-            <Input
-              id="cap-q"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t("cap.search")}
-              className="w-72 pl-9"
-            />
-          </span>
-          <span className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
-            {t("cap.count", { on, total: visible.length })}
-          </span>
-        </div>
-        {canWrite && visible.length > 0 ? (
-          <span className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" disabled={bulk} onClick={() => setAllVisible(true)}>
-              {t("cap.enableVisible")}
-            </Button>
-            <Button variant="ghost" size="sm" disabled={bulk} onClick={() => setAllVisible(false)}>
-              {t("cap.disableVisible")}
-            </Button>
-          </span>
-        ) : null}
-      </div>
-
-      {data.sector === null ? (
-        <p className="text-sm text-muted-foreground">{t("cap.sector.none")}</p>
-      ) : viewingAll ? (
-        <p className="text-sm text-muted-foreground">
-          {t("cap.sector.viewingAll")}{" "}
-          <a href={seeOwnHref} className="underline underline-offset-4">
-            {t("cap.sector.seeOwn")}
-          </a>
-        </p>
-      ) : data.hidden_by_sector > 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {data.hidden_by_sector === 1
-            ? t("cap.sector.hiddenOne")
-            : t("cap.sector.hidden", { n: data.hidden_by_sector })}{" "}
-          <a href={seeAllHref} className="underline underline-offset-4">
-            {t("cap.sector.seeAll")}
-          </a>
-        </p>
-      ) : null}
-
-      {!canWrite ? <p className="text-sm text-muted-foreground">{t("cap.readonly")}</p> : null}
-
-      {all.length === 0 ? (
-        // Sin catálogo, las integraciones siguen arriba: hoy el vacío las
-        // escondía y no había forma de conectar nada.
-        <EmptyState icon={Wrench} title={t("cap.empty.title")} description={t("cap.empty.body")} readonly />
-      ) : visible.length === 0 ? (
-        <EmptyState
-          icon={Search}
-          title={t("cap.noResults.title", { q })}
-          description={t("cap.noResults.body")}
-          action={
-            <Button variant="outline" onClick={() => setQ("")}>
-              {t("cap.sector.seeAll")}
-            </Button>
-          }
-        />
-      ) : (
-        <div className="flex flex-col gap-(--space-section)">
-          {groups.map((g) => (
-            <Section key={g.fn} title={t(`cap.fn.${g.fn}`)} headingLevel={2} flat>
-              {/* Spec 018 (owner, 2026-09-28): rejilla, no una tarjeta por
-                  fila. Sesenta habilidades en una columna son sesenta
-                  pantallas de scroll, y cada tarjeta ocupaba un ancho que
-                  no necesita. */}
-              <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {g.items.map((cap) => (
-                  <CapabilityCard
-                    key={`${cap.kind}:${cap.key}`}
-                    refId={refId}
-                    cap={cap}
-                    canWrite={canWrite}
-                    onChanged={() => router.refresh()}
-                  />
-                ))}
-              </ul>
-            </Section>
-          ))}
-        </div>
-      )}
+      <CatalogBrowser
+        {...catalog}
+        items={items}
+        labels={labels}
+        renderLink={(href, children, props) => (
+          <Link href={href} {...props}>
+            {children}
+          </Link>
+        )}
+        renderItem={({ id, cap }) => (
+          <CapabilityCard key={id} refId={refId} cap={cap} canWrite={canWrite} onChanged={() => router.refresh()} />
+        )}
+        empty={
+          // Sin catálogo, las integraciones siguen arriba: hoy el vacío las
+          // escondía y no había forma de conectar nada.
+          <EmptyState icon={Wrench} title={t("cap.empty.title")} description={t("cap.empty.body")} readonly />
+        }
+        notice={
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-1">
+              {/* El sector es un filtro de esta pantalla, no del patrón: no
+                  estrecha lo que hay, **ensancha** el catálogo entero. Por eso
+                  vive al lado y no entre las pastillas. */}
+              {data.sector === null ? (
+                <p className="text-sm text-muted-foreground">{t("cap.sector.none")}</p>
+              ) : viewingAll ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("cap.sector.viewingAll")}{" "}
+                  <Link href={seeOwnHref} className="underline underline-offset-4">
+                    {t("cap.sector.seeOwn")}
+                  </Link>
+                </p>
+              ) : data.hidden_by_sector > 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {data.hidden_by_sector === 1
+                    ? t("cap.sector.hiddenOne")
+                    : t("cap.sector.hidden", { n: data.hidden_by_sector })}{" "}
+                  <Link href={seeAllHref} className="underline underline-offset-4">
+                    {t("cap.sector.seeAll")}
+                  </Link>
+                </p>
+              ) : null}
+              {!canWrite ? <p className="text-sm text-muted-foreground">{t("cap.readonly")}</p> : null}
+            </div>
+            {canWrite && visible.length > 0 ? (
+              <span className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" disabled={bulk} onClick={() => setAllVisible(visible, true)}>
+                  {t("cap.enableVisible")}
+                </Button>
+                <Button variant="ghost" size="sm" disabled={bulk} onClick={() => setAllVisible(visible, false)}>
+                  {t("cap.disableVisible")}
+                </Button>
+              </span>
+            ) : null}
+          </div>
+        }
+      />
     </div>
   );
 }

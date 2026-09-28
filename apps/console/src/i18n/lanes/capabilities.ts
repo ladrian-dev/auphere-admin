@@ -6,9 +6,6 @@ export const capabilitiesMessages = {
     es: "Lo que el agente sabe hacer. Lo que dejes apagado, el agente no lo ve. Cada cambio se guarda en el borrador; publicar sigue siendo un paso aparte.",
     en: "What the agent can do. Whatever you leave off, the agent does not see. Each change is saved to the draft; publishing is still a separate step.",
   },
-  "cap.search": { es: "Buscar una habilidad…", en: "Search a skill…" },
-  "cap.search.label": { es: "Buscar una habilidad", en: "Search a skill" },
-  "cap.count": { es: "{on} de {total} encendidas", en: "{on} of {total} on" },
   "cap.enableVisible": { es: "Encender las visibles", en: "Turn on the visible ones" },
   "cap.disableVisible": { es: "Apagar las visibles", en: "Turn off the visible ones" },
   "cap.readonly": { es: "Tu rol permite ver las habilidades, no cambiarlas.", en: "Your role lets you see skills, not change them." },
@@ -117,7 +114,5 @@ export const capabilitiesMessages = {
     es: "En cuanto las publiquemos aparecerán aquí. Los conectores sí se pueden conectar mientras tanto.",
     en: "They will show up here as soon as we publish them. Connectors can be connected in the meantime.",
   },
-  "cap.noResults.title": { es: "Ninguna habilidad coincide con «{q}»", en: "No skill matches “{q}”" },
-  "cap.noResults.body": { es: "Prueba con otra palabra, o mira también las de otros sectores.", en: "Try another word, or look at other sectors' too." },
   "cap.saved": { es: "Guardado en el borrador.", en: "Saved to the draft." },
 } as const;

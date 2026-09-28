@@ -19,7 +19,13 @@ import { CapabilitiesCatalog } from "../catalog";
  */
 
 const refresh = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh, push: vi.fn() }) }));
+// `useSearchParams`: desde la spec 018 la pantalla lee de la dirección qué
+// se busca, qué pestaña está puesta y por qué categoría se filtra.
+const replace = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh, push: vi.fn(), replace }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 const setCapabilityAction = vi.fn();
 vi.mock("@/app/(console)/clients/[ref]/capabilities/actions", () => ({
@@ -148,25 +154,32 @@ describe("Capacidades · agrupación y sector", () => {
 describe("Capacidades · buscador", () => {
   it("filtra por el nombre de negocio y por la descripción, y cuenta lo que queda", () => {
     mount();
-    expect(screen.getByText("1 de 3 encendidas")).toBeInTheDocument();
+    // Desde la spec 018 el buscador, el contador y los carteles son los del
+    // patrón compartido: las mismas palabras que en Conectores y en Canales.
+    // Y el contador dice **de cuántos** quedan los que se ven; «1» a secas no
+    // decía si sobraban veinte o ninguno.
+    expect(screen.getByText("3 de 3 · 1 activos")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Buscar una habilidad"), { target: { value: "cita" } });
+    fireEvent.change(screen.getByLabelText("Buscar en la lista"), { target: { value: "cita" } });
     expect(screen.getByText("Reservar una cita")).toBeInTheDocument();
     expect(screen.queryByText("Consultar un pedido")).toBeNull();
     // Los grupos vacíos desaparecen con lo que contenían.
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Citas"]);
-    expect(screen.getByText("0 de 1 encendidas")).toBeInTheDocument();
+    expect(screen.getByText("1 de 3 · 0 activos")).toBeInTheDocument();
 
     // También busca en la descripción, no solo en el título.
-    fireEvent.change(screen.getByLabelText("Buscar una habilidad"), { target: { value: "agenda" } });
+    fireEvent.change(screen.getByLabelText("Buscar en la lista"), { target: { value: "agenda" } });
     expect(screen.getByText("Reservar una cita")).toBeInTheDocument();
   });
 
-  it("sin resultados lo dice con la palabra buscada y deja salir", () => {
+  it("sin resultados dice con qué se filtró y deja salir", () => {
     mount();
-    fireEvent.change(screen.getByLabelText("Buscar una habilidad"), { target: { value: "zzz" } });
-    expect(screen.getByText(/Ninguna habilidad coincide con «zzz»/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Ver todas" }));
+    fireEvent.change(screen.getByLabelText("Buscar en la lista"), { target: { value: "zzz" } });
+    expect(screen.getByText("Nada coincide con lo que buscas")).toBeInTheDocument();
+    // La palabra buscada sigue estando: lo que cambia es que ahora la frase
+    // nombra **todos** los filtros puestos, no solo el buscador (R4.3).
+    expect(screen.getByText(/buscando «zzz»/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Quitar los filtros" }));
     expect(screen.getByText("Reservar una cita")).toBeInTheDocument();
   });
 });

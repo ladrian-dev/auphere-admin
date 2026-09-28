@@ -74,6 +74,27 @@ const core = {
   "common.forbidden": { es: "Tu rol no permite esta acción.", en: "Your role does not allow this action." },
   "common.noMatches": { es: "Nada coincide con lo que has escrito.", en: "Nothing matches what you typed." },
 
+  // El patrón de catálogo (spec 018, R4). Viven aquí y no en el carril de
+  // cada pantalla **a propósito**: R4.6 pide que los tres catálogos llamen
+  // igual a las mismas cosas, y tres copias del mismo texto duran hasta que
+  // alguien retoca una.
+  "catalog.search": { es: "Buscar en la lista", en: "Search the list" },
+  "catalog.search.placeholder": { es: "Buscar por nombre…", en: "Search by name…" },
+  "catalog.tabs": { es: "Qué se ve", en: "What you see" },
+  "catalog.active": { es: "Activos", en: "Active" },
+  "catalog.all": { es: "Todo", en: "All" },
+  "catalog.count": { es: "{shown} de {total} · {active} activos", en: "{shown} of {total} · {active} active" },
+  // Dónde van los que no traen categoría. Neutro a propósito: la misma
+  // palabra tiene que servir para las tres listas.
+  "catalog.rest": { es: "El resto", en: "The rest" },
+  "catalog.noResults": { es: "Nada coincide con lo que buscas", en: "Nothing matches what you are looking for" },
+  "catalog.filters": { es: "Estás viendo {what}.", en: "You are seeing {what}." },
+  "catalog.filters.all": { es: "todo", en: "everything" },
+  "catalog.filters.active": { es: "solo lo activo", en: "only what is active" },
+  "catalog.filters.category": { es: "en «{name}»", en: "in “{name}”" },
+  "catalog.filters.query": { es: "buscando «{q}»", en: "searching for “{q}”" },
+  "catalog.clear": { es: "Quitar los filtros", en: "Clear the filters" },
+
   // validation
   "validation.required": { es: "Este campo es obligatorio.", en: "This field is required." },
   "validation.email": { es: "Introduce un correo válido.", en: "Enter a valid e-mail." },

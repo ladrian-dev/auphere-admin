@@ -58,8 +58,9 @@ export type CatalogLabels = {
   tabs: string;
   active: string;
   all: string;
-  /** El contador. Lo escribe quien llama porque el plural es suyo. */
-  count: (shown: number, active: number) => string;
+  /** El contador. Lo escribe quien llama porque el plural es suyo. `total`
+   *  es el catálogo entero: sin él, «3» no dice si sobran veinte o ninguno. */
+  count: (shown: number, active: number, total: number) => string;
   /** El grupo de los que no traen categoría. */
   uncategorized: string;
   /** Cómo se llama cada categoría. Por defecto, su propia clave. */
@@ -200,7 +201,7 @@ export function CatalogBrowser<T extends CatalogItem>({
           </div>
 
           <span className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
-            {labels.count(visible.length, activeCount)}
+            {labels.count(visible.length, activeCount, items.length)}
           </span>
         </div>
 
