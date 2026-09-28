@@ -471,21 +471,49 @@ function PasoConfirmar({
         </div>
       </div>
 
-      {/* Qué va a pasar. Esto es lo que el resumen de términos no decía. */}
-      <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-medium">Al crearlo</h3>
-        <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
-          <li>Se crea el cliente y se escribe su agente con {plantilla.habilidades} habilidades encendidas.</li>
-          <li>Queda en borrador: lo revisas y lo publicas tú desde su ficha.</li>
-          {/* Owner, 2026-09-28: nace con cero créditos y los asigna el partner
-              cuando lo vea. Decirlo aquí evita la pregunta «¿por qué no
-              contesta?» del día siguiente. */}
-          <li>
-            <strong className="font-medium text-foreground">Empieza sin créditos.</strong> Se los asignas tú cuando
-            quieras, desde Consumo.
-          </li>
-          <li>Le faltará conectar un canal para recibir mensajes.</li>
-        </ul>
+      {/* Qué va a pasar, en **dos** cosas y no en cuatro frases sueltas: lo que
+          se crea, y lo que quedará pendiente. Las cuatro pesaban igual y se
+          leían como un muro (owner, 2026-09-28).
+
+          Y los tres pendientes son, uno a uno, los tres pasos de «Pasos para
+          activar tu agente». No es una lista de advertencias: es la tarjeta
+          que va a ver al llegar, enseñada antes de llegar. */}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h3 className="text-sm font-medium">Al crearlo</h3>
+          <p className="text-sm text-pretty text-muted-foreground">
+            Se crea el cliente y se escribe su agente, con {plantilla.habilidades} habilidades encendidas.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <h3 className="text-sm font-medium">Y le quedarán tres pasos</h3>
+          <Checklist
+            dense
+            ariaLabel="Lo que quedará pendiente"
+            items={[
+              {
+                key: "publicar",
+                label: "Publicar el agente",
+                status: "todo",
+                detail: "Nace en borrador. Lo revisas y lo publicas desde su ficha.",
+              },
+              {
+                key: "credito",
+                label: "Asignarle crédito",
+                status: "todo",
+                detail: "Empieza en cero: sin crédito no responde. Se lo das tú desde Consumo.",
+              },
+              {
+                key: "canal",
+                label: "Conectar un canal",
+                status: "todo",
+                detail: "Sin canal no le llegan mensajes.",
+              },
+            ]}
+          />
+          <p className="text-sm text-muted-foreground">Su ficha te los irá pidiendo; no hace falta que los recuerdes.</p>
+        </div>
       </div>
 
       {etapas ? (
