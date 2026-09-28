@@ -218,9 +218,13 @@ export const companionMessages = {
     en: "Checking what is and is not possible",
   },
   "companion.tool.name.support.request_help": { es: "Preparando una incidencia", en: "Drafting a support ticket" },
+  // «feature», no «capability»: esto es pedirle a Auphere algo que la
+  // consola no hace todavía, y no tiene nada que ver con las Habilidades de
+  // un agente. En español siempre dijo «funcionalidad»; el inglés se había
+  // quedado con la palabra de la pantalla que se renombró (spec 018, US4).
   "companion.tool.name.support.request_capability": {
     es: "Preparando una petición de funcionalidad",
-    en: "Drafting a capability request",
+    en: "Drafting a feature request",
   },
 
   // ── plan card (§2.1) ─────────────────────────────────────────────────
@@ -379,14 +383,14 @@ export const companionMessages = {
   "companion.kind.invite": { es: "Invitar a alguien al equipo", en: "Invite someone to the team" },
   // v2 §4.1. Both PROPOSE — `console.apply` is still the only `mutates`.
   "companion.kind.support_help": { es: "Abrir una incidencia", en: "Open a support ticket" },
-  "companion.kind.support_capability": { es: "Pedir una funcionalidad", en: "Request a capability" },
+  "companion.kind.support_capability": { es: "Pedir una funcionalidad", en: "Request a feature" },
   "companion.kind.unknown": { es: "Cambio propuesto", en: "Proposed change" },
 
   // ── support (v2 §4 · investigación §25) ──────────────────────────────
   //
   // The Companion never closes with a "no"; it closes with a path.
   "companion.support.category.help": { es: "Incidencia", en: "Support ticket" },
-  "companion.support.category.capability": { es: "Petición de funcionalidad", en: "Capability request" },
+  "companion.support.category.capability": { es: "Petición de funcionalidad", en: "Feature request" },
   "companion.support.need": { es: "Qué necesitas", en: "What you need" },
   "companion.support.checked": { es: "Ya comprobado", en: "Already checked" },
   "companion.support.alternative": { es: "Alternativa", en: "Alternative" },

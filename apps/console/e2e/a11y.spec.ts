@@ -206,6 +206,22 @@ test.describe("CP-30 — axe + overflow on every main view", () => {
     }
   });
 
+  // Spec 018 (T031): las pantallas renombradas, **en los dos idiomas**. Esta
+  // iteración solo cambia texto, y por eso mismo hace falta: «Habilidades» es
+  // más largo que «Capacidades» en español y «Connectors» más que
+  // «Integrations» no lo es, pero `auditView` mide a 360 px con el texto al
+  // 130 %, que es donde una palabra de más rompe una fila que antes cabía.
+  test("spec 018: the renamed screens hold up in ES and EN", async ({ page, context }) => {
+    const base = `/clients/${encodeURIComponent(ref)}`;
+    const rutas = [`${base}/capabilities`, `${base}/integrations`, `${base}/knowledge`, "/knowledge"];
+    for (const locale of ["es", "en"] as const) {
+      await context.clearCookies({ name: "nexus-console.locale" });
+      await context.addCookies([{ name: "nexus-console.locale", value: locale, domain: "localhost", path: "/" }]);
+      for (const path of rutas) await auditView(page, `${path}`);
+    }
+    await context.clearCookies({ name: "nexus-console.locale" });
+  });
+
   test("keyboard: skip link and command palette", async ({ page }) => {
     await page.goto("/");
     await page.keyboard.press("Tab");

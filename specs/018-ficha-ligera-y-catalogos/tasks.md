@@ -112,17 +112,17 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 
 ### Tests primero
 
-- [ ] T027 [P] [US4] Test de que en el diccionario de la consola no queda visible «Capacidades» ni «Integraciones» en ninguno de los dos idiomas, y de que existen «Habilidades» y «Conectores». _Requisitos: 5.1_
-- [ ] T028 [P] [US4] Tests de las dos cabeceras (CE-005 **no** lo puede comprobar un test: que alguien ajeno al producto acierte se verifica a mano en el quickstart; aquí se fija que el texto que lo hace posible existe): Conocimiento dice que lo lee el agente de **ese** cliente; Guía del partner dice que lo lee el asistente de la consola y que el agente **no** lo ve. _Requisitos: 5.2, 5.3_
+- [X] T027 [P] [US4] Test de que en el diccionario de la consola no queda visible «Capacidades» ni «Integraciones» en ninguno de los dos idiomas, y de que existen «Habilidades» y «Conectores». _Requisitos: 5.1_ Entregado: develop, 2026-09-28 — `words.test.ts` recorre el diccionario entero en los dos idiomas. Cazó tres cadenas del Companion que en inglés decían «capability» mientras el español decía «funcionalidad»: no eran restos del renombrado sino una traducción descuadrada, y ahora dicen «feature».
+- [X] T028 [P] [US4] Tests de las dos cabeceras (CE-005 **no** lo puede comprobar un test: que alguien ajeno al producto acierte se verifica a mano en el quickstart; aquí se fija que el texto que lo hace posible existe): Conocimiento dice que lo lee el agente de **ese** cliente; Guía del partner dice que lo lee el asistente de la consola y que el agente **no** lo ve. _Requisitos: 5.2, 5.3_ Entregado: develop, 2026-09-28 — dos casos, uno por cabecera, más uno que exige que no se describan igual.
 
 ### Implementación
 
-- [ ] T029 [US4] Renombrar en el copy: «Capacidades» → **Habilidades**, «Integraciones» → **Conectores**, ES y EN, incluida la navegación de la ficha y los títulos de página. Rutas y claves internas **no** cambian (decisión 3 de la Fase 0). _Requisitos: 5.1, 5.4_
-- [ ] T030 [P] [US4] Reescribir las cabeceras de `knowledge/` (cliente) y `/knowledge` (partner) para que digan quién las lee. _Requisitos: 5.2, 5.3_
+- [X] T029 [US4] Renombrar en el copy: «Capacidades» → **Habilidades**, «Integraciones» → **Conectores**, ES y EN, incluida la navegación de la ficha y los títulos de página. Rutas y claves internas **no** cambian (decisión 3 de la Fase 0). _Requisitos: 5.1, 5.4_ Entregado: develop, 2026-09-28 — el copy visible ya estaba renombrado de la tanda del 2026-09-27; lo que faltaba era el test que lo fija y las tres cadenas del Companion.
+- [X] T030 [P] [US4] Reescribir las cabeceras de `knowledge/` (cliente) y `/knowledge` (partner) para que digan quién las lee. _Requisitos: 5.2, 5.3_ Entregado: develop, 2026-09-28 — Conocimiento dice «el agente de este cliente, y solo el de este cliente»; la Guía del partner pone primero quién la lee (el Companion) y que ningún agente de WhatsApp la ve.
 
 ### Cierre
 
-- [ ] T031 [P] [US4] E2E: pasar `a11y.spec.ts` sobre las pantallas renombradas, en ES y EN. Esta iteración solo cambia texto, y **por eso mismo** hace falta: una palabra más larga desborda donde antes cabía, y el barrido mide a 360 px con el texto al 130 %. _Requisitos: 5.1, CE-006_
+- [X] T031 [P] [US4] E2E: pasar `a11y.spec.ts` sobre las pantallas renombradas, en ES y EN. Esta iteración solo cambia texto, y **por eso mismo** hace falta: una palabra más larga desborda donde antes cabía, y el barrido mide a 360 px con el texto al 130 %. _Requisitos: 5.1, CE-006_ Entregado: develop, 2026-09-28 — las cuatro pantallas renombradas, en ES y EN, con axe y sin desbordamiento a 360 px con el texto al 130 %.
 - [ ] T032 [US4] Paridad §Iteración 3, `evidence/iteracion-3.md`, log de sesión, merge y staging. _Requisitos: 5.1–5.4_
 
 ---

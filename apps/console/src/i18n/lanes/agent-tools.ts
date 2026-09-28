@@ -159,7 +159,10 @@ export const agentToolsMessages = {
 
   // ── knowledge (CP-15) ────────────────────────────────────────────
   "knowledge.title": { es: "Conocimiento", en: "Knowledge" },
-  "knowledge.description": { es: "Documentos y páginas que el agente consulta. El texto extraído no se muestra aquí; solo su estado y tamaño.", en: "Documents and pages the agent consults. The extracted text is not shown here; only its state and size." },
+  // R5.2: dice **de quién** es el agente que lo lee. Sin eso la frase es
+  // cierta y no sirve: el partner tiene varios clientes, y la pregunta que
+  // trae es si lo que sube aquí se va a mezclar con los demás.
+  "knowledge.description": { es: "Lo que lee el agente de este cliente cuando responde, y solo el de este cliente. El texto extraído no se muestra aquí; solo su estado y tamaño.", en: "What this client's agent reads when it answers, and only this client's. The extracted text is not shown here; only its state and size." },
   "knowledge.readonly": { es: "Tu rol solo permite ver el conocimiento.", en: "Your role can only view knowledge." },
   "knowledge.empty.title": { es: "Este cliente aún no tiene conocimiento", en: "This client has no knowledge yet" },
   "playbook.empty.title": { es: "Tu guía está vacía", en: "Your playbook is empty" },
@@ -202,5 +205,8 @@ export const agentToolsMessages = {
   "knowledge.delete.body": { es: "El agente dejará de consultar este documento de inmediato. No se puede deshacer.", en: "The agent stops consulting this document immediately. This cannot be undone." },
   "knowledge.deleted": { es: "«{title}» eliminado.", en: "\"{title}\" deleted." },
   "playbook.title": { es: "Guía del partner", en: "Partner playbook" },
-  "playbook.description": { es: "Reglas y documentos comunes a todos tus clientes. El agente de WhatsApp de un cliente no ve esta guía; el Companion sí. El texto extraído no sale de aquí.", en: "Rules and documents shared across your clients. A client WhatsApp agent does not see this playbook; the Companion does. Extracted text never leaves this page." },
+  // R5.3: quién la lee, dicho antes que de qué va. Es la confusión que más
+  // caro sale — subir al sitio equivocado significa que el agente no ve lo
+  // que debía, o que ve lo que no era para él.
+  "playbook.description": { es: "Lo que lee el Companion, el asistente de esta consola, para ayudarte con todos tus clientes. Ningún agente de WhatsApp la ve: no llega a la conversación con el cliente final. El texto extraído no sale de aquí.", en: "What the Companion, this console's assistant, reads to help you across all your clients. No WhatsApp agent sees it: it never reaches the conversation with the end client. Extracted text never leaves this page." },
 } as const;
