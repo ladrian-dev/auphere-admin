@@ -9,6 +9,13 @@
 - Cómo verlo: Storybook con Node ≥ 22.12 →
   `http://localhost:6006/?path=/story/prototipos-resumen-del-cliente--atendiendo`.
 - **Aprobación del owner: 2026-09-27.**
+- **Puesto al día el 2026-09-28**, con lo que el propio owner cambió al ver la
+  pantalla en marcha: los datos del cliente van primero, el bloque «¿atiende?»
+  desaparece y su estado queda en una línea dentro de los datos, la zona
+  horaria se elige de una lista, Guardar va en la fila de los campos, y
+  «Puesta en marcha» pasa a ser «Pasos para activar tu agente» en verde
+  oscuro. Un prototipo que describe una pantalla que ya no existe es peor que
+  no tenerlo: el siguiente lo lee y trabaja sobre lo que no hay.
 
 ### Lo que el prototipo fija
 

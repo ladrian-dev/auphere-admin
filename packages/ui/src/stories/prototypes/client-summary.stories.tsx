@@ -1,19 +1,19 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { AlertTriangle, Check, RotateCw } from "lucide-react";
+import { AlertTriangle, RotateCw } from "lucide-react";
 import { useState } from "react";
 
 import { Alert, AlertDescription } from "../../components/alert";
 import { Button } from "../../components/button";
+import { Combobox } from "../../components/combobox";
 import { HelpHint } from "../../components/help-hint";
 import { Input } from "../../components/input";
 import { Label } from "../../components/label";
 import { Meter } from "../../components/meter";
 import { Metric } from "../../components/metric";
-import { NativeSelect } from "../../components/native-select";
 import { Section } from "../../components/section";
 import { StatusBadge } from "../../components/status-badge";
 import { StatusDot } from "../../components/status-dot";
-import { Stepper } from "../../components/stepper";
+import { StepTrack } from "../../components/step-track";
 import { TooltipProvider } from "../../components/tooltip";
 import { UiCopyProvider } from "../../components/ui-copy";
 
@@ -22,33 +22,60 @@ import { UiCopyProvider } from "../../components/ui-copy";
  *
  * Solo forma: copy real en español, nada de router, de i18n ni de API.
  *
- * **La decisión que este prototipo somete a aprobación** es qué significa
+ * **Aprobado por el owner el 2026-09-27**, y **puesto al día el 2026-09-28**
+ * con lo que el propio owner cambió al ver la pantalla en marcha. Un
+ * prototipo que describe una pantalla que ya no existe es peor que no
+ * tenerlo: el siguiente lo lee y trabaja sobre lo que no hay.
+ *
+ * **La decisión que este prototipo sometió a aprobación** es qué significa
  * «resumen completo». El owner pidió ver «todos los datos importantes»; un
  * resumen que lo enseña todo deja de resumir y vuelve a ser una pantalla que
  * hay que leer entera. Así que el Resumen contesta **cuatro preguntas**, con
  * la cifra que responde a cada una y el detalle a un clic:
  *
- *   1. **¿Atiende?** — y si no, qué falta y quién puede resolverlo.
+ *   1. **¿Quién es?** — nombre, zona horaria y, en una sola línea, si atiende.
  *   2. **¿Cuánto consume y cuánto le queda?** — créditos, gasto y a qué ritmo.
  *   3. **¿Cómo va la conversación?** — volumen, escaladas y fallos.
  *   4. **¿Qué tiene conectado?** — canales y conectores, con lo que necesita
  *      atención primero.
  *
- * Lo demás que fija:
+ * ## Lo que cambió el 2026-09-28, y por qué
+ *
+ * - **Los datos van primero, no al final.** Son la identidad, y son el único
+ *   bloque que se edita: enterrarlos bajo cuatro bloques de solo lectura
+ *   obligaba a recorrer la pantalla entera para cambiar un nombre.
+ * - **El bloque «¿atiende?» desapareció.** Eran cinco bloques y tres de
+ *   ellos decían lo mismo: la insignia de la cabecera, la tarjeta de pasos
+ *   —que ya nombra lo que falta— y un «Sin atender · falta canal» debajo.
+ *   Ahora el estado es **una línea** dentro de los datos, y los hechos
+ *   sueltos (versión del agente, canal) viven en la tarjeta de pasos, que es
+ *   donde se resuelven.
+ * - **La zona horaria se elige de una lista**, no se escribe. Un campo de
+ *   texto con sugerencias acepta «Europe/Madriz»; esto no.
+ * - **Guardar va en la fila de los campos**, no debajo: dos campos cortos
+ *   uno encima de otro desperdiciaban el ancho entero.
+ * - **«Puesta en marcha» pasó a llamarse «Pasos para activar tu agente»**,
+ *   en verde oscuro y con una barra por paso que enseña **cuánto** lleva
+ *   hecho cada uno. Y sin botón al pie: el paso pendiente lleva su enlace en
+ *   la misma línea donde los pasos hechos llevan su dato.
+ *
+ * Lo demás que fija, y que no ha cambiado:
  *
  *   - **Sin actividad no es cero.** Un cliente recién creado dice «todavía no
  *     hay datos», no «0», que se lee como una caída.
  *   - **Una lectura caída no tumba la pantalla.** El Resumen junta cuatro
  *     fuentes; si una falla, lo dice en su bloque y ofrece reintentar, y las
  *     otras tres siguen. Por eso se piden por separado.
- *   - **El crédito sobrevive a la puesta en marcha.** Hoy comparten tarjeta, y
- *     por eso se ve pesada; pero el crédito sigue importando cuando los cuatro
+ *   - **El crédito sobrevive a la puesta en marcha.** Compartían tarjeta, y
+ *     por eso se veía pesada; pero el crédito sigue importando cuando los
  *     pasos están hechos, así que es un bloque del Resumen y no un paso.
- *   - **Nombre y zona horaria se editan aquí**, que es donde se leen, y su
- *     edición **no** entra en el borrador del agente: cambiar el nombre del
- *     negocio no es cambiar lo que el agente hace.
+ *   - **Editar los datos no entra en el borrador del agente**: cambiar el
+ *     nombre del negocio no es cambiar lo que el agente hace.
  *   - **Quien no puede escribir no ve controles muertos**, y lee las cifras
  *     igual.
+ *
+ * Fuera de este prototipo, en la cabecera de la ficha: la insignia de estado
+ * vive junto a «Más», a la altura del nombre del cliente.
  */
 const meta = {
   title: "Prototipos/Resumen del cliente",
@@ -73,6 +100,7 @@ type Story = StoryObj;
 type Estado = "ok" | "sin-datos" | "error";
 
 const CLIENTE = { nombre: "Panadería La Espiga", zona: "Europe/Madrid" };
+const ZONAS = ["Europe/Madrid", "Europe/Lisbon", "America/Bogota", "America/Santiago", "America/Mexico_City"];
 
 // ── Piezas ──────────────────────────────────────────────────────────────
 
@@ -97,48 +125,85 @@ function SinDatos({ children }: { children: string }) {
   return <p className="max-w-prose text-sm text-pretty text-muted-foreground">{children}</p>;
 }
 
-// 1 ── ¿Atiende?
+// 1 ── ¿Quién es? — y, en una línea, si atiende
 
-function BloqueAtiende({
-  atiende,
+/**
+ * Los datos del cliente, que dejaron de ser una pestaña, con **una sola**
+ * línea de estado debajo. Antes esto eran dos bloques y el estado se repetía
+ * en tres sitios de la ficha.
+ */
+function BloqueIdentidad({
+  atiende = true,
   falta,
   puedeEscribir = true,
 }: {
-  atiende: boolean;
+  atiende?: boolean;
   falta?: string;
   puedeEscribir?: boolean;
 }) {
+  const [nombre, setNombre] = useState(CLIENTE.nombre);
+  const [zona, setZona] = useState(CLIENTE.zona);
   return (
     <Section
-      title={
+      title="Datos del cliente"
+      description="Cambiarlos no toca lo que el agente hace, así que no crea un borrador."
+      actions={
+        <Button size="xs" variant="ghost">
+          Ver el agente
+        </Button>
+      }
+      className="min-w-0"
+    >
+      {puedeEscribir ? (
+        // Tres columnas: los dos campos y el botón en la misma fila. El
+        // botón arranca a la altura de los campos, no de las etiquetas, y
+        // el espaciador replica la etiqueta en vez de un margen a ojo.
+        <form className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-start">
+          <div className="grid min-w-0 content-start gap-2">
+            <Label htmlFor="proto-nombre">Nombre</Label>
+            <Input id="proto-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+          </div>
+          <div className="grid min-w-0 content-start gap-2">
+            <Label htmlFor="proto-zona">Zona horaria</Label>
+            {/* Elegible, no escrita a mano: lo que se guarda sale siempre de
+                la lista. Aquí van cinco zonas; en la consola son las ~400
+                que el propio navegador conoce. */}
+            <Combobox
+              id="proto-zona"
+              items={ZONAS}
+              value={zona}
+              onValueChange={setZona}
+              emptyLabel="Nada coincide con lo que has escrito."
+            />
+          </div>
+          <div className="grid content-start gap-2">
+            <span aria-hidden="true" className="hidden text-sm leading-none sm:block">
+              &nbsp;
+            </span>
+            <Button type="button">Guardar</Button>
+          </div>
+        </form>
+      ) : (
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="inline text-muted-foreground">Nombre: </dt>
+            <dd className="inline">{CLIENTE.nombre}</dd>
+          </div>
+          <div>
+            <dt className="inline text-muted-foreground">Zona horaria: </dt>
+            <dd className="inline">{CLIENTE.zona}</dd>
+          </div>
+        </dl>
+      )}
+
+      {/* La única línea de toda la ficha que dice si el agente atiende. */}
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-sm">
         <span className="inline-flex items-center gap-2">
           <StatusDot tone={atiende ? "positive" : "warning"} />
           {atiende ? "Atendiendo" : `Sin atender · falta ${falta}`}
         </span>
-      }
-      // No puede decir «falta conectar un canal» y debajo «WhatsApp
-      // conectado»: sería la pantalla contradiciéndose en dos líneas.
-      description={
-        atiende
-          ? "Agente · versión 3 · WhatsApp conectado · +34 600 123 456"
-          : "Agente · versión 1 · sin canal conectado"
-      }
-      actions={
-        puedeEscribir ? (
-          <Button size="xs" variant="ghost">
-            Ver el agente
-          </Button>
-        ) : undefined
-      }
-    >
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-        {atiende ? (
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <Check className="size-4 text-status-positive" aria-hidden="true" /> Activo desde el 12 de agosto
-          </span>
-        ) : null}
         <span className="text-muted-foreground">Sector: barbería</span>
-      </div>
+      </p>
     </Section>
   );
 }
@@ -183,9 +248,9 @@ function BloqueConsumo({ estado = "ok", agotado = false }: { estado?: Estado; ag
             <Alert role="status" className="border-status-warning/40">
               <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span>Sin crédito: el agente no está respondiendo.</span>
-                <Button size="xs" variant="outline">
+                <a href="#" className="font-medium underline underline-offset-4">
                   Asignar más crédito
-                </Button>
+                </a>
               </AlertDescription>
             </Alert>
           ) : (
@@ -262,80 +327,44 @@ function BloqueConectado({ estado = "ok" }: { estado?: Estado }) {
   );
 }
 
-// Datos del cliente, que dejan de ser una pestaña
-
-function BloqueDatos({ puedeEscribir = true }: { puedeEscribir?: boolean }) {
-  const [nombre, setNombre] = useState(CLIENTE.nombre);
+/**
+ * Los pasos para activar, solos. Ya no comparten fila con el crédito —es lo
+ * que los hacía pesados— y desaparecen enteros cuando están todos hechos.
+ *
+ * En verde oscuro porque es lo único que hay que hacer ahora mismo y compite
+ * con cuatro bloques blancos; un segundo panel en este tono y ninguno de los
+ * dos destacaría. Tres pasos, tres barras del mismo ancho, y un contador que
+ * cuenta barras: el ojo cuenta barras, así que el contador tiene que contar
+ * lo mismo.
+ */
+function PasosParaActivar() {
   return (
     <Section
-      title="Datos del cliente"
-      description="Cambiarlos no toca lo que el agente hace, así que no crea un borrador."
+      tone="spotlight"
+      title="Pasos para activar tu agente"
+      description="Cuando estén hechos, tu agente empieza a atender. Puedes hacerlos en el orden que quieras."
+      actions={<span className="text-sm text-pistachio tabular-nums">2 de 3 pasos hechos</span>}
       className="min-w-0"
     >
-      {puedeEscribir ? (
-        <form className="grid gap-3 sm:grid-cols-3 sm:items-end">
-          <div className="grid gap-1 min-w-0">
-            <Label htmlFor="proto-nombre">Nombre</Label>
-            <Input id="proto-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
-          </div>
-          <div className="grid gap-1 min-w-0">
-            <Label htmlFor="proto-zona">Zona horaria</Label>
-            <NativeSelect id="proto-zona" defaultValue={CLIENTE.zona}>
-              <option value="Europe/Madrid">Europe/Madrid</option>
-              <option value="America/Santiago">America/Santiago</option>
-            </NativeSelect>
-          </div>
-          {/* Sin estirar: un botón del ancho de la columna se lee como una
-              franja de acción principal, y esto es guardar dos campos.
-              (Si aquí se ve estirado, el Storybook que estás mirando lleva
-              horas abierto y su Tailwind no ha vuelto a escanear: reinícialo
-              antes de buscar el fallo en el código. Me pasó.) */}
-          <Button type="button" className="sm:justify-self-start">
-            Guardar
-          </Button>
-        </form>
-      ) : (
-        <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="inline text-muted-foreground">Nombre: </dt>
-            <dd className="inline">{CLIENTE.nombre}</dd>
-          </div>
-          <div>
-            <dt className="inline text-muted-foreground">Zona horaria: </dt>
-            <dd className="inline">{CLIENTE.zona}</dd>
-          </div>
-        </dl>
-      )}
-    </Section>
-  );
-}
-
-/** La puesta en marcha, sola. Ya no comparte fila con el crédito — es lo que
- *  la hacía pesada— y desaparece entera cuando los cuatro pasos están. */
-function PuestaEnMarcha() {
-  return (
-    <Section
-      title="Puesta en marcha"
-      description="Lo que falta para que el agente atienda. Los cuatro pasos se pueden hacer en cualquier orden."
-    >
-      <Stepper
-        variant="line"
-        ordered={false}
-        ariaLabel="Puesta en marcha"
-        current={-1}
+      <StepTrack
+        ariaLabel="Pasos para activar tu agente"
+        summary="2 de 3 pasos hechos"
         steps={[
-          { key: "agente", label: <span>Agente <span className="text-xs text-muted-foreground">· versión 1</span></span>, state: "done" },
-          { key: "canal", label: "Canal", state: "current" },
-          { key: "credito", label: "Crédito", state: "done" },
-          { key: "activacion", label: "Activación", state: "done" },
+          // «Agente» son dos cosas: escribirlo y publicarlo. La barra a
+          // medias lo dice sin tener que explicarlo.
+          { key: "agente", label: "Agente", done: 2, of: 2, detail: "v1" },
+          {
+            key: "canal",
+            label: "Canal",
+            done: 0,
+            of: 1,
+            current: true,
+            href: "#",
+            hrefLabel: "Conectar un canal",
+          },
+          { key: "credito", label: "Crédito", done: 2, of: 2, detail: "50.000" },
         ]}
-        stepOfLabel={() => "3 de 4 pasos hechos"}
       />
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
-        <span className="text-sm text-muted-foreground">Siguiente paso</span>
-        <Button>Conectar un canal</Button>
-        <p className="text-xs text-muted-foreground">Un canal es por donde llegan los mensajes: hoy WhatsApp.</p>
-      </div>
     </Section>
   );
 }
@@ -346,30 +375,28 @@ function PuestaEnMarcha() {
 export const Atendiendo: Story = {
   render: () => (
     <>
-      <BloqueAtiende atiende />
-      <div className="grid gap-(--space-block) lg:grid-cols-2">
+      <BloqueIdentidad atiende />
+      <div className="grid grid-cols-1 gap-(--space-block) lg:grid-cols-2">
         <BloqueConsumo />
         <BloqueConversacion />
       </div>
       <BloqueConectado />
-      <BloqueDatos />
     </>
   ),
 };
 
-/** A medio configurar: la puesta en marcha aparece **sola**, y el crédito
- *  sigue siendo un bloque del Resumen y no un paso suyo. */
+/** A medio configurar: los pasos aparecen **solos** y arriba del todo, y el
+ *  crédito sigue siendo un bloque del Resumen y no un paso suyo. */
 export const AMedioConfigurar: Story = {
   render: () => (
     <>
-      <PuestaEnMarcha />
-      <BloqueAtiende atiende={false} falta="conectar un canal" />
-      <div className="grid gap-(--space-block) lg:grid-cols-2">
+      <PasosParaActivar />
+      <BloqueIdentidad atiende={false} falta="conectar un canal" />
+      <div className="grid grid-cols-1 gap-(--space-block) lg:grid-cols-2">
         <BloqueConsumo />
         <BloqueConversacion estado="sin-datos" />
       </div>
       <BloqueConectado />
-      <BloqueDatos />
     </>
   ),
 };
@@ -378,13 +405,12 @@ export const AMedioConfigurar: Story = {
 export const SinActividad: Story = {
   render: () => (
     <>
-      <BloqueAtiende atiende={false} falta="conectar un canal" />
-      <div className="grid gap-(--space-block) lg:grid-cols-2">
+      <BloqueIdentidad atiende={false} falta="conectar un canal" />
+      <div className="grid grid-cols-1 gap-(--space-block) lg:grid-cols-2">
         <BloqueConsumo estado="sin-datos" />
         <BloqueConversacion estado="sin-datos" />
       </div>
       <BloqueConectado />
-      <BloqueDatos />
     </>
   ),
 };
@@ -394,13 +420,12 @@ export const SinActividad: Story = {
 export const UnaLecturaCaida: Story = {
   render: () => (
     <>
-      <BloqueAtiende atiende />
-      <div className="grid gap-(--space-block) lg:grid-cols-2">
+      <BloqueIdentidad atiende />
+      <div className="grid grid-cols-1 gap-(--space-block) lg:grid-cols-2">
         <BloqueConsumo estado="error" />
         <BloqueConversacion />
       </div>
       <BloqueConectado />
-      <BloqueDatos />
     </>
   ),
 };
@@ -410,13 +435,12 @@ export const UnaLecturaCaida: Story = {
 export const SinCredito: Story = {
   render: () => (
     <>
-      <BloqueAtiende atiende={false} falta="crédito" />
-      <div className="grid gap-(--space-block) lg:grid-cols-2">
+      <BloqueIdentidad atiende={false} falta="crédito" />
+      <div className="grid grid-cols-1 gap-(--space-block) lg:grid-cols-2">
         <BloqueConsumo agotado />
         <BloqueConversacion />
       </div>
       <BloqueConectado />
-      <BloqueDatos />
     </>
   ),
 };
@@ -426,27 +450,26 @@ export const SinCredito: Story = {
 export const Analista: Story = {
   render: () => (
     <>
-      <BloqueAtiende atiende puedeEscribir={false} />
-      <div className="grid gap-(--space-block) lg:grid-cols-2">
+      <BloqueIdentidad atiende puedeEscribir={false} />
+      <div className="grid grid-cols-1 gap-(--space-block) lg:grid-cols-2">
         <BloqueConsumo />
         <BloqueConversacion />
       </div>
       <BloqueConectado />
-      <BloqueDatos puedeEscribir={false} />
     </>
   ),
 };
 
-/** A 390 px: los cuatro bloques se apilan y nada se sale. */
+/** A 390 px: los bloques se apilan y nada se sale. */
 export const Movil: Story = {
   parameters: { viewport: { defaultViewport: "mobile2" } },
   render: () => (
     <>
-      <BloqueAtiende atiende />
+      <PasosParaActivar />
+      <BloqueIdentidad atiende={false} falta="conectar un canal" />
       <BloqueConsumo />
       <BloqueConversacion />
       <BloqueConectado />
-      <BloqueDatos />
     </>
   ),
 };

@@ -1,10 +1,7 @@
 # Iteración 2 · Los catálogos se navegan — evidencia
 
-> **Estado: abierta.** Solo el prototipo (T017) está entregado, y está
-> **esperando la aprobación del owner**. Hasta esa fecha no se escribe código
-> del componente: es la puerta que la propia spec se puso, y la iteración 1
-> demostró que vale la pena —el prototipo cazó que la pantalla se contradecía
-> en dos líneas, cuando corregirlo costaba una línea y no un rediseño—.
+> **Estado: abierta.** El prototipo (T017) está entregado y **aprobado el
+> 2026-09-28**; el componente y las tres pantallas están en marcha.
 
 ## Prototipo (T017)
 
@@ -14,7 +11,7 @@
   lectura · Los tres comparados · Móvil.
 - Cómo verlo: Storybook sobre Node 24 →
   `http://localhost:6006/?path=/story/prototipos-catálogo--lleno`.
-- **Aprobación del owner: pendiente.**
+- **Aprobación del owner: 2026-09-28**, sin cambios pedidos.
 
 ### Lo que el prototipo somete a aprobación
 

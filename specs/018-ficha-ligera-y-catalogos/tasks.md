@@ -82,7 +82,7 @@ Consola en `apps/console/src/` con tests junto al código (`__tests__/`) y e2e e
 
 ### Prototipo
 
-- [ ] T017 [US3] Prototipo `packages/ui/src/stories/prototypes/catalog.stories.tsx` con los estados: lleno · buscando · filtrado · filtro sin resultados · catálogo vacío · solo lo activo · solo lectura · móvil. **Aprobación del owner**, anotada en `evidence/iteracion-2.md`. _Requisitos: 4.1–4.7_ Entregado: develop, 2026-09-28 — nueve estados (los ocho pedidos más «los tres, comparados», que es lo que comprueba R4.6). **Esperando la aprobación del owner**; hasta entonces no se escribe el componente.
+- [X] T017 [US3] Prototipo `packages/ui/src/stories/prototypes/catalog.stories.tsx` con los estados: lleno · buscando · filtrado · filtro sin resultados · catálogo vacío · solo lo activo · solo lectura · móvil. **Aprobación del owner**, anotada en `evidence/iteracion-2.md`. _Requisitos: 4.1–4.7_ Entregado: develop, 2026-09-28 — nueve estados (los ocho pedidos más «los tres, comparados», que es lo que comprueba R4.6). **Aprobado por el owner el 2026-09-28** («el catálogo me gusta, quedó muy bien»), sin cambios pedidos.
 
 ### Tests primero
 
