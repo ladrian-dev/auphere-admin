@@ -83,6 +83,20 @@ piezas que hoy no se conocen. El owner eligió la caja dentro del alta
 
 ---
 
+## 4. ¿La consola ya sabe cuáles son imprescindibles?
+
+**Sí, y los enseña todos igual.** `SeedPlaceholder` trae `required: boolean` y
+el asistente lo usa para validar (`missingPlaceholders`), pero **pinta también
+los opcionales**. Medido en la pantalla: la plantilla marcada por defecto
+enseña 23 campos de los que 12 van marcados obligatorios — exactamente los 12
+que el renderizador exige.
+
+**Lo que esto abarata**: la iteración 1 no necesita ningún dato nuevo de la API.
+`requiredPlaceholders()` es un filtro sobre lo que ya llega. El trabajo es
+decidir **no enseñar** once campos, no ir a buscar una información que falte.
+
+---
+
 ## Dependencias nuevas
 
 **Ninguna.** Ni de npm ni de Python. `T-LIC` lo comprueba al cerrar cada
