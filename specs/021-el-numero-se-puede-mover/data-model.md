@@ -51,3 +51,15 @@ Sin cambio de esquema. Cambia **cuándo se borran**:
 Y el 409 del alta gana un código:
 
 - `number_held_by_previous_owner` — Meta retiene el número en otra cuenta.
+
+## Añadido al cierre (2026-09-30)
+
+- **`count_live_channels_for_waba(waba_id, except_channel) → integer`**
+  (migración `0133_waba_live_count`). `SECURITY DEFINER`, `row_security = off`.
+  Cuenta los canales no desvinculados con esa `waba_id` en toda la plataforma,
+  menos el que se suelta. Devuelve un entero y nada más.
+- **`config.unlink_error`**: `{step, status_code, code, message}` del último
+  rechazo de Meta. Se borra cuando no queda nada pendiente. No se enseña en la
+  tarjeta; viaja en `after.meta.error` de la auditoría.
+- **`config.mode` se aprende**: si Meta rechaza `deregister` con «not available
+  for API solution for SMB» (code 100), el canal pasa a `mode = coexistence`.

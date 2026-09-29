@@ -23,7 +23,7 @@ import pytest
 import respx
 import sqlalchemy as sa
 from nexus_channels.whatsapp_meta.credentials import MetaCredentials
-from nexus_channels.whatsapp_meta.exceptions import MetaTransientError
+from nexus_channels.whatsapp_meta.exceptions import MetaAPIError, MetaTransientError
 from nexus_channels.whatsapp_meta.meta_client import META_GRAPH_BASE_URL
 from nexus_channels.whatsapp_meta.signup import SignupResult
 
@@ -1262,3 +1262,70 @@ async def test_a_meta_refusal_leaves_its_reason_for_the_record(
     assert fila.config["unlink_error"]["step"] == "deregister"
     assert fila.config["unlink_error"]["status_code"] == 503
     assert "unavailable" in fila.config["unlink_error"]["message"]
+
+
+class _MetaSaysSmb(_MetaSim):
+    """Meta, palabra por palabra, ante ``deregister`` de un número en
+    coexistencia (producción, 2026-09-30)."""
+
+    async def deregister_phone(self, **kw):
+        self.calls.append(("deregister_phone", kw))
+        raise MetaAPIError(
+            "Deregister endpoint is not available for API solution for SMB businesses.",
+            status_code=400,
+            code=100,
+        )
+
+
+async def test_metas_smb_refusal_means_coexistence_and_the_unlink_goes_on(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Un canal viejo sin ``mode`` guardado pide ``deregister`` y Meta contesta
+    que ese número no se puede dar de baja: **es** coexistencia. Se anota el
+    modo, ``deregister`` queda como omitido —no pendiente para siempre— y la
+    desuscripción se intenta igual."""
+    a = console_world["a"]
+    sim = _MetaSaysSmb()
+    monkeypatch.setattr(ch_router, "build_meta_client", lambda: sim)
+    canal = _channel(a["tenant_id"], waba_id="W-smb")  # sin mode
+    await _seed_channel_creds(db_session, canal, waba_id="W-smb")
+    db_session.add(canal)
+    await db_session.commit()
+    await _seed_creds(db_session, a["tenant_id"], waba_id="W-smb")
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["unlink_pending"] == []
+    assert [c[0] for c in sim.calls] == ["deregister_phone", "unsubscribe_app"]
+    fila = await _reload(db_session, canal.id)
+    assert fila.config["mode"] == "coexistence"
+    assert "unlink_pending" not in fila.config
+    assert "unlink_error" not in fila.config
+
+
+async def test_a_live_number_of_another_client_on_the_same_waba_keeps_the_subscription(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """La cuenta de WhatsApp Business puede estar compartida entre clientes
+    (números propios de Auphere). Desuscribir es por cuenta: con un número vivo
+    de **otro** cliente en la misma cuenta, no se desuscribe. Y el cliente que
+    suelta no averigua nada de ese otro número: solo que no se desuscribió."""
+    a, b = console_world["a"], console_world["b"]
+    sim = _sim(monkeypatch)
+    mio = _channel(a["tenant_id"], waba_id="W-compartida", mode="coexistence")
+    ajeno = _channel(b["tenant_id"], waba_id="W-compartida", mode="coexistence")
+    await _seed_channel_creds(db_session, mio, waba_id="W-compartida")
+    db_session.add_all([mio, ajeno])
+    await db_session.commit()
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{mio.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "disconnected"
+    assert r.json()["unlink_pending"] == []
+    assert sim.calls == [], "desuscribió con un número vivo de otro cliente en la misma cuenta"
+    body = r.text
+    assert ajeno.provider_identifier not in body and str(b["tenant_id"]) not in body

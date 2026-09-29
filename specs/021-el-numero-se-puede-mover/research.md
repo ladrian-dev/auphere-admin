@@ -136,8 +136,28 @@ Los pasos de un canal en coexistencia son solo `unsubscribe`, y solo si era
 el último de su cuenta. Un `deregister` que quedó anotado antes de esta regla
 se descarta al reintentar.
 
-Queda por ver en staging, al reintentar: que `unsubscribe` sí pasa con el
-número real, y qué devuelve Meta cuando no —ya con el motivo guardado.
+Visto en staging al reintentar: `unsubscribe` pasa. Y **en producción el
+2026-09-30**, con el `+34672138367` (canal de agosto, «conectar número propio»,
+sin `mode` guardado), Meta lo dijo con estas palabras:
+
+> `400 · code 100 · Deregister endpoint is not available for API solution for SMB businesses.`
+
+Esa frase **es** coexistencia. Desde entonces, un rechazo así no queda
+pendiente: `deregister` se anota como omitido, el canal aprende
+`mode = coexistence`, y la desuscripción sigue.
+
+### La premisa de R2.3 era falsa en producción
+
+R2.3 decía «el último número no desvinculado de esa WABA **en ese cliente**».
+Los números propios de Auphere («conectar número propio») comparten cuenta
+entre clientes: la WABA `725663313243186` ha atendido a Mouna y a la demo de
+farmacia. Desuscribir la aplicación por haber soltado el último número *de un
+cliente* dejaría mudos los de los demás. La pregunta se hace ahora a **toda la
+plataforma** con `count_live_channels_for_waba` (migración 0133): una función
+`SECURITY DEFINER` que devuelve solo cuántos, nunca cuáles ni de quién — el
+mismo patrón que `resolve_channel_tenant`. El aislamiento no cambia de
+promesa: el cliente que suelta sigue sin poder averiguar nada del otro.
+
 
 ---
 

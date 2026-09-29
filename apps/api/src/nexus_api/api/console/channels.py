@@ -232,6 +232,20 @@ def build_meta_client() -> MetaClient:
 #: la suscripción es por cuenta, no por número (spec 021, R2.3).
 UNLINK_STEPS: tuple[str, ...] = ("deregister", "unsubscribe")
 
+# Lo que Meta contesta a ``deregister`` sobre un número en coexistencia
+# («API solution for SMB»): 400, code 100. Medido en producción el
+# 2026-09-30 con el +34672138367.
+_DEREGISTER_NOT_APPLICABLE = "deregister endpoint is not available"
+
+
+def deregister_not_applicable(exc: MetaAPIError) -> bool:
+    """¿Meta dice que este número no se puede dar de baja porque nunca estuvo
+    registrado por Cloud API? Es el rechazo de un número en coexistencia."""
+    return (
+        getattr(exc, "code", None) == 100
+        and _DEREGISTER_NOT_APPLICABLE in str(getattr(exc, "message", "") or str(exc)).lower()
+    )
+
 
 @router.post("/{channel_id}/disconnect", response_model=ChannelDetailOut)
 async def disconnect_channel(
@@ -297,15 +311,14 @@ async def disconnect_channel(
             waba_id = cfg.get("waba_id")
             hermanos = 0
             if waba_id:
+                # En **toda** la plataforma, no solo en este cliente: los
+                # números propios de Auphere comparten cuenta entre clientes,
+                # y desuscribir la aplicación es por cuenta. La función solo
+                # devuelve cuántos (migración 0133); nunca cuáles ni de quién.
                 hermanos = int(
                     await s1.scalar(
-                        sa.select(sa.func.count())
-                        .select_from(Channel)
-                        .where(
-                            Channel.id != channel_id,
-                            Channel.status != ChannelStatus.DISCONNECTED,
-                            Channel.config["waba_id"].astext == str(waba_id),
-                        )
+                        sa.text("SELECT count_live_channels_for_waba(:w, :c)"),
+                        {"w": str(waba_id), "c": str(channel_id)},
                     )
                     or 0
                 )
@@ -351,6 +364,17 @@ async def disconnect_channel(
                         elif step == "unsubscribe":
                             await client.unsubscribe_app(waba_id=waba_id, access_token=token)
                     except MetaAPIError as exc:
+                        if step == "deregister" and deregister_not_applicable(exc):
+                            # Meta lo dice con estas palabras cuando el número
+                            # está en coexistencia (medido en producción el
+                            # 2026-09-30): nunca lo registramos por Cloud API,
+                            # así que no hay nada que dar de baja. Se anota el
+                            # modo para que el diálogo y el próximo reintento
+                            # lo sepan, y se sigue con la desuscripción.
+                            skipped.append(step)
+                            pending.remove(step)
+                            cfg["mode"] = "coexistence"
+                            continue
                         # Queda pendiente, y los que vienen detrás también: no
                         # tiene sentido desuscribir lo que no se pudo dar de baja.
                         # El motivo se guarda para el registro y el log — no

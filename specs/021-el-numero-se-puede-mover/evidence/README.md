@@ -33,3 +33,12 @@ En local no hay Meta: conectar un número de verdad necesita el Embedded
 Signup, así que CE-001–003 se prueban con el cliente de Meta simulado, que es
 lo que el quickstart prevé. Los cuatro pendientes necesitan el `+34653321693`
 y el Business Manager, y se cierran con el owner delante.
+
+## Producción, 2026-09-30 — `+34672138367` (Demo Farmacia)
+
+| Paso | Resultado |
+|---|---|
+| Desvincular (owner, consola de prod) | `disconnected` al instante; Meta rechazó `deregister`: `400 · code 100 · Deregister endpoint is not available for API solution for SMB businesses.` — leído en Admin → tenant → Auditoría gracias a `after.meta.error` (lo que la iteración anterior añadió) |
+| Diagnóstico | canal de agosto sin `mode`; la WABA `725663313243186` es propia de Auphere y compartida entre clientes |
+| Corrección | el rechazo de Meta se traduce a coexistencia (omitir `deregister`, seguir) · hermanos de la WABA contados en toda la plataforma (`0133_waba_live_count`) |
+| Reintentar | ⏳ tras desplegar |
