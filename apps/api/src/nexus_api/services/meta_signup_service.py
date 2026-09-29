@@ -104,14 +104,20 @@ async def complete_meta_signup(
             ),
         ) from exc
     except RegisterPhoneError as exc:
+        # Spec 021 (R4.2): la causa habitual es que el número sigue registrado
+        # en otra cuenta — el dueño anterior no lo soltó en su Business
+        # Manager. Eso no es un fallo de la consola y merece su código, para
+        # que la pantalla diga qué hacer en vez de un mensaje genérico.
         log.warning("meta.signup.register_phone_failed", reason=str(exc))
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Meta no aceptó el registro del número de teléfono. Causa "
-                "habitual: el número ya está registrado bajo otra app con "
-                "un PIN distinto, o no tiene display_phone_number todavía."
-            ),
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "number_held_by_previous_owner",
+                "message": (
+                    "Meta no aceptó el registro del número: sigue registrado en "
+                    "otra cuenta. Quien lo tenía debe soltarlo en su Business Manager."
+                ),
+            },
         ) from exc
     except SubscribeWebhookError as exc:
         log.warning("meta.signup.subscribe_webhook_failed", reason=str(exc))

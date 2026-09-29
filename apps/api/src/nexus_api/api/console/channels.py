@@ -20,13 +20,20 @@ import uuid
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
-from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
+from nexus_channels.whatsapp_meta.credentials import (
+    ChannelCredentialsRepository,
+    MetaCredentialsRepository,
+)
+from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from nexus_api.core.tenant_context import tenant_scoped_session
+from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Channel, ChannelStatus, ChannelType, Connector
 from nexus_api.repositories.audit import AuditRepository
 from nexus_api.services.channel_routing import channel_agent_enabled, channel_role
+from nexus_api.services.meta_signup_service import build_meta_client as _build_meta_client
 
 from .deps import ClientScope, client_scope
 from .schemas import ChannelOut
@@ -92,8 +99,12 @@ def _detail(ch: Channel, logos: dict[str, str | None] | None = None) -> ChannelD
         messaging_tier=_s("messaging_tier"),
         verified_name=_s("verified_name"),
         mode=_s("mode"),
-        agent_enabled=channel_agent_enabled(ch),
+        # Un canal desvinculado no atiende, diga lo que diga ``config``: el
+        # despachador lo descarta por su estado, y la tarjeta tiene que decir
+        # lo mismo que hace el sistema (constitución §V).
+        agent_enabled=channel_agent_enabled(ch) and ch.status is not ChannelStatus.DISCONNECTED,
         logo_url=(logos or {}).get(ch.type.value),
+        unlink_pending=[str(x) for x in (cfg.get("unlink_pending") or [])],
     )
 
 
@@ -207,48 +218,156 @@ async def set_channel_role(
     return _detail(ch, await channel_logos(scope.session))
 
 
+def build_meta_client():
+    """Costura para los tests: se sustituye por un Meta simulado."""
+    return _build_meta_client()
+
+
+#: Lo que conectar hizo en Meta, en el orden en que se deshace. ``unsubscribe``
+#: solo entra cuando el número era el último vivo de su WABA en el cliente:
+#: la suscripción es por cuenta, no por número (spec 021, R2.3).
+UNLINK_STEPS: tuple[str, ...] = ("deregister", "unsubscribe")
+
+
 @router.post("/{channel_id}/disconnect", response_model=ChannelDetailOut)
 async def disconnect_channel(
     channel_id: uuid.UUID,
     scope: ClientScope = Depends(client_scope("channels:write")),
 ) -> ChannelDetailOut:
-    """Soltar un número: el agente deja de atender por él.
+    """Soltar un número: el agente deja de atender por él, y Meta lo suelta.
 
     Conectar era autoservicio y desconectar no existía — el partner que se
-    equivocaba de número tenía que escribirnos para que alguien lo cambiara
-    desde el panel interno. Un producto donde se puede entrar y no salir hace
-    que la entrada dé más miedo de la que debería.
+    equivocaba de número tenía que escribirnos. Y desvincular, cuando llegó
+    (spec 019), solo apagaba: el número seguía registrado bajo nuestra app y
+    ningún otro cliente podía conectarlo (spec 021).
 
-    **Lo que hace**: el canal pasa a ``disconnected``. La fila se queda, y eso
-    es a propósito:
+    **Dos transacciones, y el orden importa.** Primero se escribe el estado —
+    ``disconnected`` y qué queda por deshacer en Meta— y se commitea. Solo
+    después se llama a Meta, paso a paso, quitando cada uno al terminar. Si el
+    proceso muere entre medias, la fila ya dice qué falta y el mismo endpoint
+    lo reintenta. Al revés —Meta primero, base después— un fallo entre ambos
+    dejaría el número dado de baja sin que la base lo supiera: el silencio
+    que R3 prohíbe.
 
-    - el número sigue siendo suyo y **se puede volver a conectar** — el alta de
-      Meta hace *upsert* sobre la misma fila, así que reconectar es repetir el
-      flujo, no pelearse con un identificador ocupado;
-    - las conversaciones y los diagnósticos que pasaron por ese canal siguen
-      teniendo a qué apuntar. Borrar la fila sería borrar su historia.
+    Por eso no se escribe por ``scope.session``: el scope envuelve el endpoint
+    entero en una sola transacción. Se abren sesiones propias con el mismo
+    scope de tenant, como hace ``AgentLoader``.
 
-    **Lo que NO hace**: nada en Meta. El número sigue registrado en la WABA del
-    partner, y soltarlo de ahí es cosa suya en el Business Manager. La consola
-    lo dice en vez de insinuar que lo ha deshecho todo.
+    **Un fallo de Meta no es un error HTTP.** El canal queda desvinculado en la
+    consola pase lo que pase —es lo que el partner pidió— y lo que falló se lee
+    en ``unlink_pending``.
+
+    **Lo que NO hace**: sacar el número de la cuenta de Meta del partner. Es su
+    activo y se hace en su Business Manager; la consola lo dice.
+
+    La fila se conserva: el número se puede volver a conectar (el alta hace
+    *upsert* sobre ella) y su historial sigue teniendo a qué apuntar. Lo que
+    dejó de hacer es ocupar el número (índice parcial, migración 0132).
     """
     ch = await scope.session.get(Channel, channel_id)
     if ch is None:  # RLS esconde las filas de otro tenant → el mismo 404
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="channel not found")
-    if ch.status is ChannelStatus.DISCONNECTED:
-        # Idempotente: quien pulsa dos veces no merece un error.
-        return _detail(ch, await channel_logos(scope.session))
-    before = ch.status.value
-    ch.status = ChannelStatus.DISCONNECTED
-    await scope.session.flush()
-    await AuditRepository(scope.session).record(
-        actor=scope.principal.actor,
-        action="console.channel.disconnect",
-        target=f"channel:{ch.id}",
-        before={"status": before},
-        after={"status": ch.status.value, "identifier": ch.provider_identifier},
-    )
-    return _detail(ch, await channel_logos(scope.session))
+    tenant_id = scope.tenant.id
+    sm = get_sessionmaker()
+
+    # ── 1 · el estado, antes que Meta ───────────────────────────────────
+    async with sm() as s1, tenant_scoped_session(s1, tenant_id):
+        fila = await s1.get(Channel, channel_id)
+        assert fila is not None
+        cfg = dict(fila.config or {})
+        if fila.status is ChannelStatus.DISCONNECTED:
+            before = ChannelStatus.DISCONNECTED.value
+            pending = [str(x) for x in (cfg.get("unlink_pending") or [])]
+        else:
+            before = fila.status.value
+            waba_id = cfg.get("waba_id")
+            hermanos = 0
+            if waba_id:
+                hermanos = int(
+                    await s1.scalar(
+                        sa.select(sa.func.count())
+                        .select_from(Channel)
+                        .where(
+                            Channel.id != channel_id,
+                            Channel.status != ChannelStatus.DISCONNECTED,
+                            Channel.config["waba_id"].astext == str(waba_id),
+                        )
+                    )
+                    or 0
+                )
+            pending = ["deregister"] + (["unsubscribe"] if hermanos == 0 else [])
+            fila.status = ChannelStatus.DISCONNECTED
+            cfg["unlink_pending"] = pending
+            fila.config = cfg
+            flag_modified(fila, "config")
+            await s1.flush()
+        if not pending:
+            # Ya estaba hecho del todo: quien pulsa dos veces no merece un error.
+            return _detail(fila, await channel_logos(s1))
+
+    # ── 2 · Meta, paso a paso, quitando cada uno al terminar ───────────
+    client = build_meta_client()
+    done: list[str] = []
+    skipped: list[str] = []
+    try:
+        async with sm() as s2, tenant_scoped_session(s2, tenant_id):
+            fila = await s2.get(Channel, channel_id)
+            assert fila is not None
+            cfg = dict(fila.config or {})
+            creds = await ChannelCredentialsRepository(s2).get(channel_id)
+            if creds is None:
+                creds = await MetaCredentialsRepository(s2).get()
+            if creds is None:
+                # Sin credencial no hay nada atado a nuestra app: no se puede
+                # deshacer lo que nunca se hizo. Se anota, no se deja pendiente
+                # para siempre.
+                skipped, pending = list(pending), []
+            else:
+                token = creds.bisuat
+                waba_id = str(cfg.get("waba_id") or creds.waba_id or "")
+                phone_number_id = str(cfg.get("phone_number_id") or creds.phone_number_id or "")
+                for step in list(pending):
+                    try:
+                        if step == "deregister":
+                            await client.deregister_phone(
+                                phone_number_id=phone_number_id, access_token=token
+                            )
+                        elif step == "unsubscribe":
+                            await client.unsubscribe_app(waba_id=waba_id, access_token=token)
+                    except MetaAPIError:
+                        # Queda pendiente, y los que vienen detrás también: no
+                        # tiene sentido desuscribir lo que no se pudo dar de baja.
+                        break
+                    done.append(step)
+                    pending.remove(step)
+                    if step == "deregister":
+                        fila.config_encrypted = None
+                    elif step == "unsubscribe":
+                        await MetaCredentialsRepository(s2).delete()
+            if pending:
+                cfg["unlink_pending"] = pending
+            else:
+                cfg.pop("unlink_pending", None)
+            fila.config = cfg
+            flag_modified(fila, "config")
+            meta: dict[str, list[str]] = {"done": done, "pending": pending}
+            if skipped:
+                meta["skipped"] = skipped
+            await AuditRepository(s2).record(
+                actor=scope.principal.actor,
+                action="console.channel.disconnect",
+                target=f"channel:{fila.id}",
+                before={"status": before},
+                after={
+                    "status": fila.status.value,
+                    "identifier": fila.provider_identifier,
+                    "meta": meta,
+                },
+            )
+            await s2.flush()
+            return _detail(fila, await channel_logos(s2))
+    finally:
+        await client.close()
 
 
 __all__ = ["count_connected_channels", "roles_required", "router"]
