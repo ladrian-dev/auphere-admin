@@ -142,7 +142,11 @@ export function TemplatePicker({
               onClick={() => elegir(tpl.name)}
               className={cn(OPCION, elegida && ELEGIDA)}
             >
-              <span className="flex min-w-0 items-center gap-2">
+              {/* `w-full`: el botón es `items-start`, así que sin esto la fila
+                  se dimensiona por su contenido y el `truncate` de dentro no
+                  tiene contra qué recortar. Se vio a 360 px con el texto un
+                  30 % más largo — la prueba de traducción del e2e. */}
+              <span className="flex w-full min-w-0 items-center gap-2">
                 <Icono aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 truncate font-medium">{tpl.display_name}</span>
               </span>
@@ -162,9 +166,9 @@ export function TemplatePicker({
           onClick={() => elegir(null)}
           className={cn(OPCION, "border-dashed", tocado && value === null && ELEGIDA)}
         >
-          <span className="flex min-w-0 items-center gap-2">
+          <span className="flex w-full min-w-0 items-center gap-2">
             <PenLine aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-            <span className="font-medium">{t("wizard.template.none")}</span>
+            <span className="min-w-0 truncate font-medium">{t("wizard.template.none")}</span>
           </span>
           <span className="text-sm text-pretty text-muted-foreground">{t("wizard.template.none.body")}</span>
         </button>

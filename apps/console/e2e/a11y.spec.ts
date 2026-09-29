@@ -180,6 +180,51 @@ test.describe("CP-30 — axe + overflow on every main view", () => {
     await page.keyboard.press("Escape");
   });
 
+  // Spec 019 (T018): los **tres pasos** del alta, en los dos idiomas. El
+  // barrido de arriba audita `/clients/new`, que es solo el primero: los
+  // otros dos solo existen después de elegir y de rellenar, y son justo
+  // donde vive el formulario.
+  test("spec 019: los tres pasos del alta pasan axe en ES y EN", async ({ page, context }) => {
+    for (const locale of ["es", "en"] as const) {
+      // Solo la cookie de idioma: limpiarlas todas se lleva la sesión por
+      // delante y el alta se convierte en la pantalla de entrar.
+      await context.addCookies([
+        { name: "nexus-console.locale", value: locale, domain: "localhost", path: "/" },
+      ]);
+      await page.goto("/clients/new");
+      await expect(page.locator("main#main")).toBeVisible();
+      await expect(page.locator("html")).toHaveAttribute("lang", new RegExp(locale));
+
+      const siguiente = page.getByRole("button", { name: /^Continuar$|^Continue$/ });
+      for (const paso of ["plantilla", "negocio", "revisión"]) {
+        const axe = await new AxeBuilder({ page })
+          .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])
+          .exclude("iframe")
+          .analyze();
+        expect(
+          axe.violations
+            .filter((v) => v.impact === "serious" || v.impact === "critical")
+            .map((v) => `${v.id}: ${v.nodes.slice(0, 2).map((n) => n.target.join(" ")).join(" | ")}`),
+          `alta · ${paso} [${locale}]`,
+        ).toEqual([]);
+        expect(await overflowOffenders(page), `alta · ${paso} [${locale}] @1280px`).toEqual([]);
+
+        if (paso === "plantilla") {
+          await page.getByRole("radio").first().click();
+          await siguiente.click();
+        } else if (paso === "negocio") {
+          await page.getByLabel(/Nombre del negocio|Business name/).fill(`Axe ${locale} ${Date.now().toString(36)}`);
+          const direccion = page.getByLabel(/Dirección|Address/);
+          if (await direccion.count()) await direccion.fill("Calle Mayor 1");
+          await siguiente.click();
+        }
+      }
+    }
+    await context.addCookies([
+      { name: "nexus-console.locale", value: "es", domain: "localhost", path: "/" },
+    ]);
+  });
+
   // Spec 018 (T025): los tres catálogos **con filtro puesto**. La barra sin
   // filtrar ya la audita el barrido de arriba; lo que aquí se mira es el
   // estado que solo existe al filtrar — pastilla marcada, contador movido, y
