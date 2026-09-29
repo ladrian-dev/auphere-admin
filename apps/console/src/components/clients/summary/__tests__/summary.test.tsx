@@ -188,3 +188,20 @@ describe("Resumen · sin crédito", () => {
     expect(within(credito).queryByRole("meter")).toBeNull();
   });
 });
+
+describe("Resumen · una integración con un estado que hay que nombrar (2026-09-29)", () => {
+  it("«hay que volver a autorizar» se dice, y se marca como rota", () => {
+    // La ficha entera cayó en staging —«No se pudieron cargar los
+    // clientes»— porque el bloque pedía `connectors.status.needs_reauth`
+    // sin que existiera. El estado es real (Meta caduca tokens) y merece
+    // su frase, no un hueco.
+    mount({ connected: { ok: true, data: [{ key: "meta", name: "WhatsApp Business", status: "needs_reauth" }] } });
+    expect(screen.getByText("Hay que volver a autorizar")).toBeInTheDocument();
+  });
+
+  it("un estado que la API añada mañana no tumba la ficha", () => {
+    mount({ connected: { ok: true, data: [{ key: "x", name: "Algo nuevo", status: "made_up_tomorrow" }] } });
+    expect(screen.getByText("Algo nuevo")).toBeInTheDocument();
+    expect(screen.getByText("No conectado")).toBeInTheDocument();
+  });
+});

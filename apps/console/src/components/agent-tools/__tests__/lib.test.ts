@@ -93,3 +93,12 @@ describe("knowledge helpers", () => {
     expect(knowledgeUsageRatio(5, 0)).toBe(0);
   });
 });
+
+describe("connectorStatusKey cubre cada estado de la API", () => {
+  it("needs_reauth y partial tienen frase; lo desconocido cae en «none»", () => {
+    expect(connectorStatusKey("needs_reauth")).toBe("connectors.status.needs_reauth");
+    expect(connectorStatusKey("partial")).toBe("connectors.status.partial");
+    expect(connectorStatusKey("made_up")).toBe("connectors.status.none");
+    expect(connectorTone("needs_reauth")).toBe("warning");
+  });
+});

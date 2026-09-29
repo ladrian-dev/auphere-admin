@@ -31,6 +31,8 @@ export function connectorTone(status: string | null | undefined): Tone {
     case "pending":
       return "info";
     case "paused":
+    case "needs_reauth":
+    case "partial":
       return "warning";
     case "error":
     case "revoked":
@@ -41,7 +43,12 @@ export function connectorTone(status: string | null | undefined): Tone {
   }
 }
 
-export const CONNECTOR_STATUS_KEYS = ["connected", "pending", "paused", "error", "revoked", "expired", "disconnected"] as const;
+// Cada valor de `TenantConnectorStatus` en la API tiene su frase aquí. Uno
+// que falte no es «No conectado»: es una integración que existe y la
+// pantalla no sabe nombrar. `needs_reauth` y `partial` faltaban, y el
+// Resumen —que pedía la clave sin pasar por aquí— tumbó la ficha en staging
+// el 2026-09-29 con la primera integración que los tenía.
+export const CONNECTOR_STATUS_KEYS = ["connected", "pending", "paused", "error", "revoked", "expired", "disconnected", "needs_reauth", "partial"] as const;
 export type ConnectorStatusKey = (typeof CONNECTOR_STATUS_KEYS)[number];
 
 export function connectorStatusKey(status: string | null | undefined): `connectors.status.${ConnectorStatusKey | "none"}` {

@@ -104,6 +104,8 @@ export const agentToolsMessages = {
   "connectors.status.revoked": { es: "Revocado", en: "Revoked" },
   "connectors.status.expired": { es: "Caducado", en: "Expired" },
   "connectors.status.disconnected": { es: "Desconectado", en: "Disconnected" },
+  "connectors.status.needs_reauth": { es: "Hay que volver a autorizar", en: "Needs authorising again" },
+  "connectors.status.partial": { es: "Conectado a medias", en: "Partly connected" },
   "connectors.connect": { es: "Conectar", en: "Connect" },
   "connectors.reconnect": { es: "Reconectar", en: "Reconnect" },
   "connectors.sync": { es: "Sincronizar", en: "Sync" },

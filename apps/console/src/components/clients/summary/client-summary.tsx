@@ -17,6 +17,8 @@ import {
   formatNumber,
 } from "@nexus/ui";
 
+import { connectorStatusKey } from "@/components/agent-tools/lib";
+
 import { creditTone } from "../credit-tone";
 import { SettingsForm } from "./settings-form";
 import { useLocale, useT } from "@/i18n/client";
@@ -358,7 +360,10 @@ function Connected({
                 ) : null}
                 <span className="font-medium">{item.name}</span>
                 <StatusBadge tone={broken ? "danger" : "positive"}>
-                  {t(`connectors.status.${item.status}` as "connectors.status.none")}
+                  {/* Por la costura guardada, como la tarjeta de Integraciones:
+                      un estado que la consola no conozca se enseña como «No
+                      conectado», no como una ficha caída. */}
+                  {t(connectorStatusKey(item.status))}
                 </StatusBadge>
                 {item.unlocks ? (
                   <span className="text-xs text-muted-foreground">
