@@ -185,11 +185,18 @@ def test_aesthetic_clinic_v1_renders_with_clinica_boreal_data() -> None:
     assert "Luciana" in rendered.system_prompt
     assert "cálido-profesional" in rendered.system_prompt
 
-    # Policies defaults aplicados al texto del prompt.
-    assert "24h" in rendered.system_prompt or "24 h" in rendered.system_prompt
-    assert "30%" in rendered.system_prompt  # seña cirugía
-    assert "15 min" in rendered.system_prompt  # no-show grace
-    assert "100%" in rendered.system_prompt  # no-show fee
+    # Policies: el defecto llega al **expediente**, no al texto.
+    #
+    # Hasta la spec 019 este test afirmaba lo contrario —que 24h, 30% y 100%
+    # se escribían en el prompt— y eso era justo el fallo: Boreal nunca fijó
+    # esas condiciones, y el agente las recitaba por WhatsApp como política de
+    # la clínica. Ahora el prompt calla y deriva; el dato sigue donde lo leen
+    # el motor y las herramientas (T036, owner 2026-09-28).
+    assert rendered.policies["surgery"]["deposit_pct"] == 30
+    assert rendered.policies["no_show"]["fee_pct"] == 100
+    assert "30%" not in rendered.system_prompt
+    assert "100%" not in rendered.system_prompt
+    assert "La seña para fijar fecha de quirófano la fija la clínica" in rendered.system_prompt
 
     # Reglas duras clave deben llegar al prompt final — no se pueden
     # perder porque son los anclajes regulatorios del vertical.
@@ -358,3 +365,116 @@ def test_no_template_name_mixes_languages() -> None:
                 continue
             culpables.append((name, display))
     assert not culpables, f"nombres a medio traducir: {culpables}"
+
+
+# ── T036 · el agente calla lo que nadie le dijo ──────────────────────────────
+#
+# Los campos opcionales traían defectos concretos —24 h de cancelación gratis,
+# 30 % de seña de cirugía, 100 % de no-show— y el prompt los escribía como
+# política de la casa. Una clínica que no configuraba nada tenía un agente
+# comprometiendo cobros que su dueño no fijó: no un hueco vacío, sino una
+# respuesta segura de sí misma y falsa. Decisión del owner (2026-09-28): si no
+# se lo dijeron, no lo dice, y deriva al equipo.
+
+_CLINICA_MINIMOS = {
+    "tenant.name": "Clínica Boreal",
+    "tenant.timezone": "America/Caracas",
+    "tenant.address": "Av. X",
+    "clinical.titular_name": "Dra. Ruiz",
+    "tenant.surgery_referral_hospital": "Hospital Y",
+    "tenant.surgery_referral_phone": "+58 000",
+    "tenant.instagram_handle": "@boreal",
+    "tenant.front_desk_phone_label": "+58 111",
+    "tenant.business_hours_label": "Lunes a viernes 9:00 a 18:00",
+}
+
+
+def test_una_politica_no_dicha_no_se_afirma() -> None:
+    tpl = load_seed_template("aesthetic_clinic_v1")
+    prompt = render_seed_template(tpl, placeholders=dict(_CLINICA_MINIMOS)).system_prompt
+
+    assert "seña del 30%" not in prompt
+    assert "cargo del 100%" not in prompt
+    assert "La seña para fijar fecha de quirófano la fija la clínica" in prompt
+    assert "La política de cancelación la confirma el equipo" in prompt
+
+
+def test_la_misma_politica_dicha_se_afirma() -> None:
+    """La otra mitad: callar no puede ser el único comportamiento posible."""
+    tpl = load_seed_template("aesthetic_clinic_v1")
+    prompt = render_seed_template(
+        tpl,
+        placeholders={
+            **_CLINICA_MINIMOS,
+            "policies.surgery.deposit_pct": 40,
+            "policies.no_show.fee_pct": 50,
+            "policies.cancellation.late_fee_pct": 25,
+        },
+    ).system_prompt
+
+    assert "seña del 40%" in prompt
+    assert "cargo del 50%" in prompt
+    assert "La seña para fijar fecha de quirófano la fija la clínica" not in prompt
+
+
+def test_el_defecto_sigue_estando_en_el_dato() -> None:
+    """Callar es cosa del prompt, no del expediente.
+
+    ``policies`` lo lee el motor y las herramientas; si el defecto
+    desapareciera de ahí, esto dejaría de ser «el agente no lo afirma» y
+    pasaría a ser «la clínica no tiene política», que es otra cosa.
+    """
+    tpl = load_seed_template("aesthetic_clinic_v1")
+    rendered = render_seed_template(tpl, placeholders=dict(_CLINICA_MINIMOS))
+    assert rendered.policies["surgery"]["deposit_pct"] == 30
+    assert rendered.policies["no_show"]["fee_pct"] == 100
+
+
+def test_un_valor_en_blanco_no_cuenta_como_dicho() -> None:
+    """Dejar el campo vacío no es fijar una política."""
+    tpl = load_seed_template("aesthetic_clinic_v1")
+    prompt = render_seed_template(
+        tpl,
+        placeholders={**_CLINICA_MINIMOS, "tenant.pricing_table_label": "   "},
+    ).system_prompt
+    assert "No tenés la tabla de precios de esta clínica" in prompt
+
+
+def test_lo_que_no_se_afirma_no_se_exige_en_el_alta() -> None:
+    """La consecuencia medible: la plantilla más pesada baja de 12 a 7.
+
+    Los cinco que salen son exactamente los que el owner sacó del alta el
+    2026-09-28, y salen **porque el prompt dejó de afirmarlos**, no porque
+    alguien los tachara de una lista.
+    """
+    from nexus_api.api.console.seed_templates import describe_placeholders
+
+    ph = describe_placeholders(load_seed_template("aesthetic_clinic_v1"))
+    obligatorios = {p.key for p in ph if p.required}
+    assert len(obligatorios) == 7
+    for fuera in (
+        "clinical.titular_credential",
+        "tenant.saturday_label",
+        "tenant.consultation_price_label",
+        "tenant.pricing_table_label",
+        "tenant.payment_methods_label",
+    ):
+        assert fuera not in obligatorios, f"{fuera} sigue pidiéndose en el alta"
+        assert fuera in {p.key for p in ph}, f"{fuera} desapareció en vez de volverse opcional"
+
+
+def test_las_trece_siguen_renderizando_con_lo_justo() -> None:
+    """La guardia de la premisa que resultó falsa.
+
+    T036 nació diciendo que sin estos campos el renderizador levantaría
+    ``SeedTemplatePlaceholderMissing``. Se midió y no era cierto. Esto lo fija:
+    si alguien añade mañana un token suelto fuera de un bloque, se ve aquí.
+    """
+    from nexus_api.api.console.seed_templates import describe_placeholders
+
+    base = {"tenant.name": "X", "tenant.timezone": "Europe/Madrid"}
+    for name in list_seed_templates():
+        tpl = load_seed_template(name)
+        ph = describe_placeholders(tpl)
+        vals = {**base, **{p.key: ("1" if p.kind == "number" else "X") for p in ph if p.required}}
+        render_seed_template(tpl, placeholders=vals)
