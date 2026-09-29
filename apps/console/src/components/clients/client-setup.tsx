@@ -74,16 +74,18 @@ export function ClientSetup({
 
   return (
     <Section
-      // El único panel de la ficha en verde oscuro: es lo que hay que hacer
-      // ahora mismo, y compite con seis bloques blancos. Un segundo panel
-      // en este tono y ninguno de los dos destacaría.
+      // El único panel de la ficha con tono destacado: es lo que hay que
+      // hacer ahora mismo, y compite con los demás bloques. Un segundo panel
+      // así y ninguno de los dos destacaría. El tono **se invierte con el
+      // tema** —verde oscuro en claro, pistacho en oscuro— porque lo que
+      // destaca es el contraste con lo que tiene al lado, no el color.
       tone="spotlight"
       title={t("clients.setup.title")}
       description={t("clients.setup.description")}
       // El recuento a la derecha del título: equilibra la cabecera y es lo
       // primero que se quiere saber al volver a un cliente a medias.
       actions={
-        <span className="text-sm text-pistachio tabular-nums">
+        <span className="text-sm text-pistachio tabular-nums dark:text-dark-green/80">
           {t("clients.setup.done", { done: hechos, total })}
         </span>
       }
@@ -114,7 +116,7 @@ export function ClientSetup({
           <ClientLifecycleActions refId={refId} status={status} name={name} canDelete={false} />
         </div>
       ) : (
-        <p className="text-sm text-pistachio">{t(whoCanResolve(pending))}</p>
+        <p className="text-sm text-pistachio dark:text-dark-green/80">{t(whoCanResolve(pending))}</p>
       )}
     </Section>
   );

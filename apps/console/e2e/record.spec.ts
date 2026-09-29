@@ -259,8 +259,11 @@ test.describe("spec 017 · la ficha de cliente", () => {
     const antes = await primero.getAttribute("aria-checked");
 
     await primero.click();
-    // Un solo clic basta: no hay que buscar un «Guardar» después.
-    await expect(page.getByRole("button", { name: /^Guardar|^Save/ })).toHaveCount(0);
+    // Un solo clic basta: no hay que buscar un «Guardar» después. El nombre
+    // va anclado por los dos lados porque una **habilidad** puede llamarse
+    // «Guardar las preferencias del cliente», y su tarjeta es un botón: sin
+    // el ancla, el caso se cae según qué cliente salga primero.
+    await expect(page.getByRole("button", { name: /^(Guardar|Save)$/ })).toHaveCount(0);
     await expect(primero).toHaveAttribute("aria-checked", antes === "true" ? "false" : "true");
 
     // Y el cambio no se queda en esta pantalla: la barra de borrador lo dice

@@ -507,14 +507,21 @@ class Settings(BaseSettings):
     console_enabled: bool = False
     # D1 — cuota que recibe un cliente al crearse, en tokens de cuota C3.
     #
-    # Antes de esto el único escritor de ``partner_allocations`` era
+    # Existe porque el único escritor de ``partner_allocations`` era
     # ``PUT /console/clients/{ref}/allocation``, a mano: todo cliente nuevo
     # nacía MUDO, sin error y sin aviso, porque ``allow_channel_turn`` exige
-    # esa fila. Un mínimo fijo y no un reparto del included a propósito: no
-    # se recalcula al dar de alta a otro cliente, así que el cap de uno no
-    # baja solo cuando el partner añade otro. Caben 10 clientes en el
-    # included de 500k; a partir de ahí el partner reparte desde Consumo.
-    partner_default_client_allocation_tokens: int = 50_000
+    # esa fila. **Lo que cura ese corte es que la fila se escriba**, no lo que
+    # lleve dentro: una fila con tope 0 se ve en Consumo y se explica; la
+    # ausencia de fila es el silencio del 31-ago.
+    #
+    # **Cero desde la spec 019 (owner, 2026-09-28), y en todas partes.** Esto
+    # revierte la spec 004 R6 (2026-09-12), que sembraba la cuota entera para
+    # que el cliente contestara el día que nacía: regalaba 50 000 créditos
+    # comprados por cada alta, y quién los reparte es decisión del partner.
+    # Alcanza también a ``POST /v1/partners/clients``, así que un cliente dado
+    # de alta por integración **tampoco contesta hasta que le asignen crédito**
+    # — decisión consciente del owner, no un efecto colateral.
+    partner_default_client_allocation_tokens: int = 0
     # PEM-encoded Ed25519 public key ("-----BEGIN PUBLIC KEY-----"). Empty
     # means the console cannot authenticate anything — fail closed. Only a
     # public key lives here; the private half stays in the console.

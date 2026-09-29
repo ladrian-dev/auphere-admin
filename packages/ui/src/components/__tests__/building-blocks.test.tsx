@@ -12,6 +12,7 @@ import { Input } from "../input";
 import { Meter, meterToneFor } from "../meter";
 import { NativeSelect } from "../native-select";
 import { Section } from "../section";
+import { StepTrack } from "../step-track";
 import { Stepper } from "../stepper";
 import { Switch } from "../switch";
 
@@ -269,5 +270,56 @@ describe("Button", () => {
     );
     // Base UI le pone `role="button"` al ancla, así que se busca por ahí.
     expect(screen.getByRole("button", { name: "Conectar" }).className).toContain("no-underline");
+  });
+});
+
+describe("Section · el tono que destaca se invierte con el tema", () => {
+  it("lleva el fondo de claro y el de oscuro, no solo uno", () => {
+    // Lo que destaca no es el color, es el **contraste con lo que tiene al
+    // lado**. En claro, verde oscuro sobre tarjetas claras. En oscuro, ese
+    // mismo verde se fundía con el fondo y la tarjeta dejaba de hacer su
+    // trabajo (owner, 2026-09-28), así que ahí va en pistacho.
+    //
+    // Es una decisión de CSS y jsdom no calcula temas, así que lo que se
+    // afirma son las dos clases. Medido en la consola: 15.44:1 en claro y
+    // 9.6:1 en oscuro para el título.
+    const { container } = render(<Section tone="spotlight" title="Pasos" description="Qué falta" />);
+    const section = container.querySelector("section")!;
+    expect(section.className).toContain("bg-dark-green");
+    expect(section.className).toContain("dark:bg-pistachio");
+    // Y el texto sigue al fondo, no al tema.
+    expect(section.className).toContain("dark:text-dark-green");
+  });
+
+  it("el tono normal no lleva ninguno de los dos", () => {
+    const { container } = render(<Section title="Normal" />);
+    expect(container.querySelector("section")!.className).not.toContain("dark:bg-pistachio");
+  });
+});
+
+describe("StepTrack · el relleno sigue a la tarjeta", () => {
+  it("el paso hecho se tiñe en los dos temas, no solo en claro", () => {
+    // La barra vive dentro de la tarjeta que destaca, y esa tarjeta cambia de
+    // color con el tema. Cuando el relleno se quedaba en verde de marca, sobre
+    // el pistacho del modo oscuro daba **1,01:1** contra su propia pista: el
+    // progreso no se veía (owner, 2026-09-28). Teñirlo del mismo color que el
+    // texto lo sube a 7,22:1 en oscuro y 4,83:1 en claro.
+    const { container } = render(
+      <StepTrack
+        ariaLabel="Pasos"
+        summary="1 de 2"
+        steps={[
+          { key: "a", label: "Agente", done: 2, of: 2 },
+          { key: "b", label: "Canal", done: 1, of: 2 },
+        ]}
+      />,
+    );
+    const [hecho, parcial] = [...container.querySelectorAll("span.h-2")].map((t) => t.firstElementChild!.className);
+    expect(hecho).toContain("bg-mountain-meadow");
+    expect(hecho).toContain("dark:bg-dark-green");
+    // El parcial al 75 %: a 60 se quedaba en 2,72:1 en claro, por debajo del
+    // 3:1 que pide un elemento gráfico.
+    expect(parcial).toContain("bg-mountain-meadow/75");
+    expect(parcial).toContain("dark:bg-dark-green/75");
   });
 });

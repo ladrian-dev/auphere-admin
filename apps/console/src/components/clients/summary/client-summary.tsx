@@ -10,7 +10,6 @@ import {
   Button,
   HelpHint,
   Meter,
-  type MeterTone,
   Metric,
   Section,
   StatusBadge,
@@ -18,6 +17,7 @@ import {
   formatNumber,
 } from "@nexus/ui";
 
+import { creditTone } from "../credit-tone";
 import { SettingsForm } from "./settings-form";
 import { useLocale, useT } from "@/i18n/client";
 import { can, type Role } from "@/lib/permissions";
@@ -270,12 +270,6 @@ function Credit({
 }
 
 /** La barra mide lo que QUEDA, así que su tono también. */
-function creditTone({ cap, remaining }: { cap: number; remaining: number }): MeterTone {
-  if (remaining <= 0) return "danger";
-  if (cap > 0 && remaining / cap <= 0.2) return "warning";
-  return "positive";
-}
-
 // ── 3 · ¿cómo va la conversación? ───────────────────────────────────────
 
 function Conversations({

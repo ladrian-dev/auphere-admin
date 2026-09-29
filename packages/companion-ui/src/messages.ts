@@ -98,8 +98,8 @@ export const companionMessages = {
   "companion.loading": { es: "Cargando la conversación…", en: "Loading the conversation…" },
   "companion.empty.title": { es: "¿En qué te echo una mano?", en: "What can I help you with?" },
   "companion.empty.body": {
-    es: "Pregunta lo que quieras sobre tus clientes, sus agentes o tu consumo. En modo Consultar solo leo; para cambiar algo tendrás que confirmarlo tú.",
-    en: "Ask anything about your clients, their agents or your usage. In Consult mode I only read; to change anything you will have to confirm it yourself.",
+    es: "Pregunta lo que quieras sobre tus clientes, sus agentes o tu consumo. En modo Consultar solo leo, y para cambiar algo tendrás que confirmarlo tú.",
+    en: "Ask anything about your clients, their agents or your usage. In Consult mode I only read, and to change anything you will have to confirm it yourself.",
   },
   "companion.empty.suggestions": { es: "Para empezar", en: "To get started" },
   "companion.error.title": { es: "No se pudo cargar la conversación", en: "Could not load the conversation" },
@@ -115,8 +115,8 @@ export const companionMessages = {
   },
   "companion.partial.title": { es: "Falta parte de esta conversación", en: "Part of this conversation is missing" },
   "companion.partial.body": {
-    es: "Esta conversación empezó en otro navegador o dispositivo. Se muestra desde aquí en adelante; lo anterior sigue guardado en el servidor.",
-    en: "This conversation started in another browser or device. It is shown from here on; what came before is still stored server-side.",
+    es: "Esta conversación empezó en otro navegador o dispositivo. Se muestra desde aquí en adelante, y lo anterior sigue guardado en el servidor.",
+    en: "This conversation started in another browser or device. It is shown from here on, and what came before is still stored server-side.",
   },
   "companion.reconnecting": { es: "Reconectando…", en: "Reconnecting…" },
 

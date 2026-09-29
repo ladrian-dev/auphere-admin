@@ -13,11 +13,20 @@ type SectionProps = Omit<React.ComponentProps<"section">, "title"> & {
   /** Plain block: no card surface, just the title + spacing. */
   flat?: boolean;
   /**
-   * `spotlight`: fondo verde oscuro de marca, para el **único** panel que
-   * tiene que destacar sobre los demás de la pantalla. Dos a la vista y
-   * ninguno destaca, así que no es un tono decorativo: es una jerarquía.
-   * La descripción y los detalles pasan a pistacho, que da 9:1 sobre ese
-   * fondo; el texto secundario en gris se perdería.
+   * `spotlight`: el **único** panel que tiene que destacar sobre los demás de
+   * la pantalla. Dos a la vista y ninguno destaca, así que no es un tono
+   * decorativo: es una jerarquía.
+   *
+   * **Y se invierte con el tema**, porque lo que destaca no es el color sino
+   * el contraste con lo que tiene al lado. En claro es verde oscuro sobre
+   * tarjetas claras. En oscuro era verde oscuro sobre fondo oscuro, o sea
+   * que se fundía y dejaba de hacer su trabajo (owner, 2026-09-28): ahí pasa
+   * a **pistacho**, que sigue siendo verde de marca. Blanco del todo
+   * destacaría igual pero rompería la familia de color de la pantalla.
+   *
+   * El texto acompaña al fondo, no al tema: sobre verde oscuro la descripción
+   * va en pistacho —el gris secundario se perdería— y sobre hueso vuelve al
+   * verde oscuro.
    */
   tone?: "default" | "spotlight";
 };
@@ -41,7 +50,7 @@ function Section({ title, description, actions, headingLevel = 2, padded = true,
         "flex min-w-0 flex-col gap-(--space-stack)",
         !flat && "rounded-md bg-card ring-1 ring-foreground/10",
         !flat && padded && "p-4",
-        tone === "spotlight" && "bg-dark-green text-anti-flash ring-0",
+        tone === "spotlight" && "bg-dark-green text-anti-flash ring-0 dark:bg-pistachio dark:text-dark-green",
         className,
       )}
       {...props}
@@ -55,7 +64,7 @@ function Section({ title, description, actions, headingLevel = 2, padded = true,
               </Heading>
             ) : null}
             {description ? (
-              <p className={cn("text-sm text-pretty", tone === "spotlight" ? "text-pistachio" : "text-muted-foreground")}>
+              <p className={cn("text-sm text-pretty", tone === "spotlight" ? "text-pistachio dark:text-dark-green/80" : "text-muted-foreground")}>
                 {description}
               </p>
             ) : null}

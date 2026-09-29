@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { messages, t, type MessageKey } from "@/i18n/messages";
+import type { SeedPlaceholder, SeedTemplate } from "@/lib/backend/onboarding";
 
 import {
   SEED_PLACEHOLDER_KEYS,
@@ -20,32 +21,22 @@ import {
   isIanaTimeZone,
   pickWizardTimezone,
   wizardTimezoneOptions,
+  requiredPlaceholders,
+  STEPS,
 } from "../wizard-state";
 
 describe("wizard-state", () => {
   it("plans stages from the choices", () => {
-    expect(planStages({ seed_template: null, publish_now: true }).map((s) => s.status)).toEqual([
-      "pending",
-      "skipped",
-      "skipped",
-      "skipped",
-      "pending",
-    ]);
-    expect(planStages({ seed_template: "generic_v1", publish_now: false }).map((s) => s.status)).toEqual([
-      "pending",
-      "pending",
-      "skipped",
-      "skipped",
-      "pending",
-    ]);
-    // Spec 016 (R4.1): publish and activate are two stages.
-    const full = planStages({ seed_template: "generic_v1", publish_now: true });
-    expect(full.map((s) => s.key)).toEqual(["create", "seed", "publish", "activate", "channel"]);
+    // Spec 019: dos etapas, las que llaman al servidor. Publicar y activar se
+    // retiraron con la pregunta que las elegía.
+    expect(planStages({ seed_template: null }).map((s) => s.status)).toEqual(["pending", "skipped"]);
+    const full = planStages({ seed_template: "generic_v1" });
+    expect(full.map((s) => s.key)).toEqual(["create", "seed"]);
     expect(full.every((s) => s.status === "pending")).toBe(true);
   });
 
   it("reduces stage events and reports the outcome", () => {
-    let st = planStages({ seed_template: "generic_v1", publish_now: false });
+    let st = planStages({ seed_template: "generic_v1" });
     expect(runOutcome(st)).toBe("idle");
     expect(nextStage(st)).toBe("create");
     st = stageReducer(st, { type: "start", key: "create", at: 1000 });
@@ -58,8 +49,6 @@ describe("wizard-state", () => {
     expect(st[1]!.error).toBe("missing placeholder");
     st = stageReducer(st, { type: "start", key: "seed", at: 3000 });
     st = stageReducer(st, { type: "done", key: "seed", at: 3400 });
-    st = stageReducer(st, { type: "start", key: "channel", at: 3400 });
-    st = stageReducer(st, { type: "done", key: "channel", at: 3400 });
     expect(runOutcome(st)).toBe("done");
     expect(nextStage(st)).toBeNull();
     expect(elapsedSeconds(st)).toBe(2.4);
@@ -152,18 +141,121 @@ describe("wizard timezone (QA-06)", () => {
     expect(isIanaTimeZone("Caracas Venezuela")).toBe(false);
   });
 
-  it("retrying «activate» touches no earlier stage (spec 016, R4.2)", () => {
-    let st = planStages({ seed_template: "generic_v1", publish_now: true });
-    for (const key of ["create", "seed", "publish"] as const) {
-      st = stageReducer(st, { type: "start", key, at: 1 });
-      st = stageReducer(st, { type: "done", key, at: 2 });
-    }
-    st = stageReducer(st, { type: "start", key: "activate", at: 2 });
-    st = stageReducer(st, { type: "fail", key: "activate", at: 3, error: "boom" });
+  it("reintentar una etapa no toca la anterior (spec 016 R4.2, spec 019)", () => {
+    // Lo que esto protege: el cliente ya existe. Reintentar no puede volver a
+    // crearlo ni perder lo hecho.
+    let st = planStages({ seed_template: "generic_v1" });
+    st = stageReducer(st, { type: "start", key: "create", at: 1 });
+    st = stageReducer(st, { type: "done", key: "create", at: 2 });
+    st = stageReducer(st, { type: "start", key: "seed", at: 2 });
+    st = stageReducer(st, { type: "fail", key: "seed", at: 3, error: "boom" });
     expect(runOutcome(st)).toBe("partial");
-    expect(nextStage(st)).toBe("activate");
-    const retried = stageReducer(st, { type: "reset", key: "activate" });
-    expect(retried.filter((s) => s.key !== "activate").map((s) => s.status)).toEqual(["done", "done", "done", "pending"]);
-    expect(nextStage(retried)).toBe("activate");
+    expect(nextStage(st)).toBe("seed");
+    const retried = stageReducer(st, { type: "reset", key: "seed" });
+    expect(retried.find((s) => s.key === "create")?.status).toBe("done");
+    expect(nextStage(retried)).toBe("seed");
+  });
+});
+
+/**
+ * Spec 019 · qué campos pide de verdad una plantilla.
+ *
+ * El alta dejó de enseñar los opcionales (owner, 2026-09-28: «los datos
+ * básicos los rellenamos acá y los datos más avanzados en los ajustes del
+ * agente»). Lo que queda es lo que el renderizador de semillas **exige** para
+ * poder escribir el prompt, y eso no es una lista escrita a mano: sale de la
+ * propia plantilla.
+ *
+ * Los números vienen de la Fase 0, ejecutando `render_seed_template` contra
+ * las trece semillas con los campos vacíos (`specs/019-alta-deja-pesar/
+ * research-probe.py`). Si una semilla cambia, este test lo cuenta.
+ */
+describe("requiredPlaceholders (spec 019)", () => {
+  const ph = (key: string, required: boolean): SeedPlaceholder => ({
+    key,
+    required,
+    secret: false,
+    kind: "text",
+    example: null,
+  });
+  const tpl = (placeholders: SeedPlaceholder[]): SeedTemplate => ({
+    name: "x_v1",
+    display_name: "X",
+    version: "1",
+    vertical: "x",
+    tools_count: 3,
+    placeholders,
+  });
+
+  it("solo los que la plantilla exige, en el orden en que llegan", () => {
+    const t = tpl([
+      ph("tenant.address", true),
+      ph("agent.tone", false),
+      ph("tenant.business_hours_label", true),
+      ph("agent.name", false),
+    ]);
+    expect(requiredPlaceholders(t).map((p) => p.key)).toEqual([
+      "tenant.address",
+      "tenant.business_hours_label",
+    ]);
+  });
+
+  it("una plantilla sin exigencias no pide nada", () => {
+    // Tres de las trece: cobranza, inventario y woocommerce_sales.
+    expect(requiredPlaceholders(tpl([ph("agent.name", false)]))).toEqual([]);
+  });
+
+  it("sin plantilla no hay campos que pedir", () => {
+    expect(requiredPlaceholders(null)).toEqual([]);
+  });
+
+  it("**no** devuelve los opcionales, que es justo lo que el alta dejó de enseñar", () => {
+    // Antes, la plantilla marcada por defecto enseñaba 23 campos y solo 12
+    // hacían falta. Las once restantes tenían valor por defecto y se pedían
+    // igual.
+    const once = Array.from({ length: 11 }, (_, i) => ph(`policies.x${i}`, false));
+    expect(requiredPlaceholders(tpl([ph("tenant.address", true), ...once]))).toHaveLength(1);
+  });
+});
+
+/**
+ * Spec 019 · tres pasos, y ninguno que no haga nada.
+ *
+ * El paso «Canal» se retiró (R3.1): su respuesta no viajaba al servidor ni
+ * quedaba en el cliente — `case "channel": return done()`. Un cuarto del
+ * asistente para una pregunta que se descartaba.
+ *
+ * Y publicar dejó de preguntarse (R6.4): un cliente no atiende hasta estar
+ * configurado y con canal, así que elegirlo al crear no adelantaba nada.
+ */
+describe("los pasos del alta (spec 019)", () => {
+  it("son tres, y la plantilla va primera", () => {
+    // Primera porque decide el prompt, las herramientas y qué campos existen
+    // siquiera: decidirla antes estrecha todo lo demás (R2.1).
+    expect(STEPS).toEqual(["template", "details", "review"]);
+  });
+
+  it("no hay paso de canal", () => {
+    expect(STEPS).not.toContain("channel");
+  });
+});
+
+describe("las etapas del alta (spec 019)", () => {
+  it("son crear y escribir el agente: las que de verdad llaman al servidor", () => {
+    expect(planStages({ seed_template: "barbershop_v1" }).map((s) => s.key)).toEqual(["create", "seed"]);
+  });
+
+  it("sin plantilla no se escribe agente, y se dice que se salta", () => {
+    const stages = planStages({ seed_template: null });
+    expect(stages.find((s) => s.key === "seed")?.status).toBe("skipped");
+    expect(stages.find((s) => s.key === "create")?.status).toBe("pending");
+  });
+
+  it("no hay etapa de publicar ni de activar", () => {
+    // Se quedan como guardia: si vuelven, es con una decisión escrita.
+    const keys = planStages({ seed_template: "barbershop_v1" }).map((s) => s.key);
+    expect(keys).not.toContain("publish");
+    expect(keys).not.toContain("activate");
+    expect(keys).not.toContain("channel");
   });
 });

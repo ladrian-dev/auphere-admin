@@ -3,8 +3,8 @@
 export const capabilitiesMessages = {
   "cap.title": { es: "Habilidades", en: "Skills" },
   "cap.description": {
-    es: "Lo que el agente sabe hacer. Lo que dejes apagado, el agente no lo ve. Cada cambio se guarda en el borrador; publicar sigue siendo un paso aparte.",
-    en: "What the agent can do. Whatever you leave off, the agent does not see. Each change is saved to the draft; publishing is still a separate step.",
+    es: "Lo que el agente sabe hacer. Lo que dejes apagado, el agente no lo ve. Cada cambio se guarda en el borrador, y publicar sigue siendo un paso aparte.",
+    en: "What the agent can do. Whatever you leave off, the agent does not see. Each change is saved to the draft, and publishing is still a separate step.",
   },
   "cap.readonly": { es: "Tu rol permite ver las habilidades, no cambiarlas.", en: "Your role lets you see skills, not change them." },
 
@@ -61,7 +61,7 @@ export const capabilitiesMessages = {
   "cap.mode.always": { es: "Siempre", en: "Always" },
   "cap.mode.blocked": { es: "Nunca", en: "Never" },
   "cap.mode.default": { es: "Por defecto ({mode})", en: "Default ({mode})" },
-  "cap.mode.overridden": { es: "Lo has fijado tú; si no, seguiría el valor por defecto.", en: "You set this; otherwise it would follow the default." },
+  "cap.mode.overridden": { es: "Lo has fijado tú. Si no, seguiría el valor por defecto.", en: "You set this. Otherwise it would follow the default." },
   "cap.technical": { es: "Detalle técnico", en: "Technical detail" },
   "cap.technical.name": { es: "Nombre", en: "Name" },
   "cap.technical.kind": { es: "Tipo", en: "Kind" },

@@ -5,15 +5,18 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Checkbox, Checklist, type ChecklistItem, ConfirmDialog, DescriptionList, Input, Label, NativeSelect, Stepper, cn } from "@nexus/ui";
+import { Button, Checklist, type ChecklistItem, Combobox, ConfirmDialog, Field, Input, Label, Stepper } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
-import { actionErrorText } from "@/lib/action-error";
 import { messages, type MessageKey } from "@/i18n/messages";
-import type { Quota } from "@/lib/backend";
-import type { SeedPlaceholder, SeedTemplate } from "@/lib/backend/onboarding";
+import type { SeedTemplate } from "@/lib/backend/onboarding";
 
-import { wizardActivateAction, wizardCheckRefAction, wizardCreateClientAction, wizardPublishAction, wizardSeedAgentAction } from "./actions";
+import { HoursField } from "@/components/clients/new/hours-field";
+import { defaultHours, hoursLabel, type Hours } from "@/components/clients/new/hours";
+import { TemplatePicker } from "@/components/clients/new/template-picker";
+import { GRUPO_TITULO, agrupar, metaDe } from "@/components/clients/new/fields";
+
+import { wizardCheckRefAction, wizardCreateClientAction, wizardSeedAgentAction } from "./actions";
 import {
   browserIanaTimeZone,
   isIanaTimeZone,
@@ -21,49 +24,59 @@ import {
   wizardTimezoneOptions,
   STEPS,
   cleanPlaceholders,
-  elapsedSeconds,
   missingPlaceholders,
   nextStage,
+  requiredPlaceholders,
   planStages,
+  resolvePlaceholderExtra,
   resolvePlaceholderLabel,
   runOutcome,
   slugify,
   stageReducer,
   wizardIsDirty,
   wizardShouldBlockLeave,
-  type ChannelChoice,
   type Stage,
   type StageKey,
   type StepKey,
   type WizardValues,
 } from "./wizard-state";
 
-type Props = { quota: Quota; templates: SeedTemplate[] | null; canPublish: boolean };
+type Props = { templates: SeedTemplate[] | null };
 
 const STEP_LABEL: Record<StepKey, MessageKey> = {
+  template: "wizard.template.title",
   details: "wizard.step.details",
-  template: "wizard.step.template",
-  channel: "wizard.step.channel",
   review: "wizard.step.review",
 };
 const STAGE_LABEL: Record<StageKey, MessageKey> = {
   create: "wizard.stage.create",
   seed: "wizard.stage.seed",
-  publish: "wizard.stage.publish",
-  activate: "wizard.stage.activate",
-  channel: "wizard.stage.channel",
 };
+
+/** El campo del horario no es un input: es el control de la spec 019 R7. */
+const HOURS_KEY = "tenant.business_hours_label";
 
 function placeholderLabel(t: ReturnType<typeof useT>, key: string): string {
   return resolvePlaceholderLabel(key, messages, (k) => t(k as MessageKey));
 }
+function ayudaDe(t: ReturnType<typeof useT>, key: string): string | null {
+  return resolvePlaceholderExtra(key, "hint", messages, (k) => t(k as MessageKey));
+}
+function ejemploDe(t: ReturnType<typeof useT>, key: string): string | null {
+  return resolvePlaceholderExtra(key, "eg", messages, (k) => t(k as MessageKey));
+}
 
-export function NewClientWizard({ quota, templates, canPublish }: Props) {
+export function NewClientWizard({ templates }: Props) {
   const t = useT();
   const router = useRouter();
-  const full = quota.remaining_clients === 0;
 
-  const [step, setStep] = React.useState<StepKey>("details");
+  const [step, setStep] = React.useState<StepKey>("template");
+  // Spec 019 R7: el horario se elige. Lo que la plantilla recibe es la cadena
+  // que compone `hoursLabel`, así que la frontera con la semilla no cambia.
+  const [hours, setHours] = React.useState<Hours>(() => defaultHours());
+  // `seed_template` es `string | null` y `null` es una elección legítima
+  // —«ninguna de estas»—, así que «aún no ha elegido» necesita su bandera.
+  const [templateChosen, setTemplateChosen] = React.useState(false);
   const [browserTz] = React.useState(() => browserIanaTimeZone());
   const [values, setValues] = React.useState<WizardValues>(() => {
     const tz = browserIanaTimeZone();
@@ -71,10 +84,10 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
       name: "",
       external_client_ref: "",
       timezone: pickWizardTimezone(tz, wizardTimezoneOptions(tz)),
-      seed_template: templates?.[0]?.name ?? null,
+      // **Nada preseleccionado** (spec 019, R2.2). Antes venía marcada la que
+      // la API devuelve primera, que es la más pesada de las trece.
+      seed_template: null,
       placeholders: {},
-      channel: "whatsapp",
-      publish_now: canPublish,
     };
   });
   const [refTouched, setRefTouched] = React.useState(false);
@@ -88,6 +101,22 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
   const pendingHrefRef = React.useRef<string | null>(null);
   const stepIndex = STEPS.indexOf(step);
   const template = templates?.find((x) => x.name === values.seed_template) ?? null;
+  /** Solo lo imprescindible (spec 019, R1.1): lo opcional vive en los ajustes
+   *  del agente. Sale de la plantilla, no de una lista escrita a mano. */
+  const needed = React.useMemo(() => requiredPlaceholders(template), [template]);
+  // El horario tiene su propio control, así que no entra en la rejilla.
+  const { agrupado, grupos } = React.useMemo(
+    () => agrupar(needed.filter((ph) => ph.key !== HOURS_KEY)),
+    [needed],
+  );
+  /** El horario no se teclea: lo compone el control. Lo demás, tal cual. */
+  const placeholderValues = React.useCallback(
+    (): Record<string, string> => ({
+      ...values.placeholders,
+      ...(needed.some((p) => p.key === HOURS_KEY) ? { [HOURS_KEY]: hoursLabel(hours) } : {}),
+    }),
+    [values.placeholders, needed, hours],
+  );
   const outcome = runOutcome(stages);
   const dirty = wizardIsDirty(values);
   const blockLeave = wizardShouldBlockLeave(dirty, outcome);
@@ -163,9 +192,8 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
       else if (!/^[A-Za-z0-9._:-]+$/.test(values.external_client_ref)) e.external_client_ref = t("validation.refFormat");
       if (!values.timezone.trim()) e.timezone = t("validation.required");
       else if (!isIanaTimeZone(values.timezone)) e.timezone = t("validation.timezone");
-    }
-    if (step === "template" && template) {
-      for (const k of missingPlaceholders(template.placeholders, values.placeholders)) e[`ph:${k}`] = t("validation.required");
+      // Solo los imprescindibles: los opcionales ya no se enseñan.
+      for (const k of missingPlaceholders(needed, placeholderValues())) e[`ph:${k}`] = t("validation.required");
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -191,7 +219,7 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
     const next = STEPS[stepIndex + 1];
     if (next) {
       setStep(next);
-      setStages(planStages({ ...values }));
+      setStages(planStages(values));
     }
   }
   function performLeave(kind: "back" | "leave") {
@@ -241,28 +269,19 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
           });
           return res.ok ? done() : fail(res.message);
         }
-        if (key === "seed") {
-          const res = await wizardSeedAgentAction({
-            ref: values.external_client_ref,
-            seed_template: values.seed_template,
-            placeholders: cleanPlaceholders(values.placeholders),
-          });
-          return res.ok ? done() : fail(res.message);
-        }
-        if (key === "publish") {
-          const res = await wizardPublishAction({ ref: values.external_client_ref });
-          return res.ok ? done() : fail(actionErrorText(res, t));
-        }
-        if (key === "activate") {
-          const res = await wizardActivateAction({ ref: values.external_client_ref });
-          return res.ok ? done() : fail(actionErrorText(res, t));
-        }
-        return done(); // channel: informational, connect afterwards
+        // El agente se escribe y **se queda en borrador**: publicarlo es un
+        // paso de la ficha (spec 019, R6.4).
+        const res = await wizardSeedAgentAction({
+          ref: values.external_client_ref,
+          seed_template: values.seed_template,
+          placeholders: cleanPlaceholders(placeholderValues()),
+        });
+        return res.ok ? done() : fail(res.message);
       } catch (err) {
         return fail(err instanceof Error ? err.message : t("common.error.backend"));
       }
     },
-    [t, values],
+    [t, values, placeholderValues],
   );
 
   async function runAll(from?: Stage[]) {
@@ -290,7 +309,6 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
   }
 
   const clientHref = `/clients/${encodeURIComponent(values.external_client_ref)}`;
-  const seconds = elapsedSeconds(stages);
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
@@ -302,272 +320,196 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
         stepOfLabel={(n, total) => t("wizard.stepOf", { n, total })}
       />
 
-      {full ? (
-        <p role="alert" className="rounded-md border border-status-warning/40 bg-status-warning/10 px-4 py-3 text-sm">
-          {t("wizard.quota.blocked", { used: quota.used_clients, max: quota.max_clients })}
-        </p>
-      ) : null}
-
       <section aria-labelledby="wizard-step-title" className="flex flex-col gap-4">
         <h2 id="wizard-step-title" ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-balance outline-none">
           {t(STEP_LABEL[step])}
         </h2>
 
-        {step === "details" ? (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="wz-name">{t("common.name")}</Label>
-              <Input
-                id="wz-name"
-                autoComplete="organization"
-                value={values.name}
-                aria-invalid={!!errors.name}
-                aria-describedby={errors.name ? "wz-name-err" : undefined}
-                onChange={(e) => {
-                  set("name", e.target.value);
-                  if (!refTouched) set("external_client_ref", slugify(e.target.value));
-                }}
-              />
-              {errors.name ? (
-                <p id="wz-name-err" className="text-sm text-destructive">
-                  {errors.name}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="wz-ref">{t("clients.ref")}</Label>
-              <Input
-                id="wz-ref"
-                className="font-mono"
-                autoComplete="off"
-                spellCheck={false}
-                value={values.external_client_ref}
-                aria-invalid={!!errors.external_client_ref}
-                aria-describedby="wz-ref-hint"
-                onChange={(e) => {
-                  setRefTouched(true);
-                  set("external_client_ref", e.target.value);
-                }}
-              />
-              <p id="wz-ref-hint" className="text-sm text-muted-foreground text-pretty">
-                {t("clients.create.refHint")}
-              </p>
-              {errors.external_client_ref ? <p className="text-sm text-destructive">{errors.external_client_ref}</p> : null}
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="wz-tz">{t("clients.timezone")}</Label>
-              <NativeSelect
-                id="wz-tz"
-                wrapperClassName="w-full"
-                className="font-mono"
-                value={values.timezone}
-                aria-invalid={!!errors.timezone}
-                onChange={(e) => set("timezone", e.target.value)}
-              >
-                <option value="">{t("clients.timezone.placeholder")}</option>
-                {wizardTimezoneOptions(browserTz).map((tz) => (
-                  <option key={tz} value={tz}>
-                    {tz}
-                  </option>
-                ))}
-              </NativeSelect>
-              {errors.timezone ? <p className="text-sm text-destructive">{errors.timezone}</p> : null}
-            </div>
-          </div>
+        {step === "template" ? (
+          <TemplatePicker
+            templates={templates}
+            value={values.seed_template}
+            onChange={(name) => {
+              setTemplateChosen(true);
+              set("seed_template", name);
+              set("placeholders", {});
+            }}
+          />
         ) : null}
 
-        {step === "template" ? (
+        {step === "details" ? (
+          // `gap-6` entre bloques y `gap-4` dentro: la separación es lo que
+          // hace que tres grupos se lean como tres y no como una lista larga
+          // con títulos intercalados.
           <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-muted-foreground text-pretty">{t("wizard.template.body")}</p>
-              {templates === null ? (
-                <p role="alert" className="text-sm text-destructive">
-                  {t("wizard.template.loadError")}
-                </p>
-              ) : templates.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t("wizard.template.empty")}</p>
-              ) : null}
-              <div role="radiogroup" aria-label={t("wizard.template.title")} className="grid gap-2 sm:grid-cols-2">
-                {(templates ?? []).map((tpl) => {
-                  const selected = values.seed_template === tpl.name;
-                  return (
-                    <button
-                      key={tpl.name}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => {
-                        set("seed_template", tpl.name);
-                        set("placeholders", {});
-                      }}
-                      className={cn(
-                        "flex min-w-0 flex-col items-start gap-1 rounded-md border px-3 py-2 text-left text-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                        selected ? "border-foreground bg-muted" : "border-border hover:bg-muted/60",
-                      )}
-                    >
-                      <span className="min-w-0 w-full truncate font-medium" title={tpl.display_name}>
-                        {tpl.display_name}
-                      </span>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {tpl.name} · {t("wizard.template.tools", { count: tpl.tools_count })}
-                      </span>
-                    </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={values.seed_template === null}
-                  onClick={() => set("seed_template", null)}
-                  className={cn(
-                    "flex min-w-0 flex-col items-start gap-1 rounded-md border border-dashed px-3 py-2 text-left text-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                    values.seed_template === null ? "border-foreground bg-muted" : "border-border hover:bg-muted/60",
-                  )}
-                >
-                  <span className="font-medium">{t("wizard.template.none")}</span>
-                </button>
-              </div>
+            {/* La frase que hace corto un formulario corto. Sin ella, cuatro
+                campos se leen como «cuatro, de momento». */}
+            <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("wizard.details.body")}</p>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label={t("wizard.details.name")} htmlFor="wz-name" error={errors.name}>
+                {(a11y) => (
+                  <Input
+                    {...a11y}
+                    autoComplete="organization"
+                    value={values.name}
+                    onChange={(e) => {
+                      set("name", e.target.value);
+                      if (!refTouched) set("external_client_ref", slugify(e.target.value));
+                    }}
+                  />
+                )}
+              </Field>
+
+              <Field label={t("clients.timezone")} htmlFor="wz-tz" error={errors.timezone}>
+                {(a11y) => (
+                  // Elegible y con autocompletado: lo que se guarda sale de la
+                  // lista, así que no hay zona inventada.
+                  <Combobox
+                    {...a11y}
+                    items={wizardTimezoneOptions(browserTz)}
+                    value={values.timezone}
+                    onValueChange={(v) => set("timezone", v)}
+                    placeholder={t("clients.timezone.placeholder")}
+                    emptyLabel={t("common.noMatches")}
+                  />
+                )}
+              </Field>
             </div>
 
-            {template && template.placeholders.length > 0 ? (
-              <fieldset className="flex flex-col gap-4">
-                <legend className="text-sm font-medium">{t("wizard.placeholders.title")}</legend>
-                <p className="text-sm text-muted-foreground text-pretty">{t("wizard.placeholders.body")}</p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {template.placeholders.map((ph) => (
-                    <PlaceholderField
+            {/* Solo los imprescindibles de esta plantilla, **agrupados y con
+                ayuda**. El horario no es un input: se elige (R7.1).
+
+                Cada campo dice para qué lo usa el agente y enseña un ejemplo
+                con el formato dentro: es lo que evita la pregunta que la
+                etiqueta no contesta —«¿el teléfono lleva prefijo?»— y lo que
+                deja al partner juzgar si un campo importa. */}
+            {grupos.map(({ grupo, campos }) => (
+              <section key={grupo} className="flex min-w-0 flex-col gap-4">
+                {agrupado ? (
+                  <h3 className="border-b border-border pb-2 text-sm font-medium">{t(GRUPO_TITULO[grupo])}</h3>
+                ) : null}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {campos.map((ph) => (
+                    <Field
                       key={ph.key}
-                      ph={ph}
-                      value={values.placeholders[ph.key] ?? ""}
+                      label={placeholderLabel(t, ph.key)}
+                      htmlFor={`wz-${ph.key}`}
+                      hint={ayudaDe(t, ph.key)}
                       error={errors[`ph:${ph.key}`]}
-                      onChange={(v) => set("placeholders", { ...values.placeholders, [ph.key]: v })}
-                    />
+                      className={metaDe(ph.key).ancho === "entera" ? "sm:col-span-2" : undefined}
+                    >
+                      {(a11y) => (
+                        <Input
+                          {...a11y}
+                          value={values.placeholders[ph.key] ?? ""}
+                          placeholder={ejemploDe(t, ph.key) ?? ph.example ?? undefined}
+                          onChange={(e) => set("placeholders", { ...values.placeholders, [ph.key]: e.target.value })}
+                        />
+                      )}
+                    </Field>
                   ))}
                 </div>
-              </fieldset>
-            ) : null}
-          </div>
-        ) : null}
+              </section>
+            ))}
 
-        {step === "channel" ? (
-          <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground text-pretty">{t("wizard.channel.body")}</p>
-            <div role="radiogroup" aria-label={t("wizard.channel.title")} className="grid gap-2 sm:grid-cols-3">
-              {(["whatsapp", "later"] as ChannelChoice[]).map((c) => {
-                const selected = values.channel === c;
-                const label = c === "whatsapp" ? t("wizard.channel.whatsapp") : t("wizard.channel.later");
-                const body = c === "whatsapp" ? t("wizard.channel.whatsapp.body") : null;
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => set("channel", c)}
-                    className={cn(
-                      "flex min-w-0 flex-col items-start gap-1 rounded-md border px-3 py-2 text-left text-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                      selected ? "border-foreground bg-muted" : "border-border hover:bg-muted/60",
-                    )}
-                  >
-                    <span className="font-medium">{label}</span>
-                    {body ? <span className="text-xs text-muted-foreground text-pretty">{body}</span> : null}
-                  </button>
-                );
-              })}
-            </div>
+            {needed.some((ph) => ph.key === HOURS_KEY) ? <HoursField value={hours} onChange={setHours} /> : null}
+
+            {/* La referencia, fuera del camino: se deriva del nombre y casi
+                nadie quiere tocarla (R4.2). */}
+            <details className="flex flex-col gap-2">
+              <summary className="cursor-pointer text-sm text-muted-foreground">{t("wizard.details.advanced")}</summary>
+              <div className="mt-2 grid min-w-0 max-w-md content-start gap-2">
+                <Label htmlFor="wz-ref">{t("clients.ref")}</Label>
+                <Input
+                  id="wz-ref"
+                  className="font-mono"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={values.external_client_ref}
+                  aria-invalid={!!errors.external_client_ref}
+                  aria-describedby="wz-ref-hint"
+                  onChange={(e) => {
+                    setRefTouched(true);
+                    set("external_client_ref", e.target.value);
+                  }}
+                />
+                <p id="wz-ref-hint" className="text-sm text-pretty text-muted-foreground">
+                  {t("clients.create.refHint")}
+                </p>
+                {errors.external_client_ref ? (
+                  <p className="text-sm text-destructive">{errors.external_client_ref}</p>
+                ) : null}
+              </div>
+            </details>
           </div>
         ) : null}
 
         {step === "review" ? (
-          <div className="flex flex-col gap-6">
-            <DescriptionList
-              layout="inline"
-              items={[
-                { key: "name", term: t("common.name"), detail: values.name, truncate: true },
-                { key: "ref", term: t("clients.ref"), detail: values.external_client_ref, mono: true, truncate: true },
-                { key: "tz", term: t("clients.timezone"), detail: values.timezone, mono: true },
-                { key: "template", term: t("wizard.review.template"), detail: template ? `${template.display_name} (${template.name})` : t("wizard.template.none"), truncate: true },
-                { key: "channel", term: t("wizard.review.channel"), detail: t(values.channel === "whatsapp" ? "wizard.review.channel.whatsapp" : "wizard.review.channel.later") },
-              ]}
-            />
-            {template && canPublish ? (
-              <div className="flex items-start gap-3">
-                <Checkbox
-                  id="wz-publish"
-                  checked={values.publish_now}
-                  disabled={running || outcome !== "idle"}
-                  onCheckedChange={(v) => {
-                    set("publish_now", Boolean(v));
-                    setStages(planStages({ seed_template: values.seed_template, publish_now: Boolean(v) }));
-                  }}
-                />
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="wz-publish">{t("wizard.review.publishNow")}</Label>
-                  <p className="text-xs text-muted-foreground text-pretty">{t("wizard.review.publishNow.hint")}</p>
-                </div>
-              </div>
-            ) : null}
+          <div className="flex flex-col gap-4">
+            {/* Quién es, con la cara de su rubro. No repite lo que acabas de
+                escribir campo a campo: lo dice de un vistazo. */}
+            <div className="flex min-w-0 flex-col gap-1 rounded-md bg-card p-4 ring-1 ring-foreground/10">
+              <span className="font-medium">{values.name}</span>
+              <span className="text-sm text-muted-foreground">
+                {[template?.display_name, values.timezone].filter(Boolean).join(" · ")}
+              </span>
+              {needed.some((ph) => ph.key === HOURS_KEY) ? (
+                <span className="text-sm text-muted-foreground">{hoursLabel(hours)}</span>
+              ) : null}
+            </div>
 
-            {/* progress */}
-            <section aria-labelledby="wz-progress" aria-live="polite" className="flex flex-col gap-2 rounded-md border border-border bg-card p-4">
-              <h3 id="wz-progress" className="text-xs font-medium tracking-eyebrow text-muted-foreground uppercase">
-                {t("wizard.progress.title")}
-              </h3>
-              <Checklist
-                ariaLabel={t("wizard.progress.title")}
-                items={stages.map<ChecklistItem>((s) => ({
-                  key: s.key,
-                  label: t(STAGE_LABEL[s.key]),
-                  status: s.status === "pending" ? "todo" : s.status,
-                  meta: t(
-                    s.status === "pending"
-                      ? "wizard.stage.pending"
-                      : s.status === "running"
-                        ? "wizard.stage.running"
-                        : s.status === "done"
-                          ? "wizard.stage.done"
-                          : s.status === "skipped"
-                            ? "wizard.stage.skipped"
-                            : "wizard.stage.failed",
-                  ),
-                  detail:
-                    s.status === "failed"
-                      ? s.error
-                      : s.key === "channel" && s.status === "done"
-                        ? t(values.channel === "whatsapp" ? "wizard.stage.channel.whatsapp" : "wizard.stage.channel.later")
-                        : undefined,
-                  onRetry: s.status === "failed" && !running ? () => void retry(s.key) : undefined,
-                  retryLabel: t("wizard.stage.retry"),
-                }))}
-              />
-              {outcome === "done" ? (
-                <div className="mt-2 flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/10 p-3" role="status">
-                  <p className="text-sm font-medium">{t("wizard.done.title")}</p>
-                  <p className="text-sm text-muted-foreground text-pretty">{t("wizard.done.body", { seconds: seconds ?? 0 })}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button nativeButton={false} render={<Link href={clientHref} />}>
-                      {t("wizard.done.open")}
-                    </Button>
-                    <Button variant="outline" nativeButton={false} render={<Link href={`${clientHref}/playground`} />}>
-                      {t("wizard.done.playground")}
-                    </Button>
-                    {values.channel !== "later" ? (
-                      <Button variant="outline" nativeButton={false} render={<Link href={`${clientHref}/channels`} />}>
-                        {t("wizard.done.channels")}
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-              {outcome === "partial" && !running ? (
-                <p className="text-sm text-muted-foreground text-pretty" role="status">
-                  {t("wizard.done.partial")}{" "}
-                  <Link className="underline underline-offset-4" href={clientHref}>
-                    {t("wizard.done.open")}
-                  </Link>
+            {/* Qué va a pasar al pulsar, en dos cosas y no en cuatro frases:
+                lo que se crea, y lo que quedará pendiente. Y esos tres
+                pendientes son los tres pasos de la ficha. */}
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-sm font-medium">{t("wizard.review.onCreate")}</h3>
+                <p className="max-w-prose text-sm text-pretty text-muted-foreground">
+                  {template
+                    ? t("wizard.review.onCreate.body", { n: template.tools_count })
+                    : t("wizard.review.onCreate.noTemplate")}
                 </p>
-              ) : null}
-            </section>
+              </div>
+              <div className="flex flex-col gap-2">
+                <h3 className="text-sm font-medium">{t("wizard.review.pending")}</h3>
+                <Checklist
+                  dense
+                  ariaLabel={t("wizard.review.pending")}
+                  items={[
+                    { key: "publish", label: t("wizard.review.pending.publish"), status: "todo", detail: t("wizard.review.pending.publish.body") },
+                    { key: "credit", label: t("wizard.review.pending.credit"), status: "todo", detail: t("wizard.review.pending.credit.body") },
+                    { key: "channel", label: t("wizard.review.pending.channel"), status: "todo", detail: t("wizard.review.pending.channel.body") },
+                  ]}
+                />
+                <p className="text-sm text-muted-foreground">{t("wizard.review.pending.foot")}</p>
+              </div>
+            </div>
+
+            {outcome !== "idle" ? (
+              <section aria-label={t("wizard.progress.title")} aria-live="polite" className="flex flex-col gap-2 rounded-md bg-card p-4 ring-1 ring-foreground/10">
+                <Checklist
+                  ariaLabel={t("wizard.progress.title")}
+                  items={stages.map<ChecklistItem>((s) => ({
+                    key: s.key,
+                    label: t(STAGE_LABEL[s.key]),
+                    status: s.status === "pending" ? "todo" : s.status,
+                    detail: s.status === "failed" ? s.error : undefined,
+                    onRetry: s.status === "failed" && !running ? () => void retry(s.key) : undefined,
+                    retryLabel: t("wizard.stage.retry"),
+                  }))}
+                />
+                {outcome === "partial" && !running ? (
+                  // §V: lo que quedó hecho no se pierde, y se dice.
+                  <p className="text-sm text-pretty text-muted-foreground" role="status">
+                    {t("wizard.done.partial")}{" "}
+                    <Link className="underline underline-offset-4" href={clientHref}>
+                      {t("wizard.done.open")}
+                    </Link>
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
           </div>
         ) : null}
       </section>
@@ -584,11 +526,19 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
           </Button>
         )}
         {step !== "review" ? (
-          <Button type="button" onClick={() => void goNext()} disabled={full} loading={checkingRef}>
+          // R2.2: no se puede continuar sin elegir. `null` es una elección
+          // legítima —«ninguna de estas»—, así que lo que se mira es si la
+          // ha tomado, no su valor.
+          <Button
+            type="button"
+            onClick={() => void goNext()}
+            disabled={step === "template" && !templateChosen}
+            loading={checkingRef}
+          >
             {t("wizard.next")}
           </Button>
         ) : outcome === "idle" ? (
-          <Button type="button" onClick={() => void runAll()} disabled={full} loading={running}>
+          <Button type="button" onClick={() => void runAll()} loading={running}>
             {running ? t("wizard.running") : t("wizard.run")}
           </Button>
         ) : null}
@@ -608,45 +558,6 @@ export function NewClientWizard({ quota, templates, canPublish }: Props) {
           performLeave(leaveKind);
         }}
       />
-    </div>
-  );
-}
-
-function PlaceholderField({ ph, value, error, onChange }: { ph: SeedPlaceholder; value: string; error?: string; onChange: (v: string) => void }) {
-  const t = useT();
-  const id = `ph-${ph.key.replace(/\W/g, "-")}`;
-  const hintId = `${id}-hint`;
-  const label = placeholderLabel(t, ph.key);
-  return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <Label htmlFor={id} className="min-w-0">
-        <span className="min-w-0 truncate" title={label}>
-          {label}
-        </span>
-        {!ph.required ? <span className="ml-1 font-normal text-muted-foreground">({t("wizard.placeholders.optional")})</span> : null}
-        {ph.secret ? <span className="ml-1 font-normal text-warning">· {t("wizard.placeholders.secret")}</span> : null}
-      </Label>
-      <Input
-        id={id}
-        type={ph.secret ? "password" : ph.kind === "number" ? "number" : "text"}
-        inputMode={ph.kind === "number" ? "decimal" : undefined}
-        autoComplete={ph.secret ? "off" : undefined}
-        value={value}
-        required={ph.required}
-        aria-required={ph.required}
-        aria-invalid={!!error}
-        aria-describedby={hintId}
-        placeholder={ph.example ?? undefined}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      <p id={hintId} className="min-w-0 truncate text-xs text-muted-foreground" title={label}>
-        {ph.kind === "list"
-          ? t("wizard.placeholders.list")
-          : ph.example
-            ? t("wizard.placeholders.default", { value: ph.example })
-            : placeholderLabel(t, ph.key)}
-      </p>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }

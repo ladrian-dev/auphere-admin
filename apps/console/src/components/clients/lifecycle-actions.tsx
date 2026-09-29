@@ -70,6 +70,28 @@ export function ClientLifecycleActions({ refId, status, name, canDelete, layout 
   // sola fuente para «pausar», «archivar» y «eliminar».
   const dialogs = (
     <>
+      {/* Pausar y archivar preguntan antes (QA-15), y el diálogo **tiene que
+          vivir aquí**: cuando solo estaba en la fila de botones, el mismo
+          control desde el menú «Más» de la ficha ponía `confirmStatus` y no
+          pintaba nada. Archivar y pausar no hacían nada, sin error y sin
+          rastro — un control muerto es peor que uno que falla. */}
+      <ConfirmDialog
+        open={confirmStatus !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmStatus(null);
+        }}
+        title={
+          confirmStatus === "paused"
+            ? t("clients.pause.title", { name })
+            : t("clients.archive.title", { name })
+        }
+        description={confirmStatus === "paused" ? t("clients.pause.body") : t("clients.archive.body")}
+        confirmLabel={confirmStatus === "paused" ? t("clients.pause.confirm") : t("clients.archive.confirm")}
+        cancelLabel={t("common.cancel")}
+        onConfirm={async () => {
+          if (confirmStatus) applyStatus(confirmStatus);
+        }}
+      />
       {deleteIsOffered(status, canDelete) ? (
           <ConfirmDialog
           open={confirmDelete}
@@ -182,23 +204,6 @@ export function ClientLifecycleActions({ refId, status, name, canDelete, layout 
           {t("clients.action.unarchive")}
         </Button>
       )}
-      <ConfirmDialog
-        open={confirmStatus !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirmStatus(null);
-        }}
-        title={
-          confirmStatus === "paused"
-            ? t("clients.pause.title", { name })
-            : t("clients.archive.title", { name })
-        }
-        description={confirmStatus === "paused" ? t("clients.pause.body") : t("clients.archive.body")}
-        confirmLabel={confirmStatus === "paused" ? t("clients.pause.confirm") : t("clients.archive.confirm")}
-        cancelLabel={t("common.cancel")}
-        onConfirm={async () => {
-          if (confirmStatus) applyStatus(confirmStatus);
-        }}
-      />
       {deleteIsOffered(status, canDelete) ? (
         <Button
           variant="destructive"

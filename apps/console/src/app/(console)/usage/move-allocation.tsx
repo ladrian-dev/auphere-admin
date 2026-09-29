@@ -20,8 +20,13 @@ type Row = { ref: string; name: string; cap: number };
 export function MoveAllocationForm({ sources, destinations }: { sources: Row[]; destinations: Row[] }) {
   const t = useT();
   const locale = useLocale();
-  const [fromRef, setFromRef] = React.useState(sources[0]?.ref ?? "");
-  const [toRef, setToRef] = React.useState(destinations.find((d) => d.ref !== sources[0]?.ref)?.ref ?? "");
+  // El origen por defecto es el primero **que tenga algo que dar**. Desde
+  // que un cliente nace con cero crédito (spec 019), «el primero de la
+  // lista» es casi siempre uno vacío, y el primer clic del partner era
+  // siempre un error: «no tiene crédito suficiente».
+  const primerOrigen = sources.find((r) => r.cap > 0) ?? sources[0];
+  const [fromRef, setFromRef] = React.useState(primerOrigen?.ref ?? "");
+  const [toRef, setToRef] = React.useState(destinations.find((d) => d.ref !== primerOrigen?.ref)?.ref ?? "");
   const [value, setValue] = React.useState("");
   const [confirm, setConfirm] = React.useState<{ qty: number } | null>(null);
   const [error, setError] = React.useState<string | null>(null);

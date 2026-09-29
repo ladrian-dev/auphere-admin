@@ -44,7 +44,7 @@ describe("cómo se lee un ajuste del agente", () => {
   });
 
   it("los idiomas dicen en cuál responde y cuáles admite", () => {
-    expect(settingValue(t, "languages", { primary: "es", allowed: ["es", "en"] })).toBe("Responde en es; admite es, en");
+    expect(settingValue(t, "languages", { primary: "es", allowed: ["es", "en"] })).toBe("Responde en es · admite es, en");
   });
 
   it("un objetivo largo se recorta en vez de romper la fila", () => {

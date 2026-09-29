@@ -16,9 +16,9 @@ export const agentToolsMessages = {
   "agentSettings.link.title": { es: "Ajustes del agente", en: "Agent settings" },
   "agentSettings.link.body": { es: "Identidad, tono, horario, idiomas, escalado y aviso de IA — sin tocar el prompt.", en: "Identity, tone, schedule, languages, escalation and AI disclosure — without touching the prompt." },
   "agentSettings.title": { es: "Ajustes del agente", en: "Agent settings" },
-  "agentSettings.description": { es: "Lo que el negocio decide sobre su agente. Se guarda en un borrador; publicar sigue siendo el paso explícito.", en: "What the business decides about its agent. Saved to a draft; publishing stays an explicit step." },
+  "agentSettings.description": { es: "Lo que el negocio decide sobre su agente. Se guarda en un borrador, y publicar sigue siendo el paso explícito.", en: "What the business decides about its agent. Saved to a draft, and publishing stays an explicit step." },
   "agent.model.title": { es: "Modelo", en: "Model" },
-  "agent.model.description": { es: "El modelo que responde a los clientes de este negocio. Se aplica en el siguiente mensaje; no hace falta publicar.", en: "The model that answers this business's customers. Applies on the next message; no publish needed." },
+  "agent.model.description": { es: "El modelo que responde a los clientes de este negocio. Se aplica en el siguiente mensaje, sin necesidad de publicar.", en: "The model that answers this business's customers. Applies on the next message, with no publish needed." },
   "agent.model.current": { es: "Actual", en: "Current" },
   "agent.model.cost": { es: "×{n} créditos", en: "×{n} credits" },
   "agent.model.cheapest": { es: "×1 créditos · el más económico", en: "×1 credits · the cheapest" },
@@ -79,7 +79,7 @@ export const agentToolsMessages = {
   "agentSettings.aiDisclosure.message": { es: "Texto del aviso (opcional)", en: "Disclosure wording (optional)" },
   "agentSettings.aiDisclosure.decided": { es: "Decisión registrada por {who} el {when}.", en: "Decision recorded by {who} on {when}." },
   "agentSettings.aiDisclosure.warning.title": { es: "Estás desactivando el aviso de IA", en: "You are turning the AI disclosure off" },
-  "agentSettings.aiDisclosure.warning.body": { es: "El artículo 50 del Reglamento de IA de la UE obliga a informar a las personas de que hablan con un sistema de IA. Desactivarlo queda registrado con tu usuario y fecha; la responsabilidad legal es del negocio que opera el agente.", en: "Article 50 of the EU AI Act requires telling people they are talking to an AI system. Turning it off is recorded with your user and date; legal responsibility lies with the business operating the agent." },
+  "agentSettings.aiDisclosure.warning.body": { es: "El artículo 50 del Reglamento de IA de la UE obliga a informar a las personas de que hablan con un sistema de IA. Desactivarlo queda registrado con tu usuario y fecha. La responsabilidad legal es del negocio que opera el agente.", en: "Article 50 of the EU AI Act requires telling people they are talking to an AI system. Turning it off is recorded with your user and date. Legal responsibility lies with the business operating the agent." },
   "agentSettings.validation.time": { es: "Usa HH:MM (24 h).", en: "Use HH:MM (24 h)." },
   "agentSettings.validation.openBeforeClose": { es: "La apertura debe ser anterior al cierre.", en: "Opening time must be before closing time." },
   "agentSettings.validation.timezone": { es: "Zona horaria desconocida.", en: "Unknown timezone." },
@@ -95,7 +95,7 @@ export const agentToolsMessages = {
   // Ya no hay una lista de herramientas detrás que «siga disponible»: las
   // integraciones son la pantalla, así que el texto dice lo que de verdad
   // pasa y qué hacer.
-  "connectors.error": { es: "No se pudieron cargar los conectores. Vuelve a intentarlo en un momento; lo que ya estaba conectado sigue funcionando.", en: "Could not load the connectors. Try again in a moment; whatever was already connected keeps working." },
+  "connectors.error": { es: "No se pudieron cargar los conectores. Vuelve a intentarlo en un momento. Lo que ya estaba conectado sigue funcionando.", en: "Could not load the connectors. Try again in a moment. Whatever was already connected keeps working." },
   "connectors.status.none": { es: "No conectado", en: "Not connected" },
   "connectors.status.connected": { es: "Conectado", en: "Connected" },
   "connectors.status.pending": { es: "Pendiente de consentimiento", en: "Awaiting consent" },
@@ -152,7 +152,7 @@ export const agentToolsMessages = {
   "connectors.apiKey.connected": { es: "{name} conectado.", en: "{name} connected." },
   "connectors.apiKey.savedButNotSynced": { es: "{name}: clave guardada, pero no se pudo sincronizar.", en: "{name}: key saved, but it could not sync." },
   "connectors.apiKey.rejected": { es: "{name}: el proveedor rechazó la clave. Nada se ha activado.", en: "{name}: the provider rejected the key. Nothing was enabled." },
-  "connectors.apiKey.noForm": { es: "Este conector no define campos de credenciales; contacta con Auphere.", en: "This connector defines no credential fields; contact Auphere." },
+  "connectors.apiKey.noForm": { es: "Este conector no define campos de credenciales. Contacta con Auphere.", en: "This connector defines no credential fields. Contact Auphere." },
   "connectors.apiKey.required": { es: "Campo obligatorio.", en: "Required field." },
 
   // ── skills (CP-14) ───────────────────────────────────────────────
@@ -162,7 +162,7 @@ export const agentToolsMessages = {
   // R5.2: dice **de quién** es el agente que lo lee. Sin eso la frase es
   // cierta y no sirve: el partner tiene varios clientes, y la pregunta que
   // trae es si lo que sube aquí se va a mezclar con los demás.
-  "knowledge.description": { es: "Lo que lee el agente de este cliente cuando responde, y solo el de este cliente. El texto extraído no se muestra aquí; solo su estado y tamaño.", en: "What this client's agent reads when it answers, and only this client's. The extracted text is not shown here; only its state and size." },
+  "knowledge.description": { es: "Lo que lee el agente de este cliente cuando responde, y solo el de este cliente. El texto extraído no se muestra aquí, solo su estado y tamaño.", en: "What this client's agent reads when it answers, and only this client's. The extracted text is not shown here, only its state and size." },
   "knowledge.readonly": { es: "Tu rol solo permite ver el conocimiento.", en: "Your role can only view knowledge." },
   "knowledge.empty.title": { es: "Este cliente aún no tiene conocimiento", en: "This client has no knowledge yet" },
   "playbook.empty.title": { es: "Tu guía está vacía", en: "Your playbook is empty" },

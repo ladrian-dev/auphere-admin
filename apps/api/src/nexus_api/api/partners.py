@@ -51,8 +51,9 @@ _whatsapp_status = whatsapp_status
     responses={
         409: {
             "description": (
-                "Cuota de clientes del partner alcanzada (``max_clients``). No se "
-                "creó nada; archivar un cliente o pedir a Auphere que amplíe el límite."
+                "Guarda de aprovisionamiento (``max_clients``). No se creó nada. "
+                "**No es un límite de plan** desde la spec 019: alcanzarla suele "
+                "significar un bucle o una clave filtrada."
             )
         },
         422: {"description": "El blueprint del partner falló al aprovisionar el cliente."},
@@ -76,11 +77,13 @@ async def provision_client(
     ``services/partner_provisioning.py``. Re-provisioning rotates
     connector credentials but never re-seeds an existing agent.
 
-    Since CP-06 the partner's client quota (``partners.max_clients``,
-    migration 0081) is checked before anything is created; the client
-    ``max_clients + 1`` gets a 409 and nothing is written. The shared
-    implementation lives in ``services/partner_clients.py`` — the
-    partner console uses the same code path."""
+    Since CP-06 ``partners.max_clients`` (migration 0081) is checked before
+    anything is created and nothing is written past it. Since spec 019 it is
+    a **guard, not a quota**: creating clients is not sold by the client, so
+    the ceiling sits where no real partner reaches it (migration 0130) and
+    only catches a loop or a leaked key. The shared implementation lives in
+    ``services/partner_clients.py`` — the partner console uses the same code
+    path."""
     try:
         return await provision_partner_client(
             session,
