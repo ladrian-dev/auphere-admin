@@ -135,7 +135,7 @@ clínica bajó a nueve cuando T036 dejó de exigir lo que el prompt ya no afirma
 | CE-001 · cuatro campos y no veintitrés | ✅ medido arriba |
 | CE-002 · tres pasos, ninguno de canal | ✅ e2e `intake.spec.ts` |
 | CE-003 · nadie termina con una plantilla que no eligió | ✅ e2e: «Continuar» deshabilitado sin elegir |
-| CE-004 · alguien de fuera encuentra su plantilla | ⏳ **pendiente**: necesita una persona |
+| CE-004 · alguien de fuera encuentra su plantilla | ⏳ **pendiente**: necesita una persona · guion en [`ce-004-guion.md`](ce-004-guion.md) |
 | CE-008 · nace con cero créditos y la ficha lo dice | ✅ API + e2e |
 | CE-009 · ninguna pantalla mezcla idiomas | ✅ dos guardias, consola y semillas |
 
@@ -143,3 +143,14 @@ clínica bajó a nueve cuando T036 dejó de exigir lo que el prompt ya no afirma
 
 **100 %.** `parity.md` cierra sus seis secciones; la cuarta —los cinco campos
 que la clínica seguía exigiendo— la cerró T036.
+
+## CE-004 · pendiente
+
+No lo cierra un test y no lo cierro yo: hace falta alguien que no conozca la
+consola. El guion está escrito para que lo conduzca cualquiera del equipo en
+diez minutos —[`ce-004-guion.md`](ce-004-guion.md)— y lo que hay que traerse de
+vuelta son **las frases literales**, no el sí o el no.
+
+| Quién | Cuándo | Qué dijo | ¿Pasa? |
+|---|---|---|---|
+| _pendiente_ | | | |
