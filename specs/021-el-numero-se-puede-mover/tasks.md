@@ -1,0 +1,141 @@
+# Tasks: el número se puede mover
+
+**Input**: documentos de diseño de `/specs/021-el-numero-se-puede-mover/`
+
+**Prerequisites**: spec.md, plan.md, research.md, data-model.md, contracts/unlink.md
+
+**Tests**: NO son opcionales (constitución §VII): cada bloque se escribe
+primero, se ve en rojo, y solo entonces se implementa.
+
+**Organization**: por historia. H1 = un número desvinculado no ocupa sitio ·
+H2 = desvincular deshace en Meta · H3 = si Meta falla, se sabe. **H2 y H3 se
+entregan juntas**: separarlas dejaría el modo de fallo sin cubrir (plan,
+§Orden de entrega).
+
+## Reglas de este repo *(constitución)*
+
+- **Cada tarea cita sus requisitos**: termina con `_Requisitos: N.m_`.
+- **Cada tarea entregada se anota**: `Entregado: rama, YYYY-MM-DD`.
+- **Test primero (§VII)**; **aislamiento (§I)** con tarea propia (T-ISO);
+  **licencias (§VIII)**: ninguna dependencia nueva (T-LIC); **medidor**: nada
+  gasta (T-MET).
+- **Cierre**: tests rojos → código → suites en verde → paridad → evidencia →
+  log de sesión en la KB → merge a `develop` → staging.
+
+## Format: `[ID] [P?] [Story] Description`
+
+## Path Conventions
+
+API en `apps/api/src/nexus_api/` con tests en `apps/api/tests/{unit,integration,isolation}/`;
+cliente de Meta en `apps/channels/src/nexus_channels/whatsapp_meta/`; consola
+en `apps/console/src/` con tests junto al código; KB en
+`/Users/matos/workspace/kb/Auphere/nexus/`.
+
+---
+
+## Phase 1: Setup
+
+- [ ] T001 [P] Crear `specs/021-el-numero-se-puede-mover/evidence/README.md` y anotar en `parity.md` qué hacía desvincular en la spec 019 (marcar la fila, conservarla, no tocar Meta) y qué de eso cambia: **nada se retira** — la fila se sigue conservando; se añade lo que faltaba. _Requisitos: ninguno — ritual de cierre_
+- [ ] T002 [P] T-LIC · `pnpm-lock.yaml` y `uv.lock` no cambian en toda la spec. Se corre al abrir y al cerrar. _Requisitos: ninguno — puerta §VIII_
+- [ ] T003 [P] T-MET · Test en `apps/api/tests/unit/test_endpoint_console_channels.py` de que desvincular **no** escribe ningún evento de consumo: las llamadas a Meta no son modelo, reloj ni herramienta de pago. _Requisitos: ninguno — puerta del medidor_
+
+---
+
+## Phase 2: Foundational
+
+- [ ] T004 T-ISO · `apps/api/tests/isolation/test_channel_number_scope.py`: con dos tenants, (a) la fila desvinculada de A **no bloquea** el alta de B y B no puede leerla ni alterarla; (b) con el número **vivo** en A, el 409 que recibe B lleva `number_in_use` y **nada más** —ni tenant, ni partner, ni nombre—; (c) desvincular con un id de canal ajeno es 404. _Requisitos: 1.2, 1.4, 1.5 · puerta §I_
+- [ ] T005 [P] `deregister_phone(phone_number_id, access_token)` en `apps/channels/src/nexus_channels/whatsapp_meta/meta_client.py` → `POST /{phone_number_id}/deregister`, con test unitario sobre el cliente HTTP simulado (200 → dict; 4xx → la excepción que ya lanza el resto). Existe `unsubscribe_app`; falta su pareja. _Requisitos: 2.1_
+
+---
+
+## Iteración 1 · Un número desvinculado no ocupa sitio (H1) 🎯 MVP
+
+**Goal**: el índice deja de contar los desvinculados. Se puede soltar a
+producción sin tocar Meta: lo único observable que cambia es que B deja de
+recibir un «en uso» falso.
+
+**Independent Test**: A desvincula, B conecta, A conserva su historial.
+
+### Tests primero
+
+- [ ] T006 [P] [US1] Test en `apps/api/tests/unit/test_endpoint_console_whatsapp.py`: B conecta un número que A desvinculó → **201**; la fila de A sigue existiendo, `disconnected`, con su mismo id; la de B es otra. _Requisitos: 1.1, 1.2_
+- [ ] T007 [P] [US1] Test: A desvincula y **vuelve a conectar** → recupera **el mismo** `channel.id`, y las conversaciones que colgaban de él siguen colgando. Ya se comporta así (el lookup no filtra por estado): el test lo fija para que nadie lo «arregle». _Requisitos: 1.3_
+- [ ] T008 [P] [US1] Test: con el número **vivo** en A, B conecta → **409** `number_in_use`; A no cambia en nada; el cuerpo no nombra a A. _Requisitos: 1.4, 1.5_
+
+### Implementación
+
+- [ ] T009 [US1] Migración `apps/api/alembic/versions/0132_channel_number_unique_when_live.py`: `DROP CONSTRAINT uq_channels_type_provider_id` y `CREATE UNIQUE INDEX uq_channels_live_number ON channels (type, provider_identifier) WHERE status <> 'disconnected'`. **La bajada se niega** si hay dos filas con el mismo número: mejor un `downgrade` que no corre que uno que borra. Id de revisión ≤ 32 caracteres. _Requisitos: 1.1, 1.2_
+- [ ] T010 [US1] `apps/api/src/nexus_api/db/models/channel.py`: sustituir el `UniqueConstraint` en `__table_args__` por `Index("uq_channels_live_number", …, unique=True, postgresql_where=…)`, con el comentario de por qué. _Requisitos: 1.1, 1.2_
+- [ ] T011 [US1] `apps/api/src/nexus_api/api/console/whatsapp.py`: `_NUMBER_UNIQUE` pasa a buscar `uq_channels_live_number`. Sin esto, el 409 se convierte en 500 el día que el índice cambie de nombre — y T008 lo vería. _Requisitos: 1.4_
+
+---
+
+## Iteración 2 · Desvincular deshace en Meta, sin quedarse a medias (H2 + H3)
+
+**Goal**: dar de baja el número; desuscribir la app solo si era el último de
+su WABA; borrar las credenciales que toquen; y si Meta falla, dejarlo escrito
+y reintentable.
+
+**Independent Test**: desvincular con Meta simulado en tres modos —bien, con
+hermano vivo, caído— y leer el canal después.
+
+### Tests primero
+
+- [ ] T012 [US2] [US3] **Este va primero, por ser el modo de fallo nuevo.** Test en `apps/api/tests/unit/test_endpoint_console_channels.py`: con el cliente de Meta simulado **fallando**, desvincular → 200, canal `disconnected`, `unlink_pending == ["deregister", …]`, y `channel_agent_enabled` es falso. Nada de Meta llegó y el partner lo sabe. _Requisitos: 3.1_
+- [ ] T013 [P] [US2] Test: último número vivo de su `waba_id` en el tenant → Meta recibe `deregister` **y** `unsubscribe`; `config_encrypted` del canal y `tenant_credentials` quedan borrados; `unlink_pending` vacío. _Requisitos: 2.1, 2.2_
+- [ ] T014 [P] [US2] Test: con un **hermano vivo** bajo la misma `waba_id` → Meta recibe `deregister` y **no** `unsubscribe`; `tenant_credentials` intactas; el hermano sigue `active` y `channel_agent_enabled`. _Requisitos: 2.3_
+- [ ] T015 [P] [US3] Test: sobre un canal `disconnected` con `unlink_pending`, un segundo `POST …/disconnect` con Meta ya bien **termina lo pendiente** y vacía la lista; sobre uno sin pendientes, no llama a Meta y devuelve 200. _Requisitos: 3.2_
+- [ ] T016 [P] [US3] Test: la fila de auditoría de `console.channel.disconnect` lleva `after.meta == {"done": [...], "pending": [...]}`. _Requisitos: 3.3_
+- [ ] T017 [P] [US2] Test de que **el estado se escribe antes que Meta**: si el proceso muere entre la primera transacción y la llamada (simulado con una excepción tras el primer commit), la fila queda `disconnected` con `unlink_pending` completo. Es la razón de las dos transacciones (research D2). _Requisitos: 3.1_
+
+### Implementación
+
+- [ ] T018 [US2] `apps/api/src/nexus_api/api/console/schemas_channels.py`: `unlink_pending: list[str] = []` en `ChannelDetailOut`, leído de `config`. _Requisitos: 3.2_
+- [ ] T019 [US2] [US3] `apps/api/src/nexus_api/api/console/channels.py` — desvincular en dos transacciones: (1) marcar `disconnected`, calcular si es el último de su `waba_id` **bajo RLS y excluyéndose a sí mismo**, escribir `unlink_pending`, auditar, commit; (2) por cada paso pendiente llamar a Meta con las credenciales del canal o, si no tiene, las del tenant; quitar el paso al terminar; borrar `config_encrypted` tras `deregister` y `tenant_credentials` tras `unsubscribe`; commit. Un fallo de Meta **no** es error HTTP: queda en la lista. El mismo endpoint sobre un canal ya desvinculado reintenta lo pendiente. _Requisitos: 2.1, 2.2, 2.3, 3.1, 3.2, 3.3_
+- [ ] T020 [US1] `apps/api/src/nexus_api/api/console/whatsapp.py`: cuando Meta rechaza el alta porque el número sigue en otra cuenta, devolver **409 `number_held_by_previous_owner`** en vez del mensaje genérico; con test. _Requisitos: 4.2_
+
+---
+
+## Iteración 3 · La tarjeta lo dice, y B entiende el rechazo
+
+### Tests primero
+
+- [ ] T021 [P] [US3] Test en `apps/console/src/components/channels/__tests__/channel-card.test.tsx`: con `unlink_pending` no vacío, la tarjeta dice qué queda pendiente en Meta y ofrece **reintentar**; con la lista vacía, no. Y el diálogo de desvincular ya no dice «sigue registrado en Meta» a secas: dice que se da de baja de nuestra aplicación y que **sacarlo de tu cuenta de Meta** se hace en el Business Manager. _Requisitos: 3.2, 2.4_
+- [ ] T022 [P] [US1] Test en `apps/console/src/components/channels/__tests__/whatsapp-connect.test.tsx`: el 409 `number_held_by_previous_owner` se enseña con su frase —el dueño anterior tiene que soltarlo en Meta— y no como fallo de la consola. _Requisitos: 4.2_
+
+### Implementación
+
+- [ ] T023 [US3] `apps/console/src/lib/backend/channels.ts`: `unlink_pending`. `apps/console/src/components/channels/channel-card.tsx`: el estado pendiente y el botón de reintentar (reusa `disconnectChannelAction`). `apps/console/src/i18n/lanes/channels.ts`: la copia de pendiente, reintento, el diálogo corregido y `number_held_by_previous_owner`, en ES y EN. _Requisitos: 2.4, 3.2, 4.2_
+- [ ] T024 [US1] `apps/console/src/components/channels/whatsapp-connect.tsx`: traducir el código nuevo del 409. _Requisitos: 4.2_
+
+---
+
+## Cierre
+
+- [ ] T025 Recorrer `quickstart.md`: CE-001, 002, 003 y 006 **en local**; CE-004 y 005 **en staging con número real** — incluida la verificación de research D5 (`deregister` sobre un número en coexistencia). Anotar en `evidence/iteracion-1.md` qué se vio en cada uno. _Requisitos: todos · CE-001–006_
+- [ ] T026 Paridad al 100 %, log de sesión en la KB, merge a `develop`, staging. Suites: API (canales, whatsapp, aislamiento y la completa en CI), consola, e2e. _Requisitos: ninguno — ritual de cierre_
+
+---
+
+## Dependencias
+
+- **T009 → T010 → T011**: el índice, el modelo y la constante del 409 van juntos; sin T011, T008 se pone rojo con un 500.
+- **T005 antes de T019**: no se puede dar de baja sin la llamada.
+- **T012 antes que T013–T017**: el modo de fallo se escribe primero, y el resto se apoya en el mismo simulador de Meta.
+- **T019 antes de T023**: la tarjeta lee `unlink_pending`.
+- **Iteración 1 se puede soltar sola**. Iteraciones 2 y 3 se sueltan juntas.
+
+## Paralelo
+
+- T001, T002, T003, T005 a la vez.
+- T006, T007, T008 a la vez, sobre el índice ya migrado.
+- T013, T014, T015, T016, T017 a la vez, tras T012.
+- T021, T022 a la vez.
+
+## Estrategia
+
+**MVP = Iteración 1**: tres tests, una migración, dos líneas de código. Contesta
+la pregunta del owner —«¿puedo activarlo en otro partner?»— con un **sí** en
+nuestro lado, y se puede desplegar sin tocar Meta. Lo que queda después es que
+«desvincular» también suelte el número allí, y que si Meta no contesta, nadie se
+quede sin saberlo.
