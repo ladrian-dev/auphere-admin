@@ -44,7 +44,15 @@ export async function GET(
   if (!url) return new Response(null, { status: 404 });
 
   try {
-    const remoto = await fetch(url, { signal: AbortSignal.timeout(5_000) });
+    const remoto = await fetch(url, {
+      signal: AbortSignal.timeout(5_000),
+      // Wikimedia —de donde sale el logotipo de WhatsApp en el catálogo—
+      // devuelve **403 a quien no se identifica**, y el `fetch` del servidor
+      // no manda agente por su cuenta. Sin esta línea, la imagen no llega y
+      // la tarjeta cae en su icono de respaldo, que es exactamente lo que
+      // pasó en staging.
+      headers: { "user-agent": "AuphereConsole/1.0 (+https://auphere.com)" },
+    });
     const tipo = (remoto.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
     if (!remoto.ok || !IMAGENES.has(tipo)) return new Response(null, { status: 404 });
     return new Response(remoto.body, {
