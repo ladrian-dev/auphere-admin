@@ -145,6 +145,12 @@ test.describe("spec 019 · crear un cliente", () => {
   });
 
   test("crear de punta a punta deja un cliente que la ficha reconoce", async ({ page }) => {
+    // Cuatro viajes al servidor —crear, sembrar el agente, archivar y
+    // borrar— y el de sembrar depende del catálogo de habilidades. Con el
+    // servidor de desarrollo caliente son 30 s; detrás de la auditoría de
+    // accesibilidad, que lo deja exprimido, se pasa de los 120 s por
+    // defecto. El caso es largo de verdad, así que se le dice.
+    test.setTimeout(240_000);
     const nombre = nombreDePrueba();
     await abrirElAlta(page);
     await page.getByRole("radio", { name: /barber/i }).first().click();
@@ -156,9 +162,13 @@ test.describe("spec 019 · crear un cliente", () => {
 
     // Las dos etapas que de verdad llaman al servidor: crear y escribir el
     // agente. Ni publicar ni activar ni «canal».
-    await page.waitForURL(/\/clients\/[^/]+/, { timeout: 120_000 });
-    await expect(page.locator("main#main")).toBeVisible();
-    await expect(page.getByRole("heading", { name: nombre })).toBeVisible();
+    // `(?!new)`: sin eso, la espera la cumple el propio `/clients/new` y el
+    // caso sigue antes de que el asistente haya llevado a ninguna parte.
+    await page.waitForURL(/\/clients\/(?!new)[^/]+/, { timeout: 120_000 });
+    await expect(page.locator("main#main")).toBeVisible({ timeout: 30_000 });
+    // La ficha la pinta el servidor y trae varias llamadas: en frío, y más
+    // detrás de la auditoría de accesibilidad, no cabe en los 5 s de serie.
+    await expect(page.getByRole("heading", { name: nombre })).toBeVisible({ timeout: 30_000 });
 
     // Y la ficha recoge el testigo: pide lo que falta en vez de darlo por hecho.
     const ficha = await page.locator("main#main").innerText();

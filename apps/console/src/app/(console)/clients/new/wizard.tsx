@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Checklist, type ChecklistItem, Combobox, ConfirmDialog, Input, Label, Stepper } from "@nexus/ui";
+import { Button, Checklist, type ChecklistItem, Combobox, ConfirmDialog, Field, Input, Label, Stepper } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 import { messages, type MessageKey } from "@/i18n/messages";
@@ -14,6 +14,7 @@ import type { SeedTemplate } from "@/lib/backend/onboarding";
 import { HoursField } from "@/components/clients/new/hours-field";
 import { defaultHours, hoursLabel, type Hours } from "@/components/clients/new/hours";
 import { TemplatePicker } from "@/components/clients/new/template-picker";
+import { GRUPO_TITULO, agrupar, metaDe } from "@/components/clients/new/fields";
 
 import { wizardCheckRefAction, wizardCreateClientAction, wizardSeedAgentAction } from "./actions";
 import {
@@ -27,6 +28,7 @@ import {
   nextStage,
   requiredPlaceholders,
   planStages,
+  resolvePlaceholderExtra,
   resolvePlaceholderLabel,
   runOutcome,
   slugify,
@@ -56,6 +58,12 @@ const HOURS_KEY = "tenant.business_hours_label";
 
 function placeholderLabel(t: ReturnType<typeof useT>, key: string): string {
   return resolvePlaceholderLabel(key, messages, (k) => t(k as MessageKey));
+}
+function ayudaDe(t: ReturnType<typeof useT>, key: string): string | null {
+  return resolvePlaceholderExtra(key, "hint", messages, (k) => t(k as MessageKey));
+}
+function ejemploDe(t: ReturnType<typeof useT>, key: string): string | null {
+  return resolvePlaceholderExtra(key, "eg", messages, (k) => t(k as MessageKey));
 }
 
 export function NewClientWizard({ templates }: Props) {
@@ -96,6 +104,11 @@ export function NewClientWizard({ templates }: Props) {
   /** Solo lo imprescindible (spec 019, R1.1): lo opcional vive en los ajustes
    *  del agente. Sale de la plantilla, no de una lista escrita a mano. */
   const needed = React.useMemo(() => requiredPlaceholders(template), [template]);
+  // El horario tiene su propio control, así que no entra en la rejilla.
+  const { agrupado, grupos } = React.useMemo(
+    () => agrupar(needed.filter((ph) => ph.key !== HOURS_KEY)),
+    [needed],
+  );
   /** El horario no se teclea: lo compone el control. Lo demás, tal cual. */
   const placeholderValues = React.useCallback(
     (): Record<string, string> => ({
@@ -325,68 +338,80 @@ export function NewClientWizard({ templates }: Props) {
         ) : null}
 
         {step === "details" ? (
-          <div className="flex flex-col gap-4">
+          // `gap-6` entre bloques y `gap-4` dentro: la separación es lo que
+          // hace que tres grupos se lean como tres y no como una lista larga
+          // con títulos intercalados.
+          <div className="flex flex-col gap-6">
             {/* La frase que hace corto un formulario corto. Sin ella, cuatro
                 campos se leen como «cuatro, de momento». */}
             <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("wizard.details.body")}</p>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="grid min-w-0 content-start gap-2">
-                <Label htmlFor="wz-name">{t("wizard.details.name")}</Label>
-                <Input
-                  id="wz-name"
-                  autoComplete="organization"
-                  value={values.name}
-                  aria-invalid={!!errors.name}
-                  aria-describedby={errors.name ? "wz-name-err" : undefined}
-                  onChange={(e) => {
-                    set("name", e.target.value);
-                    if (!refTouched) set("external_client_ref", slugify(e.target.value));
-                  }}
-                />
-                {errors.name ? (
-                  <p id="wz-name-err" className="text-sm text-destructive">
-                    {errors.name}
-                  </p>
-                ) : null}
-              </div>
+              <Field label={t("wizard.details.name")} htmlFor="wz-name" error={errors.name}>
+                {(a11y) => (
+                  <Input
+                    {...a11y}
+                    autoComplete="organization"
+                    value={values.name}
+                    onChange={(e) => {
+                      set("name", e.target.value);
+                      if (!refTouched) set("external_client_ref", slugify(e.target.value));
+                    }}
+                  />
+                )}
+              </Field>
 
-              <div className="grid min-w-0 content-start gap-2">
-                <Label htmlFor="wz-tz">{t("clients.timezone")}</Label>
-                {/* Elegible y con autocompletado: lo que se guarda sale de la
-                    lista, así que no hay zona inventada. */}
-                <Combobox
-                  id="wz-tz"
-                  items={wizardTimezoneOptions(browserTz)}
-                  value={values.timezone}
-                  onValueChange={(v) => set("timezone", v)}
-                  placeholder={t("clients.timezone.placeholder")}
-                  emptyLabel={t("common.noMatches")}
-                  aria-invalid={!!errors.timezone}
-                />
-                {errors.timezone ? <p className="text-sm text-destructive">{errors.timezone}</p> : null}
-              </div>
-
-              {/* Solo los imprescindibles de esta plantilla. El horario no es
-                  un input: se elige (R7.1). */}
-              {needed
-                .filter((ph) => ph.key !== HOURS_KEY)
-                .map((ph) => (
-                  <div key={ph.key} className="grid min-w-0 content-start gap-2 sm:col-span-2">
-                    <Label htmlFor={`wz-${ph.key}`}>{placeholderLabel(t, ph.key)}</Label>
-                    <Input
-                      id={`wz-${ph.key}`}
-                      value={values.placeholders[ph.key] ?? ""}
-                      placeholder={ph.example ?? undefined}
-                      aria-invalid={!!errors[`ph:${ph.key}`]}
-                      onChange={(e) => set("placeholders", { ...values.placeholders, [ph.key]: e.target.value })}
-                    />
-                    {errors[`ph:${ph.key}`] ? (
-                      <p className="text-sm text-destructive">{errors[`ph:${ph.key}`]}</p>
-                    ) : null}
-                  </div>
-                ))}
+              <Field label={t("clients.timezone")} htmlFor="wz-tz" error={errors.timezone}>
+                {(a11y) => (
+                  // Elegible y con autocompletado: lo que se guarda sale de la
+                  // lista, así que no hay zona inventada.
+                  <Combobox
+                    {...a11y}
+                    items={wizardTimezoneOptions(browserTz)}
+                    value={values.timezone}
+                    onValueChange={(v) => set("timezone", v)}
+                    placeholder={t("clients.timezone.placeholder")}
+                    emptyLabel={t("common.noMatches")}
+                  />
+                )}
+              </Field>
             </div>
+
+            {/* Solo los imprescindibles de esta plantilla, **agrupados y con
+                ayuda**. El horario no es un input: se elige (R7.1).
+
+                Cada campo dice para qué lo usa el agente y enseña un ejemplo
+                con el formato dentro: es lo que evita la pregunta que la
+                etiqueta no contesta —«¿el teléfono lleva prefijo?»— y lo que
+                deja al partner juzgar si un campo importa. */}
+            {grupos.map(({ grupo, campos }) => (
+              <section key={grupo} className="flex min-w-0 flex-col gap-4">
+                {agrupado ? (
+                  <h3 className="border-b border-border pb-2 text-sm font-medium">{t(GRUPO_TITULO[grupo])}</h3>
+                ) : null}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {campos.map((ph) => (
+                    <Field
+                      key={ph.key}
+                      label={placeholderLabel(t, ph.key)}
+                      htmlFor={`wz-${ph.key}`}
+                      hint={ayudaDe(t, ph.key)}
+                      error={errors[`ph:${ph.key}`]}
+                      className={metaDe(ph.key).ancho === "entera" ? "sm:col-span-2" : undefined}
+                    >
+                      {(a11y) => (
+                        <Input
+                          {...a11y}
+                          value={values.placeholders[ph.key] ?? ""}
+                          placeholder={ejemploDe(t, ph.key) ?? ph.example ?? undefined}
+                          onChange={(e) => set("placeholders", { ...values.placeholders, [ph.key]: e.target.value })}
+                        />
+                      )}
+                    </Field>
+                  ))}
+                </div>
+              </section>
+            ))}
 
             {needed.some((ph) => ph.key === HOURS_KEY) ? <HoursField value={hours} onChange={setHours} /> : null}
 

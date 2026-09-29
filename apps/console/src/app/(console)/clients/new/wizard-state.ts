@@ -274,6 +274,24 @@ export function resolvePlaceholderLabel(
   return key.split(".").pop()!.replace(/_/g, " ");
 }
 
+/**
+ * La ayuda y el ejemplo de un campo, **si los hay**.
+ *
+ * No todos los tienen y no pasa nada: una plantilla que el catálogo añada
+ * mañana pinta igual, solo sin ayuda — y eso se ve, que es el punto. Lo que
+ * no puede pasar es que se cuele la clave cruda en pantalla, y por eso se
+ * comprueba contra la tabla antes de traducir, igual que la etiqueta.
+ */
+export function resolvePlaceholderExtra(
+  key: string,
+  suffix: "hint" | "eg",
+  table: Record<string, unknown>,
+  translate: (phKey: string) => string,
+): string | null {
+  const k = `ph.${key}.${suffix}`;
+  return k in table ? translate(k) : null;
+}
+
 export type WizardRefLookup = { found: true } | { found: false; status: number; message: string };
 
 export type WizardRefDecision =

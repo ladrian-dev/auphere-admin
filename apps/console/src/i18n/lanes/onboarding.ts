@@ -116,17 +116,64 @@ export const onboardingMessages = {
   "wizard.dirty.back": { es: "Volver", en: "Go back" },
 
   // ── placeholder labels (seed keys) ────────────────────────────────
+  // ── Los grupos del paso 2 ───────────────────────────────────────────
+  // Nueve campos en fila se leen como nueve cosas sueltas; en tres grupos
+  // de tres, cada uno contesta una pregunta.
+  "wizard.group.negocio": { es: "Dónde y cuándo atiende", en: "Where and when it serves" },
+  "wizard.group.quien": { es: "Quién responde", en: "Who answers for it" },
+  "wizard.group.urgencias": { es: "Si hay una urgencia", en: "If there is an emergency" },
+  "wizard.group.contacto": { es: "A dónde deriva", en: "Where it refers people" },
+  "wizard.group.condiciones": { es: "Lo que dirá de precios y pagos", en: "What it will say about prices and payment" },
+
+  // ── La ayuda de cada campo ──────────────────────────────────────────
+  // `.hint` dice **qué hace el agente con esto**, que es lo único que deja
+  // al partner juzgar si importa; `.eg` enseña el formato con un ejemplo en
+  // vez de meterlo en la etiqueta entre paréntesis.
+  "ph.tenant.address.hint": { es: "El agente la da cuando le preguntan cómo llegar.", en: "The agent gives this when asked how to get there." },
+  "ph.tenant.address.eg": { es: "Calle Mayor 12, 28013 Madrid", en: "12 High Street, London W1" },
+  "ph.tenant.saturday_label.hint": { es: "Solo si el sábado no se parece al resto de la semana.", en: "Only if Saturday does not look like the rest of the week." },
+  "ph.tenant.saturday_label.eg": { es: "Sábados de 10:00 a 14:00", en: "Saturdays 10:00 to 14:00" },
+
+  "ph.clinical.titular_name.hint": { es: "A quién nombra el agente cuando algo necesita criterio profesional.", en: "Who the agent names when something needs professional judgement." },
+  "ph.clinical.titular_name.eg": { es: "Dra. Valentina Hurtado", en: "Dr. Valentina Hurtado" },
+  "ph.clinical.titular_credential.hint": { es: "Se dice junto al nombre. Si lo dejas vacío, el agente no se inventa ninguna.", en: "Said next to the name. Leave it empty and the agent invents none." },
+  "ph.clinical.titular_credential.eg": { es: "Cirujana plástica, col. 12345", en: "Plastic surgeon, reg. 12345" },
+  "ph.policies.admin_access.admin_phones.hint": { es: "Solo estos números pueden darle órdenes al agente. Con prefijo internacional, separados por comas.", en: "Only these numbers can give the agent orders. International prefix, comma-separated." },
+  "ph.policies.admin_access.admin_phones.eg": { es: "+34 600 123 456, +34 600 654 321", en: "+44 7700 900123, +44 7700 900456" },
+  "ph.policies.wholesale.contact_name.hint": { es: "A quién pasa el agente los pedidos grandes.", en: "Who the agent hands big orders to." },
+  "ph.policies.wholesale.contact_phone.hint": { es: "Con prefijo internacional.", en: "With international prefix." },
+  "ph.policies.wholesale.contact_phone.eg": { es: "+34 600 123 456", en: "+44 7700 900123" },
+
+  "ph.tenant.surgery_referral_hospital.hint": { es: "A dónde manda el agente una urgencia después de una cirugía.", en: "Where the agent sends a post-surgery emergency." },
+  "ph.tenant.surgery_referral_hospital.eg": { es: "Hospital Universitario La Paz", en: "St Thomas' Hospital" },
+  "ph.tenant.surgery_referral_phone.hint": { es: "El número que dará en esa misma llamada. Con prefijo internacional.", en: "The number it will give in that same call. International prefix." },
+  "ph.tenant.surgery_referral_phone.eg": { es: "+34 917 27 70 00", en: "+44 20 7188 7188" },
+
+  "ph.tenant.instagram_handle.hint": { es: "A dónde manda a quien pregunte por resultados o promociones.", en: "Where it sends anyone asking about results or offers." },
+  "ph.tenant.instagram_handle.eg": { es: "@clinicaboreal", en: "@clinicaboreal" },
+  "ph.tenant.front_desk_phone_label.hint": { es: "El número al que deriva cuando algo se le escapa.", en: "The number it refers to when something is beyond it." },
+  "ph.tenant.front_desk_phone_label.eg": { es: "+34 912 34 56 78", en: "+44 20 7946 0000" },
+
+  "ph.tenant.consultation_price_label.hint": { es: "Si lo dejas vacío, el agente dice que lo confirma el equipo en vez de estimarlo.", en: "Leave it empty and the agent says the team confirms it instead of guessing." },
+  "ph.tenant.consultation_price_label.eg": { es: "80 € la primera visita", en: "£80 for the first visit" },
+  "ph.tenant.pricing_table_label.hint": { es: "Rangos, no precios cerrados. Vacío, el agente no cita ninguno.", en: "Ranges, not closed prices. Empty, the agent quotes none." },
+  "ph.tenant.pricing_table_label.eg": { es: "Botox 300-450 € · Láser 150-250 € la sesión", en: "Botox £250-400 · Laser £120-200 per session" },
+  "ph.tenant.payment_methods_label.hint": { es: "Lo que el agente enumera si preguntan cómo pagar.", en: "What the agent lists if asked how to pay." },
+  "ph.tenant.payment_methods_label.eg": { es: "Efectivo, tarjeta y transferencia", en: "Cash, card and bank transfer" },
+  "ph.policies.store.shipping_info.hint": { es: "Plazos y zonas, tal y como quieres que los diga.", en: "Times and areas, worded as you want them said." },
+  "ph.policies.store.returns_info.hint": { es: "El plazo y las condiciones que el agente puede prometer.", en: "The window and conditions the agent may promise." },
+
   "ph.agent.name": { es: "Nombre del agente", en: "Agent name" },
   "ph.agent.tone": { es: "Tono", en: "Tone" },
   "ph.agent.language": { es: "Idioma", en: "Language" },
   "ph.owner.first_name": { es: "Nombre del dueño", en: "Owner first name" },
   "ph.tenant.address": { es: "Dirección", en: "Address" },
-  "ph.tenant.business_hours_label": { es: "Horario (texto)", en: "Opening hours (text)" },
+  "ph.tenant.business_hours_label": { es: "Horario", en: "Opening hours" },
   "ph.tenant.front_desk_phone_label": { es: "Teléfono de recepción", en: "Front-desk phone" },
   "ph.tenant.instagram_handle": { es: "Instagram", en: "Instagram handle" },
   "ph.tenant.consultation_price_label": { es: "Precio de la consulta", en: "Consultation price" },
   "ph.tenant.payment_methods_label": { es: "Formas de pago", en: "Payment methods" },
-  "ph.tenant.pricing_table_label": { es: "Tabla de precios (texto)", en: "Price list (text)" },
+  "ph.tenant.pricing_table_label": { es: "Tabla de precios", en: "Price list" },
   "ph.tenant.saturday_label": { es: "Sábados", en: "Saturdays" },
   "ph.tenant.surgery_referral_hospital": { es: "Clínica de referencia (cirugía)", en: "Referral hospital (surgery)" },
   "ph.tenant.surgery_referral_phone": { es: "Teléfono de referencia (cirugía)", en: "Referral phone (surgery)" },
@@ -144,7 +191,7 @@ export const onboardingMessages = {
   "ph.policies.party_size.min": { es: "Comensales mínimo", en: "Min party size" },
   "ph.policies.party_size.max": { es: "Comensales máximo", en: "Max party size" },
   "ph.policies.membership.package_validity_days": { es: "Validez de los bonos (días)", en: "Package validity (days)" },
-  "ph.policies.color.duration_hours_label": { es: "Duración de color (texto)", en: "Colour service duration (text)" },
+  "ph.policies.color.duration_hours_label": { es: "Duración del color", en: "Colour service duration" },
   "ph.policies.minor.consent_required": { es: "Consentimiento para menores", en: "Consent required for minors" },
   "ph.policies.surgery.deposit_pct": { es: "Depósito de cirugía (%)", en: "Surgery deposit (%)" },
   "ph.policies.store.currency": { es: "Moneda de la tienda", en: "Store currency" },
@@ -152,7 +199,7 @@ export const onboardingMessages = {
   "ph.policies.store.returns_info": { es: "Política de devoluciones", en: "Returns policy" },
   "ph.policies.wholesale.contact_name": { es: "Contacto mayorista", en: "Wholesale contact" },
   "ph.policies.wholesale.contact_phone": { es: "Teléfono mayorista", en: "Wholesale phone" },
-  "ph.policies.admin_access.admin_phones": { es: "Teléfonos de administradores (E.164)", en: "Admin phone numbers (E.164)" },
+  "ph.policies.admin_access.admin_phones": { es: "Teléfonos de administradores", en: "Admin phone numbers" },
   "ph.policies.payment.pago_movil.banco": { es: "Pago móvil — banco", en: "Mobile payment — bank" },
   "ph.policies.payment.pago_movil.telefono": { es: "Pago móvil — teléfono", en: "Mobile payment — phone" },
   "ph.policies.payment.pago_movil.cedula": { es: "Pago móvil — cédula/RIF", en: "Mobile payment — ID/RIF" },
