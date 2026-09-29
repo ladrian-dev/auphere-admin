@@ -9,6 +9,7 @@ import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogH
 
 import { whatsappSignupAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useT } from "@/i18n/client";
+import type { MessageKey } from "@/i18n/messages";
 import { actionErrorText } from "@/lib/action-error";
 import { SignupError, loginWithMeta, type SignupMode } from "@/lib/meta-fb-sdk";
 
@@ -19,6 +20,19 @@ export type MetaSignupConfig = {
   configIdCloudApi: string | null;
   configIdCoexistence: string | null;
 };
+
+/**
+ * Pure: the sentence for a refused signup, or null when the generic backend
+ * text applies. Two refusals have their own: the number is live somewhere
+ * else (R1.4, and it never says where), and Meta still holds it in its
+ * previous owner's account (spec 021 R4.2) — the second one is not a console
+ * failure, and the copy must not read like one.
+ */
+export function signupFailureKey(code: string | null | undefined): MessageKey | null {
+  if (code === "number_in_use") return "ch.connect.numberInUse";
+  if (code === "number_held_by_previous_owner") return "ch.connect.heldByPreviousOwner";
+  return null;
+}
 
 /**
  * "Connect WhatsApp" — opens Meta's popup (FB.login with our config id),
@@ -57,9 +71,10 @@ export function WhatsAppConnect({
       const envelope = await loginWithMeta({ appId: meta.appId, version: meta.graphVersion, configId, mode });
       const res = await whatsappSignupAction({ ref: refId, mode, ...envelope });
       if (!res.ok) {
-        // R1.4: the number is someone else's — say so, not «error».
-        if (res.code === "number_in_use") return void toast.error(t("ch.connect.numberInUse"));
-        return void toast.error(actionErrorText(res, t));
+        // R1.4 / R4.2: the number is someone else's, or its previous owner
+        // still holds it at Meta — say so, not «error».
+        const key = signupFailureKey(res.code);
+        return void toast.error(key ? t(key) : actionErrorText(res, t));
       }
       // R1.2: the card, the list and the onboarding are recomputed on the
       // server; the toast says what changed for the client right now.

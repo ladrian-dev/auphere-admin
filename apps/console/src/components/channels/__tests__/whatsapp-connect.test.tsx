@@ -2,9 +2,10 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/i18n/client";
+import { messages } from "@/i18n/messages";
 
 import { connectChoice, metaIsConfigured, metaSignupConfig, type ConnectChoice } from "../connect-choice";
-import { WhatsAppConnect, type MetaSignupConfig } from "../whatsapp-connect";
+import { WhatsAppConnect, signupFailureKey, type MetaSignupConfig } from "../whatsapp-connect";
 import { WhatsAppConnectByAuphere } from "../whatsapp-connect-by-auphere";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -58,5 +59,24 @@ describe("connect WhatsApp — which control the page shows (spec 016, R1.1/R1.3
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByRole("status")).toHaveTextContent("El número lo conecta Auphere");
     expect(screen.getByRole("status")).toHaveTextContent("Escribe a soporte");
+  });
+});
+
+describe("un número que su dueño anterior aún retiene en Meta (spec 021, R4.2)", () => {
+  it("tiene su frase, y no se presenta como un fallo de la consola", () => {
+    // Meta es el árbitro del traspaso: B no puede registrar lo que A no
+    // soltó en su Business Manager. La consola no falló; lo dice así.
+    expect(signupFailureKey("number_held_by_previous_owner")).toBe("ch.connect.heldByPreviousOwner");
+    expect(signupFailureKey("number_in_use")).toBe("ch.connect.numberInUse");
+    expect(signupFailureKey("validation_error")).toBeNull();
+    expect(signupFailureKey(undefined)).toBeNull();
+    expect(signupFailureKey(null)).toBeNull();
+    for (const lang of ["es", "en"] as const) {
+      const texto = messages["ch.connect.heldByPreviousOwner"][lang];
+      expect(texto).toMatch(/Business Manager/);
+      expect(texto).not.toMatch(/error|fallo|failed/i);
+    }
+    // Y sigue sin decir **de quién** es el número (R1.5).
+    expect(messages["ch.connect.heldByPreviousOwner"].es).not.toMatch(/partner|cliente/i);
   });
 });

@@ -1,22 +1,26 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/i18n/client";
 import { messages } from "@/i18n/messages";
 import type { ChannelDetail } from "@/lib/backend/channels";
 
-import { ChannelCard, tierKey } from "../channel-card";
+import { ChannelCard, disconnectBodyKey, tierKey } from "../channel-card";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+const disconnectChannelAction = vi.fn();
 vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
   setChannelRoleAction: vi.fn(),
-  disconnectChannelAction: vi.fn(),
+  disconnectChannelAction: (...args: unknown[]) => disconnectChannelAction(...args),
 }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 const CANAL: ChannelDetail = {
   logo_url: null,
   id: "9f1b4e8a-6f3c-4c2a-9a6d-2f7e5c1b3d40",
   type: "whatsapp",
+  provider: "meta",
+  agent_enabled: true,
   provider_identifier: "+34653321693",
   status: "active",
   role: null,
@@ -24,9 +28,10 @@ const CANAL: ChannelDetail = {
   quality_rating: "GREEN",
   messaging_tier: "TIER_250",
   mode: "coexistence",
+  unlink_pending: [],
   last_health_check_at: "2026-09-29T14:08:00Z",
   created_at: "2026-09-23T20:27:00Z",
-} as ChannelDetail;
+};
 
 function pintar(channel: Partial<ChannelDetail> = {}, manage = true) {
   return render(
@@ -82,15 +87,66 @@ describe("Desvincular un número (2026-09-29)", () => {
     // El menú de Base UI no se abre bajo jsdom —el disparador se queda en
     // `aria-expanded="false"`— y abrirlo de verdad pide un navegador. Lo que
     // sí se puede fijar aquí, y es lo que más importa, es **que el texto no
-    // prometa de más**: el endpoint deja la fila y la marca
-    // `disconnected`, así que reconectar funciona; y no toca nada en Meta,
-    // así que el aviso tiene que decirlo en vez de insinuar que lo deshizo
-    // todo. El recorrido con el menú abierto es del e2e, y necesita un
-    // número conectado de verdad.
-    expect(messages["ch.disconnect.body"].es).toMatch(/volver a conectarlo/i);
-    expect(messages["ch.disconnect.body"].es).toMatch(/sigue registrado en Meta/i);
-    expect(messages["ch.disconnect.body"].en).toMatch(/connect it again/i);
-    expect(messages["ch.disconnect.body"].en).toMatch(/stays registered with Meta/i);
+    // prometa ni de más ni de menos**: desde la spec 021 el endpoint da de
+    // baja el número de nuestra aplicación en Meta, así que el aviso ya no
+    // puede decir «sigue registrado en Meta» a secas; y sacarlo de la
+    // cuenta del partner sigue sin ser cosa nuestra, así que lo dice.
+    for (const key of ["ch.disconnect.body", "ch.disconnect.body.coexistence"] as const) {
+      expect(messages[key].es).toMatch(/volver a conectarlo/i);
+      expect(messages[key].es).toMatch(/de baja de nuestra aplicación/i);
+      expect(messages[key].es).toMatch(/Business Manager/);
+      expect(messages[key].es).not.toMatch(/sigue registrado en Meta/i);
+      expect(messages[key].en).toMatch(/connect it again/i);
+      expect(messages[key].en).toMatch(/deregister it from our application/i);
+      expect(messages[key].en).not.toMatch(/stays registered with Meta/i);
+    }
+  });
+
+  it("en coexistencia el aviso dice que el número seguirá chateando desde su teléfono", () => {
+    // Desvincular es soltarlo de nosotros, no dejarlo sin WhatsApp (R2.5).
+    // Sin esta frase, un partner en coexistencia dudaría en pulsar.
+    expect(disconnectBodyKey("coexistence")).toBe("ch.disconnect.body.coexistence");
+    expect(disconnectBodyKey("cloud_api")).toBe("ch.disconnect.body");
+    expect(disconnectBodyKey(null)).toBe("ch.disconnect.body");
+    expect(messages["ch.disconnect.body.coexistence"].es).toMatch(/seguirá chateando desde su teléfono/i);
+    expect(messages["ch.disconnect.body"].es).not.toMatch(/teléfono/i);
+  });
+});
+
+describe("Lo que quedó pendiente en Meta (spec 021, R3.2)", () => {
+  it("con algo pendiente, la tarjeta dice qué falta y ofrece reintentar", () => {
+    pintar({ status: "disconnected", unlink_pending: ["deregister", "unsubscribe"] });
+    const aviso = screen.getByRole("alert");
+    expect(aviso).toHaveTextContent("Falta terminar en Meta");
+    expect(aviso).toHaveTextContent(/darlo de baja y desuscribir nuestra aplicación/);
+    expect(screen.getByRole("button", { name: "Reintentar" })).toBeEnabled();
+  });
+
+  it("sin nada pendiente, ni aviso ni reintento", () => {
+    pintar({ status: "disconnected", unlink_pending: [] });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reintentar" })).toBeNull();
+  });
+
+  it("quien solo mira ve lo pendiente, pero no puede reintentar", () => {
+    // Lo pendiente es estado del canal y se enseña a todos (constitución
+    // §V); reintentar escribe, y escribir pide `channels:write`.
+    pintar({ status: "disconnected", unlink_pending: ["unsubscribe"] }, false);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reintentar" })).toBeNull();
+  });
+
+  it("reintentar llama al mismo endpoint de desvincular", async () => {
+    // Un solo verbo: el endpoint sabe qué quedó y no repite lo hecho.
+    disconnectChannelAction.mockResolvedValueOnce({ ok: true, data: { ...CANAL, status: "disconnected", unlink_pending: [] } });
+    pintar({ status: "disconnected", unlink_pending: ["unsubscribe"] });
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(disconnectChannelAction).toHaveBeenCalledWith({ ref: "demo", channelId: CANAL.id }));
+  });
+
+  it("un paso que la API añada mañana se enseña por su nombre, no se calla", () => {
+    pintar({ status: "disconnected", unlink_pending: ["revoke_token"] });
+    expect(screen.getByRole("alert")).toHaveTextContent("revoke_token");
   });
 });
 
