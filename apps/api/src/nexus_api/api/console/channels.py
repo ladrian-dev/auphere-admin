@@ -173,4 +173,48 @@ async def set_channel_role(
     return _detail(ch)
 
 
+@router.post("/{channel_id}/disconnect", response_model=ChannelDetailOut)
+async def disconnect_channel(
+    channel_id: uuid.UUID,
+    scope: ClientScope = Depends(client_scope("channels:write")),
+) -> ChannelDetailOut:
+    """Soltar un número: el agente deja de atender por él.
+
+    Conectar era autoservicio y desconectar no existía — el partner que se
+    equivocaba de número tenía que escribirnos para que alguien lo cambiara
+    desde el panel interno. Un producto donde se puede entrar y no salir hace
+    que la entrada dé más miedo de la que debería.
+
+    **Lo que hace**: el canal pasa a ``disconnected``. La fila se queda, y eso
+    es a propósito:
+
+    - el número sigue siendo suyo y **se puede volver a conectar** — el alta de
+      Meta hace *upsert* sobre la misma fila, así que reconectar es repetir el
+      flujo, no pelearse con un identificador ocupado;
+    - las conversaciones y los diagnósticos que pasaron por ese canal siguen
+      teniendo a qué apuntar. Borrar la fila sería borrar su historia.
+
+    **Lo que NO hace**: nada en Meta. El número sigue registrado en la WABA del
+    partner, y soltarlo de ahí es cosa suya en el Business Manager. La consola
+    lo dice en vez de insinuar que lo ha deshecho todo.
+    """
+    ch = await scope.session.get(Channel, channel_id)
+    if ch is None:  # RLS esconde las filas de otro tenant → el mismo 404
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="channel not found")
+    if ch.status is ChannelStatus.DISCONNECTED:
+        # Idempotente: quien pulsa dos veces no merece un error.
+        return _detail(ch)
+    before = ch.status.value
+    ch.status = ChannelStatus.DISCONNECTED
+    await scope.session.flush()
+    await AuditRepository(scope.session).record(
+        actor=scope.principal.actor,
+        action="console.channel.disconnect",
+        target=f"channel:{ch.id}",
+        before={"status": before},
+        after={"status": ch.status.value, "identifier": ch.provider_identifier},
+    )
+    return _detail(ch)
+
+
 __all__ = ["count_connected_channels", "roles_required", "router"]

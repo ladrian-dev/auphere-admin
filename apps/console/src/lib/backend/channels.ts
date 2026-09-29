@@ -133,6 +133,8 @@ export function channelsApi(call: Call) {
     channelsOverview: (ref: string) => call<ChannelsOverview>(`${base(ref)}/overview`),
     setChannelRole: (ref: string, channelId: string, role: ChannelRole | null) =>
       call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/role`, { method: "PATCH", body: { role } }),
+    disconnectChannel: (ref: string, channelId: string) =>
+      call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/disconnect`, { method: "POST" }),
     whatsappSignup: (ref: string, body: WhatsAppSignupBody) =>
       call<WhatsAppSignupResult>(`${base(ref)}/whatsapp/signup`, { method: "POST", body }),
     listTemplates: (ref: string) => call<TemplateList>(`${base(ref)}/whatsapp/templates`),

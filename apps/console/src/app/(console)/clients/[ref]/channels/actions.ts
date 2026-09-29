@@ -45,6 +45,25 @@ export async function setChannelRoleAction(raw: unknown): Promise<ActionResult<C
   return res;
 }
 
+/**
+ * Soltar un número (spec 019, revisión del 2026-09-29).
+ *
+ * Conectar era autoservicio y desconectar no existía en ninguna parte —ni en la
+ * API—, así que el partner que se equivocaba de número tenía que escribirnos.
+ * Un producto donde se entra y no se sale da más miedo al entrar del que
+ * debería.
+ */
+export async function disconnectChannelAction(raw: unknown): Promise<ActionResult<ChannelDetail>> {
+  const body = z.object({ ref, channelId: z.string().uuid() }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).disconnectChannel(body.ref, body.channelId));
+  // `layout`: el estado del canal decide la tarjeta de puesta en marcha y la
+  // insignia de la cabecera, no solo esta pantalla.
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
+  return res;
+}
+
 const button = z.object({
   type: z.enum(["QUICK_REPLY", "URL", "PHONE_NUMBER"]),
   label: z.string().min(1).max(25),

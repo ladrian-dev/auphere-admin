@@ -847,3 +847,59 @@ async def test_a_failure_after_the_code_leaves_no_channel_and_no_credentials(
     )
     assert second.status_code == 201, second.text
     assert await _rows_for(db_session, a["tenant_id"]) == (1, 0)
+
+
+async def test_disconnect_marks_the_channel_and_leaves_its_row(
+    client, console_world, db_session
+) -> None:
+    """Soltar un número: el agente deja de atender por él, y nada más.
+
+    Conectar era autoservicio y desconectar no existía — el partner que se
+    equivocaba de número tenía que escribirnos para que alguien lo cambiara
+    desde el panel interno.
+
+    La fila **se queda** a propósito: el número se puede volver a conectar
+    (el alta de Meta hace upsert sobre ella) y las conversaciones que
+    pasaron por ese canal siguen teniendo a qué apuntar.
+    """
+    a, b = console_world["a"], console_world["b"]
+    mio, ajeno = _channel(a["tenant_id"]), _channel(b["tenant_id"])
+    db_session.add_all([mio, ajeno])
+    await db_session.commit()
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{mio.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "disconnected"
+
+    fila = await db_session.get(Channel, mio.id)
+    await db_session.refresh(fila)
+    assert fila is not None, (
+        "la fila se borró: el número no se podrá reconectar ni la historia apuntará a nada"
+    )
+    assert fila.status is ChannelStatus.DISCONNECTED
+    assert fila.provider_identifier == mio.provider_identifier
+
+    audit = (
+        (
+            await db_session.execute(
+                sa.select(AuditLog).where(AuditLog.action == "console.channel.disconnect")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(audit) == 1 and audit[0].tenant_id == a["tenant_id"]
+
+    # Pulsar dos veces no es un error.
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{mio.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200 and r.json()["status"] == "disconnected"
+
+    # El canal de otro tenant no existe para quien llama (RLS).
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{ajeno.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 404

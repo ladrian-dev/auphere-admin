@@ -28,7 +28,32 @@ export const channelsMessages = {
   "ch.card.number": { es: "Número", en: "Number" },
   "ch.card.name": { es: "Nombre verificado", en: "Verified name" },
   "ch.card.quality": { es: "Calidad", en: "Quality" },
-  "ch.card.tier": { es: "Límite de mensajería", en: "Messaging limit" },
+  "ch.card.tier": { es: "Puede iniciar", en: "Can start" },
+  // Meta devuelve `TIER_250`, `TIER_1K`… La cifra es lo que el partner
+  // necesita, y «TIER_250» no la da: hay que saber que el número del final son
+  // conversaciones y que el límite es diario.
+  "ch.tier.TIER_50": { es: "50 conversaciones nuevas al día", en: "50 new conversations a day" },
+  "ch.tier.TIER_250": { es: "250 conversaciones nuevas al día", en: "250 new conversations a day" },
+  "ch.tier.TIER_1K": { es: "1.000 conversaciones nuevas al día", en: "1,000 new conversations a day" },
+  "ch.tier.TIER_10K": { es: "10.000 conversaciones nuevas al día", en: "10,000 new conversations a day" },
+  "ch.tier.TIER_100K": { es: "100.000 conversaciones nuevas al día", en: "100,000 new conversations a day" },
+  "ch.tier.TIER_UNLIMITED": { es: "Sin límite", en: "Unlimited" },
+  "ch.tier.help": {
+    es: "Lo fija Meta y sube solo, según la calidad y el uso. Contestar a quien te escribe no cuenta.",
+    en: "Meta sets it and raises it on its own, from quality and use. Replying to someone who wrote to you does not count.",
+  },
+  // ── Desvincular (2026-09-29) ────────────────────────────────────────
+  "ch.card.actions": { es: "Acciones de {number}", en: "Actions for {number}" },
+  "ch.disconnect": { es: "Desvincular este número", en: "Unlink this number" },
+  "ch.disconnect.why": { es: "El agente deja de atender por él.", en: "The agent stops serving through it." },
+  "ch.disconnect.title": { es: "Desvincular {number}", en: "Unlink {number}" },
+  "ch.disconnect.body": {
+    es: "El agente deja de recibir y de responder por este número. Puedes volver a conectarlo cuando quieras, y su historial se conserva. El número sigue registrado en Meta: soltarlo de ahí se hace en tu Business Manager.",
+    en: "The agent stops receiving and replying through this number. You can connect it again whenever you want, and its history is kept. The number stays registered with Meta: releasing it there is done in your Business Manager.",
+  },
+  "ch.disconnect.confirm": { es: "Desvincular", en: "Unlink" },
+  "ch.disconnect.done": { es: "{number} desvinculado.", en: "{number} unlinked." },
+  "ch.reconnect": { es: "Volver a conectarlo", en: "Connect it again" },
   "ch.card.mode": { es: "Modo", en: "Mode" },
   "ch.card.role": { es: "Rol del canal", en: "Channel role" },
   "ch.card.health": { es: "Última comprobación", en: "Last check" },
