@@ -107,7 +107,12 @@ const core = {
   "status.active": { es: "Activo", en: "Active" },
   "status.paused": { es: "Suspendido", en: "Suspended" },
   "status.archived": { es: "Archivado", en: "Archived" },
-  "status.provisioning": { es: "Aprovisionando", en: "Provisioning" },
+  // Es el estado **en reposo** de un cliente recién creado —existe y todavía
+  // no atiende—, no un proceso en marcha. «Aprovisionando» decía lo contrario
+  // y dejaba al partner esperando a que terminara algo que no corría (owner,
+  // 2026-09-29). El nombre nuevo nombra además su propia salida: el botón
+  // «Activar» que ya está en el menú «Más».
+  "status.provisioning": { es: "Sin activar", en: "Not activated" },
   "status.staged": { es: "Borrador", en: "Draft" },
   "status.suspended": { es: "Suspendido", en: "Suspended" },
   "status.pending": { es: "Pendiente", en: "Pending" },
@@ -245,6 +250,11 @@ const core = {
   "clients.empty.filtered": { es: "Ningún cliente coincide con el filtro", en: "No client matches the filter" },
   "clients.error": { es: "No se pudieron cargar los clientes", en: "Could not load clients" },
   "clients.ref": { es: "Referencia", en: "Reference" },
+  // Spec 019: el crédito, en la lista. Sustituye a la etiqueta «sin cupo»,
+  // que decía que faltaba pero no cuánto.
+  "clients.col.credit": { es: "Crédito", en: "Credit" },
+  "clients.col.credit.value": { es: "{remaining} de {cap}", en: "{remaining} of {cap}" },
+  "clients.col.credit.none": { es: "0 · sin asignar", en: "0 · none assigned" },
   "clients.timezone": { es: "Zona horaria", en: "Time zone" },
   "clients.timezone.placeholder": { es: "Elige una zona horaria", en: "Pick a time zone" },
   "clients.count": { es: "{count} cliente(s)", en: "{count} client(s)" },
@@ -290,7 +300,7 @@ const core = {
   "clients.pause.body": { es: "El agente deja de atender hasta que lo reactives. No se borra nada.", en: "The agent stops serving until you reactivate it. Nothing is deleted." },
   "clients.pause.confirm": { es: "Suspender", en: "Suspend" },
   "clients.archive.title": { es: "Archivar {name}", en: "Archive {name}" },
-  "clients.archive.body": { es: "El cliente deja de contar en la cuota. Puedes desarchivarlo después.", en: "The client stops counting toward your quota. You can unarchive it later." },
+  "clients.archive.body": { es: "El cliente deja de atender y sale de la lista. Puedes desarchivarlo después.", en: "The client stops serving and leaves the list. You can unarchive it later." },
   "clients.archive.confirm": { es: "Archivar", en: "Archive" },
   "clients.settings.title": { es: "Ajustes del cliente", en: "Client settings" },
   "clients.settings.saved": { es: "Ajustes guardados", en: "Settings saved" },

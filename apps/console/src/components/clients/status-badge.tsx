@@ -21,7 +21,9 @@ const TONE: Record<string, DotTone> = {
 
 export function ClientStatusBadge({ status, locale }: { status: string; locale: Locale }) {
   return (
-    <StatusBadge tone={TONE[status] ?? "muted"} pulse={status === "provisioning"}>
+    // Sin latido: parpadear es el gesto de «espera, esto está pasando». Un
+    // cliente sin activar no espera a nada — espera a que alguien lo active.
+    <StatusBadge tone={TONE[status] ?? "muted"}>
       {t(locale, statusKey(status))}
     </StatusBadge>
   );

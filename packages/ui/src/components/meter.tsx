@@ -8,7 +8,11 @@ type MeterTone = "positive" | "warning" | "danger" | "info" | "neutral";
 type MeterProps = {
   /** Consumed units. Formatted by the caller for the labels; never here. */
   value: number;
-  /** The cap. ``null`` renders the «no cap» state instead of a bar. */
+  /** The cap. ``null`` renders the «no cap» state instead of a bar; ``0``
+   *  renders the **empty track**, because «cero de cero» es un estado real
+   *  —un cliente al que todavía no le han asignado crédito— y una frase
+   *  donde los demás tienen barra hace que la fila deje de leerse de un
+   *  vistazo. */
   max: number | null;
   /** ``auto`` picks the tone from the thresholds (the CP-24 rule: 80 %
    *  warning, 100 % danger); a fixed tone overrides it. */
@@ -81,8 +85,13 @@ function Meter({
       )}
       {loading ? (
         <Skeleton className={cn(height, "w-full rounded-full")} />
-      ) : percent == null ? (
+      ) : max == null ? (
         <p className="text-sm text-muted-foreground">{noMaxLabel}</p>
+      ) : max === 0 ? (
+        // Sin tope que dividir no hay `<progress>` válido —`max="0"` no lo
+        // es—, así que la pista va vacía y **decorativa**: quien no la ve
+        // lee el mismo dato en `valueLabel`, que dice 0 con todas las letras.
+        <span aria-hidden="true" className={cn(height, "block w-full rounded-full bg-muted")} />
       ) : (
         <progress
           value={Math.min(value, max as number)}

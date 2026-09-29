@@ -4,12 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
-import { Button, DataTable, EmptyState, Input, StatusDot, formatRelative, type ColumnDef } from "@nexus/ui";
+import { Button, DataTable, EmptyState, Input, Meter, formatNumber, formatRelative, type ColumnDef } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 import type { Locale } from "@/i18n/messages";
 import type { ClientSummary } from "@/lib/backend";
 
+import { creditTone } from "./credit-tone";
 import { ClientStatusBadge } from "./status-badge";
 
 type Props = {
@@ -83,20 +84,41 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
       },
       {
         accessorKey: "status",
+        // Solo el estado. El «sin cupo» que iba aquí al lado (spec 016 R2.7)
+        // era una etiqueta suelta que llegaba y se iba, y competía con la
+        // pastilla del estado sin decir **cuánto** falta. Lo mismo, medido,
+        // vive ahora en su columna.
         header: t("common.status"),
-        cell: (c) => (
-          <span className="inline-flex items-center gap-2">
-            <ClientStatusBadge status={String(c.getValue())} locale={locale} />
-            {/* Spec 016 (R2.7): «sin cupo» is visible from the list. The dot
-                carries its name for the reader who cannot see the colour. */}
-            {c.row.original.out_of_quota ? (
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <StatusDot tone="warning" label={t("hu.usage.allocations.outOfQuota")} />
-                {t("hu.usage.allocations.outOfQuota")}
-              </span>
-            ) : null}
-          </span>
-        ),
+        cell: (c) => <ClientStatusBadge status={String(c.getValue())} locale={locale} />,
+      },
+      {
+        id: "credit",
+        header: t("clients.col.credit"),
+        cell: (c) => {
+          const quota = c.row.original.quota;
+          // `null` es «no se pudo leer», que no es lo mismo que cero. Un cero
+          // inventado sobre un dato que falta es justo la pantalla mintiendo.
+          if (!quota) return <span className="text-xs text-muted-foreground">—</span>;
+          return (
+            <Meter
+              size="sm"
+              className="w-40 max-w-full"
+              label={t("clients.col.credit")}
+              labelHidden
+              value={quota.remaining}
+              max={quota.cap}
+              tone={creditTone(quota)}
+              valueLabel={
+                quota.cap === 0
+                  ? t("clients.col.credit.none")
+                  : t("clients.col.credit.value", {
+                      remaining: formatNumber(quota.remaining, locale),
+                      cap: formatNumber(quota.cap, locale),
+                    })
+              }
+            />
+          );
+        },
       },
       { accessorKey: "timezone", header: t("clients.timezone"), cell: (c) => <span className="font-mono text-xs">{String(c.getValue())}</span> },
       {
