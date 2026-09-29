@@ -43,7 +43,7 @@ en `apps/console/src/` con tests junto al código; KB en
 
 ## Phase 2: Foundational
 
-- [ ] T004 T-ISO · `apps/api/tests/isolation/test_channel_number_scope.py`: con dos tenants, (a) la fila desvinculada de A **no bloquea** el alta de B y B no puede leerla ni alterarla; (b) con el número **vivo** en A, el 409 que recibe B lleva `number_in_use` y **nada más** —ni tenant, ni partner, ni nombre—; (c) desvincular con un id de canal ajeno es 404. _Requisitos: 1.2, 1.4, 1.5 · puerta §I_
+- [ ] T004 T-ISO · `apps/api/tests/isolation/test_channel_number_scope.py`: con dos tenants, (a) la fila desvinculada de A **no bloquea** el alta de B y B no puede leerla ni alterarla; (b) con el número **vivo** en A, el 409 que recibe B lleva `number_in_use` y **nada más** —ni tenant, ni partner, ni nombre—; (c) desvincular con un id de canal ajeno es 404; (d) **barrido**, no enumeración: recorrer todas las rutas de canal montadas bajo `/console/clients/{ref}/channels` y afirmar que ninguna acepta `tenant_id` ni `partner_id` en parámetros ni en cuerpo, como hizo la 019 con el alta. _Requisitos: 1.2, 1.4, 1.5 · puerta §I_
 - [ ] T005 [P] `deregister_phone(phone_number_id, access_token)` en `apps/channels/src/nexus_channels/whatsapp_meta/meta_client.py` → `POST /{phone_number_id}/deregister`, con test unitario sobre el cliente HTTP simulado (200 → dict; 4xx → la excepción que ya lanza el resto). Existe `unsubscribe_app`; falta su pareja. _Requisitos: 2.1_
 
 ---
@@ -58,13 +58,13 @@ recibir un «en uso» falso.
 
 ### Tests primero
 
-- [ ] T006 [P] [US1] Test en `apps/api/tests/unit/test_endpoint_console_whatsapp.py`: B conecta un número que A desvinculó → **201**; la fila de A sigue existiendo, `disconnected`, con su mismo id; la de B es otra. _Requisitos: 1.1, 1.2_
+- [ ] T006 [P] [US1] Test en `apps/api/tests/unit/test_endpoint_console_whatsapp.py`: B conecta un número que A desvinculó → **201**; la fila de A sigue existiendo, `disconnected`, con su mismo id; la de B es otra. **Este test cubre también R4.1**: B llega al 201 sin ningún paso de aprobación por medio. _Requisitos: 1.1, 1.2, 4.1_
 - [ ] T007 [P] [US1] Test: A desvincula y **vuelve a conectar** → recupera **el mismo** `channel.id`, y las conversaciones que colgaban de él siguen colgando. Ya se comporta así (el lookup no filtra por estado): el test lo fija para que nadie lo «arregle». _Requisitos: 1.3_
 - [ ] T008 [P] [US1] Test: con el número **vivo** en A, B conecta → **409** `number_in_use`; A no cambia en nada; el cuerpo no nombra a A. _Requisitos: 1.4, 1.5_
 
 ### Implementación
 
-- [ ] T009 [US1] Migración `apps/api/alembic/versions/0132_channel_number_unique_when_live.py`: `DROP CONSTRAINT uq_channels_type_provider_id` y `CREATE UNIQUE INDEX uq_channels_live_number ON channels (type, provider_identifier) WHERE status <> 'disconnected'`. **La bajada se niega** si hay dos filas con el mismo número: mejor un `downgrade` que no corre que uno que borra. Id de revisión ≤ 32 caracteres. _Requisitos: 1.1, 1.2_
+- [ ] T009 [US1] Migración `apps/api/alembic/versions/0132_number_unique_when_live.py`: `DROP CONSTRAINT uq_channels_type_provider_id` y `CREATE UNIQUE INDEX uq_channels_live_number ON channels (type, provider_identifier) WHERE status <> 'disconnected'`. **La bajada se niega** si hay dos filas con el mismo número: mejor un `downgrade` que no corre que uno que borra. Id de revisión ≤ 32 caracteres. _Requisitos: 1.1, 1.2_
 - [ ] T010 [US1] `apps/api/src/nexus_api/db/models/channel.py`: sustituir el `UniqueConstraint` en `__table_args__` por `Index("uq_channels_live_number", …, unique=True, postgresql_where=…)`, con el comentario de por qué. _Requisitos: 1.1, 1.2_
 - [ ] T011 [US1] `apps/api/src/nexus_api/api/console/whatsapp.py`: `_NUMBER_UNIQUE` pasa a buscar `uq_channels_live_number`. Sin esto, el 409 se convierte en 500 el día que el índice cambie de nombre — y T008 lo vería. _Requisitos: 1.4_
 
@@ -100,7 +100,7 @@ hermano vivo, caído— y leer el canal después.
 
 ### Tests primero
 
-- [ ] T021 [P] [US3] Test en `apps/console/src/components/channels/__tests__/channel-card.test.tsx`: con `unlink_pending` no vacío, la tarjeta dice qué queda pendiente en Meta y ofrece **reintentar**; con la lista vacía, no. Y el diálogo de desvincular ya no dice «sigue registrado en Meta» a secas: dice que se da de baja de nuestra aplicación y que **sacarlo de tu cuenta de Meta** se hace en el Business Manager. _Requisitos: 3.2, 2.4_
+- [ ] T021 [P] [US3] Test en `apps/console/src/components/channels/__tests__/channel-card.test.tsx`: con `unlink_pending` no vacío, la tarjeta dice qué queda pendiente en Meta y ofrece **reintentar**; con la lista vacía, no. Y el diálogo de desvincular ya no dice «sigue registrado en Meta» a secas: dice que se da de baja de nuestra aplicación, que **sacarlo de tu cuenta de Meta** se hace en el Business Manager, y —si el canal está en coexistencia— que **seguirá chateando desde su teléfono**. _Requisitos: 3.2, 2.4, 2.5_
 - [ ] T022 [P] [US1] Test en `apps/console/src/components/channels/__tests__/whatsapp-connect.test.tsx`: el 409 `number_held_by_previous_owner` se enseña con su frase —el dueño anterior tiene que soltarlo en Meta— y no como fallo de la consola. _Requisitos: 4.2_
 
 ### Implementación

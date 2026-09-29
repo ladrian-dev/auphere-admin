@@ -9,7 +9,7 @@
 | Campo | Valor |
 |---|---|
 | **Superficie de confianza** | `0` — API de la consola. Las llamadas a Meta son las mismas que el alta ya hace, deshechas |
-| **Garantías de aislamiento tocadas** | Ninguna en su promesa. La única novedad: una fila desvinculada de otro tenant deja de **bloquear** un alta ajena, y eso no revela nada — la regla de unicidad deja de chocar con ella, no la lee |
+| **Garantías de aislamiento tocadas** | **Garantía 1 (RLS), rozada**: la regla de unicidad del número cambia de forma y deja de contar filas ajenas desvinculadas. No cambia de promesa —una fila de otro tenant sigue sin poder leerse ni alterarse— pero se roza, y la constitución pide declararlo y probarlo (T004) |
 | **Nota de KB que la justifica** | `[[sessions/2026-09-29-spec-019-iteracion-1]]` · `[[architecture/agent-isolation]]` §1 |
 | **Qué se mide** | Nada |
 
@@ -165,12 +165,18 @@ soltar el número de verdad, para que deje de estar atado a mi cuenta.
    de modo que deje de estar registrado bajo nuestra aplicación.
 2. WHEN el número desvinculado era el último vivo de su cuenta de WhatsApp
    Business en ese cliente THEN el sistema DEBE desuscribir nuestra aplicación
-   de esa cuenta y borrar las credenciales guardadas para ella.
+   de esa cuenta y **borrar** las credenciales guardadas para ella. *(Borrar y
+   no archivar, a diferencia de casi todo lo demás: un token de una cuenta a la
+   que ya no estamos suscritos no es historial, es un pasivo.)*
 3. IF quedan otros números vivos en esa misma cuenta THEN el sistema NO DEBE
    desuscribir la aplicación ni tocar las credenciales, y los demás números
    DEBEN seguir atendiendo.
 4. El sistema NO DEBE intentar sacar el número de la cuenta del partner en
    Meta: es su activo, y el aviso DEBE decir que eso se hace allí.
+5. WHERE el número está en **coexistencia** —sigue en la app WhatsApp Business
+   del partner— EL sistema DEBE dejarlo funcionando en esa app al darlo de
+   baja de la nuestra, y el aviso DEBE decir que seguirá chateando desde su
+   teléfono. *(Desvincular es soltarlo de nosotros, no dejarlo sin WhatsApp.)*
 
 ### Requisito 3 — Nada se queda a medias en silencio
 

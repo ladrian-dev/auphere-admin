@@ -78,7 +78,7 @@ specs/021-el-numero-se-puede-mover/
 
 ```text
 apps/api/
-├── alembic/versions/0132_channel_number_unique_when_live.py
+├── alembic/versions/0132_number_unique_when_live.py
 ├── src/nexus_api/
 │   ├── db/models/channel.py                 # la unicidad, parcial
 │   ├── api/console/channels.py              # desvincular deshace en Meta; reintento

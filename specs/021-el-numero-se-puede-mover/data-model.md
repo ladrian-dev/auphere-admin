@@ -9,7 +9,7 @@ ya existe.
 |---|---|
 | `UNIQUE (type, provider_identifier)` — restricción `uq_channels_type_provider_id` | `UNIQUE INDEX (type, provider_identifier) WHERE status <> 'disconnected'` — índice `uq_channels_live_number` |
 
-**Migración** `0132_channel_number_unique_when_live`. La bajada recrea la
+**Migración** `0132_number_unique_when_live`. La bajada recrea la
 restricción vieja y **falla a propósito** si hay dos filas con el mismo número
 (una viva y una desvinculada): mejor un `downgrade` que se niega que uno que
 borra.

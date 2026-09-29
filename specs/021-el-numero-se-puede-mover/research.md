@@ -47,7 +47,7 @@ número en uso) ya lo cumple el 409: dice `number_in_use` y nada más.
 - **Unicidad por tenant**: dejaría que dos tenants tuvieran el mismo número
   vivo, que es justo lo que Meta no permite y lo que R1.1 prohíbe.
 
-**Migración**: `0132_channel_number_unique_when_live` — `DROP CONSTRAINT
+**Migración**: `0132_number_unique_when_live` — `DROP CONSTRAINT
 uq_channels_type_provider_id` + `CREATE UNIQUE INDEX … WHERE`. Bajada: al
 revés, y **falla si hay duplicados desvinculados** — se dice en la migración en
 vez de borrar filas en silencio.
