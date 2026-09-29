@@ -293,7 +293,7 @@ function CardShell({
       aria-busy={pending}
     >
       <div className="flex min-w-0 items-start gap-3">
-        <ConnectorIcon connector={connector} />
+        <ConnectorIcon connector={connector} refId={refId} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <h3 className="min-w-0 truncate font-medium" title={name}>
             {name}
@@ -355,27 +355,30 @@ function descKey(slug: string): MessageKey {
 /**
  * El icono de la aplicación, con su estado en la esquina.
  *
- * El logotipo lo sirve el propio proveedor —es lo que trae el catálogo—, así
- * que se pide sin referente: el navegador del partner no le cuenta a
- * WooCommerce desde qué dirección de la consola se está mirando. Cuando no
- * hay logotipo, la inicial sobre un cuadro tintado; un hueco gris no
- * distingue una tarjeta de otra.
+ * **El logotipo se pide a nuestro propio origen**, no al proveedor. Pedírselo
+ * al proveedor es lo que se hacía y no funcionaba nunca: la consola publica
+ * `img-src 'self' data: blob:`, así que el navegador bloqueaba todas las
+ * imágenes de otros dominios y pintaba el icono de imagen rota. La ruta
+ * `/api/connector-logo/…` las sirve desde aquí, y de paso el navegador del
+ * partner deja de contarle a Meta o a WordPress qué conectores mira.
+ *
+ * Cuando el catálogo no trae logotipo, la inicial sobre un cuadro tintado; un
+ * hueco gris no distingue una tarjeta de otra.
  */
-function ConnectorIcon({ connector }: { connector: ConnectorOut }) {
+function ConnectorIcon({ connector, refId }: { connector: ConnectorOut; refId: string }) {
   const inicial = connector.display_name.trim().charAt(0).toUpperCase();
   return (
     <span data-slot="connector-icon" className="relative shrink-0">
       <span className="flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted ring-1 ring-foreground/10">
         {connector.logo_url ? (
-          /* El catálogo puede traer el logotipo de cualquier dominio, y
-             `next/image` exige declararlos uno a uno: se rompería con el
-             primer conector que Auphere publique. */
+          /* `next/image` exige declarar cada dominio remoto uno a uno, y el
+             catálogo puede traer cualquiera; además estas ya vienen por
+             nuestra propia ruta, así que no hay nada que optimizar. */
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={connector.logo_url}
+            src={`/api/connector-logo/${encodeURIComponent(refId)}/${encodeURIComponent(connector.slug)}`}
             alt=""
             loading="lazy"
-            referrerPolicy="no-referrer"
             className="size-10 object-contain"
           />
         ) : (
