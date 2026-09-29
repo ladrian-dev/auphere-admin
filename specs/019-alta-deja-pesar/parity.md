@@ -50,30 +50,35 @@ no de una lista escrita a mano.
 | `cobranza_v1` | 4 | 1 | −3 |
 | `inventario_v1` | 4 | 1 | −3 |
 | `woocommerce_sales_v1` | 8 | 4 | −4 |
-| `aesthetic_clinic_v1` | **23** | **12** | −11 |
+| `aesthetic_clinic_v1` | **23** | **7** | −16 |
 
 **Destino de los opcionales**: los ajustes del agente, donde ya viven. No se
 pierde ninguno — dejan de pedirse **antes** de que el cliente exista.
 
-## 4 · La excepción que sigue abierta
+## 4 · La excepción, cerrada
 
-`aesthetic_clinic_v1` exige doce, y cinco son justo los que el owner señaló
-como impropios del alta el 2026-09-28:
+`aesthetic_clinic_v1` exigía doce campos, y cinco eran justo los que el owner
+señaló como impropios del alta el 2026-09-28:
 
-| Campo obligatorio hoy | Qué dijo el owner |
-|---|---|
-| `tenant.pricing_table_label` | «Tabla de precios no se carga aquí» |
-| `tenant.payment_methods_label` | «formas de pago tampoco se carga aquí» |
-| `clinical.titular_credential` | «Credenciales del titular tampoco va» |
-| `tenant.consultation_price_label` | «Precio de la consulta tampoco va» |
-| `tenant.saturday_label` | «¿Para qué tiene el input de Sábados?» — disuelto ya por el selector de horario, pero **la semilla lo sigue exigiendo** |
+| Campo | Qué dijo el owner | Ahora |
+|---|---|---|
+| `tenant.pricing_table_label` | «Tabla de precios no se carga aquí» | opcional |
+| `tenant.payment_methods_label` | «formas de pago tampoco se carga aquí» | opcional |
+| `clinical.titular_credential` | «Credenciales del titular tampoco va» | opcional |
+| `tenant.consultation_price_label` | «Precio de la consulta tampoco va» | opcional |
+| `tenant.saturday_label` | «¿Para qué tiene el input de Sábados?» | opcional |
 
-Mientras sigan marcados `required: true` en la semilla, el alta los pide: el
-paso 2 enseña exactamente lo que la plantilla exige, ni uno más ni uno menos.
-**Eso es T036**, y por eso T036 no es cosmética — es lo que baja esta plantilla
-de doce campos a cuatro. Con la decisión del 2026-09-28 («el agente calla lo
-que nadie le dijo») el camino es el mismo para las dos mitades del problema:
-dejan de ser obligatorios, y donde no haya valor el prompt no afirma nada.
+**No se tacharon de una lista: dejaron de exigirse porque el prompt dejó de
+afirmarlos.** Esa es la decisión del owner del 2026-09-28 («el agente calla lo
+que nadie le dijo»), y las dos mitades del problema se arreglan por el mismo
+sitio: un bloque `{?clave} … {:} … {/}` en la semilla solo se escribe si el
+partner dio el valor, y en su lugar el agente deriva al equipo.
+
+Quedan **siete** obligatorios, todos hechos del negocio que el agente necesita
+decir en voz alta: dirección, quién lidera la clínica, hospital y teléfono de
+referencia para urgencias post-operatorias, Instagram, teléfono de recepción y
+horario. Con el nombre y la zona horaria, el paso 2 enseña **nueve campos donde
+enseñaba veintitrés**.
 
 ## 5 · Lo que el alta hacía al terminar
 
@@ -105,8 +110,8 @@ dejan de ser obligatorios, y donde no haya valor el prompt no afirma nada.
 | 1 · Pasos | ✅ completa |
 | 2 · Campos | ✅ completa |
 | 3 · Placeholders | ✅ completa |
-| 4 · La excepción | ⏳ **abierta** — depende de T036 |
+| 4 · La excepción | ✅ cerrada por T036 |
 | 5 · Al terminar | ✅ completa |
 | 6 · Alrededor | ✅ completa |
 
-T019 no puede cerrarse mientras la sección 4 siga abierta.
+Paridad al 100 %: ninguna fila se queda sin destino.
