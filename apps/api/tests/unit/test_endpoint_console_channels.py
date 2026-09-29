@@ -1161,3 +1161,99 @@ async def test_state_is_written_before_meta_is_called(
     fila = await _reload(db_session, canal.id)
     assert fila.status is ChannelStatus.DISCONNECTED
     assert fila.config["unlink_pending"] == ["deregister", "unsubscribe"]
+
+
+async def test_a_coexistence_number_is_never_deregistered(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """R2.5 · research D5, medido en staging el 2026-09-29: Meta rechazó
+    ``deregister`` sobre el número real en coexistencia. El alta nunca lo
+    registró (``CallingNotAllowed``), así que desvincular tampoco lo da de
+    baja: solo desuscribe, si era el último de su cuenta."""
+    a = console_world["a"]
+    sim = _sim(monkeypatch)
+    canal = _channel(a["tenant_id"], waba_id="W-coex", mode="coexistence")
+    await _seed_channel_creds(db_session, canal, waba_id="W-coex")
+    db_session.add(canal)
+    await db_session.commit()
+    await _seed_creds(db_session, a["tenant_id"], waba_id="W-coex")
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "disconnected"
+    assert r.json()["unlink_pending"] == []
+    assert [c[0] for c in sim.calls] == ["unsubscribe_app"]
+
+
+async def test_a_coexistence_number_with_a_live_sibling_has_nothing_to_undo(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Coexistencia + hermano vivo: ni baja ni desuscripción. Desvinculado
+    igual, sin pendientes, sin tocar Meta."""
+    a = console_world["a"]
+    sim = _sim(monkeypatch)
+    canal = _channel(a["tenant_id"], waba_id="W-coex2", mode="coexistence")
+    hermano = _channel(a["tenant_id"], waba_id="W-coex2", mode="coexistence")
+    await _seed_channel_creds(db_session, canal, waba_id="W-coex2")
+    db_session.add_all([canal, hermano])
+    await db_session.commit()
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "disconnected"
+    assert r.json()["unlink_pending"] == []
+    assert sim.calls == []
+    fila = await _reload(db_session, canal.id)
+    assert "unlink_pending" not in fila.config
+
+
+async def test_retrying_a_coexistence_number_drops_the_deregister_it_owed(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Lo que quedó pendiente antes de esta regla —el número real de staging—
+    tiene ``deregister`` anotado. Reintentar lo descarta en vez de volver a
+    pedir a Meta lo que va a rechazar."""
+    a = console_world["a"]
+    sim = _sim(monkeypatch)
+    canal = _channel(a["tenant_id"], waba_id="W-coex3", mode="coexistence")
+    canal.status = ChannelStatus.DISCONNECTED
+    canal.config = {**canal.config, "unlink_pending": ["deregister", "unsubscribe"]}
+    await _seed_channel_creds(db_session, canal, waba_id="W-coex3")
+    db_session.add(canal)
+    await db_session.commit()
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["unlink_pending"] == []
+    assert [c[0] for c in sim.calls] == ["unsubscribe_app"]
+
+
+async def test_a_meta_refusal_leaves_its_reason_for_the_record(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """El primer rechazo real de Meta llegó sin rastro de por qué: la fila
+    decía qué faltaba, no por qué. El motivo se guarda en ``config`` y en la
+    auditoría; la tarjeta no lo enseña tal cual (constitución III)."""
+    a = console_world["a"]
+    _sim(monkeypatch, fail_steps={"deregister_phone"})
+    canal = _channel(a["tenant_id"], waba_id="W-err")
+    await _seed_channel_creds(db_session, canal, waba_id="W-err")
+    db_session.add(canal)
+    await db_session.commit()
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["unlink_pending"] == ["deregister", "unsubscribe"]
+    assert "unlink_error" not in r.json()
+    fila = await _reload(db_session, canal.id)
+    assert fila.config["unlink_error"]["step"] == "deregister"
+    assert fila.config["unlink_error"]["status_code"] == 503
+    assert "unavailable" in fila.config["unlink_error"]["message"]

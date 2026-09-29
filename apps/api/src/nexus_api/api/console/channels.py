@@ -19,6 +19,7 @@ from __future__ import annotations
 import uuid
 
 import sqlalchemy as sa
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_channels.whatsapp_meta.credentials import (
     ChannelCredentialsRepository,
@@ -39,6 +40,8 @@ from nexus_api.services.meta_signup_service import build_meta_client as _build_m
 from .deps import ClientScope, client_scope
 from .schemas import ChannelOut
 from .schemas_channels import ChannelDetailOut, ChannelRoleIn, ChannelsOverviewOut
+
+log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/clients/{ref}/channels")
 
@@ -276,9 +279,19 @@ async def disconnect_channel(
         fila = await s1.get(Channel, channel_id)
         assert fila is not None
         cfg = dict(fila.config or {})
+        # Un número en coexistencia sigue registrado desde la app WhatsApp
+        # Business del partner: el alta **no** lo registró (Meta contesta
+        # CallingNotAllowed), así que tampoco hay nada que dar de baja. Medido
+        # en staging el 2026-09-29 con el número real: `deregister` sobre él
+        # fue rechazado. Lo simétrico del alta es no pedirlo (research D5).
+        coexistencia = str(cfg.get("mode") or "") == "coexistence"
         if fila.status is ChannelStatus.DISCONNECTED:
             before = ChannelStatus.DISCONNECTED.value
-            pending = [str(x) for x in (cfg.get("unlink_pending") or [])]
+            pending = [
+                str(x)
+                for x in (cfg.get("unlink_pending") or [])
+                if not (coexistencia and str(x) == "deregister")
+            ]
         else:
             before = fila.status.value
             waba_id = cfg.get("waba_id")
@@ -296,13 +309,15 @@ async def disconnect_channel(
                     )
                     or 0
                 )
-            pending = ["deregister"] + (["unsubscribe"] if hermanos == 0 else [])
+            pending = ([] if coexistencia else ["deregister"]) + (
+                ["unsubscribe"] if hermanos == 0 else []
+            )
             fila.status = ChannelStatus.DISCONNECTED
             cfg["unlink_pending"] = pending
             fila.config = cfg
             flag_modified(fila, "config")
             await s1.flush()
-        if not pending:
+        if not pending and before == ChannelStatus.DISCONNECTED.value:
             # Ya estaba hecho del todo: quien pulsa dos veces no merece un error.
             return _detail(fila, await channel_logos(s1))
 
@@ -335,9 +350,24 @@ async def disconnect_channel(
                             )
                         elif step == "unsubscribe":
                             await client.unsubscribe_app(waba_id=waba_id, access_token=token)
-                    except MetaAPIError:
+                    except MetaAPIError as exc:
                         # Queda pendiente, y los que vienen detrás también: no
                         # tiene sentido desuscribir lo que no se pudo dar de baja.
+                        # El motivo se guarda para el registro y el log — no
+                        # para la pantalla (constitución III): en staging el
+                        # primer rechazo real llegó sin rastro de por qué.
+                        motivo = {
+                            "step": step,
+                            "status_code": getattr(exc, "status_code", None),
+                            "code": getattr(exc, "code", None),
+                            "message": str(exc)[:300],
+                        }
+                        cfg["unlink_error"] = motivo
+                        log.warning(
+                            "channel.unlink.step_failed",
+                            channel_id=str(channel_id),
+                            **motivo,
+                        )
                         break
                     done.append(step)
                     pending.remove(step)
@@ -349,11 +379,14 @@ async def disconnect_channel(
                 cfg["unlink_pending"] = pending
             else:
                 cfg.pop("unlink_pending", None)
+                cfg.pop("unlink_error", None)
             fila.config = cfg
             flag_modified(fila, "config")
-            meta: dict[str, list[str]] = {"done": done, "pending": pending}
+            meta: dict[str, object] = {"done": done, "pending": pending}
             if skipped:
                 meta["skipped"] = skipped
+            if cfg.get("unlink_error"):
+                meta["error"] = cfg["unlink_error"]
             await AuditRepository(s2).record(
                 actor=scope.principal.actor,
                 action="console.channel.disconnect",
