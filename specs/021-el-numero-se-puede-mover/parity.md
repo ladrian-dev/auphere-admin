@@ -13,3 +13,7 @@ Qué hacía desvincular en la spec 019 y qué le pasa a cada parte aquí.
 | Solo `channels:write` | Igual |
 | El aviso: «sigue registrado en Meta» | **Cambia**: se da de baja de nuestra app; sacarlo de tu cuenta se hace en el Business Manager; en coexistencia sigue en tu teléfono |
 | Un número ajeno vivo → 409 `number_in_use` (spec 016) | Igual. **Nuevo**: un número ajeno desvinculado ya no da 409 |
+
+**Estado al cierre (2026-09-29): 100 %.** Todo lo de la 019 se conserva. Lo
+que cambia, cambia a más: el mismo endpoint, el mismo permiso, la misma
+acción de auditoría, con más consecuencias y más verdad en el aviso.
