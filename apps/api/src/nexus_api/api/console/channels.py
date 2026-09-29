@@ -24,7 +24,7 @@ from nexus_channels.whatsapp_meta.credentials import MetaCredentialsRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from nexus_api.db.models import Channel, ChannelStatus, ChannelType
+from nexus_api.db.models import Channel, ChannelStatus, ChannelType, Connector
 from nexus_api.repositories.audit import AuditRepository
 from nexus_api.services.channel_routing import channel_agent_enabled, channel_role
 
@@ -40,7 +40,39 @@ router = APIRouter(prefix="/clients/{ref}/channels")
 INTERNAL_PROVIDERS: frozenset[str] = frozenset({"qa_playground"})
 
 
-def _detail(ch: Channel) -> ChannelDetailOut:
+#: De qué conector del catálogo sale el logotipo de cada tipo de canal. Los
+#: conectores «solo canal» están fuera de la lista que ve la consola —no se
+#: conectan desde Conectores, se conectan desde Canales—, así que su logotipo
+#: tiene que llegar por aquí o no llega.
+CHANNEL_CONNECTOR_SLUG: dict[str, str] = {"whatsapp": "whatsapp_meta"}
+
+
+async def channel_logos(session: AsyncSession) -> dict[str, str | None]:
+    """Logotipo por tipo de canal, leído del catálogo una vez por petición."""
+    slugs = set(CHANNEL_CONNECTOR_SLUG.values())
+    if not slugs:
+        return {}
+    filas = (
+        await session.execute(
+            sa.select(Connector.slug, Connector.provider_meta).where(Connector.slug.in_(slugs))
+        )
+    ).all()
+    por_slug: dict[str, str | None] = {}
+    for slug, meta in filas:
+        meta = meta or {}
+        url = next(
+            (
+                meta[k]
+                for k in ("logo_url", "logo", "icon_url")
+                if isinstance(meta.get(k), str) and meta[k]
+            ),
+            None,
+        )
+        por_slug[slug] = url
+    return {tipo: por_slug.get(slug) for tipo, slug in CHANNEL_CONNECTOR_SLUG.items()}
+
+
+def _detail(ch: Channel, logos: dict[str, str | None] | None = None) -> ChannelDetailOut:
     cfg = ch.config or {}
 
     def _s(key: str) -> str | None:
@@ -61,6 +93,7 @@ def _detail(ch: Channel) -> ChannelDetailOut:
         verified_name=_s("verified_name"),
         mode=_s("mode"),
         agent_enabled=channel_agent_enabled(ch),
+        logo_url=(logos or {}).get(ch.type.value),
     )
 
 
@@ -131,8 +164,9 @@ async def channels_overview(
     used = sum(1 for c in rows if c.status is not ChannelStatus.DISCONNECTED)
     limit = scope.principal.partner.max_channels_per_client
     creds = await MetaCredentialsRepository(scope.session).get()
+    logos = await channel_logos(scope.session)
     return ChannelsOverviewOut(
-        channels=[_detail(c) for c in rows],
+        channels=[_detail(c, logos) for c in rows],
         max_channels=limit,
         used_channels=used,
         can_connect=used < limit,
@@ -170,7 +204,7 @@ async def set_channel_role(
         before={"role": before},
         after={"role": body.role, "identifier": ch.provider_identifier},
     )
-    return _detail(ch)
+    return _detail(ch, await channel_logos(scope.session))
 
 
 @router.post("/{channel_id}/disconnect", response_model=ChannelDetailOut)
@@ -203,7 +237,7 @@ async def disconnect_channel(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="channel not found")
     if ch.status is ChannelStatus.DISCONNECTED:
         # Idempotente: quien pulsa dos veces no merece un error.
-        return _detail(ch)
+        return _detail(ch, await channel_logos(scope.session))
     before = ch.status.value
     ch.status = ChannelStatus.DISCONNECTED
     await scope.session.flush()
@@ -214,7 +248,7 @@ async def disconnect_channel(
         before={"status": before},
         after={"status": ch.status.value, "identifier": ch.provider_identifier},
     )
-    return _detail(ch)
+    return _detail(ch, await channel_logos(scope.session))
 
 
 __all__ = ["count_connected_channels", "roles_required", "router"]

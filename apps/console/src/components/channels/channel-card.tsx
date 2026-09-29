@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal } from "lucide-react";
+import { MessageCircle, MoreHorizontal } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import {
   HelpHint,
   NativeSelect,
   StatusBadge,
+  StatusDot,
   formatDateTime,
 } from "@nexus/ui";
 
@@ -43,6 +44,34 @@ export function tierKey(tier: string | null): MessageKey | null {
   if (!tier) return null;
   const key = `ch.tier.${tier.toUpperCase()}` as MessageKey;
   return key in messages ? key : null;
+}
+
+/**
+ * El icono de la aplicación del canal, con su estado en la esquina.
+ *
+ * Se pide a nuestro propio origen: la consola publica `img-src 'self'`, así
+ * que una imagen del dominio del proveedor no cargaría — es el mismo fallo
+ * que tenían los conectores. Sin logotipo, un icono de conversación sobre un
+ * cuadro tintado; un hueco gris no distingue una tarjeta de otra.
+ */
+function ChannelIcon({ refId, channel }: { refId: string; channel: ChannelDetail }) {
+  return (
+    <span data-slot="channel-icon" className="relative shrink-0">
+      <span className="flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted ring-1 ring-foreground/10">
+        {channel.logo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/channel-logo/${encodeURIComponent(refId)}/${encodeURIComponent(channel.id)}`}
+            alt=""
+            loading="lazy"
+            className="size-10 object-contain"
+          />
+        ) : (
+          <MessageCircle aria-hidden="true" className="size-5 text-muted-foreground" />
+        )}
+      </span>
+    </span>
+  );
 }
 
 export function ChannelCard({
@@ -89,15 +118,20 @@ export function ChannelCard({
 
   return (
     <li className="flex min-w-0 flex-col gap-3 rounded-md bg-card p-4 ring-1 ring-foreground/10" aria-busy={pending}>
-      {/* El número arriba y grande: es lo que el partner reconoce. «WhatsApp»
-          lo sabe por el sitio donde está mirando. */}
+      {/* Icono, número, estado y una acción — la misma lectura que una
+          tarjeta de conector, porque son la misma clase de cosa: algo de
+          fuera que el agente usa. El número va de cabecera porque es lo que
+          el partner reconoce; «WhatsApp» ya lo dice el icono. */}
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate font-medium tabular-nums">{channel.provider_identifier}</span>
-          <span className="truncate text-xs text-muted-foreground">
-            {channel.type === "whatsapp" ? t("ch.card.whatsapp") : channel.type}
-            {channel.verified_name ? ` · ${channel.verified_name}` : ""}
-          </span>
+        <div className="flex min-w-0 items-center gap-3">
+          <ChannelIcon refId={refId} channel={channel} />
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-medium tabular-nums">{channel.provider_identifier}</span>
+            <span className="truncate text-xs text-muted-foreground">
+              {channel.type === "whatsapp" ? t("ch.card.whatsapp") : channel.type}
+              {channel.verified_name ? ` · ${channel.verified_name}` : ""}
+            </span>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <StatusBadge tone={TONE[channel.status as keyof typeof TONE] ?? "muted"}>
@@ -142,7 +176,16 @@ export function ChannelCard({
                 {
                   key: "quality",
                   term: t("ch.card.quality"),
-                  detail: <StatusBadge tone={qualityTone(channel.quality_rating)}>{t(qualityKey)}</StatusBadge>,
+                  // Un punto y una palabra, **no** otra pastilla: la tarjeta
+                  // tenía dos insignias iguales —«Activo» y «Alta»— y se
+                  // leían como dos estados del canal. Solo una lo es. La
+                  // calidad es una propiedad que Meta mide.
+                  detail: (
+                    <span className="inline-flex items-center gap-2">
+                      <StatusDot tone={qualityTone(channel.quality_rating)} label={t(qualityKey)} />
+                      {t(qualityKey)}
+                    </span>
+                  ),
                 },
               ]
             : []),

@@ -41,6 +41,12 @@ class ChannelDetailOut(ChannelOut):
     verified_name: str | None = None
     mode: str | None = None
     agent_enabled: bool = True
+    #: El logotipo de la aplicación del canal, tomado del catálogo de
+    #: conectores (``whatsapp_meta.provider_meta.icon_url``). Viaja aquí
+    #: porque el canal es lo que la tarjeta pinta, y porque el catálogo de
+    #: conectores **no** lista los que son solo canal: sin esto, la consola no
+    #: tendría de dónde sacarlo.
+    logo_url: str | None = None
 
 
 class ChannelsOverviewOut(BaseModel):

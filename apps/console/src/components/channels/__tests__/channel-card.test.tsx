@@ -14,6 +14,7 @@ vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
 }));
 
 const CANAL: ChannelDetail = {
+  logo_url: null,
   id: "9f1b4e8a-6f3c-4c2a-9a6d-2f7e5c1b3d40",
   type: "whatsapp",
   provider_identifier: "+34653321693",
@@ -90,5 +91,33 @@ describe("Desvincular un número (2026-09-29)", () => {
     expect(messages["ch.disconnect.body"].es).toMatch(/sigue registrado en Meta/i);
     expect(messages["ch.disconnect.body"].en).toMatch(/connect it again/i);
     expect(messages["ch.disconnect.body"].en).toMatch(/stays registered with Meta/i);
+  });
+});
+
+describe("Una sola insignia de estado (2026-09-29)", () => {
+  it("«Activo» es la única pastilla: la calidad no es un estado del canal", () => {
+    // La tarjeta desplegada tenía dos insignias idénticas —«Activo» y
+    // «Alta»— una al lado de la otra, y se leían como dos estados de la
+    // misma cosa. Solo una lo es: la otra la mide Meta.
+    const { container } = pintar();
+    const pastillas = container.querySelectorAll("[data-slot=status-badge]");
+    expect(pastillas).toHaveLength(1);
+    expect(pastillas[0]!.textContent).toContain("Activo");
+    // La calidad sigue estando, y sigue teniendo color: punto y palabra.
+    expect(screen.getByText("Alta")).toBeInTheDocument();
+  });
+
+  it("el icono de la aplicación se pide a nuestro origen, no al proveedor", () => {
+    // `img-src 'self'` bloquea cualquier otro dominio: es el fallo que tenían
+    // los conectores, y esta tarjeta lo habría repetido.
+    const { container } = pintar({ logo_url: "https://upload.wikimedia.org/…/WhatsApp.svg" });
+    const img = container.querySelector("[data-slot=channel-icon] img");
+    expect(img?.getAttribute("src")).toBe("/api/channel-logo/demo/9f1b4e8a-6f3c-4c2a-9a6d-2f7e5c1b3d40");
+  });
+
+  it("sin logotipo en el catálogo, un icono en vez de un hueco gris", () => {
+    const { container } = pintar({ logo_url: null });
+    expect(container.querySelector("[data-slot=channel-icon] img")).toBeNull();
+    expect(container.querySelector("[data-slot=channel-icon] svg")).not.toBeNull();
   });
 });

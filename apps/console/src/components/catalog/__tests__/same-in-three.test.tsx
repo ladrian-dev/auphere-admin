@@ -102,6 +102,7 @@ const CHANNEL: ChannelDetail = {
   verified_name: "Panadería La Espiga",
   mode: null,
   agent_enabled: true,
+  logo_url: null,
 };
 
 /** Las tres pantallas, montadas igual. */

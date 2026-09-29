@@ -24,6 +24,9 @@ export type ChannelDetail = {
   verified_name: string | null;
   mode: string | null;
   agent_enabled: boolean;
+  /** El logotipo de la aplicación del canal. La consola no lo pide al
+   *  proveedor —la CSP no lo dejaría— sino a `/api/channel-logo/…`. */
+  logo_url: string | null;
 };
 
 export type ChannelsOverview = {
