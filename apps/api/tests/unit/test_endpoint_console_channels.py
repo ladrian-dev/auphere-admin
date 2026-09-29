@@ -1135,7 +1135,12 @@ async def test_audit_says_what_was_done_and_what_was_not(
         .first()
     )
     assert fila is not None
-    assert fila.after_json["meta"] == {"done": ["deregister"], "pending": ["unsubscribe"]}
+    meta = fila.after_json["meta"]
+    assert meta["done"] == ["deregister"]
+    assert meta["pending"] == ["unsubscribe"]
+    # Y por qué: el primer rechazo real de Meta (staging, 2026-09-29) llegó sin motivo.
+    assert meta["error"]["step"] == "unsubscribe"
+    assert meta["error"]["status_code"] == 503
 
 
 async def test_state_is_written_before_meta_is_called(

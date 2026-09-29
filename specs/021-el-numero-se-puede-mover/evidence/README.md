@@ -24,10 +24,10 @@ Una entrada por iteración. Cada una dice qué se midió, con qué, y qué sali�
 | CE-002 · reconectar recupera la ficha | local (T007) | ✅ mismo `channel.id` |
 | CE-003 · vivo en otro sitio → palabras | local (T008) | ✅ 409 `number_in_use`; nada dice de quién es |
 | CE-006 · Meta caído | local (T012, T015) + tarjeta en el navegador | ✅ desvinculado igual; `unlink_pending` lista lo que faltó; reintentar lo vacía |
-| CE-004 · Meta ya no lo tiene bajo nuestra app | **staging, número real** | ⏳ pendiente |
+| CE-004 · Meta ya no lo tiene bajo nuestra app | **staging, número real** | ⚠️ 2026-09-29 21:28: desvinculado en la consola; Meta **rechazó `deregister`** (número en coexistencia) y `unsubscribe` no se intentó. La tarjeta lo dijo con «Falta terminar en Meta» y Reintentar (R3 cumplida). Corrección: coexistencia no da de baja (D5). Pendiente: reintentar y ver `unsubscribe` |
 | CE-005 · el hermano sigue vivo | **staging, dos números en una WABA** | ⏳ pendiente |
 | R4.2 · Meta retiene el número del dueño anterior | **staging, número real** | ⏳ pendiente: confirmar que llega como `number_held_by_previous_owner` |
-| D5 · `deregister` en coexistencia | **staging, número real** | ⏳ pendiente |
+| D5 · `deregister` en coexistencia | **staging, número real** | ✅ medido: Meta lo rechaza → no se pide. Ver `research.md` D5 |
 
 En local no hay Meta: conectar un número de verdad necesita el Embedded
 Signup, así que CE-001–003 se prueban con el cliente de Meta simulado, que es

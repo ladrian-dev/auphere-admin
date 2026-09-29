@@ -124,9 +124,20 @@ partner. `deregister` lo retira del Cloud API, **no** de la app: el partner
 sigue chateando desde su móvil. Es lo correcto — «desvincular» es soltarlo
 de nosotros, no dejarlo sin WhatsApp — y el aviso lo dice.
 
-**Pendiente de verificar en staging**, con un número real: que `deregister`
-sobre un número en coexistencia se comporta así y no devuelve un error que haya
-que tratar distinto. En local no hay Meta.
+**Medido en staging el 2026-09-29 con el número real (`+34653321693`, en
+coexistencia)**: Meta **rechazó** `deregister`, y por el orden de los pasos
+`unsubscribe` no llegó a intentarse. El motivo no quedó escrito —el endpoint
+no lo guardaba—; ahora se anota en `config.unlink_error` y en la auditoría.
+
+**Decisión**: un número en coexistencia **nunca se da de baja**. Es lo
+simétrico del alta, que en coexistencia se salta `register` porque Meta
+contesta `CallingNotAllowed`: lo que no se registró no se puede dar de baja.
+Los pasos de un canal en coexistencia son solo `unsubscribe`, y solo si era
+el último de su cuenta. Un `deregister` que quedó anotado antes de esta regla
+se descarta al reintentar.
+
+Queda por ver en staging, al reintentar: que `unsubscribe` sí pasa con el
+número real, y qué devuelve Meta cuando no —ya con el motivo guardado.
 
 ---
 
