@@ -23,9 +23,11 @@ import pytest
 import respx
 import sqlalchemy as sa
 from nexus_channels.whatsapp_meta.credentials import MetaCredentials
+from nexus_channels.whatsapp_meta.exceptions import MetaTransientError
 from nexus_channels.whatsapp_meta.meta_client import META_GRAPH_BASE_URL
 from nexus_channels.whatsapp_meta.signup import SignupResult
 
+from nexus_api.api.console import channels as ch_router
 from nexus_api.api.console import diagnostics as diag
 from nexus_api.api.console import templates as tpl_router
 from nexus_api.api.console import whatsapp as wa_router
@@ -849,9 +851,62 @@ async def test_a_failure_after_the_code_leaves_no_channel_and_no_credentials(
     assert await _rows_for(db_session, a["tenant_id"]) == (1, 0)
 
 
+# ── Spec 021 · desvincular deshace en Meta ─────────────────────────────
+
+
+class _MetaSim:
+    """Meta simulado para desvincular: registra lo que se le pide y falla
+    a la carta. ``down`` = todo falla como si Meta no contestara."""
+
+    def __init__(self, *, down: bool = False, fail_steps: set[str] | None = None) -> None:
+        self.down = down
+        self.fail_steps = fail_steps or set()
+        self.calls: list[tuple[str, dict]] = []
+
+    async def _step(self, name: str, **kw):
+        self.calls.append((name, kw))
+        if self.down or name in self.fail_steps:
+            raise MetaTransientError(f"{name} unavailable", status_code=503, code=None)
+        return {"success": True}
+
+    async def deregister_phone(self, **kw):
+        return await self._step("deregister_phone", **kw)
+
+    async def unsubscribe_app(self, **kw):
+        return await self._step("unsubscribe_app", **kw)
+
+    async def close(self) -> None:
+        pass
+
+
+def _sim(monkeypatch, **kw) -> _MetaSim:
+    sim = _MetaSim(**kw)
+    monkeypatch.setattr(ch_router, "build_meta_client", lambda: sim)
+    return sim
+
+
+async def _seed_channel_creds(db_session, channel: Channel, *, waba_id: str) -> None:
+    channel.config_encrypted = MetaCredentials(
+        bisuat="EAA-canal",
+        waba_id=waba_id,
+        phone_number_id=str(channel.config.get("phone_number_id")),
+        business_id="BIZ",
+        display_phone_number=channel.provider_identifier,
+        verify_token="v" * 32,
+    ).to_payload()
+
+
+async def _reload(db_session, channel_id):
+    db_session.expunge_all()
+    return (
+        await db_session.execute(sa.select(Channel).where(Channel.id == channel_id))
+    ).scalar_one()
+
+
 async def test_disconnect_marks_the_channel_and_leaves_its_row(
-    client, console_world, db_session
+    client, console_world, db_session, monkeypatch
 ) -> None:
+    _sim(monkeypatch)
     """Soltar un número: el agente deja de atender por él, y nada más.
 
     Conectar era autoservicio y desconectar no existía — el partner que se
@@ -903,3 +958,206 @@ async def test_disconnect_marks_the_channel_and_leaves_its_row(
         f"/console/clients/{a['ref']}/channels/{ajeno.id}/disconnect", headers=a["headers"]()
     )
     assert r.status_code == 404
+
+
+async def test_disconnect_costs_nothing_the_meter_sees(client, console_world, db_session) -> None:
+    """T-MET (spec 021, T003): desvincular no gasta modelo, reloj ni herramienta
+    de pago, así que **no escribe** ningún evento de consumo. Las llamadas a
+    Meta que llegarán con la iteración 2 tampoco: son la contraria del alta,
+    que tampoco se mide."""
+    a = console_world["a"]
+    canal = _channel(a["tenant_id"])
+    db_session.add(canal)
+    await db_session.commit()
+
+    antes = await db_session.scalar(
+        sa.text("SELECT count(*) FROM usage_events WHERE tenant_id = :t"),
+        {"t": str(a["tenant_id"])},
+    )
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    despues = await db_session.scalar(
+        sa.text("SELECT count(*) FROM usage_events WHERE tenant_id = :t"),
+        {"t": str(a["tenant_id"])},
+    )
+    assert despues == antes, "desvincular escribió consumo"
+
+
+async def test_meta_down_still_disconnects_and_says_what_is_pending(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """T012 · R3.1 — **el modo de fallo, primero.** Con Meta caído, el canal queda
+    desvinculado igual (el agente deja de atender, que es lo que el partner
+    pidió) y ``unlink_pending`` dice qué faltó. Nada se queda a medias en
+    silencio."""
+    a = console_world["a"]
+    sim = _sim(monkeypatch, down=True)
+    canal = _channel(a["tenant_id"], waba_id="W1")
+    db_session.add(canal)
+    await db_session.commit()
+    await _seed_creds(db_session, a["tenant_id"], waba_id="W1")
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "disconnected"
+    assert body["unlink_pending"] == ["deregister", "unsubscribe"]
+    assert body["agent_enabled"] is False
+    assert [c[0] for c in sim.calls] == ["deregister_phone"], "tras fallar deregister no se sigue"
+
+    fila = await _reload(db_session, canal.id)
+    assert fila.status is ChannelStatus.DISCONNECTED
+    assert fila.config["unlink_pending"] == ["deregister", "unsubscribe"]
+
+
+async def test_last_number_of_the_waba_deregisters_unsubscribes_and_drops_credentials(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """T013 · R2.1, R2.2."""
+    a = console_world["a"]
+    sim = _sim(monkeypatch)
+    canal = _channel(a["tenant_id"], waba_id="W1")
+    await _seed_channel_creds(db_session, canal, waba_id="W1")
+    db_session.add(canal)
+    await db_session.commit()
+    await _seed_creds(db_session, a["tenant_id"], waba_id="W1")
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["unlink_pending"] == []
+    pasos = [c[0] for c in sim.calls]
+    assert pasos == ["deregister_phone", "unsubscribe_app"]
+    assert sim.calls[0][1]["phone_number_id"] == "PN"
+    assert sim.calls[1][1]["waba_id"] == "W1"
+
+    fila = await _reload(db_session, canal.id)
+    assert fila.config_encrypted is None, "la credencial del canal sigue guardada"
+    assert "unlink_pending" not in fila.config
+    quedan = await db_session.scalar(
+        sa.select(sa.func.count())
+        .select_from(TenantCredentials)
+        .where(
+            TenantCredentials.tenant_id == a["tenant_id"],
+            TenantCredentials.integration == "meta_whatsapp",
+        )
+    )
+    assert quedan == 0, "la credencial del tenant sigue guardada"
+
+
+async def test_a_live_sibling_keeps_the_subscription_and_the_credentials(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """T014 · R2.3 — desuscribir es por WABA: con un hermano vivo, no se toca."""
+    a = console_world["a"]
+    sim = _sim(monkeypatch)
+    uno, dos = _channel(a["tenant_id"], waba_id="W1"), _channel(a["tenant_id"], waba_id="W1")
+    db_session.add_all([uno, dos])
+    await db_session.commit()
+    await _seed_creds(db_session, a["tenant_id"], waba_id="W1")
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{uno.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["unlink_pending"] == []
+    assert [c[0] for c in sim.calls] == ["deregister_phone"], "desuscribió con un hermano vivo"
+
+    hermano = await _reload(db_session, dos.id)
+    assert hermano.status is ChannelStatus.ACTIVE
+    quedan = await db_session.scalar(
+        sa.select(sa.func.count())
+        .select_from(TenantCredentials)
+        .where(TenantCredentials.tenant_id == a["tenant_id"])
+    )
+    assert quedan == 1
+
+
+async def test_pressing_again_finishes_what_was_pending(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """T015 · R3.2 — reintentar es el mismo endpoint otra vez."""
+    a = console_world["a"]
+    sim = _sim(monkeypatch, fail_steps={"unsubscribe_app"})
+    canal = _channel(a["tenant_id"], waba_id="W1")
+    db_session.add(canal)
+    await db_session.commit()
+    await _seed_creds(db_session, a["tenant_id"], waba_id="W1")
+
+    url = f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect"
+    r = await client.post(url, headers=a["headers"]())
+    assert r.json()["unlink_pending"] == ["unsubscribe"]
+
+    sim.fail_steps = set()
+    r = await client.post(url, headers=a["headers"]())
+    assert r.status_code == 200 and r.json()["unlink_pending"] == []
+    # deregister no se repite: ya estaba hecho.
+    assert [c[0] for c in sim.calls] == ["deregister_phone", "unsubscribe_app", "unsubscribe_app"]
+
+    llamadas = len(sim.calls)
+    r = await client.post(url, headers=a["headers"]())
+    assert r.status_code == 200 and len(sim.calls) == llamadas, (
+        "sin pendientes, volvió a llamar a Meta"
+    )
+
+
+async def test_audit_says_what_was_done_and_what_was_not(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """T016 · R3.3."""
+    a = console_world["a"]
+    _sim(monkeypatch, fail_steps={"unsubscribe_app"})
+    canal = _channel(a["tenant_id"], waba_id="W1")
+    db_session.add(canal)
+    await db_session.commit()
+    await _seed_creds(db_session, a["tenant_id"], waba_id="W1")
+
+    await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    fila = (
+        (
+            await db_session.execute(
+                sa.select(AuditLog)
+                .where(
+                    AuditLog.action == "console.channel.disconnect",
+                    AuditLog.tenant_id == a["tenant_id"],
+                )
+                .order_by(AuditLog.created_at.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert fila is not None
+    assert fila.after_json["meta"] == {"done": ["deregister"], "pending": ["unsubscribe"]}
+
+
+async def test_state_is_written_before_meta_is_called(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """T017 · R3.1 — la razón de las dos transacciones (research D2). Si el
+    proceso muere entre la primera y la llamada a Meta, la fila ya está
+    desvinculada con todo pendiente: hay de dónde reintentar."""
+    a = console_world["a"]
+
+    def _muere():
+        raise RuntimeError("el proceso murió antes de llamar a Meta")
+
+    monkeypatch.setattr(ch_router, "build_meta_client", _muere)
+    canal = _channel(a["tenant_id"], waba_id="W1")
+    db_session.add(canal)
+    await db_session.commit()
+
+    with pytest.raises(RuntimeError):
+        await client.post(
+            f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+        )
+    fila = await _reload(db_session, canal.id)
+    assert fila.status is ChannelStatus.DISCONNECTED
+    assert fila.config["unlink_pending"] == ["deregister", "unsubscribe"]

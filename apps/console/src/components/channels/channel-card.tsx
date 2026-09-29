@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import {
   Button,
+  Callout,
   ConfirmDialog,
   DescriptionList,
   DropdownMenu,
@@ -45,6 +46,17 @@ export function tierKey(tier: string | null): MessageKey | null {
   const key = `ch.tier.${tier.toUpperCase()}` as MessageKey;
   return key in messages ? key : null;
 }
+
+/**
+ * Pure: which sentence the unlink dialog shows. A number in coexistence
+ * keeps chatting from its phone after we deregister it (R2.5); the dialog
+ * has to say so, or «unlink» reads as «leave it without WhatsApp».
+ */
+export function disconnectBodyKey(mode: string | null): MessageKey {
+  return mode === "coexistence" ? "ch.disconnect.body.coexistence" : "ch.disconnect.body";
+}
+
+const PENDING_STEP: Record<string, MessageKey> = { deregister: "ch.pending.deregister", unsubscribe: "ch.pending.unsubscribe" };
 
 /**
  * El icono de la aplicación del canal, con su estado en la esquina.
@@ -95,6 +107,8 @@ export function ChannelCard({
   const roleId = `role-${channel.id}`;
   const suelto = channel.status === "disconnected";
   const tier = tierKey(channel.messaging_tier);
+  // Un paso que la API añada mañana se enseña por su nombre antes que callarlo.
+  const pendientes = (channel.unlink_pending ?? []).map((step) => (PENDING_STEP[step] ? t(PENDING_STEP[step]) : step));
 
   function changeRole(value: string) {
     const role = (value === "" ? null : value) as ChannelRole | null;
@@ -111,7 +125,23 @@ export function ChannelCard({
       const res = await disconnectChannelAction({ ref: refId, channelId: channel.id });
       if (!res.ok) return void toast.error(res.message);
       setConfirmarSoltar(false);
+      // Desvincular nunca falla por Meta: el canal queda suelto igual y lo
+      // que Meta no aceptó viene en `unlink_pending`. El aviso lo dice ya,
+      // en vez de dejar que la tarjeta lo cuente al recargar.
       toast.success(t("ch.disconnect.done", { number: channel.provider_identifier }));
+      if (res.data.unlink_pending.length > 0) toast.warning(t("ch.pending.still"));
+      router.refresh();
+    });
+  }
+
+  // El mismo endpoint termina lo que quedó pendiente: sin pasos repetidos,
+  // y sin un segundo verbo que el partner tenga que aprender.
+  function reintentar() {
+    startTransition(async () => {
+      const res = await disconnectChannelAction({ ref: refId, channelId: channel.id });
+      if (!res.ok) return void toast.error(res.message);
+      if (res.data.unlink_pending.length > 0) toast.warning(t("ch.pending.still"));
+      else toast.success(t("ch.pending.done"));
       router.refresh();
     });
   }
@@ -234,6 +264,25 @@ export function ChannelCard({
         ]}
       />
 
+      {/* R3.2: lo que Meta no aceptó se ve aquí, con su reintento. Sin esto
+          la tarjeta diría «desvinculado» de un número que Meta aún tiene
+          registrado bajo nuestra aplicación — a medias, y en silencio. */}
+      {suelto && pendientes.length > 0 ? (
+        <Callout
+          tone="warning"
+          title={t("ch.pending.title")}
+          action={
+            manage ? (
+              <Button type="button" size="sm" variant="outline" onClick={reintentar} disabled={pending}>
+                {t("ch.pending.retry")}
+              </Button>
+            ) : null
+          }
+        >
+          {t("ch.pending.body", { steps: pendientes.join(t("ch.pending.and")) })}
+        </Callout>
+      ) : null}
+
       {/* Las fechas, al pie y en gris: se miran cuando algo va mal, no cuando
           todo va bien. Antes pesaban lo mismo que el número. */}
       <p className="text-xs text-muted-foreground tabular-nums">
@@ -247,7 +296,7 @@ export function ChannelCard({
         open={confirmarSoltar}
         onOpenChange={setConfirmarSoltar}
         title={t("ch.disconnect.title", { number: channel.provider_identifier })}
-        description={t("ch.disconnect.body")}
+        description={t(disconnectBodyKey(channel.mode))}
         confirmLabel={t("ch.disconnect.confirm")}
         cancelLabel={t("common.cancel")}
         destructive

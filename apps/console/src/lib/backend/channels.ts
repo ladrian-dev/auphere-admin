@@ -27,6 +27,9 @@ export type ChannelDetail = {
   /** El logotipo de la aplicación del canal. La consola no lo pide al
    *  proveedor —la CSP no lo dejaría— sino a `/api/channel-logo/…`. */
   logo_url: string | null;
+  /** Lo que desvincular no consiguió en Meta (`deregister`, `unsubscribe`).
+   *  Vacío es «terminado del todo»; con algo, la tarjeta lo dice y reintenta. */
+  unlink_pending: string[];
 };
 
 export type ChannelsOverview = {

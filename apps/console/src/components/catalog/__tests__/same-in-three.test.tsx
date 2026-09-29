@@ -103,6 +103,7 @@ const CHANNEL: ChannelDetail = {
   mode: null,
   agent_enabled: true,
   logo_url: null,
+  unlink_pending: [],
 };
 
 /** Las tres pantallas, montadas igual. */

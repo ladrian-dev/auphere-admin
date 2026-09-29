@@ -47,6 +47,9 @@ class ChannelDetailOut(ChannelOut):
     #: conectores **no** lista los que son solo canal: sin esto, la consola no
     #: tendría de dónde sacarlo.
     logo_url: str | None = None
+    #: Spec 021: lo que quedó por deshacer en Meta al desvincular. Vacío en el
+    #: caso bueno. La tarjeta lo lee para decir «queda pendiente» y reintentar.
+    unlink_pending: list[str] = Field(default_factory=list)
 
 
 class ChannelsOverviewOut(BaseModel):
