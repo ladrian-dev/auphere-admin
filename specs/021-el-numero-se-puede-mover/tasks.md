@@ -35,16 +35,16 @@ en `apps/console/src/` con tests junto al código; KB en
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] Crear `specs/021-el-numero-se-puede-mover/evidence/README.md` y anotar en `parity.md` qué hacía desvincular en la spec 019 (marcar la fila, conservarla, no tocar Meta) y qué de eso cambia: **nada se retira** — la fila se sigue conservando; se añade lo que faltaba. _Requisitos: ninguno — ritual de cierre_
-- [ ] T002 [P] T-LIC · `pnpm-lock.yaml` y `uv.lock` no cambian en toda la spec. Se corre al abrir y al cerrar. _Requisitos: ninguno — puerta §VIII_
-- [ ] T003 [P] T-MET · Test en `apps/api/tests/unit/test_endpoint_console_channels.py` de que desvincular **no** escribe ningún evento de consumo: las llamadas a Meta no son modelo, reloj ni herramienta de pago. _Requisitos: ninguno — puerta del medidor_
+- [X] T001 [P] Crear `specs/021-el-numero-se-puede-mover/evidence/README.md` y anotar en `parity.md` qué hacía desvincular en la spec 019 (marcar la fila, conservarla, no tocar Meta) y qué de eso cambia: **nada se retira** — la fila se sigue conservando; se añade lo que faltaba. _Requisitos: ninguno — ritual de cierre_ Entregado: rama 021, 2026-09-29 — `evidence/README.md` y `parity.md`: nada de la 019 se retira; se añade lo que faltaba.
+- [X] T002 [P] T-LIC · `pnpm-lock.yaml` y `uv.lock` no cambian en toda la spec. Se corre al abrir y al cerrar. _Requisitos: ninguno — puerta §VIII_ Entregado: rama 021, 2026-09-29 — hashes de `pnpm-lock.yaml` y `uv.lock` en `evidence/locks-at-open.sha256`; se comparan al cerrar.
+- [X] T003 [P] T-MET · Test en `apps/api/tests/unit/test_endpoint_console_channels.py` de que desvincular **no** escribe ningún evento de consumo: las llamadas a Meta no son modelo, reloj ni herramienta de pago. _Requisitos: ninguno — puerta del medidor_ Entregado: rama 021, 2026-09-29 — `test_disconnect_costs_nothing_the_meter_sees`: cero filas en `usage_events` antes y después.
 
 ---
 
 ## Phase 2: Foundational
 
-- [ ] T004 T-ISO · `apps/api/tests/isolation/test_channel_number_scope.py`: con dos tenants, (a) la fila desvinculada de A **no bloquea** el alta de B y B no puede leerla ni alterarla; (b) con el número **vivo** en A, el 409 que recibe B lleva `number_in_use` y **nada más** —ni tenant, ni partner, ni nombre—; (c) desvincular con un id de canal ajeno es 404; (d) **barrido**, no enumeración: recorrer todas las rutas de canal montadas bajo `/console/clients/{ref}/channels` y afirmar que ninguna acepta `tenant_id` ni `partner_id` en parámetros ni en cuerpo, como hizo la 019 con el alta. _Requisitos: 1.2, 1.4, 1.5 · puerta §I_
-- [ ] T005 [P] `deregister_phone(phone_number_id, access_token)` en `apps/channels/src/nexus_channels/whatsapp_meta/meta_client.py` → `POST /{phone_number_id}/deregister`, con test unitario sobre el cliente HTTP simulado (200 → dict; 4xx → la excepción que ya lanza el resto). Existe `unsubscribe_app`; falta su pareja. _Requisitos: 2.1_
+- [X] T004 T-ISO · `apps/api/tests/isolation/test_channel_number_scope.py`: con dos tenants, (a) la fila desvinculada de A **no bloquea** el alta de B y B no puede leerla ni alterarla; (b) con el número **vivo** en A, el 409 que recibe B lleva `number_in_use` y **nada más** —ni tenant, ni partner, ni nombre—; (c) desvincular con un id de canal ajeno es 404; (d) **barrido**, no enumeración: recorrer todas las rutas de canal montadas bajo `/console/clients/{ref}/channels` y afirmar que ninguna acepta `tenant_id` ni `partner_id` en parámetros ni en cuerpo, como hizo la 019 con el alta. _Requisitos: 1.2, 1.4, 1.5 · puerta §I_ Entregado: rama 021, 2026-09-29 — cuatro casos, el cuarto barre las 9 rutas de canal por OpenAPI. Dos trampas del arnés quedaron anotadas en el propio test: la sesión rota tras un `IntegrityError` hay que `rollback`-ear y releer con consulta, y `session.get` contesta desde la caché de identidad sin pasar por la RLS.
+- [X] T005 [P] `deregister_phone(phone_number_id, access_token)` en `apps/channels/src/nexus_channels/whatsapp_meta/meta_client.py` → `POST /{phone_number_id}/deregister`, con test unitario sobre el cliente HTTP simulado (200 → dict; 4xx → la excepción que ya lanza el resto). Existe `unsubscribe_app`; falta su pareja. _Requisitos: 2.1_ Entregado: rama 021, 2026-09-29 — `deregister_phone` en `meta_client.py`, dos tests con `respx` (sin cuerpo, y el rechazo de Meta sube como `MetaAPIError`).
 
 ---
 
@@ -58,15 +58,15 @@ recibir un «en uso» falso.
 
 ### Tests primero
 
-- [ ] T006 [P] [US1] Test en `apps/api/tests/unit/test_endpoint_console_whatsapp.py`: B conecta un número que A desvinculó → **201**; la fila de A sigue existiendo, `disconnected`, con su mismo id; la de B es otra. **Este test cubre también R4.1**: B llega al 201 sin ningún paso de aprobación por medio. _Requisitos: 1.1, 1.2, 4.1_
-- [ ] T007 [P] [US1] Test: A desvincula y **vuelve a conectar** → recupera **el mismo** `channel.id`, y las conversaciones que colgaban de él siguen colgando. Ya se comporta así (el lookup no filtra por estado): el test lo fija para que nadie lo «arregle». _Requisitos: 1.3_
-- [ ] T008 [P] [US1] Test: con el número **vivo** en A, B conecta → **409** `number_in_use`; A no cambia en nada; el cuerpo no nombra a A. _Requisitos: 1.4, 1.5_
+- [X] T006 [P] [US1] Test en `apps/api/tests/unit/test_endpoint_console_whatsapp.py`: B conecta un número que A desvinculó → **201**; la fila de A sigue existiendo, `disconnected`, con su mismo id; la de B es otra. **Este test cubre también R4.1**: B llega al 201 sin ningún paso de aprobación por medio. _Requisitos: 1.1, 1.2, 4.1_ Entregado: rama 021, 2026-09-29 — rojo con `409 number_in_use` antes del índice, verde después. Simula solo `build_meta_client`, no el orquestador, para que el upsert corra contra la base.
+- [X] T007 [P] [US1] Test: A desvincula y **vuelve a conectar** → recupera **el mismo** `channel.id`, y las conversaciones que colgaban de él siguen colgando. Ya se comporta así (el lookup no filtra por estado): el test lo fija para que nadie lo «arregle». _Requisitos: 1.3_ Entregado: rama 021, 2026-09-29 — ya era verde; queda fijado.
+- [X] T008 [P] [US1] Test: con el número **vivo** en A, B conecta → **409** `number_in_use`; A no cambia en nada; el cuerpo no nombra a A. _Requisitos: 1.4, 1.5_ Entregado: rama 021, 2026-09-29 — el 409 no lleva ni tenant ni partner de A.
 
 ### Implementación
 
-- [ ] T009 [US1] Migración `apps/api/alembic/versions/0132_number_unique_when_live.py`: `DROP CONSTRAINT uq_channels_type_provider_id` y `CREATE UNIQUE INDEX uq_channels_live_number ON channels (type, provider_identifier) WHERE status <> 'disconnected'`. **La bajada se niega** si hay dos filas con el mismo número: mejor un `downgrade` que no corre que uno que borra. Id de revisión ≤ 32 caracteres. _Requisitos: 1.1, 1.2_
-- [ ] T010 [US1] `apps/api/src/nexus_api/db/models/channel.py`: sustituir el `UniqueConstraint` en `__table_args__` por `Index("uq_channels_live_number", …, unique=True, postgresql_where=…)`, con el comentario de por qué. _Requisitos: 1.1, 1.2_
-- [ ] T011 [US1] `apps/api/src/nexus_api/api/console/whatsapp.py`: `_NUMBER_UNIQUE` pasa a buscar `uq_channels_live_number`. Sin esto, el 409 se convierte en 500 el día que el índice cambie de nombre — y T008 lo vería. _Requisitos: 1.4_
+- [X] T009 [US1] Migración `apps/api/alembic/versions/0132_number_unique_when_live.py`: `DROP CONSTRAINT uq_channels_type_provider_id` y `CREATE UNIQUE INDEX uq_channels_live_number ON channels (type, provider_identifier) WHERE status <> 'disconnected'`. **La bajada se niega** si hay dos filas con el mismo número: mejor un `downgrade` que no corre que uno que borra. Id de revisión ≤ 32 caracteres. _Requisitos: 1.1, 1.2_ Entregado: rama 021, 2026-09-29 — `0132_number_unique_when_live` (28 caracteres), aplicada en `nexus` y `nexus_test`; la bajada se niega ante duplicados.
+- [X] T010 [US1] `apps/api/src/nexus_api/db/models/channel.py`: sustituir el `UniqueConstraint` en `__table_args__` por `Index("uq_channels_live_number", …, unique=True, postgresql_where=…)`, con el comentario de por qué. _Requisitos: 1.1, 1.2_ Entregado: rama 021, 2026-09-29 — `Index(..., unique=True, postgresql_where=text("status <> 'disconnected'"))`.
+- [X] T011 [US1] `apps/api/src/nexus_api/api/console/whatsapp.py`: `_NUMBER_UNIQUE` pasa a buscar `uq_channels_live_number`. Sin esto, el 409 se convierte en 500 el día que el índice cambie de nombre — y T008 lo vería. _Requisitos: 1.4_ Entregado: rama 021, 2026-09-29 — `_NUMBER_UNIQUE = "uq_channels_live_number"`.
 
 ---
 

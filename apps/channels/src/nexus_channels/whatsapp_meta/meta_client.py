@@ -350,6 +350,25 @@ class MetaClient:
             json_body={"messaging_product": "whatsapp", "pin": pin},
         )
 
+    async def deregister_phone(
+        self,
+        *,
+        phone_number_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        """La pareja de ``register_phone`` (spec 021): dar de baja el número
+        del Cloud API bajo nuestra app.
+
+        Es lo que hace que desvincular signifique soltar y no solo apagar: sin
+        esto el número seguía registrado bajo nosotros y otro cliente no podía
+        registrarlo. En coexistencia lo retira de nuestra app, **no** de la app
+        WhatsApp Business del partner: sigue chateando desde su teléfono.
+        """
+        return await self._post(
+            f"/{phone_number_id}/deregister",
+            access_token=access_token,
+        )
+
     async def get_phone_number(
         self,
         *,

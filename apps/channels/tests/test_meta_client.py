@@ -292,3 +292,26 @@ async def test_get_media_url_then_download_media() -> None:
         assert meta["url"] == cdn_url
         assert content[:3] == b"\xff\xd8\xff"
         assert content_type == "image/jpeg"
+
+
+async def test_deregister_phone_posts_with_no_body() -> None:
+    """Spec 021: la pareja de ``register_phone``. Meta no espera cuerpo."""
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        route = mock.post("/PN_1/deregister").respond(200, json={"success": True})
+        async with MetaClient(_SECRET) as client:
+            result = await client.deregister_phone(phone_number_id="PN_1", access_token=_TOKEN)
+        assert result == {"success": True}
+        sent = route.calls.last.request
+        assert sent.url.params["access_token"] == _TOKEN
+        assert sent.url.params["appsecret_proof"] == appsecret_proof(_TOKEN, _SECRET)
+        assert not sent.content
+
+
+async def test_deregister_phone_surfaces_meta_refusal() -> None:
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.post("/PN_1/deregister").respond(
+            400, json={"error": {"message": "not registered", "code": 100}}
+        )
+        async with MetaClient(_SECRET) as client:
+            with pytest.raises(MetaAPIError):
+                await client.deregister_phone(phone_number_id="PN_1", access_token=_TOKEN)

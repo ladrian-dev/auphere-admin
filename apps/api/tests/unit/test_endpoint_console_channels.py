@@ -903,3 +903,28 @@ async def test_disconnect_marks_the_channel_and_leaves_its_row(
         f"/console/clients/{a['ref']}/channels/{ajeno.id}/disconnect", headers=a["headers"]()
     )
     assert r.status_code == 404
+
+
+async def test_disconnect_costs_nothing_the_meter_sees(client, console_world, db_session) -> None:
+    """T-MET (spec 021, T003): desvincular no gasta modelo, reloj ni herramienta
+    de pago, así que **no escribe** ningún evento de consumo. Las llamadas a
+    Meta que llegarán con la iteración 2 tampoco: son la contraria del alta,
+    que tampoco se mide."""
+    a = console_world["a"]
+    canal = _channel(a["tenant_id"])
+    db_session.add(canal)
+    await db_session.commit()
+
+    antes = await db_session.scalar(
+        sa.text("SELECT count(*) FROM usage_events WHERE tenant_id = :t"),
+        {"t": str(a["tenant_id"])},
+    )
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    despues = await db_session.scalar(
+        sa.text("SELECT count(*) FROM usage_events WHERE tenant_id = :t"),
+        {"t": str(a["tenant_id"])},
+    )
+    assert despues == antes, "desvincular escribió consumo"

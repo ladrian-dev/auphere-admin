@@ -42,7 +42,11 @@ from .deps import ClientScope, client_health, client_scope, out_of_quota
 from .schemas_channels import WhatsAppSignupIn, WhatsAppSignupOut
 
 #: The UNIQUE that says «this number already belongs to a client».
-_NUMBER_UNIQUE = "uq_channels_type_provider_id"
+# Spec 021: la unicidad es ahora un índice parcial que ignora los canales
+# desvinculados (migración 0132). El nombre importa: es lo que distingue «el
+# número está en uso» de cualquier otra violación de integridad, y si el
+# índice cambia de nombre sin tocar esto, el 409 se convierte en 500.
+_NUMBER_UNIQUE = "uq_channels_live_number"
 
 router = APIRouter(prefix="/clients/{ref}/channels/whatsapp")
 
