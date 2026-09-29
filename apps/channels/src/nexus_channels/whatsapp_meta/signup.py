@@ -50,6 +50,7 @@ from nexus_channels.whatsapp_meta.credentials import (
     MetaCredentialsRepository,
 )
 from nexus_channels.whatsapp_meta.exceptions import (
+    PhoneRegisterRefused,
     RegisterPhoneError,
     SubscribeWebhookError,
     TokenExchangeError,
@@ -179,7 +180,7 @@ class EmbeddedSignupOrchestrator:
                     pin=pin,
                 )
             except Exception as exc:
-                raise RegisterPhoneError(
+                raise PhoneRegisterRefused(
                     f"register_phone failed for pn={phone_number_id}: {exc}"
                 ) from exc
 

@@ -121,6 +121,17 @@ class RegisterPhoneError(SignupError):
     """
 
 
+class PhoneRegisterRefused(RegisterPhoneError):
+    """Meta itself refused ``register`` for the number.
+
+    Narrower than :class:`RegisterPhoneError`, which the orchestrator also
+    raises when the WABA lists no numbers or a number has no display phone —
+    those are malformed onboardings, not a number somebody else still holds.
+    Spec 021 (R4.2) translates only this one into
+    ``number_held_by_previous_owner``.
+    """
+
+
 class SubscribeWebhookError(SignupError):
     """``POST /{waba_id}/subscribed_apps`` failed.
 

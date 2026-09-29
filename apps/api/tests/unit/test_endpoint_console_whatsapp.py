@@ -71,8 +71,24 @@ def _channel(tenant_id: uuid.UUID, number: str, status: ChannelStatus) -> Channe
     )
 
 
-async def _signup(client, who: dict, number: str, monkeypatch):
-    fake = _FakeMeta(number)
+class _MetaRefusesRegister(_FakeMeta):
+    """Meta rechaza el ``register``: el número sigue en otra cuenta."""
+
+    async def register_phone(self, **_: Any) -> dict[str, Any]:
+        self.calls.append("register_phone")
+        raise RuntimeError("(#133010) Account has not been registered")
+
+
+async def _signup(
+    client,
+    who: dict,
+    number: str,
+    monkeypatch,
+    *,
+    fake: _FakeMeta | None = None,
+    mode: str = "coexistence",
+):
+    fake = fake or _FakeMeta(number)
     monkeypatch.setattr(meta_signup_service, "build_meta_client", lambda: fake)
     r = await client.post(
         f"/console/clients/{who['ref']}/channels/whatsapp/signup",
@@ -81,7 +97,7 @@ async def _signup(client, who: dict, number: str, monkeypatch):
             "code": "abc",
             "waba_id": "W-new",
             "phone_number_id": "PN-fake",
-            "mode": "coexistence",
+            "mode": mode,
         },
     )
     return r, fake
@@ -164,3 +180,31 @@ async def test_a_live_number_elsewhere_is_in_use_and_names_nobody(
     intacto = await _row(db_session, vivo.id)
     assert intacto is not None and intacto.status is ChannelStatus.ACTIVE
     assert intacto.tenant_id == a["tenant_id"]
+
+
+async def test_a_number_meta_still_holds_has_its_own_sentence(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """T020 · R4.2 — Meta es el árbitro: si A no soltó el número en su
+    Business Manager, ``register`` falla. Eso no es un fallo de la consola:
+    tiene su código, y no dice de quién es el número. En modo Cloud API,
+    que es el único que registra (coexistencia se salta ese paso)."""
+    b = console_world["b"]
+    number = f"+3462{uuid.uuid4().int % 10**7:07d}"
+    r, fake = await _signup(
+        client, b, number, monkeypatch, fake=_MetaRefusesRegister(number), mode="cloud_api"
+    )
+    assert r.status_code == 409, r.text
+    body = r.json()["detail"]
+    assert body["code"] == "number_held_by_previous_owner"
+    assert "Business Manager" in body["message"]
+    assert "register_phone" in fake.calls and "subscribe_app" not in fake.calls
+    # Y no se escribió un canal a medias.
+    assert (
+        await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(Channel)
+            .where(Channel.provider_identifier == number)
+        )
+        == 0
+    )

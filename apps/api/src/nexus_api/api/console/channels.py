@@ -25,6 +25,7 @@ from nexus_channels.whatsapp_meta.credentials import (
     MetaCredentialsRepository,
 )
 from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
+from nexus_channels.whatsapp_meta.meta_client import MetaClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -218,7 +219,7 @@ async def set_channel_role(
     return _detail(ch, await channel_logos(scope.session))
 
 
-def build_meta_client():
+def build_meta_client() -> MetaClient:
     """Costura para los tests: se sustituye por un Meta simulado."""
     return _build_meta_client()
 
