@@ -27,8 +27,12 @@ medida fue **no**, por tres cierres apilados, cada uno en un sitio distinto:
 
 Lo que le pasa hoy a un partner B que intenta conectar un número que A
 desvinculó: el alta no encuentra la fila de A (no la puede ver), intenta crear
-la suya, y **falla con un error de base de datos** — no con un mensaje que
-explique nada.
+la suya, choca con la regla de unicidad y B recibe **«este número está en
+uso»** — el aviso que la spec 016 puso para un número vivo en otro sitio,
+correcto entonces y **falso ahora**: A lo soltó, y B no tiene forma de
+saberlo ni de seguir. *(Corregido el 2026-09-29 al planificar: la primera
+redacción decía «un error de base de datos»; el alta ya lo captura. El
+defecto es que el aviso no distingue un número en uso de uno liberado.)*
 
 ## Clarifications
 
