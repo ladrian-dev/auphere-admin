@@ -26,9 +26,22 @@ Partner sembrado: `demo-audit`.
 **Pasa si**: hay cuatro — nombre, zona horaria, dirección y horario. Ni uno más.
 Antes de esta spec, la pantalla enseñaba 23 con la plantilla marcada por defecto.
 
-Repítelo con **Cobranza**: deben ser **dos** (nombre y zona horaria), porque esa
-plantilla no exige ninguno. Y con **Clínica estética**: deben ser **doce más los
-dos**, que es la excepción medida y anotada.
+Repítelo con **Cobranza** y con **Clínica estética**. Medido sobre la consola en
+marcha el 2026-09-29, al cerrar la iteración:
+
+| Plantilla | Campos en el paso 2 | Cuáles |
+|---|---|---|
+| Barbería / Peluquería | **4** | nombre, zona horaria, dirección, horario |
+| Cobranza | **3** | nombre, zona horaria, teléfonos de administradores |
+| Clínica estética | **9** | los cuatro de arriba + titular, clínica y teléfono de referencia, Instagram y teléfono de recepción |
+
+Dos correcciones a lo que este documento decía antes, y las dos por haberlo
+medido en vez de suponerlo:
+
+- **Cobranza son tres, no dos.** Exige la lista blanca de administradores, y no
+  es un capricho: sin ella el agente no contesta a nadie.
+- **La clínica estética son nueve, no catorce.** T036 dejó de exigir los cinco
+  que el owner sacó del alta, porque el prompt dejó de afirmarlos.
 
 ### CE-002 · tres pasos, y ninguno que sobre
 

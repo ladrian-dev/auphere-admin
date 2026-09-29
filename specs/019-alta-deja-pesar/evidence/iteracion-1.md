@@ -115,6 +115,31 @@ Tres cosas se midieron al implementar y cambiaron lo escrito:
 | API · `test_seed_templates` | 17 ✅ (uno nuevo: ningún nombre mezcla idiomas) |
 | API · ruff | limpio en lo tocado |
 
+## El recorrido del quickstart, medido el 2026-09-29
+
+Sobre la consola en marcha, contando los campos que enseña el paso 2:
+
+| Plantilla | Antes | Ahora | Cuáles |
+|---|---|---|---|
+| Barbería / Peluquería | 9 | **4** | nombre, zona horaria, dirección, horario |
+| Cobranza | 4 | **3** | nombre, zona horaria, teléfonos de administradores |
+| Clínica estética | 23 | **9** | los cuatro + titular, clínica y teléfono de referencia, Instagram, recepción |
+
+El quickstart decía «dos» para Cobranza y «catorce» para la clínica. Las dos
+cifras estaban mal y se corrigieron **contra la pantalla**: Cobranza exige la
+lista blanca de administradores —sin ella el agente no contesta a nadie— y la
+clínica bajó a nueve cuando T036 dejó de exigir lo que el prompt ya no afirma.
+
+| Criterio | Resultado |
+|---|---|
+| CE-001 · cuatro campos y no veintitrés | ✅ medido arriba |
+| CE-002 · tres pasos, ninguno de canal | ✅ e2e `intake.spec.ts` |
+| CE-003 · nadie termina con una plantilla que no eligió | ✅ e2e: «Continuar» deshabilitado sin elegir |
+| CE-004 · alguien de fuera encuentra su plantilla | ⏳ **pendiente**: necesita una persona |
+| CE-008 · nace con cero créditos y la ficha lo dice | ✅ API + e2e |
+| CE-009 · ninguna pantalla mezcla idiomas | ✅ dos guardias, consola y semillas |
+
 ## Paridad
 
-Pendiente. `parity.md` (T001) se cierra al entregar T014–T017.
+**100 %.** `parity.md` cierra sus seis secciones; la cuarta —los cinco campos
+que la clínica seguía exigiendo— la cerró T036.
