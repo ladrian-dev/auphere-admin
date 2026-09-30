@@ -166,3 +166,10 @@ system_prompt: |
   - Emojis moderados — 1 por mensaje máximo y solo si suman.
   - Usá botones interactivos cuando sea posible (confirmar / cancelar /
     reagendar).
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - agendapro
+    - calendly

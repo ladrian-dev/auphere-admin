@@ -138,6 +138,10 @@ class SeedTemplate:
     policies_default: dict[str, Any]
     agent_defaults: dict[str, str]
     raw: dict[str, Any] = field(repr=False)
+    #: Spec 023 (Requisito 4): connector slugs the sector suggests in
+    #: Conectores (``connectors.recommended`` in the YAML). Empty when the
+    #: template has no block. A suggestion, never a filter.
+    connectors_recommended: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -184,6 +188,14 @@ def load_seed_template(name: str) -> SeedTemplate:
     required = tools_block["required"]
     if not isinstance(required, list) or not all(isinstance(t, str) for t in required):
         raise ValueError(f"seed template {name!r}: tools.required must be list[str]")
+    connectors_block = raw.get("connectors") or {}
+    if not isinstance(connectors_block, dict):
+        raise ValueError(f"seed template {name!r}: connectors must be a mapping")
+    recommended = connectors_block.get("recommended") or []
+    if not isinstance(recommended, list) or not all(
+        isinstance(c, str) and c.strip() for c in recommended
+    ):
+        raise ValueError(f"seed template {name!r}: connectors.recommended must be list[str]")
     agent = raw["agent"]
     return SeedTemplate(
         name=name,
@@ -198,6 +210,7 @@ def load_seed_template(name: str) -> SeedTemplate:
             "language": str(agent.get("language_default", "es")),
         },
         raw=raw,
+        connectors_recommended=list(recommended),
     )
 
 

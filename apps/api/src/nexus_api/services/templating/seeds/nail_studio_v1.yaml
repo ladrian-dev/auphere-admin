@@ -150,3 +150,10 @@ system_prompt: |
     ya usó alguno).
   - Cada confirmación de cita: fecha + hora + servicio, explícito.
   - Para walk-ins: posición en cola + espera estimada, siempre.
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - agendapro
+    - calendly
