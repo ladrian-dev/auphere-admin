@@ -66,7 +66,11 @@ class CatalogSetIn(BaseModel):
     catalog_id: str = Field(min_length=1, max_length=64)
 
 
-CatalogState = Literal["none", "linked", "permission_missing", "unchecked"]
+#: ``coexistence`` (2026-10-01): the number keeps using the WhatsApp Business
+#: app, and Meta refuses the catalogue edge for that account type. The
+#: catalogue is whatever the app has connected; the console records it and
+#: cannot verify it with Meta.
+CatalogState = Literal["none", "linked", "permission_missing", "unchecked", "coexistence"]
 
 
 class ChannelDetailOut(ChannelOut):

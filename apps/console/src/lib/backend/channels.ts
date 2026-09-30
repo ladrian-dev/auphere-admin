@@ -14,7 +14,7 @@ export type ChannelRole = "agent" | "notifications";
 export type Catalog = { id: string; name: string | null; checked_at: string | null };
 /** «linked» coincide con Meta · «unchecked» no se pudo comprobar · «permission_missing»
  *  la conexión de WhatsApp no trajo el permiso · «none» no hay. */
-export type CatalogState = "none" | "linked" | "permission_missing" | "unchecked";
+export type CatalogState = "none" | "linked" | "permission_missing" | "unchecked" | "coexistence";
 export type CatalogError = { code: string; message: string | null; at: string | null };
 export type CatalogSummary = { id: string; name: string | null; product_count: number | null };
 export type CatalogList = { items: CatalogSummary[]; linked_id: string | null };

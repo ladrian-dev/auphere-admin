@@ -210,6 +210,18 @@ describe("La fila «Catálogo» de la tarjeta (spec 022)", () => {
     expect(screen.queryByRole("button", { name: "Conectar catálogo" })).toBeNull();
   });
 
+  it("en coexistencia: lo apuntado, que la app es la que lo tiene, y se puede elegir", () => {
+    pintar({ catalog: FLORES, catalog_state: "coexistence" });
+    expect(screen.getByText("Flores y ramos")).toBeInTheDocument();
+    expect(screen.getByText(/sigue en la app de WhatsApp Business/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cambiar" })).toBeInTheDocument();
+  });
+
+  it("en coexistencia sin catálogo apuntado: «Conectar catálogo» sigue disponible", () => {
+    pintar({ catalog: null, catalog_state: "coexistence" });
+    expect(screen.getByRole("button", { name: "Conectar catálogo" })).toBeInTheDocument();
+  });
+
   it("sin comprobar: lo guardado, y que no se pudo comprobar", () => {
     pintar({ catalog: FLORES, catalog_state: "unchecked" });
     expect(screen.getByText("Flores y ramos")).toBeInTheDocument();

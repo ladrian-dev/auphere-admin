@@ -382,6 +382,11 @@ export function CatalogRow({
         {channel.catalog_state === "unchecked" ? (
           <span className="text-xs text-muted-foreground">{t("ch.catalog.unchecked")}</span>
         ) : null}
+        {/* Coexistencia: el catálogo vive en la app del teléfono; la consola
+            apunta cuál es y no finge haberlo comprobado con Meta. */}
+        {channel.catalog_state === "coexistence" ? (
+          <span className="text-xs text-muted-foreground">{t("ch.catalog.coexistence")}</span>
+        ) : null}
         {manage && name === null ? (
           <Button type="button" size="sm" variant="outline" onClick={onConnect} disabled={pending}>
             {t("ch.catalog.connect")}
