@@ -16,20 +16,26 @@ the same vocabulary (``CHANNEL_ROLES``) the router reads.
 
 from __future__ import annotations
 
+import json
 import uuid
+from datetime import UTC, datetime
+from typing import Any
 
 import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_channels.whatsapp_meta.credentials import (
     ChannelCredentialsRepository,
+    MetaCredentials,
     MetaCredentialsRepository,
 )
-from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
+from nexus_channels.whatsapp_meta.exceptions import MetaAPIError, MetaTransientError
 from nexus_channels.whatsapp_meta.meta_client import MetaClient
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from nexus_api.api.deps import get_redis
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Channel, ChannelStatus, ChannelType, Connector
@@ -39,7 +45,17 @@ from nexus_api.services.meta_signup_service import build_meta_client as _build_m
 
 from .deps import ClientScope, client_scope
 from .schemas import ChannelOut
-from .schemas_channels import ChannelDetailOut, ChannelRoleIn, ChannelsOverviewOut
+from .schemas_channels import (
+    CatalogErrorOut,
+    CatalogListOut,
+    CatalogOut,
+    CatalogSetIn,
+    CatalogState,
+    CatalogSummaryOut,
+    ChannelDetailOut,
+    ChannelRoleIn,
+    ChannelsOverviewOut,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -83,7 +99,35 @@ async def channel_logos(session: AsyncSession) -> dict[str, str | None]:
     return {tipo: por_slug.get(slug) for tipo, slug in CHANNEL_CONNECTOR_SLUG.items()}
 
 
-def _detail(ch: Channel, logos: dict[str, str | None] | None = None) -> ChannelDetailOut:
+def _catalog_of(cfg: dict[str, Any]) -> CatalogOut | None:
+    cid = cfg.get("catalog_id")
+    if not isinstance(cid, str) or not cid:
+        return None
+    checked = cfg.get("catalog_checked_at")
+    return CatalogOut(
+        id=cid,
+        name=cfg.get("catalog_name") if isinstance(cfg.get("catalog_name"), str) else None,
+        checked_at=datetime.fromisoformat(checked) if isinstance(checked, str) else None,
+    )
+
+
+def _catalog_error_of(cfg: dict[str, Any]) -> CatalogErrorOut | None:
+    raw = cfg.get("catalog_error")
+    if not isinstance(raw, dict) or not raw.get("code"):
+        return None
+    at = raw.get("at")
+    return CatalogErrorOut(
+        code=str(raw["code"]),
+        message=str(raw.get("message") or "") or None,
+        at=datetime.fromisoformat(at) if isinstance(at, str) else None,
+    )
+
+
+def _detail(
+    ch: Channel,
+    logos: dict[str, str | None] | None = None,
+    catalog_state: CatalogState | None = None,
+) -> ChannelDetailOut:
     cfg = ch.config or {}
 
     def _s(key: str) -> str | None:
@@ -109,6 +153,9 @@ def _detail(ch: Channel, logos: dict[str, str | None] | None = None) -> ChannelD
         agent_enabled=channel_agent_enabled(ch) and ch.status is not ChannelStatus.DISCONNECTED,
         logo_url=(logos or {}).get(ch.type.value),
         unlink_pending=[str(x) for x in (cfg.get("unlink_pending") or [])],
+        catalog=_catalog_of(cfg),
+        catalog_state=catalog_state or ("linked" if cfg.get("catalog_id") else "none"),
+        catalog_error=_catalog_error_of(cfg),
     )
 
 
@@ -174,14 +221,16 @@ async def list_channels(
 @router.get("/overview", response_model=ChannelsOverviewOut)
 async def channels_overview(
     scope: ClientScope = Depends(client_scope("channels:read")),
+    redis: Redis = Depends(get_redis),
 ) -> ChannelsOverviewOut:
     rows = await _all_channels(scope.session)
     used = sum(1 for c in rows if c.status is not ChannelStatus.DISCONNECTED)
     limit = scope.principal.partner.max_channels_per_client
     creds = await MetaCredentialsRepository(scope.session).get()
     logos = await channel_logos(scope.session)
+    states = await reconcile_catalogs(scope.session, rows, redis)
     return ChannelsOverviewOut(
-        channels=[_detail(c, logos) for c in rows],
+        channels=[_detail(c, logos, states.get(c.id)) for c in rows],
         max_channels=limit,
         used_channels=used,
         can_connect=used < limit,
@@ -245,6 +294,324 @@ def deregister_not_applicable(exc: MetaAPIError) -> bool:
         getattr(exc, "code", None) == 100
         and _DEREGISTER_NOT_APPLICABLE in str(getattr(exc, "message", "") or str(exc)).lower()
     )
+
+
+# ── el catálogo de Commerce Manager (spec 022) ───────────────────────────
+#
+# Un catálogo se enlaza a la **cuenta** de WhatsApp Business, no al número,
+# así que dos números del mismo cliente en la misma cuenta lo comparten. La
+# consola lo guarda en el canal para que el motor lo inyecte al enviar
+# tarjetas, y **adopta lo que Meta tenga** (research D3): la pantalla dice la
+# verdad de Meta, no la de nuestra base.
+
+CATALOG_CACHE_TTL = 300
+# 10 = permiso denegado · 200 = permiso que la app no tiene · 190 = token
+# inválido. Los tres se arreglan igual: volver a conectar el número.
+_PERMISSION_CODES = frozenset({10, 200, 190})
+
+
+def catalog_permission_missing(exc: MetaAPIError) -> bool:
+    """¿Meta rechazó por permiso (o token)? Se arregla reconectando el número."""
+    return getattr(exc, "code", None) in _PERMISSION_CODES
+
+
+def _cache_key(waba_id: str) -> str:
+    return f"nexus:catalog:waba:{waba_id}"
+
+
+async def _creds_for(session: AsyncSession, ch: Channel) -> MetaCredentials | None:
+    creds = await ChannelCredentialsRepository(session).get(ch.id)
+    if creds is None:
+        creds = await MetaCredentialsRepository(session).get()
+    return creds
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _write_catalog(cfg: dict[str, Any], found: dict[str, Any] | None) -> None:
+    """Deja en ``cfg`` lo que Meta tiene: un catálogo, o nada."""
+    if found and isinstance(found.get("id"), str):
+        cfg["catalog_id"] = found["id"]
+        if isinstance(found.get("name"), str):
+            cfg["catalog_name"] = found["name"]
+        else:
+            cfg.pop("catalog_name", None)
+    else:
+        cfg.pop("catalog_id", None)
+        cfg.pop("catalog_name", None)
+    cfg["catalog_checked_at"] = _now()
+
+
+async def reconcile_catalogs(
+    session: AsyncSession, rows: list[Channel], redis: Redis
+) -> dict[uuid.UUID, CatalogState]:
+    """Para cada número vivo con credencial, qué catálogo tiene su cuenta en
+    Meta — una llamada por cuenta cada ``CATALOG_CACHE_TTL`` s — y la base se
+    pone a lo que Meta diga. Sin credencial no se pregunta. Si Meta no
+    responde, lo guardado se enseña como «sin comprobar» y no se borra."""
+    states: dict[uuid.UUID, CatalogState] = {}
+    by_waba: dict[str, list[Channel]] = {}
+    for ch in rows:
+        if ch.type is not ChannelType.WHATSAPP or ch.status is ChannelStatus.DISCONNECTED:
+            continue
+        waba = (ch.config or {}).get("waba_id")
+        if isinstance(waba, str) and waba:
+            by_waba.setdefault(waba, []).append(ch)
+    if not by_waba:
+        return states
+
+    client: MetaClient | None = None
+    try:
+        for waba, channels in by_waba.items():
+            creds = await _creds_for(session, channels[0])
+            if creds is None:
+                continue
+            cached = await redis.get(_cache_key(waba))
+            verdict: dict[str, Any]
+            if cached:
+                verdict = json.loads(cached)
+            else:
+                if client is None:
+                    client = build_meta_client()
+                try:
+                    found = await client.get_linked_catalog(waba_id=waba, access_token=creds.bisuat)
+                    verdict = {"catalog": found}
+                except MetaAPIError as exc:
+                    if catalog_permission_missing(exc):
+                        verdict = {"permission_missing": True}
+                    else:
+                        log.warning("channel.catalog.check_failed", waba_id=waba, error=str(exc))
+                        for ch in channels:
+                            states[ch.id] = "unchecked"
+                        continue
+                await redis.set(_cache_key(waba), json.dumps(verdict), ex=CATALOG_CACHE_TTL)
+
+            for ch in channels:
+                cfg = dict(ch.config or {})
+                if verdict.get("permission_missing"):
+                    states[ch.id] = "permission_missing"
+                    continue
+                found = verdict.get("catalog")
+                if (found or {}).get("id") != cfg.get("catalog_id") or not cfg.get(
+                    "catalog_checked_at"
+                ):
+                    _write_catalog(cfg, found if isinstance(found, dict) else None)
+                    cfg.pop("catalog_error", None)
+                    ch.config = cfg
+                    flag_modified(ch, "config")
+                states[ch.id] = "linked" if cfg.get("catalog_id") else "none"
+    finally:
+        if client is not None:
+            await client.close()
+    return states
+
+
+def _meta_refusal(exc: MetaAPIError) -> HTTPException:
+    if isinstance(exc, MetaTransientError):
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"code": "meta_unavailable"}
+        )
+    if catalog_permission_missing(exc):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail={"code": "catalog_permission_missing"}
+        )
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "catalog_meta_rejected",
+            "message": getattr(exc, "message", str(exc))[:200],
+        },
+    )
+
+
+async def _channel_with_creds(
+    session: AsyncSession, channel_id: uuid.UUID
+) -> tuple[Channel, MetaCredentials, str, str]:
+    ch = await session.get(Channel, channel_id)
+    if ch is None:  # RLS → 404
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="channel not found")
+    creds = await _creds_for(session, ch)
+    if creds is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail={"code": "channel_has_no_credentials"}
+        )
+    cfg = ch.config or {}
+    waba_id = str(cfg.get("waba_id") or creds.waba_id or "")
+    business_id = str(cfg.get("business_id") or creds.business_id or "")
+    if not waba_id or not business_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail={"code": "channel_has_no_credentials"}
+        )
+    return ch, creds, waba_id, business_id
+
+
+@router.get("/{channel_id}/catalogs", response_model=CatalogListOut)
+async def list_channel_catalogs(
+    channel_id: uuid.UUID,
+    scope: ClientScope = Depends(client_scope("channels:read")),
+) -> CatalogListOut:
+    """Los catálogos del negocio dueño del token del canal — solo esos."""
+    ch, creds, _waba, business_id = await _channel_with_creds(scope.session, channel_id)
+    client = build_meta_client()
+    try:
+        rows = await client.list_catalogs(business_id=business_id, access_token=creds.bisuat)
+    except MetaAPIError as exc:
+        raise _meta_refusal(exc) from exc
+    finally:
+        await client.close()
+    return CatalogListOut(
+        items=[
+            CatalogSummaryOut(
+                id=str(r.get("id")),
+                name=r.get("name") if isinstance(r.get("name"), str) else None,
+                product_count=r.get("product_count")
+                if isinstance(r.get("product_count"), int)
+                else None,
+            )
+            for r in rows
+            if r.get("id")
+        ],
+        linked_id=(ch.config or {}).get("catalog_id"),
+    )
+
+
+@router.put("/{channel_id}/catalog", response_model=ChannelDetailOut)
+async def set_channel_catalog(
+    channel_id: uuid.UUID,
+    body: CatalogSetIn,
+    scope: ClientScope = Depends(client_scope("channels:write")),
+    redis: Redis = Depends(get_redis),
+) -> ChannelDetailOut:
+    """Enlazar un catálogo a la cuenta del número (o cambiarlo).
+
+    Con otro ya enlazado, primero se desenlaza y luego se enlaza el nuevo
+    (research D4). Si el segundo paso falla, el canal queda **sin** catálogo
+    y con el motivo: honesto y reversible. Meta primero y base después es
+    seguro aquí porque la conciliación al listar adopta lo que Meta tenga.
+    """
+    ch, creds, waba_id, business_id = await _channel_with_creds(scope.session, channel_id)
+    cfg = dict(ch.config or {})
+    before = _catalog_of(cfg)
+    client = build_meta_client()
+    meta: dict[str, Any] = {}
+    try:
+        try:
+            owned = await client.list_catalogs(business_id=business_id, access_token=creds.bisuat)
+        except MetaAPIError as exc:
+            raise _meta_refusal(exc) from exc
+        chosen = next((r for r in owned if str(r.get("id")) == body.catalog_id), None)
+        if chosen is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail={"code": "catalog_not_owned"}
+            )
+        if before is not None and before.id == body.catalog_id:
+            return _detail(ch, await channel_logos(scope.session), "linked")
+
+        if before is not None:
+            try:
+                await client.unlink_catalog(
+                    waba_id=waba_id, catalog_id=before.id, access_token=creds.bisuat
+                )
+            except MetaAPIError as exc:
+                raise _meta_refusal(exc) from exc
+            meta["unlinked"] = before.id
+            _write_catalog(cfg, None)
+        try:
+            await client.link_catalog(
+                waba_id=waba_id, catalog_id=body.catalog_id, access_token=creds.bisuat
+            )
+        except MetaAPIError as exc:
+            if isinstance(exc, MetaTransientError) and before is None:
+                raise _meta_refusal(exc) from exc
+            # El viejo ya no está y el nuevo no entró: se dice, no se finge.
+            cfg["catalog_error"] = {
+                "code": "catalog_permission_missing"
+                if catalog_permission_missing(exc)
+                else "catalog_meta_rejected",
+                "message": getattr(exc, "message", str(exc))[:200],
+                "at": _now(),
+            }
+            meta["error"] = cfg["catalog_error"]
+            log.warning("channel.catalog.link_failed", channel_id=str(ch.id), error=str(exc))
+        else:
+            _write_catalog(cfg, chosen)
+            cfg.pop("catalog_error", None)
+            meta["linked"] = body.catalog_id
+    finally:
+        await client.close()
+
+    ch.config = cfg
+    flag_modified(ch, "config")
+    await redis.delete(_cache_key(waba_id))
+    after = _catalog_of(cfg)
+    await AuditRepository(scope.session).record(
+        actor=scope.principal.actor,
+        action="console.channel.catalog",
+        target=f"channel:{ch.id}",
+        before={"catalog": before.model_dump(mode="json") if before else None},
+        after={"catalog": after.model_dump(mode="json") if after else None, "meta": meta},
+    )
+    return _detail(ch, await channel_logos(scope.session), "linked" if after else "none")
+
+
+@router.delete("/{channel_id}/catalog", response_model=ChannelDetailOut)
+async def clear_channel_catalog(
+    channel_id: uuid.UUID,
+    scope: ClientScope = Depends(client_scope("channels:write")),
+    redis: Redis = Depends(get_redis),
+) -> ChannelDetailOut:
+    """Desenlazar el catálogo. Si Meta rechaza, el catálogo sigue y se dice:
+    borrar a ciegas dejaría a Meta enseñando productos que la consola no ve."""
+    ch = await scope.session.get(Channel, channel_id)
+    if ch is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="channel not found")
+    cfg = dict(ch.config or {})
+    before = _catalog_of(cfg)
+    if before is None:
+        return _detail(ch, await channel_logos(scope.session), "none")
+    creds = await _creds_for(scope.session, ch)
+    waba_id = str(cfg.get("waba_id") or (creds.waba_id if creds else "") or "")
+    meta: dict[str, Any] = {}
+    if creds is not None and waba_id:
+        client = build_meta_client()
+        try:
+            await client.unlink_catalog(
+                waba_id=waba_id, catalog_id=before.id, access_token=creds.bisuat
+            )
+            meta["unlinked"] = before.id
+        except MetaAPIError as exc:
+            cfg["catalog_error"] = {
+                "code": "catalog_permission_missing"
+                if catalog_permission_missing(exc)
+                else "catalog_meta_rejected",
+                "message": getattr(exc, "message", str(exc))[:200],
+                "at": _now(),
+            }
+            ch.config = cfg
+            flag_modified(ch, "config")
+            log.warning("channel.catalog.unlink_failed", channel_id=str(ch.id), error=str(exc))
+            return _detail(ch, await channel_logos(scope.session), "linked")
+        finally:
+            await client.close()
+    else:
+        # Sin credencial no hay nada que deshacer en Meta: se anota.
+        meta["skipped"] = "no_credentials"
+    _write_catalog(cfg, None)
+    cfg.pop("catalog_error", None)
+    ch.config = cfg
+    flag_modified(ch, "config")
+    if waba_id:
+        await redis.delete(_cache_key(waba_id))
+    await AuditRepository(scope.session).record(
+        actor=scope.principal.actor,
+        action="console.channel.catalog",
+        target=f"channel:{ch.id}",
+        before={"catalog": before.model_dump(mode="json")},
+        after={"catalog": None, "meta": meta},
+    )
+    return _detail(ch, await channel_logos(scope.session), "none")
 
 
 @router.post("/{channel_id}/disconnect", response_model=ChannelDetailOut)

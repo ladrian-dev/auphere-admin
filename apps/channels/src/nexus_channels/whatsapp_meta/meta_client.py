@@ -458,6 +458,91 @@ class MetaClient:
             access_token=access_token,
         )
 
+    # ── catálogo de Commerce Manager (spec 022) ───────────────────────────
+    #
+    # Un catálogo es del negocio (``business_id``) y se enlaza a la cuenta de
+    # WhatsApp Business (``waba_id``): una cuenta tiene **un** catálogo. Las
+    # cuatro llamadas piden ``catalog_management`` en el token, además de
+    # ``whatsapp_business_management``; sin él Meta contesta con ``code``
+    # 10/200, y el que llama lo traduce (no este cliente).
+
+    async def list_catalogs(
+        self,
+        *,
+        business_id: str,
+        access_token: str,
+    ) -> list[dict[str, Any]]:
+        data = await self._get(
+            f"/{business_id}/owned_product_catalogs",
+            access_token=access_token,
+            params={"fields": "id,name,product_count", "limit": 50},
+        )
+        items = data.get("data")
+        return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
+
+    async def get_linked_catalog(
+        self,
+        *,
+        waba_id: str,
+        access_token: str,
+    ) -> dict[str, Any] | None:
+        data = await self._get(
+            f"/{waba_id}/product_catalogs",
+            access_token=access_token,
+            params={"fields": "id,name"},
+        )
+        items = data.get("data")
+        if not isinstance(items, list) or not items or not isinstance(items[0], dict):
+            return None
+        return items[0]
+
+    async def link_catalog(
+        self,
+        *,
+        waba_id: str,
+        catalog_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        return await self._post(
+            f"/{waba_id}/product_catalogs",
+            access_token=access_token,
+            json_body={"catalog_id": catalog_id},
+        )
+
+    async def unlink_catalog(
+        self,
+        *,
+        waba_id: str,
+        catalog_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        return await self._delete(
+            f"/{waba_id}/product_catalogs",
+            access_token=access_token,
+            params={"catalog_id": catalog_id},
+        )
+
+    async def search_products(
+        self,
+        *,
+        catalog_id: str,
+        access_token: str,
+        query: str = "",
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Los productos del catálogo, filtrados por nombre si ``query``.
+        ``limit`` se acota a [1, 10]: es para que un agente elija, no para
+        volcar un catálogo."""
+        params: dict[str, Any] = {
+            "fields": "retailer_id,name,price,currency,availability,image_url,description",
+            "limit": min(max(int(limit), 1), 10),
+        }
+        if query.strip():
+            params["filter"] = json.dumps({"name": {"i_contains": query.strip()}})
+        data = await self._get(f"/{catalog_id}/products", access_token=access_token, params=params)
+        items = data.get("data")
+        return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
+
     # ── templates ──────────────────────────────────────────────────────────
 
     async def list_templates(
