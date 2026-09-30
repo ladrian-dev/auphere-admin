@@ -221,3 +221,7 @@ async def test_the_review_sheet_shows_the_audience_change(client, console_world)
     rows = {r["field"]: r for r in diff.json()["settings"]}
     assert rows["audience"]["before"] == {"mode": "everyone", "count": 0}
     assert rows["audience"]["after"] == {"mode": "list", "count": 2}
+
+    # …and the draft bar names the screen.
+    bundle = await client.get(base, headers=h())
+    assert "settings" in bundle.json()["draft_screens"]
