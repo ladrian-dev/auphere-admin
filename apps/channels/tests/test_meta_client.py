@@ -45,7 +45,10 @@ async def test_send_text_injects_appsecret_proof_and_body() -> None:
         assert result["messages"][0]["id"] == "wamid.OUT"
         assert route.called
         request = route.calls[-1].request
-        assert f"access_token={_TOKEN}" in str(request.url)
+        # The token never travels in the URL (it would be logged); it goes
+        # in the Authorization header.
+        assert "access_token=" not in str(request.url)
+        assert request.headers["Authorization"] == f"Bearer {_TOKEN}"
         expected_proof = appsecret_proof(_TOKEN, _SECRET)
         assert f"appsecret_proof={expected_proof}" in str(request.url)
         body_text = request.content.decode()
@@ -66,9 +69,10 @@ async def test_send_text_can_disable_appsecret_proof() -> None:
                 to="56911",
                 body="x",
             )
-        url = str(route.calls[-1].request.url)
-        assert f"access_token={_TOKEN}" in url
-        assert "appsecret_proof=" not in url
+        request = route.calls[-1].request
+        assert "access_token=" not in str(request.url)
+        assert request.headers["Authorization"] == f"Bearer {_TOKEN}"
+        assert "appsecret_proof=" not in str(request.url)
 
 
 async def test_oauth_exception_190_raises_token_invalidated() -> None:
@@ -304,7 +308,8 @@ async def test_deregister_phone_posts_with_no_body() -> None:
             result = await client.deregister_phone(phone_number_id="PN_1", access_token=_TOKEN)
         assert result == {"success": True}
         sent = route.calls.last.request
-        assert sent.url.params["access_token"] == _TOKEN
+        assert "access_token" not in sent.url.params
+        assert sent.headers["Authorization"] == f"Bearer {_TOKEN}"
         assert sent.url.params["appsecret_proof"] == appsecret_proof(_TOKEN, _SECRET)
         assert not sent.content
 

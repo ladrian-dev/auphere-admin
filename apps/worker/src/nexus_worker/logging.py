@@ -52,3 +52,9 @@ def configure_logging() -> None:
         ),
         cache_logger_on_first_use=True,
     )
+    # A token in a query string ends up in the log line httpx writes at
+    # INFO ("HTTP Request: GET https://…?access_token=…"). The Meta client
+    # sends it in a header now (2026-09-30), and this keeps httpx quiet
+    # unless something is actually wrong.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
