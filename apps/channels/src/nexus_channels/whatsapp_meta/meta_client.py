@@ -677,6 +677,7 @@ class MetaClient:
             resp = await self._client.get(
                 path,
                 params=self._with_auth(params or {}, access_token),
+                headers=self._auth_headers(access_token),
             )
             return self._handle_response(resp)
 
@@ -694,6 +695,7 @@ class MetaClient:
             resp = await self._client.post(
                 path,
                 params=self._with_auth(params or {}, access_token),
+                headers=self._auth_headers(access_token),
                 json=json_body,
             )
             return self._handle_response(resp)
@@ -711,6 +713,7 @@ class MetaClient:
             resp = await self._client.delete(
                 path,
                 params=self._with_auth(params or {}, access_token),
+                headers=self._auth_headers(access_token),
             )
             return self._handle_response(resp)
 
@@ -721,11 +724,18 @@ class MetaClient:
         params: dict[str, Any],
         access_token: str,
     ) -> dict[str, Any]:
+        # The token travels in the ``Authorization`` header, never in the
+        # query string: httpx logs the full URL at INFO and a token in it
+        # ends up in CloudWatch (seen in production on 2026-09-30). The
+        # ``appsecret_proof`` stays a query parameter, as Meta expects.
         params = dict(params)
-        params["access_token"] = access_token
         if self._require_appsecret_proof:
             params["appsecret_proof"] = appsecret_proof(access_token, self._app_secret)
         return params
+
+    @staticmethod
+    def _auth_headers(access_token: str) -> dict[str, str]:
+        return {"Authorization": f"Bearer {access_token}"}
 
     def _handle_response(self, response: httpx.Response) -> dict[str, Any]:
         if response.status_code < 400:
