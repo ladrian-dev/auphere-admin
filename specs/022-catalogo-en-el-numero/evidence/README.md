@@ -6,7 +6,7 @@ Una entrada por iteración. Cada una dice qué se midió, con qué, y qué sali�
 |---|---|---|
 | 1 · Meta, la API y la tarjeta (H1) | `iteracion-1.md` | cerrada 2026-09-30 (local); CE-002 en staging |
 | 2 · el agente (H3) | `iteracion-2.md` | cerrada 2026-09-30 (local) |
-| 3 · el alta lo ofrece (H2) | — | pendiente |
+| 3 · el alta lo ofrece (H2) | `iteracion-3.md` | cerrada 2026-09-30 (local); CE-004 en staging |
 
 ## Puertas de cierre
 

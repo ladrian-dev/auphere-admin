@@ -9,7 +9,7 @@ import { MetaWindowVeil, WhatsAppConnect, signupFailureKey, type MetaSignupConfi
 import { WhatsAppConnectByAuphere } from "../whatsapp-connect-by-auphere";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({ whatsappSignupAction: vi.fn() }));
+vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({ whatsappSignupAction: vi.fn(), listCatalogsAction: vi.fn() }));
 vi.mock("@/lib/meta-fb-sdk", () => ({ loginWithMeta: vi.fn(), SignupError: class extends Error {} }));
 
 const configured: MetaSignupConfig = { appId: "123", graphVersion: "v22.0", configIdCloudApi: "cfg-cloud", configIdCoexistence: null };

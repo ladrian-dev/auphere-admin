@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "@/i18n/client";
 import { messages } from "@/i18n/messages";
 
-import { CatalogPickerBody, catalogFailureKey, replacementNeeded } from "../catalog-picker";
+import { CatalogPickerBody, catalogFailureKey, offerCatalogAfterSignup, replacementNeeded } from "../catalog-picker";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
@@ -65,5 +65,19 @@ describe("El selector de catálogo (spec 022, Historia 1)", () => {
     // Y la confirmación nombra al que sale y al que entra.
     expect(messages["ch.catalog.replace.body"].es).toMatch(/\{to\}/);
     expect(messages["ch.catalog.replace.title"].es).toMatch(/\{from\}.*\{to\}/);
+  });
+});
+
+describe("La oferta al terminar el alta (spec 022, Historia 2)", () => {
+  it("se abre solo si el negocio tiene al menos un catálogo", () => {
+    expect(offerCatalogAfterSignup({ ok: true, data: { items: [FLORES], linked_id: null } })).toBe(true);
+    expect(offerCatalogAfterSignup({ ok: true, data: { items: [], linked_id: null } })).toBe(false);
+  });
+
+  it("un permiso que falta o un Meta caído no abren nada ni rompen el alta", () => {
+    expect(offerCatalogAfterSignup({ ok: false, status: 409, code: "catalog_permission_missing", message: "" })).toBe(false);
+    expect(offerCatalogAfterSignup({ ok: false, status: 503, code: "meta_unavailable", message: "" })).toBe(false);
+    expect(messages["ch.catalog.picker.later"].es).toBe("Ahora no");
+    expect(messages["ch.catalog.offer.help"].es).toMatch(/más tarde desde la tarjeta/i);
   });
 });

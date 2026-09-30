@@ -115,19 +115,19 @@ servidores internos en `apps/mcp/src/nexus_mcp/servers/`; consola en
 
 ### Tests (OBLIGATORIO — §VII) ⚠️
 
-- [ ] T026 [P] [US2] `apps/console/src/components/channels/__tests__/whatsapp-connect.test.tsx`: tras un alta con éxito, si `listCatalogs` trae ≥ 1, se abre el mismo `catalog-picker` con «puedes hacerlo luego»; saltarlo cierra sin llamar a `setCatalog`; con 0 no se abre nada. `permission_missing` tras el alta no abre el selector y no rompe el toast de «conectado». _Requisitos: 2.1, 2.2, 2.3_
-- [ ] T027 [P] [US2] `apps/api/tests/unit/test_endpoint_console_whatsapp.py`: el alta guarda `business_id` en `config` (o lo hereda de la credencial del tenant), porque `GET …/catalogs` lo necesita. _Requisitos: 2.1_
+- [X] T026 [P] [US2] `apps/console/src/components/channels/__tests__/whatsapp-connect.test.tsx`: tras un alta con éxito, si `listCatalogs` trae ≥ 1, se abre el mismo `catalog-picker` con «puedes hacerlo luego»; saltarlo cierra sin llamar a `setCatalog`; con 0 no se abre nada. `permission_missing` tras el alta no abre el selector y no rompe el toast de «conectado». _Requisitos: 2.1, 2.2, 2.3_ Entregado: rama 022, 2026-09-30 — `offerCatalogAfterSignup` (pura) con sus tests: se abre solo con ≥ 1 catálogo; permiso que falta o Meta caído no abren nada ni rompen el «conectado». El diálogo de Base UI no abre bajo jsdom: el recorrido entero es del quickstart en staging (CE-004).
+- [X] T027 [P] [US2] `apps/api/tests/unit/test_endpoint_console_whatsapp.py`: el alta guarda `business_id` en `config` (o lo hereda de la credencial del tenant), porque `GET …/catalogs` lo necesita. _Requisitos: 2.1_ Entregado: rama 022, 2026-09-30 — el alta guarda `business_id` en `config` (test con el sobre completo).
 
 ### Implementación
 
-- [ ] T028 [US2] `apps/console/src/components/channels/whatsapp-connect.tsx`: al `ok` del alta, pedir `listCatalogsAction` y, si hay, abrir `CatalogPicker` en modo «oferta» (salta con un clic). _Requisitos: 2.1, 2.2, 2.3_
-- [ ] T029 [US2] Comprobar y documentar en `quickstart.md` el permiso `catalog_management` en las dos configuraciones del Embedded Signup (panel de Meta; lo hace el owner); el alta de la consola no cambia de código porque el permiso viene del `config_id`. _Requisitos: 2.4_
+- [X] T028 [US2] `apps/console/src/components/channels/whatsapp-connect.tsx`: al `ok` del alta, pedir `listCatalogsAction` y, si hay, abrir `CatalogPicker` en modo «oferta» (salta con un clic). _Requisitos: 2.1, 2.2, 2.3_ Entregado: rama 022, 2026-09-30 — tras el `ok` del alta, `listCatalogsAction` y, si hay, `CatalogPicker` en modo oferta («Tu negocio tiene catálogo en Meta» · «Ahora no»), con la lista ya pedida (`preloaded`) para no preguntar a Meta dos veces.
+- [X] T029 [US2] Comprobar y documentar en `quickstart.md` el permiso `catalog_management` en las dos configuraciones del Embedded Signup (panel de Meta; lo hace el owner); el alta de la consola no cambia de código porque el permiso viene del `config_id`. _Requisitos: 2.4_ Entregado: rama 022, 2026-09-30 — documentado en `quickstart.md` y pedido al owner (dos configuraciones del Embedded Signup). No cambia código: el permiso viene del `config_id`.
 
 ---
 
 ## Phase 6: Cierre
 
-- [ ] T030 Recorrer `quickstart.md`: CE-001, 003 y 005 en local; CE-002 y 004 en staging **tras** T029 con el `+34653321693`. Anotar en `evidence/`. _Requisitos: todos · CE-001–005_
+- [ ] T030 Recorrer `quickstart.md`: CE-001, 003 y 005 en local; CE-002 y 004 en staging **tras** T029 con el `+34653321693`. Anotar en `evidence/`. _Requisitos: todos · CE-001–005_ _Local hecho el 2026-09-30 (CE-001, 003, 005 con Meta simulado y la tarjeta en el navegador). **Staging con número real** (CE-002, CE-004) espera al permiso `catalog_management` en el panel de Meta._
 - [ ] T031 Paridad al 100 %, log de sesión en la KB, comparar `locks-at-open.sha256`, merge a `develop`, staging. Suites: API (canales, catálogo, capacidades, aislamiento; la completa en CI), channels, mcp, worker, consola. _Requisitos: ninguno — ritual de cierre_
 
 ---
