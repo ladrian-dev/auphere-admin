@@ -36,6 +36,12 @@ La consola ya tiene el sitio natural: **Ajustes del agente**, donde el
 partner decide identidad, tono, horario, idiomas, escalado y aviso de IA.
 Ahí falta la pregunta «¿a quién responde?».
 
+## Clarifications
+
+### Session 2026-09-30
+
+- Q: Cuando el partner cambia la lista, ¿se aplica al publicar, como el resto de Ajustes del agente, o al guardar, al momento? → A: **Al publicar** (owner, opción A). La lista va en el borrador y publicar la aplica, como identidad, tono u horario; la barra de borrador deja publicar en un clic desde cualquier pestaña.
+
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
 ### Historia 1 — El partner limita a quién responde el agente (Prioridad: P1)

@@ -31,6 +31,5 @@
 
 ## Notes
 
-- Decisión que `/speckit-clarify` puede querer confirmar: la lista sigue el
-  camino borrador → publicar (convención de Ajustes del agente) en vez de
-  aplicarse al momento como hace la API de partners.
+- Clarificado el 2026-09-30: la lista sigue el camino borrador → publicar
+  (opción A del owner).
