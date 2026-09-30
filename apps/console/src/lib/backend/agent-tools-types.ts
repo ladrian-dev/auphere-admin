@@ -91,6 +91,8 @@ export type ConnectorOut = {
   credentials_form: CredentialsField[];
   tools_total: number;
   tools_enabled: number;
+  /** Spec 023 (Requisito 4): the client's sector template suggests this connector. A badge, never a filter. */
+  recommended?: boolean;
   /** Spec 016 (R6): AgendaPro is linked by its public booking page (``auth_kind: "public_url"``). */
   public_url?: string | null;
   /** Spec 016 (R7): the outcome of the sync that ran with the connect. Only on the connect response. */

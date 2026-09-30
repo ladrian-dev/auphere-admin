@@ -131,6 +131,10 @@ class ConnectorOut(BaseModel):
     )
     tools_total: int
     tools_enabled: int
+    #: Spec 023 (Requisito 4): the client's sector template lists this
+    #: connector under ``connectors.recommended``. A suggestion on the card,
+    #: never a filter.
+    recommended: bool = False
     #: Spec 016 (R6): AgendaPro is linked by its public booking page, not by
     #: credentials. ``auth_kind`` reads ``public_url`` for it and this carries
     #: the page (it is public; nothing secret travels).

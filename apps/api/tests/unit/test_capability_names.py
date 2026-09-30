@@ -92,3 +92,29 @@ def test_a_skill_of_one_vertical_declares_it() -> None:
     """Las habilidades no traen etiquetas de catálogo, así que su sector lo
     dice el mapa."""
     assert sectors_of("pre-op-screening", "skill", []) != []
+
+
+# ── Spec 023: los tres conectores de Composio hablan de negocio ──────────
+
+# Lo que un partner no tiene por qué saber. «Deal» es la palabra inglesa
+# de negocio para una oportunidad; en español no vale.
+_FORBIDDEN_JARGON = {
+    "es": ("PaymentIntent", "invitee", "deal", "CRM", "slug", "endpoint"),
+    "en": ("PaymentIntent", "invitee", "CRM", "slug", "endpoint"),
+}
+
+
+def test_the_closed_lists_are_named_and_grouped_where_the_partner_expects() -> None:
+    from nexus_api.services.connectors.toolkits import TOOLKIT_ALLOWLISTS
+
+    expected_function = {"stripe": "orders", "calendly": "appointments", "hubspot": "other"}
+    for toolkit, entries in TOOLKIT_ALLOWLISTS.items():
+        for slug in entries:
+            entry = CAPABILITY_NAMES[("tool", slug)]
+            assert entry["function"] == expected_function[toolkit], f"{slug} cae en otro grupo"
+            assert "sectors" not in entry, f"{slug}: comunes a todos, sin sector"
+            for lang in ("es", "en"):
+                text = entry["name"][lang] + " " + entry["description"][lang]
+                for word in _FORBIDDEN_JARGON[lang]:
+                    assert word not in text, f"{slug} ({lang}) dice «{word}»"
+            assert business_name(slug, "tool", "es") != slug

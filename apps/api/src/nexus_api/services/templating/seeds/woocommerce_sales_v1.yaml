@@ -312,3 +312,9 @@ system_prompt: |
     {policies.wholesale.contact_name} ({policies.wholesale.contact_phone}) para
     que él lo resuelva. No prometas gestionarlo tú ni avisar a nadie.
   - Zona horaria de la tienda: {tenant.timezone}.
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - woocommerce

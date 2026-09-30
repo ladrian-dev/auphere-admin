@@ -209,3 +209,10 @@ system_prompt: |
     pago del negocio cargados". NUNCA los inventes ni los reconstruyas de
     mensajes anteriores de la conversación.
   - Zona horaria del negocio: {tenant.timezone}.
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - amigable_cobro
+    - stripe

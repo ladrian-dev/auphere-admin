@@ -100,6 +100,14 @@ class CatalogConnector:
 # new toolkit type Composio introduces.
 _CATEGORY_MAP: dict[str, str] = {
     "calendar": "calendar",
+    "payments": "billing",
+    "payment": "billing",
+    "billing": "billing",
+    "finance": "billing",
+    "accounting": "billing",
+    "e-commerce": "ecommerce",
+    "ecommerce": "ecommerce",
+    "commerce": "ecommerce",
     "scheduling": "booking",
     "booking": "booking",
     "productivity": "docs",
@@ -121,6 +129,13 @@ _CATEGORY_MAP: dict[str, str] = {
 # appears in the slug wins; falls back to ``"otros"`` if nothing matches.
 _CATEGORY_KEYWORDS: list[tuple[str, str]] = [
     ("calendar", "calendar"),
+    ("payment", "billing"),
+    ("billing", "billing"),
+    ("financ", "billing"),
+    ("invoic", "billing"),
+    ("commerce", "ecommerce"),
+    ("shop", "ecommerce"),
+    ("store", "ecommerce"),
     ("schedul", "booking"),
     ("appointm", "booking"),
     ("book", "booking"),
@@ -145,6 +160,16 @@ _CATEGORY_KEYWORDS: list[tuple[str, str]] = [
     ("mail", "messaging"),
     ("collaborat", "messaging"),
 ]
+
+
+# Spec 023 (Requisito 1.1): the category of these toolkits is Auphere's
+# decision, not the provider's label. Consulted before the metadata so a
+# relabel upstream never moves Stripe out of «Cobros».
+_CATEGORY_BY_TOOLKIT: dict[str, str] = {
+    "stripe": "billing",
+    "calendly": "booking",
+    "hubspot": "crm",
+}
 
 
 def _resolve_category(raw: str | None) -> str:
@@ -194,9 +219,14 @@ def _project_dynamic(ac: AuthConfigSummary, md: ToolkitMetadata | None = None) -
         slug.title() if alias_looks_default else (ac.display_name or slug.title())
     )
 
-    # Category: prefer toolkit metadata → AuthConfigSummary fallback → otros.
-    raw_category = (md.category_slug if md and md.category_slug else ac.category) or ""
-    category = _resolve_category(raw_category)
+    # Category: fixed per toolkit (spec 023) → toolkit metadata →
+    # AuthConfigSummary fallback → otros.
+    fixed = _CATEGORY_BY_TOOLKIT.get(slug)
+    if fixed is not None:
+        category = fixed
+    else:
+        raw_category = (md.category_slug if md and md.category_slug else ac.category) or ""
+        category = _resolve_category(raw_category)
 
     provider_meta: dict[str, Any] = {
         "composio_toolkit_slug": slug.upper(),

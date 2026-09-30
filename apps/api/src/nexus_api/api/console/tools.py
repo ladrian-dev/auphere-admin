@@ -56,9 +56,10 @@ from nexus_api.services.connectors.service import (
     ConnectorNotFound,
     IncompatibleAuthKind,
 )
+from nexus_api.services.templating.seed_templates import load_seed_template
 
 from .agent_drafts import DraftView, ensure_draft, load_view
-from .deps import ClientScope, client_scope
+from .deps import ClientScope, client_scope, client_sector
 from .schemas_agent_tools import (
     ConnectApiKeyIn,
     ConnectorOut,
@@ -248,10 +249,25 @@ async def delete_tool_mode(
 # ── connectors ─────────────────────────────────────────────────────────
 
 
+async def _recommended_connectors(sector: str | None) -> set[str]:
+    """Spec 023 (Requisito 4): the connectors the sector template suggests.
+    Same tolerance as ``capabilities_client._recommended``: no sector or no
+    loadable template → nobody is recommended. Better silent than wrong."""
+    if not sector:
+        return set()
+    for name in (f"{sector}_v1", sector):
+        try:
+            return set(load_seed_template(name).connectors_recommended)
+        except Exception:
+            continue
+    return set()
+
+
 async def _connectors(
     scope: ClientScope, composio: ComposioClientProtocol, view: DraftView
 ) -> list[ConnectorOut]:
     entries = await connector_catalog.list_catalog(scope.session, composio)
+    recommended = await _recommended_connectors(await client_sector(scope.session))
     installs = {
         c.slug: tc
         for tc, c in (
@@ -305,6 +321,7 @@ async def _connectors(
                 credentials_form=[dict(f) for f in form] if isinstance(form, list) else [],
                 tools_total=total,
                 tools_enabled=on,
+                recommended=e.slug in recommended,
             )
         )
     return out

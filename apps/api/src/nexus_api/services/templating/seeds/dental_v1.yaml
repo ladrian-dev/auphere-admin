@@ -172,3 +172,10 @@ system_prompt: |
   - Sin emojis a menos que el paciente los use primero.
   - Confirmá cada acción de agenda con resumen explícito de fecha +
     hora + motivo.
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - agendapro
+    - calendly

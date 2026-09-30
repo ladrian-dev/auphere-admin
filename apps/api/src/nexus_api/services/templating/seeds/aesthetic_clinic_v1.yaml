@@ -407,3 +407,10 @@ system_prompt: |
   - Cierra siempre las respuestas educativas con un recordatorio:
     "Cada caso es individual — lo confirmamos en la consulta con
     {clinical.titular_name}."
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - agendapro
+    - calendly
