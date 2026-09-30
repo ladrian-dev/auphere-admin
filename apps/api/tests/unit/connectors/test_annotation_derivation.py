@@ -11,6 +11,7 @@ import pytest
 
 from nexus_api.services.connectors.composio_client import ComposioTool
 from nexus_api.services.connectors.service import (
+    _TOOL_SLUG_ANNOTATIONS,
     _default_mode_for,
     _derive_annotations,
 )
@@ -85,3 +86,39 @@ def test_default_mode_table(
         )
         == expected
     )
+
+
+# ── Spec 023: the closed list is Auphere's word ──────────────────────────
+
+
+def test_allowlisted_slug_takes_its_hint_from_the_list_not_the_prefix() -> None:
+    """``POST_INVITEE`` has no read prefix and would fall to the default;
+    ``WHO_AM_I`` has none either and would be born destructive. The list
+    says what each one does."""
+    writes = ComposioTool(slug="CALENDLY_POST_INVITEE", description="d", input_schema={})
+    reads = ComposioTool(slug="CALENDLY_WHO_AM_I", description="d", input_schema={})
+    assert _derive_annotations(writes) == {"read_only": False, "destructive": True}
+    assert _derive_annotations(reads) == {"read_only": True, "destructive": False}
+
+
+def test_allowlist_wins_over_upstream_tags() -> None:
+    t = ComposioTool(
+        slug="STRIPE_CREATE_REFUND",
+        description="d",
+        input_schema={},
+        raw_tags={"readOnlyHint": True},
+    )
+    assert _derive_annotations(t) == {"read_only": False, "destructive": True}
+
+
+def test_calendly_hints_left_the_static_table() -> None:
+    """``CALENDLY_CANCEL_EVENT`` never existed upstream; the four Calendly
+    rows are gone and the list replaces them."""
+    assert not [k for k in _TOOL_SLUG_ANNOTATIONS if k.startswith("CALENDLY_")]
+
+
+def test_toolkit_without_list_keeps_the_old_rules() -> None:
+    t = ComposioTool(slug="NOTION_SEARCH", description="d", input_schema={})
+    assert _derive_annotations(t) == {"read_only": True, "destructive": False}
+    t = ComposioTool(slug="NOTION_DO_THING", description="d", input_schema={})
+    assert _derive_annotations(t) == {"read_only": False, "destructive": True}

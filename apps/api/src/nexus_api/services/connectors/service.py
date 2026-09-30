@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -62,6 +62,7 @@ from .composio_client import (
     ComposioUnavailable,
 )
 from .consent_token import sign_consent_token
+from .toolkits import allowlist_for, hint_for_slug
 
 log = structlog.get_logger(__name__)
 
@@ -110,6 +111,11 @@ class SyncToolsResult:
     added: list[str]
     deprecated: list[str]
     unchanged: list[str]
+    #: Spec 023 — only for toolkits with a closed list: slugs of the list
+    #: the provider did not return, and how many upstream tools were
+    #: outside the list and therefore not synced.
+    missing: list[str] = field(default_factory=list)
+    dropped_count: int = 0
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────
@@ -181,11 +187,9 @@ _TOOL_SLUG_ANNOTATIONS: dict[str, dict[str, bool]] = {
     "GOOGLECALENDAR_UPDATE_EVENT": {"read_only": False, "destructive": True},
     "GOOGLECALENDAR_DELETE_EVENT": {"read_only": False, "destructive": True},
     "GOOGLECALENDAR_QUICK_ADD": {"read_only": False, "destructive": True},
-    # Calendly
-    "CALENDLY_LIST_EVENT_TYPES": {"read_only": True, "destructive": False},
-    "CALENDLY_LIST_SCHEDULED_EVENTS": {"read_only": True, "destructive": False},
-    "CALENDLY_CREATE_SCHEDULING_LINK": {"read_only": False, "destructive": True},
-    "CALENDLY_CANCEL_EVENT": {"read_only": False, "destructive": True},
+    # Calendly, Stripe and HubSpot live in ``toolkits.TOOLKIT_ALLOWLISTS``
+    # (spec 023): a closed list per toolkit that says what reads and what
+    # writes, consulted before this table.
     # Notion
     "NOTION_SEARCH": {"read_only": True, "destructive": False},
     "NOTION_GET_PAGE": {"read_only": True, "destructive": False},
@@ -222,11 +226,16 @@ def _derive_annotations(tool: ComposioTool) -> dict[str, bool]:
     """Resolve read_only / destructive for a tool.
 
     Order:
+    0. The closed list of the toolkit, when it has one (spec 023): it is
+       Auphere's word on the tool and wins over upstream tags.
     1. ``raw_tags`` from Composio response (readOnlyHint / destructiveHint).
     2. Hard-coded mapping in ``_TOOL_SLUG_ANNOTATIONS``.
     3. Heuristic on slug prefix (LIST_, GET_, FIND_, SEARCH_ → read_only).
     4. Conservative fallback: destructive=true.
     """
+    hint = hint_for_slug(tool.slug)
+    if hint is not None:
+        return {"read_only": hint["read_only"], "destructive": hint["destructive"]}
     tags = tool.raw_tags or {}
     if "readOnlyHint" in tags or "destructiveHint" in tags:
         return {
@@ -579,6 +588,34 @@ async def sync_tools_for(
         raise
 
     tools = _drop_blank_tools(tools, connector_slug=connector.slug)
+
+    # Spec 023: a toolkit with a closed list syncs only that list. What the
+    # provider returns outside it is counted and dropped; what the list
+    # names and the provider no longer returns is logged, never invented —
+    # the deprecation loop below retires its row if it had one.
+    allow = allowlist_for(toolkit)
+    missing: list[str] = []
+    dropped_count = 0
+    if allow is not None:
+        returned = {t.slug for t in tools}
+        dropped_count = sum(1 for t in tools if t.slug not in allow)
+        tools = [t for t in tools if t.slug in allow]
+        missing = sorted(slug for slug in allow if slug not in returned)
+        if dropped_count:
+            log.info(
+                "connector.sync.allowlist_dropped",
+                connector=connector.slug,
+                toolkit=toolkit,
+                dropped=dropped_count,
+            )
+        if missing:
+            log.warning(
+                "connector.sync.allowlist_missing",
+                connector=connector.slug,
+                toolkit=toolkit,
+                missing=missing,
+            )
+            counters.incr(f"connector.sync.allowlist_missing:{connector.slug}", len(missing))
     upstream_slugs = {t.slug for t in tools}
     existing_rows = (
         await session.scalars(select(ToolCatalog).where(ToolCatalog.connector_id == connector.id))
@@ -634,21 +671,31 @@ async def sync_tools_for(
     tenant_connector.last_synced_at = datetime.now(UTC)
     await session.flush()
 
+    after: dict[str, Any] = {
+        "added": added,
+        "deprecated": deprecated,
+        "unchanged_count": len(unchanged),
+    }
+    if allow is not None:
+        after["missing"] = missing
+        after["dropped_count"] = dropped_count
     await _write_audit(
         session,
         tenant_id=tenant_connector.tenant_id,
         actor=actor,
         action="connector.tools.synced",
         target=f"connector:{connector.slug}",
-        after={
-            "added": added,
-            "deprecated": deprecated,
-            "unchanged_count": len(unchanged),
-        },
+        after=after,
     )
     counters.incr(f"connector.tools.synced:{connector.slug}:added", len(added))
     counters.incr(f"connector.tools.synced:{connector.slug}:deprecated", len(deprecated))
-    return SyncToolsResult(added=added, deprecated=deprecated, unchanged=unchanged)
+    return SyncToolsResult(
+        added=added,
+        deprecated=deprecated,
+        unchanged=unchanged,
+        missing=missing,
+        dropped_count=dropped_count,
+    )
 
 
 async def auto_enable_connector_tools(
