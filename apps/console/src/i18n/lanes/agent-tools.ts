@@ -78,8 +78,8 @@ export const agentToolsMessages = {
   // Spec 024: a quién responde el agente.
   "agentSettings.section.audience": { es: "A quién responde", en: "Who it answers" },
   "agentSettings.audience.help": {
-    es: "Mientras pruebas un cliente, el agente puede responder solo a una lista de números. A los demás no les contesta ni les marca el mensaje como leído; el mensaje queda en Conversaciones.",
-    en: "While you test a client, the agent can answer only a list of numbers. Everyone else gets no reply and no read receipt; the message stays in Conversations.",
+    es: "Mientras pruebas un cliente, el agente puede responder solo a una lista de números. A los demás no les contesta ni les marca el mensaje como leído, y el mensaje queda en Conversaciones.",
+    en: "While you test a client, the agent can answer only a list of numbers. Everyone else gets no reply and no read receipt, and the message stays in Conversations.",
   },
   "agentSettings.audience.everyone": { es: "A todo el mundo", en: "Everyone" },
   "agentSettings.audience.everyone.help": {
