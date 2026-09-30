@@ -47,6 +47,10 @@ policies:
 
 tools:
   required:
+    # Catálogo de Meta (spec 022): solo se enseñan y se usan con catálogo
+    # enlazado al número; sin él, Capacidades no las lista.
+    - catalog.search_products
+    - catalog.get_product
     # Todas son lecturas: se ejecutan también en QA dry_run (sin side effects).
     - inventory.search_products
     - inventory.get_product

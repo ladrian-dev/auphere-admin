@@ -717,6 +717,24 @@ async def _dispatch_message(
     # the structured block.
     if msg.interactive_payload:
         payload = msg.interactive_payload
+        if products_without_catalog(payload, catalog_id):
+            # Spec 022 (R3.4): el catálogo se desconectó entre que el agente
+            # decidió mandar tarjetas y que el mensaje salió. Sin catálogo no
+            # hay tarjeta posible; va el texto del mensaje, y queda anotado.
+            log.warning(
+                "outbound.products_without_catalog",
+                tenant_id=str(tenant_id),
+                channel_id=str(channel_id),
+                products=len(payload.get("products") or []),
+            )
+            return await adapter.send_text(
+                from_phone=from_phone,
+                recipient=recipient,
+                text=str(payload.get("body") or msg.content or ""),
+                tenant_id=tenant_id,
+                channel_id=channel_id,
+                context_message_id=payload.get("context_message_id") or context,
+            )
         # Product cards: the Facebook-for-WooCommerce catalog keys each item by
         # the raw WooCommerce product id (verified against Meta's catalog), so
         # the ids the agent passes ARE the product_retailer_ids — sent as-is.
@@ -1008,6 +1026,11 @@ def _ms_since(when: datetime) -> int | None:
     if delta is None:
         return None
     return int(delta.total_seconds() * 1000)
+
+
+def products_without_catalog(payload: dict[str, Any], catalog_id: str | None) -> bool:
+    """Pure: ¿pide tarjetas de producto sin catálogo con el que mandarlas?"""
+    return bool(payload.get("products")) and not catalog_id
 
 
 def _to_meta_interactive(

@@ -543,6 +543,29 @@ class MetaClient:
         items = data.get("data")
         return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
 
+    async def get_product(
+        self,
+        *,
+        catalog_id: str,
+        retailer_id: str,
+        access_token: str,
+    ) -> dict[str, Any] | None:
+        """Un producto por su ``retailer_id`` (el identificador del catálogo,
+        que es el que viaja en la tarjeta), o ``None`` si no está."""
+        data = await self._get(
+            f"/{catalog_id}/products",
+            access_token=access_token,
+            params={
+                "fields": "retailer_id,name,price,currency,availability,image_url,description",
+                "filter": json.dumps({"retailer_id": {"eq": retailer_id}}),
+                "limit": 1,
+            },
+        )
+        items = data.get("data")
+        if not isinstance(items, list) or not items or not isinstance(items[0], dict):
+            return None
+        return items[0]
+
     # ── templates ──────────────────────────────────────────────────────────
 
     async def list_templates(

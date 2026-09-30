@@ -28,8 +28,12 @@ from typing import Any
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models import (
+    Channel,
+    ChannelStatus,
+    ChannelType,
     Connector,
     ConnectorToolMode,
     TenantConnector,
@@ -120,6 +124,26 @@ async def _overrides(scope: ClientScope) -> dict[str, str]:
     return {r.tool_name: r.mode for r in rows}
 
 
+#: Spec 022: la dependencia no es un conector sino que **algún número vivo
+#: tenga catálogo enlazado**. Sin él, la capacidad no se enseña (R3.2): no
+#: hay botón apagado que explique lo que no tienes.
+CHANNEL_CATALOG = "channel_catalog"
+
+
+async def tenant_has_catalog(session: AsyncSession) -> bool:
+    return bool(
+        await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(Channel)
+            .where(
+                Channel.type == ChannelType.WHATSAPP,
+                Channel.status == ChannelStatus.ACTIVE,
+                Channel.config["catalog_id"].astext.isnot(None),
+            )
+        )
+    )
+
+
 async def _connector_by_slug(scope: ClientScope, slug: str) -> tuple[str, str] | None:
     """(nombre visible, estado) de una integración que no se enlaza por
     `connector_id`. Hoy solo AgendaPro, y «conectada» significa que el
@@ -159,7 +183,14 @@ async def _all_capabilities(
         # daría por utilizables y mentiría.
         if slug is None:
             needed = requires_connector(tool.name, "tool")
-            if needed:
+            if needed == CHANNEL_CATALOG:
+                if not await tenant_has_catalog(scope.session):
+                    continue
+                slug = CHANNEL_CATALOG
+                display_name = "Catálogo de Meta" if lang == "es" else "Meta catalogue"
+                install_status = "connected"
+                connected = True
+            elif needed:
                 found = await _connector_by_slug(scope, needed)
                 if found:
                     slug, display_name = needed, found[0]

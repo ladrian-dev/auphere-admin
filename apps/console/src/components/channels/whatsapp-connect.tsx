@@ -7,11 +7,14 @@ import { toast } from "sonner";
 
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Label, NativeSelect } from "@nexus/ui";
 
-import { whatsappSignupAction } from "@/app/(console)/clients/[ref]/channels/actions";
+import { listCatalogsAction, whatsappSignupAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
+import type { CatalogList } from "@/lib/backend/channels";
 import { actionErrorText } from "@/lib/action-error";
 import { SignupError, loginWithMeta, type SignupMode } from "@/lib/meta-fb-sdk";
+
+import { CatalogPicker, offerCatalogAfterSignup } from "./catalog-picker";
 
 /** Meta Embedded Signup config handed down by the server component (env). */
 export type MetaSignupConfig = {
@@ -84,6 +87,9 @@ export function WhatsAppConnect({
   const [open, setOpen] = React.useState(false);
   const [mode, setMode] = React.useState<SignupMode>(meta.configIdCloudApi ? "cloud_api" : "coexistence");
   const [working, setWorking] = React.useState(false);
+  // Historia 2 (spec 022): al terminar el alta, si el negocio tiene catálogo,
+  // se ofrece aquí mismo; se puede saltar, y la tarjeta lo vuelve a ofrecer.
+  const [offer, setOffer] = React.useState<{ channelId: string; list: CatalogList } | null>(null);
   const configId = mode === "coexistence" ? meta.configIdCoexistence : meta.configIdCloudApi;
   const disabledReason = !canConnect ? t("ch.quota.full", { used, max }) : null;
 
@@ -106,6 +112,8 @@ export function WhatsAppConnect({
       );
       setOpen(false);
       router.refresh();
+      const list = await listCatalogsAction({ ref: refId, channelId: res.data.channel_id });
+      if (offerCatalogAfterSignup(list) && list.ok) setOffer({ channelId: res.data.channel_id, list: list.data });
     } catch (err) {
       const code = err instanceof SignupError ? err.code : "meta_error";
       const key = (
@@ -131,6 +139,18 @@ export function WhatsAppConnect({
         </p>
       ) : null}
       <MetaWindowVeil open={working} />
+      {offer ? (
+        <CatalogPicker
+          key={offer.channelId}
+          refId={refId}
+          channelId={offer.channelId}
+          current={null}
+          open
+          onOpenChange={(o) => !o && setOffer(null)}
+          offer
+          preloaded={offer.list}
+        />
+      ) : null}
       <Dialog open={open} onOpenChange={(o) => !working && setOpen(o)}>
         <DialogContent>
           <DialogHeader>

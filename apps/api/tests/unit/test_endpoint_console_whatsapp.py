@@ -208,3 +208,29 @@ async def test_a_number_meta_still_holds_has_its_own_sentence(
         )
         == 0
     )
+
+
+async def test_signup_keeps_the_business_id_the_catalog_needs(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Spec 022 (T027): ``GET …/catalogs`` lista los catálogos del negocio, y
+    el negocio es el ``business_id`` que el alta trae en el sobre."""
+    b = console_world["b"]
+    number = f"+3463{uuid.uuid4().int % 10**7:07d}"
+    fake = _FakeMeta(number)
+    monkeypatch.setattr(meta_signup_service, "build_meta_client", lambda: fake)
+    r = await client.post(
+        f"/console/clients/{b['ref']}/channels/whatsapp/signup",
+        headers=b["headers"](),
+        json={
+            "code": "abc",
+            "waba_id": "W-new",
+            "phone_number_id": "PN-fake",
+            "business_id": "BIZ-B",
+            "mode": "coexistence",
+        },
+    )
+    assert r.status_code == 201, r.text
+    fila = await db_session.scalar(sa.select(Channel).where(Channel.provider_identifier == number))
+    assert fila is not None
+    assert fila.config["business_id"] == "BIZ-B"
