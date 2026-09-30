@@ -202,8 +202,11 @@ precios», no `SHOPIFY_LIST_PRODUCTS`.
 
 ## Supuestos
 
-- Las cuatro cuentas en el proveedor de consentimientos las crea el owner;
-  hasta entonces, los cuatro no aparecen y no hay nada que probar en staging.
+- Las cuentas en el proveedor de consentimientos: **Stripe, Calendly y HubSpot
+  creadas el 2026-09-30** (`evidence/README.md`). **Shopify no**: el proveedor
+  no ofrece credenciales gestionadas para Shopify; hace falta una app propia
+  de Shopify Partners con su Client ID y Client Secret, que hoy no existe.
+  Shopify queda en esta spec como cuarto conector **condicionado** a esa app.
 - La lista de herramientas de cada uno se lee del proveedor en el momento de
   planificar; los nombres de negocio y qué lee / qué escribe se escriben
   contra esa lista.
