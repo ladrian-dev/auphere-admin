@@ -205,3 +205,19 @@ async def test_a_sales_template_is_not_locked(client, console_world, db_session)
     await _set_template(db_session, a["tenant_id"], v1, "woocommerce_sales_v1")
     got = await client.get(f"/console/clients/{a['ref']}/agent/settings", headers=h())
     assert got.json()["audience"]["locked"] is False
+
+
+async def test_the_review_sheet_shows_the_audience_change(client, console_world) -> None:
+    """Requisito 1.4: publishing is the explicit step, so the diff the
+    partner reviews before publishing has to show the list."""
+    a = console_world["a"]
+    h = a["headers"]
+    base = f"/console/clients/{a['ref']}/agent"
+    await _stage_and_publish(client, a)
+    await client.put(f"{base}/settings", headers=h(), json={"settings": SETTINGS, "audience": LIST})
+
+    diff = await client.get(f"{base}/draft-diff", headers=h())
+    assert diff.status_code == 200, diff.text
+    rows = {r["field"]: r for r in diff.json()["settings"]}
+    assert rows["audience"]["before"] == {"mode": "everyone", "count": 0}
+    assert rows["audience"]["after"] == {"mode": "list", "count": 2}

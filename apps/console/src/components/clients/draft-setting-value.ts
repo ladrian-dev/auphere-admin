@@ -47,6 +47,11 @@ function known(t: T, field: string, value: Dict): string | null {
     }
     case "ai_disclosure":
       return t(value.enabled === false ? "draft.value.disclosure.off" : "draft.value.disclosure.on");
+    // Spec 024: «A quién responde» travels in the diff as {mode, count}.
+    case "audience": {
+      if (value.mode !== "list") return t("draft.value.audience.everyone");
+      return t("draft.value.audience.list", { count: Number(value.count ?? 0) });
+    }
     default:
       return null;
   }

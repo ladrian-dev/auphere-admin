@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from nexus_api.db.models import AgentConfig, AgentConfigStatus
+from nexus_api.services.agent_audience import audience_of
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.agent_console_policy import with_disclosure_default
 
@@ -163,7 +164,20 @@ def settings_changes(active: AgentConfig | None, draft: AgentConfig) -> list[dic
         if field not in before and after.get(field) == defaults.get(field):
             continue
         rows.append({"field": field, "before": before.get(field), "after": after.get(field)})
+    # Spec 024: «A quién responde» lives in ``admin_access``, not in
+    # ``policies.console``; the review sheet still has to show it, or the
+    # partner would publish a list without seeing it in the diff.
+    audience_before, audience_after = _audience_row(active), _audience_row(draft)
+    if audience_before != audience_after and not (
+        active is None and audience_after["mode"] == "everyone"
+    ):
+        rows.append({"field": "audience", "before": audience_before, "after": audience_after})
     return rows
+
+
+def _audience_row(cfg: AgentConfig | None) -> dict[str, object]:
+    audience = audience_of(cfg.policies if cfg else None)
+    return {"mode": audience.mode, "count": len(audience.numbers)}
 
 
 def capability_changes(active: AgentConfig | None, draft: AgentConfig) -> list[dict[str, object]]:
