@@ -31,6 +31,44 @@ from .schemas import ChannelOut, ClientHealthOut
 ChannelRole = Literal["agent", "notifications"]
 
 
+class CatalogOut(BaseModel):
+    """El catálogo de Commerce Manager enlazado a la cuenta del número (spec 022)."""
+
+    id: str
+    name: str | None = None
+    checked_at: datetime | None = None
+
+
+class CatalogErrorOut(BaseModel):
+    """Lo último que Meta rechazó sobre el catálogo, traducido a un código."""
+
+    code: str
+    message: str | None = None
+    at: datetime | None = None
+
+
+class CatalogSummaryOut(BaseModel):
+    id: str
+    name: str | None = None
+    product_count: int | None = None
+
+
+class CatalogListOut(BaseModel):
+    """Los catálogos del negocio dueño del token del canal, y cuál está enlazado."""
+
+    items: list[CatalogSummaryOut]
+    linked_id: str | None = None
+
+
+class CatalogSetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    catalog_id: str = Field(min_length=1, max_length=64)
+
+
+CatalogState = Literal["none", "linked", "permission_missing", "unchecked"]
+
+
 class ChannelDetailOut(ChannelOut):
     """A channel row plus the Meta health snapshot kept in ``config``
     (written at signup; refreshed by the quality cron when it runs).
@@ -50,6 +88,12 @@ class ChannelDetailOut(ChannelOut):
     #: Spec 021: lo que quedó por deshacer en Meta al desvincular. Vacío en el
     #: caso bueno. La tarjeta lo lee para decir «queda pendiente» y reintentar.
     unlink_pending: list[str] = Field(default_factory=list)
+    #: Spec 022: el catálogo enlazado, o nada; y en qué estado está la verdad
+    #: («linked» coincide con Meta; «unchecked» no se pudo comprobar;
+    #: «permission_missing» la conexión no trajo el permiso).
+    catalog: CatalogOut | None = None
+    catalog_state: CatalogState = "none"
+    catalog_error: CatalogErrorOut | None = None
 
 
 class ChannelsOverviewOut(BaseModel):

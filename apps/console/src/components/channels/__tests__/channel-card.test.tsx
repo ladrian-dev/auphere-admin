@@ -12,6 +12,9 @@ const disconnectChannelAction = vi.fn();
 vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
   setChannelRoleAction: vi.fn(),
   disconnectChannelAction: (...args: unknown[]) => disconnectChannelAction(...args),
+  listCatalogsAction: vi.fn().mockResolvedValue({ ok: true, data: { items: [], linked_id: null } }),
+  setCatalogAction: vi.fn(),
+  clearCatalogAction: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
@@ -29,6 +32,9 @@ const CANAL: ChannelDetail = {
   messaging_tier: "TIER_250",
   mode: "coexistence",
   unlink_pending: [],
+  catalog: null,
+  catalog_state: "none",
+  catalog_error: null,
   last_health_check_at: "2026-09-29T14:08:00Z",
   created_at: "2026-09-23T20:27:00Z",
 };
@@ -175,5 +181,58 @@ describe("Una sola insignia de estado (2026-09-29)", () => {
     const { container } = pintar({ logo_url: null });
     expect(container.querySelector("[data-slot=channel-icon] img")).toBeNull();
     expect(container.querySelector("[data-slot=channel-icon] svg")).not.toBeNull();
+  });
+});
+
+describe("La fila «Catálogo» de la tarjeta (spec 022)", () => {
+  const FLORES = { id: "CAT_FLORES", name: "Flores y ramos", checked_at: "2026-09-30T12:00:00Z" };
+
+  it("sin catálogo: «Ninguno» y «Conectar catálogo»", () => {
+    pintar({ catalog: null, catalog_state: "none" });
+    expect(screen.getByText("Ninguno")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Conectar catálogo" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Cambiar" })).toBeNull();
+  });
+
+  it("conectado: el nombre, «Cambiar» y «Desconectar»", () => {
+    pintar({ catalog: FLORES, catalog_state: "linked" });
+    expect(screen.getByText("Flores y ramos")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cambiar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Desconectar" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Conectar catálogo" })).toBeNull();
+  });
+
+  it("sin permiso: dice que se concede volviendo a conectar el número, y no ofrece conectar", () => {
+    // La conexión de WhatsApp no trajo `catalog_management`: no es un error
+    // de la consola y no se arregla pulsando «Conectar catálogo».
+    pintar({ catalog: null, catalog_state: "permission_missing" });
+    expect(screen.getByText(/vuelve a conectar el número/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Conectar catálogo" })).toBeNull();
+  });
+
+  it("sin comprobar: lo guardado, y que no se pudo comprobar", () => {
+    pintar({ catalog: FLORES, catalog_state: "unchecked" });
+    expect(screen.getByText("Flores y ramos")).toBeInTheDocument();
+    expect(screen.getByText(/no se pudo comprobar/i)).toBeInTheDocument();
+  });
+
+  it("quien solo mira ve el nombre y ningún control", () => {
+    pintar({ catalog: FLORES, catalog_state: "linked" }, false);
+    expect(screen.getByText("Flores y ramos")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cambiar|Desconectar|Conectar catálogo/ })).toBeNull();
+  });
+
+  it("un rechazo de Meta se lee en la fila, traducido", () => {
+    pintar({
+      catalog: null,
+      catalog_state: "none",
+      catalog_error: { code: "catalog_meta_rejected", message: "Invalid parameter", at: null },
+    });
+    expect(screen.getByText(/Meta no aceptó el cambio: Invalid parameter/)).toBeInTheDocument();
+  });
+
+  it("un canal desvinculado no tiene fila de catálogo", () => {
+    pintar({ status: "disconnected", catalog: FLORES, catalog_state: "linked" });
+    expect(screen.queryByText("Catálogo")).toBeNull();
   });
 });
