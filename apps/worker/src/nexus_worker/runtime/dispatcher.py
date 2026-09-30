@@ -46,6 +46,14 @@ from nexus_worker.runtime.thread_id import make_thread_id
 
 log = structlog.get_logger(__name__)
 
+
+def suppression_reason(agent_policies: dict[str, Any] | None, sender: str | None) -> str | None:
+    """Spec 024: the ``messages.skipped_reason`` value for an inbound the
+    agent will not answer, or ``None`` when it will. Today only the
+    admin-only gate leaves a reason; it is the same test the gate runs."""
+    return "not_admin" if admin_only_suppresses(agent_policies, sender) else None
+
+
 # Tenant statuses where the agent is muted — the inbound message is
 # persisted for audit but the pipeline does NOT run. PAUSED is reversible
 # (operator clicks Resume); ARCHIVED is one-way (soft delete); PROVISIONING
@@ -363,6 +371,13 @@ async def _process_inbound_after_gates(
             )
         ).first()
         agent_policies: dict[str, Any] = (active_agent[1] if active_agent else None) or {}
+        # Spec 024: leave the reason on the inbound we just persisted, in
+        # this same session, so Conversaciones can say why the agent stayed
+        # silent. The gate below still decides; this only records it.
+        skipped_reason = suppression_reason(agent_policies, event.user_id)
+        if skipped_reason is not None:
+            inbound_msg.skipped_reason = skipped_reason
+            await session.flush()
         # WP-17: qué VERSIÓN de agente consumió. Es lo que responde si el
         # prompt nuevo salió más caro que el viejo.
         agent_config_id: uuid.UUID | None = active_agent[0] if active_agent else None
