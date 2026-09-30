@@ -1,8 +1,11 @@
 """LLM-facing inventory tools (``inventory.*``).
 
-Read-only access to a tenant's product catalogue and stock so the warehouse
-agent can answer what exists, how many units there are, at what price, and
-which variants a product has.
+Access to a tenant's product catalogue and stock so the warehouse agent can
+answer what exists, how many units there are, at what price, and which
+variants a product has. Four tools are read-only; ``inventory.register_sale``
+is the one write — the demo's SIMULATED sale, which decrements stock and only
+works on the local catalogue backend (never against the read-only Amigable
+Venta POS).
 
 **Two interchangeable backends, one contract.** The tools never know which
 one answered:
@@ -66,6 +69,8 @@ from nexus_mcp.servers.inventory.schemas import (
     LowStockOutput,
     ProductGroup,
     ProductVariant,
+    RegisterSaleInput,
+    RegisterSaleOutput,
     SearchProductsInput,
     SearchProductsOutput,
 )
@@ -464,11 +469,66 @@ class LowStock(_InventoryTool):
         )
 
 
+class RegisterSale(_InventoryTool):
+    """Venta simulada de la demo: descuenta stock en el catálogo local.
+
+    Es la ÚNICA tool de inventario con efecto de escritura. Solo puede operar
+    sobre ``LocalCatalogClient`` (la tabla propia ``local_catalog_products``);
+    contra el backend real de Amigable Venta —que es de solo lectura— se
+    rechaza en ``run`` antes de tocar nada. ``side_effects`` no vacío hace que
+    el registry la salte en ``dry_run`` (QA Playground) y la exponga como
+    destructiva.
+    """
+
+    name = "inventory.register_sale"
+    description = (
+        "Registra la VENTA de unidades de un producto y DESCUENTA su stock. "
+        "Úsala solo cuando el usuario CONFIRME que quiere vender/descontar una "
+        "cantidad concreta de un SKU (ej. 'vende 2 de FARM-00005'). Es una "
+        "ESCRITURA: pide y confirma el SKU exacto y la cantidad antes de "
+        "llamarla. Cada variante tiene su propio stock, por eso se vende por "
+        "SKU y no por nombre. Si el SKU no existe o no hay stock suficiente NO "
+        "vende y lo indica en 'motivo'."
+    )
+    input_model = RegisterSaleInput
+    output_model = RegisterSaleOutput
+    side_effects: ClassVar[tuple[str, ...]] = ("mutates_db",)
+
+    async def run(self, payload: RegisterSaleInput) -> RegisterSaleOutput:  # type: ignore[override]
+        client = await self._client()
+        if not isinstance(client, LocalCatalogClient):
+            raise ToolError(
+                "La venta simulada solo opera sobre el catálogo local de la "
+                "demo. Este tenant sirve el catálogo desde Amigable Venta, que "
+                "es de solo lectura: una venta real se registra en Amigable, no aquí."
+            )
+        result = await client.decrement_stock(payload.sku, payload.cantidad)
+        precio = result.get("precio_usd")
+        importe = (
+            round(float(precio) * payload.cantidad, 2)
+            if result.get("vendido") and precio is not None
+            else None
+        )
+        return RegisterSaleOutput(
+            vendido=bool(result.get("vendido")),
+            encontrado=bool(result.get("encontrado")),
+            sku=str(result.get("sku") or payload.sku),
+            nombre=result.get("nombre"),
+            cantidad=payload.cantidad,
+            precio_usd=precio,
+            importe_usd=importe,
+            stock_anterior=result.get("stock_anterior"),
+            stock_actual=result.get("stock_actual"),
+            motivo=result.get("motivo"),
+        )
+
+
 INVENTORY_TOOLS: tuple[type[ToolBase], ...] = (
     SearchProducts,
     GetProduct,
     CheckStock,
     LowStock,
+    RegisterSale,
 )
 
 

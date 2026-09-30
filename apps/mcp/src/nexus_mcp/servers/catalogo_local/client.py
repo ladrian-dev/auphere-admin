@@ -6,17 +6,21 @@ keys the Amigable API returns, so the ``inventory.*`` tools cannot tell the
 two backends apart — which is the whole point: swapping the source is an
 operator action, not a code change.
 
-**Search is deliberately identical to the upstream API's**, quirks included:
+**Search matching mirrors the upstream API's quirks**:
 
 - matches ``nombre`` and ``sku`` only — never ``categoria`` or ``tipo``;
-- case- and accent-insensitive, substring-based;
-- capped at the same :data:`RESULT_CAP` rows, reporting ``truncated`` the
-  same way.
+- case- and accent-insensitive, substring-based.
 
-Mirroring the cap on a database that could return everything looks
-gratuitous until the swap happens: if the local backend answered more
-generously, the agent's behaviour would change the day the real API came
-back, and the demo would stop matching production.
+**The row cap does NOT.** The Amigable client caps a search at 1000 rows
+because the upstream API does and gives no way to page past it. This backend
+is our own database serving a real, possibly large catalogue (a pharmacy
+carries thousands of SKUs), and for the ``inventario_v1`` demo it is the
+source of truth — the simulated sale writes here and no swap to the upstream
+API is planned. So it is NOT bound to the API's 1000: it uses its own, higher
+:data:`RESULT_CAP` and still reports ``truncated`` if a single search exceeds
+even that, so the agent never presents a truncated list as complete. The
+LLM-facing ``limit`` (≤50 groups) is what actually bounds what reaches the
+model; this cap only bounds the internal fetch that gets aggregated.
 
 Accent-insensitivity is precomputed, not computed at query time: the
 loader stores a folded ``search_text`` column, so matching is a plain
@@ -36,8 +40,13 @@ from sqlalchemy import text
 
 log = structlog.get_logger(__name__)
 
-# Same cap as the Amigable Venta API. See the module docstring.
-RESULT_CAP = 1000
+# Per-search fetch cap for the LOCAL backend. Deliberately higher than the
+# Amigable Venta API's 1000 (see module docstring): a pharmacy's catalogue is
+# large and this backend has no upstream page limit to respect. Aggregation
+# and context cost are bounded by the tool's ``limit`` (≤50 groups), not by
+# this number, so a generous cap is cheap. Raise it further if a real
+# catalogue ever makes a single search legitimately exceed it.
+RESULT_CAP = 5000
 
 
 def fold(value: str) -> str:
@@ -102,3 +111,103 @@ class LocalCatalogClient:
             for r in rows
         ]
         return out, len(out) >= RESULT_CAP
+
+    async def decrement_stock(self, sku: str, cantidad: int) -> dict[str, Any]:
+        """Descuenta ``cantidad`` unidades de un SKU — la VENTA SIMULADA de la demo.
+
+        Solo el backend local soporta esto: escribe en ``local_catalog_products``,
+        la tabla propia de Nexus. NO es una venta real en un POS; el API de
+        Amigable Venta es de solo lectura y por eso la tool que llama aquí
+        rechaza ese backend antes de llegar a este método.
+
+        El descuento es atómico y RLS-scoped: el ``UPDATE`` lleva la guardia
+        ``stock_actual >= :n`` en el mismo statement, así que dos ventas
+        concurrentes nunca dejan el stock por debajo de cero (la segunda no
+        afecta filas y se reporta como ``stock_insuficiente``).
+
+        Stock insuficiente o SKU inexistente son RESULTADOS, no errores: se
+        devuelven en el dict. Solo se lanza por argumentos inválidos.
+        """
+        sku_norm = (sku or "").strip()
+        if not sku_norm:
+            raise ValueError("sku es obligatorio")
+        if cantidad < 1:
+            raise ValueError("cantidad debe ser >= 1")
+
+        sm = get_sessionmaker()
+        async with sm() as session, tenant_scoped_session(session, self._tenant_id):
+            updated = (
+                (
+                    await session.execute(
+                        text(
+                            """
+                        UPDATE local_catalog_products
+                           SET stock_actual = stock_actual - :n,
+                               updated_at = now()
+                         WHERE tenant_id = :tenant_id
+                           AND sku = :sku
+                           AND stock_actual >= :n
+                        RETURNING nombre, precio_usd, stock_actual
+                        """
+                        ),
+                        {"tenant_id": str(self._tenant_id), "sku": sku_norm, "n": cantidad},
+                    )
+                )
+                .mappings()
+                .first()
+            )
+
+            if updated is not None:
+                # tenant_scoped_session hace commit al salir limpio del bloque.
+                new_stock = int(updated["stock_actual"] or 0)
+                return {
+                    "encontrado": True,
+                    "vendido": True,
+                    "sku": sku_norm,
+                    "nombre": updated["nombre"],
+                    "precio_usd": float(updated["precio_usd"] or 0),
+                    "stock_anterior": new_stock + cantidad,
+                    "stock_actual": new_stock,
+                    "motivo": None,
+                }
+
+            # No se descontó: distinguir "no existe" de "no alcanza el stock".
+            current = (
+                (
+                    await session.execute(
+                        text(
+                            """
+                        SELECT nombre, precio_usd, stock_actual
+                          FROM local_catalog_products
+                         WHERE tenant_id = :tenant_id AND sku = :sku
+                        """
+                        ),
+                        {"tenant_id": str(self._tenant_id), "sku": sku_norm},
+                    )
+                )
+                .mappings()
+                .first()
+            )
+
+            if current is None:
+                return {
+                    "encontrado": False,
+                    "vendido": False,
+                    "sku": sku_norm,
+                    "nombre": None,
+                    "precio_usd": None,
+                    "stock_anterior": None,
+                    "stock_actual": None,
+                    "motivo": "sku_no_encontrado",
+                }
+            stock = int(current["stock_actual"] or 0)
+            return {
+                "encontrado": True,
+                "vendido": False,
+                "sku": sku_norm,
+                "nombre": current["nombre"],
+                "precio_usd": float(current["precio_usd"] or 0),
+                "stock_anterior": stock,
+                "stock_actual": stock,
+                "motivo": "stock_insuficiente",
+            }

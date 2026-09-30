@@ -18,11 +18,17 @@ async def test_list_count(db_session):
     repo = ToolCatalogRepository(db_session)
     items = await repo.list_all()
     # 21 Block-D (0003) + operator.consult_owner (0018) + 6 native-output
-    # notification tools (0020) + response.send_interactive (0036) = 29.
+    # notification tools (0020) + response.send_interactive (0036) = 29,
+    # + inventory.register_sale (0105) = 30. That last one counts here
+    # because it is a LOCAL-catalogue write with NO connector: connector_id
+    # is NULL and mcp_server is "inventory-server" (not "composio:"), so the
+    # db_session cleanup (which deletes connector-derived rows) leaves it in.
+    # The four read inventory.* tools (0102) DO have a connector_id, so they
+    # are cleaned like every other connector-derived tool and not counted.
     # The 6 ``agendapro.*`` internal tools were removed by migration
     # 0021 (ADR-017). WooCommerce tools live in connectors, not in the
     # global tool_catalog seed this repo test sees.
-    assert len(items) == 29
+    assert len(items) == 30
 
 
 async def test_get_by_name(db_session):
