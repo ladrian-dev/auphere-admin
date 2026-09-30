@@ -41,4 +41,4 @@ y el Business Manager, y se cierran con el owner delante.
 | Desvincular (owner, consola de prod) | `disconnected` al instante; Meta rechazó `deregister`: `400 · code 100 · Deregister endpoint is not available for API solution for SMB businesses.` — leído en Admin → tenant → Auditoría gracias a `after.meta.error` (lo que la iteración anterior añadió) |
 | Diagnóstico | canal de agosto sin `mode`; la WABA `725663313243186` es propia de Auphere y compartida entre clientes |
 | Corrección | el rechazo de Meta se traduce a coexistencia (omitir `deregister`, seguir) · hermanos de la WABA contados en toda la plataforma (`0133_waba_live_count`) |
-| Reintentar | ⏳ tras desplegar |
+| Reintentar (2026-09-30 14:18, con `b8ba8c5` en prod) | ✅ `after.meta = {done: [unsubscribe], pending: [], skipped: [deregister]}` — `deregister` omitido por coexistencia, la app desuscrita de la WABA `725663313243186` (ningún otro canal vivo de la plataforma la usaba), tarjeta limpia. **CE-004 cerrado también en producción** |
