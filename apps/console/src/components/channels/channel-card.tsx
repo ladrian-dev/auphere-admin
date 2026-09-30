@@ -21,10 +21,12 @@ import {
   formatDateTime,
 } from "@nexus/ui";
 
-import { disconnectChannelAction, setChannelRoleAction } from "@/app/(console)/clients/[ref]/channels/actions";
+import { clearCatalogAction, disconnectChannelAction, setChannelRoleAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useLocale, useT } from "@/i18n/client";
 import { messages, type MessageKey } from "@/i18n/messages";
 import type { ChannelDetail, ChannelRole } from "@/lib/backend/channels";
+
+import { CatalogPicker, catalogFailureKey } from "./catalog-picker";
 
 const TONE = { active: "positive", paused: "warning", degraded: "warning", disconnected: "danger" } as const;
 const QUALITY_TONE = { GREEN: "positive", YELLOW: "warning", RED: "danger" } as const;
@@ -102,6 +104,8 @@ export function ChannelCard({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmarSoltar, setConfirmarSoltar] = React.useState(false);
+  const [elegirCatalogo, setElegirCatalogo] = React.useState(false);
+  const [confirmarQuitarCatalogo, setConfirmarQuitarCatalogo] = React.useState(false);
   const rating = (channel.quality_rating ?? "UNKNOWN").toUpperCase();
   const qualityKey = (["GREEN", "YELLOW", "RED"].includes(rating) ? `ch.quality.${rating}` : "ch.quality.UNKNOWN") as "ch.quality.GREEN";
   const roleId = `role-${channel.id}`;
@@ -130,6 +134,19 @@ export function ChannelCard({
       // en vez de dejar que la tarjeta lo cuente al recargar.
       toast.success(t("ch.disconnect.done", { number: channel.provider_identifier }));
       if (res.data.unlink_pending.length > 0) toast.warning(t("ch.pending.still"));
+      router.refresh();
+    });
+  }
+
+  function quitarCatalogo() {
+    startTransition(async () => {
+      const res = await clearCatalogAction({ ref: refId, channelId: channel.id });
+      if (!res.ok) return void toast.error(res.message);
+      setConfirmarQuitarCatalogo(false);
+      if (res.data.catalog_error) {
+        const key = catalogFailureKey(res.data.catalog_error.code);
+        toast.error(key ? t(key, { message: res.data.catalog_error.message ?? "" }) : t("common.error.backend"));
+      } else toast.success(t("ch.catalog.cleared"));
       router.refresh();
     });
   }
@@ -233,6 +250,17 @@ export function ChannelCard({
                 },
               ]
             : []),
+          ...(channel.type === "whatsapp" && !suelto
+            ? [
+                {
+                  key: "catalog",
+                  term: t("ch.catalog"),
+                  // Spec 022: la tarjeta dice la verdad de Meta sobre el
+                  // catálogo, y solo ofrece lo que quien mira puede hacer.
+                  detail: <CatalogRow channel={channel} manage={manage} pending={pending} onConnect={() => setElegirCatalogo(true)} onClear={() => setConfirmarQuitarCatalogo(true)} />,
+                },
+              ]
+            : []),
           ...(manage && showRoles && channel.type === "whatsapp" && !suelto
             ? [
                 {
@@ -292,6 +320,22 @@ export function ChannelCard({
         {t("common.created")}: {formatDateTime(channel.created_at, locale)}
       </p>
 
+      {channel.type === "whatsapp" && !suelto ? (
+        <>
+          <CatalogPicker refId={refId} channelId={channel.id} current={channel.catalog} open={elegirCatalogo} onOpenChange={setElegirCatalogo} />
+          <ConfirmDialog
+            open={confirmarQuitarCatalogo}
+            onOpenChange={setConfirmarQuitarCatalogo}
+            title={t("ch.catalog.clear.title", { name: channel.catalog?.name ?? channel.catalog?.id ?? "" })}
+            description={t("ch.catalog.clear.body")}
+            confirmLabel={t("ch.catalog.clear")}
+            cancelLabel={t("common.cancel")}
+            destructive
+            onConfirm={async () => quitarCatalogo()}
+          />
+        </>
+      ) : null}
+
       <ConfirmDialog
         open={confirmarSoltar}
         onOpenChange={setConfirmarSoltar}
@@ -303,5 +347,62 @@ export function ChannelCard({
         onConfirm={async () => soltar()}
       />
     </li>
+  );
+}
+
+/**
+ * La fila «Catálogo» de la tarjeta, por estado (spec 022, data-model):
+ * ninguno · conectado · sin permiso · sin comprobar · solo lectura. Un estado
+ * que la API añada mañana cae en «ninguno» con el nombre si lo hay, nunca en
+ * un hueco.
+ */
+export function CatalogRow({
+  channel,
+  manage,
+  pending,
+  onConnect,
+  onClear,
+}: {
+  channel: ChannelDetail;
+  manage: boolean;
+  pending: boolean;
+  onConnect: () => void;
+  onClear: () => void;
+}) {
+  const t = useT();
+  const name = channel.catalog?.name ?? channel.catalog?.id ?? null;
+  const errorKey = channel.catalog_error ? catalogFailureKey(channel.catalog_error.code) : null;
+  if (channel.catalog_state === "permission_missing") {
+    return <span className="text-sm text-muted-foreground">{t("ch.catalog.permission")}</span>;
+  }
+  return (
+    <span data-slot="catalog-row" data-state={channel.catalog_state} className="flex min-w-0 flex-col gap-1">
+      <span className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="truncate">{name ?? t("ch.catalog.none")}</span>
+        {channel.catalog_state === "unchecked" ? (
+          <span className="text-xs text-muted-foreground">{t("ch.catalog.unchecked")}</span>
+        ) : null}
+        {manage && name === null ? (
+          <Button type="button" size="sm" variant="outline" onClick={onConnect} disabled={pending}>
+            {t("ch.catalog.connect")}
+          </Button>
+        ) : null}
+        {manage && name !== null ? (
+          <>
+            <Button type="button" size="sm" variant="outline" onClick={onConnect} disabled={pending}>
+              {t("ch.catalog.change")}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={onClear} disabled={pending}>
+              {t("ch.catalog.clear")}
+            </Button>
+          </>
+        ) : null}
+      </span>
+      {channel.catalog_error ? (
+        <span className="text-xs text-destructive">
+          {errorKey ? t(errorKey, { message: channel.catalog_error.message ?? "" }) : t("common.error.backend")}
+        </span>
+      ) : null}
+    </span>
   );
 }

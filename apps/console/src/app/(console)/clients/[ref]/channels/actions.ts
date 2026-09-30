@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
-import type { ChannelDetail, TemplateCreated, TestSendResult, WhatsAppSignupResult } from "@/lib/backend/channels";
+import type { CatalogList, ChannelDetail, TemplateCreated, TestSendResult, WhatsAppSignupResult } from "@/lib/backend/channels";
 import { can, requirePrincipal } from "@/lib/principal";
 
 /** Server Actions of lane `channels` (CP-17..19). Zod on the server, `run()`
@@ -60,6 +60,33 @@ export async function disconnectChannelAction(raw: unknown): Promise<ActionResul
   const res = await run(() => backendFor(principal).disconnectChannel(body.ref, body.channelId));
   // `layout`: el estado del canal decide la tarjeta de puesta en marcha y la
   // insignia de la cabecera, no solo esta pantalla.
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
+  return res;
+}
+
+// ── el catálogo del número (spec 022) ────────────────────────────────
+
+export async function listCatalogsAction(raw: unknown): Promise<ActionResult<CatalogList>> {
+  const body = z.object({ ref, channelId: z.string().uuid() }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:read")) return forbidden();
+  return run(() => backendFor(principal).listCatalogs(body.ref, body.channelId));
+}
+
+export async function setCatalogAction(raw: unknown): Promise<ActionResult<ChannelDetail>> {
+  const body = z.object({ ref, channelId: z.string().uuid(), catalogId: z.string().min(1).max(64) }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).setCatalog(body.ref, body.channelId, body.catalogId));
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
+  return res;
+}
+
+export async function clearCatalogAction(raw: unknown): Promise<ActionResult<ChannelDetail>> {
+  const body = z.object({ ref, channelId: z.string().uuid() }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).clearCatalog(body.ref, body.channelId));
   if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
   return res;
 }

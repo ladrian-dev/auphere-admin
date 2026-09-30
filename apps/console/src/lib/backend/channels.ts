@@ -10,6 +10,15 @@ import type { Call } from "../backend";
 
 export type ChannelRole = "agent" | "notifications";
 
+/** Spec 022: el catálogo de Commerce Manager enlazado a la cuenta del número. */
+export type Catalog = { id: string; name: string | null; checked_at: string | null };
+/** «linked» coincide con Meta · «unchecked» no se pudo comprobar · «permission_missing»
+ *  la conexión de WhatsApp no trajo el permiso · «none» no hay. */
+export type CatalogState = "none" | "linked" | "permission_missing" | "unchecked";
+export type CatalogError = { code: string; message: string | null; at: string | null };
+export type CatalogSummary = { id: string; name: string | null; product_count: number | null };
+export type CatalogList = { items: CatalogSummary[]; linked_id: string | null };
+
 export type ChannelDetail = {
   id: string;
   type: string;
@@ -30,6 +39,9 @@ export type ChannelDetail = {
   /** Lo que desvincular no consiguió en Meta (`deregister`, `unsubscribe`).
    *  Vacío es «terminado del todo»; con algo, la tarjeta lo dice y reintenta. */
   unlink_pending: string[];
+  catalog: Catalog | null;
+  catalog_state: CatalogState;
+  catalog_error: CatalogError | null;
 };
 
 export type ChannelsOverview = {
@@ -141,6 +153,11 @@ export function channelsApi(call: Call) {
       call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/role`, { method: "PATCH", body: { role } }),
     disconnectChannel: (ref: string, channelId: string) =>
       call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/disconnect`, { method: "POST" }),
+    listCatalogs: (ref: string, channelId: string) => call<CatalogList>(`${base(ref)}/${enc(channelId)}/catalogs`),
+    setCatalog: (ref: string, channelId: string, catalogId: string) =>
+      call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/catalog`, { method: "PUT", body: { catalog_id: catalogId } }),
+    clearCatalog: (ref: string, channelId: string) =>
+      call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/catalog`, { method: "DELETE" }),
     whatsappSignup: (ref: string, body: WhatsAppSignupBody) =>
       call<WhatsAppSignupResult>(`${base(ref)}/whatsapp/signup`, { method: "POST", body }),
     listTemplates: (ref: string) => call<TemplateList>(`${base(ref)}/whatsapp/templates`),

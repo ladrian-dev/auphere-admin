@@ -104,6 +104,9 @@ const CHANNEL: ChannelDetail = {
   agent_enabled: true,
   logo_url: null,
   unlink_pending: [],
+  catalog: null,
+  catalog_state: "none",
+  catalog_error: null,
 };
 
 /** Las tres pantallas, montadas igual. */
