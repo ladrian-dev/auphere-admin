@@ -113,7 +113,7 @@ export function ClientSetup({
           frase, a ese rol la tarjeta no le dice nada. */}
       {action?.kind === "link" ? null : action?.kind === "activate" ? (
         <div className="pt-1">
-          <ClientLifecycleActions refId={refId} status={status} name={name} canDelete={false} />
+          <ClientLifecycleActions refId={refId} status={status} name={name} canDelete={false} layout="setup" />
         </div>
       ) : (
         <p className="text-sm text-pistachio dark:text-dark-green/80">{t(whoCanResolve(pending))}</p>

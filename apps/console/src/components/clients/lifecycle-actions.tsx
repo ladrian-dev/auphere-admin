@@ -32,8 +32,11 @@ type Props = {
   canDelete: boolean;
   /** `menu` es la cabecera de la ficha (spec 017 R1.6): un solo «Más» en el
    *  mismo sitio para todos los roles, con dentro lo que cada uno puede.
-   *  `buttons` es la fila suelta de siempre, que no desaparece. */
-  layout?: "buttons" | "menu";
+   *  `buttons` es la fila suelta de siempre, que no desaparece.
+   *  `setup` es la tarjeta de puesta en marcha: **solo «Activar»**, sobre
+   *  verde oscuro. La fila genérica ponía ahí también «Archivar» y un
+   *  botón de fondo blanco con el texto invisible (owner, 2026-09-30). */
+  layout?: "buttons" | "menu" | "setup";
   canWrite?: boolean;
 };
 type StatusNext = "active" | "paused" | "archived";
@@ -139,6 +142,20 @@ export function ClientLifecycleActions({ refId, status, name, canDelete, layout 
       return;
     }
     requestStatus(item === "pause" ? "paused" : item === "archive" ? "archived" : "active");
+  }
+
+  if (layout === "setup") {
+    // Archivar, pausar y eliminar viven en «Más»; la tarjeta solo tiene un
+    // verbo, y desaparece en cuanto el cliente está activo.
+    if (status !== "provisioning" || !canWrite) return null;
+    return (
+      <div className="flex flex-wrap gap-2" aria-busy={pending}>
+        <Button onClick={() => requestStatus("active")} disabled={pending}>
+          {t("clients.action.activate")}
+        </Button>
+        {dialogs}
+      </div>
+    );
   }
 
   if (layout === "menu") {
