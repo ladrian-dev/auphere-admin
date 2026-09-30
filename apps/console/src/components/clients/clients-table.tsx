@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
-import { Button, DataTable, EmptyState, Input, Meter, formatNumber, formatRelative, type ColumnDef } from "@nexus/ui";
+import { Button, DataTable, EmptyState, Input, Meter, StatusBadge, formatNumber, formatRelative, type ColumnDef } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 import type { Locale } from "@/i18n/messages";
@@ -89,7 +89,16 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
         // pastilla del estado sin decir **cuánto** falta. Lo mismo, medido,
         // vive ahora en su columna.
         header: t("common.status"),
-        cell: (c) => <ClientStatusBadge status={String(c.getValue())} locale={locale} />,
+        cell: (c) => (
+          <span className="inline-flex flex-wrap items-center gap-1">
+            <ClientStatusBadge status={String(c.getValue())} locale={locale} />
+            {/* Spec 024 (Requisito 3.1): «Activo» a secas mentiría si solo
+                responde a una lista. */}
+            {c.row.original.audience?.mode === "list" ? (
+              <StatusBadge tone="info">{t("clients.audience.badge", { n: c.row.original.audience.count })}</StatusBadge>
+            ) : null}
+          </span>
+        ),
       },
       {
         id: "credit",

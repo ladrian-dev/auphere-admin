@@ -35,6 +35,9 @@ export const recordMessages = {
   "clients.setup.quota": { es: "Crédito", en: "Credit" },
   "clients.setup.activation": { es: "Activación", en: "Activation" },
   "clients.servingSince": { es: "Atendiendo desde el {date}", en: "Serving since {date}" },
+  // Spec 024: el agente responde solo a una lista de números.
+  "clients.audience.only": { es: "Responde solo a {n} números", en: "Answers only {n} numbers" },
+  "clients.audience.badge": { es: "Solo {n} números", en: "Only {n} numbers" },
   "clients.setup.detail.agent": { es: "versión {version}", en: "version {version}" },
   "clients.setup.next": { es: "Siguiente paso", en: "Next step" },
   "clients.setup.next.agent": { es: "Preparar el agente", en: "Prepare the agent" },

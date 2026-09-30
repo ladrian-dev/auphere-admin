@@ -33,10 +33,11 @@ export default async function ConversationsPage({ params, searchParams }: { para
     <section className="flex min-w-0 flex-col gap-4" aria-label={t("conv.title")}>
       <p className=" text-sm text-pretty text-muted-foreground">{t("conv.description")}</p>
       {stats ? (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Metric label={t("conv.stats.total")} value={formatNumber(stats.conversations, locale)} />
           <Metric label={t("conv.stats.escalated")} value={formatNumber(stats.escalated, locale)} />
           <Metric label={t("conv.stats.failed")} value={formatNumber(stats.failed_messages, locale)} />
+          <Metric label={t("conv.stats.unanswered")} value={formatNumber(stats.unanswered_messages ?? 0, locale)} />
           <Metric label={t("conv.latency")} value={formatLatency(stats.avg_latency_ms, locale)} />
         </div>
       ) : null}
@@ -52,6 +53,7 @@ export default async function ConversationsPage({ params, searchParams }: { para
                 <th className="h-10 px-2 font-medium">{t("conv.channel")}</th>
                 <th className="h-10 px-2 text-right font-medium">{t("conv.turns")}</th>
                 <th className="h-10 px-2 text-right font-medium">{t("conv.failed")}</th>
+                <th className="h-10 px-2 text-right font-medium">{t("conv.unanswered")}</th>
                 <th className="h-10 px-2 text-right font-medium">{t("conv.latency")}</th>
                 <th className="h-10 px-2 text-right font-medium">{t("conv.duration")}</th>
                 <th className="h-10 px-2 font-medium">{t("conv.last")}</th>
@@ -66,6 +68,13 @@ export default async function ConversationsPage({ params, searchParams }: { para
                   <td className="p-2 capitalize">{c.channel_type ?? "—"}</td>
                   <td className="p-2 text-right tabular-nums">{formatNumber(c.turns, locale)}</td>
                   <td className="p-2 text-right tabular-nums">{c.failed_messages ? formatNumber(c.failed_messages, locale) : "—"}</td>
+                  <td className="p-2 text-right tabular-nums">
+                    {c.unanswered ? (
+                      <span title={t("conv.unanswered.reason", { n: c.unanswered.count })}>{formatNumber(c.unanswered.count, locale)}</span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="p-2 text-right tabular-nums">{formatLatency(c.avg_latency_ms, locale)}</td>
                   <td className="p-2 text-right tabular-nums">{formatDuration(c.duration_seconds, locale)}</td>
                   <td className="p-2 tabular-nums">{formatRelative(c.last_activity_at, locale)}</td>

@@ -50,6 +50,7 @@ from nexus_api.db.models import (
     Message,
     MessageStatus,
 )
+from nexus_api.services.agent_audience import AudienceMode, count_of
 from nexus_api.services.console_traffic import customer_conversation_ids, customer_facing_channel
 
 log = structlog.get_logger(__name__)
@@ -69,6 +70,10 @@ class TenantSnapshot:
     #: Spec 017 (R1.1): any ACTIVE customer-facing channel counts as «canal»
     #: (WhatsApp today; Instagram and Messenger tomorrow). The Playground never.
     active_channels: int = 0
+    #: Spec 024 (Requisito 3.1): who the ACTIVE agent answers. ``None`` when
+    #: there is no active version.
+    audience_mode: AudienceMode | None = None
+    audience_count: int = 0
 
     @property
     def issues(self) -> list[str]:
@@ -139,7 +144,14 @@ def _snapshot_stmt(
         .where(Channel.status == ChannelStatus.ACTIVE, customer_facing_channel())
         .scalar_subquery()
     )
-    return sa.select(conversations, failed, agent, wa_total, wa_bad, active_channels)
+    policies = (
+        sa.select(AgentConfig.policies)
+        .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
+        .order_by(AgentConfig.version.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    return sa.select(conversations, failed, agent, wa_total, wa_bad, active_channels, policies)
 
 
 async def tenant_snapshots(
@@ -177,6 +189,8 @@ async def tenant_snapshots(
             whatsapp_channels=int(row[3] or 0),
             whatsapp_bad=int(row[4] or 0),
             active_channels=int(row[5] or 0),
+            audience_mode=count_of(row[6])[0] if row[2] is not None else None,
+            audience_count=count_of(row[6])[1] if row[2] is not None else 0,
         )
 
     await asyncio.gather(*(_one(t) for t in tenant_ids))

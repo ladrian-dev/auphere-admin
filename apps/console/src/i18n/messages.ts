@@ -342,6 +342,10 @@ const core = {
   "conv.empty": { es: "Sin conversaciones en el periodo", en: "No conversations in the period" },
   "conv.turns": { es: "Turnos", en: "Turns" },
   "conv.failed": { es: "Fallidos", en: "Failed" },
+  // Spec 024: entrantes sin respuesta porque el número no está en la lista.
+  "conv.unanswered": { es: "Sin responder", en: "Unanswered" },
+  "conv.unanswered.reason": { es: "{n} sin responder · número no permitido", en: "{n} unanswered · number not allowed" },
+  "conv.stats.unanswered": { es: "Sin responder (número no permitido)", en: "Unanswered (number not allowed)" },
   "conv.latency": { es: "Latencia media", en: "Avg latency" },
   "conv.started": { es: "Inicio", en: "Started" },
   "conv.last": { es: "Última actividad", en: "Last activity" },
