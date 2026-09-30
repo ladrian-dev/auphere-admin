@@ -9,8 +9,9 @@ import { defaultConsolePolicy } from "../settings-schema";
 
 /**
  * Spec 024 (Requisitos 1.1 a 1.5, 4.1): «A quién responde» in the agent
- * settings form. The list is checked line by line before anything travels,
- * goes to the action next to the settings, and an admin-only template
+ * settings form. Two option cards; under the list, one row per number with
+ * a phone and an optional name. A bad phone is pointed at on its row, the
+ * list travels normalised next to the settings, and an admin-only template
  * cannot be opened to everyone.
  */
 
@@ -40,51 +41,81 @@ function mount(over: Partial<Audience> = {}, canWrite = true) {
   );
 }
 
-const radio = (name: string) => screen.getByRole("radio", { name });
+const radio = (name: string) => screen.getByRole("radio", { name: new RegExp(name) });
+const phone = (n: number) => screen.getByLabelText(`Teléfono ${n}`);
+const name = (n: number) => screen.getByLabelText(`Nombre ${n} (opcional)`);
 const save = () => screen.getByRole("button", { name: "Guardar borrador" });
 
 describe("Ajustes del agente · A quién responde (spec 024)", () => {
-  it("offers everyone or a list, and the list opens the numbers box", () => {
+  it("offers everyone or a list, each saying what it means; the list starts with one empty row", () => {
     mount();
     expect(screen.getByText("A quién responde")).toBeInTheDocument();
     expect(radio("A todo el mundo")).toHaveAttribute("aria-checked", "true");
-    expect(screen.queryByLabelText("Números permitidos")).toBeNull();
+    expect(radio("A todo el mundo")).toHaveTextContent("Cualquier persona que escriba recibe respuesta.");
+    expect(screen.queryByLabelText("Teléfono 1")).toBeNull();
     fireEvent.click(radio("Solo a estos números"));
-    expect(screen.getByLabelText("Números permitidos")).toBeInTheDocument();
+    expect(phone(1)).toHaveValue("");
+    expect(name(1)).toBeInTheDocument();
+    expect(screen.getByText("0 en la lista")).toBeInTheDocument();
   });
 
-  it("refuses an empty list and a bad line by name, without calling the action", async () => {
+  it("refuses an empty list, and points at the row whose phone is wrong", async () => {
     mount();
     fireEvent.click(radio("Solo a estos números"));
     fireEvent.click(save());
     expect(await screen.findByRole("alert")).toHaveTextContent("Hace falta al menos un número.");
 
-    fireEvent.change(screen.getByLabelText("Números permitidos"), { target: { value: "+56991919125\n12345" } });
+    fireEvent.change(phone(1), { target: { value: "+56991919125" } });
+    fireEvent.click(screen.getByRole("button", { name: "Añadir número" }));
+    fireEvent.change(phone(2), { target: { value: "12345" } });
     fireEvent.click(save());
-    expect(await screen.findByRole("alert")).toHaveTextContent("Revisa la línea 2: «12345» no es un número válido.");
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent("«12345» no es un número válido");
+    expect(phone(2)).toHaveAttribute("aria-invalid", "true");
+    expect(phone(1)).not.toHaveAttribute("aria-invalid");
     expect(saveAgentSettingsAction).not.toHaveBeenCalled();
   });
 
-  it("sends the normalised list next to the settings and shows what the API kept", async () => {
+  it("sends the rows normalised next to the settings and shows what the API kept", async () => {
     const saved = {
-      ...data({ mode: "list", numbers: [{ phone: "+56991919125", name: "Daniel, ventas" }] }),
+      ...data({
+        mode: "list",
+        numbers: [
+          { phone: "+56991919125", name: "Daniel, ventas" },
+          { phone: "+34666261967", name: null },
+        ],
+      }),
       draft_created: true,
     };
     saveAgentSettingsAction.mockResolvedValueOnce({ ok: true, data: saved });
     mount();
     fireEvent.click(radio("Solo a estos números"));
-    fireEvent.change(screen.getByLabelText("Números permitidos"), {
-      target: { value: "+56 9 9191 9125 · Daniel, ventas" },
-    });
+    fireEvent.change(phone(1), { target: { value: "+56 9 9191 9125" } });
+    fireEvent.change(name(1), { target: { value: "Daniel, ventas" } });
+    fireEvent.click(screen.getByRole("button", { name: "Añadir número" }));
+    fireEvent.change(phone(2), { target: { value: "34 666 261 967" } });
     fireEvent.click(save());
     await waitFor(() => expect(saveAgentSettingsAction).toHaveBeenCalledTimes(1));
     expect(saveAgentSettingsAction.mock.calls[0]![0]).toMatchObject({
       ref: "demo",
-      audience: { mode: "list", numbers: [{ phone: "+56991919125", name: "Daniel, ventas" }] },
+      audience: {
+        mode: "list",
+        numbers: [
+          { phone: "+56991919125", name: "Daniel, ventas" },
+          { phone: "+34666261967", name: null },
+        ],
+      },
     });
-    await waitFor(() =>
-      expect(screen.getByLabelText("Números permitidos")).toHaveValue("+56991919125 · Daniel, ventas"),
-    );
+    await waitFor(() => expect(phone(2)).toHaveValue("+34666261967"));
+    expect(screen.getByText("2 en la lista")).toBeInTheDocument();
+  });
+
+  it("removing a row leaves the others; removing the last one leaves an empty row", () => {
+    mount({ mode: "list", numbers: [{ phone: "+34666261967", name: "Owner" }] });
+    fireEvent.click(screen.getByRole("button", { name: "Quitar el número 1" }));
+    expect(phone(1)).toHaveValue("");
+    expect(screen.queryByLabelText("Teléfono 2")).toBeNull();
   });
 
   it("an admin-only template can edit the list but not open the agent", () => {
@@ -92,14 +123,15 @@ describe("Ajustes del agente · A quién responde (spec 024)", () => {
     expect(radio("A todo el mundo")).toBeDisabled();
     expect(radio("Solo a estos números")).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText(/asistente del negocio/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Números permitidos")).not.toBeDisabled();
+    expect(phone(1)).not.toBeDisabled();
   });
 
   it("who only looks sees the list and cannot touch it", () => {
     mount({ mode: "list", numbers: [{ phone: "+34666261967", name: null }] }, false);
     expect(radio("A todo el mundo")).toBeDisabled();
     expect(radio("Solo a estos números")).toBeDisabled();
-    expect(screen.getByLabelText("Números permitidos")).toBeDisabled();
+    expect(phone(1)).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Añadir número" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Guardar borrador" })).toBeNull();
   });
 });

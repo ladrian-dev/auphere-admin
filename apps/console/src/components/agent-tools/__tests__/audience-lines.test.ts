@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatAudienceLines, normalisePhone, parseAudienceLines } from "../audience-lines";
+import { normalisePhone, parseAudienceLines } from "../audience-lines";
 
 /**
  * Spec 024 (Requisitos 1.2, 1.3): what the partner types becomes a list of
@@ -38,21 +38,11 @@ describe("audience lines · parse", () => {
   });
 });
 
-describe("audience lines · normalise and format", () => {
+describe("audience lines · normalise", () => {
   it("strips spaces, dots, dashes and parentheses and adds the plus", () => {
     expect(normalisePhone("(56) 9-9191.9125")).toBe("+56991919125");
     expect(normalisePhone("+34 666 261 967")).toBe("+34666261967");
     expect(normalisePhone("123456")).toBeNull();
     expect(normalisePhone("+34 abc")).toBeNull();
-  });
-
-  it("format is the inverse of parse", () => {
-    const numbers = [
-      { phone: "+56991919125", name: "Daniel, ventas" },
-      { phone: "+34666261967", name: null },
-    ];
-    const text = formatAudienceLines(numbers);
-    expect(text).toBe("+56991919125 · Daniel, ventas\n+34666261967");
-    expect(parseAudienceLines(text).numbers).toEqual(numbers);
   });
 });

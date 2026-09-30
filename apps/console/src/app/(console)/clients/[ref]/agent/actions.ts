@@ -24,7 +24,9 @@ export async function saveAgentSettingsAction(raw: unknown): Promise<ActionResul
   const res = await run(() =>
     backendFor(principal).putAgentSettings(body.ref, body.settings as ConsolePolicy, body.audience),
   );
-  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}/agent`, "layout");
+  // The draft bar lives in the client layout, one level up: revalidate from
+  // there or it keeps saying what changed before this save.
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
   return res;
 }
 

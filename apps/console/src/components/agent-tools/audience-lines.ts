@@ -1,10 +1,11 @@
 /**
  * Spec 024: the allowed numbers as the partner types them.
  *
- * One line per number, `+56 9 9191 9125 · Daniel, ventas`; the name after
- * the middle dot is optional, and several numbers may share a line
- * separated by commas when none of them carries a name. Pure module: the
- * form parses on submit, the API normalises again on save.
+ * Used when a partner pastes a list into the editor: one line per number,
+ * `+56 9 9191 9125 · Daniel, ventas`; the name after the middle dot is
+ * optional, and several numbers may share a line separated by commas when
+ * none of them carries a name. Pure module: the editor splits the paste
+ * into rows, the API normalises again on save.
  */
 import type { AudienceNumber } from "@/lib/backend/agent-tools-types";
 
@@ -57,8 +58,4 @@ export function parseAudienceLines(text: string): ParsedAudience {
     }
   });
   return { numbers, errors };
-}
-
-export function formatAudienceLines(numbers: readonly AudienceNumber[]): string {
-  return numbers.map((n) => (n.name ? `${n.phone} ${NAME_SEPARATOR} ${n.name}` : n.phone)).join("\n");
 }

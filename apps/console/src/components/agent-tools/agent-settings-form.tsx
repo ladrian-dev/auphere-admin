@@ -35,11 +35,11 @@ import {
   SelectValue,
   Textarea,
   formatDateTime,
-  cn,
 } from "@nexus/ui";
 
 import { saveAgentSettingsAction } from "@/app/(console)/clients/[ref]/agent/actions";
-import { formatAudienceLines, parseAudienceLines } from "@/components/agent-tools/audience-lines";
+import { AudienceEditor, newRow, type AudienceRow } from "@/components/agent-tools/audience-editor";
+import { normalisePhone } from "@/components/agent-tools/audience-lines";
 import { useLocale, useT } from "@/i18n/client";
 import {
   ESCALATION_TRIGGERS,
@@ -91,21 +91,24 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
   // the API stores it in a different key and validates it by line.
   const audienceLocked = data.audience.locked;
   const [audienceMode, setAudienceMode] = React.useState<AudienceMode>(data.audience.mode);
-  const [audienceText, setAudienceText] = React.useState(formatAudienceLines(data.audience.numbers));
+  const [audienceRows, setAudienceRows] = React.useState<AudienceRow[]>(() => rowsOf(data.audience.numbers));
   const [audienceError, setAudienceError] = React.useState<string | null>(null);
   const audienceDirty =
-    audienceMode !== data.audience.mode || audienceText !== formatAudienceLines(data.audience.numbers);
+    audienceMode !== data.audience.mode ||
+    JSON.stringify(numbersOf(audienceRows)) !== JSON.stringify(data.audience.numbers);
 
   const toneItems = React.useMemo(
     () => TONES.map((v) => ({ value: v, label: t(`agentSettings.tone.${v}`) })),
     [t],
   );
 
-  function audienceErrorText(code: string | null | undefined, message: string): string {
-    if (code === "audience_empty") return t("agentSettings.audience.err.empty");
-    if (code === "audience_locked") return t("agentSettings.audience.err.locked");
-    if (code === "audience_invalid_phone") return t("agentSettings.audience.err.phone", { line: "?", text: message });
-    return message;
+  function audienceErrorText(res: { code?: string | null; message: string; info?: Record<string, unknown> }): string {
+    if (res.code === "audience_empty") return t("agentSettings.audience.err.empty");
+    if (res.code === "audience_locked") return t("agentSettings.audience.err.locked");
+    if (res.code === "audience_invalid_phone") {
+      return t("agentSettings.audience.err.phone", { text: String(res.info?.phone ?? "") });
+    }
+    return res.message;
   }
 
   function onSubmit(values: ConsolePolicy) {
@@ -113,27 +116,33 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
     const settings: ConsolePolicy = changed
       ? { ...values, ai_disclosure: { ...values.ai_disclosure, decided_by: actor, decided_at: new Date().toISOString() } }
       : values;
-    // Spec 024: the list is checked line by line before anything travels.
-    const parsed = parseAudienceLines(audienceText);
+    // Spec 024: every row is checked before anything travels; the row that
+    // fails says so under itself.
     if (audienceMode === "list") {
-      const first = parsed.errors[0];
-      if (first) {
-        setAudienceError(t("agentSettings.audience.err.phone", { line: first.line, text: first.text }));
+      let bad = false;
+      const checked = audienceRows.map((r) => {
+        if (!r.phone.trim()) return { ...r, error: null };
+        if (normalisePhone(r.phone)) return { ...r, error: null };
+        bad = true;
+        return { ...r, error: t("agentSettings.audience.err.phone", { text: r.phone.trim() }) };
+      });
+      setAudienceRows(checked);
+      if (bad) {
         toast.error(t("agentSettings.fixErrors"));
         return;
       }
-      if (parsed.numbers.length === 0) {
+      if (numbersOf(checked).length === 0) {
         setAudienceError(t("agentSettings.audience.err.empty"));
         toast.error(t("agentSettings.fixErrors"));
         return;
       }
     }
     setAudienceError(null);
-    const audience = { mode: audienceMode, numbers: parsed.numbers };
+    const audience = { mode: audienceMode, numbers: numbersOf(audienceRows) };
     startTransition(async () => {
       const res = await saveAgentSettingsAction({ ref: refId, settings, audience });
       if (!res.ok) {
-        const text = audienceErrorText(res.code, res.message);
+        const text = audienceErrorText(res);
         if (res.code?.startsWith("audience_")) setAudienceError(text);
         return void toast.error(text);
       }
@@ -144,7 +153,7 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
       form.reset(res.data.settings);
       setAllowedText(res.data.settings.languages.allowed.join(", "));
       setAudienceMode(res.data.audience.mode);
-      setAudienceText(formatAudienceLines(res.data.audience.numbers));
+      setAudienceRows(rowsOf(res.data.audience.numbers));
       router.refresh();
     });
   }
@@ -479,60 +488,24 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
             <CardDescription>{t("agentSettings.audience.help")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
-            <div role="radiogroup" aria-label={t("agentSettings.section.audience")} className="grid gap-2 sm:grid-cols-2">
-              {(["everyone", "list"] as const).map((mode) => {
-                const selected = audienceMode === mode;
-                const blocked = !canWrite || pending || (audienceLocked && mode === "everyone");
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    disabled={blocked}
-                    onClick={() => setAudienceMode(mode)}
-                    className={cn(
-                      "rounded-md border p-3 text-left text-sm transition-colors",
-                      selected ? "border-foreground" : "border-border hover:border-foreground/40",
-                      blocked && "cursor-not-allowed opacity-70",
-                    )}
-                  >
-                    {t(mode === "everyone" ? "agentSettings.audience.everyone" : "agentSettings.audience.list")}
-                  </button>
-                );
-              })}
-            </div>
-            {audienceLocked ? (
-              <p className="text-sm text-muted-foreground" data-slot="audience-locked">
-                {t("agentSettings.audience.locked")}
+            <AudienceEditor
+              mode={audienceMode}
+              rows={audienceRows}
+              locked={audienceLocked}
+              disabled={!canWrite || pending}
+              onMode={(m) => {
+                setAudienceMode(m);
+                setAudienceError(null);
+              }}
+              onRows={(rows) => {
+                setAudienceRows(rows);
+                setAudienceError(null);
+              }}
+            />
+            {audienceError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {audienceError}
               </p>
-            ) : null}
-            {audienceMode === "list" ? (
-              <div className="grid gap-2">
-                <Label htmlFor="audience-numbers">{t("agentSettings.audience.numbers")}</Label>
-                <Textarea
-                  id="audience-numbers"
-                  className="min-h-24 font-mono text-xs"
-                  value={audienceText}
-                  onChange={(e) => {
-                    setAudienceText(e.target.value);
-                    setAudienceError(null);
-                  }}
-                  disabled={!canWrite || pending}
-                  placeholder={t("agentSettings.audience.numbers.eg")}
-                  aria-invalid={audienceError ? true : undefined}
-                  aria-describedby="audience-numbers-hint"
-                  spellCheck={false}
-                />
-                <p id="audience-numbers-hint" className="text-xs text-muted-foreground">
-                  {t("agentSettings.audience.numbers.hint")}
-                </p>
-                {audienceError ? (
-                  <p role="alert" className="text-sm text-destructive">
-                    {audienceError}
-                  </p>
-                ) : null}
-              </div>
             ) : null}
           </CardContent>
         </Card>
@@ -647,4 +620,16 @@ function SlotRow({ index, day, canWrite, onRemove }: { index: number; day: Weekd
       ) : null}
     </div>
   );
+}
+
+/** Rows for the editor: the saved numbers, or one empty row to start typing. */
+function rowsOf(numbers: readonly { phone: string; name: string | null }[]): AudienceRow[] {
+  return numbers.length ? numbers.map((n) => newRow(n.phone, n.name ?? "")) : [newRow()];
+}
+
+/** What travels: filled rows, phones normalised, empty names as null. */
+function numbersOf(rows: readonly AudienceRow[]): Array<{ phone: string; name: string | null }> {
+  return rows
+    .filter((r) => r.phone.trim())
+    .map((r) => ({ phone: normalisePhone(r.phone) ?? r.phone.trim(), name: r.name.trim() || null }));
 }
