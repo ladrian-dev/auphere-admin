@@ -78,6 +78,17 @@ export default async function ClientLayout({ params, children }: { params: Promi
             {client.health.display_phone_number ? (
               <span className="text-sm text-muted-foreground">{client.health.display_phone_number}</span>
             ) : null}
+            {/* Spec 024 (Requisito 3.1): un agente limitado a una lista lo dice
+                aquí, con el camino a donde se cambia. */}
+            {client.audience?.mode === "list" ? (
+              <Link
+                href={`/clients/${encodeURIComponent(ref)}/agent`}
+                className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+                data-slot="client-audience"
+              >
+                {t("clients.audience.only", { n: client.audience.count })}
+              </Link>
+            ) : null}
           </span>
         }
       />

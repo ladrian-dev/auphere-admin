@@ -34,6 +34,7 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 from nexus_api.schemas.partner import ClientAgentIn, ClientProvisionIn
+from nexus_api.services.agent_audience import count_of
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.console_notifications import record_client_activation_detached
 from nexus_api.services.partner_clients import (
@@ -58,6 +59,7 @@ from .deps import (
 )
 from .me import quota_out
 from .schemas import (
+    ClientAudienceOut,
     ClientCreateIn,
     ClientCreateOut,
     ClientDeleteIn,
@@ -93,6 +95,22 @@ def _summary(
     )
 
 
+async def active_audience(session: AsyncSession) -> ClientAudienceOut | None:
+    """Spec 024 (Requisito 3.1): who the ACTIVE version answers — never the
+    draft, which is what the settings screen edits. Inside a tenant-scoped
+    transaction."""
+    policies = await session.scalar(
+        sa.select(AgentConfig.policies)
+        .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
+        .order_by(AgentConfig.version.desc())
+        .limit(1)
+    )
+    if policies is None:
+        return None
+    mode, count = count_of(policies)
+    return ClientAudienceOut(mode=mode, count=count)
+
+
 async def _detail(scope: ClientScope) -> ClientOut:
     """Summary + health with the quota reading (spec 016, R2.1) + the four
     setup steps, the sector and the quota (spec 017, R1)."""
@@ -109,12 +127,13 @@ async def _detail(scope: ClientScope) -> ClientOut:
         active=scope.tenant.status is TenantStatus.ACTIVE,
     )
     summary = _summary(scope.mapping, scope.tenant, out_of_quota=no_quota).model_dump(
-        exclude={"setup", "quota"}
+        exclude={"setup", "quota", "audience"}
     )
     return ClientOut(
         **summary,
         health=health,
         sector=await client_sector(scope.session),
+        audience=await active_audience(scope.session),
         setup=setup,
         quota=ClientQuotaOut(cap=allocation[0], remaining=allocation[1]) if allocation else None,
         # Solo cuando de verdad atiende: una fecha con un paso pendiente
@@ -204,6 +223,10 @@ async def list_clients(
                 if allocation
                 else None,
                 "conversations_7d": s.conversations_month if s else 0,
+                # Spec 024: what the ACTIVE agent answers, from the same snapshot.
+                "audience": ClientAudienceOut(mode=s.audience_mode, count=s.audience_count)
+                if s and s.audience_mode is not None
+                else None,
             }
         )
 

@@ -18,7 +18,9 @@ import type {
   ToolCatalogOut,
   ToolMode,
   ToolModeOut,
-  ToolsSaved, AgendaProPublicUrlOut } from "./agent-tools-types";
+  ToolsSaved, AgendaProPublicUrlOut,
+  AudienceIn,
+} from "./agent-tools-types";
 
 /**
  * Lane module `agent-tools` (CP-11 settings · CP-13 tools+connectors ·
@@ -35,8 +37,11 @@ export function agentToolsApi(call: Call) {
   const base = (ref: string) => `/console/clients/${enc(ref)}`;
   return {
     getAgentSettings: (ref: string) => call<AgentSettingsOut>(`${base(ref)}/agent/settings`),
-    putAgentSettings: (ref: string, settings: ConsolePolicy) =>
-      call<AgentSettingsSaved>(`${base(ref)}/agent/settings`, { method: "PUT", body: { settings } }),
+    putAgentSettings: (ref: string, settings: ConsolePolicy, audience?: AudienceIn) =>
+      call<AgentSettingsSaved>(`${base(ref)}/agent/settings`, {
+        method: "PUT",
+        body: audience ? { settings, audience } : { settings },
+      }),
 
     listTools: (ref: string) => call<ToolCatalogOut>(`${base(ref)}/tools`),
     putTools: (ref: string, tools: string[]) => call<ToolsSaved>(`${base(ref)}/tools`, { method: "PUT", body: { tools } }),

@@ -19,6 +19,40 @@ from nexus_api.services.agent_console_policy import ConsolePolicy
 # ── CP-11 · structured agent settings ──────────────────────────────────
 
 
+# ── Spec 024 · «A quién responde» ──────────────────────────────────────
+
+AudienceMode = Literal["everyone", "list"]
+
+
+class AudienceNumberOut(BaseModel):
+    phone: str
+    name: str | None = None
+
+
+class AudienceNumberIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    phone: str = Field(min_length=1, max_length=32)
+    name: str | None = Field(default=None, max_length=120)
+
+
+class AudienceOut(BaseModel):
+    """Who the agent answers, read from ``policies.admin_access`` of the
+    version being edited. ``locked`` = the template is admin-only and the
+    mode cannot be opened to everyone."""
+
+    mode: AudienceMode
+    numbers: list[AudienceNumberOut] = Field(default_factory=list)
+    locked: bool = False
+
+
+class AudienceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: AudienceMode
+    numbers: list[AudienceNumberIn] = Field(default_factory=list, max_length=50)
+
+
 class AgentSettingsOut(BaseModel):
     """``policies.console`` of a version + where it lives. ``version`` is
     the STAGED draft when one exists (what a PUT edits), else the active
@@ -29,14 +63,19 @@ class AgentSettingsOut(BaseModel):
     active_version: int | None
     has_draft: bool
     settings: ConsolePolicy
+    #: Spec 024: read from ``policies.admin_access`` of the same version.
+    audience: AudienceOut = Field(default_factory=lambda: AudienceOut(mode="everyone"))
 
 
 class AgentSettingsIn(BaseModel):
-    """Full replacement of ``policies.console`` on the draft."""
+    """Full replacement of ``policies.console`` on the draft; ``audience``
+    (spec 024) additionally rewrites ``policies.admin_access`` when present
+    and leaves it untouched when absent."""
 
     model_config = ConfigDict(extra="forbid")
 
     settings: ConsolePolicy
+    audience: AudienceIn | None = None
 
 
 class AgentSettingsSaved(AgentSettingsOut):

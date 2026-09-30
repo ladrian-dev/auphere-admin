@@ -33,7 +33,15 @@ from nexus_api.db.models import (
 from nexus_api.services.console_traffic import customer_conversation_ids, customer_facing_channel
 
 from .deps import ClientScope, client_scope
-from .schemas import ConversationMetaOut, ConversationPageOut, ConversationStatsOut
+from .schemas import (
+    ConversationMetaOut,
+    ConversationPageOut,
+    ConversationStatsOut,
+    UnansweredOut,
+)
+
+#: Spec 024: the ``messages.skipped_reason`` the admin-only gate writes.
+NOT_ADMIN = "not_admin"
 
 router = APIRouter(prefix="/clients/{ref}/conversations")
 
@@ -50,6 +58,8 @@ def _agg_columns() -> list[sa.Label[Any]]:
         .filter(Message.direction == MessageDirection.OUTBOUND)
         .label("outbound"),
         sa.func.count(Message.id).filter(Message.status == MessageStatus.FAILED).label("failed"),
+        # Spec 024: inbounds the allowed list left without an answer.
+        sa.func.count(Message.id).filter(Message.skipped_reason == NOT_ADMIN).label("unanswered"),
         sa.func.avg(Message.latency_ms).label("avg_latency"),
         sa.func.min(Message.created_at).label("first_at"),
         sa.func.max(Message.created_at).label("last_at"),
@@ -120,6 +130,7 @@ async def list_conversations(
                 escalated=conv.status is ConversationStatus.ESCALATED,
                 avg_latency_ms=int(row.avg_latency) if row.avg_latency is not None else None,
                 duration_seconds=duration,
+                unanswered=UnansweredOut(count=int(row.unanswered)) if row.unanswered else None,
             )
         )
     return ConversationPageOut(items=items, total=int(total or 0), limit=limit, offset=offset)
@@ -158,6 +169,7 @@ async def conversation_stats(
                 sa.func.count(Message.id),
                 sa.func.count(Message.id).filter(Message.status == MessageStatus.FAILED),
                 sa.func.avg(Message.latency_ms),
+                sa.func.count(Message.id).filter(Message.skipped_reason == NOT_ADMIN),
             ).where(
                 Message.created_at >= since,
                 Message.conversation_id.in_(customer_conversation_ids()),
@@ -174,4 +186,5 @@ async def conversation_stats(
         turns=int(msg_row[0] or 0),
         failed_messages=int(msg_row[1] or 0),
         avg_latency_ms=int(msg_row[2]) if msg_row[2] is not None else None,
+        unanswered_messages=int(msg_row[3] or 0),
     )

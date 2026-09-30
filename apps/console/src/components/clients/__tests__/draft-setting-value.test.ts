@@ -66,3 +66,13 @@ describe("cómo se lee un ajuste del agente", () => {
     expect(settingValue(t, "futuro", { vacio: "", lista: [] })).toBe("sin definir");
   });
 });
+
+describe("settingValue · audience (spec 024)", () => {
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    vars ? `${key}:${Object.values(vars).join(",")}` : key;
+  it("says everyone or how many numbers", async () => {
+    const { settingValue } = await import("../draft-setting-value");
+    expect(settingValue(t as never, "audience", { mode: "everyone", count: 0 })).toBe("draft.value.audience.everyone");
+    expect(settingValue(t as never, "audience", { mode: "list", count: 5 })).toBe("draft.value.audience.list:5");
+  });
+});

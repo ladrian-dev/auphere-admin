@@ -175,7 +175,11 @@ export type ClientSummary = {
   setup?: ClientSetup;
   quota?: ClientQuota | null;
   conversations_7d?: number;
+  /** Spec 024: who the ACTIVE agent answers; `null` without an active version. */
+  audience?: ClientAudience | null;
 };
+/** Spec 024 (Requisito 3.1): «Responde solo a N números» comes from here. */
+export type ClientAudience = { mode: "everyone" | "list"; count: number };
 export type ClientHealth = {
   whatsapp_connected: boolean;
   display_phone_number: string | null;
@@ -261,6 +265,8 @@ export type ConversationMeta = {
   escalated: boolean;
   avg_latency_ms: number | null;
   duration_seconds: number | null;
+  /** Spec 024: inbounds left unanswered because the sender is not on the allowed list. */
+  unanswered?: { count: number; reason: "not_admin" } | null;
 };
 export type ConversationPage = { items: ConversationMeta[]; total: number; limit: number; offset: number };
 export type ConversationStats = {
@@ -273,6 +279,8 @@ export type ConversationStats = {
   turns: number;
   failed_messages: number;
   avg_latency_ms: number | null;
+  /** Spec 024 */
+  unanswered_messages?: number;
 };
 export type UsageBucket = {
   external_client_ref: string | null;

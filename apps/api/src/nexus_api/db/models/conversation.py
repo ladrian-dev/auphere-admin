@@ -174,6 +174,11 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # dispatcher; inbound rows leave them untouched.
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Spec 024 (migration 0136): why the agent did not answer this inbound.
+    # ``not_admin`` when the admin-only gate suppressed the reply; NULL for
+    # every other message. Lets Conversaciones say «sin responder · número
+    # no permitido» instead of showing a silence.
+    skipped_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     # Migration 0053 — caller-supplied replay guard for direct sends
     # (``POST /v1/messages/template``). UNIQUE per tenant where not null;

@@ -38,6 +38,8 @@ import {
 } from "@nexus/ui";
 
 import { saveAgentSettingsAction } from "@/app/(console)/clients/[ref]/agent/actions";
+import { AudienceEditor, newRow, type AudienceRow } from "@/components/agent-tools/audience-editor";
+import { normalisePhone } from "@/components/agent-tools/audience-lines";
 import { useLocale, useT } from "@/i18n/client";
 import {
   ESCALATION_TRIGGERS,
@@ -47,6 +49,7 @@ import {
   type EscalationTrigger,
   type Tone,
   type Weekday,
+  type AudienceMode,
 } from "@/lib/backend/agent-tools-types";
 
 import { buildConsolePolicySchema, groupSlotsByDay, parseLanguageList } from "./settings-schema";
@@ -84,26 +87,73 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
   const escalationEnabled = useWatch({ control: form.control, name: "escalation.enabled" });
   const triggers = useWatch({ control: form.control, name: "escalation.triggers" });
   const [allowedText, setAllowedText] = React.useState(data.settings.languages.allowed.join(", "));
+  // Spec 024: «A quién responde». Lives next to the form, not inside it:
+  // the API stores it in a different key and validates it by line.
+  const audienceLocked = data.audience.locked;
+  const [audienceMode, setAudienceMode] = React.useState<AudienceMode>(data.audience.mode);
+  const [audienceRows, setAudienceRows] = React.useState<AudienceRow[]>(() => rowsOf(data.audience.numbers));
+  const [audienceError, setAudienceError] = React.useState<string | null>(null);
+  const audienceDirty =
+    audienceMode !== data.audience.mode ||
+    JSON.stringify(numbersOf(audienceRows)) !== JSON.stringify(data.audience.numbers);
 
   const toneItems = React.useMemo(
     () => TONES.map((v) => ({ value: v, label: t(`agentSettings.tone.${v}`) })),
     [t],
   );
 
+  function audienceErrorText(res: { code?: string | null; message: string; info?: Record<string, unknown> }): string {
+    if (res.code === "audience_empty") return t("agentSettings.audience.err.empty");
+    if (res.code === "audience_locked") return t("agentSettings.audience.err.locked");
+    if (res.code === "audience_invalid_phone") {
+      return t("agentSettings.audience.err.phone", { text: String(res.info?.phone ?? "") });
+    }
+    return res.message;
+  }
+
   function onSubmit(values: ConsolePolicy) {
     const changed = values.ai_disclosure.enabled !== data.settings.ai_disclosure.enabled;
     const settings: ConsolePolicy = changed
       ? { ...values, ai_disclosure: { ...values.ai_disclosure, decided_by: actor, decided_at: new Date().toISOString() } }
       : values;
+    // Spec 024: every row is checked before anything travels; the row that
+    // fails says so under itself.
+    if (audienceMode === "list") {
+      let bad = false;
+      const checked = audienceRows.map((r) => {
+        if (!r.phone.trim()) return { ...r, error: null };
+        if (normalisePhone(r.phone)) return { ...r, error: null };
+        bad = true;
+        return { ...r, error: t("agentSettings.audience.err.phone", { text: r.phone.trim() }) };
+      });
+      setAudienceRows(checked);
+      if (bad) {
+        toast.error(t("agentSettings.fixErrors"));
+        return;
+      }
+      if (numbersOf(checked).length === 0) {
+        setAudienceError(t("agentSettings.audience.err.empty"));
+        toast.error(t("agentSettings.fixErrors"));
+        return;
+      }
+    }
+    setAudienceError(null);
+    const audience = { mode: audienceMode, numbers: numbersOf(audienceRows) };
     startTransition(async () => {
-      const res = await saveAgentSettingsAction({ ref: refId, settings });
-      if (!res.ok) return void toast.error(res.message);
+      const res = await saveAgentSettingsAction({ ref: refId, settings, audience });
+      if (!res.ok) {
+        const text = audienceErrorText(res);
+        if (res.code?.startsWith("audience_")) setAudienceError(text);
+        return void toast.error(text);
+      }
       const v = res.data.version ?? 0;
       toast.success(t(res.data.draft_created ? "agentSettings.draft.saved" : "agentSettings.draft.updated", { v }), {
         action: { label: t("agentSettings.draft.publishLink"), onClick: () => router.push(`${base}/agent`) },
       });
       form.reset(res.data.settings);
       setAllowedText(res.data.settings.languages.allowed.join(", "));
+      setAudienceMode(res.data.audience.mode);
+      setAudienceRows(rowsOf(res.data.audience.numbers));
       router.refresh();
     });
   }
@@ -431,6 +481,35 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
           </CardContent>
         </Card>
 
+        {/* Spec 024 · who it answers */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("agentSettings.section.audience")}</CardTitle>
+            <CardDescription>{t("agentSettings.audience.help")}</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <AudienceEditor
+              mode={audienceMode}
+              rows={audienceRows}
+              locked={audienceLocked}
+              disabled={!canWrite || pending}
+              onMode={(m) => {
+                setAudienceMode(m);
+                setAudienceError(null);
+              }}
+              onRows={(rows) => {
+                setAudienceRows(rows);
+                setAudienceError(null);
+              }}
+            />
+            {audienceError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {audienceError}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+
         {/* AI disclosure */}
         <Card>
           <CardHeader>
@@ -482,7 +561,7 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
 
         {canWrite ? (
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={pending || !form.formState.isDirty}>
+            <Button type="submit" disabled={pending || (!form.formState.isDirty && !audienceDirty)}>
               {t("agentSettings.save")}
             </Button>
             <Link href={`${base}/agent`} className="text-sm text-muted-foreground underline-offset-4 hover:underline">
@@ -541,4 +620,16 @@ function SlotRow({ index, day, canWrite, onRemove }: { index: number; day: Weekd
       ) : null}
     </div>
   );
+}
+
+/** Rows for the editor: the saved numbers, or one empty row to start typing. */
+function rowsOf(numbers: readonly { phone: string; name: string | null }[]): AudienceRow[] {
+  return numbers.length ? numbers.map((n) => newRow(n.phone, n.name ?? "")) : [newRow()];
+}
+
+/** What travels: filled rows, phones normalised, empty names as null. */
+function numbersOf(rows: readonly AudienceRow[]): Array<{ phone: string; name: string | null }> {
+  return rows
+    .filter((r) => r.phone.trim())
+    .map((r) => ({ phone: normalisePhone(r.phone) ?? r.phone.trim(), name: r.name.trim() || null }));
 }

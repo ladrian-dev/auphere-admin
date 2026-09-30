@@ -35,6 +35,9 @@ export const recordMessages = {
   "clients.setup.quota": { es: "Crédito", en: "Credit" },
   "clients.setup.activation": { es: "Activación", en: "Activation" },
   "clients.servingSince": { es: "Atendiendo desde el {date}", en: "Serving since {date}" },
+  // Spec 024: el agente responde solo a una lista de números.
+  "clients.audience.only": { es: "Responde solo a {n} números", en: "Answers only {n} numbers" },
+  "clients.audience.badge": { es: "Solo {n} números", en: "Only {n} numbers" },
   "clients.setup.detail.agent": { es: "versión {version}", en: "version {version}" },
   "clients.setup.next": { es: "Siguiente paso", en: "Next step" },
   "clients.setup.next.agent": { es: "Preparar el agente", en: "Prepare the agent" },
@@ -140,6 +143,7 @@ export const recordMessages = {
   "draft.field.schedule": { es: "Horario", en: "Schedule" },
   "draft.field.languages": { es: "Idiomas", en: "Languages" },
   "draft.field.escalation": { es: "Escalado a una persona", en: "Escalation to a human" },
+  "draft.field.audience": { es: "A quién responde", en: "Who it answers" },
   "draft.field.ai_disclosure": { es: "Aviso de que es una IA", en: "Disclosure that it is an AI" },
 
   // Cada ajuste dicho en una frase. La API contesta con su JSON; enseñarlo
@@ -157,4 +161,6 @@ export const recordMessages = {
   "draft.value.escalation.off": { es: "Nunca pasa a una persona", en: "Never hands over to a human" },
   "draft.value.disclosure.on": { es: "Avisa de que es una IA", en: "Says it is an AI" },
   "draft.value.disclosure.off": { es: "No avisa de que es una IA", en: "Does not say it is an AI" },
+  "draft.value.audience.everyone": { es: "A todo el mundo", en: "Everyone" },
+  "draft.value.audience.list": { es: "Solo a {count} números", en: "Only {count} numbers" },
 } as const;

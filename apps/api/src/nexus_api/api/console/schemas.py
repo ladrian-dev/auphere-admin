@@ -90,6 +90,14 @@ class ClientQuotaOut(BaseModel):
     remaining: int
 
 
+class ClientAudienceOut(BaseModel):
+    """Spec 024: who the ACTIVE agent answers. ``count`` = numbers that can
+    actually match a sender when ``mode == "list"``."""
+
+    mode: Literal["everyone", "list"]
+    count: int = 0
+
+
 class ClientSummaryOut(BaseModel):
     """One row of the client list. Cheap fields only."""
 
@@ -107,6 +115,9 @@ class ClientSummaryOut(BaseModel):
     setup: ClientSetupOut | None = None
     quota: ClientQuotaOut | None = None
     conversations_7d: int = 0
+    #: Spec 024 (Requisito 3.1): read from the ACTIVE version, once per page.
+    #: ``None`` when the client has no active agent yet.
+    audience: ClientAudienceOut | None = None
 
 
 class ClientHealthOut(BaseModel):
@@ -322,6 +333,14 @@ class ConversationMetaOut(BaseModel):
     escalated: bool
     avg_latency_ms: int | None = None
     duration_seconds: int | None = None
+    #: Spec 024 (Requisito 3.2): inbounds the agent did not answer because
+    #: the sender is not on the allowed list. ``None`` when there are none.
+    unanswered: UnansweredOut | None = None
+
+
+class UnansweredOut(BaseModel):
+    count: int
+    reason: Literal["not_admin"] = "not_admin"
 
 
 class ConversationPageOut(BaseModel):
@@ -343,6 +362,8 @@ class ConversationStatsOut(BaseModel):
     turns: int
     failed_messages: int
     avg_latency_ms: int | None = None
+    #: Spec 024: inbounds left without an answer because of the allowed list.
+    unanswered_messages: int = 0
 
 
 # ── usage (units, never our cost — C9) ─────────────────────────────────
