@@ -5,7 +5,7 @@ import { LocaleProvider } from "@/i18n/client";
 import { messages } from "@/i18n/messages";
 
 import { connectChoice, metaIsConfigured, metaSignupConfig, type ConnectChoice } from "../connect-choice";
-import { WhatsAppConnect, signupFailureKey, type MetaSignupConfig } from "../whatsapp-connect";
+import { MetaWindowVeil, WhatsAppConnect, signupFailureKey, type MetaSignupConfig } from "../whatsapp-connect";
 import { WhatsAppConnectByAuphere } from "../whatsapp-connect-by-auphere";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -78,5 +78,27 @@ describe("un número que su dueño anterior aún retiene en Meta (spec 021, R4.2
     }
     // Y sigue sin decir **de quién** es el número (R1.5).
     expect(messages["ch.connect.heldByPreviousOwner"].es).not.toMatch(/partner|cliente/i);
+  });
+});
+
+describe("mientras la ventana de Meta está abierta (2026-09-30)", () => {
+  it("la consola se apaga en verde oscuro y dice dónde estamos", () => {
+    render(
+      <LocaleProvider locale="es">
+        <MetaWindowVeil open />
+      </LocaleProvider>,
+    );
+    const veil = screen.getByRole("status");
+    expect(veil).toHaveTextContent("Estamos en la ventana de Meta");
+    expect(veil.className).toContain("bg-dark-green");
+  });
+
+  it("y desaparece en cuanto Meta devuelve", () => {
+    render(
+      <LocaleProvider locale="es">
+        <MetaWindowVeil open={false} />
+      </LocaleProvider>,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

@@ -18,6 +18,11 @@ export const channelsMessages = {
     es: "Meta no aceptó el número: sigue registrado en la cuenta de quien lo tenía. Esa persona tiene que soltarlo en su Business Manager antes de que puedas conectarlo. Nada ha cambiado.",
     en: "Meta did not accept the number: it is still registered in its previous owner's account. That person has to release it in their Business Manager before you can connect it. Nothing changed.",
   },
+  "ch.connect.veil.title": { es: "Estamos en la ventana de Meta", en: "We are in Meta's window" },
+  "ch.connect.veil.body": {
+    es: "Termina ahí los pasos de WhatsApp. Cuando acabes, esta pantalla se actualiza sola.",
+    en: "Finish the WhatsApp steps there. When you are done, this screen updates on its own.",
+  },
   "ch.connect.numberInUse": { es: "Ese número ya está conectado en otro cliente. Nada ha cambiado.", en: "That number is already connected on another client. Nothing changed." },
   "ch.connect.byAuphere.title": { es: "El número lo conecta Auphere", en: "Auphere connects the number" },
   "ch.connect.byAuphere.body": { es: "Este entorno no tiene el registro de WhatsApp de Meta activado, así que aquí no hay botón: lo conectamos contigo.", en: "This environment has no Meta WhatsApp signup enabled, so there is no button here: we connect it with you." },

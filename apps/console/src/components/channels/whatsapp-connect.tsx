@@ -22,6 +22,29 @@ export type MetaSignupConfig = {
 };
 
 /**
+ * The console, dimmed in Auphere's dark green while Meta's window is open.
+ *
+ * What is inside that window is Meta's and cannot be styled; what can is
+ * everything around it. Without this, the popup floats over a busy console
+ * and the eye does not know which of the two is asking for attention.
+ */
+export function MetaWindowVeil({ open }: { open: boolean }) {
+  const t = useT();
+  if (!open) return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-slot="meta-window-veil"
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-2 bg-dark-green/95 px-6 text-center text-pistachio"
+    >
+      <p className="text-lg font-medium">{t("ch.connect.veil.title")}</p>
+      <p className="max-w-md text-sm text-pistachio/80">{t("ch.connect.veil.body")}</p>
+    </div>
+  );
+}
+
+/**
  * Pure: the sentence for a refused signup, or null when the generic backend
  * text applies. Two refusals have their own: the number is live somewhere
  * else (R1.4, and it never says where), and Meta still holds it in its
@@ -107,6 +130,7 @@ export function WhatsAppConnect({
           {disabledReason}
         </p>
       ) : null}
+      <MetaWindowVeil open={working} />
       <Dialog open={open} onOpenChange={(o) => !working && setOpen(o)}>
         <DialogContent>
           <DialogHeader>
