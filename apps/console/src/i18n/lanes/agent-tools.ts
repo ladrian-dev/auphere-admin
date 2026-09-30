@@ -75,6 +75,30 @@ export const agentToolsMessages = {
   "agentSettings.escalation.afterNTurns": { es: "Número de turnos", en: "Number of turns" },
   "agentSettings.escalation.handoff": { es: "Mensaje de traspaso", en: "Handoff message" },
   "agentSettings.section.aiDisclosure": { es: "Aviso de IA", en: "AI disclosure" },
+  // Spec 024: a quién responde el agente.
+  "agentSettings.section.audience": { es: "A quién responde", en: "Who it answers" },
+  "agentSettings.audience.help": {
+    es: "Mientras pruebas un cliente, el agente puede responder solo a una lista de números. A los demás no les contesta ni les marca el mensaje como leído; el mensaje queda en Conversaciones.",
+    en: "While you test a client, the agent can answer only a list of numbers. Everyone else gets no reply and no read receipt; the message stays in Conversations.",
+  },
+  "agentSettings.audience.everyone": { es: "A todo el mundo", en: "Everyone" },
+  "agentSettings.audience.list": { es: "Solo a estos números", en: "Only these numbers" },
+  "agentSettings.audience.numbers": { es: "Números permitidos", en: "Allowed numbers" },
+  "agentSettings.audience.numbers.hint": {
+    es: "Uno por línea, con prefijo internacional. Puedes poner un nombre después de un punto medio (·).",
+    en: "One per line, with the international prefix. You can add a name after a middle dot (·).",
+  },
+  "agentSettings.audience.numbers.eg": { es: "+56 9 9191 9125 · Daniel, ventas", en: "+44 7700 900123 · Dan, sales" },
+  "agentSettings.audience.locked": {
+    es: "Este agente es el asistente del negocio y no atiende a clientes finales: puedes cambiar la lista, no abrirlo a todo el mundo.",
+    en: "This agent is the business's own assistant and does not serve end customers: you can change the list, not open it to everyone.",
+  },
+  "agentSettings.audience.err.empty": { es: "Hace falta al menos un número.", en: "Add at least one number." },
+  "agentSettings.audience.err.phone": {
+    es: "Revisa la línea {line}: «{text}» no es un número válido.",
+    en: "Check line {line}: “{text}” is not a valid number.",
+  },
+  "agentSettings.audience.err.locked": { es: "Este agente no se puede abrir a todo el mundo.", en: "This agent cannot be opened to everyone." },
   "agentSettings.aiDisclosure.enabled": { es: "El agente avisa de que es una IA", en: "The agent discloses it is an AI" },
   "agentSettings.aiDisclosure.message": { es: "Texto del aviso (opcional)", en: "Disclosure wording (optional)" },
   "agentSettings.aiDisclosure.decided": { es: "Decisión registrada por {who} el {when}.", en: "Decision recorded by {who} on {when}." },

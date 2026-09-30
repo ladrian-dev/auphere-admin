@@ -30,12 +30,20 @@ export type ConsolePolicy = {
 
 export type VersionStatus = "staged" | "active" | "archived";
 
+/** Spec 024: who the agent answers. Read from the version being edited;
+ *  ``locked`` = the template is admin-only and cannot be opened to everyone. */
+export type AudienceMode = "everyone" | "list";
+export type AudienceNumber = { phone: string; name: string | null };
+export type Audience = { mode: AudienceMode; numbers: AudienceNumber[]; locked: boolean };
+export type AudienceIn = { mode: AudienceMode; numbers: AudienceNumber[] };
+
 export type AgentSettingsOut = {
   version: number | null;
   version_status: VersionStatus | null;
   active_version: number | null;
   has_draft: boolean;
   settings: ConsolePolicy;
+  audience: Audience;
 };
 export type AgentSettingsSaved = AgentSettingsOut & { draft_created: boolean };
 
