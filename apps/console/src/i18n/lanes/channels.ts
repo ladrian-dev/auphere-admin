@@ -93,6 +93,10 @@ export const channelsMessages = {
     en: "The WhatsApp connection did not include the catalogue permission. Connect the number again to grant it.",
   },
   "ch.catalog.unchecked": { es: "No se pudo comprobar con Meta", en: "Could not be checked with Meta" },
+  "ch.catalog.coexistence": {
+    es: "Este número sigue en la app de WhatsApp Business del teléfono. Elige aquí el catálogo que la app tiene conectado, para que el agente pueda mandar tarjetas.",
+    en: "This number still uses the WhatsApp Business app on the phone. Choose here the catalogue the app has connected, so the agent can send cards.",
+  },
   "ch.catalog.picker.title": { es: "Conectar un catálogo", en: "Connect a catalogue" },
   "ch.catalog.picker.help": {
     es: "Elige el catálogo de Commerce Manager que el agente usará para enseñar productos.",

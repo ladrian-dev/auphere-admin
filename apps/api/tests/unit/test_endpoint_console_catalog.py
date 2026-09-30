@@ -438,3 +438,88 @@ async def test_the_catalog_costs_nothing_the_meter_sees(
 
 def _unused() -> None:  # pragma: no cover — mantiene el import si se poda un test
     _ = uuid
+
+
+# ── Coexistencia (2026-10-01): la app del teléfono tiene el catálogo ─────
+
+
+def _smb() -> MetaAPIError:
+    return MetaAPIError(
+        "(#10) This operation can not be performed on SMB business type",
+        status_code=400,
+        code=10,
+    )
+
+
+async def test_a_coexistence_number_is_not_asked_and_keeps_its_catalog(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    sim = _sim(monkeypatch, catalogs=[FLORES], linked=None)
+    canal = await _canal(db_session, a["tenant_id"], mode="coexistence", catalog_id="CAT_FLORES")
+    r = await client.get(f"/console/clients/{a['ref']}/channels/overview", headers=a["headers"]())
+    assert r.status_code == 200, r.text
+    row = next(c for c in r.json()["channels"] if c["id"] == str(canal.id))
+    assert row["catalog_state"] == "coexistence"
+    assert row["catalog"]["id"] == "CAT_FLORES"
+    assert sim.names() == []
+
+
+async def test_meta_refusing_by_smb_teaches_the_mode_instead_of_blaming_a_permission(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    _sim(monkeypatch, fail={"get_linked_catalog": _smb()})
+    canal = await _canal(db_session, a["tenant_id"], catalog_id="CAT_FLORES")
+    r = await client.get(f"/console/clients/{a['ref']}/channels/overview", headers=a["headers"]())
+    row = next(c for c in r.json()["channels"] if c["id"] == str(canal.id))
+    assert row["catalog_state"] == "coexistence"
+    assert row["catalog"]["id"] == "CAT_FLORES"
+    fila = await _reload(db_session, canal.id)
+    assert fila.config["mode"] == "coexistence"
+
+
+async def test_on_a_coexistence_number_the_catalog_is_declared_not_linked(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    sim = _sim(monkeypatch, catalogs=[FLORES, PLANTAS], linked=None)
+    canal = await _canal(db_session, a["tenant_id"], mode="coexistence")
+    r = await client.put(
+        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["catalog_state"] == "coexistence"
+    assert r.json()["catalog"]["name"] == "Flores y ramos"
+    assert sim.names() == ["list_catalogs"]  # ni link ni unlink
+    fila = await _reload(db_session, canal.id)
+    assert fila.config["catalog_id"] == "CAT_FLORES"
+
+    # Sigue exigiendo que el catálogo sea del negocio.
+    bad = await client.put(
+        _url(a, canal, "catalog"), json={"catalog_id": "CAT_OTRO"}, headers=a["headers"]()
+    )
+    assert bad.status_code == 409 and bad.json()["detail"]["code"] == "catalog_not_owned"
+
+    gone = await client.delete(_url(a, canal, "catalog"), headers=a["headers"]())
+    assert gone.status_code == 200 and gone.json()["catalog"] is None
+    assert gone.json()["catalog_state"] == "coexistence"
+    assert "unlink_catalog" not in sim.names()
+
+
+async def test_linking_that_meta_refuses_by_smb_declares_and_learns(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    sim = _sim(monkeypatch, catalogs=[FLORES], linked=None, fail={"link_catalog": _smb()})
+    canal = await _canal(db_session, a["tenant_id"])
+    r = await client.put(
+        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["catalog_state"] == "coexistence"
+    assert r.json()["catalog_error"] is None
+    fila = await _reload(db_session, canal.id)
+    assert fila.config["mode"] == "coexistence"
+    assert fila.config["catalog_id"] == "CAT_FLORES"
+    assert sim.names() == ["list_catalogs", "link_catalog"]

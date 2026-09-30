@@ -310,9 +310,26 @@ CATALOG_CACHE_TTL = 300
 _PERMISSION_CODES = frozenset({10, 200, 190})
 
 
+def catalog_smb_refused(exc: MetaAPIError) -> bool:
+    """Meta no ofrece el catálogo por API a las cuentas de coexistencia (la
+    app de WhatsApp Business sigue en el teléfono): ``(#10) This operation
+    can not be performed on SMB business type``. Visto en producción el
+    2026-10-01. No es un permiso: reconectar no lo arregla."""
+    message = str(getattr(exc, "message", "") or exc)
+    return getattr(exc, "code", None) == 10 and "smb business type" in message.lower()
+
+
 def catalog_permission_missing(exc: MetaAPIError) -> bool:
     """¿Meta rechazó por permiso (o token)? Se arregla reconectando el número."""
+    if catalog_smb_refused(exc):
+        return False
     return getattr(exc, "code", None) in _PERMISSION_CODES
+
+
+def is_coexistence(cfg: dict[str, Any]) -> bool:
+    """El número sigue en la app de WhatsApp Business (spec 021 lo aprende al
+    desvincular; aquí también cuando Meta rechaza el catálogo por SMB)."""
+    return cfg.get("mode") == "coexistence"
 
 
 def _cache_key(waba_id: str) -> str:
@@ -365,6 +382,12 @@ async def reconcile_catalogs(
     client: MetaClient | None = None
     try:
         for waba, channels in by_waba.items():
+            # Coexistencia: Meta no contesta por el catálogo de estas cuentas,
+            # así que no se le pregunta. Lo guardado es lo que la app tiene.
+            if all(is_coexistence(ch.config or {}) for ch in channels):
+                for ch in channels:
+                    states[ch.id] = "coexistence"
+                continue
             creds = await _creds_for(session, channels[0])
             if creds is None:
                 continue
@@ -379,6 +402,16 @@ async def reconcile_catalogs(
                     found = await client.get_linked_catalog(waba_id=waba, access_token=creds.bisuat)
                     verdict = {"catalog": found}
                 except MetaAPIError as exc:
+                    if catalog_smb_refused(exc):
+                        # Se aprende el modo, como hace desvincular (021), y
+                        # no se toca el catálogo guardado.
+                        for ch in channels:
+                            cfg = dict(ch.config or {})
+                            cfg["mode"] = "coexistence"
+                            ch.config = cfg
+                            flag_modified(ch, "config")
+                            states[ch.id] = "coexistence"
+                        continue
                     if catalog_permission_missing(exc):
                         verdict = {"permission_missing": True}
                     else:
@@ -506,6 +539,15 @@ async def set_channel_catalog(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail={"code": "catalog_not_owned"}
             )
+        if is_coexistence(cfg):
+            # La app del teléfono es la que tiene el catálogo; Meta no deja
+            # enlazarlo por API en estas cuentas. La consola apunta cuál es
+            # para que el agente mande tarjetas, y lo dice sin fingir que
+            # lo comprobó.
+            _write_catalog(cfg, chosen)
+            cfg.pop("catalog_error", None)
+            meta["declared"] = body.catalog_id
+            return await _finish_catalog_change(scope, redis, ch, cfg, waba_id, before, meta)
         if before is not None and before.id == body.catalog_id:
             return _detail(ch, await channel_logos(scope.session), "linked")
 
@@ -523,6 +565,14 @@ async def set_channel_catalog(
                 waba_id=waba_id, catalog_id=body.catalog_id, access_token=creds.bisuat
             )
         except MetaAPIError as exc:
+            if catalog_smb_refused(exc):
+                # Primera noticia de que el número es de coexistencia: se
+                # aprende, y el catálogo queda apuntado como declarado.
+                cfg["mode"] = "coexistence"
+                _write_catalog(cfg, chosen)
+                cfg.pop("catalog_error", None)
+                meta["declared"] = body.catalog_id
+                return await _finish_catalog_change(scope, redis, ch, cfg, waba_id, before, meta)
             if isinstance(exc, MetaTransientError) and before is None:
                 raise _meta_refusal(exc) from exc
             # El viejo ya no está y el nuevo no entró: se dice, no se finge.
@@ -542,6 +592,18 @@ async def set_channel_catalog(
     finally:
         await client.close()
 
+    return await _finish_catalog_change(scope, redis, ch, cfg, waba_id, before, meta)
+
+
+async def _finish_catalog_change(
+    scope: ClientScope,
+    redis: Redis,
+    ch: Channel,
+    cfg: dict[str, Any],
+    waba_id: str,
+    before: CatalogOut | None,
+    meta: dict[str, Any],
+) -> ChannelDetailOut:
     ch.config = cfg
     flag_modified(ch, "config")
     await redis.delete(_cache_key(waba_id))
@@ -553,7 +615,8 @@ async def set_channel_catalog(
         before={"catalog": before.model_dump(mode="json") if before else None},
         after={"catalog": after.model_dump(mode="json") if after else None, "meta": meta},
     )
-    return _detail(ch, await channel_logos(scope.session), "linked" if after else "none")
+    state: CatalogState = "coexistence" if is_coexistence(cfg) else ("linked" if after else "none")
+    return _detail(ch, await channel_logos(scope.session), state)
 
 
 @router.delete("/{channel_id}/catalog", response_model=ChannelDetailOut)
@@ -574,7 +637,10 @@ async def clear_channel_catalog(
     creds = await _creds_for(scope.session, ch)
     waba_id = str(cfg.get("waba_id") or (creds.waba_id if creds else "") or "")
     meta: dict[str, Any] = {}
-    if creds is not None and waba_id:
+    if is_coexistence(cfg):
+        # Nada que deshacer en Meta: el enlace vive en la app del teléfono.
+        meta["skipped"] = "coexistence"
+    elif creds is not None and waba_id:
         client = build_meta_client()
         try:
             await client.unlink_catalog(
@@ -611,7 +677,11 @@ async def clear_channel_catalog(
         before={"catalog": before.model_dump(mode="json")},
         after={"catalog": None, "meta": meta},
     )
-    return _detail(ch, await channel_logos(scope.session), "none")
+    return _detail(
+        ch,
+        await channel_logos(scope.session),
+        "coexistence" if is_coexistence(cfg) else "none",
+    )
 
 
 @router.post("/{channel_id}/disconnect", response_model=ChannelDetailOut)
