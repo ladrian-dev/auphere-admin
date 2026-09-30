@@ -31,6 +31,8 @@
 
 ## Notes
 
+- Re-validado tras `/speckit-clarify` (2 decisiones, 2026-09-30): 16/16. Shopify fuera; lista cerrada por toolkit.
+
 - Dependencia fuera del repo (Supuestos): las cuatro cuentas en el panel de
   Composio y la lista real de herramientas de cada una. `/speckit-plan` las
   pide antes de escribir nombres o pistas.
