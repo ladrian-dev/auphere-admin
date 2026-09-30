@@ -31,6 +31,8 @@
 
 ## Notes
 
+- Re-validado tras `/speckit-clarify` (3 preguntas, 2026-09-30): 16/16.
+
 - El §Origen cita rutas de código porque es la medida de partida (como en la 021);
   los requisitos y criterios no nombran tecnología.
 - Dependencia externa que la spec no puede cerrar sola: el permiso

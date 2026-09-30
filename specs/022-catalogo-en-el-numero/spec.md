@@ -31,6 +31,14 @@ leyendo la tienda, pero **no puede enseñar el producto** como WhatsApp sabe
 hacerlo —con foto, precio y botón—, y la única forma de arreglarlo es
 escribirnos.
 
+## Clarifications
+
+### Session 2026-09-30
+
+- Q: ¿Cómo encuentra el agente el producto que va a enseñar como tarjeta: leyendo el catálogo de Meta, o solo a través de la tienda conectada? → A: **leyendo el catálogo de Meta**. Nueva habilidad «buscar en el catálogo» (nombre, precio, disponibilidad); funciona sin tienda conectada, y el catálogo es la única fuente de las tarjetas.
+- Q: Si la cuenta de WhatsApp Business ya tiene un catálogo enlazado en Meta (por un operador o desde Commerce Manager), ¿la consola lo adopta o solo cuenta lo enlazado desde ella? → A: **lo adopta**. Al cargar la tarjeta, la consola pregunta a Meta cuál está enlazado; si hay uno que no tenemos, lo guarda y lo enseña como conectado, con cambiar y desconectar.
+- Q: Al enlazar un catálogo cuando la cuenta ya tiene otro distinto, ¿se sustituye directamente o se pide confirmación? → A: **confirmar antes**. La consola dice cuál sale y cuál entra («el agente enseñará productos de <B>») y el partner confirma; es una acción consecuente (constitución §IV).
+
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
 ### Historia 1 — El partner enlaza el catálogo desde la tarjeta del número (Prioridad: P1)
@@ -53,15 +61,18 @@ número lo tiene enlazado en Meta y que el agente puede enviar un producto.
 1. **Dado** un número conectado sin catálogo, **cuando** el partner pulsa
    «Conectar catálogo», **entonces** ve los catálogos de su negocio con su
    nombre, elige uno, y la tarjeta pasa a decir «Catálogo: <nombre>».
-2. **Dado** un número con catálogo, **cuando** el partner lo cambia por otro,
-   **entonces** el número queda enlazado al nuevo y el anterior deja de
-   estarlo.
+2. **Dado** un número con catálogo, **cuando** el partner elige otro,
+   **entonces** la consola le dice cuál sale y cuál entra y pide confirmar; al
+   confirmar, el número queda enlazado al nuevo y el anterior deja de estarlo.
 3. **Dado** un número con catálogo, **cuando** el partner lo desconecta,
    **entonces** el número deja de tener catálogo, el agente deja de poder
    enviar productos, y el número sigue atendiendo igual.
 4. **Dado** un negocio sin catálogos en Meta, **cuando** el partner pulsa
    «Conectar catálogo», **entonces** la consola le dice que su negocio no tiene
    ninguno y dónde se crea, sin lista vacía ni error.
+5. **Dado** un número cuya cuenta ya tiene un catálogo enlazado en Meta por
+   otra vía, **cuando** el partner abre Canales, **entonces** la tarjeta lo
+   enseña como conectado, con su nombre, sin que nadie pulse nada.
 
 ---
 
@@ -93,8 +104,10 @@ ofreciéndolo después.
 
 ### Historia 3 — El agente enseña productos, y la consola lo dice (Prioridad: P2)
 
-Con un catálogo enlazado, la capacidad «enviar productos del catálogo» aparece
-en Capacidades como cualquier otra, y las plantillas de venta la traen.
+Con un catálogo enlazado, el agente **busca en el catálogo** (nombre, precio,
+disponibilidad) y **envía la tarjeta** del producto: dos capacidades que
+aparecen en Capacidades como cualquier otra, y que las plantillas de venta
+traen. El catálogo es la única fuente de las tarjetas; no hace falta tienda.
 Sin catálogo, la capacidad **no aparece** —no hay un botón apagado que
 explique lo que no tienes—.
 
@@ -108,8 +121,11 @@ catálogo, la capacidad no está en la lista.
 **Escenarios de aceptación**:
 
 1. **Dado** un número con catálogo, **cuando** un cliente final pregunta por un
-   producto que existe en él, **entonces** el agente responde con la tarjeta
-   nativa del producto.
+   producto que existe en él, **entonces** el agente lo encuentra en el
+   catálogo y responde con la tarjeta nativa del producto.
+1b. **Dado** un número con catálogo y sin tienda conectada, **cuando** un
+   cliente final pregunta «¿qué ramos tenéis?», **entonces** el agente
+   responde con productos del catálogo, con precio.
 2. **Dado** un número con catálogo, **cuando** el partner abre Capacidades,
    **entonces** ve «Enviar productos del catálogo» y puede apagarla.
 3. **Dado** un número sin catálogo, **cuando** el partner abre Capacidades,
@@ -125,9 +141,9 @@ catálogo, la capacidad no está en la lista.
 - **Meta rechaza el enlace** (el catálogo es de otro negocio, o la cuenta ya
   tiene otro): la tarjeta dice lo que Meta dijo, traducido a una frase, y el
   canal queda como estaba.
-- **El catálogo se borra en Commerce Manager** después de enlazarlo: la
-  tarjeta lo sigue mostrando hasta la siguiente comprobación de salud del
-  canal, que lo marca como «ya no existe» y ofrece conectar otro.
+- **El catálogo se borra o se desenlaza en Commerce Manager** después de
+  enlazarlo: la próxima vez que la tarjeta se carga, la consola ve que Meta
+  ya no lo tiene, deja de enseñarlo y ofrece conectar otro (Requisito 1.9).
 - **Dos números del mismo cliente en la misma cuenta de WhatsApp Business**:
   el catálogo se enlaza a la cuenta, así que ambos números lo tienen; la
   consola lo dice en los dos.
@@ -151,8 +167,9 @@ enseñar productos sin que nadie de Auphere intervenga.
 2. WHEN el partner elige un catálogo THEN el sistema DEBE enlazarlo a la cuenta
    de WhatsApp Business del número en Meta y guardarlo en el canal, y la
    tarjeta DEBE decir su nombre.
-3. WHEN el partner cambia el catálogo THEN el sistema DEBE dejar enlazado solo
-   el nuevo.
+3. WHEN el partner elige otro catálogo con uno ya enlazado THEN el sistema
+   DEBE pedir confirmación diciendo cuál sale y cuál entra, y solo al
+   confirmar DEBE dejar enlazado el nuevo.
 4. WHEN el partner desconecta el catálogo THEN el sistema DEBE deshacer el
    enlace en Meta y borrarlo del canal, y el número DEBE seguir atendiendo.
 5. IF Meta rechaza cualquiera de esas operaciones THEN el sistema DEBE dejar el
@@ -166,6 +183,11 @@ enseñar productos sin que nadie de Auphere intervenga.
    una frase.
 8. Solo quien puede escribir canales DEBE poder enlazar, cambiar o
    desconectar; quien solo mira DEBE ver el catálogo enlazado sin controles.
+9. WHEN la consola enseña un número THEN el sistema DEBE comprobar en Meta qué
+   catálogo tiene enlazado su cuenta, y IF hay uno que no está guardado THEN
+   DEBE guardarlo y enseñarlo como conectado; IF el guardado ya no está
+   enlazado en Meta THEN DEBE dejar de enseñarlo y ofrecer conectar otro.
+   *(La pantalla dice la verdad de Meta, no la de nuestra base.)*
 
 ### Requisito 2 — El alta lo ofrece
 
@@ -193,10 +215,13 @@ enseñe una capacidad que no puedo usar.
 #### Criterios de aceptación
 
 1. WHERE el número tiene catálogo EL sistema DEBE ofrecer en Capacidades
-   «Enviar productos del catálogo», encendida por defecto en las plantillas de
-   venta y apagable.
+   «Buscar en el catálogo» y «Enviar productos del catálogo», encendidas por
+   defecto en las plantillas de venta y apagables.
 2. WHERE el número no tiene catálogo EL sistema NO DEBE mostrar esa capacidad.
-3. WHEN el agente responde por un producto del catálogo THEN el sistema DEBE
+3. WHEN el agente busca un producto THEN el sistema DEBE leerlo del catálogo
+   de Meta (nombre, precio, disponibilidad e identificador), y NO DEBE
+   depender de una tienda conectada.
+3b. WHEN el agente responde por un producto del catálogo THEN el sistema DEBE
    enviarlo como tarjeta nativa de WhatsApp, con el identificador del
    producto tal como está en el catálogo.
 4. WHEN se desconecta el catálogo THEN el agente NO DEBE volver a enviar
@@ -248,6 +273,8 @@ enseñe una capacidad que no puedo usar.
   necesitarán volver a conectarse para concederlo (Requisito 1.6).
 - Un negocio suele tener un catálogo; la lista se diseña para pocos.
 - Enlazar un catálogo a una cuenta de WhatsApp Business que ya tiene otro lo
-  sustituye, o Meta lo rechaza y lo decimos (Requisito 1.5).
+  sustituye tras confirmar (Requisito 1.3); si Meta exige desenlazar antes,
+  la consola lo hace en el mismo paso; si lo rechaza, lo decimos (1.5).
 - El motor que envía tarjetas de producto ya existe y se reutiliza; lo nuevo
-  es cómo llega el catálogo al canal y que la consola lo cuente.
+  es cómo llega el catálogo al canal, que el agente pueda leerlo, y que la
+  consola lo cuente.
