@@ -105,11 +105,23 @@ catálogo. Vuelve a conectar el número para concederlo». Los números
 conectados antes del cambio en el panel de Meta necesitan reconectarse
 (supuesto de la spec).
 
-**Pendiente antes de cerrar la iteración 1, en staging**: el owner añade
-`catalog_management` a la configuración del Embedded Signup en el panel de
-Meta (las dos configuraciones: Cloud API y coexistencia), reconecta el
-`+34653321693` y la lista de catálogos aparece. Sin eso, todo el plan queda
-en «dice qué falta».
+**Hecho el 2026-09-30 en el panel de Meta** (con la sesión del owner): el
+permiso no aparecía en el desplegable de las configuraciones porque, en el
+modelo de casos de uso de Meta, `catalog_management` lo aporta el caso de uso
+**«Administrar productos con la API de catálogos»**, que la app no tenía. Se
+añadió ese caso de uso y después el permiso a las dos configuraciones del
+Embedded Signup: `Auphere WA Cloud API` (`1976547999669619`) y
+`Auphere WA Coexistence` (`27787800820807899`). Ambas listan ahora
+`catalog_management`, `whatsapp_business_management` y
+`whatsapp_business_messaging`.
+
+**Salvedad medida**: los «Activos» de las configuraciones existentes son solo
+«Cuentas de WhatsApp» y en edición no se pueden cambiar; el asistente de
+*crear* configuración sí ofrece «Catálogos» como activo. Si al reconectar el
+número la lista de catálogos sale vacía o con permiso denegado pese al
+permiso, la causa será que el usuario del sistema no recibió acceso al activo
+catálogo, y la solución es una configuración **nueva** con «Catálogos» entre
+sus activos (y sus `config_id` nuevos en Vercel). Se sabrá en CE-002.
 
 ---
 
