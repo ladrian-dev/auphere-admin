@@ -320,6 +320,11 @@ function CardShell({
         {badge ? (
           <StatusBadge tone={connectorTone(status)}>{t(connectorStatusKey(status))}</StatusBadge>
         ) : null}
+        {/* Spec 023: lo que la plantilla del sector sugiere. Es la misma
+            insignia que en Capacidades; aquí no filtra ni ordena. */}
+        {connector.recommended ? (
+          <StatusBadge tone="info">{t("connectors.badge.recommended")}</StatusBadge>
+        ) : null}
         {unlocks > 0 ? (
           <Link
             href={`/clients/${encodeURIComponent(refId)}/capabilities`}

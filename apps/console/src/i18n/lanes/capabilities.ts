@@ -125,6 +125,25 @@ export const capabilitiesMessages = {
     es: "El número de WhatsApp por el que el agente atiende.",
     en: "The WhatsApp number the agent answers on.",
   },
+  // Spec 023: los tres de Composio con lista cerrada. Sin siglas ni nombres
+  // técnicos: dicen qué hará el agente con ellos.
+  "connectors.desc.stripe": {
+    es: "Los cobros del negocio: si un pago está hecho, sus facturas y los enlaces de pago.",
+    en: "The business's payments: whether a charge is paid, its invoices and payment links.",
+  },
+  "connectors.desc.calendly": {
+    es: "La agenda del negocio en Calendly: huecos libres, citas reservadas y quién viene.",
+    en: "The business's Calendly calendar: free slots, booked appointments and who is coming.",
+  },
+  "connectors.desc.hubspot": {
+    es: "Los contactos del negocio en HubSpot: buscar a quien escribe, sus notas y sus oportunidades.",
+    en: "The business's HubSpot contacts: find whoever is writing, their notes and their deals.",
+  },
+  // Spec 023: lo que la plantilla del sector sugiere, en la tarjeta.
+  "connectors.badge.recommended": {
+    es: "Recomendado para tu sector",
+    en: "Recommended for your sector",
+  },
   // El estado, dicho en la tarjeta y no solo en una insignia.
   "connectors.state.connected": { es: "Conectado", en: "Connected" },
   "connectors.state.notConnected": { es: "Sin conectar", en: "Not connected" },

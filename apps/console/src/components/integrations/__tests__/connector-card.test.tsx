@@ -74,6 +74,21 @@ describe("Tarjeta de conector · la forma", () => {
     expect(screen.queryByText(/algo_nuevo/)).toBeNull();
   });
 
+  it("los tres de Composio con lista cerrada tienen su frase, no la de reserva (spec 023)", () => {
+    mount({ slug: "stripe", display_name: "Stripe", category: "billing", auth_kind: "oauth_composio" });
+    expect(screen.getByText(/Los cobros del negocio/)).toBeInTheDocument();
+    expect(screen.queryByText("Conéctalo para que el agente pueda usarlo.")).toBeNull();
+  });
+
+  it("recomendado por la plantilla del sector lleva la insignia; sin ello, no (spec 023)", () => {
+    const { container, unmount } = mount({ slug: "calendly", display_name: "Calendly", recommended: true });
+    expect(screen.getByText("Recomendado para tu sector")).toBeInTheDocument();
+    unmount();
+    mount({ slug: "calendly", display_name: "Calendly", recommended: false });
+    expect(screen.queryByText("Recomendado para tu sector")).toBeNull();
+    expect(container.querySelector("[data-slot=status-badge]")).toBeNull();
+  });
+
   it("sin logotipo, la inicial: un hueco gris no distingue una tarjeta de otra", () => {
     const { container } = mount();
     expect(container.querySelector("img")).toBeNull();
