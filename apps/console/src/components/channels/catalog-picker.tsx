@@ -20,7 +20,8 @@ import {
 import { listCatalogsAction, setCatalogAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { Catalog, CatalogSummary } from "@/lib/backend/channels";
+import type { ActionResult } from "@/lib/actions";
+import type { Catalog, CatalogList, CatalogSummary } from "@/lib/backend/channels";
 
 /**
  * Pure: la frase para un rechazo de la API del catálogo. Lo que Meta dice se
@@ -42,6 +43,15 @@ export function catalogFailureKey(code: string | null | undefined): MessageKey |
     default:
       return null;
   }
+}
+
+/**
+ * Pure: ¿se ofrece el catálogo al terminar el alta? (Historia 2) Solo si el
+ * negocio tiene al menos uno. Un permiso que falta o un Meta caído no abren
+ * nada y no rompen el «conectado»: la tarjeta lo contará después.
+ */
+export function offerCatalogAfterSignup(list: ActionResult<CatalogList>): boolean {
+  return list.ok && list.data.items.length > 0;
 }
 
 /** Pure: cambiar de catálogo pide confirmar (Q3); conectar el primero, no. */
@@ -134,6 +144,7 @@ export function CatalogPicker({
   open,
   onOpenChange,
   offer = false,
+  preloaded = null,
 }: {
   refId: string;
   channelId: string;
@@ -141,19 +152,23 @@ export function CatalogPicker({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   offer?: boolean;
+  /** La lista ya pedida (la oferta tras el alta la pide para decidir si abrirse). */
+  preloaded?: CatalogList | null;
 }) {
   const t = useT();
   const router = useRouter();
   // `null` es «aún no se ha pedido»: se pide al abrir y se olvida al cerrar
   // (en el manejador de cierre), para que la lista sea siempre la de esta
   // apertura y no una vieja.
-  const [loaded, setLoaded] = React.useState<Loaded | null>(null);
+  const [loaded, setLoaded] = React.useState<Loaded | null>(
+    preloaded ? { kind: "ready", items: preloaded.items, linkedId: preloaded.linked_id } : null,
+  );
   const [chosen, setChosen] = React.useState<CatalogSummary | null>(null);
   const [pending, startTransition] = React.useTransition();
   const state: Loaded = loaded ?? { kind: "loading" };
 
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || preloaded) return;
     let alive = true;
     void listCatalogsAction({ ref: refId, channelId }).then((res) => {
       if (!alive) return;
@@ -163,7 +178,7 @@ export function CatalogPicker({
     return () => {
       alive = false;
     };
-  }, [open, refId, channelId]);
+  }, [open, refId, channelId, preloaded]);
 
   function close(next: boolean) {
     if (pending) return;
@@ -200,8 +215,8 @@ export function CatalogPicker({
       <Dialog open={open} onOpenChange={close}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("ch.catalog.picker.title")}</DialogTitle>
-            <DialogDescription>{t("ch.catalog.picker.help")}</DialogDescription>
+            <DialogTitle>{offer ? t("ch.catalog.offer.title") : t("ch.catalog.picker.title")}</DialogTitle>
+            <DialogDescription>{offer ? t("ch.catalog.offer.help") : t("ch.catalog.picker.help")}</DialogDescription>
           </DialogHeader>
           <CatalogPickerBody state={state} current={current} busy={pending} onChoose={choose} />
           <DialogFooter>

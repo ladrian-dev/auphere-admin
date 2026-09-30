@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from nexus_worker.streams.outbound import _to_meta_interactive
+from nexus_worker.streams.outbound import _to_meta_interactive, products_without_catalog
 
 
 class TestButtons:
@@ -172,3 +172,12 @@ class TestMalformed:
         block = _to_meta_interactive(payload)
         assert "context_message_id" not in block
         assert "context" not in block
+
+
+def test_products_without_a_catalog_are_detected_so_the_text_goes_instead() -> None:
+    """Spec 022 (R3.4): el catálogo se desconectó entre la decisión del agente y
+    el envío. Sin catálogo no hay tarjeta; va el texto, y queda anotado."""
+    assert products_without_catalog({"body": "Mira", "products": ["SKU-1"]}, None) is True
+    assert products_without_catalog({"body": "Mira", "products": ["SKU-1"]}, "CAT_1") is False
+    assert products_without_catalog({"body": "Mira", "buttons": []}, None) is False
+    assert products_without_catalog({"body": "Mira", "products": []}, None) is False

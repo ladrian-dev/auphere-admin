@@ -56,6 +56,10 @@ policies:
 
 tools:
   required:
+    # Catálogo de Meta (spec 022): solo se enseñan y se usan con catálogo
+    # enlazado al número; sin él, Capacidades no las lista.
+    - catalog.search_products
+    - catalog.get_product
     # Búsqueda: el agente consulta WooCommerce para encontrar productos
     # relevantes por categoría/marca/uso y tomar sus IDs, que luego manda
     # como TARJETAS curadas del catálogo (el retailer_id del catálogo Meta ES

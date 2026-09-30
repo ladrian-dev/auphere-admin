@@ -107,6 +107,11 @@ export const channelsMessages = {
   "ch.catalog.picker.products": { es: "{n} productos", en: "{n} products" },
   "ch.catalog.picker.linked": { es: "Conectado ahora", en: "Connected now" },
   "ch.catalog.picker.later": { es: "Ahora no", en: "Not now" },
+  "ch.catalog.offer.title": { es: "Tu negocio tiene catálogo en Meta", en: "Your business has a catalogue in Meta" },
+  "ch.catalog.offer.help": {
+    es: "Si lo conectas ahora, el agente podrá enseñar productos con foto y precio. Puedes hacerlo más tarde desde la tarjeta del número.",
+    en: "If you connect it now, the agent can show products with photo and price. You can do it later from the number's card.",
+  },
   "ch.catalog.replace.title": { es: "Sustituir {from} por {to}", en: "Replace {from} with {to}" },
   "ch.catalog.replace.body": {
     es: "El agente enseñará productos de {to} desde el siguiente mensaje. {from} sigue en Commerce Manager.",

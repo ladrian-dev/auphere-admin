@@ -39,7 +39,7 @@ Desvincular el número y volver a conectarlo. **Pasa si** al terminar el alta
 la consola ofrece el catálogo; saltarlo deja el número conectado sin él, y la
 tarjeta lo sigue ofreciendo.
 
-## Lo que hay que hacer en el panel de Meta antes de CE-002 y CE-004
+## Lo que hay que hacer en el panel de Meta antes de CE-002 y CE-004 — **hecho el 2026-09-30** (ver research D5); falta reconectar el número
 
 Añadir `catalog_management` a las dos configuraciones del Embedded Signup
 (Cloud API y coexistencia) y **reconectar** el número: el token anterior no
