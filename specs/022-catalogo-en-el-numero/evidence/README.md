@@ -4,8 +4,8 @@ Una entrada por iteración. Cada una dice qué se midió, con qué, y qué sali�
 
 | Iteración | Fichero | Estado |
 |---|---|---|
-| 1 · Meta, la API y la tarjeta (H1) | `iteracion-1.md` | en curso |
-| 2 · el agente (H3) | — | pendiente |
+| 1 · Meta, la API y la tarjeta (H1) | `iteracion-1.md` | cerrada 2026-09-30 (local); CE-002 en staging |
+| 2 · el agente (H3) | `iteracion-2.md` | cerrada 2026-09-30 (local) |
 | 3 · el alta lo ofrece (H2) | — | pendiente |
 
 ## Puertas de cierre

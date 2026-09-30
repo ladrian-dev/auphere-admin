@@ -419,6 +419,7 @@ def build_default_registry() -> MCPRegistry:
     from nexus_mcp.servers.commission.tools import COMMISSION_TOOLS
     from nexus_mcp.servers.escalate.tools import ESCALATE_TOOLS
     from nexus_mcp.servers.inventory.tools import INVENTORY_TOOLS
+    from nexus_mcp.servers.meta_catalog.tools import META_CATALOG_TOOLS
     from nexus_mcp.servers.notification.tools import NOTIFICATION_TOOLS
     from nexus_mcp.servers.operator.tools import OPERATOR_TOOLS
     from nexus_mcp.servers.queue.tools import QUEUE_TOOLS
@@ -436,6 +437,7 @@ def build_default_registry() -> MCPRegistry:
         *WOOCOMMERCE_TOOLS,
         *AMIGABLE_COBRO_TOOLS,
         *INVENTORY_TOOLS,
+        *META_CATALOG_TOOLS,
     ):
         registry.register(tool_cls())
     # Block O: agendapro_public.* are INTERNAL — the transport is

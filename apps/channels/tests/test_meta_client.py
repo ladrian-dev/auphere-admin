@@ -376,3 +376,18 @@ async def test_a_permission_refusal_keeps_its_code() -> None:
             with pytest.raises(MetaAPIError) as exc:
                 await client.list_catalogs(business_id="BIZ_1", access_token=_TOKEN)
         assert exc.value.code == 10
+
+
+async def test_get_product_filters_by_retailer_id_and_is_none_when_missing() -> None:
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        route = mock.get("/CAT_1/products").respond(200, json={"data": []})
+        async with MetaClient(_SECRET) as client:
+            assert (
+                await client.get_product(
+                    catalog_id="CAT_1", retailer_id="SKU-9", access_token=_TOKEN
+                )
+                is None
+            )
+        assert json.loads(route.calls.last.request.url.params["filter"]) == {
+            "retailer_id": {"eq": "SKU-9"}
+        }

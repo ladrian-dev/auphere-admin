@@ -88,6 +88,23 @@ VERTICALS: frozenset[str] = frozenset(
 )
 
 CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
+    # ── Catálogo de Meta (spec 022) — solo con catálogo enlazado ─────
+    ("tool", "catalog.search_products"): _t(
+        "Buscar en el catálogo",
+        "Search the catalogue",
+        "Encuentra productos del catálogo de Meta por nombre, con precio y disponibilidad.",
+        "Finds products in the Meta catalogue by name, with price and availability.",
+        "orders",
+        requires="channel_catalog",
+    ),
+    ("tool", "catalog.get_product"): _t(
+        "Enviar productos del catálogo",
+        "Send catalogue products",
+        "Lee la ficha de un producto y la manda como tarjeta de WhatsApp, con foto y precio.",
+        "Reads a product's details and sends it as a WhatsApp card, with photo and price.",
+        "orders",
+        requires="channel_catalog",
+    ),
     # ── Citas ──────────────────────────────────────────────────────────
     ("tool", "booking.create_appointment"): _t(
         "Reservar una cita",
