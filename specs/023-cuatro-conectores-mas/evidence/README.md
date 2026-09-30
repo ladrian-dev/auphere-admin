@@ -43,4 +43,25 @@ Fuera de la lista cerrada (organización, grupos, webhooks, formularios de enrut
 
 Hallazgo: la tabla de pistas actual cita `CALENDLY_CANCEL_EVENT`, que no existe; el slug real es `CALENDLY_CANCEL_SCHEDULED_EVENT`.
 
-Pendiente: leer del panel los slugs de Stripe (426) y HubSpot (262) con búsquedas dirigidas (customers, payment_links, checkout, invoices, refunds; contacts, deals, tickets). El panel devolvió 429 (límite de cinco horas, se reinicia 2026-09-30 17:10 UTC).
+## Slugs de Stripe y HubSpot (catálogo público del proveedor, `docs.composio.dev/toolkits/{stripe,hubspot}`) — leídos el 2026-09-30
+
+El panel devolvió 429 al leer Calendly (límite de cinco horas); Stripe y
+HubSpot se leyeron del catálogo público, que lista **tools y triggers**
+(`STRIPE_CHARGE_SUCCEEDED`, `HUBSPOT_CONTACT_CREATED_TRIGGER`… son triggers
+y se descartan) y puede incluir herramientas ya retiradas del panel. Por eso
+la lista cerrada del plan (`research.md`, D1) se **confirma slug a slug en el
+panel** en la iteración 1 y, además, la sincronización registra
+`allowlist_missing` si alguno no existe.
+
+Extraídos: 473 identificadores `STRIPE_*` y 269 `HUBSPOT_*` (con triggers y
+ruido). Familias relevantes para una conversación, tal cual aparecen:
+
+- **Stripe, lectura**: `STRIPE_LIST_CUSTOMERS`, `STRIPE_SEARCH_CUSTOMERS`, `STRIPE_RETRIEVE_CUSTOMER`, `STRIPE_LIST_PAYMENT_INTENTS`, `STRIPE_SEARCH_PAYMENT_INTENTS`, `STRIPE_RETRIEVE_PAYMENT_INTENT`, `STRIPE_LIST_INVOICES`, `STRIPE_SEARCH_INVOICES`, `STRIPE_LIST_PAYMENT_LINKS`, `STRIPE_GET_PAYMENT_LINK`, `STRIPE_LIST_PRODUCTS`, `STRIPE_SEARCH_PRODUCTS`, `STRIPE_LIST_PRICES`, `STRIPE_SEARCH_PRICES`, `STRIPE_LIST_REFUNDS`, `STRIPE_LIST_CHARGES`, `STRIPE_SEARCH_CHARGES`, `STRIPE_LIST_CHECKOUT_SESSIONS`, `STRIPE_RETRIEVE_BALANCE`.
+- **Stripe, escritura**: `STRIPE_CREATE_CUSTOMER`, `STRIPE_UPDATE_CUSTOMER`, `STRIPE_CREATE_PAYMENT_LINK`, `STRIPE_CREATE_CHECKOUT_SESSION`, `STRIPE_CREATE_PAYMENT_INTENT`, `STRIPE_CREATE_REFUND`, `STRIPE_CREATE_CHARGE_REFUND`, `STRIPE_CREATE_INVOICE`, `STRIPE_SEND_INVOICE`, `STRIPE_FINALIZE_INVOICE`, `STRIPE_VOID_INVOICE`, `STRIPE_CREATE_PRODUCT`, `STRIPE_CREATE_PRICE`, `STRIPE_CREATE_COUPON`, `STRIPE_CREATE_PROMOTION_CODE`, `STRIPE_DELETE_CUSTOMER`, `STRIPE_DELETE_PRODUCT`, `STRIPE_CANCEL_SUBSCRIPTION`.
+- **Stripe, fuera**: terminales, disputas, relojes de prueba, Connect, medidores de facturación, Financial Connections, Climate, suscripciones (no las vende ningún partner hoy).
+- **HubSpot, lectura**: `HUBSPOT_SEARCH_CONTACTS`, `HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA`, `HUBSPOT_LIST_CONTACTS`, `HUBSPOT_GET_CONTACTS`, `HUBSPOT_READ_CONTACT`, `HUBSPOT_LIST_CONTACT_NOTES`, `HUBSPOT_LIST_CONTACT_TASKS`, `HUBSPOT_SEARCH_DEALS`, `HUBSPOT_GET_DEAL`, `HUBSPOT_LIST_DEALS`, `HUBSPOT_SEARCH_TICKETS`, `HUBSPOT_GET_TICKET`, `HUBSPOT_LIST_TICKETS`, `HUBSPOT_SEARCH_COMPANIES`, `HUBSPOT_GET_COMPANY`, `HUBSPOT_RETRIEVE_OWNERS`, `HUBSPOT_RETRIEVE_PIPELINE_STAGES`, `HUBSPOT_SEARCH_PRODUCTS`.
+- **HubSpot, escritura**: `HUBSPOT_CREATE_CONTACT`, `HUBSPOT_UPDATE_CONTACT`, `HUBSPOT_UPSERT_CONTACTS`, `HUBSPOT_CREATE_NOTE`, `HUBSPOT_CREATE_TASK`, `HUBSPOT_CREATE_MEETING`, `HUBSPOT_CREATE_DEAL`, `HUBSPOT_UPDATE_DEAL`, `HUBSPOT_CREATE_TICKET`, `HUBSPOT_UPDATE_TICKET`, `HUBSPOT_CREATE_COMPANY`, `HUBSPOT_ARCHIVE_CONTACT`, `HUBSPOT_ARCHIVE_DEALS`, `HUBSPOT_REMOVE_DEAL`, `HUBSPOT_DELETE_NOTE`.
+- **HubSpot, fuera**: campañas y correos de marketing, propiedades y esquemas, importaciones, plantillas de línea de tiempo, extensiones de llamadas, envíos de feedback, lotes (`*_BATCH_*`), «desde lenguaje natural» (`*_FROM_NL`: el agente ya entiende lenguaje natural; no hace falta que lo haga el proveedor).
+
+La lista cerrada elegida (12 · 10 · 11) y los nombres de negocio están en
+`research.md` (D1).
