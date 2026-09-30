@@ -223,5 +223,7 @@ cobro», no `STRIPE_LIST_PAYMENT_INTENTS`.
 - La lista de herramientas de cada uno se lee del proveedor en el momento de
   planificar; los nombres de negocio y qué lee / qué escribe se escriben
   contra esa lista.
-- «Recomendado» ya existe como concepto en Conectores para el sector del
-  cliente; se amplía, no se inventa.
+- «Recomendado» existe hoy en Capacidades (lo que la plantilla del sector
+  enciende), no en Conectores: medido en el plan (D4). Se lleva a la tarjeta
+  de conector con el mismo criterio —lo dice la plantilla del sector— sin
+  cambiar lo que Capacidades ya hace.
