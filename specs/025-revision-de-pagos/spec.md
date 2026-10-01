@@ -49,6 +49,7 @@ recibir el comprobante, y el equipo lo revisa en la app del teléfono.
 ### Session 2026-10-01
 
 - Q: ¿Cómo se entera el agente de que un pedido se pagó por el enlace de la tienda? → A: **Cuando el cliente se lo dice** (owner, opción A). El agente comprueba el pedido en la tienda y avisa a los revisores. Que la tienda avise sola queda fuera de esta spec.
+- Q: ¿A quién avisa el agente cuando pasa una conversación a una persona? → A: **A los mismos revisores de pagos** (owner, 2026-10-01: «les debe avisar a +56991280655 y +56989829063»), con la plantilla `alert_escalation_v1` desde el número del negocio, además del teléfono del dueño si existe.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 

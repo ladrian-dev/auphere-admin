@@ -116,8 +116,8 @@ export const agentToolsMessages = {
   // Spec 025 · «Revisión de pagos»
   "agentSettings.section.paymentReview": { es: "Revisión de pagos", en: "Payment review" },
   "agentSettings.paymentReview.help": {
-    es: "Cuando un cliente manda el comprobante de una transferencia, o dice que pagó por el enlace, el agente lo manda a estos números con dos botones, Confirmar pago y Rechazar pago. El primero que pulsa decide y el agente le avisa al cliente.",
-    en: "When a customer sends a bank-transfer receipt, or says they paid through the link, the agent sends it to these numbers with two buttons, Confirm payment and Reject payment. The first tap decides and the agent tells the customer.",
+    es: "Cuando un cliente manda el comprobante de una transferencia, o dice que pagó por el enlace, el agente lo manda a estos números con dos botones, Confirmar pago y Rechazar pago. El primero que pulsa decide y el agente le avisa al cliente. Estos números también reciben un aviso cada vez que el agente pasa una conversación a una persona.",
+    en: "When a customer sends a bank-transfer receipt, or says they paid through the link, the agent sends it to these numbers with two buttons, Confirm payment and Reject payment. The first tap decides and the agent tells the customer. These numbers also get an alert whenever the agent hands a conversation to a person.",
   },
   "agentSettings.paymentReview.numbers": { es: "Quién revisa los pagos", en: "Who reviews payments" },
   "agentSettings.paymentReview.count": { es: "Revisores: {n}", en: "Reviewers: {n}" },

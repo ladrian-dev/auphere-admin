@@ -46,6 +46,7 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     AuditLog,
+    Conversation,
     Customer,
     OperatorNotification,
     OperatorNotificationStatus,
@@ -188,7 +189,15 @@ async def _alert_one(
     recipient_phone, owner_business_phone, provider = await _resolve_recipient_and_business_phone(
         session, tenant_id
     )
-    if recipient_phone is None:
+    recipients = [recipient_phone] if recipient_phone else []
+    if audit_row.action == "conversation.escalated":
+        # Spec 025: the business's payment reviewers are its team on WhatsApp;
+        # when the agent hands a conversation over, they hear it too.
+        reviewers = await _payment_reviewer_phones(session)
+        if reviewers:
+            owner = await _owner_phone(session, tenant_id)
+            recipients = _dedupe([*reviewers, *([owner] if owner else [])])
+    if not recipients:
         notif.status = OperatorNotificationStatus.FAILED
         notif.last_error = "no_recipient_configured"
         log.warning(
@@ -220,27 +229,32 @@ async def _alert_one(
         return
 
     body_params = await _render_params(session, audit_row, template)
-    try:
-        await _send_alert_template(
-            adapter=adapter,
-            provider=provider,
-            from_phone=owner_business_phone,
-            recipient=recipient_phone,
-            template=template,
-            body_params=body_params,
-            tenant_id=tenant_id,
-        )
-    except Exception as exc:
+    errors: list[str] = []
+    for recipient in recipients:
+        try:
+            await _send_alert_template(
+                adapter=adapter,
+                provider=provider,
+                from_phone=owner_business_phone,
+                recipient=recipient,
+                template=template,
+                body_params=body_params,
+                tenant_id=tenant_id,
+            )
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+            log.warning(
+                "operator_alerter.send_failed",
+                tenant_id=str(tenant_id),
+                audit_log_id=str(audit_row.id),
+                template=template,
+                error=errors[-1][:500],
+            )
+    notif.attempts += 1 if errors else 0
+    if errors:
+        notif.last_error = " | ".join(errors)[:500]
+    if len(errors) == len(recipients):
         notif.status = OperatorNotificationStatus.FAILED
-        notif.attempts += 1
-        notif.last_error = f"{type(exc).__name__}: {exc}"[:500]
-        log.warning(
-            "operator_alerter.send_failed",
-            tenant_id=str(tenant_id),
-            audit_log_id=str(audit_row.id),
-            template=template,
-            error=notif.last_error,
-        )
         return
     notif.status = OperatorNotificationStatus.SENT
     notif.sent_at = datetime.now(UTC)
@@ -250,6 +264,33 @@ async def _alert_one(
         audit_log_id=str(audit_row.id),
         template=template,
     )
+
+
+def _dedupe(phones: list[str]) -> list[str]:
+    """Same phone written two ways (``+56…`` / ``56…``) counts once."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for phone in phones:
+        key = "".join(ch for ch in phone if ch.isdigit())[-10:]
+        if key and key not in seen:
+            seen.add(key)
+            out.append(phone)
+    return out
+
+
+async def _owner_phone(session: AsyncSession, tenant_id: uuid.UUID) -> str | None:
+    row = await session.execute(sa.select(Tenant.owner_phone).where(Tenant.id == tenant_id))
+    value = row.scalar_one_or_none()
+    return str(value) if value else None
+
+
+async def _payment_reviewer_phones(session: AsyncSession) -> list[str]:
+    """Spec 025: ``policies.payment_review.reviewers`` of the active agent."""
+    from nexus_api.repositories.agent_config import AgentConfigRepository
+    from nexus_api.services.agent_payment_review import reviewers_of
+
+    active = await AgentConfigRepository(session).get_active()
+    return [r.phone for r in reviewers_of(active.policies if active is not None else None)]
 
 
 async def _resolve_recipient_and_business_phone(
@@ -323,6 +364,16 @@ async def _render_params(
     if template == "alert_escalation_v1":
         customer_label = "cliente"
         customer_id = after.get("customer_id")
+        if not customer_id:
+            # ``escalate.escalate_to_human`` audits the conversation, not the
+            # customer: resolve the customer from it.
+            with contextlib.suppress(ValueError, TypeError):
+                conv_row = await session.execute(
+                    sa.select(Conversation.customer_id).where(
+                        Conversation.id == uuid.UUID(str(audit_row.target))
+                    )
+                )
+                customer_id = conv_row.scalar_one_or_none()
         if customer_id:
             try:
                 cust_row = await session.execute(
