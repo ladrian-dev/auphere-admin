@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain — queda uno: cómo se entera el agente de una venta pagada por el enlace (Requisito 6.1)
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,4 +31,4 @@
 
 ## Notes
 
-- Pendiente de la respuesta del owner al Requisito 6.1 antes de `/speckit-clarify` o `/speckit-plan`.
+- Clarificado el 2026-10-01: el agente se entera de un pago por enlace cuando el cliente se lo dice (opción A del owner).

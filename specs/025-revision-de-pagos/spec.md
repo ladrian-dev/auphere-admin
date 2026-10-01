@@ -44,6 +44,12 @@ Medido en el código ese día:
 Hasta que esto exista, el agente pasa la conversación a una persona al
 recibir el comprobante, y el equipo lo revisa en la app del teléfono.
 
+## Clarifications
+
+### Session 2026-10-01
+
+- Q: ¿Cómo se entera el agente de que un pedido se pagó por el enlace de la tienda? → A: **Cuando el cliente se lo dice** (owner, opción A). El agente comprueba el pedido en la tienda y avisa a los revisores. Que la tienda avise sola queda fuera de esta spec.
+
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
 ### Historia 1 — Un comprobante llega al equipo con botones (Prioridad: P1)
@@ -277,10 +283,10 @@ tener que buscarlo en las conversaciones.
 
 ### Requisito 6 — Ventas pagadas por el enlace de la tienda
 
-1. [NEEDS CLARIFICATION: ¿Cómo se entera el agente de que un pedido se pagó
-   por el enlace de la tienda: solo cuando el cliente se lo dice y el
-   agente lo comprueba en la tienda, o la tienda avisa sola a la plataforma
-   en cuanto se paga, aunque el cliente no escriba?]
+1. WHEN el cliente dice que pagó por el enlace THEN el agente DEBE buscar
+   su pedido en la tienda y, si lo encuentra, abrir la revisión con el
+   estado real del pedido. El sistema NO DEBE esperar ningún aviso de la
+   tienda.
 2. WHEN se conoce una venta pagada por el enlace THEN el sistema DEBE
    avisar a los revisores con el resumen y el estado del pedido en la
    tienda, sin botones, porque la pasarela ya verificó el pago.
@@ -328,6 +334,8 @@ tener que buscarlo en las conversaciones.
 - Crear o cambiar el estado del pedido en WooCommerce al confirmar.
 - Recordatorios a los revisores si nadie pulsa.
 - Pedir al revisor el motivo de un rechazo.
+- Que la tienda avise sola a la plataforma cuando se paga un pedido
+  (opción B de la aclaración): sin el mensaje del cliente no hay aviso.
 - Instalar Mercado Pago en la tienda: hoy la tienda cobra en línea con
   Flow, y eso lo decide el negocio en su web.
 
