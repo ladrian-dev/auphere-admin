@@ -36,6 +36,7 @@ escribirnos.
 ### Session 2026-10-01
 
 - Q: ¿Qué pasa con el catálogo en un número de coexistencia (la app de WhatsApp Business sigue en el teléfono)? → A: Meta no ofrece el catálogo por API a esas cuentas (`(#10) This operation can not be performed on SMB business type`, visto en producción con Flor y Encanto) y la tarjeta lo enseñaba como «falta el permiso». Ahora el número tiene el estado **«coexistencia»**: la consola no pregunta a Meta, apunta el catálogo que el partner elige de los de su negocio (es el que la app tiene conectado) y lo dice sin fingir que lo comprobó. Las tarjetas de producto sí salen por Cloud API en coexistencia (Barber Supply lo demuestra); lo que Meta bloquea es gestionar el enlace por API.
+- Q: ¿Y si Meta tampoco deja listar los catálogos del número de coexistencia (`catalog_management` en acceso estándar)? → A: el partner apunta el identificador y el nombre a mano desde el selector. La consola los guarda tal cual y no finge haberlos comprobado.
 
 ### Session 2026-09-30
 

@@ -495,11 +495,16 @@ async def test_on_a_coexistence_number_the_catalog_is_declared_not_linked(
     fila = await _reload(db_session, canal.id)
     assert fila.config["catalog_id"] == "CAT_FLORES"
 
-    # Sigue exigiendo que el catálogo sea del negocio.
-    bad = await client.put(
-        _url(a, canal, "catalog"), json={"catalog_id": "CAT_OTRO"}, headers=a["headers"]()
+    # Uno que Meta no lista se apunta igual, con el nombre que escribió el
+    # partner: la app del teléfono es la que manda, no la lista de Meta.
+    otro = await client.put(
+        _url(a, canal, "catalog"),
+        json={"catalog_id": "CAT_OTRO", "catalog_name": "Ramos de la app"},
+        headers=a["headers"](),
     )
-    assert bad.status_code == 409 and bad.json()["detail"]["code"] == "catalog_not_owned"
+    assert otro.status_code == 200, otro.text
+    assert otro.json()["catalog"]["id"] == "CAT_OTRO"
+    assert otro.json()["catalog"]["name"] == "Ramos de la app"
 
     gone = await client.delete(_url(a, canal, "catalog"), headers=a["headers"]())
     assert gone.status_code == 200 and gone.json()["catalog"] is None
@@ -523,3 +528,41 @@ async def test_linking_that_meta_refuses_by_smb_declares_and_learns(
     assert fila.config["mode"] == "coexistence"
     assert fila.config["catalog_id"] == "CAT_FLORES"
     assert sim.names() == ["list_catalogs", "link_catalog"]
+
+
+async def test_a_coexistence_number_declares_the_catalog_even_when_meta_will_not_list(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """``catalog_management`` en acceso estándar: Meta no lista los catálogos
+    de un negocio cliente. El partner escribe el identificador y el nombre y
+    la tarjeta los enseña tal cual (Flor y Encanto, 2026-10-01)."""
+    a = console_world["a"]
+    sim = _sim(monkeypatch, catalogs=[], linked=None, fail={"list_catalogs": _permission()})
+    canal = await _canal(db_session, a["tenant_id"], mode="coexistence")
+    r = await client.put(
+        _url(a, canal, "catalog"),
+        json={"catalog_id": "1605043874367785", "catalog_name": "Catálogo de Flor y Encanto 2"},
+        headers=a["headers"](),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["catalog_state"] == "coexistence"
+    assert r.json()["catalog"]["id"] == "1605043874367785"
+    assert r.json()["catalog"]["name"] == "Catálogo de Flor y Encanto 2"
+    assert r.json()["catalog_error"] is None
+    assert "link_catalog" not in sim.names()
+    fila = await _reload(db_session, canal.id)
+    assert fila.config["catalog_id"] == "1605043874367785"
+    assert fila.config["catalog_name"] == "Catálogo de Flor y Encanto 2"
+
+    # Sin nombre, la tarjeta enseña el identificador y no inventa uno.
+    anon = await client.put(
+        _url(a, canal, "catalog"), json={"catalog_id": "999"}, headers=a["headers"]()
+    )
+    assert anon.status_code == 200 and anon.json()["catalog"]["name"] is None
+
+    # Fuera de coexistencia nada cambia: sin lista, 409 con el motivo.
+    cloud = await _canal(db_session, a["tenant_id"])
+    bad = await client.put(
+        _url(a, cloud, "catalog"), json={"catalog_id": "999"}, headers=a["headers"]()
+    )
+    assert bad.status_code == 409 and bad.json()["detail"]["code"] == "catalog_permission_missing"

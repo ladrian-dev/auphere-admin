@@ -322,7 +322,14 @@ export function ChannelCard({
 
       {channel.type === "whatsapp" && !suelto ? (
         <>
-          <CatalogPicker refId={refId} channelId={channel.id} current={channel.catalog} open={elegirCatalogo} onOpenChange={setElegirCatalogo} />
+          <CatalogPicker
+            refId={refId}
+            channelId={channel.id}
+            current={channel.catalog}
+            open={elegirCatalogo}
+            onOpenChange={setElegirCatalogo}
+            coexistence={channel.catalog_state === "coexistence"}
+          />
           <ConfirmDialog
             open={confirmarQuitarCatalogo}
             onOpenChange={setConfirmarQuitarCatalogo}

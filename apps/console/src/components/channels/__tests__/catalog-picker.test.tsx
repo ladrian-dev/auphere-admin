@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "@/i18n/client";
 import { messages } from "@/i18n/messages";
 
-import { CatalogPickerBody, catalogFailureKey, offerCatalogAfterSignup, replacementNeeded } from "../catalog-picker";
+import { CatalogPickerBody, catalogFailureKey, manualDeclarationOffered, offerCatalogAfterSignup, replacementNeeded, validCatalogId } from "../catalog-picker";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
@@ -79,5 +79,55 @@ describe("La oferta al terminar el alta (spec 022, Historia 2)", () => {
     expect(offerCatalogAfterSignup({ ok: false, status: 503, code: "meta_unavailable", message: "" })).toBe(false);
     expect(messages["ch.catalog.picker.later"].es).toBe("Ahora no");
     expect(messages["ch.catalog.offer.help"].es).toMatch(/más tarde desde la tarjeta/i);
+  });
+});
+
+describe("Apuntar el catálogo a mano en coexistencia (spec 022, iteración 4)", () => {
+  it("se ofrece solo en coexistencia y solo cuando Meta no listó", () => {
+    expect(manualDeclarationOffered(true, { kind: "error" })).toBe(true);
+    expect(manualDeclarationOffered(true, { kind: "ready" })).toBe(false);
+    expect(manualDeclarationOffered(true, { kind: "loading" })).toBe(false);
+    expect(manualDeclarationOffered(false, { kind: "error" })).toBe(false);
+    expect(validCatalogId("1605043874367785")).toBe(true);
+    expect(validCatalogId(" 1605043874367785 ")).toBe(true);
+    expect(validCatalogId("CAT_FLORES")).toBe(false);
+    expect(validCatalogId("12")).toBe(false);
+  });
+
+  it("con el permiso ausente en coexistencia enseña el formulario, no el error", () => {
+    const onDeclare = vi.fn();
+    render(
+      <LocaleProvider locale="es">
+        <CatalogPickerBody
+          state={{ kind: "error", code: "catalog_permission_missing", message: null }}
+          current={null}
+          busy={false}
+          onChoose={vi.fn()}
+          coexistence
+          onDeclare={onDeclare}
+        />
+      </LocaleProvider>,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText(/Commerce Manager/)).toBeInTheDocument();
+    const id = screen.getByLabelText(/Identificador del catálogo/);
+    const name = screen.getByLabelText(/Nombre/);
+    fireEvent.change(id, { target: { value: "abc" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apuntar catálogo" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("solo cifras");
+    expect(onDeclare).not.toHaveBeenCalled();
+    fireEvent.change(id, { target: { value: " 1605043874367785 " } });
+    fireEvent.change(name, { target: { value: "Catálogo de Flor y Encanto 2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apuntar catálogo" }));
+    expect(onDeclare).toHaveBeenCalledWith("1605043874367785", "Catálogo de Flor y Encanto 2");
+  });
+
+  it("fuera de coexistencia el permiso ausente sigue siendo una frase", () => {
+    render(
+      <LocaleProvider locale="es">
+        <CatalogPickerBody state={{ kind: "error", code: "catalog_permission_missing", message: null }} current={null} busy={false} onChoose={vi.fn()} onDeclare={vi.fn()} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/vuelve a conectar/i);
   });
 });
