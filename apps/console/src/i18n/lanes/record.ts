@@ -165,5 +165,5 @@ export const recordMessages = {
   "draft.value.audience.everyone": { es: "A todo el mundo", en: "Everyone" },
   "draft.value.audience.list": { es: "Solo a {count} números", en: "Only {count} numbers" },
   "draft.value.paymentReview.none": { es: "Nadie revisa pagos", en: "Nobody reviews payments" },
-  "draft.value.paymentReview.some": { es: "{count} números revisan pagos", en: "{count} numbers review payments" },
+  "draft.value.paymentReview.some": { es: "Revisores de pagos: {count}", en: "Payment reviewers: {count}" },
 } as const;

@@ -120,7 +120,7 @@ export const agentToolsMessages = {
     en: "When a customer sends a bank-transfer receipt, or says they paid through the link, the agent sends it to these numbers with two buttons, Confirm payment and Reject payment. The first tap decides and the agent tells the customer.",
   },
   "agentSettings.paymentReview.numbers": { es: "Quién revisa los pagos", en: "Who reviews payments" },
-  "agentSettings.paymentReview.count": { es: "{n} revisores", en: "{n} reviewers" },
+  "agentSettings.paymentReview.count": { es: "Revisores: {n}", en: "Reviewers: {n}" },
   "agentSettings.paymentReview.phone": { es: "Teléfono del revisor {n}", en: "Reviewer {n} phone" },
   "agentSettings.paymentReview.name": { es: "Nombre del revisor {n} (opcional)", en: "Reviewer {n} name (optional)" },
   "agentSettings.paymentReview.name.eg": { es: "Nombre, por ejemplo Daniela", en: "Name, for example Daniela" },
