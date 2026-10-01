@@ -590,16 +590,21 @@ class MetaClient:
         language: str,
         category: str,
         components: list[dict[str, Any]],
+        parameter_format: str | None = None,
     ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "name": name,
+            "language": language,
+            "category": category,
+            "components": components,
+        }
+        if parameter_format:
+            # ``NAMED`` for ``{{nombre}}`` variables; Meta's default is positional.
+            body["parameter_format"] = parameter_format
         return await self._post(
             f"/{waba_id}/message_templates",
             access_token=access_token,
-            json_body={
-                "name": name,
-                "language": language,
-                "category": category,
-                "components": components,
-            },
+            json_body=body,
         )
 
     async def delete_template(

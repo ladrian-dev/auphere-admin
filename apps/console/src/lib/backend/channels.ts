@@ -110,6 +110,8 @@ export type TemplateCreateBody = {
   body_text: string;
   footer_text?: string;
   buttons?: TemplateButton[];
+  /** Example per body variable, as Meta requires to review it. */
+  examples?: Record<string, string>;
 };
 export type TemplateCreated = { id: string | null; name: string; status: string | null; category: string | null };
 

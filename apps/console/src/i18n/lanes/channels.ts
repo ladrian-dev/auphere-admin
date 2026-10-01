@@ -198,7 +198,16 @@ export const channelsMessages = {
   "tpl.form.category": { es: "Categoría", en: "Category" },
   "tpl.form.header": { es: "Encabezado (opcional)", en: "Header (optional)" },
   "tpl.form.body": { es: "Cuerpo", en: "Body" },
-  "tpl.form.body.help": { es: "Usa {{1}}, {{2}}… para las variables.", en: "Use {{1}}, {{2}}… for variables." },
+  "tpl.form.body.help": {
+    es: "Escribe las variables entre llaves dobles con un nombre en minúsculas, por ejemplo {{nombre}}.",
+    en: "Write variables between double braces with a lowercase name, for example {{nombre}}.",
+  },
+  "tpl.form.examples": { es: "Ejemplos para Meta", en: "Examples for Meta" },
+  "tpl.form.examples.help": {
+    es: "Meta revisa la plantilla con un ejemplo de cada variable. Pon un valor realista, no el nombre de la variable.",
+    en: "Meta reviews the template with an example of each variable. Use a realistic value, not the variable name.",
+  },
+  "tpl.form.example": { es: "Ejemplo de {name}", en: "Example of {name}" },
   "tpl.form.footer": { es: "Pie (opcional)", en: "Footer (optional)" },
   "tpl.form.buttons": { es: "Botones (máx. 3)", en: "Buttons (max. 3)" },
   "tpl.form.button.add": { es: "Añadir botón", en: "Add button" },

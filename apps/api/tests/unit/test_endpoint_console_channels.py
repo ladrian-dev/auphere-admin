@@ -414,6 +414,55 @@ async def test_template_create_and_delete_hit_meta_and_audit(
     assert r.status_code == 400
 
 
+async def test_template_variables_travel_with_their_examples(
+    client, console_world, db_session
+) -> None:
+    """Spec 025: Meta reviews a template with variables only when each one
+    carries an example; named variables also need ``parameter_format``."""
+    import json as _json
+
+    a = console_world["a"]
+    await _seed_creds(db_session, a["tenant_id"], waba_id="WABA_N")
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        created = mock.post("/WABA_N/message_templates").respond(
+            200, json={"id": "T2", "status": "PENDING", "category": "UTILITY"}
+        )
+        r = await client.post(
+            f"/console/clients/{a['ref']}/channels/whatsapp/templates",
+            headers=a["headers"](),
+            json={
+                "name": "pago_confirmado",
+                "body_text": "Hola {{nombre}}, tu pedido sale el {{entrega}}. Gracias {{nombre}}.",
+                "examples": {"nombre": "Camila", "entrega": "viernes 3 de octubre"},
+            },
+        )
+        assert r.status_code == 201, r.text
+        sent = _json.loads(created.calls.last.request.content)
+        assert sent["parameter_format"] == "NAMED"
+        body = next(c for c in sent["components"] if c["type"] == "BODY")
+        assert body["example"] == {
+            "body_text_named_params": [
+                {"param_name": "nombre", "example": "Camila"},
+                {"param_name": "entrega", "example": "viernes 3 de octubre"},
+            ]
+        }
+
+        positional = await client.post(
+            f"/console/clients/{a['ref']}/channels/whatsapp/templates",
+            headers=a["headers"](),
+            json={
+                "name": "aviso",
+                "body_text": "Hola {{1}}, tu cita es el {{2}}.",
+                "examples": {"2": "lunes", "1": "Ana"},
+            },
+        )
+        assert positional.status_code == 201, positional.text
+        sent = _json.loads(created.calls.last.request.content)
+        assert "parameter_format" not in sent
+        body = next(c for c in sent["components"] if c["type"] == "BODY")
+        assert body["example"] == {"body_text": [["Ana", "lunes"]]}
+
+
 @pytest.mark.parametrize(
     ("status_value", "reason", "expected"),
     [

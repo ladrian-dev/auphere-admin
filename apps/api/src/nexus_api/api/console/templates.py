@@ -165,6 +165,7 @@ async def create_template(
                 language=body.language,
                 category=body.category,
                 components=components,
+                parameter_format=body.parameter_format(),
             )
         except MetaAPIError as exc:
             raise meta_error_to_http(exc, context="la creación de la plantilla") from exc

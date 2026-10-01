@@ -117,6 +117,7 @@ export async function createTemplateAction(raw: unknown): Promise<ActionResult<T
       body_text: z.string().min(1).max(1024),
       footer_text: z.string().max(60).optional(),
       buttons: z.array(button).max(3).default([]),
+      examples: z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.string().min(1).max(200)).default({}),
     })
     .parse(raw);
   const principal = await requirePrincipal();
