@@ -74,10 +74,18 @@ export async function listCatalogsAction(raw: unknown): Promise<ActionResult<Cat
 }
 
 export async function setCatalogAction(raw: unknown): Promise<ActionResult<ChannelDetail>> {
-  const body = z.object({ ref, channelId: z.string().uuid(), catalogId: z.string().min(1).max(64) }).parse(raw);
+  const body = z
+    .object({
+      ref,
+      channelId: z.string().uuid(),
+      catalogId: z.string().min(1).max(64),
+      // Solo en coexistencia, cuando Meta no lista los catálogos: el nombre que escribió quien declara.
+      catalogName: z.string().trim().min(1).max(120).optional(),
+    })
+    .parse(raw);
   const principal = await requirePrincipal();
   if (!can(principal.role, "channels:write")) return forbidden();
-  const res = await run(() => backendFor(principal).setCatalog(body.ref, body.channelId, body.catalogId));
+  const res = await run(() => backendFor(principal).setCatalog(body.ref, body.channelId, body.catalogId, body.catalogName));
   if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
   return res;
 }

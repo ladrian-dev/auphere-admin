@@ -154,8 +154,11 @@ export function channelsApi(call: Call) {
     disconnectChannel: (ref: string, channelId: string) =>
       call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/disconnect`, { method: "POST" }),
     listCatalogs: (ref: string, channelId: string) => call<CatalogList>(`${base(ref)}/${enc(channelId)}/catalogs`),
-    setCatalog: (ref: string, channelId: string, catalogId: string) =>
-      call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/catalog`, { method: "PUT", body: { catalog_id: catalogId } }),
+    setCatalog: (ref: string, channelId: string, catalogId: string, catalogName?: string) =>
+      call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/catalog`, {
+        method: "PUT",
+        body: catalogName ? { catalog_id: catalogId, catalog_name: catalogName } : { catalog_id: catalogId },
+      }),
     clearCatalog: (ref: string, channelId: string) =>
       call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/catalog`, { method: "DELETE" }),
     whatsappSignup: (ref: string, body: WhatsAppSignupBody) =>

@@ -480,6 +480,22 @@ async def _channel_with_creds(
     return ch, creds, waba_id, business_id
 
 
+async def _owned_catalog_or_none(
+    client: Any, business_id: str, access_token: str, catalog_id: str
+) -> dict[str, Any] | None:
+    """El catálogo con ese id entre los del negocio, si Meta deja listarlos.
+
+    Un rechazo (permiso, token, SMB) no es un error aquí: en coexistencia la
+    declaración vale igual, solo que sin nombre comprobado.
+    """
+    try:
+        owned = await client.list_catalogs(business_id=business_id, access_token=access_token)
+    except MetaAPIError as exc:
+        log.info("channel.catalog.list_unavailable", code=getattr(exc, "code", None))
+        return None
+    return next((r for r in owned if str(r.get("id")) == catalog_id), None)
+
+
 @router.get("/{channel_id}/catalogs", response_model=CatalogListOut)
 async def list_channel_catalogs(
     channel_id: uuid.UUID,
@@ -530,6 +546,21 @@ async def set_channel_catalog(
     client = build_meta_client()
     meta: dict[str, Any] = {}
     try:
+        if is_coexistence(cfg):
+            # La app del teléfono es la que tiene el catálogo; Meta no deja
+            # enlazarlo por API en estas cuentas, y con ``catalog_management``
+            # en acceso estándar ni siquiera deja listarlos a un negocio
+            # cliente (visto el 2026-10-01 con Flor y Encanto). La consola
+            # apunta el que el partner declara, con el nombre de Meta si lo
+            # pudo leer y con el que escribió el partner si no, y lo dice
+            # sin fingir que lo comprobó.
+            found = await _owned_catalog_or_none(client, business_id, creds.bisuat, body.catalog_id)
+            if found is None:
+                meta["unverified"] = True
+            _write_catalog(cfg, found or {"id": body.catalog_id, "name": body.catalog_name})
+            cfg.pop("catalog_error", None)
+            meta["declared"] = body.catalog_id
+            return await _finish_catalog_change(scope, redis, ch, cfg, waba_id, before, meta)
         try:
             owned = await client.list_catalogs(business_id=business_id, access_token=creds.bisuat)
         except MetaAPIError as exc:
@@ -539,15 +570,6 @@ async def set_channel_catalog(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail={"code": "catalog_not_owned"}
             )
-        if is_coexistence(cfg):
-            # La app del teléfono es la que tiene el catálogo; Meta no deja
-            # enlazarlo por API en estas cuentas. La consola apunta cuál es
-            # para que el agente mande tarjetas, y lo dice sin fingir que
-            # lo comprobó.
-            _write_catalog(cfg, chosen)
-            cfg.pop("catalog_error", None)
-            meta["declared"] = body.catalog_id
-            return await _finish_catalog_change(scope, redis, ch, cfg, waba_id, before, meta)
         if before is not None and before.id == body.catalog_id:
             return _detail(ch, await channel_logos(scope.session), "linked")
 

@@ -15,6 +15,8 @@ import {
   DialogHeader,
   DialogTitle,
   EmptyState,
+  Field,
+  Input,
 } from "@nexus/ui";
 
 import { listCatalogsAction, setCatalogAction } from "@/app/(console)/clients/[ref]/channels/actions";
@@ -59,6 +61,60 @@ export function replacementNeeded(current: Catalog | null, chosenId: string): bo
   return current !== null && current.id !== chosenId;
 }
 
+/**
+ * Pure: ¿se ofrece escribir el catálogo a mano? Solo en coexistencia (la app
+ * del teléfono es la que lo tiene) y solo cuando Meta no lo ha listado: con
+ * la lista delante se elige, no se escribe.
+ */
+export function manualDeclarationOffered(coexistence: boolean, state: { kind: string }): boolean {
+  return coexistence && state.kind !== "loading" && state.kind !== "ready";
+}
+
+/** Pure: un identificador de catálogo de Meta son solo cifras. */
+export function validCatalogId(raw: string): boolean {
+  return /^\d{5,32}$/.test(raw.trim());
+}
+
+/**
+ * El formulario para apuntar el catálogo por su identificador cuando Meta no
+ * deja listarlos (coexistencia con ``catalog_management`` en acceso estándar).
+ */
+export function ManualCatalogForm({ busy, onDeclare }: { busy: boolean; onDeclare: (id: string, name: string | undefined) => void }) {
+  const t = useT();
+  const [id, setId] = React.useState("");
+  const [name, setName] = React.useState("");
+  const [touched, setTouched] = React.useState(false);
+  const invalid = touched && !validCatalogId(id);
+  return (
+    <form
+      className="flex flex-col gap-3 rounded-md border border-border p-3"
+      aria-label={t("ch.catalog.manual.title")}
+      onSubmit={(e) => {
+        e.preventDefault();
+        setTouched(true);
+        if (!validCatalogId(id)) return;
+        onDeclare(id.trim(), name.trim() || undefined);
+      }}
+    >
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium">{t("ch.catalog.manual.title")}</p>
+        <p className="text-xs text-muted-foreground text-pretty">{t("ch.catalog.manual.help")}</p>
+      </div>
+      <Field label={t("ch.catalog.manual.id")} error={invalid ? t("ch.catalog.manual.invalid") : undefined} required>
+        {(a11y) => <Input {...a11y} inputMode="numeric" autoComplete="off" value={id} onChange={(e) => setId(e.target.value)} onBlur={() => setTouched(true)} disabled={busy} />}
+      </Field>
+      <Field label={t("ch.catalog.manual.name")}>
+        {(a11y) => <Input {...a11y} maxLength={120} value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />}
+      </Field>
+      <div className="flex justify-end">
+        <Button type="submit" loading={busy}>
+          {t("ch.catalog.manual.submit")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 type Loaded =
   | { kind: "loading" }
   | { kind: "error"; code: string | null; message: string | null }
@@ -74,11 +130,16 @@ export function CatalogPickerBody({
   current,
   busy,
   onChoose,
+  coexistence = false,
+  onDeclare,
 }: {
   state: Loaded;
   current: Catalog | null;
   busy: boolean;
   onChoose: (item: CatalogSummary) => void;
+  /** El número sigue en la app del teléfono: si Meta no lista, se escribe. */
+  coexistence?: boolean;
+  onDeclare?: (id: string, name: string | undefined) => void;
 }) {
   const t = useT();
   if (state.kind === "loading") {
@@ -89,6 +150,9 @@ export function CatalogPickerBody({
     );
   }
   if (state.kind === "error") {
+    if (manualDeclarationOffered(coexistence, state) && onDeclare) {
+      return <ManualCatalogForm busy={busy} onDeclare={onDeclare} />;
+    }
     const key = catalogFailureKey(state.code);
     return (
       <p role="alert" className="text-sm text-destructive">
@@ -145,6 +209,7 @@ export function CatalogPicker({
   onOpenChange,
   offer = false,
   preloaded = null,
+  coexistence = false,
 }: {
   refId: string;
   channelId: string;
@@ -152,6 +217,7 @@ export function CatalogPicker({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   offer?: boolean;
+  coexistence?: boolean;
   /** La lista ya pedida (la oferta tras el alta la pide para decidir si abrirse). */
   preloaded?: CatalogList | null;
 }) {
@@ -186,9 +252,9 @@ export function CatalogPicker({
     onOpenChange(next);
   }
 
-  function apply(item: CatalogSummary) {
+  function apply(item: CatalogSummary, catalogName?: string) {
     startTransition(async () => {
-      const res = await setCatalogAction({ ref: refId, channelId, catalogId: item.id });
+      const res = await setCatalogAction({ ref: refId, channelId, catalogId: item.id, catalogName });
       if (!res.ok) {
         const key = catalogFailureKey(res.code);
         return void toast.error(key ? t(key, { message: res.message ?? "" }) : t("common.error.backend"));
@@ -210,6 +276,12 @@ export function CatalogPicker({
     else apply(item);
   }
 
+  function declare(id: string, name: string | undefined) {
+    const item: CatalogSummary = { id, name: name ?? null, product_count: null };
+    if (replacementNeeded(current, id)) setChosen(item);
+    else apply(item, name);
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={close}>
@@ -218,7 +290,7 @@ export function CatalogPicker({
             <DialogTitle>{offer ? t("ch.catalog.offer.title") : t("ch.catalog.picker.title")}</DialogTitle>
             <DialogDescription>{offer ? t("ch.catalog.offer.help") : t("ch.catalog.picker.help")}</DialogDescription>
           </DialogHeader>
-          <CatalogPickerBody state={state} current={current} busy={pending} onChoose={choose} />
+          <CatalogPickerBody state={state} current={current} busy={pending} onChoose={choose} coexistence={coexistence} onDeclare={declare} />
           <DialogFooter>
             <Button variant="outline" onClick={() => close(false)} disabled={pending}>
               {offer ? t("ch.catalog.picker.later") : t("common.cancel")}
@@ -234,7 +306,7 @@ export function CatalogPicker({
         confirmLabel={t("ch.catalog.replace.confirm")}
         cancelLabel={t("common.cancel")}
         onConfirm={async () => {
-          if (chosen) apply(chosen);
+          if (chosen) apply(chosen, chosen.name ?? undefined);
         }}
       />
     </>

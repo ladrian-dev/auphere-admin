@@ -18,3 +18,22 @@
   `catalog_id` apuntado por el camino de operador.
 - Tests: `test_endpoint_console_catalog.py` (4 casos de coexistencia),
   `channel-card.test.tsx` (2 casos).
+
+## 2026-10-01 · apuntar el catálogo a mano cuando Meta no lo lista
+
+Con el `+56991919125` de Flor y Encanto conectado en coexistencia, «Conectar
+catálogo» decía «la conexión no incluyó el permiso de catálogo». Causa, vista
+en el panel de Meta: `catalog_management` está en **acceso estándar**
+(«Listo para la prueba», 0 llamadas) y Meta solo lo concede a personas con
+rol en la app, nunca al negocio de un cliente, aunque la configuración de
+coexistencia lo pida (lo pide). El acceso avanzado exige revisión de la app.
+
+Cambio: en coexistencia la declaración no depende de la lista. La API
+intenta leerla para traer el nombre; si Meta no la da, apunta el
+identificador y el nombre que escribió el partner (`catalog_name` en el
+PUT, `meta.unverified`). El selector enseña un formulario con el
+identificador y el nombre, solo en coexistencia y solo cuando no hay lista.
+Fuera de coexistencia nada cambia: sin permiso, 409 con el motivo.
+
+Tests: `test_a_coexistence_number_declares_the_catalog_even_when_meta_will_not_list`
+(API) y «Apuntar el catálogo a mano en coexistencia» (consola, 3 casos).

@@ -64,6 +64,9 @@ class CatalogSetIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     catalog_id: str = Field(min_length=1, max_length=64)
+    #: Only read on a coexistence number when Meta will not list the
+    #: catalogues: the name the partner typed, shown on the card as is.
+    catalog_name: str | None = Field(default=None, max_length=120)
 
 
 #: ``coexistence`` (2026-10-01): the number keeps using the WhatsApp Business
