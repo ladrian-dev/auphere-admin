@@ -62,4 +62,5 @@ async def test_the_settings_route_takes_no_tenant_and_no_sender() -> None:
     body = spec["put"]["requestBody"]["content"]["application/json"]["schema"]
     ref = body.get("$ref", "").rsplit("/", 1)[-1]
     props = set(schema["components"]["schemas"][ref]["properties"])
-    assert props == {"settings", "audience"}
+    # Spec 025 adds ``payment_review``; still no tenant nor sender.
+    assert props == {"settings", "audience", "payment_review"}

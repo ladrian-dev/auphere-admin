@@ -9,6 +9,8 @@ pending outbound rows the dispatcher delivers and meters.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from nexus_api.db.models import Conversation, Tenant
 from nexus_api.repositories.agent_config import AgentConfigRepository
 from nexus_api.services.agent_payment_review import reviewers_of
@@ -74,7 +76,9 @@ class RequestPaymentReview(ToolBase):
                 order_id=payload.order_id if payload.method == "link" else None,
                 order_status=payload.order_status if payload.method == "link" else None,
             )
-            status = "informed" if opened.review.status == "informed" else "pending"
+            status: Literal["pending", "informed"] = (
+                "informed" if opened.review.status == "informed" else "pending"
+            )
             return RequestPaymentReviewOutput(
                 review_id=opened.review.id,
                 status=status,
