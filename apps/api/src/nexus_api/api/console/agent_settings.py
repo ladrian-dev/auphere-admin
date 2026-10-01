@@ -31,6 +31,12 @@ from nexus_api.services.agent_console_policy import (
     merge_console_policy,
     read_console_policy,
 )
+from nexus_api.services.agent_payment_review import (
+    Reviewer,
+    ReviewerError,
+    apply_reviewers,
+    reviewers_of,
+)
 
 from .agent_drafts import DraftView, ensure_draft, load_view
 from .deps import ClientScope, client_scope
@@ -40,6 +46,7 @@ from .schemas_agent_tools import (
     AgentSettingsSaved,
     AudienceNumberOut,
     AudienceOut,
+    PaymentReviewOut,
 )
 
 router = APIRouter(prefix="/clients/{ref}/agent/settings")
@@ -64,6 +71,16 @@ def _audience_out(cfg: AgentConfig | None) -> AudienceOut:
     )
 
 
+def _payment_review_out(cfg: AgentConfig | None) -> PaymentReviewOut:
+    """Spec 025: ``policies.payment_review`` of the version being edited."""
+    return PaymentReviewOut(
+        reviewers=[
+            AudienceNumberOut(phone=r.phone, name=r.name)
+            for r in reviewers_of(cfg.policies if cfg else None)
+        ]
+    )
+
+
 def _out(view: DraftView) -> AgentSettingsOut:
     target = view.target
     return AgentSettingsOut(
@@ -73,6 +90,7 @@ def _out(view: DraftView) -> AgentSettingsOut:
         has_draft=view.has_draft,
         settings=_settings_of(target),
         audience=_audience_out(target),
+        payment_review=_payment_review_out(target),
     )
 
 
@@ -117,6 +135,20 @@ async def put_settings(
             ) from exc
         except AudienceError as exc:
             detail: dict[str, Any] = {"code": exc.code}
+            phone = getattr(exc, "phone", None)
+            if phone is not None:
+                detail["phone"] = phone
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail
+            ) from exc
+    if body.payment_review is not None:
+        try:
+            policies = apply_reviewers(
+                policies,
+                [Reviewer(n.phone, n.name) for n in body.payment_review.reviewers],
+            )
+        except ReviewerError as exc:
+            detail = {"code": exc.code}
             phone = getattr(exc, "phone", None)
             if phone is not None:
                 detail["phone"] = phone

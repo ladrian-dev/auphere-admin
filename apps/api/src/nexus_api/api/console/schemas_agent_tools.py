@@ -53,6 +53,22 @@ class AudienceIn(BaseModel):
     numbers: list[AudienceNumberIn] = Field(default_factory=list, max_length=50)
 
 
+# ── Spec 025 · «Revisión de pagos» ─────────────────────────────────────
+
+
+class PaymentReviewOut(BaseModel):
+    """Who confirms or rejects payments, from ``policies.payment_review``
+    of the version being edited. Empty = no payment review."""
+
+    reviewers: list[AudienceNumberOut] = Field(default_factory=list)
+
+
+class PaymentReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reviewers: list[AudienceNumberIn] = Field(default_factory=list, max_length=10)
+
+
 class AgentSettingsOut(BaseModel):
     """``policies.console`` of a version + where it lives. ``version`` is
     the STAGED draft when one exists (what a PUT edits), else the active
@@ -65,6 +81,8 @@ class AgentSettingsOut(BaseModel):
     settings: ConsolePolicy
     #: Spec 024: read from ``policies.admin_access`` of the same version.
     audience: AudienceOut = Field(default_factory=lambda: AudienceOut(mode="everyone"))
+    #: Spec 025: read from ``policies.payment_review`` of the same version.
+    payment_review: PaymentReviewOut = Field(default_factory=PaymentReviewOut)
 
 
 class AgentSettingsIn(BaseModel):
@@ -76,6 +94,8 @@ class AgentSettingsIn(BaseModel):
 
     settings: ConsolePolicy
     audience: AudienceIn | None = None
+    #: Spec 025: rewrites ``policies.payment_review`` when present.
+    payment_review: PaymentReviewIn | None = None
 
 
 class AgentSettingsSaved(AgentSettingsOut):
