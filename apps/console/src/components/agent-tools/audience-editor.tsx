@@ -1,14 +1,11 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
-import * as React from "react";
-
-import { Button, Input, Label, cn } from "@nexus/ui";
+import { cn } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 import type { AudienceMode } from "@/lib/backend/agent-tools-types";
 
-import { normalisePhone, parseAudienceLines } from "./audience-lines";
+import { PhoneRows, newRow, type PhoneRow, type PhoneRowsLabels } from "./phone-rows";
 
 /**
  * Spec 024 · «A quién responde».
@@ -20,13 +17,20 @@ import { normalisePhone, parseAudienceLines } from "./audience-lines";
  * Pasting several numbers into a phone box makes one row per number.
  */
 
-export type AudienceRow = { id: string; phone: string; name: string; error: string | null };
+export type AudienceRow = PhoneRow;
+export { newRow };
 
-let seq = 0;
-export function newRow(phone = "", name = ""): AudienceRow {
-  seq += 1;
-  return { id: `row-${seq}`, phone, name, error: null };
-}
+const AUDIENCE_LABELS: PhoneRowsLabels = {
+  list: "agentSettings.audience.numbers",
+  count: "agentSettings.audience.count",
+  phone: "agentSettings.audience.phone",
+  name: "agentSettings.audience.name",
+  remove: "agentSettings.audience.remove",
+  add: "agentSettings.audience.add",
+  hint: "agentSettings.audience.numbers.hint",
+  phoneEg: "agentSettings.audience.numbers.eg",
+  nameEg: "agentSettings.audience.name.eg",
+};
 
 export function AudienceEditor({
   mode,
@@ -45,31 +49,6 @@ export function AudienceEditor({
 }) {
   const t = useT();
 
-  function update(id: string, patch: Partial<AudienceRow>) {
-    onRows(rows.map((r) => (r.id === id ? { ...r, ...patch, error: null } : r)));
-  }
-  function remove(id: string) {
-    const next = rows.filter((r) => r.id !== id);
-    onRows(next.length ? next : [newRow()]);
-  }
-  function add() {
-    onRows([...rows, newRow()]);
-  }
-  /** A pasted list ("+34…, +56…" or one per line) becomes one row each. */
-  function paste(id: string, e: React.ClipboardEvent<HTMLInputElement>) {
-    const text = e.clipboardData.getData("text");
-    const parsed = parseAudienceLines(text);
-    if (parsed.numbers.length + parsed.errors.length <= 1) return; // a single number: let the input take it
-    e.preventDefault();
-    const fresh = parsed.numbers.map((n) => newRow(n.phone, n.name ?? ""));
-    const others = rows.filter((r) => r.id !== id && (r.phone.trim() || r.name.trim()));
-    onRows([...others, ...fresh]);
-  }
-  function blur(id: string, phone: string) {
-    const e164 = normalisePhone(phone);
-    if (e164 && e164 !== phone) update(id, { phone: e164 });
-  }
-
   const options: Array<{ value: AudienceMode; title: string; help: string; blocked: boolean }> = [
     {
       value: "everyone",
@@ -84,7 +63,6 @@ export function AudienceEditor({
       blocked: disabled,
     },
   ];
-  const filled = rows.filter((r) => r.phone.trim()).length;
 
   return (
     <div className="grid gap-4">
@@ -119,66 +97,7 @@ export function AudienceEditor({
       ) : null}
 
       {mode === "list" ? (
-        <div className="grid gap-3" data-slot="audience-list">
-          <div className="flex items-baseline justify-between gap-2">
-            <Label>{t("agentSettings.audience.numbers")}</Label>
-            <span className="text-xs text-muted-foreground" aria-live="polite">
-              {t("agentSettings.audience.count", { n: filled })}
-            </span>
-          </div>
-          <ul className="grid gap-2" aria-label={t("agentSettings.audience.numbers")}>
-            {rows.map((row, index) => (
-              <li key={row.id} className="grid gap-1">
-                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2">
-                  <Input
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="off"
-                    aria-label={t("agentSettings.audience.phone", { n: index + 1 })}
-                    aria-invalid={row.error ? true : undefined}
-                    placeholder={t("agentSettings.audience.numbers.eg")}
-                    value={row.phone}
-                    disabled={disabled}
-                    onChange={(e) => update(row.id, { phone: e.target.value })}
-                    onBlur={(e) => blur(row.id, e.target.value)}
-                    onPaste={(e) => paste(row.id, e)}
-                    className="font-mono"
-                  />
-                  <Input
-                    aria-label={t("agentSettings.audience.name", { n: index + 1 })}
-                    placeholder={t("agentSettings.audience.name.eg")}
-                    maxLength={120}
-                    value={row.name}
-                    disabled={disabled}
-                    onChange={(e) => update(row.id, { name: e.target.value })}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t("agentSettings.audience.remove", { n: index + 1 })}
-                    disabled={disabled}
-                    onClick={() => remove(row.id)}
-                  >
-                    <X aria-hidden="true" />
-                  </Button>
-                </div>
-                {row.error ? (
-                  <p role="alert" className="text-sm text-destructive">
-                    {row.error}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={add}>
-              <Plus aria-hidden="true" />
-              {t("agentSettings.audience.add")}
-            </Button>
-            <p className="text-xs text-muted-foreground">{t("agentSettings.audience.numbers.hint")}</p>
-          </div>
-        </div>
+        <PhoneRows rows={rows} disabled={disabled} onRows={onRows} labels={AUDIENCE_LABELS} />
       ) : null}
     </div>
   );

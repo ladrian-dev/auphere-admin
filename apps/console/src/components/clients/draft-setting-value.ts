@@ -52,6 +52,11 @@ function known(t: T, field: string, value: Dict): string | null {
       if (value.mode !== "list") return t("draft.value.audience.everyone");
       return t("draft.value.audience.list", { count: Number(value.count ?? 0) });
     }
+    // Spec 025: the payment reviewers travel as {count}.
+    case "payment_review": {
+      const count = Number(value.count ?? 0);
+      return count > 0 ? t("draft.value.paymentReview.some", { count }) : t("draft.value.paymentReview.none");
+    }
     default:
       return null;
   }

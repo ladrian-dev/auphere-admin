@@ -161,6 +161,7 @@ from nexus_api.db.models.partner_wallet import (
     PartnerWallet,
     UsageLedger,
 )
+from nexus_api.db.models.payment_review import PaymentReview, PaymentReviewNotice
 from nexus_api.db.models.qa import QAAuditLog, QARun, QASideEffectAudit, QAThread
 from nexus_api.db.models.queue_entry import QueueEntry, QueueEntryStatus
 from nexus_api.db.models.sales import AgentSale
@@ -329,6 +330,8 @@ __all__ = [
     "PartnerSubscription",
     "PartnerTenant",
     "PartnerWallet",
+    "PaymentReview",
+    "PaymentReviewNotice",
     "PrincipalIdentity",
     "PrincipalLocalExecPref",
     "QAAuditLog",

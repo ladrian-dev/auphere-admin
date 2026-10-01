@@ -36,6 +36,8 @@ export type AudienceMode = "everyone" | "list";
 export type AudienceNumber = { phone: string; name: string | null };
 export type Audience = { mode: AudienceMode; numbers: AudienceNumber[]; locked: boolean };
 export type AudienceIn = { mode: AudienceMode; numbers: AudienceNumber[] };
+/** Spec 025: who confirms or rejects payments. Empty = no payment review. */
+export type PaymentReview = { reviewers: AudienceNumber[] };
 
 export type AgentSettingsOut = {
   version: number | null;
@@ -44,6 +46,7 @@ export type AgentSettingsOut = {
   has_draft: boolean;
   settings: ConsolePolicy;
   audience: Audience;
+  payment_review: PaymentReview;
 };
 export type AgentSettingsSaved = AgentSettingsOut & { draft_created: boolean };
 

@@ -144,6 +144,7 @@ export const recordMessages = {
   "draft.field.languages": { es: "Idiomas", en: "Languages" },
   "draft.field.escalation": { es: "Escalado a una persona", en: "Escalation to a human" },
   "draft.field.audience": { es: "A quién responde", en: "Who it answers" },
+  "draft.field.payment_review": { es: "Revisión de pagos", en: "Payment review" },
   "draft.field.ai_disclosure": { es: "Aviso de que es una IA", en: "Disclosure that it is an AI" },
 
   // Cada ajuste dicho en una frase. La API contesta con su JSON; enseñarlo
@@ -163,4 +164,6 @@ export const recordMessages = {
   "draft.value.disclosure.off": { es: "No avisa de que es una IA", en: "Does not say it is an AI" },
   "draft.value.audience.everyone": { es: "A todo el mundo", en: "Everyone" },
   "draft.value.audience.list": { es: "Solo a {count} números", en: "Only {count} numbers" },
+  "draft.value.paymentReview.none": { es: "Nadie revisa pagos", en: "Nobody reviews payments" },
+  "draft.value.paymentReview.some": { es: "Revisores de pagos: {count}", en: "Payment reviewers: {count}" },
 } as const;

@@ -113,6 +113,16 @@ export const audienceSchema = z
       .default([]),
   })
   .strict();
+
+/** Spec 025: who reviews payments (mirror of ``PaymentReviewIn``). */
+export const paymentReviewSchema = z
+  .object({
+    reviewers: z
+      .array(z.object({ phone: z.string().min(1).max(32), name: z.string().max(120).nullable().default(null) }).strict())
+      .max(10)
+      .default([]),
+  })
+  .strict();
 export type ConsolePolicyInput = z.input<typeof consolePolicySchema>;
 
 /** Same shape as the API default (`ConsolePolicy()` in Python). */

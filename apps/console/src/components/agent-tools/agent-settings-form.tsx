@@ -39,6 +39,7 @@ import {
 
 import { saveAgentSettingsAction } from "@/app/(console)/clients/[ref]/agent/actions";
 import { AudienceEditor, newRow, type AudienceRow } from "@/components/agent-tools/audience-editor";
+import { PhoneRows, type PhoneRowsLabels } from "@/components/agent-tools/phone-rows";
 import { normalisePhone } from "@/components/agent-tools/audience-lines";
 import { useLocale, useT } from "@/i18n/client";
 import {
@@ -96,6 +97,11 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
   const audienceDirty =
     audienceMode !== data.audience.mode ||
     JSON.stringify(numbersOf(audienceRows)) !== JSON.stringify(data.audience.numbers);
+  // Spec 025: «Revisión de pagos». Same rows as the allowed numbers, its own key.
+  const savedReviewers = data.payment_review?.reviewers ?? [];
+  const [reviewRows, setReviewRows] = React.useState<AudienceRow[]>(() => rowsOf(savedReviewers));
+  const [reviewError, setReviewError] = React.useState<string | null>(null);
+  const reviewDirty = JSON.stringify(numbersOf(reviewRows)) !== JSON.stringify(savedReviewers);
 
   const toneItems = React.useMemo(
     () => TONES.map((v) => ({ value: v, label: t(`agentSettings.tone.${v}`) })),
@@ -138,10 +144,37 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
       }
     }
     setAudienceError(null);
+    // Spec 025: same per-row check for the payment reviewers.
+    let badReviewer = false;
+    const checkedReviewers = reviewRows.map((r) => {
+      if (!r.phone.trim() || normalisePhone(r.phone)) return { ...r, error: null };
+      badReviewer = true;
+      return { ...r, error: t("agentSettings.paymentReview.err.phone", { text: r.phone.trim() }) };
+    });
+    setReviewRows(checkedReviewers);
+    if (badReviewer) {
+      toast.error(t("agentSettings.fixErrors"));
+      return;
+    }
+    if (numbersOf(checkedReviewers).length > 10) {
+      setReviewError(t("agentSettings.paymentReview.err.tooMany"));
+      toast.error(t("agentSettings.fixErrors"));
+      return;
+    }
+    setReviewError(null);
     const audience = { mode: audienceMode, numbers: numbersOf(audienceRows) };
+    const paymentReview = reviewDirty ? { reviewers: numbersOf(checkedReviewers) } : undefined;
     startTransition(async () => {
-      const res = await saveAgentSettingsAction({ ref: refId, settings, audience });
+      const res = await saveAgentSettingsAction({ ref: refId, settings, audience, paymentReview });
       if (!res.ok) {
+        if (res.code?.startsWith("payment_reviewer")) {
+          const text =
+            res.code === "payment_reviewer_invalid_phone"
+              ? t("agentSettings.paymentReview.err.phone", { text: String(res.info?.phone ?? "") })
+              : t("agentSettings.paymentReview.err.tooMany");
+          setReviewError(text);
+          return void toast.error(text);
+        }
         const text = audienceErrorText(res);
         if (res.code?.startsWith("audience_")) setAudienceError(text);
         return void toast.error(text);
@@ -154,6 +187,7 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
       setAllowedText(res.data.settings.languages.allowed.join(", "));
       setAudienceMode(res.data.audience.mode);
       setAudienceRows(rowsOf(res.data.audience.numbers));
+      setReviewRows(rowsOf(res.data.payment_review?.reviewers ?? []));
       router.refresh();
     });
   }
@@ -510,6 +544,34 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
           </CardContent>
         </Card>
 
+        {/* Spec 025 · who reviews payments */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("agentSettings.section.paymentReview")}</CardTitle>
+            <CardDescription>{t("agentSettings.paymentReview.help")}</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <PhoneRows
+              rows={reviewRows}
+              disabled={!canWrite || pending}
+              slot="payment-review-list"
+              labels={REVIEW_LABELS}
+              onRows={(rows) => {
+                setReviewRows(rows);
+                setReviewError(null);
+              }}
+            />
+            {numbersOf(reviewRows).length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("agentSettings.paymentReview.empty")}</p>
+            ) : null}
+            {reviewError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {reviewError}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+
         {/* AI disclosure */}
         <Card>
           <CardHeader>
@@ -561,7 +623,7 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
 
         {canWrite ? (
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={pending || (!form.formState.isDirty && !audienceDirty)}>
+            <Button type="submit" disabled={pending || (!form.formState.isDirty && !audienceDirty && !reviewDirty)}>
               {t("agentSettings.save")}
             </Button>
             <Link href={`${base}/agent`} className="text-sm text-muted-foreground underline-offset-4 hover:underline">
@@ -621,6 +683,18 @@ function SlotRow({ index, day, canWrite, onRemove }: { index: number; day: Weekd
     </div>
   );
 }
+
+const REVIEW_LABELS: PhoneRowsLabels = {
+  list: "agentSettings.paymentReview.numbers",
+  count: "agentSettings.paymentReview.count",
+  phone: "agentSettings.paymentReview.phone",
+  name: "agentSettings.paymentReview.name",
+  remove: "agentSettings.paymentReview.remove",
+  add: "agentSettings.paymentReview.add",
+  hint: "agentSettings.paymentReview.numbers.hint",
+  phoneEg: "agentSettings.paymentReview.numbers.eg",
+  nameEg: "agentSettings.paymentReview.name.eg",
+};
 
 /** Rows for the editor: the saved numbers, or one empty row to start typing. */
 function rowsOf(numbers: readonly { phone: string; name: string | null }[]): AudienceRow[] {

@@ -22,6 +22,7 @@ from nexus_api.db.models import AgentConfig, AgentConfigStatus
 from nexus_api.services.agent_audience import audience_of
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.agent_console_policy import with_disclosure_default
+from nexus_api.services.agent_payment_review import reviewers_of
 
 from .deps import ClientScope
 
@@ -172,7 +173,22 @@ def settings_changes(active: AgentConfig | None, draft: AgentConfig) -> list[dic
         active is None and audience_after["mode"] == "everyone"
     ):
         rows.append({"field": "audience", "before": audience_before, "after": audience_after})
+    # Spec 025: the payment reviewers live in ``policies.payment_review``.
+    reviewers_before = len(reviewers_of(active.policies if active else None))
+    reviewers_after = len(reviewers_of(draft.policies))
+    if reviewers_before != reviewers_after or _reviewer_phones(active) != _reviewer_phones(draft):
+        rows.append(
+            {
+                "field": "payment_review",
+                "before": {"count": reviewers_before},
+                "after": {"count": reviewers_after},
+            }
+        )
     return rows
+
+
+def _reviewer_phones(cfg: AgentConfig | None) -> list[str]:
+    return [r.phone for r in reviewers_of(cfg.policies if cfg else None)]
 
 
 def _audience_row(cfg: AgentConfig | None) -> dict[str, object]:
