@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/i18n/client";
-import type { AgentSettingsOut, Audience } from "@/lib/backend/agent-tools-types";
+import type { AgentSettingsOut, Audience, PaymentReview } from "@/lib/backend/agent-tools-types";
 
 import { AgentSettingsForm } from "../agent-settings-form";
 import { defaultConsolePolicy } from "../settings-schema";
@@ -22,7 +22,7 @@ vi.mock("@/app/(console)/clients/[ref]/agent/actions", () => ({
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-function data(audience: Partial<Audience> = {}): AgentSettingsOut {
+function data(audience: Partial<Audience> = {}, paymentReview: PaymentReview = { reviewers: [] }): AgentSettingsOut {
   return {
     version: 2,
     version_status: "staged",
@@ -30,6 +30,7 @@ function data(audience: Partial<Audience> = {}): AgentSettingsOut {
     has_draft: true,
     settings: defaultConsolePolicy(),
     audience: { mode: "everyone", numbers: [], locked: false, ...audience },
+    payment_review: paymentReview,
   };
 }
 
@@ -133,5 +134,62 @@ describe("Ajustes del agente · A quién responde (spec 024)", () => {
     expect(phone(1)).toBeDisabled();
     expect(screen.getByRole("button", { name: "Añadir número" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Guardar borrador" })).toBeNull();
+  });
+});
+
+describe("Ajustes del agente · Revisión de pagos (spec 025)", () => {
+  const reviewer = (n: number) => screen.getByLabelText(`Teléfono del revisor ${n}`);
+  const reviewerName = (n: number) => screen.getByLabelText(`Nombre del revisor ${n} (opcional)`);
+
+  function mountWith(reviewers: PaymentReview) {
+    return render(
+      <LocaleProvider locale="es">
+        <AgentSettingsForm refId="demo" data={data({}, reviewers)} canWrite actor="console:owner@demo.test" />
+      </LocaleProvider>,
+    );
+  }
+
+  it("says what happens with no reviewers, and starts with one empty row", () => {
+    mountWith({ reviewers: [] });
+    expect(screen.getByText("Revisión de pagos")).toBeInTheDocument();
+    expect(screen.getByText(/el agente pasa la conversación a una persona/)).toBeInTheDocument();
+    expect(reviewer(1)).toHaveValue("");
+  });
+
+  it("points at a wrong reviewer phone and does not save", async () => {
+    saveAgentSettingsAction.mockReset();
+    mountWith({ reviewers: [] });
+    fireEvent.change(reviewer(1), { target: { value: "123" } });
+    fireEvent.click(save());
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts[0]).toHaveTextContent("«123» no es un teléfono válido");
+    expect(saveAgentSettingsAction).not.toHaveBeenCalled();
+  });
+
+  it("sends the reviewers normalised next to the settings", async () => {
+    saveAgentSettingsAction.mockReset();
+    saveAgentSettingsAction.mockResolvedValue({
+      ok: true,
+      data: { ...data({}, { reviewers: [{ phone: "+56991280655", name: "Daniela" }] }), draft_created: false },
+    });
+    mountWith({ reviewers: [] });
+    fireEvent.change(reviewer(1), { target: { value: "+56 9 9128 0655" } });
+    fireEvent.change(reviewerName(1), { target: { value: "Daniela" } });
+    fireEvent.click(save());
+    await waitFor(() => expect(saveAgentSettingsAction).toHaveBeenCalled());
+    const sent = saveAgentSettingsAction.mock.calls[0]?.[0];
+    expect(sent.paymentReview).toEqual({ reviewers: [{ phone: "+56991280655", name: "Daniela" }] });
+  });
+
+  it("an untouched list does not travel", async () => {
+    saveAgentSettingsAction.mockReset();
+    saveAgentSettingsAction.mockResolvedValue({ ok: true, data: { ...data(), draft_created: false } });
+    mountWith({ reviewers: [{ phone: "+56991280655", name: "Daniela" }] });
+    expect(reviewer(1)).toHaveValue("+56991280655");
+    fireEvent.click(radio("Solo a estos números"));
+    fireEvent.change(phone(1), { target: { value: "+56991919125" } });
+    fireEvent.click(save());
+    await waitFor(() => expect(saveAgentSettingsAction).toHaveBeenCalled());
+    expect(saveAgentSettingsAction.mock.calls[0]?.[0].paymentReview).toBeUndefined();
   });
 });

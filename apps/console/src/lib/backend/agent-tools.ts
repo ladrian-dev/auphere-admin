@@ -20,6 +20,7 @@ import type {
   ToolModeOut,
   ToolsSaved, AgendaProPublicUrlOut,
   AudienceIn,
+  PaymentReview,
 } from "./agent-tools-types";
 
 /**
@@ -37,10 +38,14 @@ export function agentToolsApi(call: Call) {
   const base = (ref: string) => `/console/clients/${enc(ref)}`;
   return {
     getAgentSettings: (ref: string) => call<AgentSettingsOut>(`${base(ref)}/agent/settings`),
-    putAgentSettings: (ref: string, settings: ConsolePolicy, audience?: AudienceIn) =>
+    putAgentSettings: (ref: string, settings: ConsolePolicy, audience?: AudienceIn, paymentReview?: PaymentReview) =>
       call<AgentSettingsSaved>(`${base(ref)}/agent/settings`, {
         method: "PUT",
-        body: audience ? { settings, audience } : { settings },
+        body: {
+          settings,
+          ...(audience ? { audience } : {}),
+          ...(paymentReview ? { payment_review: paymentReview } : {}),
+        },
       }),
 
     listTools: (ref: string) => call<ToolCatalogOut>(`${base(ref)}/tools`),

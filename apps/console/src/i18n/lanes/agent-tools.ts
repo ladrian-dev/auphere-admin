@@ -113,6 +113,33 @@ export const agentToolsMessages = {
     en: "“{text}” is not a valid number. Write it with the international prefix, for example +44 7700 900123.",
   },
   "agentSettings.audience.err.locked": { es: "Este agente no se puede abrir a todo el mundo.", en: "This agent cannot be opened to everyone." },
+  // Spec 025 · «Revisión de pagos»
+  "agentSettings.section.paymentReview": { es: "Revisión de pagos", en: "Payment review" },
+  "agentSettings.paymentReview.help": {
+    es: "Cuando un cliente manda el comprobante de una transferencia, o dice que pagó por el enlace, el agente lo manda a estos números con dos botones, Confirmar pago y Rechazar pago. El primero que pulsa decide y el agente le avisa al cliente.",
+    en: "When a customer sends a bank-transfer receipt, or says they paid through the link, the agent sends it to these numbers with two buttons, Confirm payment and Reject payment. The first tap decides and the agent tells the customer.",
+  },
+  "agentSettings.paymentReview.numbers": { es: "Quién revisa los pagos", en: "Who reviews payments" },
+  "agentSettings.paymentReview.count": { es: "{n} revisores", en: "{n} reviewers" },
+  "agentSettings.paymentReview.phone": { es: "Teléfono del revisor {n}", en: "Reviewer {n} phone" },
+  "agentSettings.paymentReview.name": { es: "Nombre del revisor {n} (opcional)", en: "Reviewer {n} name (optional)" },
+  "agentSettings.paymentReview.name.eg": { es: "Nombre, por ejemplo Daniela", en: "Name, for example Daniela" },
+  "agentSettings.paymentReview.numbers.eg": { es: "+56 9 9128 0655", en: "+44 7700 900123" },
+  "agentSettings.paymentReview.numbers.hint": {
+    es: "WhatsApp solo deja escribir a quien le escribió a este número en las últimas 24 horas. Pide a cada persona que mande un hola al número del negocio cada día.",
+    en: "WhatsApp only lets the business write to someone who wrote to this number in the last 24 hours. Ask each person to send a hello to the business number every day.",
+  },
+  "agentSettings.paymentReview.add": { es: "Añadir revisor", en: "Add reviewer" },
+  "agentSettings.paymentReview.remove": { es: "Quitar al revisor {n}", en: "Remove reviewer {n}" },
+  "agentSettings.paymentReview.empty": {
+    es: "Sin números, el agente pasa la conversación a una persona cuando llega un comprobante.",
+    en: "With no numbers, the agent hands the conversation to a person when a receipt arrives.",
+  },
+  "agentSettings.paymentReview.err.phone": {
+    es: "«{text}» no es un teléfono válido. Escríbelo con el prefijo del país, por ejemplo +56 9 9128 0655.",
+    en: "“{text}” is not a valid phone. Write it with the country code, for example +44 7700 900123.",
+  },
+  "agentSettings.paymentReview.err.tooMany": { es: "Como máximo diez números.", en: "At most ten numbers." },
   "agentSettings.aiDisclosure.enabled": { es: "El agente avisa de que es una IA", en: "The agent discloses it is an AI" },
   "agentSettings.aiDisclosure.message": { es: "Texto del aviso (opcional)", en: "Disclosure wording (optional)" },
   "agentSettings.aiDisclosure.decided": { es: "Decisión registrada por {who} el {when}.", en: "Decision recorded by {who} on {when}." },
