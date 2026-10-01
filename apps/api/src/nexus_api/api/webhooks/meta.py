@@ -74,6 +74,7 @@ from nexus_api.repositories.auphere_channels import (
 )
 from nexus_api.services.channel_routing import config_agent_enabled
 from nexus_api.services.owner_channel_flow import handle_owner_inbound
+from nexus_api.services.payment_reviews import parse_tap, resolve_tap
 from nexus_api.services.whatsapp_templates import invalidate_template_cache
 
 router = APIRouter()
@@ -371,6 +372,25 @@ async def _handle_inbound(
     # agente admin-only debe recibir acuse de lectura (ver más abajo).
     agent_policies: dict[str, Any] = agent_policies_raw or {}
     channel_config = channel_config or {}
+
+    # Spec 025: a reviewer tapped «Confirmar pago» / «Rechazar pago». The tap
+    # resolves the payment review and never reaches the agent, whether or not
+    # the reviewer is on the «A quién responde» list. The token is looked up
+    # under this tenant's RLS: a token from another business does not exist.
+    if inbound.interactive is not None and parse_tap(inbound.interactive.payload_id):
+        async with tenant_scoped_session(session, tenant_id):
+            outcome = await resolve_tap(
+                session,
+                payload_id=inbound.interactive.payload_id,
+                sender=inbound.sender_identifier,
+            )
+        log.info(
+            "webhook.meta.payment_review_tap",
+            tenant_id=str(tenant_id),
+            resolved=outcome.resolved,
+            status_after=outcome.status,
+        )
+        return {"status": "payment_review", "resolved": outcome.resolved}
 
     # WP-11 (D10, cierra V7): the webhook no longer downloads media bytes.
     # It publishes the provider's ``media_id`` and the RUNNER resolves

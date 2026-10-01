@@ -193,6 +193,14 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "appointments",
     ),
     # ── Pedidos y cobros ───────────────────────────────────────────────
+    # ── Revisión de pagos (spec 025) ─────────────────────────────────
+    ("tool", "payments.request_review"): _t(
+        "Pedir revisión de un pago",
+        "Ask for a payment review",
+        "Manda el comprobante al equipo con botones para confirmar o rechazar el pago.",
+        "Sends the receipt to the team with buttons to confirm or reject the payment.",
+        "orders",
+    ),
     ("tool", "woocommerce.build_checkout_link"): _t(
         "Mandar un enlace de pago",
         "Send a checkout link",
