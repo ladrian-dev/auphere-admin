@@ -124,3 +124,22 @@ class TestChannelFormatNote:
     def test_unknown_channel_defaults_to_web(self) -> None:
         # Any non-whatsapp channel gets the standard-Markdown note.
         assert _channel_format_note("instagram") == _channel_format_note("web")
+
+
+class TestPaymentReviewOnEveryIntent:
+    """Spec 025: a receipt classified as ``escalate`` must still reach the
+    payment review tool (seen in production on 2026-10-01: the agent could
+    not call it and turned the receipt down instead)."""
+
+    def test_payment_review_is_offered_on_every_intent(self) -> None:
+        bundle = _bundle({"payments.request_review", "escalate.escalate_to_human"})
+        for intent in ("escalate", "info", "book", "queue", "fallback"):
+            assert "payments.request_review" in _filter_tools_for_intent_with_composio(
+                bundle, intent
+            ), intent
+
+    def test_not_offered_when_the_agent_does_not_have_it(self) -> None:
+        bundle = _bundle({"escalate.escalate_to_human"})
+        assert "payments.request_review" not in _filter_tools_for_intent_with_composio(
+            bundle, "escalate"
+        )

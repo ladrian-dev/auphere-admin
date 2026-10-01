@@ -408,6 +408,11 @@ _NATIVE_TOOL_NAMES: frozenset[str] = frozenset(
 # escalation hands off to a human, it does not browse a catalog.
 _CONNECTOR_TOOL_INTENTS: frozenset[str] = frozenset({"book", "queue", "info", "fallback"})
 
+# Namespaced toolkits offered on EVERY intent, ``escalate`` included.
+# ``payments`` (spec 025): the payment review is a hand-off to the team, and
+# the classifier routinely files a receipt under ``escalate``.
+_EVERY_INTENT_TOOLKITS: frozenset[str] = frozenset({"payments"})
+
 
 def _tenant_uuid(state: AgentState) -> uuid.UUID:
     return uuid.UUID(state["tenant_id"])
@@ -466,7 +471,13 @@ def _filter_tools_for_intent_with_composio(bundle: AgentBundle, intent: str) -> 
         # ``queue``/``book``) never gets its tools bound and the model emits
         # the tool call as plain text instead of invoking it.
         toolkit = t.split(".", 1)[0]
-        if intent == "info":
+        if toolkit in _EVERY_INTENT_TOOLKITS:
+            # Spec 025: a receipt is often classified ``escalate`` (the
+            # customer "wants a person to check the payment"). The payment
+            # review is exactly that hand-off, so it must be offered there
+            # too — on every intent, never dropped by the classifier's guess.
+            extras.append(t)
+        elif intent == "info":
             extras.append(t)
         elif toolkit in {"googlecalendar", "calendly"}:
             if intent == "book":
