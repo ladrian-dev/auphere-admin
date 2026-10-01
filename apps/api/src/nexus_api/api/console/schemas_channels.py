@@ -161,6 +161,8 @@ class WhatsAppSignupOut(BaseModel):
 # ── templates (CP-18) ──────────────────────────────────────────────────
 
 _TEMPLATE_NAME_RE = re.compile(r"^[a-z0-9_]{1,512}$")
+_BODY_VAR_RE = re.compile(r"\{\{\s*([a-z0-9_]+)\s*\}\}")
+_VAR_NAME_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 
 TemplateCategory = Literal["MARKETING", "UTILITY", "AUTHENTICATION"]
 
@@ -225,6 +227,32 @@ class TemplateCreateIn(BaseModel):
     body_text: str = Field(min_length=1, max_length=1024)
     footer_text: str | None = Field(default=None, max_length=60)
     buttons: list[TemplateButtonIn] = Field(default_factory=list, max_length=3)
+    #: Example value per body variable (``{"nombre": "Camila"}`` or
+    #: ``{"1": "Camila"}``). Meta needs one for every variable to review it.
+    examples: dict[str, str] = Field(default_factory=dict, max_length=20)
+
+    @field_validator("examples")
+    @classmethod
+    def _validate_examples(cls, v: dict[str, str]) -> dict[str, str]:
+        for key, value in v.items():
+            if not _VAR_NAME_RE.match(key) or not value.strip() or len(value) > 200:
+                raise ValueError(f"invalid example for {key!r}")
+        return v
+
+    def variables(self) -> list[str]:
+        """Body variables in order of first appearance, without repeats."""
+        out: list[str] = []
+        for match in _BODY_VAR_RE.finditer(self.body_text):
+            name = match.group(1)
+            if name not in out:
+                out.append(name)
+        return out
+
+    def parameter_format(self) -> str | None:
+        names = self.variables()
+        if names and not all(n.isdigit() for n in names):
+            return "NAMED"
+        return None
 
     @field_validator("name")
     @classmethod
@@ -239,7 +267,19 @@ class TemplateCreateIn(BaseModel):
         components: list[dict[str, Any]] = []
         if self.header_text:
             components.append({"type": "HEADER", "format": "TEXT", "text": self.header_text})
-        components.append({"type": "BODY", "text": self.body_text})
+        body: dict[str, Any] = {"type": "BODY", "text": self.body_text}
+        names = self.variables()
+        if names and all(n in self.examples for n in names):
+            if self.parameter_format() == "NAMED":
+                body["example"] = {
+                    "body_text_named_params": [
+                        {"param_name": n, "example": self.examples[n]} for n in names
+                    ]
+                }
+            else:
+                ordered = sorted(names, key=int)
+                body["example"] = {"body_text": [[self.examples[n] for n in ordered]]}
+        components.append(body)
         if self.footer_text:
             components.append({"type": "FOOTER", "text": self.footer_text})
         if self.buttons:

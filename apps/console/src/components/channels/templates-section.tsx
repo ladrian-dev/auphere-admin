@@ -168,6 +168,16 @@ export function TemplatesSection({ refId, list, error, manage }: { refId: string
 
 type ButtonDraft = TemplateButton;
 
+/** Pure: the body variables (``{{nombre}}`` or ``{{1}}``), in order, without repeats. */
+export function templateVariables(body: string): string[] {
+  const out: string[] = [];
+  for (const match of body.matchAll(/\{\{\s*([a-z0-9_]+)\s*\}\}/g)) {
+    const name = match[1];
+    if (name && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
 function CreateTemplateDialog({ refId, open, onOpenChange }: { refId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   const t = useT();
   const router = useRouter();
@@ -179,8 +189,14 @@ function CreateTemplateDialog({ refId, open, onOpenChange }: { refId: string; op
   const [body, setBody] = React.useState("");
   const [footer, setFooter] = React.useState("");
   const [buttons, setButtons] = React.useState<ButtonDraft[]>([]);
+  const [examples, setExamples] = React.useState<Record<string, string>>({});
+  const variables = templateVariables(body);
   const nameInvalid = name.length > 0 && !NAME_RE.test(name);
-  const valid = NAME_RE.test(name) && body.trim().length > 0 && buttons.every((b) => b.label.trim().length > 0);
+  const valid =
+    NAME_RE.test(name) &&
+    body.trim().length > 0 &&
+    buttons.every((b) => b.label.trim().length > 0) &&
+    variables.every((v) => (examples[v] ?? "").trim().length > 0);
 
   function submit() {
     startTransition(async () => {
@@ -193,6 +209,7 @@ function CreateTemplateDialog({ refId, open, onOpenChange }: { refId: string; op
         body_text: body,
         footer_text: footer || undefined,
         buttons: buttons.map((b) => ({ ...b, url: b.url || undefined, phone_number: b.phone_number || undefined })),
+        examples: Object.fromEntries(variables.map((v) => [v, (examples[v] ?? "").trim()])),
       });
       if (!res.ok) return void toast.error(res.message);
       toast.success(t("tpl.created"));
@@ -202,6 +219,7 @@ function CreateTemplateDialog({ refId, open, onOpenChange }: { refId: string; op
       setHeader("");
       setFooter("");
       setButtons([]);
+      setExamples({});
       router.refresh();
     });
   }
@@ -254,6 +272,23 @@ function CreateTemplateDialog({ refId, open, onOpenChange }: { refId: string; op
             <Label htmlFor="tpl-body">{t("tpl.form.body")}</Label>
             <Textarea id="tpl-body" value={body} onChange={(e) => setBody(e.target.value)} maxLength={1024} rows={5} required />
           </div>
+          {variables.length > 0 ? (
+            <fieldset className="flex flex-col gap-2" data-slot="template-examples">
+              <legend className="text-sm font-medium">{t("tpl.form.examples")}</legend>
+              <p className="text-xs text-muted-foreground">{t("tpl.form.examples.help")}</p>
+              {variables.map((v) => (
+                <div key={v} className="flex flex-col gap-1">
+                  <Label htmlFor={`tpl-ex-${v}`}>{t("tpl.form.example", { name: v })}</Label>
+                  <Input
+                    id={`tpl-ex-${v}`}
+                    value={examples[v] ?? ""}
+                    maxLength={200}
+                    onChange={(e) => setExamples((prev) => ({ ...prev, [v]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </fieldset>
+          ) : null}
           <div className="flex flex-col gap-1">
             <Label htmlFor="tpl-footer">{t("tpl.form.footer")}</Label>
             <Input id="tpl-footer" value={footer} onChange={(e) => setFooter(e.target.value)} maxLength={60} />
