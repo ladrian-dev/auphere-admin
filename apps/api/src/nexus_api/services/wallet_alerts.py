@@ -107,14 +107,14 @@ async def _emit_client_out_of_quota(
 
 
 async def _email_client_out_of_quota(partner: Partner, ref: str, recipients: list[str]) -> bool:
-    subject = f"[Auphere] {partner.name}: {ref} se ha quedado sin cupo"
+    subject = f"[Auphere] {partner.name}: {ref} se ha quedado sin saldo"
     html = (
         '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
         'max-width:560px;margin:0 auto;color:#111">'
         f"<p style='font-size:16px;margin:0 0 8px'><strong>El cliente {ref} ha agotado su "
-        "cupo y sus mensajes no se están atendiendo.</strong></p>"
-        "<p style='margin:0'>Habla con tu cliente y asígnale más créditos en la sección "
-        "Consumo de la consola. En cuanto tenga cupo, el agente vuelve a contestar solo.</p>"
+        "saldo y sus mensajes no se están atendiendo.</strong></p>"
+        "<p style='margin:0'>Habla con tu cliente y súbele el tope en la sección "
+        "Consumo de la consola. En cuanto tenga saldo, el agente vuelve a contestar solo.</p>"
         "</div>"
     )
     try:
@@ -293,7 +293,7 @@ async def _notify_by_email(partner: Partner, ev: WalletAlertEvaluation, since: d
     if ev.clients_out:
         extra = (
             f"<p style='margin:12px 0 0'>Además, <strong>{len(ev.clients_out)}</strong> "
-            "cliente(s) ya han agotado su cuota individual y no están respondiendo, "
+            "cliente(s) ya han agotado su tope y no están respondiendo, "
             "aunque quede saldo general.</p>"
         )
     html = (
