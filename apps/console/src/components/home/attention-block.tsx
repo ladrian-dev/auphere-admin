@@ -1,8 +1,10 @@
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 
-import { Button, cn } from "@nexus/ui";
+import { cn } from "@nexus/ui";
 
+import { type RowAction, RowActions } from "@/components/row-actions";
+import { foldsIntoMenu } from "@/components/row-actions-rule";
 import type { MessageKey } from "@/i18n/messages";
 import type { HomeAttention } from "@/lib/backend/home-usage";
 
@@ -33,7 +35,8 @@ export function AttentionBlock({ attention, total, walletEmpty = false, t, n }: 
   const rows = attentionRows(attention.items, walletEmpty);
   const shown = rows.slice(0, VISIBLE);
   const rest = rows.slice(VISIBLE);
-  const row = (r: AttentionRow) => <AttentionLine key={r.type === "one" ? `${r.item.external_client_ref}-${r.item.kind}` : r.type === "many" ? `group-${r.kind}` : "wallet"} row={r} t={t} n={n} />;
+  const menu = foldsIntoMenu(rows.length);
+  const row = (r: AttentionRow) => <AttentionLine menu={menu} key={r.type === "one" ? `${r.item.external_client_ref}-${r.item.kind}` : r.type === "many" ? `group-${r.kind}` : "wallet"} row={r} t={t} n={n} />;
   return (
     <section aria-labelledby="home-attention-h" className="flex flex-col gap-2 rounded-md bg-card p-4 ring-1 ring-status-danger/30" data-slot="home-attention">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -55,7 +58,7 @@ export function AttentionBlock({ attention, total, walletEmpty = false, t, n }: 
   );
 }
 
-function AttentionLine({ row, t, n }: { row: AttentionRow; t: T; n: (v: number) => string }) {
+function AttentionLine({ row, menu, t, n }: { row: AttentionRow; menu: boolean; t: T; n: (v: number) => string }) {
   const kind = row.type === "one" ? row.item.kind : row.type === "many" ? row.kind : "wallet_empty";
   const urgent = row.type === "wallet" || (row.type === "one" ? row.item.severity : row.severity) <= 3;
   const count = row.type === "one" ? (row.item.count ?? 0) : row.type === "many" ? row.count : row.names.length;
@@ -71,11 +74,23 @@ function AttentionLine({ row, t, n }: { row: AttentionRow; t: T; n: (v: number) 
       ? t("hu.home.attention.names", { names: listed.slice(0, NAMED).join(", "), more: n(listed.length - NAMED) })
       : listed.join(", ")
     : null;
+  const fixHref = row.type === "one" ? row.item.href : row.href;
+  const actions: RowAction[] = [{ label: t(`hu.home.fix.${kind}` as MessageKey), href: fixHref, primary: true }];
+  if (row.type === "one") {
+    const base = `/clients/${encodeURIComponent(row.item.external_client_ref)}`;
+    actions.push({ label: t("hu.home.actions.client"), href: base });
+    actions.push({ label: t("hu.home.actions.conversations"), href: `${base}/conversations` });
+  } else {
+    actions.push({ label: t("hu.home.actions.clients"), href: "/clients" });
+  }
+  const unique = actions.filter((a, i) => actions.findIndex((b) => b.href === a.href) === i);
   return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2">
-      <span aria-hidden="true" className={cn("size-2 shrink-0 self-start rounded-full mt-2", urgent ? "bg-status-danger" : "bg-status-warning")} />
-      <div className="flex min-w-0 flex-1 basis-56 flex-col">
-        <span className="truncate text-sm font-medium">{who}</span>
+    <li className="flex items-center gap-4 py-2">
+      <span aria-hidden="true" className={cn("mt-2 size-2 shrink-0 self-start rounded-full", urgent ? "bg-status-danger" : "bg-status-warning")} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Link href={fixHref} className="truncate text-sm font-medium hover:underline">
+          {who}
+        </Link>
         <span className="text-sm text-pretty text-muted-foreground">{t(`hu.home.issue.${kind}` as MessageKey, { count: n(count) })}</span>
         {names ? (
           <span className="truncate text-xs text-muted-foreground" title={listed?.join(", ")}>
@@ -83,9 +98,7 @@ function AttentionLine({ row, t, n }: { row: AttentionRow; t: T; n: (v: number) 
           </span>
         ) : null}
       </div>
-      <Button variant={urgent ? "default" : "outline"} size="sm" nativeButton={false} render={<Link href={row.type === "one" ? row.item.href : row.href} />}>
-        {t(`hu.home.fix.${kind}` as MessageKey)}
-      </Button>
+      <RowActions actions={unique} menu={menu} ariaLabel={t("hu.home.actions.aria", { who })} />
     </li>
   );
 }

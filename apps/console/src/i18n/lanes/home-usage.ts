@@ -35,6 +35,10 @@ export const homeUsageMessages = {
   "hu.home.fix.draft_unpublished": { es: "Revisar y publicar", en: "Review and publish" },
   "hu.home.fix.provisioning": { es: "Terminar el alta", en: "Finish setup" },
   // Por revisar ahora
+  "hu.home.actions.aria": { es: "Opciones de {who}", en: "Options for {who}" },
+  "hu.home.actions.client": { es: "Abrir ficha del cliente", en: "Open the client" },
+  "hu.home.actions.conversations": { es: "Ver conversaciones", en: "See conversations" },
+  "hu.home.actions.clients": { es: "Ver todos los clientes", en: "See all clients" },
   "hu.home.review.title": { es: "Por revisar ahora", en: "To review now" },
   "hu.home.review.escalated": { es: "Conversaciones escaladas", en: "Escalated conversations" },
   "hu.home.review.payments": { es: "Pagos por revisar", en: "Payments to review" },

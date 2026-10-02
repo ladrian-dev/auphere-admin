@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { LocaleProvider } from "@/i18n/client";
@@ -47,6 +48,24 @@ describe("Necesita tu atención", () => {
     expect(screen.getByText("5 clientes")).toBeTruthy();
     expect(screen.getByText("A, B, C y 2 más")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Asignar crédito" }).getAttribute("href")).toBe("/usage");
+  });
+
+  it("more than two actions in the list: each row folds them behind three dots", async () => {
+    const one = (ref: string, kind: "no_active_agent" | "whatsapp_disconnected" | "failed_messages", severity: number) => ({
+      kind,
+      severity,
+      external_client_ref: ref,
+      client_name: ref.toUpperCase(),
+      count: 2,
+      href: `/clients/${ref}/fix`,
+    });
+    render(<AttentionBlock attention={{ items: [one("a", "no_active_agent", 2), one("b", "whatsapp_disconnected", 3), one("c", "failed_messages", 5)], clients_ok: 0 }} total={3} t={t} n={n} />);
+    expect(screen.queryByRole("button", { name: "Publicar agente" })).toBeNull();
+    expect(screen.getByRole("link", { name: "A" }).getAttribute("href")).toBe("/clients/a/fix");
+    await userEvent.click(screen.getByRole("button", { name: "Opciones de A" }));
+    expect(await screen.findByRole("menuitem", { name: "Publicar agente" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Abrir ficha del cliente" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Ver conversaciones" })).toBeTruthy();
   });
 
   it("with nothing to fix says so in one calm line", () => {
