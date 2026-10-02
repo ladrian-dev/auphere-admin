@@ -159,3 +159,25 @@ describe("Gasto del mes", () => {
     expect(screen.getByText("Todavía no hay gasto este mes.")).toBeTruthy();
   });
 });
+
+describe("Conversaciones por día · barras", () => {
+  it("one bar per day, today named, the average said, and each day's busiest clients", () => {
+    const trend: HomeTrend = {
+      days: ["2026-10-01", "2026-10-02"],
+      series: [10, 4],
+      current: 14,
+      previous: null,
+      by_client: [{ external_client_ref: "a", client_name: "Flor y Encanto", series: [6, 4] }],
+    };
+    render(
+      <LocaleProvider locale="es">
+        <ConversationsChart trend={trend} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText("Media 7 al día")).toBeTruthy();
+    expect(screen.getByText("Hoy")).toBeTruthy();
+    expect(screen.getAllByRole("listitem").filter((li) => li.querySelector("[tabindex]"))).toHaveLength(2);
+    expect(screen.getByLabelText(/jueves 1: 10 conversaciones/)).toBeTruthy();
+    expect(screen.getAllByText("Flor y Encanto")).toHaveLength(2);
+  });
+});

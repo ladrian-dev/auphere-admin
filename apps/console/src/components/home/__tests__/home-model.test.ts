@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attentionRows, chartData, creditRunway, spendShares, roundDays, statusTone, trendDelta } from "../home-model";
+import { attentionRows, creditRunway, dayBars, spendShares, roundDays, statusTone, trendDelta } from "../home-model";
 
 describe("Reglas del Inicio (spec 026)", () => {
   it("compara con el periodo anterior sin inventar variaciones", () => {
@@ -18,25 +18,23 @@ describe("Reglas del Inicio (spec 026)", () => {
     expect(statusTone("archived")).toBe("muted");
   });
 
-  it("monta la gráfica apilada con el resto al final", () => {
-    const data = chartData(
-      {
-        days: ["2026-10-01", "2026-10-02"],
-        series: [3, 5],
-        current: 8,
-        previous: null,
-        by_client: [
-          { external_client_ref: "flor", client_name: "Flor y Encanto", series: [2, 4] },
-          { external_client_ref: null, client_name: null, series: [1, 1] },
-        ],
-      },
-      "Resto de clientes",
-    );
-    expect(data.series).toEqual([
-      { key: "s0", label: "Flor y Encanto" },
-      { key: "s1", label: "Resto de clientes" },
-    ]);
-    expect(data.rows[1]).toEqual({ day: "2026-10-02", s0: 4, s1: 1 });
+  it("cada día es un total, hoy va marcado y el detalle son sus tres clientes con más conversaciones", () => {
+    const trend = {
+      days: ["2026-10-01", "2026-10-02"],
+      series: [10, 4],
+      current: 14,
+      previous: null,
+      by_client: [
+        { external_client_ref: "a", client_name: "A", series: [6, 0] },
+        { external_client_ref: "b", client_name: null, series: [3, 4] },
+        { external_client_ref: null, client_name: null, series: [1, 0] },
+      ],
+    };
+    const { bars, average, max } = dayBars(trend, "Resto");
+    expect(average).toBe(7);
+    expect(max).toBe(10);
+    expect(bars[0]!.top).toEqual([{ label: "A", value: 6 }, { label: "b", value: 3 }, { label: "Resto", value: 1 }]);
+    expect(bars[1]).toMatchObject({ total: 4, today: true, top: [{ label: "b", value: 4 }] });
   });
 
   it("redondea los días como lo diría una persona", () => {

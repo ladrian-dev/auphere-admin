@@ -56,7 +56,10 @@ export const homeUsageMessages = {
   "hu.home.kpi.credit.runway.aria": { es: "Días del mes que cubre el crédito", en: "Days of the month the credit covers" },
   // Gráfica
   "hu.home.chart.title": { es: "Conversaciones por día", en: "Conversations per day" },
-  "hu.home.chart.aria": { es: "Conversaciones por día y cliente en los últimos 7 días", en: "Conversations per day and client over the last 7 days" },
+  "hu.home.chart.aria": { es: "Conversaciones por día en los últimos 7 días", en: "Conversations per day over the last 7 days" },
+  "hu.home.chart.avg": { es: "Media {n} al día", en: "Average {n} a day" },
+  "hu.home.chart.bar": { es: "{day}: {n} conversaciones", en: "{day}: {n} conversations" },
+  "hu.home.chart.today": { es: "Hoy", en: "Today" },
   "hu.home.chart.rest": { es: "Resto de clientes", en: "Other clients" },
   "hu.home.chart.empty": { es: "Sin conversaciones en los últimos 7 días.", en: "No conversations in the last 7 days." },
   // Crédito en riesgo

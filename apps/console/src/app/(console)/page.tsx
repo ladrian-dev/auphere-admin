@@ -86,7 +86,10 @@ export default async function HomePage() {
             <SpendCard spend={spend} t={t} locale={locale} />
           </div>
         ) : null}
-        <section className={spend ? "grid gap-4 sm:grid-cols-3 lg:col-span-2" : "grid gap-4 sm:grid-cols-3 lg:col-span-3"} aria-label={t("home.title")}>
+        {/* Three cards side by side only where they fit (container query):
+            at the pane's narrow widths a cut title says less than a stack. */}
+        <section className={spend ? "@container lg:col-span-2" : "@container lg:col-span-3"} aria-label={t("home.title")}>
+          <div className="grid gap-4 @xl:grid-cols-3">
           {trend && delta ? (
             <HighlightMetric
               icon={<Bot />}
@@ -130,6 +133,7 @@ export default async function HomePage() {
               href="/usage"
             />
           ) : null}
+          </div>
         </section>
         {trend ? (
           <Section title={t("hu.home.chart.title")} className={spend ? "lg:col-span-2" : "lg:col-span-3"}>
