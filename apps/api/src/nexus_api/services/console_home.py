@@ -33,7 +33,8 @@ from __future__ import annotations
 import asyncio
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 import sqlalchemy as sa
 import structlog
@@ -47,9 +48,14 @@ from nexus_api.db.models import (
     ChannelStatus,
     ChannelType,
     Conversation,
+    ConversationStatus,
     Message,
+    MessageDirection,
     MessageStatus,
+    PaymentReview,
+    TenantCredentials,
 )
+from nexus_api.db.models.payment_review import REVIEW_PENDING
 from nexus_api.services.agent_audience import AudienceMode, count_of
 from nexus_api.services.console_traffic import customer_conversation_ids, customer_facing_channel
 
@@ -57,6 +63,12 @@ log = structlog.get_logger(__name__)
 
 SNAPSHOT_CONCURRENCY = 6
 INCIDENT_WINDOW = timedelta(hours=24)
+#: Spec 026: «por revisar» and the portfolio look at the last 7 days.
+REVIEW_WINDOW = timedelta(days=7)
+#: Spec 026 (D5): 14 days of daily conversations, 7 shown and 7 to compare.
+TREND_DAYS = 14
+#: Spec 026: a draft older than this is «cambios sin publicar».
+STALE_DRAFT = timedelta(days=1)
 
 
 @dataclass(frozen=True)
@@ -74,6 +86,20 @@ class TenantSnapshot:
     #: there is no active version.
     audience_mode: AudienceMode | None = None
     audience_count: int = 0
+    # ── spec 026 ────────────────────────────────────────────────────────
+    #: ESCALATED conversations whose customer wrote in the last 7 days (D2).
+    escalated_recent: int = 0
+    payments_pending: int = 0
+    #: Inbounds the agent did not answer (allowed-numbers list) in 7 days.
+    unanswered_7d: int = 0
+    whatsapp_quality_red: int = 0
+    needs_reauth: int = 0
+    #: A STAGED version older than ``STALE_DRAFT``.
+    stale_drafts: int = 0
+    waba_ids: tuple[str, ...] = ()
+    last_activity_at: datetime | None = None
+    #: ``date → conversations`` for the last ``TREND_DAYS`` UTC days.
+    daily: dict[date, int] = field(default_factory=dict)
 
     @property
     def issues(self) -> list[str]:
@@ -94,8 +120,8 @@ class SnapshotResult:
 
 
 def _snapshot_stmt(
-    month_start: datetime, since_24h: datetime
-) -> sa.Select[tuple[int, int, int | None, int, int, int]]:
+    month_start: datetime, since_24h: datetime, now: datetime | None = None
+) -> sa.Select[tuple[Any, ...]]:
     # Playground traffic is not customer traffic (``console_traffic``).
     conversations = (
         sa.select(sa.func.count())
@@ -151,7 +177,105 @@ def _snapshot_stmt(
         .limit(1)
         .scalar_subquery()
     )
-    return sa.select(conversations, failed, agent, wa_total, wa_bad, active_channels, policies)
+    now = now or datetime.now(UTC)
+    since_7d = now - REVIEW_WINDOW
+    escalated = (
+        sa.select(sa.func.count())
+        .select_from(Conversation)
+        .where(
+            Conversation.status == ConversationStatus.ESCALATED,
+            Conversation.last_inbound_at >= since_7d,
+            Conversation.id.in_(customer_conversation_ids()),
+        )
+        .scalar_subquery()
+    )
+    payments = (
+        sa.select(sa.func.count())
+        .select_from(PaymentReview)
+        .where(PaymentReview.status == REVIEW_PENDING)
+        .scalar_subquery()
+    )
+    unanswered = (
+        sa.select(sa.func.count())
+        .select_from(Message)
+        .where(
+            Message.direction == MessageDirection.INBOUND,
+            Message.skipped_reason.is_not(None),
+            Message.created_at >= since_7d,
+        )
+        .scalar_subquery()
+    )
+    quality_red = (
+        sa.select(sa.func.count())
+        .select_from(Channel)
+        .where(
+            Channel.type == ChannelType.WHATSAPP,
+            Channel.status == ChannelStatus.ACTIVE,
+            Channel.config["quality_rating"].astext == "RED",
+        )
+        .scalar_subquery()
+    )
+    reauth = (
+        sa.select(sa.func.count())
+        .select_from(TenantCredentials)
+        .where(TenantCredentials.needs_reauth.is_(True))
+        .scalar_subquery()
+    )
+    drafts = (
+        sa.select(sa.func.count())
+        .select_from(AgentConfig)
+        .where(
+            AgentConfig.status == AgentConfigStatus.STAGED,
+            AgentConfig.created_at < now - STALE_DRAFT,
+        )
+        .scalar_subquery()
+    )
+    wabas = (
+        sa.select(sa.func.array_agg(sa.distinct(Channel.config["waba_id"].astext)))
+        .where(Channel.type == ChannelType.WHATSAPP, Channel.config["waba_id"].astext.is_not(None))
+        .scalar_subquery()
+    )
+    last_activity = (
+        sa.select(sa.func.max(Conversation.last_inbound_at))
+        .where(Conversation.id.in_(customer_conversation_ids()))
+        .scalar_subquery()
+    )
+    return sa.select(
+        conversations,
+        failed,
+        agent,
+        wa_total,
+        wa_bad,
+        active_channels,
+        policies,
+        escalated,
+        payments,
+        unanswered,
+        quality_red,
+        reauth,
+        drafts,
+        wabas,
+        last_activity,
+    )
+
+
+def _daily_stmt(since: datetime) -> sa.Select[tuple[Any, int]]:
+    """Customer conversations started per UTC day since ``since`` (D5)."""
+    day = sa.func.date_trunc("day", sa.func.timezone("UTC", Conversation.created_at))
+    return (
+        sa.select(day, sa.func.count())
+        .where(
+            Conversation.created_at >= since,
+            Conversation.id.in_(customer_conversation_ids()),
+        )
+        .group_by(day)
+    )
+
+
+def trend_start(now: datetime) -> datetime:
+    """Midnight UTC ``TREND_DAYS - 1`` days ago: today is the last bucket."""
+    today = now.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    return today - timedelta(days=TREND_DAYS - 1)
 
 
 async def tenant_snapshots(
@@ -167,7 +291,8 @@ async def tenant_snapshots(
     home page degrades that block instead of failing whole."""
     now = now or datetime.now(UTC)
     since_24h = now - INCIDENT_WINDOW
-    stmt = _snapshot_stmt(month_start, since_24h)
+    stmt = _snapshot_stmt(month_start, since_24h, now)
+    daily_stmt = _daily_stmt(trend_start(now))
     sm = get_sessionmaker()
     sem = asyncio.Semaphore(max(1, concurrency))
     result = SnapshotResult()
@@ -177,6 +302,7 @@ async def tenant_snapshots(
             try:
                 async with sm() as session, tenant_scoped_session(session, tid):
                     row = (await session.execute(stmt)).one()
+                    daily_rows = (await session.execute(daily_stmt)).all()
             except Exception as exc:
                 log.warning("console_home.snapshot_failed", tenant_id=str(tid), error=str(exc))
                 result.failed.append(tid)
@@ -191,6 +317,15 @@ async def tenant_snapshots(
             active_channels=int(row[5] or 0),
             audience_mode=count_of(row[6])[0] if row[2] is not None else None,
             audience_count=count_of(row[6])[1] if row[2] is not None else 0,
+            escalated_recent=int(row[7] or 0),
+            payments_pending=int(row[8] or 0),
+            unanswered_7d=int(row[9] or 0),
+            whatsapp_quality_red=int(row[10] or 0),
+            needs_reauth=int(row[11] or 0),
+            stale_drafts=int(row[12] or 0),
+            waba_ids=tuple(w for w in (row[13] or []) if w),
+            last_activity_at=row[14],
+            daily={d.date(): int(c) for d, c in daily_rows if d is not None},
         )
 
     await asyncio.gather(*(_one(t) for t in tenant_ids))
@@ -199,8 +334,11 @@ async def tenant_snapshots(
 
 __all__ = [
     "INCIDENT_WINDOW",
+    "REVIEW_WINDOW",
     "SNAPSHOT_CONCURRENCY",
+    "TREND_DAYS",
     "SnapshotResult",
     "TenantSnapshot",
     "tenant_snapshots",
+    "trend_start",
 ]

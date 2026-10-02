@@ -16,6 +16,8 @@ opens the console, not only when the worker cron ticks.
 from __future__ import annotations
 
 import time
+import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
@@ -33,8 +35,24 @@ from nexus_api.db.models import (
     PartnerTenant,
     Tenant,
     TenantStatus,
+    WhatsAppTemplateStatus,
 )
-from nexus_api.services.console_home import tenant_snapshots
+from nexus_api.metering.wallet import allocations_for, credit_burn, read_wallet
+from nexus_api.services.console_home import (
+    REVIEW_WINDOW,
+    SnapshotResult,
+    TenantSnapshot,
+    tenant_snapshots,
+)
+from nexus_api.services.console_home_blocks import (
+    ClientRow,
+    attention_items,
+    credit_block,
+    days_until,
+    portfolio_rows,
+    review_block,
+    trend_block,
+)
 from nexus_api.services.console_reporting import (
     month_bounds,
     percent_of,
@@ -46,14 +64,20 @@ from nexus_api.services.usage_alerts import (
 )
 
 from .schemas_home_usage import (
+    AttentionItemOut,
+    HomeAttentionOut,
     HomeClientsOut,
     HomeConversationsOut,
+    HomeCreditOut,
     HomeIncidentsOut,
     HomeOut,
     HomePendingOut,
+    HomeToReviewOut,
+    HomeTrendOut,
     HomeUsageOut,
     IncidentClientOut,
     PendingItemOut,
+    PortfolioRowOut,
 )
 
 log = structlog.get_logger(__name__)
@@ -129,12 +153,19 @@ async def home(
     # ── per-tenant snapshots: conversations + incidents ────────────────
     conversations: HomeConversationsOut | None = None
     incidents: HomeIncidentsOut | None = None
+    snap: SnapshotResult | None = None
+    quota: dict[uuid.UUID, bool] = {}
     if "clients:read" in perms or "conversations:read" in perms:
-        snap = await tenant_snapshots(active_ids, month_start=since, now=now)
+        # Spec 026: every client, not only the active ones — the portfolio
+        # and «alta sin terminar» need them; the month figures below still
+        # count active clients only.
+        snap = await tenant_snapshots(tenant_ids, month_start=since, now=now)
         if snap.failed:
             errors.append("agents_with_incidents")
         conversations = HomeConversationsOut(
-            count=sum(s.conversations_month for s in snap.snapshots.values()),
+            count=sum(
+                s.conversations_month for tid, s in snap.snapshots.items() if tid in active_ids
+            ),
             since=since,
             until=until,
         )
@@ -163,6 +194,60 @@ async def home(
                     )
                 )
             incidents = HomeIncidentsOut(count=len(refs), refs=refs)
+
+    # ── spec 026 blocks ────────────────────────────────────────────────
+    client_rows = [ClientRow(tid, ref, name, st) for tid, (ref, name, st) in by_tenant.items()]
+    today = now.date()
+    attention: HomeAttentionOut | None = None
+    to_review: HomeToReviewOut | None = None
+    trend: HomeTrendOut | None = None
+    credit: HomeCreditOut | None = None
+    portfolio: list[PortfolioRowOut] | None = None
+    allocations: dict[uuid.UUID, tuple[int, int]] = {}
+    if "clients:read" in perms or "usage:read" in perms:
+        allocations = await allocations_for(principal.partner.id, tenant_ids)
+    if snap is not None:
+        try:
+            snapshots = snap.snapshots
+            rejected = await _templates_rejected(session, snapshots, now)
+            if "clients:read" in perms:
+                problems = attention_items(client_rows, snapshots, quota, rejected)
+                with_problems = {
+                    p.external_client_ref for p in problems if p.kind != "provisioning"
+                }
+                attention = HomeAttentionOut(
+                    items=[AttentionItemOut.model_validate(asdict(p)) for p in problems],
+                    clients_ok=sum(
+                        1 for tid in active_ids if by_tenant[tid][0] not in with_problems
+                    ),
+                )
+                portfolio = [
+                    PortfolioRowOut.model_validate(asdict(r))
+                    for r in portfolio_rows(client_rows, snapshots, allocations, problems, today)
+                ]
+            to_review = HomeToReviewOut.model_validate(asdict(review_block(client_rows, snapshots)))
+            trend = HomeTrendOut.model_validate(asdict(trend_block(client_rows, snapshots, today)))
+        except Exception as exc:
+            log.warning("console_home.blocks_failed", error=str(exc))
+            errors.append("attention")
+    if "usage:read" in perms:
+        try:
+            wallet = await read_wallet(principal.partner.id)
+            burn = await credit_burn(principal.partner.id, tenant_ids, now - REVIEW_WINDOW)
+            credit = HomeCreditOut.model_validate(
+                asdict(
+                    credit_block(
+                        client_rows,
+                        wallet.available if wallet is not None else None,
+                        burn,
+                        allocations,
+                        days_until(until, now),
+                    )
+                )
+            )
+        except Exception as exc:
+            log.warning("console_home.credit_failed", error=str(exc))
+            errors.append("credit")
 
     # ── pending actions (platform tables) ──────────────────────────────
     pending: HomePendingOut | None = None
@@ -231,6 +316,42 @@ async def home(
         usage_units=usage,
         agents_with_incidents=incidents,
         pending_actions=pending,
+        attention=attention,
+        to_review=to_review,
+        conversations_trend=trend,
+        credit=credit,
+        portfolio=portfolio,
         errors=errors,
         generated_in_ms=int((time.perf_counter() - started) * 1000),
     )
+
+
+async def _templates_rejected(
+    session: AsyncSession, snapshots: dict[uuid.UUID, TenantSnapshot], now: datetime
+) -> dict[uuid.UUID, int]:
+    """Spec 026 (D3): rejected templates of the last 7 days per client.
+
+    The template mirror is keyed by WABA, not by tenant: the snapshots say
+    which WABAs each client uses and ONE platform query reads the mirror.
+    """
+    by_waba: dict[str, list[uuid.UUID]] = {}
+    for tid, s in snapshots.items():
+        for waba in s.waba_ids:
+            by_waba.setdefault(waba, []).append(tid)
+    if not by_waba:
+        return {}
+    async with session.begin():
+        rows = await session.execute(
+            sa.select(WhatsAppTemplateStatus.waba_id, sa.func.count())
+            .where(
+                WhatsAppTemplateStatus.waba_id.in_(list(by_waba)),
+                sa.func.lower(WhatsAppTemplateStatus.status) == "rejected",
+                WhatsAppTemplateStatus.updated_at >= now - REVIEW_WINDOW,
+            )
+            .group_by(WhatsAppTemplateStatus.waba_id)
+        )
+    out: dict[uuid.UUID, int] = {}
+    for waba, count in rows.all():
+        for tid in by_waba.get(waba, []):
+            out[tid] = out.get(tid, 0) + int(count)
+    return out

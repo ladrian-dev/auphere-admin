@@ -549,6 +549,35 @@ async def allocations_for(
         return {}
 
 
+async def credit_burn(
+    partner_id: uuid.UUID, tenant_ids: list[uuid.UUID], since: datetime
+) -> dict[uuid.UUID | None, int]:
+    """Spec 026: credit spent since ``since``, per client of the partner.
+
+    ``None`` keys what was spent outside a client (the Companion). Read from
+    ``usage_ledger`` in the same partner-scoped session as the allocations;
+    an unreadable ledger reads as «nothing known» (``{}``), never as zero
+    spend, so the home page shows no autonomy rather than a wrong one.
+    """
+    try:
+        sm = get_sessionmaker()
+        async with sm() as session, session.begin():
+            await apply_partner_to_session(session, partner_id)
+            rows = await session.execute(
+                sa.select(UsageLedger.tenant_id, sa.func.sum(UsageLedger.qty))
+                .where(
+                    UsageLedger.partner_id == partner_id,
+                    UsageLedger.created_at >= since,
+                    sa.or_(UsageLedger.tenant_id.is_(None), UsageLedger.tenant_id.in_(tenant_ids)),
+                )
+                .group_by(UsageLedger.tenant_id)
+            )
+            return {tid: _as_int(total) for tid, total in rows.all()}
+    except Exception as exc:
+        log.warning("wallet.burn_unreadable", partner_id=str(partner_id), error=str(exc))
+        return {}
+
+
 async def add_purchased(partner_id: uuid.UUID, qty: int) -> WalletSnapshot:
     """Recarga manual: suma al cubo purchased. No caduca. Staging / admin."""
     if qty <= 0:

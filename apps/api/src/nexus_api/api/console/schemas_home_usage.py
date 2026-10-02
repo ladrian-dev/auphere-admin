@@ -80,16 +80,126 @@ class HomePendingOut(BaseModel):
     items: list[PendingItemOut]
 
 
+# ── spec 026 · what the partner has to do today ───────────────────────
+
+AttentionKind = Literal[
+    "out_of_quota",
+    "no_active_agent",
+    "whatsapp_disconnected",
+    "needs_reauth",
+    "quality_red",
+    "failed_messages",
+    "template_rejected",
+    "draft_unpublished",
+    "provisioning",
+]
+
+
+class AttentionItemOut(BaseModel):
+    """One problem of one client, with where it is fixed. ``severity`` 1 is
+    the worst (the agent cannot answer at all)."""
+
+    kind: AttentionKind
+    severity: int
+    external_client_ref: str
+    client_name: str | None
+    count: int | None = None
+    href: str
+
+
+class HomeAttentionOut(BaseModel):
+    items: list[AttentionItemOut]
+    #: Clients with nothing to fix — «todos atendiendo» when it equals total.
+    clients_ok: int
+
+
+class ReviewClientOut(BaseModel):
+    external_client_ref: str
+    client_name: str | None
+    escalated: int
+    payments: int
+    unanswered: int
+    href: str
+
+
+class HomeToReviewOut(BaseModel):
+    """What waits for a person, across the portfolio (7-day window)."""
+
+    escalated: int
+    payments: int
+    unanswered: int
+    clients: list[ReviewClientOut]
+
+
+class TrendClientOut(BaseModel):
+    """``external_client_ref`` is ``None`` for «el resto» (clients beyond
+    the five with most activity)."""
+
+    external_client_ref: str | None
+    client_name: str | None
+    series: list[int]
+
+
+class HomeTrendOut(BaseModel):
+    """Customer conversations per UTC day: the last 7 days against the 7
+    before. ``previous`` is ``None`` when nothing happened then — no change
+    is invented from zero."""
+
+    days: list[date]
+    series: list[int]
+    current: int
+    previous: int | None
+    by_client: list[TrendClientOut]
+
+
+class CreditRiskOut(BaseModel):
+    external_client_ref: str
+    client_name: str | None
+    remaining: int
+    days_left: float
+    href: str
+
+
+class HomeCreditOut(BaseModel):
+    """Credit in units (never money). ``days_left`` is ``None`` when there
+    was no spend in 7 days."""
+
+    available: int | None
+    spent_7d: int
+    daily_average: float
+    days_left: float | None
+    at_risk: list[CreditRiskOut]
+
+
+class PortfolioRowOut(BaseModel):
+    external_client_ref: str
+    client_name: str | None
+    status: str
+    conversations_7d: int
+    series_7d: list[int]
+    last_activity_at: datetime | None
+    credit_cap: int | None
+    credit_remaining: int | None
+    attention: int
+    href: str
+
+
 class HomeOut(BaseModel):
-    """One response, five figures. A block is ``null`` when the principal
-    lacks the permission that guards it or when its query failed (partial
-    error — the other blocks still render)."""
+    """One response. A block is ``null`` when the principal lacks the
+    permission that guards it or when its query failed (partial error —
+    the other blocks still render). The five original blocks stay for the
+    Companion (``console.get_quota``); the page reads the spec 026 ones."""
 
     clients: HomeClientsOut | None
     conversations_period: HomeConversationsOut | None
     usage_units: HomeUsageOut | None
     agents_with_incidents: HomeIncidentsOut | None
     pending_actions: HomePendingOut | None
+    attention: HomeAttentionOut | None = None
+    to_review: HomeToReviewOut | None = None
+    conversations_trend: HomeTrendOut | None = None
+    credit: HomeCreditOut | None = None
+    portfolio: list[PortfolioRowOut] | None = None
     errors: list[str] = Field(default_factory=list, description="Blocks that failed")
     generated_in_ms: int
 
