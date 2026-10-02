@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 
 import { LocaleProvider } from "@/i18n/client";
 import { type MessageKey, t as translate } from "@/i18n/messages";
-import type { HomeAttention, HomeToReview, HomeTrend, PortfolioRow } from "@/lib/backend/home-usage";
+import type { HomeSpend, HomeAttention, HomeToReview, HomeTrend, PortfolioRow } from "@/lib/backend/home-usage";
 
 import { ActivityFeed } from "../activity-feed";
 import { AttentionBlock } from "../attention-block";
 import { ConversationsChart } from "../conversations-chart";
 import { PortfolioTable } from "../portfolio-table";
 import { ReviewBlock } from "../review-block";
+import { SpendCard } from "../spend-card";
 
 const t = (key: MessageKey, vars?: Record<string, string | number>) => translate("es", key, vars);
 const n = (v: number) => String(v);
@@ -126,5 +127,38 @@ describe("Conversaciones por día", () => {
       </LocaleProvider>,
     );
     expect(screen.getByText("Sin conversaciones en los últimos 7 días.")).toBeTruthy();
+  });
+});
+
+describe("Gasto del mes", () => {
+  const spend: HomeSpend = {
+    credits: 1_240_000,
+    cents: 1240,
+    previous_cents: 1000,
+    projected_cents: 3844,
+    currency: "USD",
+    usd_per_million_credits: 10,
+    by_client: [
+      { kind: "client", external_client_ref: "a", client_name: "Flor y Encanto", credits: 900_000, cents: 900 },
+      { kind: "outside", external_client_ref: null, client_name: null, credits: 340_000, cents: 340 },
+    ],
+  };
+
+  it("says the month in money, the pace, last month and who it goes to", () => {
+    render(<SpendCard spend={spend} t={t} locale="es" />);
+    expect(screen.getByLabelText(/12,40/)).toBeTruthy();
+    expect(screen.getByText("24 % más que los mismos días del mes pasado")).toBeTruthy();
+    expect(screen.getByText(/A este ritmo cerrarás el mes en 38,44/)).toBeTruthy();
+    expect(screen.getByText("Flor y Encanto")).toBeTruthy();
+    expect(screen.getByText("Companion y pruebas")).toBeTruthy();
+    expect(screen.getByText("73 %")).toBeTruthy();
+    expect(screen.getByText(/créditos a 10,00 .* el millón/)).toBeTruthy();
+  });
+
+  it("without spend says so and invents no comparison", () => {
+    render(<SpendCard spend={{ ...spend, credits: 0, cents: 0, previous_cents: null, projected_cents: 0, by_client: [] }} t={t} locale="es" />);
+    expect(screen.getByText("Todavía no hay gasto este mes.")).toBeTruthy();
+    expect(screen.getByText("Sin gasto los mismos días del mes pasado")).toBeTruthy();
+    expect(screen.queryByText(/A este ritmo/)).toBeNull();
   });
 });

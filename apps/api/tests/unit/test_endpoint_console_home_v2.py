@@ -159,6 +159,9 @@ async def test_a_billing_member_sees_the_credit_and_not_the_clients(
     assert body["attention"] is None and body["portfolio"] is None
     assert body["credit"] is not None
     assert {"available", "spent_7d", "daily_average", "days_left", "at_risk"} <= set(body["credit"])
+    spend = body["spend"]
+    assert spend["currency"] == "USD" and spend["usd_per_million_credits"] == 10
+    assert spend["cents"] >= 0 and "cost" not in str(spend).lower()
 
 
 async def test_another_partner_sees_none_of_it(client, console_world, db_session) -> None:

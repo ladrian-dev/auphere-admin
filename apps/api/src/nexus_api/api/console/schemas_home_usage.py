@@ -171,6 +171,27 @@ class HomeCreditOut(BaseModel):
     at_risk: list[CreditRiskOut]
 
 
+class SpendShareOut(BaseModel):
+    kind: Literal["client", "rest", "outside"]
+    external_client_ref: str | None
+    client_name: str | None
+    credits: int
+    cents: int
+
+
+class HomeSpendOut(BaseModel):
+    """Spec 026: the month's credit in money, at the price the partner pays
+    (USD per million credits). Not Auphere's cost, which stays internal."""
+
+    credits: int
+    cents: int
+    previous_cents: int | None
+    projected_cents: int
+    currency: str
+    usd_per_million_credits: int
+    by_client: list[SpendShareOut]
+
+
 class PortfolioRowOut(BaseModel):
     external_client_ref: str
     client_name: str | None
@@ -199,6 +220,7 @@ class HomeOut(BaseModel):
     to_review: HomeToReviewOut | None = None
     conversations_trend: HomeTrendOut | None = None
     credit: HomeCreditOut | None = None
+    spend: HomeSpendOut | None = None
     portfolio: list[PortfolioRowOut] | None = None
     errors: list[str] = Field(default_factory=list, description="Blocks that failed")
     generated_in_ms: int

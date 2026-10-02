@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attentionRows, chartData, roundDays, statusTone, trendDelta } from "../home-model";
+import { attentionRows, chartData, spendShares, roundDays, statusTone, trendDelta } from "../home-model";
 
 describe("Reglas del Inicio (spec 026)", () => {
   it("compara con el periodo anterior sin inventar variaciones", () => {
@@ -65,5 +65,15 @@ describe("attentionRows", () => {
     const rows = attentionRows([item("a", "out_of_quota"), item("b", "out_of_quota"), item("d", "failed_messages", 2)], true);
     expect(rows[0]).toMatchObject({ type: "wallet", names: ["a", "b"], href: "/usage" });
     expect(rows.map((r) => r.type)).toEqual(["wallet", "one"]);
+  });
+});
+
+describe("spendShares", () => {
+  it("gives each slice its share and the shares add up to 100", () => {
+    const share = (credits: number) => ({ kind: "client" as const, external_client_ref: "x", client_name: null, credits, cents: 0 });
+    const out = spendShares([share(1), share(1), share(1)]);
+    expect(out.map((s) => s.pct).reduce((a, b) => a + b, 0)).toBe(100);
+    expect(spendShares([share(3), share(1)]).map((s) => s.pct)).toEqual([75, 25]);
+    expect(spendShares([])).toEqual([]);
   });
 });

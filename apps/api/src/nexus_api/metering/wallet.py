@@ -550,7 +550,10 @@ async def allocations_for(
 
 
 async def credit_burn(
-    partner_id: uuid.UUID, tenant_ids: list[uuid.UUID], since: datetime
+    partner_id: uuid.UUID,
+    tenant_ids: list[uuid.UUID],
+    since: datetime,
+    until: datetime | None = None,
 ) -> dict[uuid.UUID | None, int]:
     """Spec 026: credit spent since ``since``, per client of the partner.
 
@@ -568,6 +571,7 @@ async def credit_burn(
                 .where(
                     UsageLedger.partner_id == partner_id,
                     UsageLedger.created_at >= since,
+                    UsageLedger.created_at < until if until is not None else sa.true(),
                     sa.or_(UsageLedger.tenant_id.is_(None), UsageLedger.tenant_id.in_(tenant_ids)),
                 )
                 .group_by(UsageLedger.tenant_id)

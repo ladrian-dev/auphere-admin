@@ -69,6 +69,16 @@ export type TrendClient = { external_client_ref: string | null; client_name: str
 export type HomeTrend = { days: string[]; series: number[]; current: number; previous: number | null; by_client: TrendClient[] };
 export type CreditRisk = { external_client_ref: string; client_name: string | null; remaining: number; days_left: number; href: string };
 export type HomeCredit = { available: number | null; spent_7d: number; daily_average: number; days_left: number | null; at_risk: CreditRisk[] };
+export type SpendShare = { kind: "client" | "rest" | "outside"; external_client_ref: string | null; client_name: string | null; credits: number; cents: number };
+export type HomeSpend = {
+  credits: number;
+  cents: number;
+  previous_cents: number | null;
+  projected_cents: number;
+  currency: string;
+  usd_per_million_credits: number;
+  by_client: SpendShare[];
+};
 export type PortfolioRow = {
   external_client_ref: string;
   client_name: string | null;
@@ -92,6 +102,7 @@ export type Home = {
   to_review?: HomeToReview | null;
   conversations_trend?: HomeTrend | null;
   credit?: HomeCredit | null;
+  spend?: HomeSpend | null;
   portfolio?: PortfolioRow[] | null;
   errors: string[];
   generated_in_ms: number;

@@ -13,6 +13,7 @@ from nexus_api.services.console_home_blocks import (
     credit_block,
     portfolio_rows,
     review_block,
+    spend_block,
     trend_block,
     window,
 )
@@ -145,3 +146,28 @@ def test_the_portfolio_has_one_row_per_client_with_its_problems_counted() -> Non
     assert (by_ref["a"].credit_cap, by_ref["a"].credit_remaining) == (1000, 400)
     assert by_ref["a"].attention == 1 and by_ref["a"].last_activity_at == last
     assert by_ref["b"].status == "provisioning" and by_ref["b"].credit_cap is None
+
+
+def test_the_month_spend_is_credit_at_the_partner_price() -> None:
+    # 10 USD per million credits: 1 240 000 credits are 12.40 USD.
+    a, b, c, d = (_client(r) for r in "abcd")
+    burn = {a.tenant_id: 600_000, b.tenant_id: 300_000, c.tenant_id: 200_000}
+    burn |= {d.tenant_id: 100_000, None: 40_000}
+    block = spend_block([a, b, c, d], burn, 1_000_000, daily_7d=100_000, days_left=21)
+    assert block.credits == 1_240_000 and block.cents == 1240
+    assert block.previous_cents == 1000
+    assert block.projected_cents == 3340  # 12.40 + 21 days * 1.00 a day
+    assert block.currency == "USD" and block.usd_per_million_credits == 10
+    shares = [(s.kind, s.external_client_ref, s.cents) for s in block.by_client]
+    assert shares == [
+        ("client", "a", 600),
+        ("client", "b", 300),
+        ("client", "c", 200),
+        ("rest", None, 100),
+        ("outside", None, 40),
+    ]
+
+
+def test_no_spend_last_month_means_no_comparison() -> None:
+    block = spend_block([], {None: 400}, 0, daily_7d=0, days_left=29)
+    assert block.cents == 0 and block.previous_cents is None

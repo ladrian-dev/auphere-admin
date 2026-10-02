@@ -63,6 +63,18 @@ export const homeUsageMessages = {
   "hu.home.chart.rest": { es: "Resto de clientes", en: "Other clients" },
   "hu.home.chart.empty": { es: "Sin conversaciones en los últimos 7 días.", en: "No conversations in the last 7 days." },
   // Crédito en riesgo
+  "hu.home.spend.title": { es: "Gasto del mes", en: "Spend this month" },
+  "hu.home.spend.see": { es: "Ver consumo", en: "See usage" },
+  "hu.home.spend.delta.up": { es: "{pct} % más que los mismos días del mes pasado", en: "{pct} % more than the same days last month" },
+  "hu.home.spend.delta.down": { es: "{pct} % menos que los mismos días del mes pasado", en: "{pct} % less than the same days last month" },
+  "hu.home.spend.delta.same": { es: "Igual que los mismos días del mes pasado", en: "Same as the same days last month" },
+  "hu.home.spend.pace": { es: "A este ritmo cerrarás el mes en {amount}.", en: "At this pace you will close the month at {amount}." },
+  "hu.home.spend.previous": { es: "Mismos días del mes pasado", en: "Same days last month" },
+  "hu.home.spend.noPrevious": { es: "Sin gasto los mismos días del mes pasado", en: "No spend on the same days last month" },
+  "hu.home.spend.rate": { es: "{credits} créditos a {rate} el millón", en: "{credits} credits at {rate} per million" },
+  "hu.home.spend.outside": { es: "Companion y pruebas", en: "Companion and tests" },
+  "hu.home.spend.aria": { es: "Reparto del gasto del mes por cliente", en: "Month spend by client" },
+  "hu.home.spend.empty": { es: "Todavía no hay gasto este mes.", en: "No spend this month yet." },
   "hu.home.credit.risk.title": { es: "Se quedarán sin crédito este mes", en: "Will run out of credit this month" },
   "hu.home.credit.risk.row": { es: "Le quedan unos {days} días", en: "About {days} days left" },
   // Cartera

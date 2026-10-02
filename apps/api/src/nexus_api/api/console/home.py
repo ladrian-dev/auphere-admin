@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 import structlog
@@ -51,6 +51,7 @@ from nexus_api.services.console_home_blocks import (
     days_until,
     portfolio_rows,
     review_block,
+    spend_block,
     trend_block,
 )
 from nexus_api.services.console_reporting import (
@@ -72,6 +73,7 @@ from .schemas_home_usage import (
     HomeIncidentsOut,
     HomeOut,
     HomePendingOut,
+    HomeSpendOut,
     HomeToReviewOut,
     HomeTrendOut,
     HomeUsageOut,
@@ -202,6 +204,7 @@ async def home(
     to_review: HomeToReviewOut | None = None
     trend: HomeTrendOut | None = None
     credit: HomeCreditOut | None = None
+    spend: HomeSpendOut | None = None
     portfolio: list[PortfolioRowOut] | None = None
     allocations: dict[uuid.UUID, tuple[int, int]] = {}
     if "clients:read" in perms or "usage:read" in perms:
@@ -231,6 +234,7 @@ async def home(
             log.warning("console_home.blocks_failed", error=str(exc))
             errors.append("attention")
     if "usage:read" in perms:
+        burn: dict[uuid.UUID | None, int] = {}
         try:
             wallet = await read_wallet(principal.partner.id)
             burn = await credit_burn(principal.partner.id, tenant_ids, now - REVIEW_WINDOW)
@@ -248,6 +252,27 @@ async def home(
         except Exception as exc:
             log.warning("console_home.credit_failed", error=str(exc))
             errors.append("credit")
+        try:
+            # The same days of last month, so the change compares like with like.
+            prev_start = (since - timedelta(days=1)).replace(day=1)
+            month_burn = await credit_burn(principal.partner.id, tenant_ids, since)
+            prev_burn = await credit_burn(
+                principal.partner.id, tenant_ids, prev_start, prev_start + (now - since)
+            )
+            spend = HomeSpendOut.model_validate(
+                asdict(
+                    spend_block(
+                        client_rows,
+                        month_burn,
+                        sum(prev_burn.values()),
+                        daily_7d=sum(burn.values()) / REVIEW_WINDOW.days,
+                        days_left=days_until(until, now),
+                    )
+                )
+            )
+        except Exception as exc:
+            log.warning("console_home.spend_failed", error=str(exc))
+            errors.append("spend")
 
     # ── pending actions (platform tables) ──────────────────────────────
     pending: HomePendingOut | None = None
@@ -320,6 +345,7 @@ async def home(
         to_review=to_review,
         conversations_trend=trend,
         credit=credit,
+        spend=spend,
         portfolio=portfolio,
         errors=errors,
         generated_in_ms=int((time.perf_counter() - started) * 1000),

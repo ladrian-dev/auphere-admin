@@ -1,4 +1,4 @@
-import type { AttentionItem, AttentionKind, HomeTrend } from "@/lib/backend/home-usage";
+import type { AttentionItem, AttentionKind, HomeTrend, SpendShare } from "@/lib/backend/home-usage";
 
 /**
  * Pure presentation rules of the home page (spec 026). No React here, so
@@ -99,4 +99,20 @@ export function attentionRows(items: AttentionItem[], walletEmpty = false): Atte
     });
   }
   return rows;
+}
+
+/** Spend slices with their share of the month, rounded so they add up to 100. */
+export function spendShares(shares: SpendShare[]): Array<SpendShare & { pct: number }> {
+  const total = shares.reduce((sum, s) => sum + s.credits, 0);
+  if (total <= 0) return [];
+  const raw = shares.map((s) => (s.credits / total) * 100);
+  const pcts = raw.map(Math.floor);
+  let left = 100 - pcts.reduce((a, b) => a + b, 0);
+  const order = raw.map((r, i) => [r - Math.floor(r), i] as const).sort((a, b) => b[0] - a[0]);
+  for (const [, i] of order) {
+    if (left <= 0) break;
+    pcts[i]! += 1;
+    left -= 1;
+  }
+  return shares.map((s, i) => ({ ...s, pct: pcts[i]! }));
 }

@@ -10,6 +10,7 @@ import { roundDays, trendDelta } from "@/components/home/home-model";
 import { OnboardingCard } from "@/components/home/onboarding-card";
 import { PortfolioTable } from "@/components/home/portfolio-table";
 import { ReviewBlock } from "@/components/home/review-block";
+import { SpendCard } from "@/components/home/spend-card";
 import { WorkstationSetup } from "@/components/workstation/workstation-setup";
 import { getT } from "@/i18n/server";
 import type { AuditEntry } from "@/lib/backend";
@@ -42,6 +43,8 @@ export default async function HomePage() {
   const trend = home?.conversations_trend ?? null;
   const delta = trend ? trendDelta(trend.current, trend.previous) : null;
   const credit = home?.credit ?? null;
+  const spend = home?.spend ?? null;
+  const hasPortfolio = Boolean(home?.portfolio && home.portfolio.length > 0);
   const noClients = readClients && home?.clients?.total === 0;
 
   return (
@@ -49,6 +52,7 @@ export default async function HomePage() {
       <PageHeader
         eyebrow={principal.partnerName}
         title={t("home.welcome", { name: principal.name })}
+        size="compact"
         actions={
           writeClients ? (
             <Button nativeButton={false} render={<Link href="/clients/new" />}>
@@ -68,13 +72,6 @@ export default async function HomePage() {
         </Alert>
       ) : null}
 
-      {home?.attention && !noClients ? <AttentionBlock attention={home.attention} total={home.clients?.total ?? 0} walletEmpty={credit?.available === 0} t={t} n={n} /> : null}
-      <Suspense fallback={<CardSkeleton />}>
-        <OnboardingCard principal={principal} />
-      </Suspense>
-      <Suspense fallback={null}>
-        <WorkstationSetup principal={principal} />
-      </Suspense>
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label={t("home.title")}>
         {trend && delta ? (
           <Metric
@@ -131,17 +128,24 @@ export default async function HomePage() {
         ) : null}
       </section>
 
-      {trend || home?.to_review ? (
+      {trend || spend ? (
         <div className="grid gap-4 lg:grid-cols-3">
+          {spend ? <SpendCard spend={spend} t={t} locale={locale} /> : null}
           {trend ? (
-            <Section title={t("hu.home.chart.title")} className="lg:col-span-2">
+            <Section title={t("hu.home.chart.title")} className={spend ? "lg:col-span-2" : "lg:col-span-3"}>
               <ConversationsChart trend={trend} />
             </Section>
           ) : null}
-          {home?.to_review ? <ReviewBlock review={home.to_review} t={t} n={n} /> : null}
         </div>
       ) : null}
 
+      {home?.attention && !noClients ? <AttentionBlock attention={home.attention} total={home.clients?.total ?? 0} walletEmpty={credit?.available === 0} t={t} n={n} /> : null}
+      <Suspense fallback={<CardSkeleton />}>
+        <OnboardingCard principal={principal} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <WorkstationSetup principal={principal} />
+      </Suspense>
       {credit && credit.at_risk.length > 0 ? (
         <Section title={t("hu.home.credit.risk.title")}>
           <ul className="divide-y divide-border">
@@ -157,33 +161,38 @@ export default async function HomePage() {
         </Section>
       ) : null}
 
-      {(home?.portfolio && home.portfolio.length > 0) || activity ? (
-        <div className="grid gap-4 lg:grid-cols-3">
-          {home?.portfolio && home.portfolio.length > 0 ? (
+      {hasPortfolio || home?.to_review || activity ? (
+        <div className="grid items-start gap-4 lg:grid-cols-3">
+          {hasPortfolio ? (
             <Section
               title={t("hu.home.portfolio.title")}
               padded={false}
-              className={activity ? "lg:col-span-2" : "lg:col-span-3"}
+              className={home?.to_review || activity ? "lg:col-span-2" : "lg:col-span-3"}
               actions={
                 <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/clients" />}>
                   {t("hu.home.portfolio.all")}
                 </Button>
               }
             >
-              <PortfolioTable rows={home.portfolio} t={t} n={n} locale={locale} />
+              <PortfolioTable rows={home!.portfolio!} t={t} n={n} locale={locale} />
             </Section>
           ) : null}
-          {activity ? (
-            <Section
-              title={t("hu.home.activity.title")}
-              actions={
-                <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/audit" />}>
-                  {t("hu.home.activity.all")}
-                </Button>
-              }
-            >
-              <ActivityFeed items={activity} locale={locale} empty={t("hu.home.activity.empty")} />
-            </Section>
+          {home?.to_review || activity ? (
+            <div className="flex flex-col gap-4">
+              {home?.to_review ? <ReviewBlock review={home.to_review} t={t} n={n} /> : null}
+              {activity ? (
+                <Section
+                  title={t("hu.home.activity.title")}
+                  actions={
+                    <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/audit" />}>
+                      {t("hu.home.activity.all")}
+                    </Button>
+                  }
+                >
+                  <ActivityFeed items={activity} locale={locale} empty={t("hu.home.activity.empty")} />
+                </Section>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}

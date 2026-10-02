@@ -13,7 +13,9 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
+from nexus_api.billing.pricing import CREDIT_USD_PER_MILLION
 from nexus_api.db.models import TenantStatus
 from nexus_api.services.console_home import TenantSnapshot
 
@@ -319,6 +321,86 @@ def portfolio_rows(
     return rows
 
 
+#: Clients drawn on their own in the spend bar; the rest go together.
+SPEND_TOP = 3
+
+
+@dataclass(frozen=True)
+class SpendShare:
+    """One slice of the month's spend. ``kind``: ``client`` (one client),
+    ``rest`` (the other clients together) or ``outside`` (spent outside any
+    client: the Companion and partner-level tests)."""
+
+    kind: str
+    external_client_ref: str | None
+    client_name: str | None
+    credits: int
+    cents: int
+
+
+@dataclass(frozen=True)
+class SpendBlock:
+    """What the month's credit is worth at the price the partner pays for it
+    (``CREDIT_USD_PER_MILLION``). Never Auphere's cost: that is internal."""
+
+    credits: int
+    cents: int
+    previous_cents: int | None
+    projected_cents: int
+    currency: str
+    usd_per_million_credits: int
+    by_client: list[SpendShare]
+
+
+def credits_to_cents(credits: int) -> int:
+    """Credits at the partner price, to the nearest cent."""
+    cents = Decimal(credits) * CREDIT_USD_PER_MILLION * 100 / 1_000_000
+    return int(cents.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
+def _share(kind: str, ref: str | None, name: str | None, credits: int) -> SpendShare:
+    return SpendShare(kind, ref, name, credits, credits_to_cents(credits))
+
+
+def spend_block(
+    clients: list[ClientRow],
+    month_burn: Mapping[uuid.UUID | None, int],
+    previous_credits: int,
+    *,
+    daily_7d: float,
+    days_left: float,
+) -> SpendBlock:
+    """The month so far, split by client, the same days of last month, and
+    where it ends at this pace: what is spent plus the last 7 days' daily
+    average for the days left. Not «month so far * days / elapsed», which on
+    the 2nd of the month multiplies one day by thirty. No spend last month:
+    no comparison, never an invented +100 %."""
+    month = max(0, sum(month_burn.values()))
+    previous = max(0, previous_credits)
+    projected = month + max(0.0, daily_7d) * max(0.0, days_left)
+    known = {c.tenant_id: c for c in clients}
+    ranked = sorted(
+        ((known[tid], q) for tid, q in month_burn.items() if tid in known and q > 0),
+        key=lambda p: -p[1],
+    )
+    shares = [_share("client", c.ref, c.name, q) for c, q in ranked[:SPEND_TOP]]
+    rest = sum(q for _, q in ranked[SPEND_TOP:])
+    if rest > 0:
+        shares.append(_share("rest", None, None, rest))
+    outside = sum(q for tid, q in month_burn.items() if tid not in known and q > 0)
+    if outside > 0:
+        shares.append(_share("outside", None, None, outside))
+    return SpendBlock(
+        credits=month,
+        cents=credits_to_cents(month),
+        previous_cents=credits_to_cents(previous) or None,
+        projected_cents=credits_to_cents(round(projected)),
+        currency="USD",
+        usd_per_million_credits=CREDIT_USD_PER_MILLION,
+        by_client=shares,
+    )
+
+
 def days_until(end: datetime, now: datetime) -> float:
     return max(0.0, (end - now).total_seconds() / 86400)
 
@@ -332,6 +414,7 @@ __all__ = [
     "fix_href",
     "portfolio_rows",
     "review_block",
+    "spend_block",
     "trend_block",
     "window",
 ]
