@@ -44,8 +44,6 @@ class HomeUsageOut(BaseModel):
     percent: float | None
     projected_month_units: float
     basis_days: int
-    #: Spec 026: units per UTC day of the month so far, oldest first.
-    daily: list[float] = []
 
 
 class IncidentClientOut(BaseModel):

@@ -36,8 +36,8 @@ function HighlightMetric({ label, value, hint, delta, trend, icon, href, classNa
         ) : null}
         <p className="min-w-0 truncate text-sm font-medium">{label}</p>
       </div>
-      <div className="mt-2 flex min-w-0 items-baseline gap-2">
-        <p className="min-w-0 truncate text-3xl font-semibold tabular-nums">{value}</p>
+      <div className="mt-1 flex min-w-0 items-baseline gap-2">
+        <p className="min-w-0 truncate text-2xl font-semibold tabular-nums">{value}</p>
         {delta ? (
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-pistachio/20 px-2 text-xs font-medium tabular-nums dark:bg-dark-green/15 [&_svg]:size-3" data-slot="highlight-delta">
             <span aria-hidden={delta.srLabel ? true : undefined} className="inline-flex items-center gap-1">
@@ -47,7 +47,7 @@ function HighlightMetric({ label, value, hint, delta, trend, icon, href, classNa
           </span>
         ) : null}
       </div>
-      {hint ? <p className="min-w-0 truncate text-sm text-pistachio dark:text-dark-green/80">{hint}</p> : null}
+      {hint ? <p className="line-clamp-2 min-w-0 text-sm text-pretty text-pistachio dark:text-dark-green/80">{hint}</p> : null}
       {trend ? <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} className="mt-auto pt-2 text-pistachio dark:text-dark-green" /> : null}
     </>
   );

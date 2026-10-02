@@ -13,7 +13,7 @@ type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
  * «Tus clientes» (spec 026, Historia 5): one row per client, the ones with
  * problems first, then the busiest. Each row opens the client.
  */
-export function PortfolioTable({ rows, t, n, locale, limit = 8 }: { rows: PortfolioRow[]; t: T; n: (v: number) => string; locale: Locale; limit?: number }) {
+export function PortfolioTable({ rows, t, n, locale, limit = 6 }: { rows: PortfolioRow[]; t: T; n: (v: number) => string; locale: Locale; limit?: number }) {
   const ordered = [...rows].sort((a, b) => b.attention - a.attention || b.conversations_7d - a.conversations_7d).slice(0, limit);
   return (
     <Table>

@@ -140,9 +140,6 @@ async def test_the_home_says_what_fails_what_waits_and_how_it_goes(
     assert (review["escalated"], review["payments"], review["unanswered"]) == (1, 1, 1)
     assert review["clients"][0]["href"] == f"/clients/{a['ref']}/conversations"
 
-    daily = body["usage_units"]["daily"]
-    assert len(daily) == datetime.now(UTC).day and all(v == 0 for v in daily)
-
     trend = body["conversations_trend"]
     assert len(trend["days"]) == 7 and trend["series"][-1] == 2  # Playground excluded
     assert trend["current"] == 2 and trend["previous"] == 1

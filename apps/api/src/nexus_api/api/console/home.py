@@ -60,7 +60,6 @@ from nexus_api.services.console_reporting import (
     project_month,
 )
 from nexus_api.services.usage_alerts import (
-    channel_units_by_day,
     channel_units_month,
     evaluate_partner_usage_alerts,
 )
@@ -134,12 +133,9 @@ async def home(
     if "usage:read" in perms:
         try:
             units = await channel_units_month(session, tenant_ids, since, until)
-            by_day = await channel_units_by_day(session, tenant_ids, since, until)
-            month_days = [since.date() + timedelta(days=i) for i in range((now - since).days + 1)]
             cap = principal.partner.usage_cap_messages_month
             usage = HomeUsageOut(
                 units=units,
-                daily=[by_day.get(d, 0.0) for d in month_days],
                 cap=cap,
                 percent=percent_of(units, cap),
                 projected_month_units=project_month(units, elapsed_days, days_in_month),

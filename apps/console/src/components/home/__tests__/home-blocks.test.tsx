@@ -144,24 +144,18 @@ describe("Gasto del mes", () => {
     ],
   };
 
-  it("says the month in money, the pace, last month and who it goes to", () => {
-    render(<SpendCard spend={spend} dailyCredits={100_000} t={t} locale="es" />);
+  it("says the month in money and who it goes to, nothing more", () => {
+    render(<SpendCard spend={spend} t={t} locale="es" />);
     expect(screen.getByLabelText(/12,40/)).toBeTruthy();
-    expect(screen.getByText("24 % más que los mismos días del mes pasado")).toBeTruthy();
-    expect(screen.getByText("Fin de mes a este ritmo")).toBeTruthy();
-    expect(screen.getByText(/38,44/)).toBeTruthy();
-    expect(screen.getByText(/^1,00/)).toBeTruthy();
-    expect(screen.getByText(/frente a 10,00 .* los mismos días del mes pasado/)).toBeTruthy();
     expect(screen.getByText("Flor y Encanto")).toBeTruthy();
     expect(screen.getByText("Companion y pruebas")).toBeTruthy();
     expect(screen.getByText("73 %")).toBeTruthy();
     expect(screen.getByText(/créditos a 10,00 .* el millón/)).toBeTruthy();
+    expect(screen.queryByText(/mes pasado|a este ritmo/i)).toBeNull();
   });
 
-  it("without spend says so and invents no comparison", () => {
+  it("without spend says so", () => {
     render(<SpendCard spend={{ ...spend, credits: 0, cents: 0, previous_cents: null, projected_cents: 0, by_client: [] }} t={t} locale="es" />);
     expect(screen.getByText("Todavía no hay gasto este mes.")).toBeTruthy();
-    expect(screen.getByText("Sin gasto los mismos días del mes pasado")).toBeTruthy();
-    expect(screen.queryByText("Fin de mes a este ritmo")).toBeNull();
   });
 });

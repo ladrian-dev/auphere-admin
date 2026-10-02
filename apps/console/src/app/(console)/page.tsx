@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Bot, MessageSquare, Users, Wallet } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Bot, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -12,7 +12,6 @@ import { OnboardingCard } from "@/components/home/onboarding-card";
 import { PortfolioTable } from "@/components/home/portfolio-table";
 import { ReviewBlock } from "@/components/home/review-block";
 import { SpendCard } from "@/components/home/spend-card";
-import { WorkstationSetup } from "@/components/workstation/workstation-setup";
 import { getT } from "@/i18n/server";
 import type { AuditEntry } from "@/lib/backend";
 import { backendFor } from "@/lib/backend";
@@ -33,7 +32,7 @@ export default async function HomePage() {
   const readAudit = can(principal.role, "audit:read");
   const [home, activity] = await Promise.all([
     api.home().catch((): Home | null => null),
-    readAudit ? api.auditV2({ limit: 6, lang: locale }).then((p) => p.items).catch((): AuditEntry[] | null => null) : Promise.resolve(null),
+    readAudit ? api.auditV2({ limit: 5, lang: locale }).then((p) => p.items).catch((): AuditEntry[] | null => null) : Promise.resolve(null),
   ]);
   const readClients = can(principal.role, "clients:read");
   const writeClients = can(principal.role, "clients:write");
@@ -84,10 +83,10 @@ export default async function HomePage() {
       <div className="grid gap-4 lg:grid-cols-3">
         {spend ? (
           <div className="lg:row-span-2">
-            <SpendCard spend={spend} dailyCredits={credit?.daily_average ?? null} t={t} locale={locale} />
+            <SpendCard spend={spend} t={t} locale={locale} />
           </div>
         ) : null}
-        <section className={spend ? "grid gap-4 sm:grid-cols-2 lg:col-span-2" : "grid gap-4 sm:grid-cols-2 lg:col-span-3"} aria-label={t("home.title")}>
+        <section className={spend ? "grid gap-4 sm:grid-cols-3 lg:col-span-2" : "grid gap-4 sm:grid-cols-3 lg:col-span-3"} aria-label={t("home.title")}>
           {trend && delta ? (
             <HighlightMetric
               icon={<Bot />}
@@ -131,20 +130,6 @@ export default async function HomePage() {
               href="/usage"
             />
           ) : null}
-          {home?.usage_units ? (
-            <Metric
-              icon={<MessageSquare />}
-              label={t("hu.home.kpi.messages")}
-              value={formatCompact(home.usage_units.units, locale)}
-              hint={
-                home.usage_units.percent != null
-                  ? t("hu.home.kpi.messages.cap", { percent: n(home.usage_units.percent), projected: formatCompact(home.usage_units.projected_month_units, locale) })
-                  : t("hu.home.kpi.messages.nocap", { projected: formatCompact(home.usage_units.projected_month_units, locale) })
-              }
-              trend={home.usage_units.daily && home.usage_units.daily.length > 1 ? { values: home.usage_units.daily, ariaLabel: t("hu.home.kpi.messages.trend"), style: "area" } : undefined}
-              href="/usage"
-            />
-          ) : null}
         </section>
         {trend ? (
           <Section title={t("hu.home.chart.title")} className={spend ? "lg:col-span-2" : "lg:col-span-3"}>
@@ -156,9 +141,6 @@ export default async function HomePage() {
       {home?.attention && !noClients ? <AttentionBlock attention={home.attention} total={home.clients?.total ?? 0} walletEmpty={credit?.available === 0} t={t} n={n} /> : null}
       <Suspense fallback={<CardSkeleton />}>
         <OnboardingCard principal={principal} />
-      </Suspense>
-      <Suspense fallback={null}>
-        <WorkstationSetup principal={principal} />
       </Suspense>
       {credit && credit.at_risk.length > 0 ? (
         <Section title={t("hu.home.credit.risk.title")}>

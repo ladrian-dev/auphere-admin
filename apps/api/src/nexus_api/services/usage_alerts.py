@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from html import escape
 
 import sqlalchemy as sa
@@ -79,33 +79,6 @@ async def channel_units_month(
             )
         )
     return float(value or 0)
-
-
-async def channel_units_by_day(
-    session: AsyncSession,
-    tenant_ids: list[uuid.UUID],
-    since: datetime,
-    until: datetime,
-) -> dict[date, float]:
-    """Spec 026: the same units as :func:`channel_units_month`, per UTC day,
-    for the trend behind «Mensajes del mes». Days without messages are
-    absent; the caller fills them with zero."""
-    if not tenant_ids:
-        return {}
-    day = sa.func.date_trunc("day", sa.func.timezone("UTC", UsageRecord.occurred_at))
-    async with reporting_transaction(session):
-        rows = await session.execute(
-            sa.select(day, sa.func.coalesce(sa.func.sum(UsageRecord.billable_qty), 0))
-            .where(
-                UsageRecord.tenant_id.in_(tenant_ids),
-                UsageRecord.meter == CAP_METER,
-                UsageRecord.source == "channel",
-                UsageRecord.occurred_at >= since,
-                UsageRecord.occurred_at < until,
-            )
-            .group_by(day)
-        )
-    return {d.date(): float(v or 0) for d, v in rows.all() if d is not None}
 
 
 @dataclass

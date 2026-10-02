@@ -17,7 +17,6 @@ export type HomeUsage = {
   percent: number | null;
   projected_month_units: number;
   basis_days: number;
-  daily?: number[];
 };
 export type IncidentIssue = "whatsapp_degraded" | "no_active_agent" | "failed_messages_24h" | "out_of_quota";
 export type IncidentClient = {

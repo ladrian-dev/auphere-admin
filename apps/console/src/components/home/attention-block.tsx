@@ -11,7 +11,7 @@ import { type AttentionRow, attentionRows } from "./home-model";
 type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
 /** Rows shown before «Ver N más». */
-const VISIBLE = 6;
+const VISIBLE = 4;
 /** Client names spelled out in a grouped row before «y N más». */
 const NAMED = 3;
 

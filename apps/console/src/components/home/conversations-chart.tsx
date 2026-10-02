@@ -21,7 +21,7 @@ export function ConversationsChart({ trend }: { trend: HomeTrend }) {
       data={rows}
       xKey="day"
       series={series}
-      height={260}
+      height={200}
       ariaLabel={t("hu.home.chart.aria")}
       formatValue={(v) => formatNumber(v, locale)}
       formatX={(x) => day.format(new Date(`${x}T00:00:00Z`))}

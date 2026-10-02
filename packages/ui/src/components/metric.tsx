@@ -67,8 +67,8 @@ function Metric({ label, value, hint, loading, href, delta, trend, icon, progres
       {loading ? (
         <Skeleton className="h-8 w-24" />
       ) : (
-        <div className={cn("flex min-w-0 items-baseline gap-2", icon && "mt-2")}>
-          <p className={cn("min-w-0 truncate font-semibold tabular-nums", icon ? "text-3xl" : "text-2xl")} title={typeof value === "string" ? value : undefined}>
+        <div className={cn("flex min-w-0 items-baseline gap-2", icon && "mt-1")}>
+          <p className={cn("min-w-0 truncate font-semibold tabular-nums", "text-2xl")} title={typeof value === "string" ? value : undefined}>
             {value}
           </p>
           {delta ? (
@@ -82,7 +82,7 @@ function Metric({ label, value, hint, loading, href, delta, trend, icon, progres
         </div>
       )}
       {hint ? (
-        loading ? <Skeleton className="h-4 w-32" /> : <p className="min-w-0 truncate text-sm text-muted-foreground">{hint}</p>
+        loading ? <Skeleton className="h-4 w-32" /> : <p className={cn("min-w-0 text-sm text-muted-foreground", icon ? "line-clamp-2 text-pretty" : "truncate")}>{hint}</p>
       ) : null}
       {trend && !loading && !area ? <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} className={icon ? "mt-auto pt-2" : undefined} /> : null}
       {progress && !loading ? (
