@@ -216,6 +216,16 @@ class _Safe(dict[str, Any]):
         return "?"
 
 
+def _moved_amount(after: dict[str, Any], lang: str) -> str:
+    from nexus_api.billing.pricing import credits_to_cents, format_usd
+
+    if isinstance(after.get("amount_cents"), int):
+        return format_usd(after["amount_cents"], lang)
+    if isinstance(after.get("qty"), int):
+        return format_usd(credits_to_cents(after["qty"]), lang)
+    return "?"
+
+
 def summarise(
     row: AuditLog,
     client_name: str | None,
@@ -243,6 +253,10 @@ def summarise(
         # ninguna plantilla anterior.
         ticket=after.get("ticket_ref", "?"),
         topic=after.get("topic", "?"),
+        # Spec 027: moving balance between clients, in money. Older rows only
+        # kept ``qty`` in credits; they are converted with the one rate.
+        amount=_moved_amount(after, lang),
+        **{"from": after.get("from", "?"), "to": after.get("to", "?")},
     )
     entry = vocab.get(row.action)
     if entry is None:

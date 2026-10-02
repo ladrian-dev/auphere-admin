@@ -102,3 +102,13 @@ async def test_the_purchase_uses_the_same_conversion() -> None:
 
     for cents in (500, 5_000, 123_456):
         assert units_for_cents(cents) == cents_to_credits(cents)
+
+
+async def test_the_server_writes_money_like_the_console() -> None:
+    from nexus_api.billing.pricing import format_usd
+
+    assert format_usd(1_235, "es") == "12,35 US$"
+    assert format_usd(200_000, "es") == "2000,00 US$"  # Intl es: no grouping under 10 000
+    assert format_usd(1_234_550, "es") == "12.345,50 US$"
+    assert format_usd(1_235, "en") == "$12.35"
+    assert format_usd(123_456_789, "en") == "$1,234,567.89"

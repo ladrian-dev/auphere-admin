@@ -73,3 +73,15 @@ def units_for_cents(amount_cents: int) -> int:
     if amount_cents <= 0:
         return 0
     return cents_to_credits(amount_cents)
+
+
+def format_usd(cents: int, lang: str = "es") -> str:
+    """Cents as the partner reads them, for text written by the server (audit
+    summaries, Companion replies): «1.234,50 US$» (es) · «$1,234.50» (en).
+    The console formats on its side with ``Intl``; both say the same."""
+    whole, frac = divmod(abs(int(cents)), 100)
+    sign = "-" if cents < 0 else ""
+    if lang == "en":
+        return f"{sign}${whole:,}.{frac:02d}"
+    grouped = f"{whole:,}".replace(",", ".") if whole >= 10_000 else str(whole)
+    return f"{sign}{grouped},{frac:02d} US$"

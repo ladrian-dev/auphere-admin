@@ -211,7 +211,7 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("PUT", "/console/clients/{ref}/tools"): {"tools": []},
         ("PUT", "/console/clients/{ref}/tools/{tool_name}/mode"): {"mode": "always"},
         ("PUT", "/console/clients/{ref}/skills"): {"skills": []},
-        ("PUT", "/console/clients/{ref}/allocation"): {"cap": 1},
+        ("PUT", "/console/clients/{ref}/allocation"): {"cap_cents": 1},
         ("PUT", "/console/clients/{ref}/model"): {"model_id": "openai/gpt-5.6-sol"},
         # Spec 016 (R6): la agenda pública de AgendaPro.
         ("PUT", "/console/clients/{ref}/integrations/agendapro/public-url"): {

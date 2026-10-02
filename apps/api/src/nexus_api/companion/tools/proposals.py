@@ -1558,7 +1558,7 @@ def _parse_usd_cents(value: object) -> int | None:
 
 
 def _usd(cents: int) -> str:
-    """Cents as the partner reads them: «1.234,50 US$»."""
-    whole, frac = divmod(abs(int(cents)), 100)
-    text = f"{whole:,}".replace(",", ".") + f",{frac:02d} US$"
-    return f"-{text}" if cents < 0 else text
+    """Cents as the partner reads them (spec 027): the server's one formatter."""
+    from nexus_api.billing.pricing import format_usd
+
+    return format_usd(cents, "es")

@@ -51,7 +51,7 @@ async def test_the_five_actions_leave_a_trail_without_secrets(
     r = await client.post(
         "/console/wallet/allocations/move",
         headers=h(),
-        json={"from_ref": a["ref"], "to_ref": other, "qty": 1_000},
+        json={"from_ref": a["ref"], "to_ref": other, "amount_cents": 1},
     )
     assert r.status_code == 200, r.text
     r = await client.put(f"{base}/model", headers=h(), json={"model_id": "openai/gpt-5.6-luna"})
@@ -134,3 +134,29 @@ async def test_the_five_actions_leave_a_trail_without_secrets(
     # And every one of them renders in both languages from the vocabulary.
     vocab = (await client.get("/console/audit/vocabulary?lang=es", headers=h())).json()
     assert set(ACTIONS) <= {e["action"] for e in vocab["entries"]}
+
+
+async def test_moving_balance_reads_in_money_not_question_marks(client, console_world, db_session):
+    """Spec 027: «movió ? créditos de ? a ?» was the old summary — no value
+    was ever filled in. Now it says the amount in dollars and both clients."""
+    from tests.integration.test_console_wallet import _add_unallocated_client
+
+    a = console_world["a"]
+    h = a["headers"]
+    other = "client-a-money"
+    await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=other)
+    r = await client.post(
+        "/console/wallet/allocations/move",
+        headers=h(),
+        json={"from_ref": a["ref"], "to_ref": other, "amount_cents": 250},
+    )
+    assert r.status_code == 200, r.text
+    for lang, amount in (("es", "2,50 US$"), ("en", "$2.50")):
+        page = (
+            await client.get(
+                f"/console/audit?action=console.allocation.move&lang={lang}", headers=h()
+            )
+        ).json()
+        summary = page["items"][0]["summary"]
+        assert amount in summary and a["ref"] in summary and other in summary, summary
+        assert "?" not in summary and "crédito" not in summary and "credit" not in summary

@@ -474,7 +474,7 @@ async def test_tickets_admin_unscoped_sees_a_and_b(db_session) -> None:
 
 async def _caps_total(client, headers) -> int:
     rows = (await client.get("/console/wallet/allocations", headers=headers)).json()
-    return sum(int(r["cap"]) for r in rows)
+    return sum(int(r["cap_cents"]) for r in rows)
 
 
 async def test_moving_quota_to_or_from_another_partners_client_is_an_opaque_404(
@@ -490,11 +490,11 @@ async def test_moving_quota_to_or_from_another_partners_client_is_an_opaque_404(
     missing = await client.post(
         "/console/wallet/allocations/move",
         headers=a["headers"](),
-        json={"from_ref": a["ref"], "to_ref": "does-not-exist", "qty": 1000},
+        json={"from_ref": a["ref"], "to_ref": "does-not-exist", "amount_cents": 1},
     )
     for payload in (
-        {"from_ref": a["ref"], "to_ref": b["ref"], "qty": 1000},
-        {"from_ref": b["ref"], "to_ref": a["ref"], "qty": 1000},
+        {"from_ref": a["ref"], "to_ref": b["ref"], "amount_cents": 1},
+        {"from_ref": b["ref"], "to_ref": a["ref"], "amount_cents": 1},
     ):
         foreign = await client.post(
             "/console/wallet/allocations/move", headers=a["headers"](), json=payload
