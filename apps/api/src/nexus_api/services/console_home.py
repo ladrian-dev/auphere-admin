@@ -236,7 +236,13 @@ def _snapshot_stmt(
         .scalar_subquery()
     )
     last_activity = (
-        sa.select(sa.func.max(Conversation.last_inbound_at))
+        # The latest customer message, or the latest conversation start
+        # when the business wrote first (GREATEST skips NULLs in Postgres).
+        sa.select(
+            sa.func.greatest(
+                sa.func.max(Conversation.last_inbound_at), sa.func.max(Conversation.created_at)
+            )
+        )
         .where(Conversation.id.in_(customer_conversation_ids()))
         .scalar_subquery()
     )

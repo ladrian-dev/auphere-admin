@@ -36,12 +36,63 @@ export type PendingItem = {
   href: string;
 };
 export type HomePending = { count: number; items: PendingItem[] };
+// ── spec 026 · what the partner has to do today ───────────────────────
+export type AttentionKind =
+  | "out_of_quota"
+  | "no_active_agent"
+  | "whatsapp_disconnected"
+  | "needs_reauth"
+  | "quality_red"
+  | "failed_messages"
+  | "template_rejected"
+  | "draft_unpublished"
+  | "provisioning";
+export type AttentionItem = {
+  kind: AttentionKind;
+  severity: number;
+  external_client_ref: string;
+  client_name: string | null;
+  count: number | null;
+  href: string;
+};
+export type HomeAttention = { items: AttentionItem[]; clients_ok: number };
+export type ReviewClient = {
+  external_client_ref: string;
+  client_name: string | null;
+  escalated: number;
+  payments: number;
+  unanswered: number;
+  href: string;
+};
+export type HomeToReview = { escalated: number; payments: number; unanswered: number; clients: ReviewClient[] };
+export type TrendClient = { external_client_ref: string | null; client_name: string | null; series: number[] };
+export type HomeTrend = { days: string[]; series: number[]; current: number; previous: number | null; by_client: TrendClient[] };
+export type CreditRisk = { external_client_ref: string; client_name: string | null; remaining: number; days_left: number; href: string };
+export type HomeCredit = { available: number | null; spent_7d: number; daily_average: number; days_left: number | null; at_risk: CreditRisk[] };
+export type PortfolioRow = {
+  external_client_ref: string;
+  client_name: string | null;
+  status: string;
+  conversations_7d: number;
+  series_7d: number[];
+  last_activity_at: string | null;
+  credit_cap: number | null;
+  credit_remaining: number | null;
+  attention: number;
+  href: string;
+};
+
 export type Home = {
   clients: HomeClients | null;
   conversations_period: HomeConversations | null;
   usage_units: HomeUsage | null;
   agents_with_incidents: HomeIncidents | null;
   pending_actions: HomePending | null;
+  attention?: HomeAttention | null;
+  to_review?: HomeToReview | null;
+  conversations_trend?: HomeTrend | null;
+  credit?: HomeCredit | null;
+  portfolio?: PortfolioRow[] | null;
   errors: string[];
   generated_in_ms: number;
 };

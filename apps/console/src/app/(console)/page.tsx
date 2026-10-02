@@ -1,38 +1,62 @@
 import Link from "next/link";
-import * as React from "react";
 import { Suspense } from "react";
 
-import { Alert, AlertDescription, Button, CardSkeleton, EmptyState, Metric, PageHeader, formatNumber } from "@nexus/ui";
+import { Alert, AlertDescription, Button, CardSkeleton, EmptyState, Metric, PageHeader, Section, formatCompact, formatNumber } from "@nexus/ui";
 
+import { ActivityFeed } from "@/components/home/activity-feed";
+import { AttentionBlock } from "@/components/home/attention-block";
+import { ConversationsChart } from "@/components/home/conversations-chart";
+import { roundDays, trendDelta } from "@/components/home/home-model";
 import { OnboardingCard } from "@/components/home/onboarding-card";
+import { PortfolioTable } from "@/components/home/portfolio-table";
+import { ReviewBlock } from "@/components/home/review-block";
 import { WorkstationSetup } from "@/components/workstation/workstation-setup";
 import { getT } from "@/i18n/server";
+import type { AuditEntry } from "@/lib/backend";
 import { backendFor } from "@/lib/backend";
 import type { Home } from "@/lib/backend/home-usage";
 import { can, requirePrincipal } from "@/lib/principal";
 
+const DELTA_SIGN = { up: "+", down: "−", same: "=" } as const;
+const DELTA_TONE = { up: "positive", down: "negative", same: "neutral" } as const;
+
 /**
- * Home (CP-08): five actionable figures from ONE call (`GET /console/home`),
- * each block gated by permission on the API and rendered as `null` when
- * absent or failed (partial error → the rest still shows).
+ * Home (spec 026): what fails, what waits for a person, how the week goes,
+ * how long the credit lasts and how each client is doing — from ONE call
+ * (`GET /console/home`) plus the last audit entries. Each block is gated by
+ * permission on the API and is simply absent when it is `null` or failed.
  */
 export default async function HomePage() {
   const principal = await requirePrincipal();
   const { t, locale } = await getT(principal.locale);
   const api = backendFor(principal);
-  const home: Home | null = await api.home().catch(() => null);
+  const readAudit = can(principal.role, "audit:read");
+  const [home, activity] = await Promise.all([
+    api.home().catch((): Home | null => null),
+    readAudit ? api.auditV2({ limit: 6, lang: locale }).then((p) => p.items).catch((): AuditEntry[] | null => null) : Promise.resolve(null),
+  ]);
   const readClients = can(principal.role, "clients:read");
+  const writeClients = can(principal.role, "clients:write");
   const n = (v: number) => formatNumber(v, locale);
+
+  const trend = home?.conversations_trend ?? null;
+  const delta = trend ? trendDelta(trend.current, trend.previous) : null;
+  const credit = home?.credit ?? null;
+  const noClients = readClients && home?.clients?.total === 0;
 
   return (
     <>
-      <PageHeader eyebrow={principal.partnerName} title={t("home.welcome", { name: principal.name })} />
-      <Suspense fallback={<CardSkeleton />}>
-        <OnboardingCard principal={principal} />
-      </Suspense>
-      <Suspense fallback={null}>
-        <WorkstationSetup principal={principal} />
-      </Suspense>
+      <PageHeader
+        eyebrow={principal.partnerName}
+        title={t("home.welcome", { name: principal.name })}
+        actions={
+          writeClients ? (
+            <Button nativeButton={false} render={<Link href="/clients/new" />}>
+              {t("hu.home.newClient")}
+            </Button>
+          ) : undefined
+        }
+      />
       {home === null ? (
         <Alert variant="destructive" role="alert">
           <AlertDescription>{t("common.error.backend")}</AlertDescription>
@@ -43,117 +67,135 @@ export default async function HomePage() {
           <AlertDescription>{t("hu.home.partial", { blocks: home.errors.join(", ") })}</AlertDescription>
         </Alert>
       ) : null}
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5" aria-label={t("home.title")}>
-        {home?.clients ? (
+
+      {home?.attention && !noClients ? <AttentionBlock attention={home.attention} total={home.clients?.total ?? 0} walletEmpty={credit?.available === 0} t={t} n={n} /> : null}
+      <Suspense fallback={<CardSkeleton />}>
+        <OnboardingCard principal={principal} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <WorkstationSetup principal={principal} />
+      </Suspense>
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label={t("home.title")}>
+        {trend && delta ? (
           <Metric
-            label={t("hu.home.clients")}
-            value={n(home.clients.active)}
-            hint={t("hu.home.clients.hint", { active: n(home.clients.active), total: n(home.clients.total), provisioning: n(home.clients.provisioning) })}
+            label={t("hu.home.kpi.conversations")}
+            value={n(trend.current)}
+            delta={
+              delta.kind === "none"
+                ? undefined
+                : {
+                    label: `${DELTA_SIGN[delta.kind]}${delta.kind === "same" ? "" : `${n(delta.pct)} %`}`,
+                    tone: DELTA_TONE[delta.kind],
+                    srLabel: t(`hu.home.kpi.delta.${delta.kind}`, { pct: n(delta.pct) }),
+                  }
+            }
+            trend={{ values: trend.series, ariaLabel: t("hu.home.kpi.conversations.trend") }}
+            hint={delta.kind === "none" ? t("hu.home.kpi.delta.none") : t("hu.home.kpi.conversations.hint")}
             href="/clients"
           />
-        ) : home === null && readClients ? (
-          <Metric label={t("hu.home.clients")} value="—" href="/clients" />
         ) : null}
-        {home?.conversations_period ? (
-          <Metric label={t("hu.home.conversations")} value={n(home.conversations_period.count)} hint={t("hu.home.conversations.hint")} href="/clients" />
+        {home?.clients ? (
+          <Metric
+            label={t("hu.home.kpi.clients")}
+            value={n(home.clients.active)}
+            hint={t("hu.home.kpi.clients.hint", { total: n(home.clients.total), provisioning: n(home.clients.provisioning) })}
+            href="/clients"
+          />
+        ) : null}
+        {credit && credit.available != null ? (
+          <Metric
+            label={t("hu.home.kpi.credit")}
+            value={formatCompact(credit.available, locale)}
+            hint={
+              credit.available === 0
+                ? t("hu.home.attention.wallet")
+                : credit.days_left != null
+                  ? t("hu.home.kpi.credit.days", { days: n(roundDays(credit.days_left)) })
+                  : t("hu.home.kpi.credit.noSpend")
+            }
+            className={credit.available === 0 ? "ring-status-danger/40" : undefined}
+            href="/usage"
+          />
         ) : null}
         {home?.usage_units ? (
           <Metric
-            label={t("hu.home.usage")}
-            value={n(home.usage_units.units)}
+            label={t("hu.home.kpi.messages")}
+            value={formatCompact(home.usage_units.units, locale)}
             hint={
               home.usage_units.percent != null
-                ? t("hu.home.usage.cap", { percent: n(home.usage_units.percent), projected: n(home.usage_units.projected_month_units) })
-                : t("hu.home.usage.nocap", { projected: n(home.usage_units.projected_month_units) })
+                ? t("hu.home.kpi.messages.cap", { percent: n(home.usage_units.percent), projected: formatCompact(home.usage_units.projected_month_units, locale) })
+                : t("hu.home.kpi.messages.nocap", { projected: formatCompact(home.usage_units.projected_month_units, locale) })
             }
             href="/usage"
           />
         ) : null}
-        {home?.agents_with_incidents ? (
-          <Metric
-            label={t("hu.home.incidents")}
-            value={n(home.agents_with_incidents.count)}
-            hint={home.agents_with_incidents.count === 0 ? t("hu.home.incidents.none") : t("hu.home.incidents.hint", { count: n(home.agents_with_incidents.count) })}
-            href={home.agents_with_incidents.count === 1 ? home.agents_with_incidents.refs[0]!.href : "/clients"}
-          />
-        ) : null}
-        {home?.pending_actions ? (
-          <Metric
-            label={t("hu.home.pending")}
-            value={n(home.pending_actions.count)}
-            hint={home.pending_actions.count === 0 ? t("hu.home.pending.none") : undefined}
-            href={home.pending_actions.items[0]?.href ?? "/clients"}
-          />
-        ) : null}
       </section>
 
-      {home?.agents_with_incidents && home.agents_with_incidents.count > 0 ? (
-        <section aria-labelledby="incidents-h" className="flex flex-col gap-2">
-          <h2 id="incidents-h" className="text-lg font-semibold">
-            {t("hu.home.incidents.title")}
-          </h2>
-          <p className="text-sm text-muted-foreground text-pretty">{t("hu.home.incidents.def")}</p>
-          <ul className="divide-y divide-border rounded-md ring-1 ring-foreground/10">
-            {home.agents_with_incidents.refs.map((r) => (
-              <li key={r.external_client_ref} className="flex min-w-0 flex-col gap-1 px-4 py-3 md:flex-row md:items-baseline md:gap-4">
-                <Link href={r.href} className="min-w-0 truncate font-medium hover:underline" title={r.client_name ?? r.external_client_ref}>
-                  {r.client_name ?? r.external_client_ref}
-                </Link>
-                <span className="min-w-0 flex-1 text-sm text-muted-foreground text-pretty">
-                  {r.issues.map((i, idx) => (
-                    <React.Fragment key={i}>
-                      {idx > 0 ? " · " : null}
-                      {i === "failed_messages_24h" ? (
-                        t("hu.home.issue.failed_messages_24h", { count: n(r.failed_messages_24h) })
-                      ) : i === "out_of_quota" ? (
-                        // Spec 016 (R2.7): the fix is one click away, in Consumo.
-                        <Link href={`/usage?client=${encodeURIComponent(r.external_client_ref)}`} className="underline underline-offset-4 hover:text-foreground">
-                          {t("hu.home.issue.out_of_quota")}
-                        </Link>
-                      ) : (
-                        t(`hu.home.issue.${i}`)
-                      )}
-                    </React.Fragment>
-                  ))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {trend || home?.to_review ? (
+        <div className="grid gap-4 lg:grid-cols-3">
+          {trend ? (
+            <Section title={t("hu.home.chart.title")} className="lg:col-span-2">
+              <ConversationsChart trend={trend} />
+            </Section>
+          ) : null}
+          {home?.to_review ? <ReviewBlock review={home.to_review} t={t} n={n} /> : null}
+        </div>
       ) : null}
 
-      {home?.pending_actions && home.pending_actions.count > 0 ? (
-        <section aria-labelledby="pending-h" className="flex flex-col gap-2">
-          <h2 id="pending-h" className="text-lg font-semibold">
-            {t("hu.home.pending.title")}
-          </h2>
-          <ul className="divide-y divide-border rounded-md ring-1 ring-foreground/10">
-            {home.pending_actions.items.map((item, i) => (
-              <li key={`${item.kind}-${item.external_client_ref ?? i}`} className="px-4 py-3">
-                <Link href={item.href} className="text-sm hover:underline">
-                  {item.kind === "client_provisioning"
-                    ? t("hu.home.pending.client_provisioning", { client: item.client_name ?? item.external_client_ref ?? "" })
-                    : t(`hu.home.pending.${item.kind}`, { count: n(item.count) })}
+      {credit && credit.at_risk.length > 0 ? (
+        <Section title={t("hu.home.credit.risk.title")}>
+          <ul className="divide-y divide-border">
+            {credit.at_risk.map((r) => (
+              <li key={r.external_client_ref}>
+                <Link href={r.href} className="flex items-center justify-between gap-4 py-2 hover:underline">
+                  <span className="truncate text-sm font-medium">{r.client_name ?? r.external_client_ref}</span>
+                  <span className="shrink-0 text-sm text-status-danger">{t("hu.home.credit.risk.row", { days: n(roundDays(r.days_left)) })}</span>
                 </Link>
               </li>
             ))}
           </ul>
-        </section>
+        </Section>
       ) : null}
 
-      {readClients && home?.clients && home.clients.total === 0 ? (
+      {(home?.portfolio && home.portfolio.length > 0) || activity ? (
+        <div className="grid gap-4 lg:grid-cols-3">
+          {home?.portfolio && home.portfolio.length > 0 ? (
+            <Section
+              title={t("hu.home.portfolio.title")}
+              padded={false}
+              className={activity ? "lg:col-span-2" : "lg:col-span-3"}
+              actions={
+                <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/clients" />}>
+                  {t("hu.home.portfolio.all")}
+                </Button>
+              }
+            >
+              <PortfolioTable rows={home.portfolio} t={t} n={n} locale={locale} />
+            </Section>
+          ) : null}
+          {activity ? (
+            <Section
+              title={t("hu.home.activity.title")}
+              actions={
+                <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/audit" />}>
+                  {t("hu.home.activity.all")}
+                </Button>
+              }
+            >
+              <ActivityFeed items={activity} locale={locale} empty={t("hu.home.activity.empty")} />
+            </Section>
+          ) : null}
+        </div>
+      ) : null}
+
+      {noClients ? (
         <EmptyState
           title={t("clients.empty.title")}
           description={t("clients.empty.body")}
-          action={
-            can(principal.role, "clients:write") ? (
-              <Button nativeButton={false} render={<Link href="/clients/new" />}>{t("clients.new")}</Button>
-            ) : undefined
-          }
-          readonly={!can(principal.role, "clients:write")}
+          action={writeClients ? <Button nativeButton={false} render={<Link href="/clients/new" />}>{t("clients.new")}</Button> : undefined}
+          readonly={!writeClients}
         />
       ) : null}
-      {home ? <p className="font-mono text-xs text-muted-foreground">{t("hu.home.generated", { ms: home.generated_in_ms })}</p> : null}
     </>
   );
 }

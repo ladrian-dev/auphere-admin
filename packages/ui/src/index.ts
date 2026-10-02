@@ -33,6 +33,7 @@ export * from "./components/kbd";
 export * from "./components/label";
 export * from "./components/meter";
 export * from "./components/metric";
+export * from "./components/sparkline";
 export * from "./components/nav-tabs";
 export * from "./components/native-select";
 export * from "./components/page-header";

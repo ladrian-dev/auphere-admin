@@ -323,3 +323,27 @@ describe("StepTrack · el relleno sigue a la tarjeta", () => {
     expect(parcial).toContain("dark:bg-dark-green/75");
   });
 });
+
+describe("Metric con variación y tendencia (spec 026)", () => {
+  it("enseña la variación junto al valor y una tendencia con nombre", async () => {
+    const { Metric } = await import("../metric");
+    const { render, screen } = await import("@testing-library/react");
+    render(
+      <Metric
+        label="Conversaciones"
+        value="412"
+        delta={{ label: "+18 %", tone: "positive", srLabel: "18 % más que los 7 días anteriores" }}
+        trend={{ values: [1, 4, 2, 6, 5, 8, 9], ariaLabel: "Conversaciones de los últimos 7 días" }}
+      />,
+    );
+    expect(screen.getByText("18 % más que los 7 días anteriores")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Conversaciones de los últimos 7 días" })).toBeInTheDocument();
+  });
+
+  it("una tendencia con menos de dos puntos no se dibuja", async () => {
+    const { Sparkline } = await import("../sparkline");
+    const { render } = await import("@testing-library/react");
+    const { container } = render(<Sparkline values={[3]} ariaLabel="x" />);
+    expect(container.querySelector("svg")).toBeNull();
+  });
+});

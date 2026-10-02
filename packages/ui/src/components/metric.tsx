@@ -2,6 +2,16 @@ import type { ReactNode } from "react";
 
 import { cn } from "../lib/utils";
 import { Skeleton } from "./skeleton";
+import { Sparkline } from "./sparkline";
+
+type MetricDelta = {
+  /** Already formatted: «+18 %», «−4 pts». */
+  label: ReactNode;
+  /** Whether the change is good news, bad news or neither. */
+  tone: "positive" | "negative" | "neutral";
+  /** Screen-reader text, e.g. «18 % más que los 7 días anteriores». */
+  srLabel?: string;
+};
 
 type MetricProps = {
   label: ReactNode;
@@ -13,15 +23,25 @@ type MetricProps = {
   loading?: boolean;
   /** Renders as a link/button target: the whole tile is clickable. */
   href?: string;
+  /** Spec 026: change against the previous period, shown next to the value. */
+  delta?: MetricDelta;
+  /** Spec 026: a small trend under the value (oldest first). */
+  trend?: { values: number[]; ariaLabel: string };
   className?: string;
 };
+
+const DELTA_TONE = {
+  positive: "bg-status-positive/15 text-foreground",
+  negative: "bg-status-danger/15 text-foreground",
+  neutral: "bg-muted text-muted-foreground",
+} as const;
 
 /**
  * A single figure with a label. Tabular numerals, no decoration; the tile
  * is a link when ``href`` is given (every figure on the home page must be
  * actionable or absent — PLAN-CONSOLE-V1 CP-08).
  */
-function Metric({ label, value, hint, loading, href, className }: MetricProps) {
+function Metric({ label, value, hint, loading, href, delta, trend, className }: MetricProps) {
   const body = (
     <>
       {/* El nombre de una métrica es texto de interfaz: Helvena, no mono. */}
@@ -29,10 +49,19 @@ function Metric({ label, value, hint, loading, href, className }: MetricProps) {
       {loading ? (
         <Skeleton className="h-8 w-24" />
       ) : (
-        <p className="min-w-0 truncate text-2xl font-semibold tabular-nums" title={typeof value === "string" ? value : undefined}>
-          {value}
-        </p>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <p className="min-w-0 truncate text-2xl font-semibold tabular-nums" title={typeof value === "string" ? value : undefined}>
+            {value}
+          </p>
+          {delta ? (
+            <span className={cn("shrink-0 rounded-full px-2 text-xs font-medium tabular-nums", DELTA_TONE[delta.tone])} data-slot="metric-delta">
+              <span aria-hidden={delta.srLabel ? true : undefined}>{delta.label}</span>
+              {delta.srLabel ? <span className="sr-only">{delta.srLabel}</span> : null}
+            </span>
+          ) : null}
+        </div>
       )}
+      {trend && !loading ? <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} /> : null}
       {hint ? (
         loading ? <Skeleton className="h-4 w-32" /> : <p className="min-w-0 truncate text-sm text-muted-foreground">{hint}</p>
       ) : null}
@@ -57,4 +86,4 @@ function Metric({ label, value, hint, loading, href, className }: MetricProps) {
   );
 }
 
-export { Metric, type MetricProps };
+export { Metric, type MetricDelta, type MetricProps };
