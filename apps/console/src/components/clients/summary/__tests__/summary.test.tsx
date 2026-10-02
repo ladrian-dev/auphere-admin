@@ -25,7 +25,7 @@ const CLIENTE: SummaryProps["client"] = {
   status: "active",
   sector: "barbershop",
   health: { ready: true, agent_version: 3, whatsapp_connected: true, display_phone_number: "+34 600 123 456" },
-  quota: { cap: 50_000, remaining: 31_400 },
+  quota: { cap_cents: 5_000, remaining_cents: 3_140 },
 };
 
 function props(over: Partial<SummaryProps> = {}): SummaryProps {
@@ -61,7 +61,7 @@ describe("Resumen · las cuatro preguntas", () => {
     // El orden cuenta una historia: quién es, cuánto gasta, cómo va la
     // conversación y con qué está conectado. Los datos van primero porque
     // son la identidad y porque son lo único que se edita aquí.
-    expect(titulos).toEqual(["Datos del cliente", "Crédito y consumo", "Conversaciones", "Lo que tiene conectado"]);
+    expect(titulos).toEqual(["Datos del cliente", "Saldo y consumo", "Conversaciones", "Lo que tiene conectado"]);
     // Y el estado de atención es UNA línea dentro del primer bloque, no un
     // bloque propio: la cabecera y la tarjeta de pasos ya lo decían, y
     // decirlo tres veces es lo que hacía el Resumen confuso.
@@ -82,14 +82,15 @@ describe("Resumen · las cuatro preguntas", () => {
     );
   });
 
-  it("el crédito dice lo que queda, lo gastado y a qué ritmo acaba el mes", () => {
+  it("el saldo dice lo que queda y lo gastado, en dólares (spec 027)", () => {
     mount();
-    const bloque = screen.getByRole("region", { name: "Crédito y consumo" });
+    const bloque = screen.getByRole("region", { name: "Saldo y consumo" });
     // `getAllByText`: el medidor repite la cifra en su etiqueta accesible, y
     // que esté dos veces es correcto — lo que se afirma es que está.
-    expect(within(bloque).getAllByText(/31\.400/).length).toBeGreaterThan(0);
-    expect(within(bloque).getAllByText(/18\.600/).length).toBeGreaterThan(0);
-    expect(within(bloque).getByText(/17\.778/)).toBeInTheDocument();
+    expect(within(bloque).getAllByText(/31,40\sUS\$/).length).toBeGreaterThan(0);
+    expect(within(bloque).getAllByText(/18,60\sUS\$/).length).toBeGreaterThan(0);
+    // La proyección de mensajes etiquetada como créditos ya no está.
+    expect(bloque.textContent).not.toMatch(/créditos|acabará el mes/);
   });
 
   it("lo que necesita atención va primero, aunque llegue el segundo", () => {
@@ -112,7 +113,7 @@ describe("Resumen · sin actividad no es cero", () => {
     // Un cero grande se lee como una caída, no como un cliente nuevo.
     expect(within(conv).queryByText("0")).toBeNull();
 
-    const credito = screen.getByRole("region", { name: "Crédito y consumo" });
+    const credito = screen.getByRole("region", { name: "Saldo y consumo" });
     expect(within(credito).getByText(/todavía no ha gastado nada/i)).toBeInTheDocument();
   });
 });
@@ -120,7 +121,7 @@ describe("Resumen · sin actividad no es cero", () => {
 describe("Resumen · una lectura caída no tumba la pantalla", () => {
   it("lo dice en su bloque, ofrece reintentar, y los demás siguen", () => {
     mount({ usage: { ok: false } });
-    const credito = screen.getByRole("region", { name: "Crédito y consumo" });
+    const credito = screen.getByRole("region", { name: "Saldo y consumo" });
     expect(within(credito).getByText(/no se pudo leer/i)).toBeInTheDocument();
     expect(within(credito).getByRole("button", { name: /reintentar/i })).toBeInTheDocument();
 
@@ -141,7 +142,7 @@ describe("Resumen · lo que cada rol ve", () => {
   it("el analista lee las cifras y no ve un control que le diría que no", () => {
     mount({ role: "analyst" });
     expect(screen.getByText("128")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Crédito y consumo" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Saldo y consumo" })).toBeInTheDocument();
     // Ni edición de datos, ni botones de escritura.
     expect(screen.queryByRole("textbox", { name: "Nombre" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Guardar" })).toBeNull();
@@ -154,7 +155,7 @@ describe("Resumen · lo que cada rol ve", () => {
     mount({ conversations: null });
     expect(screen.queryByRole("region", { name: "Conversaciones" })).toBeNull();
     // Y el resto del Resumen sigue entero.
-    expect(screen.getByRole("region", { name: "Crédito y consumo" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Saldo y consumo" })).toBeInTheDocument();
   });
 
   it("quien puede escribir edita nombre y zona horaria aquí mismo", () => {
@@ -175,16 +176,16 @@ describe("Resumen · lo que cada rol ve", () => {
 
 describe("Resumen · sin crédito", () => {
   it("lo dice donde está la cifra que lo explica, con la salida al lado", () => {
-    mount({ client: { ...CLIENTE, quota: { cap: 50_000, remaining: 0 }, health: { ...CLIENTE.health, ready: false } } });
-    const credito = screen.getByRole("region", { name: "Crédito y consumo" });
-    expect(within(credito).getByText(/sin crédito/i)).toBeInTheDocument();
-    expect(within(credito).getByRole("link", { name: /asignar más crédito/i })).toBeInTheDocument();
+    mount({ client: { ...CLIENTE, quota: { cap_cents: 5_000, remaining_cents: 0 }, health: { ...CLIENTE.health, ready: false } } });
+    const credito = screen.getByRole("region", { name: "Saldo y consumo" });
+    expect(within(credito).getByText(/sin saldo/i)).toBeInTheDocument();
+    expect(within(credito).getByRole("link", { name: /asignar más saldo/i })).toBeInTheDocument();
   });
 
   it("sin tope configurado lo dice, en vez de pintar una barra vacía", () => {
     mount({ client: { ...CLIENTE, quota: null } });
-    const credito = screen.getByRole("region", { name: "Crédito y consumo" });
-    expect(within(credito).getByText(/sin crédito asignado/i)).toBeInTheDocument();
+    const credito = screen.getByRole("region", { name: "Saldo y consumo" });
+    expect(within(credito).getByText(/sin saldo asignado/i)).toBeInTheDocument();
     expect(within(credito).queryByRole("meter")).toBeNull();
   });
 });

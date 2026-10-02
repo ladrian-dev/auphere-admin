@@ -69,7 +69,7 @@ async def test_the_record_reads_sector_setup_and_quota(client, console_world, db
         "active": True,
         "next": "agent",
     }
-    assert body["quota"] == {"cap": 500_000, "remaining": 500_000}
+    assert body["quota"] == {"cap_cents": 500, "remaining_cents": 500, "currency": "USD"}
     assert body["health"]["missing"] == ["agent", "whatsapp"]  # the 016 reading stays
 
     # An active agent seeded from the bakery template → sector; a Playground
@@ -115,7 +115,7 @@ async def test_quota_step_and_next_follow_the_ledger(client, console_world, db_s
     body = (await client.get(f"/console/clients/{a['ref']}", headers=a["headers"]())).json()
     assert body["setup"]["quota"] is False
     assert body["setup"]["next"] == "quota"
-    assert body["quota"] == {"cap": 500_000, "remaining": 0}
+    assert body["quota"] == {"cap_cents": 500, "remaining_cents": 0, "currency": "USD"}
     assert body["out_of_quota"] is True
 
     # No allocation row at all → «sin cupo asignado»: quota is null and the
@@ -174,7 +174,7 @@ async def test_the_list_carries_setup_quota_and_seven_day_conversations(
     row = next(i for i in r.json()["items"] if i["external_client_ref"] == a["ref"])
     assert row["setup"] == {"agent": True, "channel": True, "quota": True, "active": True}
     assert "next" not in row["setup"]
-    assert row["quota"] == {"cap": 500_000, "remaining": 500_000}
+    assert row["quota"] == {"cap_cents": 500, "remaining_cents": 500, "currency": "USD"}
     # Two conversations in the last 7 days on the real channel; the 10-day-old
     # one and the Playground one do not count.
     assert row["conversations_7d"] == 2

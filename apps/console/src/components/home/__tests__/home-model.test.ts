@@ -62,7 +62,7 @@ describe("attentionRows", () => {
 
 describe("spendShares", () => {
   it("gives each slice its share and the shares add up to 100", () => {
-    const share = (credits: number) => ({ kind: "client" as const, external_client_ref: "x", client_name: null, credits, cents: 0 });
+    const share = (cents: number) => ({ kind: "client" as const, external_client_ref: "x", client_name: null, cents });
     const out = spendShares([share(1), share(1), share(1)]);
     expect(out.map((s) => s.pct).reduce((a, b) => a + b, 0)).toBe(100);
     expect(spendShares([share(3), share(1)]).map((s) => s.pct)).toEqual([75, 25]);

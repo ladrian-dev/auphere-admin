@@ -95,9 +95,9 @@ export function attentionRows(items: AttentionItem[], walletEmpty = false): Atte
 
 /** Spend slices with their share of the month, rounded so they add up to 100. */
 export function spendShares(shares: SpendShare[]): Array<SpendShare & { pct: number }> {
-  const total = shares.reduce((sum, s) => sum + s.credits, 0);
+  const total = shares.reduce((sum, s) => sum + s.cents, 0);
   if (total <= 0) return [];
-  const raw = shares.map((s) => (s.credits / total) * 100);
+  const raw = shares.map((s) => (s.cents / total) * 100);
   const pcts = raw.map(Math.floor);
   let left = 100 - pcts.reduce((a, b) => a + b, 0);
   const order = raw.map((r, i) => [r - Math.floor(r), i] as const).sort((a, b) => b[0] - a[0]);

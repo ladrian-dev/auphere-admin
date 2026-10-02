@@ -26,7 +26,7 @@ describe("Necesita tu atención", () => {
     expect(screen.getByRole("heading", { name: /Necesita tu atención/ })).toBeTruthy();
     expect(screen.getByText("Flor y Encanto")).toBeTruthy();
     expect(screen.getByText("3 mensajes no se entregaron en 24 horas")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Asignar crédito" }).getAttribute("href")).toBe("/usage?client=flor");
+    expect(screen.getByRole("button", { name: "Asignar saldo" }).getAttribute("href")).toBe("/usage?client=flor");
     expect(screen.getByRole("button", { name: "Ver conversaciones" }).getAttribute("href")).toBe("/clients/demo/conversations");
     expect(screen.getByText("1 de 3 clientes sin problemas.")).toBeTruthy();
   });
@@ -44,7 +44,7 @@ describe("Necesita tu atención", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
     expect(screen.getByText("5 clientes")).toBeTruthy();
     expect(screen.getByText("A, B, C y 2 más")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Asignar crédito" }).getAttribute("href")).toBe("/usage");
+    expect(screen.getByRole("button", { name: "Asignar saldo" }).getAttribute("href")).toBe("/usage");
   });
 
   it("more than two actions in the list: each row folds them behind three dots", async () => {
@@ -86,15 +86,13 @@ describe("Conversaciones por día", () => {
 
 describe("Gasto del mes", () => {
   const spend: HomeSpend = {
-    credits: 1_240_000,
     cents: 1240,
     previous_cents: 1000,
     projected_cents: 3844,
     currency: "USD",
-    usd_per_million_credits: 10,
     by_client: [
-      { kind: "client", external_client_ref: "a", client_name: "Flor y Encanto", credits: 900_000, cents: 900 },
-      { kind: "outside", external_client_ref: null, client_name: null, credits: 340_000, cents: 340 },
+      { kind: "client", external_client_ref: "a", client_name: "Flor y Encanto", cents: 900 },
+      { kind: "outside", external_client_ref: null, client_name: null, cents: 340 },
     ],
   };
 
@@ -104,12 +102,12 @@ describe("Gasto del mes", () => {
     expect(screen.getByText("Flor y Encanto")).toBeTruthy();
     expect(screen.getByText("Companion y pruebas")).toBeTruthy();
     expect(screen.getByText("73 %")).toBeTruthy();
-    expect(screen.getByText(/créditos a 10,00 .* el millón/)).toBeTruthy();
+    expect(screen.queryByText(/créditos|millón/)).toBeNull();
     expect(screen.queryByText(/mes pasado|a este ritmo/i)).toBeNull();
   });
 
   it("without spend says so", () => {
-    render(<SpendCard spend={{ ...spend, credits: 0, cents: 0, previous_cents: null, projected_cents: 0, by_client: [] }} t={t} locale="es" />);
+    render(<SpendCard spend={{ ...spend, cents: 0, previous_cents: null, projected_cents: 0, by_client: [] }} t={t} locale="es" />);
     expect(screen.getByText("Todavía no hay gasto este mes.")).toBeTruthy();
   });
 });

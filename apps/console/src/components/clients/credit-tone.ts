@@ -9,7 +9,7 @@ import type { MeterTone } from "@nexus/ui";
  * y dos reglas de color para la misma cifra es como se empiezan a contradecir
  * dos pantallas.
  */
-export function creditTone({ cap, remaining }: { cap: number; remaining: number }): MeterTone {
+export function creditTone({ cap_cents: cap, remaining_cents: remaining }: { cap_cents: number; remaining_cents: number }): MeterTone {
   if (remaining <= 0) return "danger";
   if (cap > 0 && remaining / cap <= 0.2) return "warning";
   return "positive";

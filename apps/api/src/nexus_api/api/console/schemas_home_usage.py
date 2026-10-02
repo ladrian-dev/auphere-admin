@@ -155,19 +155,20 @@ class HomeTrendOut(BaseModel):
 class CreditRiskOut(BaseModel):
     external_client_ref: str
     client_name: str | None
-    remaining: int
+    remaining_cents: int
     days_left: float
     href: str
 
 
 class HomeCreditOut(BaseModel):
-    """Credit in units (never money). ``days_left`` is ``None`` when there
-    was no spend in 7 days."""
+    """Spec 027: the partner's balance and spend in cents of ``currency``.
+    ``days_left`` is ``None`` when there was no spend in 7 days."""
 
-    available: int | None
-    spent_7d: int
-    daily_average: float
+    available_cents: int | None
+    spent_7d_cents: int
+    daily_average_cents: int
     days_left: float | None
+    currency: str = "USD"
     at_risk: list[CreditRiskOut]
 
 
@@ -175,7 +176,6 @@ class SpendShareOut(BaseModel):
     kind: Literal["client", "rest", "outside"]
     external_client_ref: str | None
     client_name: str | None
-    credits: int
     cents: int
 
 
@@ -183,12 +183,10 @@ class HomeSpendOut(BaseModel):
     """Spec 026: the month's credit in money, at the price the partner pays
     (USD per million credits). Not Auphere's cost, which stays internal."""
 
-    credits: int
     cents: int
     previous_cents: int | None
     projected_cents: int
     currency: str
-    usd_per_million_credits: int
     by_client: list[SpendShareOut]
 
 
@@ -199,8 +197,8 @@ class PortfolioRowOut(BaseModel):
     conversations_7d: int
     series_7d: list[int]
     last_activity_at: datetime | None
-    credit_cap: int | None
-    credit_remaining: int | None
+    credit_cap_cents: int | None
+    credit_remaining_cents: int | None
     attention: int
     href: str
 

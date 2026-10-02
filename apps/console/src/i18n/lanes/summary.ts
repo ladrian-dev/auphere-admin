@@ -18,24 +18,14 @@ export const summaryMessages = {
   "sum.seeAgent": { es: "Ver el agente", en: "See the agent" },
 
   // ── crédito y consumo ─────────────────────────────────────────────
-  "sum.credit": { es: "Crédito y consumo", en: "Credit and usage" },
-  "sum.credit.help": {
-    es: "Un crédito es una unidad de consumo. El agente gasta créditos al leer lo que le llega y al responder.",
-    en: "A credit is a unit of usage. The agent spends credits reading what arrives and replying.",
-  },
+  "sum.credit": { es: "Saldo y consumo", en: "Balance and usage" },
+  "sum.credit.help": { es: "Lo que este cliente puede gastar, en dólares. El agente gasta al leer lo que le llega y al responder.", en: "What this client may spend, in dollars. The agent spends when it reads what arrives and replies." },
   "sum.credit.detail": { es: "Ver el detalle", en: "See the detail" },
-  "sum.credit.value": { es: "Quedan {remaining} de {cap} créditos", en: "{remaining} of {cap} credits left" },
+  "sum.credit.value": { es: "Quedan {remaining} de {cap}", en: "{remaining} of {cap} left" },
   "sum.credit.spent": { es: "{spent} gastados este mes", en: "{spent} spent this month" },
-  "sum.credit.projection": {
-    es: "Al ritmo de estos {days} días, acabará el mes en {projected} créditos.",
-    en: "At the pace of these {days} days, it will end the month at {projected} credits.",
-  },
-  "sum.credit.none": {
-    es: "Sin crédito asignado. Este cliente no tiene tope, así que no hay nada que medir todavía.",
-    en: "No credit assigned. This client has no cap, so there is nothing to measure yet.",
-  },
-  "sum.credit.empty": { es: "Sin crédito: el agente no está respondiendo.", en: "No credit: the agent is not replying." },
-  "sum.credit.assign": { es: "Asignar más crédito", en: "Assign more credit" },
+  "sum.credit.none": { es: "Sin saldo asignado. Este cliente no tiene tope, así que no hay nada que medir todavía.", en: "No balance assigned. This client has no cap, so there is nothing to measure yet." },
+  "sum.credit.empty": { es: "Sin saldo: el agente no está respondiendo.", en: "No balance left: the agent is not replying." },
+  "sum.credit.assign": { es: "Asignar más saldo", en: "Assign more balance" },
   // Un cero aquí se leería como una caída, no como un cliente nuevo.
   "sum.credit.noActivity": {
     es: "Todavía no ha gastado nada: el agente aún no ha atendido ninguna conversación.",

@@ -8,6 +8,7 @@ import { backendFor } from "@/lib/backend";
 import type { Allocation, Wallet } from "@/lib/backend/home-usage";
 import { can, requirePrincipal } from "@/lib/principal";
 import { meterLabel } from "@/lib/meter-label";
+import { formatMoney } from "@/lib/money";
 import { barsFromSeries, cumulativeWithProjection, includedRemainingPercent, topMeters } from "@/lib/usage-projection";
 
 import { AllocationCapForm } from "./allocation-cap";
@@ -27,10 +28,10 @@ const METER_GROUPS: Record<string, string> = { "channel.message": "channel.messa
 // When the ledger cannot be read the page says so; it never paints "0 %"
 // or "exhausted", which would be a lie a partner acts on (buys credit).
 const UNREADABLE_WALLET: Wallet = {
-  included_remaining: 0,
-  purchased_remaining: 0,
-  available: 0,
-  reserve: 0,
+  included_remaining_cents: 0,
+  purchased_remaining_cents: 0,
+  available_cents: 0,
+  reserve_cents: 0,
   included_expires_at: null,
   exhausted: false,
 };
@@ -61,6 +62,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
   const wallet = walletRead.wallet;
   const walletUnreadable = !walletRead.ok;
   const n = (v: number) => formatNumber(v, locale);
+  const money = (cents: number) => formatMoney(cents, locale);
   // R7.1: la proporción la calcula la API, que es quien conoce el tamaño del
   // pool. Aquí se pinta lo que QUEDA, que es lo que dice la etiqueta: un
   // pool entero es 100 %, no 0 %.
@@ -81,7 +83,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
   const listedClients = (clients?.items ?? []).map((c) => ({
     ref: c.external_client_ref,
     name: c.name,
-    cap: allocations.find((row) => row.client_ref === c.external_client_ref)?.cap ?? 0,
+    capCents: allocations.find((row) => row.client_ref === c.external_client_ref)?.cap_cents ?? 0,
   }));
   const unassignedClients = listedClients.filter((c) => !allocatedRefs.has(c.ref));
   const allocatedClients = listedClients.length
@@ -89,7 +91,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
     : allocations.map((row) => ({
         ref: row.client_ref,
         name: names.get(row.client_ref) ?? row.client_ref,
-        cap: row.cap,
+        capCents: row.cap_cents,
       }));
   const moveDestinations = listedClients.length ? listedClients : allocatedClients;
 
@@ -121,23 +123,22 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
         </Alert>
       ) : null}
       <section className="grid gap-4 md:grid-cols-3" aria-label={t("hu.usage.wallet")}>
-        {/* Spec 004 (R7.1): el consumo INCLUIDO se presenta como proporción,
-            no como cifra. El partner ve cuánto le queda y cuándo vuelve.
-            El saldo COMPRADO de al lado sigue en unidades (R7.6): es dinero
-            que pagó y tiene derecho a verificar. */}
+        {/* Spec 027: todo en dinero. El incluido se enseña en dólares con su
+            renovación (clarificación del owner, levanta spec 005 R1.8 aquí);
+            el porcentaje queda como dato secundario. */}
         <Metric
           label={t("hu.usage.wallet.included")}
-          value={walletUnreadable ? "—" : `${walletPercent}%`}
+          value={walletUnreadable ? "—" : money(wallet.included_remaining_cents)}
           hint={
             walletUnreadable
               ? t("hu.usage.wallet.unreadable.hint")
               : wallet.included_expires_at
-              ? t("hu.usage.wallet.included.hint", { remaining: n(wallet.included_remaining), date: formatDateTime(wallet.included_expires_at, locale) })
-              : t("hu.usage.wallet.included.hint.none", { remaining: n(wallet.included_remaining) })
+              ? t("hu.usage.wallet.included.hint", { percent: n(walletPercent), date: formatDateTime(wallet.included_expires_at, locale) })
+              : t("hu.usage.wallet.included.hint.none", { percent: n(walletPercent) })
           }
         />
-        <Metric label={t("hu.usage.wallet.purchased")} value={walletUnreadable ? "—" : n(wallet.purchased_remaining)} hint={t("hu.usage.wallet.tokens")} />
-        <Metric label={t("hu.usage.wallet.reserve")} value={walletUnreadable ? "—" : n(wallet.reserve)} hint={t("hu.usage.wallet.reserve.hint")} />
+        <Metric label={t("hu.usage.wallet.purchased")} value={walletUnreadable ? "—" : money(wallet.purchased_remaining_cents)} hint={t("hu.usage.wallet.tokens")} />
+        <Metric label={t("hu.usage.wallet.reserve")} value={walletUnreadable ? "—" : money(wallet.reserve_cents)} hint={t("hu.usage.wallet.reserve.hint")} />
       </section>
       {/* Spec 005: la recarga sin cobro desapareció. Lo que hay ahora es una
           compra de verdad — el saldo sube cuando el pago se confirma, nunca
@@ -174,7 +175,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
                 // Spec 016 (R2.4): the row says «sin cupo» and the cap field
                 // right next to it IS the «asignar» action. ``?client=`` (the
                 // link from the client's card) lands on the row.
-                const outOfQuota = row.remaining <= 0 || walletUnreadable || wallet.exhausted;
+                const outOfQuota = row.remaining_cents <= 0 || walletUnreadable || wallet.exhausted;
                 const focused = sp.client === row.client_ref;
                 return (
                   <tr
@@ -190,7 +191,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
                       </span>
                     </td>
                     <td className="p-2 text-right tabular-nums">
-                      {canWrite ? <AllocationCapForm key={`${row.client_ref}-${row.cap}`} clientRef={row.client_ref} cap={row.cap} /> : n(row.cap)}
+                      {canWrite ? <AllocationCapForm key={`${row.client_ref}-${row.cap_cents}`} clientRef={row.client_ref} capCents={row.cap_cents} /> : money(row.cap_cents)}
                     </td>
                     <td className="p-2 text-right tabular-nums">
                       {outOfQuota ? (
@@ -198,10 +199,10 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
                           <StatusBadge tone="warning" dot={false}>
                             {t("hu.usage.allocations.outOfQuota")}
                           </StatusBadge>
-                          {n(row.remaining)}
+                          {money(row.remaining_cents)}
                         </span>
                       ) : (
-                        n(row.remaining)
+                        money(row.remaining_cents)
                       )}
                     </td>
                   </tr>

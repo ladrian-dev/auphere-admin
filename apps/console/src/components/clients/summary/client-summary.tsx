@@ -22,6 +22,7 @@ import { connectorStatusKey } from "@/components/agent-tools/lib";
 import { creditTone } from "../credit-tone";
 import { SettingsForm } from "./settings-form";
 import { useLocale, useT } from "@/i18n/client";
+import { formatMoney } from "@/lib/money";
 import { can, type Role } from "@/lib/permissions";
 
 /**
@@ -71,7 +72,8 @@ export type SummaryProps = {
       whatsapp_connected: boolean;
       display_phone_number?: string | null;
     };
-    quota: { cap: number; remaining: number } | null;
+    /** Spec 027: in cents of USD. */
+    quota: { cap_cents: number; remaining_cents: number } | null;
   };
   usage: Block<{ units: number; projected: number; basisDays: number; daysInMonth: number }>;
   /** `null` cuando el rol no puede leer conversaciones: el bloque no existe. */
@@ -197,7 +199,7 @@ function Credit({
 }: Pick<SummaryProps, "refId" | "role" | "usage"> & { quota: SummaryProps["client"]["quota"] }) {
   const t = useT();
   const locale = useLocale();
-  const empty = quota !== null && quota.remaining <= 0;
+  const empty = quota !== null && quota.remaining_cents <= 0;
 
   return (
     <Section
@@ -230,14 +232,14 @@ function Credit({
           <Meter
             label={t("sum.credit")}
             labelHidden
-            value={quota.remaining}
-            max={quota.cap}
+            value={quota.remaining_cents}
+            max={quota.cap_cents}
             tone={creditTone(quota)}
             valueLabel={t("sum.credit.value", {
-              remaining: formatNumber(quota.remaining, locale),
-              cap: formatNumber(quota.cap, locale),
+              remaining: formatMoney(quota.remaining_cents, locale),
+              cap: formatMoney(quota.cap_cents, locale),
             })}
-            hint={t("sum.credit.spent", { spent: formatNumber(quota.cap - quota.remaining, locale) })}
+            hint={t("sum.credit.spent", { spent: formatMoney(quota.cap_cents - quota.remaining_cents, locale) })}
           />
           {empty ? (
             <Alert role="status" className="border-status-warning/40">
@@ -257,14 +259,11 @@ function Credit({
             // R1.7: sin actividad no es cero. Un «0 gastados» junto a una
             // proyección de 0 se lee como que algo se ha roto.
             <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("sum.credit.noActivity")}</p>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {t("sum.credit.projection", {
-                days: usage.data.basisDays,
-                projected: formatNumber(Math.round(usage.data.projected), locale),
-              })}
-            </p>
-          )}
+          ) : null}
+          {/* Spec 027 (R2.3): la proyección que vivía aquí eran mensajes de
+              canal con la etiqueta «créditos». Una proyección de gasto en
+              dinero por cliente no existe todavía: mejor nada que una cifra
+              falsa. */}
         </div>
       )}
     </Section>

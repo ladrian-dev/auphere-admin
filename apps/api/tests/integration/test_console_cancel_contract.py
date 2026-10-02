@@ -37,7 +37,7 @@ async def test_cancelling_says_how_much_credit_is_kept_and_until_when(
     resp = await client.delete(_PATH, headers=a["headers"]())
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["purchased_remaining"] == 30_000
+    assert body["purchased_remaining_cents"] == 30
     assert body["purchased_expires_at"], "no dice hasta cuándo conserva el saldo"
 
 

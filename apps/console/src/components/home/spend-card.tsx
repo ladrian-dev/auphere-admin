@@ -1,7 +1,7 @@
 import { CircleDollarSign } from "lucide-react";
 import Link from "next/link";
 
-import { Button, cn, formatCompact } from "@nexus/ui";
+import { Button, cn } from "@nexus/ui";
 
 import type { Locale, MessageKey } from "@/i18n/messages";
 import type { HomeSpend } from "@/lib/backend/home-usage";
@@ -33,7 +33,8 @@ function BigAmount({ cents, currency, locale }: { cents: number; currency: strin
 
 /**
  * «Gasto del mes» (spec 026): the month's credit in money at the price the
- * partner pays for it, and who it goes to. Never Auphere's cost. The owner
+ * partner pays for it, and who it goes to. Never Auphere's cost, never
+ * credits (spec 027). The owner
  * dropped the comparison and the projection tiles (2026-10-02): the card
  * answers «how much and on whom», nothing else.
  */
@@ -62,7 +63,7 @@ export function SpendCard({ spend, t, locale }: { spend: HomeSpend; t: T; locale
         <>
           <div className="flex h-3 gap-1" role="img" aria-label={t("hu.home.spend.aria")}>
             {shares.map((s, i) => (
-              <span key={`${s.kind}-${s.external_client_ref ?? i}`} className={cn("min-w-1 basis-0 rounded-sm", SLICE[i] ?? SLICE[3])} style={{ flexGrow: s.credits }} />
+              <span key={`${s.kind}-${s.external_client_ref ?? i}`} className={cn("min-w-1 basis-0 rounded-sm", SLICE[i] ?? SLICE[3])} style={{ flexGrow: s.cents }} />
             ))}
           </div>
           <ul className="flex flex-col gap-1 text-sm">
@@ -79,9 +80,6 @@ export function SpendCard({ spend, t, locale }: { spend: HomeSpend; t: T; locale
       ) : (
         <p className="text-sm text-muted-foreground">{t("hu.home.spend.empty")}</p>
       )}
-      <p className="mt-auto text-xs text-muted-foreground">
-        {t("hu.home.spend.rate", { credits: formatCompact(spend.credits, locale), rate: money(spend.usd_per_million_credits * 100, currency, locale) })}
-      </p>
     </section>
   );
 }

@@ -6,9 +6,9 @@ import { toast } from "sonner";
 import { Button, Input, NativeSelect } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
+import { parseMoney } from "@/lib/money";
 
 import { saveAllocationAction } from "./actions";
-import { parseCapInput } from "./parse-cap-input";
 import { actionErrorText } from "@/lib/action-error";
 
 type Client = { ref: string; name: string };
@@ -27,7 +27,7 @@ export function AssignAllocationForm({ clients }: { clients: Client[] }) {
       toast.error(t("hu.usage.allocations.assign.pick"));
       return;
     }
-    const parsed = parseCapInput(value);
+    const parsed = parseMoney(value);
     if (parsed.kind === "empty") {
       toast.info(t("hu.usage.allocations.emptyCap"));
       return;
@@ -37,7 +37,7 @@ export function AssignAllocationForm({ clients }: { clients: Client[] }) {
       return;
     }
     start(async () => {
-      const res = await saveAllocationAction({ client_ref: clientRef, cap: parsed.n });
+      const res = await saveAllocationAction({ client_ref: clientRef, cap_cents: parsed.cents });
       if (!res.ok) {
         if (res.status === 409) return void toast.error(t("hu.usage.allocations.over"));
         return void toast.error(actionErrorText(res, t));
@@ -61,14 +61,20 @@ export function AssignAllocationForm({ clients }: { clients: Client[] }) {
           </option>
         ))}
       </NativeSelect>
-      <Input
-        aria-label={t("hu.usage.allocations.cap")}
-        inputMode="numeric"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        disabled={pending}
-        className="h-8 w-32 text-right tabular-nums"
-      />
+      <span className="flex items-center gap-1">
+        <Input
+          aria-label={t("hu.usage.allocations.cap")}
+          inputMode="decimal"
+          placeholder="25,00"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={pending}
+          className="h-8 w-28 text-right tabular-nums"
+        />
+        <span aria-hidden="true" className="text-xs text-muted-foreground">
+          US$
+        </span>
+      </span>
       <Button type="submit" size="sm" disabled={pending}>
         {t("hu.usage.allocations.assign")}
       </Button>

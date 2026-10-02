@@ -1037,8 +1037,8 @@
   {
    "id": "f1-get-wallet",
    "family": "known_answer",
-   "title": "El libro de cuota se lee, no se recuerda",
-   "user_message": "¿Cuántos tokens de cuota me quedan?",
+   "title": "El saldo se lee, no se recuerda",
+   "user_message": "¿Cuánto saldo me queda?",
    "principal": "a",
    "trajectory": [
     {
@@ -1046,15 +1046,15 @@
      "args": {}
     },
     {
-     "text": "Te digo el saldo que acaba de devolver el libro: tokens, no euros."
+     "text": "Te digo el saldo que acabo de leer, en dólares."
     }
    ],
    "expect": {
     "reads_ok": 1,
     "tool_body_contains": [
-     "included_remaining",
-     "purchased_remaining",
-     "available"
+     "included_remaining_cents",
+     "purchased_remaining_cents",
+     "available_cents"
     ],
     "unsupported": false
    }
@@ -1062,8 +1062,8 @@
   {
    "id": "f1-list-allocations",
    "family": "known_answer",
-   "title": "Las asignaciones se listan por client_ref",
-   "user_message": "¿Qué cupo tiene cada cliente?",
+   "title": "Los topes se listan por client_ref",
+   "user_message": "¿Qué tope tiene cada cliente?",
    "principal": "a",
    "trajectory": [
     {
@@ -1071,15 +1071,15 @@
      "args": {}
     },
     {
-     "text": "Estas son las asignaciones que acabo de leer."
+     "text": "Estos son los topes que acabo de leer, en dólares."
     }
    ],
    "expect": {
     "reads_ok": 1,
     "tool_body_contains": [
      "client_ref",
-     "cap",
-     "remaining"
+     "cap_cents",
+     "remaining_cents"
     ],
     "unsupported": false
    }
@@ -1087,19 +1087,19 @@
   {
    "id": "f1-propose-quota-cap-no-aplica",
    "family": "known_answer",
-   "title": "Proponer un cupo no lo aplica",
-   "user_message": "Baja el cupo de $a.ref a mil tokens",
+   "title": "Proponer un tope no lo aplica",
+   "user_message": "Baja el tope de $a.ref a 1 dólar",
    "principal": "a",
    "trajectory": [
     {
      "tool": "console.propose_allocation",
      "args": {
       "client_ref": "$a.ref",
-      "cap": 1000
+      "cap_usd": "1"
      }
     },
     {
-     "text": "Te dejo preparado el cambio de cupo. No he tocado nada: confírmalo y se aplica."
+     "text": "Te dejo preparado el cambio de tope. No he tocado nada: confírmalo y se aplica."
     }
    ],
    "expect": {

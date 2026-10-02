@@ -124,10 +124,13 @@ def test_credit_says_how_many_days_it_lasts_and_who_runs_out_first() -> None:
         quieto.tenant_id: (10_000, 5_000),  # no spend: not at risk
     }
     block = credit_block([rapido, lento, quieto], 84_000, burn, allocations, days_to_month_end=20)
-    assert block.spent_7d == 8_400 and block.daily_average == 1_200
+    # Spec 027: amounts in cents (1 cent = 1 000 credits); the runway in credits.
+    assert block.available_cents == 84
+    assert block.spent_7d_cents == 8 and block.daily_average_cents == 1
     assert block.days_left == 70
     assert [r.external_client_ref for r in block.at_risk] == ["rapido"]
     assert block.at_risk[0].days_left == 2
+    assert block.at_risk[0].remaining_cents == 2
 
 
 def test_without_spend_there_are_no_days_of_autonomy() -> None:
@@ -143,9 +146,9 @@ def test_the_portfolio_has_one_row_per_client_with_its_problems_counted() -> Non
     rows = portfolio_rows([a, b], snaps, {a.tenant_id: (1000, 400)}, problems, TODAY)
     by_ref = {r.external_client_ref: r for r in rows}
     assert by_ref["a"].conversations_7d == 3 and by_ref["a"].series_7d[-1] == 3
-    assert (by_ref["a"].credit_cap, by_ref["a"].credit_remaining) == (1000, 400)
+    assert (by_ref["a"].credit_cap_cents, by_ref["a"].credit_remaining_cents) == (1, 0)
     assert by_ref["a"].attention == 1 and by_ref["a"].last_activity_at == last
-    assert by_ref["b"].status == "provisioning" and by_ref["b"].credit_cap is None
+    assert by_ref["b"].status == "provisioning" and by_ref["b"].credit_cap_cents is None
 
 
 def test_the_month_spend_is_credit_at_the_partner_price() -> None:
@@ -154,10 +157,11 @@ def test_the_month_spend_is_credit_at_the_partner_price() -> None:
     burn = {a.tenant_id: 600_000, b.tenant_id: 300_000, c.tenant_id: 200_000}
     burn |= {d.tenant_id: 100_000, None: 40_000}
     block = spend_block([a, b, c, d], burn, 1_000_000, daily_7d=100_000, days_left=21)
-    assert block.credits == 1_240_000 and block.cents == 1240
+    assert block.cents == 1240
     assert block.previous_cents == 1000
     assert block.projected_cents == 3340  # 12.40 + 21 days * 1.00 a day
-    assert block.currency == "USD" and block.usd_per_million_credits == 10
+    assert block.currency == "USD"
+    assert not hasattr(block, "credits"), "the partner never reads credits"
     shares = [(s.kind, s.external_client_ref, s.cents) for s in block.by_client]
     assert shares == [
         ("client", "a", 600),

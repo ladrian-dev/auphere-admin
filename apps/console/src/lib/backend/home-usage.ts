@@ -67,16 +67,14 @@ export type ReviewClient = {
 export type HomeToReview = { escalated: number; payments: number; unanswered: number; clients: ReviewClient[] };
 export type TrendClient = { external_client_ref: string | null; client_name: string | null; series: number[] };
 export type HomeTrend = { days: string[]; series: number[]; current: number; previous: number | null; by_client: TrendClient[] };
-export type CreditRisk = { external_client_ref: string; client_name: string | null; remaining: number; days_left: number; href: string };
-export type HomeCredit = { available: number | null; spent_7d: number; daily_average: number; days_left: number | null; at_risk: CreditRisk[] };
-export type SpendShare = { kind: "client" | "rest" | "outside"; external_client_ref: string | null; client_name: string | null; credits: number; cents: number };
+export type CreditRisk = { external_client_ref: string; client_name: string | null; remaining_cents: number; days_left: number; href: string };
+export type HomeCredit = { available_cents: number | null; spent_7d_cents: number; daily_average_cents: number; days_left: number | null; at_risk: CreditRisk[]; currency?: string };
+export type SpendShare = { kind: "client" | "rest" | "outside"; external_client_ref: string | null; client_name: string | null; cents: number };
 export type HomeSpend = {
-  credits: number;
   cents: number;
   previous_cents: number | null;
   projected_cents: number;
   currency: string;
-  usd_per_million_credits: number;
   by_client: SpendShare[];
 };
 export type PortfolioRow = {
@@ -86,8 +84,8 @@ export type PortfolioRow = {
   conversations_7d: number;
   series_7d: number[];
   last_activity_at: string | null;
-  credit_cap: number | null;
-  credit_remaining: number | null;
+  credit_cap_cents: number | null;
+  credit_remaining_cents: number | null;
   attention: number;
   href: string;
 };
@@ -150,18 +148,19 @@ export type UsageAlertsInput = { cap_messages_month: number | null; recipients: 
 export type AuditVocabularyEntry = { action: string; category: string; severity: string; summary: string };
 export type AuditVocabulary = { lang: string; entries: AuditVocabularyEntry[] };
 
+/** Spec 027: every amount is integer cents of USD. The console never sees credits. */
 export type Wallet = {
-  included_remaining: number;
-  purchased_remaining: number;
-  available: number;
-  reserve: number;
+  included_remaining_cents: number;
+  purchased_remaining_cents: number;
+  available_cents: number;
+  reserve_cents: number;
   included_expires_at: string | null;
   exhausted: boolean;
   /** Spec 004 (R7.1): proporción del pool consumida, calculada en la API. */
-  pool_size?: number;
   included_percent_used?: number;
+  currency?: string;
 };
-export type Allocation = { client_ref: string; cap: number; remaining: number };
+export type Allocation = { client_ref: string; cap_cents: number; remaining_cents: number; currency?: string };
 /** Spec 016 (R3.1): both caps after an atomic move. */
 export type AllocationMove = { from: Allocation; to: Allocation };
 
@@ -191,17 +190,17 @@ export function homeUsageApi(call: Call) {
     // ``addPurchased`` se borró con la spec 005: su ruta ya no existe. El
     // crédito entra por el aviso del pago confirmado, y la compra se abre
     // desde ``billing``.
-    setAllocation: (ref: string, cap: number) =>
+    setAllocation: (ref: string, capCents: number) =>
       call<Allocation>(`/console/clients/${encodeURIComponent(ref)}/allocation`, {
         method: "PUT",
-        body: { cap },
+        body: { cap_cents: capCents },
       }),
     // Spec 016 (R3.1): one call, one transaction. Two PUTs could lose quota
     // when the second one failed.
-    moveAllocation: (from_ref: string, to_ref: string, qty: number) =>
+    moveAllocation: (from_ref: string, to_ref: string, amountCents: number) =>
       call<AllocationMove>("/console/wallet/allocations/move", {
         method: "POST",
-        body: { from_ref, to_ref, qty },
+        body: { from_ref, to_ref, amount_cents: amountCents },
       }),
     usageSeries: (p: UsageQuery & { meter?: string } = {}) => call<UsageSeries>(`/console/usage/series${q(p)}`),
     usageAlerts: () => call<UsageAlerts>("/console/usage/alerts"),

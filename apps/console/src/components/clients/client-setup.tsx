@@ -1,8 +1,9 @@
 "use client";
 
-import { Section, StepTrack, formatNumber } from "@nexus/ui";
+import { Section, StepTrack } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
+import { formatMoney } from "@/lib/money";
 import { t as translate } from "@/i18n/messages";
 import type { ClientQuota, ClientSetupDetail } from "@/lib/backend";
 import type { Role } from "@/lib/permissions";
@@ -185,11 +186,11 @@ function subSteps({
       // agotado tiene el paso hecho y al agente callado.
       step: "quota",
       label: "clients.setup.quota",
-      done: (quota ? 1 : 0) + (quota && quota.remaining > 0 ? 1 : 0),
+      done: (quota ? 1 : 0) + (quota && quota.remaining_cents > 0 ? 1 : 0),
       of: 2,
       // Toda cifra pasa por Intl: «50000» en crudo no es un número, es
       // una cadena que casualmente tiene dígitos.
-      detail: quota ? formatNumber(quota.remaining, locale) : null,
+      detail: quota ? formatMoney(quota.remaining_cents, locale) : null,
     },
   ];
   // «Activación» solo es un paso cuando de verdad falta. Un cliente se crea

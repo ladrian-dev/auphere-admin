@@ -165,14 +165,14 @@ test.describe("CP-30 — axe + overflow on every main view", () => {
 
     await page.goto("/usage");
     await expect(page.locator("main#main")).toBeVisible();
-    const qty = page.getByLabel(/Créditos a mover|Credits to move/);
+    const qty = page.getByLabel(/Importe a mover|Amount to move/);
     if ((await qty.count()) === 0) {
       // The move form needs two clients; the seeded partner may have one.
       test.info().annotations.push({ type: "skipped-part", description: "move dialog: the partner has fewer than two clients" });
       return;
     }
     await qty.fill("1");
-    await page.getByRole("button", { name: /^Mover cupo$|^Move quota$/ }).click();
+    await page.getByRole("button", { name: /^Mover saldo$|^Move balance$/ }).click();
     const dialog = page.getByRole("alertdialog").or(page.getByRole("dialog"));
     await expect(dialog).toBeVisible();
     axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "best-practice"]).exclude("iframe").analyze();

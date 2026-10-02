@@ -39,11 +39,11 @@ describe("notifications/render", () => {
   it("names the missing piece when the client has an agent but no channel", () => {
     const wa = notificationText("es", { kind: "client.activated", data: { first: true, can_serve: false, missing: ["whatsapp"] }, external_client_ref: "acme" });
     expect(wa).toContain("falta conectar WhatsApp");
-    expect(wa).not.toContain("cuota");
+    expect(wa).not.toContain("saldo");
     const both = notificationText("es", { kind: "client.activated", data: { can_serve: false, missing: ["quota", "whatsapp"] }, external_client_ref: "acme" });
-    expect(both).toContain("WhatsApp y cuota");
+    expect(both).toContain("WhatsApp y saldo");
     const quota = notificationText("es", { kind: "client.activated", data: { can_serve: false, missing: ["quota"] }, external_client_ref: "acme" });
-    expect(quota).toContain("sin cuota");
+    expect(quota).toContain("sin saldo");
   });
   it("uses the client's name when the page knows it, the reference otherwise", () => {
     const n = { kind: "client.activated", data: { can_serve: true }, external_client_ref: "panaderia-la-espiga" };
@@ -54,9 +54,9 @@ describe("notifications/render", () => {
     const n = { kind: "client.out_of_quota", data: { external_client_ref: "panaderia-la-espiga", remaining: 0 }, external_client_ref: "panaderia-la-espiga" };
     const es = notificationText("es", n, { "panaderia-la-espiga": "Panadería La Espiga" });
     expect(es).toContain("Panadería La Espiga");
-    expect(es).toContain("sin cupo");
+    expect(es).toContain("sin saldo");
     expect(es).toContain("Consumo");
-    expect(notificationText("en", n)).toContain("out of quota");
+    expect(notificationText("en", n)).toContain("out of balance");
   });
   it("explains a model reset with both models (spec 016)", () => {
     const n = { kind: "client.model_reset", data: { from_model: "Sol", to_model: "Luna" }, external_client_ref: "acme" };

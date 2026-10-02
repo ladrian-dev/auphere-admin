@@ -442,7 +442,7 @@ async def test_a_allocation_proposal_writes_nothing(belt_for, console_world):
     a = console_world["a"]
     belt = await belt_for(_actor(a), principal_id=a["user_id"])
     before = await belt.call("console.list_allocations", {})
-    out = await belt.call("console.propose_allocation", {"client_ref": a["ref"], "cap": 1})
+    out = await belt.call("console.propose_allocation", {"client_ref": a["ref"], "cap_usd": "1"})
     # Over-allocated (wallet already fully assigned) still must not write.
     other = await belt_for(_actor(a), principal_id=a["user_id"])
     after = await other.call("console.list_allocations", {})
@@ -454,9 +454,11 @@ async def test_a_allocation_proposal_writes_nothing(belt_for, console_world):
 async def test_allocation_for_another_partners_client_is_the_opaque_404(belt_for, console_world):
     a, b = console_world["a"], console_world["b"]
     belt = await belt_for(_actor(a), principal_id=a["user_id"])
-    foreign = await belt.call("console.propose_allocation", {"client_ref": b["ref"], "cap": 1})
+    foreign = await belt.call(
+        "console.propose_allocation", {"client_ref": b["ref"], "cap_usd": "1"}
+    )
     missing = await belt.call(
-        "console.propose_allocation", {"client_ref": "no-existe-jamas", "cap": 1}
+        "console.propose_allocation", {"client_ref": "no-existe-jamas", "cap_usd": "1"}
     )
     assert foreign.ok is False and missing.ok is False
     assert foreign.content == missing.content

@@ -58,7 +58,7 @@ test.describe("spec 017 · la ficha de cliente", () => {
     } else {
       // Los cuatro pasos, cada uno con su nombre, y ninguno como ordinal:
       // se pueden hacer en cualquier orden.
-      for (const step of [/agente|agent/i, /canal|channel/i, /crédito|credit/i, /activación|activation/i]) {
+      for (const step of [/agente|agent/i, /canal|channel/i, /saldo|balance/i, /activación|activation/i]) {
         await expect(setup.getByText(step).first()).toBeVisible();
       }
       // Un solo botón primario en el bloque, el del paso pendiente.
@@ -68,7 +68,7 @@ test.describe("spec 017 · la ficha de cliente", () => {
 
     // El crédito está en la cabecera, como barra o como su ausencia dicha.
     await expect(
-      page.getByText(/quedan .* créditos|credits left|sin crédito asignado|no credit assigned/i).first(),
+      page.getByText(/quedan .* US\$|left|sin saldo asignado|no balance assigned/i).first(),
     ).toBeVisible();
   });
 
@@ -153,7 +153,7 @@ test.describe("spec 017 · la ficha de cliente", () => {
     const main = page.locator("main#main");
     for (const bloque of [
       /Atendiendo|Sin atender|Answering|Not answering/,
-      /Crédito y consumo|Credit and usage/,
+      /Saldo y consumo|Balance and usage/,
       /Conversaciones|Conversations/,
       /Lo que tiene conectado|What it has connected/,
       /Datos del cliente|Client details/,

@@ -657,7 +657,9 @@ async def test_out_of_quota_shows_in_detail_list_and_home_and_does_not_block_rea
     assert detail["out_of_quota"] is False
 
     # Agotado: el tope baja a 0. Sigue «listo», pero le falta cupo.
-    zero = await client.put(f"/console/clients/{a['ref']}/allocation", headers=h(), json={"cap": 0})
+    zero = await client.put(
+        f"/console/clients/{a['ref']}/allocation", headers=h(), json={"cap_cents": 0}
+    )
     assert zero.status_code == 200, zero.text
     detail = (await client.get(f"/console/clients/{a['ref']}", headers=h())).json()
     assert detail["health"]["ready"] is True
@@ -682,7 +684,7 @@ async def test_out_of_quota_shows_in_detail_list_and_home_and_does_not_block_rea
 
     # Asignar cupo lo quita de los tres sitios.
     back = await client.put(
-        f"/console/clients/{a['ref']}/allocation", headers=h(), json={"cap": 50_000}
+        f"/console/clients/{a['ref']}/allocation", headers=h(), json={"cap_cents": 50}
     )
     assert back.status_code == 200, back.text
     detail = (await client.get(f"/console/clients/{a['ref']}", headers=h())).json()

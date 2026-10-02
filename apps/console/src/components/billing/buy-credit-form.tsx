@@ -22,17 +22,15 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Input, Label, formatNumber } from "@nexus/ui";
+import { Button, Input, Label } from "@nexus/ui";
 
 import { buyCreditAction } from "@/app/(console)/billing/actions";
 import { useLocale, useT } from "@/i18n/client";
+import { formatMoney } from "@/lib/money";
 
 /** Los mismos límites que valida la API, en dólares. */
 const MIN_USD = 5;
 const MAX_USD = 5_000;
-
-/** 10 USD por millón de unidades (`concept.md` §La tarifa). */
-const UNITS_PER_USD = 100_000;
 
 export function BuyCreditForm() {
   const t = useT();
@@ -42,7 +40,9 @@ export function BuyCreditForm() {
 
   const amount = Number(value);
   const valid = Number.isFinite(amount) && Number.isInteger(amount) && amount >= MIN_USD && amount <= MAX_USD;
-  const units = valid ? amount * UNITS_PER_USD : null;
+  // Spec 027: lo que se paga es lo que se recibe, en dinero. La consola no
+  // conoce la tasa interna ni habla de unidades.
+  const receives = valid ? amount * 100 : null;
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -84,9 +84,9 @@ export function BuyCreditForm() {
         </Button>
       </div>
       <p id="credit-hint" className="text-muted-foreground text-sm" aria-live="polite">
-        {units === null
+        {receives === null
           ? t("membership.credit.range", { min: MIN_USD, max: MAX_USD })
-          : t("membership.credit.buys", { units: formatNumber(units, locale) })}
+          : t("membership.credit.buys", { amount: formatMoney(receives, locale) })}
       </p>
     </form>
   );

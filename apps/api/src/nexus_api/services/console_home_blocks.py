@@ -13,9 +13,8 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
 
-from nexus_api.billing.pricing import CREDIT_USD_PER_MILLION
+from nexus_api.billing.pricing import CURRENCY, credits_to_cents
 from nexus_api.db.models import TenantStatus
 from nexus_api.services.console_home import TenantSnapshot
 
@@ -93,16 +92,20 @@ class TrendBlock:
 class CreditRisk:
     external_client_ref: str
     client_name: str | None
-    remaining: int
+    remaining_cents: int
     days_left: float
     href: str
 
 
 @dataclass(frozen=True)
 class CreditBlock:
-    available: int | None
-    spent_7d: int
-    daily_average: float
+    """Spec 027: money for the partner. The runway is computed in credits and
+    only the amounts are converted, so ``days_left`` does not depend on
+    rounding."""
+
+    available_cents: int | None
+    spent_7d_cents: int
+    daily_average_cents: int
     days_left: float | None
     at_risk: list[CreditRisk]
 
@@ -115,8 +118,8 @@ class PortfolioRow:
     conversations_7d: int
     series_7d: list[int]
     last_activity_at: datetime | None
-    credit_cap: int | None
-    credit_remaining: int | None
+    credit_cap_cents: int | None
+    credit_remaining_cents: int | None
     attention: int
     href: str
 
@@ -273,16 +276,16 @@ def credit_block(
                 CreditRisk(
                     external_client_ref=c.ref,
                     client_name=c.name,
-                    remaining=remaining,
+                    remaining_cents=credits_to_cents(remaining),
                     days_left=round(client_days, 1),
                     href=f"/usage?client={c.ref}",
                 )
             )
     at_risk.sort(key=lambda r: r.days_left)
     return CreditBlock(
-        available=available,
-        spent_7d=spent,
-        daily_average=round(daily, 1),
+        available_cents=credits_to_cents(available) if available is not None else None,
+        spent_7d_cents=credits_to_cents(spent, nearest=True),
+        daily_average_cents=credits_to_cents(round(daily), nearest=True),
         days_left=round(days_left, 1) if days_left is not None else None,
         at_risk=at_risk,
     )
@@ -312,8 +315,8 @@ def portfolio_rows(
                 conversations_7d=sum(series),
                 series_7d=series,
                 last_activity_at=s.last_activity_at if s is not None else None,
-                credit_cap=alloc[0] if alloc else None,
-                credit_remaining=alloc[1] if alloc else None,
+                credit_cap_cents=credits_to_cents(alloc[0]) if alloc else None,
+                credit_remaining_cents=credits_to_cents(alloc[1]) if alloc else None,
                 attention=per_ref.get(c.ref, 0),
                 href=f"/clients/{c.ref}",
             )
@@ -334,7 +337,6 @@ class SpendShare:
     kind: str
     external_client_ref: str | None
     client_name: str | None
-    credits: int
     cents: int
 
 
@@ -343,23 +345,15 @@ class SpendBlock:
     """What the month's credit is worth at the price the partner pays for it
     (``CREDIT_USD_PER_MILLION``). Never Auphere's cost: that is internal."""
 
-    credits: int
     cents: int
     previous_cents: int | None
     projected_cents: int
     currency: str
-    usd_per_million_credits: int
     by_client: list[SpendShare]
 
 
-def credits_to_cents(credits: int) -> int:
-    """Credits at the partner price, to the nearest cent."""
-    cents = Decimal(credits) * CREDIT_USD_PER_MILLION * 100 / 1_000_000
-    return int(cents.quantize(Decimal(1), rounding=ROUND_HALF_UP))
-
-
 def _share(kind: str, ref: str | None, name: str | None, credits: int) -> SpendShare:
-    return SpendShare(kind, ref, name, credits, credits_to_cents(credits))
+    return SpendShare(kind, ref, name, credits_to_cents(credits, nearest=True))
 
 
 def spend_block(
@@ -391,12 +385,10 @@ def spend_block(
     if outside > 0:
         shares.append(_share("outside", None, None, outside))
     return SpendBlock(
-        credits=month,
-        cents=credits_to_cents(month),
-        previous_cents=credits_to_cents(previous) or None,
-        projected_cents=credits_to_cents(round(projected)),
-        currency="USD",
-        usd_per_million_credits=CREDIT_USD_PER_MILLION,
+        cents=credits_to_cents(month, nearest=True),
+        previous_cents=credits_to_cents(previous, nearest=True) or None,
+        projected_cents=credits_to_cents(round(projected), nearest=True),
+        currency=CURRENCY,
         by_client=shares,
     )
 

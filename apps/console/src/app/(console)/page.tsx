@@ -1,7 +1,7 @@
 import { ArrowDownRight, ArrowUpRight, Bot, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 
-import { Alert, AlertDescription, Button, EmptyState, HighlightMetric, Metric, PageHeader, Section, formatCompact, formatNumber } from "@nexus/ui";
+import { Alert, AlertDescription, Button, EmptyState, HighlightMetric, Metric, PageHeader, Section, formatNumber } from "@nexus/ui";
 
 import { AttentionBlock } from "@/components/home/attention-block";
 import { ConversationsChart } from "@/components/home/conversations-chart";
@@ -10,6 +10,7 @@ import { SpendCard } from "@/components/home/spend-card";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import type { Home } from "@/lib/backend/home-usage";
+import { formatMoneyCompact } from "@/lib/money";
 import { can, requirePrincipal } from "@/lib/principal";
 
 
@@ -32,7 +33,7 @@ export default async function HomePage() {
   const delta = trend ? trendDelta(trend.current, trend.previous) : null;
   const credit = home?.credit ?? null;
   const spend = home?.spend ?? null;
-  const runway = credit ? creditRunway(credit.available, credit.days_left, new Date()) : null;
+  const runway = credit ? creditRunway(credit.available_cents, credit.days_left, new Date()) : null;
   const runwayProgress = runway
     ? {
         value: runway.days,
@@ -111,14 +112,14 @@ export default async function HomePage() {
               href="/clients"
             />
           ) : null}
-          {credit && credit.available != null ? (
+          {credit && credit.available_cents != null ? (
             <Metric
               icon={<Wallet />}
               label={t("hu.home.kpi.credit")}
-              value={formatCompact(credit.available, locale)}
+              value={formatMoneyCompact(credit.available_cents, locale)}
               progress={runwayProgress ?? undefined}
-              hint={credit.available === 0 ? t("hu.home.attention.wallet") : runwayProgress ? undefined : t("hu.home.kpi.credit.noSpend")}
-              className={credit.available === 0 ? "ring-status-danger/40" : undefined}
+              hint={credit.available_cents === 0 ? t("hu.home.attention.wallet") : runwayProgress ? undefined : t("hu.home.kpi.credit.noSpend")}
+              className={credit.available_cents === 0 ? "ring-status-danger/40" : undefined}
               href="/usage"
             />
           ) : null}
@@ -131,7 +132,7 @@ export default async function HomePage() {
         ) : null}
       </div>
 
-      {home?.attention && !noClients ? <AttentionBlock attention={home.attention} total={home.clients?.total ?? 0} walletEmpty={credit?.available === 0} t={t} n={n} /> : null}
+      {home?.attention && !noClients ? <AttentionBlock attention={home.attention} total={home.clients?.total ?? 0} walletEmpty={credit?.available_cents === 0} t={t} n={n} /> : null}
       {credit && credit.at_risk.length > 0 ? (
         <Section title={t("hu.home.credit.risk.title")}>
           <ul className="divide-y divide-border">

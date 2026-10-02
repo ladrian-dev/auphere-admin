@@ -123,7 +123,7 @@ test.describe("spec 019 · crear un cliente", () => {
     await expect(horario.getByRole("button", { name: /Abrir Sábado/i })).toBeVisible();
   });
 
-  test("confirmar no pregunta si publicar, y dice que el crédito empieza en cero", async ({ page }) => {
+  test("confirmar no pregunta si publicar, y dice que el saldo empieza en cero", async ({ page }) => {
     await abrirElAlta(page);
     await page.getByRole("radio", { name: /barber/i }).first().click();
     await page.getByRole("button", { name: /^Continuar$/ }).click();
@@ -141,7 +141,7 @@ test.describe("spec 019 · crear un cliente", () => {
 
     // Y el crédito se dice: empieza en cero y se asigna desde Consumo.
     expect(cuerpo).toMatch(/empieza en cero/i);
-    expect(cuerpo).toMatch(/asignarle crédito/i);
+    expect(cuerpo).toMatch(/asignarle saldo/i);
   });
 
   test("crear de punta a punta deja un cliente que la ficha reconoce", async ({ page }) => {

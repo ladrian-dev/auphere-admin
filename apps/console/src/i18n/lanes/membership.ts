@@ -50,7 +50,7 @@ export const membershipMessages = {
   "membership.state.unpaid.title": { es: "El cobro no salió y el consumo incluido está en pausa", en: "The charge did not go through and included usage is paused" },
   "membership.state.unpaid.body": {
     es: "Se agotaron los intentos de cobro. El consumo incluido deja de reponerse, pero el saldo que compraste sigue disponible y no se ha perdido nada: ni un agente, ni una tarea, ni una confirmación pendiente. Actualiza la tarjeta y todo vuelve solo.",
-    en: "Retries ran out. Included usage stops replenishing, but the credit you purchased is still available and nothing has been lost: not an agent, not a task, not a pending confirmation. Update your card and everything comes back on its own.",
+    en: "Retries ran out. Included usage stops replenishing, but the balance you purchased is still available and nothing has been lost: not an agent, not a task, not a pending confirmation. Update your card and everything comes back on its own.",
   },
   "membership.state.canceled.title": { es: "Tu plan está cancelado", en: "Your plan is cancelled" },
   "membership.state.canceled.body": {
@@ -63,7 +63,7 @@ export const membershipMessages = {
   // ── saldo comprado ─────────────────────────────────────────────────
   "membership.credit.keeps": {
     es: "Conservas tu saldo comprado hasta el {date}.",
-    en: "You keep your purchased credit until {date}.",
+    en: "You keep your purchased balance until {date}.",
   },
 
   // ── cancelar ───────────────────────────────────────────────────────
@@ -73,25 +73,22 @@ export const membershipMessages = {
   "membership.cancel.confirm.title": { es: "¿Cancelar el plan?", en: "Cancel the plan?" },
   "membership.cancel.confirm.body": {
     es: "No se pierde nada: tus agentes, tus tareas y tus confirmaciones pendientes siguen donde están, y puedes seguir leyéndolo todo. Lo que deja de reponerse es el consumo incluido. Tu saldo comprado se conserva doce meses.",
-    en: "Nothing is lost: your agents, tasks and pending confirmations stay where they are, and you can still read everything. What stops replenishing is the included usage. Your purchased credit is kept for twelve months.",
+    en: "Nothing is lost: your agents, tasks and pending confirmations stay where they are, and you can still read everything. What stops replenishing is the included usage. Your purchased balance is kept for twelve months.",
   },
   "membership.cancel.confirm.cta": { es: "Sí, cancelar", en: "Yes, cancel" },
-  "membership.cancel.done": { es: "Plan cancelado. Conservas tu saldo hasta el {date}.", en: "Plan cancelled. You keep your credit until {date}." },
+  "membership.cancel.done": { es: "Plan cancelado. Conservas tu saldo hasta el {date}.", en: "Plan cancelled. You keep your balance until {date}." },
 
   // ── compra de crédito ──────────────────────────────────────────────
-  "membership.credit.title": { es: "Comprar crédito", en: "Buy credit" },
+  "membership.credit.title": { es: "Comprar saldo", en: "Buy balance" },
   "membership.credit.amount": { es: "Importe en dólares", en: "Amount in dollars" },
   "membership.credit.buy": { es: "Comprar", en: "Buy" },
   // Se dice qué compra ese dinero ANTES de pagarlo: «50 $» no significa nada
   // por sí solo, y la relación con lo que consume un turno es justo lo que el
   // partner no tiene por qué saber de memoria.
-  "membership.credit.buys": { es: "Compra {units} unidades de consumo.", en: "Buys {units} consumption units." },
+  "membership.credit.buys": { es: "Recibirás {amount} de saldo.", en: "You will receive {amount} of balance." },
   "membership.credit.range": { es: "Entre {min} y {max} dólares, en números enteros.", en: "Between {min} and {max} dollars, whole numbers." },
   "membership.credit.invalid": { es: "El importe tiene que estar entre {min} y {max} dólares.", en: "The amount must be between {min} and {max} dollars." },
-  "membership.credit.help": {
-    es: "El crédito no caduca mientras tu cuenta siga viva, y es lo que gastan los agentes de tus clientes.",
-    en: "Credit does not expire while your account is alive, and it is what your clients' agents spend.",
-  },
+  "membership.credit.help": { es: "El saldo comprado no caduca mientras tu cuenta siga viva, y es lo que gastan los agentes de tus clientes.", en: "Purchased balance does not expire while your account is alive, and it is what your clients' agents spend." },
 
   // ── facturas del proveedor ─────────────────────────────────────────
   // No se nombra al proveedor: cuál es es un detalle nuestro, y el día que

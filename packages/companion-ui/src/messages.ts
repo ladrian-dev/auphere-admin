@@ -199,10 +199,10 @@ export const companionMessages = {
   "companion.tool.name.console.conversation_stats": { es: "Consultando las conversaciones", en: "Checking the conversations" },
   "companion.tool.name.console.get_audit": { es: "Revisando la auditoría", en: "Reviewing the audit trail" },
   "companion.tool.name.console.get_onboarding": { es: "Revisando la puesta en marcha", en: "Reviewing the onboarding" },
-  "companion.tool.name.console.get_quota": { es: "Consultando tu cupo", en: "Checking your quota" },
-  "companion.tool.name.console.get_wallet": { es: "Consultando los tokens de cuota", en: "Checking quota tokens" },
-  "companion.tool.name.console.list_allocations": { es: "Listando las asignaciones de cupo", en: "Listing quota allocations" },
-  "companion.tool.name.console.propose_allocation": { es: "Preparando un cambio de cupo", en: "Drafting a quota cap change" },
+  "companion.tool.name.console.get_quota": { es: "Consultando tu resumen", en: "Checking your summary" },
+  "companion.tool.name.console.get_wallet": { es: "Consultando tu saldo", en: "Checking your balance" },
+  "companion.tool.name.console.list_allocations": { es: "Listando los topes de tus clientes", en: "Listing your clients' caps" },
+  "companion.tool.name.console.propose_allocation": { es: "Preparando un cambio de tope", en: "Drafting a cap change" },
   "companion.tool.name.console.get_prompt_library": { es: "Consultando la biblioteca de prompts", en: "Checking the prompt library" },
   "companion.tool.name.console.apply": { es: "Aplicando el cambio confirmado", en: "Applying the confirmed change" },
 
@@ -379,7 +379,7 @@ export const companionMessages = {
   "companion.kind.publish": { es: "Publicar una versión", en: "Publish a version" },
   "companion.kind.channel_role": { es: "Cambiar el rol de un canal", en: "Change a channel's role" },
   "companion.kind.usage_alerts": { es: "Cambiar los avisos de consumo", en: "Change the usage alerts" },
-  "companion.kind.allocation": { es: "Cambiar el cupo de un cliente", en: "Change a client quota cap" },
+  "companion.kind.allocation": { es: "Cambiar el tope de gasto de un cliente", en: "Change a client's spending cap" },
   "companion.kind.invite": { es: "Invitar a alguien al equipo", en: "Invite someone to the team" },
   // v2 §4.1. Both PROPOSE — `console.apply` is still the only `mutates`.
   "companion.kind.support_help": { es: "Abrir una incidencia", en: "Open a support ticket" },

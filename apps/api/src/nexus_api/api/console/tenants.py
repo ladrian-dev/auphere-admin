@@ -135,7 +135,7 @@ async def _detail(scope: ClientScope) -> ClientOut:
         sector=await client_sector(scope.session),
         audience=await active_audience(scope.session),
         setup=setup,
-        quota=ClientQuotaOut(cap=allocation[0], remaining=allocation[1]) if allocation else None,
+        quota=ClientQuotaOut.from_credits(*allocation) if allocation else None,
         # Solo cuando de verdad atiende: una fecha con un paso pendiente
         # diría que atendía antes de poder hacerlo.
         serving_since=(await serving_since(scope.session)) if setup.next is None else None,
@@ -219,9 +219,7 @@ async def list_clients(
                     quota=not no_quota,
                     active=tenant.status is TenantStatus.ACTIVE,
                 ),
-                "quota": ClientQuotaOut(cap=allocation[0], remaining=allocation[1])
-                if allocation
-                else None,
+                "quota": ClientQuotaOut.from_credits(*allocation) if allocation else None,
                 "conversations_7d": s.conversations_month if s else 0,
                 # Spec 024: what the ACTIVE agent answers, from the same snapshot.
                 "audience": ClientAudienceOut(mode=s.audience_mode, count=s.audience_count)

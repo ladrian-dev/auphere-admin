@@ -194,8 +194,8 @@ export type ClientSetup = { agent: boolean; channel: boolean; quota: boolean; ac
 export type SetupStep = "agent" | "channel" | "quota" | "activation";
 /** The record adds the first pending step in the fixed order; `null` when serving. */
 export type ClientSetupDetail = ClientSetup & { next: SetupStep | null };
-/** Spec 017 (R1.2): cap and what is left, in credits; `null` = no quota assigned. */
-export type ClientQuota = { cap: number; remaining: number };
+/** Spec 027: the client cap and what is left, in cents of USD. */
+export type ClientQuota = { cap_cents: number; remaining_cents: number; currency?: string };
 export type Client = ClientSummary & {
   health: ClientHealth;
   /** Spec 017 R1: desde cuándo atiende, derivado de la última pieza que se lo

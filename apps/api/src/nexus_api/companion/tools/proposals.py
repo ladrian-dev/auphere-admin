@@ -1081,13 +1081,17 @@ class ProposalBuilder:
     # ── allocation ──────────────────────────────────────────────────────
 
     async def _allocation(self, args: dict[str, Any]) -> Proposal:
+        """Spec 027: the partner thinks in money. The cap arrives in dollars,
+        travels and is compared in cents, and only the API turns it into
+        credits."""
         ref = str(args["client_ref"]).strip()
-        cap = int(args["cap"])
-        if cap < 0:
+        cap = _parse_usd_cents(args.get("cap_usd"))
+        if cap is None:
             raise ProposalRefused(
                 ToolError(
                     "bad_arguments",
-                    "El tope tiene que ser un entero ≥ 0. Manda el número nuevo, no un delta.",
+                    "El tope va en dólares, con hasta dos decimales y sin signo: "
+                    "'40' o '25.50'. Manda el importe nuevo, no un delta.",
                 )
             )
         # C1: un ref ajeno y uno inexistente son el mismo 404 opaco.
@@ -1097,43 +1101,43 @@ class ProposalBuilder:
         if not isinstance(rows, list):  # pragma: no cover - el router da lista
             rows = []
         current = next((r for r in rows if str(r.get("client_ref")) == ref), None)
-        before_cap = int((current or {}).get("cap") or 0)
+        before_cap = int((current or {}).get("cap_cents") or 0)
         if current is not None and before_cap == cap:
             raise ProposalRefused(
                 ToolError(
                     "no_change",
-                    f"El cliente {ref} ya tiene tope {cap}. Nada que cambiar.",
+                    f"El cliente {ref} ya tiene un tope de {_usd(cap)}. Nada que cambiar.",
                 )
             )
-        available = int(wallet.get("available") or 0)
-        others = sum(int(r.get("cap") or 0) for r in rows if str(r.get("client_ref")) != ref)
+        available = int(wallet.get("available_cents") or 0)
+        others = sum(int(r.get("cap_cents") or 0) for r in rows if str(r.get("client_ref")) != ref)
         if others + cap > available:
             raise ProposalRefused(
                 ToolError(
                     "over_allocated",
-                    f"La suma de topes ({others + cap}) superaría lo disponible "
-                    f"({available}). Baja otro tope o recarga tokens antes de "
-                    "proponer este.",
+                    f"La suma de topes ({_usd(others + cap)}) superaría el saldo "
+                    f"disponible ({_usd(available)}). Baja otro tope o recarga saldo "
+                    "antes de proponer este.",
                 )
             )
 
         return Proposal(
             kind="allocation",
-            title=f"Fijar el cupo de {ref} a {cap}",
+            title=f"Fijar el tope de {ref} en {_usd(cap)}",
             preview={
                 "client_ref": ref,
-                "summary": f"{before_cap} → {cap}",
-                "before_cap": before_cap,
-                "after_cap": cap,
+                "summary": f"{_usd(before_cap)} → {_usd(cap)}",
+                "before_cap_cents": before_cap,
+                "after_cap_cents": cap,
             },
             diff=[
-                {"op": "del", "line": 1, "before": f"cap: {before_cap}"},
-                {"op": "add", "line": 1, "after": f"cap: {cap}"},
+                {"op": "del", "line": 1, "before": f"tope: {_usd(before_cap)}"},
+                {"op": "add", "line": 1, "after": f"tope: {_usd(cap)}"},
             ],
             impact=[
-                _impact("allocation_cap", cap),
-                _impact("others_caps", others),
-                _impact("wallet_available", available),
+                _impact("allocation_cap", _usd(cap)),
+                _impact("others_caps", _usd(others)),
+                _impact("wallet_available", _usd(available)),
             ],
             risk="medium" if cap > before_cap else "low",
             reversible=True,
@@ -1147,7 +1151,7 @@ class ProposalBuilder:
             ),
             apply_method=APPLY_ROUTES["allocation"][0],
             apply_path=APPLY_ROUTES["allocation"][1].format(client_ref=ref),
-            apply_body={"cap": cap},
+            apply_body={"cap_cents": cap},
             expectations={"allocation_cap": str(cap)},
             client_ref=ref,
         )
@@ -1532,3 +1536,29 @@ __all__ = [
     "short_digest",
     "split_list",
 ]
+
+
+# ── Spec 027: money for the partner ─────────────────────────────────────────
+
+_USD_RE = re.compile(r"^\s*(\d{1,7})(?:[.,](\d{1,2}))?\s*$")
+
+
+def _parse_usd_cents(value: object) -> int | None:
+    """``'40'`` → 4000, ``'25.5'`` → 2550. Anything else — negative, three
+    decimals, words — is ``None``: the tool refuses instead of guessing."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value * 100 if value >= 0 else None
+    m = _USD_RE.match(str(value))
+    if m is None:
+        return None
+    whole, frac = m.group(1), (m.group(2) or "").ljust(2, "0")
+    return int(whole) * 100 + int(frac)
+
+
+def _usd(cents: int) -> str:
+    """Cents as the partner reads them: «1.234,50 US$»."""
+    whole, frac = divmod(abs(int(cents)), 100)
+    text = f"{whole:,}".replace(",", ".") + f",{frac:02d} US$"
+    return f"-{text}" if cents < 0 else text

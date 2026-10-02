@@ -30,6 +30,36 @@ CREDIT_USD_PER_MILLION = 10
 #: retyped at a call site.
 _UNITS_PER_CENT = 1_000_000 // (CREDIT_USD_PER_MILLION * 100)
 
+#: Spec 027: the partner sees, assigns and spends money; the ledger stays in
+#: credits. This module is the ONLY place that knows the rate — the console
+#: and the Companion receive and send cents, never credits.
+CURRENCY = "USD"
+CREDITS_PER_CENT = _UNITS_PER_CENT
+
+
+def cents_to_credits(cents: int) -> int:
+    """Money the partner writes (a cap, an amount to move) as credits.
+
+    Exact: one cent is a whole number of credits. A negative amount is the
+    writer's mistake and raises, instead of flooring to a silent zero.
+    """
+    if cents < 0:
+        raise ValueError("an amount of money cannot be negative")
+    return cents * CREDITS_PER_CENT
+
+
+def credits_to_cents(credits: int, *, nearest: bool = False) -> int:
+    """Credits as cents, for what the partner reads.
+
+    Balances, caps and what is left round **down**: 999 credits are not a
+    cent, and showing money that is not there is the one error a balance
+    cannot make. Spend rounds to the ``nearest`` cent, half up.
+    """
+    value = max(0, int(credits))
+    if nearest:
+        return (value + CREDITS_PER_CENT // 2) // CREDITS_PER_CENT
+    return value // CREDITS_PER_CENT
+
 
 def units_for_cents(amount_cents: int) -> int:
     """Quota units bought by ``amount_cents``.
@@ -42,4 +72,4 @@ def units_for_cents(amount_cents: int) -> int:
     """
     if amount_cents <= 0:
         return 0
-    return amount_cents * _UNITS_PER_CENT
+    return cents_to_credits(amount_cents)

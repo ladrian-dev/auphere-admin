@@ -601,7 +601,8 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
         label="Resumen y cuota del partner",
         description=(
             "Devuelve el resumen del partner: clientes usados contra el máximo "
-            "contratado, conversaciones del periodo, unidades de consumo, agentes "
+            "contratado, conversaciones del periodo, mensajes del mes, saldo y "
+            "gasto en dólares, agentes "
             "con incidencias y acciones pendientes. Llama a esto ANTES de plantear "
             "dar de alta un cliente nuevo — si no queda cuota, el alta falla y más "
             "vale decirlo antes— y cuando el usuario pida una foto general de cómo "
@@ -613,28 +614,31 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="console.get_wallet",
         path="/console/wallet",
-        label="Cuota del partner",
+        label="Saldo del partner",
         description=(
-            "Devuelve el libro de cuota del partner: tokens incluidos restantes, "
-            "tokens comprados restantes, disponible, reserva (disponible menos la "
-            "suma de topes) y si el libro está agotado. Llama a esto cuando el "
-            "usuario pregunte por tokens, cupo, reserva, recarga o si queda "
-            "saldo para asignar a un cliente. Las cifras son tokens de cuota, "
-            "nunca euros. No lo uses para el consumo del mes ni para la "
-            "proyección: eso es console.get_usage. Tampoco para el tope de un "
-            "cliente: eso es console.list_allocations."
+            "Devuelve el saldo del partner en dinero: incluido restante de la "
+            "membresía, comprado restante, disponible, reserva (disponible menos "
+            "la suma de topes) y si está agotado. Las cifras van en céntimos de "
+            "dólar (campos *_cents): 12345 son 123,45 US$. Responde siempre en "
+            "dólares con dos decimales y nunca hables de créditos ni de tokens. "
+            "Llama a esto cuando el usuario pregunte cuánto saldo le queda, por "
+            "la reserva, por recargar o si queda saldo para asignar a un cliente. "
+            "No lo uses para el consumo del mes ni para la proyección: eso es "
+            "console.get_usage. Tampoco para el tope de un cliente: eso es "
+            "console.list_allocations."
         ),
         max_chars=3_000,
     ),
     ToolSpec(
         name="console.list_allocations",
         path="/console/wallet/allocations",
-        label="Asignaciones de cuota",
+        label="Topes de los clientes",
         description=(
-            "Lista las asignaciones de cuota del partner: cada fila es un "
-            "client_ref con su tope y lo que le queda. Nunca trae tenant_id. "
-            "Llama a esto cuando el usuario pregunte cuánto cupo tiene un "
-            "cliente, a quién se le asignó, o antes de proponer un cambio de "
+            "Lista los topes de gasto de los clientes del partner: cada fila es "
+            "un client_ref con su tope y lo que le queda, en céntimos de dólar "
+            "(cap_cents, remaining_cents). Responde en dólares. Nunca trae "
+            "tenant_id. Llama a esto cuando el usuario pregunte cuánto puede "
+            "gastar un cliente, cuánto le queda, o antes de proponer un cambio de "
             "tope. Si un cliente no aparece, aún no tiene fila de asignación. "
             "No lo uses para el saldo del partner entero: eso es "
             "console.get_wallet. No inventes un tenant_id."
@@ -1093,25 +1097,26 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
         tool_class="propose",
         permission_policy="always_ask",
         path="/console/wallet",
-        label="Proponer el cupo de un cliente",
+        label="Proponer el tope de un cliente",
         description=(
-            "Calcula el cambio de tope (cupo) de un cliente y lo deja pendiente "
-            "de confirmación. No escribe: aplicar usa set_allocation bajo el "
-            "partner del principal. Llama a esto cuando el usuario quiera "
-            "asignar cupo por primera vez o cambiar el tope de un cliente que "
-            "ya lo tiene; lee console.get_wallet y console.list_allocations "
-            "antes para no proponer una suma que supere lo disponible. El "
-            "cuerpo de aplicación solo lleva cap: el partner no viaja. No lo "
-            "uses para recargar el cubo purchased ni para avisos de mensajes."
+            "Calcula el cambio del tope de gasto de un cliente, en dólares, y lo "
+            "deja pendiente de confirmación. No escribe: aplicar fija el tope "
+            "bajo el partner del principal. Llama a esto cuando el usuario quiera "
+            "asignar saldo a un cliente por primera vez o cambiar su tope; lee "
+            "console.get_wallet y console.list_allocations antes para no proponer "
+            "una suma que supere lo disponible. El partner no viaja en el cuerpo. "
+            "No lo uses para recargar saldo ni para avisos de mensajes."
         ),
         params=(
-            _propose_ref("cuyo cupo vas a cambiar"),
+            _propose_ref("cuyo tope vas a cambiar"),
             ToolParam(
-                name="cap",
-                type="integer",
-                description="Tope nuevo en tokens de cuota. Entero ≥ 0.",
+                name="cap_usd",
+                type="string",
+                description=(
+                    "Tope nuevo en dólares, con punto decimal y hasta dos "
+                    "decimales: '40' o '25.50'. El importe final, no un delta."
+                ),
                 required=True,
-                minimum=0,
             ),
         ),
         max_chars=4_000,

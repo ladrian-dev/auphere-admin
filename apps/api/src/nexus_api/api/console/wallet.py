@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
+from nexus_api.billing.pricing import CURRENCY, cents_to_credits, credits_to_cents
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.db.base import get_sessionmaker
@@ -44,10 +45,10 @@ log = structlog.get_logger(__name__)
 
 def _empty() -> WalletOut:
     return WalletOut(
-        included_remaining=0,
-        purchased_remaining=0,
-        available=0,
-        reserve=0,
+        included_remaining_cents=0,
+        purchased_remaining_cents=0,
+        available_cents=0,
+        reserve_cents=0,
         included_expires_at=None,
         exhausted=True,
     )
@@ -93,10 +94,20 @@ async def _list_allocations(partner_id: uuid.UUID) -> list[AllocationOut]:
                 .order_by(PartnerTenant.external_client_ref)
             )
         ).all()
-    return [
-        AllocationOut(client_ref=ref, cap=int(cap), remaining=int(remaining))
-        for ref, cap, remaining in rows
-    ]
+    return [_allocation_out(ref, int(cap), int(remaining)) for ref, cap, remaining in rows]
+
+
+def _allocation_out(ref: str, cap: int, remaining: int) -> AllocationOut:
+    """A cap as the partner reads it: money, rounded down to the cent."""
+    return AllocationOut(
+        client_ref=ref,
+        cap_cents=credits_to_cents(cap),
+        remaining_cents=credits_to_cents(remaining),
+    )
+
+
+def _signed_cents(credits: int) -> int:
+    return credits_to_cents(credits) if credits >= 0 else -credits_to_cents(-credits)
 
 
 @router.get("/wallet", response_model=WalletOut)
@@ -111,22 +122,23 @@ async def get_wallet(
     if snap is None:
         return _empty()
     caps = await _sum_caps(principal.partner.id)
-    # R7.1: el tamaño del pool viaja para que la consola pinte una PROPORCIÓN.
-    # Derivarla en el cliente de restas entre ``available``, ``purchased`` e
-    # ``included`` daría un número que parece correcto y no significa nada.
+    # R7.1: el porcentaje usado se calcula aquí con el tamaño del pool;
+    # derivarlo en el cliente de restas daría un número que no significa nada.
     pool_size = int(principal.partner.weekly_pool_tokens or 0)
     used = max(0, pool_size - snap.included_remaining)
+    # Spec 027 (D5): the partner reads what is left, in money; the pool size
+    # itself does not travel.
     return WalletOut(
-        included_remaining=snap.included_remaining,
-        purchased_remaining=snap.purchased_remaining,
-        available=snap.available,
-        reserve=snap.available - caps,
+        included_remaining_cents=credits_to_cents(snap.included_remaining),
+        purchased_remaining_cents=credits_to_cents(snap.purchased_remaining),
+        available_cents=credits_to_cents(snap.available),
+        reserve_cents=_signed_cents(snap.available - caps),
         included_expires_at=snap.included_expires_at,
         exhausted=snap.empty,
-        pool_size=pool_size,
         included_percent_used=100.0
         if pool_size <= 0
         else min(100.0, round(used * 100.0 / pool_size, 2)),
+        currency=CURRENCY,
     )
 
 
@@ -170,7 +182,7 @@ async def get_client_allocation(
         )
     if row is None:
         raise unknown_client()
-    return AllocationOut(client_ref=ref, cap=row.cap, remaining=row.remaining)
+    return _allocation_out(ref, int(row.cap), int(row.remaining))
 
 
 @router.put(
@@ -194,13 +206,15 @@ async def put_client_allocation(
     """
     mapping = await resolve_mapping(session, principal, ref)
     try:
-        row = await set_allocation(principal.partner.id, mapping.tenant_id, body.cap)
+        row = await set_allocation(
+            principal.partner.id, mapping.tenant_id, cents_to_credits(body.cap_cents)
+        )
     except OverAllocation:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "over_allocated"},
         ) from None
-    return AllocationOut(client_ref=ref, cap=int(row.cap), remaining=int(row.remaining))
+    return _allocation_out(ref, int(row.cap), int(row.remaining))
 
 
 @router.post(
@@ -208,7 +222,7 @@ async def put_client_allocation(
     response_model=MoveAllocationOut,
     responses={
         404: {"description": "Unknown client reference."},
-        422: {"description": "same_client · insufficient_cap {cap, qty} · qty."},
+        422: {"description": "same_client · insufficient_cap {cap_cents, amount_cents}."},
     },
 )
 async def move_wallet_allocation(
@@ -216,7 +230,7 @@ async def move_wallet_allocation(
     principal: ConsolePrincipal = Depends(require_console_principal("usage:write")),
     session: AsyncSession = Depends(get_db_session),
 ) -> MoveAllocationOut:
-    """Mueve ``qty`` de tope de un cliente propio a otro, de una vez.
+    """Mueve ``amount_cents`` de tope de un cliente propio a otro, de una vez.
 
     Spec 016 (R3.1-R3.3). Los dos refs se resuelven ANTES de la transacción:
     un ref ajeno o inexistente es el mismo 404 opaco de siempre y no toca
@@ -230,9 +244,10 @@ async def move_wallet_allocation(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"code": "same_client"},
         )
+    qty = cents_to_credits(body.amount_cents)
     try:
         from_row, to_row = await move_allocation(
-            principal.partner.id, source.tenant_id, target.tenant_id, body.qty
+            principal.partner.id, source.tenant_id, target.tenant_id, qty
         )
     except SameClient:
         raise HTTPException(
@@ -242,7 +257,11 @@ async def move_wallet_allocation(
     except InsufficientCap as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "insufficient_cap", "cap": exc.cap, "qty": exc.qty},
+            detail={
+                "code": "insufficient_cap",
+                "cap_cents": credits_to_cents(exc.cap),
+                "amount_cents": body.amount_cents,
+            },
         ) from None
     except OverAllocation:
         raise HTTPException(
@@ -256,17 +275,18 @@ async def move_wallet_allocation(
                 actor=principal.actor,
                 action="console.allocation.move",
                 target=f"partner:{principal.partner.id}",
-                after_json={"from": body.from_ref, "to": body.to_ref, "qty": body.qty},
+                after_json={
+                    "from": body.from_ref,
+                    "to": body.to_ref,
+                    "amount_cents": body.amount_cents,
+                    "qty": qty,
+                },
             )
         )
     return MoveAllocationOut.model_validate(
         {
-            "from": AllocationOut(
-                client_ref=body.from_ref, cap=int(from_row.cap), remaining=int(from_row.remaining)
-            ),
-            "to": AllocationOut(
-                client_ref=body.to_ref, cap=int(to_row.cap), remaining=int(to_row.remaining)
-            ),
+            "from": _allocation_out(body.from_ref, int(from_row.cap), int(from_row.remaining)),
+            "to": _allocation_out(body.to_ref, int(to_row.cap), int(to_row.remaining)),
         }
     )
 

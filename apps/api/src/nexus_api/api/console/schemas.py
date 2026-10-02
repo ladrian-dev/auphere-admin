@@ -84,10 +84,18 @@ class ClientSetupDetailOut(ClientSetupOut):
 
 
 class ClientQuotaOut(BaseModel):
-    """Spec 017 (R1.2): the client's cap and what is left, in credits."""
+    """Spec 017 (R1.2): the client's cap and what is left. Spec 027: in cents
+    of ``currency`` — the partner reads money, the ledger keeps credits."""
 
-    cap: int
-    remaining: int
+    cap_cents: int
+    remaining_cents: int
+    currency: str = "USD"
+
+    @classmethod
+    def from_credits(cls, cap: int, remaining: int) -> ClientQuotaOut:
+        from nexus_api.billing.pricing import credits_to_cents
+
+        return cls(cap_cents=credits_to_cents(cap), remaining_cents=credits_to_cents(remaining))
 
 
 class ClientAudienceOut(BaseModel):
@@ -640,7 +648,8 @@ class CancelOut(BaseModel):
 
     state: str
     effective_at: datetime | None
-    purchased_remaining: int
+    #: Spec 027: money, in cents of USD.
+    purchased_remaining_cents: int
     purchased_expires_at: datetime | None
 
 

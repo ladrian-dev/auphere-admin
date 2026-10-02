@@ -44,19 +44,17 @@ describe("series shaping", () => {
 
 describe("includedRemainingPercent (bug: la tarjeta «Incluido restante» pintaba lo usado)", () => {
   it("a full pool reads 100 %, not 0 %", () => {
-    expect(includedRemainingPercent({ included_remaining: 115_000, pool_size: 115_000, included_percent_used: 0 })).toBe(100);
+    expect(includedRemainingPercent({ included_percent_used: 0 })).toBe(100);
   });
   it("is the complement of what the API says was used", () => {
-    expect(includedRemainingPercent({ included_remaining: 30_000, pool_size: 100_000, included_percent_used: 70 })).toBe(30);
-    expect(includedRemainingPercent({ included_remaining: 0, pool_size: 100_000, included_percent_used: 100 })).toBe(0);
-    expect(includedRemainingPercent({ included_remaining: 1, pool_size: 3, included_percent_used: 66.67 })).toBe(33);
+    expect(includedRemainingPercent({ included_percent_used: 70 })).toBe(30);
+    expect(includedRemainingPercent({ included_percent_used: 100 })).toBe(0);
+    expect(includedRemainingPercent({ included_percent_used: 66.67 })).toBe(33);
   });
-  it("derives from the raw figures when the API omits the percentage", () => {
-    expect(includedRemainingPercent({ included_remaining: 25_000, pool_size: 100_000 })).toBe(25);
+  it("without the API's percentage there is nothing to show (spec 027: the pool size no longer travels)", () => {
+    expect(includedRemainingPercent({})).toBe(0);
   });
-  it("clamps and treats a missing pool as nothing left", () => {
-    expect(includedRemainingPercent({ included_remaining: 5, pool_size: 0 })).toBe(0);
-    expect(includedRemainingPercent({ included_remaining: 5 })).toBe(0);
-    expect(includedRemainingPercent({ included_remaining: 5, pool_size: 10, included_percent_used: -5 })).toBe(100);
+  it("clamps", () => {
+    expect(includedRemainingPercent({ included_percent_used: -5 })).toBe(100);
   });
 });

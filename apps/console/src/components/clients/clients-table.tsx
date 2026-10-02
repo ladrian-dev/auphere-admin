@@ -4,9 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
-import { Button, DataTable, EmptyState, Input, Meter, StatusBadge, formatNumber, formatRelative, type ColumnDef } from "@nexus/ui";
+import { Button, DataTable, EmptyState, Input, Meter, StatusBadge, formatRelative, type ColumnDef } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
+import { formatMoney } from "@/lib/money";
 import type { Locale } from "@/i18n/messages";
 import type { ClientSummary } from "@/lib/backend";
 
@@ -114,15 +115,15 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
               className="w-40 max-w-full"
               label={t("clients.col.credit")}
               labelHidden
-              value={quota.remaining}
-              max={quota.cap}
+              value={quota.remaining_cents}
+              max={quota.cap_cents}
               tone={creditTone(quota)}
               valueLabel={
-                quota.cap === 0
+                quota.cap_cents === 0
                   ? t("clients.col.credit.none")
                   : t("clients.col.credit.value", {
-                      remaining: formatNumber(quota.remaining, locale),
-                      cap: formatNumber(quota.cap, locale),
+                      remaining: formatMoney(quota.remaining_cents, locale),
+                      cap: formatMoney(quota.cap_cents, locale),
                     })
               }
             />

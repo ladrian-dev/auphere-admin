@@ -33,6 +33,7 @@ from nexus_api.billing.checkout import (
     schedule_downgrade,
     upgrade_subscription,
 )
+from nexus_api.billing.pricing import credits_to_cents
 from nexus_api.billing.provider import idempotency_key  # noqa: F401 - re-exported for tests
 from nexus_api.config import get_settings
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
@@ -534,6 +535,6 @@ async def cancel_subscription_route(
     return CancelOut(
         state=subscription.state if subscription else STATE_CANCELED,
         effective_at=subscription.current_period_end if subscription else None,
-        purchased_remaining=int(row[0]) if row else 0,
+        purchased_remaining_cents=credits_to_cents(int(row[0])) if row else 0,
         purchased_expires_at=row[1] if row else expires_at,
     )
