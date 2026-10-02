@@ -15,14 +15,6 @@ export function trendDelta(current: number, previous: number | null): Delta {
   return { kind: pct > 0 ? "up" : "down", pct: Math.abs(pct) };
 }
 
-/** Tone of a client status badge. */
-export function statusTone(status: string): "positive" | "warning" | "danger" | "muted" {
-  if (status === "active") return "positive";
-  if (status === "provisioning") return "warning";
-  if (status === "paused" || status === "suspended") return "danger";
-  return "muted";
-}
-
 export type DayBar = { day: string; total: number; top: Array<{ label: string; value: number }>; today: boolean };
 
 /**

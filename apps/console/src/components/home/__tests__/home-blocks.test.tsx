@@ -4,13 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import { LocaleProvider } from "@/i18n/client";
 import { type MessageKey, t as translate } from "@/i18n/messages";
-import type { HomeSpend, HomeAttention, HomeToReview, HomeTrend, PortfolioRow } from "@/lib/backend/home-usage";
+import type { HomeSpend, HomeAttention, HomeTrend } from "@/lib/backend/home-usage";
 
-import { ActivityFeed } from "../activity-feed";
 import { AttentionBlock } from "../attention-block";
 import { ConversationsChart } from "../conversations-chart";
-import { PortfolioTable } from "../portfolio-table";
-import { ReviewBlock } from "../review-block";
 import { SpendCard } from "../spend-card";
 
 const t = (key: MessageKey, vars?: Record<string, string | number>) => translate("es", key, vars);
@@ -72,68 +69,6 @@ describe("Necesita tu atención", () => {
     render(<AttentionBlock attention={{ items: [], clients_ok: 4 }} total={4} t={t} n={n} />);
     expect(screen.getByRole("status").textContent).toContain("Todos tus clientes están atendiendo");
     expect(screen.queryByRole("heading")).toBeNull();
-  });
-});
-
-describe("Por revisar ahora", () => {
-  it("each figure opens the first client where it waits", () => {
-    const review: HomeToReview = {
-      escalated: 2,
-      payments: 1,
-      unanswered: 0,
-      clients: [
-        { external_client_ref: "a", client_name: "A", escalated: 2, payments: 0, unanswered: 0, href: "/clients/a/conversations" },
-        { external_client_ref: "b", client_name: "B", escalated: 0, payments: 1, unanswered: 0, href: "/clients/b/conversations" },
-      ],
-    };
-    render(<ReviewBlock review={review} t={t} n={n} />);
-    expect(screen.getByRole("link", { name: /Conversaciones escaladas/ }).getAttribute("href")).toBe("/clients/a/conversations");
-    expect(screen.getByRole("link", { name: /Pagos por revisar/ }).getAttribute("href")).toBe("/clients/b/conversations");
-    expect(screen.queryByRole("link", { name: /Sin responder/ })).toBeNull();
-  });
-
-  it("empty says nothing waits", () => {
-    render(<ReviewBlock review={{ escalated: 0, payments: 0, unanswered: 0, clients: [] }} t={t} n={n} />);
-    expect(screen.getByText("Nada espera a una persona.")).toBeTruthy();
-  });
-});
-
-describe("Tus clientes", () => {
-  const row = (ref: string, attention: number, conversations: number): PortfolioRow => ({
-    external_client_ref: ref,
-    client_name: ref.toUpperCase(),
-    status: "active",
-    conversations_7d: conversations,
-    series_7d: [0, 0, 0, 0, 0, 0, conversations],
-    last_activity_at: null,
-    credit_cap: ref === "a" ? 1000 : null,
-    credit_remaining: ref === "a" ? 400 : null,
-    attention,
-    href: `/clients/${ref}`,
-  });
-
-  it("puts clients with problems first, then the busiest", () => {
-    render(<PortfolioTable rows={[row("a", 0, 9), row("b", 2, 1), row("c", 0, 20)]} t={t} n={n} locale="es" />);
-    const names = screen.getAllByRole("link").map((l) => l.textContent);
-    expect(names).toEqual(["B", "C", "A"]);
-    expect(screen.getByText("2 por resolver")).toBeTruthy();
-    expect(screen.getAllByText("Sin asignar")).toHaveLength(2);
-    expect(screen.getAllByText("Sin actividad")).toHaveLength(3);
-  });
-});
-
-describe("Actividad reciente", () => {
-  it("shows the summary in words, or a calm empty line", () => {
-    const { rerender } = render(<ActivityFeed items={[]} locale="es" empty="Todavía no hay actividad." />);
-    expect(screen.getByText("Todavía no hay actividad.")).toBeTruthy();
-    rerender(
-      <ActivityFeed
-        items={[{ id: "1", at: new Date().toISOString(), actor: "x", action: "agent.publish", target: "t", external_client_ref: "a", client_name: "A", summary: "Daniela publicó la versión 9 de A" }]}
-        locale="es"
-        empty="-"
-      />,
-    );
-    expect(screen.getByText("Daniela publicó la versión 9 de A")).toBeTruthy();
   });
 });
 

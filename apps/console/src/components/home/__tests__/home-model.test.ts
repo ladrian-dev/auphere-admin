@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attentionRows, creditRunway, dayBars, spendShares, roundDays, statusTone, trendDelta } from "../home-model";
+import { attentionRows, creditRunway, dayBars, spendShares, roundDays, trendDelta } from "../home-model";
 
 describe("Reglas del Inicio (spec 026)", () => {
   it("compara con el periodo anterior sin inventar variaciones", () => {
@@ -11,12 +11,6 @@ describe("Reglas del Inicio (spec 026)", () => {
     expect(trendDelta(10, 0)).toEqual({ kind: "none", pct: 0 });
   });
 
-  it("da a cada estado su tono", () => {
-    expect(statusTone("active")).toBe("positive");
-    expect(statusTone("provisioning")).toBe("warning");
-    expect(statusTone("paused")).toBe("danger");
-    expect(statusTone("archived")).toBe("muted");
-  });
 
   it("cada día es un total, hoy va marcado y el detalle son sus tres clientes con más conversaciones", () => {
     const trend = {

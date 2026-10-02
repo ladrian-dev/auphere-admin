@@ -39,12 +39,6 @@ export const homeUsageMessages = {
   "hu.home.actions.client": { es: "Abrir ficha del cliente", en: "Open the client" },
   "hu.home.actions.conversations": { es: "Ver conversaciones", en: "See conversations" },
   "hu.home.actions.clients": { es: "Ver todos los clientes", en: "See all clients" },
-  "hu.home.review.title": { es: "Por revisar ahora", en: "To review now" },
-  "hu.home.review.escalated": { es: "Conversaciones escaladas", en: "Escalated conversations" },
-  "hu.home.review.payments": { es: "Pagos por revisar", en: "Payments to review" },
-  "hu.home.review.unanswered": { es: "Sin responder · número no permitido", en: "Unanswered · number not allowed" },
-  "hu.home.review.none": { es: "Nada espera a una persona.", en: "Nothing is waiting for a person." },
-  "hu.home.review.window": { es: "Últimos 7 días", en: "Last 7 days" },
   // Tarjetas
   "hu.home.kpi.conversations": { es: "Conversaciones", en: "Conversations" },
   "hu.home.kpi.conversations.trend": { es: "Conversaciones por día de los últimos 7 días", en: "Conversations per day over the last 7 days" },
@@ -76,22 +70,7 @@ export const homeUsageMessages = {
   "hu.home.credit.risk.title": { es: "Se quedarán sin crédito este mes", en: "Will run out of credit this month" },
   "hu.home.credit.risk.row": { es: "Le quedan unos {days} días", en: "About {days} days left" },
   // Cartera
-  "hu.home.portfolio.title": { es: "Tus clientes", en: "Your clients" },
-  "hu.home.portfolio.all": { es: "Ver todos", en: "See all" },
-  "hu.home.portfolio.client": { es: "Cliente", en: "Client" },
-  "hu.home.portfolio.status": { es: "Estado", en: "Status" },
-  "hu.home.portfolio.week": { es: "Últimos 7 días", en: "Last 7 days" },
-  "hu.home.portfolio.credit": { es: "Crédito", en: "Credit" },
-  "hu.home.portfolio.last": { es: "Última actividad", en: "Last activity" },
-  "hu.home.portfolio.creditLeft": { es: "Quedan {left} de {cap}", en: "{left} of {cap} left" },
-  "hu.home.portfolio.never": { es: "Sin actividad", en: "No activity" },
-  "hu.home.portfolio.noCredit": { es: "Sin asignar", en: "Not assigned" },
-  "hu.home.portfolio.issues": { es: "{count} por resolver", en: "{count} to fix" },
-  "hu.home.portfolio.trend": { es: "Conversaciones de {client} en los últimos 7 días", en: "Conversations of {client} over the last 7 days" },
   // Actividad
-  "hu.home.activity.title": { es: "Actividad reciente", en: "Recent activity" },
-  "hu.home.activity.all": { es: "Ver auditoría", en: "See audit log" },
-  "hu.home.activity.empty": { es: "Todavía no hay actividad.", en: "No activity yet." },
 
   // ── usage (CP-22) ────────────────────────────────────────────────
   "hu.usage.month": { es: "Mes en curso", en: "Current month" },

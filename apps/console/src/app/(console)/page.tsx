@@ -1,19 +1,13 @@
 import { ArrowDownRight, ArrowUpRight, Bot, Users, Wallet } from "lucide-react";
 import Link from "next/link";
-import { Suspense } from "react";
 
-import { Alert, AlertDescription, Button, CardSkeleton, EmptyState, HighlightMetric, Metric, PageHeader, Section, formatCompact, formatNumber } from "@nexus/ui";
+import { Alert, AlertDescription, Button, EmptyState, HighlightMetric, Metric, PageHeader, Section, formatCompact, formatNumber } from "@nexus/ui";
 
-import { ActivityFeed } from "@/components/home/activity-feed";
 import { AttentionBlock } from "@/components/home/attention-block";
 import { ConversationsChart } from "@/components/home/conversations-chart";
 import { creditRunway, roundDays, trendDelta } from "@/components/home/home-model";
-import { OnboardingCard } from "@/components/home/onboarding-card";
-import { PortfolioTable } from "@/components/home/portfolio-table";
-import { ReviewBlock } from "@/components/home/review-block";
 import { SpendCard } from "@/components/home/spend-card";
 import { getT } from "@/i18n/server";
-import type { AuditEntry } from "@/lib/backend";
 import { backendFor } from "@/lib/backend";
 import type { Home } from "@/lib/backend/home-usage";
 import { can, requirePrincipal } from "@/lib/principal";
@@ -29,11 +23,7 @@ export default async function HomePage() {
   const principal = await requirePrincipal();
   const { t, locale } = await getT(principal.locale);
   const api = backendFor(principal);
-  const readAudit = can(principal.role, "audit:read");
-  const [home, activity] = await Promise.all([
-    api.home().catch((): Home | null => null),
-    readAudit ? api.auditV2({ limit: 5, lang: locale }).then((p) => p.items).catch((): AuditEntry[] | null => null) : Promise.resolve(null),
-  ]);
+  const home: Home | null = await api.home().catch(() => null);
   const readClients = can(principal.role, "clients:read");
   const writeClients = can(principal.role, "clients:write");
   const n = (v: number) => formatNumber(v, locale);
@@ -52,7 +42,6 @@ export default async function HomePage() {
         valueLabel: t("hu.home.kpi.credit.runway", { days: n(runway.days), left: n(runway.monthLeft) }),
       }
     : null;
-  const hasPortfolio = Boolean(home?.portfolio && home.portfolio.length > 0);
   const noClients = readClients && home?.clients?.total === 0;
 
   return (
@@ -143,9 +132,6 @@ export default async function HomePage() {
       </div>
 
       {home?.attention && !noClients ? <AttentionBlock attention={home.attention} total={home.clients?.total ?? 0} walletEmpty={credit?.available === 0} t={t} n={n} /> : null}
-      <Suspense fallback={<CardSkeleton />}>
-        <OnboardingCard principal={principal} />
-      </Suspense>
       {credit && credit.at_risk.length > 0 ? (
         <Section title={t("hu.home.credit.risk.title")}>
           <ul className="divide-y divide-border">
@@ -159,42 +145,6 @@ export default async function HomePage() {
             ))}
           </ul>
         </Section>
-      ) : null}
-
-      {hasPortfolio || home?.to_review || activity ? (
-        <div className="grid items-start gap-4 lg:grid-cols-3">
-          {hasPortfolio ? (
-            <Section
-              title={t("hu.home.portfolio.title")}
-              padded={false}
-              className={home?.to_review || activity ? "lg:col-span-2" : "lg:col-span-3"}
-              actions={
-                <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/clients" />}>
-                  {t("hu.home.portfolio.all")}
-                </Button>
-              }
-            >
-              <PortfolioTable rows={home!.portfolio!} t={t} n={n} locale={locale} />
-            </Section>
-          ) : null}
-          {home?.to_review || activity ? (
-            <div className="flex flex-col gap-4">
-              {home?.to_review ? <ReviewBlock review={home.to_review} t={t} n={n} /> : null}
-              {activity ? (
-                <Section
-                  title={t("hu.home.activity.title")}
-                  actions={
-                    <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/audit" />}>
-                      {t("hu.home.activity.all")}
-                    </Button>
-                  }
-                >
-                  <ActivityFeed items={activity} locale={locale} empty={t("hu.home.activity.empty")} />
-                </Section>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
       ) : null}
 
       {noClients ? (
