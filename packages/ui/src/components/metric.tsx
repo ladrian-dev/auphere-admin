@@ -59,14 +59,16 @@ function Metric({ label, value, hint, loading, href, delta, trend, icon, progres
             {icon}
           </span>
         ) : null}
-        {/* El nombre de una métrica es texto de interfaz: Helvena, no mono. */}
-        <p className="min-w-0 truncate text-xs font-medium tracking-eyebrow text-muted-foreground uppercase">{label}</p>
+        {/* El nombre de una métrica es texto de interfaz: Helvena, no mono.
+            Con icono es una tarjeta de panel (spec 026): título en frase,
+            cifra grande; sin icono, la etiqueta de siempre. */}
+        <p className={cn("min-w-0 truncate", icon ? "text-sm font-medium" : "text-xs font-medium tracking-eyebrow text-muted-foreground uppercase")}>{label}</p>
       </div>
       {loading ? (
         <Skeleton className="h-8 w-24" />
       ) : (
-        <div className="flex min-w-0 items-baseline gap-2">
-          <p className="min-w-0 truncate text-2xl font-semibold tabular-nums" title={typeof value === "string" ? value : undefined}>
+        <div className={cn("flex min-w-0 items-baseline gap-2", icon && "mt-2")}>
+          <p className={cn("min-w-0 truncate font-semibold tabular-nums", icon ? "text-3xl" : "text-2xl")} title={typeof value === "string" ? value : undefined}>
             {value}
           </p>
           {delta ? (
@@ -79,12 +81,12 @@ function Metric({ label, value, hint, loading, href, delta, trend, icon, progres
           ) : null}
         </div>
       )}
-      {trend && !loading && !area ? <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} /> : null}
-      {progress && !loading ? (
-        <Meter size="sm" label={progress.label} labelHidden value={progress.value} max={progress.max} valueLabel={progress.valueLabel} tone={progress.tone ?? "auto"} />
-      ) : null}
       {hint ? (
         loading ? <Skeleton className="h-4 w-32" /> : <p className="min-w-0 truncate text-sm text-muted-foreground">{hint}</p>
+      ) : null}
+      {trend && !loading && !area ? <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} className={icon ? "mt-auto pt-2" : undefined} /> : null}
+      {progress && !loading ? (
+        <Meter className={icon ? "mt-auto pt-2" : undefined} size="sm" label={progress.label} labelHidden value={progress.value} max={progress.max} valueLabel={progress.valueLabel} tone={progress.tone ?? "auto"} />
       ) : null}
       {trend && !loading && area ? (
         <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} variant="area" className="-mx-4 -mb-4 mt-auto h-12 w-[calc(100%+2rem)]" />

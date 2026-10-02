@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, MessageSquare, Users, Wallet } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Bot, MessageSquare, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -81,76 +81,77 @@ export default async function HomePage() {
         </Alert>
       ) : null}
 
-      {trend && delta ? (
-        <HighlightMetric
-          label={t("hu.home.kpi.conversations")}
-          value={n(trend.current)}
-          delta={
-            delta.kind === "none"
-              ? undefined
-              : {
-                  label: (
-                    <>
-                      {delta.kind === "up" ? <ArrowUpRight aria-hidden="true" /> : delta.kind === "down" ? <ArrowDownRight aria-hidden="true" /> : null}
-                      {delta.kind === "same" ? "=" : `${n(delta.pct)} %`}
-                    </>
-                  ),
-                  srLabel: t(`hu.home.kpi.delta.${delta.kind}`, { pct: n(delta.pct) }),
-                }
-          }
-          trend={{ values: trend.series, ariaLabel: t("hu.home.kpi.conversations.trend") }}
-          hint={delta.kind === "none" ? t("hu.home.kpi.delta.none") : t(`hu.home.kpi.delta.${delta.kind}`, { pct: n(delta.pct) })}
-          href="/clients"
-        />
-      ) : null}
-
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label={t("home.title")}>
-        {home?.clients ? (
-          <Metric
-            icon={<Users />}
-            label={t("hu.home.kpi.clients")}
-            value={n(home.clients.active)}
-            hint={t("hu.home.kpi.clients.hint", { total: n(home.clients.total), provisioning: n(home.clients.provisioning) })}
-            href="/clients"
-          />
+      <div className="grid gap-4 lg:grid-cols-3">
+        {spend ? (
+          <div className="lg:row-span-2">
+            <SpendCard spend={spend} dailyCredits={credit?.daily_average ?? null} t={t} locale={locale} />
+          </div>
         ) : null}
-        {credit && credit.available != null ? (
-          <Metric
-            icon={<Wallet />}
-            label={t("hu.home.kpi.credit")}
-            value={formatCompact(credit.available, locale)}
-            progress={runwayProgress ?? undefined}
-            hint={credit.available === 0 ? t("hu.home.attention.wallet") : runwayProgress ? undefined : t("hu.home.kpi.credit.noSpend")}
-            className={credit.available === 0 ? "ring-status-danger/40" : undefined}
-            href="/usage"
-          />
-        ) : null}
-        {home?.usage_units ? (
-          <Metric
-            icon={<MessageSquare />}
-            label={t("hu.home.kpi.messages")}
-            value={formatCompact(home.usage_units.units, locale)}
-            hint={
-              home.usage_units.percent != null
-                ? t("hu.home.kpi.messages.cap", { percent: n(home.usage_units.percent), projected: formatCompact(home.usage_units.projected_month_units, locale) })
-                : t("hu.home.kpi.messages.nocap", { projected: formatCompact(home.usage_units.projected_month_units, locale) })
-            }
-            trend={home.usage_units.daily && home.usage_units.daily.length > 1 ? { values: home.usage_units.daily, ariaLabel: t("hu.home.kpi.messages.trend"), style: "area" } : undefined}
-            href="/usage"
-          />
-        ) : null}
-      </section>
-
-      {trend || spend ? (
-        <div className="grid gap-4 lg:grid-cols-3">
-          {spend ? <SpendCard spend={spend} t={t} locale={locale} /> : null}
-          {trend ? (
-            <Section title={t("hu.home.chart.title")} className={spend ? "lg:col-span-2" : "lg:col-span-3"}>
-              <ConversationsChart trend={trend} />
-            </Section>
+        <section className={spend ? "grid gap-4 sm:grid-cols-2 lg:col-span-2" : "grid gap-4 sm:grid-cols-2 lg:col-span-3"} aria-label={t("home.title")}>
+          {trend && delta ? (
+            <HighlightMetric
+              icon={<Bot />}
+              label={t("hu.home.kpi.conversations")}
+              value={n(trend.current)}
+              delta={
+                delta.kind === "none"
+                  ? undefined
+                  : {
+                      label: (
+                        <>
+                          {delta.kind === "up" ? <ArrowUpRight aria-hidden="true" /> : delta.kind === "down" ? <ArrowDownRight aria-hidden="true" /> : null}
+                          {delta.kind === "same" ? "=" : `${n(delta.pct)} %`}
+                        </>
+                      ),
+                      srLabel: t(`hu.home.kpi.delta.${delta.kind}`, { pct: n(delta.pct) }),
+                    }
+              }
+              trend={{ values: trend.series, ariaLabel: t("hu.home.kpi.conversations.trend") }}
+              hint={delta.kind === "none" ? t("hu.home.kpi.delta.none") : t(`hu.home.kpi.delta.${delta.kind}`, { pct: n(delta.pct) })}
+              href="/clients"
+            />
           ) : null}
-        </div>
-      ) : null}
+          {home?.clients ? (
+            <Metric
+              icon={<Users />}
+              label={t("hu.home.kpi.clients")}
+              value={n(home.clients.active)}
+              hint={t("hu.home.kpi.clients.hint", { total: n(home.clients.total), provisioning: n(home.clients.provisioning) })}
+              href="/clients"
+            />
+          ) : null}
+          {credit && credit.available != null ? (
+            <Metric
+              icon={<Wallet />}
+              label={t("hu.home.kpi.credit")}
+              value={formatCompact(credit.available, locale)}
+              progress={runwayProgress ?? undefined}
+              hint={credit.available === 0 ? t("hu.home.attention.wallet") : runwayProgress ? undefined : t("hu.home.kpi.credit.noSpend")}
+              className={credit.available === 0 ? "ring-status-danger/40" : undefined}
+              href="/usage"
+            />
+          ) : null}
+          {home?.usage_units ? (
+            <Metric
+              icon={<MessageSquare />}
+              label={t("hu.home.kpi.messages")}
+              value={formatCompact(home.usage_units.units, locale)}
+              hint={
+                home.usage_units.percent != null
+                  ? t("hu.home.kpi.messages.cap", { percent: n(home.usage_units.percent), projected: formatCompact(home.usage_units.projected_month_units, locale) })
+                  : t("hu.home.kpi.messages.nocap", { projected: formatCompact(home.usage_units.projected_month_units, locale) })
+              }
+              trend={home.usage_units.daily && home.usage_units.daily.length > 1 ? { values: home.usage_units.daily, ariaLabel: t("hu.home.kpi.messages.trend"), style: "area" } : undefined}
+              href="/usage"
+            />
+          ) : null}
+        </section>
+        {trend ? (
+          <Section title={t("hu.home.chart.title")} className={spend ? "lg:col-span-2" : "lg:col-span-3"}>
+            <ConversationsChart trend={trend} />
+          </Section>
+        ) : null}
+      </div>
 
       {home?.attention && !noClients ? <AttentionBlock attention={home.attention} total={home.clients?.total ?? 0} walletEmpty={credit?.available === 0} t={t} n={n} /> : null}
       <Suspense fallback={<CardSkeleton />}>
