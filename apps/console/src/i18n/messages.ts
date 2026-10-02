@@ -335,6 +335,8 @@ const core = {
   "agent.by": { es: "por {who}", en: "by {who}" },
   "agent.promptTooShort": { es: "El prompt no puede estar vacío.", en: "The prompt cannot be empty." },
   "agent.viewPrompt": { es: "Ver prompt", en: "View prompt" },
+  "agent.hidePrompt": { es: "Ocultar prompt", en: "Hide prompt" },
+  "agent.actions.aria": { es: "Opciones de la versión {v}", en: "Options for version {v}" },
 
   // conversations
   "conv.title": { es: "Conversaciones", en: "Conversations" },
