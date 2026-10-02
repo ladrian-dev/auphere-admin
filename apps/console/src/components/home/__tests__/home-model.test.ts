@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attentionRows, chartData, spendShares, roundDays, statusTone, trendDelta } from "../home-model";
+import { attentionRows, chartData, creditRunway, spendShares, roundDays, statusTone, trendDelta } from "../home-model";
 
 describe("Reglas del Inicio (spec 026)", () => {
   it("compara con el periodo anterior sin inventar variaciones", () => {
@@ -75,5 +75,19 @@ describe("spendShares", () => {
     expect(out.map((s) => s.pct).reduce((a, b) => a + b, 0)).toBe(100);
     expect(spendShares([share(3), share(1)]).map((s) => s.pct)).toEqual([75, 25]);
     expect(spendShares([])).toEqual([]);
+  });
+});
+
+describe("creditRunway", () => {
+  const now = new Date("2026-10-02T12:00:00Z"); // 30 days left in October
+  it("says how many of the month's days left the credit covers", () => {
+    expect(creditRunway(5_000_000, 70, now)).toEqual({ days: 30, monthLeft: 30, tone: "positive" });
+    expect(creditRunway(100_000, 12.6, now)).toEqual({ days: 12, monthLeft: 30, tone: "warning" });
+    expect(creditRunway(10_000, 3, now)).toEqual({ days: 3, monthLeft: 30, tone: "danger" });
+  });
+  it("empty credit is an empty gauge, and no pace means no gauge", () => {
+    expect(creditRunway(0, 4, now)).toBeNull();
+    expect(creditRunway(5_000, null, now)).toBeNull();
+    expect(creditRunway(null, 10, now)).toBeNull();
   });
 });

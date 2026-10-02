@@ -29,24 +29,24 @@ export function ReviewBlock({ review, t, n }: { review: HomeToReview; t: T; n: (
       {nothing ? (
         <p className="text-sm text-muted-foreground">{t("hu.home.review.none")}</p>
       ) : (
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col divide-y divide-border">
           {rows.map(({ key, icon: Icon, label, value }) => {
             const href = value > 0 ? first(key) : undefined;
             const body = (
               <>
-                <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                <Icon aria-hidden="true" className="size-4 shrink-0 text-primary" />
                 <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
-                <span className="text-lg font-semibold tabular-nums">{n(value)}</span>
+                <span className={value > 0 ? "rounded-full bg-status-warning/15 px-2 text-sm font-semibold tabular-nums" : "px-2 text-sm font-semibold tabular-nums text-muted-foreground"}>{n(value)}</span>
               </>
             );
             return (
               <li key={key}>
                 {href ? (
-                  <Link href={href} className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
+                  <Link href={href} className="flex items-center gap-3 px-1 py-3 hover:bg-muted">
                     {body}
                   </Link>
                 ) : (
-                  <div className="flex items-center gap-3 px-2 py-2 opacity-70">{body}</div>
+                  <div className="flex items-center gap-3 px-1 py-3">{body}</div>
                 )}
               </li>
             );

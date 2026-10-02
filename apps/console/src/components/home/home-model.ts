@@ -116,3 +116,21 @@ export function spendShares(shares: SpendShare[]): Array<SpendShare & { pct: num
   }
   return shares.map((s, i) => ({ ...s, pct: pcts[i]! }));
 }
+
+export type CreditRunway = { days: number; monthLeft: number; tone: "positive" | "warning" | "danger" };
+
+/**
+ * The credit gauge (style E): how many of the days left in the month the
+ * credit covers at the 7-day pace. Full bar = it lasts the month. No spend
+ * in 7 days: no gauge, there is no pace to measure against. Empty credit:
+ * no gauge either, the card says it in words.
+ */
+export function creditRunway(available: number | null, daysLeft: number | null, now: Date): CreditRunway | null {
+  if (available == null) return null;
+  const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+  const monthLeft = Math.max(1, Math.ceil((end - now.getTime()) / 86_400_000));
+  if (available <= 0 || daysLeft == null) return null;
+  const days = Math.min(monthLeft, Math.floor(daysLeft));
+  const tone = days >= monthLeft ? "positive" : days < 7 ? "danger" : "warning";
+  return { days, monthLeft, tone };
+}

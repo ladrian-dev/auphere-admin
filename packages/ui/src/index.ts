@@ -32,6 +32,7 @@ export * from "./components/input";
 export * from "./components/kbd";
 export * from "./components/label";
 export * from "./components/meter";
+export * from "./components/highlight-metric";
 export * from "./components/metric";
 export * from "./components/sparkline";
 export * from "./components/nav-tabs";

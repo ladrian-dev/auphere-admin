@@ -1,12 +1,13 @@
+import { ArrowDownRight, ArrowUpRight, MessageSquare, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { Alert, AlertDescription, Button, CardSkeleton, EmptyState, Metric, PageHeader, Section, formatCompact, formatNumber } from "@nexus/ui";
+import { Alert, AlertDescription, Button, CardSkeleton, EmptyState, HighlightMetric, Metric, PageHeader, Section, formatCompact, formatNumber } from "@nexus/ui";
 
 import { ActivityFeed } from "@/components/home/activity-feed";
 import { AttentionBlock } from "@/components/home/attention-block";
 import { ConversationsChart } from "@/components/home/conversations-chart";
-import { roundDays, trendDelta } from "@/components/home/home-model";
+import { creditRunway, roundDays, trendDelta } from "@/components/home/home-model";
 import { OnboardingCard } from "@/components/home/onboarding-card";
 import { PortfolioTable } from "@/components/home/portfolio-table";
 import { ReviewBlock } from "@/components/home/review-block";
@@ -18,8 +19,6 @@ import { backendFor } from "@/lib/backend";
 import type { Home } from "@/lib/backend/home-usage";
 import { can, requirePrincipal } from "@/lib/principal";
 
-const DELTA_SIGN = { up: "+", down: "−", same: "=" } as const;
-const DELTA_TONE = { up: "positive", down: "negative", same: "neutral" } as const;
 
 /**
  * Home (spec 026): what fails, what waits for a person, how the week goes,
@@ -44,6 +43,16 @@ export default async function HomePage() {
   const delta = trend ? trendDelta(trend.current, trend.previous) : null;
   const credit = home?.credit ?? null;
   const spend = home?.spend ?? null;
+  const runway = credit ? creditRunway(credit.available, credit.days_left, new Date()) : null;
+  const runwayProgress = runway
+    ? {
+        value: runway.days,
+        max: runway.monthLeft,
+        tone: runway.tone,
+        label: t("hu.home.kpi.credit.runway.aria"),
+        valueLabel: t("hu.home.kpi.credit.runway", { days: n(runway.days), left: n(runway.monthLeft) }),
+      }
+    : null;
   const hasPortfolio = Boolean(home?.portfolio && home.portfolio.length > 0);
   const noClients = readClients && home?.clients?.total === 0;
 
@@ -72,27 +81,33 @@ export default async function HomePage() {
         </Alert>
       ) : null}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label={t("home.title")}>
-        {trend && delta ? (
-          <Metric
-            label={t("hu.home.kpi.conversations")}
-            value={n(trend.current)}
-            delta={
-              delta.kind === "none"
-                ? undefined
-                : {
-                    label: `${DELTA_SIGN[delta.kind]}${delta.kind === "same" ? "" : `${n(delta.pct)} %`}`,
-                    tone: DELTA_TONE[delta.kind],
-                    srLabel: t(`hu.home.kpi.delta.${delta.kind}`, { pct: n(delta.pct) }),
-                  }
-            }
-            trend={{ values: trend.series, ariaLabel: t("hu.home.kpi.conversations.trend") }}
-            hint={delta.kind === "none" ? t("hu.home.kpi.delta.none") : t("hu.home.kpi.conversations.hint")}
-            href="/clients"
-          />
-        ) : null}
+      {trend && delta ? (
+        <HighlightMetric
+          label={t("hu.home.kpi.conversations")}
+          value={n(trend.current)}
+          delta={
+            delta.kind === "none"
+              ? undefined
+              : {
+                  label: (
+                    <>
+                      {delta.kind === "up" ? <ArrowUpRight aria-hidden="true" /> : delta.kind === "down" ? <ArrowDownRight aria-hidden="true" /> : null}
+                      {delta.kind === "same" ? "=" : `${n(delta.pct)} %`}
+                    </>
+                  ),
+                  srLabel: t(`hu.home.kpi.delta.${delta.kind}`, { pct: n(delta.pct) }),
+                }
+          }
+          trend={{ values: trend.series, ariaLabel: t("hu.home.kpi.conversations.trend") }}
+          hint={delta.kind === "none" ? t("hu.home.kpi.delta.none") : t(`hu.home.kpi.delta.${delta.kind}`, { pct: n(delta.pct) })}
+          href="/clients"
+        />
+      ) : null}
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label={t("home.title")}>
         {home?.clients ? (
           <Metric
+            icon={<Users />}
             label={t("hu.home.kpi.clients")}
             value={n(home.clients.active)}
             hint={t("hu.home.kpi.clients.hint", { total: n(home.clients.total), provisioning: n(home.clients.provisioning) })}
@@ -101,21 +116,18 @@ export default async function HomePage() {
         ) : null}
         {credit && credit.available != null ? (
           <Metric
+            icon={<Wallet />}
             label={t("hu.home.kpi.credit")}
             value={formatCompact(credit.available, locale)}
-            hint={
-              credit.available === 0
-                ? t("hu.home.attention.wallet")
-                : credit.days_left != null
-                  ? t("hu.home.kpi.credit.days", { days: n(roundDays(credit.days_left)) })
-                  : t("hu.home.kpi.credit.noSpend")
-            }
+            progress={runwayProgress ?? undefined}
+            hint={credit.available === 0 ? t("hu.home.attention.wallet") : runwayProgress ? undefined : t("hu.home.kpi.credit.noSpend")}
             className={credit.available === 0 ? "ring-status-danger/40" : undefined}
             href="/usage"
           />
         ) : null}
         {home?.usage_units ? (
           <Metric
+            icon={<MessageSquare />}
             label={t("hu.home.kpi.messages")}
             value={formatCompact(home.usage_units.units, locale)}
             hint={
@@ -123,6 +135,7 @@ export default async function HomePage() {
                 ? t("hu.home.kpi.messages.cap", { percent: n(home.usage_units.percent), projected: formatCompact(home.usage_units.projected_month_units, locale) })
                 : t("hu.home.kpi.messages.nocap", { projected: formatCompact(home.usage_units.projected_month_units, locale) })
             }
+            trend={home.usage_units.daily && home.usage_units.daily.length > 1 ? { values: home.usage_units.daily, ariaLabel: t("hu.home.kpi.messages.trend"), style: "area" } : undefined}
             href="/usage"
           />
         ) : null}

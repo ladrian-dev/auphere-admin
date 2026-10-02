@@ -9,6 +9,8 @@ import { DescriptionList } from "../description-list";
 import { DraftBadge } from "../draft-badge";
 import { Field } from "../field";
 import { Input } from "../input";
+import { HighlightMetric } from "../highlight-metric";
+import { Metric } from "../metric";
 import { Meter, meterToneFor } from "../meter";
 import { NativeSelect } from "../native-select";
 import { Section } from "../section";
@@ -345,5 +347,31 @@ describe("Metric con variación y tendencia (spec 026)", () => {
     const { render } = await import("@testing-library/react");
     const { container } = render(<Sparkline values={[3]} ariaLabel="x" />);
     expect(container.querySelector("svg")).toBeNull();
+  });
+});
+
+describe("Metric styles chosen for the home (spec 026)", () => {
+  it("B · an icon before the label, decorative", () => {
+    const { container } = render(<Metric label="Clientes" value="13" icon={<svg data-testid="i" />} />);
+    expect(container.querySelector('[data-slot="metric-icon"]')?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("D · the trend as a band along the bottom edge", () => {
+    const { container } = render(<Metric label="Mensajes" value="3 mil" trend={{ values: [1, 3, 2], ariaLabel: "Mensajes por día", style: "area" }} />);
+    const spark = container.querySelector('[data-slot="sparkline"]');
+    expect(spark?.getAttribute("aria-label")).toBe("Mensajes por día");
+    expect(container.querySelector('[data-slot="metric"]')?.className).toContain("overflow-hidden");
+  });
+
+  it("E · how much is left, as a meter", () => {
+    const { container } = render(<Metric label="Crédito" value="3,4 M" progress={{ value: 21, max: 30, label: "Días de autonomía", valueLabel: "21 de 30 días" }} />);
+    expect(container.querySelector('[data-slot="meter"]')).not.toBeNull();
+    expect(container.textContent).toContain("21 de 30 días");
+  });
+
+  it("G · the highlighted figure says its change to screen readers", () => {
+    render(<HighlightMetric label="Conversaciones" value="1.500" delta={{ label: "+18 %", srLabel: "18 % más" }} href="/clients" />);
+    expect(screen.getByText("18 % más")).toBeTruthy();
+    expect(screen.getByRole("link").getAttribute("href")).toBe("/clients");
   });
 });

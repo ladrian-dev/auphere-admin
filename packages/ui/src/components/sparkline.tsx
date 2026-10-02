@@ -5,6 +5,8 @@ type SparklineProps = {
   values: number[];
   /** Screen-reader description, e.g. «Conversaciones de los últimos 7 días». */
   ariaLabel: string;
+  /** ``area``: a stronger filled band, for a trend drawn along a tile's edge. */
+  variant?: "line" | "area";
   className?: string;
 };
 
@@ -14,7 +16,7 @@ type SparklineProps = {
  * down». Colour is ``currentColor`` so the caller picks the tone with a
  * text token; the area under the line is the same colour, faint.
  */
-function Sparkline({ values, ariaLabel, className }: SparklineProps) {
+function Sparkline({ values, ariaLabel, variant = "line", className }: SparklineProps) {
   if (values.length < 2) return null;
   const width = 100;
   const height = 32;
@@ -37,7 +39,7 @@ function Sparkline({ values, ariaLabel, className }: SparklineProps) {
       preserveAspectRatio="none"
       className={cn("h-8 w-full text-primary", className)}
     >
-      <polygon points={area} fill="currentColor" opacity={0.12} />
+      <polygon points={area} fill="currentColor" opacity={variant === "area" ? 0.2 : 0.12} />
       <polyline points={points.join(" ")} fill="none" stroke="currentColor" strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );

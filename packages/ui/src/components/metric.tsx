@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../lib/utils";
+import { Meter } from "./meter";
 import { Skeleton } from "./skeleton";
 import { Sparkline } from "./sparkline";
 
@@ -25,8 +26,13 @@ type MetricProps = {
   href?: string;
   /** Spec 026: change against the previous period, shown next to the value. */
   delta?: MetricDelta;
-  /** Spec 026: a small trend under the value (oldest first). */
-  trend?: { values: number[]; ariaLabel: string };
+  /** Spec 026: a small trend under the value (oldest first). ``area`` draws
+   *  it as a filled band along the bottom edge of the tile. */
+  trend?: { values: number[]; ariaLabel: string; style?: "line" | "area" };
+  /** Spec 026: an icon in a tinted square before the label (decorative). */
+  icon?: ReactNode;
+  /** Spec 026: how much of something is left, as a bar under the value. */
+  progress?: { value: number; max: number; label: string; valueLabel?: string; tone?: "auto" | "positive" | "warning" | "danger" };
   className?: string;
 };
 
@@ -39,13 +45,23 @@ const DELTA_TONE = {
 /**
  * A single figure with a label. Tabular numerals, no decoration; the tile
  * is a link when ``href`` is given (every figure on the home page must be
- * actionable or absent — PLAN-CONSOLE-V1 CP-08).
+ * actionable or absent — PLAN-CONSOLE-V1 CP-08). The optional icon, delta,
+ * trend and progress are the styles the owner chose for the home (spec 026);
+ * without them the tile is the plain one every other screen uses.
  */
-function Metric({ label, value, hint, loading, href, delta, trend, className }: MetricProps) {
+function Metric({ label, value, hint, loading, href, delta, trend, icon, progress, className }: MetricProps) {
+  const area = trend?.style === "area";
   const body = (
     <>
-      {/* El nombre de una métrica es texto de interfaz: Helvena, no mono. */}
-      <p className="text-xs font-medium tracking-eyebrow text-muted-foreground uppercase">{label}</p>
+      <div className="flex min-w-0 items-center gap-2">
+        {icon ? (
+          <span aria-hidden="true" data-slot="metric-icon" className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary [&_svg]:size-4">
+            {icon}
+          </span>
+        ) : null}
+        {/* El nombre de una métrica es texto de interfaz: Helvena, no mono. */}
+        <p className="min-w-0 truncate text-xs font-medium tracking-eyebrow text-muted-foreground uppercase">{label}</p>
+      </div>
       {loading ? (
         <Skeleton className="h-8 w-24" />
       ) : (
@@ -54,21 +70,30 @@ function Metric({ label, value, hint, loading, href, delta, trend, className }: 
             {value}
           </p>
           {delta ? (
-            <span className={cn("shrink-0 rounded-full px-2 text-xs font-medium tabular-nums", DELTA_TONE[delta.tone])} data-slot="metric-delta">
-              <span aria-hidden={delta.srLabel ? true : undefined}>{delta.label}</span>
+            <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2 text-xs font-medium tabular-nums", DELTA_TONE[delta.tone])} data-slot="metric-delta">
+              <span aria-hidden={delta.srLabel ? true : undefined} className="inline-flex items-center gap-1 [&_svg]:size-3">
+                {delta.label}
+              </span>
               {delta.srLabel ? <span className="sr-only">{delta.srLabel}</span> : null}
             </span>
           ) : null}
         </div>
       )}
-      {trend && !loading ? <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} /> : null}
+      {trend && !loading && !area ? <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} /> : null}
+      {progress && !loading ? (
+        <Meter size="sm" label={progress.label} labelHidden value={progress.value} max={progress.max} valueLabel={progress.valueLabel} tone={progress.tone ?? "auto"} />
+      ) : null}
       {hint ? (
         loading ? <Skeleton className="h-4 w-32" /> : <p className="min-w-0 truncate text-sm text-muted-foreground">{hint}</p>
+      ) : null}
+      {trend && !loading && area ? (
+        <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} variant="area" className="-mx-4 -mb-4 mt-auto h-12 w-[calc(100%+2rem)]" />
       ) : null}
     </>
   );
   const classes = cn(
     "flex min-w-0 flex-col gap-1 rounded-md bg-card p-4 ring-1 ring-foreground/10",
+    area && "overflow-hidden",
     href && "transition-colors hover:ring-primary/60 focus-visible:ring-primary",
     className,
   );
