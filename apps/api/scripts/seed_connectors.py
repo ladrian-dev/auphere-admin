@@ -18,7 +18,7 @@ import sys
 import structlog
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from nexus_api.db.base import dispose_engine, get_engine
+from nexus_api.db.base import dispose_engine, get_direct_engine
 from nexus_api.logging import configure_logging
 from nexus_api.services.connectors.seed_loader import load_all_seeds
 from nexus_api.services.connectors.seed_runner import (
@@ -35,7 +35,7 @@ async def main() -> int:
     if not seeds:
         log.warning("seed_connectors.no_yamls_found")
         return 0
-    engine = get_engine()
+    engine = get_direct_engine()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:

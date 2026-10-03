@@ -68,6 +68,40 @@ def get_engine() -> AsyncEngine:
 
 
 @lru_cache(maxsize=1)
+def get_direct_engine() -> AsyncEngine:
+    """Motor contra la base DIRECTA, saltándose el pooler. Para el release.
+
+    Existe por un fallo con fecha. El 2026-10-03 todos los despliegues a
+    staging abortaron en el paso bloqueante de migración, y el mensaje de la
+    tubería —«La migración falló»— era mentira: ``alembic upgrade head``
+    terminaba bien y lo que moría era el sembrado del catálogo de conectores
+    que corre detrás, en la misma tarea, con ``Name or service not known``.
+
+    Las dos mitades leían URLs distintas. ``alembic/env.py`` usa
+    ``database_url_direct or database_url``; el sembrador pedía ``get_engine()``,
+    que usa ``database_url``. En staging eso es ``pgbouncer.….internal``, un
+    nombre de Service Connect que solo resuelven las tareas inscritas en ese
+    namespace — y la de migración es un ``run-task`` suelto que no lo está.
+
+    Así que esta es la URL que usa **todo lo que corre en la tarea de release**,
+    la misma que Alembic, y por la misma razón: ahí no hay pooler que valga. No
+    lleva los ``connect_args`` de ``db_transaction_pooling`` porque por
+    definición no hay pooler delante, y el pool es de uno: es un trabajo de una
+    sola pasada, no tráfico de aplicación.
+    """
+    settings = get_settings()
+    url = settings.database_url_direct or settings.database_url
+    return create_async_engine(
+        url,
+        echo=False,
+        pool_pre_ping=True,
+        pool_recycle=280,
+        pool_size=1,
+        max_overflow=0,
+    )
+
+
+@lru_cache(maxsize=1)
 def get_ro_engine() -> AsyncEngine:
     """WP-15: engine against the read replica (``NEXUS_DATABASE_URL_RO``).
 
@@ -112,11 +146,12 @@ def reset_engine_cache() -> None:
     get_sessionmaker.cache_clear()
     get_ro_engine.cache_clear()
     get_ro_sessionmaker.cache_clear()
+    get_direct_engine.cache_clear()
 
 
 async def dispose_engine() -> None:
     """Cleanly close the engines on shutdown. Robust to test monkey-patching."""
-    for cached in (get_engine, get_ro_engine):
+    for cached in (get_engine, get_ro_engine, get_direct_engine):
         info = getattr(cached, "cache_info", None)
         if info is None or info().currsize == 0:
             continue
