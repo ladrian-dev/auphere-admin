@@ -2,11 +2,20 @@
 
 import { Ban, Check, Loader2, Wrench, X } from "lucide-react";
 
-import { Badge, formatLatency, formatNumber } from "@nexus/ui";
+import { Badge, DescriptionList, formatLatency, formatNumber } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 
 import type { ToolCall, Turn } from "./transcript";
+
+// Failure codes the API can put on ``run.completed.reason``, each with its
+// sentence; anything else falls back to the (already humanised) ``error``.
+const REASON_KEY = {
+  llm_failed: "playground.run.reason.llm_failed",
+  empty_response: "playground.run.reason.empty_response",
+} as const;
+type KnownReason = keyof typeof REASON_KEY;
+const isKnownReason = (r: string): r is KnownReason => r in REASON_KEY;
 
 /** Per-turn side panel: tools invoked (with dry-run blocks), tokens in/out
  * (units, never USD), client-measured latency, run status. */
@@ -26,16 +35,7 @@ export function TurnInspector({ turn }: { turn: Turn | null }) {
   ];
   return (
     <div className="flex flex-col gap-4" aria-busy={running}>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-        {rows.map(([k, v]) => (
-          <div key={k} className="contents">
-            <dt className="text-muted-foreground">{k}</dt>
-            <dd className="min-w-0 truncate text-right font-mono text-xs tabular-nums" title={v}>
-              {v}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <DescriptionList layout="inline" dense items={rows.map(([k, v]) => ({ key: k, term: k, detail: v, mono: true, truncate: true, align: "end" }))} />
       <div className="flex flex-col gap-2">
         <h4 className="text-xs font-medium tracking-eyebrow text-muted-foreground uppercase">{t("playground.inspector.tools")}</h4>
         {turn.tools.length === 0 ? (
@@ -48,9 +48,10 @@ export function TurnInspector({ turn }: { turn: Turn | null }) {
           </ul>
         )}
       </div>
-      {turn.error ? (
-        <p className="text-sm text-status-danger" role="alert">
-          {t("playground.run.error")}: <span className="font-mono text-xs">{turn.error}</span>
+      {turn.status === "error" || turn.error ? (
+        <p className="text-sm text-destructive" role="alert">
+          <span className="font-medium">{t("playground.run.error")}.</span>{" "}
+          {turn.failureReason && isKnownReason(turn.failureReason) ? t(REASON_KEY[turn.failureReason]) : turn.error}
         </p>
       ) : null}
     </div>
@@ -62,7 +63,7 @@ function ToolRow({ call }: { call: ToolCall }) {
   const locale = useLocale();
   const status =
     call.status === "blocked"
-      ? { label: t("playground.inspector.tool.blocked"), icon: Ban, variant: "outline" as const, cls: "text-status-warning" }
+      ? { label: t("playground.inspector.tool.blocked"), icon: Ban, variant: "outline" as const, cls: "text-warning" }
       : call.status === "running"
         ? { label: t("playground.inspector.tool.running"), icon: Loader2, variant: "secondary" as const, cls: "animate-spin" }
         : call.status === "error"

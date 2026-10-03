@@ -1,0 +1,60 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "--directory",
+        "apps/api",
+        "run",
+        "uvicorn",
+        "nexus_api.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000",
+        "--reload",
+        "--reload-dir",
+        "src"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "console",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "apps/console",
+        "dev"
+      ],
+      "port": 3110
+    },
+    {
+      "name": "amacrux-event",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "apps/amacrux-event",
+        "dev"
+      ],
+      "port": 3120
+    },
+    {
+      "name": "storybook",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "packages/ui",
+        "exec",
+        "storybook",
+        "dev",
+        "-p",
+        "6006",
+        "--no-open",
+        "--ci"
+      ],
+      "port": 6006
+    }
+  ]
+}

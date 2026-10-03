@@ -34,6 +34,7 @@ from nexus_api.services.templating.seed_templates import (
     SeedTemplate,
     SeedTemplateNotFound,
     SeedTemplatePlaceholderMissing,
+    conditional_keys,
     list_seed_templates,
     load_seed_template,
     render_seed_template,
@@ -95,11 +96,19 @@ def describe_placeholders(template: SeedTemplate) -> list[SeedPlaceholderOut]:
       required, and secret when it looks like payment/contact data.
     - ``policies.admin_access.admin_phones`` when ``admin_only`` → required
       list (an empty whitelist means the agent answers nobody).
-    - anything else referenced by the prompt → required text.
+    - anything else referenced by the prompt → required text, **salvo** si
+      solo aparece dentro de un bloque condicional ``{?clave} … {/}``: eso
+      significa que el agente no habla de ello mientras no se lo digan
+      (spec 019, T036), así que no hay nada que exigir en el alta. Ahí es
+      donde la clínica estética baja de doce campos a siete.
     Order: required first, then optional, each in first-seen order.
     """
     seen: dict[str, SeedPlaceholderOut] = {}
     keys = list(dict.fromkeys(_PLACEHOLDER_RE.findall(template.system_prompt)))
+    # Las que solo se dicen si se las dijeron. No se retiran de la lista: se
+    # siguen pudiendo rellenar, y siguen saliendo en los ajustes del agente —
+    # lo que dejan de hacer es exigirse antes de que el cliente exista.
+    opcionales_por_bloque = conditional_keys(template.system_prompt)
     # Pending markers in policies not referenced by the prompt still block
     # a useful agent — surface them too.
     flat: dict[str, Any] = {}
@@ -140,7 +149,9 @@ def describe_placeholders(template: SeedTemplate) -> list[SeedPlaceholderOut]:
             continue
         # Business facts the prompt states out loud (address, opening
         # hours, front-desk phone…) — public by nature, never secret.
-        seen[key] = SeedPlaceholderOut(key=key, required=True, kind="text")
+        seen[key] = SeedPlaceholderOut(
+            key=key, required=key not in opcionales_por_bloque, kind="text"
+        )
     ordered = sorted(seen.values(), key=lambda p: (not p.required,))
     return ordered
 

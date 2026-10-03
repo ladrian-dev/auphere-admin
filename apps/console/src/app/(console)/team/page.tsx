@@ -8,8 +8,9 @@ import { TeamLists } from "@/components/team/team-lists";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Equipo" };
+export const generateMetadata = () => pageTitle("nav.team");
 
 export default async function TeamPage() {
   const principal = await requirePrincipal("/team");

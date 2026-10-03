@@ -127,6 +127,62 @@ export function loginExtras(mode: SignupMode): Record<string, unknown> {
 
 const TIMEOUT_MS = 5 * 60 * 1000;
 
+/** Meta's Embedded Signup lays itself out for ~630px; this leaves a margin. */
+export const META_POPUP = { width: 720, height: 780 } as const;
+
+/**
+ * Pure: window features that put a popup of `size` in the middle of `screen`.
+ *
+ * The SDK opens the dialog with `window.open` and its own features, and
+ * Chrome answered them with a window the size of the whole screen, Meta's
+ * wizard huddled in its top-left corner. `popup=yes` is what tells the
+ * browser this is a dialog and not a tab.
+ */
+export function centeredPopupFeatures(
+  screen: { width: number; height: number; left?: number; top?: number },
+  size: { width: number; height: number } = META_POPUP,
+): string {
+  const width = Math.min(size.width, screen.width);
+  const height = Math.min(size.height, screen.height);
+  const left = Math.max(0, Math.round((screen.left ?? 0) + (screen.width - width) / 2));
+  const top = Math.max(0, Math.round((screen.top ?? 0) + (screen.height - height) / 2));
+  return `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+}
+
+/** Drop from Meta's features the keys ours override; keep the rest. */
+function mergeFeatures(theirs: string | undefined, ours: string): string {
+  const overridden = new Set(["popup", "width", "height", "left", "top"]);
+  const kept = (theirs ?? "")
+    .split(",")
+    .map((f) => f.trim())
+    .filter((f) => f && !overridden.has(f.split("=")[0]!.trim().toLowerCase()));
+  return [ours, ...kept].join(",");
+}
+
+/**
+ * Run `fn` with `window.open` centring whatever it opens, then put
+ * `window.open` back — whether `fn` returns or throws. The SDK opens the
+ * popup synchronously inside `FB.login` (it has to, to stay inside the
+ * click), so the patch only needs to live that long.
+ */
+export function withCenteredPopup<T>(fn: () => T): T {
+  if (typeof window === "undefined") return fn();
+  const original = window.open;
+  const features = centeredPopupFeatures({
+    width: window.screen?.availWidth || window.innerWidth,
+    height: window.screen?.availHeight || window.innerHeight,
+    left: (window.screen as { availLeft?: number } | undefined)?.availLeft ?? 0,
+    top: (window.screen as { availTop?: number } | undefined)?.availTop ?? 0,
+  });
+  window.open = ((url?: string | URL, target?: string, theirs?: string) =>
+    original.call(window, url, target, mergeFeatures(theirs, features))) as typeof window.open;
+  try {
+    return fn();
+  } finally {
+    window.open = original;
+  }
+}
+
 export async function loginWithMeta(opts: {
   appId: string;
   version: string;
@@ -164,12 +220,14 @@ export async function loginWithMeta(opts: {
   });
 
   const codePromise = new Promise<string>((resolve, reject) => {
-    sdk.login(
-      (response) => {
-        if (response.authResponse?.code) resolve(response.authResponse.code);
-        else reject(new SignupError(response.status === "not_authorized" ? "cancelled" : "no_code"));
-      },
-      { config_id: opts.configId, response_type: "code", override_default_response_type: true, extras: loginExtras(opts.mode) },
+    withCenteredPopup(() =>
+      sdk.login(
+        (response) => {
+          if (response.authResponse?.code) resolve(response.authResponse.code);
+          else reject(new SignupError(response.status === "not_authorized" ? "cancelled" : "no_code"));
+        },
+        { config_id: opts.configId, response_type: "code", override_default_response_type: true, extras: loginExtras(opts.mode) },
+      ),
     );
   });
 

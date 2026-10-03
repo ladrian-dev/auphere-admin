@@ -56,6 +56,10 @@ policies:
 
 tools:
   required:
+    # Catálogo de Meta (spec 022): solo se enseñan y se usan con catálogo
+    # enlazado al número; sin él, Capacidades no las lista.
+    - catalog.search_products
+    - catalog.get_product
     # Búsqueda: el agente consulta WooCommerce para encontrar productos
     # relevantes por categoría/marca/uso y tomar sus IDs, que luego manda
     # como TARJETAS curadas del catálogo (el retailer_id del catálogo Meta ES
@@ -308,3 +312,9 @@ system_prompt: |
     {policies.wholesale.contact_name} ({policies.wholesale.contact_phone}) para
     que él lo resuelva. No prometas gestionarlo tú ni avisar a nadie.
   - Zona horaria de la tienda: {tenant.timezone}.
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - woocommerce

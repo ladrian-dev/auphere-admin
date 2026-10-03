@@ -26,6 +26,10 @@ EXPECTED = {
     "console.get_client",
     "console.get_agent",
     "console.get_policy",
+    # Spec 017 (R5): lo que el agente de UN cliente sabe hacer, con los
+    # nombres que su partner entiende. No se confunde con
+    # ``console.get_capabilities``, que es el documento de la plataforma.
+    "console.get_client_capabilities",
     "console.list_tools",
     "console.list_skills",
     "console.list_knowledge",
@@ -123,6 +127,29 @@ def test_the_description_says_when_not_to(tool) -> None:
             "no existe",
         )
     ), f"{tool.name} no dice cuándo NO usarla"
+
+
+def test_the_two_capability_tools_cannot_be_mistaken_for_each_other() -> None:
+    """Spec 017 (R5) mete en el catálogo una segunda herramienta de
+    «capacidades», y la primera ya se llamaba casi igual.
+
+    Una es el documento de la plataforma (qué existe en Auphere); la otra es
+    lo que sabe hacer el agente de UN cliente. Si el modelo las cambia, el
+    partner pregunta «¿qué puede hacer mi barbería?» y recibe el catálogo de
+    la plataforma, que no dice nada de su barbería. Se separan por tres
+    sitios, y aquí se fija que los tres sigan distinguiéndose: el nombre, la
+    ruta y la advertencia escrita en la descripción.
+    """
+    plataforma = TOOLS_BY_NAME["console.get_capabilities"]
+    cliente = TOOLS_BY_NAME["console.get_client_capabilities"]
+
+    assert plataforma.path == "/console/capabilities"
+    assert cliente.path == "/console/clients/{client_ref}/capabilities"
+    # La del cliente pide el ref; la de la plataforma no tiene a quién pedirlo.
+    assert any(p.in_path for p in cliente.params)
+    assert not any(p.in_path for p in plataforma.params)
+    # Y la nueva nombra a la vieja para que el modelo no las mezcle.
+    assert "console.get_capabilities" in cliente.description
 
 
 @pytest.mark.parametrize("tool", READ_TOOLS, ids=lambda t: t.name)

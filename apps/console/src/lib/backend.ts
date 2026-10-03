@@ -168,16 +168,44 @@ export type ClientSummary = {
   timezone: string;
   created_at: string;
   updated_at: string;
+  /** Spec 016 (R2.1): the channel gate is closed for this client — same
+   *  reading as ``health.missing`` containing ``quota``. */
+  out_of_quota?: boolean;
+  /** Spec 017 (R9.1): read once per page; absent on older API responses. */
+  setup?: ClientSetup;
+  quota?: ClientQuota | null;
+  conversations_7d?: number;
+  /** Spec 024: who the ACTIVE agent answers; `null` without an active version. */
+  audience?: ClientAudience | null;
 };
+/** Spec 024 (Requisito 3.1): «Responde solo a N números» comes from here. */
+export type ClientAudience = { mode: "everyone" | "list"; count: number };
 export type ClientHealth = {
   whatsapp_connected: boolean;
   display_phone_number: string | null;
   agent_version: number | null;
   agent_configured: boolean;
   ready: boolean;
-  missing: string[];
+  /** ``agent`` · ``whatsapp`` · ``quota`` · ``activation`` — in that order (spec 016, R2.7). */
+  missing: Array<"agent" | "whatsapp" | "quota" | "activation" | (string & {})>;
 };
-export type Client = ClientSummary & { health: ClientHealth };
+/** Spec 017 (R1.1, R9.1): the four steps between a client and «atendiendo». */
+export type ClientSetup = { agent: boolean; channel: boolean; quota: boolean; active: boolean };
+export type SetupStep = "agent" | "channel" | "quota" | "activation";
+/** The record adds the first pending step in the fixed order; `null` when serving. */
+export type ClientSetupDetail = ClientSetup & { next: SetupStep | null };
+/** Spec 027: the client cap and what is left, in cents of USD. */
+export type ClientQuota = { cap_cents: number; remaining_cents: number; currency?: string };
+export type Client = ClientSummary & {
+  health: ClientHealth;
+  /** Spec 017 R1: desde cuándo atiende, derivado de la última pieza que se lo
+   *  permitió (versión publicada o canal conectado). `null` si le falta algo. */
+  serving_since?: string | null;
+  /** The sector of the template the agent was seeded from; `null` for a hand-written agent. */
+  sector: string | null;
+  setup: ClientSetupDetail;
+  quota: ClientQuota | null;
+};
 export type ClientPage = { items: ClientSummary[]; total: number; limit: number; offset: number };
 export type ClientCreated = {
   external_client_ref: string;
@@ -197,7 +225,21 @@ export type AgentVersion = {
   promoted_at: string | null;
   promoted_by: string | null;
 };
-export type AgentBundle = { active_version: number | null; versions: AgentVersion[] };
+/** Spec 017 R3.1: qué pantallas de la ficha difieren entre el borrador y la
+ *  versión activa, para que la pestaña lleve su punto. Vacío sin borrador. */
+export type DraftScreen = "settings" | "capabilities" | "knowledge" | "prompt";
+
+export type AgentBundle = { active_version: number | null; versions: AgentVersion[]; draft_screens: DraftScreen[] };
+
+/** Spec 017 R3.2: qué cambia el borrador respecto a la versión que atiende
+ *  ahora. Claves, no frases: la consola las traduce. */
+export type DraftDiff = {
+  version: { draft: number; active: number | null };
+  settings: { field: string; before: unknown; after: unknown }[];
+  capabilities: { name: string; kind: "tool" | "skill"; change: "enabled" | "disabled"; before: unknown; after: unknown }[];
+  knowledge: { id: string; title: string; change: "added" | "removed" }[];
+  prompt: { before: string; after: string };
+};
 export type Channel = {
   id: string;
   type: string;
@@ -223,6 +265,8 @@ export type ConversationMeta = {
   escalated: boolean;
   avg_latency_ms: number | null;
   duration_seconds: number | null;
+  /** Spec 024: inbounds left unanswered because the sender is not on the allowed list. */
+  unanswered?: { count: number; reason: "not_admin" } | null;
 };
 export type ConversationPage = { items: ConversationMeta[]; total: number; limit: number; offset: number };
 export type ConversationStats = {
@@ -235,6 +279,8 @@ export type ConversationStats = {
   turns: number;
   failed_messages: number;
   avg_latency_ms: number | null;
+  /** Spec 024 */
+  unanswered_messages?: number;
 };
 export type UsageBucket = {
   external_client_ref: string | null;
@@ -256,7 +302,12 @@ export type AuditEntry = {
   id: string;
   at: string;
   actor: string;
+  /** Spec 029: who wrote it, so the row draws a face or an icon. */
+  actor_kind?: "person" | "companion" | "auphere" | "api_key" | "machine" | "system";
   action: string;
+  category?: string | null;
+  /** `critical` marks what cannot be undone: deleting a client, revoking a key. */
+  severity?: string;
   target: string;
   external_client_ref: string | null;
   client_name: string | null;
@@ -363,9 +414,11 @@ export type { Opts };
  * merge hotspot of every package.
  */
 import { agentToolsApi } from "./backend/agent-tools";
+import { capabilitiesApi } from "./backend/capabilities";
 import { channelsApi } from "./backend/channels";
 import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
+import { modelsApi } from "./backend/models";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
 import { teammatesApi } from "./backend/teammates";
@@ -402,10 +455,13 @@ export function backendFor(principal: Principal) {
       call<{ code: string }>("/console/auth/session-code", { method: "POST", body }),
     // lane modules — each lane owns its file under lib/backend/
     ...agentToolsApi(call),
+    // Spec 017 (R5): herramientas y habilidades, en una sola lectura.
+    ...capabilitiesApi(call),
     ...playgroundApi(call),
     ...channelsApi(call),
     ...companionApi(call),
     ...homeUsageApi(call),
+    ...modelsApi(call),
     ...onboardingApi(call),
     ...workstationApi(call),
     ...workstationPartnerApi(call),
@@ -426,10 +482,19 @@ export function backendFor(principal: Principal) {
       call<null>(`/console/clients/${enc(ref)}`, { method: "DELETE", body: { confirm_name: confirmName } }),
 
     getAgent: (ref: string) => call<AgentBundle>(`/console/clients/${enc(ref)}/agent`),
+    getDraftDiff: (ref: string) => call<DraftDiff>(`/console/clients/${enc(ref)}/agent/draft-diff`),
     stageAgentVersion: (ref: string, body: { system_prompt: string; tools?: string[] }) =>
       call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions`, { method: "POST", body }),
-    publishAgentVersion: (ref: string, version: number) =>
-      call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/publish`, { method: "POST" }),
+    /** `origin` (spec 017 R3.3) dice desde qué superficie se pulsó: la barra
+     *  del borrador o la pestaña «Agente». Es contexto de auditoría, no un
+     *  interruptor de comportamiento — publicar es el mismo acto. */
+    publishAgentVersion: (ref: string, version: number, origin?: "draft_bar" | "agent_tab") =>
+      call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/publish`, {
+        method: "POST",
+        // `body` va como objeto: el ayudante es quien serializa. Pasarlo ya
+        // serializado lo codifica dos veces y la API responde 422.
+        ...(origin ? { body: { from: origin } } : {}),
+      }),
     rollbackAgentVersion: (ref: string, version: number) =>
       call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/rollback`, { method: "POST" }),
 

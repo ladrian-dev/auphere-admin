@@ -10,6 +10,8 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+
+import { useUiCopy } from "./ui-copy";
 import * as React from "react";
 
 import { cn } from "../lib/utils";
@@ -60,6 +62,7 @@ function DataTable<TData, TValue>({
   className,
   skeletonRows = 6,
 }: DataTableProps<TData, TValue>) {
+  const copy = useUiCopy();
   const [sorting, setSorting] = React.useState<SortingState>(initialSorting);
   const table = useReactTable({
     data,
@@ -78,7 +81,7 @@ function DataTable<TData, TValue>({
     return <ErrorState title={error} onRetry={onRetry} className={className} />;
   }
   if (data.length === 0) {
-    return empty ?? <EmptyState title="Nothing here yet" readonly className={className} />;
+    return empty ?? <EmptyState title={copy.nothingHere} readonly className={className} />;
   }
 
   return (

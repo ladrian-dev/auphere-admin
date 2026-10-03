@@ -57,3 +57,16 @@ def test_empty_whitelist_matches_nobody() -> None:
 def test_short_whitelist_entries_are_ignored() -> None:
     # A malformed 5-digit entry must never grant access via suffix match.
     assert _sender_is_admin("+584244095405", ["95405"]) is False
+
+
+# ── Spec 024: the reason travels with the inbound ─────────────────────────
+
+
+def test_suppression_reason_names_the_gate_that_silenced_the_agent() -> None:
+    from nexus_worker.runtime.dispatcher import suppression_reason
+
+    admin_only = {"admin_access": {"admin_only": True, "admin_phones": _MOUNA_ADMINS}}
+    assert suppression_reason(admin_only, "+584241234567") == "not_admin"
+    assert suppression_reason(admin_only, "+34632719028") is None
+    assert suppression_reason({}, "+584241234567") is None
+    assert suppression_reason(None, None) is None

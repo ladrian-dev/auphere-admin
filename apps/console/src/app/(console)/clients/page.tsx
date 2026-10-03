@@ -8,8 +8,9 @@ import { ClientsTable } from "@/components/clients/clients-table";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Clientes" };
+export const generateMetadata = () => pageTitle("nav.clients");
 
 type Search = { q?: string; status?: string; sort?: string; order?: string; page?: string };
 
@@ -21,19 +22,18 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   const limit = 50;
   const page = Math.max(1, Number(sp.page ?? 1) || 1);
   const api = backendFor(principal);
-  const [data, me] = await Promise.all([
-    api.listClients({
-      q: sp.q,
-      status: sp.status,
-      sort: sp.sort ?? "created_at",
-      order: sp.order ?? "desc",
-      limit,
-      offset: (page - 1) * limit,
-    }),
-    api.me(),
-  ]);
+  // Ya no se pide `/console/me` aquí: lo único que se leía era la cuota de
+  // clientes, y el límite se retiró (owner, 2026-09-28). Una llamada menos
+  // por visita a la lista.
+  const data = await api.listClients({
+    q: sp.q,
+    status: sp.status,
+    sort: sp.sort ?? "created_at",
+    order: sp.order ?? "desc",
+    limit,
+    offset: (page - 1) * limit,
+  });
   const canWrite = can(principal.role, "clients:write");
-  const quotaFull = me.quota.remaining_clients === 0;
   const filtered = Boolean(sp.q || sp.status);
 
   return (
@@ -41,25 +41,18 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
       <PageHeader
         eyebrow={t("nav.clients")}
         title={t("clients.title")}
-        description={
-          <>
-            {t("clients.description")}{" "}
-            <span className="font-mono text-sm">{t("clients.quota", { used: me.quota.used_clients, max: me.quota.max_clients })}</span>
-          </>
-        }
+        // Sin contador «{used} de {max}»: añadir un cliente no se cobra y no
+        // tiene tope (owner, 2026-09-28), así que un contador solo sembraba
+        // la duda de si el siguiente cabía.
+        description={t("clients.description")}
         actions={
           canWrite ? (
-            <Button nativeButton={false} render={<Link href="/clients/new" />} disabled={quotaFull} title={quotaFull ? t("clients.quota.full") : undefined}>
+            <Button nativeButton={false} render={<Link href="/clients/new" />}>
               {t("clients.new")}
             </Button>
           ) : undefined
         }
       />
-      {quotaFull && canWrite ? (
-        <p role="status" className="rounded-md border border-status-warning/40 bg-status-warning/10 px-4 py-3 text-sm">
-          {t("clients.quota.full")}
-        </p>
-      ) : null}
       {data.total === 0 && !filtered ? (
         <EmptyState
           icon={Building2}

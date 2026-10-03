@@ -348,3 +348,39 @@ async def test_ping_interval_default_is_reasonable() -> None:
     """Sanity check on the module constant. Stays low enough to detect
     dead connections but high enough that idle traffic is minimal."""
     assert 5 <= PING_INTERVAL_SECONDS <= 60
+
+
+async def test_turn_failed_closes_the_run_as_error_with_reason() -> None:
+    """Bug ``.specify/bugs/el-playground-pinta-un-turno-fallido-como-completado``:
+    the driver finishes cleanly (the fallback text streamed like any reply)
+    but the turn failed. ``run.completed`` must say ``error`` and why."""
+    run_id = uuid.uuid4()
+    thread_id = uuid.uuid4()
+    seen: dict[str, object] = {}
+
+    async def on_complete(handle: RunHandle) -> None:
+        seen["status"] = handle.final_status
+        seen["error"] = handle.final_error
+
+    await start_run(
+        run_id=run_id,
+        thread_id=thread_id,
+        operator_id="op",
+        driver=_make_driver(
+            [
+                ("text.delta", {"text": "Disculpa, tuve un inconveniente."}),
+                ("turn.failed", {"reason": "llm_failed", "detail": "AuthenticationError"}),
+            ]
+        ),
+        on_complete=on_complete,
+    )
+    wire = ""
+    async for chunk in subscribe(run_id, since_seq=0):
+        wire += chunk
+    events = _parse_sse(wire)
+    completed = next(e for e in events if e["event"] == "run.completed")
+    data = json.loads(completed["data"])
+    assert data["status"] == "error"
+    assert data["reason"] == "llm_failed"
+    assert data["error"] == "AuthenticationError"
+    assert seen == {"status": "error", "error": "AuthenticationError"}

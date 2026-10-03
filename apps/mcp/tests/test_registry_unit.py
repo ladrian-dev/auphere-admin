@@ -27,7 +27,10 @@ def test_default_registry_has_all_block_d_tools():
     reset_default_registry()
     reg = build_default_registry()
     names = set(reg.names())
-    assert len(names) == 58
+    # + catalog.search_products, catalog.get_product (spec 022)
+    # + payments.request_review (spec 025)
+    assert len(names) == 61
+    assert "payments.request_review" in names
     assert "operator.consult_owner" in names
     assert "response.send_interactive" in names
     # Block O internal tools — not LLM-facing.

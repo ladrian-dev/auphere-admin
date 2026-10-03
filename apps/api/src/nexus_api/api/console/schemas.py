@@ -61,6 +61,51 @@ class MeOut(BaseModel):
 ClientStatus = Literal["provisioning", "active", "paused", "archived"]
 
 
+SetupStep = Literal["agent", "channel", "quota", "activation"]
+
+
+class ClientSetupOut(BaseModel):
+    """Spec 017 (R1.1): the four steps between a client and «atendiendo».
+    A READING of what exists — active version, a customer-facing channel,
+    the ledger, the tenant status — never a state machine. The list carries
+    this shape; the record adds ``next``."""
+
+    agent: bool
+    channel: bool
+    quota: bool
+    active: bool
+
+
+class ClientSetupDetailOut(ClientSetupOut):
+    """The record's reading: ``next`` is the first pending step in the fixed
+    order agent → channel → quota → activation; ``None`` when serving."""
+
+    next: SetupStep | None = None
+
+
+class ClientQuotaOut(BaseModel):
+    """Spec 017 (R1.2): the client's cap and what is left. Spec 027: in cents
+    of ``currency`` — the partner reads money, the ledger keeps credits."""
+
+    cap_cents: int
+    remaining_cents: int
+    currency: str = "USD"
+
+    @classmethod
+    def from_credits(cls, cap: int, remaining: int) -> ClientQuotaOut:
+        from nexus_api.billing.pricing import credits_to_cents
+
+        return cls(cap_cents=credits_to_cents(cap), remaining_cents=credits_to_cents(remaining))
+
+
+class ClientAudienceOut(BaseModel):
+    """Spec 024: who the ACTIVE agent answers. ``count`` = numbers that can
+    actually match a sender when ``mode == "list"``."""
+
+    mode: Literal["everyone", "list"]
+    count: int = 0
+
+
 class ClientSummaryOut(BaseModel):
     """One row of the client list. Cheap fields only."""
 
@@ -70,6 +115,17 @@ class ClientSummaryOut(BaseModel):
     timezone: str
     created_at: datetime
     updated_at: datetime
+    #: Spec 016 (R2.1): the list shows the «sin cupo» dot without one scoped
+    #: transaction per row — it is ``quota_state`` read once per page.
+    out_of_quota: bool = False
+    #: Spec 017 (R9.1): the list says who is ready and how much is left,
+    #: read once per page (snapshots + ledger), never per row.
+    setup: ClientSetupOut | None = None
+    quota: ClientQuotaOut | None = None
+    conversations_7d: int = 0
+    #: Spec 024 (Requisito 3.1): read from the ACTIVE version, once per page.
+    #: ``None`` when the client has no active agent yet.
+    audience: ClientAudienceOut | None = None
 
 
 class ClientHealthOut(BaseModel):
@@ -82,9 +138,18 @@ class ClientHealthOut(BaseModel):
 
 
 class ClientOut(ClientSummaryOut):
-    """Client detail: summary + health."""
+    """Client detail: summary + health (+ spec 017: sector, setup with
+    ``next``, quota)."""
 
     health: ClientHealthOut
+    #: Spec 017 (R1, R5): the sector of the template the agent was seeded
+    #: from; ``None`` for a hand-written agent.
+    sector: str | None = None
+    setup: ClientSetupDetailOut | None = None
+    #: Spec 017 (R1): desde cuándo atiende, derivado de la última pieza que
+    #: se lo permitió (versión publicada o canal conectado). ``None`` si le
+    #: falta algo.
+    serving_since: datetime | None = None
 
 
 class ClientPageOut(BaseModel):
@@ -166,6 +231,65 @@ class AgentVersionOut(BaseModel):
 class AgentBundleOut(BaseModel):
     active_version: int | None
     versions: list[AgentVersionOut]
+    #: Spec 017 R3.1: qué pantallas de la ficha difieren entre el borrador y
+    #: la versión activa, para que la pestaña lleve su punto. Vacío sin
+    #: borrador.
+    draft_screens: list[Literal["settings", "capabilities", "knowledge", "prompt"]] = Field(
+        default_factory=list
+    )
+
+
+class AgentPublishIn(BaseModel):
+    """Spec 017 R3.3: de dónde salió el clic. Publicar desde la barra del
+    borrador y desde la pestaña «Agente» es el mismo acto, pero la auditoría
+    los distingue — sin eso no hay forma de saber si la barra sirve."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    origin: Literal["draft_bar", "agent_tab"] = Field(default="agent_tab", alias="from")
+
+
+class DraftSettingChangeOut(BaseModel):
+    """Un ajuste que cambia, en su clave: la frase la pone la consola."""
+
+    field: str
+    before: Any = None
+    after: Any = None
+
+
+class DraftCapabilityChangeOut(BaseModel):
+    name: str
+    kind: Literal["tool", "skill"]
+    change: Literal["enabled", "disabled"]
+    before: Any = None
+    after: Any = None
+
+
+class DraftKnowledgeChangeOut(BaseModel):
+    id: str
+    title: str
+    change: Literal["added", "removed"]
+
+
+class DraftPromptChangeOut(BaseModel):
+    before: str
+    after: str
+
+
+class DraftVersionsOut(BaseModel):
+    draft: int
+    active: int | None
+
+
+class DraftDiffOut(BaseModel):
+    """Spec 017 R3.2: qué cambia el borrador respecto a la versión que
+    atiende ahora. Claves, no frases; el orden es el de lectura de la ficha."""
+
+    version: DraftVersionsOut
+    settings: list[DraftSettingChangeOut]
+    capabilities: list[DraftCapabilityChangeOut]
+    knowledge: list[DraftKnowledgeChangeOut]
+    prompt: DraftPromptChangeOut
 
 
 class AgentDraftIn(BaseModel):
@@ -217,6 +341,14 @@ class ConversationMetaOut(BaseModel):
     escalated: bool
     avg_latency_ms: int | None = None
     duration_seconds: int | None = None
+    #: Spec 024 (Requisito 3.2): inbounds the agent did not answer because
+    #: the sender is not on the allowed list. ``None`` when there are none.
+    unanswered: UnansweredOut | None = None
+
+
+class UnansweredOut(BaseModel):
+    count: int
+    reason: Literal["not_admin"] = "not_admin"
 
 
 class ConversationPageOut(BaseModel):
@@ -238,6 +370,8 @@ class ConversationStatsOut(BaseModel):
     turns: int
     failed_messages: int
     avg_latency_ms: int | None = None
+    #: Spec 024: inbounds left without an answer because of the allowed list.
+    unanswered_messages: int = 0
 
 
 # ── usage (units, never our cost — C9) ─────────────────────────────────
@@ -270,7 +404,13 @@ class AuditEntryOut(BaseModel):
     id: uuid.UUID
     at: datetime
     actor: str
+    #: Spec 029: who wrote it, so the console draws a face or an icon.
+    actor_kind: Literal["person", "companion", "auphere", "api_key", "machine", "system"] = "system"
     action: str
+    #: Spec 029: the vocabulary's category and severity (``critical`` marks
+    #: what cannot be undone: deleting a client, revoking a key).
+    category: str | None = None
+    severity: str = "info"
     target: str
     external_client_ref: str | None
     client_name: str | None
@@ -514,7 +654,8 @@ class CancelOut(BaseModel):
 
     state: str
     effective_at: datetime | None
-    purchased_remaining: int
+    #: Spec 027: money, in cents of USD.
+    purchased_remaining_cents: int
     purchased_expires_at: datetime | None
 
 

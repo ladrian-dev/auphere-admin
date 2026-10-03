@@ -12,16 +12,30 @@ export function severityTone(sev: NotificationSeverity | string): Tone {
 }
 
 /** Localized one-liner for a notification. Unknown kinds degrade to a generic line. */
-export function notificationText(locale: Locale, n: Pick<Notification, "kind" | "data" | "external_client_ref">): string {
+export function notificationText(locale: Locale, n: Pick<Notification, "kind" | "data" | "external_client_ref">, clientNames?: Record<string, string>): string {
   const vars: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(n.data ?? {})) {
     if (v == null) continue;
     vars[k] = typeof v === "number" || typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : JSON.stringify(v);
   }
-  if (!("client" in vars)) vars.client = n.external_client_ref ?? (typeof vars.external_client_ref === "string" ? vars.external_client_ref : "—");
+  // The client's name when the page knows it; the reference is an API
+  // identifier and reads like one ("panaderia-la-espiga").
+  const ref = n.external_client_ref ?? (typeof vars.external_client_ref === "string" ? vars.external_client_ref : null);
+  if (!("client" in vars)) vars.client = (ref && clientNames?.[ref]) ?? ref ?? "—";
   // D8 — una activación que no puede atender no se anuncia como un éxito.
   if (n.kind === "client.activated" && n.data?.can_serve === false) {
-    return translate(locale, "notif.kind.client.activated.cannot_serve", vars);
+    // D8 + A4 — name the missing piece: a channel, quota, or both. Older
+    // notifications carry no ``missing`` and keep the quota wording.
+    const missing = Array.isArray(n.data?.missing) ? (n.data.missing as unknown[]).map(String) : [];
+    const noChannel = missing.includes("whatsapp");
+    const noQuota = missing.includes("quota");
+    const key: MessageKey =
+      noChannel && noQuota
+        ? "notif.kind.client.activated.cannot_serve.both"
+        : noChannel
+          ? "notif.kind.client.activated.cannot_serve.whatsapp"
+          : "notif.kind.client.activated.cannot_serve";
+    return translate(locale, key, vars);
   }
   if (n.kind === "client.activated" && n.data?.first === true) {
     return `${translate(locale, "notif.kind.client.activated.first")} ${translate(locale, "notif.kind.client.activated", vars)}`;

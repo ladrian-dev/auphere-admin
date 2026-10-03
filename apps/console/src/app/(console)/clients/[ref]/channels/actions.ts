@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
-import type { ChannelDetail, TemplateCreated, TestSendResult, WhatsAppSignupResult } from "@/lib/backend/channels";
+import type { CatalogList, ChannelDetail, TemplateCreated, TestSendResult, WhatsAppSignupResult } from "@/lib/backend/channels";
 import { can, requirePrincipal } from "@/lib/principal";
 
 /** Server Actions of lane `channels` (CP-17..19). Zod on the server, `run()`
@@ -45,6 +45,60 @@ export async function setChannelRoleAction(raw: unknown): Promise<ActionResult<C
   return res;
 }
 
+/**
+ * Soltar un número (spec 019, revisión del 2026-09-29).
+ *
+ * Conectar era autoservicio y desconectar no existía en ninguna parte —ni en la
+ * API—, así que el partner que se equivocaba de número tenía que escribirnos.
+ * Un producto donde se entra y no se sale da más miedo al entrar del que
+ * debería.
+ */
+export async function disconnectChannelAction(raw: unknown): Promise<ActionResult<ChannelDetail>> {
+  const body = z.object({ ref, channelId: z.string().uuid() }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).disconnectChannel(body.ref, body.channelId));
+  // `layout`: el estado del canal decide la tarjeta de puesta en marcha y la
+  // insignia de la cabecera, no solo esta pantalla.
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
+  return res;
+}
+
+// ── el catálogo del número (spec 022) ────────────────────────────────
+
+export async function listCatalogsAction(raw: unknown): Promise<ActionResult<CatalogList>> {
+  const body = z.object({ ref, channelId: z.string().uuid() }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:read")) return forbidden();
+  return run(() => backendFor(principal).listCatalogs(body.ref, body.channelId));
+}
+
+export async function setCatalogAction(raw: unknown): Promise<ActionResult<ChannelDetail>> {
+  const body = z
+    .object({
+      ref,
+      channelId: z.string().uuid(),
+      catalogId: z.string().min(1).max(64),
+      // Solo en coexistencia, cuando Meta no lista los catálogos: el nombre que escribió quien declara.
+      catalogName: z.string().trim().min(1).max(120).optional(),
+    })
+    .parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).setCatalog(body.ref, body.channelId, body.catalogId, body.catalogName));
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
+  return res;
+}
+
+export async function clearCatalogAction(raw: unknown): Promise<ActionResult<ChannelDetail>> {
+  const body = z.object({ ref, channelId: z.string().uuid() }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).clearCatalog(body.ref, body.channelId));
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
+  return res;
+}
+
 const button = z.object({
   type: z.enum(["QUICK_REPLY", "URL", "PHONE_NUMBER"]),
   label: z.string().min(1).max(25),
@@ -63,6 +117,7 @@ export async function createTemplateAction(raw: unknown): Promise<ActionResult<T
       body_text: z.string().min(1).max(1024),
       footer_text: z.string().max(60).optional(),
       buttons: z.array(button).max(3).default([]),
+      examples: z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.string().min(1).max(200)).default({}),
     })
     .parse(raw);
   const principal = await requirePrincipal();

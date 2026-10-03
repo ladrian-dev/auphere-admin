@@ -1,21 +1,25 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { PageHeader } from "@nexus/ui";
+import { formatDate, PageHeader } from "@nexus/ui";
 
 import { ClientStatusBadge } from "@/components/clients/status-badge";
-import { ClientTabs } from "@/components/clients/client-tabs";
+import { ClientNav } from "@/components/clients/client-nav";
+import { ClientSetup } from "@/components/clients/client-setup";
+import { DraftBarClient } from "@/components/clients/draft-bar-client";
+import { ClientLifecycleActions } from "@/components/clients/lifecycle-actions";
 import { getT } from "@/i18n/server";
 import { BackendError } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
 
-import { getClientCached } from "./data";
+import { getAgentBundleCached, getClientCached } from "./data";
 
 export async function generateMetadata({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
   const principal = await requirePrincipal();
   const client = await getClientCached(principal, ref).catch(() => null);
-  return { title: client?.name ?? "Cliente" };
+  const { t } = await getT();
+  return { title: client?.name ?? t("clients.one") };
 }
 
 export default async function ClientLayout({ params, children }: { params: Promise<{ ref: string }>; children: React.ReactNode }) {
@@ -30,28 +34,102 @@ export default async function ClientLayout({ params, children }: { params: Promi
     if (err instanceof BackendError && err.status === 404) notFound();
     throw err;
   }
+  // Solo quien puede leer el agente puede saber que hay un borrador.
+  const bundle = can(principal.role, "agents:read") ? await getAgentBundleCached(principal, ref) : null;
   return (
     <>
       <PageHeader
         context={
-          <nav aria-label="Breadcrumb" className="font-mono text-xs uppercase">
-            <Link href="/clients" className="hover:underline">
+          <nav aria-label="Breadcrumb" className="text-xs">
+            <Link href="/clients" className="underline decoration-muted-foreground/50 underline-offset-4 hover:text-foreground">
               {t("nav.clients")}
             </Link>
             <span aria-hidden="true"> / </span>
-            <span className="text-foreground">{client.external_client_ref}</span>
+            <span className="text-foreground">{client.name}</span>
           </nav>
         }
         title={client.name}
+        /* Spec 017 R1.6: un solo «Más», en el mismo sitio para todos los
+           roles; dentro, solo lo que quien mira puede hacer. */
+        actions={
+          <>
+            {/* El estado, a la altura del nombre y junto a «Más» (owner,
+                2026-09-28). Se queda como insignia —sin hover ni borde de
+                botón— para que no se lea como un control más del grupo. */}
+            <ClientStatusBadge status={client.status} locale={locale} />
+            <ClientLifecycleActions
+              layout="menu"
+              refId={client.external_client_ref}
+              status={client.status}
+              name={client.name}
+              canWrite={can(principal.role, "clients:write")}
+              canDelete={can(principal.role, "clients:delete")}
+            />
+          </>
+        }
         description={
           <span className="flex flex-wrap items-center gap-2">
-            <ClientStatusBadge status={client.status} locale={locale} />
-            <span className="font-mono text-xs">{client.timezone}</span>
-            {client.health.display_phone_number ? <span className="font-mono text-xs">{client.health.display_phone_number}</span> : null}
+            {/* Paridad fila 22: solo cuando de verdad atiende. */}
+            {client.serving_since ? (
+              <span className="text-sm text-muted-foreground">
+                {t("clients.servingSince", { date: formatDate(client.serving_since, locale) })}
+              </span>
+            ) : null}
+            {client.health.display_phone_number ? (
+              <span className="text-sm text-muted-foreground">{client.health.display_phone_number}</span>
+            ) : null}
+            {/* Spec 024 (Requisito 3.1): un agente limitado a una lista lo dice
+                aquí, con el camino a donde se cambia. */}
+            {client.audience?.mode === "list" ? (
+              <Link
+                href={`/clients/${encodeURIComponent(ref)}/agent`}
+                className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+                data-slot="client-audience"
+              >
+                {t("clients.audience.only", { n: client.audience.count })}
+              </Link>
+            ) : null}
           </span>
         }
       />
-      <ClientTabs refId={client.external_client_ref} />
+      {/* Spec 018 (R6): qué falta para que atienda, con UN solo botón —y
+          nada más—. El crédito se fue al Resumen: compartir fila con los
+          cuatro pasos es lo que hacía esta tarjeta pesada, y además el
+          crédito le sobrevive. Cuando ya atiende, esto desaparece. */}
+      <ClientSetup
+        refId={client.external_client_ref}
+        name={client.name}
+        status={client.status}
+        role={principal.role}
+        setup={client.setup ?? null}
+        quota={client.quota ?? null}
+        hasAgentVersion={Boolean(bundle?.versions?.length)}
+        draftScreens={bundle?.draft_screens?.length ?? 0}
+        agentVersion={client.health.agent_version}
+        phone={client.health.display_phone_number}
+      />
+      {/* Spec 017 R2/R3.1: tres grupos por rol, y un punto en la pestaña
+          donde vive lo que aún no se ha publicado o lo que está roto. */}
+      <ClientNav
+        refId={client.external_client_ref}
+        role={principal.role}
+        draftScreens={bundle?.draft_screens ?? []}
+        incidents={client.health.whatsapp_connected ? [] : ["channels"]}
+      />
+      {/* Spec 017 R3: el borrador se ve y se publica desde cualquier
+          pestaña. Sin versión no hay nada que publicar. */}
+      {/* Se monta siempre que haya agente, aunque no haya borrador: así el
+          aviso de «publicado» sobrevive al refresco y su ventana de
+          deshacer corre entera. Sin nada que decir, no pinta nada. */}
+      {bundle && bundle.versions[0] ? (
+        <DraftBarClient
+          refId={client.external_client_ref}
+          screens={bundle.draft_screens}
+          version={bundle.versions[0].version}
+          activeVersion={bundle.active_version}
+          canPublish={can(principal.role, "agents:write")}
+        />
+      ) : null}
       {children}
     </>
   );

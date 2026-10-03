@@ -28,6 +28,7 @@ from nexus_channels.whatsapp_meta import (
     SignupIngressPayload,
 )
 from nexus_channels.whatsapp_meta.exceptions import (
+    PhoneRegisterRefused,
     RegisterPhoneError,
     SubscribeWebhookError,
     TokenExchangeError,
@@ -102,6 +103,24 @@ async def complete_meta_signup(
                 "Meta rechazó el OAuth code — probablemente expiró o ya fue "
                 "consumido. El cliente debe repetir el flow desde la app."
             ),
+        ) from exc
+    except PhoneRegisterRefused as exc:
+        # Spec 021 (R4.2): Meta rechazó el `register` — la causa habitual es
+        # que el número sigue registrado en otra cuenta y el dueño anterior no
+        # lo soltó en su Business Manager. Eso no es un fallo de la consola y
+        # merece su código, para que la pantalla diga qué hacer en vez de un
+        # mensaje genérico. Solo el rechazo del `register`: una WABA sin
+        # números o un número sin teléfono visible siguen siendo 400.
+        log.warning("meta.signup.register_phone_refused", reason=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "number_held_by_previous_owner",
+                "message": (
+                    "Meta no aceptó el registro del número: sigue registrado en "
+                    "otra cuenta. Quien lo tenía debe soltarlo en su Business Manager."
+                ),
+            },
         ) from exc
     except RegisterPhoneError as exc:
         log.warning("meta.signup.register_phone_failed", reason=str(exc))

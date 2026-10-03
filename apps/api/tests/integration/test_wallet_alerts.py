@@ -26,6 +26,7 @@ from nexus_api.db.models import (
 from nexus_api.services.wallet_alerts import (
     clients_without_quota,
     evaluate_partner_wallet_alerts,
+    notify_client_out_of_quota_detached,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -117,39 +118,46 @@ async def test_alerts_do_not_repeat_within_the_month(db_session) -> None:
 
 async def test_a_client_out_of_quota_is_reported_even_with_partner_balance(db_session) -> None:
     """El caso más difícil de ver desde fuera: el partner tiene saldo y un
-    cliente concreto ya no contesta porque agotó su asignación."""
+    cliente concreto ya no contesta porque agotó su asignación.
+
+    Spec 016 (R2.1): «sin cupo» significa lo mismo que en la puerta del canal,
+    así que un tope de 0 también cuenta — la puerta no distingue «apagado a
+    propósito» de «agotado», y la pantalla no puede decir otra cosa. Devuelve
+    refs, que es lo que guardan los avisos.
+    """
     partner = await _partner(db_session, available=CAP)
-    tenant_id = uuid.uuid4()
-    db_session.add(
-        Tenant(
-            id=tenant_id,
-            name="Cliente Sin Cuota",
-            slug=f"sin-cuota-{tenant_id.hex[:8]}",
-            status=TenantStatus.ACTIVE,
-            partner_id=partner.id,
+
+    async def _client(name: str, *, cap: int, remaining: int) -> str:
+        tenant_id = uuid.uuid4()
+        ref = f"{name}-{tenant_id.hex[:8]}"
+        db_session.add(
+            Tenant(
+                id=tenant_id,
+                name=name,
+                slug=ref,
+                status=TenantStatus.ACTIVE,
+                partner_id=partner.id,
+            )
         )
-    )
-    await db_session.flush()
-    db_session.add(
-        PartnerAllocation(partner_id=partner.id, tenant_id=tenant_id, cap=50_000, remaining=0)
-    )
-    # Un cap de 0 es una decisión del partner, no una incidencia.
-    otro = uuid.uuid4()
-    db_session.add(
-        Tenant(
-            id=otro,
-            name="Cliente Apagado",
-            slug=f"apagado-{otro.hex[:8]}",
-            status=TenantStatus.ACTIVE,
-            partner_id=partner.id,
+        await db_session.flush()
+        db_session.add(
+            PartnerTenant(partner_id=partner.id, external_client_ref=ref, tenant_id=tenant_id)
         )
-    )
-    await db_session.flush()
-    db_session.add(PartnerAllocation(partner_id=partner.id, tenant_id=otro, cap=0, remaining=0))
+        db_session.add(
+            PartnerAllocation(
+                partner_id=partner.id, tenant_id=tenant_id, cap=cap, remaining=remaining
+            )
+        )
+        return ref
+
+    agotado = await _client("sin-cuota", cap=50_000, remaining=0)
+    apagado = await _client("apagado", cap=0, remaining=0)
+    con_cupo = await _client("con-cupo", cap=50_000, remaining=10)
     await db_session.commit()
 
     out = await clients_without_quota(db_session, partner.id)
-    assert out == [str(tenant_id)]
+    assert out == sorted([agotado, apagado])
+    assert con_cupo not in out
 
 
 async def test_activation_says_when_the_client_cannot_serve(db_session) -> None:
@@ -229,3 +237,89 @@ async def test_a_caller_with_an_open_transaction_fails_loudly(db_session) -> Non
 
     with pytest.raises(Exception, match="already begun"):
         await evaluate_partner_wallet_alerts(db_session, partner)
+
+
+# ── spec 016 · aviso por cliente «sin cupo» (R2.2, R2.3, R2.5) ───────────────
+
+
+async def _mapped_client(db_session, partner: Partner, name: str, *, cap: int, remaining: int):
+    tenant_id = uuid.uuid4()
+    ref = f"{name}-{tenant_id.hex[:8]}"
+    db_session.add(
+        Tenant(
+            id=tenant_id,
+            name=name,
+            slug=ref,
+            status=TenantStatus.ACTIVE,
+            partner_id=partner.id,
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        PartnerTenant(partner_id=partner.id, external_client_ref=ref, tenant_id=tenant_id)
+    )
+    db_session.add(
+        PartnerAllocation(partner_id=partner.id, tenant_id=tenant_id, cap=cap, remaining=remaining)
+    )
+    await db_session.commit()
+    return tenant_id, ref
+
+
+async def test_out_of_quota_notice_is_once_per_client_and_day_and_emails(
+    db_session, monkeypatch
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from nexus_api.services import wallet_alerts
+
+    partner = await _partner(db_session, available=CAP)
+    partner.usage_alert_recipients = ["ops@example.com"]
+    await db_session.commit()
+    tenant_id, ref = await _mapped_client(db_session, partner, "agotado", cap=50_000, remaining=0)
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        wallet_alerts, "send_email", AsyncMock(side_effect=lambda **kw: sent.append(kw))
+    )
+
+    row = await notify_client_out_of_quota_detached(tenant_id)
+    assert row is not None
+    assert row.kind == "client.out_of_quota"
+    assert row.severity == NotificationSeverity.WARNING.value
+    assert row.external_client_ref == ref
+    assert row.payload == {"external_client_ref": ref, "remaining": 0}
+    assert row.dedupe_key == (
+        f"partner:{partner.id}:client.out_of_quota:{ref}:{datetime.now(UTC):%Y-%m-%d}"
+    )
+    assert len(sent) == 1
+    assert sent[0]["to"] == ["ops@example.com"]
+    assert ref in sent[0]["subject"]
+
+    # Un segundo turno saltado el mismo día no crea otro aviso ni otro correo.
+    assert await notify_client_out_of_quota_detached(tenant_id) is None
+    count = await db_session.scalar(
+        sa.select(sa.func.count())
+        .select_from(ConsoleNotification)
+        .where(
+            ConsoleNotification.partner_id == partner.id,
+            ConsoleNotification.kind == "client.out_of_quota",
+        )
+    )
+    assert count == 1
+    assert len(sent) == 1
+
+
+async def test_out_of_quota_notice_rechecks_the_gate_before_speaking(db_session) -> None:
+    """R2.5: si al recomprobar el cliente ya tiene cupo, no hay aviso."""
+    partner = await _partner(db_session, available=CAP)
+    tenant_id, _ref = await _mapped_client(
+        db_session, partner, "con-cupo", cap=50_000, remaining=10
+    )
+    assert await notify_client_out_of_quota_detached(tenant_id) is None
+    count = await db_session.scalar(
+        sa.select(sa.func.count())
+        .select_from(ConsoleNotification)
+        .where(ConsoleNotification.partner_id == partner.id)
+    )
+    assert count == 0
+    # Un tenant sin partner no tiene a quién avisar.
+    assert await notify_client_out_of_quota_detached(uuid.uuid4()) is None

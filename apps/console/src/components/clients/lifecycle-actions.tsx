@@ -1,21 +1,47 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { Fragment } from "react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, ConfirmDialog } from "@nexus/ui";
+import { MoreHorizontal } from "lucide-react";
+
+import {
+  Button,
+  ConfirmDialog,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
+import type { MessageKey } from "@/i18n/messages";
 
 import { deleteClientAction, setClientStatusAction } from "@/app/(console)/clients/actions";
+import { actionErrorText } from "@/lib/action-error";
 
-import { statusActionNeedsConfirm } from "./lifecycle-status";
+import { deleteIsOffered, moreMenuItems, statusActionNeedsConfirm, type MoreMenuItem } from "./lifecycle-status";
 
-type Props = { refId: string; status: string; name: string; canDelete: boolean };
+type Props = {
+  refId: string;
+  status: string;
+  name: string;
+  canDelete: boolean;
+  /** `menu` es la cabecera de la ficha (spec 017 R1.6): un solo «Más» en el
+   *  mismo sitio para todos los roles, con dentro lo que cada uno puede.
+   *  `buttons` es la fila suelta de siempre, que no desaparece.
+   *  `setup` es la tarjeta de puesta en marcha: **solo «Activar»**, sobre
+   *  verde oscuro. La fila genérica ponía ahí también «Archivar» y un
+   *  botón de fondo blanco con el texto invisible (owner, 2026-09-30). */
+  layout?: "buttons" | "menu" | "setup";
+  canWrite?: boolean;
+};
 type StatusNext = "active" | "paused" | "archived";
 
-export function ClientLifecycleActions({ refId, status, name, canDelete }: Props) {
+export function ClientLifecycleActions({ refId, status, name, canDelete, layout = "buttons", canWrite = true }: Props) {
   const t = useT();
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -27,7 +53,7 @@ export function ClientLifecycleActions({ refId, status, name, canDelete }: Props
     startTransition(async () => {
       const res = await setClientStatusAction({ ref: refId, status: next });
       if (!res.ok) {
-        toast.error(res.message);
+        toast.error(actionErrorText(res, t));
         return;
       }
       setConfirmStatus(null);
@@ -41,6 +67,132 @@ export function ClientLifecycleActions({ refId, status, name, canDelete }: Props
       return;
     }
     applyStatus(next);
+  }
+
+  // Las dos confirmaciones las comparten la fila de botones y el menú: una
+  // sola fuente para «pausar», «archivar» y «eliminar».
+  const dialogs = (
+    <>
+      {/* Pausar y archivar preguntan antes (QA-15), y el diálogo **tiene que
+          vivir aquí**: cuando solo estaba en la fila de botones, el mismo
+          control desde el menú «Más» de la ficha ponía `confirmStatus` y no
+          pintaba nada. Archivar y pausar no hacían nada, sin error y sin
+          rastro — un control muerto es peor que uno que falla. */}
+      <ConfirmDialog
+        open={confirmStatus !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmStatus(null);
+        }}
+        title={
+          confirmStatus === "paused"
+            ? t("clients.pause.title", { name })
+            : t("clients.archive.title", { name })
+        }
+        description={confirmStatus === "paused" ? t("clients.pause.body") : t("clients.archive.body")}
+        confirmLabel={confirmStatus === "paused" ? t("clients.pause.confirm") : t("clients.archive.confirm")}
+        cancelLabel={t("common.cancel")}
+        onConfirm={async () => {
+          if (confirmStatus) applyStatus(confirmStatus);
+        }}
+      />
+      {deleteIsOffered(status, canDelete) ? (
+          <ConfirmDialog
+          open={confirmDelete}
+          onOpenChange={setConfirmDelete}
+          title={t("clients.delete.title", { name })}
+          description={t("clients.delete.body")}
+          confirmLabel={t("clients.delete.confirm")}
+          cancelLabel={t("common.cancel")}
+          destructive
+          typeToConfirm={name}
+          error={deleteError}
+          onConfirm={async () => {
+            const res = await deleteClientAction({ ref: refId, confirm_name: name });
+            if (!res.ok) {
+              setDeleteError(actionErrorText(res, t));
+              return;
+            }
+            setConfirmDelete(false);
+            router.replace("/clients");
+            router.refresh();
+          }}
+        />
+      ) : null}
+    </>
+  );
+
+  const ACTION_LABEL: Record<MoreMenuItem, MessageKey> = {
+    pause: "clients.action.pause",
+    resume: "clients.action.resume",
+    activate: "clients.action.activate",
+    archive: "clients.action.archive",
+    unarchive: "clients.action.unarchive",
+    copyRef: "clients.more.copyRef",
+    delete: "clients.action.delete",
+  };
+
+  function runItem(item: MoreMenuItem) {
+    if (item === "copyRef") {
+      void navigator.clipboard?.writeText(refId).then(() => toast.success(t("clients.more.copyRef.done")));
+      return;
+    }
+    if (item === "delete") {
+      setDeleteError(null);
+      setConfirmDelete(true);
+      return;
+    }
+    requestStatus(item === "pause" ? "paused" : item === "archive" ? "archived" : "active");
+  }
+
+  if (layout === "setup") {
+    // Archivar, pausar y eliminar viven en «Más»; la tarjeta solo tiene un
+    // verbo, y desaparece en cuanto el cliente está activo.
+    if (status !== "provisioning" || !canWrite) return null;
+    return (
+      <div className="flex flex-wrap gap-2" aria-busy={pending}>
+        <Button onClick={() => requestStatus("active")} disabled={pending}>
+          {t("clients.action.activate")}
+        </Button>
+        {dialogs}
+      </div>
+    );
+  }
+
+  if (layout === "menu") {
+    const items = moreMenuItems(status, { canWrite, canDelete });
+    return (
+      <>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button variant="outline" size="sm" aria-label={t("clients.more.aria")} disabled={pending}>
+                <MoreHorizontal aria-hidden="true" /> {t("clients.more.label")}
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end" className="w-64">
+            {items.map((item, i) => (
+              <Fragment key={item}>
+                {item === "delete" ? <DropdownMenuSeparator /> : null}
+                <DropdownMenuItem
+                  variant={item === "delete" ? "destructive" : undefined}
+                  onClick={() => runItem(item)}
+                >
+                  <span className="flex flex-col">
+                    {t(ACTION_LABEL[item])}
+                    <span className={item === "delete" ? "text-xs" : "text-xs text-muted-foreground"}>
+                      {t(`clients.more.why.${item}` as MessageKey)}
+                    </span>
+                  </span>
+                </DropdownMenuItem>
+                {i === items.length - 1 ? null : null}
+              </Fragment>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {dialogs}
+      </>
+    );
   }
 
   return (
@@ -69,63 +221,20 @@ export function ClientLifecycleActions({ refId, status, name, canDelete }: Props
           {t("clients.action.unarchive")}
         </Button>
       )}
-      <ConfirmDialog
-        open={confirmStatus !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirmStatus(null);
-        }}
-        title={
-          confirmStatus === "paused"
-            ? t("clients.pause.title", { name })
-            : t("clients.archive.title", { name })
-        }
-        description={confirmStatus === "paused" ? t("clients.pause.body") : t("clients.archive.body")}
-        confirmLabel={confirmStatus === "paused" ? t("clients.pause.confirm") : t("clients.archive.confirm")}
-        cancelLabel={t("common.cancel")}
-        onConfirm={async () => {
-          if (confirmStatus) applyStatus(confirmStatus);
-        }}
-      />
-      {canDelete ? (
-        <>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              if (status !== "archived") {
-                toast.error(t("clients.delete.mustArchive"));
-                return;
-              }
-              setDeleteError(null);
-              setConfirmDelete(true);
-            }}
-            disabled={pending}
-          >
-            {t("clients.action.delete")}
-          </Button>
-          <ConfirmDialog
-            open={confirmDelete}
-            onOpenChange={setConfirmDelete}
-            title={t("clients.delete.title", { name })}
-            description={t("clients.delete.body")}
-            confirmLabel={t("clients.delete.confirm")}
-            cancelLabel={t("common.cancel")}
-            destructive
-            typeToConfirm={name}
-            error={deleteError}
-            onConfirm={async () => {
-              const res = await deleteClientAction({ ref: refId, confirm_name: name });
-              if (!res.ok) {
-                setDeleteError(res.message);
-                return;
-              }
-              setConfirmDelete(false);
-              router.replace("/clients");
-              router.refresh();
-            }}
-          />
-        </>
+      {deleteIsOffered(status, canDelete) ? (
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => {
+            setDeleteError(null);
+            setConfirmDelete(true);
+          }}
+          disabled={pending}
+        >
+          {t("clients.action.delete")}
+        </Button>
       ) : null}
+      {dialogs}
     </div>
   );
 }

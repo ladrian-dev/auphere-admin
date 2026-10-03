@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
+import sqlalchemy as sa
 from langgraph.checkpoint.memory import MemorySaver
 from nexus_worker.runtime.companion import build_companion_graph
 from nexus_worker.runtime.llm import InMemoryProvider
@@ -62,12 +63,41 @@ async def test_wallet_is_the_caller_partners(client, console_world) -> None:
     resp = await client.get("/console/wallet", headers=a["headers"]())
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["included_remaining"] == 500_000
-    assert body["purchased_remaining"] == 0
-    assert body["available"] == 500_000
-    assert body["reserve"] == 0
+    assert body["included_remaining_cents"] == 500
+    assert body["purchased_remaining_cents"] == 0
+    assert body["available_cents"] == 500
+    assert body["reserve_cents"] == 0
     assert body["exhausted"] is False
+    assert body["currency"] == "USD"
     assert "partner_id" not in body
+    # Spec 027 (D5): what is left travels in money; the pool size does not.
+    assert "pool_size" not in body
+    assert not any(k in body for k in ("included_remaining", "available", "reserve"))
+
+
+async def test_a_cap_in_money_is_stored_as_exact_credits(client, console_world, db_session) -> None:
+    """Spec 027 (CE-002): 25,50 US$ es exactamente 2.550.000 créditos en el
+    libro, y la consola lee de vuelta 25,50 US$."""
+    from nexus_api.db.models import PartnerAllocation
+
+    a = console_world["a"]
+    resp = await client.put(
+        "/console/clients/{}/allocation".format(a["ref"]),
+        headers=a["headers"](),
+        json={"cap_cents": 2_550},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["cap_cents"] == 2_550
+    row = await db_session.scalar(
+        sa.select(PartnerAllocation).where(PartnerAllocation.tenant_id == a["tenant_id"])
+    )
+    assert row is not None and int(row.cap) == 2_550_000
+    credits = await client.put(
+        "/console/clients/{}/allocation".format(a["ref"]),
+        headers=a["headers"](),
+        json={"cap": 1_000},
+    )
+    assert credits.status_code == 422, "the console no longer takes credits"
 
 
 async def test_allocation_of_other_partner_is_opaque_404(client, console_world) -> None:
@@ -83,7 +113,7 @@ async def test_allocation_of_other_partner_is_opaque_404(client, console_world) 
     assert other.status_code == 404
     assert missing.json() == other.json()
     assert own.status_code == 200, own.text
-    assert own.json()["cap"] == 500_000
+    assert own.json()["cap_cents"] == 500
 
 
 async def test_start_run_without_client_uses_partner_wallet(
@@ -201,7 +231,7 @@ async def test_allocations_list_is_only_the_caller_partners(client, console_worl
     for row in body:
         assert "partner_id" not in row
         assert "tenant_id" not in row
-        assert set(row) == {"client_ref", "cap", "remaining"}
+        assert set(row) == {"client_ref", "cap_cents", "remaining_cents", "currency"}
 
 
 async def test_unreadable_book_is_zeros_and_empty_allocations(
@@ -216,10 +246,10 @@ async def test_unreadable_book_is_zeros_and_empty_allocations(
     allocs = await client.get("/console/wallet/allocations", headers=a["headers"]())
     assert wallet.status_code == 200, wallet.text
     body = wallet.json()
-    assert body["included_remaining"] == 0
-    assert body["purchased_remaining"] == 0
-    assert body["available"] == 0
-    assert body["reserve"] == 0
+    assert body["included_remaining_cents"] == 0
+    assert body["purchased_remaining_cents"] == 0
+    assert body["available_cents"] == 0
+    assert body["reserve_cents"] == 0
     assert body["exhausted"] is True
     assert "partner_id" not in body
     assert allocs.status_code == 200, allocs.text
@@ -242,12 +272,12 @@ async def test_put_allocation_of_other_partner_is_opaque_404(client, console_wor
     missing = await client.put(
         "/console/clients/no-such-client/allocation",
         headers=a["headers"](),
-        json={"cap": 1},
+        json={"cap_cents": 1},
     )
     other = await client.put(
         "/console/clients/{}/allocation".format(b["ref"]),
         headers=a["headers"](),
-        json={"cap": 1},
+        json={"cap_cents": 1},
     )
     assert missing.status_code == 404
     assert other.status_code == 404
@@ -267,13 +297,13 @@ async def test_put_own_allocation_raises_cap(client, console_world, db_session) 
     resp = await client.put(
         "/console/clients/{}/allocation".format(a["ref"]),
         headers=a["headers"](),
-        json={"cap": 600_000},
+        json={"cap_cents": 600},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["client_ref"] == a["ref"]
-    assert body["cap"] == 600_000
-    assert body["remaining"] == 600_000
+    assert body["cap_cents"] == 600
+    assert body["remaining_cents"] == 600
     assert "partner_id" not in body
     assert "tenant_id" not in body
 
@@ -281,8 +311,8 @@ async def test_put_own_allocation_raises_cap(client, console_world, db_session) 
         "/console/clients/{}/allocation".format(a["ref"]), headers=a["headers"]()
     )
     assert again.status_code == 200, again.text
-    assert again.json()["cap"] == 600_000
-    assert again.json()["remaining"] == 600_000
+    assert again.json()["cap_cents"] == 600
+    assert again.json()["remaining_cents"] == 600
 
 
 async def test_a_cap_above_the_current_balance_is_accepted(client, console_world) -> None:
@@ -302,7 +332,7 @@ async def test_a_cap_above_the_current_balance_is_accepted(client, console_world
     resp = await client.put(
         "/console/clients/{}/allocation".format(a["ref"]),
         headers=a["headers"](),
-        json={"cap": 500_001},
+        json={"cap_cents": 501},
     )
     assert resp.status_code == 200, resp.text
 
@@ -310,7 +340,7 @@ async def test_a_cap_above_the_current_balance_is_accepted(client, console_world
         "/console/clients/{}/allocation".format(a["ref"]), headers=a["headers"]()
     )
     assert own.status_code == 200, own.text
-    assert own.json()["cap"] == 500_001
+    assert own.json()["cap_cents"] == 501
 
 
 async def test_put_allocation_forbidden_without_usage_write(
@@ -323,7 +353,7 @@ async def test_put_allocation_forbidden_without_usage_write(
     resp = await client.put(
         "/console/clients/{}/allocation".format(a["ref"]),
         headers=analyst["headers"](),
-        json={"cap": 1},
+        json={"cap_cents": 1},
     )
     assert resp.status_code == 403, resp.text
     readable = await client.get(
@@ -337,7 +367,7 @@ async def test_put_allocation_rejects_partner_id_in_body(client, console_world) 
     resp = await client.put(
         "/console/clients/{}/allocation".format(a["ref"]),
         headers=a["headers"](),
-        json={"cap": 1, "partner_id": str(a["partner_id"])},
+        json={"cap_cents": 1, "partner_id": str(a["partner_id"])},
     )
     assert resp.status_code == 422, resp.text
 
@@ -396,20 +426,20 @@ async def test_put_creates_allocation_for_client_without_row(
     lowered = await client.put(
         "/console/clients/{}/allocation".format(a["ref"]),
         headers=a["headers"](),
-        json={"cap": 400_000},
+        json={"cap_cents": 400},
     )
     assert lowered.status_code == 200, lowered.text
 
     created = await client.put(
         f"/console/clients/{ref}/allocation",
         headers=a["headers"](),
-        json={"cap": 100_000},
+        json={"cap_cents": 100},
     )
     assert created.status_code == 200, created.text
     body = created.json()
     assert body["client_ref"] == ref
-    assert body["cap"] == 100_000
-    assert body["remaining"] == 100_000
+    assert body["cap_cents"] == 100
+    assert body["remaining_cents"] == 100
     assert "tenant_id" not in body
     assert "partner_id" not in body
 
@@ -429,12 +459,12 @@ async def test_a_first_cap_is_accepted_even_with_the_balance_committed(
     resp = await client.put(
         f"/console/clients/{ref}/allocation",
         headers=a["headers"](),
-        json={"cap": 1},
+        json={"cap_cents": 1},
     )
     assert resp.status_code == 200, resp.text
     now = await client.get(f"/console/clients/{ref}/allocation", headers=a["headers"]())
     assert now.status_code == 200, now.text
-    assert now.json()["cap"] == 1
+    assert now.json()["cap_cents"] == 1
 
 
 # ── admin C3 (F1) ────────────────────────────────────────────────────────────
@@ -594,3 +624,221 @@ async def test_admin_recharge_works_in_prod_and_leaves_an_audit_row(
 # la puerta seguía cerrada en producción, y la puerta ya no existe en ningún
 # entorno. Comprobar que un 404 sigue siendo 404 cuando la ruta se borró es un
 # test que pasa por la razón equivocada.
+
+
+# ── spec 016 · una sola definición de «sin cupo» ───────────────────────
+
+
+async def test_quota_state_matches_the_channel_gate(client, console_world, db_session) -> None:
+    """R2.1 / R2.5: ``quota_state`` (lote, lo que pinta la consola) dice lo
+    mismo que ``allow_channel_turn`` (la puerta del canal) en los cuatro
+    casos: con cupo, cupo agotado, sin fila y sin cartera."""
+    import uuid as _uuid
+
+    from nexus_api.metering.wallet import allow_channel_turn, quota_state
+
+    a = console_world["a"]
+    unalloc_ref = "client-a-noquota"
+    unalloc_tid = await _add_unallocated_client(
+        db_session, partner_id=a["partner_id"], ref=unalloc_ref
+    )
+    ok = await client.put(
+        f"/console/clients/{a['ref']}/allocation", headers=a["headers"](), json={"cap_cents": 50}
+    )
+    assert ok.status_code == 200, ok.text
+
+    states = await quota_state(a["partner_id"], [a["tenant_id"], unalloc_tid])
+    assert states[a["tenant_id"]] is False
+    assert states[unalloc_tid] is True
+    assert await allow_channel_turn(a["tenant_id"]) is True
+    assert await allow_channel_turn(unalloc_tid) is False
+
+    # Agotado: el tope baja a lo consumido (0) y la fila sigue existiendo.
+    zero = await client.put(
+        f"/console/clients/{a['ref']}/allocation", headers=a["headers"](), json={"cap_cents": 0}
+    )
+    assert zero.status_code == 200, zero.text
+    assert (await quota_state(a["partner_id"], [a["tenant_id"]]))[a["tenant_id"]] is True
+    assert await allow_channel_turn(a["tenant_id"]) is False
+
+    # Sin cartera: un partner que no existe lee como agotado (fail closed).
+    ghost = _uuid.uuid4()
+    assert (await quota_state(ghost, [a["tenant_id"]]))[a["tenant_id"]] is True
+    # Un tenant ajeno no aparece con cupo por error: también agotado.
+    assert (await quota_state(a["partner_id"], [_uuid.uuid4()])) != {}
+
+
+# ── spec 016 · mover tope en una transacción (R3.1-R3.3) ─────────────────────
+
+
+async def _caps(client, headers) -> dict[str, tuple[int, int]]:
+    rows = (await client.get("/console/wallet/allocations", headers=headers)).json()
+    return {r["client_ref"]: (r["cap_cents"], r["remaining_cents"]) for r in rows}
+
+
+async def test_move_allocation_lowers_and_raises_in_one_call(
+    client, console_world, db_session
+) -> None:
+    """CE-003: la suma de topes no cambia; el destino sin fila nace con ``qty``."""
+    a = console_world["a"]
+    other = "client-a-move-to"
+    await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=other)
+    before = await _caps(client, a["headers"]())
+    assert other not in before
+    total_before = sum(cap for cap, _ in before.values())
+
+    resp = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": a["ref"], "to_ref": other, "amount_cents": 20},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["from"]["client_ref"] == a["ref"]
+    assert body["from"]["cap_cents"] == before[a["ref"]][0] - 20
+    assert body["from"]["remaining_cents"] == min(before[a["ref"]][1], body["from"]["cap_cents"])
+    assert body["to"] == {
+        "client_ref": other,
+        "cap_cents": 20,
+        "remaining_cents": 20,
+        "currency": "USD",
+    }
+    assert "tenant_id" not in resp.text and "partner_id" not in resp.text
+
+    after = await _caps(client, a["headers"]())
+    assert sum(cap for cap, _ in after.values()) == total_before
+    assert after[other] == (20, 20)
+
+    # Recorte del restante: un origen que ya gastó no puede quedar con
+    # ``remaining > cap`` (misma regla que ``set_allocation``).
+    from nexus_api.db.models import PartnerAllocation
+
+    row = await db_session.scalar(
+        sa.select(PartnerAllocation).where(PartnerAllocation.tenant_id == a["tenant_id"])
+    )
+    assert row is not None and row.remaining <= row.cap
+
+    from nexus_api.db.models import AuditLog
+
+    audit = (
+        await db_session.scalars(
+            sa.select(AuditLog).where(AuditLog.action == "console.allocation.move")
+        )
+    ).all()
+    assert len(audit) == 1
+    assert audit[0].actor.startswith("console:")
+    assert audit[0].target == f"partner:{a['partner_id']}"
+    # The audit keeps both: what the partner moved and what the ledger moved.
+    assert audit[0].after_json == {
+        "from": a["ref"],
+        "to": other,
+        "amount_cents": 20,
+        "qty": 20_000,
+    }
+
+
+async def test_move_allocation_errors_by_code_and_nothing_changes(
+    client, console_world, db_session
+) -> None:
+    a = console_world["a"]
+    other = "client-a-move-err"
+    await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=other)
+    before = await _caps(client, a["headers"]())
+    cap_a = before[a["ref"]][0]
+
+    same = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": a["ref"], "to_ref": a["ref"], "amount_cents": 1},
+    )
+    assert same.status_code == 422, same.text
+    assert same.json()["detail"] == {"code": "same_client"}
+
+    too_much = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": a["ref"], "to_ref": other, "amount_cents": cap_a + 1},
+    )
+    assert too_much.status_code == 422, too_much.text
+    assert too_much.json()["detail"] == {
+        "code": "insufficient_cap",
+        "cap_cents": cap_a,
+        "amount_cents": cap_a + 1,
+    }
+
+    # El destino sin fila tampoco puede ser origen: su tope es 0.
+    empty_source = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": other, "to_ref": a["ref"], "amount_cents": 1},
+    )
+    assert empty_source.status_code == 422, empty_source.text
+    assert empty_source.json()["detail"]["code"] == "insufficient_cap"
+    assert empty_source.json()["detail"]["cap_cents"] == 0
+
+    for amount in (0, -5):
+        bad = await client.post(
+            "/console/wallet/allocations/move",
+            headers=a["headers"](),
+            json={"from_ref": a["ref"], "to_ref": other, "amount_cents": amount},
+        )
+        assert bad.status_code == 422, bad.text
+
+    extra = await client.post(
+        "/console/wallet/allocations/move",
+        headers=a["headers"](),
+        json={"from_ref": a["ref"], "to_ref": other, "amount_cents": 1, "partner_id": "x"},
+    )
+    assert extra.status_code == 422, extra.text
+
+    assert await _caps(client, a["headers"]()) == before
+
+
+async def test_move_allocation_forbidden_without_usage_write(
+    client, console_world, db_session
+) -> None:
+    from tests.conftest import add_console_member
+
+    a = console_world["a"]
+    analyst = await add_console_member(db_session, partner_id=a["partner_id"], role="analyst")
+    resp = await client.post(
+        "/console/wallet/allocations/move",
+        headers=analyst["headers"](),
+        json={"from_ref": a["ref"], "to_ref": "x", "amount_cents": 1},
+    )
+    assert resp.status_code == 403, resp.text
+
+
+async def test_move_allocation_is_atomic(client, console_world, db_session, monkeypatch) -> None:
+    """CE-003: si el destino falla después de que el origen ya bajó, la
+    transacción se deshace y ningún tope cambia."""
+    from nexus_api.metering import wallet as wallet_module
+
+    a = console_world["a"]
+    other = "client-a-move-atomic"
+    await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=other)
+    before = await _caps(client, a["headers"]())
+
+    def _boom(row, qty):
+        raise RuntimeError("destino roto")
+
+    monkeypatch.setattr(wallet_module, "_credit_allocation", _boom)
+    # El transporte de pruebas relanza la excepción del servidor (en
+    # producción sería un 500): lo que importa es lo que queda en el libro.
+    with pytest.raises(RuntimeError, match="destino roto"):
+        await client.post(
+            "/console/wallet/allocations/move",
+            headers=a["headers"](),
+            json={"from_ref": a["ref"], "to_ref": other, "amount_cents": 20},
+        )
+    assert await _caps(client, a["headers"]()) == before
+
+    from nexus_api.db.models import AuditLog
+
+    assert (
+        await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(AuditLog)
+            .where(AuditLog.action == "console.allocation.move")
+        )
+    ) == 0

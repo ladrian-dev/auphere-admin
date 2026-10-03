@@ -78,8 +78,16 @@ async def test_create_client_and_quota_409_leaves_nothing_behind(
         json={"external_client_ref": "c4", "name": "Client 4"},
     )
     assert r.status_code == 409, r.text
-    assert "3 of 3" in r.json()["detail"]
-    assert "Archive a client" in r.json()["detail"]
+    # Desde la spec 019 el tope **no es una cuota de producto**: crear
+    # clientes no se cobra y el techo vive donde ningún partner real llega
+    # (migración 0130). Sigue comprobándose antes de crear nada —esa es la
+    # parte que protege— pero el mensaje ya no ofrece ampliar un límite que
+    # nadie vende, sino que apunta a lo que suele haber pasado de verdad.
+    detalle = r.json()["detail"]
+    assert "3 clients, ceiling 3" in detalle
+    assert "Nothing was created" in detalle
+    assert "not a plan limit" in detalle
+    assert "Archive a client" not in detalle
 
     # No side effects: no tenant, no mapping, no audit row.
     assert await db_session.scalar(sa.select(sa.func.count()).select_from(Tenant)) == tenants_before
@@ -275,7 +283,9 @@ async def test_agent_stage_publish_rollback_with_audit(client, console_world, db
     a = console_world["a"]
     h = a["headers"]
     empty = await client.get(f"/console/clients/{a['ref']}/agent", headers=h())
-    assert empty.status_code == 200 and empty.json() == {"active_version": None, "versions": []}
+    # ``draft_screens`` (spec 017 R3.1) amplía el bundle: sin borrador, vacío.
+    assert empty.status_code == 200
+    assert empty.json() == {"active_version": None, "versions": [], "draft_screens": []}
 
     v1 = await client.post(
         f"/console/clients/{a['ref']}/agent/versions",

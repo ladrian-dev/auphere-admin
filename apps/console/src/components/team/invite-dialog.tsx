@@ -24,6 +24,7 @@ import {
   FormLabel,
   FormMessage,
   Input,
+  NativeSelect,
 } from "@nexus/ui";
 
 import { inviteAction } from "@/app/(console)/team/actions";
@@ -122,16 +123,13 @@ export function InviteButton({ origin }: { origin: string }) {
                     <FormItem>
                       <FormLabel>{t("common.role")}</FormLabel>
                       <FormControl>
-                        <select
-                          {...field}
-                          className="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                        >
+                        <NativeSelect {...field} wrapperClassName="w-full">
                           {ROLES.map((r) => (
                             <option key={r} value={r}>
                               {t(roleKey(r))}
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </FormControl>
                       <FormDescription>{t(`role.${field.value}.desc` as "role.owner.desc")}</FormDescription>
                       <FormMessage />

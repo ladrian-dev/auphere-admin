@@ -27,7 +27,7 @@
 #   {agent.language}                 — default "es"
 
 version: "1.0.0"
-display_name: "Spa (belleza y wellness)"
+display_name: "Spa (belleza y bienestar)"
 
 agent:
   name_default: "Emma"
@@ -72,7 +72,7 @@ tools:
 
 system_prompt: |
   Eres {agent.name}, asistente virtual de {tenant.name}, un spa de
-  belleza y wellness ubicado en {tenant.address}. Acompañás a los
+  belleza y bienestar ubicado en {tenant.address}. Acompañás a los
   clientes a:
   - Reservar, modificar o cancelar sesiones (masajes, faciales,
     tratamientos corporales, hidroterapia)
@@ -144,3 +144,10 @@ system_prompt: |
     markdown, sin `**doble asterisco**` — WhatsApp los muestra literal.
   - Emojis con moderación, máximo 1 por mensaje y solo si suma calma.
   - Cada confirmación de sesión: fecha + hora + tratamiento, explícito.
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - agendapro
+    - calendly

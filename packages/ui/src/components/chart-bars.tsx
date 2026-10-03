@@ -46,7 +46,16 @@ function StackedBarChart({ data, xKey, series, formatValue, formatX, height = 24
             formatter={(v: unknown, name: unknown) => [fmt(Number(v)), String(series.find((s) => s.key === name)?.label ?? name)]}
             labelFormatter={(l: unknown) => (formatX ? formatX(String(l)) : String(l))}
           />
-          {series.length > 1 ? <Legend formatter={(k: string) => series.find((s) => s.key === k)?.label ?? k} /> : null}
+          {series.length > 1 ? (
+            // Owner, 2026-10-03: the legend is a caption, not a headline —
+            // small, muted text next to a small swatch.
+            <Legend
+              iconSize={8}
+              iconType="square"
+              wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+              formatter={(k: string) => <span style={{ color: "var(--muted-foreground)" }}>{series.find((s) => s.key === k)?.label ?? k}</span>}
+            />
+          ) : null}
           {series.map((s, i) => (
             <Bar key={s.key} dataKey={s.key} name={s.key} stackId="a" fill={CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length]} radius={i === series.length - 1 ? [2, 2, 0, 0] : 0} isAnimationActive={false} />
           ))}

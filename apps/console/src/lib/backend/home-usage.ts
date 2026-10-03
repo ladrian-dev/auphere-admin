@@ -18,7 +18,7 @@ export type HomeUsage = {
   projected_month_units: number;
   basis_days: number;
 };
-export type IncidentIssue = "whatsapp_degraded" | "no_active_agent" | "failed_messages_24h";
+export type IncidentIssue = "whatsapp_degraded" | "no_active_agent" | "failed_messages_24h" | "out_of_quota";
 export type IncidentClient = {
   external_client_ref: string;
   client_name: string | null;
@@ -36,12 +36,73 @@ export type PendingItem = {
   href: string;
 };
 export type HomePending = { count: number; items: PendingItem[] };
+// ── spec 026 · what the partner has to do today ───────────────────────
+export type AttentionKind =
+  | "out_of_quota"
+  | "no_active_agent"
+  | "whatsapp_disconnected"
+  | "needs_reauth"
+  | "quality_red"
+  | "failed_messages"
+  | "credit_low"
+  | "template_rejected"
+  | "draft_unpublished"
+  | "provisioning";
+export type AttentionItem = {
+  kind: AttentionKind;
+  severity: number;
+  external_client_ref: string;
+  client_name: string | null;
+  count: number | null;
+  href: string;
+};
+export type HomeAttention = { items: AttentionItem[]; clients_ok: number };
+export type ReviewClient = {
+  external_client_ref: string;
+  client_name: string | null;
+  escalated: number;
+  payments: number;
+  unanswered: number;
+  href: string;
+};
+export type HomeToReview = { escalated: number; payments: number; unanswered: number; clients: ReviewClient[] };
+export type TrendClient = { external_client_ref: string | null; client_name: string | null; series: number[] };
+export type HomeTrend = { days: string[]; series: number[]; current: number; previous: number | null; by_client: TrendClient[] };
+export type CreditRisk = { external_client_ref: string; client_name: string | null; remaining_cents: number; days_left: number; href: string };
+export type HomeCredit = { available_cents: number | null; spent_7d_cents: number; daily_average_cents: number; days_left: number | null; at_risk: CreditRisk[]; currency?: string };
+export type SpendShare = { kind: "client" | "rest" | "outside"; external_client_ref: string | null; client_name: string | null; cents: number };
+export type HomeSpend = {
+  cents: number;
+  previous_cents: number | null;
+  projected_cents: number;
+  currency: string;
+  by_client: SpendShare[];
+};
+export type PortfolioRow = {
+  external_client_ref: string;
+  client_name: string | null;
+  status: string;
+  conversations_7d: number;
+  series_7d: number[];
+  last_activity_at: string | null;
+  credit_cap_cents: number | null;
+  credit_remaining_cents: number | null;
+  attention: number;
+  href: string;
+};
+
 export type Home = {
   clients: HomeClients | null;
   conversations_period: HomeConversations | null;
   usage_units: HomeUsage | null;
   agents_with_incidents: HomeIncidents | null;
   pending_actions: HomePending | null;
+  attention?: HomeAttention | null;
+  to_review?: HomeToReview | null;
+  conversations_trend?: HomeTrend | null;
+  credit?: HomeCredit | null;
+  spend?: HomeSpend | null;
+  portfolio?: PortfolioRow[] | null;
   errors: string[];
   generated_in_ms: number;
 };
@@ -88,18 +149,32 @@ export type UsageAlertsInput = { cap_messages_month: number | null; recipients: 
 export type AuditVocabularyEntry = { action: string; category: string; severity: string; summary: string };
 export type AuditVocabulary = { lang: string; entries: AuditVocabularyEntry[] };
 
+/** Spec 027: every amount is integer cents of USD. The console never sees credits. */
 export type Wallet = {
-  included_remaining: number;
-  purchased_remaining: number;
-  available: number;
-  reserve: number;
+  included_remaining_cents: number;
+  purchased_remaining_cents: number;
+  available_cents: number;
+  reserve_cents: number;
   included_expires_at: string | null;
   exhausted: boolean;
   /** Spec 004 (R7.1): proporción del pool consumida, calculada en la API. */
-  pool_size?: number;
   included_percent_used?: number;
+  currency?: string;
 };
-export type Allocation = { client_ref: string; cap: number; remaining: number };
+export type Allocation = { client_ref: string; cap_cents: number; remaining_cents: number; currency?: string };
+/** Spec 016 (R3.1): both caps after an atomic move. */
+export type AllocationMove = { from: Allocation; to: Allocation };
+
+/** Spec 028: what the partner spent, in cents of USD. */
+export type UsageSpend = {
+  currency: string;
+  days: string[];
+  series_cents: number[];
+  by_client: Array<{ external_client_ref: string | null; client_name: string | null; series_cents: number[] }>;
+  month_cents: number;
+  projected_cents: number;
+  month_by_client: Array<{ external_client_ref: string; client_name: string | null; cents: number }>;
+};
 
 export type UsageQuery = { days?: number; client?: string; source?: string };
 export type AuditQuery = {
@@ -108,10 +183,16 @@ export type AuditQuery = {
   actor?: string;
   action?: string;
   client?: string;
+  /** Spec 029: a vocabulary category («clients», «agents»…). */
+  category?: string;
   after?: string;
   before?: string;
   lang?: string;
 };
+
+export type AuditFilterOption = { value: string; label: string };
+/** Spec 029: what the audit filter bar offers, chosen instead of typed. */
+export type AuditFilters = { categories: AuditFilterOption[]; people: AuditFilterOption[]; clients: AuditFilterOption[] };
 
 /** Backend paths of the streaming/downloadable resources (proxied by route handlers). */
 export const usageCsvPath = (p: UsageQuery & { lang?: string }) => `/console/usage/export.csv${q(p)}`;
@@ -123,14 +204,22 @@ export function homeUsageApi(call: Call) {
     home: () => call<Home>("/console/home"),
     usageV2: (p: UsageQuery = {}) => call<UsageReportV2>(`/console/usage${q(p)}`),
     getWallet: () => call<Wallet>("/console/wallet"),
+    usageSpend: (p: { days?: number; client?: string } = {}) => call<UsageSpend>(`/console/usage/spend${q(p)}`),
     listAllocations: () => call<Allocation[]>("/console/wallet/allocations"),
     // ``addPurchased`` se borró con la spec 005: su ruta ya no existe. El
     // crédito entra por el aviso del pago confirmado, y la compra se abre
     // desde ``billing``.
-    setAllocation: (ref: string, cap: number) =>
+    setAllocation: (ref: string, capCents: number) =>
       call<Allocation>(`/console/clients/${encodeURIComponent(ref)}/allocation`, {
         method: "PUT",
-        body: { cap },
+        body: { cap_cents: capCents },
+      }),
+    // Spec 016 (R3.1): one call, one transaction. Two PUTs could lose quota
+    // when the second one failed.
+    moveAllocation: (from_ref: string, to_ref: string, amountCents: number) =>
+      call<AllocationMove>("/console/wallet/allocations/move", {
+        method: "POST",
+        body: { from_ref, to_ref, amount_cents: amountCents },
       }),
     usageSeries: (p: UsageQuery & { meter?: string } = {}) => call<UsageSeries>(`/console/usage/series${q(p)}`),
     usageAlerts: () => call<UsageAlerts>("/console/usage/alerts"),
@@ -138,5 +227,6 @@ export function homeUsageApi(call: Call) {
     auditV2: (p: AuditQuery = {}) =>
       call<{ items: import("../backend").AuditEntry[]; next_cursor: string | null }>(`/console/audit${q(p)}`),
     auditVocabulary: (lang: string) => call<AuditVocabulary>(`/console/audit/vocabulary${q({ lang })}`),
+    auditFilters: (lang: string) => call<AuditFilters>(`/console/audit/filters${q({ lang })}`),
   };
 }

@@ -11,11 +11,14 @@ import { can, requirePrincipal } from "@/lib/principal";
 /**
  * Server Actions of lane `onboarding`: notification centre (CP-29) and the
  * ⌘K client search (CP-07). All read the principal server-side; the API
- * decides.
+ * decides. Spec 016 (R8.1): the bell is `partner:read`, which every role
+ * has — the check is here so the rule is uniform, not because it bites.
  */
+const forbidden = { ok: false as const, status: 403, message: "forbidden" };
 
 export async function unreadCountAction(): Promise<ActionResult<{ unread: number }>> {
   const principal = await requirePrincipal();
+  if (!can(principal.role, "partner:read")) return forbidden;
   return run(() => backendFor(principal).unreadNotifications());
 }
 
@@ -23,6 +26,7 @@ const listSchema = z.object({ unread: z.boolean().optional(), cursor: z.string()
 export async function listNotificationsAction(raw: unknown = {}): Promise<ActionResult<NotificationPage>> {
   const p = listSchema.parse(raw);
   const principal = await requirePrincipal();
+  if (!can(principal.role, "partner:read")) return forbidden;
   return run(() => backendFor(principal).listNotifications(p));
 }
 
@@ -30,6 +34,7 @@ const idSchema = z.object({ id: z.string().uuid() });
 export async function markNotificationReadAction(raw: unknown): Promise<ActionResult<Notification>> {
   const { id } = idSchema.parse(raw);
   const principal = await requirePrincipal();
+  if (!can(principal.role, "partner:read")) return forbidden;
   const res = await run(() => backendFor(principal).markNotificationRead(id));
   if (res.ok) revalidatePath("/notifications");
   return res;
@@ -37,6 +42,7 @@ export async function markNotificationReadAction(raw: unknown): Promise<ActionRe
 
 export async function markAllNotificationsReadAction(): Promise<ActionResult<{ marked: number }>> {
   const principal = await requirePrincipal();
+  if (!can(principal.role, "partner:read")) return forbidden;
   const res = await run(() => backendFor(principal).markAllNotificationsRead());
   if (res.ok) revalidatePath("/notifications");
   return res;

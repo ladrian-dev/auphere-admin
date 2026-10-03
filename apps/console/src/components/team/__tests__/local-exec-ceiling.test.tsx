@@ -6,10 +6,10 @@
  * 1. El techo **no** es una casilla de «permitir/prohibir»: son tres valores, y
  *    el de partida —«cada persona decide»— tiene que verse elegido, porque un
  *    grupo sin nada marcado se lee como «esto está apagado».
- * 2. Quien solo puede leerlo lo ve y se le dice **por qué** no puede tocarlo.
- *    Aquí el control deshabilitado sí se pinta, al revés que en el puesto de
- *    trabajo: el techo es información que un builder necesita para entender por
- *    qué su app le pregunta siempre.
+ * 2. Quien solo puede leerlo ve el **valor** y se le dice **por qué** no puede
+ *    tocarlo. El control no se pinta deshabilitado (spec 016, R8.3): el techo
+ *    es información que un builder necesita para entender por qué su app le
+ *    pregunta siempre, y un valor en texto la da igual de bien.
  * 3. Si el guardado falla, el botón **vuelve** a donde estaba. Dejarlo marcado
  *    sería una pantalla que miente sobre lo que hay guardado (§V).
  */
@@ -83,19 +83,18 @@ describe("el techo de ejecución local", () => {
     expect(button("Nadie ejecuta")).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("quien solo puede leerlo lo ve, deshabilitado y explicado", async () => {
-    const user = userEvent.setup();
+  it("quien solo puede leerlo ve el techo como valor, sin botones, y explicado", () => {
+    // Spec 016 (R8.3): sin permiso el control no existe — ni gris ni apagado.
     paint({ ceiling: "ask" as ExecMode, manage: false });
 
-    expect(button("Nadie ejecuta")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Nadie ejecuta" })).toBeNull();
+    expect(screen.queryByRole("group")).toBeNull();
     expect(screen.getByRole("note")).toHaveTextContent(
       "Solo el propietario y los administradores",
     );
     // Y sigue diciendo cuál es el techo: es lo que explica por qué su app le
     // pregunta siempre.
-    expect(button("Preguntar siempre")).toHaveAttribute("aria-pressed", "true");
-
-    await user.click(button("Nadie ejecuta"));
+    expect(screen.getByText("Preguntar siempre")).toBeInTheDocument();
     expect(setCeiling).not.toHaveBeenCalled();
   });
 

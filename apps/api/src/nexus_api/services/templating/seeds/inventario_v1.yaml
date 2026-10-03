@@ -47,6 +47,10 @@ policies:
 
 tools:
   required:
+    # Catálogo de Meta (spec 022): solo se enseñan y se usan con catálogo
+    # enlazado al número; sin él, Capacidades no las lista.
+    - catalog.search_products
+    - catalog.get_product
     # Todas son lecturas: se ejecutan también en QA dry_run (sin side effects).
     - inventory.search_products
     - inventory.get_product
@@ -119,3 +123,9 @@ system_prompt: |
     reply that the question is for the pharmacist and limit yourself to
     reporting what is in stock.
   - Dates and times are in the {tenant.timezone} timezone.
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - woocommerce

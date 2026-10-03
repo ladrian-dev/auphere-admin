@@ -6,6 +6,7 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import {
+  formatDateTime,
   Alert,
   AlertDescription,
   AlertTitle,
@@ -107,7 +108,9 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
 
   async function createThread() {
     setBusy(true);
-    const res = await createThreadAction({ ref: refId });
+    // Named at birth so the list never reads "Untitled": the date is what a
+    // partner uses to tell one test apart from another.
+    const res = await createThreadAction({ ref: refId, title: t("playground.threads.autoTitle", { date: formatDateTime(new Date().toISOString(), locale) }) });
     setBusy(false);
     if (!res.ok) return void toast.error(res.message);
     setThreads((prev) => [res.data, ...prev]);
@@ -267,7 +270,8 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
                       ].join(" ")}
                     >
                       <span className="truncate">{th.title || t("playground.threads.untitled")}</span>
-                      <span className="shrink-0 font-mono tabular-nums opacity-70">
+                      {/* No opacity on top of muted-foreground: the pair fails AA (axe color-contrast on /playground). */}
+                      <span className="shrink-0 font-mono tabular-nums">
                         {th.turn_count === 1 ? t("playground.threads.turn") : t("playground.threads.turns", { n: th.turn_count })}
                       </span>
                     </button>
@@ -321,7 +325,7 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
               {!selected ? (
                 <p className="m-auto text-sm text-muted-foreground">{t("playground.threads.select")}</p>
               ) : turns.length === 0 ? (
-                <p className="m-auto max-w-prose text-center text-sm text-pretty text-muted-foreground">{t("playground.transcript.empty")}</p>
+                <p className="m-auto text-center text-sm text-pretty text-muted-foreground">{t("playground.transcript.empty")}</p>
               ) : (
                 <ol className="flex flex-col gap-3">
                   {turns.map((turn) => (
@@ -341,10 +345,10 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
                             ) : turn.status === "cancelled" ? (
                               <span className="text-muted-foreground">{t("playground.run.cancelled")}</span>
                             ) : turn.status === "error" ? (
-                              <span className="text-status-danger">{t("playground.run.error")}</span>
+                              <span className="text-destructive">{t("playground.run.error")}</span>
                             ) : null)}
                           {turn.reply && turn.status === "cancelled" ? <span className="block text-xs text-muted-foreground">{t("playground.run.cancelled")}</span> : null}
-                          {turn.gap ? <span className="block text-xs text-status-warning">{t("playground.run.gap")}</span> : null}
+                          {turn.gap ? <span className="block text-xs text-warning">{t("playground.run.gap")}</span> : null}
                         </div>
                       </div>
                     </li>
@@ -355,7 +359,7 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
             </CardContent>
             <div className="border-t border-border p-3">
               {exhausted ? (
-                <p className="mb-2 text-sm text-status-danger" role="status">
+                <p className="mb-2 text-sm text-destructive" role="status">
                   {t("playground.composer.disabledCap")}
                 </p>
               ) : null}
@@ -391,7 +395,7 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
                 )}
               </div>
               {text.length > MAX_PROMPT ? (
-                <p className="mt-1 text-xs text-status-danger" role="alert">
+                <p className="mt-1 text-xs text-destructive" role="alert">
                   {t("playground.composer.tooLong")}
                 </p>
               ) : null}

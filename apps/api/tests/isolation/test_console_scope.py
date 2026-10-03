@@ -211,8 +211,12 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("PUT", "/console/clients/{ref}/tools"): {"tools": []},
         ("PUT", "/console/clients/{ref}/tools/{tool_name}/mode"): {"mode": "always"},
         ("PUT", "/console/clients/{ref}/skills"): {"skills": []},
-        ("PUT", "/console/clients/{ref}/allocation"): {"cap": 1},
+        ("PUT", "/console/clients/{ref}/allocation"): {"cap_cents": 1},
         ("PUT", "/console/clients/{ref}/model"): {"model_id": "openai/gpt-5.6-sol"},
+        # Spec 016 (R6): la agenda pública de AgendaPro.
+        ("PUT", "/console/clients/{ref}/integrations/agendapro/public-url"): {
+            "public_url": "https://demo.site.agendapro.com/cl/sucursal"
+        },
         ("PUT", "/console/clients/{ref}/workflow"): {
             "trigger": "event",
             "steps": ["end"],
@@ -261,3 +265,43 @@ async def test_other_partners_client_ref_is_an_opaque_404(
     assert foreign.status_code == 404, f"{route_id}: {foreign.status_code} {foreign.text}"
     assert missing.status_code == 404
     assert foreign.json() == missing.json() == {"detail": "Unknown client reference"}
+
+
+# ── 6. la lectura compuesta del Resumen (spec 018, R1) ─────────────────
+
+
+async def test_the_summary_composes_four_reads_and_none_of_them_leaks(
+    client, console_world, db_session
+) -> None:
+    """El Resumen junta cuatro lecturas; juntarlas no puede abrir una puerta.
+
+    Tres de las cuatro son rutas ``{ref}`` y ya las cubre la barrida
+    parametrizada de arriba. **La cuarta no**: el consumo se pide con
+    ``/console/usage?client={ref}``, que es una ruta de partner con un
+    filtro en la query — no la ve ningún caso de los anteriores, y es
+    justo por donde se leería el gasto de un cliente ajeno.
+    """
+    a, b = console_world["a"], console_world["b"]
+
+    ajeno = await client.get(f"/console/usage?client={b['ref']}&days=30", headers=a["headers"]())
+    fantasma = await client.get("/console/usage?client=no-existe&days=30", headers=a["headers"]())
+
+    # Contesta 404, no un informe vacío — que es más fuerte de lo que hacía
+    # falta: ni siquiera devuelve la forma del informe. Y el cuerpo es el
+    # mismo que para un ref que no existe, así que no se puede averiguar si
+    # ese cliente es de alguien.
+    assert ajeno.status_code == fantasma.status_code == 404
+    assert ajeno.json() == fantasma.json()
+    assert b["ref"] not in ajeno.text
+
+    # Y las otras tres, compuestas como las compone la pantalla, siguen
+    # contestando lo mismo que por separado: 404 opaco.
+    for path in (
+        f"/console/clients/{b['ref']}",
+        f"/console/clients/{b['ref']}/conversations/stats",
+        f"/console/clients/{b['ref']}/channels",
+        f"/console/clients/{b['ref']}/connectors",
+    ):
+        r = await client.get(path, headers=a["headers"]())
+        assert r.status_code == 404, f"{path} → {r.status_code}"
+        assert r.json() == {"detail": "Unknown client reference"}

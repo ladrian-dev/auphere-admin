@@ -217,15 +217,57 @@ async def _top_up_usage(sm: async_sessionmaker[AsyncSession], tid: uuid.UUID, ta
                      ('llm.output_tokens','channel',120.0,0.0018),
                      ('llm.input_tokens','qa',700.0,0.0021),
                      ('media.image','channel',1.0,0.002),
-                     ('media.audio','channel',1.0,NULL)
+                     ('media.audio','channel',1.0,NULL),
+                     ('llm.cache_read','channel',2400.0,0.0007),
+                     ('llm.cache_write','channel',300.0,0.0011)
                    ) AS v(meter, source, qty, cost)
-                   OFFSET (g % 8) LIMIT 1
+                   OFFSET (g % 10) LIMIT 1
               ) AS m ON true
             ON CONFLICT (idempotency_key, occurred_at) DO NOTHING
             """
         )
         await session.execute(rows_sql, {"t": str(tid), "lo": have + 1, "hi": target})
         return target - have
+
+
+async def _top_up_ledger(
+    sm: async_sessionmaker[AsyncSession],
+    partner_id: uuid.UUID,
+    clients: list[tuple[uuid.UUID, str]],
+) -> int:
+    """Credit spend (spec 026, «Gasto del mes»): one ``usage_ledger`` row per
+    client and day from the start of last month until today, busier clients
+    first, plus the Companion (``tenant_id`` NULL). Keyed
+    ``vol:ledger:<tenant|companion>:<day>`` so re-runs add nothing."""
+    from nexus_api.core.partner_context import apply_partner_to_session
+
+    targets: list[tuple[str | None, int]] = [
+        (str(tid), 400_000 // i) for i, (tid, _) in enumerate(clients, start=1)
+    ]
+    targets.append((None, 30_000))
+    added = 0
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        for tid, per_day in targets:
+            result = await session.execute(
+                sa.text(
+                    """
+                    INSERT INTO usage_ledger (id, partner_id, tenant_id, qty, bucket, idempotency_key, created_at)
+                    SELECT gen_random_uuid(), CAST(:p AS uuid), CAST(:t AS uuid),
+                           GREATEST(1, (CAST(:q AS bigint) * (80 + (extract(doy from d)::int * 7) % 40)) / 100),
+                           'included',
+                           'vol:ledger:' || coalesce(CAST(:t AS text), 'companion') || ':' || d::date,
+                           d + interval '12 hours'
+                      FROM generate_series(date_trunc('month', now()) - interval '1 month',
+                                           date_trunc('day', now()) - interval '1 day',
+                                           interval '1 day') AS d
+                    ON CONFLICT (idempotency_key) DO NOTHING
+                    """
+                ),
+                {"p": str(partner_id), "t": tid, "q": per_day},
+            )
+            added += result.rowcount or 0
+    return added
 
 
 async def main() -> int:
@@ -271,6 +313,8 @@ async def main() -> int:
         added_conv += await _top_up_conversations(sm, tid, per_client_conv, i)
         added_usage += await _top_up_usage(sm, tid, per_client_usage)
         print(f"  {ref}: ok")
+    added_ledger = await _top_up_ledger(sm, partner.id, clients)
+    print(f"  credit spend: +{added_ledger} ledger rows")
     await engine.dispose()
     print(
         f"seeded partner={args.partner_slug} clients={len(clients)} "

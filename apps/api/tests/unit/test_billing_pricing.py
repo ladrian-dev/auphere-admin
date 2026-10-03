@@ -51,3 +51,64 @@ async def test_the_result_is_always_a_whole_number_of_units() -> None:
         value = units_for_cents(cents)
         assert isinstance(value, int)
         assert value >= 0
+
+
+# ── Spec 027: el partner ve dinero, el libro sigue en créditos ──────────────
+
+
+async def test_money_to_credits_is_exact_for_any_amount_with_two_decimals() -> None:
+    from nexus_api.billing.pricing import CREDITS_PER_CENT, cents_to_credits
+
+    assert CREDITS_PER_CENT == 1_000
+    assert cents_to_credits(2_550) == 2_550_000  # 25,50 US$
+    assert cents_to_credits(1) == 1_000
+    assert cents_to_credits(0) == 0
+
+
+async def test_negative_money_is_refused_not_floored() -> None:
+    """Un tope negativo es un error del que escribe, no un cero silencioso."""
+    from nexus_api.billing.pricing import cents_to_credits
+
+    with pytest.raises(ValueError):
+        cents_to_credits(-1)
+
+
+async def test_a_balance_never_shows_money_that_is_not_there() -> None:
+    """Saldos y restantes se redondean hacia abajo: 999 créditos no son un céntimo."""
+    from nexus_api.billing.pricing import credits_to_cents
+
+    assert credits_to_cents(1_234_567) == 1_234
+    assert credits_to_cents(999) == 0
+    assert credits_to_cents(1_000) == 1
+
+
+async def test_spend_rounds_to_the_nearest_cent() -> None:
+    from nexus_api.billing.pricing import credits_to_cents
+
+    assert credits_to_cents(1_500, nearest=True) == 2
+    assert credits_to_cents(1_499, nearest=True) == 1
+
+
+async def test_whatever_the_partner_writes_comes_back_the_same() -> None:
+    """CE-002: asignar un importe y volver a leerlo da el mismo importe."""
+    from nexus_api.billing.pricing import cents_to_credits, credits_to_cents
+
+    for cents in (0, 1, 99, 2_550, 4_000, 123_456, 50_000_000):
+        assert credits_to_cents(cents_to_credits(cents)) == cents
+
+
+async def test_the_purchase_uses_the_same_conversion() -> None:
+    from nexus_api.billing.pricing import cents_to_credits
+
+    for cents in (500, 5_000, 123_456):
+        assert units_for_cents(cents) == cents_to_credits(cents)
+
+
+async def test_the_server_writes_money_like_the_console() -> None:
+    from nexus_api.billing.pricing import format_usd
+
+    assert format_usd(1_235, "es") == "12,35 US$"
+    assert format_usd(200_000, "es") == "2000,00 US$"  # Intl es: no grouping under 10 000
+    assert format_usd(1_234_550, "es") == "12.345,50 US$"
+    assert format_usd(1_235, "en") == "$12.35"
+    assert format_usd(123_456_789, "en") == "$1,234,567.89"

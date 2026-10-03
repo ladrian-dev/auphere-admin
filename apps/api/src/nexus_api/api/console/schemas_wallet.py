@@ -6,25 +6,52 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+#: Spec 027: the partner reads and writes money. Every amount is an integer
+#: number of cents of ``currency``; the ledger stays in credits and only
+#: ``billing.pricing`` converts. No float: a float of money lies in the last
+#: cent.
+MAX_CENTS = 100_000_000  # 1 000 000 US$, far above any real cap
+
 
 class WalletOut(BaseModel):
-    included_remaining: int
-    purchased_remaining: int
-    available: int
-    reserve: int
+    included_remaining_cents: int
+    purchased_remaining_cents: int
+    available_cents: int
+    #: ``available`` minus the sum of caps. Negative when the caps promise
+    #: more than there is.
+    reserve_cents: int
     included_expires_at: datetime | None
     exhausted: bool
-    #: Spec 004 (R7.1) — el TAMAÑO del pool semanal, para que la consola pueda
-    #: pintar una proporción sin derivarla de restas que no significan eso.
-    #: El partner no ve esta cifra; ve el porcentaje que sale de ella.
-    pool_size: int = 0
+    #: Spec 004 (R7.1): the share of the included pool already used.
     included_percent_used: float = 0.0
+    currency: str = "USD"
 
 
 class AllocationOut(BaseModel):
     client_ref: str
-    cap: int
-    remaining: int
+    cap_cents: int
+    remaining_cents: int
+    currency: str = "USD"
+
+
+class MoveAllocationIn(BaseModel):
+    """Spec 016 (R3.1): mover tope entre dos clientes propios, de una vez.
+    Spec 027: la cantidad es dinero."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_ref: str = Field(min_length=1, max_length=120)
+    to_ref: str = Field(min_length=1, max_length=120)
+    amount_cents: int = Field(ge=1, le=MAX_CENTS)
+
+
+class MoveAllocationOut(BaseModel):
+    """Los dos topes después del movimiento. ``from``/``to`` como en el body."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: AllocationOut = Field(alias="from")
+    to: AllocationOut
 
 
 class AllocationIn(BaseModel):
@@ -32,7 +59,7 @@ class AllocationIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    cap: int = Field(ge=0)
+    cap_cents: int = Field(ge=0, le=MAX_CENTS)
 
 
 # ``PurchasedIn`` se borró con la spec 005, junto a la ruta que lo usaba. Era

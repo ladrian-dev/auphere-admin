@@ -33,7 +33,22 @@ Igual que `infra/vercel/README.md` describe para el admin:
 | `NEXUS_CONSOLE_JWT_ISSUER` | `nexus-console` | Debe coincidir con la API. |
 | `NEXUS_CONSOLE_JWT_AUDIENCE` | `nexus-api` | Idem. |
 | `NEXUS_CONSOLE_ORIGIN` | `https://console.staging.auphere.com` | Origen propio (CSP/cookies). |
-| `NEXUS_META_APP_ID`, `NEXUS_META_CONFIG_ID`, `NEXUS_META_GRAPH_VERSION` | de la app de Meta | Opcionales: sin ellas el botón de Embedded Signup sale deshabilitado con motivo. |
+| `NEXUS_META_APP_ID`, `NEXUS_META_CONFIG_ID_WA_CLOUD_API`, `NEXUS_META_CONFIG_ID_WA_COEXISTENCE`, `NEXUS_META_GRAPH_API_VERSION` | de la app de Meta (los mismos valores que `meta_app_id` / `meta_config_id_*` de la API en ese entorno) | Opcionales: sin ellas Canales muestra la nota «el número lo conecta Auphere», sin botón (spec 016, R1.3). Con ellas, el botón real de Embedded Signup. |
+
+**Meta, además de las variables**: el origen de la consola tiene que estar en
+la app de Meta (`957213733862330`) → «Inicio de sesión con Facebook para
+empresas → Configurar → Dominios permitidos para el SDK para JavaScript», o la
+ventana de Embedded Signup se abre y Meta la rechaza. Añadidos el 2026-09-23:
+`https://console.staging.auphere.com/` y `https://console.auphere.com/`. Los
+identificadores de configuración están en «Configuraciones» de esa misma
+sección (Cloud API `1976547999669619`, Coexistencia `27787800820807899`).
+
+**Ojo con el ámbito en Vercel**: `console.staging.auphere.com` lo sirve el
+entorno **Preview** (rama `develop`) del proyecto `auphere-console-staging`;
+`Production` de ese proyecto es `auphere-console-staging.vercel.app` (rama
+`main`). Una variable marcada solo «Production» no llega a staging. Las tres de
+Meta estuvieron así desde el 19-ago hasta el 23-sep-2026, cuando se ampliaron a
+«Production and Preview».
 
 **No hay ninguna variable de Postgres.** Si ves `NEXUS_CONSOLE_DATABASE_URL`
 en algún sitio, es de antes de ADR-032 y sobra.

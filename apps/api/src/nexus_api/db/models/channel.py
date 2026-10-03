@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +12,13 @@ from nexus_api.db.base import Base
 from nexus_api.db.models._enum import pg_enum
 from nexus_api.db.models._mixins import TenantScopedMixin, TimestampMixin, UUIDPrimaryKey
 from nexus_api.db.types import FernetEncrypted
+
+# The Playground's own ``web`` channel (see ``api/qa.py``). It is a real
+# ``channels`` row so QA conversations have somewhere to live, but it never
+# carries customer traffic: onboarding, home figures and the conversations
+# lane must not count it, or the screen says "channel connected" and
+# "first conversation" after a dry run.
+QA_PLAYGROUND_PROVIDER = "qa_playground"
 
 
 class ChannelType(str, enum.Enum):
@@ -35,7 +42,20 @@ class ChannelStatus(str, enum.Enum):
 class Channel(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     __tablename__ = "channels"
     __table_args__ = (
-        UniqueConstraint("type", "provider_identifier", name="uq_channels_type_provider_id"),
+        # Spec 021: dos canales **vivos** no comparten número en toda la
+        # plataforma; uno vivo y uno desvinculado sí. Antes era una
+        # restricción sin condición, y un número desvinculado quedaba
+        # ocupado para siempre: el mismo cliente podía reactivarlo, pero
+        # ningún otro —ni de otro partner— podía conectarlo. La fila se
+        # conserva (historial, reconectar); lo que deja de hacer es
+        # ocupar sitio.
+        Index(
+            "uq_channels_live_number",
+            "type",
+            "provider_identifier",
+            unique=True,
+            postgresql_where=text("status <> 'disconnected'"),
+        ),
     )
 
     type: Mapped[ChannelType] = mapped_column(

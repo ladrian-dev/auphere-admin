@@ -9,7 +9,7 @@ import { type Page, expect, test } from "@playwright/test";
  *     dialog is exactly where a11y regressions hide, because the audit of
  *     the page behind it never opens it);
  *  2. no horizontal overflow at 360 px and 1920 px, and none with the
- *     German-string expansion (+30 %);
+ *     texto un 30 % más largo (una traducción que se alarga);
  *  3. the keyboard contract of §14: ⌘J opens, focus is trapped, `Esc`
  *     closes, and the width grabber responds to arrows — WCAG 2.2 2.5.7
  *     forbids a drag-only control;
@@ -22,6 +22,15 @@ import { type Page, expect, test } from "@playwright/test";
  * Phase 2, when the two halves meet.
  */
 const DRAWER = '[data-slot="sheet-content"]';
+
+// ``partners.companion_enabled`` is off by default. Without the flag the
+// drawer cannot open, and eleven failures would say "broken" about a
+// feature the partner simply does not have: the honest verdict is skip.
+test.beforeEach(async ({ page }) => {
+  const res = await page.request.get("/api/companion/enabled");
+  const body = (await res.json().catch(() => ({}))) as { companion_enabled?: boolean };
+  test.skip(res.ok() && body.companion_enabled === false, "the Companion is not enabled for this partner");
+});
 
 /**
  * Wait for the opening orchestration to finish.
@@ -197,8 +206,8 @@ test.describe("CO-03 — the Companion drawer", () => {
         if (t.trim().length < 4) continue;
         if (n.parentElement?.closest("svg")) continue;
         const extra = Math.ceil(t.trim().length * 0.3);
-        const words = Math.max(1, Math.round(extra / 13));
-        n.textContent = t + " Überprüfungs".repeat(words);
+        const words = Math.max(1, Math.round(extra / 15));
+        n.textContent = t + " adicionalmente".repeat(words);
       }
     }, DRAWER);
     await page.waitForTimeout(100);

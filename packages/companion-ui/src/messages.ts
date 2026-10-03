@@ -98,8 +98,8 @@ export const companionMessages = {
   "companion.loading": { es: "Cargando la conversación…", en: "Loading the conversation…" },
   "companion.empty.title": { es: "¿En qué te echo una mano?", en: "What can I help you with?" },
   "companion.empty.body": {
-    es: "Pregunta lo que quieras sobre tus clientes, sus agentes o tu consumo. En modo Consultar solo leo; para cambiar algo tendrás que confirmarlo tú.",
-    en: "Ask anything about your clients, their agents or your usage. In Consult mode I only read; to change anything you will have to confirm it yourself.",
+    es: "Pregunta lo que quieras sobre tus clientes, sus agentes o tu consumo. En modo Consultar solo leo, y para cambiar algo tendrás que confirmarlo tú.",
+    en: "Ask anything about your clients, their agents or your usage. In Consult mode I only read, and to change anything you will have to confirm it yourself.",
   },
   "companion.empty.suggestions": { es: "Para empezar", en: "To get started" },
   "companion.error.title": { es: "No se pudo cargar la conversación", en: "Could not load the conversation" },
@@ -115,8 +115,8 @@ export const companionMessages = {
   },
   "companion.partial.title": { es: "Falta parte de esta conversación", en: "Part of this conversation is missing" },
   "companion.partial.body": {
-    es: "Esta conversación empezó en otro navegador o dispositivo. Se muestra desde aquí en adelante; lo anterior sigue guardado en el servidor.",
-    en: "This conversation started in another browser or device. It is shown from here on; what came before is still stored server-side.",
+    es: "Esta conversación empezó en otro navegador o dispositivo. Se muestra desde aquí en adelante, y lo anterior sigue guardado en el servidor.",
+    en: "This conversation started in another browser or device. It is shown from here on, and what came before is still stored server-side.",
   },
   "companion.reconnecting": { es: "Reconectando…", en: "Reconnecting…" },
 
@@ -183,6 +183,13 @@ export const companionMessages = {
   "companion.tool.name.console.get_policy": { es: "Leyendo la política", en: "Reading the policy" },
   "companion.tool.name.console.list_tools": { es: "Listando las herramientas activas", en: "Listing the active tools" },
   "companion.tool.name.console.list_skills": { es: "Listando las skills", en: "Listing the skills" },
+  // Spec 017 (R5): lo que el agente de un cliente sabe hacer. Dice «este
+  // agente» y no «la plataforma» para que no se confunda con
+  // `console.get_capabilities`, que está más abajo.
+  "companion.tool.name.console.get_client_capabilities": {
+    es: "Leyendo lo que sabe hacer este agente",
+    en: "Reading what this agent can do",
+  },
   "companion.tool.name.console.list_knowledge": { es: "Listando el conocimiento", en: "Listing the knowledge base" },
   "companion.tool.name.console.list_channels": { es: "Listando los canales", en: "Listing the channels" },
   "companion.tool.name.console.channel_diagnostics": { es: "Diagnosticando el canal", en: "Diagnosing the channel" },
@@ -192,10 +199,10 @@ export const companionMessages = {
   "companion.tool.name.console.conversation_stats": { es: "Consultando las conversaciones", en: "Checking the conversations" },
   "companion.tool.name.console.get_audit": { es: "Revisando la auditoría", en: "Reviewing the audit trail" },
   "companion.tool.name.console.get_onboarding": { es: "Revisando la puesta en marcha", en: "Reviewing the onboarding" },
-  "companion.tool.name.console.get_quota": { es: "Consultando tu cupo", en: "Checking your quota" },
-  "companion.tool.name.console.get_wallet": { es: "Consultando los tokens de cuota", en: "Checking quota tokens" },
-  "companion.tool.name.console.list_allocations": { es: "Listando las asignaciones de cupo", en: "Listing quota allocations" },
-  "companion.tool.name.console.propose_allocation": { es: "Preparando un cambio de cupo", en: "Drafting a quota cap change" },
+  "companion.tool.name.console.get_quota": { es: "Consultando tu resumen", en: "Checking your summary" },
+  "companion.tool.name.console.get_wallet": { es: "Consultando tu saldo", en: "Checking your balance" },
+  "companion.tool.name.console.list_allocations": { es: "Listando los topes de tus clientes", en: "Listing your clients' caps" },
+  "companion.tool.name.console.propose_allocation": { es: "Preparando un cambio de tope", en: "Drafting a cap change" },
   "companion.tool.name.console.get_prompt_library": { es: "Consultando la biblioteca de prompts", en: "Checking the prompt library" },
   "companion.tool.name.console.apply": { es: "Aplicando el cambio confirmado", en: "Applying the confirmed change" },
 
@@ -211,9 +218,13 @@ export const companionMessages = {
     en: "Checking what is and is not possible",
   },
   "companion.tool.name.support.request_help": { es: "Preparando una incidencia", en: "Drafting a support ticket" },
+  // «feature», no «capability»: esto es pedirle a Auphere algo que la
+  // consola no hace todavía, y no tiene nada que ver con las Habilidades de
+  // un agente. En español siempre dijo «funcionalidad»; el inglés se había
+  // quedado con la palabra de la pantalla que se renombró (spec 018, US4).
   "companion.tool.name.support.request_capability": {
     es: "Preparando una petición de funcionalidad",
-    en: "Drafting a capability request",
+    en: "Drafting a feature request",
   },
 
   // ── plan card (§2.1) ─────────────────────────────────────────────────
@@ -368,18 +379,18 @@ export const companionMessages = {
   "companion.kind.publish": { es: "Publicar una versión", en: "Publish a version" },
   "companion.kind.channel_role": { es: "Cambiar el rol de un canal", en: "Change a channel's role" },
   "companion.kind.usage_alerts": { es: "Cambiar los avisos de consumo", en: "Change the usage alerts" },
-  "companion.kind.allocation": { es: "Cambiar el cupo de un cliente", en: "Change a client quota cap" },
+  "companion.kind.allocation": { es: "Cambiar el tope de gasto de un cliente", en: "Change a client's spending cap" },
   "companion.kind.invite": { es: "Invitar a alguien al equipo", en: "Invite someone to the team" },
   // v2 §4.1. Both PROPOSE — `console.apply` is still the only `mutates`.
   "companion.kind.support_help": { es: "Abrir una incidencia", en: "Open a support ticket" },
-  "companion.kind.support_capability": { es: "Pedir una funcionalidad", en: "Request a capability" },
+  "companion.kind.support_capability": { es: "Pedir una funcionalidad", en: "Request a feature" },
   "companion.kind.unknown": { es: "Cambio propuesto", en: "Proposed change" },
 
   // ── support (v2 §4 · investigación §25) ──────────────────────────────
   //
   // The Companion never closes with a "no"; it closes with a path.
   "companion.support.category.help": { es: "Incidencia", en: "Support ticket" },
-  "companion.support.category.capability": { es: "Petición de funcionalidad", en: "Capability request" },
+  "companion.support.category.capability": { es: "Petición de funcionalidad", en: "Feature request" },
   "companion.support.need": { es: "Qué necesitas", en: "What you need" },
   "companion.support.checked": { es: "Ya comprobado", en: "Already checked" },
   "companion.support.alternative": { es: "Alternativa", en: "Alternative" },

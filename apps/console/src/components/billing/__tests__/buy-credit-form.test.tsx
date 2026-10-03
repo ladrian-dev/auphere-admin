@@ -79,18 +79,18 @@ describe("los importes imposibles no salen de la pantalla", () => {
   });
 });
 
-describe("se dice qué compra ese dinero", () => {
-  it("muestra las unidades equivalentes al importe escrito", async () => {
+describe("se dice qué compra ese dinero (spec 027: dinero, no unidades)", () => {
+  it("lo que paga es lo que recibe de saldo", async () => {
     const user = userEvent.setup();
     const { container } = form();
     await user.clear(screen.getByLabelText(/importe|cantidad/i));
     await user.type(screen.getByLabelText(/importe|cantidad/i), "50");
-    // 50 USD a 10 USD por millón = 5 millones de unidades.
-    expect(container.textContent?.replace(/[.\s ]/g, "")).toContain("5000000");
+    expect(container.textContent?.replace(/\u00a0/g, " ")).toContain("Recibirás 50,00 US$ de saldo.");
+    expect(container.textContent).not.toMatch(/unidades|créditos/);
   });
 
   it("con el campo vacío no promete nada", () => {
     const { container } = form();
-    expect(container.textContent).not.toContain("000000");
+    expect(container.textContent).not.toContain("Recibirás");
   });
 });

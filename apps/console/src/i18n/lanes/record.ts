@@ -1,0 +1,169 @@
+/** ES/EN messages of lane `record` — la ficha de cliente (spec 017).
+ *  Se esparce en `i18n/messages.ts`. Una clave sin consumidor es huérfana
+ *  y la caza `__tests__/no-orphan-keys.test.ts`, así que aquí solo entra
+ *  lo que la iteración en curso usa. */
+export const recordMessages = {
+  // ── navegación de la ficha (R2) ───────────────────────────────────
+  "clients.nav.label": { es: "Sección de la ficha", en: "Record section" },
+  "clients.nav.group.observe": { es: "Observar", en: "Observe" },
+  "clients.nav.group.configure": { es: "Configurar", en: "Configure" },
+  "clients.nav.group.connect": { es: "Conectar", en: "Connect" },
+  "clients.nav.capabilities": { es: "Habilidades", en: "Skills" },
+  "clients.nav.integrations": { es: "Conectores", en: "Connectors" },
+  "clients.nav.agentSettings": { es: "Ajustes", en: "Settings" },
+  "clients.nav.clientData": { es: "Datos del cliente", en: "Client details" },
+  "clients.nav.mark.draft": { es: "cambios sin publicar", en: "unpublished changes" },
+  "clients.nav.mark.incident": { es: "incidencia", en: "incident" },
+  "clients.nav.suffix.draft": { es: "sin publicar", en: "unpublished" },
+  "clients.nav.suffix.incident": { es: "incidencia", en: "incident" },
+
+  // ── puesta en marcha (R1) ─────────────────────────────────────────
+  // «Puesta en marcha» es cómo lo llamamos nosotros; el partner lo que
+  // quiere saber es qué le falta para que su agente empiece a trabajar. El
+  // título lo dice, y la descripción quita la ansiedad del orden.
+  "clients.setup.title": { es: "Pasos para activar tu agente", en: "Steps to get your agent live" },
+  "clients.setup.description": {
+    es: "Cuando estén hechos, tu agente empieza a atender. Puedes hacerlos en el orden que quieras.",
+    en: "Once these are done, your agent starts answering. You can do them in any order.",
+  },
+  "clients.setup.done": { es: "{done} de {total} pasos hechos", en: "{done} of {total} steps done" },
+  "clients.setup.agent": { es: "Agente", en: "Agent" },
+  // El dato del paso «Agente» cuando queda un borrador: lo publicado es lo
+  // que el agente dice, así que un borrador abierto es trabajo sin terminar.
+  "clients.setup.agent.draft": { es: "v{v} · cambios sin publicar", en: "v{v} · unpublished changes" },
+  "clients.setup.channel": { es: "Canal", en: "Channel" },
+  "clients.setup.quota": { es: "Saldo", en: "Balance" },
+  "clients.setup.activation": { es: "Activación", en: "Activation" },
+  "clients.servingSince": { es: "Atendiendo desde el {date}", en: "Serving since {date}" },
+  // Spec 024: el agente responde solo a una lista de números.
+  "clients.audience.only": { es: "Responde solo a {n} números", en: "Answers only {n} numbers" },
+  "clients.audience.badge": { es: "Solo {n} números", en: "Only {n} numbers" },
+  "clients.setup.detail.agent": { es: "versión {version}", en: "version {version}" },
+  "clients.setup.next": { es: "Siguiente paso", en: "Next step" },
+  "clients.setup.next.agent": { es: "Preparar el agente", en: "Prepare the agent" },
+  "clients.setup.next.channel": { es: "Conectar un canal", en: "Connect a channel" },
+  "clients.setup.next.quota": { es: "Asignar saldo", en: "Assign balance" },
+  "clients.setup.next.activation": { es: "Empezar a atender", en: "Start serving" },
+  "clients.setup.why.agent": { es: "Sin una versión publicada, el agente no sabe qué decir.", en: "Without a published version the agent does not know what to say." },
+  "clients.setup.why.channel": { es: "Un canal es por donde llegan los mensajes: hoy WhatsApp.", en: "A channel is how messages arrive: today, WhatsApp." },
+  "clients.setup.why.quota": { es: "El saldo es lo que el agente gasta al responder.", en: "The balance is what the agent spends when it answers." },
+  "clients.setup.why.activation": { es: "El último clic: a partir de ahí el agente atiende.", en: "The last click: from then on the agent serves." },
+  "clients.setup.who.agents": { es: "Lo hace el propietario, un administrador o un editor.", en: "The owner, an admin or a builder does this." },
+  "clients.setup.who.channels": { es: "Lo hace el propietario, un administrador o un editor.", en: "The owner, an admin or a builder does this." },
+  "clients.setup.who.usage": { es: "Lo hace el propietario o un administrador.", en: "The owner or an admin does this." },
+  "clients.setup.who.clients": { es: "Lo hace el propietario, un administrador o un editor.", en: "The owner, an admin or a builder does this." },
+
+  // ── menú «Más» de la cabecera (R1.6) ──────────────────────────────
+  "clients.more.label": { es: "Más", en: "More" },
+  "clients.more.aria": { es: "Más acciones", en: "More actions" },
+  "clients.more.copyRef": { es: "Copiar referencia", en: "Copy reference" },
+  "clients.more.copyRef.done": { es: "Referencia copiada.", en: "Reference copied." },
+  "clients.more.why.pause": { es: "Deja de atender. Se reactiva cuando quieras.", en: "Stops serving. Reactivate whenever you want." },
+  "clients.more.why.resume": { es: "Vuelve a atender con la versión que tenía.", en: "Serves again with the version it had." },
+  "clients.more.why.activate": { es: "A partir de ese clic, el agente atiende.", en: "From that click on, the agent serves." },
+  "clients.more.why.archive": { es: "Sale de la lista, no se borra nada.", en: "Leaves the list, nothing is deleted." },
+  "clients.more.why.unarchive": { es: "Vuelve a la lista, como estaba.", en: "Back to the list, as it was." },
+  "clients.more.why.copyRef": { es: "El identificador de este cliente en la API.", en: "This client's identifier in the API." },
+  "clients.more.why.delete": { es: "Pide escribir el nombre. No se puede deshacer.", en: "Asks you to type the name. Cannot be undone." },
+
+  // ── crédito del cliente (R1.2) ────────────────────────────────────
+  "clients.quota.title": { es: "Saldo", en: "Balance" },
+  "clients.quota.label": { es: "Saldo restante", en: "Balance left" },
+  "clients.quota.value": { es: "Quedan {remaining} de {cap}", en: "{remaining} of {cap} left" },
+  "clients.quota.spent": { es: "{spent} gastados este mes.", en: "{spent} spent this month." },
+  "clients.quota.none": { es: "Sin saldo asignado. El agente no puede atender hasta que se le asigne.", en: "No balance assigned. The agent cannot serve until it has some." },
+  "clients.quota.help": {
+    es: "Lo que este cliente puede gastar cada mes. Se renueva el día 1, y lo que sobra no se acumula.",
+    en: "What this client may spend each month. It renews on the 1st, and what is left does not carry over.",
+  },
+  "clients.quota.manage": { es: "Cambiar tope", en: "Change cap" },
+
+  // ── borrador sin publicar (R3) ────────────────────────────────────
+  "draft.bar.unpublishedIn": { es: "Cambios sin publicar en", en: "Unpublished changes in" },
+  "draft.bar.and": { es: "y", en: "and" },
+  "draft.bar.diff": { es: "Ver los cambios", en: "See the changes" },
+  "draft.bar.publish": { es: "Revisar y publicar", en: "Review and publish" },
+  "draft.bar.publishing": { es: "Publicando…", en: "Publishing…" },
+  "draft.bar.retry": { es: "Reintentar", en: "Try again" },
+  "draft.bar.who": { es: "Puede publicar: el propietario, un administrador o un editor", en: "Can publish: the owner, an admin or a builder" },
+  "draft.bar.announce": { es: "Hay cambios sin publicar en este cliente.", en: "This client has unpublished changes." },
+  "draft.bar.failureAnnounce": { es: "No se pudo publicar. La versión activa no ha cambiado.", en: "Could not publish. The active version has not changed." },
+  "draft.bar.failure": {
+    es: "La versión que atiende no ha cambiado y el borrador no se ha perdido. Suele resolverse al reintentar.",
+    en: "The serving version has not changed and the draft is not lost. Trying again usually resolves it.",
+  },
+  "draft.bar.published": { es: "Publicado. El agente ya responde con los cambios.", en: "Published. The agent now answers with the changes." },
+  "draft.published.title": { es: "Versión {version} publicada", en: "Version {version} published" },
+  "draft.published.body": {
+    es: "El agente ya responde con los cambios. Deshacer vuelve a la versión {previous}.",
+    en: "The agent already answers with the changes. Undoing returns to version {previous}.",
+  },
+  "draft.published.bodyFirst": {
+    es: "El agente ya responde con los cambios. Era la primera versión, así que no hay ninguna anterior a la que volver.",
+    en: "The agent already answers with the changes. It was the first version, so there is none to go back to.",
+  },
+  "draft.published.undo": { es: "Deshacer", en: "Undo" },
+  "draft.published.left": { es: "quedan {minutes} min", en: "{minutes} min left" },
+  "draft.published.undone": { es: "Se ha vuelto a la versión {version}.", en: "Back to version {version}." },
+
+  // ── la hoja que revisa antes de publicar (R3.2) ───────────────────
+  "draft.diff.title": { es: "Publicar la versión {version}", en: "Publish version {version}" },
+  "draft.diff.description": {
+    es: "Lo que cambia respecto a la versión {active}, la que atiende ahora. Al publicar, el agente lo aplica al instante.",
+    en: "What changes against version {active}, the one serving now. On publishing, the agent applies it at once.",
+  },
+  "draft.diff.descriptionFirst": {
+    es: "Este cliente aún no tiene ninguna versión atendiendo: al publicar, esta será la primera.",
+    en: "This client has no serving version yet: publishing makes this the first one.",
+  },
+  "draft.diff.loading": { es: "Leyendo los cambios…", en: "Reading the changes…" },
+  "draft.diff.what": { es: "Qué", en: "What" },
+  "draft.diff.before": { es: "Antes", en: "Before" },
+  "draft.diff.after": { es: "Ahora", en: "Now" },
+  "draft.diff.empty": { es: "El borrador no cambia nada respecto a la versión activa.", en: "The draft changes nothing against the active version." },
+  "draft.diff.cancel": { es: "Cancelar", en: "Cancel" },
+  "draft.diff.publish": { es: "Publicar la versión {version}", en: "Publish version {version}" },
+  "draft.diff.enabled": { es: "activada", en: "on" },
+  "draft.diff.disabled": { es: "apagada", en: "off" },
+  "draft.diff.added": { es: "añadido", en: "added" },
+  "draft.diff.removed": { es: "quitado", en: "removed" },
+  "draft.diff.promptOpen": { es: "Ver las instrucciones línea a línea", en: "See the instructions line by line" },
+  "draft.diff.promptChanged": { es: "Las instrucciones del agente cambian.", en: "The agent's instructions change." },
+  "agent.changes": { es: "Cambia", en: "Changes" },
+  // Spec 018 (R3.1): «Ajustes» ya no es una pestaña, así que la barra no
+  // puede mandar a una pantalla que no existe. El borrador de los ajustes
+  // del agente se revisa y se publica desde «Agente», que es donde viven.
+  "draft.screen.settings": { es: "Agente", en: "Agent" },
+  "draft.screen.capabilities": { es: "Habilidades", en: "Skills" },
+  "draft.screen.knowledge": { es: "Conocimiento", en: "Knowledge" },
+  "draft.screen.prompt": { es: "Instrucciones", en: "Instructions" },
+  "draft.field.identity": { es: "Identidad", en: "Identity" },
+  "draft.field.tone": { es: "Tono", en: "Tone" },
+  "draft.field.objective": { es: "Objetivo", en: "Objective" },
+  "draft.field.schedule": { es: "Horario", en: "Schedule" },
+  "draft.field.languages": { es: "Idiomas", en: "Languages" },
+  "draft.field.escalation": { es: "Escalado a una persona", en: "Escalation to a human" },
+  "draft.field.audience": { es: "A quién responde", en: "Who it answers" },
+  "draft.field.payment_review": { es: "Revisión de pagos", en: "Payment review" },
+  "draft.field.ai_disclosure": { es: "Aviso de que es una IA", en: "Disclosure that it is an AI" },
+
+  // Cada ajuste dicho en una frase. La API contesta con su JSON; enseñarlo
+  // en crudo («triggers: user_asks_human, angry…») no es revisar nada.
+  "draft.value.none": { es: "sin definir", en: "not set" },
+  "draft.value.identity": { es: "Se presenta como «{name}»", en: "Introduces itself as “{name}”" },
+  "draft.value.identity.none": { es: "Sin nombre propio", en: "No name of its own" },
+  "draft.value.tone": { es: "Estilo {style}", en: "{style} style" },
+  "draft.value.objective": { es: "«{text}»", en: "“{text}”" },
+  "draft.value.objective.none": { es: "Sin objetivo escrito", en: "No objective written" },
+  "draft.value.schedule.always": { es: "Atiende siempre", en: "Serves at all hours" },
+  "draft.value.schedule.hours": { es: "Con horario: {days} días con franja ({timezone})", en: "On a schedule: {days} days with hours ({timezone})" },
+  "draft.value.languages": { es: "Responde en {primary} · admite {allowed}", en: "Answers in {primary} · accepts {allowed}" },
+  "draft.value.escalation.on": { es: "Pasa a una persona en {count} situaciones", en: "Hands over to a human in {count} situations" },
+  "draft.value.escalation.off": { es: "Nunca pasa a una persona", en: "Never hands over to a human" },
+  "draft.value.disclosure.on": { es: "Avisa de que es una IA", en: "Says it is an AI" },
+  "draft.value.disclosure.off": { es: "No avisa de que es una IA", en: "Does not say it is an AI" },
+  "draft.value.audience.everyone": { es: "A todo el mundo", en: "Everyone" },
+  "draft.value.audience.list": { es: "Solo a {count} números", en: "Only {count} numbers" },
+  "draft.value.paymentReview.none": { es: "Nadie revisa pagos", en: "Nobody reviews payments" },
+  "draft.value.paymentReview.some": { es: "Revisores de pagos: {count}", en: "Payment reviewers: {count}" },
+} as const;

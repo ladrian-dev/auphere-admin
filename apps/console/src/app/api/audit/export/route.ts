@@ -9,6 +9,7 @@ const query = z.object({
   actor: z.string().max(255).optional(),
   action: z.string().max(80).optional(),
   client: z.string().max(255).optional(),
+  category: z.string().max(40).optional(),
   after: z.string().datetime({ offset: true }).optional(),
   before: z.string().datetime({ offset: true }).optional(),
   lang: z.enum(["es", "en"]).default("es"),

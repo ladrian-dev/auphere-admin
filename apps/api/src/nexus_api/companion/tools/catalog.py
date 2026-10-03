@@ -302,17 +302,64 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
         max_chars=6_000,
     ),
     ToolSpec(
+        # No es ``console.get_capabilities``: ese nombre ya es el documento de
+        # plataforma (`/console/capabilities`, «qué existe y qué no en
+        # Auphere»), y dos herramientas de soporte lo citan por su nombre. Se
+        # llama como ``console.get_client_model``, que es lo que es: algo de
+        # un cliente concreto.
+        name="console.get_client_capabilities",
+        path="/console/clients/{client_ref}/capabilities",
+        label="Capacidades del agente",
+        description=(
+            "Devuelve lo que el agente de un cliente sabe hacer, con el nombre que "
+            "el negocio entiende ('Reservar una cita', no booking.create_appointment), "
+            "agrupado por lo que se quiere conseguir, y diciendo de cada una si está "
+            "encendida, si está en la versión publicada y si le falta una integración "
+            "para funcionar de verdad. Llama a esto cuando el usuario pregunte qué "
+            "puede hacer el agente de un cliente, por qué no hace algo que espera, o "
+            "qué le falta para hacerlo: devuelve las palabras que él usa. Junta "
+            "herramientas y habilidades, así que no las separes en tu respuesta si él "
+            "no las separa. Distingue 'encendida' de 'funciona': una capacidad "
+            "encendida a la que le falta su conector viene con usable en false, y "
+            "decir que ya funciona sería mentir. Filtra por el sector del cliente y "
+            "dice cuántas esconde; pide all si el usuario pregunta por algo que no "
+            "aparece. No lo confundas con console.get_capabilities, que es el "
+            "documento de qué existe en la plataforma y no habla de ningún cliente."
+        ),
+        params=(
+            _ref_param("el cliente cuyas capacidades quieres leer"),
+            ToolParam(
+                name="all",
+                type="boolean",
+                description=(
+                    "Incluye también las capacidades de otros sectores, marcadas "
+                    "como tales. Por defecto solo las del sector del cliente."
+                ),
+            ),
+            ToolParam(
+                name="lang",
+                type="string",
+                description="Idioma de los nombres de negocio. Por defecto español.",
+                enum=("es", "en"),
+            ),
+        ),
+        max_chars=16_000,
+    ),
+    ToolSpec(
         name="console.list_tools",
         path="/console/clients/{client_ref}/tools",
         label="Herramientas del agente",
         description=(
             "Devuelve el catálogo real de herramientas disponibles para un cliente "
-            "y cuáles tiene activas su agente, más el estado de sus conectores. "
-            "Llama a esto cuando el usuario pregunte qué puede hacer el agente de "
-            "un cliente, por qué no hace algo que espera, o qué herramienta le "
-            "falta. Es también la respuesta correcta a '¿qué integraciones "
-            "tenéis?', porque es el catálogo vivo y no un manual que envejece. No "
-            "inventes nombres de herramienta que no salgan aquí."
+            "y cuáles tiene activas su agente, más el estado de sus conectores, con "
+            "sus nombres técnicos. Llama a esto cuando el usuario pregunte '¿qué "
+            "integraciones tenéis?' —es el catálogo vivo y no un manual que "
+            "envejece—, cuando nombre una herramienta por su nombre técnico, y "
+            "cuando necesites el estado de un conector para explicar un fallo. "
+            "Para hablar de lo que el agente sabe hacer usa "
+            "console.get_client_capabilities, "
+            "que trae los nombres que el usuario entiende y las habilidades en la "
+            "misma lista. No inventes nombres de herramienta que no salgan aquí."
         ),
         params=(_ref_param("el cliente cuyo catálogo quieres leer"),),
         max_chars=12_000,
@@ -554,7 +601,8 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
         label="Resumen y cuota del partner",
         description=(
             "Devuelve el resumen del partner: clientes usados contra el máximo "
-            "contratado, conversaciones del periodo, unidades de consumo, agentes "
+            "contratado, conversaciones del periodo, mensajes del mes, saldo y "
+            "gasto en dólares, agentes "
             "con incidencias y acciones pendientes. Llama a esto ANTES de plantear "
             "dar de alta un cliente nuevo — si no queda cuota, el alta falla y más "
             "vale decirlo antes— y cuando el usuario pida una foto general de cómo "
@@ -566,28 +614,31 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="console.get_wallet",
         path="/console/wallet",
-        label="Cuota del partner",
+        label="Saldo del partner",
         description=(
-            "Devuelve el libro de cuota del partner: tokens incluidos restantes, "
-            "tokens comprados restantes, disponible, reserva (disponible menos la "
-            "suma de topes) y si el libro está agotado. Llama a esto cuando el "
-            "usuario pregunte por tokens, cupo, reserva, recarga o si queda "
-            "saldo para asignar a un cliente. Las cifras son tokens de cuota, "
-            "nunca euros. No lo uses para el consumo del mes ni para la "
-            "proyección: eso es console.get_usage. Tampoco para el tope de un "
-            "cliente: eso es console.list_allocations."
+            "Devuelve el saldo del partner en dinero: incluido restante de la "
+            "membresía, comprado restante, disponible, reserva (disponible menos "
+            "la suma de topes) y si está agotado. Las cifras van en céntimos de "
+            "dólar (campos *_cents): 12345 son 123,45 US$. Responde siempre en "
+            "dólares con dos decimales y nunca hables de créditos ni de tokens. "
+            "Llama a esto cuando el usuario pregunte cuánto saldo le queda, por "
+            "la reserva, por recargar o si queda saldo para asignar a un cliente. "
+            "No lo uses para el consumo del mes ni para la proyección: eso es "
+            "console.get_usage. Tampoco para el tope de un cliente: eso es "
+            "console.list_allocations."
         ),
         max_chars=3_000,
     ),
     ToolSpec(
         name="console.list_allocations",
         path="/console/wallet/allocations",
-        label="Asignaciones de cuota",
+        label="Topes de los clientes",
         description=(
-            "Lista las asignaciones de cuota del partner: cada fila es un "
-            "client_ref con su tope y lo que le queda. Nunca trae tenant_id. "
-            "Llama a esto cuando el usuario pregunte cuánto cupo tiene un "
-            "cliente, a quién se le asignó, o antes de proponer un cambio de "
+            "Lista los topes de gasto de los clientes del partner: cada fila es "
+            "un client_ref con su tope y lo que le queda, en céntimos de dólar "
+            "(cap_cents, remaining_cents). Responde en dólares. Nunca trae "
+            "tenant_id. Llama a esto cuando el usuario pregunte cuánto puede "
+            "gastar un cliente, cuánto le queda, o antes de proponer un cambio de "
             "tope. Si un cliente no aparece, aún no tiene fila de asignación. "
             "No lo uses para el saldo del partner entero: eso es "
             "console.get_wallet. No inventes un tenant_id."
@@ -1046,25 +1097,26 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
         tool_class="propose",
         permission_policy="always_ask",
         path="/console/wallet",
-        label="Proponer el cupo de un cliente",
+        label="Proponer el tope de un cliente",
         description=(
-            "Calcula el cambio de tope (cupo) de un cliente y lo deja pendiente "
-            "de confirmación. No escribe: aplicar usa set_allocation bajo el "
-            "partner del principal. Llama a esto cuando el usuario quiera "
-            "asignar cupo por primera vez o cambiar el tope de un cliente que "
-            "ya lo tiene; lee console.get_wallet y console.list_allocations "
-            "antes para no proponer una suma que supere lo disponible. El "
-            "cuerpo de aplicación solo lleva cap: el partner no viaja. No lo "
-            "uses para recargar el cubo purchased ni para avisos de mensajes."
+            "Calcula el cambio del tope de gasto de un cliente, en dólares, y lo "
+            "deja pendiente de confirmación. No escribe: aplicar fija el tope "
+            "bajo el partner del principal. Llama a esto cuando el usuario quiera "
+            "asignar saldo a un cliente por primera vez o cambiar su tope; lee "
+            "console.get_wallet y console.list_allocations antes para no proponer "
+            "una suma que supere lo disponible. El partner no viaja en el cuerpo. "
+            "No lo uses para recargar saldo ni para avisos de mensajes."
         ),
         params=(
-            _propose_ref("cuyo cupo vas a cambiar"),
+            _propose_ref("cuyo tope vas a cambiar"),
             ToolParam(
-                name="cap",
-                type="integer",
-                description="Tope nuevo en tokens de cuota. Entero ≥ 0.",
+                name="cap_usd",
+                type="string",
+                description=(
+                    "Tope nuevo en dólares, con punto decimal y hasta dos "
+                    "decimales: '40' o '25.50'. El importe final, no un delta."
+                ),
                 required=True,
-                minimum=0,
             ),
         ),
         max_chars=4_000,

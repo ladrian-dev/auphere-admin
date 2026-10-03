@@ -9,8 +9,9 @@ import { getT } from "@/i18n/server";
 import { BackendError, backendFor } from "@/lib/backend";
 import type { MachineOut, SetupOut } from "@/lib/backend/workstation";
 import { can, requirePrincipal } from "@/lib/principal";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Puesto de trabajo" };
+export const generateMetadata = () => pageTitle("nav.workstation");
 
 /**
  * El puesto de trabajo a nivel de partner (spec 002).

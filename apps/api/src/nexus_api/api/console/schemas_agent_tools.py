@@ -19,6 +19,56 @@ from nexus_api.services.agent_console_policy import ConsolePolicy
 # ── CP-11 · structured agent settings ──────────────────────────────────
 
 
+# ── Spec 024 · «A quién responde» ──────────────────────────────────────
+
+AudienceMode = Literal["everyone", "list"]
+
+
+class AudienceNumberOut(BaseModel):
+    phone: str
+    name: str | None = None
+
+
+class AudienceNumberIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    phone: str = Field(min_length=1, max_length=32)
+    name: str | None = Field(default=None, max_length=120)
+
+
+class AudienceOut(BaseModel):
+    """Who the agent answers, read from ``policies.admin_access`` of the
+    version being edited. ``locked`` = the template is admin-only and the
+    mode cannot be opened to everyone."""
+
+    mode: AudienceMode
+    numbers: list[AudienceNumberOut] = Field(default_factory=list)
+    locked: bool = False
+
+
+class AudienceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: AudienceMode
+    numbers: list[AudienceNumberIn] = Field(default_factory=list, max_length=50)
+
+
+# ── Spec 025 · «Revisión de pagos» ─────────────────────────────────────
+
+
+class PaymentReviewOut(BaseModel):
+    """Who confirms or rejects payments, from ``policies.payment_review``
+    of the version being edited. Empty = no payment review."""
+
+    reviewers: list[AudienceNumberOut] = Field(default_factory=list)
+
+
+class PaymentReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reviewers: list[AudienceNumberIn] = Field(default_factory=list, max_length=10)
+
+
 class AgentSettingsOut(BaseModel):
     """``policies.console`` of a version + where it lives. ``version`` is
     the STAGED draft when one exists (what a PUT edits), else the active
@@ -29,14 +79,23 @@ class AgentSettingsOut(BaseModel):
     active_version: int | None
     has_draft: bool
     settings: ConsolePolicy
+    #: Spec 024: read from ``policies.admin_access`` of the same version.
+    audience: AudienceOut = Field(default_factory=lambda: AudienceOut(mode="everyone"))
+    #: Spec 025: read from ``policies.payment_review`` of the same version.
+    payment_review: PaymentReviewOut = Field(default_factory=PaymentReviewOut)
 
 
 class AgentSettingsIn(BaseModel):
-    """Full replacement of ``policies.console`` on the draft."""
+    """Full replacement of ``policies.console`` on the draft; ``audience``
+    (spec 024) additionally rewrites ``policies.admin_access`` when present
+    and leaves it untouched when absent."""
 
     model_config = ConfigDict(extra="forbid")
 
     settings: ConsolePolicy
+    audience: AudienceIn | None = None
+    #: Spec 025: rewrites ``policies.payment_review`` when present.
+    payment_review: PaymentReviewIn | None = None
 
 
 class AgentSettingsSaved(AgentSettingsOut):
@@ -100,6 +159,14 @@ class ToolModeOut(BaseModel):
     updated_at: datetime
 
 
+class LastSyncOut(BaseModel):
+    status: Literal["ok", "error"]
+    added: int = 0
+    deprecated: int = 0
+    reason: Literal["auth_rejected", "provider_unavailable"] | None = None
+    at: datetime
+
+
 class ConnectorOut(BaseModel):
     """A connector as the partner sees it. Never ``credentials_ref``,
     never a consent token."""
@@ -123,6 +190,17 @@ class ConnectorOut(BaseModel):
     )
     tools_total: int
     tools_enabled: int
+    #: Spec 023 (Requisito 4): the client's sector template lists this
+    #: connector under ``connectors.recommended``. A suggestion on the card,
+    #: never a filter.
+    recommended: bool = False
+    #: Spec 016 (R6): AgendaPro is linked by its public booking page, not by
+    #: credentials. ``auth_kind`` reads ``public_url`` for it and this carries
+    #: the page (it is public; nothing secret travels).
+    public_url: str | None = None
+    #: Spec 016 (R7): what happened to the sync that ran with the connect.
+    #: Only on the connect response; the list does not repeat it.
+    last_sync: LastSyncOut | None = None
 
 
 class ConsentOut(BaseModel):
@@ -242,3 +320,18 @@ __all__ = [
     "ToolsIn",
     "ToolsSaved",
 ]
+
+
+class AgendaProPublicUrlIn(BaseModel):
+    """Spec 016 (R6): the client's public AgendaPro booking page. ``""`` or
+    ``null`` unlinks. Never credentials."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    public_url: str | None = Field(default=None, max_length=500)
+
+
+class AgendaProPublicUrlOut(BaseModel):
+    integration: str = "agendapro"
+    public_url: str | None
+    updated_at: datetime

@@ -49,6 +49,13 @@ class NotificationKind(str, enum.Enum):
     # callado ya. payload: {percent, cap, available, period, clients_out}
     WALLET_LOW = "wallet.low"
     WALLET_EMPTY = "wallet.empty"
+    # Spec 016 — el silencio por cliente se ve. ``wallet.*`` habla del
+    # partner entero; éste de UN cliente que ya no contesta. Uno por cliente
+    # y día. payload: {external_client_ref, remaining}
+    CLIENT_OUT_OF_QUOTA = "client.out_of_quota"
+    # Spec 016 (R5.3) — el plan dejó de incluir el modelo del cliente y se le
+    # puso el de defecto. payload: {external_client_ref, from_model, to_model}
+    CLIENT_MODEL_RESET = "client.model_reset"
     # Spec 005 — la escalera de impago. Distinto de ``wallet.*``: aquél avisa
     # de que el saldo se acaba, éstos de que **el cobro** falló. Un partner
     # puede tener saldo de sobra y la tarjeta caducada.

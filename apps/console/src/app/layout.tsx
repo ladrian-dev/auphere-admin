@@ -1,17 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Inter_Tight, JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import { headers } from "next/headers";
 
-import { ThemeProvider, Toaster } from "@nexus/ui";
+import { ThemeProvider, Toaster, UiCopyProvider } from "@nexus/ui";
 
 import { LocaleProvider } from "@/i18n/client";
+import { t } from "@/i18n/messages";
 import { getLocale } from "@/i18n/server";
 import { resolvePrincipal } from "@/lib/principal";
 
 import "./globals.css";
 
-const interTight = Inter_Tight({ subsets: ["latin"], variable: "--font-inter-tight", display: "swap" });
-const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono", display: "swap" });
+// Inter es la familia del producto (owner, 2026-09-26). Libre y diseñada para
+// interfaz: da el aire de la letra de sistema de Apple sin tocar sus archivos,
+// y se ve igual en todas las máquinas. Next la auto-aloja en el build, así que
+// se sirve desde nuestro origen y no desde Google.
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Consola · Auphere", template: "%s · Consola Auphere" },
@@ -27,7 +31,7 @@ export const viewport: Viewport = {
     // eslint-disable-next-line nexus-ui/no-raw-colors
     { media: "(prefers-color-scheme: light)", color: "oklch(0.971 0.006 185.3)" },
     // eslint-disable-next-line nexus-ui/no-raw-colors
-    { media: "(prefers-color-scheme: dark)", color: "oklch(0.229 0.036 191.9)" },
+    { media: "(prefers-color-scheme: dark)", color: "oklch(0.185 0.012 170)" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -40,18 +44,33 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const resolution = await resolvePrincipal().catch(() => null);
   const locale = await getLocale(resolution?.kind === "ok" ? resolution.principal.locale : undefined);
   const nonce = (await headers()).get("x-nonce") ?? undefined;
+  // The design system's own words (Cancel, Close, Retry…) in the reader's
+  // language. One object here instead of a label at every call site.
+  const uiCopy = {
+    confirm: t(locale, "ui.confirm"),
+    cancel: t(locale, "ui.cancel"),
+    close: t(locale, "ui.close"),
+    more: t(locale, "ui.more"),
+    loading: t(locale, "ui.loading"),
+    retry: t(locale, "ui.retry"),
+    nothingHere: t(locale, "ui.nothingHere"),
+    toggleSidebar: t(locale, "ui.toggleSidebar"),
+    typeToConfirm: t(locale, "ui.typeToConfirm"),
+  };
   return (
     <html
       lang={locale}
-      className={`${interTight.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${inter.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full">
         <ThemeProvider nonce={nonce}>
+          <UiCopyProvider copy={uiCopy}>
           <LocaleProvider locale={locale}>
             {children}
             <Toaster position="top-right" richColors closeButton />
           </LocaleProvider>
+          </UiCopyProvider>
         </ThemeProvider>
       </body>
     </html>

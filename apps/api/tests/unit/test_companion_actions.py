@@ -570,33 +570,52 @@ def test_every_kind_has_a_verification_read() -> None:
 
 
 async def test_a_allocation_proposal_does_not_apply_and_sets_put() -> None:
+    """Spec 027: the cap arrives in dollars and travels in cents."""
     build = ProposalBuilder(
         read=reader(
             {
                 "/console/clients/boreal": {"external_client_ref": "boreal"},
-                "/console/wallet": {"available": 500_000, "purchased_remaining": 0},
+                "/console/wallet": {"available_cents": 500, "purchased_remaining_cents": 0},
                 "/console/wallet/allocations": [
-                    {"client_ref": "boreal", "cap": 400_000, "remaining": 400_000}
+                    {"client_ref": "boreal", "cap_cents": 400, "remaining_cents": 400}
                 ],
             }
         )
     )
-    proposal = await build.build("allocation", {"client_ref": "boreal", "cap": 450_000})
+    proposal = await build.build("allocation", {"client_ref": "boreal", "cap_usd": "4.50"})
     assert proposal.kind == "allocation"
     assert proposal.apply_method == "PUT"
     assert proposal.apply_path == "/console/clients/boreal/allocation"
-    assert proposal.apply_body == {"cap": 450_000}
-    assert proposal.expectations == {"allocation_cap": "450000"}
+    assert proposal.apply_body == {"cap_cents": 450}
+    assert proposal.expectations == {"allocation_cap": "450"}
+    assert proposal.title == "Fijar el tope de boreal en 4,50 US$"
+    assert proposal.preview["summary"] == "4,00 US$ → 4,50 US$"
 
     assert "partner_id" not in (proposal.apply_body or {})
     assert proposal.state_hash == canonical_hash(
         {
             "client_ref": "boreal",
-            "cap_actual": 400_000,
-            "available": 500_000,
+            "cap_actual": 400,
+            "available": 500,
             "suma_otros_caps": 0,
         }
     )
+
+
+@pytest.mark.parametrize("cap_usd", ["-3", "4.555", "cuarenta", "", None, "1e3"])
+async def test_a_cap_that_is_not_dollars_is_refused(cap_usd) -> None:
+    build = ProposalBuilder(read=reader({}))
+    with pytest.raises(ProposalRefused) as refused:
+        await build.build("allocation", {"client_ref": "boreal", "cap_usd": cap_usd})
+    assert refused.value.error.code == "bad_arguments"
+
+
+async def test_dollars_with_comma_or_point_or_whole_are_the_same_cents() -> None:
+    from nexus_api.companion.tools.proposals import _parse_usd_cents
+
+    assert _parse_usd_cents("40") == 4_000
+    assert _parse_usd_cents("25.5") == _parse_usd_cents("25,50") == 2_550
+    assert _parse_usd_cents(12) == 1_200
 
 
 async def test_a_allocation_over_available_is_refused() -> None:
@@ -604,22 +623,23 @@ async def test_a_allocation_over_available_is_refused() -> None:
         read=reader(
             {
                 "/console/clients/boreal": {"external_client_ref": "boreal"},
-                "/console/wallet": {"available": 500_000},
+                "/console/wallet": {"available_cents": 500},
                 "/console/wallet/allocations": [
-                    {"client_ref": "boreal", "cap": 500_000, "remaining": 500_000}
+                    {"client_ref": "boreal", "cap_cents": 500, "remaining_cents": 500}
                 ],
             }
         )
     )
     with pytest.raises(ProposalRefused) as refused:
-        await build.build("allocation", {"client_ref": "boreal", "cap": 500_001})
+        await build.build("allocation", {"client_ref": "boreal", "cap_usd": "5.01"})
     assert refused.value.error.code == "over_allocated"
+    assert "5,01 US$" in refused.value.error.message and "tokens" not in refused.value.error.message
 
 
 async def test_a_allocation_for_a_missing_client_is_the_same_404() -> None:
     build = ProposalBuilder(read=reader({}))
     with pytest.raises(ProposalRefused) as refused:
-        await build.build("allocation", {"client_ref": "ajeno", "cap": 1})
+        await build.build("allocation", {"client_ref": "ajeno", "cap_usd": "1"})
     assert refused.value.error.code == "unknown_client"
 
 
@@ -628,23 +648,23 @@ async def test_an_allocation_without_a_row_is_alta_from_zero() -> None:
         read=reader(
             {
                 "/console/clients/nuevo": {"external_client_ref": "nuevo"},
-                "/console/wallet": {"available": 500_000},
+                "/console/wallet": {"available_cents": 500},
                 "/console/wallet/allocations": [
-                    {"client_ref": "otro", "cap": 100_000, "remaining": 100_000}
+                    {"client_ref": "otro", "cap_cents": 100, "remaining_cents": 100}
                 ],
             }
         )
     )
-    proposal = await build.build("allocation", {"client_ref": "nuevo", "cap": 50_000})
+    proposal = await build.build("allocation", {"client_ref": "nuevo", "cap_usd": "0.50"})
     assert proposal.kind == "allocation"
-    assert proposal.apply_body == {"cap": 50_000}
-    assert proposal.preview["before_cap"] == 0
+    assert proposal.apply_body == {"cap_cents": 50}
+    assert proposal.preview["before_cap_cents"] == 0
     assert proposal.state_hash == canonical_hash(
         {
             "client_ref": "nuevo",
             "cap_actual": 0,
-            "available": 500_000,
-            "suma_otros_caps": 100_000,
+            "available": 500,
+            "suma_otros_caps": 100,
         }
     )
 
@@ -652,18 +672,18 @@ async def test_an_allocation_without_a_row_is_alta_from_zero() -> None:
 async def test_allocation_hash_changes_when_cap_actual_moves() -> None:
     base = {
         "/console/clients/boreal": {"external_client_ref": "boreal"},
-        "/console/wallet": {"available": 500_000},
+        "/console/wallet": {"available_cents": 500},
         "/console/wallet/allocations": [
-            {"client_ref": "boreal", "cap": 400_000, "remaining": 400_000}
+            {"client_ref": "boreal", "cap_cents": 400, "remaining_cents": 400}
         ],
     }
     moved = {
         **base,
         "/console/wallet/allocations": [
-            {"client_ref": "boreal", "cap": 300_000, "remaining": 300_000}
+            {"client_ref": "boreal", "cap_cents": 300, "remaining_cents": 300}
         ],
     }
-    args = {"client_ref": "boreal", "cap": 350_000}
+    args = {"client_ref": "boreal", "cap_usd": "3.50"}
     first = await ProposalBuilder(read=reader(base)).build("allocation", args)
     second = await ProposalBuilder(read=reader(moved)).build("allocation", args)
     assert first.state_hash != second.state_hash

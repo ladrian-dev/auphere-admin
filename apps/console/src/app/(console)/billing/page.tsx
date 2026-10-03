@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 
-import { Button, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
+import { Button, DescriptionList, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
 
 import { MembershipSection } from "@/components/billing/membership-section";
 import { ProviderInvoicesLink } from "@/components/billing/provider-invoices-link";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Facturación" };
+export const generateMetadata = () => pageTitle("nav.billing");
 
 export default async function BillingPage() {
   const principal = await requirePrincipal("/billing");
@@ -21,10 +22,7 @@ export default async function BillingPage() {
     <>
       <PageHeader eyebrow={t("nav.group.account")} title={t("billing.title")} description={t("billing.description")} />
       <MembershipSection membership={membership} />
-      <dl className="grid max-w-lg grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-        <dt className="text-muted-foreground">{t("billing.email")}</dt>
-        <dd className="min-w-0 truncate font-mono">{billing.billing_email ?? t("billing.notSet")}</dd>
-      </dl>
+      <DescriptionList layout="inline" className="max-w-lg" items={[{ key: "email", term: t("billing.email"), detail: billing.billing_email ?? t("billing.notSet"), mono: true, truncate: true }]} />
       <section aria-labelledby="receipts-h" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="receipts-h" className="text-lg font-semibold">
@@ -35,7 +33,7 @@ export default async function BillingPage() {
               otro documento donde se busca. */}
           <ProviderInvoicesLink hasSubscription={membership.tier.code !== "free"} />
         </div>
-        <p className="text-muted-foreground max-w-prose text-sm text-pretty">
+        <p className="text-muted-foreground text-sm text-pretty">
           {t("membership.invoices.help")}
         </p>
         {billing.receipts.length === 0 ? (

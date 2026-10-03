@@ -179,7 +179,7 @@ apps/api/src/nexus_api/
 ├── services/console_identity.py         # `set_password` ya existe, sin llamantes
 ├── services/email.py                    # D-4: repliegue SMTP solo en local
 ├── api/console/password_reset.py        # dos rutas públicas
-└── alembic/versions/0128_*.py           # la ÚNICA migración
+└── alembic/versions/0140_*.py           # la ÚNICA migración
 
 apps/console/src/app/(auth)/
 ├── forgot/page.tsx                      # pedir el enlace

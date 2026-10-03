@@ -66,4 +66,23 @@ describe("transcriptReducer", () => {
     s = feed(s, "r1", [ev(1, "budget.updated", { used: 150, cap: 100, remaining: 0, percent: 100, exhausted: true, period: "2026-08", resets_at: "" })]);
     expect(s.budget?.exhausted).toBe(true);
   });
+
+  it("a turn that fell back to the emergency text closes as error with its reason (bug: «Completado · 0 tokens»)", () => {
+    let s = transcriptReducer(emptyTranscript, { type: "prompt", runId: "r9", prompt: "hola", now: 1000 });
+    s = feed(s, "r9", [
+      ev(1, "run.started", { run_id: "r9" }),
+      ev(2, "text.delta", { text: "Disculpa, tuve un inconveniente." }),
+      ev(3, "turn.failed", { reason: "llm_failed", detail: "x" }),
+      ev(4, "run.completed", { status: "error", error: "Disculpa, tuve un inconveniente.", reason: "llm_failed" }),
+    ]);
+    const turn = s.turns[0]!;
+    expect(turn.status).toBe("error");
+    expect(turn.failureReason).toBe("llm_failed");
+    expect(turn.reply).toBe("Disculpa, tuve un inconveniente.");
+  });
+  it("a healthy run has no failure reason", () => {
+    let s = transcriptReducer(emptyTranscript, { type: "prompt", runId: "r10", prompt: "hola", now: 1000 });
+    s = feed(s, "r10", [ev(1, "run.started", { run_id: "r10" }), ev(2, "run.completed", { status: "completed" })]);
+    expect(s.turns[0]!.failureReason).toBeNull();
+  });
 });

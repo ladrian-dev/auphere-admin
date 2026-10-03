@@ -4,21 +4,25 @@ import { redirect } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle, Button, EmptyState } from "@nexus/ui";
 
-import { ChannelCard } from "@/components/channels/channel-card";
+import { ChannelsList } from "@/components/channels/channels-list";
 import { TemplatesSection } from "@/components/channels/templates-section";
 import { f2ChannelCounter, f2VisibleChannels } from "@/components/channels/visible-channels";
-import { WhatsAppConnectUnavailable } from "@/components/channels/whatsapp-connect-unavailable";
+import { connectChoice, metaSignupConfig } from "@/components/channels/connect-choice";
+import { WhatsAppConnect } from "@/components/channels/whatsapp-connect";
+import { WhatsAppConnectByAuphere } from "@/components/channels/whatsapp-connect-by-auphere";
 import { WhatsAppContinueInBrowser } from "@/components/channels/whatsapp-continue-in-browser";
 import { getT } from "@/i18n/server";
 import { BackendError, backendFor } from "@/lib/backend";
 import type { TemplateList } from "@/lib/backend/channels";
+import { env } from "@/lib/env";
 import { can, requirePrincipal } from "@/lib/principal";
 import { isDesktopShell } from "@/lib/shell";
 
 /**
- * Channels centre (CP-17/18). F2: WhatsApp cards only; Connect CTA disabled
- * (no Embedded Signup). Quality + roles, templates, diagnostics link.
- * Templates with Meta's literal rejection reason and a link to diagnostics.
+ * Channels centre (CP-17/18). WhatsApp cards, quality + roles, templates,
+ * diagnostics link. Spec 016 (R1): the real Embedded Signup button when the
+ * environment has Meta configured; the «lo conecta Auphere» note when it
+ * does not; «continue in the browser» inside the desktop shell.
  */
 export default async function ChannelsPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
@@ -49,11 +53,15 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
   // de Meta no vuelve, así que el control **no existe** ahí y en su lugar se
   // ofrece continuar en el navegador. Es la única bifurcación por cáscara de
   // toda la consola; `shell-detect.test.ts` lo vigila.
+  const meta = metaSignupConfig(env());
+  const choice = connectChoice({ manage, meta });
   const connect = (await isDesktopShell()) ? (
     <WhatsAppContinueInBrowser href={`${base}/channels`} />
-  ) : (
-    <WhatsAppConnectUnavailable used={n} />
-  );
+  ) : choice === "connect" ? (
+    <WhatsAppConnect refId={ref} meta={meta} canConnect={overview.can_connect} used={n} max={m} />
+  ) : choice === "by_auphere" ? (
+    <WhatsAppConnectByAuphere />
+  ) : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -77,15 +85,24 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
           <AlertDescription>{t("ch.roles.required.body")}</AlertDescription>
         </Alert>
       ) : null}
-      {visible.length === 0 ? (
-        <EmptyState icon={MessageCircle} title={t("ch.empty.title")} description={t("ch.empty.description")} action={manage ? connect : undefined} readonly={!manage} />
-      ) : (
-        <ul className="grid gap-3 md:grid-cols-2" aria-label={t("ch.title")}>
-          {visible.map((ch) => (
-            <ChannelCard key={ch.id} refId={ref} channel={ch} manage={manage} showRoles={visible.filter((c) => c.status === "active").length > 1} />
-          ))}
-        </ul>
-      )}
+      {/* Spec 018 (R4): el mismo patrón de navegación que Habilidades y
+          Conectores. Los canales que todavía no se pueden conectar no están
+          en `visible`, así que tampoco están en la lista: §V, la ausencia se
+          diseña y no se enseña apagada. */}
+      <ChannelsList
+        refId={ref}
+        channels={visible}
+        manage={manage}
+        empty={
+          <EmptyState
+            icon={MessageCircle}
+            title={t("ch.empty.title")}
+            description={t("ch.empty.description")}
+            action={manage ? connect : undefined}
+            readonly={!manage}
+          />
+        }
+      />
       <TemplatesSection refId={ref} list={templates} error={templatesError} manage={manage} />
     </div>
   );

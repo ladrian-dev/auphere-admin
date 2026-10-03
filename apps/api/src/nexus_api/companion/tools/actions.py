@@ -511,7 +511,7 @@ def _observed(kind: str, fresh: Any, payload: dict[str, Any]) -> dict[str, str]:
             "alerts_recipients": str(len((fresh or {}).get("recipients") or [])),
         }
     if kind == "allocation":
-        cap = (fresh or {}).get("cap")
+        cap = (fresh or {}).get("cap_cents")
         return {"allocation_cap": str(cap) if cap is not None else "missing"}
     if kind == "model":
         mid = (fresh or {}).get("model_id")

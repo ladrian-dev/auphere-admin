@@ -1,7 +1,18 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../lib/utils";
+import { Meter } from "./meter";
 import { Skeleton } from "./skeleton";
+import { Sparkline } from "./sparkline";
+
+type MetricDelta = {
+  /** Already formatted: «+18 %», «−4 pts». */
+  label: ReactNode;
+  /** Whether the change is good news, bad news or neither. */
+  tone: "positive" | "negative" | "neutral";
+  /** Screen-reader text, e.g. «18 % más que los 7 días anteriores». */
+  srLabel?: string;
+};
 
 type MetricProps = {
   label: ReactNode;
@@ -13,32 +24,78 @@ type MetricProps = {
   loading?: boolean;
   /** Renders as a link/button target: the whole tile is clickable. */
   href?: string;
+  /** Spec 026: change against the previous period, shown next to the value. */
+  delta?: MetricDelta;
+  /** Spec 026: a small trend under the value (oldest first). ``area`` draws
+   *  it as a filled band along the bottom edge of the tile. */
+  trend?: { values: number[]; ariaLabel: string; style?: "line" | "area" };
+  /** Spec 026: an icon in a tinted square before the label (decorative). */
+  icon?: ReactNode;
+  /** Spec 026: how much of something is left, as a bar under the value. */
+  progress?: { value: number; max: number; label: string; valueLabel?: string; tone?: "auto" | "positive" | "warning" | "danger" };
   className?: string;
 };
+
+const DELTA_TONE = {
+  positive: "bg-status-positive/15 text-foreground",
+  negative: "bg-status-danger/15 text-foreground",
+  neutral: "bg-muted text-muted-foreground",
+} as const;
 
 /**
  * A single figure with a label. Tabular numerals, no decoration; the tile
  * is a link when ``href`` is given (every figure on the home page must be
- * actionable or absent — PLAN-CONSOLE-V1 CP-08).
+ * actionable or absent — PLAN-CONSOLE-V1 CP-08). The optional icon, delta,
+ * trend and progress are the styles the owner chose for the home (spec 026);
+ * without them the tile is the plain one every other screen uses.
  */
-function Metric({ label, value, hint, loading, href, className }: MetricProps) {
+function Metric({ label, value, hint, loading, href, delta, trend, icon, progress, className }: MetricProps) {
+  const area = trend?.style === "area";
   const body = (
     <>
-      <p className="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase">{label}</p>
+      <div className="flex min-w-0 items-center gap-2">
+        {icon ? (
+          <span aria-hidden="true" data-slot="metric-icon" className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary [&_svg]:size-4">
+            {icon}
+          </span>
+        ) : null}
+        {/* El nombre de una métrica es texto de interfaz: Helvena, no mono.
+            Con icono es una tarjeta de panel (spec 026): título en frase,
+            cifra grande; sin icono, la etiqueta de siempre. */}
+        <p className={cn("min-w-0 truncate", icon ? "text-sm font-medium" : "text-xs font-medium tracking-eyebrow text-muted-foreground uppercase")}>{label}</p>
+      </div>
       {loading ? (
         <Skeleton className="h-8 w-24" />
       ) : (
-        <p className="min-w-0 truncate text-2xl font-semibold tabular-nums" title={typeof value === "string" ? value : undefined}>
-          {value}
-        </p>
+        <div className={cn("flex min-w-0 items-baseline gap-2", icon && "mt-1")}>
+          <p className={cn("min-w-0 truncate font-semibold tabular-nums", "text-2xl")} title={typeof value === "string" ? value : undefined}>
+            {value}
+          </p>
+          {delta ? (
+            <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2 text-xs font-medium tabular-nums", DELTA_TONE[delta.tone])} data-slot="metric-delta">
+              <span aria-hidden={delta.srLabel ? true : undefined} className="inline-flex items-center gap-1 [&_svg]:size-3">
+                {delta.label}
+              </span>
+              {delta.srLabel ? <span className="sr-only">{delta.srLabel}</span> : null}
+            </span>
+          ) : null}
+        </div>
       )}
       {hint ? (
-        loading ? <Skeleton className="h-4 w-32" /> : <p className="min-w-0 truncate text-sm text-muted-foreground">{hint}</p>
+        loading ? <Skeleton className="h-4 w-32" /> : <p className={cn("min-w-0 text-sm text-muted-foreground", icon ? "line-clamp-2 text-pretty" : "truncate")}>{hint}</p>
+      ) : null}
+      {trend && !loading && !area ? <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} className={icon ? "mt-auto pt-2" : undefined} /> : null}
+      {progress && !loading ? (
+        <Meter className={icon ? "mt-auto pt-2" : undefined} size="sm" label={progress.label} labelHidden value={progress.value} max={progress.max} valueLabel={progress.valueLabel} tone={progress.tone ?? "auto"} />
+      ) : null}
+      {trend && !loading && area ? (
+        <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} variant="area" className="-mx-4 -mb-4 mt-auto h-12 w-[calc(100%+2rem)]" />
       ) : null}
     </>
   );
   const classes = cn(
     "flex min-w-0 flex-col gap-1 rounded-md bg-card p-4 ring-1 ring-foreground/10",
+    area && "overflow-hidden",
     href && "transition-colors hover:ring-primary/60 focus-visible:ring-primary",
     className,
   );
@@ -56,4 +113,4 @@ function Metric({ label, value, hint, loading, href, className }: MetricProps) {
   );
 }
 
-export { Metric, type MetricProps };
+export { Metric, type MetricDelta, type MetricProps };

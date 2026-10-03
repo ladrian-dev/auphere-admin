@@ -30,6 +30,10 @@ export type AcceptResult =
  * The e-mail is NOT sent: it comes from the invitation row. That closes
  * the old `email_mismatch` case by construction — there is nothing left to
  * mismatch.
+ *
+ * Spec 016 (R8.1): this is the one action with no `can()` — there is no
+ * principal yet. The invitation token IS the authorisation, and the API
+ * validates it.
  */
 export async function acceptInvitationAction(raw: unknown): Promise<AcceptResult> {
   const parsed = input.safeParse(raw);

@@ -155,3 +155,10 @@ system_prompt: |
   - Emojis con moderación, máximo 1 por mensaje.
   - Cada confirmación de cita: fecha + hora + servicio + duración
     estimada cuando es bloque largo, explícito.
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - agendapro
+    - calendly

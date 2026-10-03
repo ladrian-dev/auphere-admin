@@ -112,6 +112,9 @@ async def test_console_picker_hides_terra_and_put_is_422(
     ).all()
     assert [row[0] for row in bindings] == [SOL]
 
+    # Spec 016 (R5.3): la allowlist que deja fuera el modelo enlazado borra
+    # el binding —antes se quedaba y el cliente seguía con un modelo que el
+    # plan ya no incluía— y avisa al partner. Ver ``test_shrinking_the_allowlist…``.
     shrink = await client.put(
         _models(a["partner_id"]),
         headers=admin_headers,
@@ -128,7 +131,7 @@ async def test_console_picker_hides_terra_and_put_is_422(
             {"t": str(a["tenant_id"])},
         )
     ).all()
-    assert [row[0] for row in still] == [SOL]
+    assert still == []
 
 
 async def test_admin_models_rejects_extra_and_outside_catalog(
@@ -337,3 +340,124 @@ async def test_admin_llm_401_fail_closed(client, console_world, admin_headers, m
     _assert_no_sk(post)
     assert MASTER not in got.text
     assert MASTER not in post.text
+
+
+# ── spec 016 · la allowlist reconcilia los bindings (R5.3) ────────────────────
+
+
+async def _bound_model(db_session, tenant_id) -> str | None:
+    row = (
+        await db_session.execute(
+            sa.text(
+                "SELECT p.model_id FROM tenant_model_bindings b "
+                "JOIN model_profiles p ON p.id = b.model_profile_id "
+                "WHERE b.tenant_id = :t AND b.role = 'respond'"
+            ),
+            {"t": str(tenant_id)},
+        )
+    ).first()
+    return None if row is None else str(row[0])
+
+
+async def test_shrinking_the_allowlist_resets_the_binding_and_tells_the_partner(
+    client, console_world, admin_headers, db_session
+) -> None:
+    from nexus_api.db.models import ConsoleNotification
+
+    a, b = console_world["a"], console_world["b"]
+    for world, model in ((a, SOL), (b, SOL)):
+        ok = await client.put(
+            "/console/clients/{}/model".format(world["ref"]),
+            headers=world["headers"](),
+            json={"model_id": model},
+        )
+        assert ok.status_code == 200, ok.text
+
+    # A pierde Sol: su binding se borra y recibe el aviso. B no cambia.
+    shrink = await client.put(
+        _models(a["partner_id"]), headers=admin_headers, json={"model_ids": [LUNA]}
+    )
+    assert shrink.status_code == 200, shrink.text
+    assert await _bound_model(db_session, a["tenant_id"]) is None
+    assert await _bound_model(db_session, b["tenant_id"]) == SOL
+
+    notices = (
+        await db_session.scalars(
+            sa.select(ConsoleNotification).where(
+                ConsoleNotification.partner_id == a["partner_id"],
+                ConsoleNotification.kind == "client.model_reset",
+            )
+        )
+    ).all()
+    assert len(notices) == 1
+    assert notices[0].external_client_ref == a["ref"]
+    assert (
+        notices[0].payload
+        == {
+            "external_client_ref": a["ref"],
+            "from_model": "Sol",
+            "to_model": "Sol",
+        }
+        or notices[0].payload["from_model"] == "Sol"
+    )
+    assert notices[0].severity == "info"
+    _assert_no_sk(shrink)
+    assert (
+        await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(ConsoleNotification)
+            .where(ConsoleNotification.partner_id == b["partner_id"])
+        )
+    ) == 0
+
+    # Reescribir la misma lista no avisa otra vez (ya no hay binding).
+    again = await client.put(
+        _models(a["partner_id"]), headers=admin_headers, json={"model_ids": [LUNA]}
+    )
+    assert again.status_code == 200
+    assert (
+        await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(ConsoleNotification)
+            .where(
+                ConsoleNotification.partner_id == a["partner_id"],
+                ConsoleNotification.kind == "client.model_reset",
+            )
+        )
+    ) == 1
+
+    # El cliente lo ve en su binding: sin modelo, con el defecto nombrado.
+    now = (
+        await client.get("/console/clients/{}/model".format(a["ref"]), headers=a["headers"]())
+    ).json()
+    assert now["is_bound"] is False
+    assert now["fallback_display_name"] == "Sol"
+
+
+async def test_rewriting_the_allowlist_with_the_bound_model_changes_nothing(
+    client, console_world, admin_headers, db_session
+) -> None:
+    from nexus_api.db.models import ConsoleNotification
+
+    a = console_world["a"]
+    ok = await client.put(
+        "/console/clients/{}/model".format(a["ref"]),
+        headers=a["headers"](),
+        json={"model_id": LUNA},
+    )
+    assert ok.status_code == 200, ok.text
+    keep = await client.put(
+        _models(a["partner_id"]), headers=admin_headers, json={"model_ids": [LUNA, SOL]}
+    )
+    assert keep.status_code == 200, keep.text
+    assert await _bound_model(db_session, a["tenant_id"]) == LUNA
+    assert (
+        await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(ConsoleNotification)
+            .where(
+                ConsoleNotification.partner_id == a["partner_id"],
+                ConsoleNotification.kind == "client.model_reset",
+            )
+        )
+    ) == 0

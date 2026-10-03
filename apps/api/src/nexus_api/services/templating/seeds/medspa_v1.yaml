@@ -193,3 +193,10 @@ system_prompt: |
   - Cada confirmación de cita: fecha + hora + tratamiento, explícito.
   - Cerrá las respuestas educativas recordando que cada caso es
     individual y se confirma en evaluación con el profesional.
+
+# Spec 023: los conectores que Conectores sugiere para este sector.
+# Es una sugerencia en la tarjeta, no un filtro.
+connectors:
+  recommended:
+    - agendapro
+    - calendly

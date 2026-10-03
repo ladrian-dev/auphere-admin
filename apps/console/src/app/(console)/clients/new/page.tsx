@@ -7,8 +7,9 @@ import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
 
 import { NewClientWizard } from "./wizard";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Nuevo cliente" };
+export const generateMetadata = () => pageTitle("wizard.title");
 
 /**
  * New-client wizard (CP-10): four steps, real per-stage progress. Quota is
@@ -19,14 +20,13 @@ export default async function NewClientPage() {
   if (!can(principal.role, "clients:write")) redirect("/clients");
   const { t } = await getT(principal.locale);
   const api = backendFor(principal);
-  const [me, templates] = await Promise.all([
-    api.me(),
-    can(principal.role, "agents:read") ? api.listSeedTemplates().catch(() => null) : [],
-  ]);
+  const templates = can(principal.role, "agents:read")
+    ? await api.listSeedTemplates().catch(() => null)
+    : [];
   return (
     <>
       <PageHeader eyebrow={t("nav.clients")} title={t("wizard.title")} description={t("wizard.subtitle")} />
-      <NewClientWizard quota={me.quota} templates={templates} canPublish={can(principal.role, "agents:write")} />
+      <NewClientWizard templates={templates} />
     </>
   );
 }

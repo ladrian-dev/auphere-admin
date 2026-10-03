@@ -10,6 +10,7 @@ import type { UsageAlerts } from "@/lib/backend/home-usage";
 import { parseAlertsForm } from "@/lib/usage-alerts-form";
 
 import { saveUsageAlertsAction } from "./actions";
+import { actionErrorText } from "@/lib/action-error";
 
 export function UsageAlertsForm({ initial, canManage }: { initial: UsageAlerts; canManage: boolean }) {
   const t = useT();
@@ -29,7 +30,7 @@ export function UsageAlertsForm({ initial, canManage }: { initial: UsageAlerts; 
     setError(null);
     start(async () => {
       const res = await saveUsageAlertsAction(parsed.value);
-      if (!res.ok) return void toast.error(res.status === 403 ? t("common.forbidden") : res.message);
+      if (!res.ok) return void toast.error(actionErrorText(res, t));
       toast.success(t("hu.alerts.saved"));
     });
   }
@@ -54,8 +55,20 @@ export function UsageAlertsForm({ initial, canManage }: { initial: UsageAlerts; 
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <Checkbox id="enabled" checked={enabled} onCheckedChange={(v) => setEnabled(v === true)} disabled={!canManage || pending} />
-        <Label htmlFor="enabled">{t("hu.alerts.enabled")}</Label>
+        {/* El `id` acaba en el input oculto, no en el elemento con
+            `role=checkbox`, así que `htmlFor` no lo nombra: hay que
+            apuntarle con `aria-labelledby`. Lo cazó la barrida de la spec
+            017, igual que ya se hace en el catálogo de herramientas. */}
+        <Checkbox
+          id="enabled"
+          aria-labelledby="enabled-label"
+          checked={enabled}
+          onCheckedChange={(v) => setEnabled(v === true)}
+          disabled={!canManage || pending}
+        />
+        <Label id="enabled-label" htmlFor="enabled">
+          {t("hu.alerts.enabled")}
+        </Label>
       </div>
       {error ? (
         <p role="alert" className="text-sm text-destructive">

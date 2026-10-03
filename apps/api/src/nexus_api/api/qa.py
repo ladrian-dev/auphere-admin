@@ -435,7 +435,7 @@ class SendOut(BaseModel):
 # WhatsApp — not a borrowed one. ``provider`` keeps it distinct from a
 # future customer-facing web widget (which would also be ``type=web`` but
 # carry a different provider).
-_QA_CHANNEL_PROVIDER = "qa_playground"
+from nexus_api.db.models.channel import QA_PLAYGROUND_PROVIDER as _QA_CHANNEL_PROVIDER  # noqa: E402
 
 
 def _qa_channel_provider_identifier(tenant_id: uuid.UUID) -> str:

@@ -6,8 +6,9 @@ import { KeysList } from "@/components/keys/keys-list";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
+import { pageTitle } from "@/i18n/metadata";
 
-export const metadata = { title: "Claves de API" };
+export const generateMetadata = () => pageTitle("nav.keys");
 
 export default async function KeysPage() {
   const principal = await requirePrincipal("/keys");

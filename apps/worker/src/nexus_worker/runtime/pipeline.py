@@ -408,6 +408,11 @@ _NATIVE_TOOL_NAMES: frozenset[str] = frozenset(
 # escalation hands off to a human, it does not browse a catalog.
 _CONNECTOR_TOOL_INTENTS: frozenset[str] = frozenset({"book", "queue", "info", "fallback"})
 
+# Namespaced toolkits offered on EVERY intent, ``escalate`` included.
+# ``payments`` (spec 025): the payment review is a hand-off to the team, and
+# the classifier routinely files a receipt under ``escalate``.
+_EVERY_INTENT_TOOLKITS: frozenset[str] = frozenset({"payments"})
+
 
 def _tenant_uuid(state: AgentState) -> uuid.UUID:
     return uuid.UUID(state["tenant_id"])
@@ -466,7 +471,13 @@ def _filter_tools_for_intent_with_composio(bundle: AgentBundle, intent: str) -> 
         # ``queue``/``book``) never gets its tools bound and the model emits
         # the tool call as plain text instead of invoking it.
         toolkit = t.split(".", 1)[0]
-        if intent == "info":
+        if toolkit in _EVERY_INTENT_TOOLKITS:
+            # Spec 025: a receipt is often classified ``escalate`` (the
+            # customer "wants a person to check the payment"). The payment
+            # review is exactly that hand-off, so it must be offered there
+            # too — on every intent, never dropped by the classifier's guess.
+            extras.append(t)
+        elif intent == "info":
             extras.append(t)
         elif toolkit in {"googlecalendar", "calendly"}:
             if intent == "book":
@@ -1078,6 +1089,8 @@ def make_handler_node(
                     respond_fallbacks = ()
 
             _turn_started = time.perf_counter()
+            # Why the fallback text was used, if it was. See ``AgentState.turn_failure``.
+            turn_failure: dict[str, Any] | None = None
             for iteration in range(MAX_TOOL_ITERATIONS):
                 # The last iteration is tool-free: the model MUST answer.
                 last = iteration == MAX_TOOL_ITERATIONS - 1
@@ -1130,6 +1143,7 @@ def make_handler_node(
                         error=str(exc),
                     )
                     final_text = _EMPTY_RESPONSE_FALLBACK
+                    turn_failure = {"kind": "llm_failed", "detail": str(exc)}
                     break
 
                 cleaned_text = _clean_model_text(response.text)
@@ -1225,6 +1239,7 @@ def make_handler_node(
                     iterations=iteration + 1,
                 )
                 final_text = _EMPTY_RESPONSE_FALLBACK
+                turn_failure = turn_failure or {"kind": "empty_response", "detail": None}
 
             # Per-turn latency summary. ``iterations`` x per-call latency (see
             # ``llm.call_complete``) is the whole story of a slow turn: a turn
@@ -1245,6 +1260,7 @@ def make_handler_node(
                 "tool_calls": envelopes,
                 "response": final_text,
                 "response_model": llm.respond_model,
+                "turn_failure": turn_failure,
                 # Empty dict (not ``None``) for state-merge stability:
                 # LangGraph keeps the field present on every turn and
                 # downstream nodes ``if state.get("interactive_payload")``

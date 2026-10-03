@@ -3,6 +3,11 @@
 Catálogo cerrado de tres ids. El PUT hace upsert en
 ``tenant_model_bindings`` (rol ``respond``) y no habla con LiteLLM: la
 virtual key del partner ya tiene los tres modelos.
+
+Spec 016 (US4): la lista trae los pesos de cuota y un coste relativo en
+créditos (el más económico es x1) para que el partner elija sabiendo lo que
+gasta; el binding dice si el plan todavía lo permite y qué responde si no;
+cambiarlo deja ``console.model.update`` en la auditoría del cliente.
 """
 
 from __future__ import annotations
@@ -23,13 +28,17 @@ from nexus_api.core.partner_allowlist import read_allowlist
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.core.respond_catalog import (
     RESPOND_MODEL_ID_SET,
+    RESPOND_MODEL_IDS,
     RESPOND_MODELS,
     RESPOND_ROLE,
+    SOL_MODEL_ID,
 )
 from nexus_api.core.tenant_context import apply_tenant_to_session
+from nexus_api.db.models import AuditLog
+from nexus_api.db.models.model_profile import ModelProfile
 
 from .deps import ClientRef, resolve_mapping
-from .schemas_models import ClientModelOut, ConsoleModelOut, ModelIn
+from .schemas_models import ClientModelOut, ConsoleModelOut, ModelIn, ModelWeightsOut
 
 router = APIRouter()
 log = structlog.get_logger(__name__)
@@ -42,19 +51,82 @@ def _unknown_model(model_id: str) -> HTTPException:
     )
 
 
+_CATALOG_DISPLAY: dict[str, str] = dict(RESPOND_MODELS)
+
+#: Lo que responde sin binding: el defecto del worker (``llm_respond_model``).
+FALLBACK_MODEL_ID = SOL_MODEL_ID
+
+
+def _fallback_display() -> str:
+    return _CATALOG_DISPLAY.get(FALLBACK_MODEL_ID, FALLBACK_MODEL_ID)
+
+
+async def _profiles(session: AsyncSession, model_ids: list[str]) -> dict[str, ModelProfile]:
+    """``model_profiles`` de los ids pedidos (tabla de plataforma, sin RLS)."""
+    if not model_ids:
+        return {}
+    rows = (
+        await session.scalars(
+            sa.select(ModelProfile).where(
+                ModelProfile.model_id.in_(model_ids), ModelProfile.status == "active"
+            )
+        )
+    ).all()
+    return {str(p.model_id): p for p in rows}
+
+
+def _weights(profile: ModelProfile | None) -> ModelWeightsOut:
+    """Pesos por carril; sin perfil o sin pesos, el neutro (1)."""
+    if profile is None:
+        return ModelWeightsOut(input=1.0, cache_read=1.0, output=1.0)
+    legacy = float(profile.quota_weight) if profile.quota_weight is not None else 1.0
+    return ModelWeightsOut(
+        input=float(profile.quota_weight_input)
+        if profile.quota_weight_input is not None
+        else legacy,
+        cache_read=float(profile.quota_weight_cache_read)
+        if profile.quota_weight_cache_read is not None
+        else legacy,
+        output=float(profile.quota_weight_output)
+        if profile.quota_weight_output is not None
+        else legacy,
+    )
+
+
+def relative_costs(weights: dict[str, ModelWeightsOut]) -> dict[str, int]:
+    """Peso de salida normalizado al menor de la lista, redondeado: el más
+    económico es x1. Es la cifra que el partner ve antes de elegir (R5.1)."""
+    positive = [w.output for w in weights.values() if w.output > 0]
+    floor = min(positive) if positive else 1.0
+    return {
+        model_id: max(1, round(w.output / floor)) if w.output > 0 else 1
+        for model_id, w in weights.items()
+    }
+
+
 @router.get("/models", response_model=list[ConsoleModelOut])
 async def list_console_models(
     principal: ConsolePrincipal = Depends(require_console_principal("agents:read")),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[ConsoleModelOut]:
-    """Catálogo cerrado ∩ allowlist del partner. Terra off → no Terra."""
+    """Catálogo cerrado ∩ allowlist del partner, con su coste en créditos."""
     async with session.begin():
         await apply_partner_to_session(session, principal.partner.id)
         allowed = await read_allowlist(session, principal.partner.id)
+        listed = [model_id for model_id in RESPOND_MODEL_IDS if model_id in allowed]
+        profiles = await _profiles(session, listed)
+    weights = {model_id: _weights(profiles.get(model_id)) for model_id in listed}
+    costs = relative_costs(weights)
     return [
-        ConsoleModelOut(model_id=model_id, display_name=display)
-        for model_id, display in RESPOND_MODELS
-        if model_id in allowed
+        ConsoleModelOut(
+            model_id=model_id,
+            display_name=str(profiles[model_id].display_name)
+            if model_id in profiles
+            else _CATALOG_DISPLAY[model_id],
+            relative_cost=costs[model_id],
+            weights=weights[model_id],
+        )
+        for model_id in listed
     ]
 
 
@@ -71,6 +143,8 @@ async def get_client_model(
     """Binding ``respond`` de un cliente propio. El de otro partner es 404."""
     mapping = await resolve_mapping(session, principal, ref)
     async with session.begin():
+        await apply_partner_to_session(session, principal.partner.id)
+        allowed = await read_allowlist(session, principal.partner.id)
         await apply_tenant_to_session(session, mapping.tenant_id)
         row = (
             (
@@ -90,13 +164,22 @@ async def get_client_model(
             .first()
         )
     if row is None:
-        return ClientModelOut(client_ref=ref, role=RESPOND_ROLE, is_bound=False)
+        return ClientModelOut(
+            client_ref=ref,
+            role=RESPOND_ROLE,
+            is_bound=False,
+            fallback_model_id=FALLBACK_MODEL_ID,
+            fallback_display_name=_fallback_display(),
+        )
     return ClientModelOut(
         client_ref=ref,
         role=RESPOND_ROLE,
         model_id=str(row["model_id"]),
         display_name=str(row["display_name"]),
         is_bound=True,
+        allowed=str(row["model_id"]) in allowed,
+        fallback_model_id=FALLBACK_MODEL_ID,
+        fallback_display_name=_fallback_display(),
     )
 
 
@@ -140,6 +223,17 @@ async def put_client_model(
         )
         if profile is None:
             raise _unknown_model(body.model_id)
+        previous = await session.scalar(
+            sa.text(
+                """
+                SELECT p.model_id
+                  FROM tenant_model_bindings b
+                  JOIN model_profiles p ON p.id = b.model_profile_id
+                 WHERE b.role = :role
+                """
+            ),
+            {"role": RESPOND_ROLE},
+        )
         await session.execute(
             sa.text(
                 """
@@ -158,6 +252,20 @@ async def put_client_model(
                 "fc": json.dumps([]),
             },
         )
+        # Spec 016 (R5.2): quién cambió el modelo de qué cliente, y desde cuál.
+        session.add(
+            AuditLog(
+                tenant_id=mapping.tenant_id,
+                actor=principal.actor,
+                action="console.model.update",
+                target=f"tenant:{mapping.tenant_id}",
+                before_json={"model_id": str(previous) if previous is not None else None},
+                after_json={
+                    "model_id": str(profile["model_id"]),
+                    "previous": str(previous) if previous is not None else None,
+                },
+            )
+        )
     await _invalidate(redis, mapping.tenant_id)
     return ClientModelOut(
         client_ref=ref,
@@ -165,6 +273,9 @@ async def put_client_model(
         model_id=str(profile["model_id"]),
         display_name=str(profile["display_name"]),
         is_bound=True,
+        allowed=True,
+        fallback_model_id=FALLBACK_MODEL_ID,
+        fallback_display_name=_fallback_display(),
     )
 
 

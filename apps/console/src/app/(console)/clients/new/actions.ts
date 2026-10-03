@@ -10,8 +10,9 @@ import { can, requirePrincipal } from "@/lib/principal";
 
 /**
  * Server Actions of the new-client wizard (CP-10, lane onboarding). One
- * action per real stage so the UI can show per-stage progress and retry a
- * single stage; every input is Zod-validated on the server.
+ * action per real stage — create, seed, publish, activate — so the UI shows
+ * per-stage progress and retries ONE stage (spec 016, R4); every input is
+ * Zod-validated on the server.
  */
 
 const ref = z.string().min(1).max(255).regex(/^[A-Za-z0-9._:-]+$/);
@@ -55,19 +56,37 @@ export async function wizardSeedAgentAction(raw: unknown): Promise<ActionResult<
 }
 
 const publishSchema = z.object({ ref });
-/** Stage 3 — publish v1 and activate the client. */
-export async function wizardPublishAndActivateAction(raw: unknown): Promise<ActionResult<Client>> {
+/**
+ * Stage 3 — publish v1. Idempotent (spec 016, R4.2): with an active version
+ * already there, nothing is published again — a retry of «activate» must
+ * never re-run this.
+ */
+export async function wizardPublishAction(raw: unknown): Promise<ActionResult<{ published: boolean; version: number | null }>> {
   const { ref: r } = publishSchema.parse(raw);
   const principal = await requirePrincipal();
-  if (!can(principal.role, "agents:write") || !can(principal.role, "clients:write")) return forbidden;
+  if (!can(principal.role, "agents:write")) return forbidden;
   const api = backendFor(principal);
   const res = await run(async () => {
     const bundle = await api.getAgent(r);
-    if (bundle.active_version == null) {
-      const first = bundle.versions.find((v) => v.status === "staged") ?? bundle.versions[0];
-      if (!first) throw new BackendError(409, "/console/clients", { detail: "no agent version to publish" });
-      await api.publishAgentVersion(r, first.version);
-    }
+    if (bundle.active_version != null) return { published: false, version: bundle.active_version };
+    const first = bundle.versions.find((v) => v.status === "staged") ?? bundle.versions[0];
+    if (!first) throw new BackendError(409, "/console/clients", { detail: "no agent version to publish" });
+    await api.publishAgentVersion(r, first.version);
+    return { published: true, version: first.version };
+  });
+  if (res.ok) revalidatePath(`/clients/${r}/agent`);
+  return res;
+}
+
+/** Stage 4 — activate the client. Idempotent: an active client stays active. */
+export async function wizardActivateAction(raw: unknown): Promise<ActionResult<Client>> {
+  const { ref: r } = publishSchema.parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "clients:write")) return forbidden;
+  const api = backendFor(principal);
+  const res = await run(async () => {
+    const current = await api.getClient(r);
+    if (current.status === "active") return current;
     return api.setClientStatus(r, "active");
   });
   if (res.ok) {

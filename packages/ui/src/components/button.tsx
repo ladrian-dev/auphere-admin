@@ -1,5 +1,6 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
+import { Loader2 } from "lucide-react";
 
 import { cn } from "../lib/utils";
 
@@ -14,9 +15,21 @@ import { cn } from "../lib/utils";
  * All on the 4 px grid; radius is ``rounded-sm`` (4 px) per the brand
  * system. There are no other sizes — if a design needs one, it is a design
  * change, not a className.
+ *
+ * ``no-underline`` en la base: un Button que se pinta como enlace
+ * (``render={<Link/>}``) es un ``<a href>``, y eso lo expone a todo lo que
+ * en esta base de código subraya anclas. La variante ``link`` lo recupera en
+ * hover, que es donde sí lo quiere.
+ *
+ * No basta con esto, y conviene saberlo: ``Callout`` y ``Alert`` subrayaban
+ * **toda** ancla que contuvieran (``[&_a]:underline``), y ese selector gana
+ * en especificidad. Salía en tres botones «Conectar» de la tarjeta de
+ * conectores que estorban (owner, 2026-09-28). Ahora esos dos excluyen
+ * ``[data-slot=button]``: un aviso subraya los enlaces de su texto, no los
+ * botones que lleva dentro.
  */
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-sm border border-transparent bg-clip-padding text-sm font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-(--duration-fast) outline-none select-none focus-visible:border-ring active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-sm border border-transparent bg-clip-padding text-sm font-medium no-underline transition-[background-color,color,border-color,box-shadow,transform] duration-(--duration-fast) select-none focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -29,7 +42,7 @@ const buttonVariants = cva(
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-primary-text underline-offset-4 hover:underline",
       },
       size: {
         default:
@@ -47,15 +60,26 @@ const buttonVariants = cva(
   },
 );
 
-type ButtonProps = ButtonPrimitive.Props & VariantProps<typeof buttonVariants>;
+type ButtonProps = ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> & {
+    /** Bloque C: busy and disabled, with a spinner in the icon slot and the
+     *  label kept in place so the button does not change width. */
+    loading?: boolean;
+  };
 
-function Button({ className, variant = "default", size = "default", ...props }: ButtonProps) {
+function Button({ className, variant = "default", size = "default", loading, disabled, children, ...props }: ButtonProps) {
   return (
     <ButtonPrimitive
       data-slot="button"
+      data-loading={loading || undefined}
+      aria-busy={loading || undefined}
+      disabled={disabled || loading}
       className={cn(buttonVariants({ variant, size }), className)}
       {...props}
-    />
+    >
+      {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+      {children}
+    </ButtonPrimitive>
   );
 }
 

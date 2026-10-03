@@ -33,6 +33,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  DescriptionList,
   StatusBadge,
   formatCurrency,
   formatDate,
@@ -70,7 +71,7 @@ function TierCard({
       aria-current={current ? "true" : undefined}
     >
       <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
+        <CardTitle className="flex flex-wrap items-center justify-between gap-2">
           <span>{tier.display_name}</span>
           {current ? <StatusBadge tone="positive">{t("membership.currentBadge")}</StatusBadge> : null}
         </CardTitle>
@@ -81,24 +82,25 @@ function TierCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-          <dt className="text-muted-foreground">{t("membership.teammates")}</dt>
-          <dd className="tabular-nums">{tier.max_teammates}</dd>
-          <dt className="text-muted-foreground">{t("membership.members")}</dt>
-          <dd className="tabular-nums">{tier.max_members}</dd>
-          {/* El múltiplo, nunca la cifra. `null` en el gratuito: «0,2× el de
-              Pro» no le dice nada a quien todavía no tiene plan. */}
-          {tier.consumption_multiple !== null ? (
-            <>
-              <dt className="text-muted-foreground">{t("membership.consumption")}</dt>
-              <dd>
-                {tier.consumption_multiple === 1
-                  ? t("membership.multiple.base")
-                  : t("membership.multiple", { n: tier.consumption_multiple })}
-              </dd>
-            </>
-          ) : null}
-        </dl>
+        <DescriptionList
+          layout="inline"
+          dense
+          items={[
+            { key: "teammates", term: t("membership.teammates"), detail: <span className="tabular-nums">{tier.max_teammates}</span> },
+            { key: "members", term: t("membership.members"), detail: <span className="tabular-nums">{tier.max_members}</span> },
+            // El múltiplo, nunca la cifra. `null` en el gratuito: «0,2× el de
+            // Pro» no le dice nada a quien todavía no tiene plan.
+            ...(tier.consumption_multiple !== null
+              ? [
+                  {
+                    key: "consumption",
+                    term: t("membership.consumption"),
+                    detail: tier.consumption_multiple === 1 ? t("membership.multiple.base") : t("membership.multiple", { n: tier.consumption_multiple }),
+                  },
+                ]
+              : []),
+          ]}
+        />
         {!current && onChoose ? (
           <Button
             size="sm"
@@ -182,7 +184,7 @@ export function MembershipPanel({ membership, onChoose, onFixCard, onCancel }: P
           <h2 id="free-h" className="text-lg font-semibold text-balance">
             {t("membership.free.title")}
           </h2>
-          <p className="text-muted-foreground max-w-prose text-sm text-pretty">
+          <p className="text-muted-foreground text-sm text-pretty">
             {t("membership.free.body")}
           </p>
         </section>
@@ -223,7 +225,10 @@ export function MembershipPanel({ membership, onChoose, onFixCard, onCancel }: P
         <h2 id="catalog-h" className="text-lg font-semibold">
           {t("membership.catalog")}
         </h2>
-        <div className="grid gap-4 @md:grid-cols-2 @4xl:grid-cols-4">
+        {/* Side by side (owner, 2026-09-23): four plans in one row on a wide
+            screen, two by two on a tablet, stacked on a phone. All alike: no
+            «recommended» — the partner decides (owner, 2026-09-24). */}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {catalog.map((entry) => (
             <TierCard
               key={entry.code}

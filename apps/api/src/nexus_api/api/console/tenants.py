@@ -14,6 +14,7 @@ opens the RLS-scoped transaction.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import sqlalchemy as sa
@@ -33,6 +34,7 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 from nexus_api.schemas.partner import ClientAgentIn, ClientProvisionIn
+from nexus_api.services.agent_audience import count_of
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.console_notifications import record_client_activation_detached
 from nexus_api.services.partner_clients import (
@@ -42,14 +44,28 @@ from nexus_api.services.partner_clients import (
 )
 from nexus_api.services.tenant_lifecycle import TenantDeleteBlocked, hard_delete_tenant
 
-from .deps import ClientScope, client_health, client_scope, health_for_tenant, resolve_mapping
+from .deps import (
+    ClientScope,
+    active_customer_channel,
+    client_health,
+    client_scope,
+    client_sector,
+    client_setup,
+    client_setup_detail,
+    health_for_tenant,
+    out_of_quota,
+    resolve_mapping,
+    serving_since,
+)
 from .me import quota_out
 from .schemas import (
+    ClientAudienceOut,
     ClientCreateIn,
     ClientCreateOut,
     ClientDeleteIn,
     ClientOut,
     ClientPageOut,
+    ClientQuotaOut,
     ClientStatusIn,
     ClientSummaryOut,
     ClientUpdateIn,
@@ -65,7 +81,9 @@ _SORTABLE = {
 }
 
 
-def _summary(mapping: PartnerTenant, tenant: Tenant) -> ClientSummaryOut:
+def _summary(
+    mapping: PartnerTenant, tenant: Tenant, *, out_of_quota: bool = False
+) -> ClientSummaryOut:
     return ClientSummaryOut(
         external_client_ref=mapping.external_client_ref,
         name=tenant.name,
@@ -73,6 +91,54 @@ def _summary(mapping: PartnerTenant, tenant: Tenant) -> ClientSummaryOut:
         timezone=tenant.timezone,
         created_at=tenant.created_at,
         updated_at=tenant.updated_at,
+        out_of_quota=out_of_quota,
+    )
+
+
+async def active_audience(session: AsyncSession) -> ClientAudienceOut | None:
+    """Spec 024 (Requisito 3.1): who the ACTIVE version answers — never the
+    draft, which is what the settings screen edits. Inside a tenant-scoped
+    transaction."""
+    policies = await session.scalar(
+        sa.select(AgentConfig.policies)
+        .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
+        .order_by(AgentConfig.version.desc())
+        .limit(1)
+    )
+    if policies is None:
+        return None
+    mode, count = count_of(policies)
+    return ClientAudienceOut(mode=mode, count=count)
+
+
+async def _detail(scope: ClientScope) -> ClientOut:
+    """Summary + health with the quota reading (spec 016, R2.1) + the four
+    setup steps, the sector and the quota (spec 017, R1)."""
+    from nexus_api.metering.wallet import allocations_for
+
+    partner_id = scope.principal.partner.id
+    no_quota = await out_of_quota(partner_id, scope.tenant.id)
+    health = await client_health(scope.session, scope.tenant, out_of_quota=no_quota)
+    allocation = (await allocations_for(partner_id, [scope.tenant.id])).get(scope.tenant.id)
+    setup = client_setup_detail(
+        agent=health.agent_configured,
+        channel=await active_customer_channel(scope.session),
+        quota=not no_quota,
+        active=scope.tenant.status is TenantStatus.ACTIVE,
+    )
+    summary = _summary(scope.mapping, scope.tenant, out_of_quota=no_quota).model_dump(
+        exclude={"setup", "quota", "audience"}
+    )
+    return ClientOut(
+        **summary,
+        health=health,
+        sector=await client_sector(scope.session),
+        audience=await active_audience(scope.session),
+        setup=setup,
+        quota=ClientQuotaOut.from_credits(*allocation) if allocation else None,
+        # Solo cuando de verdad atiende: una fecha con un paso pendiente
+        # diría que atendía antes de poder hacerlo.
+        serving_since=(await serving_since(scope.session)) if setup.next is None else None,
     )
 
 
@@ -128,8 +194,42 @@ async def list_clients(
                 .offset(offset)
             )
         ).all()
+    from nexus_api.metering.wallet import allocations_for, quota_state
+    from nexus_api.services.console_home import tenant_snapshots
+
+    ids = [tenant.id for _, tenant in rows]
+    quota = await quota_state(principal.partner.id, ids)
+    # Spec 017 (R9.1): who is ready and how much is left, read once per page
+    # — the ledger in one partner-scoped query and the per-tenant snapshot
+    # the home page already uses (channels and conversations have no
+    # reporting policy, so it is one scoped statement per tenant, bounded
+    # by the page size, never one HTTP call per row).
+    allocations = await allocations_for(principal.partner.id, ids)
+    snap = await tenant_snapshots(ids, month_start=datetime.now(UTC) - timedelta(days=7))
+
+    def _row(mapping: PartnerTenant, tenant: Tenant) -> ClientSummaryOut:
+        s = snap.snapshots.get(tenant.id)
+        no_quota = quota.get(tenant.id, True)
+        allocation = allocations.get(tenant.id)
+        return _summary(mapping, tenant, out_of_quota=no_quota).model_copy(
+            update={
+                "setup": client_setup(
+                    agent=bool(s and s.agent_version is not None),
+                    channel=bool(s and s.active_channels > 0),
+                    quota=not no_quota,
+                    active=tenant.status is TenantStatus.ACTIVE,
+                ),
+                "quota": ClientQuotaOut.from_credits(*allocation) if allocation else None,
+                "conversations_7d": s.conversations_month if s else 0,
+                # Spec 024: what the ACTIVE agent answers, from the same snapshot.
+                "audience": ClientAudienceOut(mode=s.audience_mode, count=s.audience_count)
+                if s and s.audience_mode is not None
+                else None,
+            }
+        )
+
     return ClientPageOut(
-        items=[_summary(mapping, tenant) for mapping, tenant in rows],
+        items=[_row(mapping, tenant) for mapping, tenant in rows],
         total=int(total or 0),
         limit=limit,
         offset=offset,
@@ -224,8 +324,7 @@ async def create_client(
 
 @router.get("/{ref}", response_model=ClientOut)
 async def get_client(scope: ClientScope = Depends(client_scope("clients:read"))) -> ClientOut:
-    health = await client_health(scope.session, scope.tenant)
-    return ClientOut(**_summary(scope.mapping, scope.tenant).model_dump(), health=health)
+    return await _detail(scope)
 
 
 @router.patch("/{ref}", response_model=ClientOut)
@@ -253,8 +352,7 @@ async def update_client(
     await scope.session.flush()
     # ``updated_at`` is a server-side ``onupdate``: reload before serialising.
     await scope.session.refresh(scope.tenant)
-    health = await client_health(scope.session, scope.tenant)
-    return ClientOut(**_summary(scope.mapping, scope.tenant).model_dump(), health=health)
+    return await _detail(scope)
 
 
 _ALLOWED: dict[TenantStatus, set[str]] = {
@@ -279,8 +377,7 @@ async def set_client_status(
     agent version — otherwise there is nothing to serve."""
     current = scope.tenant.status
     if body.status == current.value:
-        health = await client_health(scope.session, scope.tenant)
-        return ClientOut(**_summary(scope.mapping, scope.tenant).model_dump(), health=health)
+        return await _detail(scope)
     if body.status not in _ALLOWED[current]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -317,8 +414,7 @@ async def set_client_status(
             partner_id=scope.principal.partner.id,
             external_client_ref=scope.ref,
         )
-    health = await client_health(scope.session, scope.tenant)
-    return ClientOut(**_summary(scope.mapping, scope.tenant).model_dump(), health=health)
+    return await _detail(scope)
 
 
 @router.delete(

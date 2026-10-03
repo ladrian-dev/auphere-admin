@@ -18,68 +18,34 @@ export function percentOf(units: number, cap: number | null): number | null {
   return Math.round((units / cap) * 10000) / 100;
 }
 
-/** Sum of a meter over the whole series. */
-export function seriesTotal(points: SeriesPoint[], meter: string): number {
-  return points.reduce((acc, p) => acc + (p.by_meter[meter] ?? 0), 0);
+/** Spec 028: the technical detail as a list — one row per meter, grouped,
+ *  with its total for the period and its daily series. The model meters
+ *  (input, output, cache read, cache write) always have a row: a cache that
+ *  reads 0 is a fact worth seeing, not a missing line. */
+export type MeterRow = { meter: string; total: number; series: number[] };
+export type MeterGroup = { key: "messages" | "model" | "media" | "voice" | "other"; rows: MeterRow[] };
+
+const ALWAYS = ["channel.message", "llm.input_tokens", "llm.output_tokens", "llm.cache_read", "llm.cache_write"];
+
+function groupOf(meter: string): MeterGroup["key"] {
+  if (meter === "channel.message") return "messages";
+  if (meter.startsWith("llm.")) return "model";
+  if (meter.startsWith("media.")) return "media";
+  if (meter.startsWith("voice.")) return "voice";
+  return "other";
 }
 
-/** Meters present in the series, biggest first; the rest folded into `other`. */
-export function topMeters(points: SeriesPoint[], max = 6): { keys: string[]; hasOther: boolean } {
-  const totals = new Map<string, number>();
-  for (const p of points) for (const [m, v] of Object.entries(p.by_meter)) totals.set(m, (totals.get(m) ?? 0) + v);
-  const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m);
-  return { keys: sorted.slice(0, max), hasOther: sorted.length > max };
-}
-
-/** Rows for the stacked bars: one per day, series under their meter key (+ `other`). */
-export function barsFromSeries(points: SeriesPoint[], keys: string[]): Record<string, string | number>[] {
-  const keep = new Set(keys);
-  return points.map((p) => {
-    const row: Record<string, string | number> = { day: p.day };
-    let other = 0;
-    for (const [m, v] of Object.entries(p.by_meter)) {
-      if (keep.has(m)) row[m] = v;
-      else other += v;
-    }
-    if (other > 0) row.other = other;
-    return row;
-  });
-}
-
-/**
- * Cumulative line of one meter across the natural month + linear projection
- * from today to the last day. `points` may cover more than the month; only
- * days in [monthStart, monthEnd) are used. Returns one point per day of the
- * month: `actual` up to today, `projected` from today (inclusive, so the two
- * lines join) to the end.
- */
-export function cumulativeWithProjection(
-  points: SeriesPoint[],
-  meter: string,
-  monthStartIso: string,
-  daysInMonth: number,
-  todayIso: string,
-): { x: string; actual: number | null; projected: number | null }[] {
-  const start = new Date(monthStartIso.slice(0, 10) + "T00:00:00Z");
-  const byDay = new Map(points.map((p) => [p.day, p.by_meter[meter] ?? 0]));
-  const out: { x: string; actual: number | null; projected: number | null }[] = [];
-  let acc = 0;
-  let todayIndex = -1;
-  for (let i = 0; i < daysInMonth; i++) {
-    const d = new Date(start.getTime() + i * 86_400_000).toISOString().slice(0, 10);
-    if (d <= todayIso) {
-      acc += byDay.get(d) ?? 0;
-      out.push({ x: d, actual: acc, projected: null });
-      if (d === todayIso) todayIndex = i;
-    } else {
-      out.push({ x: d, actual: null, projected: null });
-    }
-  }
-  if (todayIndex < 0) todayIndex = out.length - 1;
-  const elapsed = todayIndex + 1;
-  const perDay = elapsed > 0 ? acc / elapsed : 0;
-  for (let i = todayIndex; i < out.length; i++) {
-    out[i]!.projected = Math.round((acc + perDay * (i - todayIndex)) * 1000) / 1000;
-  }
-  return out;
+export function meterGroups(points: SeriesPoint[], totals: Record<string, number>): MeterGroup[] {
+  const meters = new Set<string>([...ALWAYS, ...Object.keys(totals)]);
+  for (const p of points) for (const m of Object.keys(p.by_meter)) meters.add(m);
+  const order = (m: string) => {
+    const i = ALWAYS.indexOf(m);
+    return i === -1 ? ALWAYS.length : i;
+  };
+  const rows = [...meters]
+    .sort((a, b) => order(a) - order(b) || a.localeCompare(b))
+    .map((meter) => ({ meter, total: totals[meter] ?? points.reduce((sum, p) => sum + (p.by_meter[meter] ?? 0), 0), series: points.map((p) => p.by_meter[meter] ?? 0) }));
+  // Messages and media fill one column, the model the other: even heights.
+  const keys: MeterGroup["key"][] = ["messages", "media", "voice", "model", "other"];
+  return keys.map((key) => ({ key, rows: rows.filter((r) => groupOf(r.meter) === key) })).filter((g) => g.rows.length > 0);
 }

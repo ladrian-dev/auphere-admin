@@ -36,4 +36,33 @@ describe("notifications/render", () => {
     expect(text).toContain("no puede responder");
     expect(text).not.toContain("primer cliente");
   });
+  it("names the missing piece when the client has an agent but no channel", () => {
+    const wa = notificationText("es", { kind: "client.activated", data: { first: true, can_serve: false, missing: ["whatsapp"] }, external_client_ref: "acme" });
+    expect(wa).toContain("falta conectar WhatsApp");
+    expect(wa).not.toContain("saldo");
+    const both = notificationText("es", { kind: "client.activated", data: { can_serve: false, missing: ["quota", "whatsapp"] }, external_client_ref: "acme" });
+    expect(both).toContain("WhatsApp y saldo");
+    const quota = notificationText("es", { kind: "client.activated", data: { can_serve: false, missing: ["quota"] }, external_client_ref: "acme" });
+    expect(quota).toContain("sin saldo");
+  });
+  it("uses the client's name when the page knows it, the reference otherwise", () => {
+    const n = { kind: "client.activated", data: { can_serve: true }, external_client_ref: "panaderia-la-espiga" };
+    expect(notificationText("es", n, { "panaderia-la-espiga": "Panadería La Espiga" })).toContain("Panadería La Espiga");
+    expect(notificationText("es", n)).toContain("panaderia-la-espiga");
+  });
+  it("names the client that ran out of quota and where to fix it (spec 016)", () => {
+    const n = { kind: "client.out_of_quota", data: { external_client_ref: "panaderia-la-espiga", remaining: 0 }, external_client_ref: "panaderia-la-espiga" };
+    const es = notificationText("es", n, { "panaderia-la-espiga": "Panadería La Espiga" });
+    expect(es).toContain("Panadería La Espiga");
+    expect(es).toContain("sin saldo");
+    expect(es).toContain("Consumo");
+    expect(notificationText("en", n)).toContain("out of balance");
+  });
+  it("explains a model reset with both models (spec 016)", () => {
+    const n = { kind: "client.model_reset", data: { from_model: "Sol", to_model: "Luna" }, external_client_ref: "acme" };
+    const es = notificationText("es", n);
+    expect(es).toContain("acme");
+    expect(es).toContain("Luna");
+    expect(es).toContain("Sol");
+  });
 });

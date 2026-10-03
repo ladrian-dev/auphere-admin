@@ -178,3 +178,55 @@ async def test_alerter_skips_unrelated_audit_actions(
     await _process_pending(sm, {"meta": fake_adapter})
 
     assert len(fake_adapter.template_calls) == 0
+
+
+async def test_an_escalation_reaches_every_payment_reviewer(
+    two_tenants_with_channels,
+    fake_adapter,
+):
+    """Spec 025: when the agent hands a conversation over, the business's
+    payment reviewers hear it too, from the business number, once each; and
+    the alert names the customer of the escalated conversation."""
+    from nexus_api.db.models import AgentConfig, AgentConfigStatus
+
+    info = two_tenants_with_channels["a"]
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, info["tenant_id"]):
+        session.add(
+            AgentConfig(
+                tenant_id=info["tenant_id"],
+                version=1,
+                status=AgentConfigStatus.ACTIVE,
+                system_prompt_rendered="x",
+                policies={
+                    "payment_review": {
+                        "reviewers": [
+                            {"phone": "+56991280655", "name": "Daniela"},
+                            {"phone": "+56989829063", "name": None},
+                        ]
+                    }
+                },
+            )
+        )
+    await _seed_audit(
+        tenant_info=info,
+        action="conversation.escalated",
+        after_json={"status": "escalated", "reason": "comuna fuera de la tabla"},
+    )
+    # escalate.escalate_to_human audits the conversation as the target.
+    async with sm() as session, tenant_scoped_session(session, info["tenant_id"]):
+        await session.execute(
+            sa.update(AuditLog)
+            .where(AuditLog.action == "conversation.escalated")
+            .values(target=str(info["conversation_id"]))
+        )
+
+    await _process_pending(sm, {"meta": fake_adapter})
+
+    recipients = sorted(c["recipient"] for c in fake_adapter.template_calls)
+    # Both reviewers and the tenant's owner phone, each once.
+    assert recipients == ["+56989829063", "+56991280655", "+56999990001"]
+    for call in fake_adapter.template_calls:
+        assert call["template_name"] == "alert_escalation_v1"
+        assert call["from_phone"] == info["business_phone"]
+        assert call["params"]["body"] == [info["customer_identifier"], "comuna fuera de la tabla"]

@@ -101,6 +101,28 @@ export function buildConsolePolicySchema(m: Partial<SchemaMessages> = {}) {
 }
 
 export const consolePolicySchema = buildConsolePolicySchema();
+
+/** Spec 024: what the form sends next to ``settings`` (the API normalises
+ *  and validates again; here only the shape is checked). */
+export const audienceSchema = z
+  .object({
+    mode: z.enum(["everyone", "list"]),
+    numbers: z
+      .array(z.object({ phone: z.string().min(1).max(32), name: z.string().max(120).nullable().default(null) }).strict())
+      .max(50)
+      .default([]),
+  })
+  .strict();
+
+/** Spec 025: who reviews payments (mirror of ``PaymentReviewIn``). */
+export const paymentReviewSchema = z
+  .object({
+    reviewers: z
+      .array(z.object({ phone: z.string().min(1).max(32), name: z.string().max(120).nullable().default(null) }).strict())
+      .max(10)
+      .default([]),
+  })
+  .strict();
 export type ConsolePolicyInput = z.input<typeof consolePolicySchema>;
 
 /** Same shape as the API default (`ConsolePolicy()` in Python). */

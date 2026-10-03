@@ -4,7 +4,7 @@ import { MessageSquarePlus, X } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Sheet, SheetContent, SheetDescription, SheetTitle } from "@nexus/ui";
+import { Button, NativeSelect, Sheet, SheetContent, SheetDescription, SheetTitle } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 
@@ -256,8 +256,11 @@ export function CompanionDrawer({
             <label htmlFor="companion-thread" className="sr-only">
               {t("companion.thread.select")}
             </label>
-            <select
+            <NativeSelect
               id="companion-thread"
+              size="sm"
+              className="text-xs"
+              wrapperClassName="w-full"
               value={threadId ?? ""}
               disabled={!!pending}
               onChange={(e) => {
@@ -265,7 +268,6 @@ export function CompanionDrawer({
                 if (!id) return;
                 void controller.openThread(id);
               }}
-              className="h-8 w-full min-w-0 rounded-sm border border-border bg-background px-2 text-xs focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               <option value="">{t("companion.thread.new")}</option>
               {threads.map((th) => (
@@ -273,7 +275,7 @@ export function CompanionDrawer({
                   {th.title || t("companion.thread.untitled")}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
         ) : null}
 

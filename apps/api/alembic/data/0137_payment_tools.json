@@ -1,0 +1,204 @@
+{
+  "payments.request_review": {
+    "description": "Abre una revisión de pago: avisa por WhatsApp al equipo del negocio, desde el número del negocio, con el resumen del pedido, el comprobante y dos botones (Confirmar pago / Rechazar pago). Úsala cuando el cliente manda el comprobante de una transferencia, o dice que pagó por el enlace de la tienda (antes busca su pedido con woocommerce.list_orders). Responde al cliente con `message_to_customer`. Si devuelve notified=0, pasa la conversación a una persona.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "description": "UUID of the live conversation with the paying customer.",
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "method": {
+          "description": "'transfer' when the customer sent a bank-transfer receipt; 'link' when they say they paid through the store checkout link.",
+          "enum": [
+            "transfer",
+            "link"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "product": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What they bought.",
+          "title": "Product"
+        },
+        "modality": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Delivery or store pickup, as agreed.",
+          "title": "Modality"
+        },
+        "place": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Delivery comuna, or the pickup place.",
+          "title": "Place"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Delivery or pickup date.",
+          "title": "Date"
+        },
+        "slot": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Delivery range or pickup time.",
+          "title": "Slot"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total to pay, as told.",
+          "title": "Total"
+        },
+        "customer_name": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Name"
+        },
+        "order_id": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Store order number (only for 'link', from woocommerce.list_orders).",
+          "title": "Order Id"
+        },
+        "order_status": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Store order status as read (only for 'link'), e.g. 'processing'.",
+          "title": "Order Status"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "method"
+      ],
+      "title": "RequestPaymentReviewInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "review_id": {
+          "format": "uuid",
+          "title": "Review Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "informed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "notified": {
+          "description": "Reviewers the notice was queued for.",
+          "title": "Notified",
+          "type": "integer"
+        },
+        "unreachable": {
+          "description": "Reviewers that could not be reached (their 24h window is closed).",
+          "title": "Unreachable",
+          "type": "integer"
+        },
+        "already_pending": {
+          "description": "True when a review was already open: the new receipt was added to it.",
+          "title": "Already Pending",
+          "type": "boolean"
+        },
+        "message_to_customer": {
+          "description": "What to tell the customer now. Never mention the reviewers.",
+          "title": "Message To Customer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "review_id",
+        "status",
+        "notified",
+        "unreachable",
+        "already_pending",
+        "message_to_customer"
+      ],
+      "title": "RequestPaymentReviewOutput",
+      "type": "object"
+    }
+  }
+}

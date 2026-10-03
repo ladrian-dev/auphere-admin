@@ -38,6 +38,9 @@ import {
 } from "@nexus/ui";
 
 import { saveAgentSettingsAction } from "@/app/(console)/clients/[ref]/agent/actions";
+import { AudienceEditor, newRow, type AudienceRow } from "@/components/agent-tools/audience-editor";
+import { PhoneRows, type PhoneRowsLabels } from "@/components/agent-tools/phone-rows";
+import { normalisePhone } from "@/components/agent-tools/audience-lines";
 import { useLocale, useT } from "@/i18n/client";
 import {
   ESCALATION_TRIGGERS,
@@ -47,6 +50,7 @@ import {
   type EscalationTrigger,
   type Tone,
   type Weekday,
+  type AudienceMode,
 } from "@/lib/backend/agent-tools-types";
 
 import { buildConsolePolicySchema, groupSlotsByDay, parseLanguageList } from "./settings-schema";
@@ -84,26 +88,106 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
   const escalationEnabled = useWatch({ control: form.control, name: "escalation.enabled" });
   const triggers = useWatch({ control: form.control, name: "escalation.triggers" });
   const [allowedText, setAllowedText] = React.useState(data.settings.languages.allowed.join(", "));
+  // Spec 024: «A quién responde». Lives next to the form, not inside it:
+  // the API stores it in a different key and validates it by line.
+  const audienceLocked = data.audience.locked;
+  const [audienceMode, setAudienceMode] = React.useState<AudienceMode>(data.audience.mode);
+  const [audienceRows, setAudienceRows] = React.useState<AudienceRow[]>(() => rowsOf(data.audience.numbers));
+  const [audienceError, setAudienceError] = React.useState<string | null>(null);
+  const audienceDirty =
+    audienceMode !== data.audience.mode ||
+    JSON.stringify(numbersOf(audienceRows)) !== JSON.stringify(data.audience.numbers);
+  // Spec 025: «Revisión de pagos». Same rows as the allowed numbers, its own key.
+  const savedReviewers = data.payment_review?.reviewers ?? [];
+  const [reviewRows, setReviewRows] = React.useState<AudienceRow[]>(() => rowsOf(savedReviewers));
+  const [reviewError, setReviewError] = React.useState<string | null>(null);
+  const reviewDirty = JSON.stringify(numbersOf(reviewRows)) !== JSON.stringify(savedReviewers);
 
   const toneItems = React.useMemo(
     () => TONES.map((v) => ({ value: v, label: t(`agentSettings.tone.${v}`) })),
     [t],
   );
 
+  function audienceErrorText(res: { code?: string | null; message: string; info?: Record<string, unknown> }): string {
+    if (res.code === "audience_empty") return t("agentSettings.audience.err.empty");
+    if (res.code === "audience_locked") return t("agentSettings.audience.err.locked");
+    if (res.code === "audience_invalid_phone") {
+      return t("agentSettings.audience.err.phone", { text: String(res.info?.phone ?? "") });
+    }
+    return res.message;
+  }
+
   function onSubmit(values: ConsolePolicy) {
     const changed = values.ai_disclosure.enabled !== data.settings.ai_disclosure.enabled;
     const settings: ConsolePolicy = changed
       ? { ...values, ai_disclosure: { ...values.ai_disclosure, decided_by: actor, decided_at: new Date().toISOString() } }
       : values;
+    // Spec 024: every row is checked before anything travels; the row that
+    // fails says so under itself.
+    if (audienceMode === "list") {
+      let bad = false;
+      const checked = audienceRows.map((r) => {
+        if (!r.phone.trim()) return { ...r, error: null };
+        if (normalisePhone(r.phone)) return { ...r, error: null };
+        bad = true;
+        return { ...r, error: t("agentSettings.audience.err.phone", { text: r.phone.trim() }) };
+      });
+      setAudienceRows(checked);
+      if (bad) {
+        toast.error(t("agentSettings.fixErrors"));
+        return;
+      }
+      if (numbersOf(checked).length === 0) {
+        setAudienceError(t("agentSettings.audience.err.empty"));
+        toast.error(t("agentSettings.fixErrors"));
+        return;
+      }
+    }
+    setAudienceError(null);
+    // Spec 025: same per-row check for the payment reviewers.
+    let badReviewer = false;
+    const checkedReviewers = reviewRows.map((r) => {
+      if (!r.phone.trim() || normalisePhone(r.phone)) return { ...r, error: null };
+      badReviewer = true;
+      return { ...r, error: t("agentSettings.paymentReview.err.phone", { text: r.phone.trim() }) };
+    });
+    setReviewRows(checkedReviewers);
+    if (badReviewer) {
+      toast.error(t("agentSettings.fixErrors"));
+      return;
+    }
+    if (numbersOf(checkedReviewers).length > 10) {
+      setReviewError(t("agentSettings.paymentReview.err.tooMany"));
+      toast.error(t("agentSettings.fixErrors"));
+      return;
+    }
+    setReviewError(null);
+    const audience = { mode: audienceMode, numbers: numbersOf(audienceRows) };
+    const paymentReview = reviewDirty ? { reviewers: numbersOf(checkedReviewers) } : undefined;
     startTransition(async () => {
-      const res = await saveAgentSettingsAction({ ref: refId, settings });
-      if (!res.ok) return void toast.error(res.message);
+      const res = await saveAgentSettingsAction({ ref: refId, settings, audience, paymentReview });
+      if (!res.ok) {
+        if (res.code?.startsWith("payment_reviewer")) {
+          const text =
+            res.code === "payment_reviewer_invalid_phone"
+              ? t("agentSettings.paymentReview.err.phone", { text: String(res.info?.phone ?? "") })
+              : t("agentSettings.paymentReview.err.tooMany");
+          setReviewError(text);
+          return void toast.error(text);
+        }
+        const text = audienceErrorText(res);
+        if (res.code?.startsWith("audience_")) setAudienceError(text);
+        return void toast.error(text);
+      }
       const v = res.data.version ?? 0;
       toast.success(t(res.data.draft_created ? "agentSettings.draft.saved" : "agentSettings.draft.updated", { v }), {
         action: { label: t("agentSettings.draft.publishLink"), onClick: () => router.push(`${base}/agent`) },
       });
       form.reset(res.data.settings);
       setAllowedText(res.data.settings.languages.allowed.join(", "));
+      setAudienceMode(res.data.audience.mode);
+      setAudienceRows(rowsOf(res.data.audience.numbers));
+      setReviewRows(rowsOf(res.data.payment_review?.reviewers ?? []));
       router.refresh();
     });
   }
@@ -248,8 +332,12 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
             <ol className="grid gap-3" aria-label={t("agentSettings.section.schedule")}>
               {groupSlotsByDay(weeklyValues ?? []).map(({ day, slots }) => (
                 <li key={day} className="grid gap-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{t(`agentSettings.day.${day}`)}</span>
+                  {/* El día en una columna de ancho fijo: con
+                      `justify-between` el «Cerrado» caía a una x distinta en
+                      cada fila —la que dejara el nombre del día— y las siete
+                      filas quedaban escalonadas. */}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span className="w-24 shrink-0 text-sm font-medium">{t(`agentSettings.day.${day}`)}</span>
                     {slots.length === 0 ? <span className="text-xs text-muted-foreground">{t("agentSettings.schedule.closed")}</span> : null}
                     {canWrite ? (
                       <Button
@@ -257,6 +345,7 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
                         variant="ghost"
                         size="xs"
                         disabled={(weeklyValues?.length ?? 0) >= 21}
+                        className="ml-auto"
                         onClick={() => weekly.append({ day, open: "09:00", close: "18:00" })}
                         aria-label={`${t("agentSettings.schedule.addSlot")} · ${t(`agentSettings.day.${day}`)}`}
                       >
@@ -369,11 +458,12 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
                         <div key={trigger} className="flex items-center gap-2">
                           <Checkbox
                             id={id}
+                            aria-labelledby={`${id}-label`}
                             checked={on}
                             disabled={!canWrite || !escalationEnabled}
                             onCheckedChange={(c) => field.onChange(toggle(field.value, trigger, c))}
                           />
-                          <Label htmlFor={id} className="font-normal">
+                          <Label id={`${id}-label`} htmlFor={id} className="font-normal">
                             {t(`agentSettings.escalation.trigger.${trigger}`)}
                           </Label>
                         </div>
@@ -422,6 +512,63 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
                 </FormItem>
               )}
             />
+          </CardContent>
+        </Card>
+
+        {/* Spec 024 · who it answers */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("agentSettings.section.audience")}</CardTitle>
+            <CardDescription>{t("agentSettings.audience.help")}</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <AudienceEditor
+              mode={audienceMode}
+              rows={audienceRows}
+              locked={audienceLocked}
+              disabled={!canWrite || pending}
+              onMode={(m) => {
+                setAudienceMode(m);
+                setAudienceError(null);
+              }}
+              onRows={(rows) => {
+                setAudienceRows(rows);
+                setAudienceError(null);
+              }}
+            />
+            {audienceError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {audienceError}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {/* Spec 025 · who reviews payments */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("agentSettings.section.paymentReview")}</CardTitle>
+            <CardDescription>{t("agentSettings.paymentReview.help")}</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <PhoneRows
+              rows={reviewRows}
+              disabled={!canWrite || pending}
+              slot="payment-review-list"
+              labels={REVIEW_LABELS}
+              onRows={(rows) => {
+                setReviewRows(rows);
+                setReviewError(null);
+              }}
+            />
+            {numbersOf(reviewRows).length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("agentSettings.paymentReview.empty")}</p>
+            ) : null}
+            {reviewError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {reviewError}
+              </p>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -476,7 +623,7 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
 
         {canWrite ? (
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={pending || !form.formState.isDirty}>
+            <Button type="submit" disabled={pending || (!form.formState.isDirty && !audienceDirty && !reviewDirty)}>
               {t("agentSettings.save")}
             </Button>
             <Link href={`${base}/agent`} className="text-sm text-muted-foreground underline-offset-4 hover:underline">
@@ -535,4 +682,28 @@ function SlotRow({ index, day, canWrite, onRemove }: { index: number; day: Weekd
       ) : null}
     </div>
   );
+}
+
+const REVIEW_LABELS: PhoneRowsLabels = {
+  list: "agentSettings.paymentReview.numbers",
+  count: "agentSettings.paymentReview.count",
+  phone: "agentSettings.paymentReview.phone",
+  name: "agentSettings.paymentReview.name",
+  remove: "agentSettings.paymentReview.remove",
+  add: "agentSettings.paymentReview.add",
+  hint: "agentSettings.paymentReview.numbers.hint",
+  phoneEg: "agentSettings.paymentReview.numbers.eg",
+  nameEg: "agentSettings.paymentReview.name.eg",
+};
+
+/** Rows for the editor: the saved numbers, or one empty row to start typing. */
+function rowsOf(numbers: readonly { phone: string; name: string | null }[]): AudienceRow[] {
+  return numbers.length ? numbers.map((n) => newRow(n.phone, n.name ?? "")) : [newRow()];
+}
+
+/** What travels: filled rows, phones normalised, empty names as null. */
+function numbersOf(rows: readonly AudienceRow[]): Array<{ phone: string; name: string | null }> {
+  return rows
+    .filter((r) => r.phone.trim())
+    .map((r) => ({ phone: normalisePhone(r.phone) ?? r.phone.trim(), name: r.name.trim() || null }));
 }

@@ -1,4 +1,4 @@
-import type { ConnectorOut, KnowledgeErrorCode, ToolOut } from "@/lib/backend/agent-tools-types";
+import type { ConnectorOut, KnowledgeErrorCode, ToolOut, CredentialsField, LastSync } from "@/lib/backend/agent-tools-types";
 
 /** Pure helpers of lane `agent-tools` (tested in `__tests__/`). */
 
@@ -31,6 +31,8 @@ export function connectorTone(status: string | null | undefined): Tone {
     case "pending":
       return "info";
     case "paused":
+    case "needs_reauth":
+    case "partial":
       return "warning";
     case "error":
     case "revoked":
@@ -41,7 +43,12 @@ export function connectorTone(status: string | null | undefined): Tone {
   }
 }
 
-export const CONNECTOR_STATUS_KEYS = ["connected", "pending", "paused", "error", "revoked", "expired", "disconnected"] as const;
+// Cada valor de `TenantConnectorStatus` en la API tiene su frase aquí. Uno
+// que falte no es «No conectado»: es una integración que existe y la
+// pantalla no sabe nombrar. `needs_reauth` y `partial` faltaban, y el
+// Resumen —que pedía la clave sin pasar por aquí— tumbó la ficha en staging
+// el 2026-09-29 con la primera integración que los tenía.
+export const CONNECTOR_STATUS_KEYS = ["connected", "pending", "paused", "error", "revoked", "expired", "disconnected", "needs_reauth", "partial"] as const;
 export type ConnectorStatusKey = (typeof CONNECTOR_STATUS_KEYS)[number];
 
 export function connectorStatusKey(status: string | null | undefined): `connectors.status.${ConnectorStatusKey | "none"}` {
@@ -87,12 +94,18 @@ export function knowledgeUsageRatio(indexedChars: number, cap: number): number {
   return Math.min(1, Math.max(0, indexedChars / cap));
 }
 
-const WIDTH_STEPS = ["w-0", "w-1/12", "w-2/12", "w-3/12", "w-4/12", "w-5/12", "w-6/12", "w-7/12", "w-8/12", "w-9/12", "w-10/12", "w-11/12", "w-full"] as const;
+/** Spec 016 (R7.2): the label of a credential field in the partner's
+ *  language — `connectors.field.{slug}.{field}` when the dictionary has it,
+ *  the seed's English label otherwise, the field name as a last resort. */
+export function credentialFieldLabel(slug: string, field: CredentialsField, table: Record<string, unknown>, translate: (key: string) => string): string {
+  const key = `connectors.field.${slug}.${field.field}`;
+  if (key in table) return translate(key);
+  return field.label ?? field.field;
+}
 
-/** Meter fill as a Tailwind fraction class (no inline styles): 13 steps, never 0 when > 0. */
-export function usageWidthClass(ratio: number): (typeof WIDTH_STEPS)[number] {
-  const r = Math.min(1, Math.max(0, ratio));
-  if (r === 0) return "w-0";
-  const idx = Math.max(1, Math.round(r * 12));
-  return WIDTH_STEPS[idx] ?? "w-full";
+/** Spec 016 (R7.3): what to say about the sync that ran with the connect. */
+export function lastSyncKey(sync: LastSync | null | undefined): "connectors.lastSync.ok" | "connectors.lastSync.provider_unavailable" | "connectors.lastSync.auth_rejected" | null {
+  if (!sync) return null;
+  if (sync.status === "ok") return "connectors.lastSync.ok";
+  return sync.reason === "auth_rejected" ? "connectors.lastSync.auth_rejected" : "connectors.lastSync.provider_unavailable";
 }

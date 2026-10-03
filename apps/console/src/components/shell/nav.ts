@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { BarChart3, Bell, BookOpen, Building2, KeyRound, Laptop, LayoutDashboard, Receipt, ScrollText, Users } from "lucide-react";
+import { BarChart3, BookOpen, Building2, KeyRound, Laptop, LayoutDashboard, Receipt, ScrollText, Users } from "lucide-react";
 
 import type { MessageKey } from "@/i18n/messages";
 import { can, type Permission, type Role } from "@/lib/permissions";
@@ -12,21 +12,23 @@ export const NAV: NavGroup[] = [
   {
     labelKey: "nav.group.operate",
     items: [
+      // Owner's order, 2026-10-03: the dashboard, the clients and their money
+      // first, then the record of what happened, the guide and the Teammate.
       { href: "/", labelKey: "nav.home", icon: LayoutDashboard, exact: true },
       { href: "/clients", labelKey: "nav.clients", icon: Building2, permission: "clients:read" },
-      { href: "/knowledge", labelKey: "nav.knowledge", icon: BookOpen, permission: "playbook:read" },
-      { href: "/workstation", labelKey: "nav.workstation", icon: Laptop, permission: "workstation:read" },
       { href: "/usage", labelKey: "nav.usage", icon: BarChart3, permission: "usage:read" },
       { href: "/audit", labelKey: "nav.audit", icon: ScrollText, permission: "audit:read" },
-      { href: "/notifications", labelKey: "nav.notifications", icon: Bell, permission: "partner:read" },
+      { href: "/knowledge", labelKey: "nav.knowledge", icon: BookOpen, permission: "playbook:read" },
+      { href: "/workstation", labelKey: "nav.workstation", icon: Laptop, permission: "workstation:read" },
+      // Notifications are reached from the bell in the top bar (owner, 2026-09-23): one place, not two.
     ],
   },
   {
     labelKey: "nav.group.account",
     items: [
       { href: "/team", labelKey: "nav.team", icon: Users, permission: "team:read" },
-      { href: "/keys", labelKey: "nav.keys", icon: KeyRound, permission: "keys:read" },
       { href: "/billing", labelKey: "nav.billing", icon: Receipt, permission: "billing:read" },
+      { href: "/keys", labelKey: "nav.keys", icon: KeyRound, permission: "keys:read" },
     ],
   },
 ];

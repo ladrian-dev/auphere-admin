@@ -24,11 +24,56 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .schemas import ChannelOut
+from .schemas import ChannelOut, ClientHealthOut
 
 # ── channels overview (CP-17) ──────────────────────────────────────────
 
 ChannelRole = Literal["agent", "notifications"]
+
+
+class CatalogOut(BaseModel):
+    """El catálogo de Commerce Manager enlazado a la cuenta del número (spec 022)."""
+
+    id: str
+    name: str | None = None
+    checked_at: datetime | None = None
+
+
+class CatalogErrorOut(BaseModel):
+    """Lo último que Meta rechazó sobre el catálogo, traducido a un código."""
+
+    code: str
+    message: str | None = None
+    at: datetime | None = None
+
+
+class CatalogSummaryOut(BaseModel):
+    id: str
+    name: str | None = None
+    product_count: int | None = None
+
+
+class CatalogListOut(BaseModel):
+    """Los catálogos del negocio dueño del token del canal, y cuál está enlazado."""
+
+    items: list[CatalogSummaryOut]
+    linked_id: str | None = None
+
+
+class CatalogSetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    catalog_id: str = Field(min_length=1, max_length=64)
+    #: Only read on a coexistence number when Meta will not list the
+    #: catalogues: the name the partner typed, shown on the card as is.
+    catalog_name: str | None = Field(default=None, max_length=120)
+
+
+#: ``coexistence`` (2026-10-01): the number keeps using the WhatsApp Business
+#: app, and Meta refuses the catalogue edge for that account type. The
+#: catalogue is whatever the app has connected; the console records it and
+#: cannot verify it with Meta.
+CatalogState = Literal["none", "linked", "permission_missing", "unchecked", "coexistence"]
 
 
 class ChannelDetailOut(ChannelOut):
@@ -41,6 +86,21 @@ class ChannelDetailOut(ChannelOut):
     verified_name: str | None = None
     mode: str | None = None
     agent_enabled: bool = True
+    #: El logotipo de la aplicación del canal, tomado del catálogo de
+    #: conectores (``whatsapp_meta.provider_meta.icon_url``). Viaja aquí
+    #: porque el canal es lo que la tarjeta pinta, y porque el catálogo de
+    #: conectores **no** lista los que son solo canal: sin esto, la consola no
+    #: tendría de dónde sacarlo.
+    logo_url: str | None = None
+    #: Spec 021: lo que quedó por deshacer en Meta al desvincular. Vacío en el
+    #: caso bueno. La tarjeta lo lee para decir «queda pendiente» y reintentar.
+    unlink_pending: list[str] = Field(default_factory=list)
+    #: Spec 022: el catálogo enlazado, o nada; y en qué estado está la verdad
+    #: («linked» coincide con Meta; «unchecked» no se pudo comprobar;
+    #: «permission_missing» la conexión no trajo el permiso).
+    catalog: CatalogOut | None = None
+    catalog_state: CatalogState = "none"
+    catalog_error: CatalogErrorOut | None = None
 
 
 class ChannelsOverviewOut(BaseModel):
@@ -91,11 +151,18 @@ class WhatsAppSignupOut(BaseModel):
     mode: str
     used_channels: int
     max_channels: int
+    #: Spec 016 (R1.2): what the number changed for the client — activated
+    #: when the partner auto-activates and an agent is published — and the
+    #: health the card will show, so the screen does not have to guess.
+    client_status: str
+    health: ClientHealthOut
 
 
 # ── templates (CP-18) ──────────────────────────────────────────────────
 
 _TEMPLATE_NAME_RE = re.compile(r"^[a-z0-9_]{1,512}$")
+_BODY_VAR_RE = re.compile(r"\{\{\s*([a-z0-9_]+)\s*\}\}")
+_VAR_NAME_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 
 TemplateCategory = Literal["MARKETING", "UTILITY", "AUTHENTICATION"]
 
@@ -160,6 +227,32 @@ class TemplateCreateIn(BaseModel):
     body_text: str = Field(min_length=1, max_length=1024)
     footer_text: str | None = Field(default=None, max_length=60)
     buttons: list[TemplateButtonIn] = Field(default_factory=list, max_length=3)
+    #: Example value per body variable (``{"nombre": "Camila"}`` or
+    #: ``{"1": "Camila"}``). Meta needs one for every variable to review it.
+    examples: dict[str, str] = Field(default_factory=dict, max_length=20)
+
+    @field_validator("examples")
+    @classmethod
+    def _validate_examples(cls, v: dict[str, str]) -> dict[str, str]:
+        for key, value in v.items():
+            if not _VAR_NAME_RE.match(key) or not value.strip() or len(value) > 200:
+                raise ValueError(f"invalid example for {key!r}")
+        return v
+
+    def variables(self) -> list[str]:
+        """Body variables in order of first appearance, without repeats."""
+        out: list[str] = []
+        for match in _BODY_VAR_RE.finditer(self.body_text):
+            name = match.group(1)
+            if name not in out:
+                out.append(name)
+        return out
+
+    def parameter_format(self) -> str | None:
+        names = self.variables()
+        if names and not all(n.isdigit() for n in names):
+            return "NAMED"
+        return None
 
     @field_validator("name")
     @classmethod
@@ -174,7 +267,19 @@ class TemplateCreateIn(BaseModel):
         components: list[dict[str, Any]] = []
         if self.header_text:
             components.append({"type": "HEADER", "format": "TEXT", "text": self.header_text})
-        components.append({"type": "BODY", "text": self.body_text})
+        body: dict[str, Any] = {"type": "BODY", "text": self.body_text}
+        names = self.variables()
+        if names and all(n in self.examples for n in names):
+            if self.parameter_format() == "NAMED":
+                body["example"] = {
+                    "body_text_named_params": [
+                        {"param_name": n, "example": self.examples[n]} for n in names
+                    ]
+                }
+            else:
+                ordered = sorted(names, key=int)
+                body["example"] = {"body_text": [[self.examples[n] for n in ordered]]}
+        components.append(body)
         if self.footer_text:
             components.append({"type": "FOOTER", "text": self.footer_text})
         if self.buttons:

@@ -54,13 +54,21 @@ _SLUG_SAFE = re.compile(r"[^a-z0-9-]+")
 
 
 class ProvisioningQuotaExceeded(Exception):
-    """The partner is at ``max_clients``. Surfaces as HTTP 409 with an
-    actionable message. Nothing was created."""
+    """The partner hit the guard ceiling (``max_clients``). Surfaces as HTTP
+    409 and nothing was created.
+
+    Since spec 019 this is no longer a product quota — a partner may create
+    as many clients as it wants. Reaching it means something is looping or a
+    key leaked, so the message says that instead of offering to raise a
+    limit nobody sells.
+    """
 
     def __init__(self, *, used: int, limit: int) -> None:
         super().__init__(
-            f"Client quota reached: {used} of {limit} clients in use. "
-            "Archive a client you no longer need or ask Auphere to raise the limit."
+            f"Provisioning guard tripped: {used} clients, ceiling {limit}. "
+            "Nothing was created. This ceiling is not a plan limit — reaching "
+            "it usually means a loop or a leaked key, so check before asking "
+            "Auphere to raise it."
         )
         self.used = used
         self.limit = limit

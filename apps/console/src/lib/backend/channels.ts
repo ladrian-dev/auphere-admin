@@ -1,3 +1,4 @@
+import type { ClientHealth } from "../backend";
 import type { Call } from "../backend";
 
 /**
@@ -8,6 +9,15 @@ import type { Call } from "../backend";
  */
 
 export type ChannelRole = "agent" | "notifications";
+
+/** Spec 022: el catálogo de Commerce Manager enlazado a la cuenta del número. */
+export type Catalog = { id: string; name: string | null; checked_at: string | null };
+/** «linked» coincide con Meta · «unchecked» no se pudo comprobar · «permission_missing»
+ *  la conexión de WhatsApp no trajo el permiso · «none» no hay. */
+export type CatalogState = "none" | "linked" | "permission_missing" | "unchecked" | "coexistence";
+export type CatalogError = { code: string; message: string | null; at: string | null };
+export type CatalogSummary = { id: string; name: string | null; product_count: number | null };
+export type CatalogList = { items: CatalogSummary[]; linked_id: string | null };
 
 export type ChannelDetail = {
   id: string;
@@ -23,6 +33,15 @@ export type ChannelDetail = {
   verified_name: string | null;
   mode: string | null;
   agent_enabled: boolean;
+  /** El logotipo de la aplicación del canal. La consola no lo pide al
+   *  proveedor —la CSP no lo dejaría— sino a `/api/channel-logo/…`. */
+  logo_url: string | null;
+  /** Lo que desvincular no consiguió en Meta (`deregister`, `unsubscribe`).
+   *  Vacío es «terminado del todo»; con algo, la tarjeta lo dice y reintenta. */
+  unlink_pending: string[];
+  catalog: Catalog | null;
+  catalog_state: CatalogState;
+  catalog_error: CatalogError | null;
 };
 
 export type ChannelsOverview = {
@@ -49,6 +68,9 @@ export type WhatsAppSignupResult = {
   mode: string;
   used_channels: number;
   max_channels: number;
+  /** Spec 016 (R1.2): what the number changed for the client. */
+  client_status: "provisioning" | "active" | "paused" | "archived" | (string & {});
+  health: ClientHealth;
 };
 
 export const SUGGESTED_ACTIONS = [
@@ -88,6 +110,8 @@ export type TemplateCreateBody = {
   body_text: string;
   footer_text?: string;
   buttons?: TemplateButton[];
+  /** Example per body variable, as Meta requires to review it. */
+  examples?: Record<string, string>;
 };
 export type TemplateCreated = { id: string | null; name: string; status: string | null; category: string | null };
 
@@ -129,6 +153,16 @@ export function channelsApi(call: Call) {
     channelsOverview: (ref: string) => call<ChannelsOverview>(`${base(ref)}/overview`),
     setChannelRole: (ref: string, channelId: string, role: ChannelRole | null) =>
       call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/role`, { method: "PATCH", body: { role } }),
+    disconnectChannel: (ref: string, channelId: string) =>
+      call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/disconnect`, { method: "POST" }),
+    listCatalogs: (ref: string, channelId: string) => call<CatalogList>(`${base(ref)}/${enc(channelId)}/catalogs`),
+    setCatalog: (ref: string, channelId: string, catalogId: string, catalogName?: string) =>
+      call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/catalog`, {
+        method: "PUT",
+        body: catalogName ? { catalog_id: catalogId, catalog_name: catalogName } : { catalog_id: catalogId },
+      }),
+    clearCatalog: (ref: string, channelId: string) =>
+      call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/catalog`, { method: "DELETE" }),
     whatsappSignup: (ref: string, body: WhatsAppSignupBody) =>
       call<WhatsAppSignupResult>(`${base(ref)}/whatsapp/signup`, { method: "POST", body }),
     listTemplates: (ref: string) => call<TemplateList>(`${base(ref)}/whatsapp/templates`),

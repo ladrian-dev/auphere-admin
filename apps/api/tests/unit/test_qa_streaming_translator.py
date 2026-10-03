@@ -261,3 +261,44 @@ def test_irrelevant_event_returns_empty() -> None:
     for ev in ("on_chain_start", "on_retriever_start", "on_llm_start"):
         out = translate_event({"event": ev, "data": {}}, _state())
         assert out == [], f"{ev} should not emit"
+
+
+def test_turn_failure_in_node_output_becomes_turn_failed_once() -> None:
+    """A handler that fell back to the neutral text leaves ``turn_failure``
+    in its output; the translator emits ``turn.failed`` exactly once even
+    though the graph's own ``on_chain_end`` repeats the field."""
+    state = _state()
+    failure = {"kind": "llm_failed", "detail": "AuthenticationError: no key"}
+    out = translate_event(
+        {
+            "event": "on_chain_end",
+            "name": "handle_info",
+            "data": {"output": {"turn_failure": failure}},
+        },
+        state,
+    )
+    assert out == [
+        ("turn.failed", {"reason": "llm_failed", "detail": "AuthenticationError: no key"})
+    ]
+    again = translate_event(
+        {
+            "event": "on_chain_end",
+            "name": "ucm_formatter",
+            "data": {"output": {"turn_failure": failure, "ucm": {"v": 1}, "intent": "info"}},
+        },
+        state,
+    )
+    assert [name for name, _ in again] == ["ucm.final"]
+
+
+def test_healthy_node_output_emits_no_turn_failed() -> None:
+    state = _state()
+    out = translate_event(
+        {
+            "event": "on_chain_end",
+            "name": "handle_info",
+            "data": {"output": {"turn_failure": None, "response": "hola"}},
+        },
+        state,
+    )
+    assert out == []

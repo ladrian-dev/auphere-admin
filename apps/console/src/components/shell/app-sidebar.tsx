@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import {
+  BrandMark,
+  BrandWordmark,
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -14,6 +16,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  cn,
   useSidebar,
 } from "@nexus/ui";
 
@@ -40,25 +43,23 @@ export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
   return (
     <Sidebar variant="inset" collapsible="icon" aria-label="Primary">
       <SidebarHeader>
-        <div className={collapsed ? "flex h-10 items-center justify-center" : "flex h-10 min-w-0 flex-col justify-center px-2"}>
-          {collapsed ? (
-            <span className="font-mono text-sm font-semibold text-primary-deep" aria-label="Auphere">
-              a.
-            </span>
-          ) : (
-            <>
-              <span className="font-mono text-xs tracking-eyebrow text-muted-foreground uppercase">{t("shell.partner")}</span>
-              <span className="min-w-0 truncate text-sm font-semibold" title={partnerName}>
-                {partnerName}
-              </span>
-            </>
-          )}
+        {/* The full logo (owner, 2026-09-24). Collapsing keeps the same layout:
+            the mark stays put and the wordmark fades while the panel clips it
+            (owner, 2026-10-03: the motion must be soft, not a jump). */}
+        <div className="flex h-10 min-w-0 items-center gap-2 overflow-hidden px-1">
+          <BrandMark className="size-7 shrink-0 text-primary" />
+          <BrandWordmark
+            className={cn(
+              "h-5 w-auto shrink-0 text-foreground transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none",
+              collapsed && "opacity-0",
+            )}
+          />
         </div>
       </SidebarHeader>
       <SidebarContent>
         {groups.map((group) => (
           <SidebarGroup key={group.labelKey}>
-            <SidebarGroupLabel className="font-mono text-xs tracking-eyebrow uppercase">{t(group.labelKey)}</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-xs font-medium tracking-eyebrow uppercase">{t(group.labelKey)}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
@@ -85,7 +86,7 @@ export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
         ))}
       </SidebarContent>
       <SidebarFooter>
-        <UserMenu user={user} role={role} partnerSlug={partnerSlug} collapsed={collapsed} />
+        <UserMenu user={user} role={role} partnerName={partnerName} partnerSlug={partnerSlug} collapsed={collapsed} />
       </SidebarFooter>
     </Sidebar>
   );

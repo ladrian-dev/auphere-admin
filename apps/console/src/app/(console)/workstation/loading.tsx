@@ -7,7 +7,7 @@ import { CardSkeleton, PageHeader } from "@nexus/ui";
 export default function WorkstationLoading() {
   return (
     <>
-      <PageHeader title="Puesto de trabajo" />
+      <PageHeader title="Teammate" />
       <CardSkeleton />
       <CardSkeleton />
     </>

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -43,7 +45,10 @@ async def test_send_text_injects_appsecret_proof_and_body() -> None:
         assert result["messages"][0]["id"] == "wamid.OUT"
         assert route.called
         request = route.calls[-1].request
-        assert f"access_token={_TOKEN}" in str(request.url)
+        # The token never travels in the URL (it would be logged); it goes
+        # in the Authorization header.
+        assert "access_token=" not in str(request.url)
+        assert request.headers["Authorization"] == f"Bearer {_TOKEN}"
         expected_proof = appsecret_proof(_TOKEN, _SECRET)
         assert f"appsecret_proof={expected_proof}" in str(request.url)
         body_text = request.content.decode()
@@ -64,9 +69,10 @@ async def test_send_text_can_disable_appsecret_proof() -> None:
                 to="56911",
                 body="x",
             )
-        url = str(route.calls[-1].request.url)
-        assert f"access_token={_TOKEN}" in url
-        assert "appsecret_proof=" not in url
+        request = route.calls[-1].request
+        assert "access_token=" not in str(request.url)
+        assert request.headers["Authorization"] == f"Bearer {_TOKEN}"
+        assert "appsecret_proof=" not in str(request.url)
 
 
 async def test_oauth_exception_190_raises_token_invalidated() -> None:
@@ -292,3 +298,101 @@ async def test_get_media_url_then_download_media() -> None:
         assert meta["url"] == cdn_url
         assert content[:3] == b"\xff\xd8\xff"
         assert content_type == "image/jpeg"
+
+
+async def test_deregister_phone_posts_with_no_body() -> None:
+    """Spec 021: la pareja de ``register_phone``. Meta no espera cuerpo."""
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        route = mock.post("/PN_1/deregister").respond(200, json={"success": True})
+        async with MetaClient(_SECRET) as client:
+            result = await client.deregister_phone(phone_number_id="PN_1", access_token=_TOKEN)
+        assert result == {"success": True}
+        sent = route.calls.last.request
+        assert "access_token" not in sent.url.params
+        assert sent.headers["Authorization"] == f"Bearer {_TOKEN}"
+        assert sent.url.params["appsecret_proof"] == appsecret_proof(_TOKEN, _SECRET)
+        assert not sent.content
+
+
+async def test_deregister_phone_surfaces_meta_refusal() -> None:
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.post("/PN_1/deregister").respond(
+            400, json={"error": {"message": "not registered", "code": 100}}
+        )
+        async with MetaClient(_SECRET) as client:
+            with pytest.raises(MetaAPIError):
+                await client.deregister_phone(phone_number_id="PN_1", access_token=_TOKEN)
+
+
+# ── catálogo (spec 022) ───────────────────────────────────────────────────
+
+
+async def test_list_catalogs_reads_the_business_and_returns_the_rows() -> None:
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        route = mock.get("/BIZ_1/owned_product_catalogs").respond(
+            200, json={"data": [{"id": "CAT_1", "name": "Flores", "product_count": 12}]}
+        )
+        async with MetaClient(_SECRET) as client:
+            rows = await client.list_catalogs(business_id="BIZ_1", access_token=_TOKEN)
+        assert rows == [{"id": "CAT_1", "name": "Flores", "product_count": 12}]
+        assert route.calls.last.request.url.params["fields"] == "id,name,product_count"
+
+
+async def test_get_linked_catalog_is_none_when_the_waba_has_none() -> None:
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.get("/WABA_1/product_catalogs").respond(200, json={"data": []})
+        async with MetaClient(_SECRET) as client:
+            assert await client.get_linked_catalog(waba_id="WABA_1", access_token=_TOKEN) is None
+
+
+async def test_link_and_unlink_catalog_hit_the_waba_edge() -> None:
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        link = mock.post("/WABA_1/product_catalogs").respond(200, json={"success": True})
+        unlink = mock.delete("/WABA_1/product_catalogs").respond(200, json={"success": True})
+        async with MetaClient(_SECRET) as client:
+            await client.link_catalog(waba_id="WABA_1", catalog_id="CAT_1", access_token=_TOKEN)
+            await client.unlink_catalog(waba_id="WABA_1", catalog_id="CAT_1", access_token=_TOKEN)
+        assert json.loads(link.calls.last.request.content) == {"catalog_id": "CAT_1"}
+        assert unlink.calls.last.request.url.params["catalog_id"] == "CAT_1"
+
+
+async def test_search_products_filters_by_name_and_caps_the_limit() -> None:
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        route = mock.get("/CAT_1/products").respond(
+            200, json={"data": [{"retailer_id": "SKU-1", "name": "Ramo", "price": "25 EUR"}]}
+        )
+        async with MetaClient(_SECRET) as client:
+            rows = await client.search_products(
+                catalog_id="CAT_1", access_token=_TOKEN, query="ramo", limit=50
+            )
+        assert rows[0]["retailer_id"] == "SKU-1"
+        params = route.calls.last.request.url.params
+        assert params["limit"] == "10"
+        assert "ramo" in params["filter"]
+
+
+async def test_a_permission_refusal_keeps_its_code() -> None:
+    """Sin ``catalog_management`` Meta contesta code 10; quien llama lo lee."""
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.get("/BIZ_1/owned_product_catalogs").respond(
+            403, json={"error": {"message": "(#10) Permission denied", "code": 10}}
+        )
+        async with MetaClient(_SECRET) as client:
+            with pytest.raises(MetaAPIError) as exc:
+                await client.list_catalogs(business_id="BIZ_1", access_token=_TOKEN)
+        assert exc.value.code == 10
+
+
+async def test_get_product_filters_by_retailer_id_and_is_none_when_missing() -> None:
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        route = mock.get("/CAT_1/products").respond(200, json={"data": []})
+        async with MetaClient(_SECRET) as client:
+            assert (
+                await client.get_product(
+                    catalog_id="CAT_1", retailer_id="SKU-9", access_token=_TOKEN
+                )
+                is None
+            )
+        assert json.loads(route.calls.last.request.url.params["filter"]) == {
+            "retailer_id": {"eq": "SKU-9"}
+        }

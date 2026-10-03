@@ -21,7 +21,7 @@ export default async function DiagnosticsPage({ params }: { params: Promise<{ re
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-col gap-1">
           <h1 className="text-base font-medium">{t("diag.title")}</h1>
-          <p className="max-w-prose text-sm text-muted-foreground">{t("diag.description")}</p>
+          <p className=" text-sm text-muted-foreground">{t("diag.description")}</p>
         </div>
         <Button nativeButton={false} render={<Link href={`/clients/${encodeURIComponent(ref)}/channels`} />} variant="ghost" size="sm">
           <ArrowLeft aria-hidden="true" />

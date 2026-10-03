@@ -33,7 +33,7 @@ export default async function PlaygroundPage({ params }: { params: Promise<{ ref
   return (
     <section className="flex min-w-0 flex-col gap-4" aria-label={t("playground.title")}>
       <div className="flex flex-wrap items-center gap-2">
-        <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("playground.description")}</p>
+        <p className=" text-sm text-pretty text-muted-foreground">{t("playground.description")}</p>
         <Badge variant="outline">{t("playground.dryRun")}</Badge>
       </div>
       <Playground

@@ -5,16 +5,13 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, ConfirmDialog, Label, StatusBadge } from "@nexus/ui";
+import { Button, ConfirmDialog, Label, NativeSelect, StatusBadge } from "@nexus/ui";
 
 import { linkClientAction, unlinkClientAction } from "@/app/(console)/workstation/actions";
 import { useT } from "@/i18n/client";
 import type { MachineClientOut } from "@/lib/backend/workstation";
 
 export type ClientOption = { ref: string; name: string };
-
-const SELECT_CLASS =
-  "h-8 min-w-0 rounded-md border border-input bg-transparent px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 /**
  * A qué clientes sirve una máquina — Requisitos 4.1, 7 y 8 (spec 002).
@@ -124,14 +121,14 @@ export function MachineClients({
           >
             <div className="flex min-w-0 flex-col gap-1">
               <Label htmlFor={`link-${machineId}`}>{t("ws.clients.addField")}</Label>
-              <select id={`link-${machineId}`} className={SELECT_CLASS} value={chosen} onChange={(e) => setChosen(e.target.value)} disabled={pending}>
+              <NativeSelect id={`link-${machineId}`} value={chosen} onChange={(e) => setChosen(e.target.value)} disabled={pending}>
                 <option value="">—</option>
                 {available.map((o) => (
                   <option key={o.ref} value={o.ref}>
                     {o.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <Button type="submit" variant="outline" size="sm" disabled={!chosen || pending} aria-busy={pending}>
               {t("ws.clients.add")}

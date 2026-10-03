@@ -7,24 +7,38 @@
 export type Locale = "es" | "en";
 
 import { agentToolsMessages } from "./lanes/agent-tools";
+import { capabilitiesMessages } from "./lanes/capabilities";
 import { channelsMessages } from "./lanes/channels";
 import { companionMessages } from "./lanes/companion";
 import { homeUsageMessages } from "./lanes/home-usage";
 import { membershipMessages } from "./lanes/membership";
 import { onboardingMessages } from "./lanes/onboarding";
 import { playgroundMessages } from "./lanes/playground";
+import { recordMessages } from "./lanes/record";
+import { summaryMessages } from "./lanes/summary";
 import { workstationMessages } from "./lanes/workstation";
 
 const core = {
   // shell
-  "nav.home": { es: "Inicio", en: "Home" },
+  // ── Words the design system says on its own (UiCopyProvider) ──────
+  "ui.confirm": { es: "Confirmar", en: "Confirm" },
+  "ui.cancel": { es: "Cancelar", en: "Cancel" },
+  "ui.close": { es: "Cerrar", en: "Close" },
+  "ui.more": { es: "Más", en: "More" },
+  "ui.loading": { es: "Cargando", en: "Loading" },
+  "ui.retry": { es: "Reintentar", en: "Retry" },
+  "ui.nothingHere": { es: "Todavía no hay nada aquí", en: "Nothing here yet" },
+  "ui.toggleSidebar": { es: "Mostrar u ocultar el menú", en: "Toggle sidebar" },
+  "ui.typeToConfirm": { es: "Escribe {word} para confirmar", en: "Type {word} to confirm" },
+  "nav.home": { es: "Panel", en: "Dashboard" },
   "nav.clients": { es: "Clientes", en: "Clients" },
-  "nav.workstation": { es: "Puesto de trabajo", en: "Workstation" },
+  "clients.one": { es: "Cliente", en: "Client" },
+  "nav.workstation": { es: "Teammate", en: "Teammate" },
   "nav.usage": { es: "Consumo", en: "Usage" },
   "nav.audit": { es: "Auditoría", en: "Audit" },
-  "nav.knowledge": { es: "Playbook", en: "Playbook" },
+  "nav.knowledge": { es: "Guía del partner", en: "Playbook" },
   "nav.team": { es: "Equipo", en: "Team" },
-  "nav.keys": { es: "Claves de API", en: "API keys" },
+  "nav.keys": { es: "API", en: "API" },
   "nav.billing": { es: "Facturación", en: "Billing" },
   "nav.group.operate": { es: "Operar", en: "Operate" },
   "nav.group.account": { es: "Cuenta", en: "Account" },
@@ -58,6 +72,28 @@ const core = {
   "common.copy": { es: "Copiar", en: "Copy" },
   "common.copied": { es: "Copiado", en: "Copied" },
   "common.forbidden": { es: "Tu rol no permite esta acción.", en: "Your role does not allow this action." },
+  "common.noMatches": { es: "Nada coincide con lo que has escrito.", en: "Nothing matches what you typed." },
+
+  // El patrón de catálogo (spec 018, R4). Viven aquí y no en el carril de
+  // cada pantalla **a propósito**: R4.6 pide que los tres catálogos llamen
+  // igual a las mismas cosas, y tres copias del mismo texto duran hasta que
+  // alguien retoca una.
+  "catalog.search": { es: "Buscar en la lista", en: "Search the list" },
+  "catalog.search.placeholder": { es: "Buscar por nombre…", en: "Search by name…" },
+  "catalog.tabs": { es: "Qué se ve", en: "What you see" },
+  "catalog.active": { es: "Activos", en: "Active" },
+  "catalog.all": { es: "Todo", en: "All" },
+  "catalog.count": { es: "{shown} de {total} · {active} activos", en: "{shown} of {total} · {active} active" },
+  // Dónde van los que no traen categoría. Neutro a propósito: la misma
+  // palabra tiene que servir para las tres listas.
+  "catalog.rest": { es: "El resto", en: "The rest" },
+  "catalog.noResults": { es: "Nada coincide con lo que buscas", en: "Nothing matches what you are looking for" },
+  "catalog.filters": { es: "Estás viendo {what}.", en: "You are seeing {what}." },
+  "catalog.filters.all": { es: "todo", en: "everything" },
+  "catalog.filters.active": { es: "solo lo activo", en: "only what is active" },
+  "catalog.filters.category": { es: "en «{name}»", en: "in “{name}”" },
+  "catalog.filters.query": { es: "buscando «{q}»", en: "searching for “{q}”" },
+  "catalog.clear": { es: "Quitar los filtros", en: "Clear the filters" },
 
   // validation
   "validation.required": { es: "Este campo es obligatorio.", en: "This field is required." },
@@ -71,7 +107,12 @@ const core = {
   "status.active": { es: "Activo", en: "Active" },
   "status.paused": { es: "Suspendido", en: "Suspended" },
   "status.archived": { es: "Archivado", en: "Archived" },
-  "status.provisioning": { es: "Aprovisionando", en: "Provisioning" },
+  // Es el estado **en reposo** de un cliente recién creado —existe y todavía
+  // no atiende—, no un proceso en marcha. «Aprovisionando» decía lo contrario
+  // y dejaba al partner esperando a que terminara algo que no corría (owner,
+  // 2026-09-29). El nombre nuevo nombra además su propia salida: el botón
+  // «Activar» que ya está en el menú «Más».
+  "status.provisioning": { es: "Sin activar", en: "Not activated" },
   "status.staged": { es: "Borrador", en: "Draft" },
   "status.suspended": { es: "Suspendido", en: "Suspended" },
   "status.pending": { es: "Pendiente", en: "Pending" },
@@ -139,6 +180,7 @@ const core = {
     en: "It may have expired, been used, or been replaced by a newer one. Request a new one.",
   },
   "signup.finish.title": { es: "Ya casi.", en: "Almost there." },
+  "signup.finish.meta": { es: "Crea tu cuenta", en: "Create your account" },
   "signup.finish.body": {
     es: "Sólo falta cómo se llama tu empresa y una contraseña.",
     en: "Just your company name and a password.",
@@ -230,6 +272,7 @@ const core = {
   "noAccess.body": { es: "Pide a un propietario o administrador de tu partner que te invite, o vuelve a intentarlo con la cuenta correcta.", en: "Ask an owner or admin of your partner to invite you, or try again with the right account." },
   "noAccess.disabled": { es: "La consola aún no está activada para tu partner. Auphere la enciende partner a partner durante el piloto.", en: "The console is not enabled for your partner yet. Auphere turns it on partner by partner during the pilot." },
   "invite.title": { es: "Te han invitado a la consola", en: "You've been invited to the console" },
+  "invite.meta": { es: "Invitación", en: "Invitation" },
   "invite.body": { es: "{partner} te invita a entrar como {role}. Crea tu contraseña para aceptar.", en: "{partner} invites you to join as {role}. Create your password to accept." },
   "invite.expires": { es: "La invitación caduca el {date}.", en: "The invitation expires on {date}." },
   "invite.name": { es: "Tu nombre", en: "Your name" },
@@ -263,15 +306,18 @@ const core = {
   "clients.empty.filtered": { es: "Ningún cliente coincide con el filtro", en: "No client matches the filter" },
   "clients.error": { es: "No se pudieron cargar los clientes", en: "Could not load clients" },
   "clients.ref": { es: "Referencia", en: "Reference" },
+  // Spec 019: el crédito, en la lista. Sustituye a la etiqueta «sin cupo»,
+  // que decía que faltaba pero no cuánto.
+  "clients.col.credit": { es: "Saldo", en: "Balance" },
+  "clients.col.credit.value": { es: "{remaining} de {cap}", en: "{remaining} of {cap}" },
+  "clients.col.credit.none": { es: "Sin asignar", en: "Not assigned" },
   "clients.timezone": { es: "Zona horaria", en: "Time zone" },
   "clients.timezone.placeholder": { es: "Elige una zona horaria", en: "Pick a time zone" },
-  "clients.quota": { es: "{used} de {max} clientes", en: "{used} of {max} clients" },
-  "clients.quota.full": { es: "Has alcanzado tu cuota de clientes. Archiva uno o pide a Auphere que la amplíe.", en: "You've reached your client quota. Archive one or ask Auphere to raise it." },
   "clients.count": { es: "{count} cliente(s)", en: "{count} client(s)" },
   "clients.filter.all": { es: "Todos", en: "All" },
   "clients.create.title": { es: "Nuevo cliente", en: "New client" },
   "clients.create.body": { es: "Datos básicos. El agente borrador y el canal se configuran después, desde la ficha.", en: "Basics. The draft agent and the channel are set up next, from the client page." },
-  "clients.create.refHint": { es: "Tu identificador para este cliente (letras, números, guiones). Se usa en la API y no se puede cambiar.", en: "Your identifier for this client (letters, digits, dashes). Used in the API; cannot be changed." },
+  "clients.create.refHint": { es: "Tu identificador para este cliente (letras, números, guiones). Se usa en la API y no se puede cambiar.", en: "Your identifier for this client (letters, digits, dashes). Used in the API, and cannot be changed." },
   "clients.create.submit": { es: "Crear cliente", en: "Create client" },
   "clients.create.done": { es: "Cliente creado", en: "Client created" },
   "clients.create.duplicate": { es: "Ya existe un cliente con esta referencia.", en: "A client with this reference already exists." },
@@ -281,6 +327,12 @@ const core = {
   "clients.detail.missing.agent": { es: "agente publicado", en: "published agent" },
   "clients.detail.missing.whatsapp": { es: "WhatsApp conectado", en: "WhatsApp connected" },
   "clients.detail.missing.activation": { es: "activación", en: "activation" },
+  "clients.detail.missing.quota": { es: "saldo", en: "balance" },
+  "clients.health.outOfQuota": { es: "Sin saldo: sus mensajes no se atienden. Asígnale saldo en Consumo.", en: "No balance left: its messages are not answered. Assign it balance in Usage." },
+  "clients.health.fix.agent": { es: "Publicar un agente", en: "Publish an agent" },
+  "clients.health.fix.whatsapp": { es: "Conectar WhatsApp", en: "Connect WhatsApp" },
+  "clients.health.fix.quota": { es: "Asignar saldo", en: "Assign balance" },
+  "clients.health.fix.activation": { es: "Activar el cliente", en: "Activate the client" },
   "clients.detail.whatsapp": { es: "WhatsApp", en: "WhatsApp" },
   "clients.detail.agent": { es: "Agente", en: "Agent" },
   "clients.detail.agentVersion": { es: "Versión {v} activa", en: "Version {v} active" },
@@ -304,18 +356,17 @@ const core = {
   "clients.pause.body": { es: "El agente deja de atender hasta que lo reactives. No se borra nada.", en: "The agent stops serving until you reactivate it. Nothing is deleted." },
   "clients.pause.confirm": { es: "Suspender", en: "Suspend" },
   "clients.archive.title": { es: "Archivar {name}", en: "Archive {name}" },
-  "clients.archive.body": { es: "El cliente deja de contar en la cuota. Puedes desarchivarlo después.", en: "The client stops counting toward your quota. You can unarchive it later." },
+  "clients.archive.body": { es: "El cliente deja de atender y sale de la lista. Puedes desarchivarlo después.", en: "The client stops serving and leaves the list. You can unarchive it later." },
   "clients.archive.confirm": { es: "Archivar", en: "Archive" },
   "clients.settings.title": { es: "Ajustes del cliente", en: "Client settings" },
   "clients.settings.saved": { es: "Ajustes guardados", en: "Settings saved" },
   "clients.settings.danger": { es: "Zona de riesgo", en: "Danger zone" },
-  "clients.channels.empty": { es: "Este cliente aún no tiene canales. La conexión de WhatsApp llega en el siguiente paquete (CP-17).", en: "This client has no channels yet. WhatsApp connection ships in the next package (CP-17)." },
   "clients.channels.number": { es: "Número", en: "Number" },
   "clients.channels.role": { es: "Rol del canal", en: "Channel role" },
 
   // agent
   "agent.title": { es: "Agente", en: "Agent" },
-  "agent.description": { es: "Versiones del prompt. Publicar crea una versión activa; revertir vuelve a cualquier anterior.", en: "Prompt versions. Publishing makes a version active; rollback returns to any earlier one." },
+  "agent.description": { es: "Versiones del prompt. Publicar crea una versión activa, revertir vuelve a cualquier anterior.", en: "Prompt versions. Publishing makes a version active, rollback returns to any earlier one." },
   "agent.active": { es: "Activa", en: "Active" },
   "agent.versions": { es: "Versiones", en: "Versions" },
   "agent.empty": { es: "Este cliente aún no tiene ninguna versión del agente", en: "This client has no agent version yet" },
@@ -330,6 +381,9 @@ const core = {
   "agent.publish.body": { es: "Los próximos mensajes de los clientes finales los atenderá esta versión. Puedes revertir en un clic.", en: "Upcoming end-customer messages will be handled by this version. You can roll back in one click." },
   "agent.published": { es: "Versión {v} publicada", en: "Version {v} published" },
   "agent.rollback": { es: "Revertir a esta", en: "Roll back to this" },
+  "agent.rollback.title": { es: "Volver a la versión {v}", en: "Roll back to version {v}" },
+  "agent.rollback.body": { es: "Los próximos mensajes los atenderá la versión {v}. La {active} se queda en el historial: puedes volver a ella cuando quieras.", en: "Upcoming messages will be handled by version {v}. Version {active} stays in the history, and you can return to it any time." },
+  "agent.rollback.confirm": { es: "Volver a esta versión", en: "Roll back" },
   "agent.rolledBack": { es: "Revertido a la versión {v}", en: "Rolled back to version {v}" },
   "agent.diff": { es: "Diferencias con la activa", en: "Diff against active" },
   "agent.diff.none": { es: "Idéntica a la versión activa.", en: "Identical to the active version." },
@@ -337,6 +391,8 @@ const core = {
   "agent.by": { es: "por {who}", en: "by {who}" },
   "agent.promptTooShort": { es: "El prompt no puede estar vacío.", en: "The prompt cannot be empty." },
   "agent.viewPrompt": { es: "Ver prompt", en: "View prompt" },
+  "agent.hidePrompt": { es: "Ocultar prompt", en: "Hide prompt" },
+  "agent.actions.aria": { es: "Opciones de la versión {v}", en: "Options for version {v}" },
 
   // conversations
   "conv.title": { es: "Conversaciones", en: "Conversations" },
@@ -344,6 +400,10 @@ const core = {
   "conv.empty": { es: "Sin conversaciones en el periodo", en: "No conversations in the period" },
   "conv.turns": { es: "Turnos", en: "Turns" },
   "conv.failed": { es: "Fallidos", en: "Failed" },
+  // Spec 024: entrantes sin respuesta porque el número no está en la lista.
+  "conv.unanswered": { es: "Sin responder", en: "Unanswered" },
+  "conv.unanswered.reason": { es: "{n} sin responder · número no permitido", en: "{n} unanswered · number not allowed" },
+  "conv.stats.unanswered": { es: "Sin responder (número no permitido)", en: "Unanswered (number not allowed)" },
   "conv.latency": { es: "Latencia media", en: "Avg latency" },
   "conv.started": { es: "Inicio", en: "Started" },
   "conv.last": { es: "Última actividad", en: "Last activity" },
@@ -358,7 +418,7 @@ const core = {
 
   // usage
   "usage.title": { es: "Consumo", en: "Usage" },
-  "usage.description": { es: "Unidades consumidas por cliente y medidor. El consumo de pruebas (playground) se muestra aparte y no se factura.", en: "Units consumed per client and meter. Test usage (playground) is shown separately and is not billed." },
+  "usage.description": { es: "Tu saldo, lo que puede gastar cada cliente y lo que se gasta cada día.", en: "Your balance, what each client may spend and what is spent each day." },
   "usage.period": { es: "Últimos {days} días", en: "Last {days} days" },
   "usage.meter": { es: "Medidor", en: "Meter" },
   "usage.source": { es: "Origen", en: "Source" },
@@ -377,20 +437,14 @@ const core = {
   "audit.title": { es: "Auditoría", en: "Audit" },
   "audit.description": { es: "Quién hizo qué, sobre qué cliente y cuándo.", en: "Who did what, on which client, and when." },
   "audit.empty": { es: "Sin actividad registrada", en: "No activity recorded" },
-  "audit.when": { es: "Cuándo", en: "When" },
-  "audit.what": { es: "Qué", en: "What" },
-  "audit.filter.actor": { es: "Actor", en: "Actor" },
-  "audit.filter.action": { es: "Acción", en: "Action" },
-  "audit.filter.action.all": { es: "Todas las acciones", en: "All actions" },
-  "audit.more": { es: "Cargar más", en: "Load more" },
 
   // team
   "team.title": { es: "Equipo", en: "Team" },
   // Spec 003 — el techo de ejecución local del partner (R10.1).
   "team.localExec.title": { es: "Ejecución en las máquinas del equipo", en: "Running on the team's machines" },
   "team.localExec.description": {
-    es: "Hasta dónde puede llegar cada persona con su propia máquina. Los programas que un teammate puede ejecutar los sigue fijando la lista de cada cliente; esto solo acota si se pregunta antes.",
-    en: "How far each person may go with their own machine. Which programs a teammate may run is still set by each client's list; this only bounds whether they are asked first.",
+    es: "Hasta dónde puede llegar cada persona con su propia máquina. Los programas que un teammate puede ejecutar los sigue fijando la lista de cada cliente. Esto solo acota si se pregunta antes.",
+    en: "How far each person may go with their own machine. Which programs a teammate may run is still set by each client's list. This only bounds whether they are asked first.",
   },
   "team.localExec.always": { es: "Cada persona decide", en: "Each person decides" },
   "team.localExec.ask": { es: "Preguntar siempre", en: "Always ask" },
@@ -408,7 +462,7 @@ const core = {
   "team.invite.sent": { es: "Invitación creada", en: "Invitation created" },
   "team.invite.link": { es: "Enlace de aceptación (compártelo si el correo no llega):", en: "Accept link (share it if the e-mail doesn't arrive):" },
   "team.invite.emailSent": { es: "Correo enviado a {email}.", en: "E-mail sent to {email}." },
-  "team.invite.emailNotSent": { es: "El correo no está configurado en este entorno; comparte el enlace.", en: "E-mail is not configured in this environment; share the link." },
+  "team.invite.emailNotSent": { es: "El correo no está configurado en este entorno, así que comparte el enlace.", en: "E-mail is not configured in this environment, so share the link." },
   "team.invite.alreadyMember": { es: "Ese correo ya es miembro de este partner.", en: "That e-mail is already a member of this partner." },
   "team.members": { es: "Miembros", en: "Members" },
   "team.invitations": { es: "Invitaciones pendientes", en: "Pending invitations" },
@@ -423,7 +477,7 @@ const core = {
   "team.revoke": { es: "Revocar", en: "Revoke" },
   "team.expires": { es: "Caduca", en: "Expires" },
   "team.lastOwner": { es: "Un partner necesita al menos un propietario activo.", en: "A partner needs at least one active owner." },
-  "team.selfChange": { es: "No puedes cambiar tu propia membresía; pídeselo a otro propietario o administrador.", en: "You cannot change your own membership; ask another owner or admin." },
+  "team.selfChange": { es: "No puedes cambiar tu propia membresía, pídeselo a otro propietario o administrador.", en: "You cannot change your own membership, ask another owner or admin." },
   "team.joined": { es: "Se unió", en: "Joined" },
   "team.updated": { es: "Equipo actualizado", en: "Team updated" },
 
@@ -446,7 +500,7 @@ const core = {
   "keys.create.title": { es: "Nueva clave de API", en: "New API key" },
   "keys.create.body": { es: "Elige tipo y permisos. Las claves ligadas a un solo cliente (envío de mensajes) se crean desde la ficha del cliente.", en: "Pick type and scopes. Keys bound to a single client (message sending) are created from the client page." },
   "keys.rotate.title": { es: "Rotar la clave {prefix}", en: "Rotate key {prefix}" },
-  "keys.rotate.body": { es: "Se crea una clave nueva y la actual sigue funcionando 24 h para que despliegues sin corte.", en: "A new key is created; the current one keeps working for 24 h so you can deploy without downtime." },
+  "keys.rotate.body": { es: "Se crea una clave nueva y la actual sigue funcionando 24 h para que despliegues sin corte.", en: "A new key is created, and the current one keeps working for 24 h so you can deploy without downtime." },
   "keys.revoke.title": { es: "Revocar la clave {prefix}", en: "Revoke key {prefix}" },
   "keys.revoke.body": { es: "Deja de funcionar inmediatamente, sin periodo de gracia.", en: "It stops working immediately, with no grace period." },
   "keys.scope.provision": { es: "Aprovisionar clientes", en: "Provision clients" },
@@ -477,6 +531,9 @@ const messages = {
   ...homeUsageMessages,
   ...onboardingMessages,
   ...companionMessages,
+  ...recordMessages,
+  ...summaryMessages,
+  ...capabilitiesMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

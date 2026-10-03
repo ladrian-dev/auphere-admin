@@ -31,7 +31,8 @@ function card(data: SetupOut | null) {
 describe("la tarjeta de puesta en marcha", () => {
   it("cuatro pasos, con lo pendiente contado y los hechos tachados (6.1)", () => {
     card(setup());
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
+    expect(screen.getByRole("progressbar")).toHaveAttribute("value", "2");
+    expect(screen.getByRole("progressbar")).toHaveAttribute("max", "4");
     expect(screen.getByText(/2 de 4 pasos/i)).toBeInTheDocument();
     expect(screen.getByText(/2 pendiente/i)).toBeInTheDocument();
     expect(screen.getByText(/ejecutables habilitados por auphere/i)).toBeInTheDocument();

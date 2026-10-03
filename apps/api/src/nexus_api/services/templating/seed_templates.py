@@ -40,6 +40,71 @@ import yaml
 _SEEDS_DIR = Path(__file__).resolve().parent / "seeds"
 _PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z][a-zA-Z0-9_.]*)\}")
 
+#: Un bloque que **solo existe si al agente se lo dijeron** (spec 019, T036).
+#:
+#: ``{?clave}`` abre, ``{:}`` separa la alternativa y ``{/}`` cierra::
+#:
+#:     {?policies.surgery.deposit_pct}
+#:     - Cirugía mayor requiere seña del {policies.surgery.deposit_pct}%.
+#:     {:}
+#:     - La seña de quirófano la confirma el equipo.
+#:     {/}
+#:
+#: Nace de un fallo concreto: los opcionales traen defectos de plantilla
+#: —24 h de cancelación gratis, 30 % de seña, 100 % de no-show— y el prompt
+#: los escribía como política de la casa. Una clínica que no configuraba
+#: nada tenía un agente comprometiendo cobros que su dueño no fijó. El mismo
+#: prompt ya le prohíbe inventar promociones; esto es la misma regla, para lo
+#: que se colaba por la puerta de atrás.
+#:
+#: **El defecto no desaparece**: sigue en ``policies`` para quien lo lea como
+#: dato. Lo que cambia es que el agente no lo *afirma* como si se lo hubieran
+#: dicho. La frontera es «lo dijo el partner», no «hay un valor».
+_BLOCK_RE = re.compile(
+    r"\{\?([a-zA-Z][a-zA-Z0-9_.]*)\}[ \t]*\n?(.*?)(?:\{:\}[ \t]*\n?(.*?))?\{/\}[ \t]*\n?",
+    re.DOTALL,
+)
+
+
+def conditional_keys(prompt: str) -> set[str]:
+    """Las claves que **solo** se dicen dentro de un bloque condicional.
+
+    Una clave así no se le puede exigir a nadie en el alta: si no la dan, el
+    agente simplemente no habla de eso. Una que aparezca también fuera del
+    bloque sigue siendo obligatoria, porque el prompt la afirma igual.
+    """
+    dentro: set[str] = set()
+    for m in _BLOCK_RE.finditer(prompt):
+        dentro.add(m.group(1))
+        for tramo in (m.group(2) or "", m.group(3) or ""):
+            dentro.update(_PLACEHOLDER_RE.findall(tramo))
+    fuera = set(_PLACEHOLDER_RE.findall(_BLOCK_RE.sub("", prompt)))
+    return dentro - fuera
+
+
+def _expand_blocks(prompt: str, placeholders: dict[str, Any]) -> str:
+    """Resuelve los bloques condicionales **antes** de sustituir tokens.
+
+    Dicho = la clave viene de quien llama y trae algo. Un valor en blanco es
+    no haberlo dicho: que alguien deje el campo vacío no es una política.
+    """
+
+    def _dicho(key: str) -> bool:
+        value = placeholders.get(key)
+        return value is not None and str(value).strip() != ""
+
+    def _sub(m: re.Match[str]) -> str:
+        entonces, si_no = m.group(2) or "", m.group(3) or ""
+        return entonces if _dicho(m.group(1)) else si_no
+
+    anterior = None
+    # Anidados: se expande hasta que no quede ninguno. Dos vueltas bastan hoy,
+    # pero el bucle evita que un anidado futuro se quede a medio resolver.
+    while anterior != prompt:
+        anterior = prompt
+        prompt = _BLOCK_RE.sub(_sub, prompt)
+    return prompt
+
 
 class SeedTemplateNotFound(Exception):
     """Raised when ``load_seed_template`` cannot find the YAML file."""
@@ -73,6 +138,10 @@ class SeedTemplate:
     policies_default: dict[str, Any]
     agent_defaults: dict[str, str]
     raw: dict[str, Any] = field(repr=False)
+    #: Spec 023 (Requisito 4): connector slugs the sector suggests in
+    #: Conectores (``connectors.recommended`` in the YAML). Empty when the
+    #: template has no block. A suggestion, never a filter.
+    connectors_recommended: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -119,6 +188,14 @@ def load_seed_template(name: str) -> SeedTemplate:
     required = tools_block["required"]
     if not isinstance(required, list) or not all(isinstance(t, str) for t in required):
         raise ValueError(f"seed template {name!r}: tools.required must be list[str]")
+    connectors_block = raw.get("connectors") or {}
+    if not isinstance(connectors_block, dict):
+        raise ValueError(f"seed template {name!r}: connectors must be a mapping")
+    recommended = connectors_block.get("recommended") or []
+    if not isinstance(recommended, list) or not all(
+        isinstance(c, str) and c.strip() for c in recommended
+    ):
+        raise ValueError(f"seed template {name!r}: connectors.recommended must be list[str]")
     agent = raw["agent"]
     return SeedTemplate(
         name=name,
@@ -133,6 +210,7 @@ def load_seed_template(name: str) -> SeedTemplate:
             "language": str(agent.get("language_default", "es")),
         },
         raw=raw,
+        connectors_recommended=list(recommended),
     )
 
 
@@ -142,6 +220,10 @@ def render_seed_template(
     placeholders: dict[str, Any],
 ) -> RenderedSeedTemplate:
     """Resolve every ``{a.b.c}`` token in ``template.system_prompt``.
+
+    Los bloques ``{?clave} … {:} … {/}`` se resuelven **primero**: lo que no
+    se dijo no llega a ser un token que resolver, y por eso una clave que solo
+    vive dentro de un bloque nunca levanta ``SeedTemplatePlaceholderMissing``.
 
     Lookup order for each token:
       1. Exact match in ``placeholders`` (key = dotted path).
@@ -174,7 +256,10 @@ def render_seed_template(
             node = node[p]
         return node
 
-    rendered = _PLACEHOLDER_RE.sub(lambda m: _resolve(m.group(1)), template.system_prompt)
+    rendered = _PLACEHOLDER_RE.sub(
+        lambda m: _resolve(m.group(1)),
+        _expand_blocks(template.system_prompt, placeholders),
+    )
 
     # Merge policies: start from defaults, then apply any caller override
     # under ``policies.*`` keys (e.g. {"policies.no_show.fee_pct": 75}).

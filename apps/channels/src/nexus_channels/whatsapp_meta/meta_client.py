@@ -350,6 +350,25 @@ class MetaClient:
             json_body={"messaging_product": "whatsapp", "pin": pin},
         )
 
+    async def deregister_phone(
+        self,
+        *,
+        phone_number_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        """La pareja de ``register_phone`` (spec 021): dar de baja el número
+        del Cloud API bajo nuestra app.
+
+        Es lo que hace que desvincular signifique soltar y no solo apagar: sin
+        esto el número seguía registrado bajo nosotros y otro cliente no podía
+        registrarlo. En coexistencia lo retira de nuestra app, **no** de la app
+        WhatsApp Business del partner: sigue chateando desde su teléfono.
+        """
+        return await self._post(
+            f"/{phone_number_id}/deregister",
+            access_token=access_token,
+        )
+
     async def get_phone_number(
         self,
         *,
@@ -439,6 +458,114 @@ class MetaClient:
             access_token=access_token,
         )
 
+    # ── catálogo de Commerce Manager (spec 022) ───────────────────────────
+    #
+    # Un catálogo es del negocio (``business_id``) y se enlaza a la cuenta de
+    # WhatsApp Business (``waba_id``): una cuenta tiene **un** catálogo. Las
+    # cuatro llamadas piden ``catalog_management`` en el token, además de
+    # ``whatsapp_business_management``; sin él Meta contesta con ``code``
+    # 10/200, y el que llama lo traduce (no este cliente).
+
+    async def list_catalogs(
+        self,
+        *,
+        business_id: str,
+        access_token: str,
+    ) -> list[dict[str, Any]]:
+        data = await self._get(
+            f"/{business_id}/owned_product_catalogs",
+            access_token=access_token,
+            params={"fields": "id,name,product_count", "limit": 50},
+        )
+        items = data.get("data")
+        return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
+
+    async def get_linked_catalog(
+        self,
+        *,
+        waba_id: str,
+        access_token: str,
+    ) -> dict[str, Any] | None:
+        data = await self._get(
+            f"/{waba_id}/product_catalogs",
+            access_token=access_token,
+            params={"fields": "id,name"},
+        )
+        items = data.get("data")
+        if not isinstance(items, list) or not items or not isinstance(items[0], dict):
+            return None
+        return items[0]
+
+    async def link_catalog(
+        self,
+        *,
+        waba_id: str,
+        catalog_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        return await self._post(
+            f"/{waba_id}/product_catalogs",
+            access_token=access_token,
+            json_body={"catalog_id": catalog_id},
+        )
+
+    async def unlink_catalog(
+        self,
+        *,
+        waba_id: str,
+        catalog_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        return await self._delete(
+            f"/{waba_id}/product_catalogs",
+            access_token=access_token,
+            params={"catalog_id": catalog_id},
+        )
+
+    async def search_products(
+        self,
+        *,
+        catalog_id: str,
+        access_token: str,
+        query: str = "",
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Los productos del catálogo, filtrados por nombre si ``query``.
+        ``limit`` se acota a [1, 10]: es para que un agente elija, no para
+        volcar un catálogo."""
+        params: dict[str, Any] = {
+            "fields": "retailer_id,name,price,currency,availability,image_url,description",
+            "limit": min(max(int(limit), 1), 10),
+        }
+        if query.strip():
+            params["filter"] = json.dumps({"name": {"i_contains": query.strip()}})
+        data = await self._get(f"/{catalog_id}/products", access_token=access_token, params=params)
+        items = data.get("data")
+        return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
+
+    async def get_product(
+        self,
+        *,
+        catalog_id: str,
+        retailer_id: str,
+        access_token: str,
+    ) -> dict[str, Any] | None:
+        """Un producto por su ``retailer_id`` (el identificador del catálogo,
+        que es el que viaja en la tarjeta), o ``None`` si no está."""
+        data = await self._get(
+            f"/{catalog_id}/products",
+            access_token=access_token,
+            params={
+                "fields": "retailer_id,name,price,currency,availability,image_url,description",
+                "filter": json.dumps({"retailer_id": {"eq": retailer_id}}),
+                "limit": 1,
+            },
+        )
+        items = data.get("data")
+        if not isinstance(items, list) or not items or not isinstance(items[0], dict):
+            return None
+        return items[0]
+
     # ── templates ──────────────────────────────────────────────────────────
 
     async def list_templates(
@@ -463,16 +590,21 @@ class MetaClient:
         language: str,
         category: str,
         components: list[dict[str, Any]],
+        parameter_format: str | None = None,
     ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "name": name,
+            "language": language,
+            "category": category,
+            "components": components,
+        }
+        if parameter_format:
+            # ``NAMED`` for ``{{nombre}}`` variables; Meta's default is positional.
+            body["parameter_format"] = parameter_format
         return await self._post(
             f"/{waba_id}/message_templates",
             access_token=access_token,
-            json_body={
-                "name": name,
-                "language": language,
-                "category": category,
-                "components": components,
-            },
+            json_body=body,
         )
 
     async def delete_template(
@@ -550,6 +682,7 @@ class MetaClient:
             resp = await self._client.get(
                 path,
                 params=self._with_auth(params or {}, access_token),
+                headers=self._auth_headers(access_token),
             )
             return self._handle_response(resp)
 
@@ -567,6 +700,7 @@ class MetaClient:
             resp = await self._client.post(
                 path,
                 params=self._with_auth(params or {}, access_token),
+                headers=self._auth_headers(access_token),
                 json=json_body,
             )
             return self._handle_response(resp)
@@ -584,6 +718,7 @@ class MetaClient:
             resp = await self._client.delete(
                 path,
                 params=self._with_auth(params or {}, access_token),
+                headers=self._auth_headers(access_token),
             )
             return self._handle_response(resp)
 
@@ -594,11 +729,18 @@ class MetaClient:
         params: dict[str, Any],
         access_token: str,
     ) -> dict[str, Any]:
+        # The token travels in the ``Authorization`` header, never in the
+        # query string: httpx logs the full URL at INFO and a token in it
+        # ends up in CloudWatch (seen in production on 2026-09-30). The
+        # ``appsecret_proof`` stays a query parameter, as Meta expects.
         params = dict(params)
-        params["access_token"] = access_token
         if self._require_appsecret_proof:
             params["appsecret_proof"] = appsecret_proof(access_token, self._app_secret)
         return params
+
+    @staticmethod
+    def _auth_headers(access_token: str) -> dict[str, str]:
+        return {"Authorization": f"Bearer {access_token}"}
 
     def _handle_response(self, response: httpx.Response) -> dict[str, Any]:
         if response.status_code < 400:

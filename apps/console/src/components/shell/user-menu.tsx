@@ -19,9 +19,9 @@ import { roleKey } from "@/i18n/messages";
 import { signOutAction } from "@/lib/auth-actions";
 import type { Role } from "@/lib/principal";
 
-type Props = { user: { name: string; email: string }; role: Role; partnerSlug: string; collapsed: boolean };
+type Props = { user: { name: string; email: string }; role: Role; partnerName: string; partnerSlug: string; collapsed: boolean };
 
-export function UserMenu({ user, role, collapsed }: Props) {
+export function UserMenu({ user, role, partnerName, collapsed }: Props) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
@@ -43,24 +43,30 @@ export function UserMenu({ user, role, collapsed }: Props) {
           "group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-sm text-left text-sm outline-none ring-sidebar-ring",
           "transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
           "data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground",
-          collapsed ? "size-8 justify-center p-0" : "h-10 px-2 py-1",
+          "h-10 px-1 py-1",
         ].join(" ")}
       >
         <span className="grid size-6 shrink-0 place-items-center rounded-sm bg-accent text-xs font-semibold text-accent-foreground" aria-hidden="true">
           {initials}
         </span>
-        {!collapsed ? (
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-medium">{user.name || user.email}</span>
-            <span className="truncate font-mono text-xs text-muted-foreground">{t(roleKey(role))}</span>
-          </span>
-        ) : null}
+        {/* Same layout collapsed or not: the name fades while the panel
+            narrows and clips it, so nothing jumps (owner, 2026-10-03). */}
+        <span
+          aria-hidden={collapsed || undefined}
+          className={`flex min-w-0 flex-col transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none ${collapsed ? "opacity-0" : ""}`}
+        >
+          <span className="truncate text-sm font-medium">{user.name || user.email}</span>
+          <span className="truncate text-xs text-muted-foreground">{t(roleKey(role))}</span>
+        </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-56">
         <DropdownMenuGroup>
           <DropdownMenuLabel className="truncate font-normal">
             <span className="block truncate text-sm font-medium">{user.name}</span>
             <span className="block truncate font-mono text-xs text-muted-foreground">{user.email}</span>
+            <span className="mt-1 block truncate text-xs text-muted-foreground" title={partnerName}>
+              {t("shell.partner")}: {partnerName}
+            </span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>{t("shell.theme")}</DropdownMenuLabel>

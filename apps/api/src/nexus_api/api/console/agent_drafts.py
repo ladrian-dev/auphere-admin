@@ -16,10 +16,13 @@ versions are leftovers of previous edits and are ignored.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from nexus_api.db.models import AgentConfig, AgentConfigStatus
+from nexus_api.services.agent_audience import audience_of
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.agent_console_policy import with_disclosure_default
+from nexus_api.services.agent_payment_review import reviewers_of
 
 from .deps import ClientScope
 
@@ -95,3 +98,152 @@ async def ensure_draft(scope: ClientScope) -> tuple[AgentConfig, bool]:
 
 
 __all__ = ["DraftView", "copy_runtime_fields", "ensure_draft", "load_view"]
+
+
+# ── qué cambia el borrador (spec 017, R3.1/R3.2) ───────────────────────
+#
+# Dos lecturas derivadas, sin estado nuevo: `draft_screens` dice QUÉ
+# pantallas de la ficha difieren, para que la pestaña pueda llevar un
+# punto; `draft_diff` dice EN QUÉ difieren, en claves estables. Las frases
+# las pone la consola: la API no sabe en qué idioma mira el partner.
+
+DraftScreen = Literal["settings", "capabilities", "knowledge", "prompt"]
+SCREEN_ORDER: tuple[DraftScreen, ...] = ("settings", "capabilities", "knowledge", "prompt")
+
+
+def _console_policy(cfg: AgentConfig | None) -> dict[str, object]:
+    if cfg is None:
+        return {}
+    raw = (cfg.policies or {}).get("console")
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _capabilities(cfg: AgentConfig | None) -> set[tuple[str, str]]:
+    """Lo que el agente puede hacer, herramientas y habilidades juntas:
+    para el partner son la misma pregunta («¿qué sabe hacer?»)."""
+    if cfg is None:
+        return set()
+    caps = {(name, "tool") for name in (cfg.tools or [])}
+    for skill in cfg.runtime_skills or []:
+        # Las entradas guardan `skill_id`, no `name`: leer `name` hacía que
+        # encender una habilidad no contara como cambio y la barra de
+        # borrador no se enterara. `name` se acepta por si una fila antigua
+        # lo trae.
+        key = skill.get("skill_id") or skill.get("name")
+        if key:
+            caps.add((str(key), "skill"))
+    return caps
+
+
+def _policy_defaults() -> dict[str, object]:
+    from nexus_api.services.agent_console_policy import ConsolePolicy
+
+    return ConsolePolicy().model_dump(mode="json")
+
+
+def settings_changes(active: AgentConfig | None, draft: AgentConfig) -> list[dict[str, object]]:
+    """Una fila por campo de `policies.console` que difiere. `schema_version`
+    no es un ajuste: es fontanería y no se enseña.
+
+    Y un campo que **no existía** en la activa y en el borrador trae
+    exactamente el valor por defecto tampoco es un cambio: el formulario de
+    ajustes escribe la política entera, así que tocar el nombre del agente
+    hacía aparecer seis filas con «Antes: —». El partner no podía distinguir
+    lo que decidió él de lo que rellenó el formulario solo, que es justo lo
+    que la hoja de revisión existe para evitar. Si la activa SÍ tenía un
+    valor y el borrador lo devuelve al de por defecto, eso es una decisión y
+    se enseña.
+    """
+    before, after = _console_policy(active), _console_policy(draft)
+    defaults = _policy_defaults()
+    rows: list[dict[str, object]] = []
+    for field in sorted(set(before) | set(after)):
+        if field == "schema_version":
+            continue
+        if before.get(field) == after.get(field):
+            continue
+        if field not in before and after.get(field) == defaults.get(field):
+            continue
+        rows.append({"field": field, "before": before.get(field), "after": after.get(field)})
+    # Spec 024: «A quién responde» lives in ``admin_access``, not in
+    # ``policies.console``; the review sheet still has to show it, or the
+    # partner would publish a list without seeing it in the diff.
+    audience_before, audience_after = _audience_row(active), _audience_row(draft)
+    if audience_before != audience_after and not (
+        active is None and audience_after["mode"] == "everyone"
+    ):
+        rows.append({"field": "audience", "before": audience_before, "after": audience_after})
+    # Spec 025: the payment reviewers live in ``policies.payment_review``.
+    reviewers_before = len(reviewers_of(active.policies if active else None))
+    reviewers_after = len(reviewers_of(draft.policies))
+    if reviewers_before != reviewers_after or _reviewer_phones(active) != _reviewer_phones(draft):
+        rows.append(
+            {
+                "field": "payment_review",
+                "before": {"count": reviewers_before},
+                "after": {"count": reviewers_after},
+            }
+        )
+    return rows
+
+
+def _reviewer_phones(cfg: AgentConfig | None) -> list[str]:
+    return [r.phone for r in reviewers_of(cfg.policies if cfg else None)]
+
+
+def _audience_row(cfg: AgentConfig | None) -> dict[str, object]:
+    audience = audience_of(cfg.policies if cfg else None)
+    return {"mode": audience.mode, "count": len(audience.numbers)}
+
+
+def capability_changes(active: AgentConfig | None, draft: AgentConfig) -> list[dict[str, object]]:
+    before, after = _capabilities(active), _capabilities(draft)
+    rows: list[dict[str, object]] = []
+    for name, kind in sorted(after - before):
+        rows.append(
+            {"name": name, "kind": kind, "change": "enabled", "before": False, "after": True}
+        )
+    for name, kind in sorted(before - after):
+        rows.append(
+            {"name": name, "kind": kind, "change": "disabled", "before": True, "after": False}
+        )
+    return rows
+
+
+def prompt_change(active: AgentConfig | None, draft: AgentConfig) -> dict[str, str]:
+    return {
+        "before": active.system_prompt_rendered if active else "",
+        "after": draft.system_prompt_rendered,
+    }
+
+
+def draft_screens(view: DraftView) -> list[DraftScreen]:
+    """Las pantallas de la ficha en las que el borrador difiere de la activa,
+    en el orden en que se leen. Vacío sin borrador."""
+    if view.draft is None:
+        return []
+    screens: list[DraftScreen] = []
+    if settings_changes(view.active, view.draft):
+        screens.append("settings")
+    if capability_changes(view.active, view.draft):
+        screens.append("capabilities")
+    # Los documentos de conocimiento no se versionan con el agente, así que
+    # entre borrador y activa no hay nada que comparar todavía.
+    if prompt_change(view.active, view.draft)["before"] != view.draft.system_prompt_rendered:
+        screens.append("prompt")
+    return screens
+
+
+def draft_diff(view: DraftView) -> dict[str, object]:
+    """El borrador contra la activa, en claves. Llamar solo con borrador."""
+    assert view.draft is not None
+    return {
+        "version": {
+            "draft": view.draft.version,
+            "active": view.active.version if view.active else None,
+        },
+        "settings": settings_changes(view.active, view.draft),
+        "capabilities": capability_changes(view.active, view.draft),
+        "knowledge": [],
+        "prompt": prompt_change(view.active, view.draft),
+    }

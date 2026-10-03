@@ -145,3 +145,99 @@ async def test_put_model_forbidden_without_agents_write(client, console_world, d
         "/console/clients/{}/model".format(a["ref"]), headers=analyst["headers"]()
     )
     assert readable.status_code == 200, readable.text
+
+
+# ── spec 016 · el modelo se elige sabiendo lo que cuesta (R5.1, R5.2) ──────────
+
+
+async def test_list_models_explains_the_cost_in_credits(client, console_world) -> None:
+    a = console_world["a"]
+    resp = await client.get("/console/models", headers=a["headers"]())
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [row["model_id"] for row in body] == list(RESPOND_MODEL_IDS)
+    for row in body:
+        assert set(row) >= {"model_id", "display_name", "relative_cost", "weights"}
+        assert isinstance(row["relative_cost"], int) and row["relative_cost"] >= 1
+        assert set(row["weights"]) == {"input", "cache_read", "output"}
+        assert row["display_name"]
+    # El más económico es x1; el resto, su salida relativa a ese, redondeada.
+    assert min(row["relative_cost"] for row in body) == 1
+    cheapest = min(body, key=lambda r: r["weights"]["output"])
+    for row in body:
+        assert row["relative_cost"] == max(
+            1, round(row["weights"]["output"] / cheapest["weights"]["output"])
+        )
+
+
+async def test_relative_costs_are_rounded_to_the_cheapest() -> None:
+    from nexus_api.api.console.models import relative_costs
+    from nexus_api.api.console.schemas_models import ModelWeightsOut
+
+    w = lambda out: ModelWeightsOut(input=1, cache_read=0.1, output=out)  # noqa: E731
+    assert relative_costs({"a": w(5), "b": w(20), "c": w(11)}) == {"a": 1, "b": 4, "c": 2}
+    assert relative_costs({"a": w(0), "b": w(3)}) == {"a": 1, "b": 1}
+    assert relative_costs({}) == {}
+
+
+async def test_client_model_says_allowed_and_the_change_is_audited(
+    client, console_world, db_session, admin_headers
+) -> None:
+    from nexus_api.db.models import AuditLog
+
+    a = console_world["a"]
+    unbound = (
+        await client.get(f"/console/clients/{a['ref']}/model", headers=a["headers"]())
+    ).json()
+    assert unbound["is_bound"] is False
+    assert unbound["allowed"] is True
+    assert unbound["fallback_model_id"] == SOL
+    assert unbound["fallback_display_name"] == "Sol"
+
+    first = await client.put(
+        f"/console/clients/{a['ref']}/model", headers=a["headers"](), json={"model_id": SOL}
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["allowed"] is True
+    second = await client.put(
+        f"/console/clients/{a['ref']}/model", headers=a["headers"](), json={"model_id": TERRA}
+    )
+    assert second.status_code == 200, second.text
+
+    rows = (
+        await db_session.execute(
+            sa.select(AuditLog.after_json, AuditLog.actor, AuditLog.target)
+            .where(AuditLog.action == "console.model.update", AuditLog.tenant_id == a["tenant_id"])
+            .order_by(AuditLog.created_at)
+        )
+    ).all()
+    assert [r.after_json for r in rows] == [
+        {"model_id": SOL, "previous": None},
+        {"model_id": TERRA, "previous": SOL},
+    ]
+    assert all(r.actor.startswith("console:") for r in rows)
+    assert all(r.target == f"tenant:{a['tenant_id']}" for r in rows)
+
+    # R5.3 desde el lado del cliente: un binding que el plan ya no incluye
+    # (escrito por fuera de la reconciliación) se lee como ``allowed=False``.
+    shrink = await client.put(
+        f"/admin/partners/{a['partner_id']}/models",
+        headers=admin_headers,
+        json={"model_ids": [SOL, LUNA]},
+    )
+    assert shrink.status_code == 200, shrink.text
+    await db_session.execute(
+        sa.text(
+            """
+            INSERT INTO tenant_model_bindings (tenant_id, role, model_profile_id, fallback_chain)
+            SELECT :t, :r, id, '[]'::jsonb FROM model_profiles WHERE model_id = :m
+            ON CONFLICT (tenant_id, role) DO UPDATE SET model_profile_id = EXCLUDED.model_profile_id
+            """
+        ),
+        {"t": str(a["tenant_id"]), "r": RESPOND_ROLE, "m": TERRA},
+    )
+    await db_session.commit()
+    stale = (await client.get(f"/console/clients/{a['ref']}/model", headers=a["headers"]())).json()
+    assert stale["model_id"] == TERRA
+    assert stale["allowed"] is False
+    assert stale["fallback_display_name"] == "Sol"

@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import { StackedBarChart } from "../components/chart-bars";
-import { CapGauge } from "../components/chart-gauge";
 import { ProjectionLineChart } from "../components/chart-line";
+import { Meter } from "../components/meter";
 
 const meta = { title: "Charts" } satisfies Meta;
 export default meta;
@@ -47,10 +47,10 @@ export const Projection: Story = {
 export const Gauge: Story = {
   render: () => (
     <div className="grid max-w-md gap-6">
-      <CapGauge label="Mensajes del mes" value={1204} max={5000} valueLabel="1.204 / 5.000" percentLabel="24 %" noCapLabel="Sin tope" />
-      <CapGauge label="Mensajes del mes" value={4300} max={5000} valueLabel="4.300 / 5.000" percentLabel="86 %" noCapLabel="Sin tope" />
-      <CapGauge label="Mensajes del mes" value={5200} max={5000} valueLabel="5.200 / 5.000" percentLabel="104 %" noCapLabel="Sin tope" />
-      <CapGauge label="Mensajes del mes" value={900} max={null} valueLabel="900" noCapLabel="Sin tope configurado" />
+      <Meter label="Mensajes del mes" value={1204} max={5000} valueLabel="1.204 / 5.000 · 24 %" />
+      <Meter label="Mensajes del mes" value={4300} max={5000} valueLabel="4.300 / 5.000 · 86 %" />
+      <Meter label="Mensajes del mes" value={5200} max={5000} valueLabel="5.200 / 5.000 · 104 %" />
+      <Meter label="Mensajes del mes" value={900} max={null} valueLabel="900" noMaxLabel="Sin tope configurado" />
     </div>
   ),
 };

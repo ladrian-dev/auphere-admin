@@ -15,15 +15,29 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
+from nexus_api.billing.pricing import CURRENCY, cents_to_credits, credits_to_cents
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import PartnerTenant
+from nexus_api.db.models import AuditLog, PartnerTenant
 from nexus_api.db.models.partner_wallet import PartnerAllocation
-from nexus_api.metering.wallet import OverAllocation, read_wallet, set_allocation
+from nexus_api.metering.wallet import (
+    InsufficientCap,
+    OverAllocation,
+    SameClient,
+    move_allocation,
+    read_wallet,
+    set_allocation,
+)
 
 from .deps import ClientRef, resolve_mapping, unknown_client
-from .schemas_wallet import AllocationIn, AllocationOut, WalletOut
+from .schemas_wallet import (
+    AllocationIn,
+    AllocationOut,
+    MoveAllocationIn,
+    MoveAllocationOut,
+    WalletOut,
+)
 
 router = APIRouter()
 log = structlog.get_logger(__name__)
@@ -31,10 +45,10 @@ log = structlog.get_logger(__name__)
 
 def _empty() -> WalletOut:
     return WalletOut(
-        included_remaining=0,
-        purchased_remaining=0,
-        available=0,
-        reserve=0,
+        included_remaining_cents=0,
+        purchased_remaining_cents=0,
+        available_cents=0,
+        reserve_cents=0,
         included_expires_at=None,
         exhausted=True,
     )
@@ -80,10 +94,20 @@ async def _list_allocations(partner_id: uuid.UUID) -> list[AllocationOut]:
                 .order_by(PartnerTenant.external_client_ref)
             )
         ).all()
-    return [
-        AllocationOut(client_ref=ref, cap=int(cap), remaining=int(remaining))
-        for ref, cap, remaining in rows
-    ]
+    return [_allocation_out(ref, int(cap), int(remaining)) for ref, cap, remaining in rows]
+
+
+def _allocation_out(ref: str, cap: int, remaining: int) -> AllocationOut:
+    """A cap as the partner reads it: money, rounded down to the cent."""
+    return AllocationOut(
+        client_ref=ref,
+        cap_cents=credits_to_cents(cap),
+        remaining_cents=credits_to_cents(remaining),
+    )
+
+
+def _signed_cents(credits: int) -> int:
+    return credits_to_cents(credits) if credits >= 0 else -credits_to_cents(-credits)
 
 
 @router.get("/wallet", response_model=WalletOut)
@@ -98,22 +122,23 @@ async def get_wallet(
     if snap is None:
         return _empty()
     caps = await _sum_caps(principal.partner.id)
-    # R7.1: el tamaño del pool viaja para que la consola pinte una PROPORCIÓN.
-    # Derivarla en el cliente de restas entre ``available``, ``purchased`` e
-    # ``included`` daría un número que parece correcto y no significa nada.
+    # R7.1: el porcentaje usado se calcula aquí con el tamaño del pool;
+    # derivarlo en el cliente de restas daría un número que no significa nada.
     pool_size = int(principal.partner.weekly_pool_tokens or 0)
     used = max(0, pool_size - snap.included_remaining)
+    # Spec 027 (D5): the partner reads what is left, in money; the pool size
+    # itself does not travel.
     return WalletOut(
-        included_remaining=snap.included_remaining,
-        purchased_remaining=snap.purchased_remaining,
-        available=snap.available,
-        reserve=snap.available - caps,
+        included_remaining_cents=credits_to_cents(snap.included_remaining),
+        purchased_remaining_cents=credits_to_cents(snap.purchased_remaining),
+        available_cents=credits_to_cents(snap.available),
+        reserve_cents=_signed_cents(snap.available - caps),
         included_expires_at=snap.included_expires_at,
         exhausted=snap.empty,
-        pool_size=pool_size,
         included_percent_used=100.0
         if pool_size <= 0
         else min(100.0, round(used * 100.0 / pool_size, 2)),
+        currency=CURRENCY,
     )
 
 
@@ -157,7 +182,7 @@ async def get_client_allocation(
         )
     if row is None:
         raise unknown_client()
-    return AllocationOut(client_ref=ref, cap=row.cap, remaining=row.remaining)
+    return _allocation_out(ref, int(row.cap), int(row.remaining))
 
 
 @router.put(
@@ -176,17 +201,94 @@ async def put_client_allocation(
 ) -> AllocationOut:
     """Fija el cap de un cliente propio. El de otro partner es 404 opaco.
 
-    Mover cuota es dos PUT (bajar uno, subir el otro). No hay endpoint de move.
+    Para mover tope entre dos clientes está ``POST /wallet/allocations/move``
+    (spec 016): una transacción, no dos PUT.
     """
     mapping = await resolve_mapping(session, principal, ref)
     try:
-        row = await set_allocation(principal.partner.id, mapping.tenant_id, body.cap)
+        row = await set_allocation(
+            principal.partner.id, mapping.tenant_id, cents_to_credits(body.cap_cents)
+        )
     except OverAllocation:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "over_allocated"},
         ) from None
-    return AllocationOut(client_ref=ref, cap=int(row.cap), remaining=int(row.remaining))
+    return _allocation_out(ref, int(row.cap), int(row.remaining))
+
+
+@router.post(
+    "/wallet/allocations/move",
+    response_model=MoveAllocationOut,
+    responses={
+        404: {"description": "Unknown client reference."},
+        422: {"description": "same_client · insufficient_cap {cap_cents, amount_cents}."},
+    },
+)
+async def move_wallet_allocation(
+    body: MoveAllocationIn,
+    principal: ConsolePrincipal = Depends(require_console_principal("usage:write")),
+    session: AsyncSession = Depends(get_db_session),
+) -> MoveAllocationOut:
+    """Mueve ``amount_cents`` de tope de un cliente propio a otro, de una vez.
+
+    Spec 016 (R3.1-R3.3). Los dos refs se resuelven ANTES de la transacción:
+    un ref ajeno o inexistente es el mismo 404 opaco de siempre y no toca
+    nada. En cualquier error ningún tope cambia. Deja ``console.allocation.move``
+    en la auditoría del partner.
+    """
+    source = await resolve_mapping(session, principal, body.from_ref)
+    target = await resolve_mapping(session, principal, body.to_ref)
+    if source.tenant_id == target.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "same_client"},
+        )
+    qty = cents_to_credits(body.amount_cents)
+    try:
+        from_row, to_row = await move_allocation(
+            principal.partner.id, source.tenant_id, target.tenant_id, qty
+        )
+    except SameClient:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "same_client"},
+        ) from None
+    except InsufficientCap as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "insufficient_cap",
+                "cap_cents": credits_to_cents(exc.cap),
+                "amount_cents": body.amount_cents,
+            },
+        ) from None
+    except OverAllocation:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "over_allocated"},
+        ) from None
+    async with session.begin():
+        session.add(
+            AuditLog(
+                tenant_id=None,
+                actor=principal.actor,
+                action="console.allocation.move",
+                target=f"partner:{principal.partner.id}",
+                after_json={
+                    "from": body.from_ref,
+                    "to": body.to_ref,
+                    "amount_cents": body.amount_cents,
+                    "qty": qty,
+                },
+            )
+        )
+    return MoveAllocationOut.model_validate(
+        {
+            "from": _allocation_out(body.from_ref, int(from_row.cap), int(from_row.remaining)),
+            "to": _allocation_out(body.to_ref, int(to_row.cap), int(to_row.remaining)),
+        }
+    )
 
 
 # ``POST /wallet/purchased`` vivía aquí y **se borró con la spec 005**.

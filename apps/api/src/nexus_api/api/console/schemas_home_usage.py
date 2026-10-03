@@ -49,7 +49,8 @@ class HomeUsageOut(BaseModel):
 class IncidentClientOut(BaseModel):
     """A client with at least one incident. ``issues`` is a closed vocabulary:
     ``whatsapp_degraded`` (degraded OR disconnected) · ``no_active_agent``
-    · ``failed_messages_24h``."""
+    · ``failed_messages_24h`` · ``out_of_quota`` (spec 016: the channel gate
+    is closed for this client)."""
 
     external_client_ref: str
     client_name: str | None
@@ -79,16 +80,147 @@ class HomePendingOut(BaseModel):
     items: list[PendingItemOut]
 
 
+# ── spec 026 · what the partner has to do today ───────────────────────
+
+AttentionKind = Literal[
+    "out_of_quota",
+    "no_active_agent",
+    "whatsapp_disconnected",
+    "needs_reauth",
+    "quality_red",
+    "failed_messages",
+    "credit_low",
+    "template_rejected",
+    "draft_unpublished",
+    "provisioning",
+]
+
+
+class AttentionItemOut(BaseModel):
+    """One problem of one client, with where it is fixed. ``severity`` 1 is
+    the worst (the agent cannot answer at all)."""
+
+    kind: AttentionKind
+    severity: int
+    external_client_ref: str
+    client_name: str | None
+    count: int | None = None
+    href: str
+
+
+class HomeAttentionOut(BaseModel):
+    items: list[AttentionItemOut]
+    #: Clients with nothing to fix — «todos atendiendo» when it equals total.
+    clients_ok: int
+
+
+class ReviewClientOut(BaseModel):
+    external_client_ref: str
+    client_name: str | None
+    escalated: int
+    payments: int
+    unanswered: int
+    href: str
+
+
+class HomeToReviewOut(BaseModel):
+    """What waits for a person, across the portfolio (7-day window)."""
+
+    escalated: int
+    payments: int
+    unanswered: int
+    clients: list[ReviewClientOut]
+
+
+class TrendClientOut(BaseModel):
+    """``external_client_ref`` is ``None`` for «el resto» (clients beyond
+    the five with most activity)."""
+
+    external_client_ref: str | None
+    client_name: str | None
+    series: list[int]
+
+
+class HomeTrendOut(BaseModel):
+    """Customer conversations per UTC day: the last 7 days against the 7
+    before. ``previous`` is ``None`` when nothing happened then — no change
+    is invented from zero."""
+
+    days: list[date]
+    series: list[int]
+    current: int
+    previous: int | None
+    by_client: list[TrendClientOut]
+
+
+class CreditRiskOut(BaseModel):
+    external_client_ref: str
+    client_name: str | None
+    remaining_cents: int
+    days_left: float
+    href: str
+
+
+class HomeCreditOut(BaseModel):
+    """Spec 027: the partner's balance and spend in cents of ``currency``.
+    ``days_left`` is ``None`` when there was no spend in 7 days."""
+
+    available_cents: int | None
+    spent_7d_cents: int
+    daily_average_cents: int
+    days_left: float | None
+    currency: str = "USD"
+    at_risk: list[CreditRiskOut]
+
+
+class SpendShareOut(BaseModel):
+    kind: Literal["client", "rest", "outside"]
+    external_client_ref: str | None
+    client_name: str | None
+    cents: int
+
+
+class HomeSpendOut(BaseModel):
+    """Spec 026: the month's credit in money, at the price the partner pays
+    (USD per million credits). Not Auphere's cost, which stays internal."""
+
+    cents: int
+    previous_cents: int | None
+    projected_cents: int
+    currency: str
+    by_client: list[SpendShareOut]
+
+
+class PortfolioRowOut(BaseModel):
+    external_client_ref: str
+    client_name: str | None
+    status: str
+    conversations_7d: int
+    series_7d: list[int]
+    last_activity_at: datetime | None
+    credit_cap_cents: int | None
+    credit_remaining_cents: int | None
+    attention: int
+    href: str
+
+
 class HomeOut(BaseModel):
-    """One response, five figures. A block is ``null`` when the principal
-    lacks the permission that guards it or when its query failed (partial
-    error — the other blocks still render)."""
+    """One response. A block is ``null`` when the principal lacks the
+    permission that guards it or when its query failed (partial error —
+    the other blocks still render). The five original blocks stay for the
+    Companion (``console.get_quota``); the page reads the spec 026 ones."""
 
     clients: HomeClientsOut | None
     conversations_period: HomeConversationsOut | None
     usage_units: HomeUsageOut | None
     agents_with_incidents: HomeIncidentsOut | None
     pending_actions: HomePendingOut | None
+    attention: HomeAttentionOut | None = None
+    to_review: HomeToReviewOut | None = None
+    conversations_trend: HomeTrendOut | None = None
+    credit: HomeCreditOut | None = None
+    spend: HomeSpendOut | None = None
+    portfolio: list[PortfolioRowOut] | None = None
     errors: list[str] = Field(default_factory=list, description="Blocks that failed")
     generated_in_ms: int
 
@@ -158,3 +290,48 @@ class AuditVocabularyEntryOut(BaseModel):
 class AuditVocabularyOut(BaseModel):
     lang: str
     entries: list[AuditVocabularyEntryOut]
+
+
+class AuditFilterOptionOut(BaseModel):
+    value: str
+    label: str
+
+
+class AuditFiltersOut(BaseModel):
+    """Spec 029: the options of the audit filter bar."""
+
+    categories: list[AuditFilterOptionOut]
+    people: list[AuditFilterOptionOut]
+    clients: list[AuditFilterOptionOut]
+
+
+# ── spec 028: Consumo in money ─────────────────────────────────────────
+
+
+class SpendSeriesClientOut(BaseModel):
+    """One client's spend per day, in cents. ``external_client_ref`` is
+    ``None`` for what was spent outside any client (the Companion)."""
+
+    external_client_ref: str | None
+    client_name: str | None
+    series_cents: list[int]
+
+
+class ClientMonthSpendOut(BaseModel):
+    external_client_ref: str
+    client_name: str | None
+    cents: int
+
+
+class UsageSpendOut(BaseModel):
+    """What the partner spent, in cents of ``currency``: per day of the
+    period (total and per client), and this month (total, projection and
+    per client). Never credits."""
+
+    currency: str = "USD"
+    days: list[date]
+    series_cents: list[int]
+    by_client: list[SpendSeriesClientOut]
+    month_cents: int
+    projected_cents: int
+    month_by_client: list[ClientMonthSpendOut]

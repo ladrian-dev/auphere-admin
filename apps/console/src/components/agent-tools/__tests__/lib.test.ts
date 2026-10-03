@@ -12,7 +12,6 @@ import {
   knowledgeStatusTone,
   knowledgeUsageRatio,
   splitCredentials,
-  usageWidthClass,
 } from "../lib";
 
 const tool = (name: string, slug: string | null, display: string | null = slug): ToolOut => ({
@@ -55,7 +54,16 @@ describe("connector helpers", () => {
     for (const s of CONNECTOR_STATUS_KEYS) expect(connectorStatusKey(s) in messages, s).toBe(true);
     expect(connectorStatusKey(null)).toBe("connectors.status.none");
     expect(connectorStatusKey("weird")).toBe("connectors.status.none");
-    for (const m of TOOL_MODES) expect(`tools.mode.${m}` in messages, m).toBe(true);
+  });
+  it("los modos se dicen en el carril de Capacidades, y «requiere aprobación» ya no se dice", () => {
+    // Antes esto recorría `TOOL_MODES` exigiendo `tools.mode.{m}`. Esa
+    // pantalla ya no existe y su copy se borró; los modos se leen en
+    // Capacidades, donde **a propósito falta** `needs_approval` (R5.7): se
+    // comportaba como un bloqueo y engañaba a quien lo elegía. Exigir la
+    // clave de los tres obligaría a resucitar la que se retiró.
+    for (const m of ["always", "blocked"] as const) expect(`cap.mode.${m}` in messages, m).toBe(true);
+    expect(TOOL_MODES).toContain("needs_approval");
+    expect("cap.mode.needs_approval" in messages).toBe(false);
   });
   it("splits credentials into secrets vs endpoint_meta and drops blanks", () => {
     const out = splitCredentials(
@@ -84,11 +92,13 @@ describe("knowledge helpers", () => {
     expect(knowledgeUsageRatio(500, 100)).toBe(1);
     expect(knowledgeUsageRatio(5, 0)).toBe(0);
   });
-  it("width class steps", () => {
-    expect(usageWidthClass(0)).toBe("w-0");
-    expect(usageWidthClass(0.01)).toBe("w-1/12");
-    expect(usageWidthClass(0.5)).toBe("w-6/12");
-    expect(usageWidthClass(1)).toBe("w-full");
-    expect(usageWidthClass(3)).toBe("w-full");
+});
+
+describe("connectorStatusKey cubre cada estado de la API", () => {
+  it("needs_reauth y partial tienen frase; lo desconocido cae en «none»", () => {
+    expect(connectorStatusKey("needs_reauth")).toBe("connectors.status.needs_reauth");
+    expect(connectorStatusKey("partial")).toBe("connectors.status.partial");
+    expect(connectorStatusKey("made_up")).toBe("connectors.status.none");
+    expect(connectorTone("needs_reauth")).toBe("warning");
   });
 });
