@@ -22,6 +22,7 @@ export const homeUsageMessages = {
   "hu.home.issue.needs_reauth": { es: "Hay que volver a autorizar la conexión con Meta", en: "The Meta connection needs to be authorised again" },
   "hu.home.issue.quality_red": { es: "Calidad del número en rojo en WhatsApp", en: "WhatsApp number quality is red" },
   "hu.home.issue.failed_messages": { es: "{count} mensajes no se entregaron en 24 horas", en: "{count} messages were not delivered in 24 hours" },
+  "hu.home.issue.credit_low": { es: "Se quedará sin saldo en unos {count} días", en: "Will run out of balance in about {count} days" },
   "hu.home.issue.template_rejected": { es: "Meta rechazó {count} plantillas", en: "Meta rejected {count} templates" },
   "hu.home.issue.draft_unpublished": { es: "Hay cambios del agente sin publicar", en: "There are unpublished agent changes" },
   "hu.home.issue.provisioning": { es: "El alta no está terminada", en: "Setup is not finished" },
@@ -31,6 +32,7 @@ export const homeUsageMessages = {
   "hu.home.fix.needs_reauth": { es: "Autorizar", en: "Authorise" },
   "hu.home.fix.quality_red": { es: "Ver el número", en: "See the number" },
   "hu.home.fix.failed_messages": { es: "Ver conversaciones", en: "See conversations" },
+  "hu.home.fix.credit_low": { es: "Subir el tope", en: "Raise the cap" },
   "hu.home.fix.template_rejected": { es: "Ver plantillas", en: "See templates" },
   "hu.home.fix.draft_unpublished": { es: "Revisar y publicar", en: "Review and publish" },
   "hu.home.fix.provisioning": { es: "Terminar el alta", en: "Finish setup" },
@@ -60,14 +62,11 @@ export const homeUsageMessages = {
   "hu.home.chart.today": { es: "Hoy", en: "Today" },
   "hu.home.chart.rest": { es: "Resto de clientes", en: "Other clients" },
   "hu.home.chart.empty": { es: "Sin conversaciones en los últimos 7 días.", en: "No conversations in the last 7 days." },
-  // Crédito en riesgo
   "hu.home.spend.title": { es: "Gasto del mes", en: "Spend this month" },
   "hu.home.spend.see": { es: "Ver consumo", en: "See usage" },
   "hu.home.spend.outside": { es: "Companion y pruebas", en: "Companion and tests" },
   "hu.home.spend.aria": { es: "Reparto del gasto del mes por cliente", en: "Month spend by client" },
   "hu.home.spend.empty": { es: "Todavía no hay gasto este mes.", en: "No spend this month yet." },
-  "hu.home.credit.risk.title": { es: "Se quedarán sin saldo este mes", en: "Will run out of balance this month" },
-  "hu.home.credit.risk.row": { es: "Le quedan unos {days} días", en: "About {days} days left" },
   // Cartera
   // Actividad
 

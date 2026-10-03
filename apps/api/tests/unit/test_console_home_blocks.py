@@ -175,3 +175,21 @@ def test_the_month_spend_is_credit_at_the_partner_price() -> None:
 def test_no_spend_last_month_means_no_comparison() -> None:
     block = spend_block([], {None: 400}, 0, daily_7d=0, days_left=29)
     assert block.cents == 0 and block.previous_cents is None
+
+
+def test_running_out_of_balance_is_an_attention_row_with_its_fix() -> None:
+    """Owner, 2026-10-03: not a block of its own — a warning row with the fix."""
+    from nexus_api.services.console_home_blocks import credit_low_items, merge_attention
+
+    flor, demo = _client("flor"), _client("demo")
+    burn = {flor.tenant_id: 7_000}
+    block = credit_block(
+        [flor, demo], 84_000, burn, {flor.tenant_id: (10_000, 25_000)}, days_to_month_end=30
+    )
+    rows = credit_low_items([flor, demo], block.at_risk)
+    assert [(r.kind, r.external_client_ref, r.count, r.href) for r in rows] == [
+        ("credit_low", "flor", 25, "/usage?client=flor")
+    ]
+    snaps = {demo.tenant_id: _snap(demo, whatsapp_bad=1), flor.tenant_id: _snap(flor)}
+    merged = merge_attention(attention_items([flor, demo], snaps, {}, {}), rows)
+    assert [i.kind for i in merged] == ["whatsapp_disconnected", "credit_low"]

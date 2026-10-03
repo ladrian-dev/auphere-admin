@@ -45,10 +45,13 @@ from nexus_api.services.console_home import (
     tenant_snapshots,
 )
 from nexus_api.services.console_home_blocks import (
+    AttentionItem,
     ClientRow,
     attention_items,
     credit_block,
+    credit_low_items,
     days_until,
+    merge_attention,
     portfolio_rows,
     review_block,
     spend_block,
@@ -238,17 +241,25 @@ async def home(
         try:
             wallet = await read_wallet(principal.partner.id)
             burn = await credit_burn(principal.partner.id, tenant_ids, now - REVIEW_WINDOW)
-            credit = HomeCreditOut.model_validate(
-                asdict(
-                    credit_block(
-                        client_rows,
-                        wallet.available if wallet is not None else None,
-                        burn,
-                        allocations,
-                        days_until(until, now),
-                    )
-                )
+            cblock = credit_block(
+                client_rows,
+                wallet.available if wallet is not None else None,
+                burn,
+                allocations,
+                days_until(until, now),
             )
+            credit = HomeCreditOut.model_validate(asdict(cblock))
+            if attention is not None and cblock.at_risk:
+                # Owner, 2026-10-03: «se quedará sin saldo» belongs in the
+                # attention list, with its fix, not in a block of its own.
+                merged = merge_attention(
+                    [AttentionItem(**i.model_dump()) for i in attention.items],
+                    credit_low_items(client_rows, cblock.at_risk),
+                )
+                attention = HomeAttentionOut(
+                    items=[AttentionItemOut.model_validate(asdict(p)) for p in merged],
+                    clients_ok=attention.clients_ok,
+                )
         except Exception as exc:
             log.warning("console_home.credit_failed", error=str(exc))
             errors.append("credit")

@@ -5,7 +5,7 @@ import { Alert, AlertDescription, Button, EmptyState, HighlightMetric, Metric, P
 
 import { AttentionBlock } from "@/components/home/attention-block";
 import { ConversationsChart } from "@/components/home/conversations-chart";
-import { creditRunway, roundDays, trendDelta } from "@/components/home/home-model";
+import { creditRunway, trendDelta } from "@/components/home/home-model";
 import { SpendCard } from "@/components/home/spend-card";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
@@ -133,20 +133,6 @@ export default async function HomePage() {
       </div>
 
       {home?.attention && !noClients ? <AttentionBlock attention={home.attention} total={home.clients?.total ?? 0} walletEmpty={credit?.available_cents === 0} t={t} n={n} /> : null}
-      {credit && credit.at_risk.length > 0 ? (
-        <Section title={t("hu.home.credit.risk.title")}>
-          <ul className="divide-y divide-border">
-            {credit.at_risk.map((r) => (
-              <li key={r.external_client_ref}>
-                <Link href={r.href} className="flex items-center justify-between gap-4 py-2 hover:underline">
-                  <span className="truncate text-sm font-medium">{r.client_name ?? r.external_client_ref}</span>
-                  <span className="shrink-0 text-sm text-status-danger">{t("hu.home.credit.risk.row", { days: n(roundDays(r.days_left)) })}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      ) : null}
 
       {noClients ? (
         <EmptyState

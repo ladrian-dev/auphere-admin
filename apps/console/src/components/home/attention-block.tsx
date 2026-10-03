@@ -35,7 +35,10 @@ export function AttentionBlock({ attention, total, walletEmpty = false, t, n }: 
   const rows = attentionRows(attention.items, walletEmpty);
   const shown = rows.slice(0, VISIBLE);
   const rest = rows.slice(VISIBLE);
-  const menu = foldsIntoMenu(rows.length);
+  // Owner's rule: count every option of the list, not just the visible
+  // button. Each row offers the fix, the client and its conversations, so
+  // two rows are already six options and fold into «⋯».
+  const menu = foldsIntoMenu(rows.reduce((sum, r) => sum + rowActions(r, t).length, 0));
   const row = (r: AttentionRow) => <AttentionLine menu={menu} key={r.type === "one" ? `${r.item.external_client_ref}-${r.item.kind}` : r.type === "many" ? `group-${r.kind}` : "wallet"} row={r} t={t} n={n} />;
   return (
     <section aria-labelledby="home-attention-h" className="flex flex-col gap-2 rounded-md bg-card p-4 ring-1 ring-status-danger/30" data-slot="home-attention">
@@ -75,15 +78,7 @@ function AttentionLine({ row, menu, t, n }: { row: AttentionRow; menu: boolean; 
       : listed.join(", ")
     : null;
   const fixHref = row.type === "one" ? row.item.href : row.href;
-  const actions: RowAction[] = [{ label: t(`hu.home.fix.${kind}` as MessageKey), href: fixHref, primary: true }];
-  if (row.type === "one") {
-    const base = `/clients/${encodeURIComponent(row.item.external_client_ref)}`;
-    actions.push({ label: t("hu.home.actions.client"), href: base });
-    actions.push({ label: t("hu.home.actions.conversations"), href: `${base}/conversations` });
-  } else {
-    actions.push({ label: t("hu.home.actions.clients"), href: "/clients" });
-  }
-  const unique = actions.filter((a, i) => actions.findIndex((b) => b.href === a.href) === i);
+  const unique = rowActions(row, t);
   return (
     <li className="flex items-center gap-4 py-2">
       <span aria-hidden="true" className={cn("mt-2 size-2 shrink-0 self-start rounded-full", urgent ? "bg-status-danger" : "bg-status-warning")} />
@@ -102,3 +97,19 @@ function AttentionLine({ row, menu, t, n }: { row: AttentionRow; menu: boolean; 
     </li>
   );
 }
+
+/** Every option of one attention row: the fix first, then where to look. */
+function rowActions(row: AttentionRow, t: T): RowAction[] {
+  const kind = row.type === "one" ? row.item.kind : row.type === "many" ? row.kind : "wallet_empty";
+  const fixHref = row.type === "one" ? row.item.href : row.href;
+  const actions: RowAction[] = [{ label: t(`hu.home.fix.${kind}` as MessageKey), href: fixHref, primary: true }];
+  if (row.type === "one") {
+    const base = `/clients/${encodeURIComponent(row.item.external_client_ref)}`;
+    actions.push({ label: t("hu.home.actions.client"), href: base });
+    actions.push({ label: t("hu.home.actions.conversations"), href: `${base}/conversations` });
+  } else {
+    actions.push({ label: t("hu.home.actions.clients"), href: "/clients" });
+  }
+  return actions.filter((a, i) => actions.findIndex((b) => b.href === a.href) === i);
+}
+

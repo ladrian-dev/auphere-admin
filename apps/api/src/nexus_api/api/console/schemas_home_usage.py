@@ -89,6 +89,7 @@ AttentionKind = Literal[
     "needs_reauth",
     "quality_red",
     "failed_messages",
+    "credit_low",
     "template_rejected",
     "draft_unpublished",
     "provisioning",

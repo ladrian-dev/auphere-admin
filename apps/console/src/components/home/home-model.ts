@@ -36,13 +36,6 @@ export function dayBars(trend: HomeTrend, restLabel: string): { bars: DayBar[]; 
   return { bars, average, max };
 }
 
-/** «Alcanza para unos N días», rounded to what a person would say. */
-export function roundDays(days: number): number {
-  if (days < 1) return 0;
-  if (days < 10) return Math.round(days);
-  return Math.round(days / 5) * 5;
-}
-
 export type AttentionRow =
   | { type: "one"; item: AttentionItem }
   | { type: "many"; kind: AttentionKind; severity: number; names: string[]; count: number; href: string }

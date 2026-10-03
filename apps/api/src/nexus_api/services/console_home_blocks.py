@@ -26,6 +26,9 @@ SEVERITY: dict[str, int] = {
     "needs_reauth": 3,
     "quality_red": 4,
     "failed_messages": 5,
+    # Spec 026 (owner, 2026-10-03): running out of balance this month is a
+    # warning in «Necesita tu atención», not a block of its own.
+    "credit_low": 6,
     "template_rejected": 6,
     "draft_unpublished": 7,
     "provisioning": 8,
@@ -129,6 +132,7 @@ def fix_href(kind: str, ref: str) -> str:
     base = f"/clients/{ref}"
     return {
         "out_of_quota": f"/usage?client={ref}",
+        "credit_low": f"/usage?client={ref}",
         "no_active_agent": f"{base}/agent",
         "whatsapp_disconnected": f"{base}/channels",
         "needs_reauth": f"{base}/channels",
@@ -187,6 +191,23 @@ def attention_items(
             items.append(_item("draft_unpublished", c))
     items.sort(key=lambda i: (i.severity, i.client_name or i.external_client_ref))
     return items
+
+
+def credit_low_items(clients: list[ClientRow], at_risk: list[CreditRisk]) -> list[AttentionItem]:
+    """Clients that will run out of balance before the month ends, as
+    attention rows: ``count`` is the days they have left at the 7-day pace."""
+    names = {c.ref: c for c in clients}
+    return [
+        _item("credit_low", names[r.external_client_ref], max(1, round(r.days_left)))
+        for r in at_risk
+        if r.external_client_ref in names
+    ]
+
+
+def merge_attention(items: list[AttentionItem], more: list[AttentionItem]) -> list[AttentionItem]:
+    out = [*items, *more]
+    out.sort(key=lambda i: (i.severity, i.client_name or i.external_client_ref))
+    return out
 
 
 def review_block(
@@ -402,8 +423,10 @@ __all__ = [
     "ClientRow",
     "attention_items",
     "credit_block",
+    "credit_low_items",
     "days_until",
     "fix_href",
+    "merge_attention",
     "portfolio_rows",
     "review_block",
     "spend_block",

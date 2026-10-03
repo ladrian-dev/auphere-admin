@@ -14,7 +14,7 @@ const t = (key: MessageKey, vars?: Record<string, string | number>) => translate
 const n = (v: number) => String(v);
 
 describe("Necesita tu atención", () => {
-  it("lists each problem with the button that fixes it, worst first", () => {
+  it("lists each problem with its fix behind three dots, worst first", async () => {
     const attention: HomeAttention = {
       clients_ok: 1,
       items: [
@@ -24,11 +24,22 @@ describe("Necesita tu atención", () => {
     };
     render(<AttentionBlock attention={attention} total={3} t={t} n={n} />);
     expect(screen.getByRole("heading", { name: /Necesita tu atención/ })).toBeTruthy();
-    expect(screen.getByText("Flor y Encanto")).toBeTruthy();
     expect(screen.getByText("3 mensajes no se entregaron en 24 horas")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Asignar saldo" }).getAttribute("href")).toBe("/usage?client=flor");
-    expect(screen.getByRole("button", { name: "Ver conversaciones" }).getAttribute("href")).toBe("/clients/demo/conversations");
     expect(screen.getByText("1 de 3 clientes sin problemas.")).toBeTruthy();
+    // Two rows, three options each: six options fold into «⋯» (owner, 2026-10-03).
+    expect(screen.queryByRole("button", { name: "Asignar saldo" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Flor y Encanto" }).getAttribute("href")).toBe("/usage?client=flor");
+    await userEvent.click(screen.getByRole("button", { name: "Opciones de Flor y Encanto" }));
+    expect((await screen.findByRole("menuitem", { name: "Asignar saldo" })).getAttribute("href")).toBe("/usage?client=flor");
+  });
+
+  it("running out of balance this month is a row with its fix (owner, 2026-10-03)", () => {
+    const attention: HomeAttention = {
+      clients_ok: 0,
+      items: [{ kind: "credit_low", severity: 6, external_client_ref: "flor", client_name: "Flor y Encanto", count: 25, href: "/usage?client=flor" }],
+    };
+    render(<AttentionBlock attention={attention} total={1} t={t} n={n} />);
+    expect(screen.getByText("Se quedará sin saldo en unos 25 días")).toBeTruthy();
   });
 
   it("a problem shared by many clients is one row with one fix", () => {

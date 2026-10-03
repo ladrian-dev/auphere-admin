@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attentionRows, creditRunway, dayBars, spendShares, roundDays, trendDelta } from "../home-model";
+import { attentionRows, creditRunway, dayBars, spendShares, trendDelta } from "../home-model";
 
 describe("Reglas del Inicio (spec 026)", () => {
   it("compara con el periodo anterior sin inventar variaciones", () => {
@@ -31,11 +31,6 @@ describe("Reglas del Inicio (spec 026)", () => {
     expect(bars[1]).toMatchObject({ total: 4, today: true, top: [{ label: "b", value: 4 }] });
   });
 
-  it("redondea los días como lo diría una persona", () => {
-    expect(roundDays(0.4)).toBe(0);
-    expect(roundDays(6.6)).toBe(7);
-    expect(roundDays(23)).toBe(25);
-  });
 });
 
 describe("attentionRows", () => {
