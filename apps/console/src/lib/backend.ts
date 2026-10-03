@@ -594,6 +594,36 @@ export const consoleService = {
       body,
     })) as GoogleCallback;
   },
+  /**
+   * Pide el enlace para restablecer la contraseña (spec 011, R1).
+   *
+   * **Siempre 202**, tenga o no cuenta la dirección, falle o no el envío, y
+   * esté o no pasada de tope. La API no distingue los cuatro casos y esta capa
+   * tampoco puede hacerlo sin deshacer el trabajo: bastaría comparar dos
+   * respuestas para saber qué direcciones están registradas.
+   *
+   * **No lleva `locale`**, a diferencia del alta: el correo va a la persona
+   * dueña de la cuenta, que puede no ser quien rellenó el formulario, así que
+   * el idioma lo decide la cuenta y no este navegador.
+   */
+  async startPasswordReset(body: { email: string }): Promise<void> {
+    const t = await mintServiceToken();
+    await request<{ status: "sent" }>(t, "/console/password-reset", { method: "POST", body });
+  },
+  /**
+   * Canjea el enlace por una contraseña nueva.
+   *
+   * **No devuelve sesión y es la decisión D-5**: el canje acaba de cerrar todas
+   * las sesiones de esa persona, así que abrir una aquí contradiría lo que se
+   * acaba de hacer. Se vuelve a la entrada.
+   */
+  async finishPasswordReset(token: string, body: { password: string }): Promise<void> {
+    const t = await mintServiceToken();
+    await request<{ status: "reset" }>(t, `/console/password-reset/${encodeURIComponent(token)}`, {
+      method: "POST",
+      body,
+    });
+  },
   async logout(token: string): Promise<void> {
     const t = await mintServiceToken();
     await request<null>(t, "/console/auth/logout", { method: "POST", body: { token } });

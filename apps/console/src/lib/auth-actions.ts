@@ -130,6 +130,74 @@ export async function completeSignupAction(raw: unknown): Promise<CompleteSignup
 
 
 /**
+ * Recuperar la contraseña — spec 011.
+ *
+ * **`requestPasswordResetAction` devuelve `ok` siempre que la API conteste**,
+ * exista o no la cuenta, se haya mandado el correo o no, y esté o no la
+ * dirección pasada de tope. No es descuido: es el requisito (R1.3). Si esta
+ * capa distinguiera alguno de los cuatro casos —aunque fuera para enseñar un
+ * mensaje más amable— reabriría desde el navegador el oráculo que la API cierra
+ * a propósito.
+ *
+ * Es lo mismo que hace `signUpAction`, con una diferencia que importa: allí
+ * `429` sí se distingue, porque el alta puede permitírselo. Aquí **no**, porque
+ * el tope se gasta por dirección y un «demasiados intentos» contestado sólo a
+ * las direcciones registradas es el oráculo por otra puerta. Por eso la API ni
+ * siquiera devuelve 429 en esta ruta.
+ */
+
+const resetRequestInput = z.object({ email: z.string().email() });
+
+export type RequestPasswordResetResult = { ok: true } | { ok: false; reason: "invalid" | "error" };
+
+export async function requestPasswordResetAction(raw: unknown): Promise<RequestPasswordResetResult> {
+  const parsed = resetRequestInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, reason: "invalid" };
+  try {
+    await consoleService.startPasswordReset(parsed.data);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof BackendError) return { ok: false, reason: "error" };
+    throw err;
+  }
+}
+
+const resetFinishInput = z.object({
+  token: z.string().min(16).max(128),
+  password: z.string().min(12).max(256),
+});
+
+export type FinishPasswordResetResult =
+  | { ok: true }
+  | { ok: false; reason: "dead_link" | "invalid" | "error" };
+
+/**
+ * **No abre sesión, y es D-5.** El canje ha cerrado todas las de esta persona;
+ * la pantalla la lleva a la entrada y entra ella con su contraseña nueva, que
+ * es la prueba de que el circuito funciona.
+ *
+ * `dead_link` cubre los tres casos muertos —inexistente, caducado y ya usado—
+ * porque la API los contesta con el mismo 404 y el mismo cuerpo.
+ */
+export async function finishPasswordResetAction(raw: unknown): Promise<FinishPasswordResetResult> {
+  const parsed = resetFinishInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, reason: "invalid" };
+  const { token, password } = parsed.data;
+  try {
+    await consoleService.finishPasswordReset(token, { password });
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof BackendError) {
+      if (err.status === 404) return { ok: false, reason: "dead_link" };
+      if (err.status === 422) return { ok: false, reason: "invalid" };
+      return { ok: false, reason: "error" };
+    }
+    throw err;
+  }
+}
+
+
+/**
  * «Continuar con Google» — spec 006, Requisito 5.
  *
  * Sólo pide a dónde ir. El intercambio del código ocurre en el callback, que

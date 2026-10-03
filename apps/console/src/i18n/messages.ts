@@ -168,7 +168,63 @@ const core = {
   // botón de arriba, porque el vínculo se hace por correo verificado. Hasta que
   // exista el restablecimiento (evaluación `recuperar-la-contrasena`), esto
   // dice las dos verdades: la vía que hay y la que no.
-  "login.forgot": { es: "¿Has olvidado la contraseña? Si tu cuenta tiene Google, el botón de arriba te reconoce por tu correo. Si no, restablecerla todavía no es posible desde aquí: pídeselo a Auphere.", en: "Forgot your password? If your account has Google, the button above recognises you by your e-mail. Otherwise there is no way to reset it here yet — ask Auphere." },
+  // Spec 011: esta frase prometía una salida sin destino, y después dijo la
+  // verdad incómoda de que no había ninguna. Ahora la hay, así que vuelve a
+  // ser un enlace — y el texto no menciona Google: quien llega aquí ya tiene
+  // el botón dos centímetros más arriba.
+  "login.forgot": { es: "¿Has olvidado la contraseña?", en: "Forgot your password?" },
+  "forgot.title": { es: "Recupera tu cuenta.", en: "Recover your account." },
+  "forgot.body": {
+    es: "Escribe tu dirección y te mandamos un enlace para elegir una contraseña nueva.",
+    en: "Type your address and we'll send you a link to pick a new password.",
+  },
+  "forgot.submit": { es: "Mandarme el enlace", en: "Send me the link" },
+  // El botón dice lo que está pasando, no solo se apaga. Los dos gestos tardan
+  // de verdad —uno manda un correo, el otro calcula un scrypt y cierra todas
+  // las sesiones— y un botón gris sin texto durante un segundo se parece
+  // demasiado a un botón roto.
+  "forgot.submitting": { es: "Mandando el enlace…", en: "Sending the link…" },
+  "forgot.backToLogin": { es: "Volver a la entrada", en: "Back to sign in" },
+  // §V — la ausencia se diseña: mientras el enlace no llega, la pantalla no
+  // finge que ya está. Dice qué mirar y en cuánto tiempo. Y dice «si esa
+  // dirección tiene cuenta» porque es literalmente lo que sabe: la respuesta
+  // es la misma exista o no, y prometer más sería mentir por amabilidad.
+  "forgot.sent.title": { es: "Mira tu correo", en: "Check your inbox" },
+  "forgot.sent.body": {
+    es: "Si esa dirección tiene cuenta, ya tiene un enlace esperando. Caduca en una hora y sirve una sola vez.",
+    en: "If that address has an account, a link is already waiting. It expires in one hour and works once.",
+  },
+  "forgot.sent.late": {
+    es: "¿No llega? Mira también el correo no deseado. Pasados unos minutos puedes pedir otro: el anterior dejará de valer.",
+    en: "Nothing yet? Check your spam folder too. After a few minutes you can ask for another — the previous one stops working.",
+  },
+  "reset.title": { es: "Elige una contraseña nueva.", en: "Pick a new password." },
+  "reset.password": { es: "Contraseña nueva", en: "New password" },
+  // Corto a propósito. `Button` lleva `whitespace-nowrap` y `size="lg"` es
+  // altura fija, así que una frase entera aquí desborda en horizontal a 320 px
+  // (WCAG 1.4.10) y en alemán mucho antes. La consecuencia —que esto te deja
+  // fuera de todas partes— la lleva el aviso de arriba, que es donde R3.6 pide
+  // que esté: **antes** de pulsar, no dentro del botón.
+  "reset.submit": { es: "Cambiar la contraseña", en: "Change the password" },
+  "reset.submitting": { es: "Cambiando…", en: "Changing…" },
+  // R3.6 — el coste se dice ANTES, no después. Con la 012 entregada, volver a
+  // entrar en una máquina es abrir la aplicación, no repetir una ceremonia.
+  "reset.warning.title": { es: "Esto te deja fuera de todas partes", en: "This signs you out everywhere" },
+  "reset.warning.body": {
+    es: "Al cambiarla se cierran todas tus sesiones abiertas y se dan de baja tus máquinas. Tendrás que volver a entrar en cada una: abre la aplicación y entra con la contraseña nueva.",
+    en: "Changing it closes every session you have open and unregisters your machines. You will sign in again on each one: open the app and sign in with the new password.",
+  },
+  "reset.done.title": { es: "Contraseña cambiada", en: "Password changed" },
+  "reset.done.body": {
+    es: "Ya puedes entrar con la nueva. Tus otras sesiones y tus máquinas han quedado fuera: vuelve a entrar en cada una.",
+    en: "You can sign in with it now. Your other sessions and machines are out: sign in again on each one.",
+  },
+  "reset.deadLink": { es: "Este enlace ya no vale", en: "This link is no longer valid" },
+  "reset.deadLink.body": {
+    es: "Puede haber caducado, haberse usado ya, o haber quedado sustituido por otro más reciente. Pide uno nuevo.",
+    en: "It may have expired, been used, or been replaced by a newer one. Request a new one.",
+  },
+  "reset.askAnother": { es: "Pedir otro enlace", en: "Request another link" },
   "login.footer": { es: "Auphere", en: "Auphere" },
   "noAccess.title": { es: "Tu cuenta no tiene acceso a ningún partner", en: "Your account has no partner access" },
   "noAccess.body": { es: "Pide a un propietario o administrador de tu partner que te invite, o vuelve a intentarlo con la cuenta correcta.", en: "Ask an owner or admin of your partner to invite you, or try again with the right account." },

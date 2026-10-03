@@ -60,6 +60,7 @@ from nexus_api.db.models.console_identity import (
     CONSOLE_AUTH_SCHEMA,
     ConsoleAccount,
     ConsoleSession,
+    PasswordResetRequest,
     PrincipalIdentity,
 )
 from nexus_api.db.models.console_notification import (
@@ -329,6 +330,7 @@ __all__ = [
     "PartnerSubscription",
     "PartnerTenant",
     "PartnerWallet",
+    "PasswordResetRequest",
     "PrincipalIdentity",
     "PrincipalLocalExecPref",
     "QAAuditLog",

@@ -160,6 +160,30 @@ variable "app_secret_keys" {
     "NEXUS_GOOGLE_CLIENT_ID",
     "NEXUS_GOOGLE_CLIENT_SECRET",
     "NEXUS_GOOGLE_REDIRECT_URI",
+    # ─── Recuperar la contraseña (spec 011, Requisito 4.2) ─────────────────
+    # A quién escribe alguien a quien le han cambiado la contraseña sin
+    # pedirlo. **No es un secreto** —es una dirección que se puede leer en
+    # cualquier bandeja— pero vive aquí por el mismo criterio que
+    # ``NEXUS_CONSOLE_BASE_URL``: cambia con el entorno, y en staging no puede
+    # ser la que reciben partners de verdad.
+    #
+    # El guard de ``config.py`` **rechaza arrancar en producción sin ella**, y
+    # es deliberado: el aviso sale igual sin la dirección, y entonces a quien
+    # le acaban de robar la cuenta se le entrega el susto sin la salida. Es
+    # exactamente el fallo que la evaluación nombró en ``login.forgot`` — una
+    # salida sin destino — y el único sitio donde le llega a alguien real es
+    # producción.
+    #
+    # ⚠️  Pobla LOS DOS secretos ANTES del próximo apply. Una task que pide una
+    #     clave ausente **no arranca** y se lleva por delante los cinco
+    #     servicios del entorno:
+    #
+    #   AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh staging \
+    #     NEXUS_SECURITY_CONTACT_EMAIL
+    #   AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh prod \
+    #     NEXUS_SECURITY_CONTACT_EMAIL
+    #
+    "NEXUS_SECURITY_CONTACT_EMAIL",
   ]
 }
 

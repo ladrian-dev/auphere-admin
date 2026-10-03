@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useForm } from "react-hook-form";
@@ -90,7 +91,12 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         <Button type="submit" size="lg" disabled={busy}>
           {t("login.submit")}
         </Button>
-        <p className="text-xs text-muted-foreground text-pretty">{t("login.forgot")}</p>
+        {/* Spec 011: la salida existe. Era una frase sin destino a dos
+            centímetros del botón de Google, y luego una que decía honestamente
+            que no había forma de restablecer; ahora la hay y es un enlace. */}
+        <Link href="/forgot" className="text-sm text-muted-foreground underline underline-offset-4">
+          {t("login.forgot")}
+        </Link>
       </form>
     </Form>
   );

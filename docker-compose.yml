@@ -50,6 +50,13 @@ services:
       NEXUS_LOG_LEVEL: INFO
       NEXUS_DATABASE_URL: postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
       NEXUS_REDIS_URL: redis://redis:6379/0
+      # Spec 011 (D-4): el sumidero de correo local, por fin conectado. Mailhog
+      # llevaba en este fichero sin que nada le hablara desde que se eligió
+      # Resend, así que el circuito de recuperar la contraseña no se podía
+      # recorrer entero en local (CE-006). Se enciende sólo porque aquí NO hay
+      # clave de Resend; en producción la hay y este valor no existe.
+      # La bandeja se mira en http://localhost:8025
+      NEXUS_SMTP_URL: smtp://mailhog:1025
       # LiteLLM bundled cost map — avoids a sync GitHub fetch on the
       # first LLM call.
       LITELLM_LOCAL_MODEL_COST_MAP: "True"

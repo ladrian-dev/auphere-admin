@@ -23,6 +23,10 @@ def _set_prod_secrets(monkeypatch):
     # lista **es** la especificación de lo que un despliegue necesita.
     monkeypatch.setenv("NEXUS_CONSOLE_BASE_URL", "https://consola.auphere.com")
     monkeypatch.setenv("NEXUS_ADMIN_TOKEN", "real-admin-token")
+    # Spec 011 (R4.2): a quién escribe quien recibe un aviso de que su
+    # contraseña cambió sin haberlo pedido. Esta lista **es** la especificación
+    # de lo que un despliegue necesita, así que entra aquí.
+    monkeypatch.setenv("NEXUS_SECURITY_CONTACT_EMAIL", "seguridad@auphere.com")
 
 
 def test_settings_loads_from_env(monkeypatch):
@@ -160,3 +164,39 @@ def test_prod_rejects_the_placeholder_admin_token(monkeypatch):
     with pytest.raises(ValueError) as exc:
         Settings()
     assert "NEXUS_ADMIN_TOKEN" in str(exc.value)
+
+
+def test_prod_rejects_a_password_change_notice_with_nobody_to_write_to(monkeypatch):
+    """Spec 011, R4.2. El aviso sale igual sin dirección, y ése es el problema.
+
+    «Tu contraseña ha cambiado» es un correo que a veces recibe alguien a quien
+    le acaban de robar la cuenta. Sin una dirección a la que escribir, lo que
+    se le entrega es el susto sin la salida — que es literalmente el fallo que
+    la evaluación nombró en ``login.forgot``: «Escríbenos», sin destino.
+
+    No es un secreto, así que no lleva ``change-me``: lo que se comprueba es
+    que **haya algo**. Y sólo en producción, porque es el único sitio donde ese
+    correo le llega a una persona de verdad; en local el aviso sale con un
+    aviso en los registros y no bloquea a nadie.
+    """
+    monkeypatch.setenv("NEXUS_ENVIRONMENT", "production")
+    _set_prod_secrets(monkeypatch)
+    monkeypatch.delenv("NEXUS_SECURITY_CONTACT_EMAIL", raising=False)
+    with pytest.raises(ValueError) as exc:
+        Settings()
+    assert "NEXUS_SECURITY_CONTACT_EMAIL" in str(exc.value)
+
+
+def test_a_blank_security_contact_is_the_same_as_none(monkeypatch):
+    """Una dirección de espacios no es una dirección.
+
+    Poner la variable a ``" "`` para callar al guard es el atajo obvio, y
+    dejaría el aviso exactamente igual de mudo. El guard mira el valor
+    recortado por eso.
+    """
+    monkeypatch.setenv("NEXUS_ENVIRONMENT", "production")
+    _set_prod_secrets(monkeypatch)
+    monkeypatch.setenv("NEXUS_SECURITY_CONTACT_EMAIL", "   ")
+    with pytest.raises(ValueError) as exc:
+        Settings()
+    assert "NEXUS_SECURITY_CONTACT_EMAIL" in str(exc.value)

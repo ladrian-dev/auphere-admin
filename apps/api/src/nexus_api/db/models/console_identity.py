@@ -4,7 +4,7 @@ La consola ya no tiene base de datos: usuarios, contraseñas y sesiones
 viven aquí y el BFF solo guarda una cookie con un token opaco. Ver el
 docstring de ``alembic/versions/0088_console_identity.py`` para el porqué.
 
-Dos tablas de PLATAFORMA en el esquema ``console_auth`` (sin ``tenant_id``,
+Tablas de PLATAFORMA en el esquema ``console_auth`` (sin ``tenant_id``,
 sin RLS — mismo modelo de confianza que ``partners``):
 
 - :class:`ConsoleAccount` → ``console_auth.principals``. Los nombres no
@@ -13,10 +13,13 @@ sin RLS — mismo modelo de confianza que ``partners``):
   y la clase se llama ``ConsoleAccount`` para que leer código donde
   conviven ambas no sea un acertijo.
 - :class:`ConsoleSession` → ``console_auth.principal_sessions``.
+- :class:`PrincipalIdentity` → ``console_auth.principal_identities`` (0118).
+- :class:`PasswordResetRequest` → ``console_auth.password_reset_requests``
+  (0128, spec 011).
 
-Ninguna de las dos guarda un secreto en claro: la contraseña es un hash
-scrypt con sal (``services/console_identity.py``) y de la sesión solo se
-guarda el SHA-256 del token.
+**Ninguna guarda un secreto en claro**: la contraseña es un hash scrypt con sal
+(``services/console_identity.py``), y de la sesión y del enlace de
+restablecimiento solo vive su SHA-256.
 """
 
 from __future__ import annotations
@@ -155,3 +158,57 @@ class PrincipalIdentity(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"<PrincipalIdentity {self.provider}:{self.subject}>"
+
+
+class PasswordResetRequest(Base):
+    """Una petición de restablecer contraseña — spec 011, Requisito 1.
+
+    **Hermana de ``SignupRequest``** (``db/models/signup.py``), que es el
+    precedente más cercano y está en producción: del secreto vive **sólo** su
+    SHA-256, el claro se enseña una vez dentro del enlace y no entra en ningún
+    registro ni traza. Un volcado de esta tabla no restablece ninguna
+    contraseña (R1.4, R5.2).
+
+    **Vive en la partición de identidad, que es de PERSONA y no de tenant.** La
+    RLS de tenant no aplica aquí; quien acota es el ``WHERE`` por cuenta. Es la
+    misma advertencia que lleva ``services/principal_access.py``, y por el mismo
+    motivo: la red de seguridad está retirada a propósito.
+
+    **``used_at`` en vez de borrar la fila**, igual que ``session_codes``
+    (0122): borrar haría indistinguible «ya usado» de «no existió», y esa
+    indistinguibilidad tiene que ser una decisión de la RESPUESTA (R5.3), no un
+    efecto de la tabla. Con la fila delante el servidor elige qué contesta.
+
+    **Sin columna de estado.** Pedir un enlace nuevo invalida los vivos de esa
+    cuenta (R1.6) sellando su ``used_at``, no marcándolos «revocados»: desde
+    fuera un enlace invalidado y uno gastado son el mismo enlace muerto, y dos
+    palabras para un solo estado observable es cómo se empieza a responder
+    distinto a cada uno.
+    """
+
+    __tablename__ = "password_reset_requests"
+    __table_args__ = (
+        Index("uq_password_reset_token_hash", "token_hash", unique=True),
+        # El ``WHERE`` que invalida las vivas de una cuenta al emitir otra.
+        Index("ix_password_reset_account", "account_id"),
+        {"schema": CONSOLE_AUTH_SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{CONSOLE_AUTH_SCHEMA}.principals.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    #: SHA-256 hex del token del enlace. Nunca sale en una respuesta ni en un log.
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        return f"<PasswordResetRequest {self.account_id}>"

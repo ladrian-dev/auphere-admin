@@ -487,6 +487,25 @@ class Settings(BaseSettings):
     #: **El dominio tiene que estar verificado en el proveedor** o el envío se
     #: rechaza con un 403 (pasó en staging el 2026-09-14).
     signup_from_email: str = "Auphere <no-reply@auphere.com>"
+    #: Sumidero SMTP local (spec 011, D-4). **Vacía en producción, y no es un
+    #: descuido**: el repliegue sólo se enciende cuando NO hay clave de Resend
+    #: y SÍ hay esto, combinación que producción no tiene. Por eso no entra en
+    #: la guardia de arranque de secretos de fábrica: no es un secreto, y
+    #: puesta en producción no haría nada porque el proveedor gana.
+    #: En local, ``smtp://mailhog:1025`` — el contenedor lleva en
+    #: ``docker-compose.yml`` sin conectar a nada desde que se eligió Resend.
+    smtp_url: str = ""
+    #: A quién escribe alguien a quien le han cambiado la contraseña sin
+    #: pedirlo (spec 011, R4.2). **Sin defecto a propósito**: no se inventa una
+    #: dirección que quizá nadie lee, y la del operador es la de una persona,
+    #: no la de un buzón de producto.
+    #:
+    #: Vacía, el aviso sale igual —R4.1 no admite condiciones— pero sin destino
+    #: al que reaccionar, que es exactamente el fallo que la evaluación nombró
+    #: en `login.forgot`: una salida sin destino. Por eso **producción se niega
+    #: a arrancar sin ella**: es el único sitio donde ese agujero le llega a un
+    #: partner de verdad.
+    security_contact_email: str = ""
 
     @property
     def email_enabled(self) -> bool:
@@ -638,6 +657,12 @@ class Settings(BaseSettings):
             offenders.append("NEXUS_PUBLIC_API_BASE_URL")
         if "localhost" in self.admin_panel_base_url:
             offenders.append("NEXUS_ADMIN_PANEL_BASE_URL")
+        # Spec 011 (R4.2). Sin esto, el aviso de «tu contraseña ha cambiado»
+        # sale sin decir a quién escribir, y a quien le acaban de robar la
+        # cuenta se le entrega el susto sin la salida. No es un secreto: es un
+        # destino, y su ausencia sólo se paga en producción.
+        if not self.security_contact_email.strip():
+            offenders.append("NEXUS_SECURITY_CONTACT_EMAIL")
         if offenders:
             raise ValueError(
                 "Refusing to boot in production with dev placeholder secrets: "

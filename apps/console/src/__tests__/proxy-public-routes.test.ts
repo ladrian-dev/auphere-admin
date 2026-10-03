@@ -46,6 +46,14 @@ describe("lo que un desconocido tiene que poder abrir", () => {
       "/api/desktop/redeem",
       "spec 009: aquí TERMINA ese login, y la cookie es justo lo que viene a buscar",
     ],
+    [
+      "/forgot",
+      "spec 011: quien ha olvidado la contraseña NO tiene sesión — es lo que viene a recuperar",
+    ],
+    [
+      "/reset/un-token-de-restablecimiento",
+      "spec 011: el enlace del correo se abre sin cookie, y rebotar aquí mata el circuito entero",
+    ],
   ])("%s — %s", (path) => {
     expect(redirectTarget(anonymousGet(path))).toBeNull();
   });

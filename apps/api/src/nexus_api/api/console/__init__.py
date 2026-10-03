@@ -39,6 +39,7 @@ from nexus_api.api.console import (
     models,
     notifications,
     onboarding,
+    password_reset,
     playbook,
     playground,
     seed_templates,
@@ -78,6 +79,9 @@ router.include_router(invitations.router)
 router.include_router(signup.router)
 router.include_router(auth_google.router)
 router.include_router(session_codes.router)
+# Spec 011 — recuperar la contraseña. Pre-sesión, token de SERVICIO, y la
+# respuesta de pedir es la misma exista o no la cuenta.
+router.include_router(password_reset.router)
 router.include_router(keys.router)
 router.include_router(billing.router)
 router.include_router(playground.router)

@@ -42,6 +42,16 @@ const PUBLIC = [
   // llega sin ella por definición. Sin esta línea, rebotaría a `/login` y la
   // aplicación se quedaría fuera con la persona ya dentro del navegador.
   "/api/desktop/redeem",
+  // `/forgot` y `/reset` (spec 011): **el mismo fallo que el alta, otra vez.**
+  // Quien pide restablecer su contraseña no tiene sesión —es literalmente lo
+  // que viene a recuperar— y el enlace del correo se abre en un navegador que
+  // puede no ser el suyo y desde luego sin cookie. Sin estas dos líneas el
+  // circuito entero está muerto y **todo sale verde**: ninguna prueba de la
+  // API, de componente ni el `next build` pasa por esta capa. Se cazó
+  // recorriéndolo a mano con Mailhog delante, igual que el del alta se cazó
+  // mirando la URL desplegada.
+  "/forgot",
+  "/reset",
 ];
 
 export function proxy(request: NextRequest) {

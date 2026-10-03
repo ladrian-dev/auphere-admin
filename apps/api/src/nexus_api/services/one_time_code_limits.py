@@ -48,6 +48,20 @@ class CodeRateLimiter:
     """
 
     redis: Redis
+    #: Cuántos intentos caben en la ventana, y cuánto dura la ventana.
+    #:
+    #: **Son campos y no constantes desde la spec 011**, que pide un techo de
+    #: cinco peticiones por dirección y **hora** (D-6). Reutilizar este
+    #: limitador con otra ventana es lo que R5.5 exige —«reutilizar el que ya
+    #: existe, y NO escribir uno nuevo»—, y un segundo limitador con la misma
+    #: forma y distintos números es exactamente cómo dos implementaciones
+    #: acaban divergiendo.
+    #:
+    #: Los valores por defecto son los de siempre, así que los dos llamantes
+    #: anteriores —los códigos de sesión y su ruta— se comportan igual byte a
+    #: byte: ninguno los pasa.
+    limit: int = ATTEMPT_LIMIT
+    window: timedelta = ATTEMPT_WINDOW
 
     @staticmethod
     def _keys(key: str) -> tuple[str, str, str]:
@@ -64,8 +78,8 @@ class CodeRateLimiter:
         fails_key, wait_key, strikes_key = self._keys(key)
         fails = await self.redis.incr(fails_key)
         if fails == 1:
-            await self.redis.expire(fails_key, int(ATTEMPT_WINDOW.total_seconds()))
-        if fails >= ATTEMPT_LIMIT:
+            await self.redis.expire(fails_key, int(self.window.total_seconds()))
+        if fails >= self.limit:
             strikes = await self.redis.incr(strikes_key)
             await self.redis.expire(strikes_key, int(BACKOFF_MAX.total_seconds()) * 4)
             wait = min(BACKOFF_BASE * (2 ** (strikes - 1)), BACKOFF_MAX)
