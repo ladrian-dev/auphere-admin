@@ -26,17 +26,21 @@ import csv
 import io
 import uuid
 from collections.abc import AsyncIterator, Sequence
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 import sqlalchemy as sa
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
+from nexus_api.billing.pricing import CURRENCY, credits_to_cents
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
-from nexus_api.db.models import AuditLog, Partner, PartnerTenant, UsageRecord
+from nexus_api.db.models import AuditLog, Partner, PartnerTenant, TenantStatus, UsageRecord
+from nexus_api.metering.wallet import credit_burn, credit_burn_by_day
+from nexus_api.services.console_home_blocks import ClientRow, days_until, spend_block
 from nexus_api.services.console_reporting import (
     csv_safe,
     month_bounds,
@@ -50,15 +54,19 @@ from nexus_api.services.usage_alerts import channel_units_month
 
 from .schemas import UsageBucketOut
 from .schemas_home_usage import (
+    ClientMonthSpendOut,
+    SpendSeriesClientOut,
     UsageAlertsIn,
     UsageAlertsOut,
     UsageMonthOut,
     UsageReportV2Out,
     UsageSeriesOut,
     UsageSeriesPointOut,
+    UsageSpendOut,
 )
 
 router = APIRouter(prefix="/usage")
+log = structlog.get_logger(__name__)
 
 _CSV_HEADERS: dict[str, list[str]] = {
     "en": [
@@ -260,6 +268,90 @@ async def usage_series(
 
 
 # ── CSV export (streaming) ─────────────────────────────────────────────
+
+
+@router.get(
+    "/spend",
+    response_model=UsageSpendOut,
+    responses={404: {"description": "Unknown client"}, 503: {"description": "Ledger unreadable"}},
+)
+async def usage_spend(
+    principal: ConsolePrincipal = Depends(require_console_principal("usage:read")),
+    session: AsyncSession = Depends(get_db_session),
+    days: int = Query(default=30, ge=1, le=90),
+    client: str | None = Query(default=None, max_length=255),
+) -> UsageSpendOut:
+    """Spec 028: what the partner spent, in money — per day of the period
+    (total and per client, the Companion included when no client is
+    chosen) and this month (total, projection at the 7-day pace, per
+    client). The ledger is read in credits and converted once, here."""
+    mappings = await partner_mappings(session, principal.partner.id)
+    chosen, by_tenant = _scope(mappings, client)
+    tenant_ids = list(by_tenant)
+    now = datetime.now(UTC)
+    today = now.date()
+    day_list = [today - timedelta(days=days - 1 - i) for i in range(days)]
+    start = datetime.combine(day_list[0], time.min, tzinfo=UTC)
+    whole_portfolio = client is None
+    try:
+        daily = await credit_burn_by_day(
+            principal.partner.id, tenant_ids, start, include_outside=whole_portfolio
+        )
+    except Exception as exc:
+        log.warning("console_usage.spend_unreadable", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"code": "ledger_unreadable"}
+        ) from None
+    index = {d: i for i, d in enumerate(day_list)}
+    per: dict[uuid.UUID | None, list[int]] = {}
+    for (tid, d), qty in daily.items():
+        if d in index:
+            per.setdefault(tid, [0] * days)[index[d]] += qty
+    totals = [sum(series[i] for series in per.values()) for i in range(days)]
+    ranked = sorted(per.items(), key=lambda kv: -sum(kv[1]))
+    by_client = [
+        SpendSeriesClientOut(
+            external_client_ref=by_tenant[tid].external_client_ref if tid in by_tenant else None,
+            client_name=by_tenant[tid].client_name if tid in by_tenant else None,
+            series_cents=[credits_to_cents(q, nearest=True) for q in series],
+        )
+        for tid, series in ranked
+        if sum(series) > 0
+    ]
+
+    since, until, _elapsed, _days_in_month = month_bounds()
+    month_burn = await credit_burn(principal.partner.id, tenant_ids, since)
+    burn_7d = await credit_burn(principal.partner.id, tenant_ids, now - timedelta(days=7))
+    if not whole_portfolio:
+        month_burn.pop(None, None)
+        burn_7d.pop(None, None)
+    rows = [
+        ClientRow(m.tenant_id, m.external_client_ref, m.client_name, TenantStatus.ACTIVE)
+        for m in chosen
+    ]
+    block = spend_block(
+        rows,
+        month_burn,
+        0,
+        daily_7d=sum(burn_7d.values()) / 7,
+        days_left=days_until(until, now),
+    )
+    return UsageSpendOut(
+        currency=CURRENCY,
+        days=day_list,
+        series_cents=[credits_to_cents(q, nearest=True) for q in totals],
+        by_client=by_client,
+        month_cents=block.cents,
+        projected_cents=block.projected_cents,
+        month_by_client=[
+            ClientMonthSpendOut(
+                external_client_ref=m.external_client_ref,
+                client_name=m.client_name,
+                cents=credits_to_cents(month_burn.get(m.tenant_id, 0), nearest=True),
+            )
+            for m in chosen
+        ],
+    )
 
 
 @router.get("/export.csv", response_class=StreamingResponse)

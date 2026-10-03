@@ -1,22 +1,24 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert, AlertDescription, Button, EmptyState, Metric, PageHeader, StatusBadge, StatusDot, formatDateTime, formatNumber } from "@nexus/ui";
+import { CircleDollarSign, Users, Wallet as WalletIcon } from "lucide-react";
+
+import { Alert, AlertDescription, Button, EmptyState, Metric, PageHeader, Section, formatNumber } from "@nexus/ui";
 
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import type { Allocation, Wallet } from "@/lib/backend/home-usage";
+import type { Allocation, UsageSpend, Wallet } from "@/lib/backend/home-usage";
 import { can, requirePrincipal } from "@/lib/principal";
 import { meterLabel } from "@/lib/meter-label";
 import { formatMoney } from "@/lib/money";
-import { barsFromSeries, cumulativeWithProjection, includedRemainingPercent, topMeters } from "@/lib/usage-projection";
+import { barsFromSeries, cumulativeWithProjection, topMeters } from "@/lib/usage-projection";
 
-import { AllocationCapForm } from "./allocation-cap";
-import { AssignAllocationForm } from "./assign-allocation";
-import { MoveAllocationForm } from "./move-allocation";
-import { BuyCreditForm } from "@/components/billing/buy-credit-form";
+import { BalanceTable } from "./balance-table";
+import { BuyDialog } from "./buy-dialog";
 import { UsageCharts } from "./charts";
 import { UsageControls } from "./controls";
+import { SpendChart } from "./spend-chart";
+import { SpendControls } from "./spend-controls";
 import { pageTitle } from "@/i18n/metadata";
 
 export const generateMetadata = () => pageTitle("nav.usage");
@@ -59,14 +61,14 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
     api.getWallet().then((w) => ({ ok: true as const, wallet: w })).catch(() => ({ ok: false as const, wallet: UNREADABLE_WALLET })),
     api.listAllocations().catch((): Allocation[] => []),
   ]);
+  // Spec 028: the money half of the page. ``null`` = the ledger could not be
+  // read; the cards and the chart then say so instead of painting zeros.
+  const spend: UsageSpend | null = await api.usageSpend({ days, client: sp.client }).catch(() => null);
+  const spendMonth: UsageSpend | null = sp.client ? await api.usageSpend({ days: 7 }).catch(() => null) : spend;
   const wallet = walletRead.wallet;
   const walletUnreadable = !walletRead.ok;
   const n = (v: number) => formatNumber(v, locale);
   const money = (cents: number) => formatMoney(cents, locale);
-  // R7.1: la proporción la calcula la API, que es quien conoce el tamaño del
-  // pool. Aquí se pinta lo que QUEDA, que es lo que dice la etiqueta: un
-  // pool entero es 100 %, no 0 %.
-  const walletPercent = includedRemainingPercent(wallet);
   const totals = Object.entries(report.totals_by_meter);
   const month = report.month;
   const today = new Date().toISOString().slice(0, 10);
@@ -80,20 +82,17 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
   const csvHref = `/api/usage/export?days=${days}${sp.client ? `&client=${encodeURIComponent(sp.client)}` : ""}${sp.source ? `&source=${sp.source}` : ""}&lang=${locale}`;
   const bannerKey = month.percent != null && month.percent >= 100 ? "hu.usage.banner.100" : month.percent != null && month.percent >= 80 ? "hu.usage.banner.80" : null;
   const allocatedRefs = new Set(allocations.map((row) => row.client_ref));
-  const listedClients = (clients?.items ?? []).map((c) => ({
-    ref: c.external_client_ref,
-    name: c.name,
-    capCents: allocations.find((row) => row.client_ref === c.external_client_ref)?.cap_cents ?? 0,
+  const everyone = (clients?.items ?? []).map((c) => ({ ref: c.external_client_ref, name: c.name }));
+  const unassigned = everyone.filter((c) => !allocatedRefs.has(c.ref));
+  const monthOf = new Map((spendMonth?.month_by_client ?? []).map((m) => [m.external_client_ref, m.cents]));
+  const balanceRows = allocations.map((row) => ({
+    ref: row.client_ref,
+    name: names.get(row.client_ref) ?? row.client_ref,
+    capCents: row.cap_cents,
+    remainingCents: row.remaining_cents,
+    monthCents: monthOf.get(row.client_ref) ?? 0,
   }));
-  const unassignedClients = listedClients.filter((c) => !allocatedRefs.has(c.ref));
-  const allocatedClients = listedClients.length
-    ? listedClients.filter((c) => allocatedRefs.has(c.ref))
-    : allocations.map((row) => ({
-        ref: row.client_ref,
-        name: names.get(row.client_ref) ?? row.client_ref,
-        capCents: row.cap_cents,
-      }));
-  const moveDestinations = listedClients.length ? listedClients : allocatedClients;
+  const assignedCents = Math.max(0, wallet.available_cents - wallet.reserve_cents);
 
   return (
     <>
@@ -102,9 +101,12 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
         title={t("usage.title")}
         description={t("usage.description")}
         actions={
-          <Button nativeButton={false} variant="outline" size="sm" render={<Link href="/usage/alerts" />}>
-            {t("hu.usage.alerts.link")}
-          </Button>
+          <>
+            <Button nativeButton={false} variant="outline" size="sm" render={<Link href="/usage/alerts" />}>
+              {t("hu.usage.alerts.link")}
+            </Button>
+            {canBuyCredit ? <BuyDialog /> : null}
+          </>
         }
       />
       {bannerKey ? (
@@ -122,113 +124,58 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
           <AlertDescription>{t("hu.usage.wallet.unreadable")}</AlertDescription>
         </Alert>
       ) : null}
+
+      {/* Spec 028 · 1. El saldo de un vistazo: disponible, asignado y gasto. */}
       <section className="grid gap-4 md:grid-cols-3" aria-label={t("hu.usage.wallet")}>
-        {/* Spec 027: todo en dinero. El incluido se enseña en dólares con su
-            renovación (clarificación del owner, levanta spec 005 R1.8 aquí);
-            el porcentaje queda como dato secundario. */}
         <Metric
-          label={t("hu.usage.wallet.included")}
-          value={walletUnreadable ? "—" : money(wallet.included_remaining_cents)}
+          icon={<WalletIcon />}
+          label={t("hu.usage.card.available")}
+          value={walletUnreadable ? "—" : money(wallet.available_cents)}
+          hint={walletUnreadable ? t("hu.usage.wallet.unreadable.hint") : t("hu.usage.card.available.hint", { included: money(wallet.included_remaining_cents), purchased: money(wallet.purchased_remaining_cents) })}
+        />
+        <Metric
+          icon={<Users />}
+          label={t("hu.usage.card.assigned")}
+          value={walletUnreadable ? "—" : money(assignedCents)}
+          progress={!walletUnreadable && wallet.available_cents > 0 ? { value: assignedCents, max: wallet.available_cents, label: t("hu.usage.card.assigned"), tone: "positive" } : undefined}
           hint={
             walletUnreadable
-              ? t("hu.usage.wallet.unreadable.hint")
-              : wallet.included_expires_at
-              ? t("hu.usage.wallet.included.hint", { percent: n(walletPercent), date: formatDateTime(wallet.included_expires_at, locale) })
-              : t("hu.usage.wallet.included.hint.none", { percent: n(walletPercent) })
+              ? undefined
+              : wallet.reserve_cents >= 0
+                ? t("hu.usage.card.assigned.hint", { amount: money(wallet.reserve_cents) })
+                : t("hu.usage.card.assigned.over", { amount: money(-wallet.reserve_cents) })
           }
         />
-        <Metric label={t("hu.usage.wallet.purchased")} value={walletUnreadable ? "—" : money(wallet.purchased_remaining_cents)} hint={t("hu.usage.wallet.tokens")} />
-        <Metric label={t("hu.usage.wallet.reserve")} value={walletUnreadable ? "—" : money(wallet.reserve_cents)} hint={t("hu.usage.wallet.reserve.hint")} />
+        <Metric
+          icon={<CircleDollarSign />}
+          label={t("hu.usage.card.month")}
+          value={spendMonth ? money(spendMonth.month_cents) : "—"}
+          hint={!spendMonth ? t("hu.usage.spend.unreadable") : spendMonth.month_cents > 0 ? t("hu.usage.card.month.hint", { amount: money(spendMonth.projected_cents) }) : t("hu.usage.card.month.none")}
+        />
       </section>
-      {/* Spec 005: la recarga sin cobro desapareció. Lo que hay ahora es una
-          compra de verdad — el saldo sube cuando el pago se confirma, nunca
-          antes. El permiso pasa a ser el de facturación, no el de escribir
-          consumo: quien compra es quien paga. */}
-      {canBuyCredit ? (
-        <section className="space-y-2" aria-label={t("membership.credit.title")}>
-          <p className="text-sm font-medium">{t("membership.credit.title")}</p>
-          <BuyCreditForm />
-          <p className="text-muted-foreground text-sm text-pretty">
-            {t("membership.credit.help")}
-          </p>
-        </section>
-      ) : null}
-      <div className="min-w-0 overflow-x-auto rounded-md ring-1 ring-foreground/10">
-        <table className="w-full text-sm">
-          <caption className="sr-only">{t("hu.usage.allocations")}</caption>
-          <thead>
-            <tr className="border-b text-left">
-              <th className="h-10 px-2 font-medium">{t("usage.client")}</th>
-              <th className="h-10 px-2 text-right font-medium">{t("hu.usage.allocations.cap")}</th>
-              <th className="h-10 px-2 text-right font-medium">{t("hu.usage.allocations.remaining")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {allocations.length === 0 ? (
-              <tr>
-                <td className="p-2 text-muted-foreground" colSpan={3}>
-                  {t("hu.usage.allocations.empty")}
-                </td>
-              </tr>
-            ) : (
-              allocations.map((row) => {
-                // Spec 016 (R2.4): the row says «sin cupo» and the cap field
-                // right next to it IS the «asignar» action. ``?client=`` (the
-                // link from the client's card) lands on the row.
-                const outOfQuota = row.remaining_cents <= 0 || walletUnreadable || wallet.exhausted;
-                const focused = sp.client === row.client_ref;
-                return (
-                  <tr
-                    key={row.client_ref}
-                    id={`allocation-${row.client_ref}`}
-                    className={`border-b last:border-0 ${focused ? "bg-muted/40" : ""}`}
-                    aria-current={focused ? "true" : undefined}
-                  >
-                    <td className="max-w-64 truncate p-2" title={names.get(row.client_ref) ?? row.client_ref}>
-                      <span className="inline-flex items-center gap-2">
-                        {outOfQuota ? <StatusDot tone="warning" label={t("hu.usage.allocations.outOfQuota")} /> : null}
-                        {names.get(row.client_ref) ?? row.client_ref}
-                      </span>
-                    </td>
-                    <td className="p-2 text-right tabular-nums">
-                      {canWrite ? <AllocationCapForm key={`${row.client_ref}-${row.cap_cents}`} clientRef={row.client_ref} capCents={row.cap_cents} /> : money(row.cap_cents)}
-                    </td>
-                    <td className="p-2 text-right tabular-nums">
-                      {outOfQuota ? (
-                        <span className="inline-flex items-center gap-2">
-                          <StatusBadge tone="warning" dot={false}>
-                            {t("hu.usage.allocations.outOfQuota")}
-                          </StatusBadge>
-                          {money(row.remaining_cents)}
-                        </span>
-                      ) : (
-                        money(row.remaining_cents)
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-      {canWrite ? (
-        <section className="space-y-4" aria-label={t("hu.usage.allocations.manage")}>
-          {unassignedClients.length ? (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">{t("hu.usage.allocations.assign")}</p>
-              <AssignAllocationForm clients={unassignedClients} />
-            </div>
-          ) : null}
-          {allocatedClients.length > 0 && listedClients.length > 1 ? (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">{t("hu.usage.allocations.move")}</p>
-              <p className="text-xs text-muted-foreground">{t("hu.usage.allocations.move.hint")}</p>
-              <MoveAllocationForm sources={allocatedClients} destinations={moveDestinations} />
-            </div>
-          ) : null}
-        </section>
-      ) : null}
+
+      {/* 2. Saldo por cliente: sin campos en la tabla, las acciones en «⋯». */}
+      <Section title={t("hu.usage.balance.title")} padded={false}>
+        <BalanceTable rows={balanceRows} unassigned={unassigned} everyone={everyone} canWrite={canWrite} exhausted={!walletUnreadable && wallet.exhausted} />
+      </Section>
+
+      {/* 3. Gasto por día, en dólares. */}
+      <Section id="gasto" title={t("hu.usage.spend.title")} actions={<SpendControls days={days} client={sp.client ?? ""} clients={everyone} />}>
+        {spend ? <SpendChart spend={spend} /> : <p className="py-8 text-center text-sm text-muted-foreground">{t("hu.usage.spend.unreadable")}</p>}
+      </Section>
+
+      {/* 4. El detalle técnico, plegado: lo que mide la plataforma por dentro. */}
+      <details className="group rounded-md bg-card ring-1 ring-foreground/10">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4 text-sm font-medium">
+          <span>
+            {t("hu.usage.detail.title")}
+            <span className="block text-xs font-normal text-muted-foreground">{t("hu.usage.detail.hint")}</span>
+          </span>
+          <span aria-hidden="true" className="text-muted-foreground transition-transform group-open:rotate-90">
+            ›
+          </span>
+        </summary>
+        <div className="flex flex-col gap-4 border-t border-border p-4">
       <UsageControls
         days={days}
         client={sp.client ?? ""}
@@ -247,18 +194,18 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
       {totals.length > 0 ? (
         <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-4" aria-label={t("usage.totals")}>
           {totals.map(([meter, qty]) => (
-            <Metric key={meter} label={meter} value={n(qty)} hint={t("usage.period", { days })} />
+            <Metric key={meter} label={meterLabel(meter, t)} value={n(qty)} hint={t("usage.period", { days })} />
           ))}
         </section>
       ) : null}
       {report.buckets.length === 0 ? (
         <EmptyState title={t("usage.empty")} description={t("usage.period", { days })} readonly />
       ) : (
-        <div className="min-w-0 overflow-x-auto rounded-md ring-1 ring-foreground/10">
+        <div className="max-h-112 min-w-0 overflow-auto rounded-md ring-1 ring-foreground/10">
           <table className="w-full text-sm">
             <caption className="sr-only">{t("usage.title")}</caption>
             <thead>
-              <tr className="border-b text-left">
+              <tr className="sticky top-0 border-b bg-card text-left">
                 <th className="h-10 px-2 font-medium">{t("usage.client")}</th>
                 <th className="h-10 px-2 font-medium">{t("usage.meter")}</th>
                 <th className="h-10 px-2 font-medium">{t("usage.source")}</th>
@@ -284,6 +231,8 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
           </table>
         </div>
       )}
+        </div>
+      </details>
     </>
   );
 }

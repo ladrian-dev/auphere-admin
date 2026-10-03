@@ -362,7 +362,7 @@ const core = {
 
   // usage
   "usage.title": { es: "Consumo", en: "Usage" },
-  "usage.description": { es: "Tu saldo en dólares, el tope de gasto de cada cliente y el detalle de lo que consume cada uno. Las pruebas del playground van aparte y no se facturan.", en: "Your balance in dollars, each client's spending cap and the detail of what each one uses. Playground tests are shown apart and are not billed." },
+  "usage.description": { es: "Tu saldo, lo que puede gastar cada cliente y lo que se gasta cada día.", en: "Your balance, what each client may spend and what is spent each day." },
   "usage.period": { es: "Últimos {days} días", en: "Last {days} days" },
   "usage.meter": { es: "Medidor", en: "Meter" },
   "usage.source": { es: "Origen", en: "Source" },

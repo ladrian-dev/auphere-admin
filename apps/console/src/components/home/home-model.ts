@@ -1,3 +1,4 @@
+import { buildDayBars } from "@/components/charts/day-bars-model";
 import type { AttentionItem, AttentionKind, HomeTrend, SpendShare } from "@/lib/backend/home-usage";
 
 /**
@@ -15,25 +16,13 @@ export function trendDelta(current: number, previous: number | null): Delta {
   return { kind: pct > 0 ? "up" : "down", pct: Math.abs(pct) };
 }
 
-export type DayBar = { day: string; total: number; top: Array<{ label: string; value: number }>; today: boolean };
-
-/**
- * The daily bars (style 3, chosen by the owner): one total per day, today
- * last and marked, and for each day the three clients that talked most —
- * what the hover says, instead of a stack of colours nobody can read.
- */
-export function dayBars(trend: HomeTrend, restLabel: string): { bars: DayBar[]; average: number; max: number } {
-  const bars = trend.days.map((day, d) => {
-    const top = trend.by_client
-      .map((c) => ({ label: c.external_client_ref === null ? restLabel : (c.client_name ?? c.external_client_ref), value: c.series[d] ?? 0 }))
-      .filter((c) => c.value > 0)
-      .sort((x, y) => y.value - x.value)
-      .slice(0, 3);
-    return { day, total: trend.series[d] ?? 0, top, today: d === trend.days.length - 1 };
+/** Conversations per day as daily bars: the shared rule, fed from the trend. */
+export function dayBars(trend: HomeTrend, restLabel: string) {
+  return buildDayBars({
+    days: trend.days,
+    series: trend.series,
+    byClient: trend.by_client.map((c) => ({ label: c.external_client_ref === null ? restLabel : (c.client_name ?? c.external_client_ref), series: c.series })),
   });
-  const average = bars.length ? trend.current / bars.length : 0;
-  const max = Math.max(1, ...bars.map((b) => b.total));
-  return { bars, average, max };
 }
 
 export type AttentionRow =

@@ -290,3 +290,35 @@ class AuditVocabularyEntryOut(BaseModel):
 class AuditVocabularyOut(BaseModel):
     lang: str
     entries: list[AuditVocabularyEntryOut]
+
+
+# ── spec 028: Consumo in money ─────────────────────────────────────────
+
+
+class SpendSeriesClientOut(BaseModel):
+    """One client's spend per day, in cents. ``external_client_ref`` is
+    ``None`` for what was spent outside any client (the Companion)."""
+
+    external_client_ref: str | None
+    client_name: str | None
+    series_cents: list[int]
+
+
+class ClientMonthSpendOut(BaseModel):
+    external_client_ref: str
+    client_name: str | None
+    cents: int
+
+
+class UsageSpendOut(BaseModel):
+    """What the partner spent, in cents of ``currency``: per day of the
+    period (total and per client), and this month (total, projection and
+    per client). Never credits."""
+
+    currency: str = "USD"
+    days: list[date]
+    series_cents: list[int]
+    by_client: list[SpendSeriesClientOut]
+    month_cents: int
+    projected_cents: int
+    month_by_client: list[ClientMonthSpendOut]

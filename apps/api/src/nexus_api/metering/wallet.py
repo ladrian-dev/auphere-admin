@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
@@ -580,6 +580,35 @@ async def credit_burn(
     except Exception as exc:
         log.warning("wallet.burn_unreadable", partner_id=str(partner_id), error=str(exc))
         return {}
+
+
+async def credit_burn_by_day(
+    partner_id: uuid.UUID,
+    tenant_ids: list[uuid.UUID],
+    since: datetime,
+    *,
+    include_outside: bool = True,
+) -> dict[tuple[uuid.UUID | None, date], int]:
+    """Spec 028: credit spent per client and UTC day since ``since``.
+
+    ``None`` keys the spend outside any client (the Companion), only when
+    ``include_outside``. Same partner-scoped read as :func:`credit_burn`;
+    an unreadable ledger raises, so the screen says it failed instead of
+    drawing a flat zero.
+    """
+    day = sa.cast(sa.func.timezone("UTC", UsageLedger.created_at), sa.Date)
+    who: sa.ColumnElement[bool] = UsageLedger.tenant_id.in_(tenant_ids)
+    if include_outside:
+        who = sa.or_(UsageLedger.tenant_id.is_(None), who)
+    sm = get_sessionmaker()
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        rows = await session.execute(
+            sa.select(UsageLedger.tenant_id, day, sa.func.sum(UsageLedger.qty))
+            .where(UsageLedger.partner_id == partner_id, UsageLedger.created_at >= since, who)
+            .group_by(UsageLedger.tenant_id, day)
+        )
+        return {(tid, d): _as_int(total) for tid, d, total in rows.all()}
 
 
 async def add_purchased(partner_id: uuid.UUID, qty: int) -> WalletSnapshot:

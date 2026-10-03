@@ -165,6 +165,17 @@ export type Allocation = { client_ref: string; cap_cents: number; remaining_cent
 /** Spec 016 (R3.1): both caps after an atomic move. */
 export type AllocationMove = { from: Allocation; to: Allocation };
 
+/** Spec 028: what the partner spent, in cents of USD. */
+export type UsageSpend = {
+  currency: string;
+  days: string[];
+  series_cents: number[];
+  by_client: Array<{ external_client_ref: string | null; client_name: string | null; series_cents: number[] }>;
+  month_cents: number;
+  projected_cents: number;
+  month_by_client: Array<{ external_client_ref: string; client_name: string | null; cents: number }>;
+};
+
 export type UsageQuery = { days?: number; client?: string; source?: string };
 export type AuditQuery = {
   limit?: number;
@@ -187,6 +198,7 @@ export function homeUsageApi(call: Call) {
     home: () => call<Home>("/console/home"),
     usageV2: (p: UsageQuery = {}) => call<UsageReportV2>(`/console/usage${q(p)}`),
     getWallet: () => call<Wallet>("/console/wallet"),
+    usageSpend: (p: { days?: number; client?: string } = {}) => call<UsageSpend>(`/console/usage/spend${q(p)}`),
     listAllocations: () => call<Allocation[]>("/console/wallet/allocations"),
     // ``addPurchased`` se borró con la spec 005: su ruta ya no existe. El
     // crédito entra por el aviso del pago confirmado, y la compra se abre
