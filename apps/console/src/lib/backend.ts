@@ -302,7 +302,12 @@ export type AuditEntry = {
   id: string;
   at: string;
   actor: string;
+  /** Spec 029: who wrote it, so the row draws a face or an icon. */
+  actor_kind?: "person" | "companion" | "auphere" | "api_key" | "machine" | "system";
   action: string;
+  category?: string | null;
+  /** `critical` marks what cannot be undone: deleting a client, revoking a key. */
+  severity?: string;
   target: string;
   external_client_ref: string | null;
   client_name: string | null;

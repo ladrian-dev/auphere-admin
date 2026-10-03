@@ -158,5 +158,7 @@ async def test_moving_balance_reads_in_money_not_question_marks(client, console_
             )
         ).json()
         summary = page["items"][0]["summary"]
-        assert amount in summary and a["ref"] in summary and other in summary, summary
+        # Spec 029: both clients by their name, not by their ref.
+        assert amount in summary and "Client A One" in summary, summary
+        assert a["ref"] not in summary, summary
         assert "?" not in summary and "crédito" not in summary and "credit" not in summary

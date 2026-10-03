@@ -25,10 +25,10 @@ import io
 import re
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -37,11 +37,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
-from nexus_api.db.models import AuditLog, PartnerMembership, PartnerTenant
+from nexus_api.db.models import AuditLog, Connector, PartnerMembership, PartnerTenant
 from nexus_api.services.console_reporting import csv_safe, partner_mappings, reporting_transaction
 
+from . import audit_words
 from .schemas import AuditEntryOut, AuditPageOut
-from .schemas_home_usage import AuditVocabularyEntryOut, AuditVocabularyOut
+from .schemas_home_usage import (
+    AuditFilterOptionOut,
+    AuditFiltersOut,
+    AuditVocabularyEntryOut,
+    AuditVocabularyOut,
+)
 
 router = APIRouter(prefix="/audit")
 
@@ -69,7 +75,7 @@ CATEGORY_LABELS: dict[str, dict[str, str]] = {
     "teammates": {"es": "Teammates", "en": "Teammates"},
     "usage": {"es": "Consumo", "en": "Usage"},
     "warning": {"es": "Avisos", "en": "Warnings"},
-    "workstation": {"es": "Puesto de trabajo", "en": "Workstation"},
+    "workstation": {"es": "Máquinas", "en": "Machines"},
 }
 
 
@@ -140,19 +146,6 @@ COMPANION_ACTOR = "Companion"
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
-def _human_document(after: dict[str, Any], before: dict[str, Any], *, lang: str) -> str:
-    """QA-21: knowledge rows must not show a raw uuid as the document name."""
-    raw = (
-        after.get("filename")
-        or after.get("title")
-        or before.get("filename")
-        or after.get("document_id")
-    )
-    if raw is None or _UUID_RE.match(str(raw).strip()):
-        return "un documento" if lang == "es" else "a document"
-    return str(raw)
-
-
 async def partner_member_emails(session: AsyncSession, partner_id: uuid.UUID) -> dict[str, str]:
     """``user_id`` → correo, **solo del partner del llamante** (cabo 3).
 
@@ -208,14 +201,6 @@ def _human_actor(actor: str, emails: dict[str, str] | None = None) -> str:
     return actor
 
 
-class _Safe(dict[str, Any]):
-    """``str.format_map`` helper: an unknown placeholder renders as ``?``
-    instead of raising, so a vocabulary typo never 500s the page."""
-
-    def __missing__(self, key: str) -> str:
-        return "?"
-
-
 def _moved_amount(after: dict[str, Any], lang: str) -> str:
     from nexus_api.billing.pricing import credits_to_cents, format_usd
 
@@ -232,31 +217,25 @@ def summarise(
     vocab: dict[str, VocabEntry],
     lang: str = "en",
     emails: dict[str, str] | None = None,
+    *,
+    names_by_ref: Mapping[str, str] | None = None,
+    connector_names: Mapping[str, str] | None = None,
+    partner_name: str | None = None,
 ) -> str:
     after = row.after_json or {}
     before = row.before_json or {}
-    values = _Safe(
+    # Spec 029: every placeholder of the vocabulary is filled in
+    # ``audit_words``, in words, never with a code or «?».
+    values = audit_words.values(
+        after=after,
+        before=before,
         actor=_human_actor(row.actor, emails),
-        client=client_name or ("un cliente" if lang == "es" else "a client"),
-        v=after.get("version", before.get("version", "?")),
-        status=after.get("status", "?"),
-        email=after.get("email", before.get("email", "?")),
-        role=after.get("role", "?"),
-        key=after.get("prefix_snippet", before.get("prefix_snippet", "?")),
-        channel=after.get("channel", after.get("provider_identifier", before.get("channel", "?"))),
-        template=after.get("name", after.get("template", before.get("name", "?"))),
-        document=_human_document(after, before, lang=lang),
-        cap=after.get("cap", "?"),
-        percent=after.get("percent", "?"),
-        # CO-08: los tickets de soporte. ``_Safe`` pinta ``?`` para un
-        # marcador que no exista, así que añadirlos aquí no puede romper
-        # ninguna plantilla anterior.
-        ticket=after.get("ticket_ref", "?"),
-        topic=after.get("topic", "?"),
-        # Spec 027: moving balance between clients, in money. Older rows only
-        # kept ``qty`` in credits; they are converted with the one rate.
+        client_name=client_name,
+        lang=lang,
+        names_by_ref=names_by_ref or {},
+        connector_names=connector_names or {},
+        partner_name=partner_name,
         amount=_moved_amount(after, lang),
-        **{"from": after.get("from", "?"), "to": after.get("to", "?")},
     )
     entry = vocab.get(row.action)
     if entry is None:
@@ -265,6 +244,32 @@ def summarise(
             target = str(values["client"])
         return f"{values['actor']} · {row.action} · {target}"
     return entry.summary(lang).format_map(values)
+
+
+ActorKind = Literal["person", "companion", "auphere", "api_key", "machine", "system"]
+_ACTOR_KINDS: tuple[tuple[str, ActorKind], ...] = (
+    ("console:", "person"),
+    ("companion:", "companion"),
+    ("admin:", "auphere"),
+    ("partner:", "api_key"),
+    ("device:", "machine"),
+)
+
+
+def actor_kind(actor: str) -> ActorKind:
+    """Who wrote the row, so the console can draw a face or an icon."""
+    for prefix, kind in _ACTOR_KINDS:
+        if actor.startswith(prefix):
+            return kind
+    return "system"
+
+
+async def connector_display_names(session: AsyncSession) -> dict[str, str]:
+    """``connectors.slug`` → its name («woocommerce» → «WooCommerce»). A
+    platform table, small and without RLS: one read per request."""
+    async with session.begin():
+        rows = (await session.execute(sa.select(Connector.slug, Connector.display_name))).all()
+    return {str(slug): str(name) for slug, name in rows if name}
 
 
 def _scope_filter(
@@ -303,8 +308,13 @@ def _base_stmt(
     action: str | None,
     after: datetime | None,
     before: datetime | None,
+    actions: list[str] | None = None,
 ) -> sa.Select[tuple[AuditLog]]:
     stmt = sa.select(AuditLog).where(scope)
+    if actions is not None:
+        # Spec 029: «filtrar por categoría» (spec 017 R11.5). An unknown
+        # category is an empty list, and an empty IN matches nothing.
+        stmt = stmt.where(AuditLog.action.in_(actions))
     if actor:
         stmt = stmt.where(AuditLog.actor.ilike(f"%{actor}%"))
     if action:
@@ -334,6 +344,68 @@ async def audit_vocabulary(
     )
 
 
+def _actions_of(vocab: dict[str, VocabEntry], category: str | None) -> list[str] | None:
+    if not category:
+        return None
+    return [v.action for v in vocab.values() if v.category == category]
+
+
+#: Categories a partner never sees in its own trail: impersonation and
+#: tickets are written for Auphere, and the old severity-named ones have no
+#: action left. They stay out of the filter so it never offers an empty list.
+_HIDDEN_CATEGORIES = frozenset({"admin", "critical", "info", "warning"})
+
+
+@router.get("/filters", response_model=AuditFiltersOut)
+async def audit_filters(
+    principal: ConsolePrincipal = Depends(require_console_principal("audit:read")),
+    session: AsyncSession = Depends(get_db_session),
+    lang: str = Query(default="en", pattern="^(es|en)$"),
+) -> AuditFiltersOut:
+    """Spec 029: what the filter bar offers, chosen from a list instead of
+    typed from memory — the partner's clients, its team (plus the Companion
+    and Auphere) and the categories with their business names."""
+    partner_id = principal.partner.id
+    mappings = await partner_mappings(session, partner_id)
+    vocab = await load_vocabulary(session)
+    async with session.begin():
+        members = (
+            await session.execute(
+                sa.select(PartnerMembership.email, PartnerMembership.display_name)
+                .where(PartnerMembership.partner_id == partner_id)
+                .order_by(PartnerMembership.email)
+            )
+        ).all()
+    present = {v.category for v in vocab.values()} - _HIDDEN_CATEGORIES
+    categories = sorted(
+        (
+            AuditFilterOptionOut(value=c, label=CATEGORY_LABELS[c][lang])
+            for c in present
+            if c in CATEGORY_LABELS
+        ),
+        key=lambda o: o.label,
+    )
+    people = [
+        AuditFilterOptionOut(value=str(email), label=str(name or email))
+        for email, name in members
+        if email
+    ]
+    people += [
+        AuditFilterOptionOut(value="companion:", label=COMPANION_ACTOR),
+        AuditFilterOptionOut(value="admin:", label="Auphere"),
+    ]
+    clients = sorted(
+        (
+            AuditFilterOptionOut(
+                value=m.external_client_ref, label=m.client_name or m.external_client_ref
+            )
+            for m in mappings
+        ),
+        key=lambda o: o.label.lower(),
+    )
+    return AuditFiltersOut(categories=categories, people=people, clients=clients)
+
+
 @router.get("", response_model=AuditPageOut)
 async def list_audit(
     principal: ConsolePrincipal = Depends(require_console_principal("audit:read")),
@@ -343,6 +415,7 @@ async def list_audit(
     actor: str | None = Query(default=None, max_length=255, description="Substring match"),
     action: str | None = Query(default=None, max_length=80, description="Prefix match"),
     client: str | None = Query(default=None, max_length=255, description="external_client_ref"),
+    category: str | None = Query(default=None, max_length=40, description="Vocabulary category"),
     after: datetime | None = Query(default=None),
     before: datetime | None = Query(default=None),
     lang: str = Query(default="en", pattern="^(es|en)$"),
@@ -350,14 +423,17 @@ async def list_audit(
     partner_id = principal.partner.id
     mappings = await partner_mappings(session, partner_id)
     by_tenant = {m.tenant_id: m for m in mappings}
+    names_by_ref = {m.external_client_ref: m.client_name for m in mappings if m.client_name}
     vocab = await load_vocabulary(session)
     emails = await partner_member_emails(session, partner_id)
+    connectors = await connector_display_names(session)
     stmt = _base_stmt(
         _scope_filter(partner_id, mappings, client),
         actor=actor,
         action=action,
         after=after,
         before=before,
+        actions=_actions_of(vocab, category),
     )
     if cursor:
         c_ts, c_id = _decode_cursor(cursor)
@@ -384,16 +460,29 @@ async def list_audit(
     for row in rows:
         mapping = by_tenant.get(row.tenant_id) if row.tenant_id else None
         client_name = mapping.client_name if mapping else None
+        entry = vocab.get(row.action)
         items.append(
             AuditEntryOut(
                 id=row.id,
                 at=row.created_at,
                 actor=_human_actor(row.actor, emails),
+                actor_kind=actor_kind(row.actor),
                 action=row.action,
+                category=entry.category if entry else None,
+                severity=entry.severity if entry else "info",
                 target=row.target,
                 external_client_ref=mapping.external_client_ref if mapping else None,
                 client_name=client_name,
-                summary=summarise(row, client_name, vocab, lang, emails),
+                summary=summarise(
+                    row,
+                    client_name,
+                    vocab,
+                    lang,
+                    emails,
+                    names_by_ref=names_by_ref,
+                    connector_names=connectors,
+                    partner_name=principal.partner.name,
+                ),
             )
         )
     next_cursor = _encode_cursor(rows[-1].created_at, rows[-1].id) if has_more and rows else None
@@ -413,6 +502,7 @@ async def export_audit_csv(
     actor: str | None = Query(default=None, max_length=255),
     action: str | None = Query(default=None, max_length=80),
     client: str | None = Query(default=None, max_length=255),
+    category: str | None = Query(default=None, max_length=40),
     after: datetime | None = Query(default=None),
     before: datetime | None = Query(default=None),
     lang: str = Query(default="en", pattern="^(es|en)$"),
@@ -421,7 +511,10 @@ async def export_audit_csv(
     partner_id = principal.partner.id
     mappings = await partner_mappings(session, partner_id)
     by_tenant = {m.tenant_id: m for m in mappings}
+    names_by_ref = {m.external_client_ref: m.client_name for m in mappings if m.client_name}
     vocab = await load_vocabulary(session)
+    connectors = await connector_display_names(session)
+    partner_name = principal.partner.name
     # Se carga ENTERO antes de abrir el flujo: dentro del generador no hay
     # sesión libre para una consulta más, y resolver fila a fila sería un
     # N+1 sobre una exportación de hasta cien mil filas.
@@ -433,6 +526,7 @@ async def export_audit_csv(
             action=action,
             after=after,
             before=before,
+            actions=_actions_of(vocab, category),
         )
         .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
         .limit(limit)
@@ -460,7 +554,16 @@ async def export_audit_csv(
                             mapping.external_client_ref if mapping else "",
                             client_name or "",
                             row.target,
-                            summarise(row, client_name, vocab, lang, emails),
+                            summarise(
+                                row,
+                                client_name,
+                                vocab,
+                                lang,
+                                emails,
+                                names_by_ref=names_by_ref,
+                                connector_names=connectors,
+                                partner_name=partner_name,
+                            ),
                         ]
                     ]
                 )

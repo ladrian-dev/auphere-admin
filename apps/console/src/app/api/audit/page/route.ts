@@ -1,13 +1,12 @@
 import { z } from "zod";
 
-import { auditCsvPath } from "@/lib/backend/home-usage";
-import { proxyDownload } from "@/lib/download-proxy";
+import { withPermission } from "../../companion/_guard";
 
 export const dynamic = "force-dynamic";
 
 const query = z.object({
+  cursor: z.string().max(512),
   actor: z.string().max(255).optional(),
-  action: z.string().max(80).optional(),
   client: z.string().max(255).optional(),
   category: z.string().max(40).optional(),
   after: z.string().datetime({ offset: true }).optional(),
@@ -15,9 +14,13 @@ const query = z.object({
   lang: z.enum(["es", "en"]).default("es"),
 });
 
-/** CSV of the audit trail (CP-28) — same filters as the page, streamed. */
+/**
+ * Spec 029: «Ver anteriores» adds the next page under the one on screen
+ * instead of replacing it, so the browser asks for it here with the same
+ * filters the page was rendered with.
+ */
 export async function GET(request: Request): Promise<Response> {
   const q = query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!q.success) return new Response(JSON.stringify({ detail: "Invalid parameters" }), { status: 422 });
-  return proxyDownload(request, "audit:read", auditCsvPath(q.data));
+  return withPermission("audit:read", (b) => b.auditV2({ limit: 50, ...q.data }));
 }

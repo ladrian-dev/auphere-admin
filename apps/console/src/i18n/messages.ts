@@ -381,12 +381,6 @@ const core = {
   "audit.title": { es: "Auditoría", en: "Audit" },
   "audit.description": { es: "Quién hizo qué, sobre qué cliente y cuándo.", en: "Who did what, on which client, and when." },
   "audit.empty": { es: "Sin actividad registrada", en: "No activity recorded" },
-  "audit.when": { es: "Cuándo", en: "When" },
-  "audit.what": { es: "Qué", en: "What" },
-  "audit.filter.actor": { es: "Actor", en: "Actor" },
-  "audit.filter.action": { es: "Acción", en: "Action" },
-  "audit.filter.action.all": { es: "Todas las acciones", en: "All actions" },
-  "audit.more": { es: "Cargar más", en: "Load more" },
 
   // team
   "team.title": { es: "Equipo", en: "Team" },

@@ -404,7 +404,13 @@ class AuditEntryOut(BaseModel):
     id: uuid.UUID
     at: datetime
     actor: str
+    #: Spec 029: who wrote it, so the console draws a face or an icon.
+    actor_kind: Literal["person", "companion", "auphere", "api_key", "machine", "system"] = "system"
     action: str
+    #: Spec 029: the vocabulary's category and severity (``critical`` marks
+    #: what cannot be undone: deleting a client, revoking a key).
+    category: str | None = None
+    severity: str = "info"
     target: str
     external_client_ref: str | None
     client_name: str | None

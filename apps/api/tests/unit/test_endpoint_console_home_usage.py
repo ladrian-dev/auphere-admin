@@ -504,7 +504,7 @@ async def test_audit_renders_from_vocabulary_in_both_languages_with_dates_and_cs
     )
     es = (await client.get("/console/audit?lang=es", headers=h())).json()["items"]
     assert {i["action"]: i["summary"] for i in es}["console.member.invite"] == (
-        "owner-a@example.com invitó a new@example.com como builder"
+        "owner-a@example.com invitó a new@example.com como constructor"
     )
     # Date filters.
     since = quote((datetime.now(UTC) - timedelta(days=1)).isoformat())

@@ -292,6 +292,19 @@ class AuditVocabularyOut(BaseModel):
     entries: list[AuditVocabularyEntryOut]
 
 
+class AuditFilterOptionOut(BaseModel):
+    value: str
+    label: str
+
+
+class AuditFiltersOut(BaseModel):
+    """Spec 029: the options of the audit filter bar."""
+
+    categories: list[AuditFilterOptionOut]
+    people: list[AuditFilterOptionOut]
+    clients: list[AuditFilterOptionOut]
+
+
 # ── spec 028: Consumo in money ─────────────────────────────────────────
 
 

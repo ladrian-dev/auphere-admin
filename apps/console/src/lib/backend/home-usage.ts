@@ -183,10 +183,16 @@ export type AuditQuery = {
   actor?: string;
   action?: string;
   client?: string;
+  /** Spec 029: a vocabulary category («clients», «agents»…). */
+  category?: string;
   after?: string;
   before?: string;
   lang?: string;
 };
+
+export type AuditFilterOption = { value: string; label: string };
+/** Spec 029: what the audit filter bar offers, chosen instead of typed. */
+export type AuditFilters = { categories: AuditFilterOption[]; people: AuditFilterOption[]; clients: AuditFilterOption[] };
 
 /** Backend paths of the streaming/downloadable resources (proxied by route handlers). */
 export const usageCsvPath = (p: UsageQuery & { lang?: string }) => `/console/usage/export.csv${q(p)}`;
@@ -221,5 +227,6 @@ export function homeUsageApi(call: Call) {
     auditV2: (p: AuditQuery = {}) =>
       call<{ items: import("../backend").AuditEntry[]; next_cursor: string | null }>(`/console/audit${q(p)}`),
     auditVocabulary: (lang: string) => call<AuditVocabulary>(`/console/audit/vocabulary${q({ lang })}`),
+    auditFilters: (lang: string) => call<AuditFilters>(`/console/audit/filters${q({ lang })}`),
   };
 }
