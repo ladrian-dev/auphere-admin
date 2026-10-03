@@ -11,7 +11,9 @@ describe("meterLabel", () => {
     expect(meterLabel("voice.minutes", t)).toBe("meter.voice.minutes");
   });
   it("labels media by kind and leaves the unknown untouched", () => {
-    expect(meterLabel("media.image", t)).toBe('meter.media:{"kind":"image"}');
+    // The known kinds are translated too («imagen», not «image»).
+    expect(meterLabel("media.image", t)).toBe('meter.media:{"kind":"meter.media.image"}');
+    expect(meterLabel("media.sticker", t)).toBe('meter.media:{"kind":"sticker"}');
     expect(meterLabel("something.new", t)).toBe("something.new");
   });
 });

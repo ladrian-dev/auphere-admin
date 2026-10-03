@@ -46,13 +46,15 @@ export function BalanceTable({ rows, unassigned, everyone, canWrite, exhausted }
 
   return (
     <div className="flex flex-col">
-      {canWrite && unassigned.length > 0 ? (
-        <div className="flex justify-end px-4 pb-2">
+      {/* Title and its action on one line (owner, 2026-10-03: no empty row). */}
+      <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 px-4 py-2">
+        <h2 className="text-base font-medium">{t("hu.usage.balance.title")}</h2>
+        {canWrite && unassigned.length > 0 ? (
           <Button size="sm" variant="outline" onClick={() => setOpen({ kind: "assign" })}>
             {t("hu.usage.balance.assign")}
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       {rows.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-muted-foreground">{t("hu.usage.allocations.empty")}</p>
       ) : (

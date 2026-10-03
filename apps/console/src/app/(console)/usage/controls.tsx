@@ -18,7 +18,7 @@ type Props = {
 
 const METER_OPTIONS = ["channel.message", "llm", "media", "voice"] as const;
 
-export function UsageControls({ days, client, source, meter, clients, csvHref }: Props) {
+export function UsageControls({ days, client, source, meter, clients, csvHref, compact = false }: Props & { compact?: boolean }) {
   const t = useT();
   const router = useRouter();
   const pathname = usePathname();
@@ -30,6 +30,21 @@ export function UsageControls({ days, client, source, meter, clients, csvHref }:
       else next.delete(k);
     }
     router.push(`${pathname}?${next.toString()}`);
+  }
+  if (compact) {
+    // Spec 028: inside the technical detail the period and the client come
+    // from the controls above; here only where the usage came from.
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <NativeSelect value={source || "channel"} onChange={(e) => set({ source: e.target.value === "channel" ? undefined : e.target.value })} aria-label={t("usage.source")}>
+          <option value="channel">{t("hu.usage.source.channel")}</option>
+          <option value="qa">{t("hu.usage.source.qa")}</option>
+        </NativeSelect>
+        <Button nativeButton={false} variant="outline" size="sm" className="ml-auto" render={<a href={csvHref} download />}>
+          {t("hu.usage.export.server")}
+        </Button>
+      </div>
+    );
   }
   return (
     <div className="flex flex-wrap items-center gap-2">

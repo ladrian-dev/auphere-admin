@@ -217,9 +217,11 @@ async def _top_up_usage(sm: async_sessionmaker[AsyncSession], tid: uuid.UUID, ta
                      ('llm.output_tokens','channel',120.0,0.0018),
                      ('llm.input_tokens','qa',700.0,0.0021),
                      ('media.image','channel',1.0,0.002),
-                     ('media.audio','channel',1.0,NULL)
+                     ('media.audio','channel',1.0,NULL),
+                     ('llm.cache_read','channel',2400.0,0.0007),
+                     ('llm.cache_write','channel',300.0,0.0011)
                    ) AS v(meter, source, qty, cost)
-                   OFFSET (g % 8) LIMIT 1
+                   OFFSET (g % 10) LIMIT 1
               ) AS m ON true
             ON CONFLICT (idempotency_key, occurred_at) DO NOTHING
             """

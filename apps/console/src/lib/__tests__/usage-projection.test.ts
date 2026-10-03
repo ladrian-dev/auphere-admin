@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { barsFromSeries, cumulativeWithProjection, includedRemainingPercent, percentOf, projectMonth, seriesTotal, topMeters, type SeriesPoint } from "../usage-projection";
+import { meterGroups, percentOf, projectMonth, type SeriesPoint } from "../usage-projection";
 
 describe("projectMonth / percentOf (CP-22)", () => {
   it("projects linearly over the elapsed days", () => {
@@ -17,44 +17,17 @@ describe("projectMonth / percentOf (CP-22)", () => {
   });
 });
 
-const points: SeriesPoint[] = [
-  { day: "2026-08-01", by_meter: { "channel.message": 10, "llm.input_tokens": 500 } },
-  { day: "2026-08-02", by_meter: { "channel.message": 20 } },
-  { day: "2026-08-03", by_meter: { "media.image": 2 } },
-];
-
-describe("series shaping", () => {
-  it("totals a meter and ranks meters", () => {
-    expect(seriesTotal(points, "channel.message")).toBe(30);
-    expect(topMeters(points, 2)).toEqual({ keys: ["llm.input_tokens", "channel.message"], hasOther: true });
-  });
-  it("folds the rest into `other`", () => {
-    const rows = barsFromSeries(points, ["channel.message"]);
-    expect(rows[0]).toEqual({ day: "2026-08-01", "channel.message": 10, other: 500 });
-    expect(rows[2]).toEqual({ day: "2026-08-03", other: 2 });
-  });
-  it("draws the cumulative line and joins the projection at today", () => {
-    const line = cumulativeWithProjection(points, "channel.message", "2026-08-01T00:00:00Z", 5, "2026-08-02");
-    expect(line.map((p) => p.actual)).toEqual([10, 30, null, null, null]);
-    // 30 over 2 days → 15/day; projection joins at today (30) then 45, 60, 75.
-    expect(line.map((p) => p.projected)).toEqual([null, 30, 45, 60, 75]);
-    expect(line.at(-1)?.projected).toBe(projectMonth(30, 2, 5));
-  });
-});
-
-describe("includedRemainingPercent (bug: la tarjeta «Incluido restante» pintaba lo usado)", () => {
-  it("a full pool reads 100 %, not 0 %", () => {
-    expect(includedRemainingPercent({ included_percent_used: 0 })).toBe(100);
-  });
-  it("is the complement of what the API says was used", () => {
-    expect(includedRemainingPercent({ included_percent_used: 70 })).toBe(30);
-    expect(includedRemainingPercent({ included_percent_used: 100 })).toBe(0);
-    expect(includedRemainingPercent({ included_percent_used: 66.67 })).toBe(33);
-  });
-  it("without the API's percentage there is nothing to show (spec 027: the pool size no longer travels)", () => {
-    expect(includedRemainingPercent({})).toBe(0);
-  });
-  it("clamps", () => {
-    expect(includedRemainingPercent({ included_percent_used: -5 })).toBe(100);
+describe("meterGroups (spec 028: the technical detail as a list)", () => {
+  const points: SeriesPoint[] = [
+    { day: "2026-10-01", by_meter: { "channel.message": 3, "llm.input_tokens": 900, "media.audio": 1 } },
+    { day: "2026-10-02", by_meter: { "channel.message": 5, "llm.output_tokens": 120 } },
+  ];
+  it("groups by what it measures, model meters always present, cache included", () => {
+    const groups = meterGroups(points, { "channel.message": 8, "llm.input_tokens": 900, "llm.output_tokens": 120, "media.audio": 1 });
+    expect(groups.map((g) => g.key)).toEqual(["messages", "media", "model"]);
+    const model = groups.find((g) => g.key === "model")!;
+    expect(model.rows.map((r) => r.meter)).toEqual(["llm.input_tokens", "llm.output_tokens", "llm.cache_read", "llm.cache_write"]);
+    expect(model.rows.find((r) => r.meter === "llm.cache_read")).toEqual({ meter: "llm.cache_read", total: 0, series: [0, 0] });
+    expect(groups[0]!.rows[0]).toEqual({ meter: "channel.message", total: 8, series: [3, 5] });
   });
 });

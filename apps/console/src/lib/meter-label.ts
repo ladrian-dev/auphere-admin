@@ -11,6 +11,13 @@ const KNOWN: Record<string, MessageKey> = {
   "voice.minutes": "meter.voice.minutes",
 };
 
+const MEDIA_KINDS: Record<string, MessageKey> = {
+  image: "meter.media.image",
+  audio: "meter.media.audio",
+  video: "meter.media.video",
+  document: "meter.media.document",
+};
+
 /**
  * A meter name (``llm.input_tokens``) as the partner should read it. The raw
  * name stays available for a ``title`` so nothing is lost; unknown meters
@@ -19,6 +26,10 @@ const KNOWN: Record<string, MessageKey> = {
 export function meterLabel(meter: string, t: T): string {
   const known = KNOWN[meter];
   if (known) return t(known);
-  if (meter.startsWith("media.")) return t("meter.media", { kind: meter.slice("media.".length) });
+  if (meter.startsWith("media.")) {
+    const kind = meter.slice("media.".length);
+    const named = MEDIA_KINDS[kind];
+    return t("meter.media", { kind: named ? t(named) : kind });
+  }
   return meter;
 }
