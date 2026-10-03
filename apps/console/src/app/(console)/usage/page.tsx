@@ -184,7 +184,6 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
         locale={locale}
         messagesExtra={[
           { label: t("hu.usage.month.units"), value: n(month.units) },
-          { label: t("hu.usage.month.projection"), value: n(month.projected_month_units), title: t("hu.usage.month.basis", { days: month.basis_days, total: month.days_in_month }) },
         ]}
       />
       {report.unpriced_records > 0 ? <p className="text-xs text-muted-foreground">{t("hu.usage.unpriced", { count: n(report.unpriced_records) })}</p> : null}

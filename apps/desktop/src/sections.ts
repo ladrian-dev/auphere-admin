@@ -21,20 +21,21 @@ export type OperateSection = (typeof OPERATE_SECTIONS)[number];
 
 /** Lo que se administra, y lo pinta la consola dentro del panel. */
 export const CONSOLE_SECTIONS = [
+  // Same order as the console (owner, 2026-10-03).
   { key: "inicio", path: "/", permission: null, exact: true },
   { key: "clientes", path: "/clients", permission: "clients:read" },
-  { key: "conocimiento", path: "/knowledge", permission: "playbook:read" },
-  { key: "puesto", path: "/workstation", permission: "workstation:read" },
   { key: "consumo", path: "/usage", permission: "usage:read" },
   { key: "auditoria", path: "/audit", permission: "audit:read" },
+  { key: "conocimiento", path: "/knowledge", permission: "playbook:read" },
+  { key: "puesto", path: "/workstation", permission: "workstation:read" },
   // «Notificaciones» salió de la lista lateral de la consola el 2026-09-24
   // por decisión del owner: se ven en UN solo sitio, la campana de la barra
   // superior. Esta lista sigue a la consola, no al revés, así que aquí
   // tampoco está. La ruta /notifications sigue existiendo y se llega por la
   // campana.
   { key: "equipo", path: "/team", permission: "team:read" },
-  { key: "claves", path: "/keys", permission: "keys:read" },
   { key: "facturacion", path: "/billing", permission: "billing:read" },
+  { key: "claves", path: "/keys", permission: "keys:read" },
 ] as const satisfies ReadonlyArray<{
   key: string;
   path: string;
