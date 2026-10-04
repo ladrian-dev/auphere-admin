@@ -733,7 +733,8 @@ async def _set_connector_status(
             action=action,
             target=f"tenant_connector:{tc.id}",
             before_json={"status": before},
-            after_json={"status": to_status},
+            # The slug, so the audit can say which integration it was.
+            after_json={"status": to_status, "slug": slug},
         )
     )
     await session.flush()

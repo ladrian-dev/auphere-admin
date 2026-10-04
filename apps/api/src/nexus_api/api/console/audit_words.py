@@ -60,6 +60,20 @@ PLACEHOLDERS = frozenset(
         "ceiling",
         "teammate",
         "reason",
+        # 0142: the actions written outside the console.
+        "account",
+        "cost",
+        "count",
+        "day",
+        "from_quality",
+        "to_quality",
+        "models",
+        "phone",
+        "service",
+        "threshold",
+        "tool",
+        "wa_mode",
+        "when",
     }
 )
 
@@ -67,6 +81,12 @@ _Words = dict[str, dict[str, str]]
 
 STATUS: _Words = {
     "active": {"es": "activo", "en": "active"},
+    "connected": {"es": "conectado", "en": "connected"},
+    "disconnected": {"es": "desconectado", "en": "disconnected"},
+    "needs_reauth": {"es": "pide volver a iniciar sesión", "en": "needs signing in again"},
+    "degraded": {"es": "degradado", "en": "degraded"},
+    "indexed": {"es": "leído", "en": "read"},
+    "failed": {"es": "con error", "en": "failed"},
     "paused": {"es": "en pausa", "en": "paused"},
     "archived": {"es": "archivado", "en": "archived"},
     "provisioning": {"es": "sin activar", "en": "not activated"},
@@ -113,9 +133,21 @@ TICKET_CATEGORY: _Words = {
     "capability": {"es": "capacidad", "en": "capability"},
 }
 
+QUALITY: _Words = {
+    "GREEN": {"es": "alta", "en": "high"},
+    "YELLOW": {"es": "media", "en": "medium"},
+    "RED": {"es": "baja", "en": "low"},
+}
+
+WA_MODE: _Words = {
+    "coexistence": {"es": "en coexistencia con la app", "en": "alongside the app"},
+    "cloud_api": {"es": "con la API de WhatsApp", "en": "through the WhatsApp API"},
+}
+
 CAPABILITY_MODE: _Words = {
     "always": {"es": "siempre permitida", "en": "always allowed"},
     "blocked": {"es": "bloqueada", "en": "blocked"},
+    "needs_approval": {"es": "pide aprobación", "en": "needs approval"},
     "default": {"es": "como viene por defecto", "en": "back to default"},
 }
 
@@ -226,6 +258,46 @@ def _document(after: dict[str, Any], before: dict[str, Any], lang: str) -> str:
     return str(raw)
 
 
+def _target_tail(target: str, prefix: str) -> str | None:
+    return target.removeprefix(prefix) if target.startswith(prefix) else None
+
+
+def _connector(after: dict[str, Any], target: str, names: Mapping[str, str], lang: str) -> str:
+    """Connector rows keep the slug in the target (``connector:<slug>``),
+    in ``connector_slug`` or, for pause and resume, in ``slug``."""
+    slug = _target_tail(target, "connector:") or after.get("connector_slug") or after.get("slug")
+    return names.get(str(slug), str(slug)) if slug else _say("unknown", lang)
+
+
+def _tool(target: str, lang: str) -> str:
+    name = _target_tail(target, "tool:")
+    return f"«{business_name(name, 'tool', lang)}»" if name else _say("unknown", lang)
+
+
+def _usd(value: Any, lang: str) -> str:
+    from nexus_api.billing.pricing import format_usd
+
+    try:
+        return format_usd(round(float(value) * 100), lang)
+    except (TypeError, ValueError):
+        return _say("unknown", lang)
+
+
+def _when(value: Any, lang: str) -> str:
+    try:
+        d = datetime.fromisoformat(str(value))
+    except ValueError:
+        return _say("unknown", lang)
+    return d.strftime("%d/%m/%Y %H:%M") if lang == "es" else d.strftime("%Y-%m-%d %H:%M")
+
+
+def _count(after: dict[str, Any]) -> int:
+    for key in ("added", "tools_added"):
+        if isinstance(after.get(key), list):
+            return len(after[key])
+    return 0
+
+
 class Safe(dict[str, Any]):
     """``str.format_map`` helper: a placeholder nobody fills renders as
     ``?`` instead of raising, so a vocabulary typo never 500s the page.
@@ -246,10 +318,10 @@ def values(
     connector_names: Mapping[str, str],
     partner_name: str | None,
     amount: str,
+    target: str = "",
 ) -> Safe:
     """Every placeholder of the vocabulary, filled for one row."""
     role = after.get("role")
-    slug = after.get("slug")
     return Safe(
         actor=actor,
         client=client_name or _client_ref(after.get("client_ref"), names_by_ref, lang),
@@ -266,7 +338,10 @@ def values(
             or before.get("channel")
             or _say("unknown", lang)
         ),
-        template=after.get("name", after.get("template", before.get("name")))
+        template=after.get("name")
+        or after.get("template")
+        or after.get("template_name")
+        or before.get("name")
         or _say("unknown", lang),
         document=_document(after, before, lang),
         cap=_cap(after, lang),
@@ -277,7 +352,7 @@ def values(
         amount=amount,
         capability=_capability(after, lang),
         change=_change(after, lang),
-        connector=connector_names.get(str(slug), str(slug)) if slug else _say("unknown", lang),
+        connector=_connector(after, target, connector_names, lang),
         model=_model(after.get("model_id"), lang),
         partner=partner_name or _say("unknown", lang),
         credit_expires_at=_date(after.get("credit_expires_at"), lang),
@@ -290,6 +365,26 @@ def values(
         ceiling=word(EXEC_MODE, after.get("ceiling"), lang),
         teammate=after.get("teammate") or _say("unknown", lang),
         reason=word(REASON, after.get("reason"), lang),
+        account=after.get("display_name") or _say("unknown", lang),
+        cost=_usd(after.get("cost_usd_total", after.get("spent_usd")), lang),
+        threshold=_usd(after.get("threshold_usd", after.get("limit_usd")), lang),
+        day=_date(after.get("day"), lang),
+        count=_count(after),
+        from_quality=word(QUALITY, str(before.get("quality_rating") or "").upper() or None, lang),
+        to_quality=word(QUALITY, str(after.get("quality_rating") or "").upper() or None, lang),
+        models=", ".join(_model(m, lang) for m in after.get("model_ids") or [])
+        or _say("unknown", lang),
+        phone=(
+            after.get("display_phone_number")
+            or after.get("phone_e164")
+            or before.get("phone_e164")
+            or _target_tail(target, "auphere_channel:")
+            or _say("unknown", lang)
+        ),
+        service=after.get("service") or _say("unknown", lang),
+        when=_when(after.get("starts_at"), lang),
+        tool=_tool(target, lang),
+        wa_mode=word(WA_MODE, after.get("mode"), lang),
         **{
             "from": _client_ref(after.get("from"), names_by_ref, lang),
             "to": _client_ref(after.get("to"), names_by_ref, lang),

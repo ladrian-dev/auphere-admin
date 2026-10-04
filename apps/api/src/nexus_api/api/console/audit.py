@@ -212,13 +212,21 @@ def _human_actor(actor: str, emails: dict[str, str] | None = None) -> str:
     return "Auphere"
 
 
-def _moved_amount(after: dict[str, Any], lang: str) -> str:
+def _moved_amount(after: dict[str, Any], lang: str, before: dict[str, Any] | None = None) -> str:
     from nexus_api.billing.pricing import credits_to_cents, format_usd
 
     if isinstance(after.get("amount_cents"), int):
         return format_usd(after["amount_cents"], lang)
     if isinstance(after.get("qty"), int):
         return format_usd(credits_to_cents(after["qty"]), lang)
+    # ``wallet.admin_purchased`` keeps the balance before and after, in credits.
+    prev = (before or {}).get("available")
+    if (
+        isinstance(after.get("available"), int)
+        and isinstance(prev, int)
+        and after["available"] > prev
+    ):
+        return format_usd(credits_to_cents(after["available"] - prev, nearest=True), lang)
     return "?"
 
 
@@ -246,7 +254,8 @@ def summarise(
         names_by_ref=names_by_ref or {},
         connector_names=connector_names or {},
         partner_name=partner_name,
-        amount=_moved_amount(after, lang),
+        amount=_moved_amount(after, lang, before),
+        target=row.target or "",
     )
     entry = vocab.get(row.action)
     if entry is None:
@@ -322,7 +331,7 @@ def _base_stmt(
     before: datetime | None,
     actions: list[str] | None = None,
 ) -> sa.Select[tuple[AuditLog]]:
-    stmt = sa.select(AuditLog).where(scope)
+    stmt = sa.select(AuditLog).where(scope, AuditLog.action.notin_(INTERNAL_ACTIONS))
     if actions is not None:
         # Spec 029: «filtrar por categoría» (spec 017 R11.5). An unknown
         # category is an empty list, and an empty IN matches nothing.
@@ -354,6 +363,11 @@ async def audit_vocabulary(
             for v in sorted(vocab.values(), key=lambda v: (v.category, v.action))
         ],
     )
+
+
+#: Rows written about a client that are Auphere's own monitoring, not
+#: something the partner did or can act on.
+INTERNAL_ACTIONS: tuple[str, ...] = ("isolation.violation_detected",)
 
 
 def _actions_of(vocab: dict[str, VocabEntry], category: str | None) -> list[str] | None:

@@ -8,7 +8,9 @@ partner reads it.
 
 from __future__ import annotations
 
+import re
 import string
+from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
@@ -37,12 +39,14 @@ async def test_every_placeholder_of_the_vocabulary_is_filled(db_session) -> None
     assert not missing, f"placeholders nobody fills: {missing}"
 
 
-def _row(action: str, after: dict | None = None, before: dict | None = None) -> AuditLog:
+def _row(
+    action: str, after: dict | None = None, before: dict | None = None, target: str = "x"
+) -> AuditLog:
     return AuditLog(
         tenant_id=None,
         actor="console:ana@example.com",
         action=action,
-        target="x",
+        target=target,
         after_json=after,
         before_json=before,
     )
@@ -98,6 +102,92 @@ async def test_codes_become_words_and_refs_become_names(db_session) -> None:
     assert "+34600000000" in say(
         _row("console.channel.role", {"role": "agent", "identifier": "+34600000000"})
     )
+
+
+async def test_the_actions_written_outside_the_console_read_as_sentences(db_session) -> None:
+    """What staging showed as «Auphere · connector.disconnect ·
+    connector:googlesheets», with the payloads the real writers store."""
+    audit_module.reset_vocabulary_cache_for_tests()
+    vocab = await audit_module.load_vocabulary(db_session, force=True)
+
+    def say(row: AuditLog, lang: str = "es") -> str:
+        return audit_module.summarise(
+            row,
+            "Lola Mento",
+            vocab,
+            lang,
+            connector_names={"googlesheets": "Google Sheets"},
+            partner_name="Demo",
+        )
+
+    cases = {
+        say(
+            _row(
+                "connector.disconnect", {"status": "disconnected"}, target="connector:googlesheets"
+            )
+        ): "ana@example.com desconectó Google Sheets en Lola Mento.",
+        say(
+            _row(
+                "connector.pause",
+                {"status": "paused", "slug": "googlesheets"},
+                target="tenant_connector:1",
+            )
+        ): "ana@example.com pausó Google Sheets en Lola Mento.",
+        say(
+            _row(
+                "channel.whatsapp.quality_rating_changed",
+                {"quality_rating": "YELLOW"},
+                {"quality_rating": "GREEN"},
+            )
+        ): "La calidad del WhatsApp de Lola Mento pasó de alta a media.",
+        say(
+            _row(
+                "cost.daily_threshold_exceeded",
+                {"day": "2026-10-03", "cost_usd_total": "12.34", "threshold_usd": "10.00"},
+            )
+        ): "Lola Mento gastó 12,34 US$ el 03/10/2026, por encima del aviso de 10,00 US$.",
+        say(
+            _row(
+                "channel.whatsapp.meta_signup",
+                {"display_phone_number": "+34 600 00 00 00", "mode": "coexistence"},
+            )
+        ): "ana@example.com conectó el WhatsApp +34 600 00 00 00 en Lola Mento en coexistencia con la app.",
+        say(
+            _row(
+                "connector.override_upsert",
+                {"mode": "blocked"},
+                target="tool:catalog.search_products",
+            )
+        ).split(": ")[-1]: "bloqueada.",
+        say(
+            _row("budget.hard_limit_reached", {"spent_usd": "50", "limit_usd": "50"})
+        ): "Lola Mento llegó a su límite de gasto (50,00 US$ de 50,00 US$) y el agente pasó la conversación al equipo.",
+    }
+    for got, want in cases.items():
+        assert got == want
+    tool = say(
+        _row(
+            "connector.override_upsert", {"mode": "blocked"}, target="tool:catalog.search_products"
+        )
+    )
+    assert "catalog.search_products" not in tool and "?" not in tool
+
+
+async def test_auphere_monitoring_rows_stay_out_of_the_partner_trail(
+    client, console_world, db_session
+) -> None:
+    a = console_world["a"]
+    db_session.add(
+        AuditLog(
+            tenant_id=a["tenant_id"],
+            actor="system:isolation_watcher",
+            action="isolation.violation_detected",
+            target=f"tenant:{a['tenant_id']}:metric:x",
+        )
+    )
+    await db_session.commit()
+    items = (await client.get("/console/audit", headers=a["headers"]())).json()["items"]
+    assert all(i["action"] != "isolation.violation_detected" for i in items)
 
 
 async def test_rows_carry_category_severity_and_who_wrote_them(
@@ -156,3 +246,40 @@ async def test_filters_offer_clients_people_and_categories_of_this_partner_only(
     labels = {c["value"]: c["label"] for c in body["categories"]}
     assert labels["clients"] == "Clientes" and labels["workstation"] == "Máquinas"
     assert not {"admin", "critical", "info", "warning"} & labels.keys()
+
+
+_APPS = Path(__file__).resolve().parents[3]
+#: Written to ``qa.audit_log`` (the Playground's own trail), not ``audit_log``.
+_NOT_THE_PARTNER_TRAIL = {"thread.create", "thread.patch"}
+_WRITTEN = (
+    re.compile(r"""action\s*=\s*["']([a-z_]+\.[a-z_.]+)["']"""),
+    re.compile(r"""_audit\([^,()]+,\s*["']([a-z_]+\.[a-z_.]+)["']"""),
+    # Constants: ``ESCALATION_ACTION = "budget.hard_limit_reached"``.
+    re.compile(
+        r"""^[A-Z_]*ACTION[A-Z_]*(?:\s*:\s*[^=\n]+)?\s*=\s*["']([a-z_]+\.[a-z_.]+)["']""", re.M
+    ),
+    re.compile(r"""INSERT INTO audit_log[^;]*?'([a-z_]+\.[a-z_.]+)'""", re.S),
+)
+
+
+def _actions_written_anywhere() -> set[str]:
+    found: set[str] = set()
+    for root in (_APPS / "api" / "src", _APPS / "worker" / "src"):
+        for path in root.rglob("*.py"):
+            text = path.read_text()
+            for pattern in _WRITTEN:
+                found.update(pattern.findall(text))
+    return found - _NOT_THE_PARTNER_TRAIL
+
+
+async def test_every_action_the_code_writes_has_a_sentence(db_session) -> None:
+    """A row without a sentence reads as code («Auphere · connector.disconnect
+    · connector:googlesheets»), which is what the partner saw in staging."""
+    seeded = {
+        r[0]
+        for r in (
+            await db_session.execute(sa.text("SELECT action FROM console_audit_vocabulary"))
+        ).all()
+    }
+    missing = sorted(a for a in _actions_written_anywhere() - seeded if not a.endswith("_failed"))
+    assert not missing, f"actions without a sentence in console_audit_vocabulary: {missing}"
