@@ -264,7 +264,9 @@ _WRITTEN = (
 
 def _actions_written_anywhere() -> set[str]:
     found: set[str] = set()
-    for root in (_APPS / "api" / "src", _APPS / "worker" / "src"):
+    # Every service that writes ``audit_log``: the agent's tools (``mcp``)
+    # write the escalation, and missing them let one row read as code.
+    for root in (_APPS / name / "src" for name in ("api", "worker", "mcp", "channels")):
         for path in root.rglob("*.py"):
             text = path.read_text()
             for pattern in _WRITTEN:
