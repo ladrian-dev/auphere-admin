@@ -48,6 +48,8 @@ async def revoke_all_access(
     principal_id: uuid.UUID,
     reason: str,
     actor: str,
+    partner_id: uuid.UUID | None = None,
+    email: str | None = None,
 ) -> dict[str, int]:
     """Deja fuera a una persona: sus sesiones y sus máquinas, de una vez.
 
@@ -71,13 +73,22 @@ async def revoke_all_access(
         "sessions_closed": sessions_closed,
         "machines_archived": machines_archived,
     }
+    # Cuando lo decide el equipo de un partner, la fila es de ese partner: su
+    # dueño la lee en Auditoría (owner, 2026-10-04). Lleva a quién se le
+    # retiró, porque «una persona» no le dice nada. Cuando la retirada viene
+    # de restablecer la contraseña es de la persona, no de ningún partner, y
+    # se queda a su nombre.
+    if partner_id is not None:
+        after["principal_id"] = str(principal_id)
+        if email:
+            after["email"] = email
     session.add(
         AuditLog(
             # Fila de plataforma: una persona no es de ningún tenant.
             tenant_id=None,
             actor=actor,
             action=AUDIT_ACTION,
-            target=f"principal:{principal_id}",
+            target=f"partner:{partner_id}" if partner_id else f"principal:{principal_id}",
             after_json=after,
         )
     )

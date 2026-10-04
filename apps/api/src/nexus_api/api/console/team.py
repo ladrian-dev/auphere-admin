@@ -337,6 +337,8 @@ async def revoke_member_access(
             # Who did it, as every other console writer names them (the
             # email, or the Companion acting for them), not a bare user id.
             actor=principal.actor,
+            partner_id=principal.partner.id,
+            email=member.email,
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

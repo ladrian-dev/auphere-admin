@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
 import pytest
 
@@ -19,9 +18,12 @@ from nexus_api.db.models import PartnerMembership
 pytestmark = pytest.mark.asyncio
 
 
-async def test_revoking_access_names_who_did_it_by_email(
-    client, console_world, db_session, monkeypatch
-) -> None:
+async def test_the_owner_sees_who_revoked_whose_access(client, console_world, db_session) -> None:
+    """Owner, 2026-10-04: the owner wants to see it in Auditoría. The row is
+    written under the partner, names who did it by email (not a bare user
+    id) and says whose access it was."""
+    from nexus_api.api.console import audit as audit_module
+
     a = console_world["a"]
     membership_id = uuid.uuid4()
     db_session.add(
@@ -35,16 +37,21 @@ async def test_revoking_access_names_who_did_it_by_email(
         )
     )
     await db_session.commit()
+    audit_module.reset_vocabulary_cache_for_tests()
 
-    seen: dict[str, Any] = {}
-
-    async def fake_revoke(_session, **kw: Any) -> dict[str, int]:
-        seen.update(kw)
-        return {"sessions_closed": 0, "machines_archived": 0}
-
-    from nexus_api.api.console import team as team_module
-
-    monkeypatch.setattr(team_module.principal_access, "revoke_all_access", fake_revoke)
     r = await client.delete(f"/console/team/members/{membership_id}/access", headers=a["headers"]())
     assert r.status_code == 204, r.text
-    assert seen["actor"] == "console:owner-a@example.com"
+
+    items = (
+        await client.get("/console/audit?lang=es&category=team", headers=a["headers"]())
+    ).json()["items"]
+    row = next(i for i in items if i["action"] == "principal.access_revoked")
+    assert row["summary"] == (
+        "owner-a@example.com retiró el acceso de builder-x@example.com: "
+        "sus sesiones y sus máquinas."
+    )
+    assert row["actor_kind"] == "person"
+    # Partner B does not see A's team.
+    b = console_world["b"]
+    other = (await client.get("/console/audit", headers=b["headers"]())).json()["items"]
+    assert all(i["action"] != "principal.access_revoked" for i in other)
