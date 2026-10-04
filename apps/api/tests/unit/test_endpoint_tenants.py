@@ -3,6 +3,7 @@ import uuid
 import pytest
 from sqlalchemy import select
 
+from nexus_api.config import get_settings
 from nexus_api.db.models import AuditLog
 
 pytestmark = pytest.mark.asyncio
@@ -279,6 +280,10 @@ async def test_patch_channel_sets_role_and_agent_enabled(
     )
     assert audit is not None
     assert audit.after_json == {"role": "notifications", "agent_enabled": False}
+    # The bearer is a secret: the partner reads this row in its audit trail.
+    secret = get_settings().admin_token
+    assert audit.actor == f"admin:{secret[:8]}"
+    assert secret not in audit.actor
 
 
 async def test_patch_channel_leaves_omitted_fields_untouched(

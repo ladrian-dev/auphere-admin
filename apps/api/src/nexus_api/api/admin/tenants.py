@@ -437,7 +437,9 @@ async def update_tenant_channel_role(
         session.add(
             AuditLog(
                 tenant_id=tenant_id,
-                actor=actor,
+                # The bearer itself is a secret: only its first 8, like
+                # every other admin writer.
+                actor=f"admin:{actor[:8]}",
                 action="channel.role_changed",
                 target=f"channel:{channel_id}",
                 before_json=before,

@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy import String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from nexus_api.db.base import Base
 from nexus_api.db.models._mixins import TimestampMixin, UUIDPrimaryKey
@@ -38,3 +38,17 @@ class AuditLog(UUIDPrimaryKey, TimestampMixin, Base):
     target: Mapped[str] = mapped_column(String(255), nullable=False)
     before_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     after_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+    @validates("actor")
+    def _never_the_admin_secret(self, _key: str, value: str) -> str:
+        """``require_admin_token`` returns the bearer itself, and one writer
+        stored it whole as the actor of a client's row — where the partner
+        reads it, in the console and in the CSV. Whatever the writer does,
+        the secret never reaches the table: it becomes ``admin:<first 8>``,
+        the form every other admin writer already uses."""
+        from nexus_api.config import get_settings
+
+        secret = get_settings().admin_token
+        if secret and value == secret:
+            return f"admin:{value[:8]}"
+        return value

@@ -179,7 +179,9 @@ async def partner_member_emails(session: AsyncSession, partner_id: uuid.UUID) ->
 def _human_actor(actor: str, emails: dict[str, str] | None = None) -> str:
     # ``console:maria@x.com`` → ``maria@x.com``; ``admin:1a2b3c4d`` → ``Auphere``.
     if actor.startswith("console:"):
-        return actor.removeprefix("console:")
+        # ``team.py`` writes ``console:<user_id>`` instead of the email.
+        who = actor.removeprefix("console:")
+        return (emails or {}).get(who, who) if _UUID_RE.match(who) else who
     if actor.startswith("companion:"):
         # El Companion escribe como ``companion:<user_id>`` (CONTRACT-V1 §10.1):
         # el identificador, y no el correo, porque quien lo fija es el ejecutor
@@ -198,7 +200,16 @@ def _human_actor(actor: str, emails: dict[str, str] | None = None) -> str:
         return "Auphere"
     if actor.startswith("partner:"):
         return "API key"
-    return actor
+    if actor.startswith("reviewer:"):
+        # Who approved a payment from WhatsApp: their number is who they are.
+        return actor.removeprefix("reviewer:")
+    # Spec 029: everything else is Auphere working on its own — a cron, a
+    # webhook, the agent (``system:connector_reconcile_cron``,
+    # ``budget_gate``, ``tiktok:oauth_callback``, ``device:<id>``…). Its
+    # internal name says nothing to a partner, and an actor that matches no
+    # known form must never be shown raw: one writer stored the admin
+    # secret there.
+    return "Auphere"
 
 
 def _moved_amount(after: dict[str, Any], lang: str) -> str:
@@ -249,6 +260,7 @@ def summarise(
 ActorKind = Literal["person", "companion", "auphere", "api_key", "machine", "system"]
 _ACTOR_KINDS: tuple[tuple[str, ActorKind], ...] = (
     ("console:", "person"),
+    ("reviewer:", "person"),
     ("companion:", "companion"),
     ("admin:", "auphere"),
     ("partner:", "api_key"),
