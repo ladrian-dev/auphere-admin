@@ -147,3 +147,40 @@ async def test_queue_backlog_alert(delivered) -> None:
     backlog = [a for a in out if a.kind == "queue_backlog"]
     assert len(backlog) == 1
     assert backlog[0].count == 1
+
+
+async def test_the_burst_row_carries_a_target_so_it_is_written(monkeypatch) -> None:
+    """``audit_log.target`` is NOT NULL. Without one the insert failed, the
+    ``suppress`` around it swallowed the error and the row never existed."""
+    import contextlib
+
+    from nexus_api.core import tenant_context
+    from nexus_api.db import base
+
+    added: list = []
+
+    class _Session:
+        def add(self, row) -> None:
+            added.append(row)
+
+        async def commit(self) -> None:
+            return None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc) -> None:
+            return None
+
+    monkeypatch.setattr(base, "get_sessionmaker", lambda: _Session)
+    monkeypatch.setattr(
+        tenant_context, "tenant_scoped_session", lambda *_a, **_k: contextlib.nullcontext()
+    )
+    tenant = uuid.uuid4()
+    alert = pw.Alert(
+        kind="turn_error_burst", dedup_key="k", subject="s", detail="d", tenant_id=tenant, count=7
+    )
+    await pw._write_tenant_audit_row(alert)
+    assert len(added) == 1
+    assert added[0].target == f"tenant:{tenant}"
+    assert added[0].action == "platform.turn_error_burst"

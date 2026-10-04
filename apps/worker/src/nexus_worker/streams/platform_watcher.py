@@ -251,6 +251,10 @@ async def _write_tenant_audit_row(alert: Alert) -> None:
                 tenant_id=alert.tenant_id,
                 actor="system:platform-watcher",
                 action="platform.turn_error_burst",
+                # ``target`` is NOT NULL: without it the insert failed and
+                # the ``suppress`` in ``_notify`` swallowed the error, so
+                # this row was never written.
+                target=f"tenant:{alert.tenant_id}",
                 after_json={"threshold": alert.count},
             )
         )

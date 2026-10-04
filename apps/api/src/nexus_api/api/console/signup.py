@@ -227,7 +227,9 @@ async def complete(
                 tenant_id=None,
                 actor=f"console:{account.email}",
                 action="partner.signup.completed",
-                target=str(outcome.partner.id),
+                # ``partner:<id>``: the form the partner's own trail reads
+                # (``audit._scope_filter``). The bare uuid kept it hidden.
+                target=f"partner:{outcome.partner.id}",
                 after_json={
                     "partner_slug": outcome.partner.slug,
                     "via": row.provider or "password",

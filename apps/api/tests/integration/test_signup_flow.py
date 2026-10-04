@@ -239,6 +239,8 @@ class TestElAltaCompleta:
             )
         ).scalar_one()
         assert email in entry.actor, "la auditoría tiene que nombrar a la persona"
+        # El rastro del partner solo lee filas de plataforma con ``partner:<id>``.
+        assert entry.target.startswith("partner:"), entry.target
         blob = f"{entry.actor}{entry.target}{entry.before_json}{entry.after_json}"
         assert password not in blob
         assert token not in blob

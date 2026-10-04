@@ -334,7 +334,9 @@ async def revoke_member_access(
             session,
             principal_id=uuid.UUID(member.user_id),
             reason="revoked_by_partner",
-            actor=f"console:{principal.user_id}",
+            # Who did it, as every other console writer names them (the
+            # email, or the Companion acting for them), not a bare user id.
+            actor=principal.actor,
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
