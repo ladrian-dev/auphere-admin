@@ -43,4 +43,3 @@ def test_people_still_read_as_people() -> None:
     assert _human_actor(f"console:{uid}", {uid: "ana@x.com"}) == "ana@x.com"
     assert _human_actor("reviewer:+34600000000") == "+34600000000"
     assert _human_actor("admin:1a2b3c4d") == "Auphere"
-
