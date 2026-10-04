@@ -18,6 +18,17 @@ describe("F2 visible channels", () => {
     expect(visible.map((c) => c.type)).toEqual(["whatsapp"]);
   });
 
+  it("a disconnected number leaves the page unless Meta still has steps to finish", () => {
+    const visible = f2VisibleChannels([
+      { type: "whatsapp", status: "active" },
+      { type: "whatsapp", status: "disconnected", unlink_pending: [] },
+      { type: "whatsapp", status: "disconnected" },
+      { type: "whatsapp", status: "disconnected", unlink_pending: ["unsubscribe"] },
+      { type: "whatsapp", status: "degraded" },
+    ]);
+    expect(visible.map((c) => `${c.status}:${c.unlink_pending?.length ?? 0}`)).toEqual(["active:0", "disconnected:1", "degraded:0"]);
+  });
+
   it("counter is N de 1 (M always 1)", () => {
     expect(f2ChannelCounter([])).toEqual({ n: 0, m: 1 });
     expect(f2ChannelCounter([{ type: "whatsapp", status: "active" }])).toEqual({ n: 1, m: 1 });

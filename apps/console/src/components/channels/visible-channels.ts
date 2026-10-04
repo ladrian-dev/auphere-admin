@@ -4,14 +4,21 @@
  */
 export const F2_VISIBLE_CHANNEL_TYPES = ["whatsapp"] as const;
 
-export type F2Channel = { type: string; status: string };
+export type F2Channel = { type: string; status: string; unlink_pending?: string[] };
 
 export function isF2VisibleChannel(type: string): boolean {
   return (F2_VISIBLE_CHANNEL_TYPES as readonly string[]).includes(type);
 }
 
+/**
+ * A disconnected number leaves the page (owner, 2026-10-04): what the partner
+ * needs to see is the WhatsApp that answers, not the history of the ones that
+ * did. The one exception is a number Meta has not finished letting go
+ * (`unlink_pending`, spec 021): its card is the only place to retry, so it
+ * stays until Meta is done.
+ */
 export function f2VisibleChannels<T extends F2Channel>(channels: T[]): T[] {
-  return channels.filter((c) => isF2VisibleChannel(c.type));
+  return channels.filter((c) => isF2VisibleChannel(c.type) && (c.status !== "disconnected" || (c.unlink_pending?.length ?? 0) > 0));
 }
 
 /** One WhatsApp slot: M is always 1; N is 1 if any WhatsApp is active. */
