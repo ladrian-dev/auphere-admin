@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from nexus_api.core.tenant_context import tenant_context
 
+from nexus_mcp.base import ToolError
 from nexus_mcp.http import PaginationMeta
 from nexus_mcp.servers.woocommerce.client import WooCommerceClient
 from nexus_mcp.servers.woocommerce.errors import (
@@ -139,6 +140,8 @@ def test_destructive_tools_marked_with_mutates_db():
     destructive = {
         "woocommerce.add_order_note",
         "woocommerce.create_order",
+        # Creates the pending order whose pay link it returns.
+        "woocommerce.build_checkout_link",
         "woocommerce.update_order",
         "woocommerce.update_order_status",
     }
@@ -384,18 +387,68 @@ async def test_create_order_rejects_line_item_without_product_or_variation(fake_
         await CreateOrder().invoke({"line_items": [{"quantity": 1}]})
 
 
-async def test_build_checkout_link(fake_client, tenant_ctx):
-    """Builds a multi-product checkout URL with quantities + the wa=1 flag,
-    off the tenant's own store_url (no API call)."""
+async def test_build_checkout_link_creates_the_order_and_returns_its_pay_link(
+    fake_client, tenant_ctx
+):
+    """The link used to pre-fill the cart through ``add-to-cart`` and on
+    floryencanto.cl it opened an empty cart (owner, 2026-10-05). Now the
+    tool creates the pending order, tagged as a WhatsApp sale, and returns
+    the store's own pay-for-order URL."""
+    fake_client.next_post = {
+        "id": 9101,
+        "number": "9101",
+        "status": "pending",
+        "currency": "CLP",
+        "total": "36990",
+        "order_key": "wc_order_abc123",
+        "payment_url": "https://barbersupply.cl/finalizar-compra/order-pay/9101/?pay_for_order=true&key=wc_order_abc123",
+        "line_items": [],
+    }
     result = await BuildCheckoutLink().invoke(
-        {"items": [{"product_id": 2836}, {"product_id": 2830, "quantity": 2}]}
+        {"items": [{"product_id": 2836}, {"product_id": 2830, "quantity": 2, "variation_id": 77}]}
     )
-    assert result["status"] == "ok"
+    assert result["status"] == "ok", result
+    out = result["result"]
+    assert out["url"].endswith("/order-pay/9101/?pay_for_order=true&key=wc_order_abc123")
+    assert out["order_id"] == 9101 and out["total"] == "36990"
+    assert len(fake_client.calls) == 1
+    kind, call = fake_client.calls[0]
+    assert kind == "post" and call["path"] == "/orders"
+    body = call["payload"]
+    assert body["status"] == "pending"
+    assert body["created_via"] == "whatsapp"
+    assert {"key": "_auphere_source", "value": "whatsapp"} in body["meta_data"]
+    assert body["line_items"] == [
+        {"product_id": 2836, "quantity": 1},
+        {"product_id": 2830, "quantity": 2, "variation_id": 77},
+    ]
+
+
+async def test_build_checkout_link_builds_the_pay_link_when_the_store_omits_it(
+    fake_client, tenant_ctx
+):
+    """Older WooCommerce leaves ``payment_url`` out of the REST response;
+    the link is then built the way the store builds it, from the order key."""
+    fake_client.next_post = {
+        "id": 9102,
+        "number": "9102",
+        "status": "pending",
+        "currency": "CLP",
+        "total": "19990",
+        "order_key": "wc_order_k2",
+        "line_items": [],
+    }
+    result = await BuildCheckoutLink().invoke({"items": [{"product_id": 1}]})
+    assert result["status"] == "ok", result
     assert result["result"]["url"] == (
-        "https://barbersupply.cl/finalizar-compra/?add-to-cart=2836,2830:2&wa=1"
+        "https://barbersupply.cl/finalizar-compra/order-pay/9102/?pay_for_order=true&key=wc_order_k2"
     )
-    # Pure URL builder — no WooCommerce API call.
-    assert fake_client.calls == []
+
+
+async def test_build_checkout_link_fails_closed_without_order_key(fake_client, tenant_ctx):
+    fake_client.next_post = {"id": 9103, "status": "pending", "total": "1", "line_items": []}
+    with pytest.raises(ToolError, match="payment link"):
+        await BuildCheckoutLink().invoke({"items": [{"product_id": 1}]})
 
 
 async def test_create_order_resolves_raw_id_retailer(fake_client, tenant_ctx):

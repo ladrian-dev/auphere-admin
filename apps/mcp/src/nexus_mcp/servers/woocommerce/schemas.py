@@ -535,21 +535,28 @@ class CreateOrderOutput(OutputModel):
 
 
 class CheckoutItemInput(InputModel):
-    """One product to pre-load into the store checkout cart."""
+    """One product of the order the customer confirmed."""
 
     product_id: int = Field(ge=1)
+    variation_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="For products with sizes or colours: the chosen variation.",
+    )
     quantity: int = Field(default=1, ge=1, le=10_000)
 
 
 class BuildCheckoutLinkInput(InputModel):
-    """Build a checkout URL that pre-fills the cart and opens the store's
-    checkout page (where the customer enters shipping + pays)."""
+    """Create the pending order and return the store's pay-for-order URL."""
 
     items: list[CheckoutItemInput] = Field(min_length=1, max_length=100)
 
 
 class BuildCheckoutLinkOutput(OutputModel):
     url: str
+    order_id: int
+    order_number: str
+    total: str
 
 
 # ── destructive: update_order_status ─────────────────────────────────────

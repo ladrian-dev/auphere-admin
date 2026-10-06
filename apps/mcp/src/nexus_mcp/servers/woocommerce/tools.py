@@ -900,30 +900,68 @@ class CreateOrder(_WooTool):
 class BuildCheckoutLink(_WooTool):
     name = "woocommerce.build_checkout_link"
     description = (
-        "Build the payment link: a checkout URL that pre-fills the cart with "
-        "the given products and opens the store's checkout page, where the "
-        "customer enters their name + shipping address and pays (Mercado "
-        "Pago). The order is created by the checkout when they pay, tagged as "
-        "a WhatsApp sale (wa=1). Use this to send the payment link after the "
-        "customer confirms — do NOT create the order yourself and do NOT ask "
-        "for the address in chat."
+        "Build the payment link for what the customer confirmed: creates the "
+        "order in the store (pending payment, tagged as a WhatsApp sale, with "
+        "the customer's phone when known) and returns the store's own "
+        "pay-for-order URL, where the customer enters their address and pays "
+        "with the store's gateways. Call it once the customer confirms what "
+        "they buy. Each item needs the product_id (and variation_id when the "
+        "product has sizes or colours). Do not ask for the address in chat."
     )
     input_model = BuildCheckoutLinkInput
     output_model = BuildCheckoutLinkOutput
-    # Read-only: builds a URL from the tenant's store; no mutation, no API call.
-    side_effects: ClassVar[tuple[str, ...]] = ()
+    # Creates the order: the previous add-to-cart URL relied on a snippet in
+    # the store and a session cookie, and on floryencanto.cl it opened an
+    # empty cart (owner, 2026-10-05). The pay-for-order link carries the
+    # products in the order itself, so it never depends on either.
+    side_effects: ClassVar[tuple[str, ...]] = ("external_api", "mutates_db")
 
     async def run(self, payload: BuildCheckoutLinkInput) -> BuildCheckoutLinkOutput:  # type: ignore[override]
         client = await self._client()
-        parts = [
-            str(i.product_id) if i.quantity == 1 else f"{i.product_id}:{i.quantity}"
-            for i in payload.items
-        ]
-        # WooCommerce checkout (es_CL default slug). ``add-to-cart`` accepts a
-        # comma list (needs the tenant's multi-add snippet); ``wa=1`` flags the
-        # order as a WhatsApp sale for the tenant's snippet to tag.
-        url = f"{client.store_url}/finalizar-compra/?add-to-cart={','.join(parts)}&wa=1"
-        return BuildCheckoutLinkOutput(url=url)
+        line_items: list[dict[str, Any]] = []
+        for item in payload.items:
+            li: dict[str, Any] = {"product_id": item.product_id, "quantity": item.quantity}
+            if item.variation_id is not None:
+                li["variation_id"] = item.variation_id
+            line_items.append(li)
+        body: dict[str, Any] = {
+            "line_items": line_items,
+            "status": "pending",
+            "created_via": "whatsapp",
+            "meta_data": [{"key": "_auphere_source", "value": "whatsapp"}],
+        }
+        person = await _person_of_the_turn()
+        if person is not None:
+            phone, email = person
+            billing: dict[str, Any] = {}
+            if phone:
+                billing["phone"] = phone
+            if email:
+                billing["email"] = email
+            if billing:
+                body["billing"] = billing
+        data = await client.post_resource("/orders", payload=body)
+        order = _order_detail(data)
+        url = order.payment_url or _pay_for_order_url(client.store_url, data)
+        log.info(
+            "woocommerce.checkout_order_created",
+            order_id=order.id,
+            line_items=len(line_items),
+            has_payment_url=bool(order.payment_url),
+        )
+        return BuildCheckoutLinkOutput(
+            url=url, order_id=order.id, order_number=order.number, total=order.total
+        )
+
+
+def _pay_for_order_url(store_url: str, order: dict[str, Any]) -> str:
+    """WooCommerce's pay-for-order link, built the way the store builds it,
+    for a REST response that left ``payment_url`` out (older WooCommerce).
+    ``order_key`` is what authorises paying without a login."""
+    key = str(order.get("order_key") or "")
+    if not key:
+        raise ToolError("the store created the order but gave no payment link")
+    return f"{store_url.rstrip('/')}/finalizar-compra/order-pay/{order['id']}/?pay_for_order=true&key={key}"
 
 
 class UpdateOrderStatus(_WooTool):

@@ -222,14 +222,17 @@ system_prompt: |
   C) Al confirmar ("sí"/botón confirmar) → GENERA EL LINK DEL PEDIDO:
   1. Llama a woocommerce.build_checkout_link con items=[{product_id,
      quantity}] de cada producto del pedido (product_id = el número/retailer_id
-     del carrito). Devuelve una `url`.
+     del carrito; si el producto tiene talla o color, añade variation_id).
+     Crea el pedido en la tienda, pendiente de pago, y devuelve la `url`
+     para pagarlo.
   2. Envía esa url como botón con response.send_interactive usando `cta_url`:
-     text="Completar pedido", url=<la url que devolvió la tool>. Acompáñala
-     con el *total* y una línea sobria, ej: "Listo, acá completas tu pedido.
-     Ahí eliges cómo recibirlo y cómo pagar."
-  3. NO crees la orden tú (nada de create_order). NO inventes la url: usa
-     SIEMPRE la que devuelve build_checkout_link. El pedido lo crea la web,
-     queda marcado como venta por WhatsApp, y el cliente ingresa ahí sus datos.
+     text="Pagar pedido", url=<la url que devolvió la tool>. Acompáñala
+     con el *total* y una línea sobria, ej: "Listo, acá pagas tu pedido.
+     Ahí pones tus datos y eliges cómo recibirlo."
+  3. NO llames a create_order (build_checkout_link ya crea el pedido). NO
+     inventes la url: usa SIEMPRE la que devuelve build_checkout_link. El
+     pedido queda marcado como venta por WhatsApp, y el cliente ingresa ahí
+     sus datos.
   4. Un "no" o silencio = no generar link. Si build_checkout_link falla, dilo
      y ofrece coordinar con una persona.
 

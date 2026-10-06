@@ -203,9 +203,9 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
     ),
     ("tool", "woocommerce.build_checkout_link"): _t(
         "Mandar un enlace de pago",
-        "Send a checkout link",
-        "Prepara el carrito y manda el enlace para pagarlo.",
-        "Builds the cart and sends the link to pay it.",
+        "Send a payment link",
+        "Crea el pedido en la tienda y manda el enlace para pagarlo.",
+        "Creates the order in the store and sends the link to pay it.",
         "orders",
     ),
     ("tool", "inventory.search_products"): _t(
