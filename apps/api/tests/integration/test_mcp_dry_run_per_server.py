@@ -64,6 +64,7 @@ Catalog snapshot (2026-05-19) — keep this in sync if a tool is added:
    woocommerce.list_customers
    woocommerce.get_customer
    woocommerce.create_order
+   woocommerce.build_checkout_link
    woocommerce.update_order_status
    woocommerce.update_order
    woocommerce.add_order_note
@@ -369,6 +370,8 @@ def test_coverage_floor_ninety_five_percent():
         "woocommerce.list_customers",
         "woocommerce.get_customer",
         "woocommerce.create_order",
+        # Creates the pending order it links to (Flor y Encanto, 2026-10-06).
+        "woocommerce.build_checkout_link",
         "woocommerce.update_order_status",
         "woocommerce.update_order",
         "woocommerce.add_order_note",
