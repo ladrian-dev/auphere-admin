@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -98,6 +99,10 @@ def _to_event(fields: dict[str, str]) -> InboundEvent:
         # significa "no marcar" (canal send-only, remitente no admin en
         # línea de coexistencia, o una entrada anterior a este cambio).
         mark_read=fields.get("mark_read") == "1",
+        folded=tuple(
+            (str(t), wamid if isinstance(wamid, str) else None)
+            for t, wamid in json.loads(fields.get("folded") or "[]")
+        ),
     )
 
 
@@ -111,6 +116,60 @@ READ_BATCH = 64
 SLOT_QUEUE_MAXSIZE = 8
 
 _SLOT_SENTINEL: Any = object()
+
+#: Keys that make an entry a plain text bubble. Anything else (media,
+#: reactions, locations, replies to a specific message) keeps its own turn:
+#: a receipt image must not become a paragraph of someone's question.
+_FOLDABLE_KINDS = frozenset({"text", ""})
+
+
+def _is_foldable(fields: dict[str, str]) -> bool:
+    if fields.get("kind", "text") not in _FOLDABLE_KINDS:
+        return False
+    if fields.get("media_provider_id") or fields.get("media_s3_key"):
+        return False
+    if fields.get("reaction_emoji") or fields.get("context_message_id"):
+        return False
+    return bool(fields.get("content", "").strip())
+
+
+def _same_thread(a: dict[str, str], b: dict[str, str]) -> bool:
+    return (a.get("tenant_id"), a.get("channel_id"), a.get("user_id")) == (
+        b.get("tenant_id"),
+        b.get("channel_id"),
+        b.get("user_id"),
+    )
+
+
+def fold_followups(
+    first: dict[str, str], queued: list[tuple[Any, Any, Any]]
+) -> tuple[dict[str, str], list[tuple[Any, Any, Any]]]:
+    """Fold the text bubbles of the same conversation that are already
+    waiting behind ``first`` into one entry.
+
+    Returns the merged fields and the queued items that were folded (to
+    ack after the turn). Stops at the first item that is not foldable or
+    belongs to another conversation, so order never changes.
+    """
+    if not _is_foldable(first):
+        return first, []
+    folded: list[tuple[Any, Any, Any]] = []
+    texts = [first["content"]]
+    extra: list[list[str | None]] = []
+    for item in queued:
+        _stream, _entry_id, raw = item
+        fields = _decode_fields(raw)
+        if not _same_thread(first, fields) or not _is_foldable(fields):
+            break
+        folded.append(item)
+        texts.append(fields["content"])
+        extra.append([fields["content"], fields.get("provider_message_id")])
+    if not folded:
+        return first, []
+    merged = dict(first)
+    merged["content"] = "\n".join(texts)
+    merged["folded"] = json.dumps(extra, ensure_ascii=False)
+    return merged, folded
 
 
 def slot_for(fields: dict[str, str], n_slots: int) -> int:
@@ -142,6 +201,7 @@ async def run_inbound_consumer(
     on_processed: Callable[[InboundEvent], Awaitable[None]] | None = None,
     slots: int | None = None,
     max_inflight: int | None = None,
+    coalesce_window_ms: int | None = None,
 ) -> None:
     """WP-09: concurrent consumer partitioned by ``thread_id``.
 
@@ -161,6 +221,10 @@ async def run_inbound_consumer(
         ws = get_worker_settings()
         slots = slots or ws.runner_slots
         max_inflight = max_inflight or ws.runner_max_inflight
+    if coalesce_window_ms is None:
+        from nexus_worker.config import get_worker_settings
+
+        coalesce_window_ms = get_worker_settings().runner_coalesce_window_ms
 
     stream_list: tuple[str, ...] = tuple(streams or ())
     if stream is not None:
@@ -190,17 +254,51 @@ async def run_inbound_consumer(
             if item is _SLOT_SENTINEL:
                 return
             source_stream, entry_id, raw_fields = item
+            fields = _decode_fields(raw_fields)
+            # One thought, several bubbles: give the rest of it a moment to
+            # arrive, then answer everything that is waiting in one turn.
+            # Take what is waiting, fold the bubbles that belong to this
+            # thought, and put the rest back in the same order. The worker
+            # is the queue's only consumer, so nothing slips in between.
+            # A window of 0 turns the whole thing off: one bubble, one turn.
+            folded: list[Any] = []
+            if coalesce_window_ms > 0 and _is_foldable(fields):
+                await asyncio.sleep(coalesce_window_ms / 1000)
+                waiting: list[Any] = []
+                while True:
+                    try:
+                        waiting.append(queue.get_nowait())
+                    except asyncio.QueueEmpty:
+                        break
+                fields, folded = fold_followups(fields, waiting)
+                for leftover in waiting[len(folded) :]:
+                    queue.put_nowait(leftover)
+            if folded:
+                log.info(
+                    "consumer.folded_followups",
+                    tenant_id=fields.get("tenant_id"),
+                    count=len(folded),
+                )
             try:
                 async with inflight:
-                    await handle_entry(
+                    acked = await handle_entry(
                         redis,
                         pipeline=pipeline,
                         stream=source_stream,
                         group=group,
                         entry_id=entry_id,
-                        raw_fields=raw_fields,
+                        raw_fields=cast("dict[bytes | str, bytes | str]", fields)
+                        if folded
+                        else raw_fields,
                         on_processed=on_processed,
                     )
+                # The folded bubbles were answered by that turn: ack them
+                # with it. If the turn stays pending for retry, so do they,
+                # and the retry folds them again.
+                if acked:
+                    for f_stream, f_id, _ in folded:
+                        f_id_str = f_id.decode() if isinstance(f_id, bytes) else f_id
+                        await redis.xack(f_stream, group, f_id_str)
             except Exception as exc:  # handle_entry never raises; belt+braces
                 log.error("consumer.slot_worker_failed", error=str(exc))
 

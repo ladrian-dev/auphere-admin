@@ -133,6 +133,10 @@ class InboundEvent:
     reaction_emoji: str | None = None
     reaction_target_wamid: str | None = None
     context_message_id: str | None = None
+    # Messages the consumer folded into this turn (same customer, seconds
+    # apart): their text is already in ``content``; this keeps their ids so
+    # each one still gets its own row in ``messages``.
+    folded: tuple[tuple[str, str | None], ...] = ()
     location_latitude: float | None = None
     location_longitude: float | None = None
     location_name: str | None = None
@@ -347,6 +351,16 @@ async def _process_inbound_after_gates(
         if media_transcript:
             inbound_msg.media_transcript = media_transcript
             await session.flush()
+        # The bubbles folded into this turn: stored one by one, as the
+        # customer sent them, so the panel shows the real conversation and
+        # the 24h window sees every inbound.
+        for folded_text, folded_wamid in event.folded:
+            await persist_inbound_message(
+                session,
+                conversation_id=conversation.id,
+                content=folded_text,
+                provider_message_id=folded_wamid,
+            )
         customer_id = customer.id
         conversation_id = conversation.id
         inbound_id = inbound_msg.id

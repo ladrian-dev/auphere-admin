@@ -74,6 +74,8 @@ async def test_same_thread_processes_in_order(monkeypatch) -> None:
             on_processed=on_processed,
             slots=8,
             max_inflight=8,
+            # Each bubble is its own turn here: this test pins ordering/concurrency.
+            coalesce_window_ms=0,
         ),
         timeout=10.0,
     )

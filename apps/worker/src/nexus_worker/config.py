@@ -58,6 +58,13 @@ class WorkerSettings(BaseSettings):
     # concurrency can't exhaust the Postgres pool or provider quotas.
     runner_slots: int = 64
     runner_max_inflight: int = 64
+    # Flor y Encanto, 2026-10-05: a customer who writes «Y tulipanes?» and,
+    # three seconds later, «y para mañana qué horarios hay?» got two full
+    # answers, each with its own product cards. People send one thought in
+    # several bubbles; a person reads them all and answers once. When a
+    # text entry is dequeued, the slot waits this long for the rest of the
+    # thought and folds what arrived into one turn. 0 disables it.
+    runner_coalesce_window_ms: int = 1500
 
     # ── WP-13: checkpoint retention ─────────────────────────────────────────
     # Keep the newest N checkpoints per conversation thread; purge threads

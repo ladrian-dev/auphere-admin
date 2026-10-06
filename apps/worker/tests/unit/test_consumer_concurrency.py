@@ -59,6 +59,8 @@ async def _run_consumer(redis, monkeypatch, dispatch, *, expected: int, **kwargs
             block_ms=10,
             stop=stop,
             on_processed=on_processed,
+            # Each bubble is its own turn here: this test pins concurrency.
+            coalesce_window_ms=0,
             **kwargs,
         ),
         timeout=15.0,
