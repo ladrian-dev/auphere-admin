@@ -26,11 +26,21 @@ class AgentConfigService:
         self.audit = AuditRepository(session)
         self.tools = ToolCatalogRepository(session)
 
-    async def list_versions(self) -> list[AgentConfig]:
-        return list(await self.configs.list_all())
+    # Spec 030: every read and write names an agent or, without one, acts on
+    # the client's principal agent — what every caller meant before agents.
+    async def list_versions(self, *, agent_id: uuid.UUID | None = None) -> list[AgentConfig]:
+        return list(await self.configs.list_all(agent_id=agent_id))
 
-    async def get_active(self) -> AgentConfig | None:
-        return await self.configs.get_active()
+    async def get_active(self, *, agent_id: uuid.UUID | None = None) -> AgentConfig | None:
+        return await self.configs.get_active(agent_id=agent_id)
+
+    async def _active_of_version(self, version: int) -> AgentConfig | None:
+        """The active version of the agent that ``version`` belongs to — what a
+        promotion or a rollback of ``version`` replaces."""
+        target = await self.configs.get_by_version(version)
+        if target is None:
+            return None
+        return await self.configs.get_active(agent_id=target.agent_id)
 
     async def stage_new_version(
         self,
@@ -42,6 +52,7 @@ class AgentConfigService:
         policies: dict[str, Any],
         seed_template_ref: str | None = None,
         kg_schema_id: uuid.UUID | None = None,
+        agent_id: uuid.UUID | None = None,
     ) -> AgentConfig:
         await self._validate_tools(tools)
         config = await self.configs.create_staged(
@@ -52,6 +63,7 @@ class AgentConfigService:
             seed_template_ref=seed_template_ref,
             kg_schema_id=kg_schema_id,
             created_by=actor,
+            agent_id=agent_id,
         )
         await self.audit.record(
             actor=actor,
@@ -111,7 +123,7 @@ class AgentConfigService:
         """``origin`` (spec 017 R3.3) says which surface the partner pressed:
         the draft bar or the agent tab. It is audit context, never a
         behaviour switch — promoting is the same act either way."""
-        before = await self.configs.get_active()
+        before = await self._active_of_version(version)
         config = await self.configs.promote(version, promoted_by=actor)
         after: dict[str, Any] = {"version": config.version}
         if origin is not None:
@@ -126,7 +138,7 @@ class AgentConfigService:
         return config
 
     async def rollback(self, target_version: int, *, actor: str) -> AgentConfig:
-        before = await self.configs.get_active()
+        before = await self._active_of_version(target_version)
         if before is not None and before.version == target_version:
             raise AgentConfigConflict(f"version {target_version} is already active")
         config = await self.configs.rollback(target_version, promoted_by=actor)

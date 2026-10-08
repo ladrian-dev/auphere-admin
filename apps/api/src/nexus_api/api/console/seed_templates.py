@@ -41,7 +41,7 @@ from nexus_api.services.templating.seed_templates import (
 )
 
 from .agents import _version_out
-from .deps import ClientScope, client_scope
+from .deps import ClientScope, agent_scope
 from .schemas import AgentVersionOut
 from .schemas_onboarding import FromSeedIn, SeedPlaceholderOut, SeedTemplateOut
 
@@ -217,7 +217,9 @@ async def stage_from_seed(
             detail=f"seed template {seed_template!r} not found",
         ) from None
     service = AgentConfigService(session)
-    if await service.list_versions():
+    # Spec 030: «already has versions» is about the agent being seeded (the
+    # principal without ``?agent=``), not the whole client.
+    if await service.list_versions(agent_id=scope.agent_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="this client already has agent versions; edit them in the agent tab",
@@ -242,6 +244,7 @@ async def stage_from_seed(
             tools=list(rendered.tools),
             policies=policies,
             seed_template_ref=rendered.seed_template_ref,
+            agent_id=scope.agent_id,
         )
     except AgentConfigConflict as exc:
         raise HTTPException(
@@ -262,7 +265,7 @@ async def stage_from_seed(
 )
 async def stage_agent_from_seed(
     body: FromSeedIn,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> AgentVersionOut:
     return await stage_from_seed(
         scope.session, scope, seed_template=body.seed_template, placeholders=body.placeholders

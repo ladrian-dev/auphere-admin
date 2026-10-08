@@ -22,6 +22,7 @@ from fastapi import APIRouter
 from nexus_api.api.console import (
     agent_settings,
     agents,
+    agents_list,
     audit,
     auth,
     auth_google,
@@ -37,6 +38,7 @@ from nexus_api.api.console import (
     invitations,
     keys,
     knowledge,
+    lite,
     me,
     models,
     notifications,
@@ -68,8 +70,13 @@ router = APIRouter(prefix="/console", tags=["console"])
 # principal: son las llamadas pre-sesión del BFF.
 router.include_router(auth.router)
 router.include_router(me.router)
+# Spec 030: la consola del cliente final. Su propia dependencia de
+# autorización; ninguna persona del partner alcanza estas rutas.
+router.include_router(lite.router)
 router.include_router(tenants.router)
 router.include_router(agents.router)
+# Spec 030: los agentes de un cliente y qué agente contesta en cada número.
+router.include_router(agents_list.router)
 router.include_router(channels.router)
 router.include_router(conversations.router)
 router.include_router(usage.router)

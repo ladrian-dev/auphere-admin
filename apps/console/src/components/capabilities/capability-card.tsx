@@ -52,11 +52,14 @@ export function CapabilityCard({
   cap,
   canWrite,
   onChanged,
+  agentId,
 }: {
   refId: string;
   cap: Capability;
   canWrite: boolean;
   onChanged?: () => void;
+  /** Spec 030: one of the client's agents; `undefined` is the principal. */
+  agentId?: string;
 }) {
   const t = useT();
   const [enabled, setEnabled] = React.useState(cap.enabled);
@@ -74,7 +77,7 @@ export function CapabilityCard({
 
   function save(change: { enabled?: boolean; mode?: CapabilityModeChange }) {
     startTransition(async () => {
-      const res = await setCapabilityAction({ ref: refId, key: cap.key, kind: cap.kind, ...change });
+      const res = await setCapabilityAction({ ref: refId, key: cap.key, kind: cap.kind, ...change, agent: agentId });
       if (!res.ok) {
         if (change.enabled !== undefined) setEnabled(!change.enabled);
         toast.error(actionErrorText(res, t));

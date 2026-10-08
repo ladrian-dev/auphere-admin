@@ -4,7 +4,7 @@ import { KnowledgeTable } from "@/components/agent-tools/knowledge-table";
 import { pageTitle } from "@/i18n/metadata";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 import { addPlaybookUrlAction, deletePlaybookAction, reindexPlaybookAction, uploadPlaybookAction } from "./actions";
 
@@ -12,7 +12,7 @@ export const generateMetadata = () => pageTitle("nav.knowledge");
 
 /** Partner playbook at /console/knowledge. Client KB stays under the client. */
 export default async function PlaybookPage() {
-  const principal = await requirePrincipal();
+  const principal = await requirePartnerPrincipal();
   if (!can(principal.role, "playbook:read")) redirect("/");
   const { t } = await getT(principal.locale);
   const data = await backendFor(principal).listPlaybook();

@@ -42,7 +42,9 @@ class DraftView:
 
 async def load_view(scope: ClientScope) -> DraftView:
     service = AgentConfigService(scope.session)
-    versions = await service.list_versions()  # newest first
+    # Spec 030: the versions of the agent the route acts on (the principal
+    # without ``?agent=``) — a draft is always one agent's.
+    versions = await service.list_versions(agent_id=scope.agent_id)  # newest first
     active = next((v for v in versions if v.status is AgentConfigStatus.ACTIVE), None)
     draft = _current_draft(versions, active)
     return DraftView(target=draft or active, active=active, draft=draft)
@@ -91,6 +93,7 @@ async def ensure_draft(scope: ClientScope) -> tuple[AgentConfig, bool]:
         policies=with_disclosure_default(dict(base.policies) if base else {}, actor=actor),
         seed_template_ref=base.seed_template_ref if base else None,
         kg_schema_id=base.kg_schema_id if base else None,
+        agent_id=scope.agent_id or (base.agent_id if base else None),
     )
     copy_runtime_fields(base, cfg)
     await scope.session.flush()

@@ -39,7 +39,7 @@ from nexus_api.services.agent_payment_review import (
 )
 
 from .agent_drafts import DraftView, ensure_draft, load_view
-from .deps import ClientScope, client_scope
+from .deps import ClientScope, agent_scope
 from .schemas_agent_tools import (
     AgentSettingsIn,
     AgentSettingsOut,
@@ -96,7 +96,7 @@ def _out(view: DraftView) -> AgentSettingsOut:
 
 @router.get("", response_model=AgentSettingsOut)
 async def get_settings(
-    scope: ClientScope = Depends(client_scope("agents:read")),
+    scope: ClientScope = Depends(agent_scope("agents:read")),
 ) -> AgentSettingsOut:
     """The settings of the version being edited (draft if any, else active)."""
     return _out(await load_view(scope))
@@ -109,7 +109,7 @@ async def get_settings(
 )
 async def put_settings(
     body: AgentSettingsIn,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> AgentSettingsSaved:
     """Replace ``policies.console`` on the draft (created on demand)."""
     try:

@@ -21,7 +21,10 @@ import structlog
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Partner, PartnerStatus
 from nexus_api.services.usage_alerts import evaluate_partner_usage_alerts
-from nexus_api.services.wallet_alerts import evaluate_partner_wallet_alerts
+from nexus_api.services.wallet_alerts import (
+    evaluate_client_balance_alerts,
+    evaluate_partner_wallet_alerts,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -103,6 +106,22 @@ async def evaluate_all_wallets() -> int:
             except Exception as exc:
                 log.error(
                     "usage_alerts_cron.wallet_failed",
+                    partner_id=str(partner.id),
+                    error=str(exc),
+                )
+            # Spec 030 (R15.3): each client with a console hears about its own
+            # balance, with the same rule its Panel uses.
+            try:
+                told = await evaluate_client_balance_alerts(session, partner.id)
+                if told:
+                    log.warning(
+                        "usage_alerts_cron.client_balance_notified",
+                        partner_id=str(partner.id),
+                        clients=len(told),
+                    )
+            except Exception as exc:
+                log.error(
+                    "usage_alerts_cron.client_balance_failed",
                     partner_id=str(partner.id),
                     error=str(exc),
                 )

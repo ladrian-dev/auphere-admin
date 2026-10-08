@@ -91,17 +91,19 @@ export function capabilitiesApi(call: Call) {
   return {
     listCapabilities: (
       ref: string,
-      opts: { q?: string; all?: boolean; lang?: string } = {},
+      opts: { q?: string; all?: boolean; lang?: string; agent?: string } = {},
     ): Promise<CapabilitiesOut> => {
       const qs = new URLSearchParams();
       if (opts.q) qs.set("q", opts.q);
       if (opts.all) qs.set("all", "true");
       if (opts.lang) qs.set("lang", opts.lang);
+      // Spec 030: one of the client's agents; the principal without it.
+      if (opts.agent) qs.set("agent", opts.agent);
       const suffix = qs.size ? `?${qs}` : "";
       return call<CapabilitiesOut>(`/console/clients/${enc(ref)}/capabilities${suffix}`);
     },
     /** Un cambio por llamada (R5.4): el resto de la lista no se toca. */
-    setCapability: (ref: string, body: CapabilityUpdateBody): Promise<CapabilityUpdated> =>
-      call<CapabilityUpdated>(`/console/clients/${enc(ref)}/capabilities`, { method: "PUT", body }),
+    setCapability: (ref: string, body: CapabilityUpdateBody, agent?: string): Promise<CapabilityUpdated> =>
+      call<CapabilityUpdated>(`/console/clients/${enc(ref)}/capabilities${agent ? `?agent=${enc(agent)}` : ""}`, { method: "PUT", body }),
   };
 }

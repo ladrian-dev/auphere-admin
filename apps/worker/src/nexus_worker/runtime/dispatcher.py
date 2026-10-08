@@ -25,9 +25,18 @@ import structlog
 from nexus_api.core.admin_gate import admin_only_suppresses, sender_is_admin
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Channel, Conversation, Message, Tenant, TenantStatus
+from nexus_api.db.models import (
+    Agent,
+    AgentStatus,
+    Channel,
+    Conversation,
+    Message,
+    Tenant,
+    TenantStatus,
+)
 from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
 from nexus_api.services.channel_routing import config_agent_enabled, config_role
+from nexus_api.services.inbox_stream import publish_inbox_event
 
 from nexus_worker.metering.budget import evaluate as evaluate_budget
 from nexus_worker.metering.collector import record_media_unit, usage_turn
@@ -69,6 +78,36 @@ _INACTIVE_STATUSES: frozenset[TenantStatus] = frozenset(
 # a non-admin on a coexistence line gets neither a reply nor a read receipt.
 # Re-exported here under the historical name for the dispatcher's tests.
 _sender_is_admin = sender_is_admin
+
+
+#: Quien escribe a mano mientras el agente está en pausa: el operador de
+#: Auphere desde el admin (Bloque C) o la persona del cliente desde la Bandeja
+#: (spec 030). El resumen de la devolución cuenta lo de los dos.
+_HUMAN_ACTORS = ("operator", "member")
+
+
+async def takeover_messages(
+    session: Any, conversation_id: uuid.UUID, started_at_iso: str | None
+) -> list[str]:
+    """Lo que escribieron las personas desde que tomaron el control, en orden."""
+    stmt = (
+        sa.select(Message.content)
+        .where(Message.conversation_id == conversation_id)
+        .where(Message.actor_kind.in_(_HUMAN_ACTORS))
+        .order_by(Message.created_at.asc())
+    )
+    if started_at_iso:
+        from datetime import datetime as _dt2
+
+        try:
+            started_at_dt = _dt2.fromisoformat(started_at_iso.replace("Z", "+00:00"))
+            stmt = stmt.where(Message.created_at >= started_at_dt)
+        except ValueError:
+            # Malformed timestamp — fall back to "all human messages on this
+            # conversation", still bounded by takeover_context semantics
+            # (this column is cleared on resume).
+            pass
+    return [str(content or "") for (content,) in (await session.execute(stmt)).all()]
 
 
 def _build_operator_briefing(
@@ -369,17 +408,32 @@ async def _process_inbound_after_gates(
         # business uses to push notifications out, with nobody behind it to
         # answer what comes back. Read here, inside the session that is
         # already open, and consumed by the skip below.
-        channel_config = (
-            await session.scalar(sa.select(Channel.config).where(Channel.id == event.channel_id))
-        ) or {}
+        channel_row = (
+            await session.execute(
+                sa.select(Channel.config, Channel.agent_id).where(Channel.id == event.channel_id)
+            )
+        ).first()
+        channel_config = (channel_row[0] if channel_row else None) or {}
+        # Spec 030: the agent that answers on this number. A number without
+        # one (every number before spec 030, the Playground's) answers with
+        # the principal agent — the oldest active one of the client.
+        channel_agent_id: uuid.UUID | None = channel_row[1] if channel_row else None
+        turn_agent_id: uuid.UUID | None = channel_agent_id or await session.scalar(
+            sa.select(Agent.id)
+            .where(Agent.status == AgentStatus.ACTIVE.value)
+            .order_by(Agent.created_at, Agent.id)
+            .limit(1)
+        )
         # Admin-only agents (e.g. cobranza_v1): read the active config's
         # policies while the session is open so the sender gate below can
-        # check the whitelist without another transaction.
+        # check the whitelist without another transaction. The config is
+        # THIS number's agent's — another agent of the client has its own.
         active_agent = (
             await session.execute(
                 sa.select(AgentConfig.id, AgentConfig.policies)
                 .where(AgentConfig.tenant_id == event.tenant_id)
                 .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
+                .where(AgentConfig.agent_id == turn_agent_id)
                 .order_by(AgentConfig.version.desc())
                 .limit(1)
             )
@@ -416,32 +470,24 @@ async def _process_inbound_after_gates(
         operator_briefing: str | None = None
         if takeover_context is not None and conversation_agent_active:
             started_at_iso = takeover_context.get("started_at")
-            stmt = (
-                sa.select(Message.content, Message.created_at)
-                .where(Message.conversation_id == conversation_id)
-                .where(Message.actor_kind == "operator")
-                .order_by(Message.created_at.asc())
-            )
-            if started_at_iso:
-                from datetime import datetime as _dt2
-
-                try:
-                    started_at_dt = _dt2.fromisoformat(started_at_iso.replace("Z", "+00:00"))
-                    stmt = stmt.where(Message.created_at >= started_at_dt)
-                except ValueError:
-                    # Malformed timestamp — fall back to "all operator
-                    # messages on this conversation", which is still
-                    # bounded by takeover_context.started_at semantics
-                    # (this column is cleared on resume).
-                    pass
-            operator_rows = (await session.execute(stmt)).all()
             operator_briefing = _build_operator_briefing(
                 reason=takeover_context.get("reason"),
                 notes=takeover_context.get("notes"),
                 started_at=started_at_iso,
                 operator_id=takeover_context.get("operator_id"),
-                operator_messages=[row[0] for row in operator_rows],
+                operator_messages=await takeover_messages(session, conversation_id, started_at_iso),
             )
+
+    # Spec 030: the Inbox shows the new inbound live. After the commit above
+    # and without a body; a client without Inbox simply has no subscriber.
+    await publish_inbox_event(
+        None,
+        tenant_id=event.tenant_id,
+        event="message.new",
+        conversation_id=conversation_id,
+        message_id=str(inbound_id),
+        direction="inbound",
+    )
 
     tenant_status = TenantStatus(tenant_status_raw)
     if tenant_status in _INACTIVE_STATUSES:
@@ -508,6 +554,25 @@ async def _process_inbound_after_gates(
         )
         return {
             "skipped": "no_agent",
+            "conversation_id": str(conversation_id),
+            "inbound_message_id": str(inbound_id),
+        }
+
+    if active_agent is None and channel_agent_id is not None:
+        # Spec 030: the number belongs to an agent with no published version
+        # (a new agent still in draft). Same as a send-only line: the inbound
+        # is kept, nobody answers — instead of a turn that fails in the
+        # loader and stays unacked forever. The console refuses to assign a
+        # number to an unpublished agent; this is the belt to those braces.
+        log.warning(
+            "pipeline.skipped.agent_unpublished",
+            tenant_id=str(event.tenant_id),
+            channel_id=str(event.channel_id),
+            agent_id=str(channel_agent_id),
+            conversation_id=str(conversation_id),
+        )
+        return {
+            "skipped": "agent_unpublished",
             "conversation_id": str(conversation_id),
             "inbound_message_id": str(inbound_id),
         }
@@ -597,6 +662,9 @@ async def _process_inbound_after_gates(
         # ``event.content`` upstream.
         user_message=user_message,
     )
+    if turn_agent_id is not None:
+        # Spec 030: the pipeline loads THIS agent's prompt, tools and version.
+        state["agent_id"] = str(turn_agent_id)
     if budget.level == "soft":
         # Degradación: modelo barato y/o grader apagado. El cliente
         # final no percibe más que, quizá, una respuesta algo menos
@@ -630,6 +698,7 @@ async def _process_inbound_after_gates(
         turn_id=str(inbound_id),
         conversation_id=conversation_id,
         agent_config_id=agent_config_id,
+        agent_id=turn_agent_id,
     ):
         with trace_turn(
             tenant_id=event.tenant_id,

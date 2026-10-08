@@ -50,7 +50,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,8 +90,9 @@ from nexus_api.db.models.qa import (
     QARun,
     QAThread,
 )
+from nexus_api.services.agents import principal_agent_id
 
-from .deps import ClientRef, ClientScope, client_scope, resolve_mapping
+from .deps import ClientRef, ClientScope, agent_scope, client_scope, resolve_mapping
 from .schemas_playground import (
     PlaygroundBudgetOut,
     PlaygroundRunStartIn,
@@ -275,12 +276,15 @@ async def _own_thread(
 
 @router.get("/clients/{ref}/playground/threads", response_model=list[PlaygroundThreadOut])
 async def list_threads(
-    scope: ClientScope = Depends(client_scope("playground:run")),
+    scope: ClientScope = Depends(agent_scope("playground:run")),
     include_archived: bool = Query(default=False),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[PlaygroundThreadOut]:
     """The calling member's threads on this client (RLS by operator +
-    tenant filter)."""
+    tenant filter).
+
+    Spec 030: with ``?agent=``, only that agent's threads — a thread from
+    before agents existed (no agent) is the principal's. Without it, all."""
     await apply_operator_to_session(scope.session, console_operator_id(scope.principal))
     stmt = (
         select(QAThread)
@@ -288,6 +292,11 @@ async def list_threads(
         .order_by(QAThread.updated_at.desc())
         .limit(limit)
     )
+    if scope.agent_id is not None:
+        mine = QAThread.agent_id == scope.agent_id
+        if scope.agent_id == await principal_agent_id(scope.session):
+            mine = or_(mine, QAThread.agent_id.is_(None))
+        stmt = stmt.where(mine)
     if not include_archived:
         stmt = stmt.where(QAThread.archived_at.is_(None))
     rows = (await scope.session.execute(stmt)).scalars().all()
@@ -301,9 +310,12 @@ async def list_threads(
 )
 async def create_thread(
     body: PlaygroundThreadCreateIn,
-    scope: ClientScope = Depends(client_scope("playground:run")),
+    scope: ClientScope = Depends(agent_scope("playground:run")),
 ) -> PlaygroundThreadOut:
-    """A new dry-run thread of the caller against this client's agent."""
+    """A new dry-run thread of the caller against this client's agent.
+
+    Spec 030: the thread fixes its agent — ``?agent=`` or, without it, the
+    principal — so a conversation of tests never jumps agent half-way."""
     operator_id = console_operator_id(scope.principal)
     await apply_operator_to_session(scope.session, operator_id)
     thread = QAThread(
@@ -311,6 +323,7 @@ async def create_thread(
         tenant_id=scope.tenant.id,
         title=body.title,
         dry_run=True,
+        agent_id=scope.agent_id or await principal_agent_id(scope.session),
     )
     scope.session.add(thread)
     await scope.session.flush()
@@ -504,6 +517,7 @@ async def start_run(
                 thread_id=thread.id, operator_id=operator_id, status=QA_RUN_STATUS_RUNNING
             )
             session.add(qa_run)
+            thread_agent_id = thread.agent_id
             thread.last_run_at = func.now()
             thread.message_count = (thread.message_count or 0) + 1
             await session.flush()
@@ -531,6 +545,9 @@ async def start_run(
         "inbound_message_id": str(inbound_id),
         "user_message": body.prompt,
     }
+    if thread_agent_id is not None:
+        # Spec 030: the run tests the agent the thread was opened for.
+        graph_state["agent_id"] = str(thread_agent_id)
     graph_config = {"configurable": {"thread_id": str(thread_id)}}
     partner_id = partner.id
 

@@ -19,14 +19,17 @@ describe("el borrador, desde cualquier pestaña", () => {
     h.setRole("analyst");
     h.backend.getDraftDiff.mockResolvedValueOnce({ version: { draft: 4, active: 3 }, settings: [], capabilities: [], knowledge: [], prompt: { before: "a", after: "b" } });
     expect(await draftDiffAction({ ref: "demo" })).toMatchObject({ ok: true });
-    expect(h.backend.getDraftDiff).toHaveBeenCalledWith("demo");
+    expect(h.backend.getDraftDiff).toHaveBeenCalledWith("demo", undefined);
   });
 
   it("publicar desde la barra dice de dónde salió el clic", async () => {
     h.setRole("builder");
     h.backend.publishAgentVersion.mockResolvedValueOnce({ version: 4 });
     expect(await publishFromBarAction({ ref: "demo", version: 4 })).toMatchObject({ ok: true });
-    expect(h.backend.publishAgentVersion).toHaveBeenCalledWith("demo", 4, "draft_bar");
+    expect(h.backend.publishAgentVersion).toHaveBeenCalledWith("demo", 4, "draft_bar", undefined);
+    // Spec 030: the bar of another agent publishes that agent's draft.
+    expect(await publishFromBarAction({ ref: "demo", version: 5, agent: "8f9e0d1c-2b3a-4c5d-8e6f-7a8b9c0d1e2f" })).toMatchObject({ ok: true });
+    expect(h.backend.publishAgentVersion).toHaveBeenLastCalledWith("demo", 5, "draft_bar", "8f9e0d1c-2b3a-4c5d-8e6f-7a8b9c0d1e2f");
   });
 
   it("un analista no publica, y no se llega a llamar al backend", async () => {

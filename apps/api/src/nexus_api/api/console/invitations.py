@@ -28,12 +28,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.core.console_auth import ConsoleService, require_console_service
-from nexus_api.db.models import AuditLog, NotificationKind, Partner
+from nexus_api.db.models import AuditLog, ConsoleAccount, NotificationKind, Partner
 from nexus_api.repositories.partner_membership import (
     InvitationError,
     PartnerInvitationRepository,
 )
-from nexus_api.services import console_identity
+from nexus_api.services import client_access, console_identity
+from nexus_api.services.client_access import ClientAccessError
 from nexus_api.services.console_notifications import emit as emit_notification
 
 from .auth import check_login_rate_limit
@@ -54,8 +55,17 @@ async def lookup_invitation(
     async with session.begin():
         invitation = await PartnerInvitationRepository(session).get_pending_by_token(token)
         if invitation is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="invitation not found or expired"
+            # Spec 030: la misma página sirve la invitación de un cliente.
+            client_invitation = await client_access.pending_invitation(session, token)
+            if client_invitation is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="invitation not found or expired"
+                )
+            return InvitationLookupOut(
+                partner_name=await client_access.client_name(session, client_invitation),
+                email=client_invitation.email,
+                role="client",
+                expires_at=client_invitation.expires_at,
             )
         partner = await session.get(Partner, invitation.partner_id)
         name = partner.name if partner else "—"
@@ -100,11 +110,17 @@ async def accept_invitation(
     # lockout would never trigger on this path.
     async with session.begin():
         invitation = await PartnerInvitationRepository(session).get_pending_by_token(token)
-        if invitation is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="invitation not found or expired"
-            )
-        invited_email = invitation.email
+        if invitation is not None:
+            invited_email = invitation.email
+        else:
+            # Spec 030: la misma puerta acepta la invitación de un cliente.
+            client_invitation = await client_access.pending_invitation(session, token)
+            if client_invitation is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="invitation not found or expired"
+                )
+            invited_email = client_invitation.email
+        is_client = invitation is None
         # Same bucket as the login: the branch below checks a password, so
         # it must not be a cheaper oracle than ``/console/auth/login``.
         await check_login_rate_limit(redis, email=invited_email, ip=ip)
@@ -124,6 +140,11 @@ async def accept_invitation(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="account_exists: sign in with your existing password to accept",
+        )
+
+    if is_client:
+        return await _accept_client(
+            session, token, body, authenticated=authenticated, request=request, ip=ip
         )
 
     async with session.begin():
@@ -190,6 +211,59 @@ async def accept_invitation(
             membership_id=membership.id,
             partner=PartnerBrief(slug=partner.slug, name=partner.name, status=partner.status),
             role=membership.role,
+            token=session_token,
+            expires_at=expires_at,
+        )
+    return out
+
+
+async def _accept_client(
+    session: AsyncSession,
+    token: str,
+    body: InvitationAcceptWithPasswordIn,
+    *,
+    authenticated: ConsoleAccount | None,
+    request: Request,
+    ip: str | None,
+) -> InvitationAcceptOut:
+    """Spec 030: aceptar la invitación de un cliente. Mismas reglas que la del
+    partner (la cuenta nace aquí o se pide su contraseña), y la invariante: una
+    cuenta de partner o de otro cliente no puede aceptarla."""
+    async with session.begin():
+        invitation = await client_access.pending_invitation(session, token)
+        if invitation is None:  # pragma: no cover - revocada entre las dos lecturas
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="invitation not found or expired"
+            )
+        account = (
+            authenticated
+            if authenticated is not None
+            else await console_identity.create_account(
+                session,
+                email=invitation.email,
+                password=body.password,
+                display_name=body.display_name,
+            )
+        )
+        try:
+            member = await client_access.accept_invitation(
+                session, invitation, account=account, display_name=body.display_name
+            )
+        except ClientAccessError as exc:
+            raise HTTPException(status_code=exc.status, detail=f"{exc.code}") from exc
+        partner = await session.get(Partner, member.partner_id)
+        if partner is None:  # pragma: no cover - FK
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="partner missing")
+        session_token, expires_at = await console_identity.start_session(
+            session,
+            account,
+            ip=ip,
+            user_agent=request.headers.get("user-agent"),
+        )
+        out = InvitationAcceptOut(
+            membership_id=member.id,
+            partner=PartnerBrief(slug=partner.slug, name=partner.name, status=partner.status),
+            role="client",
             token=session_token,
             expires_at=expires_at,
         )

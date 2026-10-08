@@ -39,7 +39,7 @@ from nexus_api.api.deps import get_db_session
 from nexus_api.billing.pricing import CURRENCY, credits_to_cents
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.db.models import AuditLog, Partner, PartnerTenant, TenantStatus, UsageRecord
-from nexus_api.metering.wallet import credit_burn, credit_burn_by_day
+from nexus_api.metering.wallet import AgentFilter, credit_burn, credit_burn_by_day
 from nexus_api.services.console_home_blocks import ClientRow, days_until, spend_block
 from nexus_api.services.console_reporting import (
     csv_safe,
@@ -137,24 +137,19 @@ async def _month_block(
     )
 
 
-# ── report ─────────────────────────────────────────────────────────────
-
-
-@router.get("", response_model=UsageReportV2Out)
-async def usage_report(
-    principal: ConsolePrincipal = Depends(require_console_principal("usage:read")),
-    session: AsyncSession = Depends(get_db_session),
-    days: int = Query(default=30, ge=1, le=366),
-    client: str | None = Query(
-        default=None, max_length=255, description="Restrict to one external_client_ref"
-    ),
-    source: str | None = Query(default=None, pattern="^(channel|qa)$"),
-) -> UsageReportV2Out:
-    since, until = _window(days)
-    mappings = await partner_mappings(session, principal.partner.id)
-    _chosen, by_tenant = _scope(mappings, client)
+async def bucket_report(
+    session: AsyncSession,
+    by_tenant: dict[uuid.UUID, PartnerTenant],
+    since: datetime,
+    until: datetime,
+    *,
+    source: str | None,
+) -> tuple[list[UsageBucketOut], dict[str, float], int, int]:
+    """Buckets per client, meter and source, the client-traffic totals per
+    meter, the record count and how many records have no price yet. Shared by
+    the partner's Consumo and the client's (spec 030), which passes its one
+    mapping and ``source="channel"``."""
     tenant_ids = list(by_tenant)
-
     buckets: list[UsageBucketOut] = []
     totals: dict[str, float] = {}
     total_records = 0
@@ -202,6 +197,30 @@ async def usage_report(
                 totals[str(meter)] = totals.get(str(meter), 0.0) + float(billable)
             total_records += int(count)
             unpriced += int(no_price)
+
+    return buckets, totals, total_records, unpriced
+
+
+# ── report ─────────────────────────────────────────────────────────────
+
+
+@router.get("", response_model=UsageReportV2Out)
+async def usage_report(
+    principal: ConsolePrincipal = Depends(require_console_principal("usage:read")),
+    session: AsyncSession = Depends(get_db_session),
+    days: int = Query(default=30, ge=1, le=366),
+    client: str | None = Query(
+        default=None, max_length=255, description="Restrict to one external_client_ref"
+    ),
+    source: str | None = Query(default=None, pattern="^(channel|qa)$"),
+) -> UsageReportV2Out:
+    since, until = _window(days)
+    mappings = await partner_mappings(session, principal.partner.id)
+    _chosen, by_tenant = _scope(mappings, client)
+
+    buckets, totals, total_records, unpriced = await bucket_report(
+        session, by_tenant, since, until, source=source
+    )
 
     return UsageReportV2Out(
         since=since,
@@ -270,32 +289,27 @@ async def usage_series(
 # ── CSV export (streaming) ─────────────────────────────────────────────
 
 
-@router.get(
-    "/spend",
-    response_model=UsageSpendOut,
-    responses={404: {"description": "Unknown client"}, 503: {"description": "Ledger unreadable"}},
-)
-async def usage_spend(
-    principal: ConsolePrincipal = Depends(require_console_principal("usage:read")),
-    session: AsyncSession = Depends(get_db_session),
-    days: int = Query(default=30, ge=1, le=90),
-    client: str | None = Query(default=None, max_length=255),
+async def spend_report(
+    partner_id: uuid.UUID,
+    chosen: list[PartnerTenant],
+    by_tenant: dict[uuid.UUID, PartnerTenant],
+    days: int,
+    *,
+    whole_portfolio: bool,
+    agent: AgentFilter | None = None,
 ) -> UsageSpendOut:
-    """Spec 028: what the partner spent, in money — per day of the period
-    (total and per client, the Companion included when no client is
-    chosen) and this month (total, projection at the 7-day pace, per
-    client). The ledger is read in credits and converted once, here."""
-    mappings = await partner_mappings(session, principal.partner.id)
-    chosen, by_tenant = _scope(mappings, client)
+    """Spec 028: what was spent, in money, per day and this month. The client
+    console (spec 030) calls it with its one mapping and
+    ``whole_portfolio=False``, so the figures are the partner's for that
+    client, to the cent — and, with ``agent``, those of one of its agents."""
     tenant_ids = list(by_tenant)
     now = datetime.now(UTC)
     today = now.date()
     day_list = [today - timedelta(days=days - 1 - i) for i in range(days)]
     start = datetime.combine(day_list[0], time.min, tzinfo=UTC)
-    whole_portfolio = client is None
     try:
         daily = await credit_burn_by_day(
-            principal.partner.id, tenant_ids, start, include_outside=whole_portfolio
+            partner_id, tenant_ids, start, include_outside=whole_portfolio, agent=agent
         )
     except Exception as exc:
         log.warning("console_usage.spend_unreadable", error=str(exc))
@@ -320,8 +334,8 @@ async def usage_spend(
     ]
 
     since, until, _elapsed, _days_in_month = month_bounds()
-    month_burn = await credit_burn(principal.partner.id, tenant_ids, since)
-    burn_7d = await credit_burn(principal.partner.id, tenant_ids, now - timedelta(days=7))
+    month_burn = await credit_burn(partner_id, tenant_ids, since, agent=agent)
+    burn_7d = await credit_burn(partner_id, tenant_ids, now - timedelta(days=7), agent=agent)
     if not whole_portfolio:
         month_burn.pop(None, None)
         burn_7d.pop(None, None)
@@ -354,18 +368,39 @@ async def usage_spend(
     )
 
 
-@router.get("/export.csv", response_class=StreamingResponse)
-async def usage_export_csv(
+@router.get(
+    "/spend",
+    response_model=UsageSpendOut,
+    responses={404: {"description": "Unknown client"}, 503: {"description": "Ledger unreadable"}},
+)
+async def usage_spend(
     principal: ConsolePrincipal = Depends(require_console_principal("usage:read")),
     session: AsyncSession = Depends(get_db_session),
-    days: int = Query(default=30, ge=1, le=366),
+    days: int = Query(default=30, ge=1, le=90),
     client: str | None = Query(default=None, max_length=255),
-    source: str | None = Query(default=None, pattern="^(channel|qa)$"),
-    lang: str = Query(default="en", pattern="^(es|en)$"),
-) -> StreamingResponse:
-    since, until = _window(days)
+) -> UsageSpendOut:
+    """Spec 028: what the partner spent, in money — per day of the period
+    (total and per client, the Companion included when no client is
+    chosen) and this month (total, projection at the 7-day pace, per
+    client). The ledger is read in credits and converted once, here."""
     mappings = await partner_mappings(session, principal.partner.id)
-    _chosen, by_tenant = _scope(mappings, client)
+    chosen, by_tenant = _scope(mappings, client)
+    return await spend_report(
+        principal.partner.id, chosen, by_tenant, days, whole_portfolio=client is None
+    )
+
+
+def csv_export(
+    session: AsyncSession,
+    by_tenant: dict[uuid.UUID, PartnerTenant],
+    days: int,
+    *,
+    source: str | None,
+    lang: str,
+) -> StreamingResponse:
+    """The usage CSV for the given clients, streamed. Shared with the client
+    console (spec 030), which passes its one mapping."""
+    since, until = _window(days)
     tenant_ids = list(by_tenant)
     day_col = sa.cast(sa.func.timezone("UTC", UsageRecord.occurred_at), sa.Date)
     stmt = (
@@ -427,6 +462,20 @@ async def usage_export_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/export.csv", response_class=StreamingResponse)
+async def usage_export_csv(
+    principal: ConsolePrincipal = Depends(require_console_principal("usage:read")),
+    session: AsyncSession = Depends(get_db_session),
+    days: int = Query(default=30, ge=1, le=366),
+    client: str | None = Query(default=None, max_length=255),
+    source: str | None = Query(default=None, pattern="^(channel|qa)$"),
+    lang: str = Query(default="en", pattern="^(es|en)$"),
+) -> StreamingResponse:
+    mappings = await partner_mappings(session, principal.partner.id)
+    _chosen, by_tenant = _scope(mappings, client)
+    return csv_export(session, by_tenant, days, source=source, lang=lang)
 
 
 # ── alerts (CP-24) ─────────────────────────────────────────────────────

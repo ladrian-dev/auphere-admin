@@ -144,6 +144,15 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         server_default="0",
     )
 
+    # Spec 030 (migración 0149): la Bandeja.
+    #: La persona del cliente que responde con el agente en pausa (cuenta de
+    #: consola, por valor).
+    assigned_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: ``CLOSED`` = resuelta. Se reabre sola si el contacto vuelve a escribir.
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Última actividad en cualquier sentido: el orden de la Bandeja.
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 
 class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     __tablename__ = "messages"
@@ -270,6 +279,8 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # admin user table is owned upstream (auth provider) and we just
     # store the resolved uuid for audit/UX.
     actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Spec 030: which agent wrote an agent message (several per client).
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
 class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):

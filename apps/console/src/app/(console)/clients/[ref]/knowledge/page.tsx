@@ -3,13 +3,13 @@ import { redirect } from "next/navigation";
 import { KnowledgeTable } from "@/components/agent-tools/knowledge-table";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 /** Knowledge (CP-15): upload/URL forms, document table, prompt-budget meter.
  *  Metadata only — the extracted text never reaches the console. */
 export default async function KnowledgePage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
-  const principal = await requirePrincipal();
+  const principal = await requirePartnerPrincipal();
   if (!can(principal.role, "knowledge:read")) redirect(`/clients/${ref}`);
   const { t } = await getT(principal.locale);
   const data = await backendFor(principal).listKnowledge(ref);

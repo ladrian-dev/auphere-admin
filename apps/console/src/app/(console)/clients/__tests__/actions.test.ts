@@ -37,7 +37,13 @@ describe("client actions (spec 016, R8 — the seven of Bloque A11)", () => {
     expect(await stageAgentAction({ ref: "demo", system_prompt: "You are…" })).toMatchObject({ ok: true });
     expect(await publishAgentAction({ ref: "demo", version: 1 })).toMatchObject({ ok: true });
     expect(await rollbackAgentAction({ ref: "demo", version: 1 })).toMatchObject({ ok: true });
-    expect(h.backend.rollbackAgentVersion).toHaveBeenCalledWith("demo", 1);
+    expect(h.backend.rollbackAgentVersion).toHaveBeenCalledWith("demo", 1, undefined);
+    // Spec 030: the agent the tab is on travels to the API; without it, the principal.
+    expect(await publishAgentAction({ ref: "demo", version: 2, agent: "8f9e0d1c-2b3a-4c5d-8e6f-7a8b9c0d1e2f" })).toMatchObject({ ok: true });
+    expect(h.backend.publishAgentVersion).toHaveBeenLastCalledWith("demo", 2, undefined, "8f9e0d1c-2b3a-4c5d-8e6f-7a8b9c0d1e2f");
+    expect(await stageAgentAction({ ref: "demo", system_prompt: "x", agent: "8f9e0d1c-2b3a-4c5d-8e6f-7a8b9c0d1e2f" })).toMatchObject({ ok: true });
+    expect(h.backend.stageAgentVersion).toHaveBeenLastCalledWith("demo", { system_prompt: "x" }, "8f9e0d1c-2b3a-4c5d-8e6f-7a8b9c0d1e2f");
+    await expect(rollbackAgentAction({ ref: "demo", version: 1, agent: "not-an-id" })).rejects.toThrow();
   });
   it("delete needs clients:delete: builder is denied, admin is not", async () => {
     h.setRole("builder");

@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import (
     Boolean,
     DateTime,
+    FetchedValue,
     ForeignKey,
     Integer,
     Numeric,
@@ -30,6 +31,34 @@ class AgentConfigStatus(str, enum.Enum):
     ARCHIVED = "archived"
 
 
+class AgentStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+#: The name the backfill and the default-agent trigger give the first agent.
+PRINCIPAL_AGENT_NAME = "Agente principal"
+
+
+class Agent(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
+    """One agent of a client (spec 030, iteration 3). A client may have several;
+    each WhatsApp number answers with one (``channels.agent_id``) and each
+    agent has its own versions in ``agent_configs``.
+
+    The *principal* agent is the oldest active one — not a column. It answers
+    on numbers without an agent and it is what every caller that does not name
+    an agent (the Companion, the admin, the crons) acts on. Deleting does not
+    exist (constitution §IV): an agent is archived.
+    """
+
+    __tablename__ = "agents"
+
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=AgentStatus.ACTIVE.value
+    )
+
+
 class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     """Versioned configuration for a tenant's agent.
 
@@ -42,7 +71,23 @@ class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "version", name="uq_agent_configs_tenant_version"),
     )
+    # ``agent_id`` may be filled by the database (the default-agent trigger,
+    # 0153): fetch it back on INSERT instead of lazily on first access, which
+    # would be an implicit IO in async code.
+    __mapper_args__ = {"eager_defaults": True}  # noqa: RUF012 - SQLAlchemy reads it as a class attribute
 
+    # Spec 030: whose version this is. Required in the database; a row
+    # inserted without one lands on the tenant's principal agent (trigger).
+    # The database key is ``(tenant_id, agent_id)`` (0155): never another
+    # client's agent.
+    # Version numbers stay unique per tenant (data-model.md, decision).
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="CASCADE"),
+        nullable=False,
+        server_default=FetchedValue(),
+        index=True,
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[AgentConfigStatus] = mapped_column(
         pg_enum(AgentConfigStatus, name="agent_config_status"),

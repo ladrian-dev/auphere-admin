@@ -21,7 +21,10 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">{t("invite.title")}</h1>
         <p className="text-pretty text-muted-foreground">
-          {t("invite.body", { partner: invitation.partner_name, role: t(roleKey(invitation.role)) })}
+          {invitation.role === "client"
+            ? // Spec 030: la invitación de un cliente habla de su negocio, no de un rol.
+              t("invite.client.body", { client: invitation.partner_name })
+            : t("invite.body", { partner: invitation.partner_name, role: t(roleKey(invitation.role)) })}
         </p>
         <p className="text-sm text-muted-foreground">
           {t("invite.expires", { date: formatDate(invitation.expires_at, locale) })}

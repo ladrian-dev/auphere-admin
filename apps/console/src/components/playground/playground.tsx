@@ -49,6 +49,8 @@ type Props = {
   initialBudget: PlaygroundBudget | null;
   budgetFailed: boolean;
   agentReady: boolean;
+  /** Spec 030: new threads are pinned to this agent; `undefined` is the principal. */
+  agentId?: string;
 };
 
 type State = { byThread: Record<string, TranscriptState>; budget: PlaygroundBudget | null };
@@ -68,7 +70,7 @@ function reducer(state: State, a: Action): State {
 const MAX_PROMPT = 4000;
 const MAX_RECONNECTS = 3;
 
-export function Playground({ refId, initialThreads, initialBudget, budgetFailed, agentReady }: Props) {
+export function Playground({ refId, initialThreads, initialBudget, budgetFailed, agentReady, agentId }: Props) {
   const t = useT();
   const locale = useLocale();
   const [threads, setThreads] = React.useState<PlaygroundThread[]>(initialThreads);
@@ -110,7 +112,11 @@ export function Playground({ refId, initialThreads, initialBudget, budgetFailed,
     setBusy(true);
     // Named at birth so the list never reads "Untitled": the date is what a
     // partner uses to tell one test apart from another.
-    const res = await createThreadAction({ ref: refId, title: t("playground.threads.autoTitle", { date: formatDateTime(new Date().toISOString(), locale) }) });
+    const res = await createThreadAction({
+      ref: refId,
+      title: t("playground.threads.autoTitle", { date: formatDateTime(new Date().toISOString(), locale) }),
+      agent: agentId,
+    });
     setBusy(false);
     if (!res.ok) return void toast.error(res.message);
     setThreads((prev) => [res.data, ...prev]);

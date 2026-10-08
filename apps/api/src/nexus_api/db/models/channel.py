@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import enum
+import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Index, String, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from nexus_api.db.base import Base
@@ -64,6 +65,13 @@ class Channel(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     )
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     provider_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Spec 030: the agent that answers on this number. NULL = the tenant's
+    # principal agent (and the value of send-only lines and the Playground).
+    # In the database the key is ``(tenant_id, agent_id)`` (0155): a number
+    # can only point at an agent of its own client.
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
+    )
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     config_encrypted: Mapped[bytes | None] = mapped_column(FernetEncrypted, nullable=True)
     status: Mapped[ChannelStatus] = mapped_column(

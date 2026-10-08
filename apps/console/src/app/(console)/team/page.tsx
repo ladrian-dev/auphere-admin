@@ -7,13 +7,13 @@ import { LocalExecCeiling } from "@/components/team/local-exec-ceiling";
 import { TeamLists } from "@/components/team/team-lists";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 import { pageTitle } from "@/i18n/metadata";
 
 export const generateMetadata = () => pageTitle("nav.team");
 
 export default async function TeamPage() {
-  const principal = await requirePrincipal("/team");
+  const principal = await requirePartnerPrincipal("/team");
   if (!can(principal.role, "team:read")) redirect("/");
   const { t } = await getT(principal.locale);
   const backend = backendFor(principal);

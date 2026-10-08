@@ -1,5 +1,5 @@
 import type { Call } from "../backend";
-import { BackendError, tokenFor } from "../backend";
+import { BackendError, q, tokenFor } from "../backend";
 import { env } from "../env";
 import type { Principal } from "../principal";
 
@@ -37,9 +37,10 @@ export function agentToolsApi(call: Call) {
   const enc = encodeURIComponent;
   const base = (ref: string) => `/console/clients/${enc(ref)}`;
   return {
-    getAgentSettings: (ref: string) => call<AgentSettingsOut>(`${base(ref)}/agent/settings`),
-    putAgentSettings: (ref: string, settings: ConsolePolicy, audience?: AudienceIn, paymentReview?: PaymentReview) =>
-      call<AgentSettingsSaved>(`${base(ref)}/agent/settings`, {
+    // Spec 030: `agent` scopes to one of the client's agents (the principal without it).
+    getAgentSettings: (ref: string, agent?: string) => call<AgentSettingsOut>(`${base(ref)}/agent/settings${q({ agent })}`),
+    putAgentSettings: (ref: string, settings: ConsolePolicy, audience?: AudienceIn, paymentReview?: PaymentReview, agent?: string) =>
+      call<AgentSettingsSaved>(`${base(ref)}/agent/settings${q({ agent })}`, {
         method: "PUT",
         body: {
           settings,

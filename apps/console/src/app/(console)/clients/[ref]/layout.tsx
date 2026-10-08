@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 
 import { formatDate, PageHeader } from "@nexus/ui";
 
+import { AgentDraftBars, type AgentDraft } from "@/components/clients/agent-draft-bars";
+import { AgentSwitcher } from "@/components/clients/agent-switcher";
 import { ClientStatusBadge } from "@/components/clients/status-badge";
 import { ClientNav } from "@/components/clients/client-nav";
 import { ClientSetup } from "@/components/clients/client-setup";
@@ -10,13 +12,13 @@ import { DraftBarClient } from "@/components/clients/draft-bar-client";
 import { ClientLifecycleActions } from "@/components/clients/lifecycle-actions";
 import { getT } from "@/i18n/server";
 import { BackendError } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
-import { getAgentBundleCached, getClientCached } from "./data";
+import { getAgentBundleCached, getAgentsCached, getClientCached } from "./data";
 
 export async function generateMetadata({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
-  const principal = await requirePrincipal();
+  const principal = await requirePartnerPrincipal();
   const client = await getClientCached(principal, ref).catch(() => null);
   const { t } = await getT();
   return { title: client?.name ?? t("clients.one") };
@@ -24,7 +26,7 @@ export async function generateMetadata({ params }: { params: Promise<{ ref: stri
 
 export default async function ClientLayout({ params, children }: { params: Promise<{ ref: string }>; children: React.ReactNode }) {
   const { ref } = await params;
-  const principal = await requirePrincipal(`/clients/${ref}`);
+  const principal = await requirePartnerPrincipal(`/clients/${ref}`);
   if (!can(principal.role, "clients:read")) redirect("/");
   const { t, locale } = await getT(principal.locale);
   let client;
@@ -35,7 +37,28 @@ export default async function ClientLayout({ params, children }: { params: Promi
     throw err;
   }
   // Solo quien puede leer el agente puede saber que hay un borrador.
-  const bundle = can(principal.role, "agents:read") ? await getAgentBundleCached(principal, ref) : null;
+  const readsAgents = can(principal.role, "agents:read");
+  const [bundle, agents] = readsAgents
+    ? await Promise.all([getAgentBundleCached(principal, ref), getAgentsCached(principal, ref)])
+    : [null, null];
+  // Spec 030: con varios agentes, cada uno tiene su borrador. El layout no ve
+  // la URL, así que lee todos y la barra elige el del agente de `?agent=`.
+  const drafts: AgentDraft[] | null =
+    agents && agents.length > 1
+      ? await Promise.all(
+          agents.map(async (a) => {
+            const b = a.is_principal ? bundle : await getAgentBundleCached(principal, ref, a.id);
+            return {
+              agentId: a.id,
+              isPrincipal: a.is_principal,
+              screens: b?.draft_screens ?? [],
+              version: b?.versions[0]?.version ?? null,
+              activeVersion: b?.active_version ?? null,
+            };
+          }),
+        )
+      : null;
+  const draftScreens = drafts ? [...new Set(drafts.flatMap((d) => d.screens))] : (bundle?.draft_screens ?? []);
   return (
     <>
       <PageHeader
@@ -113,15 +136,21 @@ export default async function ClientLayout({ params, children }: { params: Promi
       <ClientNav
         refId={client.external_client_ref}
         role={principal.role}
-        draftScreens={bundle?.draft_screens ?? []}
+        draftScreens={draftScreens}
         incidents={client.health.whatsapp_connected ? [] : ["channels"]}
       />
+      {/* Spec 030: en las pestañas de UN agente, de cuál —y «Nuevo agente»—. */}
+      {readsAgents ? (
+        <AgentSwitcher refId={client.external_client_ref} agents={agents ?? []} canWrite={can(principal.role, "agents:write")} />
+      ) : null}
       {/* Spec 017 R3: el borrador se ve y se publica desde cualquier
           pestaña. Sin versión no hay nada que publicar. */}
       {/* Se monta siempre que haya agente, aunque no haya borrador: así el
           aviso de «publicado» sobrevive al refresco y su ventana de
           deshacer corre entera. Sin nada que decir, no pinta nada. */}
-      {bundle && bundle.versions[0] ? (
+      {drafts ? (
+        <AgentDraftBars refId={client.external_client_ref} drafts={drafts} canPublish={can(principal.role, "agents:write")} />
+      ) : bundle && bundle.versions[0] ? (
         <DraftBarClient
           refId={client.external_client_ref}
           screens={bundle.draft_screens}

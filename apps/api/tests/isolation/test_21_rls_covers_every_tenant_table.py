@@ -49,6 +49,20 @@ PRE_TENANT_TABLES: dict[str, str] = {
         "que ver su cartera entera); una policy por tenant devolvería como "
         "mucho una fila y rompería el listado de clientes del partner."
     ),
+    # Spec 030 (migración 0147): la persona de un cliente.
+    "client_memberships": (
+        "Identidad, como ``partner_memberships``: se lee para AVERIGUAR quién "
+        "llama y a qué tenant atarle (``core/client_auth.py``, "
+        "``console_identity._load_client_view``) antes de que exista ámbito de "
+        "tenant. Con policy por tenant no resolvería nunca y ninguna persona de "
+        "un cliente podría entrar. El ``tenant_id`` es el resultado de la "
+        "consulta, no su filtro; y ninguna ruta de tenant la expone."
+    ),
+    "client_invitations": (
+        "Identidad, como ``partner_invitations``: el enlace de invitación se "
+        "busca por el hash del token desde una llamada de servicio, sin persona "
+        "y sin tenant todavía; con policy el enlace no se encontraría nunca."
+    ),
     "whatsapp_template_status": (
         "Estado de plantillas de Meta, con clave (waba_id, template_name, "
         "language). La escribe el webhook de Meta antes de resolver tenant y "

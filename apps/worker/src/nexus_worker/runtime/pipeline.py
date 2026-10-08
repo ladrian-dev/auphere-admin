@@ -66,6 +66,7 @@ from nexus_api.core.tenant_context import (
     tenant_scoped_session,
 )
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_mcp import MCPRegistry, build_default_registry
 from nexus_mcp.base import ToolError, ToolNotInWhitelist
 
@@ -414,6 +415,12 @@ _CONNECTOR_TOOL_INTENTS: frozenset[str] = frozenset({"book", "queue", "info", "f
 _EVERY_INTENT_TOOLKITS: frozenset[str] = frozenset({"payments"})
 
 
+def _agent_uuid(state: AgentState) -> uuid.UUID | None:
+    """Spec 030: the agent the dispatcher chose for this number, if any."""
+    raw = state.get("agent_id")
+    return uuid.UUID(raw) if raw else None
+
+
 def _tenant_uuid(state: AgentState) -> uuid.UUID:
     return uuid.UUID(state["tenant_id"])
 
@@ -555,7 +562,7 @@ def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
         with tenant_context(tenant_id):
             # Warms the cache and raises if there is no active config. The
             # bundle also carries this tenant's model bindings (WP-19).
-            bundle = await loader.load(tenant_id)
+            bundle = await loader.load(tenant_id, _agent_uuid(state))
             history = await _load_recent_history(
                 tenant_id,
                 state.get("conversation_id"),
@@ -927,7 +934,7 @@ def make_handler_node(
         _customer_raw = state.get("customer_id")
         _customer_id = uuid.UUID(_customer_raw) if _customer_raw else None
         with tenant_context(tenant_id), customer_context(_customer_id):
-            bundle: AgentBundle = await loader.load(tenant_id)
+            bundle: AgentBundle = await loader.load(tenant_id, _agent_uuid(state))
             available_names = _filter_tools_for_intent_with_composio(bundle, intent)
             scoped_registry, available_names = await _view_with_composio(
                 registry=registry,
@@ -1867,6 +1874,7 @@ def make_checkpoint_node() -> NodeFn:
                 text_row = await persist_outbound_message(
                     session,
                     conversation_id=conv_id,
+                    agent_id=_agent_uuid(state),
                     content=text_to_write,
                     intent=intent,
                     model=model,
@@ -1888,6 +1896,7 @@ def make_checkpoint_node() -> NodeFn:
                 await persist_outbound_message(
                     session,
                     conversation_id=conv_id,
+                    agent_id=_agent_uuid(state),
                     content=body,
                     intent=intent,
                     model=model,
@@ -1900,6 +1909,16 @@ def make_checkpoint_node() -> NodeFn:
                     outcome_retries=outcome_retries,
                     outcome_feedback=outcome_feedback,
                 )
+        # Spec 030: the agent's reply shows up live in the Inbox (after the
+        # commit above, without a body).
+        await publish_inbox_event(
+            None,
+            tenant_id=tenant_id,
+            event="message.new",
+            conversation_id=conv_id,
+            message_id=str(graded_message_id) if graded_message_id else None,
+            direction="outbound",
+        )
         # WP-21 — el turno salió sin graduar. Se publica AQUÍ y no en el
         # nodo del grader porque solo aquí existe ya la fila del mensaje:
         # el veredicto diferido se escribe encima de ella, y sin su id el

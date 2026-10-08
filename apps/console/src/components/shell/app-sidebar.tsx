@@ -21,24 +21,35 @@ import {
 } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
-import type { Role } from "@/lib/principal";
+import type { ClientModule, Role } from "@/lib/principal";
 
-import { isActive, navForRole } from "./nav";
+import { isActive, navForPrincipal } from "./nav";
+import { useInboxUnread } from "./use-inbox-unread";
 import { UserMenu } from "./user-menu";
 
+/** Spec 030: who the sidebar is for. A client user sees its client's modules. */
+export type SidebarWho =
+  | { kind: "partner"; role: Role }
+  | { kind: "client"; modules: ClientModule[]; clientName: string };
+
 type Props = {
+  who: SidebarWho;
   partnerName: string;
   partnerSlug: string;
-  role: Role;
   user: { name: string; email: string };
+  /** Spec 030 (R3.5): a count next to a nav item, by href (unread in the inbox). */
+  badges?: Record<string, number>;
 };
 
-export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
+export function AppSidebar({ who, partnerName, partnerSlug, user, badges }: Props) {
   const t = useT();
   const pathname = usePathname();
   const { state, isMobile } = useSidebar();
   const collapsed = state === "collapsed" && !isMobile;
-  const groups = navForRole(role);
+  const groups = navForPrincipal(who);
+  const lite = who.kind === "client";
+  const unread = useInboxUnread(who.kind === "client" && who.modules.includes("inbox"));
+  const counts: Record<string, number> = { ...badges, ...(unread > 0 ? { "/inbox": unread } : {}) };
 
   return (
     <Sidebar variant="inset" collapsible="icon" aria-label="Primary">
@@ -54,6 +65,17 @@ export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
               collapsed && "opacity-0",
             )}
           />
+          {lite ? (
+            // Spec 030: the client console says it is the lite one.
+            <span
+              className={cn(
+                "shrink-0 rounded-full bg-primary/15 px-2 text-xs leading-5 font-semibold text-accent-foreground transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none",
+                collapsed && "opacity-0",
+              )}
+            >
+              lite
+            </span>
+          ) : null}
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -65,6 +87,7 @@ export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const active = isActive(pathname, item);
+                  const badge = counts[item.href] ?? 0;
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
@@ -73,7 +96,13 @@ export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
                         render={
                           <Link href={item.href} aria-current={active ? "page" : undefined}>
                             <Icon className="size-4" aria-hidden="true" />
-                            <span>{t(item.labelKey)}</span>
+                            <span className="flex-1 truncate">{t(item.labelKey)}</span>
+                            {badge > 0 ? (
+                              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-xs leading-none font-semibold text-primary-foreground tabular-nums">
+                                <span className="sr-only">{t("nav.unread", { count: badge })}</span>
+                                <span aria-hidden="true">{badge > 99 ? "99+" : badge}</span>
+                              </span>
+                            ) : null}
                           </Link>
                         }
                       />
@@ -86,7 +115,7 @@ export function AppSidebar({ partnerName, partnerSlug, role, user }: Props) {
         ))}
       </SidebarContent>
       <SidebarFooter>
-        <UserMenu user={user} role={role} partnerName={partnerName} partnerSlug={partnerSlug} collapsed={collapsed} />
+        <UserMenu user={user} who={who} partnerName={partnerName} partnerSlug={partnerSlug} collapsed={collapsed} />
       </SidebarFooter>
     </Sidebar>
   );

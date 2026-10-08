@@ -64,6 +64,21 @@ class NotificationKind(str, enum.Enum):
     BILLING_CANCELED = "billing.canceled"  # payload: {state, since, credit_expires_at}
     MEMBER_JOINED = "member.joined"  # payload: {email, role}
     ONBOARDING_STEP = "onboarding.step"  # payload: {step}
+    # Spec 030 — avisos para la persona de un cliente (``audience = client``).
+    # Nunca contenido de mensajes en ``payload`` (C8).
+    # Una conversación espera a una persona. payload: {conversation_id, contact}
+    INBOX_WAITING = "inbox.waiting"
+    # El saldo del cliente no llega a fin de mes. payload: {days_left}
+    CLIENT_BALANCE_LOW = "client.balance_low"
+    # El saldo del cliente se agotó: el agente no responde. payload: {}
+    CLIENT_BALANCE_OUT = "client.balance_out"
+
+
+class NotificationAudience(str, enum.Enum):
+    """Spec 030: a quién va un aviso. El mismo objeto, otro destinatario."""
+
+    PARTNER = "partner"
+    CLIENT = "client"
 
 
 class NotificationSeverity(str, enum.Enum):
@@ -107,6 +122,13 @@ class ConsoleNotification(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    # Spec 030 (migración 0148): ``partner`` o ``client``.
+    audience: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default=NotificationAudience.PARTNER.value,
+        server_default="partner",
     )
 
 

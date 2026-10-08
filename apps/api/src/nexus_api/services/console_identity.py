@@ -56,12 +56,18 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models import (
+    ClientAccess,
+    ClientMembership,
+    ClientMemberStatus,
     ConsoleAccount,
     ConsoleSession,
     MembershipStatus,
     Partner,
     PartnerMembership,
     PartnerStatus,
+    PartnerTenant,
+    Tenant,
+    TenantStatus,
 )
 
 log = structlog.get_logger(__name__)
@@ -205,6 +211,10 @@ ACCESS_NO_MEMBERSHIP = "no_membership"
 ACCESS_SUSPENDED = "suspended"
 ACCESS_DISABLED = "disabled"
 
+#: Los dos tipos de persona de la consola (spec 030).
+KIND_PARTNER = "partner"
+KIND_CLIENT = "client"
+
 
 @dataclass(frozen=True)
 class PrincipalView:
@@ -221,6 +231,13 @@ class PrincipalView:
     access: str
     membership: PartnerMembership | None = None
     partner: Partner | None = None
+    #: Spec 030: ``"partner"`` (lo de siempre) o ``"client"`` — la persona de un
+    #: cliente, atada a un solo tenant. Los campos ``client_*`` solo existen
+    #: en el segundo caso.
+    kind: str = KIND_PARTNER
+    client_membership: ClientMembership | None = None
+    client_name: str | None = None
+    client_modules: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -239,7 +256,7 @@ async def load_principal_view(session: AsyncSession, account: ConsoleAccount) ->
         )
     ).first()
     if row is None:
-        return PrincipalView(account=account, access=ACCESS_NO_MEMBERSHIP)
+        return await _load_client_view(session, account)
     membership, partner = row
     if (
         membership.status != MembershipStatus.ACTIVE.value
@@ -253,6 +270,64 @@ async def load_principal_view(session: AsyncSession, account: ConsoleAccount) ->
             account=account, access=ACCESS_DISABLED, membership=membership, partner=partner
         )
     return PrincipalView(account=account, access=ACCESS_OK, membership=membership, partner=partner)
+
+
+async def _load_client_view(session: AsyncSession, account: ConsoleAccount) -> PrincipalView:
+    """Spec 030: la cuenta no es de un partner — ¿es la persona de un cliente?
+
+    Mismos cuatro estados que el partner, con su significado aquí: persona
+    revocada o partner suspendido → ``suspended``; acceso del cliente apagado,
+    sin módulos, tenant archivado o fuera del partner → ``disabled``.
+    """
+    row = (
+        await session.execute(
+            sa.select(ClientMembership, Partner)
+            .join(Partner, Partner.id == ClientMembership.partner_id)
+            .where(ClientMembership.user_id == str(account.id))
+            .limit(1)
+        )
+    ).first()
+    if row is None:
+        return PrincipalView(account=account, access=ACCESS_NO_MEMBERSHIP)
+    membership, partner = row
+    tenant = await session.get(Tenant, membership.tenant_id)
+    mapping = await session.scalar(
+        sa.select(PartnerTenant).where(
+            PartnerTenant.partner_id == partner.id,
+            PartnerTenant.tenant_id == membership.tenant_id,
+        )
+    )
+    client_name = (mapping.client_name if mapping else None) or (tenant.name if tenant else None)
+
+    def view(access: str, modules: tuple[str, ...] = ()) -> PrincipalView:
+        return PrincipalView(
+            account=account,
+            access=access,
+            partner=partner,
+            kind=KIND_CLIENT,
+            client_membership=membership,
+            client_name=client_name,
+            client_modules=modules,
+        )
+
+    if (
+        membership.status != ClientMemberStatus.ACTIVE.value
+        or partner.status != PartnerStatus.ACTIVE.value
+    ):
+        return view(ACCESS_SUSPENDED)
+    access = await session.get(ClientAccess, membership.tenant_id)
+    modules = access.ordered_modules() if access is not None else ()
+    if (
+        tenant is None
+        or tenant.status == TenantStatus.ARCHIVED
+        or mapping is None
+        or access is None
+        or not access.enabled
+        or access.partner_id != partner.id
+        or not modules
+    ):
+        return view(ACCESS_DISABLED)
+    return view(ACCESS_OK, modules)
 
 
 # ── cuentas ───────────────────────────────────────────────────────────
@@ -442,6 +517,8 @@ __all__ = [
     "ACCESS_NO_MEMBERSHIP",
     "ACCESS_OK",
     "ACCESS_SUSPENDED",
+    "KIND_CLIENT",
+    "KIND_PARTNER",
     "LOCKOUT_DURATION",
     "MAX_FAILED_ATTEMPTS",
     "PASSWORD_MAX_LENGTH",

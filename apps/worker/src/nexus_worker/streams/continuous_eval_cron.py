@@ -35,8 +35,6 @@ import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
-    AgentConfig,
-    AgentConfigStatus,
     EvalCase,
     EvalDataset,
     EvalRun,
@@ -44,6 +42,7 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
+from nexus_api.repositories.agent_config import AgentConfigRepository
 from nexus_api.services.evals import LiteLLMJudgeProvider, run_eval
 
 log = structlog.get_logger(__name__)
@@ -130,14 +129,10 @@ async def _run_for_tenant(sm: sa.orm.sessionmaker, tenant_id: uuid.UUID) -> None
         if not cases:
             return
 
-        agent_config = (
-            await session.execute(
-                sa.select(AgentConfig)
-                .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
-                .order_by(AgentConfig.version.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
+        # Spec 030: the principal agent's live version — the one every
+        # caller that names no agent acts on (versions stay unique per
+        # client, so ``agent_config_version`` still names one row).
+        agent_config = await AgentConfigRepository(session).get_active()
         if agent_config is None:
             return
 

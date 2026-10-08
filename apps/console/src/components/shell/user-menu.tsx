@@ -17,11 +17,14 @@ import {
 import { useLocale, useT } from "@/i18n/client";
 import { roleKey } from "@/i18n/messages";
 import { signOutAction } from "@/lib/auth-actions";
-import type { Role } from "@/lib/principal";
+import type { SidebarWho } from "./app-sidebar";
 
-type Props = { user: { name: string; email: string }; role: Role; partnerName: string; partnerSlug: string; collapsed: boolean };
+type Props = { user: { name: string; email: string }; who: SidebarWho; partnerName: string; partnerSlug: string; collapsed: boolean };
 
-export function UserMenu({ user, role, partnerName, collapsed }: Props) {
+export function UserMenu({ user, who, partnerName, collapsed }: Props) {
+  // Spec 030: under the name, the role for a partner member and the business
+  // for a client user — that is what tells them apart at a glance.
+  const subtitle = who.kind === "client" ? who.clientName : null;
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
@@ -56,7 +59,9 @@ export function UserMenu({ user, role, partnerName, collapsed }: Props) {
           className={`flex min-w-0 flex-col transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none ${collapsed ? "opacity-0" : ""}`}
         >
           <span className="truncate text-sm font-medium">{user.name || user.email}</span>
-          <span className="truncate text-xs text-muted-foreground">{t(roleKey(role))}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {who.kind === "client" ? subtitle : t(roleKey(who.role))}
+          </span>
         </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-56">
@@ -64,9 +69,15 @@ export function UserMenu({ user, role, partnerName, collapsed }: Props) {
           <DropdownMenuLabel className="truncate font-normal">
             <span className="block truncate text-sm font-medium">{user.name}</span>
             <span className="block truncate font-mono text-xs text-muted-foreground">{user.email}</span>
-            <span className="mt-1 block truncate text-xs text-muted-foreground" title={partnerName}>
-              {t("shell.partner")}: {partnerName}
-            </span>
+            {who.kind === "client" ? (
+              <span className="mt-1 block truncate text-xs text-muted-foreground" title={who.clientName}>
+                {t("shell.business")}: {who.clientName}
+              </span>
+            ) : (
+              <span className="mt-1 block truncate text-xs text-muted-foreground" title={partnerName}>
+                {t("shell.partner")}: {partnerName}
+              </span>
+            )}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>{t("shell.theme")}</DropdownMenuLabel>

@@ -12,11 +12,20 @@ import {
   type RuntimeCapabilitiesInput,
   type SeedTemplateMetrics,
   type TestAgentHistoryMessage,
+  type TenantAgent,
   type TestTurnOut,
 } from "@/lib/backend";
 import { requireOperator } from "@/lib/session";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+
+/** Spec 030: an agent id goes into a URL — only a UUID gets there. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function agentOrNothing(agentId?: string): string | undefined {
+  if (agentId === undefined || agentId === "") return undefined;
+  if (!UUID_RE.test(agentId)) throw new Error("invalid agent id");
+  return agentId;
+}
 
 function pluck(err: unknown): string {
   if (err instanceof BackendError) {
@@ -39,10 +48,11 @@ export async function stageAgentConfigAction(
     seed_template_ref?: string | null;
     kg_schema_id?: string | null;
   },
+  agentId?: string,
 ): Promise<Result<AgentConfig>> {
   await requireOperator();
   try {
-    const result = await backend.stageAgentConfig(tenantId, body);
+    const result = await backend.stageAgentConfig(tenantId, body, agentOrNothing(agentId));
     revalidatePath(`/tenants/${tenantId}/agent`);
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: result! };
@@ -149,10 +159,11 @@ export async function testAgentTurnAction(
 export async function applySeedTemplateAction(
   tenantId: string,
   body: { seed_template_ref: string; placeholders: Record<string, unknown> },
+  agentId?: string,
 ): Promise<Result<AgentConfig>> {
   await requireOperator();
   try {
-    const result = await backend.applyAgentConfigSeed(tenantId, body);
+    const result = await backend.applyAgentConfigSeed(tenantId, body, agentOrNothing(agentId));
     revalidatePath(`/tenants/${tenantId}/agent`);
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: result! };
@@ -190,6 +201,29 @@ export async function listPromptLibraryAction(
     const result = await backend.listPromptLibrary(opts);
     return { ok: true, data: result };
   } catch (err) {
+    return { ok: false, error: pluck(err) };
+  }
+}
+
+
+/**
+ * Spec 030 (R14.1): a new agent for this client, without versions — the
+ * operator writes its first one in the editor or sows it from a template.
+ * The API refuses a repeated name (409) and says so.
+ */
+export async function createTenantAgentAction(
+  tenantId: string,
+  name: string,
+): Promise<Result<TenantAgent>> {
+  const operator = await requireOperator();
+  const clean = name.trim();
+  if (!clean || clean.length > 80) return { ok: false, error: "name_invalid" };
+  try {
+    const result = await backend.createTenantAgent(tenantId, clean, operator.id);
+    revalidatePath(`/tenants/${tenantId}/agent`);
+    return { ok: true, data: result! };
+  } catch (err) {
+    if (err instanceof BackendError && err.status === 409) return { ok: false, error: "name_taken" };
     return { ok: false, error: pluck(err) };
   }
 }

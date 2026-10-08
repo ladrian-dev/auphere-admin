@@ -196,7 +196,13 @@ def _human_actor(actor: str, emails: dict[str, str] | None = None) -> str:
         user_id = actor.removeprefix("companion:")
         email = (emails or {}).get(user_id)
         return f"{COMPANION_ACTOR} · {email}" if email else COMPANION_ACTOR
-    if actor.startswith("admin:"):
+    if actor.startswith("client:"):
+        # Spec 030 (R16.1): la persona de un cliente, por su correo. El partner
+        # ve quién de su cliente hizo qué, nunca el contenido.
+        return actor.removeprefix("client:")
+    if actor.startswith(("admin:", "operator:")):
+        # ``operator:<correo>`` es el equipo de Auphere desde el admin (spec 030):
+        # al partner le dice «Auphere», no el correo de un empleado.
         return "Auphere"
     if actor.startswith("partner:"):
         return "API key"
@@ -269,7 +275,9 @@ def summarise(
 ActorKind = Literal["person", "companion", "auphere", "api_key", "machine", "system"]
 _ACTOR_KINDS: tuple[tuple[str, ActorKind], ...] = (
     ("console:", "person"),
+    ("client:", "person"),
     ("reviewer:", "person"),
+    ("operator:", "auphere"),
     ("companion:", "companion"),
     ("admin:", "auphere"),
     ("partner:", "api_key"),

@@ -4,7 +4,7 @@ import { PageHeader, formatNumber } from "@nexus/ui";
 
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 import { UsageAlertsForm } from "./form";
 import { pageTitle } from "@/i18n/metadata";
@@ -12,7 +12,7 @@ import { pageTitle } from "@/i18n/metadata";
 export const generateMetadata = () => pageTitle("hu.alerts.title");
 
 export default async function UsageAlertsPage() {
-  const principal = await requirePrincipal("/usage/alerts");
+  const principal = await requirePartnerPrincipal("/usage/alerts");
   if (!can(principal.role, "usage:read")) redirect("/");
   const { t, locale } = await getT(principal.locale);
   const alerts = await backendFor(principal).usageAlerts();

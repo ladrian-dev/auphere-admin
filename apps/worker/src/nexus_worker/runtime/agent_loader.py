@@ -96,32 +96,44 @@ class AgentBundle:
     # que es el comportamiento anterior a WP-19.
     model_bindings: dict[str, ModelBinding] = field(default_factory=dict)
 
+    # Spec 030 — which of the client's agents this is. ``None`` only for
+    # bundles built by hand (tests, evals) before agents existed.
+    agent_id: uuid.UUID | None = None
+
+
+#: Cache key: the tenant and the agent; ``None`` = «the principal agent».
+CacheKey = tuple[uuid.UUID, uuid.UUID | None]
+
 
 class AgentLoader:
     """Per-process loader. Threadsafe via an asyncio lock.
 
-    The cache is keyed by ``tenant_id`` — the active version is whatever the
-    DB says it is at fetch time. That keeps cache reads O(1) without an
-    extra DB round-trip to discover the active version_id first.
+    The cache is keyed by ``(tenant_id, agent_id)`` — the active version of
+    that agent is whatever the DB says it is at fetch time. Spec 030: a client
+    may have several agents, so the tenant alone is no longer a key — two
+    agents of one client sharing an entry would answer with each other's
+    prompt and tools. ``agent_id = None`` means «the principal agent», what
+    every caller that does not name one (evals, the QA pipeline) gets.
     """
 
     def __init__(self, max_size: int = 64) -> None:
-        self._cache: OrderedDict[uuid.UUID, AgentBundle] = OrderedDict()
+        self._cache: OrderedDict[CacheKey, AgentBundle] = OrderedDict()
         self._max_size = max_size
         self._lock = asyncio.Lock()
 
-    async def load(self, tenant_id: uuid.UUID) -> AgentBundle:
+    async def load(self, tenant_id: uuid.UUID, agent_id: uuid.UUID | None = None) -> AgentBundle:
+        key: CacheKey = (tenant_id, agent_id)
         async with self._lock:
-            cached = self._cache.get(tenant_id)
+            cached = self._cache.get(key)
             if cached is not None:
-                self._cache.move_to_end(tenant_id)
+                self._cache.move_to_end(key)
                 return cached
 
-        bundle = await self._fetch(tenant_id)
+        bundle = await self._fetch(tenant_id, agent_id)
 
         async with self._lock:
-            self._cache[tenant_id] = bundle
-            self._cache.move_to_end(tenant_id)
+            self._cache[key] = bundle
+            self._cache.move_to_end(key)
             while len(self._cache) > self._max_size:
                 self._cache.popitem(last=False)
         return bundle
@@ -138,26 +150,43 @@ class AgentLoader:
 
         Sync on purpose: callers prime the loader at setup time, before
         any concurrent ``load`` is awaited, so the lock is unnecessary.
-        """
-        self._cache[bundle.tenant_id] = bundle
-        self._cache.move_to_end(bundle.tenant_id)
 
-    async def invalidate(self, tenant_id: uuid.UUID) -> None:
+        Spec 030: the pinned bundle answers for its agent **and** for the
+        principal — the eval pipeline does not always name an agent.
+        """
+        for key in {(bundle.tenant_id, bundle.agent_id), (bundle.tenant_id, None)}:
+            self._cache[key] = bundle
+            self._cache.move_to_end(key)
+
+    async def invalidate(self, tenant_id: uuid.UUID, agent_id: uuid.UUID | None = None) -> None:
+        """Without an agent: every agent of the tenant (what a promotion of
+        any of them, a timezone change or a model binding needs). With one:
+        that agent and the principal's entry, which may be the same agent."""
         async with self._lock:
-            self._cache.pop(tenant_id, None)
-        log.info("agent_loader.invalidated", tenant_id=str(tenant_id))
+            if agent_id is None:
+                for key in [k for k in self._cache if k[0] == tenant_id]:
+                    self._cache.pop(key, None)
+            else:
+                self._cache.pop((tenant_id, agent_id), None)
+                self._cache.pop((tenant_id, None), None)
+        log.info(
+            "agent_loader.invalidated",
+            tenant_id=str(tenant_id),
+            agent_id=str(agent_id) if agent_id else None,
+        )
 
     async def invalidate_many(self, tenant_ids: Iterable[uuid.UUID]) -> None:
+        wanted = set(tenant_ids)
         async with self._lock:
-            for tid in tenant_ids:
-                self._cache.pop(tid, None)
+            for key in [k for k in self._cache if k[0] in wanted]:
+                self._cache.pop(key, None)
 
     def cache_size(self) -> int:
         return len(self._cache)
 
     # ── internals ─────────────────────────────────────────────────────────
 
-    async def _fetch(self, tenant_id: uuid.UUID) -> AgentBundle:
+    async def _fetch(self, tenant_id: uuid.UUID, agent_id: uuid.UUID | None = None) -> AgentBundle:
         """Open a tenant-scoped session and read the active config row.
 
         ``tenant_scoped_session`` performs ``set_config('app.tenant_id', …)``
@@ -167,10 +196,11 @@ class AgentLoader:
         sm = get_sessionmaker()
         async with sm() as session, tenant_scoped_session(session, tenant_id):
             repo = AgentConfigRepository(session)
-            cfg = await repo.get_active()
+            cfg = await repo.get_active(agent_id=agent_id)
             if cfg is None:
                 raise IsolationViolation(
-                    f"no active agent_config for tenant {tenant_id} — refusing to run"
+                    f"no active agent_config for tenant {tenant_id}"
+                    f" (agent {agent_id or 'principal'}) — refusing to run"
                 )
             # Misma sesión scopeada: la RLS de ``tenant_model_bindings``
             # es lo que impide ver la elección de otro tenant.
@@ -180,6 +210,7 @@ class AgentLoader:
             )
             return AgentBundle(
                 tenant_id=tenant_id,
+                agent_id=cfg.agent_id,
                 timezone=str(tenant_tz or "UTC"),
                 version=cfg.version,
                 version_id=cfg.id,

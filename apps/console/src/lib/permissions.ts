@@ -52,6 +52,12 @@ export const PERMISSIONS = {
 
 export type Permission = keyof typeof PERMISSIONS;
 
-export function can(role: Role, permission: Permission): boolean {
-  return (PERMISSIONS[permission] as readonly Role[]).includes(role);
+/**
+ * Spec 030: la persona de un cliente tiene `role: "client"` y **ningún**
+ * permiso del partner. Se acepta aquí para que cualquier `can()` que la
+ * reciba responda `false` en vez de obligar a tipar dos veces cada página:
+ * su único permiso son los módulos de su cliente (`ClientPrincipal.modules`).
+ */
+export function can(role: Role | "client", permission: Permission): boolean {
+  return (PERMISSIONS[permission] as readonly string[]).includes(role);
 }

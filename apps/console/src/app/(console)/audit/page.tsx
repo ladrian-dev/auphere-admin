@@ -6,7 +6,7 @@ import { Button, EmptyState, PageHeader } from "@nexus/ui";
 import { pageTitle } from "@/i18n/metadata";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 import { auditQuery, readFilters, type AuditFilterState } from "@/components/audit/audit-query";
 
@@ -22,7 +22,7 @@ type Search = Partial<Record<keyof AuditFilterState, string>>;
  * day, with filters chosen from lists and every sentence complete.
  */
 export default async function AuditPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const principal = await requirePrincipal("/audit");
+  const principal = await requirePartnerPrincipal("/audit");
   if (!can(principal.role, "audit:read")) redirect("/");
   const { t, locale } = await getT(principal.locale);
   const sp = await searchParams;

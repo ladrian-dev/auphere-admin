@@ -1,6 +1,6 @@
 import { ClientSummary, type Block, type ConnectedItem } from "@/components/clients/summary/client-summary";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 import { getClientCached } from "./data";
 
@@ -28,7 +28,7 @@ async function block<T>(p: Promise<T>): Promise<Block<T>> {
 
 export default async function ClientOverviewPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
-  const principal = await requirePrincipal();
+  const principal = await requirePartnerPrincipal();
   const api = backendFor(principal);
 
   const [client, usage, conversations, channels, connectors] = await Promise.all([

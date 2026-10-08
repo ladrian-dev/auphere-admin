@@ -70,7 +70,14 @@ export class BackendError extends Error {
 }
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-type Opts = { method?: Method; body?: unknown; optional?: boolean; signal?: AbortSignal };
+type Opts = {
+  method?: Method;
+  body?: unknown;
+  optional?: boolean;
+  signal?: AbortSignal;
+  /** Extra request headers — e.g. `If-Match` on the Inbox's take over / give back (spec 030). */
+  headers?: Record<string, string>;
+};
 
 /**
  * La IP del visitante, reenviada a la API.
@@ -98,6 +105,7 @@ async function request<T>(token: string, path: string, opts: Opts = {}): Promise
       Accept: "application/json",
       ...(await forwardedClientIp()),
       ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(opts.headers ?? {}),
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     cache: "no-store",
@@ -231,6 +239,18 @@ export type DraftScreen = "settings" | "capabilities" | "knowledge" | "prompt";
 
 export type AgentBundle = { active_version: number | null; versions: AgentVersion[]; draft_screens: DraftScreen[] };
 
+/** Spec 030 (R14): one of a client's agents. The principal — the oldest
+ *  active one — answers on every number without an agent of its own. */
+export type ClientAgent = {
+  id: string;
+  name: string;
+  status: "active" | "archived";
+  is_principal: boolean;
+  channels: { id: string; display: string }[];
+  active_version: number | null;
+  draft_version: number | null;
+};
+
 /** Spec 017 R3.2: qué cambia el borrador respecto a la versión que atiende
  *  ahora. Claves, no frases: la consola las traduce. */
 export type DraftDiff = {
@@ -363,6 +383,10 @@ export type ApiPrincipal = {
   role: string | null;
   permissions: string[];
   console_enabled: boolean;
+  /** Spec 030: `partner` ve su cartera; `client` es la persona de un cliente. */
+  kind: "partner" | "client";
+  client_name: string | null;
+  modules: string[];
 };
 export type LoginResult = { token: string; expires_at: string; principal: ApiPrincipal };
 export type ApiKey = {
@@ -418,6 +442,8 @@ import { capabilitiesApi } from "./backend/capabilities";
 import { channelsApi } from "./backend/channels";
 import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
+import { inboxApi } from "./backend/inbox";
+import { liteApi } from "./backend/lite";
 import { modelsApi } from "./backend/models";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
@@ -461,6 +487,9 @@ export function backendFor(principal: Principal) {
     ...channelsApi(call),
     ...companionApi(call),
     ...homeUsageApi(call),
+    // Spec 030: the client console (`/console/lite/*`).
+    ...liteApi(call),
+    ...inboxApi(call),
     ...modelsApi(call),
     ...onboardingApi(call),
     ...workstationApi(call),
@@ -481,22 +510,37 @@ export function backendFor(principal: Principal) {
     deleteClient: (ref: string, confirmName: string) =>
       call<null>(`/console/clients/${enc(ref)}`, { method: "DELETE", body: { confirm_name: confirmName } }),
 
-    getAgent: (ref: string) => call<AgentBundle>(`/console/clients/${enc(ref)}/agent`),
-    getDraftDiff: (ref: string) => call<DraftDiff>(`/console/clients/${enc(ref)}/agent/draft-diff`),
-    stageAgentVersion: (ref: string, body: { system_prompt: string; tools?: string[] }) =>
-      call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions`, { method: "POST", body }),
+    // Spec 030: every «agent» call takes the agent as `?agent=`; without it,
+    // the API acts on the principal agent — what a client with one gets.
+    getAgent: (ref: string, agent?: string) => call<AgentBundle>(`/console/clients/${enc(ref)}/agent${q({ agent })}`),
+    getDraftDiff: (ref: string, agent?: string) => call<DraftDiff>(`/console/clients/${enc(ref)}/agent/draft-diff${q({ agent })}`),
+    stageAgentVersion: (ref: string, body: { system_prompt: string; tools?: string[] }, agent?: string) =>
+      call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions${q({ agent })}`, { method: "POST", body }),
     /** `origin` (spec 017 R3.3) dice desde qué superficie se pulsó: la barra
      *  del borrador o la pestaña «Agente». Es contexto de auditoría, no un
      *  interruptor de comportamiento — publicar es el mismo acto. */
-    publishAgentVersion: (ref: string, version: number, origin?: "draft_bar" | "agent_tab") =>
-      call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/publish`, {
+    publishAgentVersion: (ref: string, version: number, origin?: "draft_bar" | "agent_tab", agent?: string) =>
+      call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/publish${q({ agent })}`, {
         method: "POST",
         // `body` va como objeto: el ayudante es quien serializa. Pasarlo ya
         // serializado lo codifica dos veces y la API responde 422.
         ...(origin ? { body: { from: origin } } : {}),
       }),
-    rollbackAgentVersion: (ref: string, version: number) =>
-      call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/rollback`, { method: "POST" }),
+    rollbackAgentVersion: (ref: string, version: number, agent?: string) =>
+      call<AgentVersion>(`/console/clients/${enc(ref)}/agent/versions/${version}/rollback${q({ agent })}`, { method: "POST" }),
+
+    listAgents: (ref: string) => call<ClientAgent[]>(`/console/clients/${enc(ref)}/agents`),
+    /** A new agent with its draft sown from a template; it answers nowhere
+     *  until it is published and a number is given to it. */
+    createAgent: (ref: string, body: { name: string; seed_template: string; placeholders: Record<string, unknown> }) =>
+      call<ClientAgent>(`/console/clients/${enc(ref)}/agents`, { method: "POST", body }),
+    updateAgent: (ref: string, agentId: string, body: { name: string } | { status: "archived" }) =>
+      call<ClientAgent>(`/console/clients/${enc(ref)}/agents/${enc(agentId)}`, { method: "PATCH", body }),
+    assignChannelAgent: (ref: string, channelId: string, agentId: string) =>
+      call<{ channel_id: string; agent_id: string }>(`/console/clients/${enc(ref)}/channels/${enc(channelId)}/agent`, {
+        method: "PATCH",
+        body: { agent_id: agentId },
+      }),
 
     listChannels: (ref: string) => call<Channel[]>(`/console/clients/${enc(ref)}/channels`),
     listConversations: (ref: string, p: { status?: string; escalated?: boolean; with_errors?: boolean; limit?: number; offset?: number } = {}) =>

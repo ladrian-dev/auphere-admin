@@ -8,7 +8,7 @@ import { WorkstationSetupCard } from "@/components/workstation/workstation-setup
 import { getT } from "@/i18n/server";
 import { BackendError, backendFor } from "@/lib/backend";
 import type { MachineOut, SetupOut } from "@/lib/backend/workstation";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 import { pageTitle } from "@/i18n/metadata";
 
 export const generateMetadata = () => pageTitle("nav.workstation");
@@ -23,7 +23,7 @@ export const generateMetadata = () => pageTitle("nav.workstation");
  * cliente y viven en su página.
  */
 export default async function WorkstationPage() {
-  const principal = await requirePrincipal("/workstation");
+  const principal = await requirePartnerPrincipal("/workstation");
   if (!can(principal.role, "workstation:read")) redirect("/");
   const canPair = can(principal.role, "workstation:pair");
   const { t } = await getT(principal.locale);

@@ -98,6 +98,8 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
     tenant_id = uuid.UUID(fields["tenant_id"])
     conversation_id = fields.get("conversation_id")
     agent_config_id = fields.get("agent_config_id")
+    # Spec 030: absent on turns published before agents existed.
+    agent_id = fields.get("agent_id")
     # Las entradas publicadas antes de la 0079 no llevan ``source``; son,
     # todas, tráfico de canal. Un valor DESCONOCIDO sí es un error: lo
     # rechazaría el CHECK de la tabla y tumbaría el INSERT del lote entero,
@@ -129,6 +131,7 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
                 "model": event.get("model"),
                 "conversation_id": uuid.UUID(conversation_id) if conversation_id else None,
                 "agent_config_id": uuid.UUID(agent_config_id) if agent_config_id else None,
+                "agent_id": uuid.UUID(agent_id) if agent_id else None,
                 "idempotency_key": event["idempotency_key"],
                 "source": source,
             }
@@ -231,11 +234,11 @@ _INSERT_SQL = sa.text(
     """
     INSERT INTO usage_records (
         tenant_id, occurred_at, meter, quantity, billable_qty, cost_usd,
-        provider, model, conversation_id, agent_config_id, idempotency_key,
+        provider, model, conversation_id, agent_config_id, agent_id, idempotency_key,
         source
     ) VALUES (
         :tenant_id, :occurred_at, :meter, :quantity, :billable_qty, :cost_usd,
-        :provider, :model, :conversation_id, :agent_config_id, :idempotency_key,
+        :provider, :model, :conversation_id, :agent_config_id, :agent_id, :idempotency_key,
         :source
     )
     ON CONFLICT (idempotency_key, occurred_at) DO NOTHING
@@ -310,6 +313,8 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
         except Exception as exc:  # pragma: no cover - defensivo
             log.warning("metering.catalog_unavailable_for_weights", error=str(exc))
             return
+    # Spec 030: the agent the turn ran for — same for every row of an entry.
+    agent_id = (rows[0] or {}).get("agent_id") if rows else None
     for turn, qty in _turn_quota(rows, weights).items():
         if qty <= 0:
             continue
@@ -326,6 +331,7 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
                 # argumento, un cliente con un día movido deja al partner sin
                 # poder usar la aplicación que paga.
                 allow_included=False,
+                agent_id=agent_id,
             )
         except Exception as exc:
             log.warning(
@@ -351,6 +357,7 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
                 tenant_id=tenant_id,
                 qty=qty,
                 idempotency_key=key,
+                agent_id=agent_id,
             )
         except Exception as exc:
             log.warning(

@@ -13,18 +13,25 @@ catalog stay untouched. Internally, when the tenant has the backchannel
 enabled, it ALSO opens an ``owner_consultations`` row with
 ``urgency='high'`` so the owner is paged immediately — flipping the
 conversation status is for the operator panel; the page is for the owner.
+
+Spec 030: the status flip goes through ``inbox_lifecycle.mark_waiting`` (the
+one place that escalates): it records the event with the agent's reason and
+summary and, **only when the client has the Inbox**, silences the agent on
+this conversation. The client's people are told (bell, e-mail, realtime) by
+``announce_waiting`` *after* the transaction commits.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from nexus_api.db.models import Conversation, ConversationStatus, Tenant
+from nexus_api.db.models import Conversation, Tenant
 from nexus_api.repositories import (
     AuditRepository,
     OwnerConsultationRepository,
     OwnerPhoneIndexRepository,
 )
+from nexus_api.services import inbox_lifecycle
 
 from nexus_mcp._db import tool_session
 from nexus_mcp.base import InputModel, OutputModel, ToolBase, ToolError
@@ -59,8 +66,9 @@ class EscalateToHuman(ToolBase):
                 raise ToolError(f"conversation {payload.conversation_id} not found for this tenant")
 
             before = {"status": conv.status.value}
-            conv.status = ConversationStatus.ESCALATED
-            await session.flush()
+            mark = await inbox_lifecycle.mark_waiting(
+                session, conv, reason=payload.reason, summary=payload.customer_summary
+            )
             after = {"status": conv.status.value}
 
             audit = AuditRepository(session)
@@ -107,6 +115,9 @@ class EscalateToHuman(ToolBase):
                             context_summary=payload.customer_summary,
                             created_by="agent:escalate",
                         )
+
+        # Committed: now the client's people can be told (no-op without Inbox).
+        await inbox_lifecycle.announce_waiting(mark)
 
         return EscalateToHumanOutput(
             conversation_id=payload.conversation_id,

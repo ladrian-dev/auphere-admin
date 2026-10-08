@@ -9,7 +9,23 @@ import { useT } from "@/i18n/client";
 const PERIODS = [7, 30, 90] as const;
 
 /** Period and client for the spend chart: links, so the URL says what you see. */
-export function SpendControls({ days, client, clients }: { days: number; client: string; clients: Array<{ ref: string; name: string }> }) {
+export function SpendControls({
+  days,
+  client,
+  clients,
+  showClient = true,
+  agent = "",
+  agents = [],
+}: {
+  days: number;
+  client: string;
+  clients: Array<{ ref: string; name: string }>;
+  /** Spec 030: the client console has one client — no selector. */
+  showClient?: boolean;
+  /** Spec 030: one of the client's agents; the selector shows only with two or more. */
+  agent?: string;
+  agents?: Array<{ id: string; name: string }>;
+}) {
   const t = useT();
   const router = useRouter();
   const pathname = usePathname();
@@ -37,14 +53,26 @@ export function SpendControls({ days, client, clients }: { days: number; client:
           </button>
         ))}
       </div>
-      <NativeSelect wrapperClassName="max-w-56" aria-label={t("usage.client")} value={client} onChange={(e) => go({ client: e.target.value })}>
-        <option value="">{t("hu.usage.spend.allClients")}</option>
-        {clients.map((c) => (
-          <option key={c.ref} value={c.ref}>
-            {c.name}
-          </option>
-        ))}
-      </NativeSelect>
+      {showClient ? (
+        <NativeSelect wrapperClassName="max-w-56" aria-label={t("usage.client")} value={client} onChange={(e) => go({ client: e.target.value })}>
+          <option value="">{t("hu.usage.spend.allClients")}</option>
+          {clients.map((c) => (
+            <option key={c.ref} value={c.ref}>
+              {c.name}
+            </option>
+          ))}
+        </NativeSelect>
+      ) : null}
+      {agents.length > 1 ? (
+        <NativeSelect wrapperClassName="max-w-56" aria-label={t("lite.usage.agent")} value={agent} onChange={(e) => go({ agent: e.target.value })}>
+          <option value="">{t("lite.usage.agent.all")}</option>
+          {agents.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </NativeSelect>
+      ) : null}
     </div>
   );
 }

@@ -7,10 +7,13 @@
 export type Locale = "es" | "en";
 
 import { agentToolsMessages } from "./lanes/agent-tools";
+import { agentsMessages } from "./lanes/agents";
 import { capabilitiesMessages } from "./lanes/capabilities";
 import { channelsMessages } from "./lanes/channels";
 import { companionMessages } from "./lanes/companion";
 import { homeUsageMessages } from "./lanes/home-usage";
+import { inboxMessages } from "./lanes/inbox";
+import { liteMessages } from "./lanes/lite";
 import { membershipMessages } from "./lanes/membership";
 import { onboardingMessages } from "./lanes/onboarding";
 import { playgroundMessages } from "./lanes/playground";
@@ -35,6 +38,7 @@ const core = {
   "clients.one": { es: "Cliente", en: "Client" },
   "nav.workstation": { es: "Teammate", en: "Teammate" },
   "nav.usage": { es: "Consumo", en: "Usage" },
+  "nav.inbox": { es: "Bandeja de entrada", en: "Inbox" },
   "nav.audit": { es: "Auditoría", en: "Audit" },
   "nav.knowledge": { es: "Guía del partner", en: "Playbook" },
   "nav.team": { es: "Equipo", en: "Team" },
@@ -50,6 +54,8 @@ const core = {
   "shell.language": { es: "Idioma", en: "Language" },
   "shell.skip": { es: "Saltar al contenido", en: "Skip to content" },
   "shell.partner": { es: "Partner", en: "Partner" },
+  "shell.business": { es: "Negocio", en: "Business" },
+  "nav.unread": { es: "{count} sin leer", en: "{count} unread" },
   "shell.role": { es: "Rol", en: "Role" },
 
   // common
@@ -524,6 +530,7 @@ const core = {
 const messages = {
   ...core,
   ...agentToolsMessages,
+  ...agentsMessages,
   ...playgroundMessages,
   ...membershipMessages,
   ...workstationMessages,
@@ -534,6 +541,8 @@ const messages = {
   ...recordMessages,
   ...summaryMessages,
   ...capabilitiesMessages,
+  ...liteMessages,
+  ...inboxMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

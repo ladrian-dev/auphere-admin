@@ -56,7 +56,7 @@ from .capability_names import (
     requires_connector,
     sectors_of,
 )
-from .deps import ClientScope, client_scope, client_sector
+from .deps import ClientScope, agent_scope, client_sector
 from .schemas_capabilities_client import (
     CapabilitiesOut,
     CapabilityConnectorOut,
@@ -277,7 +277,7 @@ async def list_capabilities(
     q: str | None = Query(default=None, max_length=120),
     all: bool = Query(default=False),
     lang: str = Query(default="es", pattern="^(es|en)$"),
-    scope: ClientScope = Depends(client_scope("agents:read")),
+    scope: ClientScope = Depends(agent_scope("agents:read")),
 ) -> CapabilitiesOut:
     view = await load_view(scope)
     sector = await client_sector(scope.session)
@@ -319,7 +319,7 @@ async def list_capabilities(
 )
 async def update_capability(
     body: CapabilityUpdateIn,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> CapabilityUpdatedOut:
     """Un cambio, uno solo. El resto de la lista no se toca (R5.4)."""
     if body.enabled is None and body.mode is None:

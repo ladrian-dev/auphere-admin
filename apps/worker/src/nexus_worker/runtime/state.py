@@ -25,6 +25,9 @@ class AgentState(TypedDict, total=False):
 
     # Identity (set at entry, never mutated by nodes)
     tenant_id: str
+    # Spec 030 — the client's agent that answers on this number. Absent =
+    # the principal agent (evals, QA, anything built before agents existed).
+    agent_id: str
     channel_id: str
     # The channel medium this turn runs on — "whatsapp", "web", … (mirrors
     # ``ChannelType``). Carried so the ``ucm_formatter`` node degrades the

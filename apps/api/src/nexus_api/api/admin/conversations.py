@@ -4,7 +4,6 @@ import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
@@ -34,6 +33,7 @@ from nexus_api.schemas.conversation import (
     MessageOut,
     OperatorSendIn,
 )
+from nexus_api.services import conversation_control
 from nexus_api.services.conversation_stream import (
     conversation_channel,
     publish_conversation_event,
@@ -170,43 +170,37 @@ async def toggle_conversation_agent(
         # reality the answer is already correct.
         return ConversationOut.model_validate(conv)
 
-    if if_match is not None:
-        try:
-            expected_version = int(if_match.strip().strip('"'))
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="If-Match must be an integer version",
-            ) from None
-        if expected_version != conv.agent_active_version:
-            raise HTTPException(
-                status_code=status.HTTP_412_PRECONDITION_FAILED,
-                detail={
-                    "error": "version_mismatch",
-                    "expected": expected_version,
-                    "actual": conv.agent_active_version,
-                },
-            )
+    # Spec 030 (D14): the version check and the state change live in
+    # ``services/conversation_control`` — the client inbox uses the same
+    # rule, and two copies of the If-Match would drift.
+    try:
+        expected_version = conversation_control.parse_if_match(if_match)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="If-Match must be an integer version",
+        ) from None
+    try:
+        conversation_control.check_version(conv, expected_version)
+    except conversation_control.VersionMismatch as exc:
+        raise HTTPException(
+            status_code=status.HTTP_412_PRECONDITION_FAILED, detail=exc.detail()
+        ) from None
 
     before_active = conv.agent_active
     before_version = conv.agent_active_version
-    conv.agent_active = body.agent_active
-    conv.agent_active_version = before_version + 1
-
     if body.agent_active is False:
         # Pause — capture the operator's reason for the LLM to read on
         # resume. ``operator_id`` is the token prefix (matches the
         # audit-log convention) so the panel can show "Luis pausó esto
         # hace 5 min".
-        conv.takeover_context = {
-            "reason": body.reason,
-            "notes": body.notes,
-            "started_at": datetime.now(UTC).isoformat(),
-            "operator_id": actor[:8],
-        }
-    # On resume we LEAVE ``takeover_context`` set — the dispatcher consumes
-    # it on the first turn post-resume and clears it itself. If we cleared
-    # it here the LLM would never see the briefing.
+        conversation_control.pause(
+            conv, reason=body.reason, notes=body.notes, operator_label=actor[:8]
+        )
+    else:
+        # On resume ``takeover_context`` stays set — the dispatcher consumes
+        # it on the first turn post-resume and clears it itself.
+        conversation_control.resume(conv)
 
     action = "conversation.release" if body.agent_active else "conversation.takeover"
     session.add(

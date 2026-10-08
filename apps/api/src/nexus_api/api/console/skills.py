@@ -18,7 +18,7 @@ from nexus_api.db.models import AgentConfig
 from nexus_api.services.skills_catalog import list_skills
 
 from .agent_drafts import DraftView, ensure_draft, load_view
-from .deps import ClientScope, client_scope
+from .deps import ClientScope, agent_scope
 from .schemas_agent_tools import SkillOut, SkillsIn, SkillsOut, SkillsSaved
 
 router = APIRouter(prefix="/clients/{ref}/skills")
@@ -54,7 +54,7 @@ def _out(view: DraftView) -> SkillsOut:
 
 
 @router.get("", response_model=SkillsOut)
-async def get_skills(scope: ClientScope = Depends(client_scope("agents:read"))) -> SkillsOut:
+async def get_skills(scope: ClientScope = Depends(agent_scope("agents:read"))) -> SkillsOut:
     return _out(await load_view(scope))
 
 
@@ -65,7 +65,7 @@ async def get_skills(scope: ClientScope = Depends(client_scope("agents:read"))) 
 )
 async def put_skills(
     body: SkillsIn,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> SkillsSaved:
     """Replace the enabled skills on the draft (created on demand)."""
     catalogue = {s.name: s for s in list_skills()}

@@ -268,7 +268,7 @@ class TestHandlerSkillsInjection:
         )
 
         class _LoaderStub:
-            async def load(self, _tid: uuid.UUID) -> AgentBundle:
+            async def load(self, _tid: uuid.UUID, _agent: uuid.UUID | None = None) -> AgentBundle:
                 return bundle
 
             async def prime(self, _bundle: AgentBundle) -> None:

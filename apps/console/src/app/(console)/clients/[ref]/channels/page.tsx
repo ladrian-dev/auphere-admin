@@ -15,8 +15,10 @@ import { getT } from "@/i18n/server";
 import { BackendError, backendFor } from "@/lib/backend";
 import type { TemplateList } from "@/lib/backend/channels";
 import { env } from "@/lib/env";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 import { isDesktopShell } from "@/lib/shell";
+
+import { agentChoice } from "../data";
 
 /**
  * Channels centre (CP-17/18). WhatsApp cards, quality + roles, templates,
@@ -26,13 +28,20 @@ import { isDesktopShell } from "@/lib/shell";
  */
 export default async function ChannelsPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
-  const principal = await requirePrincipal();
+  const principal = await requirePartnerPrincipal();
   if (!can(principal.role, "channels:read")) redirect(`/clients/${ref}`);
   const { t } = await getT(principal.locale);
   const manage = can(principal.role, "channels:write");
   const api = backendFor(principal);
 
-  const overview = await api.channelsOverview(ref);
+  const [overview, { agents }] = await Promise.all([api.channelsOverview(ref), agentChoice(principal, ref, undefined)]);
+  // Spec 030: who answers on each number — its agent, or the principal.
+  const principalAgent = agents.find((a) => a.is_principal)?.id;
+  const agentOf: Record<string, string> = {};
+  for (const ch of overview.channels) {
+    const owner = agents.find((a) => a.channels.some((c) => c.id === ch.id))?.id ?? principalAgent;
+    if (owner) agentOf[ch.id] = owner;
+  }
   const visible = f2VisibleChannels(overview.channels);
   const { n, m } = f2ChannelCounter(overview.channels);
   // Templates are a partial state: a 409 (not connected) is "no list", any
@@ -93,6 +102,8 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
         refId={ref}
         channels={visible}
         manage={manage}
+        agents={agents}
+        agentOf={agentOf}
         empty={
           <EmptyState
             icon={MessageCircle}

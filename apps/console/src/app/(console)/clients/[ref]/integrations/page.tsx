@@ -6,7 +6,7 @@ import { IntegrationsList } from "@/components/integrations/integrations-list";
 import { getT } from "@/i18n/server";
 import { BackendError, backendFor } from "@/lib/backend";
 import type { ConnectorOut } from "@/lib/backend/agent-tools";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 /**
  * Integraciones (spec 017, R4): su propia pantalla.
@@ -27,7 +27,7 @@ export async function generateMetadata() {
 
 export default async function IntegrationsPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
-  const principal = await requirePrincipal(`/clients/${ref}/integrations`);
+  const principal = await requirePartnerPrincipal(`/clients/${ref}/integrations`);
   if (!can(principal.role, "agents:read")) redirect(`/clients/${encodeURIComponent(ref)}`);
   const { t } = await getT(principal.locale);
 

@@ -549,11 +549,26 @@ async def allocations_for(
         return {}
 
 
+@dataclass(frozen=True)
+class AgentFilter:
+    """Spec 030: the spend of one agent. The principal also owns what was
+    spent before agents existed (``usage_ledger.agent_id IS NULL``)."""
+
+    agent_id: uuid.UUID
+    is_principal: bool
+
+    def clause(self) -> sa.ColumnElement[bool]:
+        mine = UsageLedger.agent_id == self.agent_id
+        return sa.or_(mine, UsageLedger.agent_id.is_(None)) if self.is_principal else mine
+
+
 async def credit_burn(
     partner_id: uuid.UUID,
     tenant_ids: list[uuid.UUID],
     since: datetime,
     until: datetime | None = None,
+    *,
+    agent: AgentFilter | None = None,
 ) -> dict[uuid.UUID | None, int]:
     """Spec 026: credit spent since ``since``, per client of the partner.
 
@@ -573,6 +588,7 @@ async def credit_burn(
                     UsageLedger.created_at >= since,
                     UsageLedger.created_at < until if until is not None else sa.true(),
                     sa.or_(UsageLedger.tenant_id.is_(None), UsageLedger.tenant_id.in_(tenant_ids)),
+                    agent.clause() if agent is not None else sa.true(),
                 )
                 .group_by(UsageLedger.tenant_id)
             )
@@ -582,12 +598,42 @@ async def credit_burn(
         return {}
 
 
+async def credit_burn_by_agent(
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    since: datetime,
+    until: datetime | None = None,
+) -> dict[uuid.UUID | None, int]:
+    """Spec 030: what one client spent since ``since``, per agent.
+
+    The same rows as :func:`credit_burn` for that client, grouped by
+    ``usage_ledger.agent_id``; ``None`` keys what was spent before agents
+    existed (it was the principal's). Raises when unreadable — the caller
+    shows no breakdown rather than a wrong one.
+    """
+    sm = get_sessionmaker()
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        rows = await session.execute(
+            sa.select(UsageLedger.agent_id, sa.func.sum(UsageLedger.qty))
+            .where(
+                UsageLedger.partner_id == partner_id,
+                UsageLedger.tenant_id == tenant_id,
+                UsageLedger.created_at >= since,
+                UsageLedger.created_at < until if until is not None else sa.true(),
+            )
+            .group_by(UsageLedger.agent_id)
+        )
+        return {aid: _as_int(total) for aid, total in rows.all()}
+
+
 async def credit_burn_by_day(
     partner_id: uuid.UUID,
     tenant_ids: list[uuid.UUID],
     since: datetime,
     *,
     include_outside: bool = True,
+    agent: AgentFilter | None = None,
 ) -> dict[tuple[uuid.UUID | None, date], int]:
     """Spec 028: credit spent per client and UTC day since ``since``.
 
@@ -600,6 +646,8 @@ async def credit_burn_by_day(
     who: sa.ColumnElement[bool] = UsageLedger.tenant_id.in_(tenant_ids)
     if include_outside:
         who = sa.or_(UsageLedger.tenant_id.is_(None), who)
+    if agent is not None:
+        who = sa.and_(who, agent.clause())
     sm = get_sessionmaker()
     async with sm() as session, session.begin():
         await apply_partner_to_session(session, partner_id)
@@ -860,6 +908,8 @@ async def debit_wallet(
     idempotency_key: str,
     tenant_id: uuid.UUID | None = None,
     usage_record_id: uuid.UUID | None = None,
+    # Spec 030: the client's agent the debit belongs to (spend per agent).
+    agent_id: uuid.UUID | None = None,
     companion_run_id: uuid.UUID | None = None,
     allow_included: bool = True,
 ) -> DebitResult:
@@ -888,6 +938,7 @@ async def debit_wallet(
             idempotency_key=idempotency_key,
             tenant_id=tenant_id,
             usage_record_id=usage_record_id,
+            agent_id=agent_id,
             companion_run_id=companion_run_id,
             allow_included=allow_included,
         )
@@ -910,6 +961,7 @@ async def _debit_locked(
     idempotency_key: str,
     tenant_id: uuid.UUID | None,
     usage_record_id: uuid.UUID | None,
+    agent_id: uuid.UUID | None = None,
     companion_run_id: uuid.UUID | None,
     allow_included: bool = True,
 ) -> DebitResult:
@@ -971,6 +1023,7 @@ async def _debit_locked(
                     qty=from_included,
                     bucket=BUCKET_INCLUDED,
                     usage_record_id=usage_record_id,
+                    agent_id=agent_id,
                     companion_run_id=companion_run_id,
                     idempotency_key=f"{idempotency_key}:included",
                     fx=None,
@@ -984,6 +1037,7 @@ async def _debit_locked(
                     qty=from_purchased,
                     bucket=BUCKET_PURCHASED,
                     usage_record_id=usage_record_id,
+                    agent_id=agent_id,
                     companion_run_id=companion_run_id,
                     idempotency_key=f"{idempotency_key}:purchased",
                     fx=None,
@@ -1005,6 +1059,8 @@ async def debit_allocation(
     qty: int,
     idempotency_key: str,
     usage_record_id: uuid.UUID | None = None,
+    # Spec 030: the client's agent the debit belongs to (spend per agent).
+    agent_id: uuid.UUID | None = None,
     companion_run_id: uuid.UUID | None = None,
 ) -> DebitResult:
     """Debita solo ``partner_allocations.remaining`` del cliente.
@@ -1021,6 +1077,7 @@ async def debit_allocation(
             qty=qty,
             idempotency_key=idempotency_key,
             usage_record_id=usage_record_id,
+            agent_id=agent_id,
             companion_run_id=companion_run_id,
         )
     except Exception as exc:
@@ -1043,6 +1100,7 @@ async def _debit_allocation_locked(
     qty: int,
     idempotency_key: str,
     usage_record_id: uuid.UUID | None,
+    agent_id: uuid.UUID | None = None,
     companion_run_id: uuid.UUID | None,
 ) -> DebitResult:
     sm = get_sessionmaker()
@@ -1080,6 +1138,7 @@ async def _debit_allocation_locked(
                 qty=spent,
                 bucket=BUCKET_INCLUDED,
                 usage_record_id=usage_record_id,
+                agent_id=agent_id,
                 companion_run_id=companion_run_id,
                 idempotency_key=key,
                 fx=None,

@@ -91,6 +91,8 @@ class UsageRecord(Base):
     # contable y debe sobrevivir al borrado de la conversación o de la
     # versión de agente que lo originó (incluido el borrado GDPR).
     agent_config_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Spec 030: the agent the turn ran for — spend per agent survives versions.
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 

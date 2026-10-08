@@ -29,16 +29,18 @@ const schema = z
     // guardaba el valor por defecto como si lo hubieras elegido tú, y la
     // tarjeta se quedaba diciendo «lo has fijado tú» para siempre.
     mode: z.enum(["always", "blocked", "default"]).optional(),
+    // Spec 030: one of the client's agents; without it, the principal.
+    agent: z.string().uuid().optional(),
   })
   .refine((v) => v.enabled !== undefined || v.mode !== undefined, {
     message: "nothing_to_change",
   });
 
 export async function setCapabilityAction(raw: unknown): Promise<ActionResult<CapabilityUpdated>> {
-  const { ref, ...change } = schema.parse(raw);
+  const { ref, agent, ...change } = schema.parse(raw);
   const principal = await requirePrincipal();
   if (!can(principal.role, "agents:write")) return { ok: false, status: 403, message: "forbidden" };
-  const res = await run(() => backendFor(principal).setCapability(ref, change));
+  const res = await run(() => backendFor(principal).setCapability(ref, change, agent));
   // La barra de borrador vive en el layout de la ficha: al encender algo
   // tiene que aparecer en TODAS las pestañas, no solo en esta.
   if (res.ok) revalidatePath(`/clients/${encodeURIComponent(ref)}`, "layout");

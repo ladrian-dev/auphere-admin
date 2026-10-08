@@ -11,7 +11,14 @@ import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import type { Home } from "@/lib/backend/home-usage";
 import { formatMoneyCompact } from "@/lib/money";
-import { can, requirePrincipal } from "@/lib/principal";
+import { LitePanel } from "@/components/lite/lite-panel";
+import {
+  can,
+  requireClientPrincipal,
+  requirePartnerPrincipal,
+  requirePrincipal,
+  type PartnerPrincipal,
+} from "@/lib/principal";
 
 
 /**
@@ -21,7 +28,14 @@ import { can, requirePrincipal } from "@/lib/principal";
  * permission on the API and is simply absent when it is `null` or failed.
  */
 export default async function HomePage() {
-  const principal = await requirePrincipal();
+  // Spec 030: la raíz es el Panel de las dos consolas. Una persona de cliente
+  // sin módulo Panel va a su primer módulo (requireClientPrincipal).
+  const who = await requirePrincipal();
+  if (who.kind === "client") return <LitePanel principal={await requireClientPrincipal("panel")} />;
+  return <PartnerHome principal={await requirePartnerPrincipal()} />;
+}
+
+async function PartnerHome({ principal }: { principal: PartnerPrincipal }) {
   const { t, locale } = await getT(principal.locale);
   const api = backendFor(principal);
   const home: Home | null = await api.home().catch(() => null);

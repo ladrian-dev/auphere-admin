@@ -6,13 +6,13 @@ import { MembershipSection } from "@/components/billing/membership-section";
 import { ProviderInvoicesLink } from "@/components/billing/provider-invoices-link";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 import { pageTitle } from "@/i18n/metadata";
 
 export const generateMetadata = () => pageTitle("nav.billing");
 
 export default async function BillingPage() {
-  const principal = await requirePrincipal("/billing");
+  const principal = await requirePartnerPrincipal("/billing");
   if (!can(principal.role, "billing:read")) redirect("/");
   const { t, locale } = await getT(principal.locale);
   const backend = backendFor(principal);

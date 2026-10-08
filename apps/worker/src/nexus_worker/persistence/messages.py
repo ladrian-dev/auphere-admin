@@ -12,6 +12,7 @@ doesn't trip MissingGreenlet on a lazy load.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from nexus_api.core.tenant_context import require_current_tenant
@@ -23,7 +24,8 @@ from nexus_api.db.models import (
     MessageDirection,
     MessageStatus,
 )
-from sqlalchemy import select
+from nexus_api.services import inbox_lifecycle
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -55,20 +57,31 @@ async def upsert_conversation_for_customer(
     *,
     channel_id: uuid.UUID,
     customer_id: uuid.UUID,
+    reopened_by: str = inbox_lifecycle.CONTACT,
 ) -> Conversation:
-    """Return the open conversation for this customer/channel, opening one if needed."""
+    """The conversation of this customer on this number (spec 030, D11).
+
+    One row per contact and number: the **latest** row, whatever its status.
+    ``ESCALATED`` keeps waiting in the same row (before D11 only ``OPEN`` was
+    looked up, so the next message split a waiting conversation in two).
+    ``CLOSED`` — resolved from the Inbox — reopens with the agent answering;
+    ``reopened_by`` says who brought it back (the contact by default; a
+    business-initiated send passes its own actor).
+    """
     require_current_tenant()
     stmt = (
         select(Conversation)
         .where(
             Conversation.channel_id == channel_id,
             Conversation.customer_id == customer_id,
-            Conversation.status == ConversationStatus.OPEN,
         )
+        .order_by(Conversation.created_at.desc(), Conversation.id.desc())
         .limit(1)
     )
     existing = (await session.execute(stmt)).scalar_one_or_none()
     if existing is not None:
+        if existing.status == ConversationStatus.CLOSED:
+            await inbox_lifecycle.reopen(session, existing, actor=reopened_by)
         return existing
     conv = Conversation(
         tenant_id=require_current_tenant(),
@@ -80,6 +93,19 @@ async def upsert_conversation_for_customer(
     await session.flush()
     await session.refresh(conv)
     return conv
+
+
+async def _touch_last_message(
+    session: AsyncSession, conversation_id: uuid.UUID, at: datetime
+) -> None:
+    """``conversations.last_message_at`` — what the Inbox sorts by (spec 030).
+    Only moves forward: a late folded bubble never pulls it back."""
+    await session.execute(
+        update(Conversation)
+        .where(Conversation.id == conversation_id)
+        .values(last_message_at=func.greatest(func.coalesce(Conversation.last_message_at, at), at))
+        .execution_options(synchronize_session=False)
+    )
 
 
 async def persist_inbound_message(
@@ -133,6 +159,7 @@ async def persist_inbound_message(
     session.add(msg)
     await session.flush()
     await session.refresh(msg)
+    await _touch_last_message(session, conversation_id, msg.created_at)
     return msg
 
 
@@ -154,6 +181,7 @@ async def persist_outbound_message(
     outcome_feedback: str | None = None,
     actor_kind: str = "agent",
     actor_id: uuid.UUID | None = None,
+    agent_id: uuid.UUID | None = None,
 ) -> Message:
     """Persist the assistant's reply.
 
@@ -189,8 +217,11 @@ async def persist_outbound_message(
         outcome_feedback=outcome_feedback,
         actor_kind=actor_kind,
         actor_id=actor_id,
+        # Spec 030: which of the client's agents wrote it.
+        agent_id=agent_id,
     )
     session.add(msg)
     await session.flush()
     await session.refresh(msg)
+    await _touch_last_message(session, conversation_id, msg.created_at)
     return msg

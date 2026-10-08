@@ -73,6 +73,7 @@ from nexus_api.repositories.auphere_channels import (
     resolve_channel_for_inbound_cached as resolve_owner_channel_for_inbound,
 )
 from nexus_api.services.channel_routing import config_agent_enabled
+from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.owner_channel_flow import handle_owner_inbound
 from nexus_api.services.payment_reviews import parse_tap, resolve_tap
 from nexus_api.services.whatsapp_templates import invalidate_template_cache
@@ -109,6 +110,9 @@ COEXISTENCE_STREAM_MAXLEN = 10_000
 #
 # Ninguna lleva ``WHERE tenant_id``: la sesión está scopeada y la RLS de
 # cada tabla es quien filtra, igual que en el resto del runtime.
+#
+# Spec 030: las políticas son las del agente de ESE número (o del principal
+# si el número no tiene); otro agente del cliente tiene las suyas.
 _INBOUND_PRELUDE_SQL = text(
     """
     SELECT
@@ -129,7 +133,17 @@ _INBOUND_PRELUDE_SQL = text(
       (SELECT a.policies
          FROM agent_configs a
         WHERE a.status = 'active'
-        ORDER BY a.version DESC
+          AND a.agent_id = COALESCE(
+                (SELECT c.agent_id
+                   FROM channels c
+                  WHERE c.provider = 'meta'
+                    AND c.provider_identifier = :identifier
+                  LIMIT 1),
+                (SELECT g.id
+                   FROM agents g
+                  WHERE g.status = 'active'
+                  ORDER BY g.created_at, g.id
+                  LIMIT 1))
         LIMIT 1)                                        AS agent_policies
     """
 )
@@ -586,6 +600,7 @@ async def _handle_status_callback(
         return {"status": "ignored"}
 
     outcome: str | None = None
+    moved_rows: list[tuple[Any, Any]] = []
     async with tenant_scoped_session(session, tenant_id):
         values: dict[str, Any] = {
             "status": new_status,
@@ -612,9 +627,11 @@ async def _handle_status_callback(
         # ``failed`` is exempt: it is terminal and carries the error code.
         if new_status is not MessageStatus.FAILED:
             stmt = stmt.where(Message.status.in_(_STATUSES_BELOW[new_status]))
-        result = await session.execute(stmt.values(**values))
-        moved = getattr(result, "rowcount", 0)
-        if not (moved or 0):
+        result = await session.execute(
+            stmt.values(**values).returning(Message.id, Message.conversation_id)
+        )
+        moved_rows = [(row[0], row[1]) for row in result.all()]
+        if not moved_rows:
             # Nothing moved. Either we have no such message (in coexistence
             # Meta also reports statuses for messages typed on the phone),
             # or the row is already at or past this status — a re-drive,
@@ -637,6 +654,18 @@ async def _handle_status_callback(
                 new_status=new_status.value,
             )
         return {"status": outcome}
+
+    # Spec 030: the Inbox paints delivery live. After the commit and without
+    # a body; a client without Inbox has no subscriber.
+    for message_id, conversation_id in moved_rows:
+        await publish_inbox_event(
+            redis,
+            tenant_id=tenant_id,
+            event="message.status",
+            conversation_id=conversation_id,
+            message_id=str(message_id),
+            status=new_status.value,
+        )
 
     log.info(
         "webhook.meta.status_update",

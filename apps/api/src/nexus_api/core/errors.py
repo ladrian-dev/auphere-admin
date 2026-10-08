@@ -25,3 +25,7 @@ class HMACVerificationFailed(NexusError):
 
 class AgentConfigConflict(NexusError):
     """Cannot perform the requested transition (e.g. promote a non-staged version)."""
+
+
+class UnknownAgent(NexusError):
+    """Spec 030: the agent named is not an active agent of the current tenant."""

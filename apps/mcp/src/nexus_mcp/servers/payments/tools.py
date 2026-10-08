@@ -14,6 +14,7 @@ from typing import Literal
 from nexus_api.db.models import Conversation, Tenant
 from nexus_api.repositories.agent_config import AgentConfigRepository
 from nexus_api.services.agent_payment_review import reviewers_of
+from nexus_api.services.agents import agent_for_channel
 from nexus_api.services.payment_reviews import open_review
 
 from nexus_mcp._db import tool_session
@@ -48,7 +49,9 @@ class RequestPaymentReview(ToolBase):
             conv = await session.get(Conversation, payload.conversation_id)
             if conv is None:
                 raise ToolError(f"conversation {payload.conversation_id} not found for this tenant")
-            active = await AgentConfigRepository(session).get_active()
+            # Spec 030: the reviewers of the agent that answers on THIS number.
+            agent_id = await agent_for_channel(session, conv.channel_id)
+            active = await AgentConfigRepository(session).get_active(agent_id=agent_id)
             reviewers = reviewers_of(active.policies if active is not None else None)
             if not reviewers:
                 raise ToolError(

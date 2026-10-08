@@ -11,6 +11,8 @@ const TABS = [
   { slug: "conversations", label: "Conversaciones" },
   { slug: "connectors", label: "Connectors" },
   { slug: "backchannel", label: "Backchannel" },
+  // Spec 030: la consola lite del cliente — módulos y personas.
+  { slug: "access", label: "Acceso" },
   { slug: "isolation", label: "Aislamiento" },
   { slug: "billing", label: "Facturación" },
   { slug: "audit", label: "Auditoría" },

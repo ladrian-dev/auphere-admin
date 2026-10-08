@@ -44,7 +44,8 @@ class FakeBackendError extends Error {
 export type BackendFns = { [K in keyof ReturnType<typeof backendFor>]: Mock };
 
 export function actionHarness(initialRole: Role = "owner") {
-  const state = { role: initialRole };
+  // Spec 030: a test can also act as a client user (`setClient(modules)`).
+  const state: { role: Role | "client"; modules: string[] } = { role: initialRole, modules: [] };
   const fns: Record<string, Mock> = {};
 
   const principal = () => ({
@@ -58,6 +59,9 @@ export function actionHarness(initialRole: Role = "owner") {
     partnerName: "Demo",
     role: state.role,
     consoleEnabled: true,
+    kind: state.role === "client" ? ("client" as const) : ("partner" as const),
+    clientName: state.role === "client" ? "Flor y Encanto" : "",
+    modules: state.modules,
   });
 
   // Every backend method exists and resolves to `{}` until a test says
@@ -75,17 +79,35 @@ export function actionHarness(initialRole: Role = "owner") {
     backend,
     setRole(role: Role) {
       state.role = role;
+      state.modules = [];
+    },
+    /** Act as a client user whose client has `modules` (spec 030). */
+    setClient(modules: string[] = ["panel", "inbox", "usage"]) {
+      state.role = "client";
+      state.modules = modules;
     },
     /** The exact shape every action returns when the role cannot do it. */
     denied() {
       return { ok: false, status: 403, message: "forbidden" };
     },
-    /** Make the next backend call fail the way `run()` would see it. */
-    fail(method: string, status: number, detail = "", code: string | null = null) {
-      (fns[method] ??= vi.fn()).mockRejectedValueOnce(new FakeBackendError(status, detail, code));
+    /** Make the next backend call fail the way `run()` would see it. `info` is
+     *  the rest of a structured detail (a 412 carries the real conversation). */
+    fail(method: string, status: number, detail = "", code: string | null = null, info?: Record<string, unknown>) {
+      (fns[method] ??= vi.fn()).mockRejectedValueOnce(new FakeBackendError(status, detail, code, info));
     },
     principalModule: {
       requirePrincipal: vi.fn(async () => principal()),
+      // Spec 030 guards: a mismatch is a redirect in the real module; here it
+      // throws, so an action that reaches its backend call never ran a guard
+      // it should not have passed.
+      requirePartnerPrincipal: vi.fn(async () => {
+        if (state.role === "client") throw new Error("REDIRECT client");
+        return principal();
+      }),
+      requireClientPrincipal: vi.fn(async (module: string) => {
+        if (state.role !== "client" || !state.modules.includes(module)) throw new Error("REDIRECT");
+        return principal();
+      }),
       resolvePrincipal: vi.fn(async () => ({ kind: "ok", principal: principal() })),
       can,
       PERMISSIONS,

@@ -153,7 +153,124 @@ async def notify_client_out_of_quota_detached(tenant_id: uuid.UUID) -> ConsoleNo
         partner = await session.get(Partner, partner_id)
         if partner is None:
             return None
-        return await _emit_client_out_of_quota(session, partner, ref)
+        row = await _emit_client_out_of_quota(session, partner, ref)
+        # Spec 030 (R15.3): si el cliente tiene consola, su gente también se
+        # entera — en su campana y por correo, nunca en la del partner.
+        if await _lite_enabled(session, tenant_id):
+            await _emit_client_balance(session, partner_id, tenant_id, ref, "balance_out")
+        return row
+
+
+# ── Spec 030: los avisos de saldo del propio cliente ──────────────────
+
+
+def client_balance_dedupe_key(tenant_id: uuid.UUID, kind: str, now: datetime) -> str:
+    """Agotado: uno por cliente y día (como el del partner). «No llega a fin
+    de mes»: uno por cliente y mes — repetirlo cada día sería ruido."""
+    period = f"{now:%Y-%m-%d}" if kind == "balance_out" else f"{now:%Y-%m}"
+    return f"client:{tenant_id}:{kind}:{period}"
+
+
+async def _lite_enabled(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    from nexus_api.db.models import ClientAccess
+
+    access = await session.get(ClientAccess, tenant_id)
+    return bool(access and access.enabled)
+
+
+async def _emit_client_balance(
+    session: AsyncSession,
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    ref: str,
+    kind: str,
+    *,
+    days_left: float | None = None,
+    now: datetime | None = None,
+) -> ConsoleNotification | None:
+    """``client.balance_out`` / ``client.balance_low`` con ``audience =
+    client``: la campana del cliente y el correo a sus personas activas
+    (``console_notifications._email_client_best_effort``)."""
+    from nexus_api.db.models import NotificationAudience
+    from nexus_api.services.console_notifications import emit
+
+    ts = now or datetime.now(UTC)
+    data: dict[str, object] = {}
+    if days_left is not None:
+        data["days_left"] = max(round(days_left), 0)
+    return await emit(
+        session,
+        partner_id=partner_id,
+        kind=(
+            NotificationKind.CLIENT_BALANCE_OUT
+            if kind == "balance_out"
+            else NotificationKind.CLIENT_BALANCE_LOW
+        ),
+        data=data,
+        severity=NotificationSeverity.WARNING,
+        external_client_ref=ref,
+        dedupe_key=client_balance_dedupe_key(tenant_id, kind, ts),
+        audience=NotificationAudience.CLIENT,
+    )
+
+
+async def evaluate_client_balance_alerts(
+    session: AsyncSession, partner_id: uuid.UUID, *, now: datetime | None = None
+) -> list[str]:
+    """Spec 030 (R15.3): avisa a cada cliente con consola de su saldo, con la
+    misma regla que su Panel (``lite_home.balance_notice``). Devuelve los
+    ``external_client_ref`` a los que se avisó.
+
+    Como ``evaluate_partner_wallet_alerts``: espera una ``session`` sin
+    transacción abierta y gestiona las suyas, cortas.
+    """
+    from nexus_api.db.models import ClientAccess, PartnerTenant
+    from nexus_api.metering.wallet import allocations_for, credit_burn
+    from nexus_api.services.console_home import REVIEW_WINDOW
+    from nexus_api.services.console_home_blocks import days_until
+    from nexus_api.services.lite_home import balance_notice, balance_of
+
+    ts = now or datetime.now(UTC)
+    _since, until, _elapsed, _days = month_bounds(ts)
+    async with session.begin():
+        rows = (
+            await session.execute(
+                sa.select(PartnerTenant.tenant_id, PartnerTenant.external_client_ref)
+                .join(ClientAccess, ClientAccess.tenant_id == PartnerTenant.tenant_id)
+                .where(
+                    PartnerTenant.partner_id == partner_id,
+                    ClientAccess.partner_id == partner_id,
+                    ClientAccess.enabled.is_(True),
+                )
+            )
+        ).all()
+    if not rows:
+        return []
+    refs = {tenant_id: str(ref) for tenant_id, ref in rows}
+    tenant_ids = list(refs)
+    allocations = await allocations_for(partner_id, tenant_ids)
+    burn = await credit_burn(partner_id, tenant_ids, ts - REVIEW_WINDOW)
+    to_month_end = days_until(until, ts)
+
+    told: list[str] = []
+    for tenant_id in tenant_ids:
+        balance = balance_of(allocations.get(tenant_id), burn.get(tenant_id, 0))
+        notice = balance_notice(balance, to_month_end)
+        if notice is None:
+            continue
+        async with session.begin():
+            row = await _emit_client_balance(
+                session,
+                partner_id,
+                tenant_id,
+                refs[tenant_id],
+                notice,
+                days_left=balance.days_left,
+                now=ts,
+            )
+        if row is not None:
+            told.append(refs[tenant_id])
+    return told
 
 
 def _percent_used(available: int, cap: int) -> float:
@@ -316,6 +433,7 @@ __all__ = [
     "WalletAlertEvaluation",
     "client_out_of_quota_dedupe_key",
     "clients_without_quota",
+    "evaluate_client_balance_alerts",
     "evaluate_partner_wallet_alerts",
     "notify_client_out_of_quota_detached",
     "wallet_dedupe_key",

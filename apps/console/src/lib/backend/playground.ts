@@ -1,4 +1,5 @@
 import type { Call } from "../backend";
+import { q } from "../backend";
 
 /**
  * Lane module `playground` (CP-16). Types mirror
@@ -40,10 +41,12 @@ export function playgroundStreamPath(ref: string, threadId: string, runId: strin
 
 export function playgroundApi(call: Call) {
   return {
-    listPlaygroundThreads: (ref: string, p: { include_archived?: boolean } = {}) =>
-      call<PlaygroundThread[]>(`${base(ref)}/threads${p.include_archived ? "?include_archived=true" : ""}`),
-    createPlaygroundThread: (ref: string, body: { title?: string }) =>
-      call<PlaygroundThread>(`${base(ref)}/threads`, { method: "POST", body }),
+    /** Spec 030: with `agent`, only that agent's threads (old ones without one are the principal's). */
+    listPlaygroundThreads: (ref: string, p: { include_archived?: boolean; agent?: string } = {}) =>
+      call<PlaygroundThread[]>(`${base(ref)}/threads${q({ include_archived: p.include_archived || undefined, agent: p.agent })}`),
+    /** Spec 030: the thread is pinned to `agent` (the principal without it). */
+    createPlaygroundThread: (ref: string, body: { title?: string }, agent?: string) =>
+      call<PlaygroundThread>(`${base(ref)}/threads${agent ? `?agent=${enc(agent)}` : ""}`, { method: "POST", body }),
     patchPlaygroundThread: (ref: string, threadId: string, body: { title?: string; archived?: boolean }) =>
       call<PlaygroundThread>(`${base(ref)}/threads/${enc(threadId)}`, { method: "PATCH", body }),
     startPlaygroundRun: (ref: string, threadId: string, prompt: string) =>

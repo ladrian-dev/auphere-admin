@@ -44,12 +44,15 @@ export function CapabilitiesCatalog({
   canWrite,
   seeAllHref,
   seeOwnHref,
+  agentId,
 }: {
   refId: string;
   data: CapabilitiesOut;
   canWrite: boolean;
   seeAllHref: string;
   seeOwnHref: string;
+  /** Spec 030: one of the client's agents; `undefined` is the principal. */
+  agentId?: string;
 }) {
   const t = useT();
   const router = useRouter();
@@ -89,7 +92,7 @@ export function CapabilitiesCatalog({
           </Link>
         )}
         renderItem={({ id, cap }) => (
-          <CapabilityCard key={id} refId={refId} cap={cap} canWrite={canWrite} onChanged={() => router.refresh()} />
+          <CapabilityCard key={id} refId={refId} agentId={agentId} cap={cap} canWrite={canWrite} onChanged={() => router.refresh()} />
         )}
         empty={
           // Sin catálogo, las integraciones siguen arriba: hoy el vacío las

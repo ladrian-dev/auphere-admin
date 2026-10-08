@@ -5,14 +5,14 @@ from typing import Any
 
 import sqlalchemy as sa
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis, scoped_session_from_path
 from nexus_api.config import get_settings
-from nexus_api.core.errors import AgentConfigConflict
+from nexus_api.core.errors import AgentConfigConflict, UnknownAgent
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import (
     AgentConfig,
@@ -90,10 +90,13 @@ async def _publish_promote(redis: Redis, tenant_id: uuid.UUID) -> None:
 async def get_agent_config(
     tenant_id: uuid.UUID,
     session: AsyncSession = Depends(scoped_session_from_path),
+    agent_id: uuid.UUID | None = Query(
+        default=None, description="One of the client's agents (spec 030); default: the principal."
+    ),
 ) -> AgentConfigBundle:
     svc = AgentConfigService(session)
-    versions = await svc.list_versions()
-    active = await svc.get_active()
+    versions = await svc.list_versions(agent_id=agent_id)
+    active = await svc.get_active(agent_id=agent_id)
     return AgentConfigBundle(
         active=AgentConfigOut.model_validate(active) if active else None,
         versions=[AgentConfigOut.model_validate(v) for v in versions],
@@ -110,6 +113,9 @@ async def stage_agent_config(
     body: AgentConfigStageIn,
     session: AsyncSession = Depends(scoped_session_from_path),
     actor: str = Depends(require_admin_token),
+    agent_id: uuid.UUID | None = Query(
+        default=None, description="One of the client's agents (spec 030); default: the principal."
+    ),
 ) -> AgentConfigOut:
     svc = AgentConfigService(session)
     try:
@@ -121,7 +127,10 @@ async def stage_agent_config(
             policies=body.policies,
             seed_template_ref=body.seed_template_ref,
             kg_schema_id=body.kg_schema_id,
+            agent_id=agent_id,
         )
+    except UnknownAgent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent") from None
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return AgentConfigOut.model_validate(config)
@@ -398,6 +407,9 @@ async def stage_agent_config_from_seed(
     body: FromSeedIn,
     session: AsyncSession = Depends(scoped_session_from_path),
     actor: str = Depends(require_admin_token),
+    agent_id: uuid.UUID | None = Query(
+        default=None, description="One of the client's agents (spec 030); default: the principal."
+    ),
 ) -> AgentConfigOut:
     """Render the seed template and stage the result as a new version.
 
@@ -442,7 +454,10 @@ async def stage_agent_config_from_seed(
             tools=merged_tools,
             policies=rendered.policies,
             seed_template_ref=rendered.seed_template_ref,
+            agent_id=agent_id,
         )
+    except UnknownAgent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent") from None
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return AgentConfigOut.model_validate(config)

@@ -4,7 +4,7 @@ import { PageHeader } from "@nexus/ui";
 
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 import { NewClientWizard } from "./wizard";
 import { pageTitle } from "@/i18n/metadata";
@@ -16,7 +16,7 @@ export const generateMetadata = () => pageTitle("wizard.title");
  * checked here (step 1 blocks when full) and again by the API on create.
  */
 export default async function NewClientPage() {
-  const principal = await requirePrincipal("/clients/new");
+  const principal = await requirePartnerPrincipal("/clients/new");
   if (!can(principal.role, "clients:write")) redirect("/clients");
   const { t } = await getT(principal.locale);
   const api = backendFor(principal);

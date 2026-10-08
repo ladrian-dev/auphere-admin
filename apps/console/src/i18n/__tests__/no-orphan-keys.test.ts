@@ -3,6 +3,9 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { agentsMessages } from "../lanes/agents";
+import { inboxMessages } from "../lanes/inbox";
+import { liteMessages } from "../lanes/lite";
 import { workstationMessages } from "../lanes/workstation";
 
 /**
@@ -71,6 +74,22 @@ describe("claves del puesto de trabajo sin dueño", () => {
     const orphans = Object.keys(workstationMessages).filter(
       (key) => !literal.has(key) && !prefixes.some((p) => key.startsWith(p)),
     );
+    expect(orphans, `claves que no pide nadie: ${orphans.join(", ")}`).toEqual([]);
+  });
+});
+
+/**
+ * Spec 030: los dos carriles de la consola lite nacen vigilados. Son nuevos,
+ * así que no arrastran huérfanas: una clave que deje de pedirse aquí se ve el
+ * mismo día, no por casualidad.
+ */
+describe("claves de la consola lite sin dueño", () => {
+  it.each([
+    ["lite", liteMessages],
+    ["inbox", inboxMessages],
+    ["agents", agentsMessages],
+  ] as const)("carril %s: ninguna clave se queda sin quien la pida", (_lane, lane) => {
+    const orphans = Object.keys(lane).filter((key) => !literal.has(key) && !prefixes.some((p) => key.startsWith(p)));
     expect(orphans, `claves que no pide nadie: ${orphans.join(", ")}`).toEqual([]);
   });
 });

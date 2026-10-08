@@ -7,6 +7,7 @@ import { CatalogBrowser } from "@nexus/ui";
 
 import { useCatalog, useCatalogLabels } from "@/components/catalog/use-catalog";
 import { useT } from "@/i18n/client";
+import type { ClientAgent } from "@/lib/backend";
 import type { ChannelDetail } from "@/lib/backend/channels";
 
 import { ChannelCard } from "./channel-card";
@@ -30,10 +31,15 @@ export function ChannelsList({
   channels,
   manage,
   empty,
+  agents = [],
+  agentOf = {},
 }: {
   refId: string;
   channels: ChannelDetail[];
   manage: boolean;
+  /** Spec 030: the client's agents (empty with one) and who answers on each number. */
+  agents?: ClientAgent[];
+  agentOf?: Record<string, string>;
   /** El cartel de «no hay ninguno», que trae su propia salida desde el
    *  servidor: solo la página sabe si hoy se puede conectar. */
   empty: React.ReactNode;
@@ -69,7 +75,7 @@ export function ChannelsList({
         </Link>
       )}
       renderItem={({ id, channel }) => (
-        <ChannelCard key={id} refId={refId} channel={channel} manage={manage} showRoles={showRoles} />
+        <ChannelCard key={id} refId={refId} channel={channel} manage={manage} showRoles={showRoles} agents={agents} agentId={agentOf[channel.id]} />
       )}
       empty={empty}
     />

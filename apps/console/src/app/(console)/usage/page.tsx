@@ -8,7 +8,14 @@ import { Alert, AlertDescription, Button, EmptyState, Metric, PageHeader, Sectio
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import type { Allocation, UsageSpend, Wallet } from "@/lib/backend/home-usage";
-import { can, requirePrincipal } from "@/lib/principal";
+import { LiteUsage } from "@/components/lite/lite-usage";
+import {
+  can,
+  requireClientPrincipal,
+  requirePartnerPrincipal,
+  requirePrincipal,
+  type PartnerPrincipal,
+} from "@/lib/principal";
 import { meterLabel } from "@/lib/meter-label";
 import { formatMoney } from "@/lib/money";
 import { meterGroups } from "@/lib/usage-projection";
@@ -38,7 +45,22 @@ const UNREADABLE_WALLET: Wallet = {
 };
 
 export default async function UsagePage({ searchParams }: { searchParams: Promise<Search> }) {
-  const principal = await requirePrincipal("/usage");
+  // Spec 030: Consumo de las dos consolas. La persona de un cliente ve el de
+  // su cliente, de solo lectura (components/lite/lite-usage).
+  const who = await requirePrincipal("/usage");
+  if (who.kind === "client") {
+    return <LiteUsage principal={await requireClientPrincipal("usage", "/usage")} searchParams={await searchParams} />;
+  }
+  return <PartnerUsage principal={await requirePartnerPrincipal("/usage")} searchParams={searchParams} />;
+}
+
+async function PartnerUsage({
+  principal,
+  searchParams,
+}: {
+  principal: PartnerPrincipal;
+  searchParams: Promise<Search>;
+}) {
   if (!can(principal.role, "usage:read")) redirect("/");
   const canWrite = can(principal.role, "usage:write");
   // Spec 005: la compra de crédito **sí** existe en producción — es un pago

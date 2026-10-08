@@ -1,5 +1,5 @@
 import { backendFor } from "@/lib/backend";
-import type { Principal } from "@/lib/principal";
+import type { PartnerPrincipal } from "@/lib/principal";
 
 import { OnboardingCardClient } from "./onboarding-card-client";
 
@@ -12,7 +12,7 @@ import { OnboardingCardClient } from "./onboarding-card-client";
  *
  *   <OnboardingCard principal={principal} />
  */
-export async function OnboardingCard({ principal }: { principal: Principal }) {
+export async function OnboardingCard({ principal }: { principal: PartnerPrincipal }) {
   const data = await backendFor(principal).onboarding().catch(() => null);
   return <OnboardingCardClient data={data} role={principal.role} />;
 }

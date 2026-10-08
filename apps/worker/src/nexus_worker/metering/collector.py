@@ -163,6 +163,8 @@ class _TurnScope:
     turn_id: str
     conversation_id: uuid.UUID | None = None
     agent_config_id: uuid.UUID | None = None
+    # Spec 030: the client's agent the turn ran for (spend per agent).
+    agent_id: uuid.UUID | None = None
     source: str = SOURCE_CHANNEL
     events: list[UsageEvent] = field(default_factory=list)
     call_seq: int = 0
@@ -183,6 +185,7 @@ async def usage_turn(
     conversation_id: uuid.UUID | None = None,
     agent_config_id: uuid.UUID | None = None,
     source: str = SOURCE_CHANNEL,
+    agent_id: uuid.UUID | None = None,
 ) -> AsyncIterator[None]:
     """Abre el buffer del turno y lo publica al salir, pase lo que pase.
 
@@ -197,6 +200,7 @@ async def usage_turn(
         turn_id=turn_id,
         conversation_id=conversation_id,
         agent_config_id=agent_config_id,
+        agent_id=agent_id,
         source=source if source in USAGE_SOURCES else SOURCE_CHANNEL,
     )
     token = _scope.set(scope)
@@ -390,6 +394,8 @@ async def _publish(scope: _TurnScope) -> None:
             fields["conversation_id"] = str(scope.conversation_id)
         if scope.agent_config_id is not None:
             fields["agent_config_id"] = str(scope.agent_config_id)
+        if scope.agent_id is not None:
+            fields["agent_id"] = str(scope.agent_id)
 
         await xadd_capped(get_redis(), USAGE_STREAM, fields, maxlen=USAGE_STREAM_MAXLEN)
         log.info(

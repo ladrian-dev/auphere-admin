@@ -29,7 +29,7 @@ from nexus_api.services.agent_console_policy import (
 )
 
 from .agent_drafts import copy_runtime_fields, draft_diff, draft_screens, load_view
-from .deps import ClientScope, client_scope
+from .deps import ClientScope, agent_scope
 from .schemas import AgentBundleOut, AgentDraftIn, AgentPublishIn, AgentVersionOut, DraftDiffOut
 
 router = APIRouter(prefix="/clients/{ref}/agent")
@@ -51,8 +51,8 @@ def _version_out(cfg: AgentConfig) -> AgentVersionOut:
 
 async def _bundle(scope: ClientScope) -> AgentBundleOut:
     service = AgentConfigService(scope.session)
-    versions = await service.list_versions()
-    active = await service.get_active()
+    versions = await service.list_versions(agent_id=scope.agent_id)
+    active = await service.get_active(agent_id=scope.agent_id)
     return AgentBundleOut(
         active_version=active.version if active else None,
         versions=[_version_out(v) for v in versions],
@@ -78,7 +78,7 @@ async def _publish_promote(redis: Redis, scope: ClientScope) -> None:
 
 
 @router.get("", response_model=AgentBundleOut)
-async def get_agent(scope: ClientScope = Depends(client_scope("agents:read"))) -> AgentBundleOut:
+async def get_agent(scope: ClientScope = Depends(agent_scope("agents:read"))) -> AgentBundleOut:
     return await _bundle(scope)
 
 
@@ -87,7 +87,7 @@ async def get_agent(scope: ClientScope = Depends(client_scope("agents:read"))) -
     response_model=DraftDiffOut,
     responses={404: {"description": "There is no draft to compare."}},
 )
-async def get_draft_diff(scope: ClientScope = Depends(client_scope("agents:read"))) -> DraftDiffOut:
+async def get_draft_diff(scope: ClientScope = Depends(agent_scope("agents:read"))) -> DraftDiffOut:
     """What the draft changes against the version serving right now (R3.2).
 
     Reading it is a read: an analyst who cannot publish still has to be able
@@ -108,7 +108,7 @@ async def get_draft_diff(scope: ClientScope = Depends(client_scope("agents:read"
 )
 async def stage_version(
     body: AgentDraftIn,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> AgentVersionOut:
     """Stage a new (non-active) version. Channels, policies and runtime
     capabilities are copied from the active version so a partner editing
@@ -119,7 +119,7 @@ async def stage_version(
     here, attributed to the actor, unless the policies already have one.
     """
     service = AgentConfigService(scope.session)
-    active = await service.get_active()
+    active = await service.get_active(agent_id=scope.agent_id)
     actor = scope.principal.actor
     # Policies are never accepted raw from the console (platform keys such
     # as ``admin_access``/``llm`` live there); the partner edits ONLY
@@ -134,6 +134,7 @@ async def stage_version(
             policies=with_disclosure_default(policies, actor=actor),
             seed_template_ref=active.seed_template_ref if active else None,
             kg_schema_id=active.kg_schema_id if active else None,
+            agent_id=scope.agent_id or (active.agent_id if active else None),
         )
     except AgentConfigConflict as exc:
         # Unknown tools / invalid combination — the draft is not storable.
@@ -160,7 +161,7 @@ EMPTY_PROMPT_DETAIL = "This version has an empty system prompt. Write the prompt
 async def publish_version(
     version: int,
     body: AgentPublishIn | None = None,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
     redis: Redis = Depends(get_redis),
 ) -> AgentVersionOut:
     """Make ``version`` the active one.
@@ -173,7 +174,8 @@ async def publish_version(
     """
     service = AgentConfigService(scope.session)
     target = await service.configs.get_by_version(version)
-    if target is None:
+    if target is None or (scope.agent_id is not None and target.agent_id != scope.agent_id):
+        # Spec 030: with ``?agent=``, a version of another agent does not exist.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="version not found")
     if not has_disclosure_decision(target.policies):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=DISCLOSURE_REQUIRED_DETAIL)
@@ -196,10 +198,14 @@ async def publish_version(
 )
 async def rollback_version(
     version: int,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
     redis: Redis = Depends(get_redis),
 ) -> AgentVersionOut:
     service = AgentConfigService(scope.session)
+    if scope.agent_id is not None:
+        target = await service.configs.get_by_version(version)
+        if target is None or target.agent_id != scope.agent_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="version not found")
     try:
         cfg = await service.rollback(version, actor=scope.principal.actor)
     except AgentConfigConflict as exc:

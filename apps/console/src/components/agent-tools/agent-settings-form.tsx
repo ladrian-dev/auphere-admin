@@ -55,14 +55,15 @@ import {
 
 import { buildConsolePolicySchema, groupSlotsByDay, parseLanguageList } from "./settings-schema";
 
-type Props = { refId: string; data: AgentSettingsOut; canWrite: boolean; actor: string };
+/** `agentId`: spec 030 — one of the client's agents; `undefined` is the principal. */
+type Props = { refId: string; data: AgentSettingsOut; canWrite: boolean; actor: string; agentId?: string };
 
 /**
  * Structured editor of `policies.console` (CP-11 / CP-31). react-hook-form +
  * the same Zod schema the Server Action uses. Read-only roles see the form
  * disabled with a hint. Save → draft toast with a "publish" link.
  */
-export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
+export function AgentSettingsForm({ refId, data, canWrite, actor, agentId }: Props) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
@@ -165,7 +166,7 @@ export function AgentSettingsForm({ refId, data, canWrite, actor }: Props) {
     const audience = { mode: audienceMode, numbers: numbersOf(audienceRows) };
     const paymentReview = reviewDirty ? { reviewers: numbersOf(checkedReviewers) } : undefined;
     startTransition(async () => {
-      const res = await saveAgentSettingsAction({ ref: refId, settings, audience, paymentReview });
+      const res = await saveAgentSettingsAction({ ref: refId, settings, audience, paymentReview, agent: agentId });
       if (!res.ok) {
         if (res.code?.startsWith("payment_reviewer")) {
           const text =

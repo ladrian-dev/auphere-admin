@@ -7,12 +7,12 @@ import { Button } from "@nexus/ui";
 import { DiagnosticsTable } from "@/components/channels/diagnostics-table";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 /** CP-19: every known failure of the WhatsApp channel as a green/red row + what to do. */
 export default async function DiagnosticsPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
-  const principal = await requirePrincipal();
+  const principal = await requirePartnerPrincipal();
   if (!can(principal.role, "channels:read")) redirect(`/clients/${ref}`);
   const { t } = await getT(principal.locale);
   const data = await backendFor(principal).channelDiagnostics(ref);

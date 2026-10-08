@@ -346,6 +346,13 @@ _TRUNCATE_TABLES = (
     "scheduled_jobs",
     "queue_entries",
     "appointments",
+    # Migraciones 0149/0150 — spec 030, la Bandeja. Cuelgan de conversations
+    # y customers (CASCADE): fuera antes que ellas.
+    "conversation_events",
+    "inbox_reads",
+    "conversation_tags",
+    "contact_notes",
+    "saved_replies",
     "messages",
     "conversations",
     # Migration 0032 — Anthropic Memory tool backend. The versions
@@ -369,6 +376,11 @@ _TRUNCATE_TABLES = (
     # Migration 0080 — console principals. Invitations FK memberships
     # (SET NULL) and both FK partners (CASCADE): clear them first.
     "admin_impersonation_sessions",
+    # Migration 0147 — spec 030, la persona de un cliente. Las invitaciones
+    # apuntan a las membresías (SET NULL) y todo cuelga de tenants y partners.
+    "client_invitations",
+    "client_memberships",
+    "client_access",
     "partner_invitations",
     "partner_memberships",
     "partners",
@@ -378,6 +390,9 @@ _TRUNCATE_TABLES = (
     "tenant_credentials",
     "channels",
     "agent_configs",
+    # Migration 0152 — spec 030, varios agentes por cliente. Las versiones y
+    # los números apuntan a sus agentes: fuera después de ellos.
+    "agents",
     "tenants",
 )
 
@@ -770,6 +785,199 @@ async def add_console_member(
         "membership_id": membership_id,
         "user_id": user_id,
         "headers": lambda **kw: console_headers(user_id=user_id, partner_id=partner_id, **kw),
+    }
+
+
+# ── Spec 030: la persona de un cliente ─────────────────────────────────────
+#
+# Un usuario de cliente es una cuenta atada a UN tenant de un partner, en
+# ``client_memberships`` (no en ``partner_memberships``). Sus tokens son los de
+# la consola con ``role: "client"``; la API decide por la tabla, no por el claim.
+
+
+async def make_client_access(
+    db_session: AsyncSession,
+    *,
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    modules: tuple[str, ...] = ("panel", "inbox", "usage"),
+    enabled: bool = True,
+) -> None:
+    """Enciende (o deja apagada) la consola lite de un cliente."""
+    from nexus_api.db.models import ClientAccess
+
+    db_session.add(
+        ClientAccess(
+            tenant_id=tenant_id,
+            partner_id=partner_id,
+            enabled=enabled,
+            modules=list(modules),
+            updated_by="operator:tests@auphere.com",
+        )
+    )
+    await db_session.commit()
+
+
+async def add_client_member(
+    db_session: AsyncSession,
+    *,
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    status: str = "active",
+    email: str | None = None,
+) -> dict[str, Any]:
+    """Una persona del cliente; devuelve ids y una fábrica de cabeceras."""
+    from nexus_api.db.models import ClientMembership
+
+    membership_id = uuid.uuid4()
+    user_id = f"client_{membership_id.hex[:12]}"
+    db_session.add(
+        ClientMembership(
+            id=membership_id,
+            partner_id=partner_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            email=email or f"persona-{membership_id.hex[:6]}@cliente.test",
+            display_name="Valeria Ríos",
+            status=status,
+            invited_by="operator:tests@auphere.com",
+        )
+    )
+    await db_session.commit()
+    return {
+        "membership_id": membership_id,
+        "user_id": user_id,
+        "headers": lambda **kw: console_headers(
+            user_id=user_id, partner_id=partner_id, role="client", **kw
+        ),
+    }
+
+
+async def make_inbox(
+    db_session: AsyncSession,
+    *,
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    modules: tuple[str, ...] = ("panel", "inbox", "usage"),
+    conversations: int = 2,
+    with_access: bool = True,
+) -> dict[str, Any]:
+    """Spec 030: un cliente con Bandeja — acceso, una persona, un WhatsApp
+    conectado, un canal de Playground y ``conversations`` conversaciones con
+    un entrante y una respuesta del agente cada una (la primera, la más
+    reciente). Devuelve ids y la fábrica de cabeceras de la persona.
+
+    ``with_access=False`` siembra solo las conversaciones, para un cliente
+    cuyo acceso ya existe (la vecina de los barridos de aislamiento)."""
+    from datetime import UTC, datetime, timedelta
+
+    from nexus_api.db.models import (
+        Channel,
+        ChannelStatus,
+        ChannelType,
+        Conversation,
+        ConversationStatus,
+        Customer,
+        Message,
+        MessageDirection,
+        MessageStatus,
+    )
+
+    member: dict[str, Any] | None = None
+    if with_access:
+        await make_client_access(
+            db_session, partner_id=partner_id, tenant_id=tenant_id, modules=modules
+        )
+        member = await add_client_member(db_session, partner_id=partner_id, tenant_id=tenant_id)
+    now = datetime.now(UTC)
+    channel = Channel(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        type=ChannelType.WHATSAPP,
+        provider="meta",
+        provider_identifier=f"+3460000{uuid.uuid4().int % 10000:04d}",
+        config={"phone_number_id": "PN"},
+        status=ChannelStatus.ACTIVE,
+    )
+    playground = Channel(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        type=ChannelType.WHATSAPP,
+        provider="qa_playground",
+        provider_identifier=f"qa-{uuid.uuid4().hex[:8]}",
+        config={},
+        status=ChannelStatus.ACTIVE,
+    )
+    db_session.add_all([channel, playground])
+    await db_session.flush()
+    convs: list[uuid.UUID] = []
+    customers: list[uuid.UUID] = []
+    for i in range(conversations):
+        cust = Customer(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            identifier=f"+54911{uuid.uuid4().int % 10**8:08d}",
+            name=f"Contacto {i}",
+        )
+        db_session.add(cust)
+        await db_session.flush()
+        at = now - timedelta(minutes=10 * (i + 1))
+        conv = Conversation(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            channel_id=channel.id,
+            customer_id=cust.id,
+            status=ConversationStatus.OPEN,
+            last_inbound_at=at,
+            last_message_at=at + timedelta(seconds=5),
+        )
+        db_session.add(conv)
+        await db_session.flush()
+        db_session.add_all(
+            [
+                Message(
+                    tenant_id=tenant_id,
+                    conversation_id=conv.id,
+                    direction=MessageDirection.INBOUND,
+                    status=MessageStatus.DELIVERED,
+                    content=f"Hola, soy el contacto {i}",
+                    created_at=at,
+                ),
+                Message(
+                    tenant_id=tenant_id,
+                    conversation_id=conv.id,
+                    direction=MessageDirection.OUTBOUND,
+                    status=MessageStatus.SENT,
+                    content=f"Hola contacto {i}, ¿en qué te ayudo?",
+                    actor_kind="agent",
+                    created_at=at + timedelta(seconds=5),
+                ),
+            ]
+        )
+        convs.append(conv.id)
+        customers.append(cust.id)
+    # Una conversación del Playground: nunca aparece en la Bandeja.
+    pg_cust = Customer(id=uuid.uuid4(), tenant_id=tenant_id, identifier="qa-tester")
+    db_session.add(pg_cust)
+    await db_session.flush()
+    pg = Conversation(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        channel_id=playground.id,
+        customer_id=pg_cust.id,
+        status=ConversationStatus.OPEN,
+        last_inbound_at=now,
+        last_message_at=now,
+    )
+    db_session.add(pg)
+    await db_session.commit()
+    return {
+        "member": member,
+        "headers": member["headers"] if member else None,
+        "channel_id": channel.id,
+        "conversations": convs,
+        "customers": customers,
+        "playground_conversation": pg.id,
     }
 
 

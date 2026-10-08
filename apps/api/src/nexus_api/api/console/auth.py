@@ -45,7 +45,7 @@ from nexus_api.core.console_auth import ConsoleService, permissions_for, require
 from nexus_api.core.rate_limit import allow
 from nexus_api.db.models import AuditLog
 from nexus_api.services import console_identity
-from nexus_api.services.console_identity import PrincipalView
+from nexus_api.services.console_identity import KIND_CLIENT, PrincipalView
 
 from .schemas_auth import (
     AccessLiteral,
@@ -75,6 +75,8 @@ def principal_out(view: PrincipalView) -> PrincipalOut:
     guarda su propia copia y no puede quedarse desincronizada.
     """
     account = view.account
+    if view.kind == KIND_CLIENT:
+        return _client_principal_out(view)
     if not view.ok or view.membership is None or view.partner is None:
         return PrincipalOut(
             user_id=account.id,
@@ -100,6 +102,53 @@ def principal_out(view: PrincipalView) -> PrincipalOut:
         permissions=sorted(permissions_for(view.membership.role)),
         console_enabled=view.partner.console_enabled,
     )
+
+
+def _client_principal_out(view: PrincipalView) -> PrincipalOut:
+    """Spec 030: la persona de un cliente. ``role = "client"`` es lo que el
+    BFF pone en su token; la API no lo cree (resuelve por la tabla). Ningún
+    permiso del partner: su único permiso son los módulos de su cliente."""
+    account = view.account
+    member = view.client_membership
+    partner = view.partner
+    base = PrincipalOut(
+        user_id=account.id,
+        email=account.email,
+        display_name=account.display_name or (member.display_name if member else None),
+        locale=account.locale,
+        access=cast(AccessLiteral, view.access),
+        partner_name=partner.name if partner else None,
+        partner_status=partner.status if partner else None,
+        kind="client",
+        client_name=view.client_name,
+    )
+    if not view.ok or member is None or partner is None:
+        return base
+    return base.model_copy(
+        update={
+            "membership_id": member.id,
+            "partner_id": partner.id,
+            "partner_slug": partner.slug,
+            "role": "client",
+            "console_enabled": True,
+            "modules": list(view.client_modules),
+        }
+    )
+
+
+def _audit_target(view: PrincipalView) -> str | None:
+    """Dónde se apunta un login/logout: el partner para sus miembros, el
+    cliente (tenant) para la persona de un cliente."""
+    if not view.ok or view.partner is None:
+        return None
+    if view.kind == KIND_CLIENT and view.client_membership is not None:
+        return f"tenant:{view.client_membership.tenant_id}"
+    return f"partner:{view.partner.id}"
+
+
+def _audit_actor(view: PrincipalView) -> str:
+    prefix = "client" if view.kind == KIND_CLIENT else "console"
+    return f"{prefix}:{view.account.email}"
 
 
 def _unauthorized() -> HTTPException:
@@ -186,13 +235,16 @@ async def login(
             user_agent=request.headers.get("user-agent"),
         )
         view = await console_identity.load_principal_view(session, account)
-        if view.ok and view.partner is not None:
+        target = _audit_target(view)
+        if target is not None:
             session.add(
                 AuditLog(
-                    tenant_id=None,
-                    actor=f"console:{account.email}",
+                    tenant_id=(
+                        view.client_membership.tenant_id if view.client_membership else None
+                    ),
+                    actor=_audit_actor(view),
                     action="console.auth.login",
-                    target=f"partner:{view.partner.id}",
+                    target=target,
                     after_json={"email": account.email},
                 )
             )
@@ -233,13 +285,16 @@ async def logout(
         account = await console_identity.resolve_session(session, body.token)
         if account is not None:
             view = await console_identity.load_principal_view(session, account)
-            if view.ok and view.partner is not None:
+            target = _audit_target(view)
+            if target is not None:
                 session.add(
                     AuditLog(
-                        tenant_id=None,
-                        actor=f"console:{account.email}",
+                        tenant_id=(
+                            view.client_membership.tenant_id if view.client_membership else None
+                        ),
+                        actor=_audit_actor(view),
                         action="console.auth.logout",
-                        target=f"partner:{view.partner.id}",
+                        target=target,
                         after_json={"email": account.email},
                     )
                 )

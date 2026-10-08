@@ -59,7 +59,7 @@ from nexus_api.services.connectors.service import (
 from nexus_api.services.templating.seed_templates import load_seed_template
 
 from .agent_drafts import DraftView, ensure_draft, load_view
-from .deps import ClientScope, client_scope, client_sector
+from .deps import ClientScope, agent_scope, client_sector
 from .schemas_agent_tools import (
     ConnectApiKeyIn,
     ConnectorOut,
@@ -167,7 +167,7 @@ async def _catalog(scope: ClientScope, view: DraftView) -> ToolCatalogOut:
 
 
 @router.get("/tools", response_model=ToolCatalogOut)
-async def list_tools(scope: ClientScope = Depends(client_scope("agents:read"))) -> ToolCatalogOut:
+async def list_tools(scope: ClientScope = Depends(agent_scope("agents:read"))) -> ToolCatalogOut:
     return await _catalog(scope, await load_view(scope))
 
 
@@ -178,7 +178,7 @@ async def list_tools(scope: ClientScope = Depends(client_scope("agents:read"))) 
 )
 async def put_tools(
     body: ToolsIn,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> ToolsSaved:
     """Replace the whitelist on the draft. Names must exist in the public
     catalogue (the service validates; internal tools are refused)."""
@@ -201,7 +201,7 @@ async def put_tools(
 async def put_tool_mode(
     tool_name: str,
     body: ToolModeIn,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> ToolModeOut:
     """Per-client gating override (``always`` / ``blocked``). Takes effect
     immediately — it is not part of a version.
@@ -237,7 +237,7 @@ async def put_tool_mode(
 @router.delete("/tools/{tool_name}/mode", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tool_mode(
     tool_name: str,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> None:
     deleted = await connector_service.delete_override(
         scope.session, tenant=scope.tenant, tool_name=tool_name, actor=scope.principal.actor
@@ -329,7 +329,7 @@ async def _connectors(
 
 @router.get("/connectors", response_model=list[ConnectorOut])
 async def list_connectors(
-    scope: ClientScope = Depends(client_scope("agents:read")),
+    scope: ClientScope = Depends(agent_scope("agents:read")),
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> list[ConnectorOut]:
     return await _connectors(scope, composio, await load_view(scope))
@@ -358,7 +358,7 @@ def _guard_slug(slug: str) -> str:
 )
 async def start_consent(
     slug: str,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> ConsentOut:
     """Start (or re-issue) the OAuth consent of an ``oauth_composio``
@@ -431,7 +431,7 @@ async def start_consent(
 @router.post("/connectors/{slug}/sync", response_model=ConnectorSyncOut)
 async def sync_connector(
     slug: str,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> ConnectorSyncOut:
     slug = _guard_slug(slug)
@@ -482,7 +482,7 @@ async def sync_connector(
 @router.post("/connectors/{slug}/disconnect", response_model=ConnectorOut)
 async def disconnect_connector(
     slug: str,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> ConnectorOut:
     slug = _guard_slug(slug)
@@ -549,7 +549,7 @@ async def _set_status(
 @router.post("/connectors/{slug}/pause", response_model=ConnectorOut)
 async def pause_connector(
     slug: str,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> ConnectorOut:
     return await _set_status(
@@ -565,7 +565,7 @@ async def pause_connector(
 @router.post("/connectors/{slug}/resume", response_model=ConnectorOut)
 async def resume_connector(
     slug: str,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> ConnectorOut:
     return await _set_status(
@@ -586,7 +586,7 @@ async def resume_connector(
 async def connect_api_key(
     slug: str,
     body: ConnectApiKeyIn,
-    scope: ClientScope = Depends(client_scope("agents:write")),
+    scope: ClientScope = Depends(agent_scope("agents:write")),
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> ConnectorOut:
     """Bootstrap an ``api_key`` connector and sync it in the same request.

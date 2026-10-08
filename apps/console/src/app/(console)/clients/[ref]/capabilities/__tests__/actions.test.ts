@@ -19,22 +19,37 @@ describe("encender y apagar una capacidad", () => {
     h.backend.setCapability.mockResolvedValueOnce({ capability: { key: "booking.create_appointment" }, draft_created: true });
     const res = await setCapabilityAction({ ref: "demo", key: "booking.create_appointment", kind: "tool", enabled: true });
     expect(res).toMatchObject({ ok: true });
-    expect(h.backend.setCapability).toHaveBeenCalledWith("demo", {
-      key: "booking.create_appointment",
-      kind: "tool",
-      enabled: true,
-    });
+    expect(h.backend.setCapability).toHaveBeenCalledWith(
+      "demo",
+      {
+        key: "booking.create_appointment",
+        kind: "tool",
+        enabled: true,
+      },
+      undefined,
+    );
+  });
+
+  it("con varios agentes, el cambio es del agente de la pestaña (spec 030)", async () => {
+    h.setRole("builder");
+    h.backend.setCapability.mockResolvedValueOnce({ capability: {}, draft_created: true });
+    await setCapabilityAction({ ref: "demo", key: "booking.create_appointment", kind: "tool", enabled: true, agent: "8f9e0d1c-2b3a-4c5d-8e6f-7a8b9c0d1e2f" });
+    expect(h.backend.setCapability).toHaveBeenCalledWith("demo", { key: "booking.create_appointment", kind: "tool", enabled: true }, "8f9e0d1c-2b3a-4c5d-8e6f-7a8b9c0d1e2f");
   });
 
   it("cambiar el modo va por la misma puerta", async () => {
     h.setRole("owner");
     h.backend.setCapability.mockResolvedValueOnce({ capability: {}, draft_created: false });
     await setCapabilityAction({ ref: "demo", key: "booking.create_appointment", kind: "tool", mode: "blocked" });
-    expect(h.backend.setCapability).toHaveBeenCalledWith("demo", {
-      key: "booking.create_appointment",
-      kind: "tool",
-      mode: "blocked",
-    });
+    expect(h.backend.setCapability).toHaveBeenCalledWith(
+      "demo",
+      {
+        key: "booking.create_appointment",
+        kind: "tool",
+        mode: "blocked",
+      },
+      undefined,
+    );
   });
 
   it("un analista no cambia nada, y no se llega a llamar al backend", async () => {

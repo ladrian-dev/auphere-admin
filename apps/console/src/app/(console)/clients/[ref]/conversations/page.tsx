@@ -5,7 +5,7 @@ import { EmptyState, Metric, formatDuration, formatLatency, formatNumber, format
 import { ClientStatusBadge } from "@/components/clients/status-badge";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 import { ConversationFilters } from "./filters";
 
@@ -13,7 +13,7 @@ type Search = { escalated?: string; with_errors?: string; page?: string };
 
 export default async function ConversationsPage({ params, searchParams }: { params: Promise<{ ref: string }>; searchParams: Promise<Search> }) {
   const { ref } = await params;
-  const principal = await requirePrincipal();
+  const principal = await requirePartnerPrincipal();
   if (!can(principal.role, "conversations:read")) redirect(`/clients/${ref}`);
   const { t, locale } = await getT(principal.locale);
   const sp = await searchParams;

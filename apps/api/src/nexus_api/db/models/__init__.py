@@ -7,7 +7,13 @@ from nexus_api.db.models.admin_impersonation import (
     TTL_MIN_SECONDS,
     AdminImpersonationSession,
 )
-from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
+from nexus_api.db.models.agent import (
+    PRINCIPAL_AGENT_NAME,
+    Agent,
+    AgentConfig,
+    AgentConfigStatus,
+    AgentStatus,
+)
 from nexus_api.db.models.agent_memory import AgentMemory
 from nexus_api.db.models.appointment import Appointment, AppointmentStatus
 from nexus_api.db.models.audit import AuditLog
@@ -29,6 +35,16 @@ from nexus_api.db.models.channel import (
     ChannelStatus,
     ChannelType,
     TenantCredentials,
+)
+from nexus_api.db.models.client_access import (
+    CLIENT_INVITATION_TTL,
+    CLIENT_MODULES,
+    ClientAccess,
+    ClientInvitation,
+    ClientInvitationStatus,
+    ClientMembership,
+    ClientMemberStatus,
+    ClientModule,
 )
 from nexus_api.db.models.companion import (
     MODE_BUILD,
@@ -66,6 +82,7 @@ from nexus_api.db.models.console_identity import (
 from nexus_api.db.models.console_notification import (
     ConsoleNotification,
     ConsoleNotificationRead,
+    NotificationAudience,
     NotificationKind,
     NotificationSeverity,
 )
@@ -88,6 +105,14 @@ from nexus_api.db.models.evals import (
     EvalRun,
     EvalRunResult,
     EvalRunStatus,
+)
+from nexus_api.db.models.inbox import (
+    ContactNote,
+    ConversationEvent,
+    ConversationEventKind,
+    ConversationTag,
+    InboxRead,
+    SavedReply,
 )
 from nexus_api.db.models.isolation_event import IsolationEvent
 from nexus_api.db.models.kg import KGEdge, KGNode, KGSchema
@@ -204,6 +229,8 @@ from nexus_api.db.models.workflow import (
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
     "CHANGED_FIELDS",
+    "CLIENT_INVITATION_TTL",
+    "CLIENT_MODULES",
     "CONSOLE_AUTH_SCHEMA",
     "DENIAL_REASONS",
     "EVENT_KINDS",
@@ -224,6 +251,7 @@ __all__ = [
     "PARTNER_ROLES",
     "PERMISSION_KEYS",
     "PLATFORMS",
+    "PRINCIPAL_AGENT_NAME",
     "REASON_MIN_LEN",
     "REVOKED_REASONS",
     "RUN_CANCELLED",
@@ -244,10 +272,12 @@ __all__ = [
     "TTL_MIN_SECONDS",
     "USAGE_METERS",
     "AdminImpersonationSession",
+    "Agent",
     "AgentConfig",
     "AgentConfigStatus",
     "AgentMemory",
     "AgentSale",
+    "AgentStatus",
     "ApiKeyScope",
     "ApiKeyType",
     "Appointment",
@@ -263,6 +293,12 @@ __all__ = [
     "Channel",
     "ChannelStatus",
     "ChannelType",
+    "ClientAccess",
+    "ClientInvitation",
+    "ClientInvitationStatus",
+    "ClientMemberStatus",
+    "ClientMembership",
+    "ClientModule",
     "CompanionAction",
     "CompanionMessage",
     "CompanionRun",
@@ -275,8 +311,12 @@ __all__ = [
     "ConsoleNotification",
     "ConsoleNotificationRead",
     "ConsoleSession",
+    "ContactNote",
     "Conversation",
+    "ConversationEvent",
+    "ConversationEventKind",
     "ConversationStatus",
+    "ConversationTag",
     "Customer",
     "DailyCostSnapshot",
     "DeviceClientLink",
@@ -287,6 +327,7 @@ __all__ = [
     "EvalRun",
     "EvalRunResult",
     "EvalRunStatus",
+    "InboxRead",
     "InvitationStatus",
     "Invoice",
     "InvoiceLine",
@@ -309,6 +350,7 @@ __all__ = [
     "MessageDirection",
     "MessageStatus",
     "ModelProfile",
+    "NotificationAudience",
     "NotificationKind",
     "NotificationSeverity",
     "OperatorAccount",
@@ -342,6 +384,7 @@ __all__ = [
     "QAThread",
     "QueueEntry",
     "QueueEntryStatus",
+    "SavedReply",
     "ScheduledJob",
     "ScheduledJobKind",
     "ScheduledJobStatus",

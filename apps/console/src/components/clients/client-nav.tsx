@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { NavTabs, useIsMobile } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 import type { Role } from "@/lib/permissions";
 
+import { isAgentTab } from "./agent-switcher";
 import { navGroupsFor } from "./client-nav-model";
 
 /**
@@ -28,8 +29,12 @@ export function ClientNav({
 }) {
   const t = useT();
   const pathname = usePathname();
+  const agent = useSearchParams().get("agent");
   const compact = useIsMobile();
   const base = `/clients/${encodeURIComponent(refId)}`;
+  // Spec 030: moving between the tabs of one agent keeps that agent.
+  const withAgent = (href: string) =>
+    agent && isAgentTab(href.split("#")[0] ?? href, base) ? `${href}${href.includes("?") ? "&" : "?"}agent=${encodeURIComponent(agent)}` : href;
   const model = navGroupsFor(role, base, { draftScreens, incidents });
 
   // La pestaña actual es la de ruta más larga que sea prefijo de la actual:
@@ -44,7 +49,7 @@ export function ClientNav({
   const groups = model.map((g) => ({
     key: g.key,
     label: t(g.label),
-    items: g.items.map((i) => ({ key: i.key, label: t(i.label), href: i.href, ...(i.mark ? { mark: i.mark } : {}) })),
+    items: g.items.map((i) => ({ key: i.key, label: t(i.label), href: withAgent(i.href), ...(i.mark ? { mark: i.mark } : {}) })),
   }));
 
   return (

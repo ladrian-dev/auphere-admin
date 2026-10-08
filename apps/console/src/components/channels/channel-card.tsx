@@ -21,9 +21,12 @@ import {
   formatDateTime,
 } from "@nexus/ui";
 
+import { assignChannelAgentAction } from "@/app/(console)/clients/[ref]/agents/actions";
 import { clearCatalogAction, disconnectChannelAction, setChannelRoleAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useLocale, useT } from "@/i18n/client";
 import { messages, type MessageKey } from "@/i18n/messages";
+import { actionErrorText } from "@/lib/action-error";
+import type { ClientAgent } from "@/lib/backend";
 import type { ChannelDetail, ChannelRole } from "@/lib/backend/channels";
 
 import { CatalogPicker, catalogFailureKey } from "./catalog-picker";
@@ -88,22 +91,39 @@ function ChannelIcon({ refId, channel }: { refId: string; channel: ChannelDetail
   );
 }
 
+/** The API's refusals when a number changes agent, in words (principle III). */
+const AGENT_ERRORS: Record<string, MessageKey> = {
+  agent_not_published: "agents.error.agent_not_published",
+  channel_send_only: "agents.error.channel_send_only",
+  agent_archived: "agents.error.agent_archived",
+};
+
 export function ChannelCard({
   refId,
   channel,
   manage,
   showRoles,
+  agents = [],
+  agentId,
 }: {
   refId: string;
   channel: ChannelDetail;
   manage: boolean;
   showRoles: boolean;
+  /** Spec 030: the client's agents — empty with one, then there is nothing to say. */
+  agents?: ClientAgent[];
+  /** The agent that answers on this number (the principal when it has none). */
+  agentId?: string;
 }) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmarSoltar, setConfirmarSoltar] = React.useState(false);
+  // Spec 030: changing who answers a live number is confirmed, never done by
+  // the select's own change — one arrow key on a closed select would do it.
+  const [cambioAgente, setCambioAgente] = React.useState<ClientAgent | null>(null);
+  const [errorAgente, setErrorAgente] = React.useState<string | null>(null);
   const [elegirCatalogo, setElegirCatalogo] = React.useState(false);
   const [confirmarQuitarCatalogo, setConfirmarQuitarCatalogo] = React.useState(false);
   const rating = (channel.quality_rating ?? "UNKNOWN").toUpperCase();
@@ -122,6 +142,26 @@ export function ChannelCard({
       toast.success(t("ch.role.saved"));
       router.refresh();
     });
+  }
+
+  function askAgent(value: string) {
+    const next = agents.find((a) => a.id === value);
+    if (!next || next.id === agentId) return;
+    setErrorAgente(null);
+    setCambioAgente(next);
+  }
+
+  async function changeAgent(next: ClientAgent) {
+    const res = await assignChannelAgentAction({ ref: refId, channel: channel.id, agent: next.id });
+    if (!res.ok) {
+      // The dialog stays open with the reason: the number still answers as before.
+      const known = res.code ? AGENT_ERRORS[res.code] : undefined;
+      setErrorAgente(known ? t(known) : actionErrorText(res, t));
+      return;
+    }
+    setCambioAgente(null);
+    toast.success(t("agents.channel.saved", { name: next.name }));
+    router.refresh();
   }
 
   function soltar() {
@@ -289,6 +329,39 @@ export function ChannelCard({
             : channel.role
               ? [{ key: "role", term: t("ch.card.role"), detail: <span>{t(`ch.role.${channel.role}` as "ch.role.agent")}</span> }]
               : []),
+          // Spec 030 (R14.2): which agent answers here. Only with two or more
+          // agents, and only on a number someone answers — a send-only line
+          // has no agent to choose. The role does not decide it: a line for
+          // notices may answer too (`config_agent_enabled`).
+          ...(agents.length > 1 && channel.type === "whatsapp" && !suelto && channel.agent_enabled
+            ? [
+                {
+                  key: "agent",
+                  term: t("agents.channel.label"),
+                  detail: manage ? (
+                    <>
+                      <label htmlFor={`agent-${channel.id}`} className="sr-only">
+                        {t("agents.channel.label")}
+                      </label>
+                      <NativeSelect
+                        id={`agent-${channel.id}`}
+                        wrapperClassName="w-full"
+                        value={agentId ?? ""}
+                        onChange={(e) => askAgent(e.target.value)}
+                      >
+                        {agents.map((a) => (
+                          <option key={a.id} value={a.id} disabled={a.active_version === null && a.id !== agentId}>
+                            {a.active_version === null ? t("agents.switcher.unpublished", { name: a.name }) : a.name}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </>
+                  ) : (
+                    <span>{agents.find((a) => a.id === agentId)?.name ?? "—"}</span>
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
 
@@ -342,6 +415,21 @@ export function ChannelCard({
           />
         </>
       ) : null}
+
+      <ConfirmDialog
+        open={cambioAgente !== null}
+        onOpenChange={(open) => {
+          if (!open) setCambioAgente(null);
+        }}
+        title={t("agents.channel.confirm.title", { name: cambioAgente?.name ?? "", number: channel.provider_identifier })}
+        description={t("agents.channel.confirm.body", { name: cambioAgente?.name ?? "" })}
+        confirmLabel={t("agents.channel.confirm")}
+        cancelLabel={t("common.cancel")}
+        error={errorAgente ?? undefined}
+        onConfirm={async () => {
+          if (cambioAgente) await changeAgent(cambioAgente);
+        }}
+      />
 
       <ConfirmDialog
         open={confirmarSoltar}

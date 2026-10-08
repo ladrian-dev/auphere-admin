@@ -8,12 +8,19 @@ everyone (``recipient_user_id IS NULL``) or to them. Read state:
 client is referenced by ``external_client_ref`` (never a tenant id).
 
 Cursor paging on ``(created_at, id)`` — newest first.
+
+Spec 030: a notification also has an ``audience``. The partner's bell lists
+``partner`` only; the client user's bell (``/console/lite/notifications``)
+lists ``client`` notices of its own client only. Both bells run the SAME
+logic below with a different :class:`Viewer` — one place decides what a
+person sees, so the two cannot drift.
 """
 
 from __future__ import annotations
 
 import base64
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
@@ -22,7 +29,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
-from nexus_api.db.models import ConsoleNotification, ConsoleNotificationRead
+from nexus_api.db.models import (
+    ConsoleNotification,
+    ConsoleNotificationRead,
+    NotificationAudience,
+)
 
 from .schemas_onboarding import NotificationOut, NotificationPageOut, ReadAllOut, UnreadCountOut
 
@@ -31,14 +42,37 @@ router = APIRouter(prefix="/notifications")
 NotificationId = Path(..., description="Notification id")
 
 
-def _visible(principal: ConsolePrincipal) -> sa.ColumnElement[bool]:
-    return sa.and_(
-        ConsoleNotification.partner_id == principal.partner.id,
+@dataclass(frozen=True)
+class Viewer:
+    """Who is looking at a bell. ``client_ref`` only for a client user."""
+
+    partner_id: uuid.UUID
+    user_id: str
+    audience: str
+    client_ref: str | None = None
+
+
+def partner_viewer(principal: ConsolePrincipal) -> Viewer:
+    return Viewer(
+        partner_id=principal.partner.id,
+        user_id=principal.user_id,
+        audience=NotificationAudience.PARTNER.value,
+    )
+
+
+def _visible(viewer: Viewer) -> sa.ColumnElement[bool]:
+    clauses: list[sa.ColumnElement[bool]] = [
+        ConsoleNotification.partner_id == viewer.partner_id,
+        ConsoleNotification.audience == viewer.audience,
         sa.or_(
             ConsoleNotification.recipient_user_id.is_(None),
-            ConsoleNotification.recipient_user_id == principal.user_id,
+            ConsoleNotification.recipient_user_id == viewer.user_id,
         ),
-    )
+    ]
+    if viewer.audience == NotificationAudience.CLIENT.value:
+        # A client user sees its own client, never another of the partner.
+        clauses.append(ConsoleNotification.external_client_ref == viewer.client_ref)
+    return sa.and_(*clauses)
 
 
 def _read_expr(user_id: str) -> sa.ColumnElement[bool]:
@@ -72,27 +106,39 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
         ) from None
 
 
-async def _unread_count(session: AsyncSession, principal: ConsolePrincipal) -> int:
+def _out(n: ConsoleNotification, *, read: bool) -> NotificationOut:
+    return NotificationOut(
+        id=n.id,
+        kind=n.kind,
+        severity=n.severity,
+        data=dict(n.payload or {}),
+        external_client_ref=n.external_client_ref,
+        read=read,
+        created_at=n.created_at,
+    )
+
+
+async def _unread_count(session: AsyncSession, viewer: Viewer) -> int:
     value = await session.scalar(
         sa.select(sa.func.count())
         .select_from(ConsoleNotification)
-        .where(_visible(principal), sa.not_(_read_expr(principal.user_id)))
+        .where(_visible(viewer), sa.not_(_read_expr(viewer.user_id)))
     )
     return int(value or 0)
 
 
-@router.get("", response_model=NotificationPageOut)
-async def list_notifications(
-    principal: ConsolePrincipal = Depends(require_console_principal("partner:read")),
-    session: AsyncSession = Depends(get_db_session),
-    unread: bool | None = Query(default=None, description="Only unread (true) / only read (false)"),
-    limit: int = Query(default=20, ge=1, le=100),
-    cursor: str | None = Query(default=None, max_length=200),
+async def list_for(
+    session: AsyncSession,
+    viewer: Viewer,
+    *,
+    unread: bool | None,
+    limit: int,
+    cursor: str | None,
 ) -> NotificationPageOut:
-    read_expr = _read_expr(principal.user_id)
+    read_expr = _read_expr(viewer.user_id)
     stmt = (
         sa.select(ConsoleNotification, read_expr.label("is_read"))
-        .where(_visible(principal))
+        .where(_visible(viewer))
         .order_by(ConsoleNotification.created_at.desc(), ConsoleNotification.id.desc())
         .limit(limit + 1)
     )
@@ -111,19 +157,8 @@ async def list_notifications(
     async with session.begin():
         rows = (await session.execute(stmt)).all()
         page = rows[:limit]
-        unread_total = await _unread_count(session, principal)
-    items = [
-        NotificationOut(
-            id=n.id,
-            kind=n.kind,
-            severity=n.severity,
-            data=dict(n.payload or {}),
-            external_client_ref=n.external_client_ref,
-            read=bool(is_read),
-            created_at=n.created_at,
-        )
-        for n, is_read in page
-    ]
+        unread_total = await _unread_count(session, viewer)
+    items = [_out(n, read=bool(is_read)) for n, is_read in page]
     next_cursor = None
     if len(rows) > limit and page:
         last = page[-1][0]
@@ -131,26 +166,18 @@ async def list_notifications(
     return NotificationPageOut(items=items, next_cursor=next_cursor, unread=unread_total)
 
 
-@router.get("/unread-count", response_model=UnreadCountOut)
-async def unread_count(
-    principal: ConsolePrincipal = Depends(require_console_principal("partner:read")),
-    session: AsyncSession = Depends(get_db_session),
-) -> UnreadCountOut:
+async def unread_count_for(session: AsyncSession, viewer: Viewer) -> UnreadCountOut:
     async with session.begin():
-        return UnreadCountOut(unread=await _unread_count(session, principal))
+        return UnreadCountOut(unread=await _unread_count(session, viewer))
 
 
-@router.post("/read-all", response_model=ReadAllOut)
-async def read_all(
-    principal: ConsolePrincipal = Depends(require_console_principal("partner:read")),
-    session: AsyncSession = Depends(get_db_session),
-) -> ReadAllOut:
+async def read_all_for(session: AsyncSession, viewer: Viewer) -> ReadAllOut:
     now = datetime.now(UTC)
     async with session.begin():
         unread_rows = (
             await session.execute(
                 sa.select(ConsoleNotification.id, ConsoleNotification.recipient_user_id).where(
-                    _visible(principal), sa.not_(_read_expr(principal.user_id))
+                    _visible(viewer), sa.not_(_read_expr(viewer.user_id))
                 )
             )
         ).all()
@@ -164,10 +191,69 @@ async def read_all(
             )
         for nid in broadcast:
             session.add(
-                ConsoleNotificationRead(notification_id=nid, user_id=principal.user_id, read_at=now)
+                ConsoleNotificationRead(notification_id=nid, user_id=viewer.user_id, read_at=now)
             )
         await session.flush()
     return ReadAllOut(marked=len(unread_rows))
+
+
+async def mark_read_for(
+    session: AsyncSession, viewer: Viewer, notification_id: uuid.UUID
+) -> NotificationOut:
+    async with session.begin():
+        row = await session.scalar(
+            sa.select(ConsoleNotification).where(
+                ConsoleNotification.id == notification_id, _visible(viewer)
+            )
+        )
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Unknown notification"
+            )
+        now = datetime.now(UTC)
+        if row.recipient_user_id is not None:
+            if row.read_at is None:
+                row.read_at = now
+        else:
+            existing = await session.get(ConsoleNotificationRead, (row.id, viewer.user_id))
+            if existing is None:
+                session.add(
+                    ConsoleNotificationRead(
+                        notification_id=row.id, user_id=viewer.user_id, read_at=now
+                    )
+                )
+        await session.flush()
+        out = _out(row, read=True)
+    return out
+
+
+@router.get("", response_model=NotificationPageOut)
+async def list_notifications(
+    principal: ConsolePrincipal = Depends(require_console_principal("partner:read")),
+    session: AsyncSession = Depends(get_db_session),
+    unread: bool | None = Query(default=None, description="Only unread (true) / only read (false)"),
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=200),
+) -> NotificationPageOut:
+    return await list_for(
+        session, partner_viewer(principal), unread=unread, limit=limit, cursor=cursor
+    )
+
+
+@router.get("/unread-count", response_model=UnreadCountOut)
+async def unread_count(
+    principal: ConsolePrincipal = Depends(require_console_principal("partner:read")),
+    session: AsyncSession = Depends(get_db_session),
+) -> UnreadCountOut:
+    return await unread_count_for(session, partner_viewer(principal))
+
+
+@router.post("/read-all", response_model=ReadAllOut)
+async def read_all(
+    principal: ConsolePrincipal = Depends(require_console_principal("partner:read")),
+    session: AsyncSession = Depends(get_db_session),
+) -> ReadAllOut:
+    return await read_all_for(session, partner_viewer(principal))
 
 
 @router.post(
@@ -180,39 +266,15 @@ async def mark_read(
     principal: ConsolePrincipal = Depends(require_console_principal("partner:read")),
     session: AsyncSession = Depends(get_db_session),
 ) -> NotificationOut:
-    async with session.begin():
-        row = await session.scalar(
-            sa.select(ConsoleNotification).where(
-                ConsoleNotification.id == notification_id, _visible(principal)
-            )
-        )
-        if row is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Unknown notification"
-            )
-        now = datetime.now(UTC)
-        if row.recipient_user_id is not None:
-            if row.read_at is None:
-                row.read_at = now
-        else:
-            existing = await session.get(ConsoleNotificationRead, (row.id, principal.user_id))
-            if existing is None:
-                session.add(
-                    ConsoleNotificationRead(
-                        notification_id=row.id, user_id=principal.user_id, read_at=now
-                    )
-                )
-        await session.flush()
-        out = NotificationOut(
-            id=row.id,
-            kind=row.kind,
-            severity=row.severity,
-            data=dict(row.payload or {}),
-            external_client_ref=row.external_client_ref,
-            read=True,
-            created_at=row.created_at,
-        )
-    return out
+    return await mark_read_for(session, partner_viewer(principal), notification_id)
 
 
-__all__ = ["router"]
+__all__ = [
+    "Viewer",
+    "list_for",
+    "mark_read_for",
+    "partner_viewer",
+    "read_all_for",
+    "router",
+    "unread_count_for",
+]

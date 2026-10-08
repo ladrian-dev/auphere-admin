@@ -67,6 +67,9 @@ class QAThread(UUIDPrimaryKey, Base):
         nullable=True,
         index=True,
     )
+    # Spec 030: the agent this test thread talks to (fixed when created).
+    # NULL = the tenant's principal agent.
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     title: Mapped[str] = mapped_column(
         String(200), nullable=False, server_default=text("'Untitled'")
     )

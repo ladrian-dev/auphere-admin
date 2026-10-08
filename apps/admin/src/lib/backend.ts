@@ -32,6 +32,35 @@ const CONSOLE_URL = (process.env.NEXUS_CONSOLE_URL ?? "http://localhost:3110").r
   "",
 );
 
+// ── Spec 030: acceso del cliente a su consola lite ────────────────────────
+export type ClientModule = "panel" | "inbox" | "usage";
+export type ClientMemberOut = {
+  id: string;
+  kind: "member" | "invitation";
+  email: string;
+  name: string | null;
+  status: "active" | "revoked" | "pending" | "expired" | "accepted";
+  since: string | null;
+  expires_at: string | null;
+};
+export type ClientAccessOut = {
+  eligible: boolean;
+  ineligible_reason: "no_partner" | "archived" | null;
+  partner: { id: string; name: string } | null;
+  whatsapp_connected: boolean;
+  enabled: boolean;
+  modules: ClientModule[];
+  members: ClientMemberOut[];
+};
+export type ClientInvitationOut = {
+  id: string;
+  email: string;
+  status: string;
+  expires_at: string;
+  accept_path: string;
+  email_sent: boolean;
+};
+
 /** Deep-link into the partner console. Operator does not enter with a partner session. */
 export function consoleHref(path: string): string {
   const suffix = path.startsWith("/") ? path : `/${path}`;
@@ -498,6 +527,21 @@ export type TestTurnOut = {
   output_tokens: number | null;
   cached_input_tokens: number | null;
 };
+
+/** Spec 030 (R14): one of a client's agents. The principal — the oldest
+ *  active one — answers on every number without an agent of its own. */
+export type TenantAgent = {
+  id: string;
+  name: string;
+  status: "active" | "archived";
+  is_principal: boolean;
+  channels: Array<{ id: string; display: string }>;
+  active_version: number | null;
+  draft_version: number | null;
+};
+
+/** `?agent_id=` for the agent-config routes; nothing for the principal. */
+const agentQuery = (agentId?: string) => (agentId ? `?agent_id=${encodeURIComponent(agentId)}` : "");
 
 export type AgentConfigBundle = {
   active: AgentConfig | null;
@@ -1224,10 +1268,23 @@ export const backend = {
   getReadiness: (tenantId: string) =>
     call<ReadinessOut>(`/admin/tenants/${tenantId}/readiness`),
 
-  getAgentConfig: (tenantId: string) =>
-    call<AgentConfigBundle>(`/admin/tenants/${tenantId}/agent-config`).then(
+  // Spec 030: `agentId` picks one of the client's agents; without it, the principal.
+  getAgentConfig: (tenantId: string, agentId?: string) =>
+    call<AgentConfigBundle>(`/admin/tenants/${tenantId}/agent-config${agentQuery(agentId)}`).then(
       (r) => r ?? { active: null, versions: [] },
     ),
+
+  listTenantAgents: (tenantId: string) =>
+    call<TenantAgent[]>(`/admin/tenants/${tenantId}/agents`).then((r) => r ?? []),
+
+  /** An agent without versions: its first one is staged from the editor or a
+   *  template. The audit names the operator (X-Operator-Id required). */
+  createTenantAgent: (tenantId: string, name: string, operatorId: string) =>
+    call<TenantAgent>(`/admin/tenants/${tenantId}/agents`, {
+      method: "POST",
+      body: { name },
+      headers: { "X-Operator-Id": operatorId },
+    }),
 
   stageAgentConfig: (
     tenantId: string,
@@ -1239,8 +1296,9 @@ export const backend = {
       seed_template_ref?: string | null;
       kg_schema_id?: string | null;
     },
+    agentId?: string,
   ) =>
-    call<AgentConfig>(`/admin/tenants/${tenantId}/agent-config`, {
+    call<AgentConfig>(`/admin/tenants/${tenantId}/agent-config${agentQuery(agentId)}`, {
       method: "PUT",
       body,
     }),
@@ -1698,9 +1756,10 @@ export const backend = {
   applyAgentConfigSeed: (
     tenantId: string,
     body: { seed_template_ref: string; placeholders: Record<string, unknown> },
+    agentId?: string,
   ) =>
     call<AgentConfig>(
-      `/admin/tenants/${tenantId}/agent-config/from-seed`,
+      `/admin/tenants/${tenantId}/agent-config/from-seed${agentQuery(agentId)}`,
       { method: "POST", body },
     ),
 
@@ -2000,6 +2059,43 @@ export const backend = {
     call<AdminTicketDetailOut>(`/admin/tickets/${ticketId}`, {
       method: "PATCH",
       body: { status },
+    }),
+
+  // ── Spec 030: acceso del cliente (X-Operator-Id obligatorio) ─────────────
+  getClientAccess: (tenantId: string, operatorId: string) =>
+    call<ClientAccessOut>(`/admin/tenants/${tenantId}/client-access`, {
+      headers: { "X-Operator-Id": operatorId },
+    }),
+  setClientAccess: (
+    tenantId: string,
+    body: { enabled: boolean; modules: ClientModule[] },
+    operatorId: string,
+  ) =>
+    call<ClientAccessOut>(`/admin/tenants/${tenantId}/client-access`, {
+      method: "PUT",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+  inviteClientMember: (
+    tenantId: string,
+    body: { email: string; name?: string | null },
+    operatorId: string,
+  ) =>
+    call<ClientInvitationOut>(`/admin/tenants/${tenantId}/client-members`, {
+      method: "POST",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+  resendClientInvitation: (tenantId: string, memberId: string, operatorId: string) =>
+    call<ClientInvitationOut>(
+      `/admin/tenants/${tenantId}/client-members/${memberId}/resend`,
+      { method: "POST", body: {}, headers: { "X-Operator-Id": operatorId } },
+    ),
+  revokeClientMember: (tenantId: string, memberId: string, operatorId: string) =>
+    call<null>(`/admin/tenants/${tenantId}/client-members/${memberId}/revoke`, {
+      method: "POST",
+      body: {},
+      headers: { "X-Operator-Id": operatorId },
     }),
 
   startImpersonation: (

@@ -328,6 +328,13 @@ class PartnerInvitationRepository:
         existing = await PartnerMembershipRepository(self._session).get_by_user(user_id)
         if existing is not None:
             raise InvitationError("already_member", "user already belongs to a partner")
+        # Spec 030: una cuenta es de un partner o de un cliente, nunca de los dos.
+        from nexus_api.db.models import ClientMembership
+
+        if await self._session.scalar(
+            sa.select(ClientMembership.id).where(ClientMembership.user_id == user_id)
+        ):
+            raise InvitationError("already_member", "user already belongs to a client")
 
         membership = PartnerMembership(
             id=uuid.uuid4(),

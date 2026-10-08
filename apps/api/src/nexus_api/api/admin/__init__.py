@@ -2,12 +2,14 @@ from fastapi import APIRouter
 
 from nexus_api.api.admin import (
     agent_configs,
+    agents,
     audit,
     auphere_channels,
     auth,
     backchannel_owners,
     billing,
     budget_policies,
+    client_access,
     connectors,
     conversations,
     cost,
@@ -38,7 +40,11 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 # Primero la identidad: es lo único que un panel sin sesión puede llamar.
 router.include_router(auth.router)
 router.include_router(tenants.router)
+# Spec 030: el acceso del cliente a su consola lite.
+router.include_router(client_access.router)
 router.include_router(agent_configs.router)
+# Spec 030: los agentes de un cliente.
+router.include_router(agents.router)
 router.include_router(conversations.router)
 router.include_router(tool_catalog.router)
 router.include_router(integrations.router)

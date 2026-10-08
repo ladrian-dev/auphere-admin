@@ -55,6 +55,8 @@ class AgentConfigOut(BaseModel):
 
     id: uuid.UUID
     tenant_id: uuid.UUID
+    # Spec 030: whose version this is (a client may have several agents).
+    agent_id: uuid.UUID | None = None
     version: int
     status: str
     system_prompt_rendered: str

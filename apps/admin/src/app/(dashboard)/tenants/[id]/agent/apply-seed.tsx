@@ -55,12 +55,15 @@ export function ApplySeedTemplateButton({
   tenantTimezone,
   templates,
   hasActiveConfig,
+  agentId,
 }: {
   tenantId: string;
   tenantName: string;
   tenantTimezone: string;
   templates: SeedTemplate[];
   hasActiveConfig: boolean;
+  /** Spec 030: the agent the template is sown into; `undefined` is the principal. */
+  agentId?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -102,10 +105,11 @@ export function ApplySeedTemplateButton({
       if (values.agent_tone) {
         placeholders["agent.tone"] = values.agent_tone;
       }
-      const result = await applySeedTemplateAction(tenantId, {
-        seed_template_ref: values.seed_template_ref,
-        placeholders,
-      });
+      const result = await applySeedTemplateAction(
+        tenantId,
+        { seed_template_ref: values.seed_template_ref, placeholders },
+        agentId,
+      );
       if (!result.ok) {
         toast.error("No se pudo aplicar la plantilla", { description: result.error });
         return;

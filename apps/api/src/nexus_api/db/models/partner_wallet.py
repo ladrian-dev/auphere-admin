@@ -116,6 +116,8 @@ class UsageLedger(UUIDPrimaryKey, Base):
     qty: Mapped[int] = mapped_column(BigInteger, nullable=False)
     bucket: Mapped[str] = mapped_column(String(16), nullable=False)
     usage_record_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Spec 030: the agent the debit belongs to (spend per agent).
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     companion_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     fx: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)

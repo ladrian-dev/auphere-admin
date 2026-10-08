@@ -16,12 +16,12 @@ contextvar ceremony, different way of choosing the tenant.
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 import sqlalchemy as sa
-from fastapi import Depends, HTTPException, Path, status
+from fastapi import Depends, HTTPException, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
@@ -30,8 +30,10 @@ from nexus_api.core.logging_context import bind_tenant
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.core.tenant_context import _current_tenant, apply_tenant_to_session
 from nexus_api.db.models import (
+    Agent,
     AgentConfig,
     AgentConfigStatus,
+    AgentStatus,
     Channel,
     ChannelStatus,
     ChannelType,
@@ -64,6 +66,9 @@ class ClientScope:
     mapping: PartnerTenant
     tenant: Tenant
     session: AsyncSession
+    # Spec 030: the agent the agent routes act on (``?agent=``). ``None`` =
+    # the client's principal agent — what every caller meant before agents.
+    agent_id: uuid.UUID | None = None
 
     @property
     def ref(self) -> str:
@@ -110,6 +115,43 @@ def client_scope(*required: str) -> Callable[..., AsyncIterator[ClientScope]]:
                 )
         finally:
             _current_tenant.reset(token)
+
+    return _dependency
+
+
+AgentParam = Query(
+    default=None,
+    alias="agent",
+    description="One of the client's agents (spec 030). Without it, the principal agent.",
+)
+
+
+def agent_scope(*required: str) -> Callable[..., Awaitable[ClientScope]]:
+    """``client_scope`` plus the agent the route acts on (spec 030).
+
+    ``?agent=<id>`` must be an active agent of THIS client (RLS: another
+    client's id does not exist here) or the answer is 404. Without it, the
+    route acts on the principal agent, so every caller from before agents —
+    the Companion included — keeps working unchanged.
+    """
+    client_dep = client_scope(*required)
+
+    async def _dependency(
+        scope: ClientScope = Depends(client_dep),
+        agent: uuid.UUID | None = AgentParam,
+    ) -> ClientScope:
+        if agent is None:
+            return scope
+        found = await scope.session.get(Agent, agent)
+        # RLS already hides another client's agent; the tenant is checked
+        # too so the guarantee never rests on one layer alone.
+        if (
+            found is None
+            or found.tenant_id != scope.tenant.id
+            or found.status != AgentStatus.ACTIVE.value
+        ):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent")
+        return replace(scope, agent_id=agent)
 
     return _dependency
 

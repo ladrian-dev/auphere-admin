@@ -74,6 +74,7 @@ from nexus_api.db.models import (
     TenantStatus,
     WhatsAppOptOut,
 )
+from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
 from nexus_channels.base import ChannelCapabilityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -423,6 +424,7 @@ async def _drain_tenant(
     adapters: AdapterRegistry,
     batch_size: int,
 ) -> None:
+    settled: list[tuple[uuid.UUID, uuid.UUID, str]] = []
     async with sm() as session, tenant_scoped_session(session, tenant_id):
         result = await session.execute(
             sa.select(Message)
@@ -453,6 +455,19 @@ async def _drain_tenant(
         )
         for msg in pending:
             await _send_one(session, msg, adapters, tenant_id)
+            if msg.status in (MessageStatus.SENT, MessageStatus.FAILED):
+                settled.append((msg.conversation_id, msg.id, msg.status.value))
+    # Spec 030: the Inbox paints delivery. Published after the commit and
+    # without a body — the console re-reads the thread through its RLS route.
+    for conversation_id, message_id, status in settled:
+        await publish_inbox_event(
+            None,
+            tenant_id=tenant_id,
+            event="message.status",
+            conversation_id=conversation_id,
+            message_id=str(message_id),
+            status=status,
+        )
 
 
 async def _send_one(

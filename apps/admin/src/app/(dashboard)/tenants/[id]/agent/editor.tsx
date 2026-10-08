@@ -40,6 +40,7 @@ type StageAction = (
     seed_template_ref?: string | null;
     kg_schema_id?: string | null;
   },
+  agentId?: string,
 ) => Promise<StageResult>;
 
 /**
@@ -68,12 +69,15 @@ export function AgentEditor({
   sourceIsStagedDraft,
   catalog,
   stageAction,
+  agentId,
 }: {
   tenantId: string;
   source: AgentConfig | null;
   sourceIsStagedDraft: boolean;
   catalog: ToolWithInstallStatus[];
   stageAction: StageAction;
+  /** Spec 030: the agent whose version this is; `undefined` is the principal. */
+  agentId?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -129,7 +133,7 @@ export function AgentEditor({
         policies,
         seed_template_ref: source?.seed_template_ref ?? null,
         kg_schema_id: source?.kg_schema_id ?? null,
-      });
+      }, agentId);
       if (!result.ok) {
         toast.error("No se pudo guardar", { description: result.error });
         return;

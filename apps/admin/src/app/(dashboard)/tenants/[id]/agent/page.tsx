@@ -22,6 +22,7 @@ import {
 } from "@/lib/backend";
 import { fullDateTime, relativeTime } from "@/lib/format";
 
+import { AgentPicker } from "./agent-picker";
 import { AgentEditor } from "./editor";
 import {
   promoteAgentConfigAction,
@@ -39,10 +40,23 @@ import {
 
 export default async function AgentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ agent?: string }>;
 }) {
   const { id } = await params;
+  // Spec 030: con varios agentes, `?agent=` dice de cuál es lo que se edita;
+  // sin él (o con uno que no es de este cliente), el principal. Si la lista
+  // no se puede leer, el agente de la URL pasa tal cual y la API decide: caer
+  // en el principal sin decirlo haría editar otro agente sin saberlo.
+  const listed = await backend.listTenantAgents(id).catch(() => null);
+  const agents = listed ?? [];
+  const wanted = (await searchParams).agent;
+  const selected = agents.find((a) => a.id === wanted && !a.is_principal) ?? null;
+  const agentId =
+    listed === null && wanted && /^[0-9a-f-]{36}$/i.test(wanted) ? wanted : selected?.id;
+  const onScreen = selected ?? agents.find((a) => a.is_principal) ?? null;
   const [
     tenant,
     bundle,
@@ -53,7 +67,7 @@ export default async function AgentPage({
     availableSkills,
   ] = await Promise.all([
     backend.getTenant(id),
-    backend.getAgentConfig(id),
+    backend.getAgentConfig(id, agentId),
     backend.listTenantToolCatalog(id, false),
     backend.listSeedTemplates(),
     backend.listEvalDatasets(id),
@@ -111,7 +125,10 @@ export default async function AgentPage({
     <div className="grid gap-6">
       <Card>
         <CardHeader className="flex flex-col gap-1">
-          <Eyebrow>Configuración del agente</Eyebrow>
+          <Eyebrow>
+            Configuración del agente
+            {agents.length > 1 && onScreen ? ` · ${onScreen.name}` : ""}
+          </Eyebrow>
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
               <CardTitle>{headerTitle}</CardTitle>
@@ -120,13 +137,17 @@ export default async function AgentPage({
                 quieras que el agente lo use en el siguiente turno.
               </CardDescription>
             </div>
-            <ApplySeedTemplateButton
-              tenantId={tenant.id}
-              tenantName={tenant.name}
-              tenantTimezone={tenant.timezone}
-              templates={seedTemplates}
-              hasActiveConfig={bundle.active !== null}
-            />
+            <div className="flex flex-wrap items-end gap-2">
+              <AgentPicker tenantId={tenant.id} agents={agents} selectedId={onScreen?.id ?? null} />
+              <ApplySeedTemplateButton
+                tenantId={tenant.id}
+                tenantName={tenant.name}
+                tenantTimezone={tenant.timezone}
+                templates={seedTemplates}
+                hasActiveConfig={bundle.active !== null}
+                agentId={agentId}
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -138,8 +159,9 @@ export default async function AgentPage({
               the textarea + whitelist stay empty even though the server
               already has the staged draft. BUG-E2E-01. */}
           <AgentEditor
-            key={editorSource?.id ?? "empty"}
+            key={`${agentId ?? "principal"}:${editorSource?.id ?? "empty"}`}
             tenantId={tenant.id}
+            agentId={agentId}
             source={editorSource}
             sourceIsStagedDraft={editorSource?.status === "staged"}
             catalog={publicCatalog}

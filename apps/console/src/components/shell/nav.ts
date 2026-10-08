@@ -3,6 +3,9 @@ import { BarChart3, BookOpen, Building2, KeyRound, Laptop, LayoutDashboard, Rece
 
 import type { MessageKey } from "@/i18n/messages";
 import { can, type Permission, type Role } from "@/lib/permissions";
+import type { ClientModule } from "@/lib/principal-access";
+
+import { liteNav } from "./lite-nav";
 
 export type NavItem = { href: string; labelKey: MessageKey; icon: LucideIcon; permission?: Permission; exact?: boolean };
 export type NavGroup = { labelKey: MessageKey; items: NavItem[] };
@@ -42,4 +45,16 @@ export function navForRole(role: Role): NavGroup[] {
 export function isActive(pathname: string, item: NavItem): boolean {
   if (item.exact) return pathname === item.href;
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+export type NavWho = { kind: "partner"; role: Role } | { kind: "client"; modules: readonly ClientModule[] };
+
+/**
+ * Spec 030: the navigation of whoever is signed in. A partner member gets the
+ * partner's (above); a client user gets its client's modules (`lite-nav.ts`,
+ * kept apart so this file stays exactly the partner's — the desktop app
+ * reads it for its own parity test).
+ */
+export function navForPrincipal(who: NavWho): NavGroup[] {
+  return who.kind === "partner" ? navForRole(who.role) : liteNav(who.modules);
 }

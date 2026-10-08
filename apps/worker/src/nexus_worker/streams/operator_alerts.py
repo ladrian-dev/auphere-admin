@@ -193,7 +193,7 @@ async def _alert_one(
     if audit_row.action == "conversation.escalated":
         # Spec 025: the business's payment reviewers are its team on WhatsApp;
         # when the agent hands a conversation over, they hear it too.
-        reviewers = await _payment_reviewer_phones(session)
+        reviewers = await _payment_reviewer_phones(session, audit_row.target)
         if reviewers:
             owner = await _owner_phone(session, tenant_id)
             recipients = _dedupe([*reviewers, *([owner] if owner else [])])
@@ -284,12 +284,28 @@ async def _owner_phone(session: AsyncSession, tenant_id: uuid.UUID) -> str | Non
     return str(value) if value else None
 
 
-async def _payment_reviewer_phones(session: AsyncSession) -> list[str]:
-    """Spec 025: ``policies.payment_review.reviewers`` of the active agent."""
+async def _payment_reviewer_phones(session: AsyncSession, target: str | None = None) -> list[str]:
+    """Spec 025: ``policies.payment_review.reviewers`` of the active agent.
+
+    Spec 030: of the agent that answers on the escalated conversation's
+    number (``target`` is the conversation id) — another agent of the client
+    may have other reviewers. Without a readable target, the principal's."""
+    from nexus_api.db.models import Conversation
     from nexus_api.repositories.agent_config import AgentConfigRepository
     from nexus_api.services.agent_payment_review import reviewers_of
+    from nexus_api.services.agents import agent_for_channel
 
-    active = await AgentConfigRepository(session).get_active()
+    channel_id: uuid.UUID | None = None
+    try:
+        conversation_id = uuid.UUID(str(target)) if target else None
+    except ValueError:
+        conversation_id = None
+    if conversation_id is not None:
+        channel_id = await session.scalar(
+            sa.select(Conversation.channel_id).where(Conversation.id == conversation_id)
+        )
+    agent_id = await agent_for_channel(session, channel_id)
+    active = await AgentConfigRepository(session).get_active(agent_id=agent_id)
     return [r.phone for r in reviewers_of(active.policies if active is not None else None)]
 
 

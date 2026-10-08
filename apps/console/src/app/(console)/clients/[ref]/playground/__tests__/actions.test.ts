@@ -12,7 +12,10 @@ describe("playground actions (spec 016, R8)", () => {
     h.setRole("builder");
     h.backend.createPlaygroundThread.mockResolvedValueOnce({ id: "t1" });
     expect(await createThreadAction({ ref: "demo", title: "Prueba" })).toEqual({ ok: true, data: { id: "t1" } });
-    expect(h.backend.createPlaygroundThread).toHaveBeenCalledWith("demo", { title: "Prueba" });
+    expect(h.backend.createPlaygroundThread).toHaveBeenCalledWith("demo", { title: "Prueba" }, undefined);
+    // Spec 030: a thread opened on another agent's tab is pinned to it.
+    expect(await createThreadAction({ ref: "demo", title: "B", agent: "8f9e0d1c-2b3a-4c5d-8e6f-7a8b9c0d1e2f" })).toMatchObject({ ok: true });
+    expect(h.backend.createPlaygroundThread).toHaveBeenLastCalledWith("demo", { title: "B" }, "8f9e0d1c-2b3a-4c5d-8e6f-7a8b9c0d1e2f");
     expect(await patchThreadAction({ ref: "demo", thread_id: "7b2a1e3c-4d5f-4a6b-8c7d-9e0f1a2b3c4d", archived: true })).toMatchObject({ ok: true });
     expect(await listThreadsAction({ ref: "demo" })).toMatchObject({ ok: true });
     expect(await startRunAction({ ref: "demo", thread_id: "7b2a1e3c-4d5f-4a6b-8c7d-9e0f1a2b3c4d", prompt: "hola" })).toMatchObject({ ok: true });

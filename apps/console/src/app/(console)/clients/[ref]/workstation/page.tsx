@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { WorkstationPanel } from "@/components/workstation/workstation-panel";
 import { BackendError, backendFor } from "@/lib/backend";
 import type { DeviceOut } from "@/lib/backend/workstation";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 /**
  * El puesto de trabajo del cliente (spec 001, superficie 3a).
@@ -16,7 +16,7 @@ import { can, requirePrincipal } from "@/lib/principal";
  */
 export default async function WorkstationPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
-  const principal = await requirePrincipal();
+  const principal = await requirePartnerPrincipal();
   if (!can(principal.role, "workstation:read")) redirect(`/clients/${ref}`);
   const api = backendFor(principal);
   const [executables, devicesRes] = await Promise.all([

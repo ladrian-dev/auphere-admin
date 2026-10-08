@@ -558,6 +558,13 @@ class Settings(BaseSettings):
     console_jwt_max_ttl_seconds: int = 60
     # Clock skew tolerated between the BFF and the API, in seconds.
     console_jwt_leeway_seconds: int = 5
+    #: Spec 030 (plan D10): partners cuyos clientes son **clientes directos de
+    #: Auphere** (hoy, Auphere Internal Partner). La consola lite de esos
+    #: clientes dice «pide más saldo a Auphere» en vez de nombrar al partner.
+    #: Por slug y en configuración, no por nombre: el nombre es un dato que se
+    #: edita en el admin y no puede cambiar a quién manda la pantalla.
+    #: Separados por comas, como ``expected_worker_services``.
+    auphere_partner_slugs: str = ""
 
     @field_validator("console_jwt_public_key", mode="before")
     @classmethod
@@ -567,6 +574,10 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.replace("\\n", "\n").strip().strip('"')
         return v
+
+    @property
+    def auphere_partner_slug_set(self) -> frozenset[str]:
+        return frozenset(s.strip() for s in self.auphere_partner_slugs.split(",") if s.strip())
 
     @property
     def is_prod(self) -> bool:

@@ -30,9 +30,10 @@ import { foldsIntoMenu } from "@/components/row-actions-rule";
 import { changedScreens } from "./agent-history";
 import { PromptDiff } from "./prompt-diff";
 
-type Props = { refId: string; bundle: AgentBundle; canWrite: boolean };
+/** `agentId`: spec 030 — one of the client's agents; `undefined` is the principal. */
+type Props = { refId: string; bundle: AgentBundle; canWrite: boolean; agentId?: string };
 
-export function AgentVersions({ refId, bundle, canWrite }: Props) {
+export function AgentVersions({ refId, bundle, canWrite, agentId }: Props) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
@@ -63,7 +64,7 @@ export function AgentVersions({ refId, bundle, canWrite }: Props) {
       return;
     }
     startTransition(async () => {
-      const res = await stageAgentAction({ ref: refId, system_prompt: draft });
+      const res = await stageAgentAction({ ref: refId, system_prompt: draft, agent: agentId });
       if (!res.ok) return void toast.error(actionErrorText(res, t));
       toast.success(t("agent.draft.saved", { v: res.data.version }));
       setDraftOpen(false);
@@ -74,7 +75,7 @@ export function AgentVersions({ refId, bundle, canWrite }: Props) {
   // Rolling back swaps what answers customers, like publishing does, so it
   // asks the same way (Nielsen 5: publish confirmed, roll back did not).
   async function rollback(v: AgentVersion) {
-    const res = await rollbackAgentAction({ ref: refId, version: v.version });
+    const res = await rollbackAgentAction({ ref: refId, version: v.version, agent: agentId });
     if (!res.ok) {
       toast.error(actionErrorText(res, t));
       return;
@@ -210,7 +211,7 @@ export function AgentVersions({ refId, bundle, canWrite }: Props) {
         cancelLabel={t("common.cancel")}
         onConfirm={async () => {
           if (!publishing) return;
-          const res = await publishAgentAction({ ref: refId, version: publishing.version });
+          const res = await publishAgentAction({ ref: refId, version: publishing.version, agent: agentId });
           if (!res.ok) {
             toast.error(actionErrorText(res, t));
             return;

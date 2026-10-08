@@ -34,7 +34,8 @@ async def run_promote_subscriber(
 ) -> None:
     """Subscribe and invalidate until ``stop`` is set (or task is cancelled).
 
-    Each message body is the affected ``tenant_id`` as a UUID string. Anything
+    Each message body is the affected ``tenant_id`` as a UUID string, or
+    ``<tenant_id>:<agent_id>`` for one agent (spec 030). Anything
     else is logged and ignored — the cache will eventually be refreshed on
     the next miss anyway, so a malformed message is at worst a stale read,
     not a correctness break.
@@ -58,12 +59,17 @@ async def run_promote_subscriber(
             if not isinstance(data, str):
                 log.warning("promote_subscriber.unexpected_payload", payload=str(data))
                 continue
+            # ``<tenant_id>`` (every agent of the tenant — what every publisher
+            # sends today) or ``<tenant_id>:<agent_id>`` (spec 030: just that
+            # agent and the principal's entry).
+            tenant_raw, _, agent_raw = data.strip().partition(":")
             try:
-                tenant_id = uuid.UUID(data.strip())
+                tenant_id = uuid.UUID(tenant_raw)
+                agent_id = uuid.UUID(agent_raw) if agent_raw else None
             except ValueError:
                 log.warning("promote_subscriber.invalid_uuid", payload=data)
                 continue
-            await loader.invalidate(tenant_id)
+            await loader.invalidate(tenant_id, agent_id)
     finally:
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe(channel)

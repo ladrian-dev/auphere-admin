@@ -30,12 +30,15 @@ export function DraftBarClient({
   version,
   activeVersion,
   canPublish,
+  agentId,
 }: {
   refId: string;
   screens: DraftScreen[];
   version: number;
   activeVersion: number | null;
   canPublish: boolean;
+  /** Spec 030: the draft of one of the client's agents; `undefined` is the principal. */
+  agentId?: string;
 }) {
   const t = useT();
   const router = useRouter();
@@ -70,7 +73,7 @@ export function DraftBarClient({
     if (diff || loading) return;
     setLoading(true);
     startTransition(async () => {
-      const res = await draftDiffAction({ ref: refId });
+      const res = await draftDiffAction({ ref: refId, agent: agentId });
       setLoading(false);
       if (!res.ok) {
         toast.error(actionErrorText(res, t));
@@ -83,7 +86,7 @@ export function DraftBarClient({
   function publish() {
     setState("publishing");
     startTransition(async () => {
-      const res = await publishFromBarAction({ ref: refId, version });
+      const res = await publishFromBarAction({ ref: refId, version, agent: agentId });
       if (!res.ok) {
         setState("failed");
         toast.error(actionErrorText(res, t));
@@ -104,7 +107,7 @@ export function DraftBarClient({
     const previous = published?.previous;
     if (previous == null) return;
     startTransition(async () => {
-      const res = await rollbackAgentAction({ ref: refId, version: previous });
+      const res = await rollbackAgentAction({ ref: refId, version: previous, agent: agentId });
       if (!res.ok) {
         toast.error(actionErrorText(res, t));
         return;

@@ -7,7 +7,7 @@ import { Button, EmptyState, PageHeader } from "@nexus/ui";
 import { ClientsTable } from "@/components/clients/clients-table";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
-import { can, requirePrincipal } from "@/lib/principal";
+import { can, requirePartnerPrincipal } from "@/lib/principal";
 import { pageTitle } from "@/i18n/metadata";
 
 export const generateMetadata = () => pageTitle("nav.clients");
@@ -15,7 +15,7 @@ export const generateMetadata = () => pageTitle("nav.clients");
 type Search = { q?: string; status?: string; sort?: string; order?: string; page?: string };
 
 export default async function ClientsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const principal = await requirePrincipal("/clients");
+  const principal = await requirePartnerPrincipal("/clients");
   if (!can(principal.role, "clients:read")) redirect("/");
   const { t, locale } = await getT(principal.locale);
   const sp = await searchParams;

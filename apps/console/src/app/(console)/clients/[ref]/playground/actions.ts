@@ -22,12 +22,13 @@ async function principalOrDeny() {
 }
 const denied = { ok: false as const, status: 403, message: "Missing permission playground:run" };
 
-const createSchema = z.object({ ref, title: z.string().trim().min(1).max(200).optional() });
+// Spec 030: the new thread is pinned to `agent` (the principal without it).
+const createSchema = z.object({ ref, title: z.string().trim().min(1).max(200).optional(), agent: uuid.optional() });
 export async function createThreadAction(raw: unknown): Promise<ActionResult<PlaygroundThread>> {
-  const { ref: r, title } = createSchema.parse(raw);
+  const { ref: r, title, agent } = createSchema.parse(raw);
   const principal = await principalOrDeny();
   if (!principal) return denied;
-  return run(() => backendFor(principal).createPlaygroundThread(r, title ? { title } : {}));
+  return run(() => backendFor(principal).createPlaygroundThread(r, title ? { title } : {}, agent));
 }
 
 const patchSchema = z.object({
@@ -43,12 +44,12 @@ export async function patchThreadAction(raw: unknown): Promise<ActionResult<Play
   return run(() => backendFor(principal).patchPlaygroundThread(r, thread_id, body));
 }
 
-const listSchema = z.object({ ref, include_archived: z.boolean().optional() });
+const listSchema = z.object({ ref, include_archived: z.boolean().optional(), agent: uuid.optional() });
 export async function listThreadsAction(raw: unknown): Promise<ActionResult<PlaygroundThread[]>> {
-  const { ref: r, include_archived } = listSchema.parse(raw);
+  const { ref: r, include_archived, agent } = listSchema.parse(raw);
   const principal = await principalOrDeny();
   if (!principal) return denied;
-  return run(() => backendFor(principal).listPlaygroundThreads(r, { include_archived }));
+  return run(() => backendFor(principal).listPlaygroundThreads(r, { include_archived, agent }));
 }
 
 const runSchema = z.object({ ref, thread_id: uuid, prompt: z.string().min(1).max(4000) });

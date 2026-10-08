@@ -69,30 +69,33 @@ export async function deleteClientAction(raw: unknown): Promise<ActionResult<nul
   return res;
 }
 
-const draftSchema = z.object({ ref, system_prompt: z.string().min(1).max(200_000) });
+/** Spec 030: one of the client's agents; without it the API acts on the principal. */
+const agent = z.string().uuid().optional();
+
+const draftSchema = z.object({ ref, system_prompt: z.string().min(1).max(200_000), agent });
 export async function stageAgentAction(raw: unknown): Promise<ActionResult<AgentVersion>> {
-  const { ref: r, system_prompt } = draftSchema.parse(raw);
+  const { ref: r, system_prompt, agent: a } = draftSchema.parse(raw);
   const principal = await requirePrincipal();
   if (!can(principal.role, "agents:write")) return { ok: false, status: 403, message: "forbidden" };
-  const res = await run(() => backendFor(principal).stageAgentVersion(r, { system_prompt }));
+  const res = await run(() => backendFor(principal).stageAgentVersion(r, { system_prompt }, a));
   if (res.ok) revalidatePath(`/clients/${r}/agent`);
   return res;
 }
 
-const versionSchema = z.object({ ref, version: z.number().int().positive() });
+const versionSchema = z.object({ ref, version: z.number().int().positive(), agent });
 export async function publishAgentAction(raw: unknown): Promise<ActionResult<AgentVersion>> {
-  const { ref: r, version } = versionSchema.parse(raw);
+  const { ref: r, version, agent: a } = versionSchema.parse(raw);
   const principal = await requirePrincipal();
   if (!can(principal.role, "agents:write")) return { ok: false, status: 403, message: "forbidden" };
-  const res = await run(() => backendFor(principal).publishAgentVersion(r, version));
+  const res = await run(() => backendFor(principal).publishAgentVersion(r, version, undefined, a));
   if (res.ok) revalidatePath(`/clients/${r}`);
   return res;
 }
 export async function rollbackAgentAction(raw: unknown): Promise<ActionResult<AgentVersion>> {
-  const { ref: r, version } = versionSchema.parse(raw);
+  const { ref: r, version, agent: a } = versionSchema.parse(raw);
   const principal = await requirePrincipal();
   if (!can(principal.role, "agents:write")) return { ok: false, status: 403, message: "forbidden" };
-  const res = await run(() => backendFor(principal).rollbackAgentVersion(r, version));
+  const res = await run(() => backendFor(principal).rollbackAgentVersion(r, version, a));
   if (res.ok) revalidatePath(`/clients/${r}`);
   return res;
 }

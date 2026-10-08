@@ -33,15 +33,20 @@ import structlog
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.config import get_settings
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
+    ClientMembership,
+    ClientMemberStatus,
     ConsoleNotification,
     MembershipStatus,
+    NotificationAudience,
     NotificationKind,
     NotificationSeverity,
     Partner,
     PartnerMembership,
     PartnerRole,
+    PartnerTenant,
 )
 from nexus_api.services.email import send_email
 
@@ -62,6 +67,7 @@ async def emit(
     external_client_ref: str | None = None,
     dedupe_key: str | None = None,
     email: bool | None = None,
+    audience: NotificationAudience | str = NotificationAudience.PARTNER,
 ) -> ConsoleNotification | None:
     """Insert one notification inside the caller's transaction.
 
@@ -83,6 +89,9 @@ async def emit(
         severity=sev_value,
         payload=payload,
         dedupe_key=dedupe_key,
+        # Spec 030: ``client`` lo ven (y lo reciben por correo) solo las
+        # personas de ese cliente; nunca los miembros del partner.
+        audience=audience.value if isinstance(audience, NotificationAudience) else str(audience),
     )
     try:
         async with session.begin_nested():
@@ -106,7 +115,53 @@ async def emit_detached(**kwargs: Any) -> ConsoleNotification | None:
         return await emit(session, **kwargs)
 
 
+#: Spec 030: lo que dice el correo de un aviso a la persona de un cliente. Sin
+#: datos del contacto más allá de su nombre, y nunca el texto de un mensaje.
+_CLIENT_SUBJECTS: dict[str, str] = {
+    NotificationKind.INBOX_WAITING.value: "Una conversación espera a una persona",
+    NotificationKind.CLIENT_BALANCE_LOW.value: "Tu saldo no llega a fin de mes",
+    NotificationKind.CLIENT_BALANCE_OUT.value: "Tu saldo se agotó: el agente no responde",
+}
+
+
+async def _email_client_best_effort(session: AsyncSession, row: ConsoleNotification) -> None:
+    """Correo a las personas activas del cliente del aviso. Nunca lanza."""
+    try:
+        stmt = (
+            sa.select(ClientMembership.email)
+            .join(PartnerTenant, PartnerTenant.tenant_id == ClientMembership.tenant_id)
+            .where(
+                PartnerTenant.partner_id == row.partner_id,
+                PartnerTenant.external_client_ref == row.external_client_ref,
+                ClientMembership.partner_id == row.partner_id,
+                ClientMembership.status == ClientMemberStatus.ACTIVE.value,
+            )
+        )
+        if row.recipient_user_id:
+            stmt = stmt.where(ClientMembership.user_id == row.recipient_user_id)
+        recipients = sorted({str(e) for e in (await session.scalars(stmt)).all()})
+        if not recipients:
+            return
+        subject = _CLIENT_SUBJECTS.get(row.kind, "Tienes un aviso en tu consola")
+        base = get_settings().console_base_url.rstrip("/")
+        conversation = row.payload.get("conversation_id")
+        link = f"{base}/inbox?c={conversation}" if conversation else f"{base}/"
+        who = row.payload.get("contact")
+        lead = (
+            f"<p><strong>{html.escape(str(who))}</strong> espera a una persona en tu bandeja.</p>"
+            if row.kind == NotificationKind.INBOX_WAITING.value and who
+            else f"<p>{html.escape(subject)}.</p>"
+        )
+        body = f'{lead}<p><a href="{html.escape(link)}">Abrir la consola</a></p>'
+        await send_email(to=recipients, subject=subject, html=body)
+    except Exception as exc:  # pragma: no cover - never let e-mail break the request
+        log.warning("console_notifications.client_email_failed", error=str(exc))
+
+
 async def _email_best_effort(session: AsyncSession, row: ConsoleNotification) -> None:
+    if row.audience == NotificationAudience.CLIENT.value:
+        await _email_client_best_effort(session, row)
+        return
     try:
         if row.recipient_user_id:
             stmt = sa.select(PartnerMembership.email).where(

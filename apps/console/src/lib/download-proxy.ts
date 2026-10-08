@@ -2,7 +2,7 @@ import "server-only";
 
 import { tokenFor } from "./backend";
 import { env } from "./env";
-import { can, resolvePrincipal, type Permission } from "./principal";
+import { can, resolvePrincipal, type ClientModule, type Permission } from "./principal";
 
 function json(status: number, detail: string): Response {
   return new Response(JSON.stringify({ detail }), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -19,7 +19,21 @@ export async function proxyDownload(request: Request, permission: Permission, ba
   const res = await resolvePrincipal();
   if (res.kind !== "ok") return json(401, "Not signed in");
   if (!can(res.principal.role, permission)) return json(403, `Missing permission ${permission}`);
-  const token = await tokenFor(res.principal);
+  return pipe(request, await tokenFor(res.principal), backendPath);
+}
+
+/**
+ * Spec 030: the same, for a client user. Its only permission is the module of
+ * its client; a partner member gets 403 here (and from the API).
+ */
+export async function proxyClientDownload(request: Request, module: ClientModule, backendPath: string): Promise<Response> {
+  const res = await resolvePrincipal();
+  if (res.kind !== "ok") return json(401, "Not signed in");
+  if (res.principal.kind !== "client" || !res.principal.modules.includes(module)) return json(403, `Missing module ${module}`);
+  return pipe(request, await tokenFor(res.principal), backendPath);
+}
+
+async function pipe(request: Request, token: string, backendPath: string): Promise<Response> {
   const upstream = await fetch(`${env().NEXUS_BACKEND_URL}${backendPath}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",

@@ -15,12 +15,22 @@ export default async function NoAccessPage() {
   if (res.kind === "anonymous") redirect("/login");
   const { t } = await getT();
   const disabled = res.kind === "disabled";
+  // Spec 030: a client user whose access was switched off or who was removed
+  // reads about its business, not about a partner console it never had.
+  const clientName = "clientName" in res ? res.clientName : undefined;
+  const description = clientName
+    ? disabled
+      ? t("noAccess.client.disabled", { client: clientName })
+      : t("noAccess.client.revoked", { client: clientName })
+    : disabled
+      ? t("noAccess.disabled")
+      : t("noAccess.body");
   return (
     <EmptyState
-      title={t("noAccess.title")}
+      title={clientName ? t("noAccess.client.title") : t("noAccess.title")}
       description={
         <>
-          {disabled ? t("noAccess.disabled") : t("noAccess.body")}
+          {description}
           <br />
           <span className="font-mono text-xs">{res.email}</span>
         </>

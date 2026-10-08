@@ -110,7 +110,7 @@ class _LoaderStub:
     def __init__(self, bundle: AgentBundle) -> None:
         self.bundle = bundle
 
-    async def load(self, _tid: uuid.UUID) -> AgentBundle:
+    async def load(self, _tid: uuid.UUID, _agent: uuid.UUID | None = None) -> AgentBundle:
         return self.bundle
 
     async def prime(self, _b: AgentBundle) -> None:

@@ -64,6 +64,7 @@ import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
+    Agent,
     AgentConfig,
     AgentConfigStatus,
     Channel,
@@ -189,6 +190,23 @@ async def run_cobranza_reminder_cron(
     log.info("cobranza_reminder_cron.stopped")
 
 
+def _reminders_policies_stmt() -> sa.Select[tuple[dict[str, Any]]]:
+    """Spec 030: the policies of the active agent that configures reminders
+    (a client may have a support agent and a collections agent); with one
+    agent, or none configuring them, the principal's — what it always was."""
+    return (
+        sa.select(AgentConfig.policies)
+        .join(Agent, Agent.id == AgentConfig.agent_id)
+        .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
+        .order_by(
+            AgentConfig.policies.has_key("reminders").desc(),
+            Agent.created_at,
+            Agent.id,
+        )
+        .limit(1)
+    )
+
+
 async def _cron_pass(redis: Any, *, now: datetime | None = None) -> None:
     """One sweep pass over every active tenant.
 
@@ -213,12 +231,7 @@ async def _cron_pass(redis: Any, *, now: datetime | None = None) -> None:
     now_utc = now or datetime.now(UTC)
     for tenant_id, tenant_name, tz_name in tenants:
         async with sm() as session, tenant_scoped_session(session, tenant_id):
-            policies = await session.scalar(
-                sa.select(AgentConfig.policies)
-                .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
-                .order_by(AgentConfig.version.desc())
-                .limit(1)
-            )
+            policies = await session.scalar(_reminders_policies_stmt())
         config = ReminderConfig((policies or {}).get("reminders"))
         if not config.enabled:
             continue
@@ -315,14 +328,7 @@ async def send_due_reminders_for_tenant(
             # so "today" is the business's, and the caps so a manual run
             # obeys the same age/volume limits as the cron.
             tz_name = await session.scalar(sa.select(Tenant.timezone).where(Tenant.id == tenant_id))
-            policies: dict[str, Any] = (
-                await session.scalar(
-                    sa.select(AgentConfig.policies)
-                    .where(AgentConfig.status == AgentConfigStatus.ACTIVE)
-                    .order_by(AgentConfig.version.desc())
-                    .limit(1)
-                )
-            ) or {}
+            policies: dict[str, Any] = (await session.scalar(_reminders_policies_stmt())) or {}
             if config is None:
                 config = ReminderConfig(policies.get("reminders"))
             if today is None:
@@ -619,9 +625,12 @@ async def _queue_reminder(
     }
 
     customer = await upsert_customer(session, identifier=wa_identifier)
+    # Spec 030 (D11): a reminder that lands on a resolved conversation
+    # brings it back to the Inbox, but it was not the debtor who wrote.
     conversation = await upsert_conversation_for_customer(
-        session, channel_id=channel.id, customer_id=customer.id
+        session, channel_id=channel.id, customer_id=customer.id, reopened_by="system"
     )
+    conversation.last_message_at = datetime.now(UTC)
     session.add(
         Message(
             tenant_id=tenant_id,

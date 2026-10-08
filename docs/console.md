@@ -4,6 +4,9 @@
 > con `kb/Auphere/nexus/architecture/console-map.md` (el mapa pantalla →
 > acción → endpoint → tabla vive allí; aquí, las reglas). Se actualiza en el
 > mismo commit que cambia el comportamiento (constitución §IX).
+>
+> La consola del **cliente final** (consola lite, spec 030) vive en la misma
+> app y se describe aparte: [consola-lite.md](consola-lite.md).
 
 ## Qué es
 

@@ -21,6 +21,7 @@ from nexus_api.services.console_identity import PASSWORD_MAX_LENGTH, PASSWORD_MI
 #: tres = página "sin acceso" (misma semántica que tenía el BFF cuando
 #: resolvía la membresía por SQL).
 AccessLiteral = Literal["ok", "no_membership", "suspended", "disabled"]
+KindLiteral = Literal["partner", "client"]
 
 
 class PrincipalOut(BaseModel):
@@ -50,6 +51,12 @@ class PrincipalOut(BaseModel):
     role: str | None = None
     permissions: list[str] = Field(default_factory=list)
     console_enabled: bool = False
+    #: Spec 030: quién entra. ``partner`` ve su cartera; ``client`` es la
+    #: persona de un cliente, con ``role = "client"``, sin permisos del
+    #: partner y con los ``modules`` de su cliente como único permiso.
+    kind: KindLiteral = "partner"
+    client_name: str | None = None
+    modules: list[str] = Field(default_factory=list)
 
 
 class LoginIn(BaseModel):

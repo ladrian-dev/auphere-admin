@@ -3,6 +3,8 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
 import { CompanionLauncher } from "@/components/companion/companion-launcher";
 import { AppSidebar } from "@/components/shell/app-sidebar";
 import { ConsoleCommandPalette } from "@/components/shell/console-command-palette";
+import { LiteNotificationsBell } from "@/components/shell/lite-notifications-bell";
+import { LiteSearch } from "@/components/shell/lite-search";
 import { NotificationsBell } from "@/components/shell/notifications-bell";
 import { getT } from "@/i18n/server";
 import { requirePrincipal } from "@/lib/principal";
@@ -15,6 +17,13 @@ import { requirePrincipal } from "@/lib/principal";
 export default async function ConsoleLayout({ children }: { children: React.ReactNode }) {
   const principal = await requirePrincipal();
   const { t } = await getT(principal.locale);
+  // Spec 030: the same shell for both kinds of person. A client user gets its
+  // client's modules, the «lite» badge and its own bell; no Companion, no
+  // partner search.
+  const who =
+    principal.kind === "client"
+      ? { kind: "client" as const, modules: principal.modules, clientName: principal.clientName }
+      : { kind: "partner" as const, role: principal.role };
   return (
     // El shell mide exactamente la ventana. Sin esto, el inset medía la
     // ventana entera **más** sus 8 px de margen arriba y abajo, y esos 16 px
@@ -27,9 +36,9 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
         {t("shell.skip")}
       </a>
       <AppSidebar
+        who={who}
         partnerName={principal.partnerName}
         partnerSlug={principal.partnerSlug}
-        role={principal.role}
         user={{ name: principal.name, email: principal.email }}
       />
       {/* El shell mide la ventana, no la página: la barra superior y el
@@ -44,8 +53,17 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
               the notifications bell (CP-07 / CP-29). */}
           <SidebarTrigger className="-ml-1" />
           <div className="flex-1" />
-          <ConsoleCommandPalette role={principal.role} />
-          <NotificationsBell initialUnread={null} />
+          {principal.kind === "partner" ? (
+            <>
+              <ConsoleCommandPalette role={principal.role} />
+              <NotificationsBell initialUnread={null} />
+            </>
+          ) : (
+            <>
+              <LiteSearch modules={principal.modules} />
+              <LiteNotificationsBell modules={principal.modules} />
+            </>
+          )}
         </header>
         {/* El contenido, en blanco, enmarcado por el color del lateral y de
             la barra —que ahora comparten tono y se leen como una sola pieza—.
@@ -63,7 +81,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
             `(auth)`. It is mounted here rather than per page so the drawer
             survives navigation — a run keeps going while the user moves
             around, which is the whole point of the durable run log. */}
-        <CompanionLauncher role={principal.role} userId={principal.userId} />
+        {principal.kind === "partner" ? <CompanionLauncher role={principal.role} userId={principal.userId} /> : null}
       </SidebarInset>
     </SidebarProvider>
   );
