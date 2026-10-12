@@ -1,13 +1,17 @@
-"""D6: el consumo del canal debita los DOS libros, no solo el wallet.
+"""El consumo del canal baja el tope del cliente UNA vez, dentro de
+``debit_wallet``.
 
 ``partner_wallets`` es el saldo del partner; ``partner_allocations.remaining``
-es el techo por cliente que el partner fija en Consumo. Hasta el 2026-09-01
-solo se debitaba el primero: ``debit_allocation`` existía, estaba probada y
-**no la llamaba nadie salvo los tests**, así que ``remaining`` no bajaba nunca,
-``usage_ledger`` estaba a 0 filas y el tope por cliente era un on/off.
+es el techo por cliente que el partner fija en Consumo. ``debit_wallet`` con
+``tenant_id`` baja los dos, por lo que de verdad cobra y en una transacción.
 
-Tras ADR-036 esto dejó de ser deuda y pasó a ser bloqueante: al renunciar al
-proxy, el wallet es el único techo de gasto que queda.
+Historia, para que no se repita: el 2026-09-02 este fichero fijó que el
+consumidor llamara a ``debit_wallet`` **y** a ``debit_allocation``, creyendo que
+el tope no bajaba nunca. Lo bajaba ya el primero, así que desde entonces bajó
+dos veces — el cliente se quedaba mudo a mitad de su tope —. Con dobles
+independientes eso no se ve; lo fija contra la base real
+``apps/api/tests/integration/test_channel_debit_once.py``. Bug
+``doble-cobro-del-tope``.
 """
 
 from __future__ import annotations
@@ -76,63 +80,42 @@ def _rows(source: str = "channel") -> tuple[uuid.UUID, list[dict]]:
 
 
 @pytest.mark.asyncio
-async def test_channel_turn_debits_wallet_and_allocation(
+async def test_channel_turn_debits_the_wallet_once_with_its_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tenant_id, rows = _rows()
     partner_id = uuid.uuid4()
     monkeypatch.setattr(consumer, "_partner_for", AsyncMock(return_value=partner_id))
     wallet = AsyncMock()
-    allocation = AsyncMock()
     monkeypatch.setattr("nexus_api.metering.wallet.debit_wallet", wallet)
-    monkeypatch.setattr("nexus_api.metering.wallet.debit_allocation", allocation)
 
     await consumer._debit_channel_wallet(tenant_id, rows)
 
-    assert wallet.await_count == 1, "el wallet del partner tiene que bajar"
-    assert allocation.await_count == 1, "el remaining del cliente también"
-    w = wallet.await_args.kwargs
-    a = allocation.await_args.kwargs
-    # Misma cantidad y misma clave: ``debit_allocation`` la sufija por dentro,
-    # así que un reintento del stream no dobla ninguno de los dos libros.
-    assert a["qty"] == w["qty"] > 0
-    assert a["idempotency_key"] == w["idempotency_key"]
-    assert a["partner_id"] == partner_id
-    assert a["tenant_id"] == tenant_id
-
-
-@pytest.mark.asyncio
-async def test_allocation_failure_does_not_hide_a_good_wallet_debit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Un fallo del segundo libro no puede tumbar ni enmascarar al primero."""
-    tenant_id, rows = _rows()
-    monkeypatch.setattr(consumer, "_partner_for", AsyncMock(return_value=uuid.uuid4()))
-    wallet = AsyncMock()
-    monkeypatch.setattr("nexus_api.metering.wallet.debit_wallet", wallet)
-    monkeypatch.setattr(
-        "nexus_api.metering.wallet.debit_allocation",
-        AsyncMock(side_effect=RuntimeError("boom")),
-    )
-
-    await consumer._debit_channel_wallet(tenant_id, rows)  # no propaga
-
     assert wallet.await_count == 1
+    w = wallet.await_args.kwargs
+    assert w["partner_id"] == partner_id
+    # With the client: that is what lowers its cap, inside the same debit.
+    assert w["tenant_id"] == tenant_id
+    assert w["qty"] > 0
+    assert w["allow_included"] is False
+
+
+def test_there_is_no_second_cap_debit_to_wire_by_mistake() -> None:
+    from nexus_api.metering import wallet
+
+    assert not hasattr(wallet, "debit_allocation")
 
 
 @pytest.mark.asyncio
-async def test_qa_source_debits_neither_book(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_qa_source_debits_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     """El gasto del Playground no es coste del cliente y no come su tope."""
     tenant_id, rows = _rows(source="qa")
     wallet = AsyncMock()
-    allocation = AsyncMock()
     monkeypatch.setattr("nexus_api.metering.wallet.debit_wallet", wallet)
-    monkeypatch.setattr("nexus_api.metering.wallet.debit_allocation", allocation)
 
     await consumer._debit_channel_wallet(tenant_id, rows)
 
     assert wallet.await_count == 0
-    assert allocation.await_count == 0
 
 
 def test_wallet_renewal_cron_is_registered_in_the_scheduler() -> None:

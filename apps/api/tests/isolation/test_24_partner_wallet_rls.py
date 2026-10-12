@@ -12,7 +12,6 @@ from nexus_api.db.base import get_sessionmaker
 from nexus_api.metering.wallet import (
     OverAllocation,
     add_purchased,
-    debit_allocation,
     debit_wallet,
     set_allocation,
 )
@@ -283,7 +282,13 @@ async def test_add_purchased_is_the_manual_topup(db_session) -> None:
     assert snap.purchased_remaining == 51
 
 
-async def test_debit_allocation_does_not_touch_wallet_or_other_client(db_session) -> None:
+async def test_a_clients_debit_lowers_only_its_own_cap(db_session) -> None:
+    """A client's debit lowers ITS cap, once, and never another client's.
+
+    Was ``debit_allocation`` — a second, separate decrement of the cap that
+    ran after ``debit_wallet`` had already lowered it (bug
+    ``doble-cobro-del-tope``). ``debit_wallet`` with ``tenant_id`` is now the
+    only way a cap goes down; the guarantee this test holds stays the same."""
     partner_id = uuid.uuid4()
     t1, t2 = uuid.uuid4(), uuid.uuid4()
     sm = get_sessionmaker()
@@ -312,18 +317,18 @@ async def test_debit_allocation_does_not_touch_wallet_or_other_client(db_session
         )
         await session.commit()
 
-    result = await debit_allocation(
+    result = await debit_wallet(
         partner_id=partner_id,
         tenant_id=t1,
         qty=25,
-        idempotency_key=f"companion:{partner_id}",
+        idempotency_key=f"channel:{partner_id}",
     )
     assert result.spent == 25
-    again = await debit_allocation(
+    again = await debit_wallet(
         partner_id=partner_id,
         tenant_id=t1,
         qty=25,
-        idempotency_key=f"companion:{partner_id}",
+        idempotency_key=f"channel:{partner_id}",
     )
     assert again.duplicate is True
     assert again.spent == 0
@@ -338,7 +343,8 @@ async def test_debit_allocation_does_not_touch_wallet_or_other_client(db_session
                 {"p": str(partner_id)},
             )
         ).one()
-        assert wallet == (200, 10)
+        # Included first (this caller may spend it), and only once.
+        assert wallet == (175, 10)
         rem = dict(
             (
                 await session.execute(

@@ -296,7 +296,7 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
     partner_id = await _partner_for(tenant_id)
     if partner_id is None:
         return
-    from nexus_api.metering.wallet import debit_allocation, debit_wallet
+    from nexus_api.metering.wallet import debit_wallet
 
     # R3.4 se aplica al camino de **servir** un turno, no al de asentarlo: aquí
     # el turno ya ocurrió y el modelo ya se pagó, así que negarse no impide
@@ -340,32 +340,17 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
                 turn=turn,
                 error=str(exc),
             )
-        # Dos libros, y los dos hacen falta (D6). ``partner_wallets`` es el
-        # saldo del partner; ``partner_allocations.remaining`` es el techo
-        # POR CLIENTE que el partner fija en Consumo. Hasta hoy solo se
-        # debitaba el primero: ``remaining`` no bajaba nunca, la columna
-        # "Restante" de la consola enseñaba siempre el cap y el tope por
-        # cliente era un on/off, no un límite.
+        # El tope POR CLIENTE (``partner_allocations.remaining``) lo baja el
+        # propio ``debit_wallet`` al recibir ``tenant_id``: por lo que de
+        # verdad cobró y en la misma transacción que el saldo del partner.
         #
-        # Va en su propio try: un fallo aquí no puede hacer parecer que
-        # falló el débito del wallet, que ya está hecho. La idempotencia la
-        # pone ``debit_allocation`` sufijando la misma clave, así que un
-        # reintento del stream no dobla ninguno de los dos.
-        try:
-            await debit_allocation(
-                partner_id=partner_id,
-                tenant_id=tenant_id,
-                qty=qty,
-                idempotency_key=key,
-                agent_id=agent_id,
-            )
-        except Exception as exc:
-            log.warning(
-                "metering.allocation_debit_failed",
-                tenant_id=str(tenant_id),
-                turn=turn,
-                error=str(exc),
-            )
+        # Hasta el 2026-10-10 aquí había una segunda llamada,
+        # ``debit_allocation``, añadida el 2026-09-02 creyendo que el tope no
+        # bajaba nunca. Lo bajaba dos veces: el cliente se quedaba mudo a mitad
+        # de su tope, sin cobro también bajaba (gasto fantasma) y su asiento
+        # ``…:allocation`` inflaba el gasto de los informes. Bug
+        # ``doble-cobro-del-tope``; lo fija
+        # ``apps/api/tests/integration/test_channel_debit_once.py``.
 
 
 async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) -> int:

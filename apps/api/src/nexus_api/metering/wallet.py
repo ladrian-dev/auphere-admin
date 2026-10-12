@@ -549,6 +549,17 @@ async def allocations_for(
         return {}
 
 
+#: Ledger entries the double cap debit wrote (bug ``doble-cobro-del-tope``,
+#: 2026-09-02 → 2026-10-10): a second, wrong decrement of a client's cap, not
+#: money spent. They stay in ``usage_ledger`` as history; no spend report
+#: counts them — the admin's ledger already left them out.
+ALLOCATION_KEY_SUFFIX = ":allocation"
+
+
+def _spend_only() -> sa.ColumnElement[bool]:
+    return ~UsageLedger.idempotency_key.like(f"%{ALLOCATION_KEY_SUFFIX}")
+
+
 @dataclass(frozen=True)
 class AgentFilter:
     """Spec 030: the spend of one agent. The principal also owns what was
@@ -589,6 +600,7 @@ async def credit_burn(
                     UsageLedger.created_at < until if until is not None else sa.true(),
                     sa.or_(UsageLedger.tenant_id.is_(None), UsageLedger.tenant_id.in_(tenant_ids)),
                     agent.clause() if agent is not None else sa.true(),
+                    _spend_only(),
                 )
                 .group_by(UsageLedger.tenant_id)
             )
@@ -621,6 +633,7 @@ async def credit_burn_by_agent(
                 UsageLedger.tenant_id == tenant_id,
                 UsageLedger.created_at >= since,
                 UsageLedger.created_at < until if until is not None else sa.true(),
+                _spend_only(),
             )
             .group_by(UsageLedger.agent_id)
         )
@@ -653,7 +666,12 @@ async def credit_burn_by_day(
         await apply_partner_to_session(session, partner_id)
         rows = await session.execute(
             sa.select(UsageLedger.tenant_id, day, sa.func.sum(UsageLedger.qty))
-            .where(UsageLedger.partner_id == partner_id, UsageLedger.created_at >= since, who)
+            .where(
+                UsageLedger.partner_id == partner_id,
+                UsageLedger.created_at >= since,
+                who,
+                _spend_only(),
+            )
             .group_by(UsageLedger.tenant_id, day)
         )
         return {(tid, d): _as_int(total) for tid, d, total in rows.all()}
@@ -1048,106 +1066,5 @@ async def _debit_locked(
             spent=spent,
             from_included=from_included,
             from_purchased=from_purchased,
-            duplicate=False,
-        )
-
-
-async def debit_allocation(
-    *,
-    partner_id: uuid.UUID,
-    tenant_id: uuid.UUID,
-    qty: int,
-    idempotency_key: str,
-    usage_record_id: uuid.UUID | None = None,
-    # Spec 030: the client's agent the debit belongs to (spend per agent).
-    agent_id: uuid.UUID | None = None,
-    companion_run_id: uuid.UUID | None = None,
-) -> DebitResult:
-    """Debita solo ``partner_allocations.remaining`` del cliente.
-
-    No toca ``partner_wallets`` (reserva). Misma clave = no dobla.
-    Si no hay asignación o remaining es 0, ``spent=0`` y no escribe asiento.
-    """
-    if qty <= 0:
-        return DebitResult(spent=0, from_included=0, from_purchased=0, duplicate=False)
-    try:
-        return await _debit_allocation_locked(
-            partner_id=partner_id,
-            tenant_id=tenant_id,
-            qty=qty,
-            idempotency_key=idempotency_key,
-            usage_record_id=usage_record_id,
-            agent_id=agent_id,
-            companion_run_id=companion_run_id,
-        )
-    except Exception as exc:
-        if isinstance(exc, IntegrityError):
-            return DebitResult(spent=0, from_included=0, from_purchased=0, duplicate=True)
-        log.warning(
-            "wallet.allocation_debit_failed",
-            partner_id=str(partner_id),
-            tenant_id=str(tenant_id),
-            key=idempotency_key,
-            error=str(exc),
-        )
-        raise
-
-
-async def _debit_allocation_locked(
-    *,
-    partner_id: uuid.UUID,
-    tenant_id: uuid.UUID,
-    qty: int,
-    idempotency_key: str,
-    usage_record_id: uuid.UUID | None,
-    agent_id: uuid.UUID | None = None,
-    companion_run_id: uuid.UUID | None,
-) -> DebitResult:
-    sm = get_sessionmaker()
-    key = f"{idempotency_key}:allocation"
-    async with sm() as session, session.begin():
-        await apply_partner_to_session(session, partner_id)
-        already = await session.scalar(
-            sa.select(sa.func.count())
-            .select_from(UsageLedger)
-            .where(UsageLedger.idempotency_key == key)
-        )
-        if _as_int(already) > 0:
-            return DebitResult(spent=0, from_included=0, from_purchased=0, duplicate=True)
-
-        alloc = await session.scalar(
-            sa.select(PartnerAllocation)
-            .where(
-                PartnerAllocation.partner_id == partner_id,
-                PartnerAllocation.tenant_id == tenant_id,
-            )
-            .with_for_update()
-        )
-        if alloc is None:
-            return DebitResult(spent=0, from_included=0, from_purchased=0, duplicate=False)
-        spent = min(qty, max(0, _as_int(alloc.remaining)))
-        if spent <= 0:
-            return DebitResult(spent=0, from_included=0, from_purchased=0, duplicate=False)
-
-        alloc.remaining = _as_int(alloc.remaining) - spent
-        alloc.updated_at = _now()
-        session.add(
-            UsageLedger(
-                partner_id=partner_id,
-                tenant_id=tenant_id,
-                qty=spent,
-                bucket=BUCKET_INCLUDED,
-                usage_record_id=usage_record_id,
-                agent_id=agent_id,
-                companion_run_id=companion_run_id,
-                idempotency_key=key,
-                fx=None,
-            )
-        )
-        await session.flush()
-        return DebitResult(
-            spent=spent,
-            from_included=0,
-            from_purchased=0,
             duplicate=False,
         )

@@ -18,7 +18,8 @@ se ve en rojo antes de su implementación.
 - Una suite de pytest a la vez: comparten base de datos.
 - Trabajo en desarrollo y staging; producción cuando el owner promueve.
 - **Antes de abrir Consumo o el saldo a un cliente real**, el doble débito del
-  tope tiene que estar arreglado (sesión aparte, flujo de bug).
+  tope tiene que estar arreglado (sesión aparte, flujo de bug). — Arreglado en
+  la rama `fix/doble-cobro-del-tope` (`.specify/bugs/doble-cobro-del-tope/`).
 
 ## Format: `[ID] [P?] [Story] Descripción`
 

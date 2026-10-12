@@ -90,9 +90,15 @@ que cada cifra coincida al céntimo con la que el partner ve de ese cliente
   página pinta `LitePanel` / `LiteUsage` (`components/lite/`) para un cliente.
   El CSV sale por `/api/lite/usage/export` (`proxyClientDownload`, guarda de
   módulo).
-- **Dependencia abierta**: el doble débito del tope por cliente (propuesto como
-  sesión aparte). Hasta arreglarlo, el saldo que ve el cliente baja el doble de
-  rápido: no se abre Consumo a un cliente real antes.
+- **El doble débito del tope, arreglado** (bug `doble-cobro-del-tope`,
+  `.specify/bugs/doble-cobro-del-tope/`). Del 2026-09-02 (2026-09-13 en
+  producción) al arreglo, cada turno bajaba el tope del cliente dos veces
+  (`debit_wallet` y `debit_allocation`), también sin cobro, y el asiento
+  `…:allocation` inflaba el gasto. Ahora el tope solo lo baja `debit_wallet`,
+  por lo cobrado; las sumas de gasto ignoran los asientos `…:allocation` que
+  quedan en el libro; y la migración `0156` devolvió a cada cliente lo
+  descontado de más en su semana. Lo fija
+  `tests/integration/test_channel_debit_once.py`.
 
 ## La Bandeja de entrada
 
