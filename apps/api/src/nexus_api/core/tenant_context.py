@@ -94,6 +94,23 @@ async def apply_tenant_to_session(session: AsyncSession, tenant_id: uuid.UUID) -
     )
 
 
+async def declare_tenant(session: AsyncSession, tenant_id: uuid.UUID) -> None:
+    """Name this transaction's tenant WITHOUT leaving the platform role.
+
+    For platform code (the admin) that, in one transaction, works on ONE
+    tenant's rows — ``channels``, ``conversations``… — and also reads tables
+    that RLS would hide from ``nexus_app`` (``partner_tenants`` is scoped by
+    partner). In production ``core/isolation_enforcer.py`` blocks any statement
+    on a tenant-scoped table that does not declare ``app.tenant_id``; this
+    declares it. RLS stays bypassed (connection role), so every query must
+    still filter by ``tenant_id`` itself. Use ``apply_tenant_to_session``
+    whenever the role switch is possible.
+    """
+    await session.execute(
+        text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": str(tenant_id)}
+    )
+
+
 @asynccontextmanager
 async def tenant_scoped_session(
     session: AsyncSession, tenant_id: uuid.UUID

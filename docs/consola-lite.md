@@ -32,6 +32,13 @@ Pestaña **Acceso** en la ficha del tenant del admin
 - **Operador identificado**: cada llamada lleva `X-Operator-Id` (ADR-034); sin
   él, 400. La auditoría escribe `operator:<correo>` con el tenant del cliente,
   y la Auditoría del partner lo enseña como «Auphere».
+- **Declara su cliente** (`declare_tenant`, `core/tenant_context.py`): las
+  rutas usan la sesión de plataforma —leen `partner_tenants`, que la RLS
+  escondería al rol `nexus_app`— y tocan tablas de cliente (`channels`,
+  `conversations`). En producción la guarda de aislamiento corta esa consulta
+  sin `app.tenant_id` y la pestaña daba 500 (bug `acceso-500-en-produccion`,
+  2026-10-12); lo fija `tests/unit/test_admin_client_access_strict_isolation.py`
+  con la guarda en modo de corte.
 - Siembra local: `apps/api/scripts/dev_seed_client_access.py`.
 
 ## Identidad y frontera

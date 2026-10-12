@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.security import require_admin_token
+from nexus_api.core.tenant_context import declare_tenant
 from nexus_api.db.models import OperatorAccount
 from nexus_api.services import client_access
 from nexus_api.services.client_access import AccessView, ClientAccessError
@@ -165,6 +166,8 @@ async def read_client_access(
 ) -> ClientAccessOut:
     try:
         async with session.begin():
+            # Production blocks tenant tables without a declared tenant.
+            await declare_tenant(session, tenant_id)
             return _out(await client_access.read_access(session, tenant_id))
     except ClientAccessError as exc:
         raise _error(exc) from None
@@ -179,6 +182,8 @@ async def set_client_access(
 ) -> ClientAccessOut:
     try:
         async with session.begin():
+            # Production blocks tenant tables without a declared tenant.
+            await declare_tenant(session, tenant_id)
             view = await client_access.set_access(
                 session,
                 tenant_id,
@@ -215,6 +220,8 @@ async def invite_client_member(
 ) -> ClientInvitationOut:
     try:
         async with session.begin():
+            # Production blocks tenant tables without a declared tenant.
+            await declare_tenant(session, tenant_id)
             invitation, token = await client_access.invite(
                 session, tenant_id, email=body.email, name=body.name, actor=_actor(operator)
             )
@@ -245,6 +252,8 @@ async def resend_client_invitation(
 ) -> ClientInvitationOut:
     try:
         async with session.begin():
+            # Production blocks tenant tables without a declared tenant.
+            await declare_tenant(session, tenant_id)
             invitation, token = await client_access.resend(
                 session, tenant_id, member_id, actor=_actor(operator)
             )
@@ -274,6 +283,8 @@ async def revoke_client_member(
 ) -> Response:
     try:
         async with session.begin():
+            # Production blocks tenant tables without a declared tenant.
+            await declare_tenant(session, tenant_id)
             await client_access.revoke(session, tenant_id, member_id, actor=_actor(operator))
     except ClientAccessError as exc:
         raise _error(exc) from None
