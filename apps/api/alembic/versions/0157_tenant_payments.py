@@ -10,8 +10,10 @@ cambia el estado de nadie: registrar un pago no toca el servicio.
 Una mensualidad viva por cliente y mes (índice único parcial). Un pago anotado
 por error no se borra: se anula, y el mes queda libre para anotarlo bien.
 
-Nivel plataforma, sin RLS, como ``invoices``: son registros de cobro de
-Auphere. ``ON DELETE RESTRICT`` por lo mismo que allí — un cliente con pagos
+RLS como ``invoices`` (0073): ENABLE con policy por tenant y **sin FORCE**.
+El runtime (``nexus_app``) solo ve los pagos de su cliente; el camino de
+plataforma los ve todos, que es lo que necesita la vista del mes entre
+clientes. ``ON DELETE RESTRICT`` por lo mismo que allí — un cliente con pagos
 anotados no se borra en silencio.
 
 Revision ID: 0157_tenant_payments
@@ -95,6 +97,11 @@ def upgrade() -> None:
     )
     op.create_index("ix_tenant_payments_period", "tenant_payments", ["period_year", "period_month"])
     op.execute("GRANT SELECT, INSERT, UPDATE ON tenant_payments TO nexus_app")
+    op.execute("ALTER TABLE tenant_payments ENABLE ROW LEVEL SECURITY")
+    op.execute(
+        "CREATE POLICY tenant_payments_tenant_isolation ON tenant_payments "
+        "USING (tenant_id = (NULLIF(current_setting('app.tenant_id', true), ''))::uuid)"
+    )
 
     bind = op.get_bind()
     for action, category, severity, es, en in VOCABULARY:
@@ -120,5 +127,6 @@ def downgrade() -> None:
         bind.execute(
             sa.text("DELETE FROM console_audit_vocabulary WHERE action = :a"), {"a": action}
         )
+    op.execute("DROP POLICY IF EXISTS tenant_payments_tenant_isolation ON tenant_payments")
     op.execute("REVOKE ALL ON tenant_payments FROM nexus_app")
     op.drop_table("tenant_payments")

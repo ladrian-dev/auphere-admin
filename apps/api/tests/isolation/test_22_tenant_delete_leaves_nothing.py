@@ -46,6 +46,11 @@ KEEP_ON_DELETE: dict[str, str] = {
         "y el endpoint lo comprueba antes para responder 409 en vez de 502."
     ),
     "invoice_lines": "Cuelga de ``invoices``; misma obligación legal.",
+    "tenant_payments": (
+        "Cobros de Auphere anotados a mano: la contabilidad se conserva como "
+        "las facturas. FK en RESTRICT a propósito y ``hard_delete_tenant`` lo "
+        "comprueba antes para responder 409 en vez de 502."
+    ),
     "api_keys": (
         "``tenant_id`` es NULL en las claves de nivel partner y la tabla se "
         "lee para autenticar antes de saber el tenant. Las claves atadas a un "

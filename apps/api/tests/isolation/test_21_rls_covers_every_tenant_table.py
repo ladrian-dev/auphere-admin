@@ -108,6 +108,7 @@ ENABLE_ONLY_TABLES: dict[str, str] = {
     "invoices": "``partner_receipt`` emite facturas de partner leyendo varios tenants.",
     "invoice_lines": "El panel de recibos lista líneas de todos los tenants de un partner.",
     "embed_audit_log": "Auditoría del partner: se consulta por partner, no por tenant.",
+    "tenant_payments": "El panel de Auphere lista la mensualidad del mes de todos los clientes.",
 }
 
 

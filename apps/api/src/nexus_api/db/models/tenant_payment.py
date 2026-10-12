@@ -1,7 +1,7 @@
 """A client's monthly fee, collected outside the payment provider.
 
-Platform-level (no RLS), like ``billing.py``'s invoices: Auphere's own
-collection records.
+Auphere's own collection records. RLS like ``invoices``: enabled, not forced —
+the runtime sees one client's rows, the platform path sees every client's.
 
 A row is a **record and nothing else**. It grants no tier, credits no balance
 and moves nobody's state — writing one never touches the service.
