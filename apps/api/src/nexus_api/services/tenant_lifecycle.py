@@ -76,6 +76,17 @@ async def hard_delete_tenant(session: AsyncSession, tenant: Tenant, *, actor: st
             "17.3.b). Anula o traspasa las facturas antes de borrar.",
         )
 
+    payments = await session.scalar(
+        sa.text("SELECT count(*) FROM tenant_payments WHERE tenant_id = :t"),
+        {"t": str(tenant_id)},
+    )
+    if payments:
+        raise TenantDeleteBlocked(
+            409,
+            f"el tenant tiene {payments} pago(s) anotado(s) y no se puede borrar: "
+            "son registros de cobro de Auphere y se conservan como las facturas.",
+        )
+
     slug, name = tenant.slug, tenant.name
     log.warning("tenant.delete.cascade", tenant_id=str(tenant_id), slug=slug, actor=actor)
 

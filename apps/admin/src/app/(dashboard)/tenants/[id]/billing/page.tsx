@@ -12,6 +12,7 @@ import {
 import { backend } from "@/lib/backend";
 
 import { BillingForm } from "./billing-form";
+import { PaymentsCard } from "./payments-card";
 
 const MODEL_LABEL: Record<string, string> = {
   subscription: "Suscripción",
@@ -40,10 +41,11 @@ export default async function TenantBillingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [billing, partners, plans] = await Promise.all([
+  const [billing, partners, plans, payments] = await Promise.all([
     backend.getTenantBilling(id),
     backend.listPartners(),
     backend.listBillingPlans(),
+    backend.listTenantPayments(id),
   ]);
   if (!billing) notFound();
 
@@ -111,6 +113,25 @@ export default async function TenantBillingPage({
               </div>
             )}
           </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <Eyebrow>Pagos</Eyebrow>
+          <CardTitle>Pagos recibidos fuera de Stripe</CardTitle>
+          <CardDescription>
+            Mensualidades que el cliente pagó por transferencia, efectivo u
+            otro medio. Anotar un pago deja constancia de quién pagó qué mes;
+            no cambia su servicio ni su saldo.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PaymentsCard
+            tenantId={id}
+            payments={payments}
+            monthlyCents={billing.effective_monthly_cents}
+          />
         </CardContent>
       </Card>
 

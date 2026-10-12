@@ -141,6 +141,8 @@ export type Tenant = {
   cost_alert_threshold_usd_per_day: string;
   /** ADR-017: public AgendaPro URL used by the new public browser MCP. */
   agendapro_public_url: string | null;
+  /** Set when the client pays a flat monthly plan (Facturación tab). */
+  billing_plan_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -1257,6 +1259,43 @@ export type TenantBillingUpdateInput = {
   billing_effective_from?: string | null;
 };
 
+export type TenantPaymentMethod =
+  | "transfer"
+  | "cash"
+  | "zelle"
+  | "paypal"
+  | "crypto"
+  | "other";
+
+/** A client's monthly fee received outside the payment provider. A record
+ *  only: it never changes the client's service. */
+export type TenantPaymentOut = {
+  id: string;
+  tenant_id: string;
+  period_year: number;
+  period_month: number;
+  amount_cents: number;
+  currency: string;
+  method: TenantPaymentMethod;
+  reference: string | null;
+  paid_on: string;
+  note: string | null;
+  recorded_by: string;
+  created_at: string;
+  voided_at: string | null;
+  voided_by: string | null;
+};
+
+export type TenantPaymentInput = {
+  period_year: number;
+  period_month: number;
+  amount_cents: number;
+  method: TenantPaymentMethod;
+  reference: string | null;
+  paid_on: string;
+  note: string | null;
+};
+
 // ── tenants ─────────────────────────────────────────────────────────────────
 
 export const backend = {
@@ -2138,4 +2177,37 @@ export const backend = {
       method: "PUT",
       body,
     }),
+
+  // ── monthly fees paid outside the provider ────────────────────────────
+  listTenantPayments: (tenantId: string) =>
+    call<TenantPaymentOut[]>(`/admin/tenants/${tenantId}/payments`).then(
+      (r) => r ?? [],
+    ),
+
+  /** Live (not voided) payments of one month, across every client. */
+  listPeriodPayments: (year: number, month: number) =>
+    call<TenantPaymentOut[]>(
+      `/admin/tenant-payments?year=${year}&month=${month}`,
+    ).then((r) => r ?? []),
+
+  recordTenantPayment: (
+    tenantId: string,
+    body: TenantPaymentInput,
+    operatorId: string,
+  ) =>
+    call<TenantPaymentOut>(`/admin/tenants/${tenantId}/payments`, {
+      method: "POST",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  voidTenantPayment: (
+    tenantId: string,
+    paymentId: string,
+    operatorId: string,
+  ) =>
+    call<TenantPaymentOut>(
+      `/admin/tenants/${tenantId}/payments/${paymentId}/void`,
+      { method: "POST", headers: { "X-Operator-Id": operatorId } },
+    ),
 };

@@ -16,6 +16,7 @@
 import { revalidatePath } from "next/cache";
 
 import { BackendError, backend, type TenantStatus } from "@/lib/backend";
+import { requireOperator } from "@/lib/session";
 
 export type ActionResult<T> =
   | { ok: true; data: T }
@@ -90,6 +91,40 @@ export async function createBillingPlanAction(
   try {
     const r = await backend.createBillingPlan(body);
     if (!r) return { ok: false, error: "empty response" };
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+// ── Pagos fuera del proveedor ────────────────────────────────────────────────
+
+export async function recordTenantPaymentAction(
+  tenantId: string,
+  body: import("@/lib/backend").TenantPaymentInput,
+): Promise<ActionResult<import("@/lib/backend").TenantPaymentOut>> {
+  const operator = await requireOperator();
+  try {
+    const r = await backend.recordTenantPayment(tenantId, body, operator.id);
+    if (!r) return { ok: false, error: "empty response" };
+    revalidatePath(`/tenants/${tenantId}/billing`);
+    revalidatePath("/tenants");
+    return { ok: true, data: r };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function voidTenantPaymentAction(
+  tenantId: string,
+  paymentId: string,
+): Promise<ActionResult<import("@/lib/backend").TenantPaymentOut>> {
+  const operator = await requireOperator();
+  try {
+    const r = await backend.voidTenantPayment(tenantId, paymentId, operator.id);
+    if (!r) return { ok: false, error: "empty response" };
+    revalidatePath(`/tenants/${tenantId}/billing`);
+    revalidatePath("/tenants");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);

@@ -25,7 +25,13 @@ const STATUS_TONE: Record<string, "positive" | "warning" | "muted"> = {
 };
 
 export default async function TenantsPage() {
-  const tenants = await backend.listTenants();
+  const now = new Date();
+  const [tenants, periodPayments] = await Promise.all([
+    backend.listTenants(),
+    backend.listPeriodPayments(now.getFullYear(), now.getMonth() + 1),
+  ]);
+  const paidThisMonth = new Set(periodPayments.map((p) => p.tenant_id));
+  const monthName = now.toLocaleDateString("es", { month: "long" });
   const counts = {
     total: tenants.length,
     active: tenants.filter((t) => t.status === "active").length,
@@ -74,6 +80,9 @@ export default async function TenantsPage() {
               <TableHead className="hidden sm:table-cell">Plan</TableHead>
               <TableHead className="hidden md:table-cell">Mercado</TableHead>
               <TableHead>Estado</TableHead>
+              <TableHead className="hidden sm:table-cell">
+                Mensualidad de {monthName}
+              </TableHead>
               <TableHead className="hidden md:table-cell text-right">
                 Última actualización
               </TableHead>
@@ -84,7 +93,7 @@ export default async function TenantsPage() {
             {tenants.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="py-12 text-center text-muted-foreground"
                 >
                   Sin tenants todavía. Crea el primero con &quot;Nuevo
@@ -120,6 +129,20 @@ export default async function TenantsPage() {
                       <StatusDot tone={STATUS_TONE[tenant.status] ?? "muted"} />
                       <span>{statusLabel(tenant.status)}</span>
                     </span>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    {paidThisMonth.has(tenant.id) ? (
+                      <Badge variant="secondary">Pagada</Badge>
+                    ) : tenant.billing_plan_id ? (
+                      <Link
+                        href={`/tenants/${tenant.id}/billing`}
+                        className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+                      >
+                        Sin anotar
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-right text-muted-foreground tabular-nums">
                     {relativeTime(tenant.updated_at)}

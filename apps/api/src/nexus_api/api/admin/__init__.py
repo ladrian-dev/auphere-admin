@@ -29,6 +29,7 @@ from nexus_api.api.admin import (
     screenshots,
     signups,
     skills,
+    tenant_payments,
     tenants,
     tickets,
     tiktok_authorize,
@@ -42,6 +43,8 @@ router.include_router(auth.router)
 router.include_router(tenants.router)
 # Spec 030: el acceso del cliente a su consola lite.
 router.include_router(client_access.router)
+# La mensualidad de un cliente cobrada fuera del proveedor de pagos.
+router.include_router(tenant_payments.router)
 router.include_router(agent_configs.router)
 # Spec 030: los agentes de un cliente.
 router.include_router(agents.router)

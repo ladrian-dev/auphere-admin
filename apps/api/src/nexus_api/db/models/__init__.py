@@ -216,6 +216,7 @@ from nexus_api.db.models.teammate import (
     TeammateChange,
 )
 from nexus_api.db.models.tenant import Tenant, TenantPlan, TenantStatus, TenantTier
+from nexus_api.db.models.tenant_payment import TenantPayment
 from nexus_api.db.models.tool import ToolCatalog, ToolStatus
 from nexus_api.db.models.usage import UsageEvent
 from nexus_api.db.models.usage_record import USAGE_METERS, UsageRecord
@@ -402,6 +403,7 @@ __all__ = [
     "TenantConnectorToolOverride",
     "TenantCredentials",
     "TenantModelBinding",
+    "TenantPayment",
     "TenantPlan",
     "TenantStatus",
     "TenantTier",

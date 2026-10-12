@@ -7,7 +7,8 @@ so the panel can render labels without a second round-trip.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,3 +60,39 @@ class TenantBillingUpdateIn(BaseModel):
     billing_plan_id: uuid.UUID | None = None
     price_override_cents: int | None = Field(default=None, ge=0)
     billing_effective_from: date | None = None
+
+
+PaymentMethod = Literal["transfer", "cash", "zelle", "paypal", "crypto", "other"]
+
+
+class TenantPaymentIn(BaseModel):
+    """A monthly fee received outside the provider. A record, nothing else."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    period_year: int = Field(ge=2024, le=2100)
+    period_month: int = Field(ge=1, le=12)
+    amount_cents: int = Field(gt=0)
+    method: PaymentMethod
+    reference: str | None = Field(default=None, max_length=120)
+    paid_on: date
+    note: str | None = Field(default=None, max_length=500)
+
+
+class TenantPaymentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    period_year: int
+    period_month: int
+    amount_cents: int
+    currency: str
+    method: str
+    reference: str | None
+    paid_on: date
+    note: str | None
+    recorded_by: str
+    created_at: datetime
+    voided_at: datetime | None
+    voided_by: str | None

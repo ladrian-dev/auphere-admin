@@ -21,6 +21,18 @@
       "port": 8000
     },
     {
+      "name": "admin",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "apps/admin",
+        "dev",
+        "--port",
+        "3100"
+      ],
+      "port": 3100
+    },
+    {
       "name": "console",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [
