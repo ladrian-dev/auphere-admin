@@ -1,10 +1,10 @@
 # Bug Verification: el tope por cliente se descuenta dos veces y el gasto mostrado sale inflado
 
 - **Slug**: doble-cobro-del-tope
-- **Tested**: 2026-10-12
+- **Tested**: 2026-10-12 (local) · 2026-10-12 (producción, tras el despliegue)
 - **Assessment**: ./assessment.md
 - **Fix**: ./fix.md
-- **Result**: partial
+- **Result**: verified
 
 ## Summary
 
@@ -12,9 +12,9 @@ El bug ya no se reproduce contra la base real: un turno baja el tope una vez,
 sin cobro no lo baja, el agente sigue atendiendo con la mitad del tope gastada
 y los asientos `:allocation` no cuentan como gasto. La migración `0156`
 devuelve lo descontado de más y es idempotente. La verificación completa del
-repo pasa sin regresiones. Es `partial` y no `verified` porque falta
-comprobarlo en producción tras el despliegue, que es donde estaban los
-clientes mudos.
+repo pasa sin regresiones. Y en producción, tras el despliegue del
+2026-10-12, los topes quedaron como se esperaba y no se han escrito asientos
+`:allocation` nuevos.
 
 ## Checks Performed
 
@@ -27,7 +27,7 @@ clientes mudos.
 | Aislamiento del monedero | `pytest tests/isolation/test_24_partner_wallet_rls.py` | pass | La garantía «un cliente no toca el tope de otro» sobre `debit_wallet` |
 | Cableado del medidor | worker `pytest tests/unit/test_allocation_debit_wiring.py` | pass | Una sola llamada con `tenant_id`; `debit_allocation` ya no existe |
 | Regresión completa | `./scripts/verify.sh` | pass | API 4 800 · worker 438 · canales 61 · MCP 123 · consola 760 · panel 132 · `@nexus/ui` 174 · companion-ui 188 · desktop 949; lint, mypy `--strict` y `next build` en verde |
-| Producción tras el despliegue | consulta de solo lectura de los topes | not-run | El arreglo aún no está desplegado |
+| Producción tras el despliegue | consulta de solo lectura de los topes (`SET TRANSACTION READ ONLY`) | pass | Cada tope = tope − lo cobrado en la semana; último asiento `:allocation` a las 00:55, antes del despliegue |
 
 ## Output Excerpts
 
@@ -36,6 +36,16 @@ clientes mudos.
 438 passed, 13 warnings in 11.17s                                         # worker
 Todo verde. La tubería debería pasar.
 ```
+
+Producción, antes y después de `0156` (despliegue `deploy-prod` de `deadd4c1`,
+2026-10-12 12:27 UTC):
+
+| Cliente | Antes | Después | Tope − cobrado en la semana |
+|---|---|---|---|
+| New Air Climatización | **0** (mudo) | 50 000 | 50 000 |
+| Barber Supply | 46 347 | 50 000 | 50 000 |
+| Amigable Cobro | 1 173 280 | 1 186 640 | 1 186 640 |
+| Flor y Encanto | 3 814 680 | 4 225 392 | 4 225 392 |
 
 Los tres avisos de lint del panel (`resume.test.tsx`, `inspector-drawer.tsx`)
 son anteriores y no los toca este arreglo.
@@ -54,8 +64,6 @@ son anteriores y no los toca este arreglo.
 
 ## Recommendation
 
-Desplegar ya: dos clientes de producción han estado mudos por esto y el código
-actual sigue descontando dos veces. Tras el despliegue, cerrar el bug con la
-misma consulta de solo lectura en producción. Lo esperado es Amigable Cobro y
-New Air con margen, ningún asiento `:allocation` nuevo, y el `remaining` de cada
-cliente igual a su tope menos lo cobrado en la semana.
+Cerrar el bug: verificado en local y en producción. Queda vigilar una semana
+que no aparezcan asientos `:allocation` nuevos (no debería: el código que los
+escribía ya no existe) y evaluar aparte los dos hallazgos relacionados.
