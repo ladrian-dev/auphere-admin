@@ -162,12 +162,15 @@ from nexus_api.db.models.owner_backchannel import (
     OwnerPhoneIndex,
 )
 from nexus_api.db.models.partner import (
+    PARTNER_MODULES,
+    PARTNER_NAV_MODULES,
     TENANT_SCOPED_API_KEY_SCOPES,
     ApiKeyScope,
     ApiKeyType,
     EmbedAuditLog,
     Partner,
     PartnerApiKey,
+    PartnerModule,
     PartnerStatus,
     PartnerTenant,
 )
@@ -249,6 +252,8 @@ __all__ = [
     "OWNER_CONSULTATION_EXPECTED_REPLY_KINDS",
     "OWNER_CONSULTATION_STATUSES",
     "OWNER_CONSULTATION_URGENCIES",
+    "PARTNER_MODULES",
+    "PARTNER_NAV_MODULES",
     "PARTNER_ROLES",
     "PERMISSION_KEYS",
     "PLATFORMS",
@@ -369,6 +374,7 @@ __all__ = [
     "PartnerLocalExecPolicy",
     "PartnerMembership",
     "PartnerModelAllowlist",
+    "PartnerModule",
     "PartnerRole",
     "PartnerStatus",
     "PartnerSubscription",

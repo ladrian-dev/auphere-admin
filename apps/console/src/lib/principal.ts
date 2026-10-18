@@ -6,9 +6,11 @@ import { cache } from "react";
 import { consoleService } from "./backend";
 import {
   firstModulePath,
+  firstPartnerModulePath,
   toResolution,
   type ClientModule,
   type ClientPrincipal,
+  type PartnerModule,
   type PartnerPrincipal,
   type Principal,
   type PrincipalResolution,
@@ -32,11 +34,12 @@ import { getSessionToken } from "./session";
 export type {
   ClientModule,
   ClientPrincipal,
+  PartnerModule,
   PartnerPrincipal,
   Principal,
   PrincipalResolution,
 } from "./principal-access";
-export { firstModulePath } from "./principal-access";
+export { firstModulePath, firstPartnerModulePath } from "./principal-access";
 
 export const resolvePrincipal = cache(async (): Promise<PrincipalResolution> => {
   const token = await getSessionToken();
@@ -77,6 +80,19 @@ export async function requirePartnerPrincipal(from?: string): Promise<PartnerPri
  * Spec 030: the gate of every client-console page. A partner member goes
  * home; a client whose client lacks `module` goes to its first module.
  */
+/**
+ * Spec 032: the gate of a partner section. A partner whose console does not
+ * have `module` goes to its first module — no screen explaining what it does
+ * not have (§V). A client user passes through: its own pages gate it with
+ * `requireClientPrincipal`.
+ */
+export async function requirePartnerModule(module: PartnerModule, from?: string): Promise<void> {
+  const principal = await requirePrincipal(from);
+  if (principal.kind === "partner" && !principal.modules.includes(module)) {
+    redirect(firstPartnerModulePath(principal.modules));
+  }
+}
+
 export async function requireClientPrincipal(module: ClientModule, from?: string): Promise<ClientPrincipal> {
   const principal = await requirePrincipal(from);
   if (principal.kind !== "client") redirect("/");

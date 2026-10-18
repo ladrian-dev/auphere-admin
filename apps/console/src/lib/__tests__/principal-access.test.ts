@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ApiPrincipal } from "@/lib/backend";
-import { toResolution } from "@/lib/principal-access";
+import { PARTNER_MODULES, firstPartnerModulePath, toResolution } from "@/lib/principal-access";
 
 /**
  * The console no longer decides who has access — the API does, and this
@@ -25,7 +25,8 @@ const base: ApiPrincipal = {
   console_enabled: true,
   kind: "partner",
   client_name: null,
-  modules: [],
+  // Spec 032: a partner with the whole console.
+  modules: [...PARTNER_MODULES],
 };
 
 describe("toResolution", () => {
@@ -129,5 +130,43 @@ describe("toResolution — persona de un cliente", () => {
       email: client.email,
       clientName: "Flor y Encanto",
     });
+  });
+
+  it("spec 032: carries the partner's modules in canonical order, unknown ones dropped", () => {
+    const res = toResolution({ ...base, modules: ["billing", "teleport", "panel", "companion"] });
+    if (res.kind !== "ok" || res.principal.kind !== "partner") throw new Error("unreachable");
+    expect(res.principal.modules).toEqual(["panel", "billing", "companion"]);
+  });
+
+  it("spec 032: a partner with no view left reads as a console that is off", () => {
+    expect(toResolution({ ...base, modules: ["companion"] })).toEqual({
+      kind: "disabled",
+      email: base.email,
+      partnerName: "Demo Partner",
+    });
+    expect(toResolution({ ...base, modules: [] }).kind).toBe("disabled");
+  });
+
+  it("spec 032: an unassigned section sends the partner to its first module", () => {
+    expect(firstPartnerModulePath(["billing", "usage"])).toBe("/usage");
+    expect(firstPartnerModulePath(["panel", "keys"])).toBe("/");
+    expect(firstPartnerModulePath(["keys"])).toBe("/keys");
+  });
+
+  it("spec 032: the catalog matches the API's, in order", () => {
+    // Mirror of ``PartnerModule`` (apps/api db/models/partner.py). If either
+    // side changes, both change in the same PR.
+    expect(PARTNER_MODULES).toEqual([
+      "panel",
+      "clients",
+      "usage",
+      "audit",
+      "knowledge",
+      "workstation",
+      "team",
+      "billing",
+      "keys",
+      "companion",
+    ]);
   });
 });

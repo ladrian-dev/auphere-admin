@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@nexus/ui";
 
 import { LocaleProvider } from "@/i18n/client";
+import { PARTNER_MODULES } from "@/lib/principal-access";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -70,7 +71,12 @@ describe("AppSidebar — consola lite", () => {
   });
 
   it("keeps the partner sidebar without the badge", () => {
-    renderSidebar({ who: { kind: "partner", role: "owner" }, partnerName: "Amacrux", partnerSlug: "amacrux", user });
+    renderSidebar({
+      who: { kind: "partner", role: "owner", modules: [...PARTNER_MODULES] },
+      partnerName: "Amacrux",
+      partnerSlug: "amacrux",
+      user,
+    });
     expect(screen.queryByText("lite")).toBeNull();
     expect(screen.getByText("Clientes")).toBeTruthy();
   });

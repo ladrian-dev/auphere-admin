@@ -51,7 +51,8 @@ Cabecera con estado, consola, clientes, personas, saldo y alta. Pestañas:
 | Resumen | Nombre, correo de contacto y de facturación (editables y auditados); qué tiene encendido |
 | Clientes | Uso de 30 días por cliente y mapeos `external_client_ref` → cliente, enlazados |
 | Equipo | Personas (`GET /admin/partners/{id}/members`) e invitaciones pendientes |
-| Dinero | Saldo, libro y recibos |
+| Módulos | Consola encendida y qué secciones y servicios tiene (spec 032): rejilla Operar · Cuenta · Asistente; el Companion se enciende aquí |
+| Dinero | Saldo recargado, pool semanal y asignado en US$; recarga en dólares con confirmación e idempotencia; «¿cuadra el libro?»; movimientos con tipo (spec 033); recibos |
 | Configuración | Límites, modelos, claves API e impersonación |
 | Conocimiento · Auditoría | Sin cambios |
 
@@ -67,3 +68,18 @@ se divide en Prompt y herramientas · Runtime · Versiones · Evals (`?section=`
 
 `GET /admin/instance`: entorno, revisión de Alembic, commit de la imagen de la API
 (`NEXUS_GIT_SHA`, lo pasan los workflows de despliegue) y si Postgres y Redis responden.
+
+## Módulos por partner (spec 032)
+
+`GET/PUT /admin/partners/{id}/access` con `X-Operator-Id`. Catálogo: `panel, clients,
+usage, audit, knowledge, workstation, team, billing, keys, companion`. Con la consola
+encendida hace falta al menos una sección del menú. El módulo `companion` escribe
+`companion_enabled` en la misma transacción. La consola filtra menú, buscador, rutas y
+burbuja; una sección sin módulo redirige al primer módulo del partner.
+
+## Dinero (spec 033)
+
+Todo en US$. La recarga (`POST /admin/partners/{id}/wallet/purchased`) lleva
+`amount_cents`, la clave de idempotencia que genera el formulario y el operador; saldo,
+asiento y auditoría van en una transacción. `GET …/wallet/reconcile` compara el saldo
+recargado con el libro.

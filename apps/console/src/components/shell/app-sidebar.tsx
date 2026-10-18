@@ -21,7 +21,7 @@ import {
 } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
-import type { ClientModule, Role } from "@/lib/principal";
+import type { ClientModule, PartnerModule, Role } from "@/lib/principal";
 
 import { isActive, navForPrincipal } from "./nav";
 import { useInboxUnread } from "./use-inbox-unread";
@@ -29,7 +29,7 @@ import { UserMenu } from "./user-menu";
 
 /** Spec 030: who the sidebar is for. A client user sees its client's modules. */
 export type SidebarWho =
-  | { kind: "partner"; role: Role }
+  | { kind: "partner"; role: Role; modules: PartnerModule[] }
   | { kind: "client"; modules: ClientModule[]; clientName: string };
 
 type Props = {

@@ -15,6 +15,7 @@ import { LitePanel } from "@/components/lite/lite-panel";
 import {
   can,
   requireClientPrincipal,
+  requirePartnerModule,
   requirePartnerPrincipal,
   requirePrincipal,
   type PartnerPrincipal,
@@ -32,6 +33,8 @@ export default async function HomePage() {
   // sin módulo Panel va a su primer módulo (requireClientPrincipal).
   const who = await requirePrincipal();
   if (who.kind === "client") return <LitePanel principal={await requireClientPrincipal("panel")} />;
+  // Spec 032: a partner without the Panel module lands on its first module.
+  await requirePartnerModule("panel");
   return <PartnerHome principal={await requirePartnerPrincipal()} />;
 }
 

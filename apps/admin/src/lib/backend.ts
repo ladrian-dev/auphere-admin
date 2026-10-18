@@ -920,6 +920,7 @@ export type PartnerOut = {
   // Spec 031: what the panel reads at a glance.
   console_enabled: boolean;
   companion_enabled: boolean;
+  console_modules?: string[];
   max_clients: number | null;
   max_channels_per_client: number | null;
   weekly_pool_tokens: number | null;
@@ -961,6 +962,27 @@ export type AdminOverview = {
   pending_signups: { id: string; email: string; created_at: string }[];
   clients_without_cap: { tenant_id: string; name: string; partner_id: string; partner_name: string }[];
   unreadable: ("balance" | "caps" | "tickets")[];
+};
+
+/** Spec 032: what a partner's console has. Mirror of the API's PartnerModule. */
+export const PARTNER_MODULES = [
+  "panel",
+  "clients",
+  "usage",
+  "audit",
+  "knowledge",
+  "workstation",
+  "team",
+  "billing",
+  "keys",
+  "companion",
+] as const;
+export type PartnerModule = (typeof PARTNER_MODULES)[number];
+
+export type PartnerAccessOut = {
+  console_enabled: boolean;
+  modules: PartnerModule[];
+  catalog: { id: PartnerModule; kind: "nav" | "assistant" }[];
 };
 
 export type AdminInstance = {
@@ -2182,6 +2204,20 @@ export const backend = {
   getOverview: () => call<AdminOverview>("/admin/overview"),
 
   getInstance: () => call<AdminInstance>("/admin/instance"),
+
+  getPartnerAccess: (partnerId: string) =>
+    call<PartnerAccessOut>(`/admin/partners/${partnerId}/access`),
+
+  setPartnerAccess: (
+    partnerId: string,
+    body: { console_enabled: boolean; modules: PartnerModule[] },
+    operatorId: string,
+  ) =>
+    call<PartnerAccessOut>(`/admin/partners/${partnerId}/access`, {
+      method: "PUT",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
 
   getPartnerMembers: (partnerId: string) =>
     call<PartnerMembersOut>(`/admin/partners/${partnerId}/members`),

@@ -10,6 +10,8 @@ const TABS = [
   { slug: "", label: "Resumen" },
   { slug: "clients", label: "Clientes" },
   { slug: "team", label: "Equipo" },
+  // Spec 032: which console views and services this partner has.
+  { slug: "modules", label: "Módulos" },
   { slug: "money", label: "Dinero" },
   { slug: "settings", label: "Configuración" },
   { slug: "knowledge", label: "Conocimiento" },

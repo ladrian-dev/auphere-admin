@@ -134,6 +134,8 @@ class PartnerOut(BaseModel):
     # the list/get handlers (None when a handler does not compute them).
     console_enabled: bool = False
     companion_enabled: bool = False
+    #: Spec 032: read-only here; written by PUT /admin/partners/{id}/access.
+    console_modules: list[str] = []
     max_clients: int | None = None
     max_channels_per_client: int | None = None
     weekly_pool_tokens: int | None = None

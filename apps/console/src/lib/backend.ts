@@ -168,6 +168,8 @@ export type Me = {
   // el backend (`companion:use` Y la bandera); esto es solo lo que decide si
   // se monta la burbuja. Apagada es AUSENCIA, no un botón gris con tooltip.
   companion_enabled: boolean;
+  /** Spec 032: the modules Auphere gave this partner. */
+  modules?: string[];
 };
 export type ClientSummary = {
   external_client_ref: string;
