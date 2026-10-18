@@ -21,7 +21,7 @@ export default async function PartnersPage() {
         eyebrow="Gestionar"
         title="Partners"
         description="Agencias que operan la consola de Auphere para sus propios clientes."
-        actions={<Button render={<Link href="/partners/new" />}>Nuevo partner</Button>}
+        actions={<Button nativeButton={false} render={<Link href="/partners/new" />}>Nuevo partner</Button>}
       />
       {partners === null ? (
         <ErrorState title="No se pudieron leer los partners" description="La API no respondió. Vuelve a intentarlo en un momento." />
@@ -29,7 +29,7 @@ export default async function PartnersPage() {
         <EmptyState
           title="Todavía no hay partners"
           description="Da de alta el primero para que pueda entrar en su consola."
-          action={<Button render={<Link href="/partners/new" />}>Nuevo partner</Button>}
+          action={<Button nativeButton={false} render={<Link href="/partners/new" />}>Nuevo partner</Button>}
         />
       ) : (
         <PartnersTable partners={partners} />

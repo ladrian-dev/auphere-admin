@@ -26,7 +26,7 @@ export default async function TenantsPage() {
         eyebrow="Gestionar"
         title="Clientes"
         description="Cada cliente es un negocio con su propio agente. Los de un partner los opera el partner desde su consola."
-        actions={<Button render={<Link href="/tenants/new" />}>Nuevo cliente</Button>}
+        actions={<Button nativeButton={false} render={<Link href="/tenants/new" />}>Nuevo cliente</Button>}
       />
       {tenants === null ? (
         <ErrorState title="No se pudieron leer los clientes" description="La API no respondió. Vuelve a intentarlo en un momento." />
@@ -34,7 +34,7 @@ export default async function TenantsPage() {
         <EmptyState
           title="Todavía no hay clientes"
           description="Crea el primero para darle su agente."
-          action={<Button render={<Link href="/tenants/new" />}>Nuevo cliente</Button>}
+          action={<Button nativeButton={false} render={<Link href="/tenants/new" />}>Nuevo cliente</Button>}
         />
       ) : (
         <TenantsTable

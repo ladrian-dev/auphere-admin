@@ -28,7 +28,7 @@ export default function NotFound() {
             arreglarlo.
           </p>
         </div>
-        <Button render={<Link href="/tenants" />}>Volver a Tenants</Button>
+        <Button nativeButton={false} render={<Link href="/tenants" />}>Volver a Tenants</Button>
       </div>
     </main>
   );
