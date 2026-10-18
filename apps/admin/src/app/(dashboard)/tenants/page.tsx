@@ -1,166 +1,49 @@
 import Link from "next/link";
 
-import {
-  Badge,
-  Button,
-  PageHeader,
-  StatusDot,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@nexus/ui";
-import { TenantActionsMenu } from "@/components/tenants/tenant-actions-menu";
+import { Button, EmptyState, ErrorState, PageHeader } from "@nexus/ui";
+
 import { backend } from "@/lib/backend";
-import { planLabel, relativeTime, statusLabel } from "@/lib/format";
 
-export const metadata = { title: "Tenants" };
+import { TenantsTable } from "./tenants-table";
 
-const STATUS_TONE: Record<string, "positive" | "warning" | "muted"> = {
-  active: "positive",
-  paused: "warning",
-  archived: "muted",
-};
+export const metadata = { title: "Clientes" };
+export const dynamic = "force-dynamic";
 
+/**
+ * Spec 031 (R5.1): every business with its own agent, and whose it is — a
+ * partner's client or a direct Auphere client.
+ */
 export default async function TenantsPage() {
   const now = new Date();
-  const [tenants, periodPayments] = await Promise.all([
-    backend.listTenants(),
-    backend.listPeriodPayments(now.getFullYear(), now.getMonth() + 1),
+  const [tenants, partners, periodPayments] = await Promise.all([
+    backend.listTenants().catch(() => null),
+    backend.listPartners().catch(() => []),
+    backend.listPeriodPayments(now.getFullYear(), now.getMonth() + 1).catch(() => []),
   ]);
-  const paidThisMonth = new Set(periodPayments.map((p) => p.tenant_id));
-  const monthName = now.toLocaleDateString("es", { month: "long" });
-  const counts = {
-    total: tenants.length,
-    active: tenants.filter((t) => t.status === "active").length,
-    paused: tenants.filter((t) => t.status === "paused").length,
-  };
-
   return (
     <>
       <PageHeader
-        eyebrow="Tenants"
-        title="Portafolio de agentes"
-        description="Cada tenant es un cliente con su propio agente bespoke. Click en una fila para abrir el detalle."
-        actions={
-          <Button render={<Link href="/tenants/new" />}>Nuevo cliente</Button>
-        }
+        eyebrow="Gestionar"
+        title="Clientes"
+        description="Cada cliente es un negocio con su propio agente. Los de un partner los opera el partner desde su consola."
+        actions={<Button render={<Link href="/tenants/new" />}>Nuevo cliente</Button>}
       />
-
-      <div className="flex items-center gap-6 text-sm text-muted-foreground">
-        <span>
-          <strong className="text-foreground tabular-nums">
-            {counts.total}
-          </strong>{" "}
-          tenants
-        </span>
-        <span>
-          <strong className="text-foreground tabular-nums">
-            {counts.active}
-          </strong>{" "}
-          activos
-        </span>
-        {counts.paused > 0 ? (
-          <span>
-            <strong className="text-foreground tabular-nums">
-              {counts.paused}
-            </strong>{" "}
-            pausados
-          </span>
-        ) : null}
-      </div>
-
-      <div className="rounded-md border border-border bg-card overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Tenant</TableHead>
-              <TableHead className="hidden sm:table-cell">Plan</TableHead>
-              <TableHead className="hidden md:table-cell">Mercado</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead className="hidden sm:table-cell">
-                Mensualidad de {monthName}
-              </TableHead>
-              <TableHead className="hidden md:table-cell text-right">
-                Última actualización
-              </TableHead>
-              <TableHead className="w-12" aria-label="Acciones" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tenants.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={7}
-                  className="py-12 text-center text-muted-foreground"
-                >
-                  Sin tenants todavía. Crea el primero con &quot;Nuevo
-                  cliente&quot; arriba a la derecha.
-                </TableCell>
-              </TableRow>
-            ) : (
-              tenants.map((tenant) => (
-                <TableRow
-                  key={tenant.id}
-                  className="transition-colors hover:bg-muted/40"
-                >
-                  <TableCell>
-                    <Link
-                      href={`/tenants/${tenant.id}`}
-                      className="flex flex-col gap-1 outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-                    >
-                      <span className="font-medium">{tenant.name}</span>
-                      <span className="text-xs font-mono text-muted-foreground">
-                        {tenant.slug}
-                      </span>
-                    </Link>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <Badge variant="outline">{planLabel(tenant.plan)}</Badge>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-muted-foreground">
-                    {tenant.market ?? "—"}
-                    <span className="text-xs ml-1">({tenant.timezone})</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="inline-flex items-center gap-2">
-                      <StatusDot tone={STATUS_TONE[tenant.status] ?? "muted"} />
-                      <span>{statusLabel(tenant.status)}</span>
-                    </span>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    {paidThisMonth.has(tenant.id) ? (
-                      <Badge variant="secondary">Pagada</Badge>
-                    ) : tenant.billing_plan_id ? (
-                      <Link
-                        href={`/tenants/${tenant.id}/billing`}
-                        className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-                      >
-                        Sin anotar
-                      </Link>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-right text-muted-foreground tabular-nums">
-                    {relativeTime(tenant.updated_at)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <TenantActionsMenu
-                      tenantId={tenant.id}
-                      slug={tenant.slug}
-                      name={tenant.name}
-                      status={tenant.status}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {tenants === null ? (
+        <ErrorState title="No se pudieron leer los clientes" description="La API no respondió. Vuelve a intentarlo en un momento." />
+      ) : tenants.length === 0 ? (
+        <EmptyState
+          title="Todavía no hay clientes"
+          description="Crea el primero para darle su agente."
+          action={<Button render={<Link href="/tenants/new" />}>Nuevo cliente</Button>}
+        />
+      ) : (
+        <TenantsTable
+          tenants={tenants}
+          partners={partners.map((p) => ({ id: p.id, name: p.name }))}
+          paidThisMonth={periodPayments.map((p) => p.tenant_id)}
+          monthName={now.toLocaleDateString("es", { month: "long" })}
+        />
+      )}
     </>
   );
 }

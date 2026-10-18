@@ -38,6 +38,7 @@ export default async function TenantLayout({
   const { id } = await params;
   const tenant = await backend.getTenant(id);
   if (!tenant) notFound();
+  const partner = tenant.partner_id ? await backend.getPartner(tenant.partner_id).catch(() => null) : null;
 
   return (
     <>
@@ -51,25 +52,33 @@ export default async function TenantLayout({
               href="/tenants"
               className="hover:text-foreground transition-colors"
             >
-              Tenants
+              Clientes
             </Link>
             <span aria-hidden="true">/</span>
             <span className="text-foreground">{tenant.slug}</span>
           </nav>
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="flex flex-col gap-2">
-              <Eyebrow>Tenant</Eyebrow>
+              <Eyebrow>Cliente</Eyebrow>
               <h1
                 className="text-2xl md:text-3xl font-semibold leading-tight tracking-tight"
               >
                 {tenant.name}
               </h1>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 <Badge variant="outline">{planLabel(tenant.plan)}</Badge>
                 <span className="inline-flex items-center gap-2">
                   <StatusDot tone={STATUS_TONE[tenant.status]} />
                   {statusLabel(tenant.status)}
                 </span>
+                {/* Spec 031 (R5.3): whose client this is, one click away. */}
+                {partner ? (
+                  <Link href={`/partners/${partner.id}`} className="underline-offset-4 hover:underline">
+                    Partner: {partner.name}
+                  </Link>
+                ) : (
+                  <span>Cliente directo de Auphere</span>
+                )}
                 {tenant.market ? <span>{tenant.market}</span> : null}
                 <span className="font-mono">{tenant.timezone}</span>
               </div>

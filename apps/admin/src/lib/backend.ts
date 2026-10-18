@@ -143,6 +143,8 @@ export type Tenant = {
   agendapro_public_url: string | null;
   /** Set when the client pays a flat monthly plan (Facturación tab). */
   billing_plan_id?: string | null;
+  /** The partner this client belongs to; ``null`` = a direct Auphere client. */
+  partner_id?: string | null;
   created_at: string;
   updated_at: string;
 };

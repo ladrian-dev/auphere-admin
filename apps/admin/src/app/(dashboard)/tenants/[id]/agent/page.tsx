@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   Badge,
   Card,
@@ -5,6 +7,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  cn,
+  EmptyState,
   Eyebrow,
   Table,
   TableBody,
@@ -36,14 +40,28 @@ import {
   RollbackVersionButton,
 } from "./version-actions";
 
+const AGENT_SECTIONS = [
+  { key: "prompt", label: "Prompt y herramientas" },
+  { key: "runtime", label: "Runtime" },
+  { key: "versions", label: "Versiones" },
+  { key: "evals", label: "Evals" },
+] as const;
+type AgentSection = (typeof AGENT_SECTIONS)[number]["key"];
+function isAgentSection(v: string | undefined): v is AgentSection {
+  return AGENT_SECTIONS.some((s) => s.key === v);
+}
+
 export default async function AgentPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ agent?: string }>;
+  searchParams: Promise<{ agent?: string; section?: string }>;
 }) {
   const { id } = await params;
+  // Spec 031 (R5.4): four subjects, one at a time — the audit's BL-2.
+  const rawSection = (await searchParams).section;
+  const section: AgentSection = isAgentSection(rawSection) ? rawSection : "prompt";
   // Spec 030: con varios agentes, `?agent=` dice de cuál es lo que se edita;
   // sin él (o con uno que no es de este cliente), el principal. Si la lista
   // no se puede leer, el agente de la URL pasa tal cual y la API decide: caer
@@ -119,8 +137,34 @@ export default async function AgentPage({
       ? `Borrador v${latestStaged.version} sin promover`
       : "Crear primera versión";
 
+  const sectionHref = (key: AgentSection) => {
+    const qs = new URLSearchParams();
+    if (agentId) qs.set("agent", agentId);
+    if (key !== "prompt") qs.set("section", key);
+    const q = qs.toString();
+    return `/tenants/${tenant.id}/agent${q ? `?${q}` : ""}`;
+  };
+
   return (
     <div className="grid gap-6">
+      <nav aria-label="Secciones del agente" className="flex flex-wrap gap-1 rounded-md bg-muted/50 p-1 text-sm">
+        {AGENT_SECTIONS.map((s) => (
+          <Link
+            key={s.key}
+            href={sectionHref(s.key)}
+            aria-current={section === s.key ? "page" : undefined}
+            className={cn(
+              "rounded-sm px-3 py-1 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+              section === s.key ? "bg-card font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {s.label}
+            {s.key === "versions" ? ` (${bundle.versions.length})` : ""}
+          </Link>
+        ))}
+      </nav>
+
+      {section === "prompt" ? (
       <Card>
         <CardHeader className="flex flex-col gap-1">
           <Eyebrow>
@@ -167,8 +211,13 @@ export default async function AgentPage({
           />
         </CardContent>
       </Card>
+      ) : null}
 
-      {editorSource && (
+      {section === "runtime" && !editorSource ? (
+        <EmptyState title="Este agente todavía no tiene configuración" description="Crea su primera versión en Prompt y herramientas para poder ajustar su runtime." readonly />
+      ) : null}
+
+      {section === "runtime" && editorSource && (
         <RuntimeCapabilities
           tenantId={tenant.id}
           config={editorSource}
@@ -177,6 +226,7 @@ export default async function AgentPage({
         />
       )}
 
+      {section === "versions" ? (
       <Card>
         <CardHeader>
           <Eyebrow>Versiones</Eyebrow>
@@ -196,7 +246,9 @@ export default async function AgentPage({
           />
         </CardContent>
       </Card>
+      ) : null}
 
+      {section === "evals" ? (
       <EvalsSection
         tenantId={tenant.id}
         datasets={datasets}
@@ -204,6 +256,7 @@ export default async function AgentPage({
         recentRuns={recentRuns}
         activeVersion={bundle.active?.version ?? null}
       />
+      ) : null}
     </div>
   );
 }

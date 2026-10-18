@@ -9,8 +9,8 @@ const TABS = [
   { slug: "", label: "Resumen" },
   { slug: "agent", label: "Agente" },
   { slug: "conversations", label: "Conversaciones" },
-  { slug: "connectors", label: "Connectors" },
-  { slug: "backchannel", label: "Backchannel" },
+  { slug: "connectors", label: "Canales e integraciones" },
+  { slug: "backchannel", label: "Canal del dueño" },
   // Spec 030: la consola lite del cliente — módulos y personas.
   { slug: "access", label: "Acceso" },
   { slug: "isolation", label: "Aislamiento" },
